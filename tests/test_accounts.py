@@ -171,3 +171,64 @@ def test_cookie_flags_are_safe(app, engine):
     reply = app.test_client().post("/api/auth/login", json={"email": "boss@example.com", "password": PASSWORD})
     cookie = reply.headers["Set-Cookie"]
     assert "HttpOnly" in cookie and "SameSite=Lax" in cookie
+
+
+# ---- usernames: sign-in takes a username or an email ------------------------------------------------
+def test_a_username_can_sign_in(app, engine):
+    service.create_user(engine, "shadi", "Shadi", "admin", password=PASSWORD, must_change=False)
+    client, _ = _signed_in(app, "shadi")
+    assert client.get("/api/auth/me").get_json()["user"]["email"] == "shadi"
+
+
+def test_a_username_ignores_capitals_and_spaces(app, engine):
+    service.create_user(engine, "  Shadi ", "Shadi", "admin", password=PASSWORD, must_change=False)
+    assert app.test_client().post("/api/auth/login", json={"email": " SHADI ", "password": PASSWORD}).status_code == 200
+
+
+def test_an_email_still_works(app, engine):
+    _admin(engine)
+    _signed_in(app)
+
+
+@pytest.mark.parametrize("bad", ["", "ab", "has space", "x@y", "<b>me</b>", "a/b", "-dash", "a" * 61, None, 5])
+def test_a_username_that_cant_work_is_refused(engine, bad):
+    with pytest.raises(Refused):
+        service.create_user(engine, bad, "Someone", "member")
+
+
+@pytest.mark.parametrize("good", ["shadi", "shadi.k", "shadi_k", "shadi-1", "abc"])
+def test_ordinary_usernames_are_accepted(engine, good):
+    assert service.create_user(engine, good, "Someone", "member")[0]["email"] == good
+
+
+def test_two_people_cant_share_a_username(engine):
+    service.create_user(engine, "shadi", "One", "member")
+    with pytest.raises(Refused):
+        service.create_user(engine, "SHADI", "Two", "member")
+
+
+def test_a_username_gets_the_same_password_rules(engine):
+    with pytest.raises(Refused):
+        service.create_user(engine, "shadi", "Shadi", "admin", password="123456789")
+
+
+def test_a_wrong_password_locks_a_username_as_it_locks_an_email(app, engine):
+    service.create_user(engine, "shadi", "Shadi", "admin", password=PASSWORD, must_change=False)
+    client = app.test_client()
+    for _ in range(service.MAX_FAILURES):
+        assert client.post("/api/auth/login", json={"email": "shadi", "password": "nope"}).status_code == 401
+    assert client.post("/api/auth/login", json={"email": "shadi", "password": PASSWORD}).status_code == 401
+
+
+def test_an_admin_can_add_a_person_by_username(app, engine):
+    _admin(engine)
+    client, headers = _signed_in(app)
+    made = client.post("/api/team", json={"email": "nour", "name": "Nour", "role": "member"}, headers=headers)
+    assert made.status_code == 201 and made.get_json()["user"]["email"] == "nour"
+
+
+def test_the_login_page_doesnt_insist_on_an_email():
+    from pathlib import Path
+
+    page = (Path(__file__).resolve().parent.parent / "design" / "mockups" / "login.html").read_text(encoding="utf-8")
+    assert 'id="email" type="text"' in page and "Username or email" in page

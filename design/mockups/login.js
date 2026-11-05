@@ -23,7 +23,7 @@
   $("sign-in").addEventListener("submit", async (e) => {
     e.preventDefault(); fail("");
     const email = $("email").value.trim(), password = $("password").value;
-    if (!email || !password) { fail("Enter your email and password."); return; }
+    if (!email || !password) { fail("Enter your username and password."); return; }
     $("go").disabled = true;
     try {
       const data = await send("login", { email, password });

@@ -40,7 +40,7 @@ Your Mac's address must be on the SSH allow-list in cPanel, or `ssh` and `rsync`
 6. **First upload. Mac:** `FIRST_TIME=1 bash deploy/deploy.sh --go`. It stops with a plain message if a step above is missing, with the live site unchanged. `FIRST_TIME=1` also makes the server's encryption key: copy `~/.config/seo-command-center/key` to a password manager, because losing it means pasting every API key again. Later uploads never make a key.
 7. **First admin.** It prints a temporary password once.
    ```bash
-   cd ~/seo-platform && $VENV/bin/python -m seo.accounts create-admin --email you@example.com --name "Your name"
+   cd ~/seo-platform && $VENV/bin/python -m seo.accounts create-admin --username you --name "Your name"
    ```
 8. **Scheduled jobs.** Only when the app works in the browser, because they start reading websites straight away:
    ```bash

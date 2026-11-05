@@ -17,7 +17,7 @@ Built on the Mac, runs on o2switch: setup and uploads are in `deploy/DEPLOY.md`.
 scripts/setup_db.sh                 # creates the 2 databases and user, writes .env
 .venv/bin/python -m seo.core.crypto init   # creates the key outside the project
 .venv/bin/alembic upgrade head
-.venv/bin/python -m seo.accounts create-admin --email you@example.com --name "Your name"   # prints a temporary password once
+.venv/bin/python -m seo.accounts create-admin --username you --name "Your name"   # prints a temporary password once
 ```
 
 `setup_db.sh` only touches `seo_command_center` and `seo_command_center_test`. The encryption key is at `~/.config/seo-command-center/key`. It never goes in `.env`, git or a dump. Keep a copy in a password manager; losing it means re-pasting every API key.

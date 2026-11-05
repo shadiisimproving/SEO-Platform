@@ -1,6 +1,6 @@
 """The first admin can't be made from a screen, because there is no sign-up page.
 
-    python -m seo.accounts create-admin --email you@example.com --name "Your name"
+    python -m seo.accounts create-admin --username you --name "Your name"
 """
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="seo.accounts")
     commands = parser.add_subparsers(dest="command", required=True)
     make = commands.add_parser("create-admin", help="make an admin account and print its temporary password once")
-    make.add_argument("--email", required=True)
+    make.add_argument("--username", "--email", dest="email", required=True, help="a username or an email")
     make.add_argument("--name", required=True)
     args = parser.parse_args(argv)
     try:

@@ -17,16 +17,18 @@ LOCK_MINUTES = 15
 MIN_PASSWORD = 10
 ROLES = ("admin", "member")
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+_USERNAME = re.compile(r"^[a-z0-9][a-z0-9._-]{2,59}$")
 # Checked when the email is unknown, so an unknown address takes as long to refuse as a known one.
 _DUMMY_HASH = generate_password_hash(secrets.token_urlsafe(16))
-WRONG = "Wrong email or password, or this account is locked for a while after too many tries."
+WRONG = "Wrong username or password, or this account is locked for a while after too many tries."
 _PUBLIC = "id, email, name, role, must_change_password, disabled, last_login_at, created_at, locked_until > UTC_TIMESTAMP(3) AS locked"
 
 
 def _email(value) -> str:
+    """What someone signs in with: a username or an email. Both live in the `email` column, which is unique."""
     email = value.strip().lower() if isinstance(value, str) else ""
-    if not _EMAIL.match(email) or len(email) > 190:
-        raise Refused("Enter a valid email address.")
+    if not (_EMAIL.match(email) or _USERNAME.match(email)) or len(email) > 190:
+        raise Refused("Enter a username of at least 3 letters or numbers, or an email address.")
     return email
 
 
@@ -77,7 +79,7 @@ def create_user(engine: Engine, email, name, role="member", password: str | None
     plain = _check_new_password(password) if password else temporary_password()
     with engine.begin() as conn:
         if conn.execute(text("SELECT 1 FROM users WHERE email = :e"), {"e": email}).first():
-            raise Refused("There is already an account with that email.")
+            raise Refused("There is already an account with that username or email.")
         result = conn.execute(
             text("INSERT INTO users (email, name, password_hash, role, must_change_password) VALUES (:e, :n, :p, :r, :m)"),
             {"e": email, "n": name, "p": generate_password_hash(plain), "r": role, "m": must_change},

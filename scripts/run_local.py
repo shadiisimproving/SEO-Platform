@@ -47,7 +47,7 @@ def main() -> None:
         threading.Thread(target=worker, args=(lane,), daemon=True).start()
     app = create_app(engine=engine, screens_dir=ROOT / "design" / "mockups")
     if not count_users(engine):
-        print("No accounts yet. Make yours with: .venv/bin/python -m seo.accounts create-admin --email you@example.com --name 'Your name'", flush=True)
+        print("No accounts yet. Make yours with: .venv/bin/python -m seo.accounts create-admin --username you --name 'Your name'", flush=True)
     print(f"app on http://127.0.0.1:{PORT}/", flush=True)
     app.run(host="127.0.0.1", port=PORT, threaded=True, use_reloader=False)
 
