@@ -1793,7 +1793,7 @@
           <li>${t("Flags domains already in In consideration, Done or Found but never logged.")}</li>
           <li>${t("Nothing is added until you choose the links and confirm.")}</li>
         </ul>
-        <button type="button" class="link-btn" id="cleaner-sample">${t("Try a sample file")}</button>
+        ${window.BOOT?.served ? "" : `<button type="button" class="link-btn" id="cleaner-sample">${t("Try a sample file")}</button>`}
       </div>
       <div class="dlg-foot"><button class="btn" data-close-dlg>${t("Cancel")}</button></div>`);
   }
