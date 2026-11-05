@@ -4,7 +4,7 @@ Nothing here has run on the server yet. The scripts are tested on fakes (`tests/
 
 | | |
 |---|---|
-| Address | `https://seo.my-emails.pro` (not confirmed by the owner yet: set `PUBLIC_URL` if it changes) |
+| Address | `https://seo.my-emails.pro` |
 | Account | `khma1817` on `khma1817.odns.fr`, SSH key `~/.ssh/github_deploy_creertesting` |
 | Code and settings | `~/seo-platform`, **outside the web folder** |
 | Web folder | `~/seo.my-emails.pro`: only cPanel's `.htaccess`, nothing else |
