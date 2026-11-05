@@ -2746,6 +2746,7 @@
           ${c.risk ? `<p class="note warn" style="margin:0 0 10px">${icon("triangle-alert")}<span>${esc(t(c.risk))}</span></p>` : ""}
           ${c.url ? `<p style="margin:0 0 10px"><a class="ext-link" href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">${icon("external-link")}${t("Open the official page")}</a></p>` : ""}
         </details>`}
+        ${window.LIVE?.oldClarityData?.(c) || ""}
       </form>
       <div class="panel-foot"><button class="btn btn-main" id="conn-save" data-id="${c.id}">${t("Save")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button>${c.status === "ok" || c.status === "failing" ? `<button class="btn btn-ghost danger" id="conn-disconnect" data-id="${c.id}">${t("Disconnect")}</button>` : ""}</div>`,
     opener, { key: `conn|${id}`, reopen: () => connectionPanel(id, opener), after: () => { syncConnScope(); syncSiteNone(); syncGoogleKind(); } });

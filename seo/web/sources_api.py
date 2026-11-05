@@ -6,6 +6,7 @@ from flask import Blueprint, current_app, jsonify, request
 from seo.collectors import jobs
 from seo.collectors.http import SourceError
 from seo.core.errors import Refused
+from seo.imports import clarity_archive
 from seo.sources import service
 from seo.web.auth import require_admin
 
@@ -26,6 +27,20 @@ def _body() -> dict:
 @sources_api.get("/sources")
 def overview():
     return jsonify(service.overview(_engine()))
+
+
+@sources_api.post("/clarity-archive")
+def import_clarity_archive():
+    """The old Clarity data, once. Send preview=1 first to see what it would add."""
+    require_admin()
+    # Checked before the form is read, so an oversized upload never gets written anywhere. The margin is the form's own wrapping.
+    if (request.content_length or 0) > clarity_archive.MAX_BYTES + 4096:
+        raise Refused(f"The file is too large. The limit is {clarity_archive.MAX_BYTES // (1024 * 1024)} MB.")
+    upload = request.files.get("file")
+    if upload is None:
+        raise Refused("Choose the file first.")
+    data = clarity_archive.read_upload(upload.filename or "", upload.read(clarity_archive.MAX_BYTES + 1))
+    return jsonify(clarity_archive.import_archive(_engine(), data, preview=request.form.get("preview") == "1"))
 
 
 @sources_api.post("/google-connections")

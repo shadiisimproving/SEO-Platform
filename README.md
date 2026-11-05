@@ -7,7 +7,7 @@ Internal app for tracking websites in SEO: per-site data, tasks, backlinks, comp
 
 ## Where it runs
 
-Built on the Mac, runs on o2switch. **Nothing is uploaded until the owner says so.** Scheduled jobs only run on hosting, through cron. On the Mac, everything is run by hand. Do not add launchd: macOS hangs launch agents that touch `~/Documents`.
+Built on the Mac, runs on o2switch: setup and uploads are in `deploy/DEPLOY.md`. **Nothing is uploaded until the owner says so.** Scheduled jobs only run on hosting, through cron. On the Mac, everything is run by hand. Do not add launchd: macOS hangs launch agents that touch `~/Documents`.
 
 ## Set up on a new machine
 
@@ -81,3 +81,4 @@ Then open `http://127.0.0.1:8210/`. The harness has no login unless you add `--l
 - **Addresses:** `urlNow()` and `applyUrl()` in `mockup.js` hold the screen, tab, pair and site, so Back works and a view can be shared. Anything that opens a new view without a full redraw calls `UI.syncUrl()`.
 - **Test databases:** pytest and `tests/ui/app_server.py` both default to `seo_command_center_test`, and each wipes it. Give one of them `DB_NAME_TEST=seo_cc_snap_test`.
 - **Clarity:** at most one pass per site per UTC day (`scripts/clarity_daily.py`). A second pass would exceed the 10 requests a day allowed per project.
+- **Old Clarity data:** `scripts/clarity_archive_export.py` runs on the Mac and writes daily counts to `var/clarity-archive.json`. An admin uploads that in Settings → Microsoft Clarity → Old Clarity data (`seo/imports/clarity_archive.py`). The old `clarity.db` never goes to the server: it also holds visitor session ids, recording links and encrypted tokens. Pages, devices and countries stay behind too, because `clarity_daily` has no place for them. An upload only adds missing days, for sites already in the app, and leaves `site_sources` alone, so Clarity doesn't look connected. Days from the recordings export have sessions and referrers only: their clicks and scroll depth are NULL, and `metrics.clarity` answers None for them, never 0. Browser flow: `tests/ui/flow_clarity_archive.cjs`.

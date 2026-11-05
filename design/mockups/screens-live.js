@@ -334,17 +334,20 @@
     const head = topbarFor("Content", "Every page: visits, leads, Google clicks, position and AI visits", entry);
     if (entry.loading || entry.error) return page(head, stateCard(entry, "ga4"));
     const d = entry.data;
-    if (!d.pages.length) {
-      const blocked = stateCard({ data: { ...d, state: d.ga4.state === "ok" ? d.gsc.state : d.ga4.state, through: d.ga4.through, error: d.ga4.error || d.gsc.error } }, d.ga4.state === "ok" ? "gsc" : "ga4");
-      return page(head, blocked || emptyCard(t("No data in this period."), t("Pick a longer or earlier period.")));
-    }
+    // Read before the "no pages" answer: Clarity has its own days, such as old imported ones with no Google data beside them.
     const heat = load("metrics/clarity");
+    const known = (value) => (value === null ? "—" : UI.cnt(value)); // old recordings days never had clicks: unknown isn't zero
+    const sessionsOnly = heat.data?.sessions_only_days;
     const clarityCard = heat.data?.has_data ? `<section class="tiles">
         ${UI.tile(t("Clarity sessions"), UI.cnt(heat.data.sessions), `<span class="ab">${t("Data through")} ${esc(shortDay(heat.data.through))}</span>`, { ic: "activity" })}
         ${UI.tile(t("Scroll depth"), heat.data.scroll_depth === null ? "—" : `${decimal(heat.data.scroll_depth)} %`, "", { ic: "layers" })}
-        ${UI.tile(t("Rage clicks"), UI.cnt(heat.data.rage_clicks), "", { ic: "mouse-pointer-click" })}
-        ${UI.tile(t("Dead clicks"), UI.cnt(heat.data.dead_clicks), "", { ic: "mouse-pointer-click" })}
-      </section>` : "";
+        ${UI.tile(t("Rage clicks"), known(heat.data.rage_clicks), "", { ic: "mouse-pointer-click" })}
+        ${UI.tile(t("Dead clicks"), known(heat.data.dead_clicks), "", { ic: "mouse-pointer-click" })}
+      </section>${sessionsOnly ? `<p class="note lv-note">${icon("info")}<span>${num(sessionsOnly)} ${t(sessionsOnly === 1 ? "day here has Clarity sessions only: scroll depth and clicks weren't recorded for it." : "days here have Clarity sessions only: scroll depth and clicks weren't recorded for them.")}</span></p>` : ""}` : "";
+    if (!d.pages.length) {
+      const blocked = stateCard({ data: { ...d, state: d.ga4.state === "ok" ? d.gsc.state : d.ga4.state, through: d.ga4.through, error: d.ga4.error || d.gsc.error } }, d.ga4.state === "ok" ? "gsc" : "ga4");
+      return page(head, clarityCard + (blocked || emptyCard(t("No data in this period."), t("Pick a longer or earlier period."))));
+    }
     const missing = d.ga4.state !== "ok" ? "Visits and leads need Google Analytics. Until it's connected, they stay blank." : d.gsc.state !== "ok" ? "Google clicks and position need Search Console. Until it's connected, they stay blank." : "";
     return page(head, `
       ${missing ? `<p class="note lv-note">${icon("info")}<span>${t(missing)}</span></p>` : ""}${hiddenNote(d.hid_rows)}${clarityCard}

@@ -11,6 +11,7 @@ import os
 import shutil
 import subprocess
 import sys
+import tarfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -20,6 +21,7 @@ sys.path.insert(0, str(ROOT))
 from seo import config  # noqa: E402
 
 KEEP = 14
+KEEP_NOTE_FILES = 7  # they can be large: each note file can be up to 25 MB
 
 
 def run(folder: Path | None = None, keep: int = KEEP, runner=subprocess.Popen) -> Path:
@@ -50,5 +52,30 @@ def run(folder: Path | None = None, keep: int = KEEP, runner=subprocess.Popen) -
     return target
 
 
+def run_note_files(folder: Path | None = None, keep: int = KEEP_NOTE_FILES) -> Path | None:
+    """Files attached to notes exist only on this disk, and the database only points at them."""
+    source = Path(os.environ.get("SEO_NOTE_FILES") or config.VAR / "note-files")
+    if not source.is_dir() or not any(source.iterdir()):
+        return None
+    folder = Path(folder) if folder else config.VAR / "backups" / "note-files"
+    folder.mkdir(parents=True, exist_ok=True)
+    os.chmod(folder, 0o700)
+    target = folder / f"note-files-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}.tar.gz"
+    partial = target.with_suffix(".partial")
+    try:
+        with tarfile.open(partial, "w:gz") as archive:
+            archive.add(source, arcname="note-files")
+        os.chmod(partial, 0o600)
+        partial.rename(target)
+    finally:
+        partial.unlink(missing_ok=True)
+    for old in sorted(folder.glob("note-files-*.tar.gz"))[:-keep]:
+        old.unlink()
+    return target
+
+
 if __name__ == "__main__":
     print(f"Saved {run()}")
+    files = run_note_files()
+    if files:
+        print(f"Saved {files}")

@@ -455,8 +455,10 @@ def page_speed(scope: Scope) -> list[dict]:
 
 
 def clarity(scope: Scope) -> dict:
-    rows = scope.fetch("SELECT SUM(sessions) s, SUM(rage_clicks) r, SUM(dead_clicks) d, SUM(scroll_depth * sessions) w, SUM(IF(scroll_depth IS NULL, 0, sessions)) n, COUNT(*) c, MAX(day) last_day FROM clarity_daily WHERE site_id IN :sites AND day BETWEEN :a AND :b")
+    rows = scope.fetch("SELECT SUM(sessions) s, SUM(rage_clicks) r, SUM(dead_clicks) d, SUM(scroll_depth * sessions) w, SUM(IF(scroll_depth IS NULL, 0, sessions)) n, COUNT(*) c, SUM(rage_clicks IS NULL) o, MAX(day) last_day FROM clarity_daily WHERE site_id IN :sites AND day BETWEEN :a AND :b")
     row = rows[0] if rows else None
     if not row or not row["c"]:
         return {"has_data": False}
-    return {"has_data": True, "sessions": int(row["s"] or 0), "rage_clicks": int(row["r"] or 0), "dead_clicks": int(row["d"] or 0), "scroll_depth": round(float(row["w"]) / float(row["n"]), 1) if row["n"] else None, "days": int(row["c"]), "through": row["last_day"].isoformat()}
+    # Days from the old recordings export have sessions only. Their clicks are unknown, which is not the same as none.
+    known = lambda value: None if value is None else int(value)  # noqa: E731
+    return {"has_data": True, "sessions": int(row["s"] or 0), "rage_clicks": known(row["r"]), "dead_clicks": known(row["d"]), "scroll_depth": round(float(row["w"]) / float(row["n"]), 1) if row["n"] else None, "days": int(row["c"]), "sessions_only_days": int(row["o"] or 0), "through": row["last_day"].isoformat()}

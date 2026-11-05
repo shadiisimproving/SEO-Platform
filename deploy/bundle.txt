@@ -1,0 +1,10 @@
+# What goes to the server, taken from the last commit. Tests, reports and everything in var/ stay on the Mac.
+passenger_wsgi.py
+alembic.ini
+requirements.txt
+seo
+migrations
+scripts
+templates
+design/mockups
+deploy

@@ -63,6 +63,12 @@
 
   // ---- pieces the connection panel asks for -----------------------------------------------------
   const LIVE = (window.LIVE = {
+    // The old archive goes in here, once. Admin only, and only on the real app: a plain file has no server to send it to.
+    oldClarityData: (c) => (c.id !== "clarity" || !window.BOOT?.served || !isAdmin() ? "" : `<details class="fold how" id="ca-fold"><summary>${icon("chevron-right")}${t("Old Clarity data")}</summary>
+      <p class="help" style="margin:0 0 10px">${t("Upload the file made on your Mac by scripts/clarity_archive_export.py. It only adds days this app doesn't have yet, so uploading twice changes nothing.")}</p>
+      <label class="field"><span>${t("File")}</span><input class="input" id="ca-file" type="file" accept=".json,application/json"></label>
+      <div id="ca-result" aria-live="polite"></div>
+    </details>`),
     // These keys belong to the whole app, so asking "which sites?" would offer a choice that nothing keeps.
     appWide: (c) => c.group !== "serp" && c.auth === "key" && !SOURCE_OF[c.id],
     gaOptions: () => L.ga.map((p) => p.id),
@@ -89,6 +95,39 @@
       return `<label class="prop-field"><span class="small sec">${t("Google connection")}</span><select class="select" data-lv-site-conn="${site.id}" aria-label="${esc(site.host)}: ${t("Google connection")}">${list.map((g) => `<option value="${g.id}" ${g.id === held ? "selected" : ""}>${esc(g.label)}</option>`).join("")}</select></label>`;
     },
   });
+
+  // ---- the old Clarity archive ---------------------------------------------------------------------
+  const longDay = (day) => new Intl.DateTimeFormat(UI.locale(), { day: "numeric", month: "short", year: "numeric" }).format(new Date(`${day}T00:00:00`));
+  const daysWord = (n) => `${num(n)} ${t(n === 1 ? "day" : "days")}`;
+  function archiveRows(answer) {
+    const span = (s) => (s.first_day ? ` · ${esc(longDay(s.first_day))} – ${esc(longDay(s.last_day))}` : "");
+    const rows = answer.sites.map((s) => `<li><div class="what"><div class="t" dir="ltr">${esc(s.host)}</div><div class="s">${daysWord(s.added)} ${t(answer.preview ? "to add" : "added")}${s.kept ? `, ${daysWord(s.kept)} ${t("already here")}` : ""}${span(s)}</div></div></li>`).join("");
+    const missing = answer.missing_sites.length ? `<p class="note warn" style="margin:10px 0 0">${icon("triangle-alert")}<span>${t("These sites aren't in the app, so their days are left out. Add them as your own sites, then upload the file again:")} ${answer.missing_sites.map((s) => `<span dir="ltr">${esc(s.host)}</span> (${daysWord(s.days)})`).join(", ")}</span></p>` : "";
+    return `${rows ? `<ul class="rows" style="margin:0">${rows}</ul>` : ""}${missing}`;
+  }
+  async function sendArchive(preview) {
+    const box = UI.$("#ca-result"), file = UI.$("#ca-file")?.files?.[0];
+    if (!box || !file) return;
+    const form = new FormData();
+    form.append("file", file);
+    if (preview) form.append("preview", "1");
+    const failed = (err) => UI.setHTML(box, `<span class="error" style="margin:0" role="alert">${icon("octagon-alert")}${esc(t(err.message))}</span>`);
+    UI.setHTML(box, `<p class="small sec" style="margin:0">${t(preview ? "Reading the file…" : "Adding the days…")}</p>`);
+    let answer;
+    try {
+      answer = await window.COMP.api("POST", "clarity-archive", undefined, { form });
+    } catch (err) { failed(err); return; }
+    const toAdd = answer.sites.reduce((sum, s) => sum + s.added, 0);
+    if (!preview) {
+      window.LV?.cache.clear(); // the screens read these days next time they open
+      UI.toast(`${daysWord(toAdd)} ${t("added")}`);
+    }
+    const next = !preview ? `<p class="small sec" style="margin:10px 0 0">${t("You'll find them on Content, when the period includes those dates.")}</p>`
+      : toAdd ? `<div class="test-row" style="margin-top:10px"><button type="button" class="btn btn-main btn-small" id="ca-import">${t("Add")} ${daysWord(toAdd)}</button></div>`
+        : `<p class="small sec" style="margin:10px 0 0">${t("Nothing new to add.")}</p>`;
+    UI.setHTML(box, archiveRows(answer) + next);
+    box.scrollIntoView({ block: "nearest" }); // the button to press is the last thing here, and the panel's footer would cover it
+  }
 
   // ---- saving a connection ------------------------------------------------------------------------
   const resultBox = () => UI.$("#conn-test-result");
@@ -291,6 +330,7 @@
       const take = () => { e.stopPropagation(); e.preventDefault(); };
       let el;
       if (hit("[data-lv-signout]")) { take(); window.signOut(); return; }
+      if (hit("#ca-import")) { take(); sendArchive(false); return; }
       if ((el = hit("[data-lv-tab]"))) { take(); L.tab = el.dataset.lvTab; UI.render(); return; }
       if ((el = hit("#conn-save"))) { const c = conn(el.dataset.id); if (c && c.group !== "serp") { take(); if (isAdmin()) onSave(el, c); else sayError("Only an admin can do that."); } return; }
       if ((el = hit("#conn-test"))) { const c = conn(UI.$("#conn-save")?.dataset.id); if (c && c.group !== "serp") { take(); onTest(el, c); } return; }
@@ -363,6 +403,7 @@
       }
     }, true);
     document.addEventListener("change", async (e) => {
+      if (e.target.id === "ca-file") { sendArchive(true); return; }
       const el = e.target.closest?.("[data-lv-user-role]");
       if (!el) return;
       try { await api("PATCH", `team/${el.dataset.lvUserRole}`, { role: el.value }); UI.toast(t("Saved")); } catch (err) { showError(err); }
@@ -403,6 +444,15 @@
   };
 
   const fr = {
+    "Old Clarity data": "Anciennes données Clarity",
+    "Upload the file made on your Mac by scripts/clarity_archive_export.py. It only adds days this app doesn't have yet, so uploading twice changes nothing.": "Importez le fichier créé sur votre Mac par scripts/clarity_archive_export.py. Il n'ajoute que les jours absents de l'application : l'importer deux fois ne change rien.",
+    "to add": "à ajouter", "added": "ajoutés", "already here": "déjà présents", "Nothing new to add.": "Rien de nouveau à ajouter.", "Reading the file…": "Lecture du fichier…", "Adding the days…": "Ajout des jours…",
+    "These sites aren't in the app, so their days are left out. Add them as your own sites, then upload the file again:": "Ces sites ne sont pas dans l'application : leurs jours sont ignorés. Ajoutez-les comme vos propres sites, puis importez à nouveau le fichier :",
+    "You'll find them on Content, when the period includes those dates.": "Vous les trouverez dans Contenu, si la période inclut ces dates.",
+    "day here has Clarity sessions only: scroll depth and clicks weren't recorded for it.": "jour ici n'a que des sessions Clarity : le défilement et les clics n'ont pas été enregistrés.",
+    "days here have Clarity sessions only: scroll depth and clicks weren't recorded for them.": "jours ici n'ont que des sessions Clarity : le défilement et les clics n'ont pas été enregistrés.",
+    "This isn't a Clarity archive file. Make it with scripts/clarity_archive_export.py.": "Ce n'est pas un fichier d'archive Clarity. Créez-le avec scripts/clarity_archive_export.py.",
+    "Upload the .json file made by scripts/clarity_archive_export.py.": "Importez le fichier .json créé par scripts/clarity_archive_export.py.",
     "Important domains": "Domaines importants", "Domains worth a closer look": "Les domaines qui méritent un examen", "Moz rows left this month": "lignes Moz restantes ce mois-ci", "Moz isn't connected": "Moz n'est pas connecté", "Moz gives few free rows, so it only runs on domains you add here, and only when you press the button. Results are kept, so a row is never used twice in a month.": "Moz offre peu de lignes gratuites : il ne s'exécute que sur les domaines ajoutés ici, et seulement quand vous appuyez sur le bouton. Les résultats sont conservés : une ligne n'est jamais utilisée deux fois dans le mois.",
     "Add a domain": "Ajouter un domaine", "Get Moz data": "Obtenir les données Moz", "Get popularity": "Obtenir la popularité", "Domain": "Domaine", "Authority": "Autorité", "Moz Domain Authority": "Domain Authority Moz", "Linking domains": "Domaines référents", "Links": "Liens", "Popularity": "Popularité", "No domains yet. Add the ones worth a closer look.": "Pas encore de domaines. Ajoutez ceux qui méritent un examen.", "domains updated": "domaines mis à jour", "held back: no free rows left": "en attente : plus de lignes gratuites", "Popularity updated": "Popularité mise à jour", "Not ranked": "Non classé",
     "Tell Bing and Yandex about new pages": "Signaler les nouvelles pages à Bing et Yandex", "IndexNow. Google doesn't take part.": "IndexNow. Google n'y participe pas.", "Addresses, one per line": "Adresses, une par ligne", "Send": "Envoyer", "Connect IndexNow first: paste its key, and put the key file on your site.": "Connectez d'abord IndexNow : collez sa clé et placez le fichier de clé sur votre site.", "addresses sent": "adresses envoyées", "The key is still being checked.": "La clé est encore en cours de vérification.", "Enter a domain, such as example.com.": "Saisissez un domaine, par exemple example.com.",
