@@ -32,6 +32,10 @@ cd "$STAGING_DIR"
 "$VENV_BIN/alembic" upgrade head
 
 rsync -a --delete --exclude /.env --exclude /var --exclude /tmp --exclude /.htaccess "$STAGING_DIR/" "$APP_DIR/"
+# rsync copies the staged folder's private mode onto this one, and Passenger can't enter it then: every page answers 500.
+# This folder is outside the web folder, so opening it serves nothing. var/ holds backups and note files, and stays closed.
+chmod 755 "$APP_DIR"
+chmod 700 "$APP_DIR/var"
 mkdir -p "$APP_DIR/tmp"
 touch "$APP_DIR/tmp/restart.txt"
 echo "Released $(cat "$APP_DIR/REVISION" 2>/dev/null || echo unknown)"

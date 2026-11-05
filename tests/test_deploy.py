@@ -219,6 +219,15 @@ def test_a_release_installs_and_migrates_before_the_live_code_changes(release):
     assert backup < names.index("alembic"), "a copy of the database comes before any migration"
 
 
+def test_a_release_leaves_the_app_folder_open_to_the_web_server(release, tmp_path):
+    """The first real upload answered 500: the build folder is private, rsync copied that onto the app folder, and
+    Passenger runs as another user, so it couldn't get in. It's outside the web folder, so opening it serves nothing."""
+    (tmp_path / "staging").chmod(0o700)
+    assert release.run().returncode == 0
+    assert release.live.stat().st_mode & 0o777 == 0o755
+    assert (release.live / "var").stat().st_mode & 0o077 == 0, "backups and note files stay private"
+
+
 def test_a_release_keeps_uploaded_files_and_settings(release):
     assert release.run().returncode == 0
     assert (release.live / "var" / "note-files" / "kept.png").read_text() == "a customer's note\n"
