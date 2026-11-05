@@ -1,0 +1,60 @@
+# Local SearXNG for the article pipelines — the keyless, unmetered SERP fallback.
+#
+# This is the LOCAL variant of docker-compose.yml. That file is built for a VPS:
+# Caddy terminating TLS on a public domain, basic auth on every path, and the
+# SearXNG container deliberately publishing no host port so Caddy is the only
+# way in. All of that exists because an open `format=json` endpoint is a
+# general-purpose search API that gets found and abused, and the abuse traffic
+# is what gets the host IP blocked by the engines it queries.
+#
+# None of it is needed here, because the port is bound to 127.0.0.1 and is
+# therefore unreachable from the network at all. Dropping Caddy also drops the
+# DNS record, the ACME challenge and the basic-auth hash, which is why this
+# starts in seconds rather than needing a server.
+#
+# Bring up:  docker compose -f docker-compose.local.yml up -d
+# Verify:    curl "http://127.0.0.1:8899/search?q=test&format=json" | head -c 200
+# Logs:      docker compose -f docker-compose.local.yml logs -f searxng
+# Stop:      docker compose -f docker-compose.local.yml down
+services:
+  redis:
+    # Backs SearXNG's result cache. Internal only.
+    image: docker.io/valkey/valkey:8-alpine
+    container_name: seocc-searxng-redis
+    command: valkey-server --save 30 1 --appendonly no
+    restart: unless-stopped
+    networks: [seocclocal]
+    volumes:
+      - seocc-valkey:/data
+    cap_drop: [ALL]
+    cap_add: [SETGID, SETUID, DAC_OVERRIDE]
+
+  searxng:
+    image: docker.io/searxng/searxng:latest
+    container_name: seocc-searxng
+    restart: unless-stopped
+    networks: [seocclocal]
+    # 127.0.0.1 on purpose. Without the host prefix Docker binds 0.0.0.0 and
+    # publishes an unauthenticated search API to the whole LAN.
+    ports:
+      - "127.0.0.1:8899:8080"
+    volumes:
+      - ./local:/etc/searxng:rw
+    environment:
+      SEARXNG_BASE_URL: "http://127.0.0.1:8899/"
+      # Any non-empty value; nothing is signed that leaves this machine.
+      SEARXNG_SECRET: "local-dev-only-not-a-real-secret"
+      UWSGI_WORKERS: "4"
+      UWSGI_THREADS: "4"
+    depends_on: [redis]
+    cap_drop: [ALL]
+    cap_add: [CHOWN, SETGID, SETUID]
+    logging:
+      driver: json-file
+      options: {max-size: "1m", max-file: "1"}
+
+networks:
+  seocclocal:
+
+volumes:
+  seocc-valkey:

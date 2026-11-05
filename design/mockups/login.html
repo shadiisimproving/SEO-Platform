@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en" data-look="clear" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign in · SEO Command Center</title>
+<link rel="stylesheet" href="mockup.css">
+<link rel="stylesheet" href="look-clear.css">
+<style>
+  body { min-height: 100vh; display: grid; place-items: center; padding: 16px; background: var(--bg, #f6f7f9); overflow: auto; }
+  .login { width: min(400px, 100%); background: var(--card, #fff); border-radius: 16px; padding: 28px; box-shadow: 0 1px 3px rgb(0 0 0 / .08), 0 12px 32px rgb(0 0 0 / .06); }
+  .login h1 { font-size: 20px; margin: 0 0 4px; }
+  .login p.sub { margin: 0 0 20px; color: var(--sec, #5b6472); font-size: 14px; }
+  .login .field { display: block; margin-bottom: 14px; }
+  .login .field > span { display: block; font-size: 13px; font-weight: 500; margin-bottom: 5px; }
+  .login .input { width: 100%; box-sizing: border-box; }
+  .login .btn-main { width: 100%; justify-content: center; margin-top: 4px; }
+  .login .help { font-size: 13px; color: var(--sec, #5b6472); margin: -6px 0 14px; }
+  .login .error { display: block; margin: 0 0 14px; font-size: 14px; }
+</style>
+</head>
+<body>
+<main class="login">
+  <h1 id="title">Sign in</h1>
+  <p class="sub" id="sub">SEO Command Center</p>
+  <div class="error" id="err" role="alert" hidden></div>
+  <form id="sign-in" novalidate>
+    <label class="field"><span>Email</span><input class="input" id="email" type="email" autocomplete="username" autofocus required></label>
+    <label class="field"><span>Password</span><input class="input" id="password" type="password" autocomplete="current-password" required></label>
+    <button class="btn btn-main" id="go" type="submit">Sign in</button>
+  </form>
+  <form id="change" novalidate hidden>
+    <label class="field"><span id="current-label">Temporary password</span><input class="input" id="current" type="password" autocomplete="current-password" required></label>
+    <label class="field"><span>New password</span><input class="input" id="next" type="password" autocomplete="new-password" required></label>
+    <p class="help">At least 10 characters.</p>
+    <button class="btn btn-main" type="submit">Save and continue</button>
+  </form>
+</main>
+<script src="login.js"></script>
+</body>
+</html>

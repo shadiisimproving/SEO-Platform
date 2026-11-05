@@ -1,0 +1,95 @@
+# SearXNG settings for the pipeline's SERP fallback.
+#
+# Two settings carry the whole reason this instance exists:
+#   * `formats` must include `json` — it is HTML-only by default, and a missing
+#     json entry is what a 403 from /search?format=json actually means.
+#   * the Google engine must stay enabled — without it this returns Bing/DDG
+#     results and stops being a Google-derived fallback at all.
+
+use_default_settings: true
+
+general:
+  instance_name: "research"
+  # Nothing about this instance should be discoverable or indexed; it exists for
+  # one API caller, not for humans browsing it.
+  privacypolicy_url: false
+  donation_url: false
+  contact_url: false
+  enable_metrics: false
+
+server:
+  # Read from SEARXNG_SECRET in the environment (docker-compose passes it).
+  secret_key: "@SEARXNG_SECRET@"
+  base_url: "http://127.0.0.1:8899/"
+  limiter: false          # bot protection, backed by redis
+  public_instance: false
+  image_proxy: false
+  method: "GET"          # the pipeline calls /search with a query string
+  default_http_headers:
+    X-Content-Type-Options: nosniff
+    X-Robots-Tag: noindex, nofollow, noarchive
+    Referrer-Policy: no-referrer
+
+redis:
+  url: redis://seocc-searxng-redis:6379/0
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "en"
+  # THE line that makes this usable as an API. Without `json` here, every
+  # format=json request is refused with 403.
+  formats:
+    - html
+    - json
+
+ui:
+  static_use_hash: true
+  infinite_scroll: false
+
+outgoing:
+  request_timeout: 8.0
+  max_request_timeout: 15.0
+  pool_connections: 100
+  pool_maxsize: 20
+  enable_http2: false
+  # Google throttles a datacentre IP that queries it constantly. If results dry
+  # up, this is the first thing to look at — route outgoing traffic through a
+  # proxy pool here rather than raising the request rate.
+  # proxies:
+  #   all://:
+  #     - socks5://user:pass@proxy-host:1080
+
+engines:
+  # Keep the result set to general web engines that answer fast. Anything left
+  # enabled from the defaults (images, IT, science, social) adds latency to
+  # every call for results the pipeline never reads.
+  - name: google
+    disabled: false
+    timeout: 6.0
+    weight: 3            # Google-derived results rank above the rest
+  - name: bing
+    disabled: false
+    timeout: 6.0
+  - name: duckduckgo
+    disabled: false
+    timeout: 6.0
+  - name: brave
+    disabled: false
+    timeout: 6.0
+  - name: startpage
+    disabled: true       # frequently CAPTCHAs from datacentre IPs
+  - name: wikipedia
+    disabled: true
+  - name: wikidata
+    disabled: true
+  - name: currency
+    disabled: true
+  - name: duckduckgo images
+    disabled: true
+  - name: google images
+    disabled: true
+  - name: bing images
+    disabled: true
+  - name: qwant
+    disabled: true

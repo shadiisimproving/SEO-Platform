@@ -1,0 +1,167 @@
+/* My competitors and Find competitors. Colours only come from the tokens in mockup.css. */
+.cl-hide { display: none !important; }
+.cl-wrap { white-space: normal; overflow-wrap: anywhere; }
+.cl-scroll { overflow-x: auto; }
+.cl-more { margin: 10px 0 0; }
+.cl-none { padding: 4px 0 2px; margin: 0; }
+.card > .cl-none { padding: 12px 18px; }
+.cl-section-body { padding: 14px 18px 16px; min-width: 0; }
+.cl-empty-acts { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+
+/* A band above a list: a line of words and its buttons. */
+.cl-band p { flex: 1 1 320px; min-width: 0; }
+.cl-band-main { display: inline-flex; gap: 6px; align-items: flex-start; }
+.cl-band-main svg.i { margin-top: 2px; color: var(--muted); }
+.cl-band-sub { display: block; margin-top: 3px; padding-inline-start: 22px; }
+.cl-band-acts { display: flex; gap: 8px; flex-wrap: wrap; margin-left: auto; }
+
+/* Cells stacked inside a table cell. As a card on a phone, the cell holds them as one block. */
+.cl-cell, .cl-watch { display: block; min-width: 0; }
+.cl-url { display: block; margin-top: 2px; }
+.cl-url .comp-url { color: var(--text-2); }
+.cl-watch .second { max-width: 300px; }
+.cl-name { text-align: start; }
+button.cl-name:hover { color: var(--accent-text); }
+.cl-row-btn { width: 28px; height: 28px; vertical-align: middle; }
+
+/* Tables nested in a card or a fold keep their header in place and don't look pressable. */
+.cl-table th { position: static !important; background: none !important; -webkit-backdrop-filter: none !important; backdrop-filter: none !important; }
+.cl-table th:first-child, .cl-table th:last-child { border-radius: 0; }
+.cl-table tbody tr { cursor: default; }
+.cl-table td:first-child { max-width: 320px; }
+
+/* A suggestion */
+.cl-sug { flex-wrap: wrap; align-items: flex-start !important; }
+.cl-sug .what { flex: 1 1 320px; display: flex; flex-direction: column; gap: 6px; }
+.cl-sug-name { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 14px; }
+.cl-share { display: flex; gap: 6px 12px; align-items: center; flex-wrap: wrap; }
+.cl-meter { flex: 0 1 180px; min-width: 80px; margin-top: 0; }
+.cl-facts { display: flex; flex-wrap: wrap; gap: 3px 16px; }
+.cl-facts b { font-weight: 600; color: var(--text); }
+.cl-sug .acts { flex: none; }
+.cl-evidence { flex: 1 0 100%; font-size: 12px; min-width: 0; }
+.cl-evidence > summary { display: inline-flex; gap: 4px; align-items: center; cursor: pointer; color: var(--accent-text); list-style: none; font-weight: 500; min-height: 24px; border-radius: var(--r-s); }
+.cl-evidence > summary::-webkit-details-marker { display: none; }
+.cl-evidence > summary svg { transition: transform var(--t-base) var(--ease-out); }
+.cl-evidence[open] > summary svg { transform: rotate(90deg); }
+.cl-evidence-body { margin-top: 8px; border-radius: var(--r-m); box-shadow: inset 0 0 0 1px var(--line); background: var(--chip); overflow: hidden; }
+.cl-evidence-body .help { padding: 0 12px 10px; margin: 0; }
+
+/* A collapsed group */
+.cl-group > summary { list-style: none; cursor: pointer; border-bottom: 0; }
+.cl-group > summary::-webkit-details-marker { display: none; }
+.cl-group > summary svg { color: var(--muted); transition: transform var(--t-base) var(--ease-out); }
+.cl-group[open] > summary { border-bottom: 1px solid var(--line); }
+.cl-group[open] > summary svg { transform: rotate(90deg); }
+.cl-group > summary:hover { background: var(--hover); }
+.cl-group-intro { padding: 10px 18px; margin: 0; border-bottom: 1px solid var(--line); }
+.cl-none-big { padding: 34px 24px; }
+
+/* Waiting for a tool: the first thing the owner sees, so it's calm and clear. */
+.cl-waiting { display: flex; gap: 14px 18px; align-items: center; flex-wrap: wrap; padding: 16px 18px; }
+.cl-waiting-main { display: flex; gap: 12px; align-items: flex-start; flex: 1 1 340px; min-width: 0; }
+.cl-waiting .ico { display: inline-grid; place-items: center; width: 30px; height: 30px; flex: none; border-radius: var(--r-s); color: var(--accent-text); background: color-mix(in srgb, var(--accent-1) 14%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-1) 28%, transparent); }
+.cl-waiting-words { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.cl-waiting-words h2 { font-size: 14px; font-weight: 600; letter-spacing: -.005em; }
+.cl-waiting-words p { font-size: 13px; }
+.cl-waiting-words p.small { font-size: 12px; }
+.cl-waiting-act { flex: none; }
+
+/* The upload panel */
+.cl-drop { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 18px 16px; text-align: center; border-radius: var(--r-m); border: 1.5px dashed var(--line-2); background: var(--hover); transition: border-color var(--t-base), background var(--t-base), transform var(--t-base) var(--ease-out); margin-bottom: 12px; }
+.cl-drop.over { border-color: var(--accent-1); background: color-mix(in srgb, var(--accent-1) 14%, transparent); transform: scale(1.012); }
+.cl-drop svg.i { width: 22px; height: 22px; color: var(--accent-text); margin-bottom: 2px; }
+.cl-drop b { font-weight: 600; font-size: 14px; }
+.cl-paste-box { resize: vertical; min-height: 120px; line-height: 1.5; }
+.cl-file-info { padding: 10px 12px; margin-bottom: 12px; border-radius: var(--r-m); background: var(--chip); box-shadow: inset 0 0 0 1px var(--line); display: flex; flex-direction: column; gap: 6px; }
+.cl-file-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.cl-file-row svg.i { color: var(--muted); }
+.cl-file-name { overflow-wrap: anywhere; min-width: 0; }
+.cl-file-row .link-btn { margin-left: auto; white-space: nowrap; }
+.cl-previews { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+.cl-preview { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+#cl-file-error .error { margin: -6px 0 10px; }
+
+/* The profile */
+.cl-back { margin: 0 0 8px; }
+.cl-back .btn { padding-inline-start: 6px; }
+.cl-head { padding: 16px 18px; }
+.cl-head-row { display: flex; gap: 12px 18px; align-items: flex-start; flex-wrap: wrap; }
+.cl-head-main { flex: 1 1 340px; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.cl-head h2 { display: flex; gap: 8px; align-items: center; font-size: 20px; font-weight: 650; letter-spacing: -.015em; outline: none; min-width: 0; }
+.cl-head-link { color: inherit; text-decoration: none; }
+.cl-head-link:hover { text-decoration: underline; color: var(--accent-text); }
+.cl-head-watch { margin-top: 4px; }
+.cl-head-watch .second { display: inline; margin: 0 0 0 8px; max-width: none; }
+.cl-head-watch .cl-wrap { display: none; } /* the note below says it in full */
+.cl-head-acts { display: flex; gap: 8px; flex-wrap: wrap; flex: none; }
+.cl-head-note .note, .cl-head-note { margin: 12px 0 0; }
+.cl-section { font-size: 14px; font-weight: 600; margin: 0 2px 10px; }
+
+/* You and them, side by side */
+.cl-tiles { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.cl-cmp { display: flex; flex-direction: column; gap: 6px; }
+.cl-cmp .lab { padding-top: 0; min-height: 34px; }
+.cl-sides { display: flex; gap: 18px; }
+.cl-side { display: flex; flex-direction: column; min-width: 0; }
+.cl-who { font-size: 11px; color: var(--muted); }
+.cl-fig { font-size: 24px; font-weight: 600; letter-spacing: -.02em; line-height: 30px; }
+.cl-cmp .delta { margin-top: auto; }
+.cl-cmp .ab { font-size: 12px; }
+
+/* The timeline */
+.cl-end { flex: 1 1 320px; text-align: end; }
+.cl-days { display: flex; flex-direction: column; gap: 14px; }
+.cl-day-name { font-size: 12px; font-weight: 600; color: var(--text-2); margin: 0 0 4px; }
+.cl-tl { margin: 0; padding: 0; border-radius: var(--r-m); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+.cl-tl > li { align-items: flex-start; padding: 9px 12px; min-height: 0; }
+.cl-tl > li:focus { outline: 2px solid var(--focus); outline-offset: -2px; }
+.cl-tl .t { font-weight: 500; font-size: 13px; }
+.cl-tl .t .kw { font-weight: 600; }
+.cl-tl .d { margin-top: 2px; }
+.cl-tl-ico { display: inline-grid; place-items: center; width: 24px; height: 24px; flex: none; border-radius: 8px; color: var(--accent-text); background: color-mix(in srgb, var(--accent-1) 12%, transparent); }
+.cl-tl-ico svg.i { width: 14px; height: 14px; }
+.cl-change { display: grid; gap: 2px; margin-top: 4px; font-size: 12px; }
+.cl-change-line { display: grid; grid-template-columns: minmax(48px, max-content) minmax(0, 1fr); gap: 8px; }
+.cl-change-label { color: var(--muted); }
+.cl-change-text { overflow-wrap: anywhere; color: var(--text); }
+.cl-change-line.was .cl-change-text { color: var(--text-2); }
+.cl-move { display: flex; gap: 2px 10px; flex-wrap: wrap; align-items: center; }
+.cl-move-places { display: inline-flex; gap: 4px; align-items: center; font-weight: 600; color: var(--text); }
+.cl-move-places svg.i { width: 12px; height: 12px; color: var(--muted); }
+
+/* A segmented control whose highlight is drawn without help, so a redraw of its section keeps it. */
+.cl-seg { flex-wrap: wrap; margin-bottom: 12px; max-width: 100%; }
+.cl-seg button[aria-pressed="true"] { background: var(--ink-bg); box-shadow: var(--ink-shadow); }
+
+/* Their pages against mine */
+.cl-pairs > li { flex-wrap: wrap; align-items: flex-start; }
+.cl-pair { display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 18px; flex: 1 1 420px; min-width: 0; }
+.cl-pair-side { display: flex; flex-direction: column; min-width: 0; gap: 1px; }
+.cl-pair-side .t { font-weight: 500; font-size: 13px; overflow-wrap: anywhere; }
+.cl-pair-side .comp-url { color: var(--text-2); }
+.cl-pairs .acts { align-self: center; }
+
+@media (max-width: 1240px) {
+  .cl-end { flex-basis: 100%; text-align: start; }
+}
+@media (max-width: 860px) {
+  .cl-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .cl-section-body { padding: 12px; }
+  .cl-sug .acts, .cl-pairs .acts { padding-left: 0; }
+  .cl-pair { grid-template-columns: minmax(0, 1fr); }
+  .cl-band-acts { margin-left: 0; }
+  .cl-cell, .cl-watch { text-align: right; }
+  .cl-watch .second { max-width: none; }
+  .cl-table td:first-child { max-width: none; }
+  /* Inside a card, table rows as cards would stack glass on glass. */
+  .cl-table tbody tr { background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; border-radius: 0; padding: 8px 0; margin: 0; border-bottom: 1px solid var(--line); }
+  .cl-table tbody tr:last-child { border-bottom: 0; }
+  .cl-evidence-body .cl-table tbody tr { padding: 8px 12px; }
+  .cl-head-acts { width: 100%; }
+  .cl-head-watch .second { display: block; margin: 2px 0 0; }
+  .cl-fig { font-size: 20px; line-height: 26px; }
+  .cl-cmp .lab { min-height: 0; }
+}

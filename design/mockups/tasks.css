@@ -1,0 +1,116 @@
+/* Tasks: the board and its table. Tokens only, as everywhere. */
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.tk-bar { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; margin-bottom: 12px; }
+.tk-views { margin-left: auto; }
+.tk-month { display: inline-flex; align-items: center; gap: 4px; }
+.tk-month-name { font-weight: 500; font-size: 13px; min-width: 130px; text-align: center; }
+.tk-dates { display: inline-flex; gap: 10px; flex-wrap: wrap; }
+.tk-dates .field { margin: 0; display: inline-flex; align-items: center; gap: 6px; }
+.tk-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; flex: 1 1 320px; min-width: 0; }
+.tk-filters .field { margin: 0; flex: 0 1 150px; min-width: 0; }
+.tk-filters .field select { width: 100%; }
+.tk-search { position: relative; flex: 1 1 200px !important; max-width: 300px; }
+.tk-search svg.i { position: absolute; left: 10px; top: 50%; translate: 0 -50%; width: 15px; height: 15px; color: var(--muted); pointer-events: none; }
+.tk-search input { width: 100%; padding-left: 32px; }
+.tk-filter-toggle { display: none; }
+.tk-hidden { margin: 0 0 10px; }
+
+/* Columns are quiet grey lanes, so the white cards are what stands out. Each lane runs the full height, which also makes it easier to drop on. */
+.tk-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; align-items: stretch; }
+.tk-board .tk-col.card { margin: 0; padding: 10px; border-radius: var(--r-m); background: var(--track); box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow var(--t-fast); }
+.tk-board .tk-col.card.tk-over { box-shadow: inset 0 0 0 2px var(--accent-1); }
+.tk-col-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 4px 10px; }
+.tk-col-head h2 { font-size: 13px; font-weight: 600; margin: 0; }
+.tk-col-head .lc-count { min-width: 22px; padding: 0 7px; border-radius: 999px; background: var(--chip); box-shadow: inset 0 0 0 1px var(--line); font-size: 12px; line-height: 20px; text-align: center; }
+.tk-col-body { display: flex; flex-direction: column; gap: 8px; min-height: 64px; }
+.tk-none { margin: 0; padding: 22px 4px; text-align: center; border-radius: var(--r-s); box-shadow: inset 0 0 0 1px var(--line-2); }
+
+.tk-card { position: relative; display: flex; flex-direction: column; gap: 8px; padding: 12px; border-radius: var(--r-s); background: var(--chip); box-shadow: 0 1px 2px var(--hover), inset 0 0 0 1px var(--line); min-width: 0; cursor: pointer; transition: box-shadow var(--t-fast); }
+.tk-card:hover { box-shadow: var(--shadow-hover), inset 0 0 0 1px var(--line-2); }
+.tk-card.tk-dragging { opacity: .5; }
+.tk-card:active { cursor: grabbing; }
+.tk-col[data-task-col="done"] .tk-title { color: var(--text-2); }
+.tk-title { font: inherit; font-size: 14px; font-weight: 500; line-height: 1.35; color: var(--text); text-align: start; padding: 0; background: none; border: 0; cursor: pointer; overflow-wrap: anywhere; }
+.tk-card:hover:not(:has(.tk-move:hover)) .tk-title { color: var(--accent-text); text-decoration: underline; }
+.tk-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.tk-tags:empty { display: none; }
+.tk-tags .tag { overflow-wrap: anywhere; font-size: 12px; line-height: 20px; padding: 0 8px; box-shadow: none; background: var(--track); }
+.tk-kind-blue.tag { color: var(--c-blue); background: var(--c-blue-pale); }
+.tk-kind-purple.tag { color: var(--c-purple); background: var(--c-purple-pale); }
+.tk-kind-teal.tag { color: var(--c-teal); background: var(--c-teal-pale); }
+.tk-kind-indigo.tag { color: var(--c-indigo); background: var(--c-indigo-pale); }
+.tk-site { display: inline-flex; align-items: center; gap: 5px; min-width: 0; overflow-wrap: anywhere; }
+.tk-foot { display: flex; align-items: center; justify-content: space-between; gap: 6px 10px; flex-wrap: wrap; min-height: 28px; }
+.tk-foot-start, .tk-foot-end { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 10px; min-width: 0; }
+.tk-foot-end { margin-left: auto; }
+.tk-owner { display: inline-flex; align-items: center; gap: 6px; }
+.tk-avatar { flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--track); color: var(--text-2); font-size: 12px; font-weight: 600; }
+.tk-count { white-space: nowrap; }
+.tk-table tbody tr[data-task-row] { cursor: pointer; }
+/* The pages and keywords a task is about. */
+.tk-links-box { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-height: 36px; padding: 4px 6px; border: 1px solid var(--field-line); border-radius: var(--r-s); background: var(--field); cursor: text; transition: border-color var(--t-fast), box-shadow var(--t-fast); }
+.tk-links-box:hover { border-color: var(--line-2); }
+.tk-links-box:focus-within { border-color: var(--accent-1); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent-1) 25%, transparent); }
+.tk-chips { display: contents; }
+.tk-chip { display: inline-flex; align-items: center; gap: 2px; max-width: 100%; padding: 1px 2px 1px 8px; border-radius: 6px; background: var(--track); font-size: 12px; line-height: 20px; color: var(--text); overflow-wrap: anywhere; cursor: default; }
+.tk-chip-x { flex: none; display: grid; place-items: center; width: 20px; height: 20px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--muted); cursor: pointer; }
+.tk-chip-x:hover { background: var(--hover); color: var(--text); }
+.tk-chip-x svg.i { width: 13px; height: 13px; }
+.tk-links-add { flex: 1 1 120px; min-width: 100px; min-height: 26px; padding: 0 4px; border: 0; outline: 0; background: none; font: inherit; font-size: 13px; color: var(--text); }
+.tk-links-add::placeholder { color: var(--muted); }
+.tk-links-add::-webkit-calendar-picker-indicator { display: none !important; }
+/* Tasks shown on the page or keyword they're about. */
+.tk-related:empty { display: none; }
+.tk-related h3 { margin-top: 14px; }
+.cp-head .tk-related { padding: 0 18px 14px; }
+.cp-head .tk-related h3 { font-size: 13px; font-weight: 600; margin: 6px 0 8px; }
+.tk-rel-list { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.tk-rel-list li { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border-radius: var(--r-s); box-shadow: inset 0 0 0 1px var(--line); }
+.tk-rel-title { font: inherit; font-size: 13px; font-weight: 500; text-align: start; color: var(--text); padding: 0; border: 0; background: none; cursor: pointer; overflow-wrap: anywhere; }
+.tk-rel-title:hover { color: var(--accent-text); text-decoration: underline; }
+.tk-rel-done .tk-rel-title { color: var(--text-2); }
+.tk-rel-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; }
+.tk-rel-tag { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; padding: 0; border: 0; background: none; font: inherit; font-size: 12px; color: var(--accent-text); cursor: pointer; }
+.tk-rel-tag:hover { text-decoration: underline; }
+.tk-rel-tag svg.i { width: 13px; height: 13px; }
+.tk-move { align-self: flex-start; width: auto; min-width: 118px; min-height: 28px; padding-top: 2px; padding-bottom: 2px; font-size: 12px; }
+.tk-table .tk-move { width: auto; min-width: 118px; }
+.tk-row-title { overflow-wrap: anywhere; }
+
+.tk-source { padding: 10px 12px; margin-bottom: 14px; border-radius: var(--r-s); background: var(--chip); box-shadow: inset 0 0 0 1px var(--line); }
+.tk-source-label { font-size: 13px; font-weight: 500; margin: 2px 0 4px; overflow-wrap: anywhere; }
+.tk-facts { margin: 0 0 6px; padding: 0 0 0 16px; font-size: 12px; color: var(--text-2); }
+.tk-facts li { overflow-wrap: anywhere; margin-bottom: 2px; }
+
+.tk-comments { margin-top: 14px; padding-top: 4px; border-top: 1px solid var(--line); }
+.tk-comments h3 { font-size: 13px; font-weight: 600; margin: 12px 0 8px; }
+.tk-thread { list-style: none; margin: 0 0 12px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.tk-thread b { font-weight: 500; color: var(--text); }
+.tk-comment-text { font-size: 13px; white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 2px; }
+.tk-comments textarea { width: 100%; }
+.tk-comments .field { margin-bottom: 8px; }
+#tk-comment-error:not(:empty) { margin-bottom: 8px; }
+#task-error:not(:empty) { margin: -6px 0 12px; }
+
+/* With a mouse, a card's status appears on hover or keyboard focus, in place of its owner: the column already says it. Touch screens can't drag, so they keep it. */
+@media (hover: hover) and (pointer: fine) {
+  .tk-card .tk-move { position: absolute; right: 12px; bottom: 12px; opacity: 0; background-color: var(--panel-solid); transition: opacity var(--t-fast); }
+  .tk-card:hover .tk-move, .tk-card:focus-within .tk-move { opacity: 1; }
+  .tk-card:hover .tk-foot-end, .tk-card:focus-within .tk-foot-end { visibility: hidden; }
+}
+@media (max-width: 1100px) { .tk-board { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 640px) {
+  .tk-views { margin-left: 0; }
+  .tk-filter-toggle { display: inline-flex; }
+  .tk-filters { display: none; flex-basis: 100%; }
+  .tk-filters.open { display: flex; }
+  .tk-filters .field, .tk-search { flex: 1 1 100% !important; max-width: none; }
+}
+.tk-clash { align-items: flex-start; }
+.tk-clash p { margin: 0 0 6px; }
+.tk-clash ul { margin: 0 0 8px; padding-left: 16px; }
+.tk-clash li { overflow-wrap: anywhere; }
+.tk-clash-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.tk-finding { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.tk-finding > span { flex: 1 1 200px; }
+.tk-table .status { margin-top: 4px; }

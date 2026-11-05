@@ -1,0 +1,12 @@
+/* Real Keywords screen. On a phone every button in the top bar sits in one corner, so Add keywords moves down to the table's tools. */
+.kwr-add-small { display: none; }
+@media (max-width: 640px) {
+  .topbar #kwr-add { display: none; }
+  .kwr-add-small { display: inline-flex; }
+}
+#tool-table .nowrap { white-space: nowrap; }
+/* A Recheck starts from the side panel, so its progress and any stop reason must not sit behind the panel. */
+#panel-root:has(#panel) ~ #tray-root .tray { right: calc(var(--panel-w) + var(--gap) * 2); }
+@media (max-width: 860px) { /* the panel fills the screen here, so the tray goes on top of it, above its buttons */
+  #panel-root:has(#panel) ~ #tray-root .tray { right: 16px; bottom: 76px; z-index: 35; }
+}

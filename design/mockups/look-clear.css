@@ -1,0 +1,100 @@
+/* The app's look, chosen by the owner on 2026-11-05: white surfaces, a white side menu, and colour on icons to tell things apart.
+   Blue is for what you act on. Green, amber and red stay for status, so a decorative colour never reads as a problem.
+   Dark mode is charcoal rather than navy, so the colours stand out. */
+
+[data-look="clear"] { --h: 250; --cs: 1; }
+
+[data-look="clear"][data-theme="light"] {
+  --text: #0F2233; --text-2: #3B4B59; --muted: #5B6B78;
+  --sky-base: #F5F8FB; --panel-solid: #fff;
+  --glass: #fff; --glass-2: #fff; --chip: #fff; --track: #EDF1F5; --th-bg: #F7F9FB;
+  --sheen: linear-gradient(transparent, transparent);
+  --line: #E3EBF2; --line-2: #CBD6E0; --hover: rgba(15, 34, 51, .045); --selected: rgba(15, 34, 51, .07);
+  --rim-a: transparent; --rim-b: transparent; --rim-c: transparent; --spot-a: 0; --rim-spot-a: 0;
+  --shadow: 0 1px 2px rgba(15, 34, 51, .05), 0 12px 32px -18px rgba(15, 34, 51, .16);
+  --shadow-hover: 0 1px 2px rgba(15, 34, 51, .05), 0 18px 36px -18px rgba(15, 34, 51, .24);
+  --shadow-2: 0 30px 60px -28px rgba(7, 41, 63, .45);
+  --field: #fff; --field-line: #D3DEE8;
+  --ink-bg: #fff; --ink-shadow: 0 1px 3px rgba(15, 34, 51, .18);
+  --accent-1: #1F78BC; --accent-2: #1A72B5; --on-accent: #fff; --accent-text: #176AAB; --accent-glow: rgba(30, 127, 194, .35); --focus: #176AAB;
+  --series-1: #1A72B5; --series-2: #3BA4E8; --series-3: #6D4AFF; --ours: #176AAB;
+  --good-t: #067647; --warn-t: #93500A; --serious-t: #B54708; --crit-t: #B42318;
+  --c-blue: #176AAB; --c-blue-pale: #E8F3FB; --c-purple: #6D4AFF; --c-purple-pale: #F1EEFF;
+  --c-teal: #0B7F72; --c-teal-pale: #E6F6F4; --c-indigo: #4338CA; --c-indigo-pale: #EEF2FF;
+  --scrim: rgba(7, 41, 63, .4);
+}
+[data-look="clear"][data-theme="dark"] {
+  --text: #F1F4F7; --text-2: #CFD6DD; --muted: #A9B3BE;
+  --sky-base: #14181D; --panel-solid: #1E242B;
+  --glass: #1E242B; --glass-2: #222930; --chip: #262D35; --track: #171B21; --th-bg: #252C34;
+  --sheen: linear-gradient(transparent, transparent);
+  --line: #323A44; --line-2: #4A5460; --hover: rgba(255, 255, 255, .06); --selected: rgba(255, 255, 255, .1);
+  --rim-a: transparent; --rim-b: transparent; --rim-c: transparent; --spot-a: 0; --rim-spot-a: 0;
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 14px 32px -18px rgba(0, 0, 0, .6);
+  --shadow-hover: 0 1px 2px rgba(0, 0, 0, .3), 0 18px 36px -18px rgba(0, 0, 0, .7);
+  --shadow-2: 0 30px 60px -28px rgba(0, 0, 0, .8);
+  --field: #262D35; --field-line: #4A5460;
+  --ink-bg: #343D47; --ink-shadow: 0 1px 3px rgba(0, 0, 0, .4);
+  --accent-1: #1F78BC; --accent-2: #1A72B5; --on-accent: #fff; --accent-text: #7CC4F5; --accent-glow: rgba(30, 127, 194, .5); --focus: #9AD3F8;
+  --series-1: #6FBDF0; --series-2: #9AD3F8; --series-3: #B9A6FF; --ours: #7CC4F5;
+  --c-blue: #7CC4F5; --c-blue-pale: rgba(59, 164, 232, .16); --c-purple: #B9A6FF; --c-purple-pale: rgba(109, 74, 255, .22);
+  --c-teal: #5EEAD4; --c-teal-pale: rgba(45, 212, 191, .14); --c-indigo: #B4BDFF; --c-indigo-pale: rgba(129, 140, 248, .18);
+  --scrim: rgba(0, 0, 0, .55);
+}
+
+/* ---- Both looks: solid white surfaces, no drifting sky, no glow ---- */
+[data-look="clear"] .sky { display: none; }
+[data-look="clear"] :is(.sidebar, .topbar, .tile, .card, .table-wrap, .setup, .selbar, .tabs, .seg, .note, .popover, .panel, dialog, .toast, .tray, .data th, .data tbody tr) { -webkit-backdrop-filter: none; backdrop-filter: none; }
+[data-look="clear"] :is(.tile, .card)::before { display: none; }
+[data-look="clear"] :is(.tile, .card) { box-shadow: var(--shadow), inset 0 0 0 1px var(--line); }
+[data-look="clear"] .data th { background: var(--th-bg); }
+[data-look="clear"] :is(.spark-line, .chart-line) { filter: none; }
+[data-look="clear"] :is(.btn-main, .chip[aria-pressed="true"], .brand-mark, .dot-site) { background: var(--accent-2); color: var(--on-accent); box-shadow: none; }
+[data-look="clear"] .btn-main:hover { background: #17659F; box-shadow: none; transform: none; }
+[data-look="clear"] .btn-main::after { display: none; }
+[data-look="clear"] .chk:checked { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3.5 8.5 3 3 6-7'/%3E%3C/svg%3E"), linear-gradient(120deg, var(--accent-1), var(--accent-2)); }
+[data-look="clear"] .tab[aria-selected="true"], [data-look="clear"] .seg button[aria-pressed="true"] { color: var(--accent-text); font-weight: 600; }
+
+/* A colour per card, so a row of numbers can be told apart at a glance. */
+[data-look="clear"] .tile { --c: var(--c-blue); --c-pale: var(--c-blue-pale); }
+[data-look="clear"] .tile:nth-child(4n+2) { --c: var(--c-purple); --c-pale: var(--c-purple-pale); }
+[data-look="clear"] .tile:nth-child(4n+3) { --c: var(--c-teal); --c-pale: var(--c-teal-pale); }
+[data-look="clear"] .tile:nth-child(4n+4) { --c: var(--c-indigo); --c-pale: var(--c-indigo-pale); }
+[data-look="clear"] .tile:has(.ico.serious) { --c: var(--serious-t); --c-pale: color-mix(in srgb, var(--serious) 16%, transparent); }
+[data-look="clear"] .tile .ico { color: var(--c); background: var(--c-pale); box-shadow: none; }
+[data-look="clear"] .tile .spark-line { stroke: var(--c); }
+[data-look="clear"] .tile .spark-dot { fill: var(--c); }
+[data-look="clear"] .tile .spark-area { fill: var(--c-pale); }
+/* In a table the small trend lines stay quiet: the numbers beside them matter more. */
+[data-look="clear"] .data .spark-line { stroke: var(--muted); }
+[data-look="clear"] .data .spark-dot { fill: var(--muted); }
+
+/* Each tab's icon has its own colour, so tabs read apart before their words do. */
+[data-look="clear"] .tabs .tab:nth-of-type(4n+1) svg.i { color: var(--c-blue); }
+[data-look="clear"] .tabs .tab:nth-of-type(4n+2) svg.i { color: var(--c-purple); }
+[data-look="clear"] .tabs .tab:nth-of-type(4n+3) svg.i { color: var(--c-teal); }
+[data-look="clear"] .tabs .tab:nth-of-type(4n+4) svg.i { color: var(--c-indigo); }
+
+/* Two authority scales look different, because they are. */
+[data-look="clear"] .cg-auth .tag { color: var(--c-blue); background: var(--c-blue-pale); box-shadow: none; }
+[data-look="clear"] .cg-auth .tag[data-tip*="Common Crawl"] { color: var(--c-purple); background: var(--c-purple-pale); }
+
+/* Task columns: grey to do, blue under way, green done. */
+[data-look="clear"] .tk-col-head h2::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; background: var(--muted); }
+[data-look="clear"] .tk-col:nth-child(2) .tk-col-head h2::before { background: var(--accent-2); }
+[data-look="clear"] .tk-col:nth-child(3) .tk-col-head h2::before { background: var(--good); }
+
+/* Dark mode and language, now in the side menu. */
+.side-prefs { display: flex; gap: 4px; }
+.side-prefs .nav-item { flex: 1 1 0; min-width: 0; }
+.app.rail .side-prefs { flex-direction: column; }
+@media (max-width: 860px) { .app.rail .side-prefs { flex-direction: row; } }
+
+/* ---- The side menu floats, and a little frosted glass stays on the top bar, where content scrolls under it ---- */
+[data-look="clear"][data-theme="light"] { --sky-base: #F6F7F9; --line: #E7EAEE; --th-bg: #F8F9FA; }
+[data-look="clear"] .nav .ink { background: var(--c-blue-pale); box-shadow: none; }
+[data-look="clear"] .nav-item[aria-current="page"] { color: var(--accent-text); font-weight: 600; }
+[data-look="clear"] .nav-item[aria-current="page"]::before { display: none; }
+[data-look="clear"][data-theme="light"] .topbar { background: rgba(255, 255, 255, .82); -webkit-backdrop-filter: blur(16px) saturate(140%); backdrop-filter: blur(16px) saturate(140%); }
+[data-look="clear"][data-theme="dark"] .topbar { background: rgba(30, 36, 43, .84); -webkit-backdrop-filter: blur(16px) saturate(140%); backdrop-filter: blur(16px) saturate(140%); }
+[data-look="clear"] .sidebar { box-shadow: var(--shadow), inset 0 0 0 1px var(--line); }

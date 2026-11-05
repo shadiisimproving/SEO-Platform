@@ -1,0 +1,20 @@
+/* Competitors area: the shell. Tabs have their own files. */
+.comp-bar { display: flex; gap: 12px; align-items: flex-end; flex-wrap: wrap; margin-bottom: 12px; }
+.comp-site { margin: 0; flex: 0 1 320px; min-width: 0; }
+.comp-site select { width: 100%; }
+.comp-tabs { flex-wrap: wrap; }
+/* The wrapper is only as tall as the bar, so the bar couldn't stick. Without a box of its own, it sticks to the page. */
+#cg-selbar { display: contents; }
+.comp-url { color: inherit; overflow-wrap: anywhere; }
+a.comp-url:hover { color: var(--accent-text); }
+
+/* A website's icon, or its first letter. Icons come in any shape and colour, so they sit on a plain white tile in both modes. */
+.site-logo { display: inline-block; flex: none; border-radius: 6px; object-fit: contain; background: #fff; box-shadow: 0 0 0 1px var(--line); vertical-align: -5px; }
+.site-logo.letter { display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; font-family: var(--sans, inherit); color: var(--text-2); background: var(--chip); }
+.with-logo { display: inline-flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.with-logo > .site-logo { margin-top: 1px; }
+.with-logo > .logo-text { min-width: 0; display: inline-block; }
+.url-cell .with-logo { display: flex; max-width: 100%; }
+.url-cell .logo-text { flex: 1; min-width: 0; }
+.url-cell .logo-text > .kw, .url-cell .logo-text > .second { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.panel-head > .site-logo { margin-right: 10px; border-radius: 9px; }

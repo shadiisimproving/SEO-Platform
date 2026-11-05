@@ -1,0 +1,51 @@
+/* Charts and small pieces shared by the screens fed from real data. Series colours were run through the colour-blindness validator, in both modes. */
+:root { --ch-1: #176AAB; --ch-2: #8B5CF6; --ch-3: #008F7D; --ch-4: #B5179E; --ch-5: #C2410C; --ch-other: var(--muted); }
+[data-theme="dark"] { --ch-1: #2E8FE0; --ch-2: #A26BF5; --ch-3: #1AA892; --ch-4: #BE3585; --ch-5: #E2691A; }
+.lv-chart { position: relative; padding: 14px 18px 12px; }
+.lv-chart svg { display: block; width: 100%; height: 220px; overflow: visible; touch-action: pan-y; }
+.lv-chart:focus-visible { outline: 2px solid var(--c-blue); outline-offset: -2px; border-radius: 8px; }
+.lv-grid { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.lv-line { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
+.lv-axis { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; margin-top: 6px; }
+.lv-ylab { position: absolute; left: 18px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; pointer-events: none; background: var(--glass); padding: 0 3px; border-radius: 3px; transform: translateY(-50%); }
+.lv-cross { stroke: var(--line-2); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.lv-cross[hidden] { display: none; }
+.lv-chart { --lv-h: 220px; }
+.lv-tip { position: absolute; top: 8px; z-index: 6; min-width: 150px; background: var(--panel-solid, var(--glass)); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 16px rgba(0, 0, 0, .12); pointer-events: none; }
+.lv-tip b { display: block; margin-bottom: 4px; font-weight: 600; }
+.lv-tip div { display: flex; justify-content: space-between; gap: 12px; font-variant-numeric: tabular-nums; }
+.lv-key { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; flex: none; }
+.lv-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; padding: 0 18px 12px; font-size: 12px; color: var(--text-2); }
+.lv-bars { padding: 12px 18px 16px; display: grid; gap: 8px; }
+.lv-bar { display: grid; grid-template-columns: minmax(70px, 150px) 1fr minmax(44px, auto); gap: 10px; align-items: center; font-size: 13px; }
+.lv-bar .track { height: 10px; background: var(--track); border-radius: 5px; overflow: hidden; }
+.lv-bar .track i { display: block; height: 100%; border-radius: 0 5px 5px 0; background: var(--c-blue); }
+.lv-bar .val { text-align: center; font-variant-numeric: tabular-nums; }
+.lv-bar .lab { overflow-wrap: anywhere; }
+.lv-two { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 14px; align-items: start; }
+.lv-note { margin: 0 0 14px; }
+.lv-foot { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 18px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); }
+.lv-foot .end { margin-left: auto; }
+.lv-url { overflow-wrap: anywhere; }
+.lv-cat { color: var(--muted); font-size: 12px; }
+.lv-funnel { padding: 10px 18px 16px; display: grid; gap: 12px; }
+.lv-rule { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 8px 18px; border-top: 1px solid var(--line); font-size: 13px; }
+.lv-rule .grow { flex: 1 1 140px; min-width: 0; overflow-wrap: anywhere; }
+.lv-rule-form { display: flex; gap: 8px; flex-wrap: wrap; padding: 12px 18px; border-top: 1px solid var(--line); }
+.lv-rule-form .input { flex: 1 1 150px; min-width: 0; }
+.lv-acct { display: flex; align-items: center; gap: 8px; padding: 6px 10px; font-size: 12px; color: var(--muted); min-width: 0; }
+.lv-acct .who { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app.rail .lv-acct .who { display: none; }
+.lv-secret { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 10px 0; }
+.lv-secret code { font-size: 14px; padding: 6px 10px; background: var(--track); border-radius: 6px; overflow-wrap: anywhere; }
+@media (max-width: 640px) { .lv-bar { grid-template-columns: minmax(60px, 110px) 1fr minmax(40px, auto); } .lv-chart { --lv-h: 180px; } .lv-chart svg { height: 180px; } }
+/* Inside a card the header can't stick to the page: the card is what scrolls, so the page's offset would push it over the first row. */
+.card .table-wrap .data th { position: static; }
+.lv-foot .link-btn { display: inline-flex; align-items: center; gap: 5px; }
+/* An AI summary of a competitor's change. It reads apart from the facts around it. */
+.cs-summary { margin-top: 6px; padding: 8px 10px; border-radius: 8px; background: var(--c-purple-pale); font-size: 13px; }
+.cs-summary-by { display: flex; align-items: center; gap: 5px; margin-top: 4px; color: var(--muted); font-size: 12px; }
+.cs-summary-by svg, .cs-summary-btn svg { width: 13px; height: 13px; flex: none; }
+.cs-summary-slot { margin-top: 4px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.cs-summary-btn { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; }
+.cs-summary-slot .error { margin: 0; }

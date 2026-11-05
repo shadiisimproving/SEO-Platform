@@ -1,0 +1,66 @@
+/* Competitors: Summary. All my competitors together. Tokens only, as in design/MASTER.md. */
+.cs-basis { margin: 0 0 12px; overflow-wrap: anywhere; }
+.cs-tiles { margin-bottom: 22px; }
+.cs-jump { display: block; width: 100%; padding: 0; text-align: start; background: none; border: 0; border-radius: var(--r-m); color: inherit; font: inherit; cursor: pointer; }
+.cs-jump .tile { height: 100%; }
+.cs-jump:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.cs-section { margin-bottom: 26px; scroll-margin-top: 76px; }
+.cs-head { margin-bottom: 10px; }
+.cs-head h2 { font-size: 15px; font-weight: 600; letter-spacing: -.005em; }
+.cs-head h2:focus { outline: none; }
+.cs-head p { margin-top: 2px; }
+.cs-section > .help { margin: 0 0 8px; }
+.cs-section > .help svg.i { width: 13px; height: 13px; vertical-align: -2px; }
+.cs-sites { display: flex; flex-wrap: wrap; gap: 4px; }
+.cs-site { min-height: 24px; padding: 1px 9px; overflow-wrap: break-word; text-align: start; }
+.cs-ahead, .cs-states { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.cs-states > li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.cs-state { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
+.cs-rest { margin-top: 4px; }
+.cs-rest > summary { display: inline-flex; align-items: center; gap: 5px; min-height: 26px; cursor: pointer; font-size: 13px; font-weight: 500; color: var(--accent-text); }
+.cs-rest > summary::after { content: ""; width: 7px; height: 7px; margin-top: -3px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); }
+.cs-rest[open] > summary::after { margin-top: 3px; transform: rotate(-135deg); }
+.cs-rest > summary::-webkit-details-marker { display: none; }
+.cs-rest-open, .cs-rest[open] .cs-rest-closed { display: none; }
+.cs-rest[open] .cs-rest-open { display: inline; }
+.cs-my-place .tabular { font-size: 15px; font-weight: 600; }
+.cs-rest > .cs-ahead { margin-top: 4px; }
+.cs-more { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; padding: 10px 2px 0; }
+.cs-flagged { margin-top: 12px; }
+.cs-who { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin: 0 0 2px; }
+#cs-moves-list { box-shadow: none; border-radius: 0; }
+.cs-section .table-wrap table.data td { vertical-align: top; }
+/* Long French headings wrap, so these wide tables stay inside the page. */
+.cs-section .data th { white-space: normal; }
+.cs-section .tag { font-size: 12px; }
+.cs-who .logo-text { font-size: 12px; }
+#cs-rivals-table .head-cell, #cs-links-table .head-cell, #cs-flagged-table .head-cell { min-width: 170px; }
+#cs-rivals-table .cl-wrap { max-width: 240px; white-space: normal; }
+@media (min-width: 641px) and (max-width: 860px) { .cs-section .data :is(th, td) { padding-inline: 6px; } #cs-rivals-table .cs-site { padding-inline: 6px; font-size: 12px; } }
+@media (max-width: 1000px) { #cs-rivals-table .head-cell, #cs-links-table .head-cell, #cs-flagged-table .head-cell { min-width: 130px; } #cs-rivals-table .cl-wrap { max-width: 150px; } }
+@media (max-width: 640px) {
+  #cs-rivals-table .head-cell, #cs-links-table .head-cell, #cs-flagged-table .head-cell { min-width: 0; }
+  #cs-rivals-table .cl-wrap { max-width: none; }
+  /* Tables are cards here: a long host wraps instead of pushing past the edge. */
+  .cs-section .data td { min-width: 0; }
+  .cs-site { overflow-wrap: anywhere; }
+  .cs-section .data td > div { min-width: 0; }
+  .cs-section .data td > div .second { text-align: right; }
+  .cs-ahead, .cs-states, .cs-sites, .cs-rest { min-width: 0; justify-content: flex-end; text-align: right; }
+  .cs-ahead .with-logo, .cs-ahead .logo-text { min-width: 0; overflow-wrap: anywhere; }
+  .cs-states > li { justify-content: flex-end; }
+  .cs-more { justify-content: flex-start; }
+}
+
+/* Facts typed by hand, from tools with no connection here. */
+.cg-by-hand { display: inline-flex; color: var(--muted); }
+.cg-by-hand svg.i { width: 13px; height: 13px; }
+.cg-edit-intro { margin: 0 0 14px; }
+.cg-edit-auto { margin: -6px 0 14px; }
+.cg-edit-rivals { display: flex; flex-direction: column; gap: 8px; margin: 0 0 14px; padding: 0; border: 0; }
+.cg-edit-rivals legend { padding: 0; margin-bottom: 8px; font-size: 12px; font-weight: 500; color: var(--text-2); }
+.cg-edit-rivals .opt { display: flex; align-items: center; gap: 8px; overflow-wrap: anywhere; }
+#cs-links-table th, #cs-flagged-table th { white-space: nowrap; }
+.cs-head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px 14px; flex-wrap: wrap; }
+.cs-head-row .cs-head { flex: 1 1 280px; min-width: 0; }
+.cs-head-row > .btn { flex: none; }

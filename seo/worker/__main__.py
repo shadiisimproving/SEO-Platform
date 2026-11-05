@@ -1,0 +1,80 @@
+"""Command line for the scheduler: python -m seo.worker tick --lane crawl"""
+from __future__ import annotations
+
+import argparse
+import sys
+
+from seo.backlinks import live as backlink_checks, logos  # noqa: F401 - register their job handlers
+from seo.uptime import service as uptime_service  # registers the uptime check's job handler
+from seo.competitors import crawl as competitor_crawl, keywords, pages, quality  # noqa: F401 - register their job handlers
+from seo.collectors import jobs as collector_jobs
+from seo.core.db import make_engine
+from seo.health import service as health_service  # registers the health test's job handler
+from seo.links import service as links_service  # registers the links checker's job handler
+from seo.serp import refresh  # noqa: F401 - registers the Refresh button's job handler. No command here may start one.
+from seo.worker.runner import EXIT_CODES, tick
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="seo.worker")
+    commands = parser.add_subparsers(dest="command", required=True)
+    run = commands.add_parser("tick", help="run one short pass of one lane")
+    run.add_argument("--lane", required=True)
+    run.add_argument("--budget", type=float, default=50, help="seconds before it stops claiming jobs")
+    run.add_argument("--db-wait", type=float, default=600, help="seconds to wait for the database")
+    run.add_argument("--test-db", action="store_true", help=argparse.SUPPRESS)
+    due = commands.add_parser("links-due", help="queue a links check for each of my sites not checked in 7 days")
+    due.add_argument("--test-db", action="store_true", help=argparse.SUPPRESS)
+    health = commands.add_parser("health-due", help="queue a health test for each of my sites with none this month")
+    health.add_argument("--test-db", action="store_true", help=argparse.SUPPRESS)
+    rivals = commands.add_parser("competitors-due", help="queue today's read of each competitor, and carry on keyword lists that waited for a tool")
+    rivals.add_argument("--test-db", action="store_true", help=argparse.SUPPRESS)
+    watch = commands.add_parser("uptime-due", help="queue an uptime check for each of my sites not checked in the last 15 minutes")
+    watch.add_argument("--test-db", action="store_true", help=argparse.SUPPRESS)
+    placed = commands.add_parser("backlinks-due", help="queue a live check for each of my sites with a backlink due one")
+    placed.add_argument("--test-db", action="store_true", help=argparse.SUPPRESS)
+    collect = commands.add_parser("collect-due", help="queue each site's data sources that are due, and this month's authority scores")
+    collect.add_argument("--test-db", action="store_true", help=argparse.SUPPRESS)
+    args = parser.parse_args(argv)
+
+    engine = make_engine(test=args.test_db)
+    if args.command == "collect-due":
+        queued = collector_jobs.enqueue_due(engine)
+        collector_jobs.enqueue_authority(engine)
+        print(f"collect-due: queued {len(queued)} source{'' if len(queued) == 1 else 's'}")
+        return 0
+    if args.command == "uptime-due":
+        queued = uptime_service.enqueue_due(engine)
+        print(f"uptime-due: queued {len(queued)} site{'' if len(queued) == 1 else 's'}")
+        return 0
+    if args.command == "backlinks-due":
+        queued = backlink_checks.enqueue_due(engine)
+        print(f"backlinks-due: queued {len(queued)} site{'' if len(queued) == 1 else 's'}")
+        return 0
+    if args.command == "links-due":
+        queued = links_service.enqueue_due(engine)
+        print(f"links-due: queued {len(queued)} site{'' if len(queued) == 1 else 's'}")
+        return 0
+    if args.command == "health-due":
+        queued = health_service.enqueue_due(engine)
+        print(f"health-due: queued {len(queued)} site{'' if len(queued) == 1 else 's'}")
+        return 0
+    if args.command == "competitors-due":
+        queued = competitor_crawl.enqueue_due(engine)
+        resumed = keywords.resume_waiting(engine)
+        quality.queue_checks(engine)  # linking domains still waiting for their home page to be read
+        print(f"competitors-due: queued {len(queued)} competitor{'' if len(queued) == 1 else 's'}, resumed {len(resumed)} keyword list{'' if len(resumed) == 1 else 's'}")
+        return 0
+    result = tick(engine, args.lane, budget_seconds=args.budget, db_wait_seconds=args.db_wait)
+    line = (
+        f"{result.lane}: {result.status} processed={result.processed} "
+        f"failed={result.failed} recovered={result.recovered}"
+    )
+    if result.message:
+        line += f" ({result.message})"
+    print(line, file=sys.stdout if result.status in ("ok", "busy") else sys.stderr)
+    return EXIT_CODES[result.status]
+
+
+if __name__ == "__main__":
+    sys.exit(main())

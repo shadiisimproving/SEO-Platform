@@ -1,0 +1,53 @@
+/* Today: the answer on top, three numbers, then what to do. Tokens come from look-clear.css. */
+.today-answer { margin: 2px 2px 14px; }
+.today-lead { font-size: 19px; font-weight: 600; letter-spacing: -.015em; line-height: 26px; }
+.today-second { font-size: 14px; color: var(--text-2); margin-top: 2px; }
+
+.today-nums { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 6px; }
+.today-num { padding-bottom: 8px; }
+.today-num:hover { transform: none; box-shadow: var(--shadow); }
+.today-num-link { display: block; color: inherit; text-decoration: none; }
+.today-num-link:hover .lab { color: var(--accent-text); text-decoration: underline; text-underline-offset: 2px; }
+.today-num .lab { padding-top: 0; }
+.today-num .lv-chart { --lv-h: 110px; padding: 12px 0 8px 36px; margin-top: 4px; }
+.today-num .lv-ylab { left: 0; width: 30px; text-align: right; background: none; }
+.today-num .delta { min-height: 40px; align-content: flex-start; }
+.rows .acts a.btn { color: var(--text); text-decoration: none; }
+.today-num .lv-chart svg { height: 110px; }
+.today-num .lv-foot { padding: 0; }
+.today-num .table-wrap { margin-top: 6px; }
+.today-fig-word { font-size: 20px; letter-spacing: -.015em; }
+.today-num .fig { min-height: 40px; }
+.today-caption { margin: 0 2px 14px; display: flex; flex-wrap: wrap; gap: 4px 16px; justify-content: space-between; }
+.today-legend { display: inline-flex; gap: 14px; flex-wrap: wrap; }
+.today-legend > span { display: inline-flex; align-items: center; gap: 6px; }
+.today-key { display: inline-block; width: 16px; height: 0; border-top: 2px solid var(--ch-1); }
+.today-key.was { border-top: 2px dashed var(--muted); }
+
+.today-empty { padding: 24px; }
+.today-empty p { margin-bottom: 0; }
+
+a.stat-row { color: inherit; text-decoration: none; transition: background var(--t-fast); }
+a.stat-row:hover { background: var(--hover); }
+.stat-row:last-child { border-bottom: 0; }
+.today-task-name { min-width: 0; overflow-wrap: anywhere; }
+.today-note { display: block; }
+.nowrap { white-space: nowrap; }
+
+.today-moves-head { margin: 2px 2px 6px; }
+.today-moves { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: start; margin-bottom: 14px; }
+.today-moves > .card { margin-bottom: 0; }
+
+.today-link { color: inherit; text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 3px; overflow-wrap: anywhere; font-weight: 500; }
+.today-link:hover { color: var(--accent-text); text-decoration-color: currentColor; }
+.rows .what .t, .rows .what .d { overflow-wrap: anywhere; }
+.today-cell { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: center; }
+
+@media (max-width: 1000px) {
+  .today-moves { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 860px) {
+  .today-nums { grid-template-columns: minmax(0, 1fr); }
+  .today-lead { font-size: 17px; line-height: 24px; }
+  .rows > li:has(.acts) { flex-wrap: wrap; }
+}
