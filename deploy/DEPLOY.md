@@ -1,6 +1,8 @@
 # Putting SEO Command Center on o2switch
 
-Nothing here has run on the server yet. The scripts are tested on fakes (`tests/test_deploy.py`), and the release was rehearsed on the Mac in a fresh folder and a fresh Python.
+First uploaded 2026-11-05. Scheduled jobs (step 8) were not installed then, and no real API key had been tried.
+
+**Tiger Protect, o2switch's rate limit, answers HTTP 429 "Slow down".** It stopped an automated browser on the first day, after a burst of checks from one address. A page load is many requests, because every screen file is sent one by one with caching off, and some API calls repeat once per site. It can be managed in cPanel, per o2switch's own page; that's the owner's decision, and nothing here changes it. Don't test the live site in bursts.
 
 | | |
 |---|---|
