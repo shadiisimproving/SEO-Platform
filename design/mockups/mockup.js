@@ -68,6 +68,11 @@
     ? `<img class="site-logo" src="api/logos/${encodeURIComponent(domain)}" alt="" width="${size}" height="${size}" loading="lazy">`
     : `<span class="site-logo letter" style="width:${size}px;height:${size}px" aria-hidden="true">${esc(String(domain || "?")[0].toUpperCase())}</span>`);
 
+  /* The site menu's mark: the site's own icon once fetched, its first letter until then. */
+  const siteMark = (host) => (window.LOGOS_KNOWN?.has(host)
+    ? `<img class="dot-site dot-logo" src="api/logos/${encodeURIComponent(host)}" alt="" width="22" height="22">`
+    : `<span class="dot-site">${esc(String(host || "?")[0].toUpperCase())}</span>`);
+
   const linkDomain = (url) => window.BacklinkCleaner.rootDomain(url) || "";
 
   // Any country: names come from the browser, in the language on screen.
@@ -146,7 +151,7 @@
       <div class="brand"><span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17 9.5 10.5l4.5 3.5 6-8"/></svg></span><span class="brand-name">Command Center</span></div>
       <div class="side-top">
         <button class="switcher" id="site-switch" aria-haspopup="true" aria-label="${esc(siteName())}">
-          <span class="dot-site">${state.site === "all" ? icon("globe") : esc(siteName()[0].toUpperCase())}</span>
+          ${state.site === "all" ? `<span class="dot-site">${icon("globe")}</span>` : siteMark(siteName())}
           <span class="name">${esc(siteName())}</span>${icon("chevron-down", "chev muted")}
         </button>
       </div>
@@ -3087,7 +3092,7 @@
     if ((el = hit("[data-cmd]"))) { runCmd(Number(el.dataset.cmd)); return; }
     if (hit("#site-switch")) {
       if ($("#popover")) { closePopover(); return; }
-      popover(hit("#site-switch"), `<button data-pick-site="all">${icon("globe")}${t("All sites")}</button><hr>${window.SITES.map((s) => `<button data-pick-site="${s.id}"><span class="dot-site">${esc(s.host[0].toUpperCase())}</span><span class="mono small">${esc(s.host)}</span></button>`).join("")}<hr><button data-add-site>${icon("plus")}${t("Add a website")}</button>`);
+      popover(hit("#site-switch"), `<button data-pick-site="all">${icon("globe")}${t("All sites")}</button><hr>${window.SITES.map((s) => `<button data-pick-site="${s.id}">${siteMark(s.host)}<span class="mono small">${esc(s.host)}</span></button>`).join("")}<hr><button data-add-site>${icon("plus")}${t("Add a website")}</button>`);
       return;
     }
     if ((el = hit("[data-pick-site]"))) { state.site = el.dataset.pickSite; closePopover(); render(); return; }

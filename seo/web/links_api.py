@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from flask import Blueprint, Response, current_app, jsonify, request
 
+from seo.backlinks import logos
 from seo.links import service
 from seo.core.errors import Refused
 
@@ -40,6 +41,7 @@ def list_own_sites():
 def add_site():
     body = _json_body({"address", "kind"})
     site = service.add_site(_engine(), body.get("address"), body.get("kind"), is_allowed=current_app.config["URL_ALLOWED"])
+    logos.queue_for(_engine(), [site["host"]])  # its icon, for the site menu, read later by the crawl lane
     return jsonify(site), 201
 
 

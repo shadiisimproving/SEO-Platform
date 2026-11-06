@@ -260,3 +260,11 @@ def test_an_accented_domain_gets_its_icon_under_either_spelling(world):
     assert set(world.client.get("/api/logos").get_json()["domains"]) == {ascii_name, "café-du-matin.example"}
     assert world.client.get("/api/logos/café-du-matin.example").data == PNG
     assert world.client.get(f"/api/logos/{ascii_name}").data == PNG
+
+
+def test_adding_a_site_asks_for_its_icon(engine):
+    app = create_app(engine=engine, url_allowed=lambda _: True, auth=False)
+    assert app.test_client().post("/api/sites", json={"address": "https://www.icon.example/", "kind": "own"}).status_code == 201
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT status FROM site_logos WHERE domain = 'icon.example'")).scalar() == "pending"
+        assert conn.execute(text("SELECT COUNT(*) FROM jobs WHERE kind = 'logos.fetch'")).scalar() == 1
