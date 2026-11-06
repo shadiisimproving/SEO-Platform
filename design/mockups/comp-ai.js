@@ -204,7 +204,9 @@
     async load() {
       const siteId = COMP.siteId;
       if (S.site !== siteId) { S.site = siteId; S.filter = "all"; S.allChanges = false; }
-      S.data = await COMP.api("GET", `ai-watch?site_id=${siteId}`);
+      const answer = await COMP.api("GET", `ai-watch?site_id=${siteId}`);
+      if (siteId !== COMP.siteId) return; // another site was picked while this was on its way
+      S.data = answer;
     },
     body,
     after: () => drawChart(),

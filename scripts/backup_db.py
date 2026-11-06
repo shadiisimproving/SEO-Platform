@@ -10,6 +10,7 @@ import gzip
 import os
 import shutil
 import subprocess
+import threading
 import sys
 import tarfile
 from datetime import datetime, timezone
@@ -37,10 +38,15 @@ def run(folder: Path | None = None, keep: int = KEEP, runner=subprocess.Popen) -
     env = {**os.environ, "MYSQL_PWD": config.get("DB_PASSWORD")}
     command = [dump, "-h", config.get("DB_HOST", "127.0.0.1"), "-P", config.get("DB_PORT", "3306"), "-u", config.get("DB_USER"), "--single-transaction", "--quick", "--default-character-set=utf8mb4", config.get("DB_NAME")]
     process = runner(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+    # Read at the same time as the dump: a dump with a lot of warnings would fill this pipe and stop, and never finish.
+    errors: list[bytes] = []
+    reader = threading.Thread(target=lambda: errors.append(process.stderr.read()), daemon=True)
+    reader.start()
     try:
         with gzip.open(partial, "wb") as out:
             shutil.copyfileobj(process.stdout, out)
-        error = process.stderr.read()
+        reader.join()
+        error = errors[0] if errors else b""
         if process.wait() != 0:
             raise SystemExit(f"The backup failed: {error.decode(errors='replace')[:400]}")
         os.chmod(partial, 0o600)

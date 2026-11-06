@@ -119,7 +119,7 @@ def run(job: queue.ClaimedJob, engine: Engine) -> None:
         return
     except ConnectionError as exc:
         common.failed(engine, site_id, source, str(exc))
-        raise Retry(str(exc), 900) from exc
+        raise Retry(str(exc), 900, patient=True) from exc
     except NotFound as exc:
         common.failed(engine, site_id, source, str(exc))
         return
@@ -130,7 +130,7 @@ def run(job: queue.ClaimedJob, engine: Engine) -> None:
             return
         if exc.kind == "quota":
             return  # stop for today: what was saved stays, the next run carries on from what's missing
-        raise Retry(str(exc), 900) from exc
+        raise Retry(str(exc), 900, patient=True) from exc
     _clear_alert(engine, site_id, source)
     if not finished:
         raise RunAgain(0)
@@ -143,7 +143,7 @@ def run_authority(job: queue.ClaimedJob, engine: Engine) -> None:
     except SourceError as exc:
         service.note_app_key(engine, "openpagerank", str(exc))
         if exc.kind == "temporary":
-            raise Retry(str(exc), 3600) from exc
+            raise Retry(str(exc), 3600, patient=True) from exc
 
 
 def enqueue_authority(engine: Engine) -> int | None:
@@ -151,6 +151,11 @@ def enqueue_authority(engine: Engine) -> int | None:
         return None
     month = common.today(engine).strftime("%Y-%m")
     with engine.connect() as conn:
-        if conn.execute(text("SELECT 1 FROM authority_monthly WHERE month = :m LIMIT 1"), {"m": month}).first():
+        # Any domain still missing this month, so a first run that stopped part-way gets finished.
+        missing = conn.execute(
+            text("SELECT 1 FROM (SELECT host AS d FROM sites UNION SELECT domain AS d FROM backlinks) known WHERE d NOT IN (SELECT domain FROM authority_monthly WHERE month = :m) LIMIT 1"),
+            {"m": month},
+        ).first()
+        if not missing:
             return None
     return queue.enqueue(engine, LANE, "collect-authority", {"month": month}, dedupe_key=f"authority|{month}")

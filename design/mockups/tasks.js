@@ -80,6 +80,7 @@
   }
   const inPeriod = (task, r = range()) => !r || (task.due && task.due >= r[0] && task.due <= r[1]) || !!carriedFrom(task, r);
   const visible = () => T.tasks.filter((task) => matches(task) && inPeriod(task));
+  const counted = () => visible().filter((task) => !(T.view === "table" && T.status) || task.status === T.status); // the table also filters by status
   const undatedHidden = () => (range() ? T.tasks.filter((task) => matches(task) && !task.due).length : 0);
   // Soonest first, with no date last.
   const byDue = (a, b) => (a.due || "9999").localeCompare(b.due || "9999") || b.id - a.id;
@@ -177,7 +178,10 @@
       T.sampleFirstRun = UI.state.firstRun;
       T.failed = "";
       T.ready = true;
-    })().catch((err) => { T.failed = err.message; T.ready = true; }).finally(() => { T.loading = null; });
+    })().catch((err) => {
+      if (!T.tasks.length) T.failed = err.message; // with tasks on screen, the next look catches up: a laptop waking before its Wi-Fi mustn't blank the board
+      T.ready = true;
+    }).finally(() => { T.loading = null; });
     return T.loading;
   }
   /* Everything that shows a count or a Create task button catches up after a change. */
@@ -528,10 +532,11 @@
 
   async function deleteTask(id) {
     const task = T.tasks.find((x) => x.id === id);
-    if (!task) return;
+    if (!task || T.deleting === id) return; // a double click deletes once
+    T.deleting = id;
     try {
       await COMP.api("DELETE", `tasks/${id}`);
-    } catch (err) { UI.toast(t(err.message), { kind: "crit" }); return; }
+    } catch (err) { UI.toast(t(err.message), { kind: "crit" }); return; } finally { T.deleting = null; }
     T.tasks = T.tasks.filter((x) => x.id !== id);
     UI.forgetPanelForm();
     UI.closePanel();
@@ -654,7 +659,7 @@
     if (!box) return;
     UI.setHTML(box, bodyHtml());
     const total = UI.$("#tk-total");
-    if (total && T.ready) { const n = visible().length; total.textContent = `${num(n)} ${t(n === 1 ? "task" : "tasks")}`; }
+    if (total && T.ready) { const n = counted().length; total.textContent = `${num(n)} ${t(n === 1 ? "task" : "tasks")}`; }
   }
 
   function page() {
@@ -848,7 +853,7 @@
     },
     page,
     after() {
-      if (T.ready) { const total = UI.$("#tk-total"); if (total) { const n = visible().length; total.textContent = `${num(n)} ${t(n === 1 ? "task" : "tasks")}`; } }
+      if (T.ready) { const total = UI.$("#tk-total"); if (total) { const n = counted().length; total.textContent = `${num(n)} ${t(n === 1 ? "task" : "tasks")}`; } }
     },
   };
 

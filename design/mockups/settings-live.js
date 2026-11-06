@@ -4,7 +4,9 @@
   "use strict";
   if (!window.BOOT) return;
   let UI, t, esc, num, icon, status;
-  const L = { tab: "connections", data: null, sc: [], ga: [], team: null };
+  const L = { tab: "connections", data: null, failed: "", newGoogle: null, sc: [], ga: [], team: null };
+  // A sample status must never show on a real server, even if the real ones are slow or don't arrive.
+  window.CONNECTIONS.forEach((c) => { if (c.group !== "serp") Object.assign(c, { status: c.auth === "none" ? "nokey" : "off", last4: "", since: "", sites: "all" }); });
   const isAdmin = () => !window.BOOT.user || window.BOOT.user.role === "admin";
   const api = (...args) => window.COMP.api(...args);
   const conn = (id) => window.CONNECTIONS.find((c) => c.id === id);
@@ -58,8 +60,13 @@
   }
   async function reload() {
     apply(await api("GET", "sources"));
+    L.failed = "";
     if (UI.state.route === "settings" && !UI.$("#panel")) UI.render();
   }
+  const firstLoad = () => reload().catch((err) => {
+    L.failed = err.message;
+    if (UI.state.route === "settings" && !UI.$("#panel")) UI.render();
+  });
 
   // ---- pieces the connection panel asks for -----------------------------------------------------
   const LIVE = (window.LIVE = {
@@ -141,9 +148,13 @@
   };
 
   async function saveGoogle() {
-    let newest = null;
     const typed = typedGoogle();
-    if (typed) newest = await api("POST", "google-connections", typed);
+    if (typed) {
+      L.newGoogle = await api("POST", "google-connections", typed);
+      // It's stored now. If a site fails below, pressing Save again must not store it a second time.
+      ["#conn-json", "#conn-client", "#conn-secret", "#conn-refresh"].forEach((box) => { const field = UI.$(box); if (field) field.value = ""; });
+    }
+    const newest = L.newGoogle;
     if (!newest && !L.data.google.length) throw new Error("Paste the key first.");
     const fallback = newest?.id || L.data.google[0]?.id;
     for (const s of window.SITES) {
@@ -162,6 +173,7 @@
         await api("PUT", `sites/${s.realId}/sources/${source}`, { property: value, connection_id, not_used: !value });
       }
     }
+    L.newGoogle = null;
     return newest;
   }
 
@@ -330,6 +342,7 @@
       const take = () => { e.stopPropagation(); e.preventDefault(); };
       let el;
       if (hit("[data-lv-signout]")) { take(); window.signOut(); return; }
+      if (hit("[data-lv-sources-retry]")) { take(); L.failed = ""; UI.render(); firstLoad(); return; }
       if (hit("#ca-import")) { take(); sendArchive(false); return; }
       if ((el = hit("[data-lv-tab]"))) { take(); L.tab = el.dataset.lvTab; UI.render(); return; }
       if ((el = hit("#conn-save"))) { const c = conn(el.dataset.id); if (c && c.group !== "serp") { take(); if (isAdmin()) onSave(el, c); else sayError("Only an admin can do that."); } return; }
@@ -433,17 +446,24 @@
     init(helpers) {
       UI = helpers; ({ t, esc, num, icon, status } = helpers);
       bind();
-      reload().catch((err) => UI.toast(err.message, { kind: "crit" }));
+      firstLoad();
     },
     page() {
-      if (L.tab === "connections") return UI.settingsPage();
       const tabs = `<div class="tabs" role="tablist" aria-label="${t("Settings")}">${LIVE.tabs()}</div>`;
+      if (L.tab === "connections") {
+        if (L.data) return UI.settingsPage();
+        const waiting = L.failed
+          ? `<h3>${t("That didn't load")}</h3><p>${esc(t(L.failed))}</p><div style="margin-top:12px"><button type="button" class="btn" data-lv-sources-retry>${t("Try again")}</button></div>`
+          : `<p>${t("Loading…")}</p>`;
+        return UI.topbar(t("Settings"), t("Connect your tools and choose which sites use them"), "", false) + `<div class="content page-enter">${tabs}<section class="card"><div class="empty">${waiting}</div></section></div>`;
+      }
       const sub = { sites: "Your sites and where their data comes from", team: "Who can sign in", domains: "Domains worth a closer look" }[L.tab];
       return UI.topbar(t("Settings"), t(sub), "", false) + `<div class="content page-enter">${tabs}${L.tab === "sites" ? sitesTab() : L.tab === "domains" ? domainsTab() : teamTab()}</div>`;
     },
   };
 
   const fr = {
+    "Try again": "Réessayer",
     "Old Clarity data": "Anciennes données Clarity",
     "Upload the file made on your Mac by scripts/clarity_archive_export.py. It only adds days this app doesn't have yet, so uploading twice changes nothing.": "Importez le fichier créé sur votre Mac par scripts/clarity_archive_export.py. Il n'ajoute que les jours absents de l'application : l'importer deux fois ne change rien.",
     "to add": "à ajouter", "added": "ajoutés", "already here": "déjà présents", "Nothing new to add.": "Rien de nouveau à ajouter.", "Reading the file…": "Lecture du fichier…", "Adding the days…": "Ajout des jours…",

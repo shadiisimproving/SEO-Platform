@@ -2,6 +2,7 @@
 import json
 import shutil
 import subprocess
+from datetime import datetime
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
@@ -13,6 +14,7 @@ from seo.competitors.keywords import parse_keywords
 from seo.competitors.pages import contains_phrase
 from seo.competitors.suggest import looks_like_platform
 from seo.serp import store
+from seo.serp.rankings import Seen, engine_view
 from seo.serp.tools import (
     ABSENT, NOT_CAPTURED, PRESENT, BrightData, BrowserBackup, DuckDuckGoDirect, HasData, SearchFailed, Searlo, SearXNG, SerpApi, TimedOut, ToolStopped,
     ddg_region, looks_like_captcha, most_cost, pages_for, parse_ddg, same_place,
@@ -495,3 +497,42 @@ def test_pages_and_costs():
 def test_same_place_knows_each_way_a_tool_reports_where_it_searched():
     assert same_place("FR", "FR") and same_place("FR", "fr-fr") and not same_place("FR", "AE") and not same_place("FR", "wt-wt") and same_place("", "AE")
     assert same_place("AE", "xa-ar", "ar") and not same_place("FR", "")
+
+
+# ---- SerpApi deeper checks ------------------------------------------------------------------------
+def _organic(count, start=0):
+    return {"organic_results": [{"position": start + i + 1, "link": f"https://r{start + i}.example/", "title": "R"} for i in range(count)]}
+
+
+def test_serpapi_keeps_reading_after_a_first_page_of_nine():
+    found = search(serpapi((200, _organic(9)), (200, _organic(11, 9))), depth=20)
+    assert found.charged == 2 and [row.position for row in found.results] == list(range(1, 21))
+
+
+def test_serpapi_spends_nothing_more_when_the_first_page_is_empty():
+    assert search(serpapi((200, _organic(0))), depth=20).charged == 1
+
+
+def test_serpapi_stops_at_the_first_empty_page():
+    found = search(serpapi((200, _organic(10)), (200, _organic(0))), depth=30)
+    assert found.charged == 2 and len(found.results) == 10
+
+
+# ---- Yandex has no country to report ---------------------------------------------------------------
+def _seen(engine, location):
+    return Seen(1, 1, engine, "brightdata", location, 10, "ok", "not_captured", datetime(2026, 11, 5), rows=[(4, "https://mine.example/", "mine.example")])
+
+
+def test_a_yandex_check_with_no_location_fills_the_keyword_row():
+    view = engine_view([_seen("yandex", "")], "mine.example", "FR", "fr", ["brightdata"], 5, datetime(2026, 11, 5))
+    assert view["main"] is not None and view["away"] == []
+
+
+def test_a_yandex_check_from_another_country_is_still_away():
+    view = engine_view([_seen("yandex", "AE")], "mine.example", "FR", "fr", ["brightdata"], 5, datetime(2026, 11, 5))
+    assert view["main"] is None and len(view["away"]) == 1
+
+
+def test_a_google_check_with_no_location_is_still_away():
+    view = engine_view([_seen("google", "")], "mine.example", "FR", "fr", ["brightdata"], 5, datetime(2026, 11, 5))
+    assert view["main"] is None and len(view["away"]) == 1

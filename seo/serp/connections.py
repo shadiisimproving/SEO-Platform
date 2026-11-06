@@ -298,6 +298,13 @@ def can_afford_a_search(engine: Engine, tool, depth: int = 10) -> bool:
     return (left is None or left >= cost) and (hour is None or hour >= cost)
 
 
+def out_only_for_this_hour(engine: Engine, tool, depth: int = 10) -> bool:
+    """It can't search now, but it can once its hourly limit has passed."""
+    cost = max(most_cost(tool, depth), 1)
+    left, hour = free_left(engine, tool), hour_left(engine, tool)
+    return hour is not None and hour < cost and (left is None or left >= cost)
+
+
 def count_use(engine: Engine, tool_name: str, amount: int, *, paid: bool = False, cost=None, run_id: int | None = None, keyword_id: int | None = None, search_engine: str | None = None, note: str | None = None) -> None:
     """A paid credit goes in the ledger and leaves the free allowance alone. A negative amount is a refund."""
     if not amount:

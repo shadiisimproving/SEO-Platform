@@ -527,7 +527,7 @@
         changed = JSON.stringify(next) !== JSON.stringify(S.pairs);
         S.pairs = next;
       }
-    } catch { return; } // a passing failure just means the next look is the one that counts
+    } catch { /* a passing failure just means the next look is the one that counts */ }
     if (timedOut && needsWatching()) {
       W.expired = true;
       if (S.rereading) { S.rereading = null; S.readWaiting = true; }
@@ -644,7 +644,7 @@
       if (!id || S.view === "detail") { S.detail = answer; S.view = "detail"; S.rereading = null; S.readWaiting = false; }
       UI.toast(t(id ? "Saved as your choice. Later rankings won't replace it." : "Pair added. Later rankings won't replace it."));
       await COMP.reload({ quiet: true });
-      if (S.view === "detail") { if (!id) UI.$("#main").scrollTop = 0; UI.$("#cp-change")?.focus({ preventScroll: true }); } else UI.$(`#cp-change-${id}`)?.focus({ preventScroll: true });
+      if (S.view === "detail") { if (!id) UI.$("#main").scrollTop = 0; UI.$("#cp-change")?.focus({ preventScroll: true }); } else UI.$(`#cp-open-${id}`)?.focus({ preventScroll: true });
     } catch (err) {
       button.disabled = false;
       fieldError(errorField(err, site()?.host), serverWords(err.message));
@@ -824,6 +824,7 @@
       tab.openPairId = null;
       S.loadingPair = openId ?? null; // the address keeps naming it while it loads
       const [pairs, competitors] = await Promise.all([COMP.api("GET", `page-pairs?site_id=${siteId}`), COMP.api("GET", `competitors?site_id=${siteId}`)]);
+      if (siteId !== COMP.siteId) return; // another site was picked while this was on its way
       S.pairs = pairs.pairs;
       S.competitors = competitors.competitors;
       S.dirty = false;

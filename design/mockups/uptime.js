@@ -109,7 +109,7 @@
 
   function view() {
     const { t, esc, icon } = UI;
-    if (up.failed) return `<div class="table-wrap"><div class="empty"><h3>${t("That didn't load")}</h3><p>${esc(t(up.failed))}</p></div></div>`;
+    if (up.failed) return `<div class="table-wrap"><div class="empty"><h3>${t("That didn't load")}</h3><p>${esc(t(up.failed))}</p><div style="margin-top:12px"><button type="button" class="btn" data-up-retry>${t("Try again")}</button></div></div></div>`;
     if (!up.ready) return `<div class="card"><div class="empty"><p>${t("Loading…")}</p></div></div>`;
     if (!up.sites.length) return `<div class="table-wrap"><div class="empty"><h3>${t("No websites added yet")}</h3><p>${t("Add your own website, then watch whether it's up.")}</p><button class="btn btn-main" id="site-add">${icon("plus")}${t("Add a website")}</button></div></div>`;
     const picked = UI.siteHostPicked();
@@ -160,7 +160,7 @@
       if (message) UI.toast(message, { kind });
       UI.$(`[data-up-check="${id}"]`)?.focus();
     };
-    try { await COMP.api("POST", `uptime/sites/${id}/check`, {}); } catch (err) { stop(UI.t(err.message), "error"); return; }
+    try { await COMP.api("POST", `uptime/sites/${id}/check`, {}); } catch (err) { stop(UI.t(err.message), "crit"); return; }
     const started = Date.now();
     const poll = async () => {
       try {
@@ -170,7 +170,7 @@
       const now = up.sites.find((s) => s.id === id);
       if (now && now.last_checked_at !== before) {
         window.HealthTest?.reloadAlerts?.();
-        stop(`${now.host}: ${UI.t(now.state === "up" ? "Online" : now.state === "down" ? "Offline" : "Unknown")}`, now.state === "down" ? "error" : "info");
+        stop(`${now.host}: ${UI.t(now.state === "up" ? "Online" : now.state === "down" ? "Offline" : "Unknown")}`, now.state === "down" ? "crit" : "info");
         return;
       }
       if (Date.now() - started > POLL_LIMIT_MS) { stop(UI.t("The check is still waiting its turn. Come back in a moment.")); return; }
@@ -184,6 +184,7 @@
     document.addEventListener("click", (e) => {
       const target = e.target;
       let el;
+      if (target.closest?.("[data-up-retry]")) { up.failed = ""; up.ready = false; paint(); load(); return; }
       if ((el = target.closest?.("[data-up-check]"))) { checkNow(Number(el.dataset.upCheck) || el.dataset.upCheck); return; }
       if ((el = target.closest?.("[data-up-date-clear]"))) {
         const id = Number(el.dataset.upDateClear);

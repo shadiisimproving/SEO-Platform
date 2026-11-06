@@ -531,3 +531,59 @@ def test_the_apis_answer_and_refuse_bad_dates(engine, site):
     assert client.get("/api/metrics/overview?from=nope&to=2026-10-01").status_code == 400
     assert client.get("/api/metrics/overview?from=2026-10-02&to=2026-10-01").status_code == 400
     assert client.get("/api/today").status_code == 200
+
+
+# ---- UTM tags with no campaign, and links on a subdomain ---------------------------------------------
+def test_a_link_tagged_with_no_campaign_gets_its_visits(engine, site):
+    link = _link(engine, site, utm_source="blog-expat", utm_medium="backlink")
+    _campaign(engine, site, D1, "blog-expat", "backlink", "(not set)", "/page/", 12, 1)
+    _campaign(engine, site, D1, "blog-expat", "backlink", "other-campaign", "/page/", 50)
+    item = _visits(engine, site)["links"][link]
+    assert item["visits"] == 12 and item["leads"] == 1 and item["basis"] == "utm"
+
+
+def test_a_link_on_a_subdomain_counts_visits_from_that_subdomain(engine, site):
+    link = _link(engine, site, source_url="https://blog.site.example/post", domain="site.example")
+    _referral(engine, site, D1, "blog.site.example", "/page/", 7, 1)
+    _referral(engine, site, D1, "www.site.example", "/page/", 2)
+    item = _visits(engine, site)["links"][link]
+    assert item["visits"] == 9 and item["leads"] == 1
+
+
+def test_another_domain_never_counts_for_a_link(engine, site):
+    link = _link(engine, site, source_url="https://blog.site.example/post", domain="site.example")
+    _referral(engine, site, D1, "blog.other.example", "/page/", 7)
+    assert _visits(engine, site)["links"][link]["visits"] == 0
+
+
+# ---- All sites: the same path on two sites is two pages ---------------------------------------------
+@pytest.fixture
+def two_sites(engine, site):
+    with engine.begin() as conn:
+        other = conn.execute(text("INSERT INTO sites (host, start_url, kind) VALUES ('other.example', 'https://other.example/', 'own')")).lastrowid
+        for site_id, sessions, leads, clicks, shown, position in ((site, 30, 3, 10, 100, 2), (other, 5, 1, 4, 100, 20)):
+            conn.execute(text("INSERT INTO ga4_page_daily (site_id, day, page_hash, path, sessions, users, key_events) VALUES (:s, :d, 'h', '/contact/', :x, :x, :k)"), {"s": site_id, "d": D1, "x": sessions, "k": leads})
+            conn.execute(text("INSERT INTO gsc_page (site_id, day, page_hash, page, clicks, impressions, position) VALUES (:s, :d, 'h', '/contact/', :c, :i, :p)"), {"s": site_id, "d": D1, "c": clicks, "i": shown, "p": position})
+    return site, other
+
+
+def test_all_sites_content_keeps_the_same_path_on_two_sites_apart(engine, two_sites):
+    answer = service.content(_scope(engine))
+    rows = {(r["host"], r["path"]): r for r in answer["pages"]}
+    assert answer["total_pages"] == 2
+    assert rows[("mine.example", "/contact/")]["sessions"] == 30 and rows[("mine.example", "/contact/")]["position"] == 2
+    assert rows[("other.example", "/contact/")]["sessions"] == 5 and rows[("other.example", "/contact/")]["position"] == 20
+
+
+def test_all_sites_conversions_keeps_the_same_path_on_two_sites_apart(engine, two_sites):
+    answer = service.conversions(_scope(engine))
+    assert {(r["host"], r["path"]): r["leads"] for r in answer["pages"]} == {("mine.example", "/contact/"): 3, ("other.example", "/contact/"): 1}
+    assert sum(r["pages"] for r in answer["page_types"]) == 2
+
+
+def test_all_sites_ai_search_keeps_the_same_path_on_two_sites_apart(engine, two_sites):
+    first, second = two_sites
+    _referral(engine, first, D1, "chatgpt.com", "/contact/", 6)
+    _referral(engine, second, D1, "chatgpt.com", "/contact/", 2)
+    pages = service.ai_search(_scope(engine))["pages"]
+    assert {(r["host"], r["path"]): r["sessions"] for r in pages} == {("mine.example", "/contact/"): 6, ("other.example", "/contact/"): 2}

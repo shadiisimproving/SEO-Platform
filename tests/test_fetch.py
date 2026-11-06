@@ -15,6 +15,7 @@ class Site:
     def __init__(self):
         self.robots = "User-agent: *\nDisallow: /private\n"
         self.robots_status = 200
+        self.robots_location = ""
         self.hits = []
         self.redirect_target = ""
         site = self
@@ -34,8 +35,11 @@ class Site:
             def do_GET(self):
                 site.hits.append((time.monotonic(), self.path, dict(self.headers)))
                 html = {"Content-Type": "text/html; charset=utf-8"}
-                if self.path == "/robots.txt":
-                    self.send(site.robots_status, site.robots.encode(), {"Content-Type": "text/plain"})
+                if self.path == "/real-robots":
+                    self.send(200, site.robots.encode(), {"Content-Type": "text/plain"})
+                elif self.path == "/robots.txt":
+                    extra = {"Location": site.robots_location} if site.robots_location else {}
+                    self.send(site.robots_status, site.robots.encode(), {"Content-Type": "text/plain", **extra})
                 elif self.path == "/etag":
                     if self.headers.get("If-None-Match") == '"v1"':
                         self.send(304)
@@ -320,3 +324,18 @@ def test_a_page_robots_txt_keeps_us_from_is_an_answer_not_a_hold_up():
     result = fetcher.get("https://far.example/private/a")
     assert result.status == "robots" and result.held_back is False
     fetcher.close()
+
+
+def test_a_robots_redirect_to_a_refused_address_is_not_followed(site, fetcher):
+    other = Site()
+    try:
+        site.robots_status, site.robots_location = 302, other.base + "/secret"
+        assert fetcher.get(site.base + "/page").status == "ok"
+        assert other.hits == []
+    finally:
+        other.server.shutdown()
+
+
+def test_a_robots_redirect_on_the_same_site_is_followed(site, fetcher):
+    site.robots_status, site.robots_location = 302, "/real-robots"
+    assert fetcher.get(site.base + "/private").status == "robots"

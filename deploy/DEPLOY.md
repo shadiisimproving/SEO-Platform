@@ -59,6 +59,8 @@ bash deploy/deploy.sh --go      # tests, upload, install, database copy, migrate
 
 It uploads the last commit only, and that commit must be on GitHub. Going back: check out the last good commit and run it again. A migration that already ran stays, which is why migrations only add things. Database copies are in `~/seo-platform/var/backups/database`.
 
+**If a migration fails halfway,** the old version stays live, but every later upload stops on the same step, because MariaDB can't undo the table changes already made ("table already exists"). To recover, look at what that migration created, then either remove those tables so it can run again, or, if everything in it is already there, run `alembic stamp <its revision>` in the staging folder. Restore a database copy if in doubt.
+
 ## What doesn't run on the live site
 
 - **Browser on this Mac:** hidden there, by design.

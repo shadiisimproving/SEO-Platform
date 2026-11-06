@@ -526,6 +526,7 @@ def detail(engine: Engine, audit_id: int) -> dict:
     return {
         "audit": {**_audit_dict(row), "host": row["host"]},
         "previous_score": before["score"] if before else None,
+        "previous_audit": _audit_dict(before) if before else None,  # the screen must name the same test the alerts compared with
         "checks": checks,
         "site_problems": [{"code": code, "meaning": audit.SITE_CHECKS[code][0]} for code in _counts(row["counts"]).get("site", [])],
     }

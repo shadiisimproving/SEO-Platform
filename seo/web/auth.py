@@ -97,7 +97,8 @@ def current_name() -> str | None:
 @auth_api.post("/auth/login")
 def login():
     body = _body()  # JSON only: a form on another site can't send this
-    found = service.login(_engine(), body.get("email"), body.get("password"))
+    # The address the connection really came from. A forwarded header could be anything the sender likes.
+    found = service.login(_engine(), body.get("email"), body.get("password"), request.remote_addr or "")
     if found is None:
         return jsonify(error=service.WRONG), 401
     user, version = found
@@ -107,6 +108,9 @@ def login():
 
 @auth_api.post("/auth/logout")
 def logout():
+    user = getattr(g, "user", None)
+    if user:
+        service.end_sessions(_engine(), user["id"])
     session.clear()
     return jsonify(ok=True)
 

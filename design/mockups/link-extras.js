@@ -173,7 +173,7 @@
     paintBlock(b);
     const before = b.check?.checked_at || null;
     const stop = (message, kind = "info") => { L.busy.delete(id); paintBlock(b); if (message) UI.toast(message, { kind }); UI.$("#link-check-now")?.focus(); };
-    try { await COMP.api("POST", `backlinks/${id}/check`, {}); } catch (err) { stop(UI.t(err.message), "error"); return; }
+    try { await COMP.api("POST", `backlinks/${id}/check`, {}); } catch (err) { stop(UI.t(err.message), "crit"); return; }
     const started = Date.now();
     const poll = async () => {
       try {
@@ -182,7 +182,7 @@
           Object.assign(b, UI.toBacklink(row, b.site));
           await loadHistory(b);
           window.HealthTest?.reloadAlerts?.();
-          stop(UI.t(b.status === "lost" ? "This link is lost" : "Link checked"), b.status === "lost" ? "error" : "info");
+          stop(UI.t(b.status === "lost" ? "This link is lost" : "Link checked"), b.status === "lost" ? "crit" : "info");
           if (UI.state.route === "backlinks") UI.render();
           return;
         }

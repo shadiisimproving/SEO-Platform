@@ -278,9 +278,14 @@ def _categorise(engine: Engine, site_ids: list[int]):
 
 
 def _page_rows(scope: Scope):
+    """One row per page of each site: /contact/ on two sites is two pages."""
     return scope.fetch(
-        "SELECT MAX(path) path, page_hash, SUM(sessions) sessions, SUM(key_events) leads FROM ga4_page_daily WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY page_hash"
+        "SELECT site_id, MAX(path) path, page_hash, SUM(sessions) sessions, SUM(key_events) leads FROM ga4_page_daily WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY site_id, page_hash"
     )
+
+
+def _hosts(scope: Scope) -> dict[int, str]:
+    return {row["id"]: row["host"] for row in scope.fetch("SELECT id, host FROM sites WHERE id IN :sites")}
 
 
 def conversions(scope: Scope) -> dict:
@@ -292,6 +297,7 @@ def conversions(scope: Scope) -> dict:
         item["sessions"] += int(row["sessions"] or 0)
         item["leads"] += float(row["leads"] or 0)
     pages = _page_rows(scope)
+    hosts = _hosts(scope)
     categorise = _categorise(scope.engine, scope.site_ids)
     types: dict[str, dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0, "pages": 0})
     for row in pages:
@@ -310,7 +316,7 @@ def conversions(scope: Scope) -> dict:
         "key_events_set_up": has_leads_set_up,
         "funnel": [{"channel": name, "sessions": item["sessions"], "leads": round(item["leads"], 2), "rate": _ratio(item["leads"], item["sessions"]), "lost": item["sessions"] - round(item["leads"])} for name, item in sorted(by_channel.items(), key=lambda pair: -pair[1]["sessions"])],
         "page_types": [{"type": name, "pages": item["pages"], "sessions": item["sessions"], "leads": round(item["leads"], 2), "rate": _ratio(item["leads"], item["sessions"])} for name, item in sorted(types.items(), key=lambda pair: -pair[1]["sessions"])],
-        "pages": [{"path": row["path"], "sessions": int(row["sessions"] or 0), "leads": round(float(row["leads"] or 0), 2), "rate": _ratio(float(row["leads"] or 0), int(row["sessions"] or 0))} for row in sorted(pages, key=lambda r: -float(r["leads"] or 0)) if float(row["leads"] or 0) > 0][:25],
+        "pages": [{"host": hosts.get(row["site_id"], ""), "path": row["path"], "sessions": int(row["sessions"] or 0), "leads": round(float(row["leads"] or 0), 2), "rate": _ratio(float(row["leads"] or 0), int(row["sessions"] or 0))} for row in sorted(pages, key=lambda r: -float(r["leads"] or 0)) if float(row["leads"] or 0) > 0][:25],
         "hid_rows": _hidden(scope),
     }
 
@@ -320,30 +326,31 @@ def conversions(scope: Scope) -> dict:
 
 def content(scope: Scope, limit: int = 500) -> dict:
     ga4_state, gsc_state = _sources_state(scope, "ga4"), _sources_state(scope, "gsc")
-    pages: dict[str, dict] = {}
+    pages: dict[tuple[int, str], dict] = {}
+    hosts = _hosts(scope)
 
-    def page(path: str) -> dict:
+    def page(site_id: int, path: str) -> dict:
         key = _path(path)
-        return pages.setdefault(key, {"path": key, "sessions": None, "leads": None, "clicks": None, "impressions": None, "w": 0.0, "ai": None})
+        return pages.setdefault((site_id, key), {"host": hosts.get(site_id, ""), "path": key, "sessions": None, "leads": None, "clicks": None, "impressions": None, "w": 0.0, "ai": None})
 
     for row in _page_rows(scope):
-        item = page(row["path"])
+        item = page(row["site_id"], row["path"])
         item["sessions"] = (item["sessions"] or 0) + int(row["sessions"] or 0)
         item["leads"] = (item["leads"] or 0) + float(row["leads"] or 0)
-    for row in scope.fetch("SELECT MAX(page) page, page_hash, SUM(clicks) clicks, SUM(impressions) impressions, SUM(position * impressions) w FROM gsc_page WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY page_hash"):
-        item = page(row["page"])
+    for row in scope.fetch("SELECT site_id, MAX(page) page, page_hash, SUM(clicks) clicks, SUM(impressions) impressions, SUM(position * impressions) w FROM gsc_page WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY site_id, page_hash"):
+        item = page(row["site_id"], row["page"])
         item["clicks"] = (item["clicks"] or 0) + int(row["clicks"] or 0)
         item["impressions"] = (item["impressions"] or 0) + int(row["impressions"] or 0)
         item["w"] += float(row["w"] or 0)
     ai = _ai_domains(scope.engine, scope.site_ids)
-    for row in scope.fetch("SELECT MAX(domain) domain, MAX(path) path, SUM(sessions) sessions FROM ga4_referral_daily WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY row_hash"):
+    for row in scope.fetch("SELECT site_id, MAX(domain) domain, MAX(path) path, SUM(sessions) sessions FROM ga4_referral_daily WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY site_id, row_hash"):
         if _is_ai(row["domain"], ai):
-            item = page(row["path"])
+            item = page(row["site_id"], row["path"])
             item["ai"] = (item["ai"] or 0) + int(row["sessions"] or 0)
     categorise = _categorise(scope.engine, scope.site_ids)
     rows = [
         {
-            "path": item["path"], "category": categorise(item["path"]), "sessions": item["sessions"], "leads": round(item["leads"], 2) if item["leads"] is not None else None,
+            "host": item["host"], "path": item["path"], "category": categorise(item["path"]), "sessions": item["sessions"], "leads": round(item["leads"], 2) if item["leads"] is not None else None,
             "clicks": item["clicks"], "impressions": item["impressions"], "position": round(item["w"] / item["impressions"], 1) if item["impressions"] else None, "ai": item["ai"],
         }
         for item in pages.values()
@@ -376,10 +383,11 @@ def ai_search(scope: Scope) -> dict:
             per_source[row["source"]]["sessions"] += int(row["sessions"] or 0)
             per_source[row["source"]]["leads"] += float(row["leads"] or 0)
             per_day[row["day"].isoformat()] += int(row["sessions"] or 0)
-    pages: dict[str, int] = defaultdict(int)
-    for row in scope.fetch("SELECT MAX(domain) domain, MAX(path) path, SUM(sessions) sessions FROM ga4_referral_daily WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY row_hash"):
+    pages: dict[tuple[str, str], int] = defaultdict(int)
+    hosts = _hosts(scope)
+    for row in scope.fetch("SELECT site_id, MAX(domain) domain, MAX(path) path, SUM(sessions) sessions FROM ga4_referral_daily WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY site_id, row_hash"):
         if _is_ai(row["domain"], domains):
-            pages[_path(row["path"])] += int(row["sessions"] or 0)
+            pages[(hosts.get(row["site_id"], ""), _path(row["path"]))] += int(row["sessions"] or 0)
     before = None
     if scope.has_compare:
         before = sum(int(row["sessions"] or 0) for row in _ga4_rows(scope, scope.compare_start, scope.compare_end) if _is_ai(row["source"], domains))
@@ -389,7 +397,7 @@ def ai_search(scope: Scope) -> dict:
         "change": _pct_change(sessions, before) if before else None,
         "sources": [{"source": name, "sessions": item["sessions"], "leads": round(item["leads"], 2)} for name, item in sorted(per_source.items(), key=lambda pair: -pair[1]["sessions"])],
         "series": [{"day": day, "sessions": per_day[day]} for day in sorted(per_day)],
-        "pages": [{"path": name, "sessions": count} for name, count in sorted(pages.items(), key=lambda pair: -pair[1])[:25]],
+        "pages": [{"host": host, "path": name, "sessions": count} for (host, name), count in sorted(pages.items(), key=lambda pair: -pair[1])[:25]],
         "domains": sorted(domains), "hid_rows": _hidden(scope),
     }
 

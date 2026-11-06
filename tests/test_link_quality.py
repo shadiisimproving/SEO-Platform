@@ -212,6 +212,8 @@ def test_a_site_that_is_down_gets_a_second_try_before_it_goes(world):
     gaps.import_referrers(world.engine, world.own, world.rival, csv_of(["down.example"]), "links.csv")
     world.check()
     assert world.gaps()["funnel"]["checking"] == 1  # one failure says little
+    with world.engine.begin() as conn:
+        conn.execute(text("UPDATE link_domains SET checked_at = checked_at - INTERVAL :h HOUR"), {"h": quality.RETRY_AFTER_HOURS + 1})
     quality.queue_checks(world.engine, part=99)
     world.check()
     assert filtered(world) == {"down.example": "site_down"}
@@ -347,3 +349,16 @@ def test_spam_is_flagged_never_removed(world):
     assert all(g["quality"] == "spam" and g["reason_words"] and g["competitors"] for g in flagged.values())
     with world.engine.connect() as conn:
         assert conn.execute(text("SELECT COUNT(*) FROM competitor_referrers")).scalar() == 4
+
+
+def test_a_site_that_is_down_isnt_tried_again_straight_away(world):
+    gaps.import_referrers(world.engine, world.own, world.rival, csv_of(["down.example"]), "links.csv")
+    world.check()
+    quality.queue_checks(world.engine, part=99)
+    world.check()  # a minute later, the site is as down as it was: this says nothing new
+    assert world.gaps()["funnel"]["checking"] == 1 and filtered(world) == {}
+    with world.engine.begin() as conn:
+        conn.execute(text("UPDATE link_domains SET checked_at = checked_at - INTERVAL :h HOUR"), {"h": quality.RETRY_AFTER_HOURS + 1})
+    quality.queue_checks(world.engine, part=100)
+    world.check()
+    assert filtered(world) == {"down.example": "site_down"}

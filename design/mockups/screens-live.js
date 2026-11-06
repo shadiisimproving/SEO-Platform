@@ -187,6 +187,9 @@
   const rateCell = (r) => pct(r.rate);
   const topbarFor = (title, sub, entry) => UI.topbar(t(title), t(sub), entry?.data && !["no_sites", "not_connected", "not_used"].includes(entry.data.state) ? refreshBtn() : "");
   const page = (head, body) => `${head}<div class="content page-enter">${body}</div>`;
+  /* On All sites, /contact/ can be on several sites, so a page row says whose it is. It sorts and exports that way too. */
+  const siteOfPage = (r) => (!UI.siteHostPicked() && r.host ? `<div class="lv-cat mono" dir="auto">${esc(r.host)}</div>` : "");
+  const pageName = (r) => (!UI.siteHostPicked() && r.host ? `${r.host}${r.path}` : r.path);
 
   // ---- Overview ---------------------------------------------------------------------------------
   const METRICS = [["clicks", "Clicks"], ["impressions", "Impressions"], ["position", "Average position"]];
@@ -322,7 +325,7 @@
           { key: "rate", label: "Lead rate", num: true, html: rateCell },
         ], d.page_types, { csv: false })}</section>
         <section class="card"><div class="card-head"><h2>${t("Pages that bring leads")}</h2></div>${dataTable("converting", [
-          { key: "path", label: "Page", html: (r) => `<span class="mono lv-url" dir="auto">${esc(r.path)}</span>` },
+          { key: "path", label: "Page", get: pageName, html: (r) => `<span class="mono lv-url" dir="auto">${esc(r.path)}</span>${siteOfPage(r)}` },
           { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }, { key: "rate", label: "Lead rate", num: true, html: rateCell },
         ], d.pages, { csv: false, empty: "No page brought a lead in this period." })}</section>
       </div>`);
@@ -352,7 +355,7 @@
     return page(head, `
       ${missing ? `<p class="note lv-note">${icon("info")}<span>${t(missing)}</span></p>` : ""}${hiddenNote(d.hid_rows)}${clarityCard}
       <section class="card"><div class="card-head"><h2>${t("All pages")}</h2><span class="end small muted">${num(d.total_pages)} ${t(d.total_pages === 1 ? "page" : "pages")}</span></div>${dataTable("content", [
-        { key: "path", label: "Page", html: (r) => `<div class="mono lv-url" dir="auto">${esc(r.path)}</div><div class="lv-cat" dir="auto">${esc(t(r.category))}</div>${UI.relatedTag?.({ host: UI.siteHostPicked() || "", page: r.path }) || ""}` },
+        { key: "path", label: "Page", get: pageName, html: (r) => `<div class="mono lv-url" dir="auto">${esc(r.path)}</div>${siteOfPage(r)}<div class="lv-cat" dir="auto">${esc(t(r.category))}</div>${UI.relatedTag?.({ host: r.host || UI.siteHostPicked() || "", page: r.path }) || ""}` },
         { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }, { key: "clicks", label: "Google clicks", num: true },
         { key: "position", label: "Position", num: true, html: (r) => decimal(r.position) }, { key: "ai", label: "AI visits", num: true },
       ], d.pages)}</section>
@@ -371,7 +374,7 @@
       <section class="card"><div class="card-head"><h2>${t("AI assistant visits")}</h2></div>${lineChart("ai", d.series.map((r) => r.day), [{ name: "Visits", color: "var(--ch-1)", values: Object.fromEntries(d.series.map((r) => [r.day, r.sessions])) }])}</section>
       <div class="lv-two" style="margin-top:14px">
         <section class="card"><div class="card-head"><h2>${t("By assistant")}</h2></div>${dataTable("ai-sources", [{ key: "source", label: "Assistant", html: (r) => `<span class="mono" dir="auto">${esc(r.source)}</span>` }, { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }], d.sources, { csv: false })}</section>
-        <section class="card"><div class="card-head"><h2>${t("Pages they land on")}</h2></div>${dataTable("ai-pages", [{ key: "path", label: "Page", html: (r) => `<span class="mono lv-url" dir="auto">${esc(r.path)}</span>` }, { key: "sessions", label: "Visits", num: true }], d.pages, { csv: false, empty: "No landing pages in this period." })}</section>
+        <section class="card"><div class="card-head"><h2>${t("Pages they land on")}</h2></div>${dataTable("ai-pages", [{ key: "path", label: "Page", get: pageName, html: (r) => `<span class="mono lv-url" dir="auto">${esc(r.path)}</span>${siteOfPage(r)}` }, { key: "sessions", label: "Visits", num: true }], d.pages, { csv: false, empty: "No landing pages in this period." })}</section>
       </div>` : emptyCard(t("No visits from AI assistants in this period."), t("That's a real zero: Google Analytics has data, and none of it came from the assistants listed below."));
     return page(head, `
       <p class="small muted" style="margin:0 0 12px">${throughNote(d.through)}</p>${hiddenNote(d.hid_rows)}

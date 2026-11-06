@@ -249,5 +249,8 @@ def collect_authority(engine: Engine, month: str) -> int:
                     {"d": domain, "m": month, "s": score if isinstance(score, (int, float)) else None},
                 )
                 done += 1
+            # A domain it had no answer for has been asked, so it isn't asked again every hour this month.
+            for domain in batch:
+                conn.execute(text("INSERT IGNORE INTO authority_monthly (domain, month, score) VALUES (:d, :m, NULL)"), {"d": domain, "m": month})
     service.note_app_key(engine, "openpagerank", None)
     return done

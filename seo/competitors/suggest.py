@@ -82,6 +82,7 @@ def suggestions(engine: Engine, site_id: int) -> dict:
     checks = store.latest_checks(engine, site_id)
     checked = {check.keyword_id for check in checks}
     seen: dict[str, dict] = {}
+    engine_rank = {name: i for i, name in enumerate(store.ENGINE_ORDER)}
     for check in checks:
         my_row = check.best_on(site["host"])
         per_domain: dict[str, store.Row] = {}
@@ -90,9 +91,12 @@ def suggestions(engine: Engine, site_id: int) -> dict:
         for domain, row in per_domain.items():
             if domain in mine:
                 continue
-            entry = seen.setdefault(domain, {"domain": domain, "evidence": [], "keywords": set(), "positions": [], "both": set(), "engines": set()})
+            entry = seen.setdefault(domain, {"domain": domain, "evidence": [], "keywords": set(), "positions": {}, "both": set(), "engines": set()})
             entry["keywords"].add(check.keyword_id)
-            entry["positions"].append(row.position)
+            # One position per keyword, from the first engine in the app's order that shows it: an average must not mix engines.
+            rank = engine_rank.get(check.engine, len(engine_rank))
+            if check.keyword_id not in entry["positions"] or rank < entry["positions"][check.keyword_id][0]:
+                entry["positions"][check.keyword_id] = (rank, row.position)
             entry["engines"].add(check.engine)
             if my_row is not None:
                 entry["both"].add(check.keyword_id)
@@ -107,7 +111,7 @@ def suggestions(engine: Engine, site_id: int) -> dict:
     for domain, entry in seen.items():
         if domain in tracked:
             continue
-        positions = entry["positions"]
+        positions = [position for _, position in entry["positions"].values()]
         item = {
             "domain": domain,
             "display": store.to_display_host(domain),

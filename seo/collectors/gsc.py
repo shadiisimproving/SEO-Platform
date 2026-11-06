@@ -78,9 +78,11 @@ def collect(engine: Engine, site_id: int, budget_seconds: float = 40) -> bool:
     oldest = newest - timedelta(days=HISTORY_DAYS)
     deadline = time.monotonic() + budget_seconds
     through = _spine(engine, site_id, token, src["property"], oldest, newest)
-    common.succeeded(engine, site_id, "gsc", through)
+    common.succeeded(engine, site_id, "gsc")  # "data through" waits for the keywords and pages of that day, which screens read
     for day in common.pending_days(engine, site_id, "gsc", newest, oldest, REREAD_DAYS):
         if time.monotonic() >= deadline:
             return False
         _one_day(engine, site_id, token, src["property"], day)
+        common.succeeded(engine, site_id, "gsc", day)
+    common.succeeded(engine, site_id, "gsc", through)
     return True

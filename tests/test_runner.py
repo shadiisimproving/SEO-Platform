@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import OperationalError
 
 from seo.worker import queue
 from seo.worker.runner import EXIT_CODES, Retry, RunAgain, run_lock, tick, wait_for_db
@@ -309,3 +310,53 @@ def test_a_tick_ends_on_time_however_many_chunks_are_left(engine, tmp_path):
 
     tick(engine, "crawl", handlers={"chunk": chunk}, lock_dir=tmp_path, budget_seconds=0.3)
     assert 1 <= len(runs) <= 3
+
+
+def test_a_database_hiccup_doesnt_stop_the_heartbeat(engine, tmp_path, monkeypatch):
+    job_id = queue.enqueue(engine, "crawl", "slow")
+    real_renew, beats, recovered = queue.renew, [], []
+
+    def flaky(*args, **kwargs):
+        beats.append(1)
+        if len(beats) == 1:
+            raise OperationalError("UPDATE", {}, Exception("server has gone away"))
+        return real_renew(*args, **kwargs)
+
+    monkeypatch.setattr(queue, "renew", flaky)
+
+    def slow(job, e):
+        time.sleep(1.5)  # far past its 1 s lease, so only working heartbeats keep it
+        recovered.append(queue.recover_expired(e))
+
+    result = tick(engine, "crawl", handlers={"slow": slow}, lock_dir=tmp_path, lease_seconds=1, heartbeat_seconds=0.2)
+    assert len(beats) >= 3 and recovered == [{"requeued": 0, "dead": 0}]
+    assert result.processed == 1 and status_of(engine, job_id) == "done"
+
+
+def _try_again_now(engine, job_id):
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE jobs SET run_after = UTC_TIMESTAMP(3) WHERE id=:i"), {"i": job_id})
+
+
+def test_temporary_errors_dont_use_up_a_jobs_attempts(engine, tmp_path):
+    job_id = queue.enqueue(engine, "crawl", "later", max_attempts=3)
+
+    def later(job, e):
+        raise Retry("Google is down", backoff_seconds=900, patient=True)
+
+    for _ in range(5):
+        tick(engine, "crawl", handlers={"later": later}, lock_dir=tmp_path)
+        _try_again_now(engine, job_id)
+    assert status_of(engine, job_id) == "queued"
+
+
+def test_temporary_errors_give_up_in_the_end(engine, tmp_path):
+    job_id = queue.enqueue(engine, "crawl", "later", max_attempts=3)
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE jobs SET attempts = :n WHERE id=:i"), {"n": queue.MAX_TEMPORARY_ATTEMPTS - 1, "i": job_id})
+
+    def later(job, e):
+        raise Retry("Google is down", backoff_seconds=900, patient=True)
+
+    tick(engine, "crawl", handlers={"later": later}, lock_dir=tmp_path)
+    assert status_of(engine, job_id) == "dead"

@@ -15,7 +15,7 @@ from sqlalchemy import Engine, text
 from seo.competitors.keywords import _iso, require_own
 from seo.core.errors import NotFound
 from seo.serp import connections, store
-from seo.serp.tools import same_place
+from seo.serp.tools import counts_for_keyword, same_place
 
 ENGINES = connections.ENGINE_ORDER
 DEVICE = "desktop"  # the screen shows desktop. A mobile check is another target, so it can never be compared with these.
@@ -99,7 +99,7 @@ def engine_view(checks: list[Seen], host: str, country: str, language: str, orde
     """One keyword on one engine. `checks` are oldest first."""
     home, away = [], []
     for seen in checks:
-        (home if same_place(country, seen.location, language) else away).append(seen)
+        (home if counts_for_keyword(seen.engine, country, seen.location, language) else away).append(seen)
     good = [seen for seen in home if seen.status == "ok"]
 
     latest_by_tool: dict[str, Seen] = {}
@@ -259,7 +259,7 @@ def tiles(rows: list[dict], engine_name: str) -> dict:
             ranked += 1
             if position <= 10:
                 top10 += 1
-        else:
+        elif usable:  # checked, and not found. A keyword nobody has checked yet isn't "not ranked": nothing is known.
             none += 1
         change = view["change"]
         if change is not None:
@@ -329,7 +329,7 @@ def detail(engine: Engine, site_id: int, keyword_id: int, engine_name: str) -> d
         if check["status"] == "failed":
             continue
         key = (check["tool"], check["real_location"], check["depth"])
-        line = lines.setdefault(key, {"tool": key[0], "location": key[1], "depth": key[2], "home": same_place(row["country"], key[1], row["language"]), "points": []})
+        line = lines.setdefault(key, {"tool": key[0], "location": key[1], "depth": key[2], "home": counts_for_keyword(engine_name, row["country"], key[1], row["language"]), "points": []})
         line["points"].append({"at": _iso(check["checked_at"]), "p": own_rows.get(check["id"]), "suspect": check["status"] == "suspect"})
     listed = connections.tool_list(engine)
     return {

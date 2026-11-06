@@ -1087,3 +1087,17 @@ def test_a_placed_link_keeps_pa_and_rating(world):
     listed = world.client.get(f"/api/backlinks?site_id={world.own}").get_json()["backlinks"]
     row = next(b for b in listed if b["id"] == saved["id"])
     assert (row["authority"], row["page_authority"], row["rating"]) == (40, 22, 5)
+
+
+def test_two_spellings_of_a_mediator_are_one_person_with_all_their_links(world):
+    from seo.backlinks import mediators
+
+    with world.engine.begin() as conn:
+        for number, name in enumerate(("John Smith", "john  smith")):
+            conn.execute(
+                text("INSERT INTO backlinks (site_id, source_url, domain, status, mediator) VALUES (:s, :u, 'blog.example', 'live', :m)"),
+                {"s": world.own, "u": f"https://blog.example/{number}", "m": name},
+            )
+        mediators.ensure_from_rows(conn, [{"mediator": "John Smith"}, {"mediator": "john  smith"}])
+    listed_people = mediators.list_all(world.engine)
+    assert [(person["name"], person["links"]) for person in listed_people] == [("John Smith", 2)]

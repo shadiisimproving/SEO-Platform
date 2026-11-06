@@ -705,6 +705,18 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
 
 
+class LoginFailure(Base):
+    """Wrong passwords per account and address, so a stranger's guesses can't keep the owner out from their own address."""
+
+    __tablename__ = "login_failures"
+
+    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    source: Mapped[str] = mapped_column(String(45), primary_key=True)
+    failures: Mapped[int] = mapped_column(Integer, server_default="0")
+    last_failed_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+    locked_until: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+
+
 # ---- Where a site's data comes from --------------------------------------------------------------
 
 

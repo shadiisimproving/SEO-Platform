@@ -8,7 +8,7 @@
   "use strict";
   const COMP = window.COMP;
   let UI = null;
-  const POLL_MS = 1500, SIMILAR_SIZE = 0.5;
+  const POLL_MS = 1500;
 
   // The same plain words as seo/health/audit.py, so an alert can say them without loading its whole test.
   const CHECK_WORDS = {
@@ -177,7 +177,9 @@
     ht.active = running || null;
     ht.stopping = Boolean(running?.stop_requested);
     const wanted = openId ?? audits.find((a) => !isActive(a))?.id ?? null;
-    ht.open = wanted === null ? null : await COMP.api("GET", `health/audits/${wanted}`);
+    const opened = wanted === null ? null : await COMP.api("GET", `health/audits/${wanted}`);
+    if (!sameId(ht.siteId, id)) return; // another site was picked while this was on its way
+    ht.open = opened;
     if (running) poll();
   }
 
@@ -230,13 +232,12 @@
   function comparison(d) {
     const a = d.audit;
     if (isPartial(a) || a.status !== "complete") return { kind: "partial" };
-    if (d.previous_score === null || d.previous_score === undefined) return { kind: "first" };
-    const prev = ht.audits.find((x) => x.id < a.id && x.status === "complete" && x.score !== null);
-    if (prev?.pages_read) {
-      const ratio = (a.pages_read || 0) / prev.pages_read;
-      if (ratio < SIMILAR_SIZE || ratio > 1 / SIMILAR_SIZE) return { kind: "different", why: "The last test read far fewer or far more pages, so the two can't be compared." };
+    // The server picks the test to compare with, the same one its alerts use, so the card and the alert never disagree.
+    if (d.previous_score === null || d.previous_score === undefined) {
+      const earlier = ht.audits.some((x) => x.id < a.id && x.status === "complete" && x.score !== null);
+      return earlier ? { kind: "different", why: "The last test read far fewer or far more pages, so the two can't be compared." } : { kind: "first" };
     }
-    return { kind: "change", change: a.score - d.previous_score, prev };
+    return { kind: "change", change: a.score - d.previous_score, prev: d.previous_audit };
   }
 
   function scoreCard() {
@@ -424,7 +425,7 @@
   function view() {
     const { t, esc, icon } = UI;
     if (!ht.ready) return `<div class="card"><div class="empty"><p>${t("Loading…")}</p></div></div>`;
-    if (ht.failed) return `<div class="table-wrap"><div class="empty"><h3>${t("That didn't load")}</h3><p>${esc(t(ht.failed))}</p></div></div>`;
+    if (ht.failed) return `<div class="table-wrap"><div class="empty"><h3>${t("That didn't load")}</h3><p>${esc(t(ht.failed))}</p><div style="margin-top:12px"><button type="button" class="btn" data-ht-retry>${t("Try again")}</button></div></div></div>`;
     if (!ht.sites.length) {
       return `<div class="table-wrap"><div class="empty" id="ht-empty"><h3>${t("No websites added yet")}</h3><p>${t("Add your own website, then test its health.")}</p><button class="btn btn-main" id="site-add">${icon("plus")}${t("Add a website")}</button></div></div>`;
     }
@@ -478,7 +479,11 @@
     button.disabled = true;
     button.textContent = UI.t("Stopping…");
     paintProgress();
-    COMP.api("POST", `health/audits/${ht.activeId}/stop`).catch(() => {});
+    COMP.api("POST", `health/audits/${ht.activeId}/stop`).catch((err) => {
+      ht.stopping = false; // it's still running, so the screen says so
+      paint();
+      COMP.fail(err);
+    });
   }
 
   async function openTest(id) {
@@ -491,6 +496,12 @@
   }
 
   function bindEvents() {
+    document.addEventListener("click", (e) => {
+      if (!e.target.closest?.("[data-ht-retry]")) return;
+      ht.failed = ""; ht.ready = false;
+      paint();
+      loadAll();
+    });
     // Before the app's own click handler: Review on Today opens the right website.
     document.addEventListener("click", (e) => {
       const row = e.target.closest?.('[data-act="health"]')?.closest('[data-row^="alert-"]');

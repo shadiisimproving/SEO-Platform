@@ -1556,3 +1556,10 @@ def test_a_test_whose_worker_is_gone_with_nothing_left_to_notice_ends(world):
     world.sql("UPDATE jobs SET lease_expires_at = UTC_TIMESTAMP(3) - INTERVAL 1 HOUR")
     assert world.detail(audit_id)["audit"]["status"] == "failed"
     assert health.enqueue_due(world.engine) == [world.own]  # and its job is let go, so the next test isn't refused
+
+
+def test_detail_names_the_test_it_was_compared_with(world):
+    first = world.run_test()
+    second = world.run_test()
+    assert second["previous_audit"]["id"] == first["audit"]["id"]
+    assert first["previous_audit"] is None

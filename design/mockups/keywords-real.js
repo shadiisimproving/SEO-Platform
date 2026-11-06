@@ -591,7 +591,7 @@
       const empty = tool.left !== null && tool.left < Math.max(1, tool.credits_per_search) && !tool.paid_on;
       const elsewhere = !x && view.away.find((a) => a.tool === tool.name);
       const button = !canRun ? `<span class="small muted">${t("Not connected")}</span>` : `<button class="btn btn-small" data-kwr-check="${esc(tool.name)}" data-low="${low ? tool.left : ""}" ${mine(K.run) || empty ? "disabled" : ""} ${empty ? `data-tip="${esc(t("No free checks left on this tool."))}"` : ""}>${t(x || elsewhere ? "Recheck" : "Check")}</button>${tool.left === null ? "" : `<span class="second">${num(tool.left)} ${t("left")}</span>`}`;
-      return `<tr><td class="nowrap">${logo(tool.name, 16)} ${esc(t(tool.name))}${tool.manual_only ? "" : ""}</td><td>${x ? posBadge(x) : '<span class="muted">—</span>'}</td><td class="sec small nowrap">${x ? age(x.age_days) : elsewhere ? age(elsewhere.age_days) : t("never")}</td><td>${x ? statusOf(x) : elsewhere ? `<span class="small sec">${t("Another location")}</span>` : ""}</td><td class="r">${button}</td></tr>`;
+      return `<tr><td class="nowrap">${logo(tool.name, 16)} ${esc(t(tool.name))}</td><td>${x ? posBadge(x) : '<span class="muted">—</span>'}</td><td class="sec small nowrap">${x ? age(x.age_days) : elsewhere ? age(elsewhere.age_days) : t("never")}</td><td>${x ? statusOf(x) : elsewhere ? `<span class="small sec">${t("Another location")}</span>` : ""}</td><td class="r">${button}</td></tr>`;
     }).join("");
     const suspects = view.suspects.map((x) => `<tr><td class="nowrap">${logo(x.tool, 16)} ${esc(t(x.tool))}</td><td>${posBadge(x)}</td><td class="sec small nowrap">${age(x.age_days)}</td><td>${status("warn", t("Suspect result"))}</td><td></td></tr>`).join("");
     const away = view.away.length

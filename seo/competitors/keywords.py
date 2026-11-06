@@ -296,6 +296,7 @@ def run_check(job, engine: Engine) -> None:
     line = _tool_line(engine, run)
     started = time.monotonic()
     stopped_because: list[str] = []
+    hour_limited = False
     checked, failed, tried = run["checked"], run["failed"], 0
     noted_ok = False
 
@@ -314,7 +315,11 @@ def run_check(job, engine: Engine) -> None:
             while line and answer is None:
                 name, tool = line[0]
                 if not connections.can_afford_a_search(engine, tool):
-                    stopped_because.append(f"{tool.name} has no free checks left this month.")
+                    if connections.out_only_for_this_hour(engine, tool):
+                        hour_limited = True
+                        stopped_because.append(f"{tool.name} has used all its checks for this hour.")
+                    else:
+                        stopped_because.append(f"{tool.name} has no free checks left this month.")
                     line.pop(0)
                     continue
                 try:
@@ -351,6 +356,8 @@ def run_check(job, engine: Engine) -> None:
     if not line and unanswered:
         reasons = list(dict.fromkeys(stopped_because))
         _finish(engine, run_id, "waiting", " ".join([*reasons, KEPT_REFRESH if is_refresh else KEPT]) if reasons else NO_TOOL)
+        if hour_limited and not is_refresh:  # a list only: a refresh spends on a click, never by itself
+            queue.enqueue(engine, LANE, JOB_KIND, payload={"run_id": run_id, "part": part + 1, "pass": None}, dedupe_key=f"keywords:{run_id}:hour:{int(time.time())}", run_after_seconds=3600, max_attempts=2)
     elif unanswered and not is_refresh:
         _finish(engine, run_id, "waiting", f"{unanswered} keyword{'' if unanswered == 1 else 's'} couldn't be checked this time. The app tries again on its next run.")
     else:

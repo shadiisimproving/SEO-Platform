@@ -630,6 +630,7 @@
     bl.server = true;
     window.BACKLINKS = [];
     window.FOUND_LINKS = [];
+    bl.error = "";
     try {
       noteRealSites((await COMP.api("GET", "links/sites")).sites);
       const lists = await Promise.all(bl.sites.map(async (site) => (await COMP.api("GET", `backlinks?site_id=${site.id}`)).backlinks.map((row) => toBacklink(row, site.host))));
@@ -2834,6 +2835,7 @@
     if (hit("#site-add") || hit("[data-add-site]")) { closePopover(); addSitePanel(hit("#site-add") || $("#site-switch")); return; }
     if ((el = hit("#site-save"))) {
       const address = $("#site-address").value, kind = $('input[name="site-kind"]:checked')?.value;
+      el.disabled = true; // a double click adds it once
       try {
         const made = addSiteNow(address, kind, $("#site-rival-site")?.value);
         made.then(async (site) => {
@@ -2853,11 +2855,13 @@
           toast(kind === "own" ? `${site.host}: ${t("added as your own website")}` : site.rivalOf ? `${site.host}: ${t("added as a competitor of")} ${site.rivalOf}` : `${site.host}: ${t("added as a competitor. It will not appear in the links checker.")}`);
           if (listed) openSiteSetup(listed.host);
         }).catch((err) => {
+          el.disabled = false;
+          if (!$("#site-address")) { toast(t(err.message), { kind: "crit" }); return; } // the form has closed: it was saved, and something after that failed
           $("#site-address").classList.add("invalid");
           setHTML($("#site-error"), `<div class="error" role="alert">${icon("octagon-alert")}<span>${esc(t(err.message))}</span></div>`);
           $("#site-address").focus();
         });
-      } catch (err) { toast(err.message, { kind: "crit" }); }
+      } catch (err) { el.disabled = false; toast(err.message, { kind: "crit" }); }
       return;
     }
     if (hit("#lc-run")) { runLinkCheck(); return; }
@@ -3315,8 +3319,9 @@
       const p = window.PROSPECTS.find((x) => x.id === (el.dataset.prospectStage || el.dataset.prospectOwner || el.dataset.prospectRating));
       if (!p) return;
       const change = el.dataset.prospectStage ? { stage: el.value } : el.dataset.prospectOwner ? { owner: el.value } : { rating: el.value ? Number(el.value) : null };
+      const before = Object.fromEntries(Object.keys(change).map((key) => [key, p[key]]));
       Object.assign(p, change);
-      if (p.serverId) COMP.api("PATCH", `prospects/${p.serverId}`, change).catch((err) => toast(t(err.message), { kind: "crit" }));
+      if (p.serverId) COMP.api("PATCH", `prospects/${p.serverId}`, change).catch((err) => { Object.assign(p, before); toast(t(err.message), { kind: "crit" }); render(); });
       return;
     }
     if (el.id === "lc-site") {

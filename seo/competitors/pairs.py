@@ -130,7 +130,7 @@ def ranking_summary(checks, my_url: str, their_url: str) -> dict:
     my_key, their_key = _page_id(my_url), _page_id(their_url)
     keywords, gaps = [], []
     they_ahead = i_ahead = level = only_mine = only_theirs = 0
-    for check in checks:
+    for check in store.one_per_keyword(checks):  # a keyword checked on two engines is one keyword, and its positions aren't averaged across them
         mine = next((r for r in check.results if _page_id(r.url) == my_key), None)
         theirs = next((r for r in check.results if _page_id(r.url) == their_key), None)
         if mine is None and theirs is None:

@@ -68,6 +68,12 @@ def same_place(country: str, real_location: str, language: str = "") -> bool:
     return real.upper() == wanted or (real == ddg_region(wanted, language) and real != "wt-wt")
 
 
+def counts_for_keyword(engine: str, country: str, real_location: str, language: str = "") -> bool:
+    """Whether a check can fill a keyword's row. Bright Data and SerpApi can't pick a country on Yandex, so a blank there
+    means "no set location", not "somewhere else". Comparisons still stay within one tool, location and depth."""
+    return same_place(country, real_location, language) or (engine == "yandex" and not real_location)
+
+
 # ---- DuckDuckGo direct: no key, no credits ----------------------------------------------------
 
 # DuckDuckGo names its regions itself. Countries it doesn't list search worldwide, and say so.
@@ -249,13 +255,16 @@ class SerpApi:
         ]
         charged = 1
         # Google stopped honouring num in September 2025, so a deeper check reads further pages, each one a search.
+        # A page can hold 9 results and still have a next one, so only an empty page means the end.
+        last_page_had_rows = bool(results)
         for page in range(1, pages_for(depth)):
-            if len(results) >= depth or len(results) < page * 10:
+            if len(results) >= depth or not last_page_had_rows:
                 break
             more = self._get({**params, "start": page * 10})
             charged += 1
             rows = [item for item in more.get("organic_results") or [] if isinstance(item, dict) and item.get("link")]
             results += [Found(len(results) + i + 1, item["link"], str(item.get("title") or "")[:500]) for i, item in enumerate(rows)]
+            last_page_had_rows = bool(rows)
         results = results[:depth]
         location = country.upper() if country else ""
         overview = data.get("ai_overview")

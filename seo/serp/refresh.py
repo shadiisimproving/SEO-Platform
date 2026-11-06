@@ -16,7 +16,7 @@ from sqlalchemy.exc import IntegrityError
 
 from seo.core.errors import Conflict, NotFound, Refused
 from seo.serp import connections, store
-from seo.serp.tools import SearchFailed, TimedOut, ToolStopped, most_cost, pages_for
+from seo.serp.tools import SearchFailed, TimedOut, ToolStopped, counts_for_keyword, most_cost, pages_for
 from seo.worker import queue
 from seo.worker.runner import RunAgain, handler
 
@@ -116,15 +116,22 @@ def _just_checked(conn, keyword_ids: list[int], engines: list[str], depth: int, 
     if hours <= 0:
         return {}
     marks, names = ",".join(str(i) for i in keyword_ids), ",".join(f"'{name}'" for name in engines)
+    # Only a check that can fill the keyword's row counts. One from another country, or one marked suspect, answers nothing.
     rows = conn.execute(
         text(
-            f"SELECT t.keyword_id, t.engine, TIMESTAMPDIFF(MINUTE, MAX(c.checked_at), UTC_TIMESTAMP(3)) AS minutes FROM serp_targets t JOIN serp_checks c ON c.target_id = t.id "
-            f"WHERE t.device = 'desktop' AND t.keyword_id IN ({marks}) AND t.engine IN ({names}) AND c.status IN ('ok', 'suspect') AND c.depth >= :d "
-            "AND c.checked_at >= UTC_TIMESTAMP(3) - INTERVAL :h HOUR GROUP BY t.keyword_id, t.engine"
+            f"SELECT t.keyword_id, t.engine, k.country, k.language, c.real_location, TIMESTAMPDIFF(MINUTE, MAX(c.checked_at), UTC_TIMESTAMP(3)) AS minutes "
+            f"FROM serp_targets t JOIN keywords k ON k.id = t.keyword_id JOIN serp_checks c ON c.target_id = t.id "
+            f"WHERE t.device = 'desktop' AND t.keyword_id IN ({marks}) AND t.engine IN ({names}) AND c.status = 'ok' AND c.depth >= :d "
+            "AND c.checked_at >= UTC_TIMESTAMP(3) - INTERVAL :h HOUR GROUP BY t.keyword_id, t.engine, k.country, k.language, c.real_location"
         ),
         {"d": depth, "h": hours},
     ).mappings().all()
-    return {(row["keyword_id"], row["engine"]): round(row["minutes"] / 60, 1) for row in rows}
+    newest: dict[tuple[int, str], int] = {}
+    for row in rows:
+        if counts_for_keyword(row["engine"], row["country"], row["real_location"], row["language"]):
+            key = (row["keyword_id"], row["engine"])
+            newest[key] = min(newest.get(key, row["minutes"]), row["minutes"])
+    return {key: round(minutes / 60, 1) for key, minutes in newest.items()}
 
 
 def _split(engine: Engine, ask: dict) -> dict:

@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Callable
 
 from sqlalchemy import Engine, text
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import OperationalError, SQLAlchemyError
 
 from seo import config
 from seo.core.schema import SchemaMismatch, assert_schema_current
@@ -44,9 +44,10 @@ def handler(kind: str):
 class Retry(Exception):
     """A handler asks to try again later, for example after a 429."""
 
-    def __init__(self, message: str, backoff_seconds: int):
+    def __init__(self, message: str, backoff_seconds: int, patient: bool = False):
         super().__init__(message)
         self.backoff_seconds = backoff_seconds
+        self.patient = patient  # another service is down, not this job: it gets far more tries
 
 
 class RunAgain(Exception):
@@ -136,8 +137,11 @@ def _run_one(engine, job, owner, handlers, lease_seconds, heartbeat_seconds) -> 
 
     def beat():
         while not stop.wait(heartbeat_seconds):
-            if not queue.renew(engine, job.id, owner, lease_seconds):
-                return  # the lease was taken back; the final complete() will return False
+            try:
+                if not queue.renew(engine, job.id, owner, lease_seconds):
+                    return  # the lease was taken back; the final complete() will return False
+            except SQLAlchemyError:
+                continue  # a passing database problem: the next beat tries again, or the job would lose its lease while still working
 
     heart = threading.Thread(target=beat, daemon=True)
     heart.start()
@@ -154,7 +158,7 @@ def _run_one(engine, job, owner, handlers, lease_seconds, heartbeat_seconds) -> 
     except Retry as exc:
         stop.set()
         heart.join()
-        queue.fail(engine, job.id, owner, str(exc), backoff_seconds=exc.backoff_seconds)
+        queue.fail(engine, job.id, owner, str(exc), backoff_seconds=exc.backoff_seconds, patient=exc.patient)
         return False
     except Exception as exc:  # noqa: BLE001 - one bad job must not stop the lane
         stop.set()

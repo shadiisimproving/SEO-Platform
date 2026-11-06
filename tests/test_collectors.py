@@ -376,3 +376,48 @@ def test_real_token_exchange_success_gives_a_token_and_caches_it(world, monkeypa
     assert credentials.access_token(world.engine, connection["id"]) == "real-looking"
     assert len(world.calls) == before
     credentials.forget(connection["id"])
+
+
+def test_ga4_keeps_utm_rows_that_have_no_campaign(world):
+    import json
+
+    def answer(request):
+        if json.loads(request.content)["dimensions"][0]["name"] != "sessionManualSource":
+            return _ga4_answer(request)
+        table = [["blog-expat", "backlink", "(not set)", "/a/", "12", "1"], ["(not set)", "(not set)", "(not set)", "/a/", "99", "9"]]
+        return httpx.Response(200, json={"rows": [{"dimensionValues": [{"value": v} for v in r[:4]], "metricValues": [{"value": v} for v in r[4:]]} for r in table], "rowCount": 2, "metadata": {}})
+
+    world.answers["runReport"] = answer
+    ga4._one_day(world.engine, world.site, "t", "123456", common.today(world.engine) - timedelta(days=1))
+    with world.engine.connect() as conn:
+        assert conn.execute(text("SELECT source, medium, campaign, sessions FROM ga4_campaign_daily")).all() == [("blog-expat", "backlink", "(not set)", 12)]
+
+
+def test_authority_is_queued_while_any_domain_is_missing_this_month(world):
+    service.save_app_key(world.engine, "openpagerank", "opr-key-1234")
+    month = common.today(world.engine).strftime("%Y-%m")
+    with world.engine.begin() as conn:
+        conn.execute(text("INSERT INTO sites (host, start_url, kind) VALUES ('old.example', 'https://old.example/', 'competitor')"))
+        conn.execute(text("INSERT INTO authority_monthly (domain, month, score) VALUES ('old.example', :m, 3)"), {"m": month})
+    assert jobs.enqueue_authority(world.engine) is not None  # mine.example hasn't been scored, though old.example has
+
+
+def test_authority_isnt_queued_again_for_a_domain_with_no_answer(world):
+    service.save_app_key(world.engine, "openpagerank", "opr-key-1234")
+    month = common.today(world.engine).strftime("%Y-%m")
+    world.answers["openpagerank"] = httpx.Response(200, json={"data": []})
+    others.collect_authority(world.engine, month)
+    with world.engine.begin() as conn:
+        conn.execute(text("UPDATE jobs SET status = 'done', active_key = NULL"))
+    assert jobs.enqueue_authority(world.engine) is None
+
+
+def test_search_console_says_data_through_only_for_days_it_has_read(world):
+    _google(world)
+    world.answers["searchAnalytics"] = _gsc_answer
+    assert gsc.collect(world.engine, world.site, budget_seconds=0) is False  # the daily totals, and no per-page or per-query day yet
+    with world.engine.connect() as conn:
+        assert conn.execute(text("SELECT data_through FROM site_sources WHERE site_id = :s AND source = 'gsc'"), {"s": world.site}).scalar() is None
+    assert gsc.collect(world.engine, world.site) is True
+    with world.engine.connect() as conn:
+        assert conn.execute(text("SELECT data_through FROM site_sources WHERE site_id = :s AND source = 'gsc'"), {"s": world.site}).scalar() is not None

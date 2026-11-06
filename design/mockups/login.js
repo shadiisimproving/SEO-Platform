@@ -33,7 +33,8 @@
   });
   $("change").addEventListener("submit", async (e) => {
     e.preventDefault(); fail("");
-    try { await send("password", { current: $("current").value, new: $("next").value }); enter(); } catch (err) { fail(err.message); $("next").focus(); }
+    if (e.submitter) e.submitter.disabled = true; // a second click would be refused: the first has already changed the session
+    try { await send("password", { current: $("current").value, new: $("next").value }); enter(); } catch (err) { fail(err.message); $("next").focus(); } finally { if (e.submitter) e.submitter.disabled = false; }
   });
   // Sent here with a temporary password still to change, by a session that's already signed in.
   if (new URLSearchParams(location.search).has("change")) {

@@ -109,3 +109,7 @@ def ensure_from_rows(conn, rows: list[dict]) -> None:
             ),
             {"n": name, "k": name_key(name), "c": row.get("contact"), "p": row.get("platform")},
         )
+        # The link takes the spelling already known, so counts and renames find it.
+        known = conn.execute(text("SELECT name FROM mediators WHERE name_key = :k"), {"k": name_key(name)}).scalar()
+        if known is not None and known != name:
+            conn.execute(text("UPDATE backlinks SET mediator = :known WHERE mediator = :typed"), {"known": known, "typed": name})

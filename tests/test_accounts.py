@@ -70,7 +70,7 @@ def test_repeated_failures_lock_the_account_even_for_the_right_password(app, eng
         client.post("/api/auth/login", json={"email": "boss@example.com", "password": "nope"})
     assert client.post("/api/auth/login", json={"email": "boss@example.com", "password": PASSWORD}).status_code == 401
     with engine.begin() as conn:
-        conn.execute(text("UPDATE users SET locked_until = UTC_TIMESTAMP(3) - INTERVAL 1 SECOND"))
+        conn.execute(text("UPDATE login_failures SET locked_until = UTC_TIMESTAMP(3) - INTERVAL 1 SECOND"))
     assert client.post("/api/auth/login", json={"email": "boss@example.com", "password": PASSWORD}).status_code == 200
 
 
@@ -232,3 +232,64 @@ def test_the_login_page_doesnt_insist_on_an_email():
 
     page = (Path(__file__).resolve().parent.parent / "design" / "mockups" / "login.html").read_text(encoding="utf-8")
     assert 'id="email" type="text"' in page and "Username or email" in page
+
+
+def _login(app, password, ip, **extra):
+    return app.test_client().post("/api/auth/login", json={"email": "boss@example.com", "password": password}, environ_overrides={"REMOTE_ADDR": ip}, **extra)
+
+
+def test_failures_from_one_address_dont_lock_out_another(app, engine):
+    _admin(engine)
+    for _ in range(service.MAX_FAILURES):
+        _login(app, "nope", "203.0.113.9")
+    assert _login(app, PASSWORD, "203.0.113.9").status_code == 401
+    assert _login(app, PASSWORD, "198.51.100.1").status_code == 200
+
+
+def test_failures_from_many_addresses_still_lock_the_account(app, engine):
+    _admin(engine)
+    for number in range(service.MAX_ACCOUNT_FAILURES):
+        _login(app, "nope", f"203.0.113.{number % 250}")
+    assert _login(app, PASSWORD, "198.51.100.1").status_code == 401
+
+
+def test_a_forwarded_header_cant_dodge_the_lock(app, engine):
+    _admin(engine)
+    for number in range(service.MAX_FAILURES):
+        _login(app, "nope", "203.0.113.9", headers={"X-Forwarded-For": f"10.0.0.{number}"})
+    assert _login(app, PASSWORD, "203.0.113.9", headers={"X-Forwarded-For": "10.0.0.99"}).status_code == 401
+
+
+def test_failures_long_ago_dont_add_up(app, engine):
+    _admin(engine)
+    for _ in range(service.MAX_FAILURES - 1):
+        _login(app, "nope", "203.0.113.9")
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE login_failures SET last_failed_at = last_failed_at - INTERVAL 1 DAY"))
+    _login(app, "nope", "203.0.113.9")
+    assert _login(app, PASSWORD, "203.0.113.9").status_code == 200
+
+
+def test_a_password_reset_clears_the_locks(app, engine):
+    user_id = _admin(engine)["id"]
+    for _ in range(service.MAX_FAILURES):
+        _login(app, "nope", "203.0.113.9")
+    temporary = service.reset_password(engine, user_id)
+    assert _login(app, temporary, "203.0.113.9").status_code == 200
+
+
+def test_signing_out_ends_the_session_on_the_server(app, engine):
+    _admin(engine)
+    client, csrf = _signed_in(app)
+    cookie = client.get_cookie(app.config["SESSION_COOKIE_NAME"]).value
+    assert client.post("/api/auth/logout", headers=csrf).status_code == 200
+    copied = app.test_client()
+    copied.set_cookie(app.config["SESSION_COOKIE_NAME"], cookie)
+    assert copied.get("/api/auth/me").status_code == 401
+
+
+def test_a_request_past_the_size_limit_is_refused_with_a_reason(app, engine):
+    _admin(engine)
+    client, csrf = _signed_in(app)
+    reply = client.post("/api/backlinks/bulk", data=b"x" * (app.config["MAX_CONTENT_LENGTH"] + 1), content_type="application/json", headers=csrf)
+    assert reply.status_code == 413 and "too large" in reply.get_json()["error"]

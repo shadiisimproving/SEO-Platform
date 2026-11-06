@@ -21,6 +21,7 @@ MAX_LEASE_LOSSES = 5
 LEASE_GRACE_MINUTES = 5  # a worker renews its lease every minute, so this long past the end means it's gone
 ERROR_LIMIT = 2000
 NOW = func.utc_timestamp(3)
+MAX_TEMPORARY_ATTEMPTS = 100  # about a day at 15 minutes apart
 
 
 def _in(seconds: int):
@@ -138,7 +139,7 @@ def run_again(engine: Engine, job_id: int, owner: str, delay_seconds: int = 0) -
     return result.rowcount == 1
 
 
-def fail(engine: Engine, job_id: int, owner: str, error: str, backoff_seconds: int | None = None) -> str | None:
+def fail(engine: Engine, job_id: int, owner: str, error: str, backoff_seconds: int | None = None, patient: bool = False) -> str | None:
     """Returns the new status, or None if this worker no longer holds the job."""
     error = error[:ERROR_LIMIT]
     with engine.begin() as conn:
@@ -148,7 +149,9 @@ def fail(engine: Engine, job_id: int, owner: str, error: str, backoff_seconds: i
         if row is None:
             return None
         attempts = row.attempts + 1
-        if attempts >= row.max_attempts:
+        # Patient: the job isn't at fault, such as Google being down, so an outage of an hour doesn't use it up.
+        most = MAX_TEMPORARY_ATTEMPTS if patient else row.max_attempts
+        if attempts >= most:
             conn.execute(
                 update(Job)
                 .where(Job.id == job_id)

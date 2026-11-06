@@ -100,8 +100,9 @@ def _one_day(engine: Engine, site_id: int, token: str, prop: str, day: date) -> 
     source_rows = _merge([{**site, "h": common.digest(r[0], r[1], r[2]), "a": r[0][:80], "b": r[1][:190], "m": r[2][:190], "x": _int(r[3]), "u": _int(r[4]), "k": _float(r[5])} for r in sources.rows], "h", "x", "u", "k")
     page_rows = _merge([{**site, "h": common.digest(r[0]), "p": r[0], "x": _int(r[1]), "u": _int(r[2]), "k": _float(r[3])} for r in pages.rows], "h", "x", "u", "k")
     # Rows with a UTM campaign are counted by UTM only, so they can't be counted twice.
+    # A row tagged with a UTM source but no campaign is kept too, or its visits would be in neither table.
     referral_rows = _merge([{**site, "h": common.digest(r[0].lower(), r[2]), "o": r[0].lower()[:190], "p": r[2], "x": _int(r[4]), "k": _float(r[5])} for r in referrals.rows if r[1] == "referral" and r[3] in NOT_SET], "h", "x", "k")
-    campaign_rows = _merge([{**site, "h": common.digest(r[0], r[1], r[2], r[3]), "a": r[0][:190], "m": r[1][:190], "c": r[2][:190], "p": r[3], "x": _int(r[4]), "k": _float(r[5])} for r in campaigns.rows if r[2] not in NOT_SET], "h", "x", "k")
+    campaign_rows = _merge([{**site, "h": common.digest(r[0], r[1], r[2], r[3]), "a": r[0][:190], "m": r[1][:190], "c": r[2][:190], "p": r[3], "x": _int(r[4]), "k": _float(r[5])} for r in campaigns.rows if r[2] not in NOT_SET or r[0] not in NOT_SET], "h", "x", "k")
     ad_rows = _merge([{**site, "h": common.digest(r[0]), "c": r[0][:190], "n": _int(r[1]), "z": _money(r[2]), "y": ads.currency, "x": _int(r[3]), "k": _float(r[4])} for r in ads.rows if r[0] not in NOT_SET], "h", "n", "z", "x", "k")
     hid = sources.hid_rows or pages.hid_rows or referrals.hid_rows or campaigns.hid_rows
     with engine.begin() as conn:

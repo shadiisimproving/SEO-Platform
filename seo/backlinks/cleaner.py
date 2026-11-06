@@ -344,15 +344,17 @@ def clean_csv(data: bytes, known: Mapping[str, str] | None = None, *, need_spam:
 
     for r in data_rows:
         spam = parse_spam(cell(r, spam_at)) if spam_at is not None else None
-        if spam is not None and spam > SPAM_THRESHOLD:
+        spammy = spam is not None and spam > SPAM_THRESHOLD
+        if spammy and not keep_spam:
             removed_spam += 1
-            if not keep_spam:  # with keep_spam the row stays, marked by its score, so a screen can show what went and why
-                continue
+            continue
         url = cell(r, url_at).strip()
         domain = root_domain(url)
         if not domain:
             removed_no_url += 1
             continue
+        if spammy:  # with keep_spam the row stays, marked by its score, so a screen can show what went and why
+            removed_spam += 1
         duplicate_of = known.get(domain) or ("file" if domain in seen_in_file else None)
         if duplicate_of:
             duplicates += 1

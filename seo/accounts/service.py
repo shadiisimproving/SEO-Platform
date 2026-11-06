@@ -12,7 +12,9 @@ from werkzeug.security import check_password_hash, generate_password_hash
 
 from seo.core.errors import NotFound, Refused
 
-MAX_FAILURES = 5
+MAX_FAILURES = 5  # from one address
+MAX_ACCOUNT_FAILURES = 50  # from everywhere, for guesses spread over many addresses
+FAILURE_WINDOW_MINUTES = 60  # older wrong passwords don't add up
 LOCK_MINUTES = 15
 MIN_PASSWORD = 10
 ROLES = ("admin", "member")
@@ -105,8 +107,13 @@ def team_names(engine: Engine) -> list[str]:
         return [row[0] for row in conn.execute(text("SELECT name FROM users WHERE disabled = 0 ORDER BY name")).all()]
 
 
-def login(engine: Engine, email, password) -> tuple[dict, int] | None:
-    """The account and its session version, or None. It never says which of the two was wrong."""
+def login(engine: Engine, email, password, source: str = "") -> tuple[dict, int] | None:
+    """The account and its session version, or None. It never says which of the two was wrong.
+
+    `source` is the address asking. Wrong passwords lock that address out of that account, so a stranger's guesses
+    can't keep the owner out. Far more of them, from anywhere, lock the account itself.
+    """
+    source = source[:45] if isinstance(source, str) else ""
     address = email.strip().lower() if isinstance(email, str) else ""
     plain = password if isinstance(password, str) else ""
     with engine.begin() as conn:
@@ -118,15 +125,29 @@ def login(engine: Engine, email, password) -> tuple[dict, int] | None:
             check_password_hash(_DUMMY_HASH, plain)
             return None
         good = check_password_hash(row["password_hash"], plain)
-        if row["disabled"] or row["locked"]:  # even the right password can't get in, and the answer doesn't show that
+        here = {"i": row["id"], "a": source}
+        address_locked = conn.execute(text("SELECT locked_until > UTC_TIMESTAMP(3) FROM login_failures WHERE user_id = :i AND source = :a FOR UPDATE"), here).scalar()
+        if row["disabled"] or row["locked"] or address_locked:  # even the right password can't get in, and the answer doesn't show that
             return None
         if not good:
+            conn.execute(
+                text(
+                    "INSERT INTO login_failures (user_id, source, failures, last_failed_at) VALUES (:i, :a, 1, UTC_TIMESTAMP(3)) ON DUPLICATE KEY UPDATE "
+                    "failures = IF(last_failed_at < UTC_TIMESTAMP(3) - INTERVAL :w MINUTE, 1, failures + 1), last_failed_at = UTC_TIMESTAMP(3)"
+                ),
+                {**here, "w": FAILURE_WINDOW_MINUTES},
+            )
+            conn.execute(
+                text("UPDATE login_failures SET locked_until = UTC_TIMESTAMP(3) + INTERVAL :lock MINUTE, failures = 0 WHERE user_id = :i AND source = :a AND failures >= :max"),
+                {**here, "max": MAX_FAILURES, "lock": LOCK_MINUTES},
+            )
             conn.execute(text("UPDATE users SET failed_logins = failed_logins + 1 WHERE id = :i"), {"i": row["id"]})
             conn.execute(
                 text("UPDATE users SET locked_until = UTC_TIMESTAMP(3) + INTERVAL :lock MINUTE, failed_logins = 0 WHERE id = :i AND failed_logins >= :max"),
-                {"i": row["id"], "max": MAX_FAILURES, "lock": LOCK_MINUTES},
+                {"i": row["id"], "max": MAX_ACCOUNT_FAILURES, "lock": LOCK_MINUTES},
             )
             return None
+        conn.execute(text("DELETE FROM login_failures WHERE user_id = :i AND source = :a"), here)
         conn.execute(text("UPDATE users SET failed_logins = 0, locked_until = NULL, last_login_at = UTC_TIMESTAMP(3) WHERE id = :i"), {"i": row["id"]})
         version = row["session_version"]
         user_id = row["id"]
@@ -142,6 +163,12 @@ def session_user(engine: Engine, user_id, version) -> dict | None:
     if row is None or row["session_version"] != version:
         return None
     return _public(row)
+
+
+def end_sessions(engine: Engine, user_id: int) -> None:
+    """Signing out: the session stops working on the server too, so a copied cookie is worth nothing. It ends this person's other sessions as well."""
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE users SET session_version = session_version + 1 WHERE id = :i"), {"i": user_id})
 
 
 def change_password(engine: Engine, user_id: int, current, new) -> int:
@@ -170,6 +197,7 @@ def reset_password(engine: Engine, user_id: int) -> str:
             ),
             {"p": generate_password_hash(plain), "i": user_id},
         ).rowcount
+        conn.execute(text("DELETE FROM login_failures WHERE user_id = :i"), {"i": user_id})
     if not done:
         raise NotFound("That account doesn't exist.")
     return plain

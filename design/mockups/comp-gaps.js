@@ -50,7 +50,12 @@
     tab.loadedFor = undefined;
     sync = sync.then(async () => {
       if (!gone.removedOnServer) await COMP.api("DELETE", `prospects/${gone.serverId}`).catch(quietly404);
-    }).catch(COMP.fail);
+    }).catch((err) => {
+      // It's still on the server, so it goes back on screen.
+      if (!window.PROSPECTS.some((p) => p.serverId === gone.serverId)) window.PROSPECTS.unshift(gone);
+      if (UI.state.route === "backlinks") UI.render();
+      COMP.fail(err);
+    });
   }
 
   /* Undo on the Backlinks page puts the row back on screen, so it goes back on the server too, under a new number. */
@@ -99,10 +104,12 @@
   };
   COMP.removeCsvProspects = async (items) => {
     const ids = items.map((p) => p.serverId);
-    const gone = new Set(ids);
+    const gone = new Set(ids), before = window.PROSPECTS;
     window.PROSPECTS = window.PROSPECTS.filter((p) => !gone.has(p.serverId));
     tab.loadedFor = undefined;
-    for (let at = 0; at < ids.length; at += CSV_BATCH) await COMP.api("POST", "prospects/remove", { ids: ids.slice(at, at + CSV_BATCH) });
+    try {
+      for (let at = 0; at < ids.length; at += CSV_BATCH) await COMP.api("POST", "prospects/remove", { ids: ids.slice(at, at + CSV_BATCH) });
+    } catch (err) { window.PROSPECTS = before; throw err; }
   };
 
   function seeThem(host) {
@@ -119,7 +126,7 @@
   const byRival = () => allRows().filter((g) => (!S.filter || g.competitors.some((c) => String(c.id) === S.filter)) && !(S.hide && inConsideration(g)));
   const shownGaps = () => byRival().filter((g) => S.quality === "all" || (S.quality === "spam") === isFlagged(g));
   const canPick = (gap) => !isFlagged(gap) && !inConsideration(gap);
-  const pickable = () => shownGaps().filter(canPick);
+  const pickable = () => shownGaps().slice(0, S.limit).filter(canPick); // only rows on screen: "Select all shown" means shown
 
   const intro = () => `<p class="note">${UI.icon("info")}<span>${t("Spam is flagged first, and only the good ones can be added. Nothing is removed. It comes from Common Crawl and files you upload: no paid tool, no AI. Adding a domain doesn't create a backlink, and doesn't change the Backlinks top cards.")}</span></p>`;
 
@@ -137,6 +144,8 @@
     const f = d.funnel;
     const stat = (n, label) => `<span class="cg-stat"><b class="tabular">${UI.num(n)}</b> ${t(label)}</span>`;
     const stats = f && f.found ? `${stat(f.found, "Domains found")}${stat(f.filtered, "Flagged as spam")}${stat(f.good, "Good ones")}` : "";
+    const goodSent = allRows().filter((g) => !isFlagged(g)).length;
+    const capped = f && f.good > goodSent ? `<span class="cg-stat sec">${esc(t("The {sent} with the most competitors are listed, of {total}.").replace("{sent}", UI.num(goodSent)).replace("{total}", UI.num(f.good)))}</span>` : "";
     const checking = f?.checking ? `<span class="cg-stat sec">${UI.icon("refresh-cw", "spin")}<b class="tabular">${UI.num(f.checking)}</b> ${t("Still being checked")}</span>` : "";
     // A competitor with nothing yet can only be fed from Sources, so say so here while Sources is folded away.
     const empty = d.competitors.some((c) => c.has_data) ? d.competitors.filter((c) => !c.has_data) : [];
@@ -145,7 +154,7 @@
     const open = allRows().filter(canPick).length;
     const addAll = open ? `<button class="btn btn-main btn-small cg-add-all" id="cg-add-all" data-cg-add-all>${UI.icon("plus")}${t("Add all good ones")} (${UI.num(open)})</button>` : "";
     if (!stats && !checking && !missing && !addAll) return "";
-    return `<div class="cg-summary" aria-label="${t("Spam filter")}" role="group">${stats}${checking}${missing}${addAll}</div>`;
+    return `<div class="cg-summary" aria-label="${t("Spam filter")}" role="group">${stats}${capped}${checking}${missing}${addAll}</div>`;
   }
 
   /* How the list is fed. Folded once there's a list, and open while there's nothing else on the page to do. */
@@ -448,21 +457,24 @@
   }
 
   async function undoAdd(items, refresh = reloadHere) {
-    const ids = new Set(items.map((p) => p.serverId));
+    const ids = new Set(items.map((p) => p.serverId)), before = window.PROSPECTS;
     window.PROSPECTS = window.PROSPECTS.filter((p) => !ids.has(p.serverId));
     try {
       await Promise.all(items.map((p) => COMP.api("DELETE", `prospects/${p.serverId}`).catch(quietly404)));
-    } catch (err) { COMP.fail(err); }
+    } catch (err) { window.PROSPECTS = before; COMP.fail(err); }
     if (UI.state.route === "backlinks") UI.render();
     tab.loadedFor = undefined;
     await refresh();
   }
 
   // ---- a person's decision beats the filter -----------------------------------------------------
+  const deciding = new Set();
   async function decide(domain, decision) {
+    if (deciding.has(domain)) return; // a double click decides once
+    deciding.add(domain);
     try {
       await COMP.api("POST", "link-gaps/decide", { site_id: COMP.siteId, domain, decision });
-    } catch (err) { COMP.fail(err); return; }
+    } catch (err) { COMP.fail(err); return; } finally { deciding.delete(domain); }
     S.picked.delete(domain);
     await COMP.reload({ quiet: true });
     if (decision === "auto") return;
@@ -644,6 +656,7 @@
       if (S.site !== siteId) { S.site = siteId; S.filter = ""; S.hide = false; S.quality = "all"; S.limit = 200; S.picked.clear(); S.sourcesOpen = undefined; }
       await sync; // anything the Backlinks page just changed is on the server before reading it back
       const [answer, competitors] = await Promise.all([COMP.api("GET", `link-gaps?site_id=${siteId}`), COMP.api("GET", `competitors?site_id=${siteId}`)]);
+      if (siteId !== COMP.siteId) return; // another site was picked while this was on its way
       // Opened as a plain file, a competitor added just now isn't in the gap snapshot yet.
       const seen = new Set(answer.competitors.map((c) => c.id));
       competitors.competitors.forEach((c) => { if (!seen.has(c.id)) answer.competitors.push({ id: c.id, host: c.host, has_data: false }); });

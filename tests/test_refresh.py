@@ -762,3 +762,25 @@ def test_ledger_rows_are_never_rewritten_and_a_refund_is_its_own_row(world):
     run_now(world, track(world, "bad"))
     with world.engine.connect() as conn:
         assert [r[0] for r in conn.execute(text("SELECT amount FROM credit_ledger ORDER BY id")).all()] == [1, -1]
+
+
+def test_a_check_from_another_country_doesnt_block_a_refresh(world):
+    world.tools["google"] = [Fake("SerpApi", free_monthly=250)]
+    ids = track(world, "a")
+    save(world, ids[0], tool="Browser", location="AE")
+    assert refresh.preview(world.engine, {"keyword_ids": ids, "engines": ["google"], "depth": 10})["checks"] == 1
+
+
+def test_a_suspect_check_doesnt_block_a_refresh(world):
+    world.tools["google"] = [Fake("SerpApi", free_monthly=250)]
+    ids = track(world, "a")
+    save(world, ids[0], status="suspect")
+    assert refresh.preview(world.engine, {"keyword_ids": ids, "engines": ["google"], "depth": 10})["checks"] == 1
+
+
+def test_a_keyword_never_checked_isnt_called_not_ranked(world):
+    ids = track(world, "never", "seen", "missing")
+    save(world, ids[1], position=4)
+    save(world, ids[2], position=None)
+    tile = rankings.listing(world.engine, world.site)["tiles"]["google"]
+    assert tile["tracked"] == 3 and tile["ranked"] == 1 and tile["not_ranked"] == 1

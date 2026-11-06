@@ -31,6 +31,7 @@ JOB_KIND = "linkgaps.check"
 LANE = "crawl"
 CHUNK_SECONDS = 40.0
 MAX_ATTEMPTS = 2  # a site that's down once may only be having a bad day
+RETRY_AFTER_HOURS = 6  # and trying again a minute later says nothing new
 
 # Step 2. Common Crawl ranks about 135 million domains.
 TRUSTED_SHARE = 0.01  # the top 1% are big sites, which do link out a lot, have many hosts, and may refuse a bot's connection
@@ -190,8 +191,9 @@ def run_checks(job, engine: Engine) -> None:
         while time.monotonic() - started < CHUNK_SECONDS and budget.has_room(engine):
             with engine.connect() as conn:
                 batch = [(row[0], is_big_site(row[1], row[2])) for row in conn.execute(text(
-                    "SELECT domain, cc_rank, cc_total FROM link_domains WHERE quality = 'pending' ORDER BY cc_rank IS NULL, cc_rank, domain LIMIT 25"
-                ))]
+                    "SELECT domain, cc_rank, cc_total FROM link_domains WHERE quality = 'pending' "
+                    "AND (check_attempts = 0 OR checked_at < UTC_TIMESTAMP(3) - INTERVAL :wait HOUR) ORDER BY cc_rank IS NULL, cc_rank, domain LIMIT 25"
+                ), {"wait": RETRY_AFTER_HOURS})]
             batch = [item for item in batch if item[0] not in seen]
             if not batch:
                 break

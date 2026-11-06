@@ -11,7 +11,9 @@ from datetime import date, timedelta
 from sqlalchemy import Engine, text
 
 from seo.backlinks import service as backlink_service
+from seo.backlinks.cleaner import root_domain
 from seo.backlinks.live import traffic_targets
+from seo.collectors.ga4 import NOT_SET
 from seo.metrics.service import _path, _pct_change, parse_day
 
 
@@ -33,7 +35,8 @@ def traffic(engine: Engine, site_id: int, start, end) -> dict:
         return {"has_data": False, "hid_rows": False, "links": {}}
     by_domain: dict[tuple[str, str], dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0})
     for row in referrals:
-        item = by_domain[(row["domain"], _path(row["path"]))]
+        # GA4 names the host that sent the visit, such as blog.example.com, while a link stores example.com.
+        item = by_domain[(root_domain(row["domain"]) or row["domain"], _path(row["path"]))]
         item["sessions"] += int(row["sessions"] or 0)
         item["leads"] += float(row["leads"] or 0)
     # Several links on one domain to one page can't be told apart, so they share one number and say so.
@@ -43,7 +46,7 @@ def traffic(engine: Engine, site_id: int, start, end) -> dict:
         utm = link["utm"]
         if utm:
             # Values are case sensitive, as in GA4.
-            rows = [r for r in campaigns if r["campaign"] == utm["campaign"] and (not utm["source"] or r["source"] == utm["source"]) and (not utm["medium"] or r["medium"] == utm["medium"])]
+            rows = [r for r in campaigns if (r["campaign"] == utm["campaign"] if utm["campaign"] else r["campaign"] in NOT_SET) and (not utm["source"] or r["source"] == utm["source"]) and (not utm["medium"] or r["medium"] == utm["medium"])]
             answer[link["id"]] = {"visits": sum(int(r["sessions"] or 0) for r in rows), "leads": round(sum(float(r["leads"] or 0) for r in rows), 2), "basis": "utm", "shared_by": 1, "pages": sorted({_path(r["path"]) for r in rows})}
         elif link["paths"]:
             # The logged target, and where it really ends up: a target that redirects still matches.
@@ -53,11 +56,10 @@ def traffic(engine: Engine, site_id: int, start, end) -> dict:
     for (domain, paths), ids in groups.items():
         sessions, leads = 0, 0.0
         for path in paths:
-            for name in (domain, f"www.{domain}"):
-                found = by_domain.get((name, path))
-                if found:
-                    sessions += found["sessions"]
-                    leads += found["leads"]
+            found = by_domain.get((root_domain(domain) or domain, path))
+            if found:
+                sessions += found["sessions"]
+                leads += found["leads"]
         for backlink_id in ids:
             answer[backlink_id] = {"visits": sessions, "leads": round(leads, 2), "basis": "domain", "shared_by": len(ids), "pages": list(paths)}
     return {"has_data": True, "hid_rows": bool(hid), "links": answer}

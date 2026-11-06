@@ -771,7 +771,10 @@
       });
     },
     async load() {
-      tabState.competitors = (await COMP.api("GET", `competitors?site_id=${COMP.siteId}`).catch(() => ({ competitors: [] }))).competitors || [];
+      const siteId = COMP.siteId;
+      const listed = (await COMP.api("GET", `competitors?site_id=${siteId}`).catch(() => ({ competitors: [] }))).competitors || [];
+      if (siteId !== COMP.siteId) return; // another site was picked while this was on its way
+      tabState.competitors = listed;
       if (!tabState.competitors.some((c) => c.id === tabState.competitorId)) tabState.competitorId = null; // no default: see pickWay
       try {
         ingest(await fetchNotes("notes"), ALL_NOTES);

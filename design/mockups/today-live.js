@@ -38,9 +38,13 @@
         window.COMP.api("GET", `today${query}`),
         window.COMP.api("GET", `backlinks/summary${site ? `?site_id=${site}` : ""}`).catch(() => null),
       ]);
+      if (T.key !== query) return; // another site was picked while this was on its way
       T.data = data; T.summary = summary || {}; T.error = "";
       window.ATTENTION = data.todo.map((a) => ({ id: a.id, sev: a.severity, title: a.title, detail: a.detail, host: a.host, act: "Open", key: a.kind }));
-    } catch (err) { T.error = err.message; }
+    } catch (err) {
+      if (T.key !== query) return;
+      T.error = err.message;
+    }
     if (UI.state.route === "today" && !UI.$("#panel")) UI.render();
   }
 

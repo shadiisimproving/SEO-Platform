@@ -138,9 +138,20 @@ class PoliteFetcher:
 
     def _read_robots(self, base: str, host: _Host) -> None:
         """RFC 9309: a 4xx robots.txt means no rules; a server failure means stay out."""
-        self.requests += 1
+        address = f"{base}/robots.txt"
         try:
-            response = self._client.get(f"{base}/robots.txt", follow_redirects=True)
+            for _ in range(MAX_REDIRECTS + 1):
+                self.requests += 1
+                response = self._client.get(address, follow_redirects=False)
+                if not response.is_redirect:
+                    break
+                address = urljoin(address, response.headers["location"])
+                if not self.is_allowed(address):  # every hop is checked, as in get(). Rules it can't read are no rules.
+                    host.robots_state = "allow_all"
+                    return
+            else:
+                host.robots_state = "allow_all"
+                return
         except httpx.HTTPError:
             host.robots_state = "network_error"
             return

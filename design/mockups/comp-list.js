@@ -409,7 +409,7 @@
     const firstNew = view.limit > 50 ? view.limit - 50 : -1;
     const left = shown.length - part.length;
     return `${chips}
-      <div class="cl-days">${[...days.values()].map((entries) => `<section class="cl-day"><h3 class="cl-day-name">${esc(UI.fmtDateOnly(entries[0][0].at))}</h3><ul class="rows cl-tl">${entries.map(([e, i]) => timelineRow(e, i === firstNew)).join("")}</ul></section>`).join("")}</div>
+      <div class="cl-days">${[...days.entries()].map(([day, entries]) => `<section class="cl-day"><h3 class="cl-day-name">${esc(UI.fmtDateOnly(`${day}T00:00:00Z`))}</h3><ul class="rows cl-tl">${entries.map(([e, i]) => timelineRow(e, i === firstNew)).join("")}</ul></section>`).join("")}</div>
       ${left ? `<p class="cl-more"><button class="btn btn-small" data-cl-tl-more>${t("Show more")} (${UI.num(left)})</button></p>` : ""}`;
   }
 

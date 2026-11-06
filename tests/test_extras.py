@@ -285,3 +285,21 @@ def test_the_test_button_says_how_many_free_requests_are_left(engine, key, web):
 def test_google_ads_is_no_longer_a_key_the_app_takes(engine, key):
     with pytest.raises(Refused):
         sources.save_app_key(engine, "googleads", "x")
+
+
+def test_a_backup_doesnt_hang_on_a_dump_full_of_warnings(tmp_path, monkeypatch):
+    import subprocess
+    import sys
+    import threading
+
+    monkeypatch.setattr(backup_db.shutil, "which", lambda name: "/fake/dump")
+    noisy = "import sys; sys.stderr.write('warning ' * 50000); sys.stderr.flush(); sys.stdout.write('-- dump')"
+    done = []
+
+    def runner(command, **kwargs):
+        return subprocess.Popen([sys.executable, "-c", noisy], **kwargs)
+
+    worker = threading.Thread(target=lambda: done.append(backup_db.run(tmp_path, runner=runner)), daemon=True)
+    worker.start()
+    worker.join(20)
+    assert done and gzip.open(done[0]).read() == b"-- dump"

@@ -13,6 +13,9 @@ from seo.core.errors import Refused
 from seo.crawl.guard import is_public_url
 
 
+MAX_REQUEST_BYTES = 26 * 1024 * 1024
+
+
 def create_app(engine: Engine | None = None, url_allowed: Callable[[str], bool] = is_public_url, screens_dir: str | Path | None = None, auth: bool = True, secret_key: str | None = None) -> Flask:
     from seo.core.db import make_engine
     from seo.metrics import backlink_traffic
@@ -47,6 +50,13 @@ def create_app(engine: Engine | None = None, url_allowed: Callable[[str], bool] 
         from seo.web.auth import install
 
         install(app, secret_key or crypto.derived_secret("session"), https=config.get("SEO_HTTPS", "") == "1")
+
+    # The largest thing anyone sends is a note's file. Past that, nothing is read into memory.
+    app.config["MAX_CONTENT_LENGTH"] = MAX_REQUEST_BYTES
+
+    @app.errorhandler(413)
+    def too_large(_error):
+        return jsonify(error=f"That upload is too large. The limit is {MAX_REQUEST_BYTES // (1024 * 1024)} MB."), 413
 
     @app.errorhandler(Refused)
     def refused(error: Refused):

@@ -2099,3 +2099,54 @@ def test_the_add_domain_route_takes_the_account_name(world):
     reply = world.client.post("/api/link-gaps/add-domain", json={"domain": "fresh.example", "competitors": [rival]})
     assert reply.status_code == 200 and reply.json["domain"] == "fresh.example"
     assert world.client.post("/api/link-gaps/add-domain", json={"domain": "fresh.example", "extra": 1}).status_code == 400
+
+
+def test_a_spam_row_with_no_address_is_counted_once(world):
+    rival, _ = edit_world(world)
+    report = gaps.import_referrers(world.engine, world.own, rival, b"Source url,Toxic Score\nn/a,99\nhttps://fine.example/post,2\n", "links.csv")
+    assert report["removed"] == 1 and report["removed_no_url"] == 1 and report["removed_spam"] == 0 and report["kept"] == 1
+
+
+def test_a_page_pair_counts_a_keyword_once_however_many_engines_checked_it():
+    from types import SimpleNamespace
+
+    def check(engine, mine, theirs):
+        rows = [SimpleNamespace(url="https://mine.example/a", position=mine), SimpleNamespace(url="https://rival.example/a", position=theirs)]
+        return SimpleNamespace(keyword_id=1, keyword="coffee", engine=engine, depth=10, results=rows)
+
+    summary = pairs.ranking_summary([check("bing", 1, 9), check("google", 5, 3)], "https://mine.example/a", "https://rival.example/a")
+    assert (summary["shared"], summary["they_ahead"], summary["i_ahead"], summary["gap"], summary["keywords_total"]) == (1, 1, 0, 2, 1)
+
+
+def test_a_suggested_rivals_average_doesnt_mix_engines(world):
+    world.tools["google"] = [FakeTool("Credits", free_monthly=100, results={"*": ["https://rival-a.example/x"]})]
+    run = keywords.upload(world.engine, world.own, "coffee")
+    world.drain()
+    keyword_id = store.latest_checks(world.engine, world.own)[0].keyword_id
+    rows = [Found(i + 1, f"https://filler{i}.example/", "T") for i in range(8)] + [Found(9, "https://rival-a.example/x", "T")]
+    store.save_check(world.engine, keyword_id, "bing", Answer("Other", "FR", 10, rows, NOT_CAPTURED, [], 1), "refresh")
+    found = next(s for s in suggest.suggestions(world.engine, world.own)["suggestions"] if s["domain"] == "rival-a.example")
+    assert run and found["average_position"] == 1
+
+
+def test_a_tools_hourly_limit_isnt_called_this_months_and_the_list_carries_on_in_an_hour(world):
+    tool = FakeTool("Credits", free_monthly=100)
+    tool.per_hour = 2
+    world.tools["google"] = [tool]
+    run = keywords.upload(world.engine, world.own, "one\ntwo\nthree\nfour")
+    world.drain()
+    stopped = run_of(world, run["id"])
+    assert stopped["status"] == "waiting" and stopped["checked"] == 2
+    assert "this hour" in stopped["stop_reason"] and "this month" not in stopped["stop_reason"]
+    with world.engine.connect() as conn:
+        wait = conn.execute(text("SELECT TIMESTAMPDIFF(MINUTE, UTC_TIMESTAMP(3), run_after) FROM jobs WHERE status = 'queued' AND kind = :k ORDER BY id DESC LIMIT 1"), {"k": keywords.JOB_KIND}).scalar()
+    assert wait is not None and 55 <= wait <= 60
+
+
+def test_a_month_with_no_credits_left_still_says_so(world):
+    tool = FakeTool("Credits", free_monthly=1)
+    tool.per_hour = 50
+    world.tools["google"] = [tool]
+    run = keywords.upload(world.engine, world.own, "one\ntwo")
+    world.drain()
+    assert "this month" in run_of(world, run["id"])["stop_reason"]
