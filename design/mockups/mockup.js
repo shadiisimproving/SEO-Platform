@@ -2861,6 +2861,7 @@
           if (kind === "own") {
             // On the real API the site joins the menu's list by its address. Its own try, because the catch below is for the form, and that's closed now.
             try { if (await COMP.isServer()) noteRealSites((await COMP.api("GET", "links/sites")).sites); } catch { /* it stays out of the menu until the next load */ }
+            COMP.refreshLogos?.({ watch: true }); // its icon arrives about a minute later
             listed = window.SITES.find((s) => s.host === site.host) || null;
             if (listed) state.site = listed.id;
           }
@@ -3557,7 +3558,7 @@
   // ---- what screens in their own files can use ------------------------------------------
   window.UI = {
     $, $$, state, store, t, num, dec, esc, icon, status, logo, siteLogo, setHTML, fragment, locale, reduceMotion,
-    topbar, tile, cnt, spark, delta, toast, render, go, openPanel, closePanel, panelHead, forgetPanelForm,
+    topbar, tile, cnt, spark, delta, toast, render, renderSidebar, go, openPanel, closePanel, panelHead, forgetPanelForm,
     countryName, countryOptions, COUNTRY_CODES, fmtStamp, fmtDateOnly, ENGINES, WHOLE_SITE_WORDS, BUDGET_PAUSE_WORDS, readingWords,
     siteHostPicked: () => (state.site === "all" ? null : window.SITES.find((x) => x.id === state.site)?.host || null),
     ignoreClicks: (ms = 400) => { ignoreClicksUntil = performance.now() + ms; },

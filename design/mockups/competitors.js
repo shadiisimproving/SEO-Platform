@@ -163,6 +163,8 @@
         if (active?.matches?.("input, textarea, select")) return; // never redraw under someone typing: the next look catches up
         const scroll = UI.$("#main")?.scrollTop;
         if (UI.state.route === "competitors" && UI.$("#comp-body")) COMP.paint(); else if (["backlinks"].includes(UI.state.route)) UI.render();
+        // The site menu's button was drawn with letters before the list arrived. An open menu is left alone: it has the icons already.
+        if (!UI.$("#popover")) UI.renderSidebar?.();
         if (UI.$("#main") && scroll !== undefined) UI.$("#main").scrollTop = scroll;
       }
     };
