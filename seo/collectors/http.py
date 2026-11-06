@@ -26,6 +26,9 @@ def _message(reply: httpx.Response) -> str:
     except ValueError:
         return reply.text[:200]
     error = body.get("error") if isinstance(body, dict) else None
+    errors = body.get("errors") if isinstance(body, dict) else None
+    if isinstance(errors, list) and errors and all(isinstance(e, dict) for e in errors):  # Cloudflare's shape
+        return "; ".join(f"{e.get('message') or 'error'}" + (f" (code {e['code']})" if e.get("code") is not None else "") for e in errors)[:300]
     if isinstance(error, dict):
         return str(error.get("message") or error)[:300]
     if isinstance(body, dict) and body.get("message"):

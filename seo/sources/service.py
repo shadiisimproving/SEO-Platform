@@ -272,12 +272,17 @@ def test_app_key(engine: Engine, source: str) -> dict:
             note_app_key(engine, source, None)
             return {"ok": True, "note": "Works.", "left": daily.get("remaining"), "of": daily.get("limit")}
         elif source == "cloudflare":
-            http.request("GET", "https://api.cloudflare.com/client/v4/user/tokens/verify", tool, headers={"Authorization": f"Bearer {key}"})
+            # Radar itself, not /user/tokens/verify: that one rejects account API tokens as "Invalid API Token",
+            # though they read Radar fine. This also proves the token has Radar access. It costs nothing.
+            http.request("GET", "https://api.cloudflare.com/client/v4/radar/ranking/top", tool, params={"limit": 1}, headers={"Authorization": f"Bearer {key}"})
         else:
             return {"ok": None, "note": "This key can't be checked until it's first used."}
     except SourceError as exc:
-        note_app_key(engine, source, str(exc))
-        return {"ok": False, "note": str(exc)}
+        message = str(exc)
+        if source == "cloudflare" and exc.kind == "auth":
+            message = message.rstrip(".") + ". Use an API token with Account, Radar, Read access, made under API Tokens. The Global API Key and the Origin CA key don't work here."
+        note_app_key(engine, source, message)
+        return {"ok": False, "note": message}
     note_app_key(engine, source, None)
     return {"ok": True, "note": "Works."}
 

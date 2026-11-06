@@ -303,3 +303,16 @@ def test_a_backup_doesnt_hang_on_a_dump_full_of_warnings(tmp_path, monkeypatch):
     worker.start()
     worker.join(20)
     assert done and gzip.open(done[0]).read() == b"-- dump"
+
+
+def test_a_cloudflare_token_is_tested_on_radar_itself_and_its_refusal_reads_plainly(engine, key, web):
+    sources.save_app_key(engine, "cloudflare", "cf-token-1234")
+    web.answers["radar/ranking/top"] = httpx.Response(200, json={"success": True, "result": {"top_0": [{"domain": "google.com"}]}})
+    assert sources.test_app_key(engine, "cloudflare") == {"ok": True, "note": "Works."}
+    assert "radar/ranking/top" in str(web.calls[-1].url) and web.calls[-1].headers["Authorization"] == "Bearer cf-token-1234"
+    assert all("tokens/verify" not in str(call.url) for call in web.calls), "that address rejects account API tokens"
+    web.answers["radar/ranking/top"] = httpx.Response(400, json={"success": False, "errors": [{"code": 1000, "message": "Invalid API Token"}], "messages": [], "result": None})
+    answer = sources.test_app_key(engine, "cloudflare")
+    assert answer["ok"] is False
+    assert answer["note"].startswith("Cloudflare Radar refused the request: Invalid API Token (code 1000).")
+    assert "Account, Radar, Read" in answer["note"] and "{" not in answer["note"]
