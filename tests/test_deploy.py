@@ -45,6 +45,29 @@ def test_the_live_app_has_login_on_and_secure_cookies(engine, key, monkeypatch):
     assert client.get("/login").status_code == 200
 
 
+def _path_seen(environ):
+    from seo.web.paths import decoded_paths
+
+    seen = {}
+    decoded_paths(lambda env, start: seen.setdefault("path", env["PATH_INFO"]))(environ, None)
+    return seen["path"]
+
+
+def test_a_path_passenger_left_encoded_is_decoded_once():
+    # As o2switch's Passenger sends it: still escaped, exactly as the browser wrote it. Bright Data couldn't be saved.
+    assert _path_seen({"PATH_INFO": "/api/connections/Bright%20Data", "REQUEST_URI": "/api/connections/Bright%20Data?x=1"}) == "/api/connections/Bright Data"
+    assert _path_seen({"PATH_INFO": "/api/logos/caf%C3%A9.example"}) == "/api/logos/café.example".encode().decode("latin-1")
+    # A server that already decoded it is left alone, so a real % is never decoded twice.
+    assert _path_seen({"PATH_INFO": "/api/x/100%25 off", "REQUEST_URI": "/api/x/100%2525%20off"}) == "/api/x/100%25 off"
+    assert _path_seen({"PATH_INFO": "/api/connections/HasData", "REQUEST_URI": "/api/connections/HasData"}) == "/api/connections/HasData"
+
+
+def test_the_live_app_decodes_passengers_paths(engine, key, monkeypatch):
+    monkeypatch.setenv("DB_NAME", engine.url.database)
+    application = runpy.run_path(str(ROOT / "passenger_wsgi.py"))["application"]
+    assert application.wsgi_app.__qualname__.startswith("decoded_paths")
+
+
 # ---- what gets uploaded -------------------------------------------------------------------------------
 def test_the_bundle_has_what_the_app_needs_and_nothing_private():
     paths = [line.strip() for line in (ROOT / "deploy" / "bundle.txt").read_text().splitlines() if line.strip() and not line.startswith("#")]
@@ -300,3 +323,19 @@ def test_no_note_files_yet_is_not_a_problem(tmp_path, monkeypatch):
 
     monkeypatch.setenv("SEO_NOTE_FILES", str(tmp_path / "nothing-here"))
     assert backup_db.run_note_files(tmp_path / "backups") is None
+
+
+def test_bright_data_can_be_saved_when_the_path_arrives_encoded(engine, key):
+    import json
+
+    from werkzeug.test import EnvironBuilder, run_wsgi_app
+
+    from seo.web import create_app
+    from seo.web.paths import decoded_paths
+
+    app = create_app(engine=engine, auth=False)
+    environ = EnvironBuilder(method="PUT", path="/api/connections/x", json={"key": "k-1234", "zone": ""}).get_environ()
+    environ["PATH_INFO"] = environ["REQUEST_URI"] = "/api/connections/Bright%20Data"
+    body, status, _ = run_wsgi_app(decoded_paths(app.wsgi_app), environ)
+    answer = json.loads(b"".join(body))
+    assert status.startswith("400") and "zone" in answer["error"], answer  # Bright Data's own answer, not "doesn't take a key"
