@@ -1,5 +1,5 @@
 // A person's first hour: sign in, connect Google, pick properties, fetch data, read every screen that used to say Soon.
-const { open } = require("./pw.cjs");
+const { open, menu } = require("./pw.cjs");
 const OUT = process.env.OUT, BASE = process.env.BASE;
 const shot = (page, name) => page.screenshot({ path: `${OUT}/${name}.png`, fullPage: false });
 (async () => {
@@ -77,8 +77,8 @@ const shot = (page, name) => page.screenshot({ path: `${OUT}/${name}.png`, fullP
   await page.fill('#lv-resource-form [name="f_url"]', "https://docs.example/brief");
   await page.click("[data-lv-resource-save]"); await page.waitForTimeout(600);
   await shot(page, "21-resource-added");
-  await page.click('[data-mock="lang"]'); await page.waitForTimeout(300);
-  await page.click('[data-mock="theme"]'); await page.waitForTimeout(300);
+  await menu(page, "lang"); await page.waitForTimeout(300);
+  await menu(page, "theme"); await page.waitForTimeout(300);
   for (const [route, name] of [["overview", "30-fr-dark-overview"], ["channels", "31-fr-dark-channels"], ["content", "32-fr-dark-content"], ["today", "33-fr-dark-today"], ["settings", "34-fr-dark-settings"]]) {
     await page.click(`button[data-go="${route}"]`); await page.waitForTimeout(800); await shot(page, name);
   }
@@ -98,11 +98,11 @@ const shot = (page, name) => page.screenshot({ path: `${OUT}/${name}.png`, fullP
   say("short new password:", await second.page.textContent("#err"));
   await second.page.fill("#next", "a much longer password"); await second.page.click('#change button');
   await second.page.waitForSelector(".nav-item"); await second.page.waitForTimeout(600);
-  await second.page.click('button[data-go="settings"]'); await second.page.waitForTimeout(500);
+  await menu(second.page, "settings"); await second.page.waitForTimeout(500);
   await second.page.click('[data-lv-tab="team"]'); await second.page.waitForTimeout(500);
   await shot(second.page, "51-member-team");
   say("member sees add person:", Boolean(await second.page.$("[data-lv-user-new]")));
-  await second.page.click("[data-lv-signout]"); await second.page.waitForTimeout(600);
+  await menu(second.page, "signout"); await second.page.waitForTimeout(600);
   say("after sign out:", second.page.url());
   console.log("PROBLEMS:", JSON.stringify([...new Set([...problems, ...second.problems])], null, 0).slice(0, 1500));
   await second.browser.close();

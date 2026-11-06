@@ -6,7 +6,7 @@
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
-const { open } = require("./pw.cjs");
+const { open, menu } = require("./pw.cjs");
 
 const ROOT = process.env.SCREENS_URL || "http://127.0.0.1:8231/";
 const DIR = process.env.CLARITY_DIR;
@@ -112,7 +112,7 @@ const settle = (page, ms = 700) => page.waitForTimeout(ms);
 
   // All sites, in French, and on a phone.
   await page.click("#site-switch"); await page.click('[data-pick-site="all"]'); await settle(page, 1200);
-  await page.click('.side-prefs [data-mock="lang"]').catch(() => page.click('[data-mock="lang"]')); await settle(page, 800);
+  await menu(page, "lang"); await settle(page, 800);
   text = await page.locator(".content").innerText();
   check("French: AI search table", text.includes("Cité par Microsoft Copilot") && text.includes("Part d'autorité"), text.slice(0, 400));
   await shot(page, "7-ai-all-fr");

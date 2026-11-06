@@ -90,11 +90,6 @@
       const tab = (id, word) => `<button class="tab" role="tab" data-lv-tab="${id}" aria-selected="${L.tab === id}">${t(word)}</button>`;
       return tab("connections", "Connections") + tab("sites", "Sites") + tab("team", "Team") + tab("domains", "Important domains");
     },
-    accountRow() {
-      const me = window.BOOT.user;
-      if (!me) return "";
-      return `<div class="lv-acct"><span class="who" title="${esc(me.email)}" dir="auto">${esc(me.name)}</span><button class="btn btn-small btn-ghost" data-lv-signout aria-label="${t("Sign out")}">${icon("log-out")}<span class="label">${t("Sign out")}</span></button></div>`;
-    },
     googleExtras() {
       const list = L.data?.google || [];
       if (!list.length) return "";

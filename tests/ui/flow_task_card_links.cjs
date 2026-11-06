@@ -1,6 +1,6 @@
 // By hand, as a hurried person: the whole card opens a task, pages and keywords link it, and it shows where it's linked.
 // Usage: node tests/ui/flow_task_card_links.cjs [base url] [folder for screenshots]
-const { open } = require("./pw.cjs");
+const { open, menu } = require("./pw.cjs");
 const base = process.argv[2] || "http://127.0.0.1:8201/index.html";
 const shots = process.argv[3] || ".";
 const results = [];
@@ -140,18 +140,18 @@ const check = (name, ok, extra = "") => { results.push(ok); console.log(`${ok ? 
   await page.screenshot({ path: `${shots}/table.png` });
   await page.locator('[data-task-view="kanban"]').click();
   await settle();
-  await page.locator('[data-mock="theme"]').first().click();
+  await menu(page, "theme");
   await settle();
   await page.screenshot({ path: `${shots}/board-dark.png` });
   await page.locator('[data-task-card]').first().click();
   await settle();
   await page.screenshot({ path: `${shots}/task-dark.png` });
   await esc();
-  await page.locator('[data-mock="theme"]').first().click();
-  await page.locator('[data-mock="lang"]').first().click();
+  await menu(page, "theme");
+  await menu(page, "lang");
   await settle();
   await page.screenshot({ path: `${shots}/board-fr.png` });
-  await page.locator('[data-mock="lang"]').first().click();
+  await menu(page, "lang");
   await settle();
   await page.setViewportSize({ width: 390, height: 800 });
   await settle();

@@ -84,11 +84,21 @@
 [data-look="clear"] .tk-col:nth-child(2) .tk-col-head h2::before { background: var(--accent-2); }
 [data-look="clear"] .tk-col:nth-child(3) .tk-col-head h2::before { background: var(--good); }
 
-/* Dark mode and language, now in the side menu. */
-.side-prefs { display: flex; gap: 4px; }
-.side-prefs .nav-item { flex: 1 1 0; min-width: 0; }
-.app.rail .side-prefs { flex-direction: column; }
-@media (max-width: 860px) { .app.rail .side-prefs { flex-direction: row; } }
+/* The foot of the side menu: one account row, opening Settings, dark mode, language and sign out (mockup.js sideAccount). */
+.side-acct { display: flex; align-items: center; gap: 4px; }
+.side-acct .acct-btn { flex: 1 1 auto; min-width: 0; margin: 0; }
+.side-acct .acct-btn .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+.side-acct .acct-btn .chev { width: 14px; height: 14px; flex: none; }
+.acct-av { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; flex: none; font-size: 11px; font-weight: 700; background: var(--accent-2); color: var(--on-accent); }
+.side-acct .rail-toggle { flex: none; }
+.app.rail .side-acct { flex-direction: column; }
+.app.rail .side-acct .chev { display: none; }
+@media (max-width: 860px) { .app.rail .side-acct { flex-direction: row; } .app.rail .side-acct .chev { display: inline; } }
+.acct-menu { min-width: 220px; }
+.acct-menu .acct-who { padding: 8px 10px 6px; min-width: 0; }
+.acct-menu .acct-who .t { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct-menu .acct-who .s { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.acct-menu hr { margin: 4px 0; }
 
 /* ---- The side menu floats, and a little frosted glass stays on the top bar, where content scrolls under it ---- */
 [data-look="clear"][data-theme="light"] { --sky-base: #F6F7F9; --line: #E7EAEE; --th-bg: #F8F9FA; }
@@ -98,3 +108,5 @@
 [data-look="clear"][data-theme="light"] .topbar { background: rgba(255, 255, 255, .82); -webkit-backdrop-filter: blur(16px) saturate(140%); backdrop-filter: blur(16px) saturate(140%); }
 [data-look="clear"][data-theme="dark"] .topbar { background: rgba(30, 36, 43, .84); -webkit-backdrop-filter: blur(16px) saturate(140%); backdrop-filter: blur(16px) saturate(140%); }
 [data-look="clear"] .sidebar { box-shadow: var(--shadow), inset 0 0 0 1px var(--line); }
+/* On a phone the side menu is a drawer at z-index 50, so a menu opened from it (sites, account) must sit above it. */
+@media (max-width: 860px) { .popover { z-index: 55; } }

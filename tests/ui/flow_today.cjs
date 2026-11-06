@@ -1,6 +1,6 @@
 // Today, sample and real app, the way a person uses it, with screenshots to look at.
 // Needs: design/serve.py on 8201, and DB_NAME_TEST=seo_cc_snap_test .venv/bin/python tests/ui/app_server.py --port 8230 --slow 0
-const { open } = require("./pw.cjs");
+const { open, menu } = require("./pw.cjs");
 const out = process.argv[2] || "reports/today-redesign-2026-11-05";
 const SAMPLE = "http://127.0.0.1:8201/index.html", REAL = process.argv[3] || "http://127.0.0.1:8230/";
 const fails = [];
@@ -120,17 +120,16 @@ async function shared(page, label) {
   await page.click('button[data-lv-table="today-visits"]'); await settle(page, 400);
   check(!!(await page.$(".today-num table.data")), "real: a graph can be read as a table");
   await page.click('button[data-lv-table="today-visits"]'); await settle(page, 300);
-  const fr = await page.$('.side-prefs [data-mock="lang"]');
-  if (fr) { await fr.click(); await settle(page, 700); }
+  await menu(page, "lang"); await settle(page, 700);
   await shot(page, "after-real-french");
   const frLead = (await facts(page)).lead;
   check(/^Demandes .*derniers jours/.test(frLead), `real: French sentence: ${frLead}`);
   const frRows = await rowsText(page);
   check(!frRows.some((x) => /expires on|health fell/.test(x)), `real: French to-do rows: ${frRows.join(" / ")}`);
-  await page.click('.side-prefs [data-mock="lang"]'); await settle(page, 500);
-  await page.click('.side-prefs [data-mock="theme"]'); await settle(page, 700);
+  await menu(page, "lang"); await settle(page, 500);
+  await menu(page, "theme"); await settle(page, 700);
   await shot(page, "after-real-dark");
-  await page.click('.side-prefs [data-mock="theme"]'); await settle(page, 400);
+  await menu(page, "theme"); await settle(page, 400);
   await page.setViewportSize({ width: 390, height: 844 }); await settle(page, 500);
   check(!(await overflow(page)), "real: no sideways scroll at 390");
   await shot(page, "after-real-390");
@@ -156,11 +155,11 @@ async function shared(page, label) {
   if (process.env.AXE_PATH) {
     const scan = async (label, url, dark) => {
       await page.goto("about:blank"); await page.goto(url); await page.waitForSelector(".today-lead"); await settle(page, 1500);
-      if (dark) { await page.click('.side-prefs [data-mock="theme"]'); await settle(page, 800); }
+      if (dark) { await menu(page, "theme"); await settle(page, 800); }
       await page.addScriptTag({ path: process.env.AXE_PATH });
       const found = await page.evaluate(async () => (await window.axe.run("#page", { resultTypes: ["violations"] })).violations.map((v) => `${v.id} (${v.impact}): ${v.nodes.slice(0, 3).map((n) => n.target.join(" ")).join(" ; ")}`));
       check(!found.length, `${label}: accessibility scan ${found.length ? found.join(" || ") : "clean"}`);
-      if (dark) await page.click('.side-prefs [data-mock="theme"]');
+      if (dark) await menu(page, "theme");
     };
     await scan("sample light", `${SAMPLE}#today`, false);
     await scan("sample dark", `${SAMPLE}#today`, true);

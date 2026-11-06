@@ -11,4 +11,11 @@ async function open({ width = 1440, height = 900, url } = {}) {
   if (url) await page.goto(url);
   return { browser, context, page, problems };
 }
-module.exports = { open };
+/* Dark mode, language, Settings and sign out sit in the account menu at the foot of the side menu (since 2026-11-06).
+   menu(page, "lang" | "theme" | "settings" | "signout") opens it and presses that item. */
+async function menu(page, item) {
+  if (!(await page.$("#popover.acct-menu"))) await page.click("#acct-btn");
+  const target = { lang: '#popover [data-mock="lang"]', theme: '#popover [data-mock="theme"]', settings: '#popover [data-go="settings"]', signout: "#popover [data-lv-signout]" }[item];
+  await page.click(target);
+}
+module.exports = { open, menu };

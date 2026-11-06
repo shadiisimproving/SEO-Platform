@@ -1,6 +1,6 @@
 // By hand: type a tool's score into "Links many competitors share", make the mistakes a hurried person makes, go back.
 // Usage: node tests/ui/flow_link_edits.cjs [base url] [folder for screenshots]
-const { open } = require("./pw.cjs");
+const { open, menu } = require("./pw.cjs");
 const base = process.argv[2] || "http://127.0.0.1:8201/index.html";
 const shots = process.argv[3] || ".";
 const results = [];
@@ -168,7 +168,7 @@ const check = (name, ok, extra = "") => { results.push(Boolean(ok)); console.log
   check("it isn't with the good ones", (await page.locator("#cs-links-table tbody tr").filter({ hasText: "best-casino-poker.example" }).count()) === 0);
 
   // French and a phone.
-  await page.locator('[data-mock="lang"]').first().click();
+  await menu(page, "lang");
   await settle();
   await row().locator("[data-cs-edit]").click();
   await settle();
@@ -177,7 +177,7 @@ const check = (name, ok, extra = "") => { results.push(Boolean(ok)); console.log
   await page.locator("#panel").screenshot({ path: `${shots}/edit-panel-fr.png` });
   await page.locator("[data-discard-panel]").click();
   await settle();
-  await page.locator('[data-mock="lang"]').first().click();
+  await menu(page, "lang");
   await settle();
   await page.setViewportSize({ width: 390, height: 800 });
   await settle();

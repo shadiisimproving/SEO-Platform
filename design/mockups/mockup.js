@@ -124,14 +124,25 @@
     return { crit: list.filter((a) => a.sev === "crit").length, warn: list.filter((a) => a.sev === "warn").length, info: list.filter((a) => a.sev === "info").length + window.ATTENTION_EXTRA_INFO };
   };
 
-  // Each button shows what it switches to. A first-run view for testing is at ?data=first.
-  const sidePrefs = () => {
-    const dark = state.theme === "dark", fr = state.lang === "fr";
-    const themeWord = t(dark ? "Light mode" : "Dark mode"), langWord = fr ? "English" : "Français";
-    return `<div class="side-prefs">
-      <button class="nav-item" data-mock="theme" data-v="${dark ? "light" : "dark"}" aria-label="${themeWord}" data-tip="${themeWord}">${icon(dark ? "sun" : "moon")}<span class="label">${t(dark ? "Light" : "Dark")}</span></button>
-      <button class="nav-item" data-mock="lang" data-v="${fr ? "en" : "fr"}" aria-label="${langWord}" data-tip="${langWord}" lang="${fr ? "en" : "fr"}">${icon("languages")}<span class="label">${fr ? "EN" : "FR"}</span></button>
-    </div>${window.LIVE?.accountRow?.() || ""}`;
+  /* The foot of the side menu is one row: who is signed in, opening a small menu, and the collapse button.
+     Settings, dark mode, language and sign out live in that menu, as in most apps. A first-run view for testing is at ?data=first. */
+  const me = () => window.BOOT?.user || null;
+  const sideAccount = () => {
+    const user = me(), name = user ? user.name : t("Settings and display");
+    const mark = user ? `<span class="acct-av" aria-hidden="true">${esc(String(user.name || "?").trim()[0]?.toUpperCase() || "?")}</span>` : icon("settings");
+    const tip = state.rail ? `data-tip="${esc(name)}"` : "";
+    return `<div class="side-acct">
+      <button class="nav-item acct-btn" id="acct-btn" aria-haspopup="true" aria-expanded="false" aria-label="${esc(user ? `${name}: ${t("Settings, display and sign out")}` : name)}" ${state.route === "settings" ? 'aria-current="page"' : ""} ${tip}>${mark}<span class="label" dir="auto">${esc(name)}</span>${icon("chevron-up", "chev muted")}</button>
+      <button class="icon-btn rail-toggle" id="rail-toggle" aria-label="${t(state.rail ? "Expand menu" : "Collapse menu")}" data-tip="${t(state.rail ? "Expand menu" : "Collapse menu")}">${icon("panel-left")}</button>
+    </div>`;
+  };
+  const accountMenu = () => {
+    const user = me(), dark = state.theme === "dark", fr = state.lang === "fr";
+    const who = user ? `<div class="acct-who"><div class="t" dir="auto">${esc(user.name)}</div><div class="s muted" dir="auto">${esc(user.email || "")}</div></div><hr>` : "";
+    return `${who}<button data-go="settings">${icon("settings")}${t("Settings")}</button>
+      <button data-mock="theme" data-v="${dark ? "light" : "dark"}">${icon(dark ? "sun" : "moon")}${t(dark ? "Light mode" : "Dark mode")}</button>
+      <button data-mock="lang" data-v="${fr ? "en" : "fr"}" lang="${fr ? "en" : "fr"}">${icon("languages")}${fr ? "English" : "Français"}</button>
+      ${user ? `<hr><button data-lv-signout>${icon("log-out")}${t("Sign out")}</button>` : ""}`;
   };
 
   function renderSidebar() {
@@ -156,11 +167,7 @@
         </button>
       </div>
       <nav class="nav" aria-label="Main">${items}</nav>
-      <div class="side-foot">
-        ${sidePrefs()}
-        <button class="nav-item" data-go="settings" aria-label="${t("Settings")}" ${state.route === "settings" ? 'aria-current="page"' : ""} ${state.rail ? `data-tip="${t("Settings")}"` : ""}>${icon("settings")}<span class="label">${t("Settings")}</span></button>
-        <button class="nav-item rail-toggle" id="rail-toggle" aria-label="${t(state.rail ? "Expand menu" : "Collapse menu")}" ${state.rail ? `data-tip="${t("Expand menu")}"` : ""}>${icon("panel-left")}<span class="label">${t("Collapse menu")}</span></button>
-      </div>`);
+      <div class="side-foot">${sideAccount()}</div>`);
   }
 
   const compares = ["vs previous period", "vs last year", "No comparison"];
@@ -2816,11 +2823,12 @@
     if (performance.now() < ignoreClicksUntil) return;
 
     // Clicking away only closes the menu. It must not also press whatever is underneath.
-    if ($("#popover") && !hit("#popover") && !hit("#site-switch") && !hit("#columns") && !hit("#period") && !hit("#compare")) { closePopover(); return; }
+    if ($("#popover") && !hit("#popover") && !hit("#site-switch") && !hit("#acct-btn") && !hit("#columns") && !hit("#period") && !hit("#compare")) { closePopover(); return; }
     if ($("#app").classList.contains("nav-open") && !hit("#sidebar") && !hit("#menu-btn")) closeNav();
 
     if ((el = hit("[data-mock]"))) {
       const key = el.dataset.mock, v = el.dataset.v;
+      if (hit("#popover")) closePopover(); // from the account menu: its words would be out of date after the switch
       const apply = () => {
         if (key === "firstRun") { state.firstRun = v === "true"; state.setupHidden = false; state.selected.clear(); resetLinks(); applyFirstRun(); } else state[key] = v;
         closePanel();
@@ -3080,7 +3088,12 @@
       return;
     }
 
-    if ((el = hit("[data-go]"))) { go(el.dataset.go); return; }
+    if ((el = hit("[data-go]"))) { if (hit("#popover")) closePopover(); go(el.dataset.go); return; }
+    if (hit("#acct-btn")) {
+      if ($("#popover")) { closePopover(); return; }
+      popover(hit("#acct-btn"), accountMenu(), "acct-menu");
+      return;
+    }
     if (hit("#rail-toggle")) {
       state.rail = !state.rail;
       // Remember the choice only when it differs from what this width does by itself.
