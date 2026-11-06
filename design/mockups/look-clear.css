@@ -110,3 +110,6 @@
 [data-look="clear"] .sidebar { box-shadow: var(--shadow), inset 0 0 0 1px var(--line); }
 /* On a phone the side menu is a drawer at z-index 50, so a menu opened from it (sites, account) must sit above it. */
 @media (max-width: 860px) { .popover { z-index: 55; } }
+/* An error is one sentence. As a flex row, each brand logo brands.js adds split it into columns, a few words each. */
+.error { display: block; }
+.error > svg.i:first-child { vertical-align: -2px; margin-inline-end: 4px; }
