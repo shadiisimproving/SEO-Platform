@@ -90,9 +90,16 @@
       const tab = (id, word) => `<button class="tab" role="tab" data-lv-tab="${id}" aria-selected="${L.tab === id}">${t(word)}</button>`;
       return tab("connections", "Connections") + tab("sites", "Sites") + tab("team", "Team") + tab("domains", "Important domains");
     },
+    // The key box is emptied once a key is stored, so it says a key is there, or it looks as if nothing saved.
+    savedGoogleNote: () => (L.data?.google?.length ? `${t("A robot key is saved")} (${L.data.google[0].last4}). ${t("Paste a new one only to replace it.")}` : ""),
     googleExtras() {
       const list = L.data?.google || [];
       if (!list.length) return "";
+      // The property lists come from asking Google what this key can see. Ask as the panel opens, so they're never empty for no reason. It's free.
+      if (!L.sc.length && !L.ga.length && Date.now() - (L.autoTestAt || 0) > 30000) {
+        L.autoTestAt = Date.now();
+        setTimeout(async () => { try { showGoogleResult(await api("POST", `google-connections/${list[0].id}/test`, {})); } catch { /* the Test button still shows why */ } }, 50);
+      }
       return `<h3>${t("Google connections")}</h3><ul class="rows" style="margin:0 0 12px">${list.map((g) => `<li><div class="what"><div class="t" dir="auto">${esc(g.label)}</div><div class="d">${t(g.kind === "robot" ? "Robot key" : "OAuth keys")} · ${esc(g.last4)}${g.last_error ? ` · <span class="crit">${esc(g.last_error)}</span>` : ""}</div></div><div class="acts"><button type="button" class="btn btn-small" data-lv-google-test="${g.id}">${t("Test")}</button><button type="button" class="btn btn-small btn-ghost danger" data-lv-google-del="${g.id}" aria-label="${t("Remove")}: ${esc(g.label)}">${t("Remove")}</button></div></li>`).join("")}</ul><p class="help" style="margin:-4px 0 12px">${t("To add another, paste its keys below. Each site then picks which one it uses.")}</p><div id="lv-google-result" role="status"></div>`;
     },
     connectionSelect(site) {
@@ -246,6 +253,14 @@
     } catch (err) { sayError(err.message); button.disabled = false; }
   }
 
+  // A GA4 property has a name, not an address: "Creer Societe Dubai" goes with creer-societe-dubai.fr. Only one clear match counts.
+  const plain = (word) => String(word || "").normalize("NFD").replace(/[^a-z0-9]/gi, "").toLowerCase();
+  function gaMatch(host) {
+    const base = plain(host.replace(/^www\./, "").replace(/\.[^.]+$/, ""));
+    const found = L.ga.filter((p) => plain(p.name) === base);
+    return found.length === 1 ? found[0].id : "";
+  }
+
   function showGoogleResult(answer) {
     const line = (name, part) => (part.ok ? status("good", `${name}: ${t("works")} · ${num(part.properties.length)} ${t(part.properties.length === 1 ? "property" : "properties")}`) : `<div class="error" style="margin:0 0 4px">${icon("octagon-alert")}${esc(name)}: ${esc(t(part.error || "It didn't work."))}</div>`);
     say(`<div style="display:grid;gap:6px;margin-top:6px">${line("Search Console", answer.search_console)}${line("GA4", answer.ga4)}${answer.search_console.ok && !answer.search_console.properties.length ? `<p class="small sec" style="margin:0">${t("It can't see any Search Console property yet. Add its email in Search Console, then test again.")}</p>` : ""}</div>`);
@@ -256,7 +271,7 @@
       const kind = sel.dataset.prop, chosen = sel.value, site = window.SITES.find((s) => s.id === sel.dataset.site);
       const options = kind === "sc" ? L.sc : L.ga.map((p) => p.id);
       const labels = kind === "ga4" ? Object.fromEntries(L.ga.map((p) => [p.id, `${p.name} (${p.id})`])) : {};
-      const match = !chosen && kind === "sc" ? options.find((o) => o === `sc-domain:${site.host}` || o === `https://${site.host}/` || o === `https://www.${site.host}/`) : "";
+      const match = chosen ? "" : kind === "sc" ? options.find((o) => o === `sc-domain:${site.host}` || o === `https://${site.host}/` || o === `https://www.${site.host}/`) : gaMatch(site.host);
       const held = [...sel.options].filter((o) => !o.value || o.value === "__other");
       const list = [...new Set([...options, ...(chosen && chosen !== "__other" ? [chosen] : [])])];
       sel.replaceChildren(...list.map((o) => new Option(labels[o] || o, o)), ...held);
