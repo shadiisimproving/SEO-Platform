@@ -75,6 +75,12 @@
       <p class="help" style="margin:0 0 10px">${t("Upload the file made on your Mac by scripts/clarity_archive_export.py. It only adds days this app doesn't have yet, so uploading twice changes nothing.")}</p>
       <label class="field"><span>${t("File")}</span><input class="input" id="ca-file" type="file" accept=".json,application/json"></label>
       <div id="ca-result" aria-live="polite"></div>
+    </details>
+    <details class="fold how" id="cr-fold"><summary>${icon("chevron-right")}${t("Clarity dashboard downloads")}</summary>
+      <p class="help" style="margin:0 0 10px">${t("In Clarity, open Dashboard and press Export, for each site. Upload the .csv files here, several at once. Each one is kept for its own period: they show on Content and AI search.")}</p>
+      <label class="field"><span>${t("Site")}</span><select class="select" id="cr-site"><option value="">${t("Find it from the file")}</option>${window.SITES.filter((s) => s.realId).map((s) => `<option value="${s.realId}">${esc(s.host)}</option>`).join("")}</select></label>
+      <label class="field"><span>${t("Files")}</span><input class="input" id="cr-file" type="file" accept=".csv,text/csv" multiple></label>
+      <div id="cr-result" aria-live="polite"></div>
     </details>`),
     // These keys belong to the whole app, so asking "which sites?" would offer a choice that nothing keeps.
     appWide: (c) => c.group !== "serp" && c.auth === "key" && !SOURCE_OF[c.id],
@@ -134,6 +140,38 @@
         : `<p class="small sec" style="margin:10px 0 0">${t("Nothing new to add.")}</p>`;
     UI.setHTML(box, archiveRows(answer) + next);
     box.scrollIntoView({ block: "nearest" }); // the button to press is the last thing here, and the panel's footer would cover it
+  }
+
+  // ---- Clarity's dashboard downloads -----------------------------------------------------------------
+  const KIND_WORD = { dashboard: "Dashboard", ai: "AI visibility" };
+  function reportRows(answer) {
+    return `<ul class="rows" style="margin:0">${answer.files.map((f) => f.error
+      ? `<li><div class="what"><div class="t" dir="auto">${esc(f.file)}</div><div class="s crit">${esc(t(f.error))}</div></div></li>`
+      : `<li><div class="what"><div class="t" dir="ltr">${esc(f.host)}</div><div class="s">${f.kinds.map((k) => `${t(KIND_WORD[k.kind] || k.kind)}${k.replaces ? ` (${t(answer.preview ? "replaces the one already here" : "replaced")})` : ""}`).join(", ")} · ${esc(longDay(f.period_start))} – ${esc(longDay(f.period_end))}</div></div></li>`).join("")}</ul>`;
+  }
+  async function sendReports(preview) {
+    const box = UI.$("#cr-result"), files = [...(UI.$("#cr-file")?.files || [])];
+    if (!box || !files.length) return;
+    const form = new FormData();
+    files.forEach((file) => form.append("file", file));
+    const site = UI.$("#cr-site")?.value;
+    if (site) form.append("site_id", site);
+    if (preview) form.append("preview", "1");
+    UI.setHTML(box, `<p class="small sec" style="margin:0">${t(preview ? "Reading the files…" : "Adding them…")}</p>`);
+    let answer;
+    try {
+      answer = await window.COMP.api("POST", "clarity-reports", undefined, { form });
+    } catch (err) { UI.setHTML(box, `<span class="error" style="margin:0" role="alert">${icon("octagon-alert")}${esc(t(err.message))}</span>`); return; }
+    const good = answer.files.filter((f) => !f.error).length;
+    if (!preview) {
+      window.LV?.cache.clear();
+      UI.toast(`${num(good)} ${t(good === 1 ? "file added" : "files added")}`);
+    }
+    const next = !preview ? `<p class="small sec" style="margin:10px 0 0">${t("You'll find them on Content and AI search.")}</p>`
+      : good ? `<div class="test-row" style="margin-top:10px"><button type="button" class="btn btn-main btn-small" id="cr-import">${t("Add")} ${num(good)} ${t(good === 1 ? "file" : "files")}</button></div>`
+        : "";
+    UI.setHTML(box, reportRows(answer) + next);
+    box.scrollIntoView({ block: "nearest" });
   }
 
   // ---- saving a connection ------------------------------------------------------------------------
@@ -344,6 +382,7 @@
       if (hit("[data-lv-signout]")) { take(); window.signOut(); return; }
       if (hit("[data-lv-sources-retry]")) { take(); L.failed = ""; UI.render(); firstLoad(); return; }
       if (hit("#ca-import")) { take(); sendArchive(false); return; }
+      if (hit("#cr-import")) { take(); sendReports(false); return; }
       if ((el = hit("[data-lv-tab]"))) { take(); L.tab = el.dataset.lvTab; UI.render(); return; }
       if ((el = hit("#conn-save"))) { const c = conn(el.dataset.id); if (c && c.group !== "serp") { take(); if (isAdmin()) onSave(el, c); else sayError("Only an admin can do that."); } return; }
       if ((el = hit("#conn-test"))) { const c = conn(UI.$("#conn-save")?.dataset.id); if (c && c.group !== "serp") { take(); onTest(el, c); } return; }
@@ -417,6 +456,7 @@
     }, true);
     document.addEventListener("change", async (e) => {
       if (e.target.id === "ca-file") { sendArchive(true); return; }
+      if (e.target.id === "cr-file" || (e.target.id === "cr-site" && UI.$("#cr-file")?.files?.length)) { sendReports(true); return; }
       const el = e.target.closest?.("[data-lv-user-role]");
       if (!el) return;
       try { await api("PATCH", `team/${el.dataset.lvUserRole}`, { role: el.value }); UI.toast(t("Saved")); } catch (err) { showError(err); }
@@ -465,6 +505,14 @@
   const fr = {
     "Try again": "Réessayer",
     "Old Clarity data": "Anciennes données Clarity",
+    "Clarity dashboard downloads": "Exports du tableau de bord Clarity", "Find it from the file": "Le trouver dans le fichier", "Files": "Fichiers",
+    "In Clarity, open Dashboard and press Export, for each site. Upload the .csv files here, several at once. Each one is kept for its own period: they show on Content and AI search.": "Dans Clarity, ouvrez Tableau de bord et appuyez sur Exporter, pour chaque site. Importez ici les fichiers .csv, plusieurs à la fois. Chacun est gardé pour sa propre période : ils s'affichent dans Contenu et Recherche IA.",
+    "Dashboard": "Tableau de bord", "AI visibility": "Visibilité IA", "replaces the one already here": "remplace celui déjà présent", "replaced": "remplacé",
+    "Reading the files…": "Lecture des fichiers…", "Adding them…": "Ajout en cours…", "file added": "fichier ajouté", "files added": "fichiers ajoutés", "file": "fichier", "files": "fichiers",
+    "You'll find them on Content and AI search.": "Vous les retrouverez dans Contenu et Recherche IA.",
+    "This isn't a Clarity dashboard download. In Clarity, open Dashboard and press Export.": "Ce n'est pas un export du tableau de bord Clarity. Dans Clarity, ouvrez Tableau de bord et appuyez sur Exporter.",
+    "Upload the .csv files Clarity downloads.": "Importez les fichiers .csv téléchargés depuis Clarity.", "This file has no page addresses, so its site can't be found. Pick the site, then upload it again.": "Ce fichier n'a pas d'adresses de pages : son site est introuvable. Choisissez le site, puis importez-le à nouveau.",
+    "Choose the Clarity files first.": "Choisissez d'abord les fichiers Clarity.", "This Clarity file has no date range that can be read.": "Ce fichier Clarity n'a pas de période lisible.",
     "Upload the file made on your Mac by scripts/clarity_archive_export.py. It only adds days this app doesn't have yet, so uploading twice changes nothing.": "Importez le fichier créé sur votre Mac par scripts/clarity_archive_export.py. Il n'ajoute que les jours absents de l'application : l'importer deux fois ne change rien.",
     "to add": "à ajouter", "added": "ajoutés", "already here": "déjà présents", "Nothing new to add.": "Rien de nouveau à ajouter.", "Reading the file…": "Lecture du fichier…", "Adding the days…": "Ajout des jours…",
     "These sites aren't in the app, so their days are left out. Add them as your own sites, then upload the file again:": "Ces sites ne sont pas dans l'application : leurs jours sont ignorés. Ajoutez-les comme vos propres sites, puis importez à nouveau le fichier :",

@@ -349,11 +349,11 @@
       </section>${sessionsOnly ? `<p class="note lv-note">${icon("info")}<span>${num(sessionsOnly)} ${t(sessionsOnly === 1 ? "day here has Clarity sessions only: scroll depth and clicks weren't recorded for it." : "days here have Clarity sessions only: scroll depth and clicks weren't recorded for them.")}</span></p>` : ""}` : "";
     if (!d.pages.length) {
       const blocked = stateCard({ data: { ...d, state: d.ga4.state === "ok" ? d.gsc.state : d.ga4.state, through: d.ga4.through, error: d.ga4.error || d.gsc.error } }, d.ga4.state === "ok" ? "gsc" : "ga4");
-      return page(head, clarityCard + (blocked || emptyCard(t("No data in this period."), t("Pick a longer or earlier period."))));
+      return page(head, clarityReportCard("dashboard") + clarityCard + (blocked || emptyCard(t("No data in this period."), t("Pick a longer or earlier period."))));
     }
     const missing = d.ga4.state !== "ok" ? "Visits and leads need Google Analytics. Until it's connected, they stay blank." : d.gsc.state !== "ok" ? "Google clicks and position need Search Console. Until it's connected, they stay blank." : "";
     return page(head, `
-      ${missing ? `<p class="note lv-note">${icon("info")}<span>${t(missing)}</span></p>` : ""}${hiddenNote(d.hid_rows)}${clarityCard}
+      ${missing ? `<p class="note lv-note">${icon("info")}<span>${t(missing)}</span></p>` : ""}${hiddenNote(d.hid_rows)}${clarityReportCard("dashboard")}${clarityCard}
       <section class="card"><div class="card-head"><h2>${t("All pages")}</h2><span class="end small muted">${num(d.total_pages)} ${t(d.total_pages === 1 ? "page" : "pages")}</span></div>${dataTable("content", [
         { key: "path", label: "Page", get: pageName, html: (r) => `<div class="mono lv-url" dir="auto">${esc(r.path)}</div>${siteOfPage(r)}<div class="lv-cat" dir="auto">${esc(t(r.category))}</div>${UI.relatedTag?.({ host: r.host || UI.siteHostPicked() || "", page: r.path }) || ""}` },
         { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }, { key: "clicks", label: "Google clicks", num: true },
@@ -362,12 +362,104 @@
       <section class="card" style="margin-top:14px"><div class="card-head"><h2>${t("Traffic from social networks")}</h2></div>${d.social.length ? bars(d.social, { value: (r) => r.sessions, label: (r) => r.source }) : `<div class="empty"><p>${t("No visits from social networks in this period.")}</p></div>`}</section>`);
   }
 
+  // ---- Clarity downloads: totals for the file's own period, shown apart from the period picked above ----
+  const crTabs = { dashboard: "pages", ai: "pages" };
+  const pctOf = (v) => (v === null || v === undefined ? "—" : `${decimal(Math.round(v * 10) / 10)} %`);
+  const realVisits = (d) => (d.sessions === null || d.sessions === undefined ? null : Math.max(0, d.sessions - (d.bot_sessions || 0)));
+  const spanOf = (r) => `${esc(shortDay(r.period_start))} – ${esc(shortDay(r.period_end))}`;
+  const grade = (value, good, poor, text) => (value === null || value === undefined ? "—" : `<span class="${value <= good ? "good" : value <= poor ? "warn" : "crit"}">${text}</span> <span class="small muted">${t(value <= good ? "good" : value <= poor ? "needs work" : "slow")}</span>`);
+  const crTabRow = (kind, tabs) => `<div class="tabs" role="tablist" aria-label="${t("Clarity report")}" style="margin:6px 18px 0">${tabs.map(([id, word]) => `<button class="tab" role="tab" data-cr-tab="${kind}:${id}" aria-selected="${crTabs[kind] === id}">${t(word)}</button>`).join("")}</div>`;
+  const pickSite = (s, kind) => {
+    const ui = window.SITES.find((x) => x.realId === s.site_id)?.id;
+    return `${ui ? `<button class="link-btn mono" data-pick-site="${esc(ui)}" dir="ltr">${esc(s.host)}</button>` : `<span class="mono" dir="ltr">${esc(s.host)}</span>`}<div class="lv-cat">${spanOf(s[kind])}</div>`;
+  };
+  const uploadHint = () => `<p class="note lv-note">${icon("info")}<span>${t("Clarity's own dashboard downloads can go in too: Settings → Microsoft Clarity → Clarity dashboard downloads.")} <button class="link-btn" data-lv-connect="clarity">${t("Open it")}</button></span></p>`;
+
+  function clarityReportCard(kind) {
+    const entry = load("metrics/clarity-reports");
+    if (!entry.data) return "";
+    const sites = entry.data.sites.filter((s) => s[kind]);
+    if (!sites.length) return uploadHint();
+    const one = sites.length === 1 && UI.siteIdPicked();
+    const r = sites[0][kind];
+    const older = sites.some((s) => s[kind].older) ? ` · ${t("older downloads are kept")}` : "";
+    const headOf = (title) => `<div class="card-head"><h2>${t(title)}</h2><span class="end small muted">${one ? `${spanOf(r)} · ` : ""}${t("from a Clarity download")}${older}</span></div>`;
+    if (kind === "dashboard") {
+      if (!one) {
+        return `<section class="card" style="margin-bottom:14px">${headOf("Clarity report")}${dataTable("cr-sites", [
+          { key: "host", label: "Site", html: (s) => pickSite(s, "dashboard") },
+          { key: "real", label: "Real visits", num: true, get: (s) => realVisits(s.dashboard) },
+          { key: "bots", label: "Bots", num: true, get: (s) => s.dashboard.bot_sessions },
+          { key: "scroll", label: "Scroll depth", num: true, get: (s) => s.dashboard.scroll_depth, html: (s) => pctOf(s.dashboard.scroll_depth) },
+          { key: "dead", label: "Dead clicks", num: true, get: (s) => s.dashboard.insights?.dead_clicks?.share, html: (s) => pctOf(s.dashboard.insights?.dead_clicks?.share) },
+        ], sites, { csv: false })}<p class="small muted" style="margin:0;padding:10px 18px 14px">${t("Press a site to see its pages, referrers and problems.")}</p></section>`;
+      }
+      const real = realVisits(r), ins = r.insights || {}, perf = r.performance || {};
+      const answer = r.sessions ? `${num(real)} ${t("real visits")}: ${t("Clarity counted")} ${num(r.sessions)} ${t("and marked")} ${num(r.bot_sessions || 0)} ${t("as bots")} (${pctOf((100 * (r.bot_sessions || 0)) / r.sessions)}).` : t("Clarity counted no visits in this file.");
+      const tab = crTabs.dashboard;
+      const body = tab === "referrers"
+        ? `${dataTable("cr-referrers", [{ key: "source", label: "Referrer", html: (x) => `<span class="mono" dir="ltr">${esc(x.source)}</span>` }, { key: "sessions", label: "Visits", num: true }], r.referrers || [], { csv: false, empty: "No referrers in this file." })}${r.own_referrals ? `<p class="small muted" style="margin:0;padding:0 18px 14px">${num(r.own_referrals)} ${t("visits came from the site's own pages, so they're left out.")}</p>` : ""}`
+        : tab === "problems"
+          ? `<div class="lv-two" style="padding:12px 18px 16px;gap:14px">
+              <div><h3 class="small" style="margin:0 0 8px">${t("What visitors ran into")}</h3>${bars([["Dead clicks", ins.dead_clicks], ["Quick back clicks", ins.quick_back], ["Rage clicks", ins.rage_clicks], ["Excessive scrolling", ins.excessive_scrolling]].filter(([, v]) => v).map(([name, v]) => ({ name: t(name), sessions: v.sessions })), { value: (x) => x.sessions, label: (x) => x.name })}
+                <h3 class="small" style="margin:14px 0 8px">${t("JavaScript errors")}: ${num(r.js_errors?.total || 0)}</h3>${(r.js_errors?.top || []).length ? `<ul class="small" style="margin:0;padding-left:18px">${r.js_errors.top.map((x) => `<li><span class="mono">${esc(x.message)}</span> · ${num(x.sessions)}</li>`).join("")}</ul>` : `<p class="small muted" style="margin:0">${t("None.")}</p>`}</div>
+              <div><h3 class="small" style="margin:0 0 8px">${t("Page speed, real visitors")}</h3><ul class="rows" style="margin:0">
+                <li><div class="what"><div class="t">${t("Score")}</div></div><div class="acts">${perf.score === undefined || perf.score === null ? "—" : num(Math.round(perf.score))} / 100</div></li>
+                <li><div class="what"><div class="t">${t("Largest content")} (LCP)</div></div><div class="acts">${grade(perf.lcp_ms, 2500, 4000, perf.lcp_ms === null || perf.lcp_ms === undefined ? "" : `${decimal(Math.round(perf.lcp_ms / 100) / 10)} s`)}</div></li>
+                <li><div class="what"><div class="t">${t("Response to a click")} (INP)</div></div><div class="acts">${grade(perf.inp_ms, 200, 500, `${num(perf.inp_ms)} ms`)}</div></li>
+                <li><div class="what"><div class="t">${t("Layout shift")} (CLS)</div></div><div class="acts">${grade(perf.cls, 0.1, 0.25, decimal(perf.cls))}</div></li></ul></div></div>`
+          : tab === "visitors"
+            ? `<div class="lv-two" style="padding:12px 18px 16px;gap:14px">
+                <div><h3 class="small" style="margin:0 0 8px">${t("Browsers")}</h3>${bars((r.browsers || []).slice(0, 8), { value: (x) => x.sessions, label: (x) => x.name })}</div>
+                <div><ul class="rows" style="margin:0">
+                  <li><div class="what"><div class="t">${t("Unique visitors")}</div></div><div class="acts">${num(r.unique_users)}</div></li>
+                  <li><div class="what"><div class="t">${t("Returning visitors' visits")}</div></div><div class="acts">${num(r.returning_user_sessions)}</div></li>
+                  <li><div class="what"><div class="t">${t("Pages per visit")}</div></div><div class="acts">${decimal(r.pages_per_session === null || r.pages_per_session === undefined ? null : Math.round(r.pages_per_session * 100) / 100)}</div></li>
+                  <li><div class="what"><div class="t">${t("Active time per visit")}</div></div><div class="acts">${num(r.active_seconds)} s</div></li>
+                  ${(r.smart_events || []).map((x) => `<li><div class="what"><div class="t" dir="auto">${esc(t(x.name))}</div><div class="s">${t("Smart event")}</div></div><div class="acts">${num(x.sessions)}</div></li>`).join("")}</ul></div></div>`
+            : dataTable("cr-pages", [{ key: "url", label: "Page", html: (x) => `<span class="mono lv-url" dir="ltr">${esc(x.url.replace(/^https?:\/\/[^/]+/, "") || "/")}</span>` }, { key: "sessions", label: "Visits", num: true }], r.top_pages || [], { csv: false, empty: "No pages in this file." });
+      return `<section class="card" style="margin-bottom:14px">${headOf("Clarity report")}
+        <p style="margin:0;padding:12px 18px 0">${answer}</p>
+        <section class="tiles" style="padding:12px 18px 0;margin:0">
+          ${UI.tile(t("Real visits"), UI.cnt(real), `<span class="ab">${t("of")} ${num(r.sessions)}</span>`, { ic: "activity" })}
+          ${UI.tile(t("Scroll depth"), pctOf(r.scroll_depth), "", { ic: "layers" })}
+          ${UI.tile(t("Dead clicks"), pctOf(ins.dead_clicks?.share), `<span class="ab">${num(ins.dead_clicks?.sessions)} ${t("visits")}</span>`, { ic: "mouse-pointer-click" })}
+          ${UI.tile(t("Speed score"), perf.score === undefined || perf.score === null ? "—" : num(Math.round(perf.score)), `<span class="ab">/ 100</span>`, { ic: "clock" })}
+        </section>
+        ${crTabRow("dashboard", [["pages", "Top pages"], ["referrers", "Referrers"], ["problems", "Problems"], ["visitors", "Visitors"]])}${body}</section>`;
+    }
+    // AI: Copilot's citations of the site
+    if (!one) {
+      return `<section class="card" style="margin-bottom:14px">${headOf("Cited by Microsoft Copilot")}${dataTable("cr-ai-sites", [
+        { key: "host", label: "Site", html: (s) => pickSite(s, "ai") },
+        { key: "citations", label: "Citations", num: true, get: (s) => s.ai.citations },
+        { key: "share", label: "Share of authority", num: true, get: (s) => s.ai.share_of_authority, html: (s) => pctOf(s.ai.share_of_authority) },
+        { key: "visits", label: "AI visits", num: true, get: (s) => s.ai.ai_referral_sessions },
+      ], sites, { csv: false })}<p class="small muted" style="margin:0;padding:10px 18px 14px">${t("Press a site to see which pages and questions.")}</p></section>`;
+    }
+    const top = (r.pages || [])[0];
+    const answer = r.citations ? `${t("Copilot cited this site")} ${num(r.citations)} ${t(r.citations === 1 ? "time" : "times")}${top ? `, ${t("most often")} <span class="mono" dir="ltr">${esc(top.url.replace(/^https?:\/\/[^/]+/, "") || "/")}</span> (${num(top.citations)})` : ""}.` : t("Copilot didn't cite this site in this file's period.");
+    const tab = crTabs.ai;
+    const body = tab === "questions"
+      ? (r.queries === undefined ? `<div class="empty"><p>${t("This download has no questions table. In Clarity, include the questions when you export, then upload it again.")}</p></div>`
+        : dataTable("cr-ai-questions", [{ key: "query", label: "Question", html: (x) => `<span dir="auto">${esc(x.query)}</span>` }, { key: "citations", label: "Citations", num: true }, { key: "share", label: "Share of authority", num: true, html: (x) => pctOf(x.share) }], r.queries, { csv: false, empty: "No questions in this file." }))
+      : dataTable("cr-ai-pages", [{ key: "url", label: "Page", html: (x) => `<span class="mono lv-url" dir="ltr">${esc(x.url.replace(/^https?:\/\/[^/]+/, "") || "/")}</span>` }, { key: "citations", label: "Citations", num: true }], r.pages || [], { csv: false, empty: "No cited pages in this file." });
+    return `<section class="card" style="margin-bottom:14px">${headOf("Cited by Microsoft Copilot")}
+      <p style="margin:0;padding:12px 18px 0">${answer}</p>
+      <section class="tiles" style="padding:12px 18px 0;margin:0">
+        ${UI.tile(t("Citations"), UI.cnt(r.citations), "", { ic: "file-text" })}
+        ${UI.tile(t("Share of authority"), pctOf(r.share_of_authority), `<span class="ab">${t("of Copilot's answers on these questions")}</span>`, { ic: "percent" })}
+        ${UI.tile(t("AI visits"), UI.cnt(r.ai_referral_sessions), `<span class="ab">${t("counted by Clarity")}</span>`, { ic: "sparkles" })}
+      </section>
+      ${crTabRow("ai", [["pages", "Cited pages"], ["questions", "Questions"]])}${body}</section>`;
+  }
+
   // ---- AI search --------------------------------------------------------------------------------
   function aiPage() {
     const entry = load("metrics/ai");
     const blocked = stateCard(entry, "ga4");
     const head = topbarFor("AI search", "Visits from AI assistants, from Google Analytics", entry);
-    if (blocked) return page(head, blocked);
+    if (blocked) return page(head, clarityReportCard("ai") + blocked);
     const d = entry.data;
     const list = d.domains.map((name) => `<span class="tag mono" dir="auto">${esc(name)}</span>`).join(" ");
     const body = d.sessions ? `
@@ -377,7 +469,7 @@
         <section class="card"><div class="card-head"><h2>${t("Pages they land on")}</h2></div>${dataTable("ai-pages", [{ key: "path", label: "Page", get: pageName, html: (r) => `<span class="mono lv-url" dir="auto">${esc(r.path)}</span>${siteOfPage(r)}` }, { key: "sessions", label: "Visits", num: true }], d.pages, { csv: false, empty: "No landing pages in this period." })}</section>
       </div>` : emptyCard(t("No visits from AI assistants in this period."), t("That's a real zero: Google Analytics has data, and none of it came from the assistants listed below."));
     return page(head, `
-      <p class="small muted" style="margin:0 0 12px">${throughNote(d.through)}</p>${hiddenNote(d.hid_rows)}
+      <p class="small muted" style="margin:0 0 12px">${throughNote(d.through)}</p>${hiddenNote(d.hid_rows)}${clarityReportCard("ai")}
       <section class="tiles">
         ${UI.tile(t("AI visits"), UI.cnt(d.sessions), change(d.sessions, d.before), { ic: "sparkles" })}
         ${UI.tile(t("Leads"), num(d.leads), "", { ic: "filter" })}
@@ -461,6 +553,13 @@
       if (hit("[data-lv-retry]")) { forget(); UI.render(); return; }
       if (hit("[data-lv-add-site]")) { document.getElementById("site-switch")?.click(); return; }
       if ((el = hit("[data-lv-metric]"))) { overviewMetric = el.dataset.lvMetric; UI.render(); return; }
+      if ((el = hit("[data-cr-tab]"))) {
+        const [kind, tab] = el.dataset.crTab.split(":");
+        crTabs[kind] = tab;
+        UI.render();
+        document.querySelector(`[data-cr-tab="${kind}:${tab}"]`)?.focus({ preventScroll: true });
+        return;
+      }
       if ((el = hit("[data-lv-table]"))) { LV.tables.set(el.dataset.lvTable, !LV.tables.get(el.dataset.lvTable)); UI.render(); return; }
       if ((el = hit("[data-lv-sort]"))) {
         const id = el.dataset.lvSort, key = el.dataset.key, now = SORTS.get(id);
@@ -604,6 +703,21 @@
     "A resource needs a title.": "Une ressource a besoin d'un titre.", "A link starts with https://.": "Un lien commence par https://.",
     "Page speed": "Vitesse des pages", "Device": "Appareil", "Phone": "Téléphone", "Computer": "Ordinateur", "Score": "Score", "Largest content (s)": "Plus grand contenu (s)", "Response (ms)": "Réactivité (ms)", "Layout shift": "Décalage visuel", "Measured on": "Mesuré sur", "Real visitors": "Vrais visiteurs", "A test run": "Un test",
     "Keyword ideas": "Idées de mots-clés", "From Google's suggestions. Free and unofficial, so it can stop working.": "D'après les suggestions de Google. Gratuit et non officiel : cela peut cesser de fonctionner.", "A word or two": "Un ou deux mots", "Find ideas": "Trouver des idées", "No suggestions for that.": "Aucune suggestion pour cela.", "Type a word or two first.": "Saisissez d'abord un ou deux mots.",
+    "Clarity report": "Rapport Clarity", "from a Clarity download": "d'après un export Clarity", "older downloads are kept": "les exports plus anciens sont conservés",
+    "Real visits": "Vraies visites", "Bots": "Robots", "Press a site to see its pages, referrers and problems.": "Appuyez sur un site pour voir ses pages, ses sites référents et ses problèmes.",
+    "real visits": "vraies visites", "Clarity counted": "Clarity a compté", "and marked": "et en a marqué", "as bots": "comme robots", "Clarity counted no visits in this file.": "Clarity n'a compté aucune visite dans ce fichier.",
+    "Referrer": "Site référent", "No referrers in this file.": "Aucun site référent dans ce fichier.", "visits came from the site's own pages, so they're left out.": "visites venaient des pages du site lui-même : elles sont écartées.",
+    "What visitors ran into": "Ce qui a gêné les visiteurs", "Quick back clicks": "Retours rapides", "Excessive scrolling": "Défilement excessif", "JavaScript errors": "Erreurs JavaScript", "None.": "Aucune.",
+    "Page speed, real visitors": "Vitesse des pages, vrais visiteurs", "Largest content": "Plus grand contenu", "Response to a click": "Réaction à un clic", "good": "bon", "needs work": "à améliorer", "slow": "lent",
+    "Browsers": "Navigateurs", "Unique visitors": "Visiteurs uniques", "Returning visitors' visits": "Visites de visiteurs revenus", "Pages per visit": "Pages par visite", "Active time per visit": "Temps actif par visite", "Smart event": "Événement intelligent",
+    "No pages in this file.": "Aucune page dans ce fichier.", "Speed score": "Score de vitesse", "Top pages": "Pages les plus vues", "Referrers": "Sites référents", "Problems": "Problèmes", "Visitors": "Visiteurs",
+    "Cited by Microsoft Copilot": "Cité par Microsoft Copilot", "Citations": "Citations", "Share of authority": "Part d'autorité", "Press a site to see which pages and questions.": "Appuyez sur un site pour voir quelles pages et quelles questions.",
+    "Copilot cited this site": "Copilot a cité ce site", "time": "fois", "times": "fois", "most often": "le plus souvent", "Copilot didn't cite this site in this file's period.": "Copilot n'a pas cité ce site sur la période de ce fichier.",
+    "This download has no questions table. In Clarity, include the questions when you export, then upload it again.": "Cet export n'a pas le tableau des questions. Dans Clarity, incluez les questions lors de l'export, puis importez-le à nouveau.",
+    "Question": "Question", "No questions in this file.": "Aucune question dans ce fichier.", "No cited pages in this file.": "Aucune page citée dans ce fichier.",
+    "of Copilot's answers on these questions": "des réponses de Copilot sur ces questions", "counted by Clarity": "comptées par Clarity", "Cited pages": "Pages citées", "Questions": "Questions",
+    "Clarity's own dashboard downloads can go in too: Settings → Microsoft Clarity → Clarity dashboard downloads.": "Les exports du tableau de bord Clarity peuvent aussi être ajoutés : Réglages → Microsoft Clarity → Exports du tableau de bord Clarity.",
+    "Contact us": "Nous contacter", "Outbound click": "Clic sortant", "Submit form": "Envoi de formulaire", "Request quote": "Demande de devis", "Book": "Réservation", "Checkout": "Paiement", "See reviews": "Voir les avis",
     "Clarity sessions": "Sessions Clarity", "Scroll depth": "Profondeur de défilement", "Rage clicks": "Clics de rage", "Dead clicks": "Clics morts",
     "Reading the latest data. It appears here when it arrives.": "Lecture des dernières données. Elles s'affichent ici dès leur arrivée.", "Nothing to read yet: connect a data source first, or it's already running.": "Rien à lire pour l'instant : connectez d'abord une source de données, ou la lecture est déjà en cours.",
   };

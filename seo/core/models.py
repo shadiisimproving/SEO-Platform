@@ -921,6 +921,24 @@ class ClarityDaily(Base):
     raw: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
 
+class ClarityReport(Base):
+    """A dashboard CSV downloaded from Clarity: totals for a whole period, so it never goes into clarity_daily.
+    One row per site, kind and period. Uploading the same period again replaces it."""
+
+    __tablename__ = "clarity_reports"
+    __table_args__ = (UniqueConstraint("site_id", "kind", "period_start", "period_end", name="uq_clarity_report_period"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(16))  # "dashboard" or "ai"
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    project_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    data: Mapped[dict] = mapped_column(JSON)
+    uploaded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    uploaded_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
 class BingDaily(Base):
     __tablename__ = "bing_daily"
 

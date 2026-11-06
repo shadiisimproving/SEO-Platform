@@ -5,6 +5,7 @@ from flask import Blueprint, current_app, g, jsonify, request
 
 from seo.core.errors import Refused
 from seo.extras import service as extras, summaries
+from seo.imports import clarity_reports
 from seo.metrics import backlink_traffic, service, today as today_view
 from seo.resources import service as resources
 
@@ -136,6 +137,12 @@ def speed():
 @metrics_api.get("/metrics/clarity")
 def clarity():
     return jsonify(service.clarity(_scope()))
+
+
+@metrics_api.get("/metrics/clarity-reports")
+def clarity_reports_latest():
+    """The newest Clarity download per site. Its period is the file's own, not the one picked on the screen."""
+    return jsonify(clarity_reports.latest(_engine(), _scope().site_ids))
 
 
 @metrics_api.get("/important-domains")

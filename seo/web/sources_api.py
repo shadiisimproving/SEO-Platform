@@ -1,12 +1,12 @@
 """Connections: pasted keys, tests and which site uses what. Keys only come in here. Only their last 4 characters ever go out."""
 from __future__ import annotations
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, g, jsonify, request
 
 from seo.collectors import jobs
 from seo.collectors.http import SourceError
 from seo.core.errors import Refused
-from seo.imports import clarity_archive
+from seo.imports import clarity_archive, clarity_reports
 from seo.sources import service
 from seo.web.auth import require_admin
 
@@ -41,6 +41,24 @@ def import_clarity_archive():
         raise Refused("Choose the file first.")
     data = clarity_archive.read_upload(upload.filename or "", upload.read(clarity_archive.MAX_BYTES + 1))
     return jsonify(clarity_archive.import_archive(_engine(), data, preview=request.form.get("preview") == "1"))
+
+
+@sources_api.post("/clarity-reports")
+def import_clarity_reports():
+    """Clarity's dashboard downloads, several CSVs at once. Send preview=1 first to see which site and period each one is."""
+    require_admin()
+    if (request.content_length or 0) > clarity_reports.MAX_FILES * clarity_reports.MAX_BYTES + 65536:
+        raise Refused("These files are too large together. Upload fewer at once.")
+    files = [(upload.filename or "", upload.read(clarity_reports.MAX_BYTES + 1)) for upload in request.files.getlist("file")]
+    site = request.form.get("site_id") or None
+    try:
+        site_id = int(site) if site else None
+    except ValueError as exc:
+        raise Refused("That site isn't one of yours.") from exc
+    user = getattr(g, "user", None)
+    return jsonify(clarity_reports.import_files(
+        _engine(), files, site_id=site_id, preview=request.form.get("preview") == "1", user_id=user["id"] if user else None,
+    ))
 
 
 @sources_api.post("/google-connections")
