@@ -70,7 +70,55 @@
     return "";
   }
 
-  const refreshBtn = (main = false) => `<button class="btn ${main ? "btn-main" : ""}" data-lv-collect>${icon("refresh-cw")}${t("Refresh data")}</button>`;
+  const readingWord = () => fillIn(t("Reading {done} of {total}…"), LV.reading);
+  const refreshBtn = (main = false) => `<button class="btn ${main ? "btn-main" : ""}" data-lv-collect ${LV.reading ? "disabled" : ""}>${icon("refresh-cw")}<span data-lv-collect-word>${LV.reading ? esc(readingWord()) : t("Refresh data")}</span></button>`;
+  const fillIn = (text, values) => text.replace(/\{(\w+)\}/g, (_, k) => String(values?.[k] ?? ""));
+
+  /* Refresh data only queues reads; a worker runs them (cron each minute on hosting). So the screen follows the reads
+     until they finish, then redraws: before, it looked once after 6 seconds, usually too early, and kept the old answer. */
+  const POLL_MS = 3000, POLL_LIMIT_MS = 180000, OVER = new Set(["done", "dead", "waiting"]);
+  const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+  function showReading() {
+    document.querySelectorAll("[data-lv-collect]").forEach((b) => { b.disabled = !!LV.reading; });
+    document.querySelectorAll("[data-lv-collect-word]").forEach((w) => { w.textContent = LV.reading ? readingWord() : t("Refresh data"); });
+  }
+  async function watchReads(answers, { redraw = true } = {}) {
+    const entries = answers.flatMap((a) => a.jobs || []);
+    const ids = [...new Set(entries.map((e) => e.job_id).filter(Boolean))];
+    const clarityLater = entries.some((e) => e.skipped === "clarity_daily");
+    const laterNote = clarityLater ? ` ${t("Clarity was already read today. It reads again after midnight UTC.")}` : "";
+    if (!ids.length) {
+      UI.toast(t("Nothing to read yet: connect a data source first, or it's already running.") + laterNote, { kind: "info" });
+      return;
+    }
+    UI.toast(t("Reading the latest data. It appears here when it arrives."), { kind: "good" });
+    LV.reading = { done: 0, total: ids.length };
+    showReading();
+    const began = Date.now();
+    let states = [];
+    while (Date.now() - began < POLL_LIMIT_MS) {
+      await sleep(POLL_MS);
+      try { states = (await window.COMP.api("GET", `collect-jobs?ids=${ids.join(",")}`)).jobs; } catch { continue; }
+      // A job missing from the answer was cleaned away, so it's over too.
+      LV.reading.done = ids.length - states.filter((s) => !OVER.has(s.status)).length;
+      showReading();
+      if (LV.reading.done >= ids.length) break;
+    }
+    const finished = LV.reading.done >= ids.length;
+    const failed = states.filter((s) => s.error);
+    LV.reading = null;
+    showReading();
+    if (redraw) { forget(); if (!UI.$("#panel")) UI.render(); }
+    if (!finished) { UI.toast(t("Still reading in the background. The numbers appear here when it finishes: press Refresh data again in a few minutes.") + laterNote, { kind: "info" }); return; }
+    if (failed.length) {
+      const names = [...new Set(failed.map((s) => t(SOURCE_NAMES[s.source] || s.source)))].join(", ");
+      UI.toast(`${fillIn(t("{ok} of {total} read."), { ok: ids.length - failed.length, total: ids.length })} ${fillIn(t("{names} failed: the card on the page says why."), { names })}${laterNote}`, { kind: "crit" });
+      return;
+    }
+    UI.toast(t("Updated with the latest data.") + laterNote, { kind: "good" });
+  }
+  const SOURCE_NAMES = { gsc: "Search Console", ga4: "Google Analytics", bing: "Bing Webmaster", yandex: "Yandex Webmaster", clarity: "Microsoft Clarity", pagespeed: "PageSpeed Insights" };
+  LV.watchReads = watchReads;
   const throughNote = (through, extra = "") => (through ? `<span class="small muted">${t("Data through")} ${esc(shortDay(through))}${extra ? ` · ${esc(t(extra))}` : ""}</span>` : "");
   const hiddenNote = (hid) => (hid ? `<p class="note lv-note">${icon("info")}<span>${t("Google Analytics hid some rows with few visits, so small numbers may be missing. A longer period may show them.")}</span></p>` : "");
 
@@ -575,15 +623,14 @@
       if ((el = hit("[data-lv-more]"))) { LIMITS.set(el.dataset.lvMore, (LIMITS.get(el.dataset.lvMore) || +el.dataset.page) + +el.dataset.page); UI.render(); return; }
       if ((el = hit("[data-lv-csv]"))) { downloadCsv(el.dataset.lvCsv); return; }
       if ((el = hit("[data-lv-collect]"))) {
+        if (LV.reading) return;
         const site = UI.siteIdPicked(), ids = site ? [site] : window.SITES.map((s) => s.realId).filter(Boolean);
         el.disabled = true;
         try {
           const answers = await Promise.all(ids.map((id) => window.COMP.api("POST", `sites/${id}/collect`, {})));
-          const started = answers.reduce((sum, a) => sum + a.started.length, 0);
-          UI.toast(t(started ? "Reading the latest data. It appears here when it arrives." : "Nothing to read yet: connect a data source first, or it's already running."), { kind: started ? "good" : "info" });
-          setTimeout(() => { forget(); if (!UI.$("#panel")) UI.render(); }, 6000);
-        } catch (err) { UI.toast(err.message, { kind: "crit" }); }
-        el.disabled = false;
+          await watchReads(answers);
+        } catch (err) { LV.reading = null; showReading(); UI.toast(err.message, { kind: "crit" }); }
+        el.disabled = !!LV.reading;
         return;
       }
       if ((el = hit("[data-lv-rule-del]"))) {
@@ -731,5 +778,13 @@
     "Clarity sessions": "Sessions Clarity", "Scroll depth": "Profondeur de défilement", "Rage clicks": "Clics de rage", "Dead clicks": "Clics morts",
     "Reading the latest data. It appears here when it arrives.": "Lecture des dernières données. Elles s'affichent ici dès leur arrivée.", "Nothing to read yet: connect a data source first, or it's already running.": "Rien à lire pour l'instant : connectez d'abord une source de données, ou la lecture est déjà en cours.",
   };
+  Object.assign(fr, {
+    "Reading {done} of {total}…": "Lecture {done} sur {total}…",
+    "Clarity was already read today. It reads again after midnight UTC.": "Clarity a déjà été lu aujourd'hui. Il sera relu après minuit UTC.",
+    "Still reading in the background. The numbers appear here when it finishes: press Refresh data again in a few minutes.": "La lecture continue en arrière-plan. Les chiffres apparaîtront ici à la fin : appuyez de nouveau sur Actualiser les données dans quelques minutes.",
+    "{ok} of {total} read.": "{ok} sur {total} lus.",
+    "{names} failed: the card on the page says why.": "{names} a échoué : la carte sur la page explique pourquoi.",
+    "Updated with the latest data.": "Mis à jour avec les dernières données.",
+  });
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 })();

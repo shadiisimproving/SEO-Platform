@@ -89,7 +89,17 @@ def save_source(site_id: int, source: str):
 
 @sources_api.post("/sites/<int:site_id>/collect")
 def collect(site_id: int):
-    return jsonify(started=jobs.collect_now(_engine(), site_id)), 202
+    entries = jobs.collect_now_jobs(_engine(), site_id)
+    return jsonify(started=[e["source"] for e in entries if e["new"]], jobs=entries), 202
+
+
+@sources_api.get("/collect-jobs")
+def collect_jobs():
+    """Where the reads started by Refresh data are, so the screen redraws when they finish, not after a guess."""
+    raw = [part for part in request.args.get("ids", "").split(",") if part.strip()]
+    if len(raw) > 100 or not all(part.strip().isdigit() for part in raw):
+        raise Refused("ids must be up to 100 job numbers, separated by commas.")
+    return jsonify(jobs=jobs.job_states(_engine(), [int(part) for part in raw]))
 
 
 @sources_api.put("/app-keys/<source>")

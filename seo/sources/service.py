@@ -124,7 +124,30 @@ def test_google(engine: Engine, connection_id: int) -> dict:
     ok = answer["search_console"]["ok"] or answer["ga4"]["ok"]
     problem = None if ok else (answer["search_console"].get("error") or answer["ga4"].get("error"))
     _note_google(engine, connection_id, problem)
+    answer["reading"] = _read_again_after_test(engine, connection_id, [s for s, k in (("gsc", "search_console"), ("ga4", "ga4")) if answer[k]["ok"]])
     return answer
+
+
+def _read_again_after_test(engine: Engine, connection_id: int, working: list[str]) -> int:
+    """A passing Test means an old "stopped working" is out of date: it was only cleared by the next good pull, up to 20 h
+    later. Its sites are read again now instead. If that read still fails, the error comes back within the minute,
+    so nothing is hidden. Returns how many reads were queued.
+    """
+    if not working:
+        return 0
+    from seo.collectors import jobs  # jobs imports this module
+
+    marks = ", ".join(f":c{n}" for n in range(len(working)))
+    values = {"i": connection_id, **{f"c{n}": s for n, s in enumerate(working)}}
+    with engine.begin() as conn:
+        rows = conn.execute(
+            text(f"SELECT site_id, source FROM site_sources WHERE connection_id = :i AND source IN ({marks}) AND not_used = 0 AND last_error IS NOT NULL"), values
+        ).all()
+        conn.execute(
+            text(f"UPDATE site_sources SET last_error = NULL, last_attempt_at = NULL WHERE connection_id = :i AND source IN ({marks}) AND not_used = 0 AND last_error IS NOT NULL"),
+            values,
+        )
+    return sum(1 for site_id, source in rows if jobs.enqueue_one(engine, site_id, source))
 
 
 def _ga4_property_for(engine: Engine, connection_id: int) -> str | None:

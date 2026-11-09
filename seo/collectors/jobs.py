@@ -24,6 +24,9 @@ COLLECTORS = {
 # Hours before a source is read again. Clarity's limit is counted per UTC day and is checked apart. Search Console goes every
 # hourly cron run (50 minutes, so a run that started a little late isn't skipped): only its spine and not-final days are read.
 EVERY_HOURS = {"gsc": 50 / 60, "ga4": 20, "bing": 20, "yandex": 20, "clarity": 20, "pagespeed": 24 * 7}
+# A source that failed is tried again after this, not after its usual wait. A fixed key (an API switched on, access given)
+# then shows its numbers within the hour, while a broken one costs at most one call an hour.
+RETRY_FAILED_HOURS = 1
 ALERT_KIND = "source_failing"
 NAMES = {"gsc": "Search Console", "ga4": "Google Analytics", "bing": "Bing Webmaster", "yandex": "Yandex Webmaster", "clarity": "Clarity", "pagespeed": "PageSpeed Insights"}
 
@@ -65,7 +68,8 @@ def enqueue_due(engine: Engine) -> list[tuple[int, str]]:
     for row in _rows(engine):
         if not ready_to_run(row):
             continue
-        fresh = row["minutes_since"] is not None and row["minutes_since"] < EVERY_HOURS[row["source"]] * 60
+        hours = min(EVERY_HOURS[row["source"]], RETRY_FAILED_HOURS) if row["last_error"] else EVERY_HOURS[row["source"]]
+        fresh = row["minutes_since"] is not None and row["minutes_since"] < hours * 60
         if fresh or (row["source"] == "clarity" and row["tried_today"]):
             continue
         if enqueue_one(engine, row["site_id"], row["source"]):
@@ -75,11 +79,60 @@ def enqueue_due(engine: Engine) -> list[tuple[int, str]]:
 
 def collect_now(engine: Engine, site_id: int) -> list[str]:
     """The Refresh data button. Clarity still goes once per UTC day, because a second pass would use up the day's requests."""
-    started = []
+    return [entry["source"] for entry in collect_now_jobs(engine, site_id) if entry["new"]]
+
+
+def collect_now_jobs(engine: Engine, site_id: int) -> list[dict]:
+    """Same, with each read's job, so the screen can wait for the reads to finish instead of guessing.
+
+    A read already queued or running is followed too (new = False): pressing Refresh while one runs isn't "nothing to read".
+    Sources it leaves out say why, so the screen never says "updated" about something it didn't read.
+    """
+    entries = []
     for row in _rows(engine, site_id):
-        if ready_to_run(row) and not (row["source"] == "clarity" and row["tried_today"]) and enqueue_one(engine, row["site_id"], row["source"]):
-            started.append(row["source"])
-    return started
+        if not ready_to_run(row):
+            continue
+        if row["source"] == "clarity" and row["tried_today"]:
+            entries.append({"source": "clarity", "job_id": None, "new": False, "skipped": "clarity_daily"})
+            continue
+        job_id = enqueue_one(engine, row["site_id"], row["source"])
+        new = job_id is not None
+        if not new:
+            job_id = _active_job(engine, f"collect|{row['site_id']}|{row['source']}")
+        entries.append({"source": row["source"], "job_id": job_id, "new": new})
+    return entries
+
+
+def _active_job(engine: Engine, key: str) -> int | None:
+    with engine.connect() as conn:
+        return conn.execute(text("SELECT id FROM jobs WHERE active_key = :k"), {"k": key}).scalar()
+
+
+def job_states(engine: Engine, ids: list[int]) -> list[dict]:
+    """Where each read is. "waiting" is a read that hit a passing problem and tries again later: the screen stops waiting for it.
+
+    Only collector jobs, so this can't be used to look at other work.
+    """
+    if not ids:
+        return []
+    marks = ", ".join(f":i{n}" for n in range(len(ids)))
+    values = {f"i{n}": int(i) for n, i in enumerate(ids)}
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(f"SELECT id, kind, status, attempts, payload FROM jobs WHERE lane = :lane AND id IN ({marks})"), {**values, "lane": LANE}
+        ).mappings().all()
+    answer = []
+    for row in rows:
+        payload = row["payload"] if isinstance(row["payload"], dict) else json.loads(row["payload"] or "{}")
+        status = row["status"]
+        if status == "queued" and row["attempts"]:
+            status = "waiting"
+        entry = {"id": row["id"], "source": payload.get("source"), "site_id": payload.get("site_id"), "status": status}
+        if status in ("done", "dead", "waiting") and payload.get("site_id") and payload.get("source"):
+            src = common.source_row(engine, payload["site_id"], payload["source"])
+            entry["error"] = src["last_error"] if src else None
+        answer.append(entry)
+    return answer
 
 
 def _alert(engine: Engine, site_id: int, source: str, message: str) -> None:
@@ -133,12 +186,18 @@ def run(job: queue.ClaimedJob, engine: Engine) -> None:
             return  # stop for today: what was saved stays, the next run carries on from what's missing
         raise Retry(str(exc), 900, patient=True) from exc
     _clear_alert(engine, site_id, source)
+    if finished:
+        # A finished read with nothing new to save (every day already read) still proves the key works: an old error goes.
+        common.succeeded(engine, site_id, source)
     if not finished:
         raise RunAgain(0)
     if source == "gsc":
         from seo.metrics import search  # "Matches Search Console", after every finished pull
 
         search.verify_quietly(engine, site_id)
+        from seo.insights import engine as insights  # Search insights, only when a new final day arrived
+
+        insights.enqueue_if_new(engine, site_id)
 
 
 @handler("collect-authority")

@@ -108,7 +108,12 @@
       // The property lists come from asking Google what this key can see. Ask as the panel opens, so they're never empty for no reason. It's free.
       if (!L.sc.length && !L.ga.length && Date.now() - (L.autoTestAt || 0) > 30000) {
         L.autoTestAt = Date.now();
-        setTimeout(async () => { try { showGoogleResult(await api("POST", `google-connections/${list[0].id}/test`, {})); } catch { /* the Test button still shows why */ } }, 50);
+        // Every connection, not only the first: a passing Test also clears its sites' out-of-date "stopped working" and reads them again.
+        setTimeout(async () => {
+          const answers = await Promise.all(list.map((g) => api("POST", `google-connections/${g.id}/test`, {}).catch(() => null)));
+          if (answers[0]) showGoogleResult(answers[0]);
+          if (answers.some((a) => a?.reading)) reload().catch(() => {});
+        }, 50);
       }
       return `<h3>${t("Google connections")}</h3><ul class="rows" style="margin:0 0 12px">${list.map((g) => `<li><div class="what"><div class="t" dir="auto">${esc(g.label)}</div><div class="d">${t(g.kind === "robot" ? "Robot key" : "OAuth keys")} · ${esc(g.last4)}${g.last_error ? ` · <span class="crit">${esc(g.last_error)}</span>` : ""}</div></div><div class="acts"><button type="button" class="btn btn-small" data-lv-google-test="${g.id}">${t("Test")}</button><button type="button" class="btn btn-small btn-ghost danger" data-lv-google-del="${g.id}" aria-label="${t("Remove")}: ${esc(g.label)}">${t("Remove")}</button></div></li>`).join("")}</ul><div id="lv-google-result" role="status"></div>`;
     },
@@ -280,7 +285,7 @@
   function showGoogleResult(answer) {
     if (answer.search_console.ok && answer.ga4.ok) UI.$("#conn-fix")?.remove();
     const line = (name, part) => (part.ok ? status("good", `${name}: ${t("works")} · ${num(part.properties.length)} ${t(part.properties.length === 1 ? "property" : "properties")}`) : `<div class="error" style="margin:0 0 4px">${icon("octagon-alert")}${esc(name)}: ${esc(t(part.error || "It didn't work."))}</div>${fixFor(part.error, conn("google"))}`);
-    say(`<div style="display:grid;gap:6px;margin-top:6px">${line("Search Console", answer.search_console)}${line("GA4", answer.ga4)}${answer.search_console.ok && !answer.search_console.properties.length ? `<p class="small sec" style="margin:0">${t("It can't see any Search Console property yet. Add its email in Search Console, then test again.")}</p>` : ""}</div>`);
+    say(`<div style="display:grid;gap:6px;margin-top:6px">${line("Search Console", answer.search_console)}${line("GA4", answer.ga4)}${answer.search_console.ok && !answer.search_console.properties.length ? `<p class="small sec" style="margin:0">${t("It can't see any Search Console property yet. Add its email in Search Console, then test again.")}</p>` : ""}${answer.reading ? `<p class="small muted" style="margin:0">${esc(t(answer.reading === 1 ? "The site that had stopped is being read again now. Its numbers come back within a few minutes." : "The sites that had stopped are being read again now. Their numbers come back within a few minutes."))}</p>` : ""}</div>`);
     L.sc = answer.search_console.properties || [];
     L.ga = answer.ga4.properties || [];
     // What Google says this key can see now fills the lists, and the obvious match is picked.
@@ -438,7 +443,11 @@
       }
       if ((el = hit("[data-lv-site-collect]"))) {
         take(); el.disabled = true;
-        try { const a = await api("POST", `sites/${el.dataset.lvSiteCollect}/collect`, {}); UI.toast(t(a.started.length ? "Reading the latest data. It appears here when it arrives." : "Nothing to read yet: connect a data source first, or it's already running."), { kind: a.started.length ? "good" : "info" }); } catch (err) { showError(err); }
+        try {
+          const a = await api("POST", `sites/${el.dataset.lvSiteCollect}/collect`, {});
+          if (window.LV?.watchReads) { await window.LV.watchReads([a], { redraw: false }); window.LV.forget?.(); await reload(); }
+          else UI.toast(t(a.started.length ? "Reading the latest data. It appears here when it arrives." : "Nothing to read yet: connect a data source first, or it's already running."), { kind: a.started.length ? "good" : "info" });
+        } catch (err) { showError(err); }
         el.disabled = false;
         return;
       }
@@ -531,6 +540,8 @@
   };
 
   const fr = {
+    "The site that had stopped is being read again now. Its numbers come back within a few minutes.": "Le site arrêté est relu maintenant. Ses chiffres reviennent d'ici quelques minutes.",
+    "The sites that had stopped are being read again now. Their numbers come back within a few minutes.": "Les sites arrêtés sont relus maintenant. Leurs chiffres reviennent d'ici quelques minutes.",
     "Try again": "Réessayer",
     "Old Clarity data": "Anciennes données Clarity",
     "Clarity dashboard downloads": "Exports du tableau de bord Clarity", "Find it from the file": "Le trouver dans le fichier", "Files": "Fichiers",
