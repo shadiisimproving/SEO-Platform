@@ -616,6 +616,7 @@ span.conn-logo { font-size: 15px; }
 ol.steps { margin: 0 0 10px; padding: 0 0 0 20px; font-size: 13px; color: var(--text-2); }
 ol.steps li { margin-bottom: 6px; }
 .guide-steps li { margin-bottom: 10px; line-height: 1.45; }
+.guide-steps .step-title { display: block; }
 .guide-steps .ext-link { display: flex; width: fit-content; margin-top: 3px; }
 .copy-row { display: flex; align-items: flex-start; gap: 8px; margin: 5px 0 3px; }
 .copy-row code { flex: 1; min-width: 0; padding: 6px 8px; font-size: 12px; overflow-wrap: anywhere; color: var(--text); background: var(--hover); border-radius: var(--r-s); }
@@ -990,3 +991,19 @@ body:has(#tray) .main { padding-bottom: 110px; }
 .td-group { display: flex; gap: 12px; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .td-group-acts { display: inline-flex; gap: 10px; align-items: center; flex: none; }
 .td-missing { display: flex; gap: 4px; align-items: center; margin-top: 3px; }
+
+/* "How to fix it" under an error (fix-hints.js) */
+.fix-box { margin: 6px 0 12px; padding: 10px 12px; font-size: 12.5px; color: var(--text-2); text-align: start; background: var(--chip); box-shadow: inset 0 0 0 1px var(--line); border-radius: var(--r-m); }
+.fix-summary { display: flex; gap: 6px; align-items: flex-start; margin: 0 0 8px; color: var(--crit-t); font-weight: 600; }
+.fix-summary .i { flex: none; margin-top: 1px; }
+.fix-title { display: block; margin-bottom: 4px; color: var(--text); font-size: 12px; }
+.fix-steps { margin: 0; padding: 0 0 0 18px; }
+.fix-steps li { margin-bottom: 5px; line-height: 1.45; }
+.fix-steps .ext-link { display: inline-flex; margin-inline-start: 2px; }
+.fix-said { margin-top: 6px; }
+.fix-said summary { cursor: pointer; display: inline-flex; gap: 4px; align-items: center; font-size: 12px; color: var(--text-2); list-style: none; }
+.fix-said summary::-webkit-details-marker { display: none; }
+.fix-said[open] summary .i { transform: rotate(90deg); }
+.fix-said p { margin: 4px 0 0; font-size: 12px; overflow-wrap: anywhere; color: var(--text-2); }
+#conn-test-result:has(.fix-box) { flex-basis: 100%; }
+.empty .fix-box { max-width: 52ch; margin: 8px auto 0; }

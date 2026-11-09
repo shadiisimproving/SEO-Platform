@@ -131,6 +131,22 @@ def test_test_button_checks_search_console_and_ga4_separately(world):
     assert service.get_google(world.engine, connection["id"])["last_ok_at"]
 
 
+def test_test_button_catches_the_data_api_being_off(world):
+    """Listing properties (Admin API) can work while the pull's Data API is off: Test must not say it works."""
+    connection = _google(world)
+    world.answers["webmasters/v3/sites"] = httpx.Response(200, json={"siteEntry": []})
+    world.answers["accountSummaries"] = httpx.Response(200, json={"accountSummaries": [{"propertySummaries": [{"property": "properties/999", "displayName": "Other"}]}]})
+    world.answers["runReport"] = httpx.Response(403, json={"error": {"message": "Google Analytics Data API has not been used in project 4242 before or it is disabled."}})
+    answer = service.test_google(world.engine, connection["id"])
+    assert answer["ga4"]["ok"] is False
+    assert answer["ga4"]["error"] == "Turn on the Google Analytics Data API in your Google Cloud project 4242, then press Test again."
+    assert answer["ga4"]["properties"] == [{"id": "999", "name": "Other", "account": None}]  # the lists still fill
+    assert "properties/123456:runReport" in str(world.calls[-1].url)  # the site's own property, not the first one listed
+
+    world.answers["runReport"] = httpx.Response(200, json={"rows": []})
+    assert service.test_google(world.engine, connection["id"])["ga4"]["ok"] is True
+
+
 def test_an_expired_token_says_what_to_do(world, monkeypatch):
     def refuse(connection_id):
         raise credentials.CredentialsFailed(credentials._hint("invalid_grant: Token has been expired"))

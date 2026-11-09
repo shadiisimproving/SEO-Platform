@@ -5,6 +5,7 @@ A site that doesn't use a source says so, and that's fine: no alert, the data ju
 from __future__ import annotations
 
 import json
+import re
 from urllib.parse import quote
 
 from sqlalchemy import Engine, text
@@ -108,15 +109,40 @@ def test_google(engine: Engine, connection_id: int) -> dict:
         answer["ga4"] = {"ok": True, "properties": found}
     except SourceError as exc:
         answer["ga4"]["error"] = _api_hint(str(exc), "Analytics Admin API")
+    # Listing properties uses the Admin API, but the daily pull reads numbers through the Data API, a separate switch in
+    # Google Cloud. Without this one small report, Test said "works" while every pull failed.
+    prop = _ga4_property_for(engine, connection_id) or (answer["ga4"]["properties"][0]["id"] if answer["ga4"]["properties"] else None)
+    if answer["ga4"]["ok"] and prop:
+        try:
+            http.request(
+                "POST", f"https://analyticsdata.googleapis.com/v1beta/properties/{prop}:runReport", "Google Analytics", headers=headers,
+                json={"dateRanges": [{"startDate": "yesterday", "endDate": "yesterday"}], "metrics": [{"name": "sessions"}], "limit": 1},
+            )
+        except SourceError as exc:
+            answer["ga4"]["ok"] = False
+            answer["ga4"]["error"] = _api_hint(str(exc), "Google Analytics Data API")
     ok = answer["search_console"]["ok"] or answer["ga4"]["ok"]
     problem = None if ok else (answer["search_console"].get("error") or answer["ga4"].get("error"))
     _note_google(engine, connection_id, problem)
     return answer
 
 
+def _ga4_property_for(engine: Engine, connection_id: int) -> str | None:
+    """A property a site really pulls with this connection, so Test reads what the pull will read."""
+    with engine.connect() as conn:
+        return conn.execute(
+            text("SELECT property FROM site_sources WHERE source = 'ga4' AND connection_id = :i AND not_used = 0 AND property IS NOT NULL AND property <> '' ORDER BY site_id LIMIT 1"),
+            {"i": connection_id},
+        ).scalar()
+
+
+_PROJECT = re.compile(r"project (\d+)")
+
+
 def _api_hint(message: str, api_name: str) -> str:
     if "has not been used" in message or "is disabled" in message:
-        return f"Turn on the {api_name} in your Google Cloud project, then press Test again."
+        project = _PROJECT.search(message)
+        return f"Turn on the {api_name} in your Google Cloud project{f' {project.group(1)}' if project else ''}, then press Test again."
     return message
 
 

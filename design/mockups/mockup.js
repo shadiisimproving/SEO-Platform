@@ -1601,7 +1601,7 @@
       else if (twin) $(twin.name === "id" ? `#${CSS.escape(twin.value)}` : `[${twin.name}="${CSS.escape(twin.value)}"]`)?.focus({ preventScroll: true });
     }, reduceMotion() ? 0 : 120);
   }
-  const panelHead = (title, sub = "", lead = "") => `<div class="panel-head">${lead}<div><h2 ${lead ? "" : 'dir="auto"'}>${esc(title)}</h2>${sub ? `<div class="sub">${sub}</div>` : ""}</div><button class="icon-btn" data-close-panel aria-label="${t("Close")}">${icon("x")}</button></div>`;
+  const panelHead = (title, sub = "", lead = "") => `<div class="panel-head">${lead}<div><h2 dir="auto">${esc(title)}</h2>${sub ? `<div class="sub" ${lead ? 'dir="auto"' : ""}>${sub}</div>` : ""}</div><button class="icon-btn" data-close-panel aria-label="${t("Close")}">${icon("x")}</button></div>`;
 
   function rankChart(row, engine) {
     const values = row.trend.slice(-window.DATES.length);
@@ -2612,7 +2612,8 @@
       ${fact("Used by", esc(sitesWord(c)))}
     </dl>
     ${window.KW_REAL?.connExtras?.(c) || ""}
-    ${c.status === "failing" ? `<p class="note crit" style="margin:0 0 12px">${icon("octagon-alert")}<span>${t("It stopped working. Paste a new key, or check it still has access, then press Test.")}</span></p>` : ""}
+    ${c.status === "failing" ? (window.FIX && c.error ? window.FIX.html(c.error, { tool: t(c.name).split(":")[0], id: c.id, keyUrl: window.FIX.keyUrl(c), refills: RESETS[c.id] ? t(RESETS[c.id]) : "", retry: "test", robot: c.robot }, { id: "conn-fix", summary: true, said: true })
+      : `<p class="note crit" style="margin:0 0 12px">${icon("octagon-alert")}<span>${t("It stopped working. Paste a new key, or check it still has access, then press Test.")}</span></p>`) : ""}
     ${c.note ? `<p class="note" style="margin:0 0 12px">${icon("info")}<span>${esc(t(c.note))}</span></p>` : ""}`;
   }
 
@@ -2667,7 +2668,7 @@
     const order = c.group === "serp" ? `<div class="order"><button class="icon-btn" data-tool-move="-1" data-tool="${esc(c.tool)}" aria-label="${t("Move up")}: ${esc(t(c.name))}" ${index === 0 ? "disabled" : ""}>${icon("arrow-up")}</button><button class="icon-btn" data-tool-move="1" data-tool="${esc(c.tool)}" aria-label="${t("Move down")}: ${esc(t(c.name))}" ${index === count - 1 ? "disabled" : ""}>${icon("arrow-down")}</button></div>` : "";
     return `<li class="conn-row ${order ? "ordered" : ""}" id="conn-${c.id}" data-conn-open="${c.id}">
       ${order}${logo(c.logo || c.name, 34, "conn-logo")}
-      <div class="what"><div class="t">${esc(t(c.name))}</div><div class="d">${esc(t(c.desc))}</div></div>
+      <div class="what"><div class="t" dir="auto">${esc(t(c.name))}</div><div class="d">${esc(t(c.desc))}</div></div>
       <div class="conn-limit"><span class="tag">${esc(t(c.price))}</span> ${esc(t(c.limit))}${left}</div>
       <div class="conn-sites" title="${esc(sitesWord(c))}">${icon("globe", "muted")} ${esc(c.sites === "all" ? t("All sites") : c.sites.length ? `${c.sites.length} ${t("of")} ${window.SITES.length} ${t("Sites").toLowerCase()}` : t("No sites"))}</div>
       <div class="conn-status">${st}</div>
@@ -2716,6 +2717,11 @@
     const c = window.CONNECTIONS.find((x) => x.id === id);
     const tool = c.tool ? window.TOOLS.find((x) => x.name === c.tool) : null;
     const keyInput = (fieldId, label, last4 = "") => `<label class="field"><span>${t(label)}</span><span class="key-field"><input class="input mono" id="${fieldId}" data-key-input type="password" autocomplete="off" spellcheck="false" placeholder="${last4 ? `•••• •••• ${esc(last4)}` : t("Paste the key here")}"><button type="button" class="icon-btn" data-key-show aria-label="${t("Show key")}">${icon("eye")}</button></span></label>`;
+    // A step is a plain sentence, or { title, text, code, url, link } when it has more to show.
+    const stepList = (list) => `<ol class="steps guide-steps">${list.map((item) => {
+      const s = typeof item === "string" ? { text: item } : item;
+      return `<li>${s.title ? `<b class="step-title">${esc(t(s.title))}</b>` : ""}${esc(t(s.text))}${s.code ? `<span class="copy-row"><code class="mono" dir="ltr">${esc(s.code)}</code><button type="button" class="btn btn-small" data-copy="${esc(s.code)}">${t("Copy")}</button></span>` : ""}${s.url ? `<a class="ext-link" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${icon("external-link")}${t(s.link)}</a>` : ""}</li>`;
+    }).join("")}</ol>`;
     let fields = "";
     if (c.auth === "key" || c.auth === "key+zone") fields = keyInput("conn-key", "API key", c.last4) + (c.auth === "key+zone" ? `<label class="field"><span>${t("Zone name")}</span><input class="input mono" id="conn-zone" aria-describedby="conn-zone-help" value="${esc(c.zone ?? (c.status === "ok" ? "serp_api1" : ""))}"></label>
       <p class="help" id="conn-zone-help" style="margin:-6px 0 12px">${t("The name you gave your SERP API, such as serp_api1. In Bright Data's control panel, open that SERP API: the zone name and the API key are on its Overview tab.")} <a class="ext-link" href="https://brightdata.com/cp/zones" target="_blank" rel="noopener noreferrer">${icon("external-link")}${t("Open my zones")}</a></p>` : "");
@@ -2724,16 +2730,19 @@
     else if (c.auth === "browser") fields = `<label class="field"><span>${t("Country this Mac is in")}</span><select class="select" id="conn-country" style="width:100%">${countryOptions(c.country || "AE")}</select></label><p class="help" style="margin:-4px 0 12px">${t("Results only count for this country. For any other country they stay on a separate line and are never mixed in.")}</p>`;
     else if (c.auth === "google") {
       // Pick the kind first, then only that path: the steps sit above the boxes they fill. A connection already made stays on its own kind.
-      const robot = c.status === "off", keep = (last4) => (c.status === "off" ? "" : last4);
-      const guide = (path) => `<ol class="steps guide-steps">${path.steps.map((s) => `<li>${esc(t(s.text))}${s.code ? `<span class="copy-row"><code class="mono" dir="ltr">${esc(s.code)}</code><button type="button" class="btn btn-small" data-copy="${esc(s.code)}">${t("Copy")}</button></span>` : ""}${s.url ? `<a class="ext-link" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${icon("external-link")}${t(s.link)}</a>` : ""}</li>`).join("")}</ol>
+      // Adding another on the real app starts clean, on the suggested kind: the boxes aren't the saved connection's.
+      const fresh = c.status === "off" || state.served, robot = fresh, keep = (last4) => (fresh ? "" : last4);
+      const guide = (path) => `${stepList(path.steps)}
         <p class="note">${icon("info")}<span>${t(path.note)}</span></p>`;
       const notBuilt = window.LIVE?.googleExtras?.() || "";
-      fields = `${notBuilt}<p class="note">${icon("info")}<span>${t("Usually done once, by whoever looks after Google for the team. It takes about 20 minutes.")}</span></p><fieldset class="scope key-kinds"><legend>${t("Which kind of key?")}</legend>
+      // With a connection already made, adding another is the rare case: it waits behind one button, so the panel opens on what's there.
+      const addForm = `<p class="note">${icon("info")}<span>${t("Usually done once, by whoever looks after Google for the team. It takes about 20 minutes.")}</span></p><fieldset class="scope key-kinds"><legend>${t("Which kind of key?")}</legend>
           <label class="opt"><input type="radio" name="google-type" value="robot" ${robot ? "checked" : ""}><span><b>${t("Robot key")}</b> <span class="tag">${t("Suggested")}</span><span class="second">${t("Google calls this a service account. There's no token to get, and it doesn't expire.")}</span></span></label>
           <label class="opt"><input type="radio" name="google-type" value="oauth" ${robot ? "" : "checked"}><span><b>${t("OAuth keys")}</b><span class="second">${t("Client ID, client secret and refresh token, from your own Google account. More steps.")}</span></span></label></fieldset>
         <div id="google-robot" ${robot ? "" : "hidden"}>${c.status === "off" ? guide(window.GOOGLE_GUIDE.robot) : `<details class="fold how"><summary>${icon("chevron-right")}${t("How to get these keys")}</summary>${guide(window.GOOGLE_GUIDE.robot)}</details>`}
           <label class="field"><span>${t("Robot key file (JSON)")}</span><textarea class="input mono" id="conn-json" data-key-input rows="4" spellcheck="false" autocomplete="off" placeholder="${esc(window.LIVE?.savedGoogleNote?.() || t("Paste the JSON key here"))}"></textarea></label><div id="conn-json-result" role="status"></div></div>
-        <div id="google-oauth" ${robot ? "hidden" : ""}>${c.status === "off" ? guide(window.GOOGLE_GUIDE.oauth) : `<details class="fold how"><summary>${icon("chevron-right")}${t("How to get these keys")}</summary>${guide(window.GOOGLE_GUIDE.oauth)}</details>`}${keyInput("conn-client", "Client ID", keep("a81f"))}${keyInput("conn-secret", "Client secret", keep("77c0"))}${keyInput("conn-refresh", "Refresh token", keep("e219"))}</div>
+        <div id="google-oauth" ${robot ? "hidden" : ""}>${c.status === "off" ? guide(window.GOOGLE_GUIDE.oauth) : `<details class="fold how"><summary>${icon("chevron-right")}${t("How to get these keys")}</summary>${guide(window.GOOGLE_GUIDE.oauth)}</details>`}${keyInput("conn-client", "Client ID", keep("a81f"))}${keyInput("conn-secret", "Client secret", keep("77c0"))}${keyInput("conn-refresh", "Refresh token", keep("e219"))}</div>`;
+      fields = `${notBuilt}${c.status === "off" ? addForm : `<details class="fold add-google"><summary>${icon("plus")}${t("Add another Google connection")}</summary>${addForm}</details>`}
         ${googleSitesBlock(c)}`;
     } else fields = `<p class="note">${icon("info")}<span>${t("Nothing to paste: this one works without a key.")}</span></p>`;
     const canTest = c.auth !== "none" && c.auth !== "browser";
@@ -2755,10 +2764,10 @@
           <div class="site-checks" id="conn-site-checks" ${c.sites === "all" ? "hidden" : ""}>${window.SITES.map((s) => `<label class="opt"><input type="checkbox" class="chk" style="margin:0" data-conn-site="${s.id}" ${on.includes(s.id) ? "checked" : ""}>${esc(s.host)}</label>`).join("")}</div>
           <p class="help" style="margin:6px 0 0">${t("Sites you leave out simply won't use it. That's fine.")}</p>
         </fieldset>`}
-        ${!steps ? "" : `<details class="fold how" ${canTest ? "" : "open"}><summary>${icon("chevron-right")}${t(howWord)}<span class="hint">${steps} ${t(steps === 1 ? "step" : "steps")}</span></summary>
-          <ol class="steps">${c.steps.map((s) => `<li>${esc(t(s))}</li>`).join("")}</ol>
+        ${!steps ? "" : `<details class="fold how" ${canTest && c.status !== "off" ? "" : "open"}><summary>${icon("chevron-right")}${t(howWord)}<span class="hint">${steps} ${t(steps === 1 ? "step" : "steps")}</span></summary>
+          ${stepList(c.steps)}
           ${c.risk ? `<p class="note warn" style="margin:0 0 10px">${icon("triangle-alert")}<span>${esc(t(c.risk))}</span></p>` : ""}
-          ${c.url ? `<p style="margin:0 0 10px"><a class="ext-link" href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">${icon("external-link")}${t("Open the official page")}</a></p>` : ""}
+          ${c.url && !c.steps.some((s) => s.url) ? `<p style="margin:0 0 10px"><a class="ext-link" href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">${icon("external-link")}${t("Open the official page")}</a></p>` : ""}
         </details>`}
         ${window.LIVE?.oldClarityData?.(c) || ""}
       </form>

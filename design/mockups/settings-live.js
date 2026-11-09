@@ -21,7 +21,12 @@
     const google = conn("google");
     if (google) {
       const broken = data.google.find((g) => g.last_error);
-      google.status = !data.google.length ? "off" : broken && !data.google.some((g) => g.last_ok_at && !g.last_error) ? "failing" : "ok";
+      // A pull can fail on a site while the key itself still tests fine, such as GA4's Data API being off. Settings says so too,
+      // or the data card says "stopped working" and Settings says it works.
+      const pull = data.site_sources.find((r) => (r.source === "gsc" || r.source === "ga4") && !r.not_used && r.last_error);
+      google.status = !data.google.length ? "off" : (broken && !data.google.some((g) => g.last_ok_at && !g.last_error)) || pull ? "failing" : "ok";
+      google.error = broken?.last_error || pull?.last_error || "";
+      google.robot = data.google.find((g) => g.robot_email)?.robot_email || "";
       google.since = sinceWord(data.google[0]?.last_ok_at);
       google.last4 = data.google[0]?.last4 || "";
       google.props = {};
@@ -38,6 +43,7 @@
       const held = window.SITES.map((s) => ({ s, row: rows("clarity", s.realId) }));
       const live = held.filter(({ row }) => row?.has_secret && !row.not_used);
       clarity.status = !live.length ? "off" : live.some(({ row }) => row.last_error) ? "failing" : "ok";
+      clarity.error = live.find(({ row }) => row.last_error)?.row.last_error || "";
       clarity.since = sinceWord(live.find(({ row }) => row.last_ok_at)?.row.last_ok_at);
       clarity.last4 = Object.fromEntries(held.filter(({ row }) => row?.last4).map(({ s, row }) => [s.id, row.last4]));
       const off = held.filter(({ row }) => row?.not_used).map(({ s }) => s.id);
@@ -47,6 +53,7 @@
       const c = conn(key.id);
       if (!c) return;
       c.status = !key.connected ? (key.id === "pagespeed" ? "nokey" : "off") : key.last_error ? "failing" : "ok";
+      c.error = key.last_error || "";
       c.last4 = key.last4 || "";
       c.since = sinceWord(key.last_ok_at);
       const source = SOURCE_OF[key.id];
@@ -100,7 +107,7 @@
         L.autoTestAt = Date.now();
         setTimeout(async () => { try { showGoogleResult(await api("POST", `google-connections/${list[0].id}/test`, {})); } catch { /* the Test button still shows why */ } }, 50);
       }
-      return `<h3>${t("Google connections")}</h3><ul class="rows" style="margin:0 0 12px">${list.map((g) => `<li><div class="what"><div class="t" dir="auto">${esc(g.label)}</div><div class="d">${t(g.kind === "robot" ? "Robot key" : "OAuth keys")} · ${esc(g.last4)}${g.last_error ? ` · <span class="crit">${esc(g.last_error)}</span>` : ""}</div></div><div class="acts"><button type="button" class="btn btn-small" data-lv-google-test="${g.id}">${t("Test")}</button><button type="button" class="btn btn-small btn-ghost danger" data-lv-google-del="${g.id}" aria-label="${t("Remove")}: ${esc(g.label)}">${t("Remove")}</button></div></li>`).join("")}</ul><p class="help" style="margin:-4px 0 12px">${t("To add another, paste its keys below. Each site then picks which one it uses.")}</p><div id="lv-google-result" role="status"></div>`;
+      return `<h3>${t("Google connections")}</h3><ul class="rows" style="margin:0 0 12px">${list.map((g) => `<li><div class="what"><div class="t" dir="auto">${esc(g.label)}</div><div class="d">${t(g.kind === "robot" ? "Robot key" : "OAuth keys")} · ${esc(g.last4)}${g.last_error ? ` · <span class="crit">${esc(g.last_error)}</span>` : ""}</div></div><div class="acts"><button type="button" class="btn btn-small" data-lv-google-test="${g.id}">${t("Test")}</button><button type="button" class="btn btn-small btn-ghost danger" data-lv-google-del="${g.id}" aria-label="${t("Remove")}: ${esc(g.label)}">${t("Remove")}</button></div></li>`).join("")}</ul><div id="lv-google-result" role="status"></div>`;
     },
     connectionSelect(site) {
       const list = L.data?.google || [];
@@ -179,6 +186,12 @@
   // ---- saving a connection ------------------------------------------------------------------------
   const resultBox = () => UI.$("#conn-test-result");
   const say = (html) => { const box = resultBox(); if (box) { UI.setHTML(box, html); box.scrollIntoView({ block: "nearest" }); } };
+  // The "How to fix it" list under a failed Test. It replaces the one at the top of the panel, so the advice isn't shown twice.
+  const fixFor = (message, c) => {
+    if (!message || !window.FIX) return "";
+    UI.$("#conn-fix")?.remove();
+    return window.FIX.html(message, { tool: c?.name?.split(":")[0], id: c?.id, keyUrl: window.FIX.keyUrl(c), retry: "test", robot: c?.robot });
+  };
   const sayError = (message) => say(`<span class="error" style="margin:0" role="alert">${icon("octagon-alert")}${esc(t(message))}</span>`);
   const typedGoogle = () => {
     const kind = UI.$('input[name="google-type"]:checked')?.value;
@@ -262,7 +275,8 @@
   }
 
   function showGoogleResult(answer) {
-    const line = (name, part) => (part.ok ? status("good", `${name}: ${t("works")} · ${num(part.properties.length)} ${t(part.properties.length === 1 ? "property" : "properties")}`) : `<div class="error" style="margin:0 0 4px">${icon("octagon-alert")}${esc(name)}: ${esc(t(part.error || "It didn't work."))}</div>`);
+    if (answer.search_console.ok && answer.ga4.ok) UI.$("#conn-fix")?.remove();
+    const line = (name, part) => (part.ok ? status("good", `${name}: ${t("works")} · ${num(part.properties.length)} ${t(part.properties.length === 1 ? "property" : "properties")}`) : `<div class="error" style="margin:0 0 4px">${icon("octagon-alert")}${esc(name)}: ${esc(t(part.error || "It didn't work."))}</div>${fixFor(part.error, conn("google"))}`);
     say(`<div style="display:grid;gap:6px;margin-top:6px">${line("Search Console", answer.search_console)}${line("GA4", answer.ga4)}${answer.search_console.ok && !answer.search_console.properties.length ? `<p class="small sec" style="margin:0">${t("It can't see any Search Console property yet. Add its email in Search Console, then test again.")}</p>` : ""}</div>`);
     L.sc = answer.search_console.properties || [];
     L.ga = answer.ga4.properties || [];
@@ -295,7 +309,8 @@
         const key = UI.$("#conn-key")?.value.trim();
         if (key) { await api("PUT", `app-keys/${c.id}`, { key }); UI.$("#conn-key").value = ""; }
         const answer = await api("POST", `app-keys/${c.id}/test`, {});
-        say(answer.ok === true ? status("good", `${t("Works.")}${answer.left === null || answer.left === undefined ? "" : ` ${num(answer.left)} ${t("of")} ${num(answer.of)} ${t("free requests left today")}`}`) : answer.ok === null ? `<span class="note inline-note">${icon("info")}<span>${esc(t(answer.note))}</span></span>` : `<span class="error" style="margin:0">${icon("octagon-alert")}${esc(t(answer.note))}</span>`);
+        if (answer.ok !== false) UI.$("#conn-fix")?.remove(); // it works now: the old advice would only confuse
+        say(answer.ok === true ? status("good", `${t("Works.")}${answer.left === null || answer.left === undefined ? "" : ` ${num(answer.left)} ${t("of")} ${num(answer.of)} ${t("free requests left today")}`}`) : answer.ok === null ? `<span class="note inline-note">${icon("info")}<span>${esc(t(answer.note))}</span></span>` : `<span class="error" style="margin:0">${icon("octagon-alert")}${esc(t(answer.note))}</span>${fixFor(answer.note, c)}`);
         await reload();
       }
     } catch (err) { sayError(err.message); } finally { if (button.isConnected) { button.disabled = false; button.textContent = was; } }
@@ -535,7 +550,7 @@
     "Add a domain": "Ajouter un domaine", "Get Moz data": "Obtenir les données Moz", "Get popularity": "Obtenir la popularité", "Domain": "Domaine", "Authority": "Autorité", "Moz Domain Authority": "Domain Authority Moz", "Linking domains": "Domaines référents", "Links": "Liens", "Popularity": "Popularité", "No domains yet. Add the ones worth a closer look.": "Pas encore de domaines. Ajoutez ceux qui méritent un examen.", "domains updated": "domaines mis à jour", "held back: no free rows left": "en attente : plus de lignes gratuites", "Popularity updated": "Popularité mise à jour", "Not ranked": "Non classé",
     "Tell Bing and Yandex about new pages": "Signaler les nouvelles pages à Bing et Yandex", "IndexNow. Google doesn't take part.": "IndexNow. Google n'y participe pas.", "Addresses, one per line": "Adresses, une par ligne", "Send": "Envoyer", "Connect IndexNow first: paste its key, and put the key file on your site.": "Connectez d'abord IndexNow : collez sa clé et placez le fichier de clé sur votre site.", "addresses sent": "adresses envoyées", "The key is still being checked.": "La clé est encore en cours de vérification.", "Enter a domain, such as example.com.": "Saisissez un domaine, par exemple example.com.",
     "free requests left today": "requêtes gratuites restantes aujourd'hui",
-    "Sign out": "Se déconnecter", "Google connections": "Connexions Google", "To add another, paste its keys below. Each site then picks which one it uses.": "Pour en ajouter une autre, collez ses clés ci-dessous. Chaque site choisit ensuite la sienne.",
+    "Sign out": "Se déconnecter", "Google connections": "Connexions Google", "To add another, press Add another Google connection below. Each site then picks which one it uses.": "Pour en ajouter une autre, cliquez sur Ajouter une autre connexion Google ci-dessous. Chaque site choisit ensuite laquelle il utilise.", "Add another Google connection": "Ajouter une autre connexion Google",
     "Google connection": "Connexion Google", "works": "fonctionne", "property": "propriété", "properties": "propriétés", "It didn't work.": "Ça n'a pas fonctionné.", "Testing…": "Test…", "Works.": "Fonctionne.",
     "It can't see any Search Console property yet. Add its email in Search Console, then test again.": "Elle ne voit encore aucune propriété Search Console. Ajoutez son e-mail dans la Search Console, puis testez à nouveau.",
     "Clarity allows 10 requests a day per project, so testing would use one up. The first pull shows whether the token works.": "Clarity autorise 10 requêtes par jour et par projet : un test en consommerait une. La première lecture montrera si le jeton fonctionne.",

@@ -61,7 +61,11 @@
     if (d.state === "no_sites") return emptyCard(t("No site yet"), t("Add a site to see its data."), `<button class="btn btn-main" id="site-switch-hint" data-lv-add-site>${t("Add a site")}</button>`);
     if (d.state === "not_connected") return emptyCard(`${name}: ${t("not connected")}`, t("Connect it in Settings, and pick which property this site uses."), connectBtn("google"));
     if (d.state === "not_used") return emptyCard(`${name}: ${t("not used")}`, t("You said this site doesn't use it, so there's nothing to show. That's fine. You can change this in Settings."), connectBtn("google", "Open Settings"));
-    if (d.state === "failing") return emptyCard(`${name}: ${t("stopped working")}`, esc(d.error || ""), connectBtn("google", "Fix"));
+    if (d.state === "failing") {
+      // The plain sentence and what to do first; Google's own long message folds away below.
+      const fix = window.FIX?.html(d.error || "", { tool: name, retry: "refresh" }, { summary: true, said: true }) || esc(d.error || "");
+      return `<section class="card"><div class="empty"><h3>${esc(`${name}: ${t("stopped working")}`)}</h3>${fix}<div style="margin-top:12px">${connectBtn("google", "Fix")}</div></div></section>`;
+    }
     if (d.state === "waiting") return emptyCard(t("Connected. Waiting for its first data"), t("It arrives after the next run. Press Refresh data to start one now."), refreshBtn(true));
     return "";
   }

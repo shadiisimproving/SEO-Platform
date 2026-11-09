@@ -44,6 +44,8 @@ def _gsc(request: httpx.Request) -> httpx.Response:
 
 def _ga4(request: httpx.Request) -> httpx.Response:
     body = json.loads(request.content)
+    if not body.get("dimensions"):  # Test's small check that the Data API is on
+        return httpx.Response(200, json={"rows": [{"metricValues": [{"value": "42"}]}], "rowCount": 1})
     names = [d["name"] for d in body["dimensions"]]
     day = body["dateRanges"][0]["startDate"]
     w = lambda base, salt=0: str(_wave(day, base, salt))  # noqa: E731

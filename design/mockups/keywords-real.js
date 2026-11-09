@@ -101,8 +101,8 @@
       const keyless = tool.auth === "none" || tool.auth === "browser";
       c.status = keyless ? "nokey" : !tool.connected ? "off" : tool.last_error ? "failing" : "ok";
       c.since = ""; c.last4 = tool.last4 ? tool.last4.replace("…", "") : ""; c.zone = tool.zone || ""; c.sites = "all"; c.error = tool.last_error || "";
-      if (tool.name === "HasData") c.desc = "Google, Bing";
-      if (tool.name === "Searlo") c.desc = "Google";
+      if (tool.name === "HasData") c.desc = "Checks rankings on Google and Bing";
+      if (tool.name === "Searlo") c.desc = "Checks rankings on Google";
       c.note = keyless && tool.auth === "browser" && K.browserMissing ? "The browser backup needs Playwright, which isn't installed. Install it with: .venv/bin/pip install playwright" : "";
       if (tool.auth === "browser") c.country = K.settings.mac_country || "";
     });
@@ -697,7 +697,7 @@
     connExtras(c) {
       const tool = c.group === "serp" ? toolOf(c) : null;
       if (!tool) return "";
-      const error = tool.last_error ? `<p class="note warn" style="margin:0 0 12px">${icon("triangle-alert")}<span dir="auto">${esc(translateSentences(tool.last_error))}</span></p>` : "";
+      const error = tool.last_error && !window.FIX ? `<p class="note warn" style="margin:0 0 12px">${icon("triangle-alert")}<span dir="auto">${esc(translateSentences(tool.last_error))}</span></p>` : "";
       if (!tool.paid_per) return error + (tool.auth === "key" || tool.auth === "key+zone" ? `<p class="help" style="margin:0 0 12px">${t("No pay-as-you-go price, so paid use can't be switched on.")}</p>` : "");
       return `${error}<label class="opt" style="margin:0 0 4px"><input type="checkbox" class="chk" style="margin:0" id="kwr-paid-on" data-tool="${esc(tool.name)}" ${tool.paid_on ? "checked" : ""}>${t("Allow paid use")}</label><p class="help" style="margin:0 0 12px">${t("Off until you switch it on. Refresh still uses free credits first, and each run asks for its own limit.")}</p>`;
     },
@@ -739,9 +739,16 @@
     button.disabled = true;
     try {
       const answer = await api("POST", `tools/${encodeURIComponent(c.tool)}/test`);
-      UI.setHTML(box, answer.ok === true ? status("good", `${t(answer.message)}${answer.searches_left === null || answer.searches_left === undefined ? "" : ` ${num(answer.searches_left)} ${t("left")}`}`) : answer.ok === false ? `<span class="error" style="margin:0">${icon("octagon-alert")}${esc(t(answer.message))}</span>` : `<span class="note inline-note">${icon("info")}<span>${esc(t(answer.message))}</span></span>`);
-    } catch (err) { UI.setHTML(box, `<span class="error" style="margin:0">${icon("octagon-alert")}${esc(t(err.message))}</span>`); }
+      if (answer.ok === true) $("#conn-fix")?.remove();
+      UI.setHTML(box, answer.ok === true ? status("good", `${t(answer.message)}${answer.searches_left === null || answer.searches_left === undefined ? "" : ` ${num(answer.searches_left)} ${t("left")}`}`) : answer.ok === false ? `<span class="error" style="margin:0">${icon("octagon-alert")}${esc(t(answer.message))}</span>${fixFor(c, answer.message)}` : `<span class="note inline-note">${icon("info")}<span>${esc(t(answer.message))}</span></span>`);
+    } catch (err) { UI.setHTML(box, `<span class="error" style="margin:0">${icon("octagon-alert")}${esc(t(err.message))}</span>${fixFor(c, err.message)}`); }
     button.disabled = false;
+  }
+  // Under a failed Test, what to do about it. It takes the place of the advice at the top of the panel.
+  function fixFor(c, message) {
+    if (!window.FIX || !message) return "";
+    $("#conn-fix")?.remove();
+    return window.FIX.html(message, { tool: c.name, id: c.id, keyUrl: window.FIX.keyUrl(c), refills: c.refills || "", retry: "test" });
   }
 
   async function moveTool(button) {
