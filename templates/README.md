@@ -20,6 +20,8 @@ If you keep your own column names or put the columns in another order, the app s
 | Source page | **Required.** The page that has the link on it, the full address. | `https://example-blog.example/article` |
 | Target page | The page of your website that the link points to. | `/your-page/` |
 | Anchor text | The words people click on. Any language is fine. | `your anchor text` |
+| Anchor type | What kind of anchor it is: Brand, Bare URL, Exact keyword, Partial keyword, Generic or Other. French works too: Branding, Optimisée, Semi-optimisée, Générique, Autre. Empty lets the app work it out from the anchor text and your keywords. | `Partial keyword` |
+| Keyword | The keyword this link is meant to help. | `your keyword` |
 | Link type | What kind of link it is. See the suggestions below. | `Guest post` |
 | Status | Where the link stands. See the words below. Empty means Live. | `Live` |
 | Date placed | The day the link went up. | `2026-01-15` |

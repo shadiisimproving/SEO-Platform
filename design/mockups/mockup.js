@@ -572,16 +572,19 @@
     pageAuthority: row.page_authority ?? null, rating: row.rating ?? null, articleUrl: row.article_url || null, sentAt: row.sent_at || null,
     linkType: row.link_type, due: row.due, renewal: row.renewal, contact: row.contact, platform: row.platform, notes: row.notes, createdAt: row.created_at,
     opr: row.opr ?? null, foundBy: row.found_by || null, gsc: row.gsc || null, disavow: Boolean(row.disavow), targetIndex: row.target_index || null,
-    sourceIndex: row.source_index || null, anchorType: row.anchor_type || null, siteTraffic: row.site_traffic ?? null,
+    sourceIndex: row.source_index || null, anchorType: row.anchor_type || row.anchor_kind || null, siteTraffic: row.site_traffic ?? null,
+    keyword: row.keyword || null, anchorKind: row.anchor_kind || null, anchorAuto: row.anchor_auto || null,
   });
   const localLink = (id, x, site, status) => ({
     id, src: x.src, domain: window.BacklinkCleaner.rootDomain(x.src), site, target: x.target || null, anchor: x.anchor || null, status, auth: null, visits: 0, leads: 0, label: "none",
     cost: window.BulkLinks.parsePrice(x.cost) ?? 0, priceText: x.cost || null, mediator: x.mediator || null, owner: x.owner || null, placed: x.placed || null, utm: utmOf(x.utm_source, x.utm_medium, x.utm_campaign), before: null, after: null,
     linkType: x.link_type || null, due: x.due || null, renewal: x.renewal || null, contact: x.contact || null, platform: x.platform || null, notes: x.notes || null, createdAt: new Date().toISOString(),
+    keyword: x.keyword || null, anchorKind: x.anchor_kind || null, anchorType: x.anchor_kind || null,
   });
   const serverRow = (x, site, status) => ({
     site_id: bl.sites.find((s) => s.host === site)?.id, source_url: x.src, status, target_url: x.target || null, anchor: x.anchor || null, link_type: x.link_type || null, placed: x.placed || null, due: x.due || null, renewal: x.renewal || null,
     price_text: x.cost || null, mediator: x.mediator || null, contact: x.contact || null, platform: x.platform || null, utm_source: x.utm_source || null, utm_medium: x.utm_medium || null, utm_campaign: x.utm_campaign || null, owner: x.owner || null, notes: x.notes || null,
+    keyword: x.keyword || null, anchor_kind: x.anchor_kind || null,
   });
 
   /* Saves one link or many, where this mode keeps them. `items` are { record, site, status }. A refusal rejects with the server's sentence. */
@@ -846,10 +849,12 @@
         ${window.BacklinkSeo.filterChips(byPerson, state.blFilter)}
         <span style="margin-left:auto" class="bl-tools">${window.BacklinkSeo.viewSwitch()}<button class="btn btn-small" id="gsc-open">${icon("search")}${t("Import from Search Console")}</button><button class="btn btn-small" id="bulk-open">${icon("list-plus")}${t("Import CSV")}</button></span></div>
       ${window.BacklinkSeo.byWebsite() ? window.BacklinkSeo.websiteTable(rows) : `<div class="table-wrap"><table class="data" id="bl-table">
-        <thead><tr><th scope="col">${t("Source page")}</th><th scope="col">${t("Target")}</th><th scope="col">${t("Status")}</th><th scope="col" class="r">${t("Authority")}</th>${window.BacklinkSeo.trafficHead()}<th scope="col" class="r">${t("Visits")}</th><th scope="col" class="r">${t("Leads")}</th><th scope="col" class="r">${t("Cost per visit")}</th><th scope="col">${t("Mediator")}</th></tr></thead>
+        <thead><tr><th scope="col">${t("Source page")}</th><th scope="col">${t("Target")}</th><th scope="col">${t("Keyword")}</th><th scope="col">${t("Anchor type")}</th><th scope="col">${t("Status")}</th><th scope="col" class="r">${t("Authority")}</th>${window.BacklinkSeo.trafficHead()}<th scope="col" class="r">${t("Visits")}</th><th scope="col" class="r">${t("Leads")}</th><th scope="col" class="r">${t("Cost per visit")}</th><th scope="col">${t("Mediator")}</th></tr></thead>
         <tbody>${rows.slice(0, state.blLimit).map((b) => `<tr data-bl="${b.id}" id="row-${b.id}">
-          <td class="head-cell url-cell"><span class="with-logo">${siteLogo(linkDomain(b.src))}<span class="logo-text"><span class="nb-inline"><button class="kw mono small" data-open-bl="${b.id}" style="text-align:start" data-tip="${esc(b.src)}">${esc(b.src.replace(/^https?:\/\//, ""))}</button>${window.COMP?.notes?.badge ? window.COMP.notes.badge({ scope: "domain", domain: linkDomain(b.src), siteId: window.UI.siteIdPicked?.() ?? null }, linkDomain(b.src)) : ""}</span><span class="second" dir="auto">${esc(b.anchor || b.check?.anchor || "—")}</span>${window.BacklinkSeo.anchorTag(b)}${state.site === "all" && b.site ? `<span class="second mono" dir="auto">${t("For")} ${esc(b.site)}</span>` : ""}</span></span></td>
+          <td class="head-cell url-cell"><span class="with-logo">${siteLogo(linkDomain(b.src))}<span class="logo-text"><span class="nb-inline"><button class="kw mono small" data-open-bl="${b.id}" style="text-align:start" data-tip="${esc(b.src)}">${esc(b.src.replace(/^https?:\/\//, ""))}</button>${window.COMP?.notes?.badge ? window.COMP.notes.badge({ scope: "domain", domain: linkDomain(b.src), siteId: window.UI.siteIdPicked?.() ?? null }, linkDomain(b.src)) : ""}</span><span class="second" dir="auto">${esc(b.anchor || b.check?.anchor || "—")}</span>${state.site === "all" && b.site ? `<span class="second mono" dir="auto">${t("For")} ${esc(b.site)}</span>` : ""}</span></span></td>
           <td class="mono small url-cell" data-label="${t("Target")}"><span dir="auto">${esc(b.target || "—")}</span></td>
+          <td data-label="${t("Keyword")}">${b.keyword ? `<span dir="auto">${esc(b.keyword)}</span>` : '<span class="muted">—</span>'}</td>
+          <td data-label="${t("Anchor type")}">${window.BacklinkSeo.anchorTag(b) || '<span class="muted">—</span>'}</td>
           <td data-label="${t("Status")}">${linkStatus(b.status)}${window.LinkExtras.rowNote(b)}${window.BacklinkSeo.badge(b)}</td>
           <td class="r" data-label="${t("Authority")}">${window.BacklinkSeo.authorityCell(b)}</td>${window.BacklinkSeo.trafficCell(b)}
           <td class="r nowrap" data-label="${t("Visits")}">${trafficCell(b)}</td>
@@ -1739,6 +1744,8 @@
         <table class="mini"><tbody>
           ${fact("Site", b.site, { cls: "mono small" })}
           ${fact("Anchor text", b.anchor)}
+          ${fact("Anchor type", window.BacklinkSeo.anchorWord(b))}
+          ${fact("Keyword", b.keyword)}
           ${fact("Link type", b.linkType)}
           ${fact("Mediator", b.mediator)}
           ${fact("Contact", b.contact)}
@@ -1774,7 +1781,11 @@
           <input class="input mono" id="bl-src" type="url" inputmode="url" placeholder="https://" value="${esc(prefill.src || "")}" ${fromProspect ? "" : "data-autofocus"} aria-describedby="bl-src-err"><div id="bl-src-err"></div></label>
         ${fold("Target", "optional", `
           <label class="field"><span>${t("Target page")}</span><input class="input mono" id="bl-target" placeholder="/page/" value="${esc(prefill.target || "")}" ${fromProspect ? "data-autofocus" : ""}></label>
-          <label class="field"><span>${t("Anchor text")}</span><input class="input" id="bl-anchor" dir="auto" value="${had(edit?.anchor)}"></label>`, Boolean(prefill.target || fromProspect || edit?.anchor))}
+          <label class="field"><span>${t("Anchor text")}</span><input class="input" id="bl-anchor" dir="auto" value="${had(edit?.anchor)}"></label>
+          <div class="field-row">
+            <label class="field"><span>${t("Keyword")}</span><input class="input" id="bl-keyword" dir="auto" value="${had(edit?.keyword)}"></label>
+            <label class="field"><span>${t("Anchor type")}</span><select class="select" id="bl-anchor-kind" style="width:100%">${window.BacklinkSeo.anchorOptions(edit?.anchorKind)}</select></label>
+          </div>`, Boolean(prefill.target || fromProspect || edit?.anchor || edit?.keyword || edit?.anchorKind))}
         ${fold("Status and type", "optional", `
           <div class="field-row">
             <label class="field"><span>${t("Status")}</span><select class="select" id="bl-status" style="width:100%">${[["live", "Live "], ["lost", "Lost "], ["planned", "Planned"], ...(edit?.status === "nofollow" ? [["nofollow", "Nofollow"]] : [])].map(([value, word]) => `<option value="${value}" ${edit?.status === value ? "selected" : ""}>${t(word)}</option>`).join("")}</select></label>
@@ -2162,6 +2173,7 @@
     const record = {
       src: field("#bl-src"), target: field("#bl-target"), anchor: field("#bl-anchor"), link_type: field("#bl-type"), placed: field("#bl-placed"), due: field("#bl-due"), renewal: field("#bl-renewal"), cost: field("#bl-cost"),
       mediator: field("#bl-mediator"), contact: field("#bl-contact"), platform: field("#bl-platform"), utm_source: field("#bl-utm-source"), utm_medium: field("#bl-utm-medium"), utm_campaign: field("#bl-utm-campaign"), owner: field("#bl-owner"), notes: field("#bl-notes"),
+      keyword: field("#bl-keyword"), anchor_kind: field("#bl-anchor-kind"),
     };
     const button = $("#bl-save"), box = $("#bl-src-err"), fromProspect = $("#bl-form").dataset.prospect;
     const logged = fromProspect ? window.PROSPECTS.find((p) => p.id === fromProspect) : null;
@@ -2177,7 +2189,11 @@
       try {
         if (bl.server) {
           const answer = await COMP.api("PUT", `backlinks/${editing.serverId}`, serverRow(record, site, status));
+          // A saved row doesn't carry the worked-out anchor type. It still holds while the anchor text is the same.
+          const auto = (editing.anchor || "") === (record.anchor || "") ? editing.anchorAuto : null;
           Object.assign(editing, toBacklink(answer.saved, site));
+          editing.anchorAuto = auto;
+          editing.anchorType = editing.anchorKind || auto;
           takeProspects(answer.prospects_removed);
         } else {
           const key = window.BulkLinks.sourceKey(record.src);

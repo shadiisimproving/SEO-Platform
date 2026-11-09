@@ -21,6 +21,7 @@ const answers = {
   prices: () => ask.values.map((value) => bulk.parsePrice(value)),
   currencies: () => ask.values.map((value) => bulk.currencyOf(value)),
   statuses: () => ask.values.map((value) => bulk.statusOf(value)),
+  anchorKinds: () => ask.values.map((value) => { const kind = bulk.anchorKindOf(value); return kind === undefined ? false : kind; }),
   columns: () => bulk.matchColumns(ask.headers),
   header: () => bulk.looksLikeHeader(ask.row),
   table: () => bulk.readTable(bulk.decode(new Uint8Array(Buffer.from(ask.base64, "base64")))),

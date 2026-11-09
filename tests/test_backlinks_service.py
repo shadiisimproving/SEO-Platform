@@ -23,7 +23,7 @@ ALLOW = lambda url: True  # noqa: E731
 QUEUE_ICONS = logos.queue_for  # the world fixture swaps it for nothing
 NODE = shutil.which("node")
 needs_node = pytest.mark.skipif(not NODE, reason="node is not installed")
-COLUMNS = ["Our site", "Source page", "Target page", "Anchor text", "Link type", "Status", "Date placed", "Due date", "Renewal date", "Price", "Mediator", "Contact", "Platform", "UTM source", "UTM medium", "UTM campaign", "Owner", "Notes"]
+COLUMNS = ["Our site", "Source page", "Target page", "Anchor text", "Anchor type", "Keyword", "Link type", "Status", "Date placed", "Due date", "Renewal date", "Price", "Mediator", "Contact", "Platform", "UTM source", "UTM medium", "UTM campaign", "Owner", "Notes"]
 
 FULL_ROW = {
     "source_url": "https://blog-expat.example/guide", "target_url": "/creer-societe/", "anchor": "créer sa société", "link_type": "Guest post", "status": "planned",
@@ -568,7 +568,7 @@ def test_the_download_button_gives_exactly_the_template_file():
 def test_the_browser_parser_opens_the_template_as_columns():
     table = browser("table", base64=base64.b64encode(TEMPLATE.read_bytes()).decode())
     assert table[0] == COLUMNS and len(table) == 3
-    assert browser("columns", headers=table[0]) == ["site", "src", "target", "anchor", "link_type", "status", "placed", "due", "renewal", "cost", "mediator", "contact", "platform", "utm_source", "utm_medium", "utm_campaign", "owner", "notes"]
+    assert browser("columns", headers=table[0]) == ["site", "src", "target", "anchor", "anchor_kind", "keyword", "link_type", "status", "placed", "due", "renewal", "cost", "mediator", "contact", "platform", "utm_source", "utm_medium", "utm_campaign", "owner", "notes"]
 
 
 def test_the_template_readme_explains_it_in_plain_words():
@@ -755,7 +755,7 @@ def test_a_cell_over_the_limit_is_a_row_problem_before_it_reaches_the_server():
 
 @needs_node
 def test_every_cell_of_a_row_lands_in_the_record():
-    line = ["site-one.example", "https://a.example/x", "/to/", "ancre", "Guest post", "Live", "2026-01-01", "2026-02-01", "2026-03-01", "AED 500", "Agency", "a@b.example", "Fiverr", "src", "med", "camp", "Sara", "Note"]
+    line = ["site-one.example", "https://a.example/x", "/to/", "ancre", "brand", "mot clé", "Guest post", "Live", "2026-01-01", "2026-02-01", "2026-03-01", "AED 500", "Agency", "a@b.example", "Fiverr", "src", "med", "camp", "Sara", "Note"]
     row = check([line], headers=COLUMNS)[0]
     keys = browser("columns", headers=COLUMNS)
     assert said(row) == ("ok", "Ready")
@@ -1101,3 +1101,47 @@ def test_two_spellings_of_a_mediator_are_one_person_with_all_their_links(world):
         mediators.ensure_from_rows(conn, [{"mediator": "John Smith"}, {"mediator": "john  smith"}])
     listed_people = mediators.list_all(world.engine)
     assert [(person["name"], person["links"]) for person in listed_people] == [("John Smith", 2)]
+
+
+# ---- keyword and an anchor type set by hand ----------------------------------------------------------------------------------------------
+
+def test_keyword_and_anchor_type_are_saved_and_a_hand_set_type_wins(world):
+    answer = post(world, [
+        {"site_id": world.own, "source_url": "https://a.example/x", "anchor": "click here", "keyword": "open a company in seville", "anchor_kind": "Semi-optimisée"},
+        {"site_id": world.own, "source_url": "https://b.example/y", "anchor": "click here"},
+    ])
+    assert answer.status_code == 201, answer.get_data(as_text=True)
+    by_source = {row["source_url"]: row for row in listed(world)}
+    hand, auto = by_source["https://a.example/x"], by_source["https://b.example/y"]
+    assert (hand["keyword"], hand["anchor_kind"], hand["anchor_type"], hand["anchor_auto"]) == ("open a company in seville", "partial", "partial", "generic")
+    assert (auto["keyword"], auto["anchor_kind"], auto["anchor_type"]) == (None, None, "generic")
+
+
+@pytest.mark.parametrize("word, kind", [
+    ("Branding", "brand"), ("Optimisée", "exact"), ("semi optimisée", "partial"), ("Bare URL", "url"), ("Générique", "generic"), ("Autre", "other"),
+    ("Exact keyword", "exact"), ("", None), ("Automatic", None),
+])
+def test_anchor_type_words_in_english_and_french(word, kind):
+    assert service.anchor_kind_of(word) == kind
+
+
+def test_an_unknown_anchor_type_stops_the_row(world):
+    answer = post(world, [{"site_id": world.own, "source_url": "https://a.example/x", "anchor_kind": "super"}])
+    assert answer.status_code == 400 and "anchor type" in answer.get_data(as_text=True)
+    assert count(world) == 0
+
+
+def test_editing_without_the_type_clears_it_and_mark_placed_keeps_it(world):
+    from seo.backlinks import todo
+    saved = post(world, [{"site_id": world.own, "source_url": "https://a.example/x", "status": "planned", "anchor_kind": "brand", "keyword": "kw"}]).get_json()["saved"][0]
+    todo.mark_placed(world.engine, saved["id"], "https://a.example/live-article")
+    row = listed(world)[0]
+    assert (row["status"], row["anchor_kind"], row["keyword"]) == ("live", "brand", "kw")
+    assert put(world, saved["id"], source_url="https://a.example/live-article", status="live").status_code == 200
+    assert listed(world)[0]["anchor_kind"] is None  # the form sends every field, so an empty one means Automatic
+
+
+@needs_node
+def test_both_sides_read_the_same_anchor_type_words():
+    words = [*service.ANCHOR_WORDS, "Semi-optimisée", "OPTIMISÉE", "nonsense"]
+    assert browser("anchorKinds", values=words) == [service.anchor_kind_of(w) for w in words]

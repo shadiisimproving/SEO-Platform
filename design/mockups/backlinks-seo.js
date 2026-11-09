@@ -25,6 +25,7 @@
     exact: ["Exact keyword", "Exactly one of your tracked keywords. Helps the most, but too many look bought."],
     partial: ["Partial keyword", "Holds one of your tracked keywords among other words."],
     generic: ["Generic", "Words like click here or read more. Natural, but tell Google little."],
+    other: ["Other", "None of the kinds above."],
   };
   const t = (w) => UI.t(w), esc = (v) => UI.esc(v);
   const siteIdOf = (host) => (H.sites?.() || []).find((s) => s.host === host)?.id ?? null;
@@ -152,10 +153,17 @@
   const trafficValue = (v) => (v === null || v === undefined ? '<span class="muted">—</span>' : UI.num(v));
   const trafficCell = (b) => (ahrefsOn() ? `<td class="r tabular" data-label="${t("Site traffic")}">${trafficValue(b.siteTraffic)}</td>` : "");
 
+  /* A type set by hand says so in its tip. One worked out from the anchor text doesn't. */
   function anchorTag(b) {
     const a = ANCHORS[b.anchorType];
-    return a ? ` <span class="tag vd-anchor" data-tip="${esc(t(a[1]))}" tabindex="0">${t(a[0])}</span>` : "";
+    if (!a) return "";
+    const tip = b.anchorKind ? `${t(a[1])} ${t("Set by hand.")}` : t(a[1]);
+    return `<span class="tag vd-anchor" data-tip="${esc(tip)}" tabindex="0">${t(a[0])}</span>`;
   }
+  const anchorWord = (b) => (ANCHORS[b.anchorType] ? `${t(ANCHORS[b.anchorType][0])}${b.anchorKind ? ` · ${t("set by hand")}` : ""}` : "");
+  /* The form's choices. Automatic means the app works it out from the anchor text and your keywords. */
+  const anchorOptions = (picked) => [["", "Automatic"], ...Object.entries(ANCHORS).map(([key, [word]]) => [key, word])]
+    .map(([key, word]) => `<option value="${key}" ${(picked || "") === key ? "selected" : ""}>${esc(t(word))}</option>`).join("");
 
   /* One row per linking website: how many links, the best of them, and what the website is worth. */
   function websiteTable(rows) {
@@ -489,7 +497,7 @@
   window.BacklinkSeo = {
     init(ui, helpers) { UI = ui; H = helpers; bind(); sample(); },
     noteSite: (host, facts) => { if (host && facts) S.sites.set(host, facts); },
-    filterRows, filterChips, viewSwitch, byWebsite, websiteTable, trafficHead, trafficCell, anchorTag,
+    filterRows, filterChips, viewSwitch, byWebsite, websiteTable, trafficHead, trafficCell, anchorTag, anchorWord, anchorOptions,
     badge, liveNote, authorityCell, panelBlocks, spamBlock, foundTools, foundButton, foundSeen, reclaimBody, reclaimCount, budgetBar, duplicateNote,
     forget: () => { S.reclaim.clear(); S.budgets.clear(); S.effects.clear(); },
   };
@@ -564,6 +572,7 @@
     "Google doesn't have the page the link is on, or can't index it": "Google n'a pas la page qui porte le lien, ou ne peut pas l'indexer", "Nofollow, sponsored, or on a page that passes nothing": "Nofollow, sponsored, ou sur une page qui ne transmet rien",
     "Site traffic": "Trafic du site", "Ahrefs' estimate of the linking website's monthly visits from Google": "Estimation Ahrefs des visites mensuelles venant de Google sur le site qui fait le lien",
     "Brand": "Marque", "Bare URL": "URL nue", "Exact keyword": "Mot-clé exact", "Partial keyword": "Mot-clé partiel", "Generic": "Générique",
+    "Automatic": "Automatique", "Set by hand.": "Choisi à la main.", "set by hand": "choisi à la main", "None of the kinds above.": "Aucun des types ci-dessus.",
     "Your brand or domain name. The safest kind of anchor.": "Votre marque ou votre nom de domaine. Le type d'ancre le plus sûr.",
     "The address itself, such as www.example.com. Safe and natural.": "L'adresse elle-même, comme www.example.com. Sûr et naturel.",
     "Exactly one of your tracked keywords. Helps the most, but too many look bought.": "Exactement un de vos mots-clés suivis. Aide le plus, mais en excès cela paraît acheté.",
