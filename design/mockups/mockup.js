@@ -995,14 +995,10 @@
     };
   })();
 
+  // Served by the app, it is always the real server. A failed answer shows as an error, never as sample rows.
+  // Sample data is only for the screen opened as a plain file, with no app behind it.
   async function pickLinksApi() {
-    if (location.protocol.startsWith("http")) {
-      try {
-        const probe = await fetch("api/links/sites");
-        if (probe.ok && (probe.headers.get("content-type") || "").includes("json")) return serverApi;
-      } catch { /* no server: sample data */ }
-    }
-    return sampleApi;
+    return location.protocol.startsWith("http") ? serverApi : sampleApi;
   }
 
   async function startLinks() {
@@ -1138,6 +1134,11 @@
     if (state.healthTab === "test" && window.HealthTest) return `${head}<div class="content page-enter">${tabs}${window.HealthTest.body()}</div>`;
     if (state.healthTab === "uptime") return `${head}<div class="content page-enter">${tabs}${window.UptimeWatch.body()}</div>`;
     if (!lc.ready) return `${head}<div class="content page-enter">${tabs}<div class="card"><div class="empty"><p>${t("Loading…")}</p></div></div></div>`;
+    if (!lc.sites.length && lc.loadError) { // the server refused or failed: never pretend there are no websites
+      return `${head}<div class="content page-enter">${tabs}<div class="table-wrap"><div class="empty" id="lc-load-error" role="alert">
+        <h3>${t("The server didn't answer")}</h3><p>${esc(lc.loadError)}. ${t("Wait a moment, then try again.")}</p>
+        <button class="btn btn-main" id="lc-retry">${icon("refresh-cw")}${t("Try again")}</button></div></div></div>`;
+    }
     if (!lc.sites.length) {
       return `${head}<div class="content page-enter">${tabs}<div class="table-wrap"><div class="empty" id="lc-empty">
         <h3>${t("No websites added yet")}</h3><p>${t("Add your own website, then check its links.")}</p>
@@ -2855,6 +2856,7 @@
     if ((el = hit("[data-setup-panel]"))) { openSiteSetup(el.dataset.setupPanel, el); return; }
     if ((el = hit("[data-setup-hide]"))) { store.set("setupHidden", JSON.stringify([...setupHidden(), el.dataset.setupHide])); render(); toast(t("Hidden. Its steps stay on the site's own Today."), { kind: "info" }); return; }
     if ((el = hit("[data-setup]")) && el.dataset.setup !== "site") { runSetupStep(el.dataset.setup, el.dataset.setupHost || setupHost()); return; }
+    if (hit("#lc-retry")) { lc.ready = false; render(); reloadLinkSites().then(() => render()); return; }
     if (hit("#site-add") || hit("[data-add-site]")) { closePopover(); addSitePanel(hit("#site-add") || $("#site-switch")); return; }
     if ((el = hit("#site-save"))) {
       const address = $("#site-address").value, kind = $('input[name="site-kind"]:checked')?.value;

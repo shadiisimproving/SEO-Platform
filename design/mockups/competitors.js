@@ -21,16 +21,10 @@
   });
 
   // ---- talking to the server, or to the sample --------------------------------------------
+  // Served by the app, it is always the real server: a failed request shows its error, never sample rows.
+  // Sample data is only for the screens opened as a plain file, with no app behind them.
   const isServer = () => {
-    if (!COMP.server) {
-      COMP.server = (async () => {
-        if (!location.protocol.startsWith("http")) return false;
-        try {
-          const probe = await fetch("api/links/sites");
-          return probe.ok && (probe.headers.get("content-type") || "").includes("json");
-        } catch { return false; }
-      })();
-    }
+    if (!COMP.server) COMP.server = Promise.resolve(location.protocol.startsWith("http"));
     return COMP.server;
   };
   COMP.isServer = isServer;
