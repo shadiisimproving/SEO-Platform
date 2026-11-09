@@ -9,6 +9,12 @@
 @media print { .nb-fab { display: none; } }
 .nb-panel { padding: 14px 18px 18px; overflow: auto; }
 .nb-panel .nb-ways { margin-bottom: 14px; }
+/* The second row: anything else, picked from a list. */
+.nb-panel .nb-ways-pick { align-items: center; margin-top: -6px; }
+.nb-ways-pick > .small { margin-inline-end: 2px; }
+.nb-pick .nb-field { max-width: none; }
+.nb-pick .nb-field .input { width: 100%; }
+.nb-pick-hint { margin: 0 0 8px; }
 .nb-bare .nb-compose { padding: 0 0 6px; }
 .nb-bare .nb-list { padding: 0; }
 .nb-panel-search { flex: none; margin-bottom: 10px; }
@@ -16,6 +22,14 @@
 /* A plain count, not the red alert badge: a note is never something wrong. */
 .nb-count { margin-left: 2px; font-size: 11px; font-weight: 600; padding: 0 6px; border-radius: 9px; line-height: 18px; background: var(--chip, rgba(120, 130, 150, .14)); color: var(--text-2); }
 .nb-count[hidden] { display: none; }
+/* A row's pencil: quiet until it holds notes. */
+.nb-badge { display: inline-flex; align-items: center; gap: 3px; padding: 2px 5px; margin-inline-start: 6px; border: 0; border-radius: 6px; background: none; color: var(--muted); cursor: pointer; vertical-align: middle; }
+.nb-badge svg.i { width: 13px; height: 13px; }
+.nb-badge:hover, .nb-badge:focus-visible { color: var(--text); background: var(--chip, rgba(120, 130, 150, .14)); }
+.nb-badge .nb-count { margin: 0; }
+.nb-inline { display: inline-flex; align-items: center; min-width: 0; max-width: 100%; }
+.nb-inline > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.nb-inline .nb-badge { flex: none; }
 .nb-new-body { padding: 14px 18px 12px; }
 .nb-ways { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .nb-way { display: inline-flex; align-items: center; gap: 6px; }

@@ -195,6 +195,12 @@ def run(job: queue.ClaimedJob, engine: Engine) -> None:
         from seo.metrics import search  # "Matches Search Console", after every finished pull
 
         search.verify_quietly(engine, site_id)
+        from seo.notifications import new_queries  # the bell, for a search the site never showed up for before
+
+        new_queries.enqueue(engine, site_id)
+        from seo.insights import engine as insights  # Search insights, only when a new final day arrived
+
+        insights.enqueue_if_new(engine, site_id)
 
 
 @handler("collect-authority")

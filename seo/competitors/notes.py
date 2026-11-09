@@ -1,4 +1,5 @@
-"""Notes on all competitors, on one competitor, on any page, on one screen of the app, or on a whole website.
+"""Notes on all competitors, on one competitor, on any page or group of pages, on a keyword, a day, a linking website or a task,
+on one screen of the app, or on a whole website.
 Deleting keeps the text, so it can be undone.
 
 A note can also hold images and files. They sit on disk under a random name, never the one they came with.
@@ -9,24 +10,25 @@ from __future__ import annotations
 import os
 import re
 import secrets
+from datetime import date, timedelta
 from pathlib import Path
 
 from sqlalchemy import Engine, text
 
 from seo import config
-from seo.competitors import pages
+from seo.competitors import pages, pairs
 from seo.competitors.keywords import _iso, require_own
 from seo.core.errors import NotFound, Refused
-from seo.serp.store import canonical_url
+from seo.serp.store import canonical_url, clean_keyword, keyword_hash, to_ascii_host
 
 MAX_BYTES = 4_000_000  # far past any note; the column holds 16 MB
-SCOPES = ("all", "competitor", "page", "site", "screen")
+SCOPES = ("all", "competitor", "page", "site", "screen", "keyword", "date", "domain", "section", "task")
 # The screens a note can be about: the app's menu. A name outside it would never be shown anywhere.
 SCREENS = (
     "today", "channels", "conversions", "content", "overview", "keywords", "competitors", "ai", "ads",
     "tasks", "backlinks", "resources", "health", "settings",
 )
-WRONG_SCOPE = "A note goes on all competitors, one competitor, a page, a screen or a website."
+WRONG_SCOPE = "A note goes on all competitors, one competitor, a page or group of pages, a keyword, a day, a linking website, a task, a screen or a website."
 MAX_FILE_BYTES = 25 * 1024 * 1024
 UPLOAD_OVERHEAD = 1024 * 1024  # the form around the file
 TOO_LARGE = "This file is too large. The limit is 25 MB."
@@ -86,12 +88,13 @@ def _check_body(body) -> str:
 def _dict(row, files=()) -> dict:
     return {
         "id": row["id"], "scope": row["scope"], "site_id": row["site_id"], "competitor_id": row["competitor_id"], "competitor": row.get("competitor"),
-        "page_url": row["page_url"], "screen": row["screen"], "body": row["body"], "created_at": _iso(row["created_at"]), "updated_at": _iso(row["updated_at"]),
+        "page_url": row["page_url"], "screen": row["screen"], "keyword": row.get("keyword"), "day": row["day"].isoformat() if row.get("day") else None,
+        "domain": row.get("domain"), "task_id": row.get("task_id"), "task": row.get("task"), "body": row["body"], "created_at": _iso(row["created_at"]), "updated_at": _iso(row["updated_at"]),
         "deleted_at": _iso(row["deleted_at"]), "files": list(files),
     }
 
 
-_SELECT = "SELECT n.*, s.host AS competitor FROM notes n LEFT JOIN sites s ON s.id = n.competitor_id"
+_SELECT = "SELECT n.*, s.host AS competitor, t.title AS task FROM notes n LEFT JOIN sites s ON s.id = n.competitor_id LEFT JOIN tasks t ON t.id = n.task_id"
 
 
 def _one(conn, note_id: int) -> dict:
@@ -107,7 +110,45 @@ def _clean_page(page_url) -> str:
     return canonical_url(page_url if "://" in page_url else f"https://{page_url.strip()}")
 
 
-def create(engine: Engine, scope, body, site_id=None, competitor_id=None, page_url=None, screen=None) -> dict:
+_HOST = re.compile(r"^(?=.{1,190}$)[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$")
+
+
+def clean_domain(value) -> str:
+    """A linking website as one spelling: no scheme, path, port or www, and accents in their ASCII form."""
+    text_ = str(value or "").strip().lower()
+    text_ = re.sub(r"^[a-z][a-z0-9+.-]*://", "", text_)
+    text_ = re.split(r"[/?#]", text_, maxsplit=1)[0].rsplit("@", 1)[-1].split(":", 1)[0].strip(".")
+    if text_.startswith("www."):
+        text_ = text_[4:]
+    try:
+        text_ = to_ascii_host(text_)
+    except Exception:  # an address that can't be written in ASCII isn't a website
+        return ""
+    return text_ if _HOST.match(text_) else ""
+
+
+def clean_section(value) -> str:
+    """A group of pages: the address its pages start with, always ending in "/", and never a whole website."""
+    url = _clean_page(value)
+    if not url:
+        return ""
+    url = url.split("?", 1)[0].split("#", 1)[0]
+    return url if url.endswith("/") else f"{url}/"
+
+
+def _clean_day(value) -> date:
+    try:
+        day = date.fromisoformat(value) if isinstance(value, str) else None
+    except ValueError:
+        day = None
+    if day is None:
+        raise Refused("Choose the day this note is about.")
+    if day.year < 2000 or day > date.today() + timedelta(days=366):
+        raise Refused("Choose a day between 2000 and next year.")
+    return day
+
+
+def create(engine: Engine, scope, body, site_id=None, competitor_id=None, page_url=None, screen=None, keyword=None, day=None, domain=None, task_id=None) -> dict:
     body = _check_body(body)
     if scope not in SCOPES:
         raise Refused(WRONG_SCOPE)
@@ -115,8 +156,26 @@ def create(engine: Engine, scope, body, site_id=None, competitor_id=None, page_u
         raise Refused("Say which screen this note is about.")
     if scope != "screen":
         screen = None
-    if scope in ("site", "screen"):
+    if scope not in ("all", "competitor", "page"):
         competitor_id = None
+    fields = {"keyword": None, "keyword_hash": None, "day": None, "domain": None, "task_id": None}
+    if scope == "keyword":
+        word = clean_keyword(keyword) if isinstance(keyword, str) else ""
+        if not word:
+            raise Refused("Enter the keyword.")
+        if len(word) > 400:
+            raise Refused("This keyword is too long. The limit is 400 characters.")
+        fields.update(keyword=word, keyword_hash=keyword_hash(word))
+    if scope == "date":
+        fields["day"] = _clean_day(day)
+    if scope == "domain":
+        fields["domain"] = clean_domain(domain)
+        if not fields["domain"]:
+            raise Refused("Enter the linking website, such as example.com.")
+    if scope == "task":
+        if type(task_id) is not int:
+            raise Refused("Say which task this note is about.")
+        fields["task_id"] = task_id
     if scope == "competitor" and competitor_id is None:
         raise Refused("Say which competitor this note is about.")
     if competitor_id is not None and type(competitor_id) is not int:
@@ -127,6 +186,13 @@ def create(engine: Engine, scope, body, site_id=None, competitor_id=None, page_u
         if not clean_url:
             raise Refused("Enter the page's address.")
         hashed = pages.url_hash(clean_url)
+    if scope == "section":
+        clean_url = clean_section(page_url)
+        if not clean_url:
+            raise Refused("Enter the address the pages start with, such as example.com/blog/.")
+        if clean_url.split("://", 1)[-1].count("/") < 2:
+            raise Refused("That's the whole website. Write the note on the website instead, or add a folder such as /blog/.")
+        hashed = pages.url_hash(clean_url)
     with engine.begin() as conn:
         if site_id is not None:
             require_own(conn, site_id)
@@ -135,9 +201,17 @@ def create(engine: Engine, scope, body, site_id=None, competitor_id=None, page_u
                 raise NotFound("That competitor doesn't exist.")
             if site_id is not None and not conn.execute(text("SELECT 1 FROM site_competitors WHERE site_id = :s AND competitor_id = :c"), {"s": site_id, "c": competitor_id}).first():
                 raise NotFound("That competitor isn't on this website.")
+        if scope == "task":
+            task = conn.execute(text("SELECT site_id FROM tasks WHERE id = :i AND deleted_at IS NULL"), {"i": task_id}).first()
+            if task is None:
+                raise NotFound("That task doesn't exist.")
+            site_id = task[0]  # a task's notes belong to the task's site
         note_id = conn.execute(
-            text("INSERT INTO notes (scope, site_id, competitor_id, page_url, page_hash, screen, body) VALUES (:sc, :s, :c, :u, :h, :sn, :b)"),
-            {"sc": scope, "s": site_id, "c": competitor_id if scope != "all" else None, "u": clean_url, "h": hashed, "sn": screen, "b": body},
+            text(
+                "INSERT INTO notes (scope, site_id, competitor_id, page_url, page_hash, screen, keyword, keyword_hash, day, domain, task_id, body)"
+                " VALUES (:sc, :s, :c, :u, :h, :sn, :keyword, :keyword_hash, :day, :domain, :task_id, :b)"
+            ),
+            {"sc": scope, "s": site_id, "c": competitor_id if scope != "all" else None, "u": clean_url, "h": hashed, "sn": screen, "b": body, **fields},
         ).lastrowid
         return _one(conn, note_id)
 
@@ -163,7 +237,11 @@ def restore(engine: Engine, note_id: int) -> dict:
         return _one(conn, note_id)
 
 
-def list_notes(engine: Engine, scope: str | None = None, competitor_id: int | None = None, page_url: str | None = None, site_id: int | None = None, screen: str | None = None) -> list[dict]:
+def list_notes(
+    engine: Engine, scope: str | None = None, competitor_id: int | None = None, page_url: str | None = None, site_id: int | None = None, screen: str | None = None,
+    keyword: str | None = None, day: str | None = None, domain: str | None = None, task_id: int | None = None,
+) -> list[dict]:
+    """A page's notes include those on every group of pages it belongs to."""
     has_file = "EXISTS (SELECT 1 FROM note_files f WHERE f.note_id = n.id AND f.deleted_at IS NULL)"
     where, params = ["n.deleted_at IS NULL", f"(n.body <> '' OR {has_file})"], {}
     if scope:
@@ -177,9 +255,25 @@ def list_notes(engine: Engine, scope: str | None = None, competitor_id: int | No
     if competitor_id is not None:
         where.append("n.competitor_id = :c")
         params["c"] = competitor_id
-    if page_url:
+    if keyword:
+        where.append("n.keyword_hash = :kh")
+        params["kh"] = keyword_hash(keyword)
+    if day:
+        where.append("n.day = :day")
+        params["day"] = _clean_day(day)
+    if domain:
+        where.append("n.domain = :domain")
+        params["domain"] = clean_domain(domain) or domain
+    if task_id is not None:
+        where.append("n.task_id = :task")
+        params["task"] = task_id
+    if page_url and scope == "section":
         where.append("n.page_hash = :h")
-        params["h"] = pages.url_hash(_clean_page(page_url) or page_url)
+        params["h"] = pages.url_hash(clean_section(page_url) or page_url)
+    elif page_url:
+        params["u"] = _clean_page(page_url) or page_url
+        params["h"] = pages.url_hash(params["u"])
+        where.append("(n.page_hash = :h OR (n.scope = 'section' AND LEFT(:u, CHAR_LENGTH(n.page_url)) = n.page_url COLLATE utf8mb4_bin))")
     if site_id is not None:  # a note saved with no site belongs to all of them
         where.append("(n.site_id = :s OR n.site_id IS NULL)")
         params["s"] = site_id
@@ -247,3 +341,55 @@ def restore_file(engine: Engine, file_id: int) -> dict:
         row = _file_row(conn, file_id)
         conn.execute(text("UPDATE note_files SET deleted_at = NULL WHERE id = :i"), {"i": file_id})
         return _one(conn, row["note_id"])
+
+
+def options(engine: Engine, site_id: int | None = None) -> dict:
+    """What a note can be about, to pick from: the pages, groups of pages, keywords, linking websites and tasks
+    of one of my sites, or of all of them. Anything but a task can also be typed."""
+    with engine.connect() as conn:
+        if site_id is not None:
+            require_own(conn, site_id)
+            sites = [site_id]
+        else:
+            sites = [r[0] for r in conn.execute(text("SELECT id FROM sites WHERE kind = 'own' ORDER BY id"))]
+        words: dict[str, str] = {}
+        domains: set[str] = set()
+        tasks: list[dict] = []
+        if sites:
+            marks = ", ".join(str(int(s)) for s in sites)
+            for (word,) in conn.execute(text(f"SELECT DISTINCT k.keyword FROM site_keywords sk JOIN keywords k ON k.id = sk.keyword_id WHERE sk.site_id IN ({marks}) ORDER BY k.keyword LIMIT 2000")):
+                words.setdefault(clean_keyword(word).casefold(), clean_keyword(word))
+            for table in ("backlinks", "prospects"):
+                domains.update(r[0] for r in conn.execute(text(f"SELECT DISTINCT domain FROM {table} WHERE site_id IN ({marks}) LIMIT 3000")) if r[0])
+            domains.update(r[0] for r in conn.execute(text(
+                f"SELECT DISTINCT r.domain FROM competitor_referrers r JOIN site_competitors sc ON sc.competitor_id = r.competitor_id WHERE sc.site_id IN ({marks}) LIMIT 3000"
+            )) if r[0])
+            # A task for all sites belongs to each of them too.
+            tasks = [{"id": r[0], "title": r[1], "status": r[2]} for r in conn.execute(text(
+                f"SELECT id, title, status FROM tasks WHERE deleted_at IS NULL AND (site_id IN ({marks}) OR site_id IS NULL) ORDER BY status = 'done', updated_at DESC LIMIT 500"
+            ))]
+    found: dict[str, str] = {}
+    for one in sites:
+        for page in pairs.page_options(engine, one):
+            found.setdefault(page["url"], page["title"])
+    page_list = [{"url": url, "title": title} for url, title in sorted(found.items())][:2000]
+    return {
+        "pages": page_list,
+        "sections": _sections(page_list),
+        "keywords": sorted(words.values(), key=str.casefold),
+        "domains": sorted(domains),
+        "tasks": tasks,
+    }
+
+
+def _sections(page_list: list[dict]) -> list[dict]:
+    """The folders the known pages sit in, such as /blog/ and /blog/guides/, with how many pages each holds."""
+    counts: dict[str, int] = {}
+    for page in page_list:
+        scheme, _, rest = page["url"].partition("://")
+        host, _, path = rest.partition("/")
+        parts = path.split("?", 1)[0].split("/")[:-1]  # the last part is the page itself
+        for depth in range(1, min(len(parts), 3) + 1):
+            prefix = f"{scheme}://{host}/{'/'.join(parts[:depth])}/"
+            counts[prefix] = counts.get(prefix, 0) + 1
+    return [{"url": url, "pages": n} for url, n in sorted(counts.items()) if n >= 1][:500]

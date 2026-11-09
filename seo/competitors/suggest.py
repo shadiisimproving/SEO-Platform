@@ -177,6 +177,17 @@ def queue_crawl(engine: Engine, competitor_id: int) -> None:
     queue.enqueue(engine, "crawl", "competitors.crawl", payload={"competitor_id": competitor_id}, dedupe_key=f"competitor:{competitor_id}", max_attempts=2)
 
 
+def queue_history(engine: Engine, host: str, site_id: int) -> None:
+    """The Wayback Machine and domain dates, asked for straight away: the profile shows them from the first visit. My site's own dates sit beside theirs."""
+    from seo.competitors import history
+
+    history.queue_for(engine, host)
+    with engine.connect() as conn:
+        mine = conn.execute(text("SELECT host FROM sites WHERE id = :s"), {"s": site_id}).scalar()
+    if mine:
+        history.queue_for(engine, mine)
+
+
 def add_competitor(engine: Engine, site_id: int, address: str, source: str = "manual", is_allowed=None, refresh_pairs: bool = True) -> dict:
     """Links a competitor to my site. Its row in `sites` is shared if another of my sites already watches it."""
     from seo.competitors import pairs
@@ -209,6 +220,7 @@ def add_competitor(engine: Engine, site_id: int, address: str, source: str = "ma
         conn.execute(text("DELETE FROM competitor_dismissals WHERE site_id = :s AND domain = :d"), {"s": site_id, "d": domain_of(host)})
     queue_crawl(engine, competitor_id)
     logos.queue_for(engine, [domain_of(host)])
+    queue_history(engine, host, site_id)
     if refresh_pairs:
         pairs.refresh_auto_pairs(engine, site_id)
     return {"id": competitor_id, "host": host, "source": source}

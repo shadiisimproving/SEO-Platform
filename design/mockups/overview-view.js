@@ -210,7 +210,7 @@
         <div class="lv-tip" hidden></div>
         <div class="lv-axis" aria-hidden="true">${ticks.map(([p]) => `<span>${esc(dayLabel(p.day))}</span>`).join("")}</div>
       </div>${legend}
-      ${marks.length ? `<ul class="ov-marks">${marks.map((m) => `<li>${icon(m.kind === "task" ? "circle-check" : "pencil")}<span class="muted">${esc(dayLabel(m.day))}</span> <span dir="auto">${esc(m.text)}</span>${m.kind === "note" ? `<button class="icon-btn ov-mark-del" data-ov-note-del="${m.id}" aria-label="${t("Delete the note")}">${icon("x")}</button>` : ""}</li>`).join("")}</ul>` : ""}
+      ${marks.length ? `<ul class="ov-marks">${marks.map((m) => `<li>${icon(m.kind === "task" ? "circle-check" : "pencil")}<span class="muted">${esc(dayLabel(m.day))}</span> ${m.kind === "dated" ? `<button class="link-btn" dir="auto" data-notes-open="${esc(JSON.stringify([{ label: dayLabel(m.day), icon: "calendar-days", where: { scope: "date", day: m.day, siteId: m.site_id } }]))}">${esc(m.text)}</button>` : `<span dir="auto">${esc(m.text)}</span>`}${m.kind === "note" ? `<button class="icon-btn ov-mark-del" data-ov-note-del="${m.id}" aria-label="${t("Delete the note")}">${icon("x")}</button>` : ""}</li>`).join("")}</ul>` : ""}
       ${OV.table ? chartTable(d) : ""}`;
   }
   function chartTable(d) {

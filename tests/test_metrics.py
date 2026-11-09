@@ -515,12 +515,22 @@ def test_resources_need_a_title_and_a_real_link_and_can_be_undone(engine, site):
         resources.create(engine, {"title": " "})
     with pytest.raises(Refused):
         resources.create(engine, {"title": "x", "url": "javascript:alert(1)"})
-    made = resources.create(engine, {"title": "Brief", "url": "https://docs.example/brief", "site_id": site, "kind": "Brief"}, "Boss")
+    made = resources.create(engine, {"title": "Brief", "url": "https://docs.example/brief", "site_id": site, "tags": ["Brief"]}, "Boss")
     assert made["host"] == "mine.example" and made["created_by"] == "Boss"
     resources.delete(engine, made["id"])
     assert resources.list_resources(engine) == []
     resources.restore(engine, made["id"])
     assert len(resources.list_resources(engine)) == 1
+
+
+def test_resources_keep_a_tidy_list_of_tags(engine, site):
+    made = resources.create(engine, {"title": "Guide", "tags": ["  Guide ", "guide", "Team  login", ""]})
+    assert made["tags"] == ["Guide", "Team login"]
+    edited = resources.update(engine, made["id"], {"title": "Guide", "tags": []})
+    assert edited["tags"] == []
+    for bad in ("Brief", ["x" * 41], [f"t{n}" for n in range(21)], [3]):
+        with pytest.raises(Refused):
+            resources.create(engine, {"title": "x", "tags": bad})
 
 
 def test_the_apis_answer_and_refuse_bad_dates(engine, site):

@@ -54,6 +54,7 @@ class FetchResult:
     request_seconds: float = 0.0  # time on the network only, without the polite waits
     error: str | None = None  # why a request failed, in plain words
     held_back: bool = False  # the page wasn't asked: robots.txt didn't answer, or the site told us to wait. This says nothing about the page.
+    x_robots_tag: str | None = None  # the X-Robots-Tag header, when a page sends one: noindex there hides the page from Google as the meta tag does
 
 
 @dataclass
@@ -171,6 +172,14 @@ class PoliteFetcher:
             if crawl_delay:
                 host.delay = max(host.delay, min(float(crawl_delay), LONGEST_CRAWL_DELAY))
                 self._spaced(host)
+
+    def agent_may_fetch(self, url: str, agent: str) -> bool | None:
+        """What this host's robots.txt, already read, says to another crawler, such as Googlebot. None when it couldn't be read. Sends nothing."""
+        parts = urlsplit(url)
+        host = self._hosts.get(f"{parts.scheme}://{parts.netloc}")
+        if host is None or host.robots_state in ("unread", "network_error", "server_error"):
+            return None
+        return True if host.robots is None else host.robots.can_fetch(agent, url)
 
     def sitemaps_from_robots(self, base_url: str) -> list[str]:
         if not self.is_allowed(base_url):
@@ -312,4 +321,6 @@ class PoliteFetcher:
         result.charset = response.charset_encoding
         result.etag = response.headers.get("etag")
         result.last_modified = response.headers.get("last-modified")
+        tags = response.headers.get_list("x-robots-tag")
+        result.x_robots_tag = ", ".join(tags)[:500] if tags else None
         return result

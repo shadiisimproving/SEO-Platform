@@ -1,0 +1,40 @@
+/* The bell at the top of every screen and its list. See notifications.js. */
+.bell-btn { position: relative; }
+.bell-btn .bell-count {
+  position: absolute; top: 1px; right: 0; min-width: 16px; padding: 0 4px; border-radius: 8px;
+  font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; font-variant-numeric: tabular-nums;
+  background: linear-gradient(135deg, #f43f5e, #d81b45); color: #fff; box-shadow: 0 0 0 2px var(--glass-2);
+}
+
+.bell-pop { padding: 0; display: flex; flex-direction: column; min-width: 0; }
+.bell-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px 10px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--glass-2); z-index: 1; }
+.bell-head h2 { font-size: 14px; font-weight: 600; margin: 0; display: flex; align-items: center; gap: 6px; }
+.bell-list { list-style: none; margin: 0; padding: 4px; }
+.bell-row { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 8px; align-items: start; padding: 10px 10px; border-radius: var(--r-s); cursor: default; }
+.bell-row + .bell-row { border-top: 1px solid var(--line); }
+.bell-row:hover { background: var(--hover); }
+.bell-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; background: transparent; }
+.bell-row.unread .bell-dot { background: var(--accent-2); }
+.bell-body { min-width: 0; }
+.bell-title { margin: 0 0 3px; font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
+.bell-row:not(.unread) .bell-title { color: var(--text-2); }
+.bell-row:not(.unread) .bell-title b { font-weight: 500; }
+.bell-kind { color: var(--muted); }
+.bell-meta { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); line-height: 1.5; }
+.bell-meta img, .bell-meta svg { flex: none; }
+.bell-path { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bell-acts { display: flex; align-items: center; gap: 2px; }
+.bell-track { font-size: 12px; padding: 0 8px; min-height: 28px; gap: 4px; }
+.bell-track svg { width: 14px; height: 14px; }
+.bell-mark { width: 28px; height: 28px; }
+.bell-mark svg { width: 15px; height: 15px; }
+.bell-more { list-style: none; margin: 6px 0 0; padding: 0; font-size: 12px; }
+.bell-more li { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-top: 1px dashed var(--line); }
+.bell-num { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bell-empty { padding: 18px 16px 20px; margin: 0; color: var(--text-2); font-size: 13px; }
+.bell-empty p { margin: 0 0 4px; }
+
+@media (max-width: 560px) {
+  .bell-row { grid-template-columns: 10px minmax(0, 1fr); }
+  .bell-acts { grid-column: 2; }
+}

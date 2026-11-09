@@ -58,7 +58,7 @@
     return `<span class="status ${map[sev][1]}">${icon(map[sev][0])}${esc(word)}</span>`;
   };
   // Logos are copied into the project, so nothing loads from outside.
-  const LOGOS = { google: "google.svg", googleads: "googleads.svg", duckduckgo: "duckduckgo.png", bing: "bing.svg", yandex: "yandex.png", "Bright Data": "brightdata.png", SerpApi: "serpapi.png", HasData: "hasdata.png", Searlo: "searlo.png", "DuckDuckGo direct": "duckduckgo.png", SearXNG: "searxng.svg", clarity: "clarity.png", analytics: "analytics.svg", openpagerank: "openpagerank.png", searchconsole: "searchconsole.png", pagespeed: "pagespeed.png", moz: "moz.png", cloudflare: "cloudflare.png", commoncrawl: "commoncrawl.jpg", indexnow: "indexnow.png", openrouter: "openrouter.png" };
+  const LOGOS = { google: "google.svg", googleads: "googleads.svg", duckduckgo: "duckduckgo.png", bing: "bing.svg", yandex: "yandex.png", "Bright Data": "brightdata.png", SerpApi: "serpapi.png", HasData: "hasdata.png", Searlo: "searlo.png", "DuckDuckGo direct": "duckduckgo.png", SearXNG: "searxng.svg", clarity: "clarity.png", analytics: "analytics.svg", openpagerank: "openpagerank.png", searchconsole: "searchconsole.png", pagespeed: "pagespeed.png", moz: "moz.png", cloudflare: "cloudflare.png", commoncrawl: "commoncrawl.jpg", indexnow: "indexnow.png", openrouter: "openrouter.png", ahrefs: "ahrefs.png" };
   const logo = (name, size = 18, cls = "") => (LOGOS[name]
     ? `<img class="logo ${cls}" src="logos/${LOGOS[name]}" alt="" width="${size}" height="${size}">`
     : `<span class="logo ${cls}" style="width:${size}px;height:${size}px" aria-hidden="true">${name === "Browser on this Mac" ? icon("globe") : esc(String(name || "?")[0].toUpperCase())}</span>`);
@@ -106,7 +106,7 @@
     { group: "Traffic" },
     { id: "channels", label: "Channels", icon: "activity" }, { id: "conversions", label: "Conversions", icon: "filter" }, { id: "content", label: "Content", icon: "file-text" },
     { group: "Search" },
-    { id: "overview", label: "Overview", icon: "search" }, { id: "keywords", label: "Keywords", icon: "key-round" }, { id: "competitors", label: "Competitors", icon: "crosshair" }, { id: "ai", label: "AI search", icon: "sparkles" },
+    { id: "overview", label: "Overview", icon: "search" }, { id: "insights", label: "Insights", icon: "trending-up" }, { id: "keywords", label: "Keywords", icon: "key-round" }, { id: "competitors", label: "Competitors", icon: "crosshair" }, { id: "ai", label: "AI search", icon: "sparkles" },
     { group: "Ads" },
     { id: "ads", label: "Google Ads", icon: "megaphone", logo: "googleads" },
     { group: "Work" },
@@ -179,6 +179,7 @@
       <div class="grow"><h1>${esc(title)}</h1><p class="sub">${sub}</p></div>
       <div class="tools">
         <button class="btn btn-ghost kbd-hint" id="cmd-open" aria-label="${t("Search or jump to…")}">${icon("search")}<span class="kbd">⌘K</span></button>
+        ${window.Bell ? window.Bell.button() : ""}
         ${withDates ? datePicks() : ""}
         ${main}
       </div>
@@ -570,6 +571,8 @@
     cost: row.cost ?? 0, priceText: row.price_text, mediator: row.mediator, owner: row.owner, placed: row.placed, utm: utmOf(row.utm_source, row.utm_medium, row.utm_campaign), before: null, after: null,
     pageAuthority: row.page_authority ?? null, rating: row.rating ?? null, articleUrl: row.article_url || null, sentAt: row.sent_at || null,
     linkType: row.link_type, due: row.due, renewal: row.renewal, contact: row.contact, platform: row.platform, notes: row.notes, createdAt: row.created_at,
+    opr: row.opr ?? null, foundBy: row.found_by || null, gsc: row.gsc || null, disavow: Boolean(row.disavow), targetIndex: row.target_index || null,
+    sourceIndex: row.source_index || null, anchorType: row.anchor_type || null, siteTraffic: row.site_traffic ?? null,
   });
   const localLink = (id, x, site, status) => ({
     id, src: x.src, domain: window.BacklinkCleaner.rootDomain(x.src), site, target: x.target || null, anchor: x.anchor || null, status, auth: null, visits: 0, leads: 0, label: "none",
@@ -645,10 +648,14 @@
     bl.error = "";
     try {
       noteRealSites((await COMP.api("GET", "links/sites")).sites);
-      const lists = await Promise.all(bl.sites.map(async (site) => (await COMP.api("GET", `backlinks?site_id=${site.id}`)).backlinks.map((row) => toBacklink(row, site.host))));
+      const lists = await Promise.all(bl.sites.map(async (site) => {
+        const answer = await COMP.api("GET", `backlinks?site_id=${site.id}`);
+        window.BacklinkSeo.noteSite(site.host, answer.site); // its language and whether Google can be asked if its pages are indexed
+        return answer.backlinks.map((row) => toBacklink(row, site.host));
+      }));
       const rows = lists.flat().sort((a, b) => b.serverId - a.serverId);
       window.BACKLINKS = rows.filter((b) => b.status !== "found" && b.status !== "ignored");
-      window.FOUND_LINKS = rows.filter((b) => b.status === "found" || b.status === "ignored").map((b) => ({ src: b.src, target: b.target || "", seen: "—", first: (b.createdAt || "").slice(0, 10), auth: null, serverId: b.serverId, ignored: b.status === "ignored", site: b.site }));
+      window.FOUND_LINKS = rows.filter((b) => b.status === "found" || b.status === "ignored").map((b) => ({ src: b.src, target: b.target || "", seen: b.foundBy || "—", first: (b.createdAt || "").slice(0, 10), crawled: b.gsc?.crawled || null, auth: null, serverId: b.serverId, ignored: b.status === "ignored", site: b.site, disavow: b.disavow }));
     } catch (err) { bl.error = err.message; }
     bl.ready = true;
     if (state.route === "backlinks") render();
@@ -738,7 +745,7 @@
       const notes = [p.file ? `<span class="second" data-tip="${esc(p.file)}" dir="auto">${esc(p.file)}</span>` : "", state.site === "all" ? `<span class="second">${t("for")} ${esc(p.site)}</span>` : "", where ? `<span class="second">${dupFlag(where)}</span>` : ""].join("");
       return `<tr id="prospect-${p.id}" style="cursor:default">
         <td class="pr-tick" data-label=""><input type="checkbox" class="chk" style="margin:0" data-prospect-pick="${p.id}" aria-label="${t("Select")}: ${esc(p.domain)}" ${prPicked.has(p.id) ? "checked" : ""}></td>
-        <td class="head-cell url-cell"><span class="with-logo">${siteLogo(p.domain)}<span class="logo-text"><a class="kw mono small" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer nofollow" data-tip="${esc(p.url)}">${esc(p.url.replace(/^https?:\/\//, ""))}</a>${notes}</span></span></td>
+        <td class="head-cell url-cell"><span class="with-logo">${siteLogo(p.domain)}<span class="logo-text"><span class="nb-inline"><a class="kw mono small" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer nofollow" data-tip="${esc(p.url)}">${esc(p.url.replace(/^https?:\/\//, ""))}</a>${window.COMP?.notes?.badge ? window.COMP.notes.badge({ scope: "domain", domain: p.domain, siteId: window.UI.siteIdPicked?.() ?? null }, p.domain) : ""}</span>${notes}</span></span></td>
         <td class="r" data-label="DA" ${p.authorityLabel ? `data-tip="${esc(p.authorityLabel)}"` : ""}>${numberOrDash(p.authority)}</td>
         <td class="r" data-label="PA">${numberOrDash(p.pageAuthority)}</td>
         <td class="r" data-label="${t("Spam score")}">${spamText(p.spam)}</td>
@@ -818,7 +825,7 @@
       <button class="tab" role="tab" data-bl-section="done" aria-selected="${section === "done"}">${icon("circle-check")}${t("Done")} <span class="muted">${state.firstRun ? 0 : siteLinks().filter((b) => b.status !== "planned").length}</span></button>
     </div>`;
     if (state.firstRun) {
-      return topbar(title, sub, main) + `<div class="content page-enter">${sections}${section === "consideration" ? considerationBody() : section === "todo" ? window.LinkTodo.body() : `<div class="table-wrap"><div class="empty"><h3>${t("No backlinks yet")}</h3><p>${t("Log the links you build, or import a CSV. Your Google Sheet can be exported as CSV.")}</p><button class="btn" id="bulk-open">${icon("list-plus")}${t("Import CSV")}</button></div></div>`}</div>`;
+      return topbar(title, sub, main) + `<div class="content page-enter">${sections}${section === "consideration" ? considerationBody() : section === "todo" ? window.LinkTodo.body() : `<div class="table-wrap"><div class="empty"><h3>${t("No backlinks yet")}</h3><p>${t("Log the links you build, or import a CSV. Your Google Sheet can be exported as CSV.")}</p><span class="bl-tools"><button class="btn" id="bulk-open">${icon("list-plus")}${t("Import CSV")}</button><button class="btn" id="gsc-open">${icon("search")}${t("Import from Search Console")}</button></span></div></div>`}</div>`;
     }
     const all = siteLinks().filter((b) => b.status !== "planned"); // not built yet, so it's in To do and never counts in the cards
     const real = all;
@@ -827,39 +834,44 @@
     const planned = all.length - real.length;
     const visits = all.reduce((s, b) => s + (b.visits || 0), 0), leads = all.reduce((s, b) => s + (b.leads || 0), 0), visitsKnown = all.some((b) => b.visits !== null && b.visits !== undefined);
     const tabs = [["all", "All backlinks", all.length], ["mediators", "Mediators", window.LinkExtras.count(all)], ["found", "Found but never logged", window.FOUND_LINKS.filter((f) => !f.ignored).length]];
+    const reclaimN = window.BacklinkSeo.reclaimCount(); // a tab only when there's something to reclaim
+    if (reclaimN || state.blTab === "reclaim") tabs.push(["reclaim", "Reclaim", reclaimN]);
     let body = "";
     if (state.blTab === "all") {
       const byPerson = state.blMediator ? all.filter((b) => b.mediator === state.blMediator) : all;
-      const rows = state.blFilter === "lost" ? byPerson.filter((b) => b.status === "lost") : byPerson;
-      body = !all.length ? `<div class="table-wrap"><div class="empty"><h3>${t("No backlinks yet")}</h3><p>${t("Log the links you build, or import a CSV. Your Google Sheet can be exported as CSV.")}</p><button class="btn" id="bulk-open">${icon("list-plus")}${t("Import CSV")}</button></div></div>` : `<div class="chips"><button class="chip" data-bl-filter="all" aria-pressed="${state.blFilter === "all"}">${t("All")}<b>${all.length}</b></button>
+      const rows = window.BacklinkSeo.filterRows(byPerson, state.blFilter); // lost, useful, sends visits, not indexed, not useful, one website
+      body = !all.length ? `<div class="table-wrap"><div class="empty"><h3>${t("No backlinks yet")}</h3><p>${t("Log the links you build, or import a CSV. Your Google Sheet can be exported as CSV.")}</p><span class="bl-tools"><button class="btn" id="bulk-open">${icon("list-plus")}${t("Import CSV")}</button><button class="btn" id="gsc-open">${icon("search")}${t("Import from Search Console")}</button></span></div></div>` : `<div class="chips"><button class="chip" data-bl-filter="all" aria-pressed="${state.blFilter === "all"}">${t("All")}<b>${all.length}</b></button>
         ${state.blMediator ? `<button class="chip" data-bl-mediator="" aria-pressed="true">${t("Mediator")}: <span dir="auto">${esc(state.blMediator)}</span> ${icon("x")}</button>` : ""}
         <button class="chip" data-bl-filter="lost" aria-pressed="${state.blFilter === "lost"}">${bl.server ? countWords(lost, "1 lost", "lost") : `${lost} ${t("lost this week")}`}</button>
-        <span style="margin-left:auto"><button class="btn btn-small" id="bulk-open">${icon("list-plus")}${t("Import CSV")}</button></span></div>
-      <div class="table-wrap"><table class="data" id="bl-table">
-        <thead><tr><th scope="col">${t("Source page")}</th><th scope="col">${t("Target")}</th><th scope="col">${t("Status")}</th><th scope="col" class="r">${t("Authority")}</th><th scope="col" class="r">${t("Visits")}</th><th scope="col" class="r">${t("Leads")}</th><th scope="col" class="r">${t("Cost per visit")}</th><th scope="col">${t("Mediator")}</th></tr></thead>
+        ${window.BacklinkSeo.filterChips(byPerson, state.blFilter)}
+        <span style="margin-left:auto" class="bl-tools">${window.BacklinkSeo.viewSwitch()}<button class="btn btn-small" id="gsc-open">${icon("search")}${t("Import from Search Console")}</button><button class="btn btn-small" id="bulk-open">${icon("list-plus")}${t("Import CSV")}</button></span></div>
+      ${window.BacklinkSeo.byWebsite() ? window.BacklinkSeo.websiteTable(rows) : `<div class="table-wrap"><table class="data" id="bl-table">
+        <thead><tr><th scope="col">${t("Source page")}</th><th scope="col">${t("Target")}</th><th scope="col">${t("Status")}</th><th scope="col" class="r">${t("Authority")}</th>${window.BacklinkSeo.trafficHead()}<th scope="col" class="r">${t("Visits")}</th><th scope="col" class="r">${t("Leads")}</th><th scope="col" class="r">${t("Cost per visit")}</th><th scope="col">${t("Mediator")}</th></tr></thead>
         <tbody>${rows.slice(0, state.blLimit).map((b) => `<tr data-bl="${b.id}" id="row-${b.id}">
-          <td class="head-cell url-cell"><span class="with-logo">${siteLogo(linkDomain(b.src))}<span class="logo-text"><button class="kw mono small" data-open-bl="${b.id}" style="text-align:start" data-tip="${esc(b.src)}">${esc(b.src.replace(/^https?:\/\//, ""))}</button><span class="second" dir="auto">${esc(b.anchor || "—")}</span>${state.site === "all" && b.site ? `<span class="second mono" dir="auto">${t("For")} ${esc(b.site)}</span>` : ""}</span></span></td>
+          <td class="head-cell url-cell"><span class="with-logo">${siteLogo(linkDomain(b.src))}<span class="logo-text"><span class="nb-inline"><button class="kw mono small" data-open-bl="${b.id}" style="text-align:start" data-tip="${esc(b.src)}">${esc(b.src.replace(/^https?:\/\//, ""))}</button>${window.COMP?.notes?.badge ? window.COMP.notes.badge({ scope: "domain", domain: linkDomain(b.src), siteId: window.UI.siteIdPicked?.() ?? null }, linkDomain(b.src)) : ""}</span><span class="second" dir="auto">${esc(b.anchor || b.check?.anchor || "—")}</span>${window.BacklinkSeo.anchorTag(b)}${state.site === "all" && b.site ? `<span class="second mono" dir="auto">${t("For")} ${esc(b.site)}</span>` : ""}</span></span></td>
           <td class="mono small url-cell" data-label="${t("Target")}"><span dir="auto">${esc(b.target || "—")}</span></td>
-          <td data-label="${t("Status")}">${linkStatus(b.status)}${window.LinkExtras.rowNote(b)}</td>
-          <td class="r" data-label="${t("Authority")}">${b.auth ? dec(b.auth) : "—"}</td>
+          <td data-label="${t("Status")}">${linkStatus(b.status)}${window.LinkExtras.rowNote(b)}${window.BacklinkSeo.badge(b)}</td>
+          <td class="r" data-label="${t("Authority")}">${window.BacklinkSeo.authorityCell(b)}</td>${window.BacklinkSeo.trafficCell(b)}
           <td class="r nowrap" data-label="${t("Visits")}">${trafficCell(b)}</td>
           <td class="r" data-label="${t("Leads")}">${b.leads === null ? '<span class="muted">—</span>' : num(b.leads)}</td>
           <td class="r ${b.status === "lost" ? "muted" : ""}" data-label="${t("Cost per visit")}" ${b.status === "lost" ? `data-tip="${t("This link is lost, so the cost per visit is from when it was live.")}"` : ""}>${b.cost && b.visits ? inCurrency(currencyOfLink(b), dec((b.cost / b.visits).toFixed(2))) : '<span class="muted">—</span>'}</td>
           <td data-label="${t("Mediator")}">${b.mediator ? `<span dir="auto">${esc(b.mediator)}</span>` : '<span class="muted">—</span>'}</td>
         </tr>`).join("")}</tbody></table></div>
-      ${rows.length > state.blLimit ? `<p style="margin-top:10px"><button class="btn btn-small" id="bl-more">${t("Show more")} (${num(rows.length - state.blLimit)})</button></p>` : ""}`;
+      ${rows.length > state.blLimit ? `<p style="margin-top:10px"><button class="btn btn-small" id="bl-more">${t("Show more")} (${num(rows.length - state.blLimit)})</button></p>` : ""}`}`;
     } else if (state.blTab === "mediators") {
       body = window.LinkExtras.mediatorsBody(all, { spentWords, mediatorCost });
+    } else if (state.blTab === "reclaim") {
+      body = window.BacklinkSeo.reclaimBody();
     } else {
       const ignoredCount = window.FOUND_LINKS.filter((f) => f.ignored).length;
-      body = `${ignoredCount ? `<div class="chips"><button class="chip" data-found-show-ignored aria-pressed="${Boolean(state.blShowIgnored)}">${t("Show ignored")}<b>${num(ignoredCount)}</b></button></div>` : ""}<div class="table-wrap"><table class="data"><thead><tr><th scope="col">${t("Source page")}</th><th scope="col">${t("Target")}</th><th scope="col">${t("Seen by")}</th><th scope="col" class="r">${t("Authority")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead><tbody>
+      body = `<div class="chips">${ignoredCount ? `<button class="chip" data-found-show-ignored aria-pressed="${Boolean(state.blShowIgnored)}">${t("Show ignored")}<b>${num(ignoredCount)}</b></button>` : ""}<span style="margin-left:auto" class="bl-tools">${window.BacklinkSeo.foundTools(state.site === "all" ? null : siteName())}</span></div><div class="table-wrap"><table class="data"><thead><tr><th scope="col">${t("Source page")}</th><th scope="col">${t("Target")}</th><th scope="col">${t("Seen by")}</th><th scope="col" class="r">${t("Authority")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead><tbody>
         ${window.FOUND_LINKS.filter((f) => state.blShowIgnored || !f.ignored).length ? "" : `<tr style="cursor:default"><td colspan="5"><div class="empty"><h3>${t("Nothing found yet")}</h3><p>${t("Links other tools find will show here, until you log them.")}</p></div></td></tr>`}
-        ${window.FOUND_LINKS.map((f, i) => [f, i]).filter(([f]) => state.blShowIgnored || !f.ignored).map(([f, i]) => `<tr style="cursor:default" class="${f.ignored ? "cg-off" : ""}"><td class="head-cell mono small url-cell" data-tip="${esc(f.src)}">${esc(f.src.replace(/^https?:\/\//, ""))}</td><td class="mono small" data-label="${t("Target")}">${esc(f.target || "—")}</td><td data-label="${t("Seen by")}">${esc(f.seen)} <span class="second">${t("first seen")} ${esc(f.first)}</span></td><td class="r" data-label="${t("Authority")}">${f.auth === null ? "—" : dec(f.auth)}</td><td class="r nowrap"><button class="btn btn-small" data-log-found="${i}">${t("Log it")}</button> <button class="btn btn-small" data-found-ignore="${i}">${t(f.ignored ? "Bring back" : "Ignore")}</button> ${window.UI.taskButton({ title: `${t("Look into a link we didn't log")}: ${f.src.replace(/^https?:\/\//, "")}`, host: f.site || null, source: { type: "backlink", label: f.src.replace(/^https?:\/\//, ""), host: f.site || undefined, facts: [f.target, f.first].filter(Boolean), link: "#backlinks", key: `found|${f.src}` } }, { label: "Task" })}</td></tr>`).join("")}</tbody></table></div>`;
+        ${window.FOUND_LINKS.map((f, i) => [f, i]).filter(([f]) => state.blShowIgnored || !f.ignored).map(([f, i]) => `<tr style="cursor:default" class="${f.ignored ? "cg-off" : ""}"><td class="head-cell mono small url-cell" data-tip="${esc(f.src)}">${esc(f.src.replace(/^https?:\/\//, ""))}</td><td class="mono small" data-label="${t("Target")}">${esc(f.target || "—")}</td><td data-label="${t("Seen by")}">${window.BacklinkSeo.foundSeen(f)}</td><td class="r" data-label="${t("Authority")}">${f.auth === null ? "—" : dec(f.auth)}</td><td class="r nowrap"><button class="btn btn-small" data-log-found="${i}">${t("Log it")}</button> <button class="btn btn-small" data-found-ignore="${i}">${t(f.ignored ? "Bring back" : "Ignore")}</button>${window.BacklinkSeo.foundButton(f)} ${window.UI.taskButton({ title: `${t("Look into a link we didn't log")}: ${f.src.replace(/^https?:\/\//, "")}`, host: f.site || null, source: { type: "backlink", label: f.src.replace(/^https?:\/\//, ""), host: f.site || undefined, facts: [f.target, f.first].filter(Boolean), link: "#backlinks", key: `found|${f.src}` } }, { label: "Task" })}</td></tr>`).join("")}</tbody></table></div>`;
     }
     return topbar(title, sub, main) + `<div class="content page-enter">
       <section class="tiles" id="bl-tiles">
         ${tile(t("Total"), cnt(real.length), planned ? `<span class="ab">+ ${countWords(planned, "1 planned", "planned")}</span>` : "", { ic: "link-2" })}
-        ${tile(t("Live"), cnt(live), "", { ic: "circle-check" })}
+        ${tile(t("Live"), cnt(live), window.BacklinkSeo.liveNote(real), { ic: "circle-check" })}
         ${tile(t("Lost"), lost ? `<span class="serious">${cnt(lost)}</span>` : "0", lost && !bl.server ? status("serious", t("lost this week")) : lostThisWeek(real) ? status("serious", lostThisWeek(real) === 1 ? t("1 lost this week") : `${num(lostThisWeek(real))} ${t("lost this week")}`) : "", { ic: "link-2-off", tone: lost ? "serious" : "" })}
         ${tile(t("New"), cnt((bl.server ? 0 : 2) + real.filter(isNewLink).length), `<span class="ab">${esc(periodLabel())}</span>`, { ic: "plus" })}
         ${bl.server ? tile(t("Visits"), visitsKnown ? cnt(visits) : "—", visitsKnown ? "" : `<span class="ab">${t("GA4 not connected")}</span>`, { ic: "eye" }) : tile(t("Visits"), cnt(visits), delta(12, { unit: "%" }), { ic: "eye", line: [40, 44, 48, 52, 50, 58, 66, 72] })}
@@ -1719,8 +1731,10 @@
         <h3>${t("Traffic from this link")}</h3>${traffic}
         ${utm ? `<h3>UTM</h3><table class="mini"><tbody>${utm}</tbody></table>` : ""}
         ${effect}
+        ${window.BacklinkSeo.panelBlocks(b, { server: bl.server })}
         ${bl.server ? window.LinkExtras.checkBlock(b, { linkStatus }) : `<h3>${t("Link check")} <button class="btn btn-small end" id="check-now">${t("Check now")}</button></h3>
         <p class="small sec" id="check-result">${linkStatus(b.status)} ${b.status === "live" ? `· ${t("Checked today: live, follow, same anchor")}` : ""}</p>`}
+        ${window.BacklinkSeo.spamBlock(b, { server: bl.server })}
         <h3>${t("Details")}</h3>
         <table class="mini"><tbody>
           ${fact("Site", b.site, { cls: "mono small" })}
@@ -1785,6 +1799,7 @@
           <label class="field"><span>${t("Notes")}</span><textarea class="input" id="bl-notes" rows="2" dir="auto">${had(edit?.notes)}</textarea></label>`, Boolean(price || edit?.owner || edit?.placed || edit?.due || edit?.renewal || edit?.notes))}
       </form>
       <div class="panel-foot"><button class="btn btn-main" id="bl-save">${t("Save")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button></div>`, opener, { key: edit ? `backlink-edit|${edit.id}` : `backlink|${prefill.src || ""}`, reopen: () => addBacklinkPanel(prefill, opener) });
+    window.BacklinkSeo.duplicateNote(); // a link from In consideration arrives with its address filled in
   }
 
   const addModeSwitch = (mode) => `<div class="panel-mode"><span class="seg" role="group" aria-label="${t("Add backlink")}"><button type="button" data-add-mode="one" aria-pressed="${mode === "one"}">${t("One link")}</button><button type="button" data-add-mode="bulk" aria-pressed="${mode === "bulk"}">${t("Import CSV")}</button></span></div>`;
@@ -2604,7 +2619,7 @@
   };
 
   // What each limit does when it runs out. Asked for: what refills, and what is one-time.
-  const RESETS = { google: "Every day", clarity: "Every day", bing: "Not published", yandex: "Not published", pagespeed: "Every day", openpagerank: "Every month", brightdata: "Every month, on the 1st", serpapi: "Every month", hasdata: "Every month", searlo: "One-time, never refills", ddg: "No credits to refill", searxng: "No credits to refill", browser: "No credits to refill", moz: "Every month", googleads: "Every day", cloudflare: "Every 5 minutes", indexnow: "No fixed limit", openrouter: "Every day", commoncrawl: "New release about monthly" };
+  const RESETS = { google: "Every day", clarity: "Every day", bing: "Not published", yandex: "Not published", pagespeed: "Every day", openpagerank: "Every month", brightdata: "Every month, on the 1st", serpapi: "Every month", hasdata: "Every month", searlo: "One-time, never refills", ddg: "No credits to refill", searxng: "No credits to refill", browser: "No credits to refill", moz: "Every month", googleads: "Every day", cloudflare: "Every 5 minutes", indexnow: "No fixed limit", openrouter: "Every day", commoncrawl: "New release about monthly", ahrefs: "Your Ahrefs plan's units, every month" };
 
   function connFacts(c, tool) {
     const fact = (label, value) => `<div><dt>${t(label)}</dt><dd>${value}</dd></div>`;
@@ -3590,6 +3605,7 @@
   window.HealthTest?.init?.(window.UI);
   window.UptimeWatch.init(window.UI);
   window.LinkExtras.init(window.UI);
+  window.BacklinkSeo.init(window.UI, { server: () => bl.server, sites: () => bl.sites, reload: loadRealBacklinks, currencyOf: currencyOfLink, money: inCurrency });
   window.LinkTodo.init(window.UI, {
     siteLinks, LINK_TYPES, localLink, takeProspects, server: () => bl.server, reload: loadRealBacklinks,
     clearPicks: () => prPicked.clear(), hostOfSite: (id) => bl.sites.find((s) => s.id === id)?.host || "",

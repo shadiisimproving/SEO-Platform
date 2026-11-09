@@ -1030,6 +1030,103 @@ def test_notes_on_a_screen_and_on_a_whole_website(world):
     assert [n["body"] for n in world.client.get(f"/api/notes?scope=screen&screen=tasks&site_id={world.own}").get_json()["notes"]] == ["Through the API"]
 
 
+def test_notes_on_a_keyword_whatever_its_case_and_spacing(world):
+    rival = add_rival(world)
+    mine = notes.create(world.engine, "keyword", "Rank this one first", world.own, rival, keyword="  Open  a Shop in Seville ")
+    everywhere = notes.create(world.engine, "keyword", "On every site", keyword="open a shop in seville")
+    other = notes.create(world.engine, "keyword", "Another", world.own, keyword="tax return")
+    assert mine["keyword"] == "Open a Shop in Seville" and mine["competitor_id"] is None
+    assert sorted(n["id"] for n in notes.list_notes(world.engine, "keyword", keyword="OPEN A SHOP IN SEVILLE", site_id=world.own)) == sorted([mine["id"], everywhere["id"]])
+    assert [n["id"] for n in notes.list_notes(world.engine, "keyword", keyword="tax return")] == [other["id"]]
+    for wrong in (None, "", "   ", 5, "x" * 401):
+        with pytest.raises(Refused):
+            notes.create(world.engine, "keyword", "x", world.own, keyword=wrong)
+    answer = world.client.post("/api/notes", json={"scope": "keyword", "body": "Through the API", "site_id": world.own, "keyword": "Company Setup"})
+    assert answer.status_code == 201 and answer.get_json()["keyword"] == "Company Setup"
+    assert [n["body"] for n in world.client.get(f"/api/notes?scope=keyword&keyword=company%20setup&site_id={world.own}").get_json()["notes"]] == ["Through the API"]
+
+
+def test_note_options_list_my_pages_and_keywords(world):
+    from seo.serp import store
+    with world.engine.begin() as conn:
+        kid = conn.execute(text("INSERT INTO keywords (keyword, keyword_hash) VALUES ('company setup', :h)"), {"h": store.keyword_hash("company setup")}).lastrowid
+        conn.execute(text("INSERT INTO site_keywords (site_id, keyword_id) VALUES (:s, :k)"), {"s": world.own, "k": kid})
+    one = world.client.get(f"/api/notes/options?site_id={world.own}").get_json()
+    assert one["keywords"] == ["company setup"] and isinstance(one["pages"], list)
+    assert world.client.get("/api/notes/options").get_json()["keywords"] == ["company setup"]
+    rival = add_rival(world)
+    assert world.client.get(f"/api/notes/options?site_id={rival}").status_code == 400  # a competitor isn't one of my sites
+
+
+def test_notes_on_a_day_a_linking_website_and_a_task(world):
+    from seo.tasks import service as tasks
+
+    day = notes.create(world.engine, "date", "Changed every title", world.own, day="2026-10-03")
+    everywhere = notes.create(world.engine, "date", "Google update", day="2026-10-03")
+    assert day["day"] == "2026-10-03"
+    assert sorted(n["id"] for n in notes.list_notes(world.engine, "date", day="2026-10-03", site_id=world.own)) == sorted([day["id"], everywhere["id"]])
+    for wrong in (None, "", "03/10/2026", "1999-12-31", "2099-01-01"):
+        with pytest.raises(Refused):
+            notes.create(world.engine, "date", "x", world.own, day=wrong)
+
+    seller = notes.create(world.engine, "domain", "Asked a price: 80 euros", world.own, domain="https://WWW.Blog-Seller.example/write-for-us")
+    assert seller["domain"] == "blog-seller.example"
+    assert [n["id"] for n in notes.list_notes(world.engine, "domain", domain="blog-seller.example")] == [seller["id"]]
+    for wrong in (None, "", "not a site", "localhost"):
+        with pytest.raises(Refused):
+            notes.create(world.engine, "domain", "x", world.own, domain=wrong)
+
+    task = tasks.create(world.engine, {"title": "Rewrite the pricing page", "site_id": world.own})
+    on_task = notes.create(world.engine, "task", "Wait for the new prices", None, task_id=task["id"])
+    assert on_task["task"] == "Rewrite the pricing page" and on_task["site_id"] == world.own  # a task's note goes with the task's site
+    assert [n["id"] for n in notes.list_notes(world.engine, task_id=task["id"])] == [on_task["id"]]
+    with pytest.raises(Refused):
+        notes.create(world.engine, "task", "x", world.own, task_id="1")
+    with pytest.raises(NotFound):
+        notes.create(world.engine, "task", "x", world.own, task_id=999999)
+
+    answer = world.client.post("/api/notes", json={"scope": "domain", "body": "Through the API", "domain": "links.example"})
+    assert answer.status_code == 201 and answer.get_json()["domain"] == "links.example"
+    assert [n["body"] for n in world.client.get(f"/api/notes?task_id={task['id']}").get_json()["notes"]] == ["Wait for the new prices"]
+
+
+def test_a_note_on_a_group_of_pages_shows_on_every_page_in_it(world):
+    group = notes.create(world.engine, "section", "Every guide needs a date", world.own, page_url="shop-one.example/blog/guides")
+    assert group["page_url"] == "https://shop-one.example/blog/guides/"
+    page = notes.create(world.engine, "page", "This one is old", world.own, page_url="https://shop-one.example/blog/guides/brew")
+    inside = notes.list_notes(world.engine, page_url="https://shop-one.example/blog/guides/brew")
+    assert sorted(n["id"] for n in inside) == sorted([group["id"], page["id"]])
+    assert notes.list_notes(world.engine, page_url="https://shop-one.example/blog/other") == []
+    assert notes.list_notes(world.engine, page_url="https://shop-one.example/blog/GUIDES/brew") == []  # addresses are case-sensitive
+    assert [n["id"] for n in notes.list_notes(world.engine, "section", page_url="https://shop-one.example/blog/guides/")] == [group["id"]]
+    with pytest.raises(Refused):
+        notes.create(world.engine, "section", "x", world.own, page_url="https://shop-one.example/")  # that's the whole website
+
+
+def test_note_options_list_folders_linking_websites_and_tasks(world):
+    from seo.tasks import service as tasks
+
+    with world.engine.begin() as conn:
+        conn.execute(text("INSERT INTO backlinks (site_id, source_url, domain) VALUES (:s, 'https://links.example/a', 'links.example')"), {"s": world.own})
+    task = tasks.create(world.engine, {"title": "Ask for a link", "site_id": world.own})
+    one = world.client.get(f"/api/notes/options?site_id={world.own}").get_json()
+    assert "links.example" in one["domains"]
+    assert [t["id"] for t in one["tasks"]] == [task["id"]]
+    assert notes._sections([{"url": "https://shop-one.example/blog/guides/brew"}, {"url": "https://shop-one.example/blog/news"}]) == [
+        {"url": "https://shop-one.example/blog/", "pages": 2}, {"url": "https://shop-one.example/blog/guides/", "pages": 1},
+    ]
+
+
+def test_notes_on_a_day_are_markers_on_the_overview_chart(world):
+    from seo.metrics import search
+    from seo.metrics.service import Scope
+
+    notes.create(world.engine, "date", "Changed every title\nand the menus", world.own, day="2026-10-03")
+    notes.create(world.engine, "date", "", world.own, day="2026-10-04")  # empty: not a note yet
+    marks = search.markers(Scope(world.engine, world.own, "2026-10-01", "2026-10-10"))
+    assert [(m["kind"], m["day"], m["text"]) for m in marks] == [("dated", "2026-10-03", "Changed every title")]
+
+
 def test_the_database_refuses_a_scope_it_does_not_know(world):
     from sqlalchemy.exc import DBAPIError
     with pytest.raises(DBAPIError), world.engine.begin() as conn:
@@ -1300,7 +1397,7 @@ def test_a_large_site_stops_each_chunk_and_queues_itself_with_a_new_key(world, m
     crawl.run_crawl(claimed, world.engine)
     state = crawl_state(world, rival)
     assert state["status"] == "running" and state["baseline_done"] == 0 and state["pages_read"] == 1
-    assert rows(world.engine, "SELECT dedupe_key FROM jobs WHERE status = 'queued'") == [{"dedupe_key": f"competitor:{rival}:part:1"}]
+    assert rows(world.engine, "SELECT dedupe_key FROM jobs WHERE status = 'queued' AND kind = 'competitors.crawl'") == [{"dedupe_key": f"competitor:{rival}:part:1"}]
     # Asking again while it runs doesn't start a second read.
     queue.complete(world.engine, claimed.id, "test")
     sent = len(world.requests)

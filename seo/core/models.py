@@ -520,6 +520,27 @@ class Backlink(Base):
     target_final_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     lost_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
     miss_count: Mapped[int] = mapped_column(Integer, server_default="0")
+    # Does it count for Google, from the same reading: counts, weak or none, with the reasons (noindex, nofollow, sponsored...).
+    seo_verdict: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    seo_reasons: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    page_lang: Mapped[str | None] = mapped_column(String(16), nullable=True)  # the linking page's language, and my target page's
+    target_lang: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    outbound_links: Mapped[int | None] = mapped_column(Integer, nullable=True)  # links to other websites on the linking page: a link farm has hundreds
+    target_http: Mapped[int | None] = mapped_column(Integer, nullable=True)  # what my target page answered: a 404 there is a link to reclaim
+    found_by: Mapped[str | None] = mapped_column(String(40), nullable=True)  # who saw a link nobody logged, such as Search Console
+    # What Search Console's Links export says: "page" when it lists this linking page, "site" when only its domain.
+    gsc_seen: Mapped[str | None] = mapped_column(String(6), nullable=True)
+    gsc_seen_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+    gsc_crawled: Mapped[str | None] = mapped_column(String(20), nullable=True)  # Google's own "last crawled" date, as the file wrote it
+    disavow: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))  # marked spam by a person, for the disavow file
+    # Is the linking page on Google, from a site: search on free search credits: indexed, not_found (one miss), not_indexed (two)
+    src_index: Mapped[str | None] = mapped_column(String(14), nullable=True)
+    src_index_via: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    src_index_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+    src_index_misses: Mapped[int] = mapped_column(Integer, server_default=text("0"))
+    keyword: Mapped[str | None] = mapped_column(String(255), nullable=True)  # the keyword this link is meant to help, as the owner wrote it
+    # Set by hand: brand, url, exact, partial, generic or other. Empty means it's worked out from the anchor text.
+    anchor_kind: Mapped[str | None] = mapped_column(String(10), nullable=True)
 
 
 class Prospect(Base):
@@ -548,16 +569,25 @@ class Note(Base):
         Index("ix_notes_competitor", "competitor_id", "created_at"),
         Index("ix_notes_page", "page_hash"),
         Index("ix_notes_screen", "screen", "site_id"),
-        CheckConstraint("scope IN ('all', 'competitor', 'page', 'site', 'screen')", name="ck_notes_scope"),
+        Index("ix_notes_keyword", "keyword_hash", "site_id"),
+        Index("ix_notes_day", "day", "site_id"),
+        Index("ix_notes_domain", "domain", "site_id"),
+        CheckConstraint("scope IN ('all', 'competitor', 'page', 'site', 'screen', 'keyword', 'date', 'domain', 'section', 'task')", name="ck_notes_scope"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    scope: Mapped[str] = mapped_column(String(12))  # all (competitors), competitor, page, site (no site_id: all my sites), screen
+    scope: Mapped[str] = mapped_column(String(12))  # all (competitors), competitor, page, site (no site_id: all my sites), screen, keyword, date, domain, section, task
     site_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), nullable=True)
     competitor_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), nullable=True)
     page_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     page_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     screen: Mapped[str | None] = mapped_column(String(40), nullable=True)  # the screen a "screen" note is about, such as backlinks
+    keyword: Mapped[str | None] = mapped_column(String(400), nullable=True)  # a "keyword" note's search words, as typed
+    keyword_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)  # the same keyword whatever its case and spacing
+    day: Mapped[date | None] = mapped_column(Date, nullable=True)  # a "date" note's day: it shows on the charts
+    domain: Mapped[str | None] = mapped_column(String(190), nullable=True)  # a "domain" note's linking website, such as a link seller
+    task_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("tasks.id", ondelete="CASCADE", name="fk_notes_task"), nullable=True)
+    # A "section" note keeps its group's address in page_url, ending in "/": it shows on every page under it.
     body: Mapped[str] = mapped_column(MEDIUMTEXT)
     deleted_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
     created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
@@ -660,6 +690,36 @@ class Alert(Base):
     audit_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
     acknowledged_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+
+
+class Notification(Base):
+    """The bell at the top of every screen: news worth knowing that isn't a problem, such as a new search on Google.
+    One per subject, ever, so the same query is never announced twice."""
+
+    __tablename__ = "notifications"
+    __table_args__ = (
+        UniqueConstraint("site_id", "kind", "subject_key", name="uq_notifications_subject"),
+        Index("ix_notifications_recent", "read_at", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(30))
+    subject_key: Mapped[str] = mapped_column(String(32))
+    title: Mapped[str] = mapped_column(String(300))
+    detail: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+    read_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+
+
+class NotificationMark(Base):
+    """The last Search Console day a check looked at, per site, so each day is looked at once."""
+
+    __tablename__ = "notification_marks"
+
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(30), primary_key=True)
+    through: Mapped[date] = mapped_column(Date)
 
 
 class Task(Base):
@@ -825,7 +885,7 @@ class GscPage(Base):
 
 class GscQuery(Base):
     __tablename__ = "gsc_query"
-    __table_args__ = (Index("ix_gsc_query_day", "site_id", "day"),)
+    __table_args__ = (Index("ix_gsc_query_day", "site_id", "day"), Index("ix_gsc_query_hash", "site_id", "query_hash", "day"))
 
     site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True)
     day: Mapped[date] = mapped_column(Date, primary_key=True)
@@ -1095,7 +1155,8 @@ class Resource(Base):
     site_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id", ondelete="SET NULL"), nullable=True)
     title: Mapped[str] = mapped_column(String(255))
     url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    kind: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    kind: Mapped[str | None] = mapped_column(String(40), nullable=True)  # replaced by tags on 2026-11-09; kept, no longer written
+    tags: Mapped[list | None] = mapped_column(JSON, nullable=True)  # such as ["Brief", "Report"]
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
     created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
@@ -1201,6 +1262,99 @@ class BacklinkCheck(Base):
     href: Mapped[str | None] = mapped_column(Text, nullable=True)
     changes: Mapped[list | None] = mapped_column(JSON, nullable=True)
     checked_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+    verdict: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    reasons: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    outbound_links: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+
+class GscLinkImport(Base):
+    """One Search Console Links file uploaded for a site. The latest one dates "Google hasn't listed it yet"."""
+
+    __tablename__ = "gsc_link_imports"
+    __table_args__ = (Index("ix_gsc_link_imports_site", "site_id", "kind", "imported_at"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(12))  # latest, sites, pages
+    file_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    rows: Mapped[int] = mapped_column(Integer, server_default="0")
+    imported_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
+class GscLinkingSite(Base):
+    """Search Console's Top linking sites: each upload replaces the site's list."""
+
+    __tablename__ = "gsc_linking_sites"
+
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True)
+    domain: Mapped[str] = mapped_column(String(190), primary_key=True)
+    linking_pages: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    target_pages: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    imported_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
+class GscLinkedPage(Base):
+    """Search Console's Top linked pages: my pages other sites link to. Each is read monthly, so one that's gone shows in Reclaim."""
+
+    __tablename__ = "gsc_linked_pages"
+    __table_args__ = (UniqueConstraint("site_id", "target_hash", name="uq_gsc_linked_pages_target"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    target_url: Mapped[str] = mapped_column(Text)
+    target_hash: Mapped[str] = mapped_column(String(64))
+    incoming_links: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    linking_sites: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    imported_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+    http_status: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    final_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    checked_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+    dismissed: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))
+
+
+class BacklinkBudget(Base):
+    """What a site may spend on links each month, in one currency, so spent and budget compare."""
+
+    __tablename__ = "backlink_budgets"
+
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
+    currency: Mapped[str] = mapped_column(String(8))
+    updated_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
+class AhrefsMonthly(Base):
+    """A linking website's organic traffic, as Ahrefs estimates it. Read once a month, only while an Ahrefs key is connected."""
+
+    __tablename__ = "ahrefs_monthly"
+
+    domain: Mapped[str] = mapped_column(String(190), primary_key=True)
+    month: Mapped[str] = mapped_column(String(7), primary_key=True)
+    org_traffic: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    error: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    fetched_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+
+
+class GscInspection(Base):
+    """What Search Console's URL Inspection said about one of my pages that a backlink points to: indexed or not, and why."""
+
+    __tablename__ = "gsc_inspections"
+    __table_args__ = (UniqueConstraint("site_id", "url_hash", name="uq_gsc_inspections_url"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    url_hash: Mapped[str] = mapped_column(String(64))
+    url: Mapped[str] = mapped_column(Text)
+    verdict: Mapped[str | None] = mapped_column(String(12), nullable=True)  # Google's PASS, PARTIAL, FAIL or NEUTRAL
+    coverage: Mapped[str | None] = mapped_column(String(200), nullable=True)  # Google's words, such as "Crawled - currently not indexed"
+    indexing: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    robots: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    fetch_state: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    google_canonical: Mapped[str | None] = mapped_column(Text, nullable=True)
+    user_canonical: Mapped[str | None] = mapped_column(Text, nullable=True)
+    last_crawl: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    inspected_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
 
 
 # ---- Keyword Refresh --------------------------------------------------------------------------------
@@ -1321,3 +1475,53 @@ class SiteHistory(Base):
     domain_problem: Mapped[str | None] = mapped_column(String(40), nullable=True)  # no_rdap, rdap_failed
     fetched_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
     created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
+# ---- Search insights -----------------------------------------------------------------------------
+
+
+class SearchFinding(Base):
+    """Something the code found in Search Console data, kept between runs. See seo/insights/.
+
+    finding_key is a digest of the site, the kind and what it's about, so the same finding is updated, never repeated.
+    A task made from it carries the key in its source. AI text, when asked for, is kept in `ai` per language and provider.
+    """
+
+    __tablename__ = "search_findings"
+    __table_args__ = (
+        CheckConstraint("status IN ('open', 'gone', 'dismissed', 'done')", name="ck_search_findings_status"),
+        CheckConstraint("severity IN ('big', 'normal', 'info')", name="ck_search_findings_severity"),
+        UniqueConstraint("finding_key", name="uq_search_findings_key"),
+        Index("ix_search_findings_site", "site_id", "status", "at_stake"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(30))
+    grp: Mapped[str] = mapped_column(String(12))  # changed, decline, wins, leads, technical, impact
+    finding_key: Mapped[str] = mapped_column(String(32))
+    query: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    page: Mapped[str | None] = mapped_column(Text, nullable=True)
+    severity: Mapped[str] = mapped_column(String(8), server_default="normal")
+    at_stake: Mapped[float] = mapped_column(Float, server_default="0")  # clicks a month
+    evidence: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(String(10), server_default="open")
+    dismissed_stake: Mapped[float | None] = mapped_column(Float, nullable=True)  # "Not useful" comes back at twice this
+    data_through: Mapped[date | None] = mapped_column(Date, nullable=True)
+    ai: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    first_seen: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+    last_seen: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+    gone_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+
+
+class SearchFindingRun(Base):
+    __tablename__ = "search_finding_runs"
+    __table_args__ = (Index("ix_search_finding_runs_site", "site_id", "ran_at"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    data_through: Mapped[date | None] = mapped_column(Date, nullable=True)
+    ran_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+    seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
+    counts: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)

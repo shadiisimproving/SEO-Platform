@@ -1,0 +1,42 @@
+/* Search → Insights (insights-view.js). Tokens only, from look-clear.css; tables, tabs and the trust line come from overview.css. */
+.in-answer { margin-bottom: 14px; }
+.in-answer .ov-answer { margin-bottom: 6px; }
+.in-parts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.in-part { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 999px; font-size: 12px; color: var(--text-2); background: var(--chip); box-shadow: inset 0 0 0 1px var(--line); }
+.in-part b { font-variant-numeric: tabular-nums; font-weight: 600; }
+.in-part.down b { color: var(--crit-t); }
+.in-part.up b { color: var(--good-t); }
+
+.in-figs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--gap); margin-bottom: 14px; }
+.in-fig { padding: 12px 16px; border-radius: 14px; background: var(--glass); box-shadow: inset 0 0 0 1px var(--line); min-width: 0; }
+.in-fig .lab { font-size: 12px; color: var(--text-2); }
+.in-fig .fig { font-size: 24px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
+
+.tab .in-count { display: inline-block; min-width: 18px; margin-left: 4px; padding: 0 5px; border-radius: 999px; font-size: 11px; line-height: 17px; text-align: center; color: var(--text-2); background: var(--chip); }
+.in-need { color: var(--warn-t); }
+.in-need a { color: inherit; text-decoration: underline; }
+
+.in-table td { vertical-align: top; }
+.in-table .t { font-weight: 500; color: var(--text); overflow-wrap: anywhere; }
+.in-table .s { margin-top: 2px; overflow-wrap: anywhere; }
+.in-what { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-bottom: 3px; }
+.in-kind { font-size: 11px; font-weight: 600; letter-spacing: .02em; padding: 1px 8px; border-radius: 999px; color: var(--c-blue); background: var(--c-blue-pale); }
+.in-kind.changed { color: var(--c-purple); background: var(--c-purple-pale); }
+.in-kind.decline { color: var(--c-indigo); background: var(--c-indigo-pale); }
+.in-kind.wins { color: var(--c-teal); background: var(--c-teal-pale); }
+.in-task { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--good-t); }
+.in-task svg { width: 13px; height: 13px; }
+.in-act-col { width: 1%; white-space: nowrap; }
+
+.in-stake { margin: 0 0 6px; font-size: 15px; color: var(--text-2); }
+.in-stake b { font-size: 22px; color: var(--text); font-variant-numeric: tabular-nums; }
+.in-spark { margin: 2px 0 10px; color: var(--c-blue); }
+.in-how { display: flex; gap: 6px; align-items: flex-start; margin-top: 12px; }
+.in-how svg { width: 14px; height: 14px; flex: none; margin-top: 2px; }
+.in-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
+
+@media (max-width: 640px) {
+  .in-figs { grid-template-columns: 1fr; gap: 8px; }
+  .in-fig { display: flex; align-items: baseline; justify-content: space-between; padding: 10px 14px; }
+  .in-fig .fig { font-size: 20px; }
+}

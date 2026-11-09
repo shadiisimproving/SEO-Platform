@@ -4,13 +4,15 @@ from __future__ import annotations
 import argparse
 import sys
 
-from seo.backlinks import live as backlink_checks, logos  # noqa: F401 - register their job handlers
+from seo.backlinks import ahrefs as backlink_ahrefs, indexed as backlink_indexed, live as backlink_checks, logos, reclaim as backlink_reclaim, source_index as backlink_source_index  # noqa: F401 - register their job handlers
 from seo.uptime import service as uptime_service  # registers the uptime check's job handler
-from seo.competitors import crawl as competitor_crawl, keywords, pages, quality  # noqa: F401 - register their job handlers
+from seo.competitors import crawl as competitor_crawl, history, keywords, pages, quality  # noqa: F401 - register their job handlers
 from seo.collectors import jobs as collector_jobs
 from seo.core.db import make_engine
 from seo.health import service as health_service  # registers the health test's job handler
+from seo.insights import engine as insights_engine  # noqa: F401 - registers the Search insights job handler
 from seo.links import service as links_service  # registers the links checker's job handler
+from seo.notifications import new_queries  # noqa: F401 - registers the new-search notification's job handler
 from seo.serp import refresh  # noqa: F401 - registers the Refresh button's job handler. No command here may start one.
 from seo.worker.runner import EXIT_CODES, tick
 
@@ -49,7 +51,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "backlinks-due":
         queued = backlink_checks.enqueue_due(engine)
-        print(f"backlinks-due: queued {len(queued)} site{'' if len(queued) == 1 else 's'}")
+        reclaim_queued = backlink_reclaim.enqueue_due(engine)  # the same monthly rhythm: my pages that Search Console says have links
+        inspect_queued = backlink_indexed.enqueue_due(engine)  # is each linked page of mine indexed: sites with Search Console connected
+        searched = backlink_source_index.enqueue_due(engine)  # is each linking page on Google: site: searches on free credits
+        traffic = backlink_ahrefs.enqueue(engine)  # each linking website's traffic, only with an Ahrefs key
+        print(f"backlinks-due: queued {len(queued)} site{'' if len(queued) == 1 else 's'}, {len(reclaim_queued)} for reclaim, {len(inspect_queued)} for the index check"
+              f"{', the linking pages search' if searched else ''}{', Ahrefs traffic' if traffic else ''}")
         return 0
     if args.command == "links-due":
         queued = links_service.enqueue_due(engine)
@@ -63,6 +70,7 @@ def main(argv: list[str] | None = None) -> int:
         queued = competitor_crawl.enqueue_due(engine)
         resumed = keywords.resume_waiting(engine)
         quality.queue_checks(engine)  # linking domains still waiting for their home page to be read
+        history.enqueue_due(engine)  # the Wayback Machine and domain dates: monthly, or the next day after a failed try
         print(f"competitors-due: queued {len(queued)} competitor{'' if len(queued) == 1 else 's'}, resumed {len(resumed)} keyword list{'' if len(resumed) == 1 else 's'}")
         return 0
     result = tick(engine, args.lane, budget_seconds=args.budget, db_wait_seconds=args.db_wait)

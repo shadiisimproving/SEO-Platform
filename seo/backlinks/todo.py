@@ -152,6 +152,6 @@ def mark_placed(engine: Engine, backlink_id: int, live_url) -> dict:
     row = rows[0]
     if row["status"] != service.PLANNED:
         raise Refused("Only a link in To do can be marked as placed.")
-    fields = {field: row[field] for field in service.LIMITS}
+    fields = {field: row[field] for field in (*service.LIMITS, "anchor_kind")}
     fields["placed"] = fields["placed"] or datetime.now(timezone.utc).strftime("%Y-%m-%d")
     return service.update_one(engine, backlink_id, {**fields, "site_id": row["site_id"], "source_url": address, "status": service.LIVE, "cost": float(row["cost"]) if row["cost"] is not None else None})

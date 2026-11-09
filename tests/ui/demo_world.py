@@ -15,7 +15,7 @@ from sqlalchemy import text
 from seo.collectors.common import digest
 
 from seo.backlinks import live, service as backlinks
-from seo.competitors import crawl, gaps, keywords, notes, pages, suggest  # noqa: F401 - registers job handlers
+from seo.competitors import crawl, gaps, history, keywords, notes, pages, suggest  # noqa: F401 - registers job handlers
 from seo.crawl.fetch import PoliteFetcher
 from seo.health import service as health
 from seo.links import service as links
@@ -59,6 +59,9 @@ def _ai_for(keyword: str, round_no: int) -> tuple[str, list[str]]:
     return states[min(round_no, len(states) - 1)]
 
 
+ON_GOOGLE = {"foodblog.example/coffee", "coffee-review.example/best-subscriptions"}  # linking pages a site: search finds
+
+
 class DemoTool:
     """Answers like a real tool, from the table above. Each round moves a few positions."""
 
@@ -71,6 +74,9 @@ class DemoTool:
         self.round_no = round_no
 
     def search(self, keyword: str, engine: str, country: str, language: str, device: str, depth: int) -> Answer:
+        if keyword.startswith("site:"):  # the Backlinks check of a linking page: Google has only the pages in ON_GOOGLE
+            page = keyword.removeprefix("site:")
+            return Answer(self.name, country, depth, [Found(1, f"https://{page}", page)] if page in ON_GOOGLE else [], NOT_CAPTURED, [], 1)
         row = next((k for k in KEYWORDS if k[0] == keyword), None)
         order = list(row[3]) if row else [f"{RIVALS[len(keyword) % 3]}/page", f"new-entrant.example/{len(keyword)}", f"{ME}/page"]
         if self.round_no == 0 and len(order) > 2:
@@ -227,7 +233,20 @@ def install(websites: Websites, tool: DemoTool | None = None, delay: float = 0.0
         return date.today() + timedelta(days=9 if domain == ME2 else 300)
 
     uptime.rdap_lookup = registry
+    uptime.rdap_dates_lookup = lambda domain: (date(2016, 4, 2), registry(domain))
+    history.cdx_lookup = _archive
     return tool
+
+
+def _archive(host: str) -> list[tuple[str, str, str, str]]:
+    """A made-up Wayback Machine answer: a few pages a year since 2017, plus files that aren't pages."""
+    surt = ",".join(reversed(host.split("."))) + ")"
+    rows = [(f"{surt}/", "20170305120000", "text/html", "200"), (f"{surt}/style.css", "20170305120001", "text/css", "200")]
+    for year in range(2017, date.today().year + 1):
+        for n in range(1 + (year - 2017) * 2):
+            rows.append((f"{surt}/blog/post-{year}-{n}", f"{year}0{1 + n % 9}15093000", "text/html", "200"))
+    rows.append((f"{surt}/old-page", "20180101000000", "text/html", "301"))
+    return sorted(rows)
 
 
 def _drain(engine, lock_dir: Path) -> None:

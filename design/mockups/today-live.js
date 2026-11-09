@@ -48,14 +48,14 @@
     if (UI.state.route === "today" && !UI.$("#panel")) UI.render();
   }
 
-  const MAIN_WORD = { source_failing: "Fix", backlink_lost: "Review", backlink_changed: "Review", page_drop: "See page" };
+  const MAIN_WORD = { source_failing: "Fix", backlink_lost: "Review", backlink_changed: "Review", page_drop: "See page", search_finding: "See why" };
   const todoItem = (a) => {
     const title = words(a.title), detail = a.detail ? words(a.detail) : "";
     return {
       id: a.id, severity: a.severity, kind: a.kind, title, detail, host: a.host,
       seenAttr: a.alert_ids ? `data-lv-seen="${esc(a.alert_ids.join(","))}"` : a.seen_key ? `data-lv-drop="${esc(a.seen_key)}"` : "",
       mainHtml: `<a class="btn btn-small" href="${esc(a.link || "#today")}">${t(MAIN_WORD[a.kind] || "Open")}</a>`,
-      find: { title, host: a.host || null, priority: a.severity === "crit" ? "high" : "medium", ...(a.page ? { pages: [a.page] } : {}), source: { type: "alert", label: title, host: a.host || undefined, facts: detail ? [detail] : [], link: a.link, key: a.seen_key ? `drop|${a.seen_key}` : `alert|${a.kind}|${a.host || ""}|${a.title}` } },
+      find: a.kind === "search_finding" ? { title, host: a.host || null, priority: "medium", pages: a.page ? [a.page] : [], keywords: a.query ? [a.query] : [], source: { type: "search", key: a.seen_key, label: title, host: a.host || undefined, facts: detail ? [detail] : [], link: a.link } } : { title, host: a.host || null, priority: a.severity === "crit" ? "high" : "medium", ...(a.page ? { pages: [a.page] } : {}), source: { type: "alert", label: title, host: a.host || undefined, facts: detail ? [detail] : [], link: a.link, key: a.seen_key ? `drop|${a.seen_key}` : `alert|${a.kind}|${a.host || ""}|${a.title}` } },
     };
   };
   const pathOf = (url) => { try { return new URL(url).pathname || "/"; } catch { return url; } };

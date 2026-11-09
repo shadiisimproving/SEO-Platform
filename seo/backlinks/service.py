@@ -8,15 +8,17 @@ tests/test_backlinks_service.py checks that both give the same result.
 """
 from __future__ import annotations
 
+import json
 import logging
 import re
 import unicodedata
+from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Callable
 
 from sqlalchemy import Engine, bindparam, text
 
-from seo.backlinks import cleaner, logos, mediators
+from seo.backlinks import ahrefs, anchors, cleaner, indexed, logos, mediators, source_index
 from seo.competitors.keywords import _iso, require_own
 from seo.core.errors import NotFound, Refused
 from seo.links.urls import page_key
@@ -25,6 +27,7 @@ from seo.serp import store
 log = logging.getLogger(__name__)
 
 MAX_ROWS = 5000
+NOT_LISTED_DAYS = 60  # Search Console's links lag weeks and are a sample, so a link newer than this isn't missing from them yet
 TOO_MANY = "One upload can hold at most 5,000 rows. Split the file and try again."
 MAX_ADDRESS = 2048
 MAX_DOMAIN = 190
@@ -32,11 +35,11 @@ MAX_COST = Decimal("9999999999.99")
 # The longest each text can be. Every column has room for this, plus the apostrophe in front of a formula.
 LIMITS = {
     "target_url": 2048, "anchor": 1000, "link_type": 100, "placed": 60, "due": 60, "renewal": 60, "price_text": 60, "mediator": 180,
-    "contact": 250, "platform": 180, "utm_source": 180, "utm_medium": 180, "utm_campaign": 180, "owner": 100, "notes": 5000,
+    "contact": 250, "platform": 180, "utm_source": 180, "utm_medium": 180, "utm_campaign": 180, "owner": 100, "notes": 5000, "keyword": 250,
 }
 WORDS = {
     "target_url": "Target page", "anchor": "Anchor text", "link_type": "Link type", "placed": "Date placed", "due": "Due date", "renewal": "Renewal date", "price_text": "Price", "mediator": "Mediator",
-    "contact": "Contact", "platform": "Platform", "utm_source": "UTM source", "utm_medium": "UTM medium", "utm_campaign": "UTM campaign", "owner": "Owner", "notes": "Notes",
+    "contact": "Contact", "platform": "Platform", "utm_source": "UTM source", "utm_medium": "UTM medium", "utm_campaign": "UTM campaign", "owner": "Owner", "notes": "Notes", "keyword": "Keyword",
 }
 LIVE, LOST, PLANNED, FOUND, IGNORED = "live", "lost", "planned", "found", "ignored"
 STATUSES = (LIVE, LOST, PLANNED, FOUND)
@@ -47,14 +50,26 @@ STATUS_WORDS = {
     "planned": PLANNED, "pending": PLANNED, "prevu": PLANNED, "prevue": PLANNED, "en attente": PLANNED,
     "found": FOUND,
 }
-ROW_FIELDS = {"site_id", "source_url", "status", "cost", *LIMITS}
+# An anchor type set by hand, in the words people use, English or French. Empty or "automatic" lets the app work it out from the anchor text.
+# design/mockups/bulk-links.js has the browser's copy.
+ANCHOR_KINDS = (anchors.BRAND, anchors.URL, anchors.EXACT, anchors.PARTIAL, anchors.GENERIC, anchors.OTHER)
+ANCHOR_WORDS = {
+    "": None, "auto": None, "automatic": None, "automatique": None,
+    "brand": anchors.BRAND, "branding": anchors.BRAND, "brand name": anchors.BRAND, "marque": anchors.BRAND, "nom de marque": anchors.BRAND,
+    "url": anchors.URL, "bare url": anchors.URL, "naked url": anchors.URL, "url nue": anchors.URL, "adresse": anchors.URL,
+    "exact": anchors.EXACT, "exact keyword": anchors.EXACT, "exact match": anchors.EXACT, "optimisee": anchors.EXACT, "optimise": anchors.EXACT, "mot cle exact": anchors.EXACT,
+    "partial": anchors.PARTIAL, "partial keyword": anchors.PARTIAL, "partial match": anchors.PARTIAL, "semi optimisee": anchors.PARTIAL, "semi optimise": anchors.PARTIAL, "partielle": anchors.PARTIAL,
+    "generic": anchors.GENERIC, "generique": anchors.GENERIC,
+    "other": anchors.OTHER, "autre": anchors.OTHER,
+}
+ROW_FIELDS = {"site_id", "source_url", "status", "cost", "anchor_kind", *LIMITS}
 # The two rows in templates/backlinks-template.csv. Left in by mistake, they must never count as real links.
 EXAMPLE_SOURCES = ("https://example-blog.example/article", "https://example-directory.example/listing/123")
 
 # Phase 5 sets this: site ID to {backlink ID: {"visits", "leads", "label", "shared"}}. Until then visits and leads stay unknown, never 0.
 traffic_provider: Callable[[Engine, int], dict[int, dict]] | None = None
 
-_COLUMNS = ("site_id", "source_url", "domain", "status", "cost", *LIMITS)
+_COLUMNS = ("site_id", "source_url", "domain", "status", "cost", "anchor_kind", *LIMITS)
 _INSERT = text(f"INSERT INTO backlinks ({', '.join(_COLUMNS)}) VALUES ({', '.join(f':{c}' for c in _COLUMNS)})")
 _UPDATE = text(f"UPDATE backlinks SET {', '.join(f'{c} = :{c}' for c in _COLUMNS)} WHERE id = :id")
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -159,10 +174,22 @@ def _clean_row(row) -> dict:
     status = STATUS_WORDS.get(_plain_word(row.get("status")))
     if status is None:
         raise Refused(f"{name}: The status {_short(row.get('status'))} isn't known. Use Live, Lost or Planned.")
-    clean = {"site_id": site_id, "source_url": address, "domain": domain, "status": status, "key": key}
+    anchor_kind = anchor_kind_of(row.get("anchor_kind"))
+    if anchor_kind is False:
+        raise Refused(f"{name}: The anchor type {_short(row.get('anchor_kind'))} isn't known. Use Brand, Bare URL, Exact keyword, Partial keyword, Generic or Other.")
+    clean = {"site_id": site_id, "source_url": address, "domain": domain, "status": status, "key": key, "anchor_kind": anchor_kind}
     clean.update({field: _as_text(row, field, name) for field in LIMITS})
     clean["cost"] = _cost_of(row, clean["price_text"], name)
     return clean
+
+
+def anchor_kind_of(value) -> str | None | bool:
+    """The anchor type a cell names, None for "work it out", or False when the word isn't known."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, str):
+        return False
+    return ANCHOR_WORDS.get(anchors.clean(value), False)
 
 
 def _cost_of(row: dict, price_text: str | None, name: str) -> Decimal | None:
@@ -277,7 +304,7 @@ def _ask_for_icons(engine: Engine, domains: set[str]) -> None:
 def _as_dict(row) -> dict:
     return {
         "id": row["id"], "site_id": row["site_id"], "source_url": row["source_url"], "domain": row["domain"], "status": row["status"],
-        **{field: row[field] for field in LIMITS},
+        **{field: row[field] for field in LIMITS}, "anchor_kind": row["anchor_kind"],
         "cost": float(row["cost"]) if row["cost"] is not None else None, "created_at": _iso(row["created_at"]),
         "authority": row["authority"], "authority_label": row["authority_label"], "spam_score": row["spam_score"], "page_authority": row["page_authority"], "rating": row["rating"],
         "article_url": row["article_url"], "sent_at": _iso(row["sent_at"]),
@@ -285,21 +312,89 @@ def _as_dict(row) -> dict:
             "checked_at": _iso(row["checked_at"]), "outcome": row["check_outcome"], "reason": row["check_reason"], "misses": row["miss_count"],
             "is_nofollow": None if row["is_nofollow"] is None else bool(row["is_nofollow"]), "rel": row["seen_rel"], "anchor": row["seen_anchor"], "href": row["seen_href"],
             "final_url": row["final_url"], "target_final_url": row["target_final_url"], "lost_at": _iso(row["lost_at"]),
+            "verdict": row["seo_verdict"], "reasons": _json_list(row["seo_reasons"]), "page_lang": row["page_lang"], "target_lang": row["target_lang"],
+            "outbound_links": row["outbound_links"], "target_http": row["target_http"],
         },
+        "found_by": row["found_by"], "gsc": {"seen": row["gsc_seen"], "seen_at": _iso(row["gsc_seen_at"]), "crawled": row["gsc_crawled"]}, "disavow": bool(row["disavow"]),
     }
+
+
+def _json_list(value) -> list:
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return []
+    return value if isinstance(value, list) else []
 
 
 def list_for_site(engine: Engine, site_id: int) -> list[dict]:
     with engine.connect() as conn:
         require_own(conn, site_id)
-        rows = conn.execute(text("SELECT * FROM backlinks WHERE site_id = :s ORDER BY id DESC"), {"s": site_id}).mappings().all()
-    answer = [_as_dict(row) for row in rows]
+        rows = conn.execute(text(
+            "SELECT b.*, (SELECT a.score FROM authority_monthly a WHERE a.domain = b.domain AND a.score IS NOT NULL ORDER BY a.month DESC LIMIT 1) AS opr_score "
+            "FROM backlinks b WHERE b.site_id = :s ORDER BY b.id DESC"
+        ), {"s": site_id}).mappings().all()
+        last_gsc = conn.execute(text("SELECT MAX(imported_at) FROM gsc_link_imports WHERE site_id = :s AND kind = 'latest'"), {"s": site_id}).scalar()
+        site = conn.execute(text("SELECT host, start_url FROM sites WHERE id = :s"), {"s": site_id}).mappings().first()
+        start_url = site["start_url"]
+        inspected = indexed.for_site(conn, site_id)
+        brand, keywords = anchors.words_for_site(conn, site_id, site["host"])
+        traffic_of = ahrefs.for_domains(conn, {r["domain"] for r in rows}) if ahrefs.connected(engine) else {}
+    answer = []
+    for row in rows:
+        item = _as_dict(row)
+        # Open PageRank, 0 to 10, from the monthly collector. Shown with its name when the file gave no DA: scores from two tools don't compare.
+        item["opr"] = round(float(row["opr_score"]), 1) if row["opr_score"] is not None else None
+        item["gsc"]["not_listed"] = _not_listed(row, last_gsc)
+        page = indexed.target_page(dict(row), start_url) if row["status"] == LIVE else None
+        item["target_index"] = inspected.get(indexed.url_hash(page)) if page else None  # is my page indexed, from URL Inspection
+        item["source_index"] = source_index.shown(row)  # is the linking page on Google
+        if item["source_index"] and item["source_index"]["state"] == source_index.NOT_INDEXED and item["check"].get("verdict") in ("counts", "weak"):
+            item["check"]["verdict"] = "none"  # a page Google doesn't have passes nothing, whatever its link says
+            item["check"]["reasons"] = [*item["check"].get("reasons", []), "source_not_indexed"]
+        # One set by hand wins. The worked-out one stays beside it, so the screen can say which is which.
+        item["anchor_auto"] = anchors.kind(row["anchor"] or row["seen_anchor"], brand, keywords)
+        item["anchor_type"] = row["anchor_kind"] or item["anchor_auto"]
+        item["site_traffic"] = traffic_of.get(row["domain"])  # Ahrefs' monthly organic visits to the linking website, only with its key
+        answer.append(item)
     traffic = traffic_provider(engine, site_id) if traffic_provider else {}
     for row in answer:
         found = traffic.get(row["id"])
         if found:
             row.update(visits=found.get("visits"), leads=found.get("leads"), traffic_label=found.get("label"), shared=found.get("shared"))
     return answer
+
+
+def site_facts(engine: Engine, site_id: int) -> dict:
+    """What the Backlinks screen needs about my site itself: its language, and whether Google can be asked if its pages are indexed."""
+    with engine.connect() as conn:
+        host = conn.execute(text("SELECT host FROM sites WHERE id = :s"), {"s": site_id}).scalar()
+        langs = [r[0] for r in conn.execute(text(
+            "SELECT LOWER(LEFT(p.lang, 2)) AS l FROM pages p JOIN domains d ON d.id = p.domain_id "
+            "WHERE d.host IN (:h, CONCAT('www.', :h)) AND p.lang IS NOT NULL AND p.lang <> '' GROUP BY l ORDER BY COUNT(*) DESC LIMIT 1"
+        ), {"h": host})]
+        if not langs:  # not crawled yet: the language the link checks read on my target pages
+            langs = [r[0] for r in conn.execute(text(
+                "SELECT LOWER(LEFT(target_lang, 2)) AS l FROM backlinks WHERE site_id = :s AND target_lang IS NOT NULL AND target_lang <> '' GROUP BY l ORDER BY COUNT(*) DESC LIMIT 1"
+            ), {"s": site_id})]
+    return {"lang": langs[0] if langs else None, "index_check": indexed.is_on(engine, site_id), "ahrefs": ahrefs.connected(engine), "site_search": source_index.can_search(engine)}
+
+
+def _not_listed(row, last_gsc) -> bool:
+    """A live link Google's latest list leaves out, though it was logged long enough before that list. Only a hint: the list is a sample."""
+    if last_gsc is None or row["status"] != LIVE or row["gsc_seen"]:
+        return False
+    placed = row["placed"] if row["placed"] and re.match(r"^\d{4}-\d{2}-\d{2}", row["placed"]) else None
+    start = date_from(placed) if placed else row["created_at"].date()
+    return start is not None and (last_gsc.date() - start).days >= NOT_LISTED_DAYS
+
+
+def date_from(value: str):
+    try:
+        return date.fromisoformat(value[:10])
+    except ValueError:
+        return None
 
 
 def get_one(engine: Engine, backlink_id: int) -> dict:
@@ -350,7 +445,9 @@ def _forget_what_was_read(conn, backlink_id: int) -> None:
     conn.execute(
         text(
             "UPDATE backlinks SET checked_at = NULL, check_outcome = NULL, check_reason = NULL, is_nofollow = NULL, seen_rel = NULL, seen_anchor = NULL, "
-            "seen_href = NULL, final_url = NULL, target_final_url = NULL, miss_count = 0 WHERE id = :i"
+            "seen_href = NULL, final_url = NULL, target_final_url = NULL, miss_count = 0, seo_verdict = NULL, seo_reasons = NULL, page_lang = NULL, target_lang = NULL, "
+            "outbound_links = NULL, target_http = NULL, gsc_seen = NULL, gsc_seen_at = NULL, gsc_crawled = NULL, "
+            "src_index = NULL, src_index_via = NULL, src_index_at = NULL, src_index_misses = 0 WHERE id = :i"
         ),
         {"i": backlink_id},
     )

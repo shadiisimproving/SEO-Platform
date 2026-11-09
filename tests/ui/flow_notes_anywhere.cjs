@@ -86,7 +86,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
     await page.click("#main .cl-head .nb-open");
     await page.waitForSelector("#panel.nb-panel-wrap");
     const here = await choices();
-    check("it opens on this competitor", /\|true$/.test(here[0]) && here.length === 4, here.join(" / "));
+    check("it opens on this competitor", /\|true$/.test(here[0]) && here.length >= 8 && here.slice(-1)[0].startsWith("All notes"), here.join(" / "));
     await writeNote(`They change prices every month ${RUN}`);
     await page.screenshot({ path: OUT + "3-competitor-note.png" });
     await page.keyboard.press("Escape"); await settle(400);

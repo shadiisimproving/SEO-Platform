@@ -48,7 +48,7 @@ def _rank(kind: str, severity: str, detail: dict | None) -> int:
         return LOSING_VISITORS if severity == "crit" else LOST_FOR_GOOD_SOON
     if kind == "health_site":
         return LOSING_VISITORS if _SITE_DOWN_NOW & set(detail.get("site") or []) else LOST_FOR_GOOD_SOON
-    if kind in ("page_drop", "backlink_lost"):
+    if kind in ("page_drop", "backlink_lost", "search_drop"):
         return LOSING_RESULTS
     if kind == "clarity_gap":
         return LOST_FOR_GOOD_SOON
@@ -62,6 +62,8 @@ def _link(kind: str) -> str:
         return "#settings"
     if "backlink" in kind:
         return "#backlinks"
+    if kind in ("search_drop", "search_finding"):
+        return "#insights"
     return "#health/uptime" if kind in ("uptime_down", "ssl_expiry", "domain_expiry") else "#health/test"
 
 
@@ -278,11 +280,39 @@ def _drop_row(move: dict) -> dict:
     }
 
 
+_FINDING_TITLES = {
+    "page_down": "{path} lost {percent}% of its Google clicks",
+    "dropped_out": "{path} dropped out of Google",
+    "decay": "{path} is slowly losing clicks",
+    "almost": "“{query}” is almost on page 1",
+    "top3": "“{query}” is close to the top 3",
+    "low_ctr": "“{query}” is clicked less than usual",
+    "no_click": "“{query}” is seen but never clicked",
+    "compete": "Two of your pages compete for “{query}”",
+    "odd_day": "Google clicks fell on {day}",
+}
+
+
+def _finding_row(f: dict) -> dict:
+    evidence = f["evidence"]
+    values = {"path": evidence.get("path") or _path(f["page"] or "/"), "percent": abs(evidence.get("percent") or 0), "query": f["query"] or "", "day": evidence.get("day") or ""}
+    return {
+        "id": f"finding-{f['key']}", "seen_key": f["key"], "kind": "search_finding", "finding": f["kind"], "finding_id": f["id"], "severity": "warn",
+        "rank": LOSING_RESULTS if f["group"] in ("changed", "decline") else OTHER, "host": f["host"],
+        "title": _FINDING_TITLES.get(f["kind"], "{path}").format(**values), "detail": f"About {round(f['at_stake'])} clicks a month at stake",
+        "page": f["page"], "query": f["query"], "link": f"#insights/{f['id']}", "created_at": None,
+    }
+
+
 def _todo(engine: Engine, site_id: int | None, moves: list[dict]) -> tuple[list[dict], set[str]]:
     """One list, ranked by what is being lost. Returns which pages it names, so they aren't repeated under Going down."""
     seen = _seen_drops(engine)
     drops = sorted((move for move in moves if _is_big_drop(move) and move["key"] not in seen), key=lambda move: move["clicks"] - move["was"])[:BIG_DROPS_SHOWN]
     rows = _attention(engine, site_id) + [_drop_row(move) for move in drops]
+    named = {move["page"] for move in drops}
+    from seo.insights import service as insights  # the biggest Search insights, one per query or page
+
+    rows += [_finding_row(f) for f in insights.today_rows(engine, site_id) if f["key"] not in seen and not (f["page"] and f["page"] in named and f["kind"] == "page_down")]
     # Sorted is stable, and page drops were added in order of clicks lost.
     rows.sort(key=lambda item: (item["rank"], SEVERITY.get(item["severity"], 3)) if item["kind"] != "page_drop" else (item["rank"], -1))
     return rows, {move["key"] for move in drops}

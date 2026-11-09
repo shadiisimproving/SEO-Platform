@@ -426,9 +426,9 @@
         ${linksField("task-pages", "Related pages", "Add a page", task ? given.pages : pages)}
         ${linksField("task-keywords", "Related keywords", "Add a keyword", task ? given.keywords : keywords)}
       </form>
-      ${task ? commentsBlock(task) : ""}</div>
+      ${task ? commentsBlock(task) : ""}${task && window.COMP?.notes ? `<div class="task-notes">${window.COMP.notes.block({ scope: "task", taskId: task.id, task: task.title, siteId: task.site_id ?? null, title: t("Notes on this task") })}</div>` : ""}</div>
       <div class="panel-foot"><button class="btn btn-main" id="task-save" ${task ? `data-id="${task.id}"` : ""}>${t("Save")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button>${task ? `<button class="btn btn-ghost danger" id="task-delete" data-id="${task.id}">${t("Delete")}</button>` : ""}</div>`,
-    opener, { key: draftKey, reopen: () => openTask({ task, title, host, description, source, priority, pages, keywords, opener }), after: () => { drawLinks("task-pages"); drawLinks("task-keywords"); fillSuggestions(); } });
+    opener, { key: draftKey, reopen: () => openTask({ task, title, host, description, source, priority, pages, keywords, opener }), after: () => { drawLinks("task-pages"); drawLinks("task-keywords"); fillSuggestions(); window.COMP?.notes?.mount(); } });
     pendingSource = task ? null : source;
   }
   let pendingSource = null; // what the panel on screen would be created from

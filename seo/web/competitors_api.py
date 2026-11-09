@@ -11,7 +11,7 @@ from flask import Blueprint, current_app, g, jsonify, request, send_file
 
 from seo.backlinks import service as backlinks
 from seo.backlinks.cleaner import CleanerError, check_upload
-from seo.competitors import ai_watch, collective, gaps, keywords, notes, pairs, profile, suggest, tracking
+from seo.competitors import ai_watch, collective, gaps, history, insights, keywords, notes, pairs, profile, suggest, tracking  # noqa: F401 - history registers its job handler
 from seo.core.errors import Refused
 from seo.serp import connections
 from seo.web.auth import require_admin
@@ -168,6 +168,11 @@ def competitor_profile(competitor_id: int):
     return jsonify(tracking.apply_to_profile(_engine(), site_id, profile.profile(_engine(), site_id, competitor_id)))
 
 
+@competitors_api.get("/competitors/<int:competitor_id>/insights")
+def competitor_insights(competitor_id: int):
+    return jsonify(insights.insights(_engine(), _site_arg(), competitor_id))
+
+
 @competitors_api.post("/competitors/<int:competitor_id>/crawl")
 def crawl_now(competitor_id: int):
     with _engine().connect() as conn:
@@ -310,7 +315,8 @@ def log_backlink():
 
 @competitors_api.get("/backlinks")
 def list_backlinks():
-    return jsonify(backlinks=backlinks.list_for_site(_engine(), _site_arg()))
+    site_id = _site_arg()
+    return jsonify(backlinks=backlinks.list_for_site(_engine(), site_id), site=backlinks.site_facts(_engine(), site_id))
 
 
 @competitors_api.post("/backlinks/bulk")
@@ -346,13 +352,26 @@ def ai_overview_watch():
 
 @competitors_api.get("/notes")
 def list_notes():
-    return jsonify(notes=notes.list_notes(_engine(), request.args.get("scope") or None, _number(request.args.get("competitor_id")), request.args.get("page_url") or None, _number(request.args.get("site_id")), request.args.get("screen") or None))
+    args = request.args
+    return jsonify(notes=notes.list_notes(
+        _engine(), args.get("scope") or None, _number(args.get("competitor_id")), args.get("page_url") or None, _number(args.get("site_id")), args.get("screen") or None,
+        args.get("keyword") or None, args.get("day") or None, args.get("domain") or None, _number(args.get("task_id")),
+    ))
+
+
+@competitors_api.get("/notes/options")
+def note_options():
+    """The pages and keywords a note can be about, for the Notes panel's pickers. No site_id: all my sites."""
+    return jsonify(notes.options(_engine(), _number(request.args.get("site_id"))))
 
 
 @competitors_api.post("/notes")
 def create_note():
-    body = _body({"scope", "body", "site_id", "competitor_id", "page_url", "screen"}, ("scope",))
-    return jsonify(notes.create(_engine(), body["scope"], body.get("body", ""), body.get("site_id"), body.get("competitor_id"), body.get("page_url"), body.get("screen"))), 201
+    body = _body({"scope", "body", "site_id", "competitor_id", "page_url", "screen", "keyword", "day", "domain", "task_id"}, ("scope",))
+    return jsonify(notes.create(
+        _engine(), body["scope"], body.get("body", ""), body.get("site_id"), body.get("competitor_id"), body.get("page_url"), body.get("screen"),
+        body.get("keyword"), body.get("day"), body.get("domain"), body.get("task_id"),
+    )), 201
 
 
 @competitors_api.patch("/notes/<int:note_id>")

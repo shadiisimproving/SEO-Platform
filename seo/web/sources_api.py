@@ -105,7 +105,11 @@ def collect_jobs():
 @sources_api.put("/app-keys/<source>")
 def save_key(source: str):
     require_admin()
-    return jsonify(service.save_app_key(_engine(), source, _body().get("key")))
+    saved = service.save_app_key(_engine(), source, _body().get("key"))
+    if source == "ahrefs":
+        from seo.backlinks import ahrefs  # read the linking websites' traffic now, not at the next nightly run
+        ahrefs.enqueue(_engine())
+    return jsonify(saved)
 
 
 @sources_api.post("/app-keys/<source>/test")

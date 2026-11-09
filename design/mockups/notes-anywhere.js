@@ -3,7 +3,8 @@
    The panel offers what the note can be about, what's on screen first:
      - this competitor or this page, when the screen shows one (a [data-notes-open] button in the page says so);
      - this screen (Backlinks, Keywords…);
-     - the whole website picked in the side menu, or all my sites;
+     - the whole website picked in the side menu, and all my sites;
+     - any page, group of pages, keyword, day, linking website, task or competitor, picked from a list or typed ("pick" choices, on their own row);
      - and All notes, with a search.
    The notes themselves, their saving, drafts and files, all live in comp-notes.js. This file only opens the panel. */
 (() => {
@@ -18,7 +19,8 @@
   /* What the note can be about here, the things on screen first. */
   function choices(opener) {
     const ui = UI(), { t } = ui;
-    const here = opener?.dataset?.notesOpen ? opener : ui.$("#main [data-notes-open]");
+    // A row's note icon is about that row, not about the screen: only the page's own Notes button says what's on screen.
+    const here = opener?.dataset?.notesOpen ? opener : ui.$("#main [data-notes-open]:not([data-notes-light])");
     const list = here ? readChoices(here).map((c) => ({ ...c, icon: c.icon || (c.where.scope === "page" ? "file-text" : "crosshair") })) : [];
     const site = ui.siteIdPicked();
     const route = ui.state.route;
@@ -26,6 +28,17 @@
     if (name && name !== route) list.push({ id: "screen", label: t("This screen: {name}").replace("{name}", name), icon: "layout-dashboard", where: { scope: "screen", screen: route, siteId: site } });
     const host = ui.siteHostPicked();
     list.push({ id: "site", label: host || t("All my sites"), icon: "globe", where: { scope: "site", siteId: site } });
+    if (host) list.push({ id: "everywhere", label: t("All my sites"), icon: "layers", where: { scope: "site", siteId: null } });
+    // Anything else: picked from a list. The page's own buttons already offer what's on screen, so these come after.
+    list.push(
+      { id: "pick-page", pick: "page", label: t("A page"), icon: "file-text", where: { scope: "page", pageUrl: null, siteId: site } },
+      { id: "pick-section", pick: "section", label: t("A group of pages"), icon: "folder-open", where: { scope: "section", pageUrl: null, siteId: site } },
+      { id: "pick-keyword", pick: "keyword", label: t("A keyword"), icon: "key-round", where: { scope: "keyword", keyword: null, siteId: site } },
+      { id: "pick-date", pick: "date", label: t("A date"), icon: "calendar-days", where: { scope: "date", day: null, siteId: site } },
+      { id: "pick-domain", pick: "domain", label: t("A linking website"), icon: "link-2", where: { scope: "domain", domain: null, siteId: site } },
+      { id: "pick-task", pick: "task", label: t("A task"), icon: "square-check", where: { scope: "task", taskId: null, task: null, siteId: site } },
+      { id: "pick-competitor", pick: "competitor", label: t("A competitor"), icon: "crosshair", where: { scope: "competitor", competitorId: null, competitor: null, siteId: site } },
+    );
     return list;
   }
 
@@ -98,7 +111,8 @@
     ui.$$("[data-notes-open]").forEach((el) => {
       if (el.dataset.notesCounted) return;
       el.dataset.notesCounted = "1";
-      readChoices(el).forEach((c) => COMP.notes.preload(c.where));
+      if (el.dataset.notesLight) COMP.notes.loadAllOnce(); // a row's badge: one load for the whole table
+      else readChoices(el).forEach((c) => COMP.notes.preload(c.where));
     });
   }
   let countsQueued = false;

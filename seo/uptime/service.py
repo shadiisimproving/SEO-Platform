@@ -161,10 +161,37 @@ def rdap_expiry(domain: str) -> date:
     raise RdapFailed("no_date")
 
 
+def _event_date(answer: dict, action: str) -> date | None:
+    for event in answer.get("events") or []:
+        if isinstance(event, dict) and event.get("eventAction") == action:
+            try:
+                return datetime.fromisoformat(str(event.get("eventDate")).replace("Z", "+00:00")).date()
+            except ValueError:
+                return None
+    return None
+
+
+def rdap_dates(domain: str) -> tuple[date | None, date | None]:
+    """When the domain was registered and when it runs out, for any domain, a competitor's too. Same free registry as rdap_expiry."""
+    try:
+        with httpx.Client(follow_redirects=False, timeout=15.0, trust_env=False, headers={"User-Agent": USER_AGENT, "Accept": "application/rdap+json, application/json"}) as client:
+            server = _rdap_servers(client).get(domain.rsplit(".", 1)[-1].lower())
+            if server is None:
+                raise NoRdap(domain)
+            answer = _read_json(client, f"{server.rstrip('/')}/domain/{domain}")
+    except httpx.HTTPError as exc:
+        raise RdapFailed("network") from exc
+    registered, expires = _event_date(answer, "registration"), _event_date(answer, "expiration")
+    if registered is None and expires is None:
+        raise RdapFailed("no_date")
+    return registered, expires
+
+
 # Tests and the local harness replace these to run on a fake internet.
 is_allowed: Callable[[str], bool] = is_public_url
 certificate_read: Callable[[str], Certificate] = read_certificate
 rdap_lookup: Callable[[str], date] = rdap_expiry
+rdap_dates_lookup: Callable[[str], tuple[date | None, date | None]] = rdap_dates
 internet_ok: Callable[[], bool] = internet_works
 
 

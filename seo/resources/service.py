@@ -1,6 +1,7 @@
 """Links and documents per site. No files are stored: a resource points at where the document lives."""
 from __future__ import annotations
 
+import json
 from urllib.parse import urlsplit
 
 from sqlalchemy import Engine, text
@@ -25,14 +26,43 @@ def _clean(body: dict) -> dict:
         parts = urlsplit(url)
         if parts.scheme not in ("http", "https") or not parts.netloc:
             raise Refused("A link starts with https://.")
-    for name in ("kind", "notes"):
-        if body.get(name) is not None and not isinstance(body[name], str):
-            raise Refused("That isn't text.")
-    return {"t": title, "u": url or None, "k": (body.get("kind") or "").strip()[:40] or None, "n": (body.get("notes") or "").strip() or None, "s": body.get("site_id")}
+    if body.get("notes") is not None and not isinstance(body["notes"], str):
+        raise Refused("That isn't text.")
+    tags = _clean_tags(body.get("tags"))
+    return {"t": title, "u": url or None, "g": json.dumps(tags) if tags else None, "n": (body.get("notes") or "").strip() or None, "s": body.get("site_id")}
+
+
+MAX_TAGS, MAX_TAG_LENGTH = 20, 40
+
+
+def _clean_tags(raw) -> list[str]:
+    """Trimmed, at most 20, each up to 40 characters, no repeats regardless of case; the first spelling wins."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list) or not all(isinstance(tag, str) for tag in raw):
+        raise Refused("Tags are a list of words.")
+    seen, tags = set(), []
+    for tag in raw:
+        tag = " ".join(tag.split())
+        if not tag or tag.casefold() in seen:
+            continue
+        if len(tag) > MAX_TAG_LENGTH:
+            raise Refused("A tag is 40 characters at most.")
+        seen.add(tag.casefold())
+        tags.append(tag)
+    if len(tags) > MAX_TAGS:
+        raise Refused("A resource takes 20 tags at most.")
+    return tags
+
+
+def _tags(value) -> list[str]:
+    if isinstance(value, str):
+        value = json.loads(value)
+    return list(value or [])
 
 
 def _row(row) -> dict:
-    return {"id": row["id"], "site_id": row["site_id"], "host": row["host"], "title": row["title"], "url": row["url"], "kind": row["kind"], "notes": row["notes"], "created_by": row["created_by"], "created_at": _iso(row["created_at"])}
+    return {"id": row["id"], "site_id": row["site_id"], "host": row["host"], "title": row["title"], "url": row["url"], "tags": _tags(row["tags"]), "notes": row["notes"], "created_by": row["created_by"], "created_at": _iso(row["created_at"])}
 
 
 _SELECT = "SELECT r.*, s.host FROM resources r LEFT JOIN sites s ON s.id = r.site_id"
@@ -60,7 +90,7 @@ def create(engine: Engine, body: dict, author: str | None = None) -> dict:
     values = _clean(body)
     with engine.begin() as conn:
         _check_site(conn, values["s"])
-        new_id = conn.execute(text("INSERT INTO resources (site_id, title, url, kind, notes, created_by) VALUES (:s, :t, :u, :k, :n, :a)"), {**values, "a": author}).lastrowid
+        new_id = conn.execute(text("INSERT INTO resources (site_id, title, url, tags, notes, created_by) VALUES (:s, :t, :u, :g, :n, :a)"), {**values, "a": author}).lastrowid
     return get(engine, new_id)
 
 
@@ -68,7 +98,7 @@ def update(engine: Engine, resource_id: int, body: dict) -> dict:
     values = _clean(body)
     with engine.begin() as conn:
         _check_site(conn, values["s"])
-        done = conn.execute(text("UPDATE resources SET site_id = :s, title = :t, url = :u, kind = :k, notes = :n WHERE id = :i AND deleted_at IS NULL"), {**values, "i": resource_id}).rowcount
+        done = conn.execute(text("UPDATE resources SET site_id = :s, title = :t, url = :u, tags = :g, notes = :n WHERE id = :i AND deleted_at IS NULL"), {**values, "i": resource_id}).rowcount
         if not done and not conn.execute(text("SELECT 1 FROM resources WHERE id = :i AND deleted_at IS NULL"), {"i": resource_id}).first():
             raise NotFound("That resource doesn't exist.")
     return get(engine, resource_id)

@@ -236,6 +236,13 @@ window.CONNECTIONS = [
       { title: "Copy your token", text: "Open the keys page, press Access my key, and copy one of your API tokens.", url: "https://moz.com/products/api/keys", link: "Open the key page" },
       { title: "Paste it here", text: "Paste it in the API key box above and press Save. Test can't check this key, so its first use shows whether it works." },
     ] },
+  { id: "ahrefs", group: "extra", name: "Ahrefs", logo: "ahrefs", desc: "Monthly Google traffic of each website that links to you", status: "off", price: "Paid", limit: "About 50 API units per website a month", auth: "key", sites: "all", url: "https://app.ahrefs.com/account/api-keys",
+    note: "Off until you paste a key. The Site traffic column on Backlinks only shows while it's connected. At most 200 websites a month, about 10,000 units.",
+    steps: [
+      { title: "Check your plan", text: "The Ahrefs API needs a plan with API units. Your plan page says how many you have.", url: "https://app.ahrefs.com/account/limits-and-usage", link: "Open your limits" },
+      { title: "Create a key", text: "Open API keys in your Ahrefs account, press Create API key, and copy it.", url: "https://app.ahrefs.com/account/api-keys", link: "Open API keys" },
+      { title: "Paste it here", text: "Paste it in the API key box above and press Save. Test uses ahrefs.com, which Ahrefs never charges units for." },
+    ] },
   { id: "openrouter", group: "extra", name: "OpenRouter", logo: "openrouter", desc: "Plain-language summaries of competitors' changes", status: "off", price: "Free", limit: "50 requests a day, 20 a minute", auth: "key", sites: "all", url: "https://openrouter.ai/keys",
     note: "Off until you paste a key. Only a click uses a request, and each answer is kept.",
     risk: "It sends the competitor's public page text to OpenRouter, and free models may keep what they're sent. Nothing about your own sites or leads is sent.",
@@ -259,8 +266,6 @@ window.CONNECTIONS = [
       { title: "Put it on your websites", text: "Upload it to the main folder of each website, so it opens at an address like https://yoursite.com/abcd1234.txt." },
       { title: "Paste it here", text: "Paste the key in the API key box above and press Save. Test can't check this key, so the first pages you send show whether it works." },
     ] },
-  { id: "commoncrawl", group: "extra", name: "Common Crawl", logo: "commoncrawl", desc: "Which domains link to a competitor. Domains only", status: "nokey", price: "Free", limit: "New release about monthly", auth: "none", sites: "all", url: "https://commoncrawl.org/",
-    steps: ["Nothing to connect: it needs no key. It feeds Link gaps in Competitors.", "It runs on the Mac: about 11 GB passes through, about 7 minutes on your connection, and nothing big is kept. On the live site you upload its small result file.", "It finds domains only, with no page or anchor text. Spam is flagged, never removed, and only the good ones can be added."] },
 ];
 
 // Sample competitors. Kept apart from SITES on purpose: the links checker only ever lists my own sites.

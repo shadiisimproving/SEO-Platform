@@ -560,10 +560,42 @@
   }
 
   // ---- Resources --------------------------------------------------------------------------------
-  const R = { rows: null, error: "" };
+  const R = { rows: null, error: "", tag: "" };
+  // Offered before anyone has tagged anything; tags already used come first, most used first.
+  const STARTER_TAGS = ["Brief", "Report", "Guide", "Login", "Template", "Checklist"];
+  const sameTag = (a, b) => a.toLocaleLowerCase() === b.toLocaleLowerCase();
+  function knownTags() {
+    const count = new Map();
+    (R.rows || []).forEach((r) => r.tags.forEach((tag) => {
+      const name = [...count.keys()].find((k) => sameTag(k, tag)) || tag;
+      count.set(name, (count.get(name) || 0) + 1);
+    }));
+    const used = [...count.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], UI.state.lang)).map(([tag]) => tag);
+    return [...used, ...STARTER_TAGS.filter((tag) => !used.some((u) => sameTag(u, tag)))];
+  }
+  const tagForm = () => document.getElementById("lv-resource-form");
+  const pickedTags = (form) => { try { return JSON.parse(form.elements.f_tags.value) || []; } catch { return []; } };
+  function setTags(form, tags) { form.elements.f_tags.value = JSON.stringify(tags); drawTags(form); }
+  function addTag(form, raw) {
+    const tag = raw.split(/\s+/).filter(Boolean).join(" ").slice(0, 40);
+    const tags = pickedTags(form);
+    if (tag && !tags.some((x) => sameTag(x, tag))) tags.push(knownTags().find((k) => sameTag(k, tag)) || tag);
+    form.querySelector("[data-rs-tag-input]").value = "";
+    setTags(form, tags);
+  }
+  // Every tag goes through esc(): tags are typed by users.
+  function drawTags(form) {
+    if (!form) return;
+    const tags = pickedTags(form), typed = form.querySelector("[data-rs-tag-input]").value.trim();
+    UI.setHTML(form.querySelector("[data-rs-picked]"), tags.map((tag) => `<span class="rs-chip" dir="auto">${esc(tag)}<button type="button" class="rs-chip-x" data-rs-tag-remove="${esc(tag)}" aria-label="${esc(t("Remove {tag}").replace("{tag}", tag))}">${icon("x")}</button></span>`).join(""));
+    const list = knownTags().filter((tag) => !typed || tag.toLocaleLowerCase().includes(typed.toLocaleLowerCase()));
+    const isNew = typed && !knownTags().some((k) => sameTag(k, typed)) && !tags.some((k) => sameTag(k, typed));
+    UI.setHTML(form.querySelector("[data-rs-tag-list]"), list.map((tag) => `<button type="button" class="chip" data-rs-tag-toggle="${esc(tag)}" aria-pressed="${tags.some((x) => sameTag(x, tag))}" dir="auto">${esc(tag)}</button>`).join("")
+      + (isNew ? `<button type="button" class="chip rs-chip-new" data-rs-tag-toggle="${esc(typed)}" aria-pressed="false">${icon("plus")}${esc(t("Add “{tag}”").replace("{tag}", typed))}</button>` : ""));
+  }
   async function loadResources() {
     try { R.rows = (await window.COMP.api("GET", "resources")).resources; R.error = ""; } catch (err) { R.rows = []; R.error = err.message === "Not in the sample data." ? "noServer" : err.message; }
-    if (UI.state.route === "resources" && !UI.$("#panel")) UI.render();
+    if (UI.state.route === "resources" && !UI.$("#panel:not(.closing)")) UI.render(); // a panel sliding shut after Save must not hold back the new row
   }
   function resourcesPage() {
     if (R.rows === null) loadResources();
@@ -572,11 +604,15 @@
     if (R.error === "noServer") return page(head, emptyCard(t("Needs the running app"), t("Opened as a plain file there's no real data to show here.")));
     if (R.error) return page(head, emptyCard(t("That didn't load"), esc(R.error)));
     const host = UI.siteHostPicked();
-    const rows = R.rows.filter((r) => !host || !r.host || r.host === host);
-    if (!rows.length) return page(head, emptyCard(t("No resources yet"), t("Keep briefs, logins pages, reports and useful links here, so the team finds them.")));
-    return page(head, `<section class="card">${dataTable("resources", [
+    const onSite = R.rows.filter((r) => !host || !r.host || r.host === host);
+    if (!onSite.length) return page(head, emptyCard(t("No resources yet"), t("Keep briefs, logins pages, reports and useful links here, so the team finds them.")));
+    const used = knownTags().filter((tag) => onSite.some((r) => r.tags.some((x) => sameTag(x, tag))));
+    if (R.tag && !used.some((tag) => sameTag(tag, R.tag))) R.tag = "";
+    const rows = onSite.filter((r) => !R.tag || r.tags.some((x) => sameTag(x, R.tag)));
+    const filter = used.length ? `<div class="chips" role="group" aria-label="${t("Filter by tag")}"><button class="chip" data-rs-filter="" aria-pressed="${!R.tag}">${t("All")}<b>${num(onSite.length)}</b></button>${used.map((tag) => `<button class="chip" data-rs-filter="${esc(tag)}" aria-pressed="${sameTag(tag, R.tag)}" dir="auto">${esc(tag)}<b>${num(onSite.filter((r) => r.tags.some((x) => sameTag(x, tag))).length)}</b></button>`).join("")}</div>` : "";
+    return page(head, `<section class="card">${filter}${dataTable("resources", [
       { key: "title", label: "Title", html: (r) => `<button class="link-btn" data-lv-resource="${r.id}" dir="auto">${esc(r.title)}</button>${r.notes ? `<div class="lv-cat" dir="auto">${esc(r.notes)}</div>` : ""}` },
-      { key: "kind", label: "Type", html: (r) => (r.kind ? `<span class="tag" dir="auto">${esc(r.kind)}</span>` : `<span class="muted">—</span>`) },
+      { key: "tags", label: "Tags", get: (r) => (r.tags.length ? r.tags.join(", ") : null), html: (r) => (r.tags.length ? `<span class="rs-tags">${r.tags.map((tag) => `<span class="tag" dir="auto">${esc(tag)}</span>`).join("")}</span>` : `<span class="muted">—</span>`) },
       { key: "host", label: "Site", html: (r) => `<span class="mono" dir="auto">${esc(r.host || t("All sites"))}</span>` },
       { key: "url", label: "Link", html: (r) => (r.url ? `<a class="ext-link lv-url" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">${icon("external-link")}${t("Open")}</a>` : `<span class="muted">—</span>`) },
     ], rows, { csv: false })}</section>`);
@@ -590,11 +626,15 @@
         <label class="field"><span>${t("Title")}</span><input class="input" name="f_title" dir="auto" value="${esc(r.title || "")}" autocomplete="off"></label>
         <label class="field"><span>${t("Link")}</span><input class="input mono" name="f_url" dir="ltr" value="${esc(r.url || "")}" placeholder="https://" autocomplete="off"></label>
         <label class="field"><span>${t("Site")}</span><select class="select" name="f_site_id" style="width:100%"><option value="">${t("All sites")}</option>${window.SITES.filter((s) => s.realId).map((s) => `<option value="${s.realId}" ${(editing ? r.site_id === s.realId : picked === s.host) ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></label>
-        <label class="field"><span>${t("Type")}</span><input class="input" name="f_kind" dir="auto" value="${esc(r.kind || "")}" placeholder="${t("Brief, report, guide…")}" autocomplete="off"></label>
+        <div class="field"><span id="rs-tags-label">${t("Tags")}</span>
+          <input type="hidden" name="f_tags" value="${esc(JSON.stringify(r.tags || []))}">
+          <div class="input rs-tagbox" data-rs-tagbox><span class="rs-picked" data-rs-picked></span><input class="rs-tag-input" data-rs-tag-input dir="auto" maxlength="40" placeholder="${t("Type a tag, then Enter")}" aria-labelledby="rs-tags-label" autocomplete="off"></div>
+          <div class="chips rs-tag-list" role="group" aria-label="${t("Your tags")}" data-rs-tag-list></div>
+        </div>
         <label class="field"><span>${t("Notes")}</span><textarea class="input" name="f_notes" dir="auto" rows="3">${esc(r.notes || "")}</textarea></label>
         <div class="error" data-lv-form-error role="alert" hidden></div>
       </form>
-      <div class="panel-foot"><button class="btn btn-main" data-lv-resource-save>${t("Save")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button>${editing ? `<button class="btn btn-ghost danger" data-lv-resource-del="${r.id}">${t("Delete")}</button>` : ""}</div>`, opener, { key: `resource|${id}`, reopen: () => resourcePanel(id, opener) });
+      <div class="panel-foot"><button class="btn btn-main" data-lv-resource-save>${t("Save")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button>${editing ? `<button class="btn btn-ghost danger" data-lv-resource-del="${r.id}">${t("Delete")}</button>` : ""}</div>`, opener, { key: `resource|${id}`, reopen: () => resourcePanel(id, opener), after: () => drawTags(tagForm()) });
   }
 
   // ---- events -----------------------------------------------------------------------------------
@@ -637,6 +677,15 @@
         try { await window.COMP.api("DELETE", `rules/${el.dataset.lvRuleDel}`); forget(); UI.render(); UI.toast(t("Rule removed")); } catch (err) { UI.toast(err.message, { kind: "crit" }); }
         return;
       }
+      if ((el = hit("[data-rs-filter]"))) { R.tag = el.dataset.rsFilter; UI.render(); document.querySelector(`[data-rs-filter="${CSS.escape(R.tag)}"]`)?.focus({ preventScroll: true }); return; }
+      if ((el = hit("[data-rs-tag-remove]"))) { const form = tagForm(); setTags(form, pickedTags(form).filter((x) => !sameTag(x, el.dataset.rsTagRemove))); form.querySelector("[data-rs-tag-input]").focus(); return; }
+      if ((el = hit("[data-rs-tag-toggle]"))) {
+        const form = tagForm(), tag = el.dataset.rsTagToggle, tags = pickedTags(form);
+        if (tags.some((x) => sameTag(x, tag))) setTags(form, tags.filter((x) => !sameTag(x, tag))); else addTag(form, tag);
+        (form.querySelector(`[data-rs-tag-toggle="${CSS.escape(tag)}"]`) || form.querySelector("[data-rs-tag-input]")).focus({ preventScroll: true });
+        return;
+      }
+      if (hit("[data-rs-tagbox]") && !hit("input")) { tagForm().querySelector("[data-rs-tag-input]").focus(); return; }
       if ((el = hit("[data-lv-resource]"))) { resourcePanel(el.dataset.lvResource, el); return; }
       if (hit("[data-lv-resource-save]")) { saveResource(); return; }
       if ((el = hit("[data-lv-resource-del]"))) {
@@ -670,6 +719,14 @@
         UI.render();
       }
     });
+    document.addEventListener("input", (e) => { if (e.target.matches?.("[data-rs-tag-input]")) drawTags(tagForm()); });
+    document.addEventListener("keydown", (e) => {
+      if (!e.target.matches?.("[data-rs-tag-input]")) return;
+      const form = tagForm(), box = e.target;
+      if ((e.key === "Enter" || e.key === ",") && box.value.trim()) { e.preventDefault(); addTag(form, box.value); }
+      else if (e.key === ",") e.preventDefault();
+      else if (e.key === "Backspace" && !box.value) { const tags = pickedTags(form); if (tags.length) { e.preventDefault(); setTags(form, tags.slice(0, -1)); } }
+    });
     const chartAt = (e) => e.target.closest?.("[data-lv-chart]");
     document.addEventListener("pointermove", (e) => {
       const box = chartAt(e);
@@ -694,7 +751,9 @@
   async function saveResource() {
     const form = document.getElementById("lv-resource-form");
     const box = form.querySelector("[data-lv-form-error]"), id = form.dataset.id;
-    const body = { title: form.elements.f_title.value, url: form.elements.f_url.value, kind: form.elements.f_kind.value, notes: form.elements.f_notes.value, site_id: form.elements.f_site_id.value ? +form.elements.f_site_id.value : null };
+    const typed = form.querySelector("[data-rs-tag-input]").value; // a tag typed without Enter still counts
+    if (typed.trim()) addTag(form, typed);
+    const body = { title: form.elements.f_title.value, url: form.elements.f_url.value, tags: pickedTags(form), notes: form.elements.f_notes.value, site_id: form.elements.f_site_id.value ? +form.elements.f_site_id.value : null };
     box.hidden = true;
     try {
       await window.COMP.api(id ? "PUT" : "POST", id ? `resources/${id}` : "resources", body);
@@ -753,7 +812,8 @@
     "Exact data through the Google Ads API isn't built: it needs an approved developer token first.": "Les données exactes via l'API Google Ads ne sont pas construites : il faut d'abord un jeton développeur approuvé.",
     "Links and documents, per site": "Liens et documents, par site", "Add a resource": "Ajouter une ressource", "Edit the resource": "Modifier la ressource", "No resources yet": "Pas encore de ressources",
     "Keep briefs, logins pages, reports and useful links here, so the team finds them.": "Gardez ici les briefs, pages de connexion, rapports et liens utiles, pour que l'équipe les retrouve.",
-    "Title": "Titre", "Link": "Lien", "Type": "Type", "Notes": "Notes", "Brief, report, guide…": "Brief, rapport, guide…", "Resource saved": "Ressource enregistrée", "Resource deleted": "Ressource supprimée",
+    "Title": "Titre", "Link": "Lien", "Notes": "Notes", "Tags": "Étiquettes", "Type a tag, then Enter": "Tapez une étiquette, puis Entrée", "Your tags": "Vos étiquettes", "Remove {tag}": "Retirer {tag}", "Add “{tag}”": "Ajouter « {tag} »", "Filter by tag": "Filtrer par étiquette",
+    "Tags are a list of words.": "Les étiquettes sont une liste de mots.", "A tag is 40 characters at most.": "Une étiquette fait 40 caractères au plus.", "A resource takes 20 tags at most.": "Une ressource prend 20 étiquettes au plus.", "Resource saved": "Ressource enregistrée", "Resource deleted": "Ressource supprimée",
     "A resource needs a title.": "Une ressource a besoin d'un titre.", "A link starts with https://.": "Un lien commence par https://.",
     "Page speed": "Vitesse des pages", "Device": "Appareil", "Phone": "Téléphone", "Computer": "Ordinateur", "Score": "Score", "Largest content (s)": "Plus grand contenu (s)", "Response (ms)": "Réactivité (ms)", "Layout shift": "Décalage visuel", "Measured on": "Mesuré sur", "Real visitors": "Vrais visiteurs", "A test run": "Un test",
     "Keyword ideas": "Idées de mots-clés", "From Google's suggestions. Free and unofficial, so it can stop working.": "D'après les suggestions de Google. Gratuit et non officiel : cela peut cesser de fonctionner.", "A word or two": "Un ou deux mots", "Find ideas": "Trouver des idées", "No suggestions for that.": "Aucune suggestion pour cela.", "Type a word or two first.": "Saisissez d'abord un ou deux mots.",

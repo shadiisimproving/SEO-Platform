@@ -128,16 +128,8 @@
   const canPick = (gap) => !isFlagged(gap) && !inConsideration(gap);
   const pickable = () => shownGaps().slice(0, S.limit).filter(canPick); // only rows on screen: "Select all shown" means shown
 
-  const intro = () => `<p class="note">${UI.icon("info")}<span>${t("Spam is flagged first, and only the good ones can be added. Nothing is removed. It comes from Common Crawl and files you upload: no paid tool, no AI. Adding a domain doesn't create a backlink, and doesn't change the Backlinks top cards.")}</span></p>`;
+  const intro = () => `<p class="note">${UI.icon("info")}<span>${t("Spam is flagged first, and only the good ones can be added. Nothing is removed. It comes from files you upload and domains you add by hand: no paid tool, no AI. Adding a domain doesn't create a backlink, and doesn't change the Backlinks top cards.")}</span></p>`;
 
-  /* The name Common Crawl gives a release spells out its months. */
-  function releaseName(id) {
-    const found = String(id || "").match(/^cc-main-(\d{4})-([a-z-]+)$/);
-    if (!found) return id || "";
-    const months = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
-    const names = found[2].split("-").filter((m) => m in months).map((m) => new Intl.DateTimeFormat(UI.locale(), { month: "short" }).format(new Date(2026, months[m], 1)));
-    return names.length ? `${names.join(", ")} ${found[1]}` : id;
-  }
 
   /* One line, so the table is what you see first. Everything the tiles used to offer is still here. */
   function summaryLine(d) {
@@ -166,20 +158,14 @@
   }
 
   function sourcesStrip(d) {
-    const line = (c) => [
-      c.common_crawl ? `${t("Common Crawl")} ${esc(releaseName(c.common_crawl))}: ${UI.num(c.common_crawl_domains || 0)} ${t(c.common_crawl_domains === 1 ? "domain" : "domains")}` : t("Common Crawl not run yet"),
-      c.has_file ? t("A file uploaded") : "",
-    ].filter(Boolean).join(" · ");
+    // Links read before Common Crawl was removed still count, so a rival with only those isn't called empty.
+    const line = (c) => t(c.has_file ? "A file uploaded" : c.has_data ? "Links already found" : "No file uploaded yet");
     return `<section class="card" aria-label="${t("Where the links come from")}">
       <div class="card-head"><h2>${t("Where the links come from")}</h2></div>
       <ul class="rows cg-sources">${d.competitors.map((c) => `<li>
         <div class="what"><div class="t mono" dir="auto">${esc(c.host)}</div><div class="d">${line(c)}</div></div>
         <div class="acts"><button class="btn btn-small" id="cg-up-${c.id}" data-cg-upload="${c.id}">${UI.icon("list-plus")}${t("Upload links for this competitor")}</button></div>
       </li>`).join("")}</ul>
-      <details class="fold cg-how"><summary>${UI.icon("chevron-right")}${t("How Common Crawl runs")}</summary>
-        <p class="small sec">${t("It's free and needs no key. It finds domains only: no page or anchor text. It only sees the part of the web it crawled, so it finds fewer links than a paid tool. It runs on the Mac: about 11 GB passes through, about 7 minutes on your connection, and nothing big is kept.")}</p>
-        <p class="small mono" dir="ltr">.venv/bin/python scripts/common_crawl_links.py</p>
-      </details>
     </section>`;
   }
 
@@ -210,7 +196,7 @@
       : `<button class="icon-btn cg-spam-btn" data-cg-decide="spam" data-domain="${esc(gap.domain)}" aria-label="${t("Mark as spam")}: ${esc(gap.display || gap.domain)}" data-tip="${t("Mark as spam")}">${UI.icon("ban")}<span class="cg-spam-word">${t("Mark as spam")}</span></button>`;
     return `<tr data-cg-row="${esc(gap.domain)}" class="${picked ? "sel" : ""} ${considered || flagged ? "cg-off" : ""} ${flagged ? "cg-flagged" : ""}">
       <td class="chk-cell"><input type="checkbox" class="chk" data-cg-pick="${esc(gap.domain)}" aria-label="${esc(gap.display || gap.domain)}" ${picked ? "checked" : ""} ${considered || flagged ? "disabled" : ""}></td>
-      <td class="head-cell"><span class="with-logo">${UI.siteLogo(gap.domain)}<span class="logo-text"><span class="kw mono" dir="auto">${esc(gap.display || gap.domain)}</span>${gap.title ? `<span class="second cg-title" dir="auto">${esc(gap.title)}</span>` : ""}</span></span></td>
+      <td class="head-cell"><span class="with-logo">${UI.siteLogo(gap.domain)}<span class="logo-text"><span class="nb-inline"><span class="kw mono" dir="auto">${esc(gap.display || gap.domain)}</span>${COMP.notes?.badge ? COMP.notes.badge({ scope: "domain", domain: gap.domain, siteId: COMP.siteId ?? null }, gap.display || gap.domain) : ""}</span>${gap.title ? `<span class="second cg-title" dir="auto">${esc(gap.title)}</span>` : ""}</span></span></td>
       <td data-label="${t("Links to")}"><span class="cp-tags cg-rivals">${gap.competitors.map((c) => `<span class="tag" dir="auto">${esc(c.host)}</span>`).join(" ")}</span></td>
       <td class="r" data-label="${t("How many")}">${UI.num(gap.competitor_count)}</td>
       <td class="c" data-label="${t("Authority")}">${authorityCell(gap)}</td>
@@ -240,7 +226,7 @@
     const strip = `${summaryLine(d)}${sourcesFold(d)}`;
     const left = d.already_linking ? `<p class="help cg-left">${esc(leftOutWords(d.already_linking))}</p>` : "";
     if (!d.competitors.some((c) => c.has_data)) {
-      return `${strip}${COMP.empty(t("No links yet"), t("Run Common Crawl, or upload a CSV of links to one of your competitors. The domains that don't link to you appear here, with spam flagged."), `<button class="btn" data-cg-add-domain>${UI.icon("plus")}${t("Add a domain")}</button>`)}`;
+      return `${strip}${COMP.empty(t("No links yet"), t("Upload a CSV of links to one of your competitors, from a free SEMrush or Ubersuggest account, or add a domain by hand. The domains that don't link to you appear here, with spam flagged."), `<button class="btn btn-main" id="cg-up-empty" data-cg-upload="${d.competitors[0].id}">${UI.icon("list-plus")}${t("Upload a CSV")}</button><button class="btn" data-cg-add-domain>${UI.icon("plus")}${t("Add a domain")}</button>`)}`;
     }
     if (!allRows().length) {
       const checking = d.funnel?.checking;
@@ -930,13 +916,13 @@
     "Type what you read in a tool that isn't connected here. Later uploads never change it.": "Saisissez ce que vous lisez dans un outil non connecté ici. Les imports suivants ne le modifient jamais.",
     "Authority score, 0 to 100": "Score d'autorité, de 0 à 100", "Which tool": "Quel outil", "Last edited": "Dernière modification", "Back to automatic data": "Revenir aux données automatiques", "back to automatic data": "retour aux données automatiques", "saved": "enregistré",
     "A domain needs at least one competitor. To hide it, mark it as spam.": "Un domaine a besoin d'au moins un concurrent. Pour le masquer, marquez-le comme spam.", "The authority score goes from 0 to 100.": "Le score d'autorité va de 0 à 100.", "Say which tool this score comes from.": "Indiquez de quel outil vient ce score.", "Type the score from that tool too.": "Saisissez aussi le score de cet outil.",
-    "Spam is flagged first, and only the good ones can be added. Nothing is removed. It comes from Common Crawl and files you upload: no paid tool, no AI. Adding a domain doesn't create a backlink, and doesn't change the Backlinks top cards.": "Le spam est signalé d'abord, et seuls les bons domaines peuvent être ajoutés. Rien n'est retiré. Les données viennent de Common Crawl et des fichiers que vous importez : aucun outil payant, aucune IA. Ajouter un domaine ne crée pas de backlink et ne change pas les cartes du haut de la page Backlinks.",
+    "Spam is flagged first, and only the good ones can be added. Nothing is removed. It comes from files you upload and domains you add by hand: no paid tool, no AI. Adding a domain doesn't create a backlink, and doesn't change the Backlinks top cards.": "Le spam est signalé d'abord, et seuls les bons domaines peuvent être ajoutés. Rien n'est retiré. Les données viennent des fichiers que vous importez et des domaines ajoutés à la main : aucun outil payant, aucune IA. Ajouter un domaine ne crée pas de backlink et ne change pas les cartes du haut de la page Backlinks.",
     "Flagged as spam": "Signalés comme spam", "Add all good ones": "Ajouter tous les bons", "Spam": "Spam", "Not spam": "Pas du spam", "You said it isn't spam": "Vous avez dit que ce n'est pas du spam", "not spam. You can add it now.": "pas du spam. Vous pouvez l'ajouter.", "Checking for spam": "Recherche de spam en cours", "Domains appear here as their home pages are read.": "Les domaines apparaissent ici à mesure que leurs pages d'accueil sont lues.", "No domains left": "Plus aucun domaine", "Every domain already links to you, or is one of your own.": "Chaque domaine pointe déjà vers vous, ou vous appartient.", "Rows with no address": "Lignes sans adresse", "Each domain's home page is read once next, and spam gets flagged. Nothing is removed, and only the good ones can be added.": "La page d'accueil de chaque domaine est ensuite lue une fois, et le spam est signalé. Rien n'est retiré, et seuls les bons domaines peuvent être ajoutés.",
     "Spam filter": "Filtre anti-spam", "Domains found": "Domaines trouvés", "Filtered out as spam": "Retirés comme spam", "Still being checked": "Encore en vérification", "Reading home pages": "Lecture des pages d'accueil", "Good ones": "Bons domaines", "Add all": "Tout ajouter",
-    "Common Crawl": "Common Crawl", "Common Crawl not run yet": "Common Crawl pas encore lancé", "A file uploaded": "Un fichier importé", "domain": "domaine", "domains": "domaines", "How Common Crawl runs": "Comment fonctionne Common Crawl",
+    "Common Crawl": "Common Crawl", "No file uploaded yet": "Aucun fichier importé", "Links already found": "Liens déjà trouvés", "A file uploaded": "Un fichier importé", "domain": "domaine", "domains": "domaines", "Upload a CSV": "Importer un CSV",
     "It's free and needs no key. It finds domains only: no page or anchor text. It only sees the part of the web it crawled, so it finds fewer links than a paid tool. It runs on the Mac: about 11 GB passes through, about 7 minutes on your connection, and nothing big is kept.": "C'est gratuit et sans clé. Il ne trouve que des domaines : ni page ni texte d'ancre. Il ne voit que la partie du web qu'il a explorée : il trouve donc moins de liens qu'un outil payant. Il tourne sur le Mac : environ 11 Go transitent, environ 7 minutes avec votre connexion, et rien de lourd n'est conservé.",
     "Top": "Top", "Common Crawl rank": "Classement Common Crawl", "You kept this": "Vous l'avez gardé", "Home page not read": "Page d'accueil non lue", "The site turned the app away, so its home page wasn't checked. That doesn't make it spam.": "Le site a refusé l'application : sa page d'accueil n'a pas été vérifiée. Cela n'en fait pas du spam.", "Mark as spam": "Marquer comme spam", "Why": "Pourquoi", "Keep it": "Le garder", "Undo": "Annuler", "See why each one went. A rule can be wrong.": "Voyez pourquoi chacun a été retiré. Une règle peut se tromper.", "Showing the first": "Affichage des", "of": "sur", "Action": "Action", "Show more": "Afficher plus",
-    "No links yet": "Aucun lien pour l'instant", "Run Common Crawl, or upload a CSV of links to one of your competitors. The domains that don't link to you appear here, with spam flagged.": "Lancez Common Crawl, ou importez un CSV de liens vers un de vos concurrents. Les domaines qui ne pointent pas vers vous apparaissent ici, avec le spam signalé.", "Filtering out spam": "Retrait du spam en cours", "The good domains appear here as their home pages are read.": "Les bons domaines apparaissent ici à mesure que leurs pages d'accueil sont lues.", "No good domains left": "Plus aucun bon domaine", "Every domain is filtered out as spam, already links to you, or is one of your own.": "Chaque domaine est retiré comme spam, pointe déjà vers vous, ou vous appartient.",
+    "No links yet": "Aucun lien pour l'instant", "Upload a CSV of links to one of your competitors, from a free SEMrush or Ubersuggest account, or add a domain by hand. The domains that don't link to you appear here, with spam flagged.": "Importez un CSV de liens vers un de vos concurrents, depuis un compte SEMrush ou Ubersuggest gratuit, ou ajoutez un domaine à la main. Les domaines qui ne pointent pas vers vous apparaissent ici, avec le spam signalé.", "Filtering out spam": "Retrait du spam en cours", "The good domains appear here as their home pages are read.": "Les bons domaines apparaissent ici à mesure que leurs pages d'accueil sont lues.", "No good domains left": "Plus aucun bon domaine", "Every domain is filtered out as spam, already links to you, or is one of your own.": "Chaque domaine est retiré comme spam, pointe déjà vers vous, ou vous appartient.",
     "kept. You can add it now.": "gardé. Vous pouvez l'ajouter.", "marked as spam. It can't be added.": "marqué comme spam. Il ne peut pas être ajouté.", "Spam is filtered next: each domain's home page is read once. Only the good ones can be added.": "Le spam est retiré ensuite : la page d'accueil de chaque domaine est lue une fois. Seuls les bons domaines peuvent être ajoutés.",
     "Its spam score is above 30": "Son score de spam dépasse 30", "Spam words in its name": "Mots de spam dans son nom", "A free domain ending that spammers favour": "Une extension gratuite prisée des spammeurs", "A domain ending known for abuse": "Une extension connue pour les abus", "A name no real site would pick": "Un nom qu'aucun vrai site ne choisirait", "Too far down Common Crawl's ranking": "Trop bas dans le classement Common Crawl", "Links out to thousands of sites, like a link farm": "Pointe vers des milliers de sites, comme une ferme de liens", "Thousands of subdomains, like a link farm": "Des milliers de sous-domaines, comme une ferme de liens", "Its home page doesn't exist": "Sa page d'accueil n'existe pas", "The site is down": "Le site est hors ligne", "Its home page leads to another website": "Sa page d'accueil mène à un autre site", "Parked or for sale": "Parqué ou à vendre", "Spam words on its home page": "Mots de spam sur sa page d'accueil", "Its home page is mostly links to other sites": "Sa page d'accueil n'est presque que des liens vers d'autres sites", "Almost nothing on its home page": "Presque rien sur sa page d'accueil", "Its home page is hidden from search engines": "Sa page d'accueil est cachée aux moteurs de recherche", "You marked it as spam": "Vous l'avez marqué comme spam", "Filtered out": "Retiré",
     "From files you upload. Nothing here calls a paid tool. Adding a domain doesn't create a backlink, and doesn't change the Backlinks top cards.": "À partir des fichiers que vous importez. Rien ici n'appelle un outil payant. Ajouter un domaine ne crée pas de backlink et ne change pas les cartes en haut de la page Backlinks.",

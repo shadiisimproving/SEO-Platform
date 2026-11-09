@@ -3,9 +3,10 @@ from __future__ import annotations
 
 import re
 
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, Response, current_app, jsonify, request
 
-from seo.backlinks import live, mediators, service, todo
+from seo.backlinks import live, mediators, protect, reclaim, service, todo
+from seo.imports import gsc_links
 from seo.competitors.keywords import require_own
 from seo.core.errors import Refused
 
@@ -33,6 +34,56 @@ def summary():
     with _engine().connect() as conn:
         require_own(conn, int(raw))
     return jsonify(live.summary(_engine(), int(raw)))
+
+
+def _site_arg(value) -> int:
+    raw = str(value if value is not None else "")
+    if not re.fullmatch(r"[0-9]{1,18}", raw):
+        raise Refused("site_id must be a number.")
+    return int(raw)
+
+
+@backlinks_api.post("/backlinks/gsc-import")
+def gsc_import():
+    """Search Console's Links export, uploaded by hand: its API has no Links data."""
+    upload = request.files.get("file")
+    if upload is None:
+        raise Refused("Choose the file Search Console downloaded.")
+    data = upload.read(gsc_links.MAX_BYTES + 1)
+    return jsonify(gsc_links.import_file(_engine(), _site_arg(request.form.get("site_id")), upload.filename or "links.csv", data))
+
+
+@backlinks_api.get("/backlinks/reclaim")
+def reclaim_list():
+    return jsonify(pages=reclaim.list_for_site(_engine(), _site_arg(request.args.get("site_id"))))
+
+
+@backlinks_api.post("/backlinks/reclaim/<int:page_id>/dismiss")
+def reclaim_dismiss(page_id: int):
+    reclaim.dismiss(_engine(), page_id)
+    return jsonify(ok=True)
+
+
+@backlinks_api.post("/backlinks/<int:backlink_id>/disavow")
+def disavow(backlink_id: int):
+    return jsonify(protect.mark_disavow(_engine(), backlink_id, _body().get("disavow")))
+
+
+@backlinks_api.get("/backlinks/disavow.txt")
+def disavow_file():
+    body, _ = protect.disavow_file(_engine(), _site_arg(request.args.get("site_id")))
+    return Response(body, mimetype="text/plain; charset=utf-8", headers={"Content-Disposition": 'attachment; filename="disavow.txt"'})
+
+
+@backlinks_api.get("/backlinks/budget")
+def budget_get():
+    return jsonify(budget=protect.get_budget(_engine(), _site_arg(request.args.get("site_id"))))
+
+
+@backlinks_api.put("/backlinks/budget")
+def budget_set():
+    body = _body()
+    return jsonify(budget=protect.set_budget(_engine(), _site_arg(body.get("site_id")), body))
 
 
 @backlinks_api.get("/backlinks/<int:backlink_id>")

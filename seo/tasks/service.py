@@ -18,7 +18,7 @@ from seo.core.errors import Conflict, NotFound, Refused
 
 STATUSES = ("todo", "doing", "done")
 PRIORITIES = ("low", "medium", "high")
-SOURCE_TYPES = ("keyword", "health", "link", "competitor", "alert", "backlink", "other")
+SOURCE_TYPES = ("keyword", "health", "link", "competitor", "alert", "backlink", "search", "other")
 ALREADY_OPEN = "This finding already has an open task."
 CHANGED_MEANWHILE = "Someone else changed this task while you had it open."
 

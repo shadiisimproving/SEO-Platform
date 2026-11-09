@@ -235,7 +235,7 @@
     const d = S.data.links;
     if (!d) return loadingCard(title);
     const f = d.funnel;
-    if (!f.found) return `${linksHead(title, "", d)}${COMP.empty(t("No link data yet"), t("Run Common Crawl or upload a file for a competitor in Link gaps, and domains appear here."), `<button class="btn" data-cs-review="${COMP.siteId === COMP.ALL ? (UI.preferredSite(COMP.sites)?.id ?? "") : COMP.siteId}">${UI.icon("link-2-off")}${t("Open Link gaps")}</button>`)}`;
+    if (!f.found) return `${linksHead(title, "", d)}${COMP.empty(t("No link data yet"), t("Upload a file for a competitor in Link gaps, and domains appear here."), `<button class="btn" data-cs-review="${COMP.siteId === COMP.ALL ? (UI.preferredSite(COMP.sites)?.id ?? "") : COMP.siteId}">${UI.icon("link-2-off")}${t("Open Link gaps")}</button>`)}`;
     const rows = d.gaps.slice(0, limitOf("links"));
     const facts = [
       fill("{with} of {total} competitors have link data", { with: UI.num(d.rivals_with_data), total: UI.num(d.rivals_total) }),
@@ -369,7 +369,7 @@
     "Add {domain} for {site}": "Ajouter {domain} pour {site}",
     "Open Link gaps": "Ouvrir Liens manquants",
     "No link data yet": "Pas encore de données de liens",
-    "Run Common Crawl or upload a file for a competitor in Link gaps, and domains appear here.": "Lancez Common Crawl ou importez un fichier pour un concurrent dans Liens manquants, et les domaines apparaîtront ici.",
+    "Upload a file for a competitor in Link gaps, and domains appear here.": "Importez un fichier pour un concurrent dans Liens manquants, et les domaines apparaîtront ici.",
     "{with} of {total} competitors have link data": "{with} concurrents sur {total} ont des données de liens",
     "{n} domain still being checked": "{n} domaine encore en cours de vérification",
     "{n} domains still being checked": "{n} domaines encore en cours de vérification",

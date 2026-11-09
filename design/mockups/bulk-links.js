@@ -13,6 +13,8 @@
     ["src", "Source page", ["source", "source url", "source link", "page source", "url source", "url", "page", "page url", "link", "lien", "backlink", "backlink url", "referring page", "referring url", "referring page url", "from", "url from"], /source|backlink|referr|\bfrom\b|^url\b|\burl$|^link$|^lien$/],
     ["target", "Target page", ["target", "target url", "page cible", "cible", "url cible", "landing page", "destination", "destination url", "to", "url to", "our page", "page de destination"], /target|cible|destination|landing/],
     ["anchor", "Anchor text", ["anchor", "ancre", "texte d ancre", "texte de l ancre", "texte ancre"], /anchor|ancre/],
+    ["anchor_kind", "Anchor type", ["type d ancre", "type de l ancre", "type ancre", "anchor kind", "type of anchor", "anchor category"], /(anchor|ancre).*(type|kind)|(type|kind).*(anchor|ancre)/],
+    ["keyword", "Keyword", ["mot cle", "mots cles", "mot cle cible", "target keyword", "focus keyword", "keywords", "requete", "requete cible"], /keyword|mots? cles?/],
     ["link_type", "Link type", ["type", "type de lien", "kind"], /\btype\b/],
     ["status", "Status", ["statut", "etat", "state"], /status|statut|\betat\b/],
     ["placed", "Date placed", ["date", "placed", "placed on", "date de pose", "date de placement", "date de mise en ligne", "publication date", "date de publication", "live date"], /\bdate\b|\bplaced?\b|publi/],
@@ -29,15 +31,15 @@
     ["notes", "Notes", ["note", "comment", "comments", "commentaire", "commentaires", "remarque", "remarques"], /note|comment|remarque/],
   ];
   // Most specific first: "UTM source" before "source", "Renewal date" before "date", "Mediator contact" before "mediator".
-  const MOST_SPECIFIC = ["utm_source", "utm_medium", "utm_campaign", "renewal", "due", "link_type", "status", "placed", "anchor", "cost", "contact", "platform", "mediator", "owner", "notes", "site", "target", "src"].map((key) => FIELDS.find(([field]) => field === key));
+  const MOST_SPECIFIC = ["utm_source", "utm_medium", "utm_campaign", "renewal", "due", "anchor_kind", "keyword", "link_type", "status", "placed", "anchor", "cost", "contact", "platform", "mediator", "owner", "notes", "site", "target", "src"].map((key) => FIELDS.find(([field]) => field === key));
   const labelOf = (key) => FIELDS.find(([field]) => field === key)[1];
 
   // ---- the template ---------------------------------------------------------------------------
   const TEMPLATE_COLUMNS = FIELDS.map(([, label]) => label);
   // Left in by mistake, these two must never count as real links. The server knows them too.
   const EXAMPLE_ROWS = [
-    ["your-site.example", "https://example-blog.example/article", "/your-page/", "your anchor text", "Guest post", "Live", "2026-01-15", "", "2027-01-15", "$150", "Example Agency", "sales@example-agency.example", "Example Marketplace", "example-blog", "backlink", "bl-101", "Alex", "Example row: delete it before you upload"],
-    ["your-site.example", "https://example-directory.example/listing/123", "/", "Your Company", "Directory", "Planned", "", "2026-12-01", "", "AED 500", "", "+971 50 000 0000", "", "", "", "", "Sam", "Example row: delete it before you upload"],
+    ["your-site.example", "https://example-blog.example/article", "/your-page/", "your anchor text", "Partial keyword", "your keyword", "Guest post", "Live", "2026-01-15", "", "2027-01-15", "$150", "Example Agency", "sales@example-agency.example", "Example Marketplace", "example-blog", "backlink", "bl-101", "Alex", "Example row: delete it before you upload"],
+    ["your-site.example", "https://example-directory.example/listing/123", "/", "Your Company", "Brand", "", "Directory", "Planned", "", "2026-12-01", "", "AED 500", "", "+971 50 000 0000", "", "", "", "", "Sam", "Example row: delete it before you upload"],
   ];
   const EXAMPLE_SOURCES = EXAMPLE_ROWS.map((row) => row[1]);
   // Commas, as Excel expects on the owner's Mac (English, UAE). A "sep=" first line would make Excel ignore the UTF-8 mark and garble accents.
@@ -83,6 +85,18 @@
     ["planned", "planned"], ["pending", "planned"], ["prevu", "planned"], ["prevue", "planned"], ["en attente", "planned"],
   ]);
   const statusOf = (word) => STATUS_WORDS.get(String(word ?? "").normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().trim().replace(/\s+/g, " ")) ?? null;
+
+  // An anchor type in the words people use. seo/backlinks/service.py has the server's copy. Empty or "automatic" lets the app work it out.
+  const ANCHOR_WORDS = new Map([
+    ["", null], ["auto", null], ["automatic", null], ["automatique", null],
+    ["brand", "brand"], ["branding", "brand"], ["brand name", "brand"], ["marque", "brand"], ["nom de marque", "brand"],
+    ["url", "url"], ["bare url", "url"], ["naked url", "url"], ["url nue", "url"], ["adresse", "url"],
+    ["exact", "exact"], ["exact keyword", "exact"], ["exact match", "exact"], ["optimisee", "exact"], ["optimise", "exact"], ["mot cle exact", "exact"],
+    ["partial", "partial"], ["partial keyword", "partial"], ["partial match", "partial"], ["semi optimisee", "partial"], ["semi optimise", "partial"], ["partielle", "partial"],
+    ["generic", "generic"], ["generique", "generic"], ["other", "other"], ["autre", "other"],
+  ]);
+  /* "brand", "exact"... null to work it out, undefined when the word isn't known. */
+  const anchorKindOf = (word) => ANCHOR_WORDS.get(plain(word));
 
   /* A site's address, whichever way it's written: with or without https, www or a trailing slash. */
   function siteKey(value) {
@@ -152,7 +166,7 @@
   // ---- checking the rows of a file --------------------------------------------------------------------
   const MAX_ROWS = 5000;
   const MAX_ADDRESS = 2048;
-  const LIMITS = { target: 2048, anchor: 1000, link_type: 100, placed: 60, due: 60, renewal: 60, cost: 60, mediator: 180, contact: 250, platform: 180, utm_source: 180, utm_medium: 180, utm_campaign: 180, owner: 100, notes: 5000 };
+  const LIMITS = { target: 2048, anchor: 1000, link_type: 100, placed: 60, due: 60, renewal: 60, cost: 60, mediator: 180, contact: 250, platform: 180, utm_source: 180, utm_medium: 180, utm_campaign: 180, owner: 100, notes: 5000, keyword: 250 };
 
   /* 31/02/2026 can't be a day whichever way round it's read. Anything not written as numbers ("le 3 mars") is left alone. */
   const MONTHS = { jan: 1, january: 1, janvier: 1, janv: 1, feb: 2, february: 2, fev: 2, fevrier: 2, mar: 3, march: 3, mars: 3, apr: 4, april: 4, avr: 4, avril: 4, may: 5, mai: 5, jun: 6, june: 6, juin: 6, jul: 7, july: 7, juil: 7, juillet: 7, aug: 8, august: 8, aou: 8, aout: 8, sep: 9, sept: 9, september: 9, septembre: 9, oct: 10, october: 10, octobre: 10, nov: 11, november: 11, novembre: 11, dec: 12, december: 12, decembre: 12 };
@@ -208,6 +222,9 @@
       if (record.site && !site) return answer("bad", "Not one of your sites", record.site);
       if (!site) return answer("bad", "Add your own website first");
       if (!status) return answer("bad", "Unknown status", record.status, "Use Live, Lost or Planned.");
+      const anchorKind = anchorKindOf(record.anchor_kind);
+      if (anchorKind === undefined) return answer("bad", "Unknown anchor type", record.anchor_kind, "Use Brand, Bare URL, Exact keyword, Partial keyword, Generic or Other.");
+      record.anchor_kind = anchorKind || "";
       if (src.length > MAX_ADDRESS) return answer("bad", "Too long", "Source page");
       const tooLong = Object.keys(LIMITS).find((field) => (record[field] || "").length > LIMITS[field]);
       if (tooLong) return answer("bad", "Too long", labelOf(tooLong));
@@ -256,7 +273,9 @@
       "Guest post": "Article invité", "Directory": "Annuaire", "Press": "Presse", "Sponsored": "Sponsorisé", "Forum": "Forum", "Other": "Autre",
       "Default site, for rows with no site": "Site par défaut, pour les lignes sans site",
       "Example row: delete it": "Ligne d'exemple : supprimez-la", "Not one of your sites": "Pas un de vos sites", "Add your own website first": "Ajoutez d'abord votre site",
-      "Unknown status": "Statut inconnu", "Use Live, Lost or Planned.": "Utilisez Actif, Perdu ou Prévu.", "Too long": "Trop long",
+      "Unknown status": "Statut inconnu", "Unknown anchor type": "Type d'ancre inconnu",
+      "Use Brand, Bare URL, Exact keyword, Partial keyword, Generic or Other.": "Utilisez Marque, URL nue, Mot-clé exact, Mot-clé partiel, Générique ou Autre.",
+      "Keyword": "Mot-clé", "Anchor type": "Type d'ancre", "Use Live, Lost or Planned.": "Utilisez Actif, Perdu ou Prévu.", "Too long": "Trop long",
       "Skipped, already there": "Ignorés, déjà présents", "and": "et", "more": "de plus", "Nothing new to add": "Rien de nouveau à ajouter", "Already logged. Removed from In consideration.": "Déjà enregistré. Retiré de « À l'étude ».",
       "Nothing found yet": "Rien de trouvé pour l'instant", "Links other tools find will show here, until you log them.": "Les liens trouvés par d'autres outils s'afficheront ici, jusqu'à ce que vous les enregistriez.",
       "Excel files aren't read yet. In Excel, choose Save as, then CSV UTF-8.": "Les fichiers Excel ne sont pas encore lus. Dans Excel, choisissez Enregistrer sous, puis CSV UTF-8.",
@@ -268,5 +287,5 @@
     });
   }
 
-  return { taggedLink, FIELDS, TEMPLATE_COLUMNS, TEMPLATE_TEXT, EXAMPLE_SOURCES, MAX_ROWS, LIMITS, decode, readTable, matchColumns, readDate, looksLikeHeader, statusOf, siteKey, sourceKey, parsePrice, currencyOf, checkRows };
+  return { taggedLink, FIELDS, TEMPLATE_COLUMNS, TEMPLATE_TEXT, EXAMPLE_SOURCES, MAX_ROWS, LIMITS, decode, readTable, matchColumns, readDate, looksLikeHeader, statusOf, anchorKindOf, siteKey, sourceKey, parsePrice, currencyOf, checkRows };
 });

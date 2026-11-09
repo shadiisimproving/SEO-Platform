@@ -1,4 +1,4 @@
-/* Competitors area: notes on all competitors, on one competitor, or on any page.
+/* Competitors area: notes on all competitors, on one competitor, on any page or keyword.
 
    "Always saved" is the point of this file. There's no Save button. Every keystroke goes to UI.store first, under
    one drafts key. A pause of 800 ms saves to the server, and so does leaving the field. A draft goes away only once
@@ -37,30 +37,42 @@
   const dirty = (e) => e.text !== e.saved;
   const stamp = (iso) => (iso ? new Date(iso).getTime() : 0);
   const byId = (id) => [...entries.values()].find((e) => e.id === id) || null;
-  const whereOf = (e) => ({ scope: e.scope, competitorId: e.competitorId, competitor: e.competitor, pageUrl: e.pageUrl, siteId: e.siteId, screen: e.screen });
+  const whereOf = (e) => ({ scope: e.scope, competitorId: e.competitorId, competitor: e.competitor, pageUrl: e.pageUrl, siteId: e.siteId, screen: e.screen, keyword: e.keyword, day: e.day, domain: e.domain, taskId: e.taskId, task: e.task });
   const siteOf = (siteId) => (typeof siteId === "number" ? siteId : null);
   const withScheme = (url) => { const text = String(url || "").trim(); return text && !text.includes("://") ? `https://${text}` : text; };
-  /* A screen or a website note belongs to one site, or to all of them when no site is picked ("*"). */
-  const targetKey = (scope, competitorId, pageUrl, screen = null, siteId = null) => {
+  /* A keyword as the server compares it: case and spacing don't make another keyword. */
+  const keywordKey = (word) => String(word || "").normalize("NFKC").replace(/[\u200b\u200e\u200f\ufeff]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+  /* A screen, keyword or website note belongs to one site, or to all of them when no site is picked ("*"). */
+  const targetKey = (scope, competitorId, pageUrl, screen = null, siteId = null, keyword = null, extra = {}) => {
     if (scope === "competitor") return `competitor|${competitorId}`;
+    if (scope === "section") return `section|${pageUrl}`;
+    if (scope === "task") return `task|${extra.taskId}`;
+    if (scope === "date") return `date|${extra.day}|${siteOf(siteId) ?? "*"}`;
+    if (scope === "domain") return `domain|${String(extra.domain || "").toLowerCase().replace(/^www\./, "")}`; // one contact for every site
+    if (scope === "keyword") return `keyword|${keywordKey(keyword)}|${siteOf(siteId) ?? "*"}`;
     if (scope === "page") return `page|${pageUrl}`;
     if (scope === "site") return `site|${siteOf(siteId) ?? "*"}`;
     if (scope === "screen") return `screen|${screen}|${siteOf(siteId) ?? "*"}`;
     return "all";
   };
-  const keyOf = (w) => targetKey(w.scope, w.competitorId, w.pageUrl, w.screen, w.siteId);
+  const keyOf = (w) => targetKey(w.scope, w.competitorId, w.pageUrl, w.screen, w.siteId, w.keyword, w);
   const pathFor = (w) => {
     const site = siteOf(w.siteId) === null ? "" : `&site_id=${w.siteId}`;
     if (w.scope === "competitor") return `notes?competitor_id=${w.competitorId}`;
     if (w.scope === "page") return `notes?page_url=${encodeURIComponent(withScheme(w.pageUrl))}`;
     if (w.scope === "site") return `notes?scope=site${site}`;
+    if (w.scope === "keyword") return `notes?scope=keyword&keyword=${encodeURIComponent(w.keyword || "")}${site}`;
+    if (w.scope === "section") return `notes?scope=section&page_url=${encodeURIComponent(w.pageUrl || "")}`;
+    if (w.scope === "task") return `notes?task_id=${w.taskId}`;
+    if (w.scope === "date") return `notes?scope=date&day=${encodeURIComponent(w.day || "")}${site}`;
+    if (w.scope === "domain") return `notes?scope=domain&domain=${encodeURIComponent(w.domain || "")}`;
     if (w.scope === "screen") return `notes?scope=screen&screen=${encodeURIComponent(w.screen || "")}${site}`;
     return "notes?scope=all";
   };
 
   function newEntry(fields) {
     const e = {
-      uid: `n${++uidCounter}`, id: null, scope: "all", competitorId: null, competitor: null, pageUrl: null, siteId: null, screen: null,
+      uid: `n${++uidCounter}`, id: null, scope: "all", competitorId: null, competitor: null, pageUrl: null, siteId: null, screen: null, keyword: null, day: null, domain: null, taskId: null, task: null,
       text: "", saved: "", updatedAt: null, createdAt: null, sortAt: Date.now(), at: 0, base: null,
       status: "idle", message: "", savedAt: null, timer: null, busy: false, again: false, sending: null, sent: null,
       composer: null, targets: new Set(), removed: false, leftover: false, needsRestore: false, inflight: null, files: [], uploading: 0, uploadingNames: [],
@@ -91,7 +103,7 @@
       }
       if (!e) e = newEntry({ id: n.id, text: n.body, saved: n.body, sortAt: stamp(n.updated_at) });
       else if (!dirty(e) && !e.leftover) { e.text = n.body; e.saved = n.body; fieldsFor(e).forEach((el) => fill(el, e)); }
-      Object.assign(e, { scope: n.scope, competitorId: n.competitor_id, competitor: n.competitor, pageUrl: n.page_url, siteId: n.site_id, screen: n.screen ?? null, createdAt: n.created_at, updatedAt: n.updated_at });
+      Object.assign(e, { scope: n.scope, competitorId: n.competitor_id, competitor: n.competitor, pageUrl: n.page_url, siteId: n.site_id, screen: n.screen ?? null, keyword: n.keyword ?? null, day: n.day ?? null, domain: n.domain ?? null, taskId: n.task_id ?? null, task: n.task ?? null, createdAt: n.created_at, updatedAt: n.updated_at });
       if (n.files) { e.files = n.files; paintFiles(e); }
       if (!isFocused(e) && !e.composer) e.sortAt = stamp(n.updated_at);
       if (key) e.targets.add(key);
@@ -105,7 +117,7 @@
   // ---- drafts on this computer ----------------------------------------------------------------
   function writeDrafts() {
     const list = [...entries.values()].filter((e) => !e.removed && dirty(e) && !blank(e.text)).map((e) => ({
-      id: e.id, scope: e.scope, competitorId: e.competitorId, competitor: e.competitor, pageUrl: e.pageUrl, siteId: e.siteId, screen: e.screen, text: e.text, at: e.at, base: e.base, sent: e.sent,
+      id: e.id, scope: e.scope, competitorId: e.competitorId, competitor: e.competitor, pageUrl: e.pageUrl, siteId: e.siteId, screen: e.screen, keyword: e.keyword, day: e.day, domain: e.domain, taskId: e.taskId, task: e.task, text: e.text, at: e.at, base: e.base, sent: e.sent,
     }));
     UI.store.set(DRAFTS_KEY, list.length ? JSON.stringify(list) : "");
   }
@@ -116,7 +128,7 @@
     try { list = JSON.parse(UI.store.get(DRAFTS_KEY) || "[]"); } catch { list = []; }
     list.forEach((d) => {
       if (!d || blank(d.text)) return;
-      const where = { scope: d.scope, competitorId: d.competitorId, competitor: d.competitor, pageUrl: d.pageUrl, siteId: d.siteId, screen: d.screen ?? null };
+      const where = { scope: d.scope, competitorId: d.competitorId, competitor: d.competitor, pageUrl: d.pageUrl, siteId: d.siteId, screen: d.screen ?? null, keyword: d.keyword ?? null, day: d.day ?? null, domain: d.domain ?? null, taskId: d.taskId ?? null, task: d.task ?? null };
       if (!d.id && needs(where)) { // it has nowhere to go yet: back to the tab's field, waiting for its address
         Object.assign(tabState, { way: d.scope === "page" ? "page" : "competitor", pageUrl: d.pageUrl || "", pageTyped: d.pageUrl || "" });
         const waiting = composerFor(TAB, where);
@@ -165,6 +177,8 @@
   function needs(w) {
     if (w.scope === "page" && blank(w.pageUrl)) return "Enter the page's address to save this note. It's kept on this computer.";
     if (w.scope === "competitor" && w.competitorId === null) return "Choose a competitor to save this note. It's kept on this computer.";
+    if (w.scope === "keyword" && blank(w.keyword)) return "Enter the keyword to save this note. It's kept on this computer.";
+    if ((w.scope === "date" && blank(w.day)) || (w.scope === "domain" && blank(w.domain)) || (w.scope === "section" && blank(w.pageUrl)) || (w.scope === "task" && w.taskId == null)) return "Choose what the note is about to save it. It's kept on this computer.";
     if (w.scope === "screen" && !w.screen) return "Choose what the note is about to save it. It's kept on this computer.";
     return "";
   }
@@ -217,7 +231,7 @@
     if (isNew) { e.sent = sending; writeDrafts(); }
     try {
       const note = isNew
-        ? await send("POST", "notes", { scope: e.scope, body: sending, site_id: siteOf(e.siteId), competitor_id: e.competitorId, page_url: e.scope === "page" ? withScheme(e.pageUrl) : null, screen: e.scope === "screen" ? e.screen : null })
+        ? await send("POST", "notes", { scope: e.scope, body: sending, site_id: siteOf(e.siteId), competitor_id: e.competitorId, page_url: e.scope === "page" ? withScheme(e.pageUrl) : null, screen: e.scope === "screen" ? e.screen : null, ...(e.scope === "keyword" ? { keyword: e.keyword } : {}), ...(e.scope === "section" ? { page_url: e.pageUrl } : {}), ...(e.scope === "date" ? { day: e.day } : {}), ...(e.scope === "domain" ? { domain: e.domain } : {}), ...(e.scope === "task" ? { task_id: e.taskId } : {}) })
         : await send("PATCH", `notes/${e.id}`, { body: sending });
       Object.assign(e, { id: note.id, saved: sending, sent: null, updatedAt: note.updated_at, createdAt: note.created_at, competitor: note.competitor, pageUrl: note.page_url, siteId: note.site_id, savedAt: new Date(), base: null, leftover: false });
       if (!dirty(e)) e.status = "saved";
@@ -544,15 +558,22 @@
     if (e.scope === "page") return `${icon("file-text")}${e.pageUrl ? COMP.link(e.pageUrl) : `<span>${t("A page")}</span>`}${forSite}`;
     if (e.scope === "site") return `${icon("globe")}<span>${t(siteOf(e.siteId) === null ? "All my sites" : "The whole website")}</span>${forSite}`;
     if (e.scope === "screen") return `${icon("layout-dashboard")}<span>${esc(screenName(e.screen))}</span>${forSite}`;
+    if (e.scope === "keyword") return `${icon("key-round")}<span dir="auto">${esc(e.keyword || t("A keyword"))}</span>${forSite}`;
+    if (e.scope === "section") return `${icon("folder-open")}<span class="mono" dir="ltr">${esc(e.pageUrl ? `${COMP.shortUrl(e.pageUrl)}/…` : t("A group of pages"))}</span>${forSite}`;
+    if (e.scope === "date") return `${icon("calendar-days")}<span>${esc(e.day ? dayName(e.day) : t("A date"))}</span>${forSite}`;
+    if (e.scope === "domain") return `${icon("link-2")}<span class="mono" dir="ltr">${esc(e.domain || t("A linking website"))}</span>${forSite}`;
+    if (e.scope === "task") return `${icon("square-check")}<span dir="auto">${esc(e.task || t("A task"))}</span>${forSite}`;
     return `${icon("users")}<span>${t("All competitors")}</span>${forSite}`;
   }
+  /* A day in the language on screen, such as 12 Nov 2026. */
+  const dayName = (iso) => { try { return new Date(`${iso}T12:00:00`).toLocaleDateString(UI.state.lang === "fr" ? "fr-FR" : "en-GB", { day: "numeric", month: "short", year: "numeric" }); } catch { return iso; } };
   /* The screen's name as the side menu shows it. */
   const screenName = (id) => UI.t(SCREEN_NAMES[id] || id || "A screen");
-  const whereText = (e) => (e.scope === "competitor" ? e.competitor || "" : e.scope === "page" ? e.pageUrl || "" : e.scope === "screen" ? screenName(e.screen) : e.scope === "site" ? UI.t("The whole website") : UI.t("All competitors"));
+  const whereText = (e) => (e.scope === "competitor" ? e.competitor || "" : e.scope === "page" ? e.pageUrl || "" : e.scope === "keyword" ? e.keyword || "" : e.scope === "section" ? e.pageUrl || "" : e.scope === "date" ? (e.day ? `${dayName(e.day)} ${e.day}` : "") : e.scope === "domain" ? e.domain || "" : e.scope === "task" ? e.task || "" : e.scope === "screen" ? screenName(e.screen) : e.scope === "site" ? UI.t("The whole website") : UI.t("All competitors"));
   function paintWhere(e) {
     UI.$$(`[data-note-where="${e.uid}"]`).forEach((el) => UI.setHTML(el, whereHtml(e)));
   }
-  const fieldLabel = (e) => `${UI.t("Note")}: ${e.scope === "competitor" ? e.competitor || UI.t("A competitor") : e.scope === "page" ? e.pageUrl || UI.t("A page") : whereText(e)}`;
+  const fieldLabel = (e) => `${UI.t("Note")}: ${e.scope === "competitor" ? e.competitor || UI.t("A competitor") : e.scope === "page" ? e.pageUrl || UI.t("A page") : e.scope === "keyword" ? e.keyword || UI.t("A keyword") : whereText(e) || UI.t("Note")}`;
 
   function rowHtml(e, listKey) {
     const { t, esc, icon } = UI;
@@ -675,14 +696,15 @@
       <div class="nb-foot">${statusLine(e)}${attachButton(e)}</div>
     </div>`;
 
-  function block({ scope = "all", competitorId = null, pageUrl = null, screen = null, siteId, title = "", bare = false } = {}) {
+  function block({ scope = "all", competitorId = null, pageUrl = null, screen = null, keyword = null, day = null, domain = null, taskId = null, task = null, siteId, title = "", bare = false } = {}) {
     const { t, esc } = UI;
     rememberCaret();
     const site = siteId === undefined ? COMP.siteId : siteId;
-    const key = targetKey(scope, competitorId, pageUrl, screen, site);
-    const e = composerFor(key, { scope, competitorId, pageUrl, screen, siteId: site });
-    const heading = title || t(scope === "competitor" ? "Notes on this competitor" : scope === "page" ? "Notes on this page" : scope === "screen" ? "Notes on this screen" : scope === "site" ? "Notes on this website" : "Notes on all competitors");
-    return `<section class="${bare ? "nb-bare" : "card"} nb-block" data-note-block="${esc(key)}" data-note-scope="${esc(scope)}" data-note-competitor="${esc(competitorId ?? "")}" data-note-page="${esc(pageUrl ?? "")}" data-note-screen="${esc(screen ?? "")}" data-note-site="${esc(siteOf(site) ?? "")}">
+    const extra = { day, domain, taskId, task };
+    const key = targetKey(scope, competitorId, pageUrl, screen, site, keyword, extra);
+    const e = composerFor(key, { scope, competitorId, pageUrl, screen, keyword, ...extra, siteId: site });
+    const heading = title || t(scope === "competitor" ? "Notes on this competitor" : scope === "page" ? "Notes on this page" : scope === "keyword" ? "Notes on this keyword" : scope === "section" ? "Notes on this group of pages" : scope === "date" ? "Notes on this day" : scope === "domain" ? "Notes on this linking website" : scope === "task" ? "Notes on this task" : scope === "screen" ? "Notes on this screen" : scope === "site" ? "Notes on this website" : "Notes on all competitors");
+    return `<section class="${bare ? "nb-bare" : "card"} nb-block" data-note-block="${esc(key)}" data-note-scope="${esc(scope)}" data-note-competitor="${esc(competitorId ?? "")}" data-note-page="${esc(pageUrl ?? "")}" data-note-screen="${esc(screen ?? "")}" data-note-keyword="${esc(keyword ?? "")}" data-note-day="${esc(day ?? "")}" data-note-domain="${esc(domain ?? "")}" data-note-task="${esc(taskId ?? "")}" data-note-task-title="${esc(task ?? "")}" data-note-site="${esc(siteOf(site) ?? "")}">
       ${bare ? "" : `<div class="card-head"><h2 dir="auto">${esc(heading)}</h2><span class="end small muted">${t("Saves by itself")}</span></div>`}
       ${composeField(e, key, heading)}
       <p class="note warn nb-load-error" data-note-error hidden>${UI.icon("triangle-alert")}<span>${t("The saved notes didn't load. What you write here is still kept.")}</span></p>
@@ -696,8 +718,9 @@
     if (loading.has(key)) return;
     loading.add(key);
     const where = {
-      scope, competitorId: scope === "competitor" ? Number(section.dataset.noteCompetitor) : null, pageUrl: scope === "page" ? section.dataset.notePage : null,
-      screen: scope === "screen" ? section.dataset.noteScreen : null, siteId: section.dataset.noteSite === "" ? null : Number(section.dataset.noteSite),
+      scope, competitorId: scope === "competitor" ? Number(section.dataset.noteCompetitor) : null, pageUrl: scope === "page" || scope === "section" ? section.dataset.notePage : null,
+      day: scope === "date" ? section.dataset.noteDay : null, domain: scope === "domain" ? section.dataset.noteDomain : null, taskId: scope === "task" ? Number(section.dataset.noteTask) : null, task: section.dataset.noteTaskTitle || null,
+      screen: scope === "screen" ? section.dataset.noteScreen : null, keyword: scope === "keyword" ? section.dataset.noteKeyword : null, siteId: section.dataset.noteSite === "" ? null : Number(section.dataset.noteSite),
     };
     let failed = false;
     try {
@@ -733,21 +756,184 @@
         ${panelState.failed ? `<p class="note warn nb-load-error">${icon("triangle-alert")}<span>${t("The saved notes didn't load. What you write here is still kept.")}</span></p>` : ""}
         <ul class="nb-list" data-note-list="${ALL_NOTES}"></ul><p class="small muted nb-panel-empty" id="nb-panel-empty" hidden></p>`;
     }
+    if (choice.pick) return pickerHtml(choice);
     return block({ ...choice.where, bare: true });
+  }
+
+  /* "Or about": a page, a group of pages, a keyword, a day, a linking website, a task or a competitor. Pick one of the site's,
+     or type one. The note field shows once something is picked, so a note can never be written about half an address. */
+  const pickerState = { options: new Map(), loading: new Map() };
+  const PICKS = {
+    page: { field: "pageUrl", ltr: true, mono: true, label: "Page address", hint: "Search your pages or type an address", empty: "Choose a page, or type any address, then write the note.",
+      list: (f) => f.pages.map((p) => [p.url, p.title]) },
+    section: { field: "pageUrl", ltr: true, mono: true, label: "Pages whose address starts with", hint: "Such as /blog/ or example.com/services/", empty: "Choose a folder, or type how the addresses start, then write the note. It shows on every page in it.",
+      list: (f) => f.sections.map((x) => [x.url, `${UI.num(x.pages)} ${UI.t(x.pages === 1 ? "page" : "pages")}`]) },
+    keyword: { field: "keyword", label: "Keyword", hint: "Search your keywords or type one", empty: "Choose a keyword, or type any, then write the note.",
+      list: (f) => f.keywords.map((k) => [k, ""]) },
+    date: { field: "day", type: "date", label: "Day", hint: "", empty: "Choose the day, then write what happened. It shows on the Overview chart." },
+    domain: { field: "domain", ltr: true, mono: true, label: "Linking website", hint: "Search the websites that link, or could link, to you", empty: "Choose a website, or type any, then write the note: a price, a contact, an answer.",
+      list: (f) => f.domains.map((d) => [d, ""]) },
+    task: { field: "task", label: "Task", hint: "Search your tasks", empty: "Choose one of your tasks, then write the note.",
+      list: (f) => f.tasks.map((x) => [x.title, x.status === "done" ? UI.t("Done") : ""]) },
+    competitor: { field: "competitor", ltr: true, label: "Competitor", hint: "Search your competitors", empty: "Choose one of your competitors, then write the note.",
+      list: (f) => f.competitors.map((c) => [c.host, c.display !== c.host ? c.display : ""]) },
+  };
+  const pickedValue = (choice) => choice.where[PICKS[choice.pick].field] || "";
+  function pickerTarget(choice) {
+    const { t } = UI;
+    if (choice.unknown) return `<p class="note warn nb-pick-hint">${UI.icon("triangle-alert")}<span>${t(choice.unknown)}</span></p>`;
+    if (!pickedValue(choice)) return `<p class="small muted nb-pick-hint">${t(PICKS[choice.pick].empty)}</p>`;
+    return block({ ...choice.where, bare: true });
+  }
+  function pickerHtml(choice) {
+    const { t, esc } = UI;
+    const pick = PICKS[choice.pick];
+    const typed = choice.typed ?? pickedValue(choice);
+    const kind = pick.type === "date" ? `type="date" min="2000-01-01"` : `type="text" list="nb-pick-list" placeholder="${esc(t(pick.hint))}"`;
+    return `<div class="nb-pick">
+        <label class="field nb-field"><span>${t(pick.label)}</span>
+          <input class="input${pick.mono ? " mono" : ""}" id="nb-pick" ${kind} dir="${pick.ltr ? "ltr" : "auto"}" value="${esc(typed)}" autocomplete="off" spellcheck="false"></label>
+        ${pick.list ? `<datalist id="nb-pick-list"></datalist>` : ""}
+        <div id="nb-pick-target">${pickerTarget(choice)}</div>
+      </div>`;
+  }
+  /* The folders pages sit in, from their addresses, for the sample. The server works them out the same way. */
+  function sectionsOf(pageList) {
+    const counts = new Map();
+    pageList.forEach((p) => {
+      const m = /^(https?:\/\/[^/]+)\/(.*)$/.exec(p.url || "");
+      if (!m) return;
+      const parts = m[2].split("?")[0].split("/").slice(0, -1);
+      for (let depth = 1; depth <= Math.min(parts.length, 3); depth += 1) { const url = `${m[1]}/${parts.slice(0, depth).join("/")}/`; counts.set(url, (counts.get(url) || 0) + 1); }
+    });
+    return [...counts.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([url, pages]) => ({ url, pages }));
+  }
+  async function pickerOptions(siteId) {
+    const key = siteOf(siteId) ?? "*";
+    if (pickerState.options.has(key)) return pickerState.options.get(key);
+    if (!pickerState.loading.has(key)) {
+      pickerState.loading.set(key, (async () => {
+        if (serverMode === null) serverMode = await COMP.isServer();
+        let found = { pages: [], sections: [], keywords: [], domains: [], tasks: [] };
+        if (serverMode) found = { ...found, ...(await COMP.api("GET", `notes/options${key === "*" ? "" : `?site_id=${key}`}`)) };
+        else { // the sample knows pages and tasks: anything else is typed
+          const get = window.COMP_SAMPLE?.get || {};
+          found.pages = Object.entries(get).filter(([path]) => /^sites\/\d+\/pages$/.test(path) && (key === "*" || path === `sites/${key}/pages`)).flatMap(([, a]) => a.pages || []);
+          found.sections = sectionsOf(found.pages);
+        }
+        // Competitors: the site's own list, or every site's when no site is picked.
+        const ids = key === "*" ? COMP.sites.map((x) => x.id) : [key];
+        const lists = await Promise.all(ids.map((id) => COMP.api("GET", `competitors?site_id=${id}`).then((a) => a.competitors || []).catch(() => [])));
+        const rivals = new Map();
+        lists.flat().forEach((c) => { if (!rivals.has(c.id)) rivals.set(c.id, { id: c.id, host: c.host, display: c.display || c.host }); });
+        found.competitors = [...rivals.values()].sort((a, b) => a.host.localeCompare(b.host));
+        pickerState.options.set(key, found);
+        return found;
+      })().finally(() => pickerState.loading.delete(key)));
+    }
+    return pickerState.loading.get(key);
+  }
+  async function fillPickerList(choice) {
+    const pick = PICKS[choice.pick];
+    if (!pick.list) return;
+    let found;
+    try { found = await pickerOptions(choice.where.siteId); } catch { return; } // typing still works
+    const list = UI.$("#nb-pick-list");
+    if (!list || panelState.choices[panelState.pick] !== choice) return;
+    list.replaceChildren(...pick.list(found).map(([value, label]) => { const o = document.createElement("option"); o.value = value; if (label) o.label = label; return o; }));
+  }
+  /* The panel is about to show something else. A note written in it has been left, so it saves and joins its list now:
+     the focusout handler takes a field that disappears for a repaint and would wait for it to come back. */
+  function leaveComposers(box) {
+    if (!box) return;
+    caret = null;
+    UI.$$("textarea[data-note-composer]", box).forEach((el) => {
+      const e = entries.get(el.dataset.noteField);
+      if (!e || !e.composer) return;
+      if (dirty(e) && (!blank(e.text) || holdsFiles(e)) && e.status !== "refused") save(e);
+      if ((!blank(e.text) || holdsFiles(e)) && e.status !== "refused" && e.status !== "waiting") commit(e);
+    });
+  }
+
+  /* A linking website as the server keeps it: no scheme, path or www. */
+  const cleanDomain = (text) => String(text || "").trim().toLowerCase().replace(/^[a-z][a-z0-9+.-]*:\/\//, "").split(/[/?#]/)[0].split(":")[0].replace(/^www\./, "").replace(/\.$/, "");
+
+  /* What was typed or picked, made into what the note is about. Returns [shown value, fields, or a reason it can't be]. */
+  async function resolvePick(choice, value) {
+    const host = UI.siteHostPicked?.();
+    const fullAddress = (text) => withScheme(text.startsWith("/") && host ? `https://${host}${text}` : text);
+    if (!value) return [value, {}];
+    switch (choice.pick) {
+      case "page": { const url = fullAddress(value); return [url, { pageUrl: url }]; }
+      case "section": {
+        let url = fullAddress(value).split(/[?#]/)[0];
+        if (!url.endsWith("/")) url += "/";
+        if (!/^https?:\/\/[^/]+\/.+\/$/.test(url)) return [url, null, "That's the whole website. Write the note on the website instead, or add a folder such as /blog/."];
+        return [url, { pageUrl: url }];
+      }
+      case "keyword": return [value, { keyword: value }];
+      case "date": return /^\d{4}-\d{2}-\d{2}$/.test(value) ? [value, { day: value }] : [value, null, "Choose the day this note is about."];
+      case "domain": { const d = cleanDomain(value); return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(d) ? [d, { domain: d }] : [value, null, "Enter the linking website, such as example.com."]; }
+      case "task": {
+        const found = await pickerOptions(choice.where.siteId).catch(() => ({ tasks: [] }));
+        const task = (found.tasks || []).find((x) => x.title.trim().toLowerCase() === value.toLowerCase());
+        return task ? [task.title, { taskId: task.id, task: task.title }] : [value, null, "That isn't one of your tasks. Pick one from the list."];
+      }
+      case "competitor": {
+        const wanted = cleanDomain(value);
+        const found = await pickerOptions(choice.where.siteId).catch(() => ({ competitors: [] }));
+        const rival = (found.competitors || []).find((c) => c.host.toLowerCase().replace(/^www\./, "") === wanted);
+        return rival ? [rival.host, { competitorId: rival.id, competitor: rival.host }] : [value, null, "That isn't one of your competitors. Add it under Competitors first, or pick one from the list."];
+      }
+      default: return [value, null, ""];
+    }
+  }
+  const CLEARED = { page: { pageUrl: null }, section: { pageUrl: null }, keyword: { keyword: null }, date: { day: null }, domain: { domain: null }, task: { taskId: null, task: null }, competitor: { competitorId: null, competitor: null } };
+
+  /* The person has settled on what the note is about: show its notes and the field to write one. */
+  async function pickTarget(raw, { focus = false } = {}) {
+    const choice = panelState.choices[panelState.pick];
+    if (!choice?.pick) return;
+    const [value, fields, why] = await resolvePick(choice, String(raw || "").replace(/\s+/g, " ").trim());
+    if (panelState.choices[panelState.pick] !== choice) return; // another chip was picked meanwhile
+    choice.unknown = fields ? "" : why;
+    const changes = { ...CLEARED[choice.pick], ...(fields || {}) };
+    choice.typed = value;
+    const input = UI.$("#nb-pick");
+    if (input && input.value !== value && fields) input.value = value; // the address in full, as it's saved
+    if (fields && value && value === pickedValue(choice)) { if (focus) UI.$("#nb-pick-target textarea[data-note-composer]")?.focus(); return; }
+    choice.where = { ...choice.where, ...changes };
+    const box = UI.$("#nb-pick-target");
+    if (!box) return;
+    leaveComposers(box);
+    UI.setHTML(box, pickerTarget(choice));
+    mount();
+    if (focus) UI.$("#nb-pick-target textarea[data-note-composer]")?.focus({ preventScroll: true });
   }
 
   function panelHtml() {
     const { t, esc, icon } = UI;
-    const buttons = panelState.choices.map((c, i) => `<button class="chip nb-way" data-note-panel-pick="${i}" aria-pressed="${i === panelState.pick}">${icon(c.icon)}<span dir="auto">${esc(c.label)}</span></button>`).join("");
+    const chip = (c, i) => `<button class="chip nb-way" data-note-panel-pick="${i}" aria-pressed="${i === panelState.pick}">${icon(c.icon)}<span dir="auto">${esc(c.label)}</span></button>`;
+    // First row: what's on screen. Second row: anything else, then All notes, which is a list and not a place to write.
+    const here = panelState.choices.map((c, i) => (c.pick || c.id === PANEL_ALL ? "" : chip(c, i))).join("");
+    const picks = panelState.choices.map((c, i) => (c.pick ? chip(c, i) : "")).join("") + panelState.choices.map((c, i) => (c.id === PANEL_ALL ? chip(c, i) : "")).join("");
     return `${UI.panelHead(t("Notes"), t("Saves by itself"))}
       <div class="panel-body nb-panel">
-        <div class="nb-ways" role="group" aria-label="${t("What the note is about")}">${buttons}</div>
+        <div class="nb-ways" role="group" aria-label="${t("What the note is about")}">${here}</div>
+        ${picks ? `<div class="nb-ways nb-ways-pick" role="group" aria-label="${t("Or about something else")}"><span class="small muted">${t("Or about")}</span>${picks}</div>` : ""}
         <div id="nb-panel-body">${panelBody()}</div>
       </div>`;
   }
 
   async function afterPanelBody() {
     const choice = panelState.choices[panelState.pick];
+    if (choice?.pick) {
+      mount();
+      fillPickerList(choice);
+      const field = pickedValue(choice) ? UI.$("#nb-panel-body textarea[data-note-composer]") : UI.$("#nb-pick");
+      field?.focus({ preventScroll: true });
+      return;
+    }
     if (choice?.id !== PANEL_ALL) {
       mount();
       UI.$("#nb-panel-body textarea[data-note-composer]")?.focus({ preventScroll: true });
@@ -776,6 +962,7 @@
     UI.$$("[data-note-panel-pick]").forEach((b) => b.setAttribute("aria-pressed", String(Number(b.dataset.notePanelPick) === i)));
     const box = UI.$("#nb-panel-body");
     if (!box) return;
+    leaveComposers(box);
     UI.setHTML(box, panelBody());
     afterPanelBody();
   }
@@ -796,9 +983,12 @@
     preloaded.add(key);
     fetchNotes(pathFor(where)).then((list) => { ingest(list, key); paintCounts(); }).catch(() => preloaded.delete(key));
   }
+  /* Notes on a target: those loaded for it, and those loaded with All notes that belong to it. */
+  const countFor = (key) => [...entries.values()].filter((e) => !e.removed && !e.composer && !(blank(e.text) && !e.id) && (e.targets.has(key) || keyOf(whereOf(e)) === key)).length;
   function paintCounts() {
+    if (!UI) return;
     UI.$$("[data-note-count]").forEach((el) => {
-      const n = el.dataset.noteCount.split(" ").reduce((sum, key) => sum + wantedFor(key).length, 0);
+      const n = el.dataset.noteCount.split(" ").reduce((sum, key) => sum + countFor(key), 0);
       el.textContent = n ? UI.num(n) : "";
       el.hidden = !n;
     });
@@ -811,7 +1001,23 @@
     return `<button class="btn nb-open" data-notes-open="${esc(JSON.stringify(choices))}">${icon("pencil")}${t("Notes")}<span class="nb-count tabular" data-note-count="${esc(keys)}" hidden></span></button>`;
   }
 
-  COMP.notes = { block, mount, panel, preload, keyOf, screenName, button };
+  /* A small note icon beside one row of a long table, such as a linking website in Backlinks. Every badge counts from one
+     load of all notes, never one request per row. */
+  const SCOPE_ICONS = { domain: "link-2", task: "square-check", date: "calendar-days", section: "folder-open", keyword: "key-round", page: "file-text", competitor: "crosshair" };
+  function badge(where, label) {
+    const { t, esc, icon } = UI;
+    const name = `${t("Notes")}: ${label}`;
+    const choice = [{ label, icon: SCOPE_ICONS[where.scope] || "pencil", where }];
+    return `<button type="button" class="nb-badge" data-notes-light="1" data-notes-open="${esc(JSON.stringify(choice))}" aria-label="${esc(name)}" data-tip="${esc(name)}">${icon("sticky-note")}<span class="nb-count tabular" data-note-count="${esc(keyOf(where))}" hidden></span></button>`;
+  }
+  let allOnce = null;
+  function loadAllOnce() {
+    if (!allOnce) allOnce = fetchNotes("notes").then((list) => { ingest(list, ALL_NOTES); paintCounts(); }).catch(() => { allOnce = null; });
+    else paintCounts();
+    return allOnce;
+  }
+
+  COMP.notes = { block, mount, panel, preload, keyOf, screenName, button, badge, loadAllOnce };
 
   // ---- the Notes tab ---------------------------------------------------------------------------
   const tabState = { way: "all", competitorId: null, pageUrl: "", pageTyped: "", search: "", competitors: [], listFailed: false };
@@ -952,6 +1158,19 @@
       const el = ev.target;
       if (el.id === "nb-competitor") { tabState.competitorId = el.value === "" ? null : Number(el.value); retarget(); }
       if (el.id === "nb-page") { tabState.pageUrl = el.value; retarget(); }
+      if (el.id === "nb-pick") pickTarget(el.value);
+    });
+    // Picking from the list counts at once; typing counts on Enter or on leaving the field.
+    document.addEventListener("input", (ev) => {
+      const el = ev.target;
+      if (el.id !== "nb-pick") return;
+      const choice = panelState.choices[panelState.pick];
+      if (choice) choice.typed = el.value;
+      const listed = [...(UI.$("#nb-pick-list")?.options || [])].some((o) => o.value === el.value);
+      if (listed && (ev.inputType === "insertReplacementText" || ev.inputType === undefined)) pickTarget(el.value, { focus: true });
+    });
+    document.addEventListener("keydown", (ev) => {
+      if (ev.target.id === "nb-pick" && ev.key === "Enter" && !ev.isComposing) { ev.preventDefault(); pickTarget(ev.target.value, { focus: true }); }
     });
     // Leaving the field saves at once, and only then does the note settle into the list.
     document.addEventListener("focusout", (ev) => {
@@ -1073,8 +1292,13 @@
       const q = new URLSearchParams(query);
       if (q.get("scope") && n.scope !== q.get("scope")) return false;
       if (q.get("competitor_id") && n.competitor_id !== Number(q.get("competitor_id"))) return false;
-      if (q.get("page_url") && n.page_url !== (normalize(q.get("page_url")) || q.get("page_url"))) return false;
+      const askedUrl = q.get("page_url") ? normalize(q.get("page_url")) || q.get("page_url") : "";
+      if (askedUrl && n.page_url !== askedUrl && !(q.get("scope") !== "section" && n.scope === "section" && askedUrl.startsWith(n.page_url))) return false;
+      if (q.get("day") && n.day !== q.get("day")) return false;
+      if (q.get("domain") && n.domain !== q.get("domain").toLowerCase()) return false;
+      if (q.get("task_id") && n.task_id !== Number(q.get("task_id"))) return false;
       if (q.get("screen") && n.screen !== q.get("screen")) return false;
+      if (q.get("keyword") && keywordKey(n.keyword) !== keywordKey(q.get("keyword"))) return false;
       if (q.get("site_id") && n.site_id !== null && n.site_id !== Number(q.get("site_id"))) return false;
       return true;
     },
@@ -1105,15 +1329,21 @@
     },
     create(b) {
       this.checkBody(b.body);
-      if (!["all", "competitor", "page", "site", "screen"].includes(b.scope)) throw refusal("A note goes on all competitors, one competitor, a page, a screen or a website.");
+      if (!["all", "competitor", "page", "site", "screen", "keyword", "date", "domain", "section", "task"].includes(b.scope)) throw refusal("A note goes on all competitors, one competitor, a page or group of pages, a keyword, a day, a linking website, a task, a screen or a website.");
+      if (b.scope === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(b.day || "")) throw refusal("Choose the day this note is about.");
+      if (b.scope === "domain" && !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(b.domain || "")) throw refusal("Enter the linking website, such as example.com.");
+      if (b.scope === "task" && typeof b.task_id !== "number") throw refusal("Say which task this note is about.");
+      if (b.scope === "keyword" && !keywordKey(b.keyword)) throw refusal("Enter the keyword.");
       if (b.scope === "screen" && !SCREEN_NAMES[b.screen]) throw refusal("Say which screen this note is about.");
       if (b.scope === "competitor" && typeof b.competitor_id !== "number") throw refusal("Say which competitor this note is about.");
-      const pageUrl = b.scope === "page" ? normalize(b.page_url) : null;
+      const pageUrl = b.scope === "page" ? normalize(b.page_url) : b.scope === "section" ? (normalize(b.page_url).replace(/\/?$/, "/") || null) : null;
       if (b.scope === "page" && !pageUrl) throw refusal("Enter the page's address.");
       const known = Object.entries(window.COMP_SAMPLE.get).filter(([path]) => /^competitors\?site_id=/.test(path)).flatMap(([, a]) => a.competitors || []);
       if (b.competitor_id !== null && b.competitor_id !== undefined && !known.some((c) => c.id === b.competitor_id)) throw refusal("That competitor doesn't exist.", 404);
       const at = nowIso();
-      const n = { id: this.next++, scope: b.scope, site_id: b.site_id ?? null, competitor_id: ["all", "site", "screen"].includes(b.scope) ? null : b.competitor_id ?? null, screen: b.scope === "screen" ? b.screen : null, competitor: known.find((c) => c.id === b.competitor_id)?.host ?? null, page_url: pageUrl, body: b.body, created_at: at, updated_at: at };
+      const n = { id: this.next++, scope: b.scope, site_id: b.site_id ?? null, competitor_id: ["all", "competitor", "page"].includes(b.scope) && b.scope !== "all" ? b.competitor_id ?? null : null, screen: b.scope === "screen" ? b.screen : null, keyword: b.scope === "keyword" ? String(b.keyword).replace(/\s+/g, " ").trim() : null,
+        day: b.scope === "date" ? b.day : null, domain: b.scope === "domain" ? b.domain.toLowerCase().replace(/^www\./, "") : null, task_id: b.scope === "task" ? b.task_id : null,
+        task: b.scope === "task" ? (window.TASKS?.list?.() || []).find((x) => x.id === b.task_id)?.title ?? null : null, competitor: known.find((c) => c.id === b.competitor_id)?.host ?? null, page_url: pageUrl, body: b.body, created_at: at, updated_at: at };
       this.notes.push(n);
       this.persist();
       return this.shown(n);
@@ -1182,6 +1412,28 @@
     "Notes on this competitor": "Notes sur ce concurrent",
     "Notes on this page": "Notes sur cette page",
     "Notes on all competitors": "Notes sur tous les concurrents",
+    "A group of pages": "Un groupe de pages", "A date": "Une date", "A linking website": "Un site qui fait un lien", "A task": "Une tâche", "Day": "Jour", "Task": "Tâche",
+    "Notes on this group of pages": "Notes sur ce groupe de pages", "Notes on this day": "Notes sur ce jour", "Notes on this linking website": "Notes sur ce site", "Notes on this task": "Notes sur cette tâche",
+    "Linking website": "Site qui fait un lien", "Pages whose address starts with": "Pages dont l'adresse commence par", "Such as /blog/ or example.com/services/": "Par exemple /blog/ ou example.com/services/",
+    "Search the websites that link, or could link, to you": "Cherchez parmi les sites qui font, ou pourraient faire, un lien vers vous", "Search your tasks": "Cherchez parmi vos tâches",
+    "Choose a folder, or type how the addresses start, then write the note. It shows on every page in it.": "Choisissez un dossier, ou saisissez le début des adresses, puis écrivez la note. Elle s'affiche sur chaque page du dossier.",
+    "Choose the day, then write what happened. It shows on the Overview chart.": "Choisissez le jour, puis écrivez ce qui s'est passé. La note s'affiche sur le graphique de Vue d'ensemble.",
+    "Choose a website, or type any, then write the note: a price, a contact, an answer.": "Choisissez un site, ou saisissez-en un, puis écrivez la note : un prix, un contact, une réponse.",
+    "Choose one of your tasks, then write the note.": "Choisissez une de vos tâches, puis écrivez la note.",
+    "That's the whole website. Write the note on the website instead, or add a folder such as /blog/.": "C'est le site entier. Écrivez la note sur le site, ou ajoutez un dossier comme /blog/.",
+    "Choose the day this note is about.": "Choisissez le jour concerné par cette note.", "Enter the linking website, such as example.com.": "Saisissez le site qui fait le lien, par exemple example.com.",
+    "That isn't one of your tasks. Pick one from the list.": "Ce n'est pas une de vos tâches. Choisissez-en une dans la liste.", "Say which task this note is about.": "Indiquez la tâche concernée par cette note.", "That task doesn't exist.": "Cette tâche n'existe pas.",
+    "Choose a day between 2000 and next year.": "Choisissez un jour entre 2000 et l'an prochain.", "Enter the address the pages start with, such as example.com/blog/.": "Saisissez le début des adresses des pages, par exemple example.com/blog/.",
+    "A note goes on all competitors, one competitor, a page or group of pages, a keyword, a day, a linking website, a task, a screen or a website.": "Une note porte sur tous les concurrents, un concurrent, une page ou un groupe de pages, un mot-clé, un jour, un site qui fait un lien, une tâche, un écran ou un site.",
+    "Notes on this keyword": "Notes sur ce mot-clé", "Or about": "Ou sur", "Or about something else": "Ou sur autre chose", "A keyword": "Un mot-clé", "Keyword": "Mot-clé",
+    "Enter the keyword to save this note. It's kept on this computer.": "Saisissez le mot-clé pour enregistrer cette note. Elle est gardée sur cet ordinateur.",
+    "Enter the keyword.": "Saisissez le mot-clé.", "This keyword is too long. The limit is 400 characters.": "Ce mot-clé est trop long. La limite est de 400 caractères.",
+    "Choose a page, or type any address, then write the note.": "Choisissez une page, ou saisissez n'importe quelle adresse, puis écrivez la note.",
+    "Choose a keyword, or type any, then write the note.": "Choisissez un mot-clé, ou saisissez-en un, puis écrivez la note.",
+    "Choose one of your competitors, then write the note.": "Choisissez un de vos concurrents, puis écrivez la note.", "Search your competitors": "Cherchez parmi vos concurrents",
+    "That isn't one of your competitors. Add it under Competitors first, or pick one from the list.": "Ce n'est pas un de vos concurrents. Ajoutez-le d'abord dans Concurrents, ou choisissez-en un dans la liste.",
+    "Search your pages or type an address": "Cherchez parmi vos pages ou saisissez une adresse", "Search your keywords or type one": "Cherchez parmi vos mots-clés ou saisissez-en un",
+    "A note goes on all competitors, one competitor, a page, a keyword, a screen or a website.": "Une note porte sur tous les concurrents, un concurrent, une page, un mot-clé, un écran ou un site.",
     "Notes on this screen": "Notes sur cet écran", "Notes on this website": "Notes sur ce site", "The whole website": "Tout le site", "All my sites": "Tous mes sites", "A screen": "Un écran",
     "This competitor": "Ce concurrent", "This page": "Cette page", "Their page": "Leur page", "My page": "Ma page", "This screen: {name}": "Cet écran : {name}",
     "Choose what the note is about to save it. It's kept on this computer.": "Choisissez sur quoi porte la note pour l'enregistrer. Elle est gardée sur cet ordinateur.",

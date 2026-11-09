@@ -81,10 +81,27 @@ def _ga4(request: httpx.Request) -> httpx.Response:
     return httpx.Response(200, json={"rows": [{"dimensionValues": [{"value": v} for v in row[:cut]], "metricValues": [{"value": v} for v in row[cut:]]} for row in table], "rowCount": len(table), "metadata": {"currencyCode": "EUR", "subjectToThresholding": date.fromisoformat(day).toordinal() % 11 == 0}})
 
 
+def _inspect(request: httpx.Request) -> httpx.Response:
+    """URL Inspection: a page with "subscription" in its address isn't indexed yet, every other page is."""
+    page = json.loads(request.content)["inspectionUrl"]
+    if "subscription" in page:
+        found = {"verdict": "NEUTRAL", "coverageState": "Crawled - currently not indexed", "lastCrawlTime": "2026-10-12T06:00:00Z"}
+    else:
+        found = {"verdict": "PASS", "coverageState": "Submitted and indexed", "lastCrawlTime": "2026-10-27T06:00:00Z", "googleCanonical": page}
+    return httpx.Response(200, json={"inspectionResult": {"indexStatusResult": found}})
+
+
 def _answer(request: httpx.Request) -> httpx.Response:
     url = str(request.url)
     if "searchAnalytics" in url:
         return _gsc(request)
+    if "urlInspection/index:inspect" in url:
+        return _inspect(request)
+    if "api.ahrefs.com/v3/site-explorer/metrics" in url:  # a made-up traffic per website, the same every time
+        target = request.url.params.get("target", "")
+        return httpx.Response(200, json={"metrics": {"org_traffic": sum(map(ord, target)) * 97, "org_keywords": 40}})
+    if "api.ahrefs.com/v3/site-explorer/domain-rating" in url:
+        return httpx.Response(200, json={"domain_rating": {"domain_rating": 91.0, "ahrefs_rank": 3}})
     if "webmasters/v3/sites" in url:
         return httpx.Response(200, json={"siteEntry": [{"siteUrl": prop} for prop in PROPERTIES()]})
     if "accountSummaries" in url:

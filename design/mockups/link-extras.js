@@ -31,7 +31,7 @@
     if (!rows.length) return `<div class="table-wrap"><div class="empty"><h3>${t("No mediators yet")}</h3><p>${t("Add the people and agencies who place your links. A name typed on a backlink is added here too.")}</p>${add}</div></div>`;
     const cell = (label, inner, cls = "") => `<td class="${cls}" data-label="${t(label)}">${inner}</td>`;
     const none = '<span class="muted">—</span>';
-    return `<div class="md-bar"><span class="small sec">${t("Spent is only added up within one currency.")}</span><span class="end">${add}</span></div>
+    return `<div class="md-bar"><span class="small sec">${t("Spent is only added up within one currency.")}</span><span class="end bl-tools">${window.BacklinkSeo?.budgetBar?.(all) || ""}${add}</span></div>
       <div class="table-wrap"><table class="data" id="md-table"><thead><tr>
         <th scope="col">${t("Mediator")}</th><th scope="col">${t("Platform")}</th><th scope="col">${t("Price")}</th><th scope="col" class="r">${t("Links")}</th><th scope="col" class="r">${t("Live")}</th><th scope="col" class="r">${t("Lost")}</th><th scope="col" class="r">${t("Spent")}</th><th scope="col" class="r">${t("Visits")}</th><th scope="col" class="r">${t("Cost per visit")}</th><th scope="col" aria-label="${t("Edit")}"></th>
       </tr></thead><tbody>${rows.map((m) => {
@@ -198,7 +198,7 @@
     const { t } = UI, c = b.check;
     if (!c) return "";
     if (b.status === "live" && c.misses > 0) return ` <span class="tag" data-tip="${UI.esc(t("It's read once more tomorrow before it counts as lost."))}" tabindex="0">${t("Not found once")}</span>`;
-    if (b.status === "live" && c.is_nofollow) return ` <span class="tag" data-tip="${UI.esc(t("The link is there, marked nofollow."))}" tabindex="0">${t("Nofollow")}</span>`;
+    if (b.status === "live" && c.is_nofollow && !c.verdict) return ` <span class="tag" data-tip="${UI.esc(t("The link is there, marked nofollow."))}" tabindex="0">${t("Nofollow")}</span>`;
     return "";
   }
 

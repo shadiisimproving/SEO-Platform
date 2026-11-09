@@ -232,7 +232,8 @@
         <ul class="pt-years">${years.map((x) => `<li><span class="tabular">${esc(String(x.year))}</span><span class="pt-year-bar" style="--w:${(x.pages / max) * 100}%"><i class="pt-key-them"></i></span><span class="tabular">${num(x.pages)}</span></li>`).join("")}</ul>`;
     } else if (h.status === "failed") body = `<p class="cl-none small sec">${esc(t("The Wayback Machine didn't answer this time. It tries again tomorrow."))}</p>`;
     else if (h.status === "ok") body = `<p class="cl-none small sec">${t("The Wayback Machine has no copy of this site.")}</p>`;
-    else body = `<p class="cl-none small sec">${t("Waiting for its first look in the Wayback Machine. It runs in the background, once a month.")}</p>`;
+    else if (h.message) body = `<p class="cl-none small sec">${t("The Wayback Machine is busy. The app asks again in a few minutes.")}</p>`;
+    else body = `<p class="cl-none small sec">${t("Looking them up in the Wayback Machine. It takes a minute or two after a competitor is added, then it's checked again each month.")}</p>`;
     const dates = [f.registered_on ? fill("Domain registered {date}", { date: UI().fmtDateOnly(`${f.registered_on}T00:00:00Z`) }) : "", f.expires_on ? fill("renews by {date}", { date: UI().fmtDateOnly(`${f.expires_on}T00:00:00Z`) }) : ""].filter(Boolean).join(", ");
     return `<section class="card"><div class="card-head"><h2>${t("How their site grew")}</h2><span class="end small muted">${t("New pages each year, from the Wayback Machine")}</span></div><div class="cl-section-body">${body}${dates ? `<p class="small muted pt-dates">${esc(dates)}.</p>` : ""}</div></section>`;
   }
@@ -252,7 +253,7 @@
     const links = top.length
       ? `<ul class="rows pt-links">${top.slice(0, 10).map((d) => `<li><div class="what"><span class="with-logo">${UI().siteLogo(d.domain, 16)}<span class="logo-text mono" dir="ltr">${esc(d.domain)}</span></span>${d.spam ? ` ${UI().status("warn", t("Looks like spam"))}` : ""}</div><div class="acts small muted tabular">${known(d.authority) ? esc(`${d.authority_label || t("Authority")} ${d.authority}`) : ""}</div></li>`).join("")}</ul>
         ${l.not_to_me ? `<p class="pt-gap-line">${esc(many(l.not_to_me, "{n} of these doesn't link to you.", "{n} of these don't link to you."))} <button class="btn btn-small" data-pt-gaps>${icon("link-2")}${t("Open Link gaps")}</button></p>` : ""}`
-      : `<p class="cl-none small sec">${t("No linking sites known yet. They come from Common Crawl or a CSV uploaded in Link gaps.")}</p>`;
+      : `<p class="cl-none small sec">${t("No linking sites known yet. They come from a CSV uploaded in Link gaps.")}</p>`;
     const build = (ins.build || []);
     const main = build.filter((b) => !b.more), more = build.filter((b) => b.more);
     const buildRow = (b) => row(t(b.label), value(b, b.mine), value(b, b.theirs));
@@ -424,11 +425,12 @@
     "New pages each month": "Nouvelles pages par mois", "Them against you, over 12 months": "Eux face à vous, sur 12 mois", "See these numbers as a table": "Voir ces chiffres en tableau", "Month": "Mois", "New pages each month, them against you": "Nouvelles pages par mois, eux face à vous",
     "First archived {date}. {n} of their pages are in the archive.": "Archivé pour la première fois le {date}. {n} de leurs pages sont dans l'archive.", "The archive holds more than the first 5,000 read here.": "L'archive en contient plus que les 5 000 premières lues ici.",
     "The Wayback Machine didn't answer this time. It tries again tomorrow.": "La Wayback Machine n'a pas répondu cette fois. Nouvel essai demain.", "The Wayback Machine has no copy of this site.": "La Wayback Machine n'a aucune copie de ce site.",
-    "Waiting for its first look in the Wayback Machine. It runs in the background, once a month.": "En attente d'un premier passage dans la Wayback Machine. Il se fait en arrière-plan, une fois par mois.",
+    "Looking them up in the Wayback Machine. It takes a minute or two after a competitor is added, then it's checked again each month.": "Recherche dans la Wayback Machine. Cela prend une à deux minutes après l'ajout d'un concurrent, puis c'est revérifié chaque mois.",
+    "The Wayback Machine is busy. The app asks again in a few minutes.": "La Wayback Machine est occupée. L'application redemande dans quelques minutes.",
     "Domain registered {date}": "Domaine enregistré le {date}", "renews by {date}": "à renouveler avant le {date}", "How their site grew": "Comment leur site a grandi", "New pages each year, from the Wayback Machine": "Nouvelles pages par an, d'après la Wayback Machine",
     "What": "Quoi", "Moz Domain Authority": "Domain Authority de Moz", "Sites linking to them": "Sites qui font un lien vers eux", "Popularity (Cloudflare)": "Popularité (Cloudflare)", "Domain registered": "Domaine enregistré",
     "Looks like spam": "Ressemble à du spam", "{n} of these doesn't link to you.": "{n} d'entre eux ne fait pas de lien vers vous.", "{n} of these don't link to you.": "{n} d'entre eux ne font pas de lien vers vous.", "Open Link gaps": "Ouvrir les liens manquants",
-    "No linking sites known yet. They come from Common Crawl or a CSV uploaded in Link gaps.": "Aucun site liant connu pour l'instant. Ils viennent de Common Crawl ou d'un CSV importé dans les liens manquants.",
+    "No linking sites known yet. They come from a CSV uploaded in Link gaps.": "Aucun site liant connu pour l'instant. Ils viennent d'un CSV importé dans les liens manquants.",
     "More details": "Plus de détails", "Fewer details": "Moins de détails", "These facts appear once their pages are read.": "Ces faits apparaissent une fois leurs pages lues.",
     "How strong they are": "Leur force", "Who links to them": "Qui fait un lien vers eux", "How they build pages": "Comment ils construisent leurs pages", "Facts read from the pages, not advice": "Des faits lus sur les pages, pas des conseils",
     "This part didn't load. Everything else on the page still works.": "Cette partie n'a pas chargé. Le reste de la page fonctionne.",

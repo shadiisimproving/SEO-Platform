@@ -480,11 +480,21 @@ def detail(scope: Scope, query: str | None = None, page: str | None = None) -> d
 # ---- Notes and tasks on the chart ----------------------------------------------------------------
 
 
+def _first_line(body: str, limit: int = 140) -> str:
+    line = next((part.strip() for part in body.splitlines() if part.strip()), "")
+    return line if len(line) <= limit else f"{line[: limit - 1]}…"
+
+
 def markers(scope: Scope) -> list[dict]:
     notes = scope.fetch("SELECT id, site_id, day, text FROM search_notes WHERE site_id IN :sites AND day BETWEEN :a AND :b ORDER BY day")
     tasks = scope.fetch("SELECT id, site_id, DATE(updated_at) day, title FROM tasks WHERE status = 'done' AND site_id IN :sites AND DATE(updated_at) BETWEEN :a AND :b ORDER BY updated_at")
+    # Notes written on a day from the Notes panel. A note for all my sites shows on every site's chart.
+    dated = scope.fetch(
+        "SELECT id, site_id, day, body FROM notes WHERE scope = 'date' AND deleted_at IS NULL AND body <> '' AND (site_id IN :sites OR site_id IS NULL) AND day BETWEEN :a AND :b ORDER BY day"
+    )
     out = [{"kind": "note", "id": n["id"], "site_id": n["site_id"], "day": n["day"].isoformat(), "text": n["text"]} for n in notes]
     out += [{"kind": "task", "id": t["id"], "site_id": t["site_id"], "day": t["day"].isoformat(), "text": t["title"]} for t in tasks]
+    out += [{"kind": "dated", "id": n["id"], "site_id": n["site_id"], "day": n["day"].isoformat(), "text": _first_line(n["body"])} for n in dated]
     return sorted(out, key=lambda m: m["day"])
 
 

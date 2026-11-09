@@ -30,6 +30,8 @@ def create_app(engine: Engine | None = None, url_allowed: Callable[[str], bool] 
     from seo.web.backlinks_api import backlinks_api
     from seo.web.uptime_api import uptime_api
     from seo.web.search_api import search_api
+    from seo.web.insights_api import insights_api
+    from seo.web.notifications_api import notifications_api
 
     backlink_traffic.install()
     app = Flask(__name__, static_folder=None)
@@ -46,6 +48,8 @@ def create_app(engine: Engine | None = None, url_allowed: Callable[[str], bool] 
     app.register_blueprint(sources_api)
     app.register_blueprint(metrics_api)
     app.register_blueprint(search_api)
+    app.register_blueprint(insights_api)
+    app.register_blueprint(notifications_api)
     app.config["AUTH_ON"] = auth
     if auth:
         from seo.core import crypto

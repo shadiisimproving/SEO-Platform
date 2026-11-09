@@ -37,6 +37,14 @@ SHOWN_URLS = 10
 _SOON_REASONS = ("network", "server", "rate_limited")
 _REASONS = {"robots": "robots", "blocked": "turned_away", "rate_limited": "rate_limited", "network_error": "network", "server_error": "server", "refused": "refused", "not_html": "not_html", "too_large": "too_large", "too_many_redirects": "redirects", "http_error": "http_error"}
 _SPACES = re.compile(r"\s+")
+GOOGLEBOT = "Googlebot"
+COUNTS, WEAK, NONE = "counts", "weak", "none"
+# Why a link passes nothing: Google can't see the page, or the page tells it not to follow any link.
+NONE_REASONS = ("noindex", "robots_blocked", "page_nofollow")
+# Why it passes little: Google takes these as hints and usually gives no ranking credit, or the page may be folded into another.
+WEAK_REASONS = ("nofollow", "sponsored", "ugc", "canonical_elsewhere", "many_outbound")
+_DIRECTIVES_WITH_VALUE = ("max-snippet", "max-image-preview", "max-video-preview", "unavailable_after", "indexifembedded")
+MANY_OUTBOUND = 100  # links to other websites on one page. Past this it reads like a link list, not an article.
 
 
 @dataclass
@@ -50,12 +58,27 @@ class LinkSeen:
 
 
 @dataclass
+class PageSignals:
+    """What the linking page tells Google about itself, read from the same fetch."""
+    noindex: bool = False
+    page_nofollow: bool = False
+    canonical: str | None = None
+    canonical_elsewhere: bool = False
+    lang: str | None = None
+    outbound: int | None = None
+    robots_blocked: bool = False
+
+
+@dataclass
 class Reading:
     outcome: str
     reason: str | None = None
     http_status: int | None = None
     final_url: str | None = None
     seen: LinkSeen = field(default_factory=LinkSeen)
+    signals: PageSignals = field(default_factory=PageSignals)
+    verdict: str | None = None
+    reasons: list[str] = field(default_factory=list)
 
 
 def clean_path(address: str | None) -> str:
@@ -87,11 +110,93 @@ def _anchor_of(element) -> str:
     return ""
 
 
+def _parse(body: bytes):
+    try:
+        return lxml_html.document_fromstring(body)
+    except (ValueError, TypeError, etree.ParserError):
+        return None
+
+
+def _robots_words(value: str | None) -> set[str]:
+    """noindex, nofollow and none, from a meta tag's content or an X-Robots-Tag header. A rule for another crawler ("bingbot: noindex") is left out."""
+    words: set[str] = set()
+    for part in (value or "").lower().split(","):
+        part = part.strip()
+        if ":" in part:
+            left, _, rest = part.partition(":")
+            left = left.strip()
+            if left in _DIRECTIVES_WITH_VALUE:  # max-snippet: 50, unavailable_after: a date
+                continue
+            if left != "googlebot":  # "bingbot: noindex" is for another crawler
+                continue
+            part = rest.strip()
+        words.update(part.split())
+    if "none" in words:
+        words.update(("noindex", "nofollow"))
+    return words
+
+
+def page_signals(body: bytes, page_url: str, x_robots_tag: str | None = None, mine: str | None = None) -> PageSignals:
+    """Noindex, a page-wide nofollow, a canonical to another page, the language, and how many links go to other websites."""
+    signals = PageSignals()
+    words = _robots_words(x_robots_tag)
+    doc = _parse(body)
+    if doc is None:
+        signals.noindex, signals.page_nofollow = "noindex" in words, "nofollow" in words
+        return signals
+    for meta in doc.iterfind(".//meta[@name]"):
+        if (meta.get("name") or "").strip().lower() in ("robots", "googlebot"):
+            words |= _robots_words(meta.get("content"))
+    signals.noindex, signals.page_nofollow = "noindex" in words, "nofollow" in words
+    for link in doc.iterfind(".//link[@rel]"):
+        if "canonical" in (link.get("rel") or "").lower().split() and link.get("href"):
+            try:
+                signals.canonical = urljoin(page_url, link.get("href").strip())[:2048]
+            except ValueError:
+                signals.canonical = None
+            break
+    if signals.canonical:
+        signals.canonical_elsewhere = host_key(signals.canonical) != host_key(page_url) or clean_path(signals.canonical) != clean_path(page_url)
+    root = doc if doc.tag == "html" else doc.find(".//html")
+    lang = (root.get("lang") if root is not None else None) or ""
+    signals.lang = lang.strip().lower()[:16] or None
+    own_host, hosts = host_key(page_url), 0
+    for element in doc.iterfind(".//a[@href]"):
+        href = (element.get("href") or "").strip()
+        if not href.lower().startswith(("http://", "https://", "//")):
+            continue
+        try:
+            other = host_key(urljoin(page_url, href))
+        except ValueError:
+            continue
+        if other and other != own_host and other != mine:
+            hosts += 1
+    signals.outbound = hosts
+    return signals
+
+
+def judge(seen: LinkSeen, signals: PageSignals) -> tuple[str | None, list[str]]:
+    """Counts, weak or none, with every reason. Only a link that was found gets one: a missing link says nothing about the page."""
+    if not seen.found:
+        return None, []
+    reasons = [name for name in ("noindex", "robots_blocked", "page_nofollow") if getattr(signals, name)]
+    rel = set((seen.rel or "").split())
+    reasons += [word for word in ("nofollow", "sponsored", "ugc") if word in rel]
+    if signals.canonical_elsewhere:
+        reasons.append("canonical_elsewhere")
+    if (signals.outbound or 0) > MANY_OUTBOUND:
+        reasons.append("many_outbound")
+    if any(r in NONE_REASONS for r in reasons):
+        return NONE, reasons
+    if reasons:
+        return WEAK, reasons
+    return COUNTS, []
+
+
 def find_link(body: bytes, page_url: str, site_host: str, target: str | None) -> LinkSeen:
     """A link to my site on this page. The logged target page first, or else any link to the site."""
-    try:
-        doc = lxml_html.document_fromstring(body)
-    except (ValueError, TypeError, etree.ParserError):
+    doc = _parse(body)
+    if doc is None:
         return LinkSeen()
     base = doc.find(".//base[@href]")
     base_url = urljoin(page_url, base.get("href")) if base is not None else page_url
@@ -125,7 +230,11 @@ def read_page(fetcher, source_url: str, site_host: str, target: str | None) -> R
         return Reading(UNKNOWN, _REASONS.get(answer.status, answer.status), answer.http_status, answer.final_url)
     final = answer.final_url or source_url
     seen = find_link(answer.body, final, site_host, target)
-    return Reading(FOUND if seen.found else MISSING, http_status=answer.http_status, final_url=final, seen=seen)
+    signals = page_signals(answer.body, final, getattr(answer, "x_robots_tag", None), host_key(f"https://{site_host}/"))
+    allowed = fetcher.agent_may_fetch(final, GOOGLEBOT) if hasattr(fetcher, "agent_may_fetch") else None
+    signals.robots_blocked = allowed is False
+    verdict, reasons = judge(seen, signals)
+    return Reading(FOUND if seen.found else MISSING, http_status=answer.http_status, final_url=final, seen=seen, signals=signals, verdict=verdict, reasons=reasons)
 
 
 # ---- saving what was seen ----------------------------------------------------------------------------
@@ -140,10 +249,11 @@ def _changes(row, seen: LinkSeen) -> list[dict]:
     return changes
 
 
-def _save(engine: Engine, row, reading: Reading, trigger: str, target_final: str | None) -> dict:
+def _save(engine: Engine, row, reading: Reading, trigger: str, target: dict | None) -> dict:
     """Returns what the caller should raise an alert about."""
     seen = reading.seen
     outcome = reading.outcome
+    target = target or {}
     changes = _changes(row, seen) if outcome == FOUND else []
     misses = row["miss_count"]
     status = row["status"]
@@ -159,19 +269,25 @@ def _save(engine: Engine, row, reading: Reading, trigger: str, target_final: str
     with engine.begin() as conn:
         conn.execute(
             text(
-                "INSERT INTO backlink_checks (backlink_id, outcome, reason, trigger_kind, http_status, final_url, is_nofollow, rel, anchor, href, changes) "
-                "VALUES (:b, :o, :r, :t, :h, :f, :n, :l, :a, :u, :c)"
+                "INSERT INTO backlink_checks (backlink_id, outcome, reason, trigger_kind, http_status, final_url, is_nofollow, rel, anchor, href, changes, verdict, reasons, outbound_links) "
+                "VALUES (:b, :o, :r, :t, :h, :f, :n, :l, :a, :u, :c, :v, :vr, :ob)"
             ),
-            {"b": row["id"], "o": outcome, "r": reading.reason, "t": trigger, "h": reading.http_status, "f": reading.final_url, "n": seen.is_nofollow, "l": seen.rel, "a": seen.anchor, "u": seen.href, "c": json.dumps(changes, ensure_ascii=False) if changes else None},
+            {"b": row["id"], "o": outcome, "r": reading.reason, "t": trigger, "h": reading.http_status, "f": reading.final_url, "n": seen.is_nofollow, "l": seen.rel, "a": seen.anchor, "u": seen.href, "c": json.dumps(changes, ensure_ascii=False) if changes else None,
+             "v": reading.verdict, "vr": json.dumps(reading.reasons) if reading.verdict else None, "ob": reading.signals.outbound},
         )
         # A reading that found nothing says nothing about nofollow or the anchor, so the last known ones stay.
         conn.execute(
             text(
                 "UPDATE backlinks SET checked_at = UTC_TIMESTAMP(3), check_outcome = :o, check_reason = :r, final_url = COALESCE(:f, final_url), miss_count = :m, status = :st, "
                 "is_nofollow = IF(:found, :n, is_nofollow), seen_rel = IF(:found, :l, seen_rel), seen_anchor = IF(:found, :a, seen_anchor), seen_href = IF(:found, :u, seen_href), "
-                "target_final_url = COALESCE(:tf, target_final_url), lost_at = CASE WHEN :lost THEN UTC_TIMESTAMP(3) WHEN :back THEN NULL ELSE lost_at END WHERE id = :i"
+                "target_final_url = COALESCE(:tf, target_final_url), lost_at = CASE WHEN :lost THEN UTC_TIMESTAMP(3) WHEN :back THEN NULL ELSE lost_at END, "
+                # The verdict is about a link that's there. When it's gone there's nothing to judge, so it's cleared rather than kept stale.
+                "seo_verdict = IF(:found, :v, IF(:o IN ('missing', 'page_gone'), NULL, seo_verdict)), seo_reasons = IF(:found, :vr, IF(:o IN ('missing', 'page_gone'), NULL, seo_reasons)), "
+                "page_lang = IF(:found, :pl, page_lang), outbound_links = IF(:found, :ob, outbound_links), "
+                "target_http = COALESCE(:th, target_http), target_lang = COALESCE(:tl, target_lang) WHERE id = :i"
             ),
-            {"o": outcome, "r": reading.reason, "f": reading.final_url, "m": misses, "st": status, "found": outcome == FOUND, "n": seen.is_nofollow, "l": seen.rel, "a": seen.anchor or "", "u": seen.href, "tf": target_final, "lost": went_lost, "back": came_back, "i": row["id"]},
+            {"o": outcome, "r": reading.reason, "f": reading.final_url, "m": misses, "st": status, "found": outcome == FOUND, "n": seen.is_nofollow, "l": seen.rel, "a": seen.anchor or "", "u": seen.href, "tf": target.get("final"), "lost": went_lost, "back": came_back, "i": row["id"],
+             "v": reading.verdict, "vr": json.dumps(reading.reasons), "pl": reading.signals.lang, "ob": reading.signals.outbound, "th": target.get("http"), "tl": target.get("lang")},
         )
     return {"lost": went_lost, "changes": changes}
 
@@ -188,21 +304,33 @@ def _raise_alert(engine: Engine, row, kind: str, title_one: str, title_many: str
     health_service._alert(engine, row["site_id"], None, kind, "warn", title, {"count": count, "urls": urls})
 
 
-def check_one(engine: Engine, row, fetcher, trigger: str, resolved: dict[str, str | None]) -> None:
+def read_target(fetcher, href: str) -> dict:
+    """Where my own page ends up, what it answered, and its language. A 404 here means the link is wasted until it's redirected."""
+    answer = fetcher.get(href, any_type=True)
+    final = answer.final_url if answer.status in ("ok", "not_html", "too_large", "gone") else None
+    http = answer.http_status if answer.status in ("ok", "not_html", "too_large", "gone", "http_error", "server_error") else None
+    lang = None
+    if answer.status == "ok" and answer.body:
+        doc = _parse(answer.body)
+        root = None if doc is None else (doc if doc.tag == "html" else doc.find(".//html"))
+        lang = ((root.get("lang") if root is not None else None) or "").strip().lower()[:16] or None
+    return {"final": final, "http": http, "lang": lang}
+
+
+def check_one(engine: Engine, row, fetcher, trigger: str, resolved: dict[str, dict]) -> None:
     """Read one link's page, and save it. `resolved` remembers where my own target pages end up, so one page is only read once in a run."""
     with engine.connect() as conn:
         site_host = conn.execute(text("SELECT host FROM sites WHERE id = :s"), {"s": row["site_id"]}).scalar()
     sent_before = fetcher.requests
     reading = read_page(fetcher, row["source_url"], site_host, row["target_url"])
-    target_final = None
+    target = None
     if reading.outcome == FOUND and reading.seen.href:
         href = reading.seen.href
         if href not in resolved:
-            answer = fetcher.get(href, any_type=True)
-            resolved[href] = answer.final_url if answer.status in ("ok", "not_html", "too_large") else None
-        target_final = resolved[href]
+            resolved[href] = read_target(fetcher, href)
+        target = resolved[href]
     budget.charge(engine, fetcher.requests - sent_before)
-    result = _save(engine, row, reading, trigger, target_final)
+    result = _save(engine, row, reading, trigger, target)
     if result["lost"]:
         _raise_alert(engine, row, "backlink_lost", "{host}: a backlink was lost", "{host}: {n} backlinks were lost")
     if result["changes"]:
@@ -234,7 +362,7 @@ def run_check(job, engine: Engine) -> None:
         raise RunAgain(budget.seconds_until_new_day(engine))
     started = time.monotonic()
     fetcher = links_service.fetcher_factory()
-    resolved: dict[str, str | None] = {}
+    resolved: dict[str, dict] = {}
     done_ids: set[int] = set()
     try:
         while time.monotonic() - started < CHUNK_SECONDS and budget.has_room(engine):
@@ -280,7 +408,11 @@ def check_now(engine: Engine, backlink_id: int) -> bool:
         raise NotFound("That backlink doesn't exist.")
     if row["status"] in ("found", "ignored"):
         raise Refused("Log this link first, then it can be checked.")
-    return queue.enqueue(engine, LANE, JOB_KIND, payload={"backlink_id": backlink_id}, dedupe_key=f"backlink:{backlink_id}", max_attempts=2) is not None
+    queued = queue.enqueue(engine, LANE, JOB_KIND, payload={"backlink_id": backlink_id}, dedupe_key=f"backlink:{backlink_id}", max_attempts=2) is not None
+    from seo.backlinks import indexed, source_index  # also ask Google about my page, and whether the linking page is on Google
+    indexed.enqueue_for_backlink(engine, backlink_id)
+    source_index.enqueue(engine, first=backlink_id)
+    return queued
 
 
 def history(engine: Engine, backlink_id: int, limit: int = 20) -> list[dict]:

@@ -32,3 +32,19 @@ def engine(schema):
         conn.execute(text("SET FOREIGN_KEY_CHECKS=1"))
     yield engine
     engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def no_real_archive(monkeypatch):
+    """Adding a competitor queues a Wayback Machine and registry look-up. No test may reach the real ones."""
+    from seo.competitors import history
+    from seo.uptime import service as uptime
+
+    def offline(*_args):
+        raise history.HistoryFailed("tests run offline")
+
+    def no_registry(domain):
+        raise uptime.NoRdap(domain)
+
+    monkeypatch.setattr(history, "cdx_lookup", offline)
+    monkeypatch.setattr(uptime, "rdap_dates_lookup", no_registry)
