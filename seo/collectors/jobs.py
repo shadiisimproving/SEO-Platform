@@ -195,9 +195,6 @@ def run(job: queue.ClaimedJob, engine: Engine) -> None:
         from seo.metrics import search  # "Matches Search Console", after every finished pull
 
         search.verify_quietly(engine, site_id)
-        from seo.insights import engine as insights  # Search insights, only when a new final day arrived
-
-        insights.enqueue_if_new(engine, site_id)
 
 
 @handler("collect-authority")
