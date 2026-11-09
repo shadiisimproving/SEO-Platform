@@ -253,7 +253,7 @@
     } catch (err) { sayError(err.message); button.disabled = false; }
   }
 
-  // A GA4 property has a name, not an address: "Creer Societe Dubai" goes with creer-societe-dubai.fr. Only one clear match counts.
+  // A GA4 property has a name, not an address: "Acme Store" goes with acme-store.com. Only one clear match counts.
   const plain = (word) => String(word || "").normalize("NFD").replace(/[^a-z0-9]/gi, "").toLowerCase();
   function gaMatch(host) {
     const base = plain(host.replace(/^www\./, "").replace(/\.[^.]+$/, ""));

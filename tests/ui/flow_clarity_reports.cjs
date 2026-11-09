@@ -1,25 +1,115 @@
 // Clarity's dashboard downloads, driven by hand like a normal user: upload several CSVs in Settings, then read them on
 // Content and AI search, for all sites and for one, in English and French.
 // Needs: DB_NAME_TEST=seo_cc_h_test .venv/bin/python tests/ui/app_server.py --port 8231 --empty --login
-// Usage: CLARITY_DIR=<folder with Clarity_*.csv> SCREENS_URL=http://127.0.0.1:8231/ node tests/ui/flow_clarity_reports.cjs [folder for screenshots]
-// The CSVs aren't in the repo: they are a real site's numbers. Use Clarity's own downloads for the three sites below.
+// Usage: SCREENS_URL=http://127.0.0.1:8231/ node tests/ui/flow_clarity_reports.cjs [folder for screenshots]
+// It writes its own Clarity files for made-up sites, in the layout of Clarity's real exports. No real site or number is in here.
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const { open, menu } = require("./pw.cjs");
 
 const ROOT = process.env.SCREENS_URL || "http://127.0.0.1:8231/";
-const DIR = process.env.CLARITY_DIR;
 const SHOTS = process.argv[2];
-const HOSTS = ["creer-societe-dubai.fr", "comptabilite-dubai.com", "business-setup-dubai.com"];
+// Made-up sites and numbers. Only their layout copies Clarity's exports (Dashboard, then Export).
+const SITES = [
+  { host: "shop-one.test", project: "Shop One", from: "08/09/2026", sessions: 2400, bots: 900, citations: 420, lcp: "5.2s" },
+  { host: "shop-two.test", project: "Shop Two", from: "07/31/2026", sessions: 300, bots: 40, citations: 25, lcp: "1.4s" },
+  { host: "shop-three.test", project: "Shop Three", from: "07/31/2026", sessions: 150, bots: 10, citations: 6, lcp: "1.1s" },
+];
+const HOSTS = SITES.map((x) => x.host);
+const ONE = SITES[0];
+const fmt = (n) => n.toLocaleString("en-US");
+const head = (x, from) => `\ufeff"Project name","${x.project}"\n"Date range","${from} 12:00 AM - 11/06/2026 11:59 PM"\n\n\n`;
+const dashboardCsv = (x) => `${head(x, x.from)}"Metric","Sessions"
+"","Total sessions","${x.sessions}"
+"","Bot sessions","${x.bots}"
+
+"Metric","Pages per session"
+"","Average","1.4"
+
+"Metric","Scroll depth"
+"","Average","41.5"
+
+"Metric","Active time spent"
+"","Active time","120"
+"","Total time","200"
+
+"Metric","Users overview"
+"","Unique users","${x.sessions - 50}"
+"","Sessions with new users","${x.sessions - 30}"
+"","Sessions with returning users","30"
+
+"Metric","Insights","No. of sessions","% of sessions"
+"","Rage clicks","5","0.50%"
+"","Dead click","60","5.00%"
+"","Excessive scrolling","1","0.10%"
+"","Quick back click","30","2.50%"
+
+"Metric","Browsers","No. of sessions","% of sessions"
+"","Chrome","${Math.round(x.sessions * 0.6)}","60.00%"
+"","MobileSafari","${Math.round(x.sessions * 0.4)}","40.00%"
+
+"Metric","Top pages","No. of sessions"
+"","https://www.${x.host}/","${Math.round(x.sessions / 4)}"
+"","https://www.${x.host}/guide-to-shops/","${Math.round(x.sessions / 8)}"
+
+"Metric","Smart events","No. of sessions","% of sessions"
+"","Contact us","12","1.00%"
+
+"Metric","Referrer","No. of sessions"
+"","www.${x.host}","${Math.round(x.sessions / 5)}"
+"","www.google.com","${Math.round(x.sessions / 6)}"
+"","news.example","9"
+
+"Metric","JavaScript errors"
+"","Sessions with JavaScript errors"
+""," total JavaScript errors","2"
+"","","No. of sessions","% of sessions"
+"","script error.","2","100%"
+
+"Metric","Performance overview"
+"","Score","75"
+"","LCP (Largest Contentful Paint)","${x.lcp}"
+"","INP (Interaction to Next Paint)","180ms"
+"","CLS (Cumulative Layout Shift)","0.05s"
+
+"Metric","Bot traffic"
+"suspiciousDeviceBotSessions","${Math.round(x.bots / 2)}"
+"suspiciousInteractionBotSessions","${x.bots}"
+"__typename","BotTypes"
+`;
+const QUESTIONS = '"Query","Citations","SoA"\n"how to open a shop","40","30.00%"\n"best shop guide","12","20.00%"\n\n';
+const aiCsv = (x, questions) => `${head(x, "07/31/2026")}"Metric","Share of authority (SoA)","22.5"
+
+${questions ? QUESTIONS : ""}"Page URL","Citations"
+"https://www.${x.host}/guide-to-shops/","${Math.round(x.citations * 0.6)}"
+"https://www.${x.host}/","${Math.round(x.citations * 0.4)}"
+
+"Metric","Page citations","${x.citations}"
+
+"Metric","AI referral traffic","3"
+`;
+function writeFiles() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "clarity-flow-"));
+  const out = [];
+  SITES.forEach((x, i) => {
+    const one = path.join(dir, `Clarity_${x.project.replace(/ /g, "_")}_Dashboard_${i}a.csv`);
+    fs.writeFileSync(one, dashboardCsv(x)); out.push(one);
+    const two = path.join(dir, `Clarity_${x.project.replace(/ /g, "_")}_Dashboard_${i}b.csv`);
+    fs.writeFileSync(two, aiCsv(x, i === 0)); out.push(two);
+  });
+  // The same AI period again without its questions: the questions from the first file must stay.
+  const again = path.join(dir, "Clarity_Shop_One_Dashboard_0c.csv");
+  fs.writeFileSync(again, aiCsv(ONE, false)); out.push(again);
+  return out;
+}
 const results = [];
 const check = (name, ok, detail = "") => { results.push(ok); console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok || !detail ? "" : `: ${JSON.stringify(detail).slice(0, 400)}`}`); };
 const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: path.join(SHOTS, `${name}.png`), fullPage: true }); };
 const settle = (page, ms = 700) => page.waitForTimeout(ms);
 
 (async () => {
-  if (!DIR) { console.log("Set CLARITY_DIR to the folder holding the Clarity_*.csv downloads."); process.exit(2); }
-  const files = fs.readdirSync(DIR).filter((f) => /^Clarity_.*\.csv$/.test(f)).map((f) => path.join(DIR, f));
+  const files = writeFiles();
   const { browser, page, problems } = await open({ height: 1000 });
   const bad = [];
   page.on("response", (r) => { if (r.status() >= 500) bad.push(`${r.status()} ${r.url()}`); });
@@ -77,17 +167,17 @@ const settle = (page, ms = 700) => page.waitForTimeout(ms);
   await page.goto("about:blank"); await page.goto(`${ROOT}#content`); await settle(page, 1500);
   let text = await page.locator(".content").innerText();
   check("Content lists the three sites", HOSTS.every((h) => text.includes(h)), text.slice(0, 600));
-  check("real visits leave the bots out (9,682 − 5,417 = 4,265)", text.includes("4,265"), text.slice(0, 600));
+  check(`real visits leave the bots out (${fmt(ONE.sessions)} − ${fmt(ONE.bots)})`, text.includes(fmt(ONE.sessions - ONE.bots)), text.slice(0, 600));
   await shot(page, "3-content-all");
 
   // One site: the answer first, then tabs.
-  const creer = await page.evaluate(() => window.SITES.find((s) => s.host === "creer-societe-dubai.fr")?.id);
-  await page.click(`.content [data-pick-site="${creer}"]`); await settle(page, 1500);
-  check("pressing a site in the table picks it", (await page.locator("#site-switch").innerText()).includes("creer-societe-dubai.fr"));
+  const oneId = await page.evaluate((h) => window.SITES.find((s) => s.host === h)?.id, ONE.host);
+  await page.click(`.content [data-pick-site="${oneId}"]`); await settle(page, 1500);
+  check("pressing a site in the table picks it", (await page.locator("#site-switch").innerText()).includes(ONE.host));
   text = await page.locator(".content").innerText();
-  check("one site leads with a sentence", text.includes("4,265 real visits: Clarity counted 9,682 and marked 5,417 as bots"), text.slice(0, 500));
+  check("one site leads with a sentence", text.includes(`${fmt(ONE.sessions - ONE.bots)} real visits: Clarity counted ${fmt(ONE.sessions)} and marked ${fmt(ONE.bots)} as bots`), text.slice(0, 500));
   await shot(page, "4-content-one");
-  for (const [tab, word] of [["referrers", "www.google.com"], ["problems", "slow"], ["visitors", "Unique visitors"], ["pages", "/creation-societe-freezone-dubai/"]]) {
+  for (const [tab, word] of [["referrers", "www.google.com"], ["problems", "slow"], ["visitors", "Unique visitors"], ["pages", "/guide-to-shops/"]]) {
     await page.click(`[data-cr-tab="dashboard:${tab}"]`); await settle(page, 300);
     text = await page.locator(".content").innerText();
     check(`the ${tab} tab shows ${word}`, text.includes(word), text.slice(0, 300));
@@ -95,19 +185,19 @@ const settle = (page, ms = 700) => page.waitForTimeout(ms);
   }
   await page.click('[data-cr-tab="dashboard:referrers"]'); await settle(page, 300);
   text = await page.locator(".content").innerText();
-  check("the site itself isn't listed as a referrer", !/\nwww\.creer-societe-dubai\.fr\t/.test(text) && text.includes("left out"));
+  check("the site itself isn't listed as a referrer", !text.includes(`\nwww.${ONE.host}\t`) && text.includes("left out"));
   check("the tab keeps focus for the keyboard", await page.evaluate(() => document.activeElement?.dataset?.crTab === "dashboard:referrers"));
 
   // AI search, one site: questions kept from the file that had them.
   await page.goto("about:blank"); await page.goto(`${ROOT}#ai`); await settle(page, 1500);
   text = await page.locator(".content").innerText();
-  check("AI search lists the three sites even without Google Analytics", HOSTS.every((h) => text.includes(h)) && text.includes("1,266"), text.slice(0, 400));
-  await page.click(`.content [data-pick-site="${creer}"]`); await settle(page, 1500);
+  check("AI search lists the three sites even without Google Analytics", HOSTS.every((h) => text.includes(h)) && text.includes(fmt(ONE.citations)), text.slice(0, 400));
+  await page.click(`.content [data-pick-site="${oneId}"]`); await settle(page, 1500);
   text = await page.locator(".content").innerText();
-  check("one site leads with how often Copilot cited it", text.includes("Copilot cited this site 1,266 times"), text.slice(0, 500));
+  check("one site leads with how often Copilot cited it", text.includes(`Copilot cited this site ${fmt(ONE.citations)} times`), text.slice(0, 500));
   await page.click('[data-cr-tab="ai:questions"]'); await settle(page, 300);
   text = await page.locator(".content").innerText();
-  check("the questions are there", text.includes("ouvrir une societe a dubai"), text.slice(0, 400));
+  check("the questions are there", text.includes("how to open a shop"), text.slice(0, 400));
   await shot(page, "6-ai-one");
 
   // All sites, in French, and on a phone.
