@@ -263,7 +263,7 @@
     body() {
       if (S.site !== COMP.siteId) return COMP.loading();
       if (S.data.rivals && !S.data.rivals.rivals.length) {
-        return COMP.empty(t("No competitors yet"), t("Upload your keyword list in Find competitors to see who really ranks against you, or add a competitor by hand."), `<div class="cl-empty-acts"><button class="btn btn-main" data-cl-go-find>${UI.icon("target")}${t("Find competitors")}</button></div>`);
+        return COMP.empty(t("No competitors yet"), t("Upload your keyword list in Find competitors to see who really ranks against you, or add a competitor by hand."), `<div class="cl-empty-acts"><button class="btn btn-main" data-cl-go-find>${UI.icon("target")}${t("Find competitors")}</button><button class="btn" id="cl-add-open">${UI.icon("plus")}${t("Add competitors")}</button></div>`);
       }
       return `<p class="small sec cs-basis" id="cs-basis">${basisHtml()}</p>
         <section class="tiles cs-tiles" id="cs-tiles" aria-label="${attr("Summary")}">${tilesHtml()}</section>

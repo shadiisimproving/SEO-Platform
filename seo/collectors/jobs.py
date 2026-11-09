@@ -21,8 +21,9 @@ COLLECTORS = {
     "gsc": gsc.collect, "ga4": ga4.collect, "bing": others.collect_bing, "yandex": others.collect_yandex,
     "clarity": others.collect_clarity, "pagespeed": others.collect_pagespeed,
 }
-# Hours before a source is read again. Clarity's limit is counted per UTC day and is checked apart.
-EVERY_HOURS = {"gsc": 20, "ga4": 20, "bing": 20, "yandex": 20, "clarity": 20, "pagespeed": 24 * 7}
+# Hours before a source is read again. Clarity's limit is counted per UTC day and is checked apart. Search Console goes every
+# hourly cron run (50 minutes, so a run that started a little late isn't skipped): only its spine and not-final days are read.
+EVERY_HOURS = {"gsc": 50 / 60, "ga4": 20, "bing": 20, "yandex": 20, "clarity": 20, "pagespeed": 24 * 7}
 ALERT_KIND = "source_failing"
 NAMES = {"gsc": "Search Console", "ga4": "Google Analytics", "bing": "Bing Webmaster", "yandex": "Yandex Webmaster", "clarity": "Clarity", "pagespeed": "PageSpeed Insights"}
 
@@ -134,6 +135,10 @@ def run(job: queue.ClaimedJob, engine: Engine) -> None:
     _clear_alert(engine, site_id, source)
     if not finished:
         raise RunAgain(0)
+    if source == "gsc":
+        from seo.metrics import search  # "Matches Search Console", after every finished pull
+
+        search.verify_quietly(engine, site_id)
 
 
 @handler("collect-authority")

@@ -424,10 +424,12 @@
       ${bothRead && d.same_language ? `<section class="card"><div class="cp-pairbox">${terms("mine", "Words only you use", "Words in your headings that appear nowhere on their page. Plain word matching, no AI.", d.terms_i_use)}${terms("theirs", "Words only they use", "Words in their headings that appear nowhere on your page. Plain word matching, no AI.", d.terms_they_use)}</div></section>` : ""}`;
   }
 
-  function notesBlock(d) {
-    const block = (url, competitorId, title) => COMP.notes?.block?.({ scope: "page", pageUrl: url, competitorId, title }) ?? "";
-    const mine = block(d.my_url, null, t("Notes on my page")), theirs = block(d.their_url, d.competitor_id, t("Notes on their page"));
-    return mine || theirs ? `<div class="cp-notes">${mine}${theirs}</div>` : "";
+  /* Notes on either page open in the Notes panel, beside the comparison, instead of sitting at its end. */
+  function notesButton(d) {
+    return COMP.notes?.button?.([
+      { label: t("Their page"), icon: "file-text", where: { scope: "page", pageUrl: d.their_url, competitorId: d.competitor_id, siteId: COMP.siteId } },
+      { label: t("My page"), icon: "file-text", where: { scope: "page", pageUrl: d.my_url, competitorId: null, siteId: COMP.siteId } },
+    ]) ?? "";
   }
 
   // ---- the detail: an answer on top, then one tab per question.
@@ -463,6 +465,7 @@
           <span class="end cp-actions">
             <button class="btn btn-small" id="cp-read" data-cp-read ${busy ? "disabled" : ""}>${UI.icon("refresh-cw", busy ? "spin" : "")}${t("Read again")}</button>
             <button class="btn btn-small" id="cp-change" data-cp-change="${d.id}">${UI.icon("pencil")}${t("Change this pair")}</button>
+            ${notesButton(d)}
             ${UI.taskButton(pairFind(d))}
           </span>
         </div>
@@ -475,8 +478,7 @@
       <div class="cp-tabs" role="tablist" aria-label="${t("Page vs page")}">
         ${SECTIONS.map(([id, label]) => `<button class="cp-tab" role="tab" id="cp-tab-${id}" data-cp-section="${id}" aria-selected="${id === current}" aria-controls="cp-panel" tabindex="${id === current ? 0 : -1}">${t(label)}</button>`).join("")}
       </div>
-      <div class="cp-panel" id="cp-panel" role="tabpanel" aria-labelledby="cp-tab-${current}">${sectionPanel(d)}</div>
-      ${notesBlock(d)}`;
+      <div class="cp-panel" id="cp-panel" role="tabpanel" aria-labelledby="cp-tab-${current}">${sectionPanel(d)}</div>`;
   }
 
   // ---- keeping an eye on pages being read -------------------------------------------------------

@@ -21,25 +21,43 @@ def _wave(day: str, base: int, salt: int = 0) -> int:
     return max(0, base + (value * 7919 % 41) - 20 + (2 if date.fromisoformat(day).weekday() < 5 else -base // 4))
 
 
+def _gsc_page(body: dict, rows: list[dict], **extra) -> httpx.Response:
+    """Like Google: rowLimit and startRow cut the answer, and metadata only comes with fresh data."""
+    start_row, limit = int(body.get("startRow", 0)), int(body.get("rowLimit", 1000))
+    return httpx.Response(200, json={"rows": rows[start_row:start_row + limit], **extra})
+
+
 def _gsc(request: httpx.Request) -> httpx.Response:
     body = json.loads(request.content)
     dims, start, end = body["dimensions"], body["startDate"], body["endDate"]
+    fresh = body.get("dataState") in ("all", "hourly_all")
     if dims == ["date"]:
-        first, last = date.fromisoformat(start).toordinal(), date.fromisoformat(end).toordinal()
+        # Final data stops 3 days back; fresh data reaches the end date, and its last 2 days aren't final yet.
+        first, last = date.fromisoformat(start).toordinal(), date.fromisoformat(end).toordinal() - (0 if fresh else 2)
         rows = []
         for ordinal in range(max(first, last - 480), last + 1):
             day = date.fromordinal(ordinal).isoformat()
             rows.append({"keys": [day], "clicks": _wave(day, 120), "impressions": _wave(day, 120) * 22, "position": 6 + (ordinal % 9) / 3})
-        return httpx.Response(200, json={"rows": rows})
+        extra = {"metadata": {"first_incomplete_date": date.fromordinal(last - 1).isoformat()}} if fresh and rows else {}
+        return _gsc_page(body, rows, **extra)
     pages = [("https://mine-one.test/visa/", 60, 4.2), ("https://mine-one.test/creer-societe/", 35, 7.5), ("https://mine-one.test/", 20, 3.1), ("https://mine-one.test/blog/zone-franche-seville/", 9, 14.0)]
     queries = [("créer société seville", 40, 5.1), ("visa seville prix", 30, 3.4), ("titre de séjour", 18, 5.2), ("zone franche séville", 11, 12.0), ("loyer a seville", 6, 23.0), ("coût de la vie séville", 3, 44.0), ("ouvrir un compte", 1, 61.0)]
-    if dims == ["page"]:
-        rows = [{"keys": [url], "clicks": _wave(start, base, n), "impressions": _wave(start, base, n) * 20, "position": pos} for n, (url, base, pos) in enumerate(pages)]
-    elif dims == ["query"]:
-        rows = [{"keys": [text], "clicks": _wave(start, base, n), "impressions": _wave(start, base, n) * 20, "position": pos} for n, (text, base, pos) in enumerate(queries)]
+    if dims == ["hour"]:
+        # Hours of the last two days, Pacific time, as Google writes them.
+        last = date.fromisoformat(end)
+        rows = []
+        for back in (1, 0):
+            day = date.fromordinal(last.toordinal() - back).isoformat()
+            rows += [{"keys": [f"{day}T{h:02d}:00:00-08:00"], "clicks": max(0, _wave(day, 6, h) // 2), "impressions": _wave(day, 6, h) * 11, "position": 6 + h % 5 / 2} for h in range(24)]
+        return _gsc_page(body, rows, metadata={"first_incomplete_hour": f"{last.isoformat()}T20:00:00-08:00"})
+    countries = [("fra", 70, 6.0), ("esp", 20, 9.5), ("bel", 8, 7.1), ("che", 4, 8.0)]
+    devices = [("MOBILE", 60, 7.2), ("DESKTOP", 40, 5.9), ("TABLET", 3, 8.4)]
+    table = {"page": pages, "query": queries, "country": countries, "device": devices}.get(dims[0] if len(dims) == 1 else "", queries)
+    if len(dims) == 1 and dims[0] in ("page", "query", "country", "device"):
+        rows = [{"keys": [key], "clicks": _wave(start, base, n), "impressions": _wave(start, base, n) * 20, "position": pos} for n, (key, base, pos) in enumerate(table)]
     else:
         rows = [{"keys": [text, pages[n % len(pages)][0]], "clicks": _wave(start, base, n), "impressions": _wave(start, base, n) * 20, "position": pos} for n, (text, base, pos) in enumerate(queries)]
-    return httpx.Response(200, json={"rows": rows})
+    return _gsc_page(body, rows)
 
 
 def _ga4(request: httpx.Request) -> httpx.Response:

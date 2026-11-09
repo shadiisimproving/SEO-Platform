@@ -33,7 +33,8 @@ def _competitor(conn, site_id: int, competitor_id) -> dict:
 
 
 def _competitors(conn, site_id: int) -> list[dict]:
-    rows = conn.execute(text("SELECT s.id, s.host FROM site_competitors sc JOIN sites s ON s.id = sc.competitor_id WHERE sc.site_id = :s"), {"s": site_id}).mappings().all()
+    # Automatic pairs come from shared keywords, so only competitors whose keywords are followed get new ones.
+    rows = conn.execute(text("SELECT s.id, s.host FROM site_competitors sc JOIN sites s ON s.id = sc.competitor_id WHERE sc.site_id = :s AND sc.tracking = 'on'"), {"s": site_id}).mappings().all()
     return [dict(r) for r in rows]
 
 

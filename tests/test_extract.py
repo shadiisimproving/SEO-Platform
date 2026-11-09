@@ -148,6 +148,14 @@ def test_empty_and_broken_documents_do_not_raise():
     assert fields(b"\xff\xfe\x00\x00garbage").word_count >= 0
 
 
+def test_control_characters_in_the_text_do_not_end_the_test():
+    # A real page had a vertical tab pasted into a table cell, and lxml refused it.
+    for char in ("\x08", "\x0b", "\x0c", "\x1f", "￾"):
+        page = fields(f"<html><head><title>Taux{char}0 %</title></head><body><main><table><tr><td>respecté {char}(en Freezone)</td></tr></table></main></body></html>")
+        assert page.title == "Taux 0 %"
+        assert "respecté (en Freezone)" in page.text
+
+
 def test_as_dict_is_json_friendly_and_leaves_out_the_text():
     data = fields().as_dict()
     assert data["title"] == "Créer une société à Séville"

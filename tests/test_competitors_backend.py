@@ -1013,6 +1013,29 @@ def test_notes_on_all_one_competitor_and_a_page(world):
         assert [n["id"] for n in notes.list_notes(world.engine, page_url=spelling)] == [page["id"]]
 
 
+def test_notes_on_a_screen_and_on_a_whole_website(world):
+    rival = add_rival(world)
+    screen = notes.create(world.engine, "screen", "Ask the mediator", world.own, rival, screen="backlinks")
+    site = notes.create(world.engine, "site", "Redesign in March", world.own, rival)
+    everywhere = notes.create(world.engine, "site", "For all my sites")
+    assert screen["screen"] == "backlinks" and screen["competitor_id"] is None and site["competitor_id"] is None and site["screen"] is None
+    assert [n["id"] for n in notes.list_notes(world.engine, "screen", screen="backlinks", site_id=world.own)] == [screen["id"]]
+    assert notes.list_notes(world.engine, "screen", screen="keywords") == []
+    assert sorted(n["id"] for n in notes.list_notes(world.engine, "site", site_id=world.own)) == sorted([site["id"], everywhere["id"]])
+    for wrong in ({"screen": None}, {"screen": "nowhere"}):
+        with pytest.raises(Refused):
+            notes.create(world.engine, "screen", "x", world.own, **wrong)
+    answer = world.client.post("/api/notes", json={"scope": "screen", "body": "Through the API", "site_id": world.own, "screen": "tasks"})
+    assert answer.status_code == 201 and answer.get_json()["screen"] == "tasks"
+    assert [n["body"] for n in world.client.get(f"/api/notes?scope=screen&screen=tasks&site_id={world.own}").get_json()["notes"]] == ["Through the API"]
+
+
+def test_the_database_refuses_a_scope_it_does_not_know(world):
+    from sqlalchemy.exc import DBAPIError
+    with pytest.raises(DBAPIError), world.engine.begin() as conn:
+        conn.execute(text("INSERT INTO notes (scope, body) VALUES ('bogus', 'x')"))
+
+
 def test_a_note_on_an_accented_page_is_found_in_either_spelling(world):
     note = notes.create(world.engine, "page", "Seite", None, None, f"https://{ACCENTED}/café")
     assert [n["id"] for n in notes.list_notes(world.engine, page_url=f"https://{ASCII}/caf%C3%A9")] == [note["id"]]
@@ -1417,6 +1440,34 @@ def test_api_competitor_routes(world):
     assert client.get(f"/api/competitors/999999/profile?site_id={world.own}").status_code == 404
     assert client.delete(f"/api/competitors/{rival}?site_id={world.own}").status_code == 200
     assert client.delete(f"/api/competitors/{rival}?site_id={world.own}").status_code == 404
+
+
+def test_many_competitors_are_added_from_one_pasted_list(world):
+    client = world.client
+    client.post("/api/competitors", json={"site_id": world.own, "address": "old.example"})
+    pasted = "https://one.example/page\n two.example ,www.three.example; \n\none.example\nold.example\nme.example\nmailto:a@b.example\tnot-an-address"
+    answer = client.post("/api/competitors/many", json={"site_id": world.own, "addresses": pasted})
+    assert answer.status_code == 200
+    body = answer.get_json()
+    assert [a["host"] for a in body["added"]] == ["one.example", "two.example", "three.example"]
+    assert [a["address"] for a in body["already"]] == ["old.example"]
+    assert {r["address"]: r["reason"] for r in body["refused"]} == {
+        "me.example": "me.example is part of your own websites, so it can't be a competitor.",
+        "mailto:a@b.example": "That doesn't look like a website address.",
+        "not-an-address": "That doesn't look like a website address.",
+    }
+    listed = client.get(f"/api/competitors?site_id={world.own}").get_json()["competitors"]
+    assert sorted(c["host"] for c in listed) == ["old.example", "one.example", "three.example", "two.example"]
+
+
+def test_adding_many_needs_an_address_my_site_and_a_short_enough_list(world):
+    client = world.client
+    assert client.post("/api/competitors/many", json={"site_id": world.own, "addresses": " ,\n "}).status_code == 400
+    assert client.post("/api/competitors/many", json={"site_id": 999999, "addresses": "a.example"}).status_code == 404
+    too_many = "\n".join(f"r{i}.example" for i in range(suggest.MANY_AT_MOST + 1))
+    refused = client.post("/api/competitors/many", json={"site_id": world.own, "addresses": too_many})
+    assert refused.status_code == 400 and "up to 200" in refused.get_json()["error"]
+    assert suggest.split_addresses(["a.example", "A.example/", "b.example"]) == ["a.example", "b.example"]
 
 
 def test_api_pair_routes(world):

@@ -11,6 +11,7 @@ from sqlalchemy import Engine, text
 
 from seo.collectors import http
 from seo.collectors.http import SourceError
+from seo.competitors import tracking
 from seo.core.errors import Refused
 from seo.sources import service as sources
 
@@ -80,9 +81,14 @@ def fetch_moz(engine: Engine, domains: list | None = None) -> dict:
         waiting = [row[0] for row in conn.execute(
             text("SELECT target FROM moz_metrics WHERE important = 1 AND (fetched_at IS NULL OR fetched_at < DATE_FORMAT(UTC_DATE(), '%Y-%m-01')) ORDER BY created_at")
         ).all()]
+        # A competitor no site has on never uses Moz rows, even free ones.
+        paused = {host.removeprefix("www.").lower() for host in tracking.hosts_not_on(conn)}
+    skipped = [d for d in waiting if d in paused]
+    waiting = [d for d in waiting if d not in paused]
     if domains is not None:
         wanted = {clean_domain(d) for d in domains}
         waiting = [d for d in waiting if d in wanted]
+        skipped = [d for d in skipped if d in wanted]
     left = max(0, MOZ_FREE_ROWS - moz_rows_used(engine))
     done, failed = 0, None
     for domain in waiting[:left]:
@@ -107,7 +113,7 @@ def fetch_moz(engine: Engine, domains: list | None = None) -> dict:
         done += 1
     if done and not failed:
         sources.note_app_key(engine, "moz", None)
-    return {**list_important(engine), "fetched": done, "held_back": max(0, len(waiting) - left), "error": failed}
+    return {**list_important(engine), "fetched": done, "held_back": max(0, len(waiting) - left), "skipped_competitors": len(skipped), "error": failed}
 
 
 def fetch_popularity(engine: Engine) -> dict:

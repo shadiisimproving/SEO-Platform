@@ -151,7 +151,7 @@ def _all_gaps(engine: Engine, site_id: int) -> dict:
     with engine.connect() as conn:
         require_own(conn, site_id)
         mine = my_domains(conn)
-        competitors = tracked_competitors(conn, site_id)
+        competitors = [c for c in tracked_competitors(conn, site_id) if c["tracking"] != "off"]
         logged = conn.execute(text("SELECT domain, status FROM backlinks WHERE site_id = :s"), {"s": site_id}).all()
         prospects = {row[0] for row in conn.execute(text("SELECT domain FROM prospects WHERE site_id = :s"), {"s": site_id})}
         decisions = _overrides(conn, site_id)
@@ -159,14 +159,14 @@ def _all_gaps(engine: Engine, site_id: int) -> dict:
         edits = {row["domain"]: row for row in conn.execute(text("SELECT * FROM link_domain_edits")).mappings()}
         removed: dict[str, list[int]] = {}
         for domain, competitor_id in conn.execute(
-            text("SELECT r.domain, r.competitor_id FROM competitor_referrers r JOIN site_competitors sc ON sc.competitor_id = r.competitor_id AND sc.site_id = :s WHERE r.removed_by_hand = 1"),
+            text("SELECT r.domain, r.competitor_id FROM competitor_referrers r JOIN site_competitors sc ON sc.competitor_id = r.competitor_id AND sc.site_id = :s AND sc.tracking <> 'off' WHERE r.removed_by_hand = 1"),
             {"s": site_id},
         ).all():
             removed.setdefault(domain, []).append(competitor_id)
         rows = conn.execute(
             text(
                 "SELECT r.*, s.host, d.quality, d.reason, d.page_note, d.page_title, d.cc_rank, d.cc_total, d.cc_outlinks FROM competitor_referrers r "
-                "JOIN site_competitors sc ON sc.competitor_id = r.competitor_id AND sc.site_id = :s JOIN sites s ON s.id = r.competitor_id "
+                "JOIN site_competitors sc ON sc.competitor_id = r.competitor_id AND sc.site_id = :s AND sc.tracking <> 'off' JOIN sites s ON s.id = r.competitor_id "
                 "LEFT JOIN link_domains d ON d.domain = r.domain WHERE r.removed_by_hand = 0"
             ),
             {"s": site_id},

@@ -130,7 +130,9 @@ def _one_row_per_failing_source(items: list[dict]) -> list[dict]:
 
 def _changes(engine: Engine, site_id: int | None) -> list[dict]:
     """What competitors changed in the last 7 days, newest first. Only competitors of this site, when one site is picked."""
-    join = "JOIN site_competitors c ON c.competitor_id = s.id AND c.site_id = :s " if site_id else ""
+    # Paused competitors are left out. With all my sites, a rival counts while any site still reads its pages.
+    join = "JOIN site_competitors c ON c.competitor_id = s.id AND c.site_id = :s AND c.tracking <> 'off' " if site_id else ""
+    join = join or "JOIN (SELECT DISTINCT competitor_id FROM site_competitors WHERE tracking <> 'off') c ON c.competitor_id = s.id "
     with engine.connect() as conn:
         rows = conn.execute(
             text(
@@ -170,6 +172,14 @@ def _path(url: str) -> str:
     return urlsplit(url).path or "/"
 
 
+# Search Console's fresh days aren't final and come in low, so Today compares final days only: before fresh_from.
+_FINAL = "day < COALESCE((SELECT fresh_from FROM site_sources WHERE site_id = :s AND source = 'gsc'), '9999-12-31')"
+
+
+def _gsc_final_day(conn, table: str, site_id: int):
+    return conn.execute(text(f"SELECT MAX(day) FROM {table} WHERE site_id = :s AND {_FINAL}"), {"s": site_id}).scalar()
+
+
 def _own_sites(conn, site_id: int | None):
     clause, values = _site_filter(site_id)
     return conn.execute(text(f"SELECT s.id, s.host FROM sites s WHERE s.kind = 'own' {clause} ORDER BY s.host"), values).mappings().all()
@@ -183,7 +193,7 @@ def _page_moves(engine: Engine, site_id: int | None) -> list[dict]:
     moves = []
     with engine.connect() as conn:
         for site in _own_sites(conn, site_id):
-            end = conn.execute(text("SELECT MAX(day) FROM gsc_page WHERE site_id = :s"), {"s": site["id"]}).scalar()
+            end = _gsc_final_day(conn, "gsc_page", site["id"])
             if end is None:
                 continue
             now_from, before_from, before_to = end - timedelta(days=6), end - timedelta(days=13), end - timedelta(days=7)
@@ -211,7 +221,7 @@ def _keyword_moves(engine: Engine, site_id: int | None) -> list[dict]:
     moves = []
     with engine.connect() as conn:
         for site in _own_sites(conn, site_id):
-            end = conn.execute(text("SELECT MAX(day) FROM gsc_query WHERE site_id = :s"), {"s": site["id"]}).scalar()
+            end = _gsc_final_day(conn, "gsc_query", site["id"])
             if end is None:
                 continue
             rows = conn.execute(
@@ -351,7 +361,7 @@ def _site_strip(engine: Engine, site_id: int | None) -> list[dict]:
                     row["leads"] = round(float(found["now_l"] or 0))
                     if compare:
                         row.update(leads_was=round(float(found["was_l"] or 0)), leads_change=row["leads"] - round(float(found["was_l"] or 0)))
-            gsc = conn.execute(text("SELECT MIN(day) first_day, MAX(day) last_day FROM gsc_daily WHERE site_id = :s"), {"s": site["id"]}).mappings().first()
+            gsc = conn.execute(text(f"SELECT MIN(day) first_day, MAX(day) last_day FROM gsc_daily WHERE site_id = :s AND {_FINAL}"), {"s": site["id"]}).mappings().first()
             if gsc["last_day"]:
                 bounds = _windows(gsc["last_day"])
                 found = conn.execute(text("SELECT SUM(IF(day > :n, clicks, 0)) now_c, SUM(IF(day <= :n, clicks, 0)) was_c FROM gsc_daily WHERE site_id = :s AND day > :p AND day <= :e"), {**bounds, "s": site["id"]}).mappings().first()

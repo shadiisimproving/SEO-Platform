@@ -1,6 +1,21 @@
 /* Notes in the Competitors area, and the monthly health test on Site health. Tokens only, the glass look stays. */
 
 /* ---- Notes ---- */
+/* The Notes button on every screen, and the panel it opens beside the page. */
+.nb-fab { position: fixed; right: calc(var(--gap) + 6px); bottom: 16px; z-index: 25; display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding-inline: 14px; box-shadow: var(--shadow-2, 0 6px 20px rgba(0, 0, 0, .14)); background: var(--panel-solid); }
+.nb-fab svg.i { width: 16px; height: 16px; }
+.nb-beside-panel .nb-fab { right: calc(min(var(--panel-w), 100% - var(--gap) * 2) + var(--gap) * 2); }
+@media (max-width: 720px) { .nb-beside-panel .nb-fab { display: none; } }
+@media print { .nb-fab { display: none; } }
+.nb-panel { padding: 14px 18px 18px; overflow: auto; }
+.nb-panel .nb-ways { margin-bottom: 14px; }
+.nb-bare .nb-compose { padding: 0 0 6px; }
+.nb-bare .nb-list { padding: 0; }
+.nb-panel-search { flex: none; margin-bottom: 10px; }
+.nb-panel-empty { padding: 8px 0; }
+/* A plain count, not the red alert badge: a note is never something wrong. */
+.nb-count { margin-left: 2px; font-size: 11px; font-weight: 600; padding: 0 6px; border-radius: 9px; line-height: 18px; background: var(--chip, rgba(120, 130, 150, .14)); color: var(--text-2); }
+.nb-count[hidden] { display: none; }
 .nb-new-body { padding: 14px 18px 12px; }
 .nb-ways { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
 .nb-way { display: inline-flex; align-items: center; gap: 6px; }

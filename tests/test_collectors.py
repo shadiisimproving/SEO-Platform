@@ -61,6 +61,10 @@ def _gsc_answer(request):
         return httpx.Response(200, json={"rows": [{"keys": ["https://mine.example/a/"], "clicks": 6, "impressions": 60, "position": 5}]})
     if dims == ["query"]:
         return httpx.Response(200, json={"rows": [{"keys": ["créer société"], "clicks": 4, "impressions": 40, "position": 3.2}, {"keys": ["creer societe"], "clicks": 1, "impressions": 5, "position": 9}]})
+    if dims == ["country"]:
+        return httpx.Response(200, json={"rows": [{"keys": ["fra"], "clicks": 8, "impressions": 80, "position": 6.0}, {"keys": ["esp"], "clicks": 2, "impressions": 20, "position": 12.0}]})
+    if dims == ["device"]:
+        return httpx.Response(200, json={"rows": [{"keys": ["MOBILE"], "clicks": 7, "impressions": 70, "position": 7.0}, {"keys": ["DESKTOP"], "clicks": 3, "impressions": 30, "position": 8.7}]})
     return httpx.Response(200, json={"rows": [{"keys": ["créer société", "https://mine.example/a/"], "clicks": 4, "impressions": 40, "position": 3.2}]})
 
 
@@ -161,7 +165,7 @@ def test_search_console_saves_a_day_and_keeps_accents_apart(world):
     _google(world)
     world.answers["searchAnalytics"] = _gsc_answer
     with world.engine.begin() as conn:  # only one day is left to read
-        newest = common.today(world.engine) - timedelta(days=gsc.LAG_DAYS)
+        newest = common.google_today(world.engine)
         for n in range(1, gsc.HISTORY_DAYS + 1):
             conn.execute(text("INSERT INTO coverage (site_id, source, day) VALUES (:s, 'gsc', :d)"), {"s": world.site, "d": newest - timedelta(days=n)})
             if n >= gsc.REREAD_DAYS:
@@ -183,7 +187,7 @@ def test_search_console_stops_after_its_share_and_a_rerun_carries_on(world):
     assert gsc.collect(world.engine, world.site, budget_seconds=0) is False
     with world.engine.connect() as conn:
         assert conn.execute(text("SELECT COUNT(*) FROM coverage WHERE source = 'gsc'")).scalar() == 0
-    newest = common.today(world.engine) - timedelta(days=gsc.LAG_DAYS)
+    newest = common.google_today(world.engine)
     days = common.pending_days(world.engine, world.site, "gsc", newest, newest - timedelta(days=9), gsc.REREAD_DAYS)
     assert days[0] == newest and len(days) == 10
 
@@ -437,3 +441,129 @@ def test_search_console_says_data_through_only_for_days_it_has_read(world):
     assert gsc.collect(world.engine, world.site) is True
     with world.engine.connect() as conn:
         assert conn.execute(text("SELECT data_through FROM site_sources WHERE site_id = :s AND source = 'gsc'"), {"s": world.site}).scalar() is not None
+
+
+# ---- Search Console like the real screen: fresh days, Pacific time, revisions, countries, devices, limits, pruning -----
+
+
+def _fresh_answer(final_lag=2, clicks=10, extra_days=()):
+    """Days up to today in Pacific time; the last final_lag days aren't final yet, as Google says in metadata."""
+    import json
+    from datetime import date
+
+    def answer(request):
+        body = json.loads(request.content)
+        dims, end = body["dimensions"], date.fromisoformat(body["endDate"])
+        if dims == ["date"]:
+            days = [end - timedelta(days=n) for n in range(4)] + list(extra_days)
+            rows = [{"keys": [d.isoformat()], "clicks": clicks, "impressions": 100, "position": 7.5} for d in days]
+            meta = {"metadata": {"first_incomplete_date": (end - timedelta(days=final_lag - 1)).isoformat()}} if final_lag else {}
+            return httpx.Response(200, json={"rows": rows, **meta})
+        return _gsc_answer(request)
+    return answer
+
+
+def test_search_console_asks_for_fresh_data_on_every_request(world):
+    _google(world)
+    world.answers["searchAnalytics"] = _fresh_answer()
+    assert gsc.collect(world.engine, world.site) is True
+    import json
+    bodies = [json.loads(r.content) for r in world.calls if "searchAnalytics" in str(r.url)]
+    assert bodies and all(b["dataState"] == "all" and b["type"] == "web" and b["rowLimit"] == gsc.ROW_LIMIT for b in bodies)
+    assert {tuple(b["dimensions"]) for b in bodies} == {("date",), ("page",), ("query",), ("query", "page"), ("country",), ("device",)}
+
+
+def test_search_console_keeps_final_and_fresh_days_apart(world):
+    _google(world)
+    world.answers["searchAnalytics"] = _fresh_answer(final_lag=2)
+    assert gsc.collect(world.engine, world.site) is True
+    today = common.google_today(world.engine)
+    with world.engine.connect() as conn:
+        row = conn.execute(text("SELECT data_through, fresh_from, fresh_through FROM site_sources WHERE site_id = :s AND source = 'gsc'"), {"s": world.site}).one()
+        assert row == (today - timedelta(days=2), today - timedelta(days=1), today)
+        assert conn.execute(text("SELECT COUNT(*) FROM gsc_daily WHERE site_id = :s"), {"s": world.site}).scalar() == 4
+
+
+def test_search_console_rereads_days_that_are_not_final_after_50_minutes(world):
+    _google(world)
+    world.answers["searchAnalytics"] = _fresh_answer(final_lag=2)
+    assert gsc.collect(world.engine, world.site) is True
+    today = common.google_today(world.engine)
+    with world.engine.begin() as conn:
+        conn.execute(text("UPDATE coverage SET saved_at = UTC_TIMESTAMP(3) - INTERVAL 51 MINUTE WHERE site_id = :s"), {"s": world.site})
+    fresh_from = today - timedelta(days=1)
+    days = common.pending_days(world.engine, world.site, "gsc", today, today - timedelta(days=3), gsc.REREAD_DAYS, hot_from=fresh_from, hot_minutes=gsc.HOT_MINUTES)
+    assert days == [today, today - timedelta(days=1)]  # final days read 51 minutes ago wait for the daily re-read
+
+
+def test_search_console_replaces_a_fresh_day_when_google_revises_it(world):
+    _google(world)
+    world.answers["searchAnalytics"] = _fresh_answer(clicks=10)
+    gsc.collect(world.engine, world.site)
+    world.answers["searchAnalytics"] = _fresh_answer(clicks=14)
+    gsc.collect(world.engine, world.site)
+    with world.engine.connect() as conn:
+        assert conn.execute(text("SELECT SUM(clicks) FROM gsc_daily WHERE site_id = :s"), {"s": world.site}).scalar() == 4 * 14
+
+
+def test_search_console_with_no_rows_never_claims_a_day(world):
+    _google(world)
+    world.answers["searchAnalytics"] = lambda request: httpx.Response(200, json={})
+    assert gsc.collect(world.engine, world.site) is True
+    with world.engine.connect() as conn:
+        assert conn.execute(text("SELECT data_through FROM site_sources WHERE site_id = :s AND source = 'gsc'"), {"s": world.site}).scalar() is None
+        assert conn.execute(text("SELECT COUNT(*) FROM coverage WHERE source = 'gsc'")).scalar() == 0
+
+
+def test_search_console_days_are_pacific_time():
+    from datetime import date, datetime
+    assert common.google_today(None, now=datetime(2026, 11, 9, 2, 0)) == date(2026, 11, 8)  # 2 a.m. UTC is 6 p.m. the day before in California
+    assert common.google_today(None, now=datetime(2026, 11, 9, 9, 0)) == date(2026, 11, 9)
+    assert common.google_today(None, now=datetime(2026, 7, 9, 6, 59)) == date(2026, 7, 8)  # summer time: UTC-7
+
+
+def test_search_console_saves_countries_and_devices(world):
+    _google(world)
+    world.answers["searchAnalytics"] = _fresh_answer()
+    gsc.collect(world.engine, world.site)
+    today = common.google_today(world.engine)
+    with world.engine.connect() as conn:
+        assert conn.execute(text("SELECT country, clicks FROM gsc_country WHERE site_id = :s AND day = :d ORDER BY clicks DESC"), {"s": world.site, "d": today}).all() == [("fra", 8), ("esp", 2)]
+        assert conn.execute(text("SELECT device, clicks FROM gsc_device WHERE site_id = :s AND day = :d ORDER BY clicks DESC"), {"s": world.site, "d": today}).all() == [("MOBILE", 7), ("DESKTOP", 3)]
+
+
+def test_search_console_marks_a_day_partial_only_when_google_fills_a_report(world, monkeypatch):
+    _google(world)
+    world.answers["searchAnalytics"] = _fresh_answer()
+    monkeypatch.setattr(gsc, "ROW_LIMIT", 2)  # the query report gives 2 rows: a full page
+    gsc.collect(world.engine, world.site)
+    with world.engine.connect() as conn:
+        assert {row[0] for row in conn.execute(text("SELECT status FROM coverage WHERE source = 'gsc'")).all()} == {"partial"}
+    monkeypatch.setattr(gsc, "ROW_LIMIT", 3)
+    with world.engine.begin() as conn:
+        conn.execute(text("DELETE FROM coverage"))
+    gsc.collect(world.engine, world.site)
+    with world.engine.connect() as conn:
+        assert {row[0] for row in conn.execute(text("SELECT status FROM coverage WHERE source = 'gsc'")).all()} == {"ok"}
+
+
+def test_search_console_deletes_days_older_than_16_months(world):
+    _google(world)
+    old = common.google_today(world.engine) - timedelta(days=gsc.HISTORY_DAYS + 3)
+    with world.engine.begin() as conn:
+        conn.execute(text("INSERT INTO gsc_daily (site_id, day, clicks, impressions) VALUES (:s, :d, 1, 1)"), {"s": world.site, "d": old})
+        conn.execute(text("INSERT INTO gsc_query (site_id, day, query_hash, query, clicks, impressions) VALUES (:s, :d, 'h', 'q', 1, 1)"), {"s": world.site, "d": old})
+        conn.execute(text("INSERT INTO gsc_country (site_id, day, country, clicks, impressions) VALUES (:s, :d, 'fra', 1, 1)"), {"s": world.site, "d": old})
+        conn.execute(text("INSERT INTO coverage (site_id, source, day) VALUES (:s, 'gsc', :d)"), {"s": world.site, "d": old})
+    world.answers["searchAnalytics"] = _fresh_answer()
+    gsc.collect(world.engine, world.site)
+    with world.engine.connect() as conn:
+        for table in ("gsc_daily", "gsc_query", "gsc_country", "coverage"):
+            assert conn.execute(text(f"SELECT COUNT(*) FROM {table} WHERE site_id = :s AND day < :o"), {"s": world.site, "o": old + timedelta(days=1)}).scalar() == 0, table
+
+
+def test_search_console_is_due_every_hourly_run(world):
+    _google(world)
+    with world.engine.begin() as conn:
+        conn.execute(text("UPDATE site_sources SET last_attempt_at = UTC_TIMESTAMP(3) - INTERVAL 55 MINUTE WHERE source = 'gsc'"))
+    assert (world.site, "gsc") in jobs.enqueue_due(world.engine)

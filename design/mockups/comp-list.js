@@ -132,19 +132,21 @@
         <button class="btn btn-main" id="cl-add-open">${icon("plus")}${t("Add a competitor")}</button>
       </section>
       <div class="table-wrap"><table class="data" id="cl-table">
-        <thead><tr><th scope="col">${t("Competitor")}</th><th scope="col" class="c">${t("Shared keywords")}</th><th scope="col" class="c">${t("They're ahead on")}</th><th scope="col" class="c">${t("You're ahead on")}</th><th scope="col" class="c">${t("Only they rank on")}</th><th scope="col" class="c">${t("Edits in 30 days")}</th><th scope="col">${t("Watching")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
+        <thead><tr><th scope="col">${t("Competitor")}</th><th scope="col" class="c">${t("Shared keywords")}</th><th scope="col" class="c">${t("They're ahead on")}</th><th scope="col" class="c">${t("You're ahead on")}</th><th scope="col" class="c">${t("Only they rank on")}</th><th scope="col" class="c">${t("Edits in 30 days")}</th><th scope="col">${t("Watching")}</th><th scope="col">${t("Tracking")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
         <tbody>${rows.map(listRow).join("")}</tbody>
       </table></div>`;
   }
 
-  const listRow = (c) => `<tr data-cl-row="${c.id}" class="${list.flash === c.id ? "flash" : ""}">
+  const kwCell = (c, n) => (COMP.trackingOf?.(c) ?? "on") === "on" ? UI.num(n) : `<span class="muted" title="${attr("Keyword tracking isn't on for this competitor.")}">—</span>`;
+  const listRow = (c) => `<tr data-cl-row="${c.id}" class="${list.flash === c.id ? "flash" : ""}${c.tracking && c.tracking !== "on" ? ` ct-row-${c.tracking}` : ""}">
       <td class="head-cell"><span class="with-logo">${UI.siteLogo(c.host)}<span class="logo-text"><button class="kw cl-name" data-cl-open="${c.id}" dir="auto">${esc(c.display || c.host)}</button>${c.source === "suggested" ? "" : `<span class="second">${esc(howAdded(c.source))}</span>`}</span></span></td>
-      <td class="c" data-label="${attr("Shared keywords")}">${UI.num(c.shared)}</td>
-      <td class="c" data-label="${attr("They're ahead on")}">${UI.num(c.they_ahead)}</td>
-      <td class="c" data-label="${attr("You're ahead on")}">${UI.num(c.i_ahead)}</td>
-      <td class="c" data-label="${attr("Only they rank on")}">${UI.num(c.theirs_only)}</td>
+      <td class="c" data-label="${attr("Shared keywords")}">${kwCell(c, c.shared)}</td>
+      <td class="c" data-label="${attr("They're ahead on")}">${kwCell(c, c.they_ahead)}</td>
+      <td class="c" data-label="${attr("You're ahead on")}">${kwCell(c, c.i_ahead)}</td>
+      <td class="c" data-label="${attr("Only they rank on")}">${kwCell(c, c.theirs_only)}</td>
       <td class="c" data-label="${attr("Edits in 30 days")}">${c.crawl?.status === "blocked" ? `<span class="muted" title="${attr("Edits can't be tracked on this site.")}">—</span>` : UI.num(c.edits_30d)}</td>
-      <td data-label="${attr("Watching")}" data-cl-watch="${c.id}">${watching(c.crawl)}</td>
+      <td data-label="${attr("Watching")}" data-cl-watch="${c.id}">${c.tracking === "off" ? `<span class="status sec">${icon("pause")}${esc(t("Paused"))}</span>` : watching(c.crawl)}</td>
+      <td data-label="${attr("Tracking")}">${COMP.trackingSwitch?.(c) ?? ""}</td>
       <td class="r nowrap" data-label=""><button class="icon-btn cl-row-btn" data-cl-remove="${c.id}" aria-label="${attr("Remove")}: ${esc(c.host)}" data-tip="${attr("Remove")}">${icon("trash-2")}</button></td>
     </tr>`;
 
@@ -202,20 +204,45 @@
   };
   const fieldClear = (input, box) => { input?.classList.remove("invalid"); if (box) box.replaceChildren(); };
 
+  /* The same splitting as the server: one per line, or commas, semicolons, tabs, spaces. One site counts once. */
+  function splitAddresses(text) {
+    const seen = new Set();
+    return String(text || "").split(/[\s,;]+/).map((a) => a.trim().replace(/^["'<]+|["'>]+$/g, "")).filter((a) => {
+      const key = a.toLowerCase().split("://").pop().split("/")[0].replace(/^www\./, "");
+      if (!a || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }
+  const ADD_AT_MOST = 200;
+
+  /* Opens from My competitors (one site) and from Summary (may be All my sites, so it asks which site). */
   function openAdd(opener) {
-    const site = COMP.siteId;
-    UI.openPanel(`${UI.panelHead(t("Add a competitor"), `${t("For")} <span class="mono">${esc(COMP.site()?.host || "")}</span>`)}
+    const all = COMP.siteId === COMP.ALL;
+    const site = all ? (UI.preferredSite(COMP.sites)?.id ?? null) : COMP.siteId;
+    const sub = all ? t("Paste one or many") : `${t("For")} <span class="mono">${esc(COMP.site()?.host || "")}</span>`;
+    const picker = all ? `<label class="field"><span>${t("A competitor of which of your websites?")}</span><select class="select" id="cl-add-site" style="width:100%">${COMP.sites.map((s) => `<option value="${s.id}" ${s.id === site ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></label>` : "";
+    UI.openPanel(`${UI.panelHead(t("Add competitors"), sub)}
       <form class="panel-body" id="cl-add-form" novalidate>
-        <label class="field"><span>${t("Its website address")} <span class="req">*</span></span><input class="input mono" id="cl-add-address" dir="ltr" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://" data-autofocus aria-describedby="cl-add-error"><div id="cl-add-error"></div></label>
+        ${picker}
+        <label class="field"><span>${t("Website addresses")} <span class="req">*</span></span><textarea class="input mono cl-paste-box" id="cl-add-address" rows="6" dir="ltr" autocomplete="off" spellcheck="false" placeholder="https://rival-one.example\nrival-two.example" data-autofocus aria-describedby="cl-add-help cl-add-error cl-add-result"></textarea><div class="help" id="cl-add-help">${esc(fill("One per line, or paste a column from a spreadsheet. Up to {n} at a time.", { n: ADD_AT_MOST }))} <strong id="cl-add-count" aria-live="polite"></strong></div><div id="cl-add-error"></div></label>
+        <div id="cl-add-result"></div>
         <p class="help">${t("The app reads its public pages slowly and follows its rules for automated visitors. If the site says no, it says so here and doesn't try to get past it.")}</p>
       </form>
-      <div class="panel-foot"><button class="btn btn-main" id="cl-add-save">${t("Add")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button></div>`, opener, { key: `cl-add|${site}`, reopen: () => openAdd(opener) });
+      <div class="panel-foot"><button class="btn btn-main" id="cl-add-save">${t("Add")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button></div>`, opener, { key: `cl-add|${COMP.siteId}`, reopen: () => openAdd(opener), after: paintAddCount });
+  }
+
+  function paintAddCount() {
+    const n = splitAddresses(UI.$("#cl-add-address")?.value).length;
+    const count = UI.$("#cl-add-count"), save = UI.$("#cl-add-save");
+    if (count) count.textContent = n > 1 ? many(n, "{n} website", "{n} websites") : "";
+    if (save) save.textContent = n > 1 ? many(n, "Add {n} competitor", "Add {n} competitors") : t("Add");
   }
 
   /* Open and Undo side by side: the toast helper holds one action, so the second is added to its row. */
   function addedToast(made, sourceSite) {
     const name = (list.rows || []).find((c) => c.id === made.id)?.display || made.display || made.host;
-    const open = () => COMP.open("list", { competitorId: made.id });
+    const open = () => COMP.open("list", { competitorId: made.id }, sourceSite);
     const undo = async () => {
       try {
         await COMP.api("DELETE", `competitors/${made.id}?site_id=${sourceSite}`);
@@ -230,24 +257,56 @@
     button.onclick = () => { el.remove(); open(); };
     el.querySelector(".acts")?.prepend(button);
   }
-  const refreshHere = () => { if (UI.state.route === "competitors" && (COMP.tab === "list" || COMP.tab === "find")) return COMP.reload({ quiet: true }); return null; };
+  const refreshHere = () => { if (UI.state.route === "competitors" && ["list", "find", "summary"].includes(COMP.tab)) return COMP.reload({ quiet: true }); return null; };
+
+  function manyAddedToast(added, sourceSite, extra) {
+    const undo = async () => {
+      try {
+        for (const made of added) await COMP.api("DELETE", `competitors/${made.id}?site_id=${sourceSite}`);
+        UI.toast(many(added.length, "{n} competitor removed again.", "{n} competitors removed again."), { kind: "info" });
+        refreshHere();
+      } catch (err) { fail(err); refreshHere(); }
+    };
+    UI.toast(`${many(added.length, "{n} competitor added.", "{n} competitors added.")}${extra ? ` ${extra}` : ""}`, { undo });
+  }
 
   async function submitAdd() {
-    const input = UI.$("#cl-add-address"), box = UI.$("#cl-add-error"), save = UI.$("#cl-add-save");
+    const input = UI.$("#cl-add-address"), box = UI.$("#cl-add-error"), save = UI.$("#cl-add-save"), result = UI.$("#cl-add-result");
     if (!input || save?.disabled) return;
-    const address = input.value.trim();
+    const addresses = splitAddresses(input.value);
     fieldClear(input, box);
-    if (!address) { fieldError(input, box, t("Enter the competitor's address.")); return; }
+    result?.replaceChildren();
+    if (!addresses.length) { fieldError(input, box, t("Enter the competitor's address.")); return; }
+    if (addresses.length > ADD_AT_MOST) { fieldError(input, box, fill("Add up to {max} at a time. This list has {n}.", { max: ADD_AT_MOST, n: addresses.length })); return; }
+    const picked = UI.$("#cl-add-site");
+    const site = picked ? Number(picked.value) : COMP.siteId;
     save.disabled = true;
-    const site = COMP.siteId;
     try {
-      const made = await COMP.api("POST", "competitors", { site_id: site, address });
-      UI.forgetPanelForm();
-      UI.closePanel({ keep: false });
-      list.flash = made.id;
-      pending = () => focusAttr("data-cl-open", made.id)?.focus({ preventScroll: true });
-      await refreshHere();
-      addedToast(made, site);
+      const { added, already, refused } = await COMP.api("POST", "competitors/many", { site_id: site, addresses: addresses.join("\n") });
+      const alreadyNote = already.length ? many(already.length, "{n} was already one of your competitors.", "{n} were already your competitors.") : "";
+      if (added.length) {
+        list.flash = added[0].id;
+        if (!refused.length) {
+          UI.forgetPanelForm();
+          UI.closePanel({ keep: false });
+          pending = () => focusAttr("data-cl-open", added[0].id)?.focus({ preventScroll: true });
+        }
+        await refreshHere();
+        if (added.length === 1 && !already.length) addedToast(added[0], site);
+        else manyAddedToast(added, site, alreadyNote);
+      }
+      if (refused.length || !added.length) {
+        // What's left in the box is only what still needs fixing, each with its reason.
+        const left = refused.length ? refused : already;
+        input.value = left.map((r) => r.address).join("\n");
+        paintAddCount();
+        const head = refused.length
+          ? (added.length ? many(added.length, "{n} added. These weren't:", "{n} added. These weren't:") : t("None of these were added:"))
+          : t("These are already your competitors:");
+        input.classList.toggle("invalid", Boolean(refused.length));
+        UI.setHTML(result, `<div class="note cl-add-note ${refused.length ? "crit" : ""}" role="alert">${icon(refused.length ? "octagon-alert" : "info")}<div><span>${esc(head)}</span><ul class="cl-add-why">${left.map((r) => { const host = r.address.toLowerCase().split("://").pop().split("/")[0].replace(/^www\./, ""); return `<li>${r.reason.toLowerCase().includes(host) ? "" : `<span class="mono" dir="ltr">${esc(r.address)}</span> `}${esc(say(r.reason))}</li>`; }).join("")}</ul>${refused.length && already.length ? `<span class="small">${esc(alreadyNote)}</span>` : ""}</div></div>`);
+        input.focus();
+      }
     } catch (err) {
       fieldError(input, box, say(err.message));
     } finally {
@@ -451,7 +510,7 @@
           <td data-label="${attr("Last seen")}"><span class="nowrap">${esc(COMP.ago(k.last_seen))}</span></td>
           <td data-label="${attr("Tool")}"><span class="cl-cell">${esc(k.tool || "")}<span class="second">${esc(engineName(k.engine))}</span></span></td></tr>`).join("")}</tbody></table>`
       : `<table class="data cl-table"><thead><tr>${head("keyword", "Keyword")}${head("my_position", "You")}${head("their_position", "Them")}${head("checked_at", "Tool and age")}</tr></thead><tbody>${sorted.map((k) => `<tr>
-          <td class="head-cell"><span class="kw" dir="auto">${esc(k.keyword)}</span></td>
+          <td class="head-cell"><span class="kw" dir="auto">${esc(k.keyword)}</span>${COMP.profileTabs?.keywordMarks?.(k) ?? ""}</td>
           <td data-label="${attr("You")}">${place(k.my_position, k.my_url, k.depth)}</td>
           <td data-label="${attr("Them")}">${place(k.their_position, k.their_url, k.depth)}</td>
           <td data-label="${attr("Tool and age")}"><span class="cl-cell">${esc(k.tool || "")} · ${esc(engineName(k.engine))}<span class="second">${esc(COMP.ago(k.checked_at))}</span></span></td></tr>`).join("")}</tbody></table>`;
@@ -481,13 +540,15 @@
     if (c.status === "failed") return `<p class="note crit cl-head-note">${icon("octagon-alert")}<span>${esc(t("The last read failed. It tries again at the next daily read, and everything from search results still works."))}${c.message ? ` <span class="small mono cl-wrap" dir="auto">${esc(c.message)}</span>` : ""}</span></p>`;
     return "";
   }
-  const watchArea = (p) => `${watching(p.crawl)}`;
+  const paused = (p) => p.tracking === "off"; // tracking off: nothing is read, so no "Watching" and no Read now
+  const watchArea = (p) => (paused(p) ? `<span class="cl-watch"><span class="status sec">${icon("pause")}${esc(t("Paused"))}</span></span>` : `${watching(p.crawl)}`);
   function paintWatch() {
     const p = view.data, box = UI.$("#cl-watch-state");
     if (!p || !box) return;
     UI.setHTML(box, watchArea(p));
     const read = UI.$("[data-cl-read]");
     if (read) read.disabled = crawling(p.crawl);
+    if (read) read.hidden = paused(p);
     const note = UI.$("#cl-head-note");
     if (note) UI.setHTML(note, headNote(p));
   }
@@ -499,23 +560,23 @@
       <section class="card cl-head" aria-labelledby="cl-profile-title">
         <div class="cl-head-row">
           <div class="cl-head-main">
-            <h2 id="cl-profile-title" tabindex="-1">${UI.siteLogo(p.host, 24)} ${COMP.link(url, p.display || p.host, "cl-head-link")}${icon("external-link", "muted")}</h2>
+            <h2 id="cl-profile-title" tabindex="-1">${UI.siteLogo(p.host, 24)} ${COMP.link(url, p.display || p.host, "cl-head-link")}${icon("external-link", "muted")}${COMP.trackingSwitch?.(p) ?? ""}</h2>
+            ${COMP.profileTabs?.factsLine?.(p, view.insights) ?? ""}
             <p class="small sec">${esc(howAdded(p.source))} · ${esc(fill("added {when}", { when: COMP.ago(p.added_at) }))} · ${esc(fill("compared with {site}", { site: p.site?.host || COMP.site()?.host || "" }))}</p>
             <div id="cl-watch-state" class="cl-head-watch">${watchArea(p)}</div>
           </div>
-          <div class="cl-head-acts"><button class="btn" data-cl-read="${p.id}" ${crawling(p.crawl) ? "disabled" : ""}>${icon("refresh-cw")}${t("Read now")}</button><button class="btn btn-ghost" data-cl-remove="${p.id}">${icon("trash-2")}${t("Remove")}</button></div>
+          <div class="cl-head-acts">${COMP.notes?.button?.([{ label: p.display || p.host, icon: "crosshair", where: { scope: "competitor", competitorId: p.id, siteId: COMP.siteId } }]) ?? ""}<button class="btn" data-cl-read="${p.id}" ${crawling(p.crawl) ? "disabled" : ""} ${paused(p) ? "hidden" : ""}>${icon("refresh-cw")}${t("Read now")}</button><button class="btn btn-ghost" data-cl-remove="${p.id}">${icon("trash-2")}${t("Remove")}</button></div>
         </div>
         <div id="cl-head-note">${headNote(p)}</div>
       </section>
-      <h2 class="cl-section">${t("How you compare")}</h2>
-      ${compareBody(p)}
-      <section class="card" aria-label="${attr("Timeline")}"><div class="card-head"><h2>${t("Timeline")}</h2><span class="end small muted cl-end">${t("Ranking moves only compare two checks by the same tool, from the same place, so a change of tool never reads as a move.")}</span></div>
-        <div class="cl-section-body" id="cl-timeline">${timelineBody(p)}</div></section>
-      <section class="card" aria-label="${attr("Keywords")}"><div class="card-head"><h2>${t("Keywords")}</h2></div>
-        <div class="cl-section-body" id="cl-keywords">${keywordsBody(p)}</div></section>
-      ${pairsCard(p)}
-      ${COMP.notes?.block?.({ scope: "competitor", competitorId: p.id }) || ""}`;
+      ${COMP.profileTabs ? COMP.profileTabs.body(p, view.insights, profileParts) : `${compareBody(p)}${pairsCard(p)}`}`;
   }
+  /* What the tabs in comp-profile-tabs.js borrow from here: the keyword table and the timeline stay in this file. */
+  const profileParts = {
+    keywordsBody: (p) => keywordsBody(p),
+    timelineBody: (p) => timelineBody(p),
+    showKeywords: (kind) => { view.kw = kind; view.kwLimit = 100; view.sort = { key: "keyword", dir: 1 }; },
+  };
 
   async function readNow(id, button) {
     if (button) button.disabled = true;
@@ -546,8 +607,10 @@
       ]);
       const id = listTab.competitorId;
       let detail = null;
+      let insights = null;
       if (id && answer.competitors.some((c) => c.id === id)) {
         try { detail = await COMP.api("GET", `competitors/${id}/profile?site_id=${site}`); } catch (err) { fail(err); }
+        if (detail) insights = await COMP.profileTabs?.load?.(detail, site); // a failure here leaves the rest of the profile working
       }
       if (site !== COMP.siteId || listTab.competitorId !== id) return;
       list.rows = answer.competitors;
@@ -565,6 +628,7 @@
       }
       if (!detail) view.shownId = null;
       view.data = detail;
+      view.insights = insights || null;
     },
     body() {
       remember();
@@ -1160,7 +1224,9 @@
     });
 
     document.addEventListener("input", (e) => { if (e.target.id === "cl-up-text") { fieldClear(e.target, UI.$("#cl-up-error")); paintUpload(); } });
-    document.addEventListener("input", (e) => { if (e.target.id === "cl-add-address") fieldClear(e.target, UI.$("#cl-add-error")); });
+    document.addEventListener("input", (e) => { if (e.target.id === "cl-add-address") { fieldClear(e.target, UI.$("#cl-add-error")); paintAddCount(); } });
+    // In the address box Enter starts a new line, so Cmd or Ctrl + Enter adds.
+    document.addEventListener("keydown", (e) => { if (e.target.id === "cl-add-address" && e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitAdd(); } });
     document.addEventListener("change", (e) => {
       if (e.target.id === "cl-file") pickFile(e.target.files[0]);
       else if (e.target.id === "cl-up-encoding" && upload.bytes) { upload.encoding = e.target.value; decodeNow(); }
@@ -1528,6 +1594,24 @@
     // Add and remove
     "For": "Pour",
     "Its website address": "Adresse de son site",
+    "Add competitors": "Ajouter des concurrents",
+    "Paste one or many": "Collez-en un ou plusieurs",
+    "Website addresses": "Adresses des sites",
+    "One per line, or paste a column from a spreadsheet. Up to {n} at a time.": "Une par ligne, ou collez une colonne d'un tableur. Jusqu'à {n} à la fois.",
+    "{n} website": "{n} site",
+    "{n} websites": "{n} sites",
+    "Add {n} competitor": "Ajouter {n} concurrent",
+    "Add {n} competitors": "Ajouter {n} concurrents",
+    "{n} competitor added.": "{n} concurrent ajouté.",
+    "{n} competitors added.": "{n} concurrents ajoutés.",
+    "{n} competitor removed again.": "{n} concurrent retiré.",
+    "{n} competitors removed again.": "{n} concurrents retirés.",
+    "{n} was already one of your competitors.": "{n} était déjà l'un de vos concurrents.",
+    "{n} were already your competitors.": "{n} étaient déjà vos concurrents.",
+    "{n} added. These weren't:": "{n} ajoutés. Ceux-ci non :",
+    "None of these were added:": "Aucun n'a été ajouté :",
+    "These are already your competitors:": "Ce sont déjà vos concurrents :",
+    "Add up to {max} at a time. This list has {n}.": "Ajoutez-en jusqu'à {max} à la fois. Cette liste en compte {n}.",
     "The app reads its public pages slowly and follows its rules for automated visitors. If the site says no, it says so here and doesn't try to get past it.": "L'application lit ses pages publiques lentement et respecte ses règles pour les visiteurs automatisés. Si le site refuse, elle l'indique ici et n'essaie pas de contourner ce choix.",
     "Enter the competitor's address.": "Saisissez l'adresse du concurrent.",
     "{host} is now one of your competitors.": "{host} fait maintenant partie de vos concurrents.",

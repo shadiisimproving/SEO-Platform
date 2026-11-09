@@ -11,7 +11,7 @@ from flask import Blueprint, current_app, g, jsonify, request, send_file
 
 from seo.backlinks import service as backlinks
 from seo.backlinks.cleaner import CleanerError, check_upload
-from seo.competitors import ai_watch, collective, gaps, keywords, notes, pairs, profile, suggest
+from seo.competitors import ai_watch, collective, gaps, keywords, notes, pairs, profile, suggest, tracking
 from seo.core.errors import Refused
 from seo.serp import connections
 from seo.web.auth import require_admin
@@ -90,13 +90,26 @@ def keyword_run(run_id: int):
 
 @competitors_api.get("/competitors")
 def list_competitors():
-    return jsonify(competitors=profile.overview(_engine(), _site_arg()))
+    site_id = _site_arg()
+    return jsonify(competitors=tracking.apply_to_overview(_engine(), site_id, profile.overview(_engine(), site_id)))
 
 
 @competitors_api.post("/competitors")
 def add_competitor():
     body = _body({"site_id", "address"}, ("site_id", "address"))
     return jsonify(suggest.add_competitor(_engine(), body["site_id"], body["address"], "manual", _allowed())), 201
+
+
+@competitors_api.post("/competitors/many")
+def add_many_competitors():
+    body = _body({"site_id", "addresses"}, ("site_id", "addresses"))
+    return jsonify(suggest.add_many(_engine(), body["site_id"], body["addresses"], _allowed())), 200
+
+
+@competitors_api.put("/competitors/<int:competitor_id>/tracking")
+def set_tracking(competitor_id: int):
+    body = _body({"site_id", "tracking"}, ("site_id", "tracking"))
+    return jsonify(tracking.set_tracking(_engine(), body["site_id"], competitor_id, body["tracking"]))
 
 
 @competitors_api.delete("/competitors/<int:competitor_id>")
@@ -151,13 +164,17 @@ def decide_suggestion(action: str):
 
 @competitors_api.get("/competitors/<int:competitor_id>/profile")
 def competitor_profile(competitor_id: int):
-    return jsonify(profile.profile(_engine(), _site_arg(), competitor_id))
+    site_id = _site_arg()
+    return jsonify(tracking.apply_to_profile(_engine(), site_id, profile.profile(_engine(), site_id, competitor_id)))
 
 
 @competitors_api.post("/competitors/<int:competitor_id>/crawl")
 def crawl_now(competitor_id: int):
     with _engine().connect() as conn:
-        pairs._competitor(conn, _site_arg(), competitor_id)
+        site_id = _site_arg()
+        pairs._competitor(conn, site_id, competitor_id)
+        if tracking.of_site(conn, site_id).get(competitor_id) == tracking.OFF:
+            raise Refused("Tracking is off for this competitor, so its pages aren't read. Turn it on, or to Pages only, first.")
     suggest.queue_crawl(_engine(), competitor_id)
     return jsonify(ok=True), 202
 
@@ -329,13 +346,13 @@ def ai_overview_watch():
 
 @competitors_api.get("/notes")
 def list_notes():
-    return jsonify(notes=notes.list_notes(_engine(), request.args.get("scope") or None, _number(request.args.get("competitor_id")), request.args.get("page_url") or None, _number(request.args.get("site_id"))))
+    return jsonify(notes=notes.list_notes(_engine(), request.args.get("scope") or None, _number(request.args.get("competitor_id")), request.args.get("page_url") or None, _number(request.args.get("site_id")), request.args.get("screen") or None))
 
 
 @competitors_api.post("/notes")
 def create_note():
-    body = _body({"scope", "body", "site_id", "competitor_id", "page_url"}, ("scope",))
-    return jsonify(notes.create(_engine(), body["scope"], body.get("body", ""), body.get("site_id"), body.get("competitor_id"), body.get("page_url"))), 201
+    body = _body({"scope", "body", "site_id", "competitor_id", "page_url", "screen"}, ("scope",))
+    return jsonify(notes.create(_engine(), body["scope"], body.get("body", ""), body.get("site_id"), body.get("competitor_id"), body.get("page_url"), body.get("screen"))), 201
 
 
 @competitors_api.patch("/notes/<int:note_id>")

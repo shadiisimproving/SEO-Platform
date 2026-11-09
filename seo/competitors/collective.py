@@ -36,7 +36,7 @@ def _rivals(conn, sites: list[dict]) -> list[dict]:
         return []
     marks = ",".join(str(int(i)) for i in hosts)
     rivals: dict[int, dict] = {}
-    rows = conn.execute(text(f"SELECT s.id, s.host, sc.site_id FROM site_competitors sc JOIN sites s ON s.id = sc.competitor_id WHERE sc.site_id IN ({marks}) ORDER BY s.host, sc.site_id")).mappings()
+    rows = conn.execute(text(f"SELECT s.id, s.host, sc.site_id FROM site_competitors sc JOIN sites s ON s.id = sc.competitor_id WHERE sc.site_id IN ({marks}) AND sc.tracking = 'on' ORDER BY s.host, sc.site_id")).mappings()
     for row in rows:
         rival = rivals.setdefault(row["id"], {"id": row["id"], "host": row["host"], "display": store.to_display_host(row["host"]), "sites": []})
         rival["sites"].append({"id": row["site_id"], "host": hosts[row["site_id"]]})

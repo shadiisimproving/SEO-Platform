@@ -363,7 +363,8 @@
         { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }, { key: "clicks", label: "Google clicks", num: true },
         { key: "position", label: "Position", num: true, html: (r) => decimal(r.position) }, { key: "ai", label: "AI visits", num: true },
       ], d.pages)}</section>
-      <section class="card" style="margin-top:14px"><div class="card-head"><h2>${t("Traffic from social networks")}</h2></div>${d.social.length ? bars(d.social, { value: (r) => r.sessions, label: (r) => r.source }) : `<div class="empty"><p>${t("No visits from social networks in this period.")}</p></div>`}</section>`);
+      <section class="card" style="margin-top:14px"><div class="card-head"><h2>${t("Traffic from social networks")}</h2></div>${d.social.length ? bars(d.social, { value: (r) => r.sessions, label: (r) => r.source }) : `<div class="empty"><p>${t("No visits from social networks in this period.")}</p></div>`}</section>
+      ${speedCard()}`); // Page speed moved here from Overview on 2026-11-09: it's about pages, not Google results
   }
 
   // ---- Clarity downloads: totals for the file's own period, shown apart from the period picked above ----
@@ -662,6 +663,8 @@
   // Google Ads stays out of the menu for now (owner, 2026-11-05): it shows Soon. To bring it back, add screen("ads", adsPage). GA4 still stores its daily numbers, so nothing is lost meanwhile.
   screen("ai", aiPage); screen("resources", resourcesPage);
   LV.dataTable = (...args) => dataTable(...args);
+  LV.ideasCard = () => ideasCard(); // Keyword ideas sit on Keywords since 2026-11-09
+  LV.stateCard = (...args) => stateCard(...args); // Overview's own file shows the same not-connected, failing and waiting cards
 
   const fr = {
     "Loading…": "Chargement…", "Needs the running app": "Il faut lancer l'application", "Opened as a plain file there's no real data to show here.": "Ouverte comme simple fichier, l'application n'a pas de vraies données à afficher ici.",

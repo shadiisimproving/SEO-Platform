@@ -165,3 +165,6 @@ button.cl-name:hover { color: var(--accent-text); }
   .cl-fig { font-size: 20px; line-height: 26px; }
   .cl-cmp .lab { min-height: 0; }
 }
+.cl-add-why { margin: 6px 0 4px; padding-left: 18px; display: grid; gap: 4px; }
+.cl-add-why .mono { font-weight: 600; overflow-wrap: anywhere; }
+.cl-add-note > div { min-width: 0; }

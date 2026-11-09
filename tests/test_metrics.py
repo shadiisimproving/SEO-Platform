@@ -587,3 +587,15 @@ def test_all_sites_ai_search_keeps_the_same_path_on_two_sites_apart(engine, two_
     _referral(engine, second, D1, "chatgpt.com", "/contact/", 2)
     pages = service.ai_search(_scope(engine))["pages"]
     assert {(r["host"], r["path"]): r["sessions"] for r in pages} == {("mine.example", "/contact/"): 6, ("other.example", "/contact/"): 2}
+
+
+def test_today_leaves_out_search_console_days_that_are_not_final(engine, site):
+    end = date(2026, 10, 20)
+    for back in (1, 30):
+        _gsc(engine, site, end - timedelta(days=back), 100, 500, 5.0)
+    _gsc(engine, site, end, 3, 40, 5.0)  # a fresh day: low because Google is still counting it
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE site_sources SET fresh_from = :d, fresh_through = :d WHERE site_id = :s AND source = 'gsc'"), {"s": site, "d": end})
+    results = today_view.today(engine)["results"]
+    assert results["clicks"]["value"] == 100  # 103 if the fresh day counted
+    assert results["through"] == (end - timedelta(days=1)).isoformat()

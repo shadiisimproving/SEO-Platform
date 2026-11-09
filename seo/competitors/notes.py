@@ -1,4 +1,5 @@
-"""Notes on all competitors, on one competitor, or on any page. Deleting keeps the text, so it can be undone.
+"""Notes on all competitors, on one competitor, on any page, on one screen of the app, or on a whole website.
+Deleting keeps the text, so it can be undone.
 
 A note can also hold images and files. They sit on disk under a random name, never the one they came with.
 Only bytes that really are an image are ever shown in the browser: everything else can only be downloaded.
@@ -19,7 +20,13 @@ from seo.core.errors import NotFound, Refused
 from seo.serp.store import canonical_url
 
 MAX_BYTES = 4_000_000  # far past any note; the column holds 16 MB
-SCOPES = ("all", "competitor", "page")
+SCOPES = ("all", "competitor", "page", "site", "screen")
+# The screens a note can be about: the app's menu. A name outside it would never be shown anywhere.
+SCREENS = (
+    "today", "channels", "conversions", "content", "overview", "keywords", "competitors", "ai", "ads",
+    "tasks", "backlinks", "resources", "health", "settings",
+)
+WRONG_SCOPE = "A note goes on all competitors, one competitor, a page, a screen or a website."
 MAX_FILE_BYTES = 25 * 1024 * 1024
 UPLOAD_OVERHEAD = 1024 * 1024  # the form around the file
 TOO_LARGE = "This file is too large. The limit is 25 MB."
@@ -79,7 +86,7 @@ def _check_body(body) -> str:
 def _dict(row, files=()) -> dict:
     return {
         "id": row["id"], "scope": row["scope"], "site_id": row["site_id"], "competitor_id": row["competitor_id"], "competitor": row.get("competitor"),
-        "page_url": row["page_url"], "body": row["body"], "created_at": _iso(row["created_at"]), "updated_at": _iso(row["updated_at"]),
+        "page_url": row["page_url"], "screen": row["screen"], "body": row["body"], "created_at": _iso(row["created_at"]), "updated_at": _iso(row["updated_at"]),
         "deleted_at": _iso(row["deleted_at"]), "files": list(files),
     }
 
@@ -100,10 +107,16 @@ def _clean_page(page_url) -> str:
     return canonical_url(page_url if "://" in page_url else f"https://{page_url.strip()}")
 
 
-def create(engine: Engine, scope, body, site_id=None, competitor_id=None, page_url=None) -> dict:
+def create(engine: Engine, scope, body, site_id=None, competitor_id=None, page_url=None, screen=None) -> dict:
     body = _check_body(body)
     if scope not in SCOPES:
-        raise Refused("A note goes on all competitors, one competitor, or a page.")
+        raise Refused(WRONG_SCOPE)
+    if scope == "screen" and screen not in SCREENS:
+        raise Refused("Say which screen this note is about.")
+    if scope != "screen":
+        screen = None
+    if scope in ("site", "screen"):
+        competitor_id = None
     if scope == "competitor" and competitor_id is None:
         raise Refused("Say which competitor this note is about.")
     if competitor_id is not None and type(competitor_id) is not int:
@@ -123,8 +136,8 @@ def create(engine: Engine, scope, body, site_id=None, competitor_id=None, page_u
             if site_id is not None and not conn.execute(text("SELECT 1 FROM site_competitors WHERE site_id = :s AND competitor_id = :c"), {"s": site_id, "c": competitor_id}).first():
                 raise NotFound("That competitor isn't on this website.")
         note_id = conn.execute(
-            text("INSERT INTO notes (scope, site_id, competitor_id, page_url, page_hash, body) VALUES (:sc, :s, :c, :u, :h, :b)"),
-            {"sc": scope, "s": site_id, "c": competitor_id if scope != "all" else None, "u": clean_url, "h": hashed, "b": body},
+            text("INSERT INTO notes (scope, site_id, competitor_id, page_url, page_hash, screen, body) VALUES (:sc, :s, :c, :u, :h, :sn, :b)"),
+            {"sc": scope, "s": site_id, "c": competitor_id if scope != "all" else None, "u": clean_url, "h": hashed, "sn": screen, "b": body},
         ).lastrowid
         return _one(conn, note_id)
 
@@ -150,14 +163,17 @@ def restore(engine: Engine, note_id: int) -> dict:
         return _one(conn, note_id)
 
 
-def list_notes(engine: Engine, scope: str | None = None, competitor_id: int | None = None, page_url: str | None = None, site_id: int | None = None) -> list[dict]:
+def list_notes(engine: Engine, scope: str | None = None, competitor_id: int | None = None, page_url: str | None = None, site_id: int | None = None, screen: str | None = None) -> list[dict]:
     has_file = "EXISTS (SELECT 1 FROM note_files f WHERE f.note_id = n.id AND f.deleted_at IS NULL)"
     where, params = ["n.deleted_at IS NULL", f"(n.body <> '' OR {has_file})"], {}
     if scope:
         if scope not in SCOPES:
-            raise Refused("A note goes on all competitors, one competitor, or a page.")
+            raise Refused(WRONG_SCOPE)
         where.append("n.scope = :sc")
         params["sc"] = scope
+    if screen:
+        where.append("n.screen = :sn")
+        params["sn"] = screen
     if competitor_id is not None:
         where.append("n.competitor_id = :c")
         params["c"] = competitor_id

@@ -426,7 +426,7 @@ def ads(scope: Scope) -> dict:
 
 # ---- Rules, edited ---------------------------------------------------------------------------------
 
-RULE_KINDS = {"channel", "ai_domain", "ai_domain_off", "category", "key_event"}
+RULE_KINDS = {"channel", "ai_domain", "ai_domain_off", "category", "key_event", "brand"}  # brand: words that make a query a brand search
 
 
 def add_rule(engine: Engine, kind, pattern, value=None, site_id=None) -> dict:

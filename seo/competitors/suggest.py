@@ -6,6 +6,8 @@ and a dismissed domain stays dismissed whatever new data says.
 """
 from __future__ import annotations
 
+import re
+
 from sqlalchemy import Engine, text
 
 from seo.backlinks import logos
@@ -55,7 +57,7 @@ def my_domains(conn) -> set[str]:
 
 def tracked_competitors(conn, site_id: int) -> list[dict]:
     rows = conn.execute(
-        text("SELECT s.id, s.host, sc.source, sc.created_at FROM site_competitors sc JOIN sites s ON s.id = sc.competitor_id WHERE sc.site_id = :s ORDER BY s.host"),
+        text("SELECT s.id, s.host, sc.source, sc.tracking, sc.created_at FROM site_competitors sc JOIN sites s ON s.id = sc.competitor_id WHERE sc.site_id = :s ORDER BY s.host"),
         {"s": site_id},
     ).mappings().all()
     return [dict(r) for r in rows]
@@ -175,7 +177,7 @@ def queue_crawl(engine: Engine, competitor_id: int) -> None:
     queue.enqueue(engine, "crawl", "competitors.crawl", payload={"competitor_id": competitor_id}, dedupe_key=f"competitor:{competitor_id}", max_attempts=2)
 
 
-def add_competitor(engine: Engine, site_id: int, address: str, source: str = "manual", is_allowed=None) -> dict:
+def add_competitor(engine: Engine, site_id: int, address: str, source: str = "manual", is_allowed=None, refresh_pairs: bool = True) -> dict:
     """Links a competitor to my site. Its row in `sites` is shared if another of my sites already watches it."""
     from seo.competitors import pairs
 
@@ -207,8 +209,49 @@ def add_competitor(engine: Engine, site_id: int, address: str, source: str = "ma
         conn.execute(text("DELETE FROM competitor_dismissals WHERE site_id = :s AND domain = :d"), {"s": site_id, "d": domain_of(host)})
     queue_crawl(engine, competitor_id)
     logos.queue_for(engine, [domain_of(host)])
-    pairs.refresh_auto_pairs(engine, site_id)
+    if refresh_pairs:
+        pairs.refresh_auto_pairs(engine, site_id)
     return {"id": competitor_id, "host": host, "source": source}
+
+
+MANY_AT_MOST = 200
+
+
+def split_addresses(value) -> list[str]:
+    """A pasted list: one per line, or separated by commas, semicolons, tabs or spaces. Repeats are dropped, first one kept."""
+    parts = value if isinstance(value, list) else re.split(r"[\s,;]+", value if isinstance(value, str) else "")
+    out, seen = [], set()
+    for part in parts:
+        item = part.strip().strip("\"'<>") if isinstance(part, str) else ""
+        key = item.lower().split("://", 1)[-1].split("/", 1)[0].removeprefix("www.")  # one site, whichever of its pages was pasted
+        if item and key not in seen:
+            seen.add(key)
+            out.append(item)
+    return out
+
+
+def add_many(engine: Engine, site_id: int, addresses, is_allowed=None) -> dict:
+    """Adds each address the way one is added by hand. One bad address doesn't stop the others; each says why it wasn't added."""
+    from seo.competitors import pairs
+
+    items = split_addresses(addresses)
+    if not items:
+        raise Refused("Enter at least one competitor's address.")
+    if len(items) > MANY_AT_MOST:
+        raise Refused(f"Add up to {MANY_AT_MOST} competitors at a time. This list has {len(items)}.")
+    with engine.connect() as conn:
+        require_own(conn, site_id)
+    added, already, refused = [], [], []
+    for item in items:
+        try:
+            added.append(add_competitor(engine, site_id, item, "manual", is_allowed, refresh_pairs=False))
+        except Conflict as err:
+            already.append({"address": item, "reason": str(err)})
+        except Refused as err:
+            refused.append({"address": item, "reason": str(err)})
+    if added:
+        pairs.refresh_auto_pairs(engine, site_id)
+    return {"added": added, "already": already, "refused": refused}
 
 
 def accept(engine: Engine, site_id: int, domain: str, is_allowed=None) -> dict:

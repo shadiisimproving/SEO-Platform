@@ -65,8 +65,8 @@ const shot = (page, name) => page.screenshot({ path: `${OUT}/${name}.png`, fullP
   await page.click('button[data-go="overview"]'); await page.waitForTimeout(700);
   const chart = await page.$(".lv-chart svg");
   if (chart) { const b = await chart.boundingBox(); await page.mouse.move(b.x + b.width * .7, b.y + 60); await page.waitForTimeout(200); await shot(page, "18-overview-hover"); say("tooltip:", (await page.textContent(".lv-tip")).replace(/\s+/g, " ")); }
-  await page.click('[data-lv-metric="position"]'); await page.waitForTimeout(300); await shot(page, "19-overview-position");
-  await page.click("[data-lv-table]"); await page.waitForTimeout(300); await shot(page, "20-overview-table");
+  await page.click('[data-ov-line="position"]'); await page.waitForTimeout(300); await shot(page, "19-overview-position"); // the numbers on top switch the chart's lines since 2026-11-09
+  await page.click("[data-ov-table]"); await page.waitForTimeout(300); await shot(page, "20-overview-table");
   await page.click('button[data-go="resources"]'); await page.waitForTimeout(300);
   await page.click('[data-lv-resource="new"]'); await page.waitForSelector("#lv-resource-form");
   await page.click("[data-lv-resource-save]"); await page.waitForTimeout(300);

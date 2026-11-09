@@ -18,7 +18,7 @@ from urllib.parse import urljoin
 from lxml import etree, html as lxml_html
 from sqlalchemy import Engine, text
 
-from seo.competitors import pages
+from seo.competitors import pages, tracking
 from seo.core import budget
 from seo.crawl import sitemap, store as crawl_store
 from seo.links import service as links_service
@@ -298,6 +298,13 @@ def run_crawl(job, engine: Engine) -> None:
             return
         if plan is None and conn.execute(text("SELECT 1 FROM jobs WHERE active_key LIKE :k LIMIT 1"), {"k": f"competitor:{competitor_id}:part:%"}).first():
             return  # today's reading is still going, and it carries on by itself
+        paused = not tracking.reads_pages(conn, competitor_id)
+    if paused:
+        # Turned off after this job was queued: nothing is fetched, and a read that never ran stops saying it's waiting.
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM competitor_crawls WHERE competitor_id = :c AND status = 'queued' AND finished_at IS NULL"), {"c": competitor_id})
+            conn.execute(text("UPDATE competitor_crawls SET status = 'ok' WHERE competitor_id = :c AND status = 'queued'"), {"c": competitor_id})
+        return
     with engine.begin() as conn:
         started = ", started_at = UTC_TIMESTAMP(3)" if plan is None else ""
         conn.execute(
@@ -331,7 +338,7 @@ def enqueue_due(engine: Engine) -> list[int]:
             for row in conn.execute(
                 text(
                     "SELECT DISTINCT sc.competitor_id FROM site_competitors sc LEFT JOIN competitor_crawls cc ON cc.competitor_id = sc.competitor_id "
-                    "WHERE cc.finished_at IS NULL OR cc.finished_at < UTC_DATE() ORDER BY sc.competitor_id"
+                    f"WHERE {tracking.PAGES_SQL} AND (cc.finished_at IS NULL OR cc.finished_at < UTC_DATE()) ORDER BY sc.competitor_id"
                 )
             )
         ]

@@ -168,6 +168,8 @@ class Page(Base):
     content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     js_only: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))
     extras: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    sitemap_lastmod: Mapped[date | None] = mapped_column(Date, nullable=True)  # the date the site's own sitemap gives
+    first_archived: Mapped[date | None] = mapped_column(Date, nullable=True)  # the Wayback Machine's first copy of this page
     first_seen_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
     last_checked_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
     last_changed_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
@@ -261,6 +263,7 @@ class SerpCheck(Base):
     depth: Mapped[int] = mapped_column(Integer, server_default="10")
     status: Mapped[str] = mapped_column(String(10), server_default="ok")  # ok, suspect, failed
     ai_state: Mapped[str] = mapped_column(String(14), server_default="not_captured")  # present, absent, not_captured
+    features_state: Mapped[str] = mapped_column(String(14), server_default="not_captured")  # featured snippet, questions, rich results
     trigger_kind: Mapped[str] = mapped_column(String(14), server_default="refresh")  # first_upload, refresh
     error: Mapped[str | None] = mapped_column(String(500), nullable=True)
     checked_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
@@ -280,6 +283,20 @@ class SerpResult(Base):
     host: Mapped[str] = mapped_column(String(190))
     domain: Mapped[str] = mapped_column(String(190))
     title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+class SerpFeature(Base):
+    """What a results page showed besides the ten links: who holds the featured snippet, its questions, rich results."""
+
+    __tablename__ = "serp_features"
+    __table_args__ = (Index("ix_serp_features_check", "check_id", "kind"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    check_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("serp_checks.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(20))  # snippet, question, rating, faq, sitelinks
+    host: Mapped[str | None] = mapped_column(String(190), nullable=True)
+    url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    text: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
 
 class AiCitation(Base):
@@ -324,6 +341,8 @@ class SiteCompetitor(Base):
     competitor_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True)
     source: Mapped[str] = mapped_column(String(12), server_default="suggested")  # suggested or manual
     created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+    # on; pages: keyword numbers hidden, pages still read; off: paused. No setting ever spends a search on a competitor.
+    tracking: Mapped[str] = mapped_column(String(8), server_default="on")
 
 
 class CompetitorDismissal(Base):
@@ -528,15 +547,17 @@ class Note(Base):
     __table_args__ = (
         Index("ix_notes_competitor", "competitor_id", "created_at"),
         Index("ix_notes_page", "page_hash"),
-        CheckConstraint("scope IN ('all', 'competitor', 'page')", name="ck_notes_scope"),
+        Index("ix_notes_screen", "screen", "site_id"),
+        CheckConstraint("scope IN ('all', 'competitor', 'page', 'site', 'screen')", name="ck_notes_scope"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    scope: Mapped[str] = mapped_column(String(12))  # all, competitor, page
+    scope: Mapped[str] = mapped_column(String(12))  # all (competitors), competitor, page, site (no site_id: all my sites), screen
     site_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), nullable=True)
     competitor_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), nullable=True)
     page_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     page_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    screen: Mapped[str | None] = mapped_column(String(40), nullable=True)  # the screen a "screen" note is about, such as backlinks
     body: Mapped[str] = mapped_column(MEDIUMTEXT)
     deleted_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
     created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
@@ -752,7 +773,9 @@ class SiteSource(Base):
     last4: Mapped[str | None] = mapped_column(String(8), nullable=True)
     not_used: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))
     backfilled_to: Mapped[date | None] = mapped_column(Date, nullable=True)  # the oldest day already asked for
-    data_through: Mapped[date | None] = mapped_column(Date, nullable=True)
+    data_through: Mapped[date | None] = mapped_column(Date, nullable=True)  # the last final day
+    fresh_from: Mapped[date | None] = mapped_column(Date, nullable=True)  # Search Console: first day that isn't final yet
+    fresh_through: Mapped[date | None] = mapped_column(Date, nullable=True)  # Search Console: newest day with fresh data
     last_attempt_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
     last_ok_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
     last_error: Mapped[str | None] = mapped_column(String(500), nullable=True)
@@ -825,6 +848,59 @@ class GscQueryPage(Base):
     clicks: Mapped[int] = mapped_column(Integer, server_default="0")
     impressions: Mapped[int] = mapped_column(Integer, server_default="0")
     position: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class GscCountry(Base):
+    __tablename__ = "gsc_country"
+    __table_args__ = (Index("ix_gsc_country_day", "site_id", "day"),)
+
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    country: Mapped[str] = mapped_column(String(3), primary_key=True)  # Google's ISO 3166-1 alpha-3, lower case
+    clicks: Mapped[int] = mapped_column(Integer, server_default="0")
+    impressions: Mapped[int] = mapped_column(Integer, server_default="0")
+    position: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class GscDevice(Base):
+    __tablename__ = "gsc_device"
+    __table_args__ = (Index("ix_gsc_device_day", "site_id", "day"),)
+
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    device: Mapped[str] = mapped_column(String(10), primary_key=True)  # DESKTOP, MOBILE, TABLET
+    clicks: Mapped[int] = mapped_column(Integer, server_default="0")
+    impressions: Mapped[int] = mapped_column(Integer, server_default="0")
+    position: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class GscVerify(Base):
+    """The "Matches Search Console" check: what Google answered live compared with what is saved."""
+
+    __tablename__ = "gsc_verify"
+    __table_args__ = (Index("ix_gsc_verify_site", "site_id", "checked_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    ok: Mapped[bool] = mapped_column(Boolean)
+    diff: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    checked_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
+class SearchNote(Base):
+    """A dated note shown as a marker on the Overview chart, such as "changed the titles"."""
+
+    __tablename__ = "search_notes"
+    __table_args__ = (Index("ix_search_notes_day", "site_id", "day"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    day: Mapped[date] = mapped_column(Date)
+    text: Mapped[str] = mapped_column(String(300))
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
 
 
 # ---- GA4 -----------------------------------------------------------------------------------------
@@ -1226,3 +1302,22 @@ class RankRunItem(Base):
     error: Mapped[str | None] = mapped_column(String(500), nullable=True)
     # Same trick as Job.active_key: set while waiting or running, NULL afterwards, so one keyword and engine runs once however many people press.
     active_key: Mapped[str | None] = mapped_column(String(190), nullable=True, unique=True)
+
+
+class SiteHistory(Base):
+    """What the outside world remembers about a host: the Wayback Machine and the domain registry. Read monthly, never on page load."""
+
+    __tablename__ = "site_history"
+
+    host: Mapped[str] = mapped_column(String(190), primary_key=True)
+    status: Mapped[str] = mapped_column(String(12), server_default="queued")  # queued, running, ok, failed
+    message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    first_capture: Mapped[date | None] = mapped_column(Date, nullable=True)
+    archived_pages: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    capped: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))
+    pages_by_year: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # {"2022": 10}: pages first archived that year
+    registered_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    expires_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    domain_problem: Mapped[str | None] = mapped_column(String(40), nullable=True)  # no_rdap, rdap_failed
+    fetched_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)

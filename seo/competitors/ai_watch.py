@@ -24,7 +24,7 @@ def _cited_domains(check: store.Check) -> list[str]:
 def watch(engine: Engine, site_id: int) -> dict:
     with engine.connect() as conn:
         site = require_own(conn, site_id)
-        competitors = tracked_competitors(conn, site_id)
+        competitors = [c for c in tracked_competitors(conn, site_id) if c["tracking"] == "on"]  # AI answers are keyword data
     rival_hosts = {c["host"]: c for c in competitors}
     # A keyword only another engine has checked is on the list too: as not captured, which is all that tool can say.
     latest = store.one_per_keyword(store.latest_checks(engine, site_id))

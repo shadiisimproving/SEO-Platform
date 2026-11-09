@@ -1,0 +1,99 @@
+/* Search → Overview (overview-view.js). Tokens only, from look-clear.css and screens-live.css. */
+.ov-picks { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ov-picks .select { min-height: 34px; }
+.ov-custom { display: inline-flex; align-items: center; gap: 4px; }
+.ov-custom .input { min-height: 34px; padding: 4px 8px; width: auto; }
+.ov-span { white-space: nowrap; }
+
+.ov-trust { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0 0 10px; color: var(--text-2); }
+.ov-trust > span, .ov-trust > button { display: inline-flex; align-items: center; gap: 5px; }
+.ov-trust svg { width: 14px; height: 14px; flex: none; }
+.ov-live { color: var(--good-t); font-weight: 500; }
+.ov-saved { color: var(--warn-t); font-weight: 500; }
+.ov-dot { color: var(--muted); }
+.ov-match.warn { color: var(--warn-t); }
+
+.ov-answer { margin: 0 0 14px; font-size: 17px; line-height: 1.45; font-weight: 500; color: var(--text); max-width: 75ch; }
+
+/* The four numbers are switches: a coloured tick says the line is on the chart. */
+.ov-cards { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.ov-card { text-align: left; cursor: pointer; font: inherit; color: inherit; border: 0; box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow var(--t-fast), background var(--t-fast); }
+.ov-card:hover { background: var(--hover); }
+.ov-card:focus-visible { outline: 2px solid var(--c-blue); outline-offset: 2px; }
+.ov-card.on { box-shadow: inset 0 3px 0 var(--ov-c), inset 0 0 0 1px var(--line); }
+.ov-tick { display: inline-block; width: 12px; height: 12px; margin-right: 7px; vertical-align: -1px; border-radius: 3px; box-shadow: inset 0 0 0 1.5px var(--ov-c); }
+.ov-card.on .ov-tick { background: var(--ov-c); }
+.ov-card .lab { display: flex; align-items: center; }
+
+.ov-chart-card { margin-bottom: 14px; }
+.ov-chart-tools { display: inline-flex; gap: 14px; align-items: center; }
+.ov-chart-tools .link-btn { display: inline-flex; align-items: center; gap: 4px; }
+.ov-chart-tools svg { width: 14px; height: 14px; }
+.lv-line.ov-was { stroke-dasharray: 5 5; opacity: .5; }
+.lv-line.ov-fresh { stroke-dasharray: 2 4; opacity: .75; }
+.ov-flag line { stroke: var(--c-purple, var(--ch-2)); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; opacity: .8; }
+.ov-flag.task line { stroke: var(--good-t); }
+.ov-ylab { position: absolute; top: 10px; font-size: 11px; font-variant-numeric: tabular-nums; background: var(--glass); padding: 0 3px; border-radius: 3px; pointer-events: none; }
+.ov-ylab.left { left: 18px; } .ov-ylab.right { right: 18px; }
+.ov-ylab.bottom { top: auto; bottom: 34px; }
+.ov-key-dash, .ov-key-fresh, .ov-key-flag { display: inline-block; width: 16px; height: 0; margin-right: 6px; vertical-align: 3px; border-top: 2px dashed var(--muted); }
+.ov-key-fresh { border-top-style: dotted; }
+.ov-key-flag { width: 0; height: 12px; vertical-align: -1px; border-top: 0; border-left: 2px dashed var(--ch-2); }
+.ov-tip-was { margin-top: 4px; font-size: 11px; }
+.ov-tip-note { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); max-width: 240px; white-space: normal; }
+.ov-marks { list-style: none; margin: 0; padding: 0 18px 12px; display: grid; gap: 4px; font-size: 13px; }
+.ov-marks li { display: flex; align-items: center; gap: 6px; }
+.ov-marks svg { width: 14px; height: 14px; flex: none; color: var(--muted); }
+.ov-mark-del { width: 24px; height: 24px; margin-left: 2px; }
+.ov-chart-table { box-shadow: none; border-radius: 0; max-height: 320px; overflow: auto; border-top: 1px solid var(--line); }
+
+.ov-tabs-head { padding-bottom: 0; }
+.ov-tabs-head .tabs { margin-bottom: 0; }
+.ov-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 12px 18px 4px; }
+.ov-show { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
+.ov-selbar { display: inline-flex; align-items: center; gap: 10px; margin-left: auto; padding: 4px 6px 4px 12px; border-radius: var(--r-m); background: var(--c-blue-pale, var(--track)); font-size: 13px; }
+.ov-hint { margin: 6px 18px 4px; }
+.ov-empty-act { margin-top: 12px; }
+
+.ov-table { box-shadow: none; border-radius: 0; }
+.ov-row { cursor: pointer; }
+.ov-row:hover, .ov-row:focus-within { background: var(--hover); }
+.ov-row:focus-visible { outline: 2px solid var(--c-blue); outline-offset: -2px; }
+.ov-cell { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ov-name { overflow-wrap: anywhere; }
+.ov-pick-col { width: 36px; }
+.ov-acts { display: inline-flex; gap: 4px; margin-left: auto; opacity: 0; transition: opacity var(--t-fast); }
+.ov-row:hover .ov-acts, .ov-row:focus-within .ov-acts { opacity: 1; }
+.ov-acts svg { width: 13px; height: 13px; }
+.ov-tracked { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; color: var(--good-t); white-space: nowrap; }
+.ov-tracked svg { width: 13px; height: 13px; }
+.ov-d { margin-left: 4px; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ov-pages { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 13px; }
+
+.ov-panel-nums { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
+.ov-panel-nums div { padding: 10px 12px; border-radius: var(--r-m); background: var(--track); }
+.ov-panel-nums .lab, .ov-panel-spark .lab { display: block; font-size: 12px; color: var(--muted); }
+.ov-panel-nums b { font-size: 20px; font-variant-numeric: tabular-nums; }
+.ov-panel-spark { margin-bottom: 12px; }
+.ov-panel-spark .sparkline { display: block; width: 100%; height: 48px; }
+.ov-h3 { font-size: 14px; margin: 16px 0 6px; }
+.ov-split .what { min-width: 0; }
+.ov-split .t { overflow-wrap: anywhere; }
+.ov-share { font-variant-numeric: tabular-nums; font-weight: 600; }
+.ov-brand-form { margin-top: 14px; display: grid; gap: 8px; }
+
+/* No hover on touch screens: the row actions stay visible. */
+@media (hover: none), (max-width: 760px) { .ov-acts { opacity: 1; } }
+@media (max-width: 640px) {
+  .ov-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .ov-card { padding: 10px 12px; }
+  .ov-card .fig { font-size: 22px; line-height: 28px; }
+  .ov-card .tile-spark, .ov-card .ico { display: none; }
+  .ov-card .delta .ab { display: none; }
+  .ov-answer { font-size: 15px; }
+  .ov-picks { width: 100%; }
+  .ov-picks .select { flex: 1 1 140px; }
+  .ov-selbar { margin-left: 0; }
+  .ov-ylab.bottom { bottom: 30px; }
+}
+@media (prefers-reduced-motion: reduce) { .ov-acts, .ov-card { transition: none; } }

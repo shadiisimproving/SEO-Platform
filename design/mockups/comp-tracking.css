@@ -1,0 +1,11 @@
+/* Tracking for a competitor: On, Pages only, Off. See comp-tracking.js. */
+.ct-switch button { padding: 3px 9px; }
+.ct-switch button:disabled { cursor: progress; }
+/* Pages only and Off rows stay readable but step back, so the followed ones lead. */
+#cl-table tr.ct-row-pages td:not(:has(.ct-switch, .cl-row-btn)) { opacity: .78; }
+#cl-table tr.ct-row-off td:not(:has(.ct-switch, .cl-row-btn)) { opacity: .55; }
+.ct-note { display: flex; gap: 8px; align-items: flex-start; margin: 0; }
+.ct-note svg { flex: none; margin-top: 2px; }
+.ct-switch button { font-weight: 400; }
+.ct-switch button[aria-pressed="true"] { font-weight: 600; }
+.ct-short { font-size: 13px; }

@@ -23,6 +23,9 @@ APP_ROOT_IDS = {"root", "app", "__next", "__nuxt", "app-root"}
 JS_ONLY_WORDS = 50
 _META_CHARSET = re.compile(rb"""<meta[^>]+charset=["']?\s*([a-zA-Z0-9_\-]+)""", re.I)
 _SPACE = re.compile(r"\s+")
+# Characters XML can't hold. lxml parses them but refuses them when text is written back, so one
+# stray vertical tab pasted from Word ended a whole health test. They become a space, NULL vanishes.
+_NOT_XML = re.compile("[\x01-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff￾￿]")
 # Chinese and Japanese are written without spaces, so each character counts as a word.
 # Thai, Lao, Khmer and Burmese have no spaces either and can't be split without a dictionary,
 # which is why the page's character count is kept beside the word count.
@@ -212,7 +215,7 @@ def extract(body: bytes, url: str, charset: str | None = None) -> PageFields:
         page.content_hash = hashlib.sha256(b"").hexdigest()
         return page
 
-    source = _decode(body, charset).replace("\x00", "")
+    source = _NOT_XML.sub(" ", _decode(body, charset).replace("\x00", ""))
     try:
         parser = lxml_html.HTMLParser(encoding="utf-8", remove_comments=True)
         root = lxml_html.fromstring(source.encode("utf-8"), parser=parser)

@@ -17,7 +17,7 @@
     "Needs 2 checks with the same tool": "Il faut 2 contrôles avec le même outil", "Tools disagree": "Les outils ne sont pas d'accord", "Suspect result": "Résultat suspect", "Can't verify yet": "Vérification impossible pour l'instant",
     "No Refresh yet": "Aucune actualisation", "Add keywords": "Ajouter des mots-clés", "No keywords yet": "Pas encore de mots-clés", "Add the keywords you want to follow for this site.": "Ajoutez les mots-clés à suivre pour ce site.",
     "Add a site first": "Ajoutez d'abord un site", "Keywords belong to a site. Add yours, then come back.": "Les mots-clés appartiennent à un site. Ajoutez le vôtre, puis revenez.", "Go to Settings": "Aller aux réglages",
-    "Keywords, one per line": "Mots-clés, un par ligne", "Or upload a file": "Ou importez un fichier", "For which site?": "Pour quel site ?", "Country": "Pays", "Language": "Langue", "Any country": "Tous les pays", "Optional, such as fr": "Facultatif, par exemple fr",
+    "Keywords, one per line": "Mots-clés, un par ligne", "Or upload a file": "Ou importez un fichier", "For which site?": "Pour quel site ?", "Country": "Pays", "Language": "Langue", "Any country": "Tous les pays", "Optional, such as fr": "Facultatif, par exemple fr", "Country and language are the ones this site's keywords use most.": "Le pays et la langue sont ceux que les mots-clés de ce site utilisent le plus.",
     "Each new keyword gets one check with a free tool, to see who really ranks. After that, a search only runs when you press Refresh.": "Chaque nouveau mot-clé reçoit un contrôle avec un outil gratuit, pour voir qui se classe vraiment. Ensuite, une recherche ne part que lorsque vous appuyez sur Actualiser.",
     "Put at least one keyword, or choose a file.": "Indiquez au moins un mot-clé, ou choisissez un fichier.", "Keywords added": "Mots-clés ajoutés",
     "Couldn't load the keywords.": "Impossible de charger les mots-clés.", "Try again": "Réessayer", "Loading…": "Chargement…",
@@ -314,11 +314,12 @@
           <span class="seg" role="group" aria-label="${t("Positions")}">${[["positions", "Positions"], ["bucket", "By bucket"], ["queries", "Queries"]].map(([id, label]) => `<button data-view="${id}" aria-pressed="${state.view === id}">${t(label)}</button>`).join("")}</span>
         </div>
         ${body}
+        ${window.LV?.ideasCard ? window.LV.ideasCard() : ""}
       </div>`;
   }
 
   // ---- add keywords ---------------------------------------------------------------------------
-  function addPanel(opener, prefill = "", hostWanted = null) {
+  function addPanel(opener, prefill = "", hostWanted = null, market = {}) {
     const sites = window.BOOT.sites.length ? window.SITES.filter((s) => window.BOOT.sites.some((x) => x.host === s.host)) : window.SITES;
     const picked = hostWanted || UI.siteHostPicked() || sites[0]?.host;
     UI.openPanel(`${UI.panelHead(t("Add keywords"), t("Each new keyword gets one check with a free tool, to see who really ranks. After that, a search only runs when you press Refresh."))}
@@ -327,10 +328,11 @@
         <label class="field"><span>${t("For which site?")}</span><select class="select" id="kwr-add-site" style="width:100%">${sites.map((s) => `<option value="${esc(s.host)}" ${s.host === picked ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></label>
         <label class="field"><span>${t("Keywords, one per line")}</span><textarea class="input" id="kwr-add-text" rows="8" dir="auto" spellcheck="false">${esc(prefill)}</textarea></label>
         <label class="field"><span>${t("Or upload a file")}</span><input class="input" id="kwr-add-file" type="file" accept=".csv,.txt,.tsv"></label>
-        <label class="field"><span>${t("Country")}</span><select class="select" id="kwr-add-country" style="width:100%"><option value="">${t("Any country")}</option>${UI.countryOptions("")}</select></label>
-        <label class="field"><span>${t("Language")}</span><input class="input" id="kwr-add-language" placeholder="${esc(t("Optional, such as fr"))}" autocomplete="off"></label>
+        <label class="field"><span>${t("Country")}</span><select class="select" id="kwr-add-country" style="width:100%"><option value="">${t("Any country")}</option>${UI.countryOptions((market.country || "").toUpperCase())}</select></label>
+        <label class="field"><span>${t("Language")}</span><input class="input" id="kwr-add-language" placeholder="${esc(t("Optional, such as fr"))}" value="${esc(market.language || "")}" autocomplete="off"></label>
+        ${market.country || market.language ? `<p class="small muted" style="margin:0">${t("Country and language are the ones this site's keywords use most.")}</p>` : ""}
       </form>
-      <div class="panel-foot"><button class="btn btn-main" id="kwr-add-save">${t("Add keywords")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button></div>`, opener, { key: `kwr-add|${prefill}`, reopen: () => addPanel(opener, prefill, hostWanted) });
+      <div class="panel-foot"><button class="btn btn-main" id="kwr-add-save">${t("Add keywords")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button></div>`, opener, { key: `kwr-add|${prefill}`, reopen: () => addPanel(opener, prefill, hostWanted, market) });
   }
 
   async function saveKeywords(button) {
@@ -350,6 +352,7 @@
       }
       UI.forgetPanelForm(); UI.closePanel();
       UI.toast(t("Keywords added"));
+      window.dispatchEvent(new CustomEvent("seocc:keywords-added"));
       K.stale = true; load();
       setTimeout(() => { K.stale = true; load(); }, 4000); // the first free checks are running in the background
     } catch (err) { fail(err.message); button.disabled = false; }
@@ -854,4 +857,6 @@
     },
   };
   window.addEventListener("seocc:site-added", () => { K.stale = true; });
+  /* Other screens track a query through the same panel, so there's one way to add a keyword. queries: one or many. */
+  window.KW = { track: (queries, host, opener, market) => addPanel(opener, [].concat(queries).join("\n"), host, market || {}) };
 })();

@@ -37,6 +37,8 @@
         if (google.props[s.id].sc || google.props[s.id].ga4) using.push(s.id);
       });
       google.sites = using.length === window.SITES.length && using.length ? "all" : using;
+      // The sites really set up: a key and a property. A failing pull elsewhere doesn't undo a site's setup step.
+      google.linked = data.google.length ? using : [];
     }
     const clarity = conn("clarity");
     if (clarity) {
@@ -48,6 +50,7 @@
       clarity.last4 = Object.fromEntries(held.filter(({ row }) => row?.last4).map(({ s, row }) => [s.id, row.last4]));
       const off = held.filter(({ row }) => row?.not_used).map(({ s }) => s.id);
       clarity.sites = off.length ? window.SITES.map((s) => s.id).filter((id) => !off.includes(id)) : "all";
+      clarity.linked = live.map(({ s }) => s.id); // each site has its own Clarity token
     }
     data.keys.forEach((key) => {
       const c = conn(key.id);

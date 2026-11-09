@@ -1288,7 +1288,14 @@
   }
   function siteSteps(host) {
     const site = window.SITES.find((s) => s.host === host);
-    const connected = (id) => { const c = window.CONNECTIONS.find((x) => x.id === id); return Boolean(site && c && c.status === "ok" && (c.sites === "all" || c.sites.includes(site.id))); };
+    /* Connected means set up for this site. On the real app `linked` lists those sites; a pull that fails, here or on another
+       site, still counts as connected: the data card and Settings say what's wrong. */
+    const connected = (id) => {
+      const c = window.CONNECTIONS.find((x) => x.id === id);
+      if (!site || !c) return false;
+      if (Array.isArray(c.linked)) return c.linked.includes(site.id);
+      return (c.status === "ok" || c.status === "failing") && (c.sites === "all" || c.sites.includes(site.id));
+    };
     const facts = setupFacts[host] || {};
     const steps = [
       { id: "site", word: "Add a site", done: Boolean(host), action: "Add", main: !host },

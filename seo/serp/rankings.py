@@ -315,7 +315,7 @@ def detail(engine: Engine, site_id: int, keyword_id: int, engine_name: str) -> d
             if before:
                 for old in conn.execute(text("SELECT position, domain FROM serp_results WHERE check_id = :c ORDER BY position"), {"c": before["id"]}).mappings():
                     then.setdefault(old["domain"], old["position"])
-            rival_hosts = {r[0] for r in conn.execute(text("SELECT s.host FROM site_competitors sc JOIN sites s ON s.id = sc.competitor_id WHERE sc.site_id = :s"), {"s": site_id}).all()}
+            rival_hosts = {r[0] for r in conn.execute(text("SELECT s.host FROM site_competitors sc JOIN sites s ON s.id = sc.competitor_id WHERE sc.site_id = :s AND sc.tracking = 'on'"), {"s": site_id}).all()}
             for result in rows_now:
                 mine = store.on_host(result["host"], host)
                 was = then.get(result["domain"])
