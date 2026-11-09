@@ -59,47 +59,47 @@ window.SITES = [
   { id: "site-three", host: "site-three.example", leads: 3, ld: 1, visits: 960, vd: 18, clicks: 311, cd: -9, alerts: 0, thru: "31 Oct" },
 ];
 
-window.TEAM = ["Malik", "Sara", "Mickaël", "Nour"];
+window.TEAM = ["Nadia", "Sara", "Mickaël", "Nour"];
 window.DATES = ["12 Sep", "26 Sep", "10 Oct", "24 Oct", "2 Nov"];
 
 function kw(k, vol, page, ai, own, res, chg, trend, tools) { return { k, vol, page, ai, own, res, chg, trend, tools }; }
 
 // res: per engine { p: position or null when beyond depth, tool, age (days), depth, flag }
 window.KEYWORDS = [
-  kw("emirates id", 1000, "/emirates-id/", "cited", { google: 5.2, bing: 3.4, yandex: null },
+  kw("titre de séjour", 1000, "/titre-de-sejour/", "cited", { google: 5.2, bing: 3.4, yandex: null },
     { google: { p: 5, tool: "Bright Data", age: 2, depth: 10 }, duckduckgo: { p: 4, tool: "DuckDuckGo direct", age: 2, depth: 10 }, bing: { p: 3, tool: "SerpApi", age: 2, depth: 10 }, yandex: { p: null, tool: "SerpApi", age: 2, depth: 10 } },
     { google: 2, duckduckgo: 1, bing: 0, yandex: null }, [7, 7, 6, 7, 5],
     [{ tool: "Bright Data", p: 5, age: 2, depth: 10 }, { tool: "SerpApi", p: 5, age: 9, depth: 10 }, { tool: "Searlo", p: null, age: null }]),
-  kw("freezone dubai", 1000, "/freezone-dubai/", "overview", { google: 18.6, bing: 9.1, yandex: 14 },
+  kw("zone franche séville", 1000, "/zone-franche-seville/", "overview", { google: 18.6, bing: 9.1, yandex: 14 },
     { google: { p: 12, tool: "SerpApi", age: 2, depth: 20 }, duckduckgo: { p: 9, tool: "DuckDuckGo direct", age: 2, depth: 10 }, bing: { p: 8, tool: "Bright Data", age: 2, depth: 10 }, yandex: { p: 13, tool: "Bright Data", age: 2, depth: 20 } },
     { google: -1, duckduckgo: 0, bing: 2, yandex: null }, [14, 13, 11, 11, 12],
     [{ tool: "SerpApi", p: 12, age: 2, depth: 20 }, { tool: "Searlo", p: 11, age: 1, depth: 20 }, { tool: "HasData", p: null, age: null }]),
-  kw("créer société dubaï", 2900, "/creer-societe-dubai/", "cited", { google: 8, bing: 1.2, yandex: null },
+  kw("créer société séville", 2900, "/creer-societe-seville/", "cited", { google: 8, bing: 1.2, yandex: null },
     { google: { p: 7, tool: "Bright Data", age: 2, depth: 10 }, duckduckgo: { p: 1, tool: "DuckDuckGo direct", age: 2, depth: 10 }, bing: { p: 1, tool: "SerpApi", age: 2, depth: 10 }, yandex: { p: null, tool: "SerpApi", age: 2, depth: 10 } },
     { google: 3, duckduckgo: 0, bing: 0, yandex: null }, [16, 12, 10, 10, 7],
     [{ tool: "Bright Data", p: 7, age: 2, depth: 10 }, { tool: "Searlo", p: 12, age: 3, depth: 20, flag: "differs" }]),
-  kw("coût de la vie dubaï", 2400, "/cout-de-la-vie-dubai/", "overview", { google: 10.8, bing: 6, yandex: 9 },
+  kw("coût de la vie séville", 2400, "/cout-de-la-vie-seville/", "overview", { google: 10.8, bing: 6, yandex: 9 },
     { google: { p: 11, tool: "Bright Data", age: 2, depth: 20 }, duckduckgo: { p: 6, tool: "DuckDuckGo direct", age: 2, depth: 10 }, bing: { p: 5, tool: "Bright Data", age: 2, depth: 10 }, yandex: { p: 8, tool: "SerpApi", age: 2, depth: 10 } },
     { google: -6, duckduckgo: 1, bing: 0, yandex: 1 }, [5, 6, 8, 9, 11], [{ tool: "Bright Data", p: 11, age: 2, depth: 20 }, { tool: "SerpApi", p: 10, age: 9, depth: 20 }]),
-  kw("ouvrir entreprise dubaï", 880, "/creer-societe-dubai/", "none", { google: 13.1, bing: 4, yandex: null },
+  kw("ouvrir entreprise séville", 880, "/creer-societe-seville/", "none", { google: 13.1, bing: 4, yandex: null },
     { google: { p: 14, tool: "SerpApi", age: 9, depth: 20 }, duckduckgo: { p: 3, tool: "DuckDuckGo direct", age: 9, depth: 10 }, bing: { p: 4, tool: "SerpApi", age: 9, depth: 10 }, yandex: { p: null, tool: "SerpApi", age: 9, depth: 10 } },
     { google: 6, duckduckgo: 0, bing: 1, yandex: null }, [20, 19, 15, 15, 14], [{ tool: "SerpApi", p: 14, age: 9, depth: 20 }]),
-  kw("impôt dubaï", 1600, "/impot-dubai/", "cited", { google: 17.2, bing: 7, yandex: 22 },
+  kw("impôt séville", 1600, "/impot-seville/", "cited", { google: 17.2, bing: 7, yandex: 22 },
     { google: { p: 16, tool: "HasData", age: 4, depth: 20 }, duckduckgo: { p: 8, tool: "DuckDuckGo direct", age: 4, depth: 10 }, bing: { p: 6, tool: "HasData", age: 4, depth: 10 }, yandex: { p: null, tool: "Bright Data", age: 4, depth: 10 } },
     { google: null, duckduckgo: -1, bing: 0, yandex: null }, [18, 17, 16], [{ tool: "HasData", p: 16, age: 4, depth: 20, flag: "tool-changed" }, { tool: "SerpApi", p: 15, age: 16, depth: 20 }]),
-  kw("loyer à dubaï", 1300, "/loyer-a-dubai/", "overview", { google: 21.6, bing: 11, yandex: 25 },
+  kw("loyer à séville", 1300, "/loyer-a-seville/", "overview", { google: 21.6, bing: 11, yandex: 25 },
     { google: { p: null, tool: "Bright Data", age: 2, depth: 10 }, duckduckgo: { p: 12, tool: "DuckDuckGo direct", age: 2, depth: 20 }, bing: { p: 10, tool: "Bright Data", age: 2, depth: 10 }, yandex: { p: null, tool: "SerpApi", age: 2, depth: 10 } },
     { google: null, duckduckgo: 1, bing: -2, yandex: null }, [], [{ tool: "Bright Data", p: null, age: 2, depth: 10 }, { tool: "SerpApi", p: 22, age: 16, depth: 30 }]),
-  kw("visa dubaï prix", 720, "/vivre-dubai-prix/", "not-captured", { google: 15.8, bing: 8, yandex: null },
+  kw("visa séville prix", 720, "/vivre-seville-prix/", "not-captured", { google: 15.8, bing: 8, yandex: null },
     { google: { p: 15, tool: "SerpApi", age: 16, depth: 20, flag: "suspect" }, duckduckgo: { p: 7, tool: "DuckDuckGo direct", age: 16, depth: 10 }, bing: { p: 9, tool: "SerpApi", age: 16, depth: 10 }, yandex: { p: null, tool: "SerpApi", age: 16, depth: 10 } },
     { google: null, duckduckgo: 0, bing: 0, yandex: null }, [16, 16, 15], [{ tool: "SerpApi", p: 15, age: 16, depth: 20, flag: "suspect" }]),
-  kw("médicaments interdits dubaï", 590, "/liste-des-medicaments-interdits-a-dubai/", "cited", { google: 2.4, bing: 1.8, yandex: 3 },
+  kw("médicaments interdits séville", 590, "/liste-des-medicaments-interdits-a-seville/", "cited", { google: 2.4, bing: 1.8, yandex: 3 },
     { google: { p: 2, tool: "Bright Data", age: 2, depth: 10 }, duckduckgo: { p: 2, tool: "DuckDuckGo direct", age: 2, depth: 10 }, bing: { p: 2, tool: "Bright Data", age: 2, depth: 10 }, yandex: { p: 3, tool: "Bright Data", age: 2, depth: 10 } },
     { google: 1, duckduckgo: 0, bing: 0, yandex: 0 }, [3, 3, 3, 3, 2], [{ tool: "Bright Data", p: 2, age: 2, depth: 10 }]),
-  kw("vivre à dubaï", 3600, "/vivre-a-dubai-reussir-son-expatriation/", "overview", { google: 19.8, bing: 12, yandex: null },
+  kw("vivre à séville", 3600, "/vivre-a-seville-reussir-son-expatriation/", "overview", { google: 19.8, bing: 12, yandex: null },
     { google: { p: 19, tool: "Bright Data", age: 2, depth: 20 }, duckduckgo: { p: 14, tool: "DuckDuckGo direct", age: 2, depth: 20 }, bing: { p: 11, tool: "SerpApi", age: 2, depth: 20 }, yandex: { p: null, tool: "SerpApi", age: 2, depth: 10 } },
     { google: 0, duckduckgo: 0, bing: 1, yandex: null }, [19, 20, 19, 19, 19], [{ tool: "Bright Data", p: 19, age: 2, depth: 20 }]),
-  kw("sponsor local dubaï", 390, null, "none", { google: null, bing: null, yandex: null },
+  kw("sponsor local séville", 390, null, "none", { google: null, bing: null, yandex: null },
     { google: { p: null, tool: "Bright Data", age: 2, depth: 10 }, duckduckgo: { p: null, tool: "DuckDuckGo direct", age: 2, depth: 10 }, bing: { p: null, tool: "SerpApi", age: 2, depth: 10 }, yandex: { p: null, tool: "SerpApi", age: 2, depth: 10 } },
     { google: null, duckduckgo: null, bing: null, yandex: null }, [], [{ tool: "Bright Data", p: null, age: 2, depth: 10 }]),
   kw("كم تكلفة تأسيس شركة في دبي", 480, "/ar/cost/", "not-captured", { google: 9.4, bing: null, yandex: null },
@@ -112,7 +112,7 @@ window.COMPETITORS_ON_PAGE = [
 ];
 
 // A few keywords already checked with two tools on other engines.
-[["emirates id", "bing", { tool: "Bright Data", p: 3, age: 3, depth: 10 }], ["freezone dubai", "bing", { tool: "SerpApi", p: 9, age: 9, depth: 10 }], ["freezone dubai", "yandex", { tool: "SerpApi", p: 15, age: 5, depth: 20 }], ["créer société dubaï", "duckduckgo", { tool: "Bright Data", p: 1, age: 2, depth: 10 }], ["coût de la vie dubaï", "bing", { tool: "HasData", p: 9, age: 6, depth: 10 }]]
+[["titre de séjour", "bing", { tool: "Bright Data", p: 3, age: 3, depth: 10 }], ["zone franche séville", "bing", { tool: "SerpApi", p: 9, age: 9, depth: 10 }], ["zone franche séville", "yandex", { tool: "SerpApi", p: 15, age: 5, depth: 20 }], ["créer société séville", "duckduckgo", { tool: "Bright Data", p: 1, age: 2, depth: 10 }], ["coût de la vie séville", "bing", { tool: "HasData", p: 9, age: 6, depth: 10 }]]
   .forEach(([k, engine, extra]) => { const res = window.KEYWORDS.find((r) => r.k === k).res[engine]; (res.also = res.also || []).push(extra); });
 
 // Refresh goes down this list in Automatic mode. The order can be changed in Settings. left: null means it uses no credits.
@@ -205,23 +205,23 @@ window.COMPETITOR_SITES = [{ id: "rival-one", host: "rival-one.example" }, { id:
 window.PROSPECTS = [];
 
 window.CLEANER_SAMPLE = `Source url,Source title,Authority Score,Toxic Score
-https://news.gulf-business.example/dubai/setup,Gulf Business,71,8
+https://news.iberia-business.example/seville/setup,Iberia Business,71,8
 https://www.expat-forum.example/thread/882,Expat Forum,46,22
 https://blog.uae-guide.example.co.uk/company,UAE Guide,38,
 https://cheap-links.example/buy-seo,Cheap Links,12,77
 https://blog-expat.example/autre-article,Blog Expat,52,10
-https://blog-voyage.example/dubai-budget,Blog Voyage,44,14
+https://blog-voyage.example/seville-budget,Blog Voyage,44,14
 https://www.expat-forum.example/thread/901,Expat Forum,46,22
 ,No URL,10,2
 https://spam-directory.example/list,Spam Directory,9,64
-https://invest-gulf.example/fr/guide,Invest Gulf,63,n/a
+https://invest-iberia.example/fr/guide,Invest Iberia,63,n/a
 `;
 
 window.BULK_SAMPLE = `Source page;Target page;Anchor text;Mediator;Price;Owner
-https://expat-news.example/dubai/guide;/creer-societe-dubai/;créer sa société;LinkAgency;120;Sara
-https://annuaire-gulf.example/fiche/4412;/;site-one;;;
-blog-voyage.example/vivre-a-dubai;/vivre-a-dubai/;vivre à Dubaï;PressLink;85;Nour
-https://blog-expat.example/guide-dubai;/creer-societe-dubai/;créer sa société à Dubaï;LinkAgency;150;Sara
+https://expat-news.example/seville/guide;/creer-societe-seville/;créer sa société;LinkAgency;120;Sara
+https://annuaire-iberia.example/fiche/4412;/;site-one;;;
+blog-voyage.example/vivre-a-seville;/vivre-a-seville/;vivre à Séville;PressLink;85;Nour
+https://blog-expat.example/guide-seville;/creer-societe-seville/;créer sa société à Séville;LinkAgency;150;Sara
 not a link;/visa/;visa;;;`;
 
 Object.assign(window.FR, {
@@ -267,7 +267,7 @@ Object.assign(window.FR, {
 });
 
 window.ATTENTION = [
-  { id: "a0", rank: 2, sev: "warn", host: "site-one.example", title: "/loyer-a-dubai/ lost 32% of its Google clicks", detail: "Last 7 days against the 7 before: 85 → 58", act: "See page", key: "content" },
+  { id: "a0", rank: 2, sev: "warn", host: "site-one.example", title: "/loyer-a-seville/ lost 32% of its Google clicks", detail: "Last 7 days against the 7 before: 85 → 58", act: "See page", key: "content" },
   { id: "a1", rank: 4, sev: "crit", title: "Google connection expired", detail: "Search Console and GA4 stopped updating 2 h ago", act: "Fix", key: "fix" },
   { id: "a2", rank: 3, sev: "warn", title: "Clarity data lost in 31 h", detail: "Last pull was 41 h ago. The API only goes back 72 h", act: "Run now", key: "clarity" },
   { id: "a3", rank: 2, sev: "warn", title: "2 backlinks lost", detail: "Found by the monthly link check", act: "Review", key: "backlinks" },
@@ -276,12 +276,12 @@ window.ATTENTION = [
 window.TODAY_SAMPLE = {
   through: "2026-11-01", otherEdits: { all: 12, "site-one.example": 9, "site-two.example": 3, "site-three.example": 0 },
   goingDown: [
-    { type: "keyword", query: "visa dubaï prix", host: "site-one.example", was: 4, now: 9, places: -5 },
+    { type: "keyword", query: "visa séville prix", host: "site-one.example", was: 4, now: 9, places: -5 },
     { type: "page", path: "/tax/", host: "site-one.example", change: -24, was: 120, clicks: 91 },
-    { type: "keyword", query: "coût de la vie dubaï", host: "site-two.example", was: 6, now: 10, places: -4 },
+    { type: "keyword", query: "coût de la vie séville", host: "site-two.example", was: 6, now: 10, places: -4 },
   ],
   goingUp: [
-    { type: "keyword", query: "emirates id", host: "site-one.example", was: 9, now: 5, places: 4 },
+    { type: "keyword", query: "titre de séjour", host: "site-one.example", was: 9, now: 5, places: 4 },
     { type: "page", path: "/cost/", host: "site-one.example", change: 41, was: 85, clicks: 120 },
     { type: "page", path: "/ar/cost/", host: "site-two.example", change: 26, was: 62, clicks: 78 },
   ],
@@ -294,11 +294,11 @@ window.TODAY_SAMPLE = {
 window.ATTENTION_EXTRA_INFO = 0; // every count on Today must match rows that can be opened
 
 window.CHANGES = [
-  { id: "c1", who: "rival-one.example", kind: "title changed", page: "/visa/", when: "2 h", diff: { title: true, before: "Visa à Dubaï : le guide 2025", after: "Visa à Dubaï : prix et délais en 2026", words: [1840, 1840], text: [["del", "Le délai moyen est de 10 jours."], ["add", "Le délai moyen est de 5 à 7 jours ouvrés."]] } },
+  { id: "c1", who: "rival-one.example", kind: "title changed", page: "/visa/", when: "2 h", diff: { title: true, before: "Visa à Séville : le guide 2025", after: "Visa à Séville : prix et délais en 2026", words: [1840, 1840], text: [["del", "Le délai moyen est de 10 jours."], ["add", "Le délai moyen est de 5 à 7 jours ouvrés."]] } },
   { id: "c2", who: "rival-two.example", kind: "new pages", count: 3, page: "/blog/", when: "5 h" },
   { id: "c3", who: "rival-four.example", kind: "text edited", page: "/ar/cost/", when: "7 h", diff: { before: "420 words", after: "465 words", words: [420, 465], rtl: true, text: [["del", "تبدأ تكلفة تأسيس الشركة من 12,500 درهم."], ["add", "تبدأ تكلفة تأسيس الشركة من 14,000 درهم إماراتي."], ["same", "يشمل ذلك الرخصة التجارية والتأشيرة الأولى."]] } },
-  { id: "c4", type: "traffic", page: "/loyer-a-dubai/", value: -32 },
-  { id: "c5", type: "keyword", k: "emirates id", from: 7, to: 5 },
+  { id: "c4", type: "traffic", page: "/loyer-a-seville/", value: -32 },
+  { id: "c5", type: "keyword", k: "titre de séjour", from: 7, to: 5 },
 ];
 
 // Each sample keyword belongs to one of the sample sites, as a real one does.
@@ -306,22 +306,22 @@ window.KEYWORDS.forEach((row, i) => { row.site = window.SITES[i % 5 === 4 ? 2 : 
 
 window.TASKS_NEXT = [
   { t: "Rewrite the visa page title", who: "Sara", due: "6 Nov" },
-  { t: "Replace 2 lost backlinks", who: "Malik", due: "7 Nov" },
+  { t: "Replace 2 lost backlinks", who: "Nadia", due: "7 Nov" },
   { t: "Add FAQ to the tax page", who: "Nour", due: "8 Nov" },
 ];
 
 window.BACKLINKS = [
-  { id: "b1", src: "https://blog-expat.example/guide-dubai", site: "site-one.example", target: "/creer-societe-dubai/", anchor: "créer sa société à Dubaï", status: "live", auth: 5.8, visits: 42, leads: 3, label: "utm", cost: 150, mediator: "LinkAgency", owner: "Malik", placed: "12 Sep", utm: { source: "blog-expat", medium: "backlink", campaign: "bl-101" }, before: 120, after: 171 },
-  { id: "b2", src: "https://annuaire-pro.example/societes/dubai", site: "site-one.example", target: "/", anchor: "site-one", status: "live", auth: 4.1, visits: 12, leads: 0, label: "domain", cost: 0, mediator: null, owner: "Sara", placed: "2 Oct", before: 300, after: 310 },
-  { id: "b3", src: "https://news-dubai.example/article/2026/entrepreneurs", site: "site-one.example", target: "/freezone-dubai/", anchor: "freezone", status: "lost", auth: 6.4, visits: 8, leads: 1, label: "domain", cost: 220, mediator: "LinkAgency", owner: "Malik", placed: "4 Aug", before: 84, after: 96 },
+  { id: "b1", src: "https://blog-expat.example/guide-seville", site: "site-one.example", target: "/creer-societe-seville/", anchor: "créer sa société à Séville", status: "live", auth: 5.8, visits: 42, leads: 3, label: "utm", cost: 150, mediator: "LinkAgency", owner: "Nadia", placed: "12 Sep", utm: { source: "blog-expat", medium: "backlink", campaign: "bl-101" }, before: 120, after: 171 },
+  { id: "b2", src: "https://annuaire-pro.example/societes/seville", site: "site-one.example", target: "/", anchor: "site-one", status: "live", auth: 4.1, visits: 12, leads: 0, label: "domain", cost: 0, mediator: null, owner: "Sara", placed: "2 Oct", before: 300, after: 310 },
+  { id: "b3", src: "https://news-seville.example/article/2026/entrepreneurs", site: "site-one.example", target: "/zone-franche-seville/", anchor: "zone franche", status: "lost", auth: 6.4, visits: 8, leads: 1, label: "domain", cost: 220, mediator: "LinkAgency", owner: "Nadia", placed: "4 Aug", before: 84, after: 96 },
   { id: "b4", src: "https://forum-expat.example/topic/1984", site: "site-two.example", target: "/visa/", anchor: "visa", status: "nofollow", auth: 3.2, visits: 5, leads: 0, label: "shared", shared: 2, cost: 0, mediator: null, owner: "Nour", placed: "19 Oct", before: 40, after: 41 },
   { id: "b5", src: "https://forum-expat.example/topic/2001", site: "site-two.example", target: "/visa/", anchor: "démarches visa", status: "live", auth: 3.2, visits: 5, leads: 0, label: "shared", shared: 2, cost: 0, mediator: null, owner: "Nour", placed: "21 Oct", before: 40, after: 41 },
-  { id: "b6", src: "https://magazine-business.example/dossiers/emirats", site: "site-three.example", target: "/comptabilite/", anchor: "comptabilité aux Émirats", status: "live", auth: 5.1, visits: 0, leads: 0, label: "none", cost: 90, mediator: "PressLink", owner: "Sara", placed: "28 Oct", before: 15, after: 18 },
+  { id: "b6", src: "https://magazine-business.example/dossiers/espagne", site: "site-three.example", target: "/comptabilite/", anchor: "comptabilité en Espagne", status: "live", auth: 5.1, visits: 0, leads: 0, label: "none", cost: 90, mediator: "PressLink", owner: "Sara", placed: "28 Oct", before: 15, after: 18 },
   { id: "b7", src: "https://partner-site.example/ressources", site: "site-three.example", target: "/tarifs/", anchor: "tarifs", status: "lost", auth: 2.9, visits: null, leads: null, label: "no-ga4", cost: 40, mediator: "PressLink", owner: "Mickaël", placed: "1 Jul", before: null, after: null },
 ];
 
 window.FOUND_LINKS = [
-  { src: "https://blog-voyage.example/dubai-pratique", target: "/loyer-a-dubai/", seen: "Bing", first: "22 Oct", auth: 4.4 },
+  { src: "https://blog-voyage.example/seville-pratique", target: "/loyer-a-seville/", seen: "Bing", first: "22 Oct", auth: 4.4 },
   { src: "https://info-emirats.example/annuaire", target: "/", seen: "Search Console CSV", first: "9 Oct", auth: 3.1 },
-  { src: "https://expat-guide.example/creer-entreprise", target: "/creer-societe-dubai/", seen: "Bing", first: "30 Sep", auth: 5.3 },
+  { src: "https://expat-guide.example/creer-entreprise", target: "/creer-societe-seville/", seen: "Bing", first: "30 Sep", auth: 5.3 },
 ];

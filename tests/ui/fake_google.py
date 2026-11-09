@@ -31,8 +31,8 @@ def _gsc(request: httpx.Request) -> httpx.Response:
             day = date.fromordinal(ordinal).isoformat()
             rows.append({"keys": [day], "clicks": _wave(day, 120), "impressions": _wave(day, 120) * 22, "position": 6 + (ordinal % 9) / 3})
         return httpx.Response(200, json={"rows": rows})
-    pages = [("https://mine-one.test/visa/", 60, 4.2), ("https://mine-one.test/creer-societe/", 35, 7.5), ("https://mine-one.test/", 20, 3.1), ("https://mine-one.test/blog/freezone-dubai/", 9, 14.0)]
-    queries = [("créer société dubai", 40, 5.1), ("visa dubai prix", 30, 3.4), ("emirates id", 18, 5.2), ("freezone dubai", 11, 12.0), ("loyer a dubai", 6, 23.0), ("coût de la vie dubaï", 3, 44.0), ("ouvrir un compte", 1, 61.0)]
+    pages = [("https://mine-one.test/visa/", 60, 4.2), ("https://mine-one.test/creer-societe/", 35, 7.5), ("https://mine-one.test/", 20, 3.1), ("https://mine-one.test/blog/zone-franche-seville/", 9, 14.0)]
+    queries = [("créer société seville", 40, 5.1), ("visa seville prix", 30, 3.4), ("titre de séjour", 18, 5.2), ("zone franche séville", 11, 12.0), ("loyer a seville", 6, 23.0), ("coût de la vie séville", 3, 44.0), ("ouvrir un compte", 1, 61.0)]
     if dims == ["page"]:
         rows = [{"keys": [url], "clicks": _wave(start, base, n), "impressions": _wave(start, base, n) * 20, "position": pos} for n, (url, base, pos) in enumerate(pages)]
     elif dims == ["query"]:
@@ -50,7 +50,7 @@ def _ga4(request: httpx.Request) -> httpx.Response:
     if names[0] == "sessionDefaultChannelGroup":
         table = [["Organic Search", "google", "organic", w(140), w(120), w(5, 1)], ["Direct", "(direct)", "(none)", w(60, 2), w(50, 2), w(3, 2)], ["Referral", "blog-expat.test", "referral", w(22, 3), w(20, 3), w(2, 3)], ["Referral", "chatgpt.com", "referral", w(12, 4), w(11, 4), w(1, 4)], ["Organic Social", "facebook.com", "social", w(18, 5), w(16, 5), "0"], ["Paid Search", "google", "cpc", w(30, 6), w(28, 6), w(2, 6)], ["Email", "newsletter", "email", w(8, 7), w(8, 7), "0"]]
     elif names[0] == "landingPage":
-        table = [["/visa/", w(90), w(80), w(4, 1)], ["/creer-societe/", w(60, 2), w(50, 2), w(5, 2)], ["/", w(40, 3), w(35, 3), "0"], ["/blog/freezone-dubai/", w(25, 4), w(22, 4), w(1, 4)], ["/contact/", w(10, 5), w(10, 5), w(3, 5)]]
+        table = [["/visa/", w(90), w(80), w(4, 1)], ["/creer-societe/", w(60, 2), w(50, 2), w(5, 2)], ["/", w(40, 3), w(35, 3), "0"], ["/blog/zone-franche-seville/", w(25, 4), w(22, 4), w(1, 4)], ["/contact/", w(10, 5), w(10, 5), w(3, 5)]]
     elif names[0] == "sessionSource":
         table = [["blog-expat.test", "referral", "/visa/", "(not set)", w(12, 1), w(1, 1)], ["blog-expat.test", "referral", "/visa/", "bl-1", w(3, 2), "0"], ["chatgpt.com", "referral", "/creer-societe/", "(not set)", w(12, 3), w(1, 3)], ["google", "organic", "/visa/", "(not set)", w(90, 4), w(3, 4)]]
     elif names[0] == "sessionManualSource":
@@ -78,7 +78,7 @@ def _answer(request: httpx.Request) -> httpx.Response:
     if "GetRankAndTrafficStats" in url:
         return httpx.Response(200, json={"d": [{"Date": "/Date(1793000000000)/", "Clicks": 14, "Impressions": 300}]})
     if "GetQueryStats" in url:
-        return httpx.Response(200, json={"d": [{"Query": "visa dubai prix", "Date": "/Date(1793000000000)/", "Clicks": 4, "Impressions": 60, "AvgImpressionPosition": 6.0}]})
+        return httpx.Response(200, json={"d": [{"Query": "visa seville prix", "Date": "/Date(1793000000000)/", "Clicks": 4, "Impressions": 60, "AvgImpressionPosition": 6.0}]})
     if url.endswith("/v4/user"):
         return httpx.Response(200, json={"user_id": 7})
     if "search-queries/popular" in url:

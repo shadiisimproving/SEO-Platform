@@ -1,6 +1,7 @@
 async (page) => {
-  const dir = '/private/tmp/claude-501/-Users-alwaysimproving/3e6321c4-6c42-4bba-b652-6ddce3b4d385/scratchpad/shots/';
-  const csv = '/Users/alwaysimproving/Documents/Claude & VS/seo-command-center/var/ui-test-csv/';
+  // Set these two folders on your own computer before running: screenshots go to the first, test CSVs are read from the second.
+  const dir = '/tmp/seo-flow-shots/';
+  const csv = './var/ui-test-csv/';
   const root = 'http://127.0.0.1:8201/';
   const NOTE = 'Prospect list only. This filters a CSV and adds the links you keep to In consideration. It does not check rankings or track these links.';
   const log = [];
@@ -116,15 +117,15 @@ async (page) => {
     await clearToasts();
 
     // Mark as done, cancel.
-    const row = page.locator('#pr-table tbody tr', { hasText: 'invest-gulf.example' }).first();
+    const row = page.locator('#pr-table tbody tr', { hasText: 'invest-iberia.example' }).first();
     await row.locator('[data-prospect-done]').click(); await wait(500);
-    check('form prefilled with the source URL', (await page.locator('#bl-src').inputValue()) === 'https://invest-gulf.example/fr/guide', await page.locator('#bl-src').inputValue());
+    check('form prefilled with the source URL', (await page.locator('#bl-src').inputValue()) === 'https://invest-iberia.example/fr/guide', await page.locator('#bl-src').inputValue());
     check('site comes from the prospect', (await page.locator('#bl-site').inputValue()) === 'site-one.example');
     check('cursor goes to Target page', await page.evaluate(() => document.activeElement.id === 'bl-target'));
     check('no Import CSV switch here', (await page.locator('[data-add-mode]').count()) === 0);
     await page.screenshot({ path: dir + 'p-mark-done.png' });
     await page.locator('[data-discard-panel]').click(); await wait(350);
-    check('Cancel leaves the prospect', (await rowsCount()) === 9 && (await page.locator('#pr-table').innerText()).includes('invest-gulf.example'));
+    check('Cancel leaves the prospect', (await rowsCount()) === 9 && (await page.locator('#pr-table').innerText()).includes('invest-iberia.example'));
     check('Cancel creates no backlink', (await tiles()) === before);
     await clearToasts();
     // Esc with typing: draft kept, prospect stays.
@@ -138,12 +139,12 @@ async (page) => {
     await page.locator('#bl-anchor').fill('guide investir');
     await page.locator('#bl-save').click(); await wait(500);
     check('saving lands on Done', (await page.locator('[data-bl-section="done"]').getAttribute('aria-selected')) === 'true');
-    check('tracked backlink exists', (await page.locator('#bl-table').innerText()).includes('invest-gulf.example/fr/guide'));
-    const nb = page.locator('#bl-table tbody tr', { hasText: 'invest-gulf.example' });
+    check('tracked backlink exists', (await page.locator('#bl-table').innerText()).includes('invest-iberia.example/fr/guide'));
+    const nb = page.locator('#bl-table tbody tr', { hasText: 'invest-iberia.example' });
     check('CSV score not copied into the Authority column', (await nb.locator('td').nth(3).innerText()).trim() === '—', await nb.locator('td').nth(3).innerText());
     check('real backlink counts in the cards', (await tiles()).startsWith('Total=8 Live=6'), await tiles());
     await page.locator('[data-bl-section="consideration"]').click(); await wait(300);
-    check('prospect has left In consideration', (await rowsCount()) === 8 && !(await page.locator('#pr-table').innerText()).includes('invest-gulf.example/fr/guide'));
+    check('prospect has left In consideration', (await rowsCount()) === 8 && !(await page.locator('#pr-table').innerText()).includes('invest-iberia.example/fr/guide'));
     await clearToasts();
 
     // Errors, all in plain words, listing headers.

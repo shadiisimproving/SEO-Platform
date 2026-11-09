@@ -84,7 +84,7 @@ def good(world):
     ("something.tk", "free_tld"), ("nice-name.top", "abused_tld"), ("a-b-c-d-e-f-g-h.example", "odd_name"), ("shop12345.example", "odd_name"),
     ("a" * 41 + ".example", "odd_name"),
     # Real domains from the first Common Crawl run: a French phrase in a name is normal.
-    ("des-livres-pour-changer-de-vie.com", None), ("soirees-cocktail-luxury-vip-jetset.com", None), ("comptable-dubai.com", None),
+    ("des-livres-pour-changer-de-vie.com", None), ("soirees-cocktail-luxury-vip-jetset.com", None), ("comptable-seville.com", None),
     ("barista-mag.example", None), ("coffee.co.uk", None), ("alphabet.com", None), ("xn--mnchen-3ya.de", None), ("web.de", None), ("shop.com.sa", None),
 ])
 def test_a_name_can_give_it_away(domain, reason):

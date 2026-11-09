@@ -355,7 +355,7 @@
   // ---- Keywords ---------------------------------------------------------------
   const ENGINES = [["google", "Google"], ["duckduckgo", "DuckDuckGo"], ["bing", "Bing"], ["yandex", "Yandex"]];
   const OWN_TOOL = { google: "Search Console", bing: "Bing Webmaster", yandex: "Yandex Webmaster" };
-  const SAME_ON_2 = new Set(["coût de la vie dubaï", "visa dubaï prix"]);
+  const SAME_ON_2 = new Set(["coût de la vie séville", "visa séville prix"]);
   const engineOf = () => (state.engine === "all" ? "google" : state.engine);
 
   const siteKeywords = () => { const host = window.UI?.siteHostPicked(); return window.KEYWORDS.filter((row) => !host || row.site === host); };

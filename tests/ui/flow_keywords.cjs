@@ -14,7 +14,7 @@ const settle = (page, ms = 500) => page.waitForTimeout(ms);
   await page.goto(`${BASE}#keywords`); await page.waitForSelector("#kw-table", { timeout: 15000 }); await settle(page);
   await shot(page, "01-list");
   const bodyText = await page.textContent("#page");
-  check(!/coût de la vie|visa dubaï|emirates id/.test(bodyText), "no sample keyword on the real screen");
+  check(!/coût de la vie|visa séville|titre de séjour/.test(bodyText), "no sample keyword on the real screen");
   check((await page.$$("#kw-table tbody tr")).length >= 10, "real rows show");
   check(/Scraped results/.test(bodyText), "the Top 10 tile says its source");
   check(await page.$("#period") === null, "no period picker that wouldn't do anything");

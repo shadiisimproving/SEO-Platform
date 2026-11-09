@@ -132,8 +132,8 @@ def test_indexnow_says_where_the_key_file_goes(engine, key, web):
 
 
 def test_keyword_ideas_read_google_suggestions(web):
-    web.answers["suggestqueries"] = httpx.Response(200, json=["visa", ["visa dubai", "visa prix"]])
-    assert extras.keyword_ideas("visa", "fr", "FR") == ["visa dubai", "visa prix"]
+    web.answers["suggestqueries"] = httpx.Response(200, json=["visa", ["visa seville", "visa prix"]])
+    assert extras.keyword_ideas("visa", "fr", "FR") == ["visa seville", "visa prix"]
     assert "hl=fr" in str(web.calls[0].url) and "gl=FR" in str(web.calls[0].url)
 
 

@@ -574,10 +574,10 @@ def test_top_10_change_only_counts_like_for_like(world):
 
 
 def test_own_tool_columns_read_each_engines_own_tool(world):
-    [k] = track(world, "café Dubai")
+    [k] = track(world, "café Seville")
     with world.engine.begin() as conn:
-        conn.execute(text("INSERT INTO bing_query (site_id, query_hash, query, clicks, impressions, position) VALUES (:s, 'a', 'CAFÉ  dubai', 1, 9, 4.5)"), {"s": world.site})
-        conn.execute(text("INSERT INTO yandex_query (site_id, query_hash, query, shows, clicks, position) VALUES (:s, 'a', 'café dubai', 9, 1, 6.5)"), {"s": world.site})
+        conn.execute(text("INSERT INTO bing_query (site_id, query_hash, query, clicks, impressions, position) VALUES (:s, 'a', 'CAFÉ  seville', 1, 9, 4.5)"), {"s": world.site})
+        conn.execute(text("INSERT INTO yandex_query (site_id, query_hash, query, shows, clicks, position) VALUES (:s, 'a', 'café seville', 9, 1, 6.5)"), {"s": world.site})
     assert row_of(world, k, "bing")["own"] == 4.5 and row_of(world, k, "yandex")["own"] == 6.5
     assert row_of(world, k, "google")["own"] is None  # not connected is blank, not zero
 

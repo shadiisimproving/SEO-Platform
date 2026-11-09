@@ -175,14 +175,14 @@ def test_cookie_flags_are_safe(app, engine):
 
 # ---- usernames: sign-in takes a username or an email ------------------------------------------------
 def test_a_username_can_sign_in(app, engine):
-    service.create_user(engine, "shadi", "Shadi", "admin", password=PASSWORD, must_change=False)
-    client, _ = _signed_in(app, "shadi")
-    assert client.get("/api/auth/me").get_json()["user"]["email"] == "shadi"
+    service.create_user(engine, "alex", "Alex", "admin", password=PASSWORD, must_change=False)
+    client, _ = _signed_in(app, "alex")
+    assert client.get("/api/auth/me").get_json()["user"]["email"] == "alex"
 
 
 def test_a_username_ignores_capitals_and_spaces(app, engine):
-    service.create_user(engine, "  Shadi ", "Shadi", "admin", password=PASSWORD, must_change=False)
-    assert app.test_client().post("/api/auth/login", json={"email": " SHADI ", "password": PASSWORD}).status_code == 200
+    service.create_user(engine, "  Alex ", "Alex", "admin", password=PASSWORD, must_change=False)
+    assert app.test_client().post("/api/auth/login", json={"email": " ALEX ", "password": PASSWORD}).status_code == 200
 
 
 def test_an_email_still_works(app, engine):
@@ -196,28 +196,28 @@ def test_a_username_that_cant_work_is_refused(engine, bad):
         service.create_user(engine, bad, "Someone", "member")
 
 
-@pytest.mark.parametrize("good", ["shadi", "shadi.k", "shadi_k", "shadi-1", "abc"])
+@pytest.mark.parametrize("good", ["alex", "alex.k", "alex_k", "alex-1", "abc"])
 def test_ordinary_usernames_are_accepted(engine, good):
     assert service.create_user(engine, good, "Someone", "member")[0]["email"] == good
 
 
 def test_two_people_cant_share_a_username(engine):
-    service.create_user(engine, "shadi", "One", "member")
+    service.create_user(engine, "alex", "One", "member")
     with pytest.raises(Refused):
-        service.create_user(engine, "SHADI", "Two", "member")
+        service.create_user(engine, "ALEX", "Two", "member")
 
 
 def test_a_username_gets_the_same_password_rules(engine):
     with pytest.raises(Refused):
-        service.create_user(engine, "shadi", "Shadi", "admin", password="123456789")
+        service.create_user(engine, "alex", "Alex", "admin", password="123456789")
 
 
 def test_a_wrong_password_locks_a_username_as_it_locks_an_email(app, engine):
-    service.create_user(engine, "shadi", "Shadi", "admin", password=PASSWORD, must_change=False)
+    service.create_user(engine, "alex", "Alex", "admin", password=PASSWORD, must_change=False)
     client = app.test_client()
     for _ in range(service.MAX_FAILURES):
-        assert client.post("/api/auth/login", json={"email": "shadi", "password": "nope"}).status_code == 401
-    assert client.post("/api/auth/login", json={"email": "shadi", "password": PASSWORD}).status_code == 401
+        assert client.post("/api/auth/login", json={"email": "alex", "password": "nope"}).status_code == 401
+    assert client.post("/api/auth/login", json={"email": "alex", "password": PASSWORD}).status_code == 401
 
 
 def test_an_admin_can_add_a_person_by_username(app, engine):

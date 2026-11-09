@@ -111,7 +111,7 @@ def test_user_agent_is_a_declared_bot_and_does_not_name_us_or_pretend(site, fetc
     sent = {headers.get("User-Agent") for _, _, headers in site.hits}
     assert sent == {USER_AGENT}
     assert "bot" in USER_AGENT.lower()
-    for word in ("Mozilla", "Chrome", "Safari", "Always", "Improving", "Dubai"):
+    for word in ("Mozilla", "Chrome", "Safari", "http", "@", ".com"):  # no browser disguise, and no site or contact of whoever runs it
         assert word not in USER_AGENT
 
 

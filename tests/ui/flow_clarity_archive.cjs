@@ -1,6 +1,6 @@
-// The old Clarity archive, driven by hand like a normal user, on the real file made by scripts/clarity_archive_export.py.
-// Needs: .venv/bin/python scripts/clarity_archive_export.py, then
-//        DB_NAME_TEST=test_clarchive_test .venv/bin/python tests/ui/app_server.py --port 8218 --empty --login
+// The old Clarity archive, driven by hand like a normal user, on a file in the format scripts/clarity_archive_export.py makes.
+// It writes that file itself, for made-up sites: no real site or number is in here.
+// Needs: DB_NAME_TEST=test_clarchive_test .venv/bin/python tests/ui/app_server.py --port 8218 --empty --login
 // Usage: SCREENS_URL=http://127.0.0.1:8218/ node tests/ui/flow_clarity_archive.cjs [folder for screenshots]
 const path = require("path");
 const fs = require("fs");
@@ -9,7 +9,17 @@ const { open } = require("./pw.cjs");
 
 const ROOT = process.env.SCREENS_URL || "http://127.0.0.1:8218/";
 const SHOTS = process.argv[2];
-const FILE = path.join(__dirname, "..", "..", "var", "clarity-archive.json");
+// 34 days for the site in the app: July from the recordings export (sessions only), then 3 days from the API.
+// The two other sites aren't in the app, so the preview names them and leaves their day out.
+const day = (d, extra) => ({ day: d, sessions: 20, scroll_depth: null, rage_clicks: null, dead_clicks: null, referrers: [{ source: "google.com", sessions: 5 }], status: "partial", note: "Old Clarity data, from its recordings export: sessions and referrers only.", ...extra });
+const july = Array.from({ length: 31 }, (_, i) => day(`2026-07-${String(i + 1).padStart(2, "0")}`));
+const api = ["2026-08-08", "2026-08-09", "2026-08-10"].map((d) => day(d, { sessions: 40, scroll_depth: 68.2, rage_clicks: 0, dead_clicks: 1, status: "ok", note: null }));
+const FILE = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "clarity-archive-")), "clarity-archive.json");
+fs.writeFileSync(FILE, JSON.stringify({ format: "seo-command-center/clarity-archive", version: 1, sites: [
+  { host: "shop-one.test", days: [...july, ...api] },
+  { host: "shop-two.test", days: [day("2026-08-09")] },
+  { host: "shop-three.test", days: [day("2026-08-09")] },
+] }));
 const results = [];
 const check = (name, ok, detail = "") => { results.push(ok); console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok || !detail ? "" : `: ${JSON.stringify(detail).slice(0, 400)}`}`); };
 const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: path.join(SHOTS, `${name}.png`) }); };
@@ -28,7 +38,7 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: pa
   // Only one of the three old sites is in the app so far.
   await page.locator('[data-go="today"]').first().click();
   await page.getByRole("button", { name: "Add", exact: true }).first().click();
-  await page.locator('input[placeholder="https://"]').first().fill("https://www.creer-societe-dubai.fr/");
+  await page.locator('input[placeholder="https://"]').first().fill("https://www.shop-one.test/");
   await page.getByRole("button", { name: "Add", exact: true }).last().click();
   await page.waitForTimeout(1500);
 
@@ -55,8 +65,8 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: pa
   await page.setInputFiles("#ca-file", FILE);
   await page.waitForSelector("#ca-import");
   let said = await page.locator("#ca-result").innerText();
-  check("the preview counts the site's days", said.includes("creer-societe-dubai.fr") && said.includes("34 days to add"), said);
-  check("the preview names the sites not in the app", said.includes("comptabilite-dubai.com") && said.includes("business-setup-dubai.com"), said);
+  check("the preview counts the site's days", said.includes("shop-one.test") && said.includes("34 days to add"), said);
+  check("the preview names the sites not in the app", said.includes("shop-two.test") && said.includes("shop-three.test"), said);
   await shot(page, "3-preview");
 
   await page.locator("#ca-import").click();

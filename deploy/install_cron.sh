@@ -5,7 +5,7 @@
 # so this always: takes a backup, builds a file, installs from that file, reads it back, and puts the backup back if
 # the result isn't exactly what it built. Only the lines between its own markers are ever replaced.
 #
-#   APP_DIR=$HOME/seo-platform VENV_BIN=/home3/khma1817/virtualenv/seo-platform/3.12/bin bash deploy/install_cron.sh
+#   APP_DIR=$HOME/seo-platform VENV_BIN=/home/your-cpanel-user/virtualenv/seo-platform/3.12/bin bash deploy/install_cron.sh
 set -euo pipefail
 
 : "${APP_DIR:?APP_DIR is not set}"

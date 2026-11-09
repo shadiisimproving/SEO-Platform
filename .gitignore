@@ -10,3 +10,7 @@ __pycache__/
 .pytest_cache/
 deploy/searxng/local/uwsgi.ini
 design/mockups/.axe.min.js
+# This computer's hosting, kept out of the repo: the app is for any account (deploy/DEPLOY.md).
+deploy/deploy.local.env
+deploy/known_hosts.local
+reports/

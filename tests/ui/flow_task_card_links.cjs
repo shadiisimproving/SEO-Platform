@@ -66,13 +66,13 @@ const check = (name, ok, extra = "") => { results.push(ok); console.log(`${ok ? 
   // A new task, linked by hand.
   await page.locator(".topbar [data-task-new]").click();
   await settle();
-  await page.locator("#task-title").fill("Improve the emirates id page");
+  await page.locator("#task-title").fill("Improve the titre de séjour page");
   await page.locator("#task-site").selectOption({ label: "site-one.example" });
-  await page.locator("#task-keywords-add").fill("emirates id");
+  await page.locator("#task-keywords-add").fill("titre de séjour");
   await page.keyboard.press("Enter");
   await settle();
   check("Enter makes a chip and doesn't save", (await page.locator('[data-links="task-keywords"] .tk-chip').count()) === 1 && (await panelOpen()));
-  await page.locator("#task-keywords-add").fill("Emirates ID");
+  await page.locator("#task-keywords-add").fill("Titre de séjour");
   await page.keyboard.press("Enter");
   check("the same word in capitals isn't added twice", (await page.locator('[data-links="task-keywords"] .tk-chip').count()) === 1);
   await page.locator("#task-keywords-add").fill("visa a, visa b");
@@ -82,13 +82,13 @@ const check = (name, ok, extra = "") => { results.push(ok); console.log(`${ok ? 
   await page.locator('[data-links="task-keywords"] .tk-chip-x').last().click();
   check("x removes one", (await page.locator('[data-links="task-keywords"] .tk-chip').count()) === 1);
   check("suggestions follow the site", (await page.locator("#task-keywords-options option").count()) > 0, `${await page.locator("#task-keywords-options option").count()} suggestions`);
-  await page.locator("#task-pages-add").fill("https://www.site-one.example/emirates-id");
+  await page.locator("#task-pages-add").fill("https://www.site-one.example/titre-de-sejour");
   await page.locator("#task-form").screenshot({ path: `${shots}/task-form-filled.png` });
   // Esc mid-form keeps it all as a draft.
   await esc();
   await page.locator(".topbar [data-task-new]").click();
   await settle();
-  check("Esc mid-form: the draft comes back with its chips", (await page.locator('[data-links="task-keywords"] .tk-chip').count()) === 1 && (await page.locator("#task-pages-add").inputValue()).includes("emirates-id"));
+  check("Esc mid-form: the draft comes back with its chips", (await page.locator('[data-links="task-keywords"] .tk-chip').count()) === 1 && (await page.locator("#task-pages-add").inputValue()).includes("titre-de-sejour"));
   // Save with the page still typed in the box.
   await page.locator("#task-save").click();
   await page.waitForTimeout(500);
@@ -98,28 +98,28 @@ const check = (name, ok, extra = "") => { results.push(ok); console.log(`${ok ? 
   await page.evaluate(() => { location.hash = "#keywords"; });
   await page.waitForTimeout(600);
   const rows = page.locator("[data-open-kw]");
-  await page.locator('[data-open-kw="emirates id"]').first().click();
+  await page.locator('[data-open-kw="titre de séjour"]').first().click();
   await settle();
   const rel = page.locator("#panel .tk-related");
-  check("opening the keyword shows the task", (await rel.locator("text=Improve the emirates id page").count()) === 1);
+  check("opening the keyword shows the task", (await rel.locator("text=Improve the titre de séjour page").count()) === 1);
   await page.locator("#panel").screenshot({ path: `${shots}/keyword-panel.png` });
   await rel.locator(".tk-rel-title").first().click();
   await settle();
-  check("clicking it opens the task, links filled in", await panelOpen() && (await page.locator('[data-links="task-pages"] .tk-chip').first().innerText()).includes("emirates-id"));
+  check("clicking it opens the task, links filled in", await panelOpen() && (await page.locator('[data-links="task-pages"] .tk-chip').first().innerText()).includes("titre-de-sejour"));
   await page.locator('#tk-comment').fill("Started on this");
   await page.locator("#tk-comment-send").click();
   await settle();
   const said = await page.locator(".tk-thread li").first().innerText();
-  check("a comment carries the account's name", said.includes("Malik"), said.replace(/\n/g, " | "));
+  check("a comment carries the account's name", said.includes("Nadia"), said.replace(/\n/g, " | "));
   await esc();
   // A keyword with no task shows nothing.
-  await page.locator('[data-open-kw="coût de la vie dubaï"]').first().click();
+  await page.locator('[data-open-kw="coût de la vie séville"]').first().click();
   await settle();
   check("a keyword with no task shows nothing", (await page.locator("#panel .tk-related h3").count()) === 0);
   await esc();
 
   // Starting from a keyword links it by itself.
-  await page.locator('[data-open-kw="coût de la vie dubaï"]').first().click();
+  await page.locator('[data-open-kw="coût de la vie séville"]').first().click();
   await settle();
   await page.locator("#panel .panel-foot [data-task-find]").click();
   await settle();

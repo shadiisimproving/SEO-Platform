@@ -8,7 +8,7 @@ Why this guard exists: a project allows 10 requests a day and a pass costs 7, an
 --only-missing guards the "logical day" (now minus 12 h). A morning and an
 afternoon run can be two logical days inside one UTC day, which is 14 requests:
 the second pass hits 429 partway and eats the requests kept for recovery. So a site
-gets one pass per UTC day, first chance after 06:00 UTC (10:00 Dubai), to keep pulls
+gets one pass per UTC day, first chance after 06:00 UTC (10:00 in UTC+4), to keep pulls
 about 24 h apart. A site whose last pass is over 30 h old goes immediately, because
 the API only reaches back 72 h.
 

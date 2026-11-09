@@ -49,7 +49,7 @@ async function shared(page, label) {
   await shared(page, "sample");
   await shot(page, "after-sample-1440");
   let rows = await rowsText(page);
-  check(rows[0].startsWith("/loyer-a-dubai/"), `sample: the page losing traffic is first: ${rows[0]}`);
+  check(rows[0].startsWith("/loyer-a-seville/"), `sample: the page losing traffic is first: ${rows[0]}`);
   const before = await facts(page);
   await page.click("[data-row] [data-ack]"); await settle(page, 400);
   const afterSeen = await facts(page);

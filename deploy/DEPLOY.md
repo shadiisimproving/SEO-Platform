@@ -6,15 +6,17 @@ First uploaded 2026-11-05. Scheduled jobs (step 8) were not installed then, and 
 
 | | |
 |---|---|
-| Address | `https://seo.my-emails.pro` |
-| Account | `khma1817` on `khma1817.odns.fr`, SSH key `~/.ssh/github_deploy_creertesting` |
+| Address | `https://seo.example.com` |
+| Account | `<cpanel-user>` on `<server>`, SSH key in `SSH_KEY` |
 | Code and settings | `~/seo-platform`, **outside the web folder** |
-| Web folder | `~/seo.my-emails.pro`: only cPanel's `.htaccess`, nothing else |
-| Python | `/home3/khma1817/virtualenv/seo-platform/3.12` |
-| Database | MariaDB, database `khma1817_seo`, user `khma1817_seo_u` |
+| Web folder | `~/seo.example.com`: only cPanel's `.htaccess`, nothing else |
+| Python | `/home/<cpanel-user>/virtualenv/seo-platform/3.12` |
+| Database | MariaDB, database `<cpanel-user>_seo`, user `<cpanel-user>_seo_u` |
 | Encryption key | `~/.config/seo-command-center/key`, never in `.env` or a backup |
 
 Code stays outside the web folder because on o2switch anything in the web folder is served as it is. The CRM's audit downloaded `config.py` and a database dump that way.
+
+**Which server is yours lives on your own computer, never in the repo.** Copy `deploy/deploy.local.env.example` to `deploy/deploy.local.env` and fill it in, and put the server's SSH host keys in `deploy/known_hosts.local`. Get those from a computer that already trusts the server (`ssh-keygen -F <server>`), or with `ssh-keyscan <server>` checked against your host's control panel. Both files are in `.gitignore`. `deploy.sh` stops with a plain message if either is missing.
 
 ## First-time setup
 
@@ -22,19 +24,19 @@ Your Mac's address must be on the SSH allow-list in cPanel, or `ssh` and `rsync`
 
 1. **Address.** Add the subdomain, with its web folder separate from the code:
    ```bash
-   uapi SubDomain addsubdomain domain=seo rootdomain=my-emails.pro dir=%2Fseo.my-emails.pro
+   uapi SubDomain addsubdomain domain=seo rootdomain=example.com dir=%2Fseo.example.com
    ```
 2. **Certificate, before anyone logs in.** Login cookies are Secure, so the app can't be signed into over plain http. Use `~/.acme.sh` or cPanel → Security → Let's Encrypt SSL, as for the other subdomains.
 3. **Python app.**
    ```bash
    cloudlinux-selector create --json --interpreter python --app-root seo-platform --app-uri / --version 3.12 \
-     --domain seo.my-emails.pro --startup-file passenger_wsgi.py --entry-point application
+     --domain seo.example.com --startup-file passenger_wsgi.py --entry-point application
    ```
 4. **Database.** The user's name can't be the database's name.
    ```bash
-   uapi Mysql create_database name=khma1817_seo
-   uapi Mysql create_user name=khma1817_seo_u password='...'
-   uapi Mysql set_privileges_on_database user=khma1817_seo_u database=khma1817_seo privileges=ALL%20PRIVILEGES
+   uapi Mysql create_database name=<cpanel-user>_seo
+   uapi Mysql create_user name=<cpanel-user>_seo_u password='...'
+   uapi Mysql set_privileges_on_database user=<cpanel-user>_seo_u database=<cpanel-user>_seo privileges=ALL%20PRIVILEGES
    ```
 5. **Settings.** Copy `deploy/env.production.example` to `~/seo-platform/.env`, put the password in, `chmod 600`.
 6. **First upload. Mac:** `FIRST_TIME=1 bash deploy/deploy.sh --go`. It stops with a plain message if a step above is missing, with the live site unchanged. `FIRST_TIME=1` also makes the server's encryption key: copy `~/.config/seo-command-center/key` to a password manager, because losing it means pasting every API key again. Later uploads never make a key.
@@ -48,7 +50,7 @@ Your Mac's address must be on the SSH allow-list in cPanel, or `ssh` and `rsync`
    ```
 9. **Old Clarity data.** Add the sites first. Then **Mac:** `.venv/bin/python scripts/clarity_archive_export.py`, and upload `var/clarity-archive.json` in Settings → Microsoft Clarity → Old Clarity data.
 
-`$VENV` is `/home3/khma1817/virtualenv/seo-platform/3.12`.
+`$VENV` is `/home/<cpanel-user>/virtualenv/seo-platform/3.12`.
 
 ## Every later upload
 

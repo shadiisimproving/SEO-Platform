@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Upload the last commit to o2switch. Steps and first-time setup: deploy/DEPLOY.md.
+# Upload the last commit to the hosting. Steps and first-time setup: deploy/DEPLOY.md.
 #
 #   bash deploy/deploy.sh --check   build what would go and list it. No network.
 #   bash deploy/deploy.sh --go      upload it. Only when the owner says so.
 #
-# Settings, each with a default: SSH_USER, SSH_HOST, SSH_PORT, SSH_KEY, APP_NAME, PUBLIC_URL, VENV_BIN.
+# Settings: SSH_USER, SSH_HOST, SSH_KEY and PUBLIC_URL are required, SSH_PORT, APP_NAME and VENV_BIN have defaults.
+# Put them in deploy/deploy.local.env, which is never committed (deploy/deploy.local.env.example shows how).
+# The server's SSH host keys go in deploy/known_hosts.local, also never committed.
 # SKIP_TESTS=1 skips the test run before an upload. FIRST_TIME=1 is for the very first upload: it makes the encryption key.
 set -euo pipefail
 
@@ -15,13 +17,18 @@ if [[ "$MODE" != "--check" && "$MODE" != "--go" ]]; then
 fi
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SSH_USER="${SSH_USER:-khma1817}"
-SSH_HOST="${SSH_HOST:-khma1817.odns.fr}"
+# Which server and account: kept on the deploying computer, so the repo names no one's hosting.
+LOCAL_SETTINGS="${DEPLOY_SETTINGS:-$ROOT/deploy/deploy.local.env}"
+# shellcheck source=/dev/null
+[[ -f "$LOCAL_SETTINGS" ]] && source "$LOCAL_SETTINGS"
+SSH_USER="${SSH_USER:-}"
+SSH_HOST="${SSH_HOST:-}"
 SSH_PORT="${SSH_PORT:-22}"
-SSH_KEY="${SSH_KEY:-$HOME/.ssh/github_deploy_creertesting}"
+SSH_KEY="${SSH_KEY:-}"
 APP_NAME="${APP_NAME:-seo-platform}"
-PUBLIC_URL="${PUBLIC_URL:-https://seo.my-emails.pro}"
-VENV_BIN="${VENV_BIN:-/home3/$SSH_USER/virtualenv/$APP_NAME/3.12/bin}"
+PUBLIC_URL="${PUBLIC_URL:-}"
+VENV_BIN="${VENV_BIN:-/home/$SSH_USER/virtualenv/$APP_NAME/3.12/bin}"
+KNOWN_HOSTS_FILE="${KNOWN_HOSTS_FILE:-$ROOT/deploy/known_hosts.local}"
 
 BUILD="$(mktemp -d "${TMPDIR:-/tmp}/seo-platform-build.XXXXXX")"
 HOSTS="$BUILD.known_hosts" # in a path with no space: this project sits under "Claude & VS", which ssh's command line would split
@@ -53,12 +60,16 @@ if ! git -C "$ROOT" merge-base --is-ancestor HEAD origin/main; then
   echo "Push this commit to origin/main first, so what's live is always on GitHub." >&2
   exit 1
 fi
+for needed in SSH_USER SSH_HOST SSH_KEY PUBLIC_URL; do
+  [[ -n "${!needed}" ]] || { echo "Set $needed in $LOCAL_SETTINGS first. deploy/deploy.local.env.example shows how." >&2; exit 1; }
+done
 [[ -f "$SSH_KEY" ]] || { echo "SSH key not found: $SSH_KEY" >&2; exit 1; }
+[[ -s "$KNOWN_HOSTS_FILE" ]] || { echo "The server's host keys aren't in $KNOWN_HOSTS_FILE. deploy/DEPLOY.md says how to get them." >&2; exit 1; }
 if [[ "${SKIP_TESTS:-}" != "1" ]]; then
   (cd "$ROOT" && .venv/bin/pytest -q)
 fi
 
-cat "$ROOT/deploy/known_hosts" > "$HOSTS"
+cat "$KNOWN_HOSTS_FILE" > "$HOSTS"
 SSH="ssh -i $SSH_KEY -o StrictHostKeyChecking=yes -o UserKnownHostsFile=$HOSTS -p $SSH_PORT"
 TARGET="$SSH_USER@$SSH_HOST"
 STAGING=".deploy-staging/$APP_NAME"

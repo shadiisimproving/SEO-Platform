@@ -105,11 +105,11 @@
     const now = new Date(), offset = (days) => { const d = new Date(now); d.setDate(d.getDate() + days); return dayOf(d); };
     const base = { pages: [], keywords: [], description: "", priority: "medium", site_id: "site-one", site_host: "site-one.example", kind: "", hypothesis: "", impact: null, hours_estimate: null, hours_spent: null, note: "", owner_label: "", comments: [], source: null, completed_on: "", created_at: now.toISOString(), updated_at: now.toISOString(), status: "todo", due: "" };
     const list = [
-      { title: "Rewrite the visa page title", keywords: ["visa dubaï prix"], pages: ["/vivre-dubai-prix/"], owner_label: "Sara", due: offset(2), kind: "Content", priority: "high", impact: 4, status: "doing", comments: [{ name: "Sara", text: "New title sent to the writer.", at: now.toISOString() }] },
-      { title: "Replace 2 lost backlinks", owner_label: "Malik", due: offset(3), kind: "Links" },
+      { title: "Rewrite the visa page title", keywords: ["visa séville prix"], pages: ["/vivre-seville-prix/"], owner_label: "Sara", due: offset(2), kind: "Content", priority: "high", impact: 4, status: "doing", comments: [{ name: "Sara", text: "New title sent to the writer.", at: now.toISOString() }] },
+      { title: "Replace 2 lost backlinks", owner_label: "Nadia", due: offset(3), kind: "Links" },
       { title: "Add FAQ to the tax page", owner_label: "Nour", due: offset(4), kind: "Content" },
       { title: "Pages that answer with an error: site-two.example", site_id: "site-two", site_host: "site-two.example", owner_label: "Nour", due: offset(-40), kind: "Technical", priority: "high", source: { type: "health", label: "Pages that answer with an error", host: "site-two.example", facts: ["site-two.example/old-offer"], link: "#health/test/broken_pages", key: "sample|broken" }, finding: { state: "gone", by: "health", at: now.toISOString() } },
-      { title: "Check why /loyer-a-dubai/ lost traffic", pages: ["/loyer-a-dubai/"], keywords: ["loyer à dubaï"], site_id: "", site_host: "", due: "", kind: "" },
+      { title: "Check why /loyer-a-seville/ lost traffic", pages: ["/loyer-a-seville/"], keywords: ["loyer à séville"], site_id: "", site_host: "", due: "", kind: "" },
       { title: "Publish the new pricing page", owner_label: "Mickaël", due: offset(-5), kind: "Content", status: "done", completed_on: offset(-1) },
     ];
     let id = list.length;

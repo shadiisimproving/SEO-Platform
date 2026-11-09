@@ -132,7 +132,7 @@ def test_many_rows_can_go_to_different_sites_of_mine(world):
 
 
 def test_accents_and_any_language_are_kept(world):
-    words = {"anchor": "créer sa société à Dubaï, été", "notes": "ملاحظة: تم الدفع نقدا 💶", "mediator": "Société Générale Médias", "owner": "Mickaël", "link_type": "Article invité", "platform": "Плат", "contact": "Zoë <zoë@exämple.example>"}
+    words = {"anchor": "créer sa société à Séville, été", "notes": "ملاحظة: تم الدفع نقدا 💶", "mediator": "Société Générale Médias", "owner": "Mickaël", "link_type": "Article invité", "platform": "Плат", "contact": "Zoë <zoë@exämple.example>"}
     assert post(world, [{"site_id": world.own, "source_url": "https://accents.example/é", **words}]).status_code == 201
     row = listed(world)[0]
     for field, value in words.items():

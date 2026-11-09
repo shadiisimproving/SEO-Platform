@@ -19,8 +19,8 @@ from urllib.parse import urlparse
 import httpx
 
 ROOT = Path(__file__).resolve().parent.parent
-KEYWORDS = ["creer societe dubai", "freezone dubai", "emirates id"]
-OUR_SITE = "creer-societe-dubai.fr"
+KEYWORDS = ["creer societe seville", "zone franche séville", "titre de séjour"]
+OUR_SITE = "shop-one.test"
 PAUSE_SECONDS = 5
 # An unknown engine makes SearXNG fall back to its defaults, which include Google.
 ENGINES = {"bing", "duckduckgo", "yandex", "brave", "google"}

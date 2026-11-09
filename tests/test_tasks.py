@@ -192,14 +192,14 @@ def test_clearing_text_and_numbers(client):
 
 
 def test_a_save_on_an_old_copy_changes_nothing(client):
-    task = make(client, owner_label="Malik")
-    newer = client.patch(f"/api/tasks/{task['id']}", json={"description": "Malik's plan", "expected_version": task["version"]})
+    task = make(client, owner_label="Nadia")
+    newer = client.patch(f"/api/tasks/{task['id']}", json={"description": "Nadia's plan", "expected_version": task["version"]})
     assert newer.status_code == 200
     stale = client.patch(f"/api/tasks/{task['id']}", json={"owner_label": "Sara", "expected_version": task["version"]})
     assert stale.status_code == 409
     assert "while you had it open" in stale.json["error"]
     kept = client.get("/api/tasks").json["tasks"][0]
-    assert (kept["owner_label"], kept["description"]) == ("Malik", "Malik's plan")
+    assert (kept["owner_label"], kept["description"]) == ("Nadia", "Nadia's plan")
     # With the newer copy it goes through, and a change sent with no version still does: moving a card overwrites nothing else.
     assert client.patch(f"/api/tasks/{task['id']}", json={"owner_label": "Sara", "expected_version": kept["version"]}).status_code == 200
     assert client.patch(f"/api/tasks/{task['id']}", json={"status": "doing"}).status_code == 200
@@ -303,12 +303,12 @@ def test_a_task_with_no_checkable_finding_has_no_opinion(client, engine, own_sit
 
 
 def test_a_task_keeps_the_pages_and_keywords_it_is_about(client):
-    task = make(client, pages=[" /visa/ ", "/visa/", "/VISA/", ""], keywords=["Visa Dubaï", "visa dubaï", "emirates id"])
+    task = make(client, pages=[" /visa/ ", "/visa/", "/VISA/", ""], keywords=["Visa Séville", "visa séville", "titre de séjour"])
     assert task["pages"] == ["/visa/"]
-    assert task["keywords"] == ["Visa Dubaï", "emirates id"]
-    assert client.get("/api/tasks").json["tasks"][0]["keywords"] == ["Visa Dubaï", "emirates id"]
+    assert task["keywords"] == ["Visa Séville", "titre de séjour"]
+    assert client.get("/api/tasks").json["tasks"][0]["keywords"] == ["Visa Séville", "titre de séjour"]
     changed = client.patch(f"/api/tasks/{task['id']}", json={"pages": ["/tax/"]}).json
-    assert changed["pages"] == ["/tax/"] and changed["keywords"] == ["Visa Dubaï", "emirates id"]
+    assert changed["pages"] == ["/tax/"] and changed["keywords"] == ["Visa Séville", "titre de séjour"]
     emptied = client.patch(f"/api/tasks/{task['id']}", json={"pages": [], "keywords": None}).json
     assert emptied["pages"] == [] and emptied["keywords"] == []
 

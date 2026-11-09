@@ -5,7 +5,7 @@ PAGE = """<!doctype html>
 <html lang="fr">
 <head>
   <meta charset="utf-8">
-  <title> Créer une société à Dubaï </title>
+  <title> Créer une société à Séville </title>
   <meta name="description" content="Démarches, coûts et délais.">
   <meta name="robots" content="noindex, follow">
   <link rel="canonical" href="https://www.example.com/societe/">
@@ -43,7 +43,7 @@ def fields(html=PAGE, url="https://www.example.com/societe/", charset=None):
 
 def test_reads_title_description_canonical_and_robots():
     page = fields()
-    assert page.title == "Créer une société à Dubaï"
+    assert page.title == "Créer une société à Séville"
     assert page.meta_description == "Démarches, coûts et délais."
     assert page.canonical == "https://www.example.com/societe/"
     assert page.robots_meta == "noindex, follow"
@@ -150,6 +150,6 @@ def test_empty_and_broken_documents_do_not_raise():
 
 def test_as_dict_is_json_friendly_and_leaves_out_the_text():
     data = fields().as_dict()
-    assert data["title"] == "Créer une société à Dubaï"
+    assert data["title"] == "Créer une société à Séville"
     assert "text" not in data
     assert data["word_count"] > 0

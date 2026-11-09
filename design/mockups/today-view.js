@@ -189,7 +189,7 @@
     "No edits on pages that compete with yours in the last 7 days.": "Aucune modification sur les pages face aux vôtres ces 7 derniers jours.", "Last 7 days": "7 derniers jours", "Last 7 days against the 7 before": "7 derniers jours contre les 7 précédents",
     "Last 28 days against the 28 before": "28 derniers jours contre les 28 précédents", "No data yet": "Pas encore de données",
     "Graph: running total": "Graphique : total cumulé", "This period": "Cette période", "Period before": "Période précédente", "See page": "Voir la page", "Title changed": "Titre modifié", "Content changed": "Contenu modifié", "Restored": "Restauré",
-    "/loyer-a-dubai/ lost 32% of its Google clicks": "/loyer-a-dubai/ a perdu 32 % de ses clics Google", "Last 7 days against the 7 before: 85 → 58": "7 derniers jours contre les 7 précédents : 85 → 58",
+    "/loyer-a-seville/ lost 32% of its Google clicks": "/loyer-a-seville/ a perdu 32 % de ses clics Google", "Last 7 days against the 7 before: 85 → 58": "7 derniers jours contre les 7 précédents : 85 → 58",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 })();

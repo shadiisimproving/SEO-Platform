@@ -310,12 +310,12 @@ def test_bing_keeps_the_newest_week_of_a_query(world):
         conn.execute(text("INSERT INTO site_sources (site_id, source) VALUES (:s, 'bing')"), {"s": world.site})
     world.answers["GetRankAndTrafficStats"] = httpx.Response(200, json={"d": [{"Date": "/Date(1730000000000-0700)/", "Clicks": 4, "Impressions": 50}]})
     world.answers["GetQueryStats"] = httpx.Response(200, json={"d": [
-        {"Query": "dubai", "Date": "/Date(1720000000000)/", "Clicks": 1, "Impressions": 9, "AvgImpressionPosition": 9.0},
-        {"Query": "dubai", "Date": "/Date(1730000000000)/", "Clicks": 3, "Impressions": 30, "AvgImpressionPosition": 4.0},
+        {"Query": "seville", "Date": "/Date(1720000000000)/", "Clicks": 1, "Impressions": 9, "AvgImpressionPosition": 9.0},
+        {"Query": "seville", "Date": "/Date(1730000000000)/", "Clicks": 3, "Impressions": 30, "AvgImpressionPosition": 4.0},
     ]})
     others.collect_bing(world.engine, world.site)
     with world.engine.connect() as conn:
-        assert conn.execute(text("SELECT query, clicks, position FROM bing_query")).all() == [("dubai", 3, 4.0)]
+        assert conn.execute(text("SELECT query, clicks, position FROM bing_query")).all() == [("seville", 3, 4.0)]
         assert conn.execute(text("SELECT clicks FROM bing_daily")).scalar() == 4
 
 

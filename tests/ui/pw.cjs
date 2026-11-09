@@ -1,6 +1,18 @@
 // Headless browser for driving the screens by hand from a script. Each script gets its own browser,
 // so several can run at once without sharing a page. Usage: const { open } = require("./pw.cjs");
-const { chromium } = require("/Users/alwaysimproving/.npm/_npx/9833c18b2d85bc59/node_modules/playwright");
+// Playwright as installed normally, or else the copy npx keeps, wherever that is on this computer. PLAYWRIGHT_MODULE overrides both.
+function findPlaywright() {
+  if (process.env.PLAYWRIGHT_MODULE) return require(process.env.PLAYWRIGHT_MODULE);
+  try { return require("playwright"); } catch { /* not installed in this project: look in npx's cache */ }
+  const fs = require("fs"), os = require("os"), path = require("path");
+  const cache = path.join(os.homedir(), ".npm", "_npx");
+  for (const entry of fs.existsSync(cache) ? fs.readdirSync(cache) : []) {
+    const found = path.join(cache, entry, "node_modules", "playwright");
+    if (fs.existsSync(found)) return require(found);
+  }
+  throw new Error("Playwright isn't installed. Run: npx playwright install chrome, or set PLAYWRIGHT_MODULE.");
+}
+const { chromium } = findPlaywright();
 async function open({ width = 1440, height = 900, url } = {}) {
   const browser = await chromium.launch({ channel: "chrome", headless: true });
   const context = await browser.newContext({ viewport: { width, height }, acceptDownloads: true });

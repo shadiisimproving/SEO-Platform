@@ -318,12 +318,12 @@ ROWS = [{"link": f"https://site{i}.example/", "title": f"T{i}"} for i in range(1
 def test_bright_data_sends_the_zone_and_a_json_search_page_and_reads_the_results():
     seen = []
     tool = BrightData("KEY", "serp_api1", client=_mock(body={"organic": ROWS[:3]}, seen=seen))
-    found = tool.search("café dubai", "google", "FR", "fr", "desktop", 10)
+    found = tool.search("café seville", "google", "FR", "fr", "desktop", 10)
     sent = json.loads(seen[0].content)
     assert seen[0].headers["authorization"] == "Bearer KEY" and str(seen[0].url) == "https://api.brightdata.com/request"
     assert sent["zone"] == "serp_api1" and sent["format"] == "raw"
     query = parse_qs(urlsplit(sent["url"]).query)
-    assert query["q"] == ["café dubai"] and query["gl"] == ["fr"] and query["hl"] == ["fr"] and query["brd_json"] == ["1"]
+    assert query["q"] == ["café seville"] and query["gl"] == ["fr"] and query["hl"] == ["fr"] and query["brd_json"] == ["1"]
     assert [row.position for row in found.results] == [1, 2, 3] and found.real_location == "FR" and found.ai_state == NOT_CAPTURED and found.charged == 1
 
 

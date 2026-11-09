@@ -1,8 +1,0 @@
-# Clés d'hôte SSH de la production (o2switch, khma1817.odns.fr = 109.234.164.31).
-# Lues par scripts/deploy.sh (StrictHostKeyChecking=accept-new) : une clé qui
-# change fait échouer la livraison au lieu d'envoyer les secrets à un inconnu.
-# Relevées le 2026-10-09 depuis le known_hosts du poste de déploiement.
-khma1817.odns.fr ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKr+J1/4usX6YVFM65qDHUtMUdF90bWuIU6FK9AuZwMT
-khma1817.odns.fr ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDOsMOfgOe/Aci7afVT07ypVaw6Azuhfs+syM7ozFtmmbsQ0/u+nc1h/gEEdneP65Xot1hrDNj+cr9Sbb9H5W8h+UtZwBuiWiyqe/T/2LtSdm1SXT+/PKlXJc68wNikn2plH803vOQMd16AGxI5yPMTqFJDU1rOMlbNkv2VK2IwTlngD4fCVjxz+k4mfTb3h5+7uCcjpxJ6cRQoqHL6aSTJKb3h/qeVTKlZJKYCxwLLP/X8WALWYtFvrf9DbFlUNVky1Yc5CEVlSRvBUt1wjHdpjgHH0z/psxvbRF3Sl9Dqs8BRx8dlSaAQltvdQNbhEHhXw/i1TYy9LA6yD5baBZQGkhYYtq7Pbq5dbkyClRNGvlBB6htrnuASKCViOlbbLjgp1y3GM0xJSiI0DPmjPDzihrYXntRCeaqltZWKN3nkJPseNR+yh1R7dFdP6sk3BCwb+3/7zkzrXlQ4unE5KT3yK1S2VYn9pUOfdZkg/umxJ4lVwDLOL3o/JF+b/RoXfM0=
-khma1817.odns.fr ecdsa-sha2-nistp256 AAAAE2VjZHNhLXNoYTItbmlzdHAyNTYAAAAIbmlzdHAyNTYAAABBBJnfm15lUs9rrMnQJwAz65cb6JZx9RA/ttHe/6nPYqjs/zUK1AqqsNsykVhT2+/HjPFew2mESlL/zomaChaPXEI=
-109.234.164.31 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKr+J1/4usX6YVFM65qDHUtMUdF90bWuIU6FK9AuZwMT
