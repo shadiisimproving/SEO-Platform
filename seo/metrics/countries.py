@@ -36,3 +36,11 @@ ALPHA2 = {
 
 def alpha2(code: str) -> str | None:
     return ALPHA2.get((code or "").lower())
+
+
+ALPHA3 = {two: three for three, two in ALPHA2.items()}
+
+
+def alpha3(code: str) -> str | None:
+    """A keyword's country (alpha-2, any case) as Search Console writes it: "fr" → "fra"."""
+    return ALPHA3.get((code or "").upper())

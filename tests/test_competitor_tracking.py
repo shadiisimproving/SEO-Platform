@@ -169,13 +169,13 @@ def test_off_is_left_out_of_the_daily_read_and_a_queued_read_fetches_nothing(wor
     assert world.requests == []  # nothing fetched once it's off
     with world.engine.connect() as conn:
         assert conn.execute(text("SELECT COUNT(*) FROM competitor_crawls WHERE competitor_id = :c AND status = 'queued'"), {"c": rival}).scalar() == 0
-    assert crawl.enqueue_due(world.engine) == []
+    assert rival not in crawl.enqueue_due(world.engine)  # my own site may be on the list: it's read daily too
     tracking.set_tracking(world.engine, world.own, rival, "pages")  # never read: read now
     world.drain("crawl")
     from tests.test_competitors_backend import rows as _rows
     assert world.requests, (_rows(world.engine, "SELECT id, status, last_error, run_after FROM jobs"), _rows(world.engine, "SELECT * FROM competitor_crawls"))
     with world.engine.begin() as conn:
         conn.execute(text("UPDATE competitor_crawls SET finished_at = UTC_TIMESTAMP(3) - INTERVAL 2 DAY"))
-    assert crawl.enqueue_due(world.engine) == [rival]
+    assert rival in crawl.enqueue_due(world.engine)
     tracking.set_tracking(world.engine, world.own, rival, "off")
-    assert crawl.enqueue_due(world.engine) == []
+    assert rival not in crawl.enqueue_due(world.engine)  # my own site may be on the list: it's read daily too

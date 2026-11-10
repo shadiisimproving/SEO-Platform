@@ -47,7 +47,7 @@
   const fail = (err) => UI.toast(say(err.message), { kind: "crit" });
 
   // ---- what the tabs hold -----------------------------------------------------------------
-  const list = { rows: null, site: null, scroll: 0, flash: null, timer: null };
+  const list = { rows: null, site: null, scroll: 0, flash: null, follow: null };
   const view = { data: null, filter: "all", limit: 50, kw: "shared", sort: { key: "keyword", dir: 1 }, kwLimit: 100 };
   const find = { data: null, site: null, open: new Set(), groups: new Set(), polling: null, lastBadge: null };
   const upload = { file: null, bytes: null, text: "", unicode: true, reencode: false, encoding: "" };
@@ -100,21 +100,22 @@
   const BLOCKED_TEXT = "This site doesn't allow automated visitors, so its edits can't be tracked. The app doesn't try to get past that.";
   const crawling = (crawl) => crawl?.status === "queued" || crawl?.status === "running";
 
-  function watching(crawl) {
+  /* retry is { id, site }: with it, a failed read gets a Try again button that asks for a read at once. */
+  function watching(crawl, retry) {
     const c = crawl || { status: "none" };
     let inner;
     if (c.status === "ok") inner = `${UI.status("good", t("Watching"))}<span class="second">${esc(fill("Last read {when}", { when: COMP.ago(c.finished_at) }))}</span>`;
     else if (c.status === "running") inner = `<span class="status sec">${icon("refresh-cw", "spin")}${esc(t("Reading now"))}</span>${c.pages_read ? `<span class="second">${esc(many(c.pages_read, "{n} page read so far", "{n} pages read so far"))}</span>` : ""}`;
     else if (c.status === "queued") inner = `<span class="status sec">${icon("clock")}${esc(t("Waiting to read"))}</span>`;
     else if (c.status === "blocked") inner = `${UI.status("warn", t("Blocked"))}<span class="second cl-wrap">${esc(say(c.message || BLOCKED_TEXT))}</span>`;
-    else if (c.status === "failed") inner = `${UI.status("crit", t("Last read failed"))}<span class="second cl-wrap">${esc(t("It tries again at the next daily read."))}</span>`;
+    else if (c.status === "failed") inner = `${UI.status("crit", t("Last read failed"))}<span class="second cl-wrap">${esc(t("It tries again at the next daily read."))}</span>${retry ? `<button type="button" class="btn btn-small cl-retry" data-cl-retry="${retry.id}" data-cl-retry-site="${retry.site}">${icon("refresh-cw")}${t("Try again")}</button>` : ""}`;
     else inner = `<span class="status sec">${icon("clock")}${esc(t("Not read yet"))}</span>`;
     return `<span class="cl-watch">${inner}</span>`;
   }
   const howAdded = (source) => t(source === "suggested" ? "From a suggestion" : "Added by hand");
 
   // ---- My competitors: the list ---------------------------------------------------------------
-  COMP.watching = (crawl) => watching(crawl);
+  COMP.watching = (crawl, retry) => watching(crawl, retry);
 
   function listBody() {
     const rows = list.rows;
@@ -145,7 +146,7 @@
       <td class="c" data-label="${attr("You're ahead on")}">${kwCell(c, c.i_ahead)}</td>
       <td class="c" data-label="${attr("Only they rank on")}">${kwCell(c, c.theirs_only)}</td>
       <td class="c" data-label="${attr("Edits in 30 days")}">${c.crawl?.status === "blocked" ? `<span class="muted" title="${attr("Edits can't be tracked on this site.")}">—</span>` : UI.num(c.edits_30d)}</td>
-      <td data-label="${attr("Watching")}" data-cl-watch="${c.id}">${c.tracking === "off" ? `<span class="status sec">${icon("pause")}${esc(t("Paused"))}</span>` : watching(c.crawl)}</td>
+      <td data-label="${attr("Watching")}" data-cl-watch="${c.id}">${c.tracking === "off" ? `<span class="status sec">${icon("pause")}${esc(t("Paused"))}</span>` : watching(c.crawl, { id: c.id, site: COMP.siteId })}</td>
       <td data-label="${attr("Tracking")}">${COMP.trackingSwitch?.(c) ?? ""}</td>
       <td class="r nowrap" data-label=""><button class="icon-btn cl-row-btn" data-cl-remove="${c.id}" aria-label="${attr("Remove")}: ${esc(c.host)}" data-tip="${attr("Remove")}">${icon("trash-2")}</button></td>
     </tr>`;
@@ -154,46 +155,46 @@
     list.scroll = UI.$("#main")?.scrollTop || 0;
     listTab.competitorId = id;
     view.data = null;
+    COMP.tab = "list"; // the profile is the list tab's second screen; the Competitors tab stays lit
     COMP.reload({ quiet: true });
   }
+  /* Back to the merged Competitors tab (comp-summary.js), where the rows are. */
   function backToList() {
-    const id = listTab.competitorId;
     listTab.competitorId = null;
     view.data = null;
-    pending = () => {
-      const main = UI.$("#main");
-      if (main) main.scrollTop = list.scroll;
-      (focusAttr("data-cl-open", id) || UI.$("#cl-add-open"))?.focus({ preventScroll: true });
-    };
-    COMP.reload({ quiet: true });
+    COMP.open("summary");
   }
 
-  /* While something is being read, only its state is redrawn. When it ends, the numbers are fetched again. */
+  /* While something is being read, only its state is redrawn. When it ends, the numbers are fetched again.
+     One follow at a time, through COMP.poll: paused while the browser tab is hidden, slower over time, never for ever.
+     An open profile asks only for its read's state (competitors/<id>/reading), not the whole list. */
   function watchCrawls() {
-    clearTimeout(list.timer);
+    list.follow?.stop();
+    list.follow = null;
     const id = listTab.competitorId;
     const site = COMP.siteId;
     const showing = id && view.data ? [view.data] : list.rows || [];
     if (!showing.some((c) => crawling(c.crawl))) return;
-    list.timer = setTimeout(async () => {
-      if (!here("list", site) || listTab.competitorId !== id) return;
-      let rows;
-      try { rows = (await COMP.api("GET", `competitors?site_id=${site}`)).competitors; } catch { watchCrawls(); return; }
-      if (!here("list", site) || listTab.competitorId !== id) return;
+    const still = () => here("list", site) && listTab.competitorId === id;
+    list.follow = COMP.poll(async () => {
+      if (!still()) return false;
       if (id) {
-        const row = rows.find((c) => c.id === id);
-        if (!row || !view.data) { COMP.reload({ quiet: true }); return; }
+        const fresh = await COMP.api("GET", `competitors/${id}/reading?site_id=${site}`);
+        if (!still()) return false;
+        if (!view.data) { COMP.reload({ quiet: true }); return false; }
         const was = view.data.crawl?.status;
-        view.data.crawl = row.crawl;
-        if (!crawling(row.crawl)) { COMP.reload({ quiet: true }); return; }
-        if (row.crawl.status !== was) paintWatch();
-      } else {
-        list.rows = rows;
-        if (!rows.some((c) => crawling(c.crawl))) { COMP.paint(); return; }
-        rows.forEach((c) => { const cell = UI.$(`[data-cl-watch="${c.id}"]`); if (cell) UI.setHTML(cell, watching(c.crawl)); });
+        view.data.crawl = fresh.crawl;
+        if (!crawling(fresh.crawl)) { COMP.reload({ quiet: true }); return false; }
+        if (fresh.crawl.status !== was) paintWatch();
+        return true;
       }
-      watchCrawls();
-    }, 2500);
+      const rows = (await COMP.api("GET", `competitors?site_id=${site}`)).competitors;
+      if (!still()) return false;
+      list.rows = rows;
+      if (!rows.some((c) => crawling(c.crawl))) { COMP.paint(); return false; }
+      rows.forEach((c) => { const cell = UI.$(`[data-cl-watch="${c.id}"]`); if (cell && c.tracking !== "off") UI.setHTML(cell, watching(c.crawl, { id: c.id, site })); });
+      return true;
+    }, { every: 2500, grow: 1.2, slowest: 30000, most: 30 * 60000, onEnd: (why) => { if (why === "gone" && still()) COMP.reload({ quiet: true }); } });
   }
 
   // ---- Add and remove ---------------------------------------------------------------------------
@@ -204,10 +205,15 @@
   };
   const fieldClear = (input, box) => { input?.classList.remove("invalid"); if (box) box.replaceChildren(); };
 
-  /* The same splitting as the server: one per line, or commas, semicolons, tabs, spaces. One site counts once. */
+  /* One per line, or commas, semicolons, tabs. A line with spaces only splits when every piece looks like an address,
+     so "not a url" stays one line and is refused as typed. One site counts once. */
   function splitAddresses(text) {
     const seen = new Set();
-    return String(text || "").split(/[\s,;]+/).map((a) => a.trim().replace(/^["'<]+|["'>]+$/g, "")).filter((a) => {
+    const pieces = String(text || "").split(/[\n\r,;\t]+/).flatMap((line) => {
+      const words = line.trim().split(/\s+/).filter(Boolean);
+      return words.length > 1 && words.every((w) => /\.[a-z]{2,}/i.test(w)) ? words : [line.trim()];
+    });
+    return pieces.map((a) => a.trim().replace(/^["'<]+|["'>]+$/g, "")).filter((a) => {
       const key = a.toLowerCase().split("://").pop().split("/")[0].replace(/^www\./, "");
       if (!a || seen.has(key)) return false;
       seen.add(key);
@@ -315,7 +321,7 @@
   }
 
   function confirmRemove(id) {
-    const row = (list.rows || []).find((c) => c.id === id) || (view.data?.id === id ? view.data : null);
+    const row = (list.rows || []).find((c) => c.id === id) || (view.data?.id === id ? view.data : null) || COMP.summaryRival?.(id);
     if (!row) return;
     const dlg = UI.$("#dlg");
     dlg.classList.remove("wide");
@@ -327,7 +333,7 @@
   }
 
   async function removeNow(id) {
-    const row = (list.rows || []).find((c) => c.id === id) || view.data;
+    const row = (list.rows || []).find((c) => c.id === id) || (view.data?.id === id ? view.data : null) || COMP.summaryRival?.(id);
     const site = COMP.siteId;
     const rows = list.rows || [];
     const at = rows.findIndex((c) => c.id === id);
@@ -490,9 +496,11 @@
     });
   };
 
-  function keywordsBody(p) {
+  /* `unknown` is the reason this site's keyword numbers aren't known (no list, or never checked): then no counts, and one line that says why. */
+  function keywordsBody(p, unknown = COMP.profileTabs?.keywordsWhy?.() ?? "") {
     const groups = { shared: p.keywords.filter((k) => k.status === "shared"), theirs_only: p.keywords.filter((k) => k.status === "theirs_only"), mine_only: p.keywords.filter((k) => k.status === "mine_only"), past: p.past_keywords || [] };
-    const seg = `<div class="seg cl-seg" role="group" aria-label="${attr("Which keywords")}">${[["shared", "Shared"], ["theirs_only", "Only them"], ["mine_only", "Only you"], ["past", "Past"]].map(([id, word]) => `<button data-cl-kw="${id}" aria-pressed="${view.kw === id}">${t(word)} <span class="tabular muted">${UI.num(groups[id].length)}</span></button>`).join("")}</div>`;
+    const seg = `<div class="seg cl-seg" role="group" aria-label="${attr("Which keywords")}">${[["shared", "Shared"], ["theirs_only", "Only them"], ["mine_only", "Only you"], ["past", "Past"]].map(([id, word]) => `<button data-cl-kw="${id}" aria-pressed="${view.kw === id}">${t(word)}${unknown ? "" : ` <span class="tabular muted">${UI.num(groups[id].length)}</span>`}</button>`).join("")}</div>`;
+    if (unknown && !p.keywords.length && !groups.past.length) return `${seg}<p class="cl-none small sec" data-cl-kw-unknown>${esc(unknown)}</p>`;
     const rows = groups[view.kw] || [];
     const sorted = sortRows(rows, view.sort.key, view.sort.dir).slice(0, view.kwLimit);
     const head = (key, label, cls = "") => {
@@ -509,12 +517,21 @@
           <td data-label="${attr("Their last position")}">${place(k.last_position, k.last_url)}</td>
           <td data-label="${attr("Last seen")}"><span class="nowrap">${esc(COMP.ago(k.last_seen))}</span></td>
           <td data-label="${attr("Tool")}"><span class="cl-cell">${esc(k.tool || "")}<span class="second">${esc(engineName(k.engine))}</span></span></td></tr>`).join("")}</tbody></table>`
-      : `<table class="data cl-table"><thead><tr>${head("keyword", "Keyword")}${head("my_position", "You")}${head("their_position", "Them")}${head("checked_at", "Tool and age")}</tr></thead><tbody>${sorted.map((k) => `<tr>
-          <td class="head-cell"><span class="kw" dir="auto">${esc(k.keyword)}</span>${COMP.profileTabs?.keywordMarks?.(k) ?? ""}</td>
-          <td data-label="${attr("You")}">${place(k.my_position, k.my_url, k.depth)}</td>
-          <td data-label="${attr("Them")}">${place(k.their_position, k.their_url, k.depth)}</td>
-          <td data-label="${attr("Tool and age")}"><span class="cl-cell">${esc(k.tool || "")} · ${esc(engineName(k.engine))}<span class="second">${esc(COMP.ago(k.checked_at))}</span></span></td></tr>`).join("")}</tbody></table>`;
+      : keywordTable(sorted, head, place);
     return `${seg}<div class="cl-scroll">${table}</div>${left ? `<p class="cl-more"><button class="btn btn-small" data-cl-kw-more>${t("Show more")} (${UI.num(left)})</button></p>` : ""}`;
+  }
+
+  /* Positions centred under centred headings. When every row was checked by the same tool at the same age, that's said once under the table. */
+  function keywordTable(sorted, head, place) {
+    const toolOf = (k) => `${k.tool || ""} · ${engineName(k.engine)}`;
+    const ages = new Set(sorted.map((k) => COMP.ago(k.checked_at))), tools = new Set(sorted.map(toolOf));
+    const once = sorted.length > 1 && tools.size === 1 && ages.size === 1;
+    const toolCell = (k) => `<td data-label="${attr("Tool and age")}"><span class="cl-cell">${esc(toolOf(k))}<span class="second">${esc(COMP.ago(k.checked_at))}</span></span></td>`;
+    return `<table class="data cl-table cl-kw-table"><thead><tr>${head("keyword", "Keyword")}${head("my_position", "You", "c")}${head("their_position", "Them", "c")}${once ? "" : head("checked_at", "Tool and age")}</tr></thead><tbody>${sorted.map((k) => `<tr>
+          <td class="head-cell"><span class="kw" dir="auto">${esc(k.keyword)}</span>${COMP.profileTabs?.keywordMarks?.(k) ?? ""}</td>
+          <td class="c" data-label="${attr("You")}">${place(k.my_position, k.my_url, k.depth)}</td>
+          <td class="c" data-label="${attr("Them")}">${place(k.their_position, k.their_url, k.depth)}</td>
+          ${once ? "" : toolCell(k)}</tr>`).join("")}</tbody></table>${once ? `<p class="small sec cl-kw-foot">${esc(fill("All checked with {tool}, {when}.", { tool: toolOf(sorted[0]), when: COMP.ago(sorted[0].checked_at) }))}</p>` : ""}`;
   }
 
   function paintKeywords(focus) {
@@ -534,9 +551,10 @@
       </li>`).join("")}</ul>` : `<p class="cl-none small sec">${t("No pages to compare yet. A pair appears when you both rank for the same keyword.")}</p>`}</section>`;
   }
 
-  function headNote(p) {
+  const headNote = (p) => baseNote(p) + (COMP.reading ? COMP.reading.box(p, COMP.siteId) : ""); // comp-reading.js: sitemap, big site, JavaScript, Firecrawl
+  function baseNote(p) {
     const c = p.crawl || {};
-    if (c.status === "blocked") return `<p class="note warn cl-head-note">${icon("triangle-alert")}<span>${esc(say(c.message || BLOCKED_TEXT))} ${esc(t("Everything from search results still works: rankings, AI Overviews and shared keywords."))}</span></p>`;
+    if (c.status === "blocked") return COMP.reading ? "" : `<p class="note warn cl-head-note">${icon("triangle-alert")}<span>${esc(say(c.message || BLOCKED_TEXT))} ${esc(t("Everything from search results still works: rankings, AI Overviews and shared keywords."))}</span></p>`;
     if (c.status === "failed") return `<p class="note crit cl-head-note">${icon("octagon-alert")}<span>${esc(t("The last read failed. It tries again at the next daily read, and everything from search results still works."))}${c.message ? ` <span class="small mono cl-wrap" dir="auto">${esc(c.message)}</span>` : ""}</span></p>`;
     return "";
   }
@@ -556,18 +574,17 @@
   function profileBody() {
     const p = view.data;
     const url = `https://${p.host}/`;
-    return `<p class="cl-back"><button class="btn btn-ghost" data-cl-back>${icon("chevron-left")}${t("Back to competitors")}</button></p>
-      <section class="card cl-head" aria-labelledby="cl-profile-title">
+    return `<section class="card cl-head" aria-labelledby="cl-profile-title">
         <div class="cl-head-row">
           <div class="cl-head-main">
             <h2 id="cl-profile-title" tabindex="-1">${UI.siteLogo(p.host, 24)} ${COMP.link(url, p.display || p.host, "cl-head-link")}${icon("external-link", "muted")}${COMP.trackingSwitch?.(p) ?? ""}</h2>
             ${COMP.profileTabs?.factsLine?.(p, view.insights) ?? ""}
-            <p class="small sec">${esc(howAdded(p.source))} · ${esc(fill("added {when}", { when: COMP.ago(p.added_at) }))} · ${esc(fill("compared with {site}", { site: p.site?.host || COMP.site()?.host || "" }))}</p>
-            <div id="cl-watch-state" class="cl-head-watch">${watchArea(p)}</div>
+            <p class="small sec cl-head-meta">${esc(howAdded(p.source))} · ${esc(fill("added {when}", { when: COMP.ago(p.added_at) }))} · ${esc(fill("compared with {site}", { site: p.site?.host || COMP.site()?.host || "" }))} · <span id="cl-watch-state" class="cl-head-watch">${watchArea(p)}</span></p>
           </div>
-          <div class="cl-head-acts">${COMP.notes?.button?.([{ label: p.display || p.host, icon: "crosshair", where: { scope: "competitor", competitorId: p.id, siteId: COMP.siteId } }]) ?? ""}<button class="btn" data-cl-read="${p.id}" ${crawling(p.crawl) ? "disabled" : ""} ${paused(p) ? "hidden" : ""}>${icon("refresh-cw")}${t("Read now")}</button><button class="btn btn-ghost" data-cl-remove="${p.id}">${icon("trash-2")}${t("Remove")}</button></div>
+          <div class="cl-head-acts">${COMP.notes?.button?.([{ label: p.display || p.host, icon: "crosshair", where: { scope: "competitor", competitorId: p.id, siteId: COMP.siteId } }]) ?? ""}<button class="btn" data-cl-read="${p.id}" ${crawling(p.crawl) ? "disabled" : ""} ${paused(p) ? "hidden" : ""}>${icon("refresh-cw")}${t("Refresh data")}</button><button class="btn btn-ghost" data-cl-remove="${p.id}">${icon("trash-2")}${t("Remove")}</button></div>
         </div>
         <div id="cl-head-note">${headNote(p)}</div>
+        ${COMP.profileTabs?.headBlock?.(p, view.insights) ?? ""}
       </section>
       ${COMP.profileTabs ? COMP.profileTabs.body(p, view.insights, profileParts) : `${compareBody(p)}${pairsCard(p)}`}`;
   }
@@ -594,9 +611,41 @@
     }
   }
 
+  /* Try again on a failed read, from the list or the All my sites summary. The cell follows the read until it ends,
+     and comp:crawl tells other screens (the summary keeps its own copy of the rows). */
+  function paintCrawl(id, site, crawl) {
+    UI.$$(`[data-cl-watch="${id}"]`).forEach((cell) => UI.setHTML(cell, watching(crawl, { id, site })));
+    window.dispatchEvent(new CustomEvent("comp:crawl", { detail: { id, crawl } }));
+  }
+  function followRead(id, site) {
+    COMP.poll(async () => {
+      if (!UI.$(`[data-cl-watch="${id}"]`)) return false; // the screen moved on
+      const { crawl } = await COMP.api("GET", `competitors/${id}/reading?site_id=${site}`);
+      paintCrawl(id, site, crawl);
+      return crawling(crawl);
+    }, { every: 2500, grow: 1.2, slowest: 30000, most: 30 * 60000 });
+  }
+  async function retryRead(id, site, button) {
+    button.disabled = true;
+    try {
+      await COMP.api("POST", `competitors/${id}/crawl?site_id=${site}`);
+    } catch (err) {
+      if (button.isConnected) button.disabled = false;
+      fail(err);
+      return;
+    }
+    const row = COMP.siteId === site ? (list.rows || []).find((c) => c.id === id) : null;
+    const crawl = { ...(row?.crawl || {}), status: "queued" };
+    if (row) row.crawl = crawl;
+    paintCrawl(id, site, crawl);
+    UI.toast(t("Reading its pages now. It waits 3 seconds between pages, so this can take a while."), { kind: "info" });
+    if (row && here("list", site) && !listTab.competitorId) watchCrawls();
+    else followRead(id, site);
+  }
+
   // ---- Tab: My competitors --------------------------------------------------------------------------
   const listTab = {
-    id: "list", order: 10, label: "My competitors", icon: "crosshair",
+    id: "list", order: 10, label: "My competitors", icon: "crosshair", hidden: true, // merged into Competitors (comp-summary.js) on 2026-11-09; this tab only draws the profile
     competitorId: null,
     init(helpers) { UI = helpers; bindEvents(); },
     async load() {
@@ -699,18 +748,16 @@
     const key = `${site}:${run.id}:${live}`;
     if (find.polling === key) return; // one loop per run, however often the tab repaints
     find.polling = key;
-    const gap = live ? 1500 : 4000;
-    const tick = async () => {
-      if (find.polling !== key) return;
-      if (!here("find", site)) { find.polling = null; return; }
-      let now;
-      try { now = await COMP.api("GET", `keywords/runs/${run.id}`); } catch { setTimeout(tick, 4000); return; }
-      if (find.polling !== key) return;
-      if (!here("find", site)) { find.polling = null; return; }
+    const stillMine = () => find.polling === key;
+    COMP.poll(async () => {
+      if (!stillMine()) return false;
+      if (!here("find", site)) { find.polling = null; return false; }
+      const now = await COMP.api("GET", `keywords/runs/${run.id}`);
+      if (!stillMine()) return false;
+      if (!here("find", site)) { find.polling = null; return false; }
       if (live ? runActive(now) : now.status === "waiting") {
         if (live) paintRun(now);
-        setTimeout(tick, gap);
-        return;
+        return true;
       }
       find.polling = null;
       await COMP.reload({ quiet: true });
@@ -718,8 +765,12 @@
         const n = findData()?.suggestions?.length || 0;
         UI.toast(`${many(now.checked || 0, "{n} keyword checked.", "{n} keywords checked.")} ${many(n, "{n} suggestion to look at.", "{n} suggestions to look at.")}`);
       }
-    };
-    setTimeout(tick, gap);
+      return false;
+    }, {
+      // A run in progress: every 1.5 s, slower as it goes. A list waiting for a tool: every 4 s, then every half minute at most.
+      every: live ? 1500 : 4000, grow: live ? 1.05 : 1.3, slowest: live ? 10000 : 30000, most: live ? 60 * 60000 : 30 * 60000,
+      onEnd: (why) => { if (why !== "done" && find.polling === key) find.polling = null; },
+    });
   }
 
   // ---- Find competitors: the suggestions --------------------------------------------------------------
@@ -761,7 +812,7 @@
     const name = item.display || item.domain;
     return `<li class="cl-sug" data-cl-sug="${esc(item.domain)}">
       <div class="what">
-        <div class="cl-sug-name"><span class="kw" dir="auto">${esc(name)}</span>${item.new ? `<span class="tag">${esc(tag("New|tag"))}</span>` : ""}${item.kind ? `<span class="tag">${t(item.kind === "public" ? "Public body" : "Big site")}</span>` : ""}</div>
+        <div class="cl-sug-name">${UI.siteLogo(item.domain, 18)}<span class="kw" dir="auto">${esc(name)}</span>${item.new ? `<span class="tag">${esc(tag("New|tag"))}</span>` : ""}${item.kind ? `<span class="tag">${t(item.kind === "public" ? "Public body" : "Big site")}</span>` : ""}</div>
         ${sharePart(item, d)}
         ${factsPart(item)}
       </div>
@@ -775,7 +826,7 @@
     const seen = item.keywords ? sharePart(item, d) : `<div class="cl-share"><span class="small muted">${t("Not in your latest results")}</span></div>`;
     return `<li class="cl-sug" data-cl-sug="${esc(item.domain)}">
       <div class="what">
-        <div class="cl-sug-name"><span class="kw" dir="auto">${esc(name)}</span><span class="small muted">${esc(fill("Dismissed {when}", { when: COMP.ago(item.dismissed_at) }))}</span></div>
+        <div class="cl-sug-name">${UI.siteLogo(item.domain, 18)}<span class="kw" dir="auto">${esc(name)}</span><span class="small muted">${esc(fill("Dismissed {when}", { when: COMP.ago(item.dismissed_at) }))}</span></div>
         ${seen}
       </div>
       <div class="acts"><button class="btn btn-small" data-cl-restore="${esc(item.domain)}" aria-label="${attr("Restore")}: ${esc(name)}">${t("Restore")}</button></div>
@@ -1156,7 +1207,7 @@
     // Pressing a tab always shows its first screen. Focus stays on the tab, for keyboard use.
     document.addEventListener("click", (e) => {
       const tabButton = e.target.closest?.("[data-comp-tab]");
-      if (tabButton?.dataset.compTab === "list") listTab.competitorId = null;
+      if (tabButton?.dataset.compTab === "list" || tabButton?.dataset.compTab === "summary") listTab.competitorId = null;
       sendKeyToServer(e);
     }, true);
 
@@ -1171,6 +1222,7 @@
       if (hit("[data-cl-go-find]")) { COMP.open("find"); pending = () => UI.$("[data-cl-upload]")?.focus({ preventScroll: true }); return; }
       if ((el = hit("[data-cl-remove-yes]"))) { const id = Number(el.dataset.clRemoveYes); UI.$("#dlg").close(); hold(); removeNow(id); return; }
       if ((el = hit("[data-cl-remove]"))) { confirmRemove(Number(el.dataset.clRemove)); return; }
+      if ((el = hit("[data-cl-retry]"))) { retryRead(Number(el.dataset.clRetry), Number(el.dataset.clRetrySite), el); return; }
       if ((el = hit("[data-cl-open]"))) { openProfile(Number(el.dataset.clOpen)); return; }
       if ((el = hit("[data-cl-row]")) && !hit("a, button, input, select, textarea, summary, label")) { openProfile(Number(el.dataset.clRow)); return; }
 
@@ -1555,6 +1607,7 @@
 
   // ---- French ------------------------------------------------------------------------------------------------------
   Object.assign(window.FR, {
+    "All checked with {tool}, {when}.": "Tous vérifiés avec {tool}, {when}.",
     // Words that change with where they sit
     "New|tag": "Nouveau",
     "Removed|pages": "Retirées",
@@ -1630,7 +1683,7 @@
     "Back to competitors": "Retour aux concurrents",
     "added {when}": "ajouté {when}",
     "compared with {site}": "comparé à {site}",
-    "Read now": "Lire maintenant",
+    "Refresh data": "Actualiser les données",
     "Reading its pages now. It waits 3 seconds between pages, so this can take a while.": "Lecture de ses pages en cours. Elle attend 3 secondes entre chaque page, cela peut donc prendre un moment.",
     "Everything from search results still works: rankings, AI Overviews and shared keywords.": "Tout ce qui vient des résultats de recherche fonctionne toujours : classements, AI Overviews et mots-clés partagés.",
     "The last read failed. It tries again at the next daily read, and everything from search results still works.": "La dernière lecture a échoué. Nouvel essai à la prochaine lecture quotidienne, et tout ce qui vient des résultats de recherche fonctionne toujours.",

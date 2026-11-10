@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import sys
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Callable
 from urllib.parse import urlsplit
 
@@ -46,7 +47,10 @@ DEFAULT_ORDER = {
     "bing": [BRIGHT, SERPAPI, HASDATA, SEARX, BROWSER],
     "yandex": [BRIGHT, SERPAPI, SEARX, BROWSER],
 }
-SETTINGS = {"disagree_gap": "3", "just_checked_hours": "12", "mac_country": ""}
+SETTINGS = {"disagree_gap": "3", "just_checked_hours": "12", "mac_country": "", "ai_first": "1"}
+# Only SerpApi reads Google's AI Overview. With "ai_first" on, a Refresh on Google tries it first while it has free searches,
+# then follows the saved order. The owner's order stays as saved; this only goes in front of it.
+AI_FIRST_WHY = "SerpApi goes first for Google while it has free searches: it is the only tool that reads AI Overviews. Then the order below."
 
 # Tests and the local harness replace this to run on a fake search tool.
 tool_factory: Callable[[Engine, str], list] | None = None
@@ -202,8 +206,23 @@ def set_order(engine: Engine, search_engine: str, names) -> list[str]:
     return order_for(engine, search_engine)
 
 
-def tools_for(engine: Engine, search_engine: str, include_manual: bool = False) -> list:
-    """The tools that can search this engine now, in order. A tool only used when ticked by hand stays out unless asked for."""
+def ai_first_on(engine: Engine) -> bool:
+    return get_setting(engine, "ai_first") != "0"
+
+
+def ai_first_names(engine: Engine, search_engine: str) -> list[str]:
+    """The tools a Refresh puts in front of the saved order for this engine: those that read AI Overviews, on Google only."""
+    if search_engine != "google" or not ai_first_on(engine):
+        return []
+    return [name for name in order_for(engine, search_engine) if getattr(TOOLS[name].cls, "gives_ai", False)]
+
+
+def tools_for(engine: Engine, search_engine: str, include_manual: bool = False, ai_first: bool = False) -> list:
+    """The tools that can search this engine now, in order. A tool only used when ticked by hand stays out unless asked for.
+
+    With ai_first, a tool that reads AI Overviews goes in front on Google (see AI_FIRST_WHY). Once its free searches are
+    used, the Refresh picker drops it for the run, so the rest of the saved order takes over by itself.
+    """
     order = order_for(engine, search_engine)
     if tool_factory is not None:
         built = list(tool_factory(engine, search_engine))
@@ -211,6 +230,8 @@ def tools_for(engine: Engine, search_engine: str, include_manual: bool = False) 
         built.sort(key=lambda tool: place.get(tool.name, len(place)))  # a stable sort, so unknown names keep their order
     else:
         built = [tool for tool in (_build(engine, name) for name in order) if tool is not None]
+    if ai_first and search_engine == "google" and ai_first_on(engine):
+        built.sort(key=lambda tool: not getattr(tool, "gives_ai", False))  # stable: the rest keep the saved order
     return [tool for tool in built if include_manual or not getattr(tool, "manual_only", False)]
 
 
@@ -234,6 +255,8 @@ def save_setting(engine: Engine, name: str, value) -> str:
         text_value = text_value.upper()
         if text_value and not (len(text_value) == 2 and text_value.isalpha()):
             raise Refused("The country must be a two-letter code, such as AE.")
+    if name == "ai_first" and text_value not in ("0", "1"):
+        raise Refused("This one is on (1) or off (0).")
     with engine.begin() as conn:
         conn.execute(text("INSERT INTO serp_settings (name, value) VALUES (:n, :v) ON DUPLICATE KEY UPDATE value = :v"), {"n": name, "v": text_value})
     return text_value
@@ -321,6 +344,49 @@ def count_use(engine: Engine, tool_name: str, amount: int, *, paid: bool = False
         )
 
 
+def spend_on_search(engine: Engine, tool, keyword: str, search_engine: str, country: str = "", language: str = "", device: str = "desktop", depth: int = 10, *, paid: bool = False, run_id: int | None = None, keyword_id: int | None = None, note: str | None = None):
+    """Every search that can cost credits goes through here. It returns the tool's Answer, or raises what the tool raised.
+
+    The most the search can cost is written down before it goes out, so a crash can't hide a spend. Then:
+    - it worked: the difference to what the tool really charged is written down;
+    - it failed or the tool stopped: only what wasn't charged is given back (pages that answered before the failure stay);
+    - it timed out: the pages before, and the one that timed out, stay counted; later pages never went out and are given back;
+    - anything else: the estimate stays, because the search may have gone out.
+    Whatever stays counted is on the exception as `credits_kept`, and its dollars as `cost_kept` (None on free credits),
+    so a run can hold it against its limit, and count the failure toward dropping the tool.
+    """
+    from seo.serp.tools import SearchFailed, TimedOut, ToolStopped, most_cost  # noqa: PLC0415 - tools imports nothing from here
+
+    estimate = most_cost(tool, depth)
+    per = Decimal(str(getattr(tool, "paid_per", 0) or 0))
+    money = (lambda credits: per * credits if paid else None)
+
+    def book(amount: int, why: str | None) -> None:
+        count_use(engine, tool.name, amount, paid=paid, cost=money(amount), run_id=run_id, keyword_id=keyword_id, search_engine=search_engine, note=why)
+
+    book(estimate, note)
+    try:
+        answer = tool.search(keyword, search_engine, country, language, device, depth)
+    except TimedOut as exc:
+        page = max(1, int(getattr(tool, "credits_per_page", 1) or 1)) if estimate else 0
+        kept = min(estimate, max(0, int(getattr(exc, "charged", 0) or 0)) + page)
+        book(kept - estimate, "never sent: an earlier page timed out")
+        exc.credits_kept, exc.cost_kept = kept, money(kept)
+        raise
+    except (ToolStopped, SearchFailed) as exc:
+        kept = min(estimate, max(0, int(getattr(exc, "charged", 0) or 0)))
+        book(kept - estimate, "not charged")
+        exc.credits_kept, exc.cost_kept = kept, money(kept)
+        raise
+    except Exception as exc:
+        exc.credits_kept, exc.cost_kept = estimate, money(estimate)
+        raise
+    charged = int(answer.charged or 0)
+    book(charged - estimate, "what the tool really charged")
+    answer.cost = money(charged)
+    return answer
+
+
 # ---- what the screens read ------------------------------------------------------------------------
 
 def _usable_by_engine(engine: Engine) -> dict[str, dict]:
@@ -362,6 +428,9 @@ def tool_list(engine: Engine, key_path=None) -> dict:
     return {
         "tools": rows,
         "order": {name: order_for(engine, name) for name in ENGINE_ORDER},
+        # Refresh puts these in front of the saved order; the order screen says so, with the reason.
+        "first_for_ai": {name: ai_first_names(engine, name) for name in ENGINE_ORDER if ai_first_names(engine, name)},
+        "first_for_ai_why": AI_FIRST_WHY,
         "settings": {name: get_setting(engine, name) for name in SETTINGS},
         "browser_available": on_this_mac(), "browser_missing": missing_browser,
     }

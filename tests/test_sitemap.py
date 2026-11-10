@@ -2,6 +2,8 @@
 import gzip
 from dataclasses import dataclass
 
+import pytest
+
 from seo.crawl.sitemap import discover, parse_sitemap
 
 BASE = "https://www.example.com"
@@ -32,7 +34,7 @@ class FakeFetcher:
     def sitemaps_from_robots(self, base):
         return self.robots
 
-    def get(self, url, any_type=False):
+    def get(self, url, any_type=False, **_options):
         self.asked.append(url)
         body = self.pages.get(url)
         return Fake("ok", body) if body is not None else Fake("gone")
@@ -130,3 +132,55 @@ def test_duplicate_urls_are_kept_once():
 def test_lastmod_is_kept_on_entries():
     fetcher = FakeFetcher({f"{BASE}/sitemap.xml": urlset(f"{BASE}/a")})
     assert discover(fetcher, BASE).entries[0].lastmod == "2026-10-01"
+
+
+def test_a_sitemap_over_2_mb_is_read_and_one_that_cannot_be_read_is_said(monkeypatch):
+    """F98: a 2.2 MB sitemap answered too_large and the list came back empty without a word."""
+    import httpx
+    from seo.crawl.fetch import PoliteFetcher
+
+    big = urlset(*[f"{BASE}/page-{n:06d}-{'x' * 30}" for n in range(30_000)])
+    assert len(big) > 2_200_000
+
+    def site(request):
+        if request.url.path == "/robots.txt":
+            return httpx.Response(200, text=f"Sitemap: {BASE}/big.xml\nSitemap: {BASE}/broken.xml\n")
+        if request.url.path == "/big.xml":
+            return httpx.Response(200, content=big, headers={"content-type": "application/xml"})
+        return httpx.Response(500)
+
+    fetcher = PoliteFetcher(delay=0, is_allowed=lambda url: True, transport=httpx.MockTransport(site))
+    result = discover(fetcher, BASE, max_pages=50_000)
+    assert len(result.entries) == 30_000
+    assert result.cut and result.problems == {f"{BASE}/broken.xml": "server_error"}
+
+
+def test_more_sitemap_files_than_the_limit_says_the_list_was_cut():
+    index = b'<?xml version="1.0"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' + b"".join(
+        f"<sitemap><loc>{BASE}/s{n}.xml</loc></sitemap>".encode() for n in range(5)) + b"</sitemapindex>"
+    pages = {f"{BASE}/sitemap.xml": index, **{f"{BASE}/s{n}.xml": urlset(f"{BASE}/p{n}") for n in range(5)}}
+    result = discover(FakeFetcher(pages), BASE, max_sitemaps=3)
+    assert len(result.entries) == 2 and result.cut
+
+
+def test_a_whole_sitemap_is_not_cut():
+    result = discover(FakeFetcher({f"{BASE}/sitemap.xml": urlset(f"{BASE}/a")}), BASE)
+    assert not result.cut and not result.problems
+
+
+@pytest.mark.parametrize("raw, want", [
+    ("2026-11-03", "2026-11-03T00:00:00+00:00"),
+    ("2026-11-03T10:00:00+01:00", "2026-11-03T09:00:00+00:00"),
+    ("2026-11-03T10:00:00Z", "2026-11-03T10:00:00+00:00"),
+    ("Tue, 03 Feb 2015 10:00:00 GMT", "2015-02-03T10:00:00+00:00"),
+])
+def test_sitemap_dates_are_read_once_as_dates(raw, want):
+    from seo.crawl.sitemap import Entry, parse_lastmod
+    assert parse_lastmod(raw).isoformat() == want
+    assert Entry("https://x.example/", raw).lastmod_at.isoformat() == want
+
+
+@pytest.mark.parametrize("raw", ["", None, "yesterday", "2026-13-45"])
+def test_a_sitemap_date_that_cannot_be_read_is_none(raw):
+    from seo.crawl.sitemap import parse_lastmod
+    assert parse_lastmod(raw) is None

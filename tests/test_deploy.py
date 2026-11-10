@@ -219,7 +219,7 @@ def release(tmp_path):
 
     class Release:
         def __init__(self):
-            self.live, self.log, self.fake, self.home = live, log, fake, home
+            self.live, self.log, self.fake, self.home, self.venv = live, log, fake, home, venv
 
         def run(self, **extra):
             env = {**os.environ, "APP_DIR": str(live), "STAGING_DIR": str(staged), "VENV_BIN": str(venv), "HOME": str(home), **extra}
@@ -299,6 +299,79 @@ def test_a_later_release_does_not_touch_the_key(release):
     assert not any("seo.core.crypto" in " ".join(step) for step in release.steps()), "a key is already there"
 
 
+# ---- going back to an older release -------------------------------------------------------------------
+def test_going_back_switches_the_code_without_migrating(release):
+    """The older code has no file for the newest migration, so Alembic would stop and the broken version stay live."""
+    done = release.run(ROLLBACK="1")
+    assert done.returncode == 0, done.stderr
+    assert (release.live / "seo" / "new.py").exists() and not (release.live / "seo" / "old.py").exists()
+    assert (release.live / "tmp" / "restart.txt").exists()
+    steps = [" ".join(step) for step in release.steps()]
+    assert not any(step.startswith("alembic") for step in steps)
+    backup = next(i for i, step in enumerate(steps) if "backup_db.py" in step)
+    check = steps.index("python -m seo.core.schema")
+    assert backup < check, "a copy of the database comes first"
+    assert "no database changes ran" in done.stdout
+
+
+def test_going_back_stops_when_the_older_code_cannot_use_the_database(release, tmp_path):
+    """A migration marked breaking: the older code refuses, and nothing is switched."""
+    _script(release.venv / "python", f'echo "python $*" >> "{release.log}"\nif [ "$2" = "seo.core.schema" ]; then echo "marked breaking" >&2; exit 1; fi\n')
+    done = release.run(ROLLBACK="1")
+    assert done.returncode != 0 and "Not switched" in done.stderr
+    assert (release.live / "seo" / "old.py").exists() and not (release.live / "seo" / "new.py").exists()
+    assert not (release.live / "tmp" / "restart.txt").exists()
+
+
+def test_a_normal_release_still_migrates_and_skips_the_going_back_check(release):
+    assert release.run().returncode == 0
+    steps = [" ".join(step) for step in release.steps()]
+    assert any(step.startswith("alembic upgrade") for step in steps)
+    assert "python -m seo.core.schema" not in steps
+
+
+@pytest.mark.parametrize("args", [["--rollback"], ["--rollback", "no-such-commit-here"]])
+def test_going_back_needs_a_real_commit_and_stops_before_any_network(tmp_path, args):
+    fakes = tmp_path / "bin"
+    fakes.mkdir()
+    log = tmp_path / "called"
+    for tool in ("ssh", "rsync"):
+        _script(fakes / tool, f'echo {tool} >> "{log}"\nexit 0\n')
+    done = subprocess.run(["bash", str(ROOT / "deploy" / "deploy.sh"), *args], capture_output=True, text=True, cwd=ROOT, env={**os.environ, "PATH": f"{fakes}:{os.environ['PATH']}"})
+    assert done.returncode == 2 and "commit" in done.stderr
+    assert not log.exists()
+
+
+# ---- the copy on the Mac ------------------------------------------------------------------------------
+def test_pulling_backups_only_reads_from_the_server_and_checks_each_file(tmp_path):
+    """Fakes for ssh and rsync, and a host name that can't exist (.invalid), so nothing here can reach a server."""
+    import gzip
+
+    served = tmp_path / "served"
+    (served / "database").mkdir(parents=True)
+    with gzip.open(served / "database" / "seo-20261110-022000.sql.gz", "wb") as out:
+        out.write(b"-- dump\n-- Dump completed on 2026-11-10\n")
+    (served / "database" / "seo-20261109-022000.sql.gz").write_bytes(b"\x1f\x8b cut off")
+    fakes = tmp_path / "bin"
+    fakes.mkdir()
+    log = tmp_path / "rsync-args"
+    _script(fakes / "ssh", f'echo "ssh $*" >> "{tmp_path}/ssh-called"\nexit 1\n')
+    _script(fakes / "rsync", f'echo "$@" > "{log}"\nfor dest; do :; done\ncp -R "{served}/." "$dest"\n'
+            'echo ">f+++++++ database/seo-20261110-022000.sql.gz"\necho ">f+++++++ database/seo-20261109-022000.sql.gz"\n')
+    key, hosts, settings = tmp_path / "key", tmp_path / "known_hosts", tmp_path / "settings.env"
+    key.write_text("fake")
+    hosts.write_text("server.invalid ssh-ed25519 AAAA\n")
+    settings.write_text(f"SSH_USER=someone\nSSH_HOST=server.invalid\nSSH_KEY={key}\nKNOWN_HOSTS_FILE={hosts}\n")
+    dest = tmp_path / "copies"
+    env = {**os.environ, "PATH": f"{fakes}:{os.environ['PATH']}", "DEPLOY_SETTINGS": str(settings), "BACKUP_COPY_DIR": str(dest)}
+    done = subprocess.run(["bash", str(ROOT / "scripts" / "pull_backups.sh")], capture_output=True, text=True, env=env)
+    args = log.read_text()
+    assert "--delete" not in args and "someone@server.invalid:seo-platform/var/backups/" in args
+    assert done.returncode == 1 and "seo-20261109-022000.sql.gz" in done.stderr, "the cut-off copy is named"
+    assert "seo-20261110-022000.sql.gz" not in done.stderr and "Newest database copy" in done.stdout
+    assert dest.stat().st_mode & 0o077 == 0 and (dest / "database" / "seo-20261110-022000.sql.gz").stat().st_mode & 0o077 == 0
+
+
 # ---- files uploaded to notes --------------------------------------------------------------------------
 def test_note_files_are_backed_up_and_old_copies_dropped(tmp_path, monkeypatch):
     from scripts import backup_db
@@ -309,13 +382,39 @@ def test_note_files_are_backed_up_and_old_copies_dropped(tmp_path, monkeypatch):
     monkeypatch.setenv("SEO_NOTE_FILES", str(notes))
     folder = tmp_path / "backups"
     folder.mkdir()
-    for number in range(9):
+    for number in range(1, 10):  # 1 to 9 January
         (folder / f"note-files-2026010{number}-000000.tar.gz").write_bytes(b"old")
-    saved = backup_db.run_note_files(folder, keep=7)
+    saved = backup_db.run_note_files(folder)
     with tarfile.open(saved) as archive:
         assert any(name.endswith("a/photo.png") for name in archive.getnames())
     assert saved.stat().st_mode & 0o077 == 0
+    # Kept by age: the newest of 7 days (today and 9 to 4 January), and nothing older within the same week or month
     assert len(list(folder.glob("note-files-*.tar.gz"))) == 7 and saved.exists()
+    assert not (folder / "note-files-20260103-000000.tar.gz").exists()
+
+
+def test_a_note_files_copy_that_does_not_read_back_is_removed(tmp_path, monkeypatch):
+    from scripts import backup_db
+
+    notes = tmp_path / "note-files"
+    notes.mkdir()
+    (notes / "photo.png").write_bytes(b"picture")
+    monkeypatch.setenv("SEO_NOTE_FILES", str(notes))
+    real_check = backup_db.verify_archive
+    monkeypatch.setattr(backup_db, "verify_archive", lambda path, expected: real_check(path, expected + 1))  # one file short
+    with pytest.raises(SystemExit) as err:
+        backup_db.run_note_files(tmp_path / "backups")
+    assert "removed" in str(err.value)
+    assert list((tmp_path / "backups").iterdir()) == []
+
+
+def test_a_note_files_copy_that_is_not_an_archive_does_not_pass(tmp_path):
+    from scripts import backup_db
+
+    broken = tmp_path / "broken.tar.gz"
+    broken.write_bytes(b"not a tar")
+    with pytest.raises(SystemExit):
+        backup_db.verify_archive(broken, 1)
 
 
 def test_no_note_files_yet_is_not_a_problem(tmp_path, monkeypatch):

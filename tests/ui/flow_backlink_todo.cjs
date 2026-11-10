@@ -109,7 +109,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   console.log(JSON.stringify(text));
   check("file is named for the mediator", /^links-for-linkagency-\d{4}-\d{2}-\d{2}\.csv$/.test(download.suggestedFilename()), download.suggestedFilename());
   const lines = text.replace(/^﻿/, "").split("\r\n");
-  check("columns are Website, Link type, Article only", lines[0] === '"Website","Link type","Article"', lines[0]);
+  check("columns are Site, Link type, Article only", lines[0] === '"Site","Link type","Article"', lines[0]);
   check("has the mediator's two links only", lines.length === 3 && !text.includes("gamma"), lines.length);
   check("has the article link", text.includes("docs.google.com/document/d/abc/edit"));
   check("doesn't leak anchor, page, price or notes", !/anchor|price|notes|Your page/i.test(text));

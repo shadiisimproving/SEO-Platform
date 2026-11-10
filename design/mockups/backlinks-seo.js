@@ -16,7 +16,7 @@
     sponsored: "Marked sponsored: right for a paid link, but it passes little or no ranking value.",
     ugc: "Marked ugc (user content): it passes little or no ranking value.",
     canonical_elsewhere: "The page names another page as its main version, so Google may count that one instead.",
-    many_outbound: "The page links to more than 100 other websites, which looks like a link list.",
+    many_outbound: "The page links to more than 100 other sites, which looks like a link list.",
     source_not_indexed: "Google doesn't have the linking page: two site: searches in a row didn't find it. A page Google doesn't have passes nothing.",
   };
   const ANCHORS = {
@@ -50,7 +50,7 @@
     if (ix && (ix.state === "not_indexed" || ix.state === "unknown")) parts.push(`<span class="tag vd-tag vd-weak" data-tip="${esc(indexWhy(ix))}" tabindex="0">${t("Your page isn't indexed")}</span>`);
     const g = b.gsc || {};
     if (g.seen === "page") parts.push(`<span class="tag vd-tag vd-google" data-tip="${esc(t("Search Console lists this page among your links"))}${g.crawled ? ` · ${esc(t("last crawled"))} ${esc(g.crawled)}` : ""}" tabindex="0">${t("Google sees it")}</span>`);
-    else if (g.seen === "site") parts.push(`<span class="tag vd-tag vd-google" data-tip="${esc(t("Search Console lists this website among your links, but not this exact page."))}" tabindex="0">${t("Google sees the site")}</span>`);
+    else if (g.seen === "site") parts.push(`<span class="tag vd-tag vd-google" data-tip="${esc(t("Search Console lists this site among your links, but not this exact page."))}" tabindex="0">${t("Google sees the site")}</span>`);
     else if (g.not_listed) parts.push(`<span class="tag vd-tag" data-tip="${esc(t("Placed more than 60 days before your last Search Console upload, and not in it. Its list is a sample, so this is only a hint."))}" tabindex="0">${t("Not listed by Google yet")}</span>`);
     if (b.disavow) parts.push(`<span class="tag vd-tag vd-none" data-tip="${esc(t("Marked as spam: it's in the disavow file."))}" tabindex="0">${t("Spam")}</span>`);
     return parts.length ? `<span class="vd-row">${parts.join("")}</span>` : "";
@@ -94,7 +94,7 @@
     }
     html += indexBlock(b, server);
     const g = b.gsc || {};
-    if (g.seen || g.not_listed) html += `<p class="small sec">${UI.icon("search")} ${g.seen === "page" ? t("Search Console lists this page among your links") : g.seen === "site" ? t("Search Console lists this website among your links, but not this exact page.") : t("Not in your last Search Console upload.")}${g.crawled ? ` · ${t("last crawled")} ${esc(g.crawled)}` : ""}</p>`;
+    if (g.seen || g.not_listed) html += `<p class="small sec">${UI.icon("search")} ${g.seen === "page" ? t("Search Console lists this page among your links") : g.seen === "site" ? t("Search Console lists this site among your links, but not this exact page.") : t("Not in your last Search Console upload.")}${g.crawled ? ` · ${t("last crawled")} ${esc(g.crawled)}` : ""}</p>`;
     if (server && b.serverId) {
       html += `<div id="vd-effect" data-id="${b.serverId}">${effectInner(b.serverId)}</div>`;
       if (!S.effects.has(b.serverId)) loadEffect(b.serverId);
@@ -137,7 +137,7 @@
       const n = list.filter(FILTERS[key]).length;
       return n || picked === key ? `<button class="chip" data-bl-filter="${key}" aria-pressed="${picked === key}" data-tip="${esc(t(tip))}">${t(word)}<b>${UI.num(n)}</b></button>` : "";
     };
-    const site = S.domain ? `<button class="chip" data-vd-domain="" aria-pressed="true">${t("Website")}: <span class="mono" dir="auto">${esc(S.domain)}</span> ${UI.icon("x")}</button>` : "";
+    const site = S.domain ? `<button class="chip" data-vd-domain="" aria-pressed="true">${t("Site")}: <span class="mono" dir="auto">${esc(S.domain)}</span> ${UI.icon("x")}</button>` : "";
     return site + chip("useful", "Useful", "Live, followed, on a page Google can index") + chip("visits", "Sends visits", "Brought at least one visit")
       + chip("noindex", "Linking page not indexed", "Google doesn't have the page the link is on, or can't index it") + chip("useless", "Not useful", "Nofollow, sponsored, or on a page that passes nothing");
   }
@@ -145,11 +145,11 @@
   const byWebsite = () => S.view === "website";
   function viewSwitch() {
     const one = (key, word) => `<button class="tab" role="tab" data-vd-view="${key}" aria-selected="${S.view === key}">${t(word)}</button>`;
-    return `<span class="tabs vd-view" role="tablist" aria-label="${esc(t("Show"))}">${one("page", "By page")}${one("website", "By website")}</span>`;
+    return `<span class="tabs vd-view" role="tablist" aria-label="${esc(t("Show"))}">${one("page", "By page")}${one("website", "By site")}</span>`;
   }
 
   const ahrefsOn = () => [...S.sites.values()].some((f) => f.ahrefs);
-  const trafficHead = () => (ahrefsOn() ? `<th scope="col" class="r" data-tip="${esc(t("Ahrefs' estimate of the linking website's monthly visits from Google"))}">${t("Site traffic")}</th>` : "");
+  const trafficHead = () => (ahrefsOn() ? `<th scope="col" class="r" data-tip="${esc(t("Ahrefs' estimate of the linking site's monthly visits from Google"))}">${t("Site traffic")}</th>` : "");
   const trafficValue = (v) => (v === null || v === undefined ? '<span class="muted">—</span>' : UI.num(v));
   const trafficCell = (b) => (ahrefsOn() ? `<td class="r tabular" data-label="${t("Site traffic")}">${trafficValue(b.siteTraffic)}</td>` : "");
 
@@ -165,6 +165,24 @@
   const anchorOptions = (picked) => [["", "Automatic"], ...Object.entries(ANCHORS).map(([key, [word]]) => [key, word])]
     .map(([key, word]) => `<option value="${key}" ${(picked || "") === key ? "selected" : ""}>${esc(t(word))}</option>`).join("");
 
+  /* Visits and leads of a list of links, each shared number counted once (F10). Several links from one website to one page,
+     or with the same UTM, can't be told apart, so each row carries the group's whole number: three links sharing 40 visits
+     are 40, not 120. The server names the group; without it, the same website and target page with a "shared" mark is one. */
+  const groupOf = (b) => b.group || b.trafficGroup || b.traffic_group || (b.shared ? `${domainOf(b)}|${b.target || ""}` : `id:${b.serverId ?? b.id}`);
+  function trafficTotals(rows) {
+    const seen = new Set();
+    let visits = 0, leads = 0, known = false;
+    rows.forEach((b) => {
+      if (b.visits === null || b.visits === undefined) return;
+      known = true;
+      const g = groupOf(b);
+      if (seen.has(g)) return;
+      seen.add(g);
+      visits += b.visits || 0; leads += b.leads || 0;
+    });
+    return { visits, leads, known };
+  }
+
   /* One row per linking website: how many links, the best of them, and what the website is worth. */
   function websiteTable(rows) {
     const groups = new Map();
@@ -173,15 +191,15 @@
     const list = [...groups].map(([domain, links]) => {
       const best = links.filter((b) => b.status === "live" && b.check?.verdict).sort((x, y) => rank[y.check.verdict] - rank[x.check.verdict])[0];
       const auth = Math.max(...links.map((b) => b.auth || 0)), opr = Math.max(...links.map((b) => b.opr ?? -1));
-      const visits = links.some((b) => b.visits !== null && b.visits !== undefined) ? links.reduce((s, b) => s + (b.visits || 0), 0) : null;
+      const sum = trafficTotals(links), visits = sum.known ? sum.visits : null;
       return { domain, links, best, auth, opr, visits, traffic: links.find((b) => b.siteTraffic !== null && b.siteTraffic !== undefined)?.siteTraffic ?? null, live: links.filter((b) => b.status === "live").length };
     }).sort((x, y) => (y.auth - x.auth) || (y.opr - x.opr) || (y.links.length - x.links.length) || x.domain.localeCompare(y.domain));
     if (!list.length) return COMP.empty(t("No links match"), t("Pick another filter."));
-    return `<div class="table-wrap"><table class="data" id="bl-sites"><thead><tr><th scope="col">${t("Website")}</th><th scope="col" class="r">${t("Links")}</th><th scope="col" data-tip="${esc(t("The best of this website's links, as the last check read it"))}">${t("Best link")}</th><th scope="col" class="r">${t("Authority")}</th>${trafficHead()}<th scope="col" class="r">${t("Visits")}</th></tr></thead><tbody>
+    return `<div class="table-wrap"><table class="data" id="bl-sites"><thead><tr><th scope="col">${t("Site")}</th><th scope="col" class="r">${t("Links")}</th><th scope="col" data-tip="${esc(t("The best of this site's links, as the last check read it"))}">${t("Best link")}</th><th scope="col" class="r">${t("Authority")}</th>${trafficHead()}<th scope="col" class="r">${t("Visits")}</th></tr></thead><tbody>
       ${list.map((g) => {
         const tag = g.best ? `<span class="tag vd-tag ${VERDICT[g.best.check.verdict][0]}">${t(VERDICT[g.best.check.verdict][1])}</span>` : '<span class="muted">—</span>';
         const authority = g.auth ? UI.dec(g.auth) : g.opr >= 0 ? `${UI.dec(g.opr)} <span class="tag">OPR</span>` : '<span class="muted">—</span>';
-        return `<tr><td class="head-cell"><span class="with-logo">${UI.siteLogo ? UI.siteLogo(g.domain) : ""}<span class="logo-text"><button class="kw mono small" data-vd-domain="${esc(g.domain)}" style="text-align:start" data-tip="${esc(t("Show this website's links"))}"><span dir="auto">${esc(g.domain)}</span></button><span class="second">${g.live} ${t("live")}</span></span></span></td>
+        return `<tr><td class="head-cell"><span class="with-logo">${UI.siteLogo ? UI.siteLogo(g.domain) : ""}<span class="logo-text"><button class="kw mono small" data-vd-domain="${esc(g.domain)}" style="text-align:start" data-tip="${esc(t("Show this site's links"))}"><span dir="auto">${esc(g.domain)}</span></button><span class="second">${g.live} ${t("live")}</span></span></span></td>
           <td class="r tabular" data-label="${t("Links")}">${UI.num(g.links.length)}</td><td data-label="${t("Best link")}">${tag}</td><td class="r" data-label="${t("Authority")}">${authority}</td>
           ${ahrefsOn() ? `<td class="r tabular" data-label="${t("Site traffic")}">${trafficValue(g.traffic)}</td>` : ""}<td class="r tabular" data-label="${t("Visits")}">${g.visits === null ? '<span class="muted">—</span>' : UI.num(g.visits)}</td></tr>`;
       }).join("")}</tbody></table></div>`;
@@ -202,17 +220,17 @@
     if (!ix) {
       if (!server) return "";
       if (!facts.index_check) return `${head}<p class="small sec">${t("Connect Search Console for this site and Google is asked whether your target page is indexed.")} <a href="#settings">${t("Data sources")}</a></p>`;
-      return `${head}<p class="small sec">${t("Google is asked on the next check. Press Check now to ask today.")}</p>`;
+      return `${head}<p class="small sec">${t("Google is asked on the next check. Press Run to ask today.")}</p>`;
     }
     const page = pathOf(ix.url);
     const from = `<p class="small muted vd-from">${t("From Search Console's URL Inspection")}${ix.checked ? `, ${esc(ix.checked)}` : ""}.</p>`;
     if (ix.state === "error") return `${head}<p class="small sec">${UI.icon("triangle-alert")} ${esc(t(ix.error))}</p>${from}`;
     if (ix.state === "indexed") {
-      return `${head}<p class="lk-result"><span class="tag vd-tag vd-counts">${t("Indexed")}</span> <span class="mono small" dir="auto">${esc(page)}</span>${ix.crawled ? ` · ${t("last crawled")} ${esc(ix.crawled)}` : ""}</p>${from}`;
+      return `${head}<p class="lk-result"><span class="tag vd-tag vd-counts">${t("Indexed")}</span> ${PageLink.html(ix.url, { text: page, cls: "mono small" })}${ix.crawled ? ` · ${t("last crawled")} ${esc(ix.crawled)}` : ""}</p>${from}`;
     }
-    const canonical = ix.google_canonical ? `<p class="small sec">${t("Google treats another page as the main version:")} <span class="mono" dir="auto">${esc(pathOf(ix.google_canonical))}</span></p>` : "";
+    const canonical = ix.google_canonical ? `<p class="small sec">${t("Google treats another page as the main version:")} ${PageLink.html(ix.google_canonical, { text: pathOf(ix.google_canonical), cls: "mono" })}</p>` : "";
     const task = UI.taskButton ? UI.taskButton({ title: `${t("Get indexed:")} ${page}`, host: b.site, source: { type: "backlink", label: page, host: b.site, facts: [ix.coverage || t("Not indexed")], link: "#backlinks", key: `index|${b.site}|${page}` } }, { label: "Task" }) : "";
-    return `${head}<p class="lk-result"><span class="tag vd-tag vd-none">${t(ix.state === "unknown" ? "Unknown to Google" : "Not indexed")}</span> <span class="mono small" dir="auto">${esc(page)}</span></p>
+    return `${head}<p class="lk-result"><span class="tag vd-tag vd-none">${t(ix.state === "unknown" ? "Unknown to Google" : "Not indexed")}</span> ${PageLink.html(ix.url, { text: page, cls: "mono small" })}</p>
       <p class="note warn">${UI.icon("triangle-alert")}<span>${esc(indexWhy(ix))}</span></p>${canonical}<div style="margin:6px 0">${task}</div>${from}`;
   }
 
@@ -233,6 +251,7 @@
   function effectInner(id) {
     const e = S.effects.get(id);
     if (!e || e.loading) return "";
+    if (e.state === "waiting") return `<h3>${t("Before and after")}</h3><p class="small sec">${t("The days after the link aren't all in Search Console yet, so there's nothing fair to compare.")} ${t("Ready on")} ${esc(UI.fmtDateOnly ? UI.fmtDateOnly(e.ready_on) : e.ready_on)}.</p>`; // F11
     if (e.state !== "ok") return e.state === "no_date" ? `<h3>${t("Before and after")}</h3><p class="small sec">${t(e.note)}</p>` : "";
     const pct = (v) => (v === null || v === undefined ? "—" : `${v > 0 ? "+" : ""}${UI.num(v)}%`);
     const unit = UI.state.lang === "fr" ? "j" : "d";
@@ -309,7 +328,7 @@
       const a = await COMP.api("POST", "backlinks/gsc-import", undefined, { form });
       const lines = [];
       if (a.kinds.includes("latest")) lines.push(`${UI.num(a.added)} ${t("new links in Found but never logged")}`, `${UI.num(a.seen)} ${t("logged links Google sees")}`);
-      if (a.kinds.includes("sites")) lines.push(`${UI.num(a.domains)} ${t("linking websites")}`);
+      if (a.kinds.includes("sites")) lines.push(`${UI.num(a.domains)} ${t("linking sites")}`);
       if (a.kinds.includes("pages")) lines.push(`${UI.num(a.pages)} ${t("of your pages with links. Each is read once a month for Reclaim.")}`);
       if (a.skipped) lines.push(`${UI.num(a.skipped)} ${t("rows skipped: your own pages or the same page twice")}`);
       UI.setHTML(box, `<div class="note good">${UI.icon("circle-check")}<span>${lines.map(esc).join("<br>")}</span></div>`);
@@ -345,12 +364,12 @@
   function reclaimBody() {
     const list = reclaimPages();
     if (!list.length) return COMP.empty(t("Nothing to reclaim"), t("Pages of yours that are gone but still have links show here."));
-    return `<p class="note">${UI.icon("info")}<span>${t("Other websites link to these pages of yours, but the pages are gone. Redirect each one to the closest live page and the links count again.")}</span></p>
-      <div class="table-wrap"><table class="data" id="rc-table"><thead><tr><th scope="col">${t("Your page")}</th><th scope="col">${t("Answers")}</th><th scope="col" class="r">${t("Websites linking")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead><tbody>
-      ${list.map((p) => `<tr style="cursor:default"><td class="head-cell mono small url-cell" data-tip="${esc(p.page)}"><span dir="auto">${esc(p.path)}</span>${UI.state.site === "all" ? `<span class="second">${t("For")} ${esc(p.site)}</span>` : ""}${p.domains.length ? `<span class="second">${esc(p.domains.slice(0, 3).join(", "))}${p.domains.length > 3 ? "…" : ""}</span>` : ""}</td>
+    return `<p class="note">${UI.icon("info")}<span>${t("Other sites link to these pages of yours, but the pages are gone. Redirect each one to the closest live page and the links count again.")}</span></p>
+      <div class="table-wrap"><table class="data" id="rc-table"><thead><tr><th scope="col">${t("Your page")}</th><th scope="col">${t("Answers")}</th><th scope="col" class="r">${t("Sites linking")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead><tbody>
+      ${list.map((p) => `<tr style="cursor:default"><td class="head-cell mono small url-cell" data-tip="${esc(p.page)}">${PageLink.html(p.page || p.path, { text: p.path, host: p.site, title: "" })}${UI.state.site === "all" ? `<span class="second">${t("For")} ${esc(p.site)}</span>` : ""}${p.domains.length ? `<span class="second">${esc(p.domains.slice(0, 3).join(", "))}${p.domains.length > 3 ? "…" : ""}</span>` : ""}</td>
         <td data-label="${t("Answers")}">${UI.status("serious", String(p.http))}</td>
-        <td class="r" data-label="${t("Websites linking")}">${UI.num(p.sites || p.logged_links)}${p.gsc_links ? `<span class="second">${UI.num(p.gsc_links)} ${t("links")}</span>` : ""}</td>
-        <td class="r nowrap">${window.UI.taskButton({ title: `${t("Redirect")} ${p.path} ${t("to a live page")}`, host: p.site, source: { type: "backlink", label: p.path, host: p.site, facts: [`${p.http}`, `${p.sites || p.logged_links} ${t("websites linking")}`], link: "#backlinks", key: `reclaim|${p.site}|${p.path}` } }, { label: "Task" })}${p.gsc_id ? ` <button class="btn btn-small" data-rc-dismiss="${p.gsc_id}">${t("Dismiss")}</button>` : ""}</td></tr>`).join("")}
+        <td class="r" data-label="${t("Sites linking")}">${UI.num(p.sites || p.logged_links)}${p.gsc_links ? `<span class="second">${UI.num(p.gsc_links)} ${t("links")}</span>` : ""}</td>
+        <td class="r nowrap">${window.UI.taskButton({ title: `${t("Redirect")} ${p.path} ${t("to a live page")}`, host: p.site, source: { type: "backlink", label: p.path, host: p.site, facts: [`${p.http}`, `${p.sites || p.logged_links} ${t("sites linking")}`], link: "#backlinks", key: `reclaim|${p.site}|${p.path}` } }, { label: "Task" })}${p.gsc_id ? ` <button class="btn btn-small" data-rc-dismiss="${p.gsc_id}">${t("Dismiss")}</button>` : ""}</td></tr>`).join("")}
       </tbody></table></div>`;
   }
 
@@ -380,7 +399,7 @@
     const counting = new Set(all.filter((b) => b.site === host && b.check?.verdict === "counts").map((b) => b.domain)).size;
     const total = mine.reduce((s, b) => s + b.cost, 0);
     const over = spent > got.amount;
-    return `<span class="small ${over ? "serious" : "sec"}">${t("This month")}: <b class="tabular">${H.money(got.currency, UI.num(Math.round(spent)))}</b> ${t("of")} ${H.money(got.currency, UI.num(got.amount))}${counting && total ? ` · ${t("per website that counts")}: ${H.money(got.currency, UI.num(Math.round(total / counting)))}` : ""}</span>${edit}`;
+    return `<span class="small ${over ? "serious" : "sec"}">${t("This month")}: <b class="tabular">${H.money(got.currency, UI.num(Math.round(spent)))}</b> ${t("of")} ${H.money(got.currency, UI.num(got.amount))}${counting && total ? ` · ${t("per site that counts")}: ${H.money(got.currency, UI.num(Math.round(total / counting)))}` : ""}</span>${edit}`;
   }
 
   function openBudget(button) {
@@ -439,7 +458,7 @@
   /* The linking page's language, before anything is read: an earlier check of that website, else what the address says. */
   function guessLang(address, domain) {
     const earlier = (window.BACKLINKS || []).find((b) => b.domain === domain && b.check?.page_lang);
-    if (earlier) return { lang: earlier.check.page_lang.slice(0, 2), why: t("read on an earlier check of this website") };
+    if (earlier) return { lang: earlier.check.page_lang.slice(0, 2), why: t("read on an earlier check of this site") };
     let u;
     try { u = new URL(address); } catch { return null; }
     const first = u.pathname.split("/").filter(Boolean)[0] || "";
@@ -497,7 +516,7 @@
   window.BacklinkSeo = {
     init(ui, helpers) { UI = ui; H = helpers; bind(); sample(); },
     noteSite: (host, facts) => { if (host && facts) S.sites.set(host, facts); },
-    filterRows, filterChips, viewSwitch, byWebsite, websiteTable, trafficHead, trafficCell, anchorTag, anchorWord, anchorOptions,
+    filterRows, filterChips, viewSwitch, trafficTotals, byWebsite, websiteTable, trafficHead, trafficCell, anchorTag, anchorWord, anchorOptions,
     badge, liveNote, authorityCell, panelBlocks, spamBlock, foundTools, foundButton, foundSeen, reclaimBody, reclaimCount, budgetBar, duplicateNote,
     forget: () => { S.reclaim.clear(); S.budgets.clear(); S.effects.clear(); },
   };
@@ -506,7 +525,7 @@
     "Counts": "Compte", "Weak": "Faible", "Doesn't count": "Ne compte pas", "Spam": "Spam", "Google sees it": "Vu par Google", "Google sees the site": "Site vu par Google", "Not listed by Google yet": "Pas encore listé par Google",
     "Google can see this page and the link passes value.": "Google peut voir cette page et le lien transmet de la valeur.",
     "Search Console lists this page among your links": "Search Console liste cette page parmi vos liens", "last crawled": "dernière exploration",
-    "Search Console lists this website among your links, but not this exact page.": "Search Console liste ce site parmi vos liens, mais pas cette page précise.",
+    "Search Console lists this site among your links, but not this exact page.": "Search Console liste ce site parmi vos liens, mais pas cette page précise.",
     "Placed more than 60 days before your last Search Console upload, and not in it. Its list is a sample, so this is only a hint.": "Placé plus de 60 jours avant votre dernier import Search Console, et absent de celui-ci. Sa liste n'est qu'un échantillon : ce n'est qu'un indice.",
     "Marked as spam: it's in the disavow file.": "Marqué comme spam : il est dans le fichier de désaveu.",
     "Read on the last check: followed, on a page Google can index.": "Lu au dernier contrôle : suivi, sur une page que Google peut indexer.", "counts for Google": "compte pour Google", "count for Google": "comptent pour Google",
@@ -518,7 +537,7 @@
     "Marked sponsored: right for a paid link, but it passes little or no ranking value.": "Marqué sponsored : normal pour un lien payé, mais il transmet peu ou pas de valeur de classement.",
     "Marked ugc (user content): it passes little or no ranking value.": "Marqué ugc (contenu d'utilisateurs) : il transmet peu ou pas de valeur de classement.",
     "The page names another page as its main version, so Google may count that one instead.": "La page désigne une autre page comme version principale : Google peut compter celle-là à la place.",
-    "The page links to more than 100 other websites, which looks like a link list.": "La page pointe vers plus de 100 autres sites, ce qui ressemble à une liste de liens.",
+    "The page links to more than 100 other sites, which looks like a link list.": "La page pointe vers plus de 100 autres sites, ce qui ressemble à une liste de liens.",
     "Does Google count it?": "Google le compte-t-il ?",
     "The linking page is in {a} and your page is in {b}. Links from pages in the same language and on the same topic usually help more.": "La page qui fait le lien est en {a} et votre page en {b}. Les liens venant de pages de même langue et de même sujet aident en général davantage.",
     "Your target page answers {n}, so this link is wasted until the page redirects to a live one.": "Votre page cible répond {n} : ce lien est perdu tant qu'elle ne redirige pas vers une page en ligne.",
@@ -526,6 +545,7 @@
     "This page looks like spam: it has many outbound links or a high spam score.": "Cette page ressemble à du spam : beaucoup de liens sortants ou un score de spam élevé.",
     "Mark a link you can't get removed and that could look paid or spammy. It goes in the disavow file.": "Marquez un lien que vous ne pouvez pas faire retirer et qui pourrait passer pour payé ou spam. Il ira dans le fichier de désaveu.",
     "Mark as spam": "Marquer comme spam", "Not spam": "Pas du spam", "Marked as spam": "Marqué comme spam", "No longer marked as spam": "N'est plus marqué comme spam",
+    "The days after the link aren't all in Search Console yet, so there's nothing fair to compare.": "Les jours qui suivent le lien ne sont pas encore tous dans Search Console : rien de juste à comparer pour l'instant.", "Ready on": "Prêt le",
     "Before and after": "Avant et après", "Correlation, not proof": "Corrélation, pas preuve", "Clicks to the target page": "Clics vers la page cible", "before": "avant", "after": "après", "This page": "Cette page", "the whole site": "tout le site", "position": "position",
     "From Search Console. Timing only: this does not prove the link caused the change.": "Depuis Search Console. Simple coïncidence de dates : cela ne prouve pas que le lien a causé le changement.",
     "It needs a target page and a date placed.": "Il faut une page cible et une date de mise en ligne.", "The date placed isn't written as YYYY-MM-DD, so it can't be compared.": "La date de mise en ligne n'est pas au format AAAA-MM-JJ : la comparaison est impossible.",
@@ -537,15 +557,15 @@
     "Click Export external links at the top right, choose Latest links, then Download CSV.": "Cliquez sur Exporter les liens externes en haut à droite, choisissez Derniers liens, puis Télécharger au format CSV.",
     "Upload that file here. Top linking sites and Top linked pages exports work too.": "Importez ce fichier ici. Les exports Principaux sites de liens et Pages les plus liées fonctionnent aussi.",
     "Choose the file Search Console downloaded.": "Choisissez le fichier téléchargé depuis Search Console.", "Needs the running app": "Nécessite l'application en marche", "Uploading…": "Import en cours…", "Upload": "Importer", "Upload another file": "Importer un autre fichier",
-    "new links in Found but never logged": "nouveaux liens dans Trouvés mais jamais saisis", "logged links Google sees": "liens saisis vus par Google", "linking websites": "sites qui font des liens",
+    "new links in Found but never logged": "nouveaux liens dans Trouvés mais jamais saisis", "logged links Google sees": "liens saisis vus par Google", "linking sites": "sites qui font des liens",
     "of your pages with links. Each is read once a month for Reclaim.": "de vos pages ont des liens. Chacune est lue une fois par mois pour À récupérer.", "rows skipped: your own pages or the same page twice": "lignes ignorées : vos propres pages, ou la même page deux fois",
     "That doesn't look like a Search Console Links export. In Search Console open Links, then Export external links, and choose Latest links.": "Ce n'est pas un export Liens de Search Console. Dans Search Console, ouvrez Liens, puis Exporter les liens externes, et choisissez Derniers liens.",
     "Download it from Search Console as CSV, not Excel.": "Téléchargez-le depuis Search Console au format CSV, pas Excel.", "That .zip file has no .csv inside.": "Ce fichier .zip ne contient aucun .csv.", "That .zip file can't be opened.": "Ce fichier .zip ne peut pas être ouvert.",
     "That file is too large. A Search Console export is well under 10 MB.": "Ce fichier est trop volumineux. Un export Search Console fait bien moins de 10 Mo.",
     "Reclaim": "À récupérer", "Nothing to reclaim": "Rien à récupérer", "Pages of yours that are gone but still have links show here.": "Vos pages disparues qui ont encore des liens apparaissent ici.",
-    "Other websites link to these pages of yours, but the pages are gone. Redirect each one to the closest live page and the links count again.": "D'autres sites pointent vers ces pages, mais elles n'existent plus. Redirigez chacune vers la page en ligne la plus proche et les liens comptent à nouveau.",
-    "Your page": "Votre page", "Answers": "Répond", "Websites linking": "Sites qui font un lien", "websites linking": "sites qui font un lien", "links": "liens", "1 link": "1 lien", "Redirect": "Rediriger", "to a live page": "vers une page en ligne", "Dismiss": "Écarter", "That page isn't in the list.": "Cette page n'est pas dans la liste.",
-    "Pick a site to set its monthly budget.": "Choisissez un site pour fixer son budget mensuel.", "Budget": "Budget", "Set a monthly budget": "Fixer un budget mensuel", "This month": "Ce mois-ci", "of": "sur", "per website that counts": "par site qui compte",
+    "Other sites link to these pages of yours, but the pages are gone. Redirect each one to the closest live page and the links count again.": "D'autres sites pointent vers ces pages, mais elles n'existent plus. Redirigez chacune vers la page en ligne la plus proche et les liens comptent à nouveau.",
+    "Your page": "Votre page", "Answers": "Répond", "Sites linking": "Sites qui font un lien", "sites linking": "sites qui font un lien", "links": "liens", "1 link": "1 lien", "Redirect": "Rediriger", "to a live page": "vers une page en ligne", "Dismiss": "Écarter", "That page isn't in the list.": "Cette page n'est pas dans la liste.",
+    "Pick a site to set its monthly budget.": "Choisissez un site pour fixer son budget mensuel.", "Budget": "Budget", "Set a monthly budget": "Fixer un budget mensuel", "This month": "Ce mois-ci", "of": "sur", "per site that counts": "par site qui compte",
     "Monthly budget": "Budget mensuel", "For buying links on this site, in one currency": "Pour l'achat de liens sur ce site, dans une seule devise", "Amount": "Montant", "Currency": "Devise",
     "Leave the amount empty to remove the budget. Only prices in this currency are added up.": "Laissez le montant vide pour supprimer le budget. Seuls les prix dans cette devise sont additionnés.",
     "The budget must be a number.": "Le budget doit être un nombre.", "Choose one of USD, EUR, AED, GBP.": "Choisissez USD, EUR, AED ou GBP.",
@@ -557,7 +577,7 @@
     "Google treats another page as the main version:": "Google considère une autre page comme version principale :", "Get indexed:": "Faire indexer :",
     "From Search Console's URL Inspection": "Depuis l'inspection d'URL de Search Console",
     "Connect Search Console for this site and Google is asked whether your target page is indexed.": "Connectez Search Console pour ce site, et Google sera interrogé pour savoir si votre page cible est indexée.", "Data sources": "Sources de données",
-    "Google is asked on the next check. Press Check now to ask today.": "Google sera interrogé au prochain contrôle. Cliquez sur Vérifier pour le faire aujourd'hui.",
+    "Google is asked on the next check. Press Run to ask today.": "Google sera interrogé au prochain contrôle. Cliquez sur Lancer pour le faire aujourd'hui.",
     "This page isn't in the site's Search Console property, so Google won't inspect it.": "Cette page n'est pas dans la propriété Search Console du site : Google ne l'inspectera pas.",
     "This page looks to be in {a} ({why}), and {site} is in {b}. A link from another language still counts, but one from a page in the same language usually helps more. The first check reads the page and says for sure.": "Cette page semble être en {a} ({why}), et {site} est en {b}. Un lien depuis une autre langue compte quand même, mais un lien depuis une page de même langue aide en général davantage. Le premier contrôle lit la page et le confirme.",
     "Google doesn't have the linking page: two site: searches in a row didn't find it. A page Google doesn't have passes nothing.": "Google n'a pas la page qui fait le lien : deux recherches site: de suite ne l'ont pas trouvée. Une page absente de Google ne transmet rien.",
@@ -567,10 +587,10 @@
     "The linking page is on Google": "La page qui fait le lien est dans Google",
     "Not found on Google yet: a site: search didn't show the linking page. Search results are incomplete, so it's searched again in a few days, and only a second miss marks it not indexed.": "Pas encore trouvée dans Google : une recherche site: n'a pas montré la page qui fait le lien. Les résultats sont incomplets : elle est recherchée à nouveau dans quelques jours, et seul un second échec la marque comme non indexée.",
     "Google doesn't have the linking page: two site: searches in a row didn't find it. Ask the website to get it indexed, or the link passes nothing.": "Google n'a pas la page qui fait le lien : deux recherches site: de suite ne l'ont pas trouvée. Demandez au site de la faire indexer, sinon le lien ne transmet rien.",
-    "Useful": "Liens utiles", "Sends visits": "Envoient des visites", "Not useful": "Liens non utiles", "Website": "Site", "Show": "Afficher", "By page": "Par page", "By website": "Par site",
+    "Useful": "Liens utiles", "Sends visits": "Envoient des visites", "Not useful": "Liens non utiles", "Site": "Site", "Show": "Afficher", "By page": "Par page", "By site": "Par site",
     "Live, followed, on a page Google can index": "En ligne, suivi, sur une page que Google peut indexer", "Brought at least one visit": "A apporté au moins une visite",
     "Google doesn't have the page the link is on, or can't index it": "Google n'a pas la page qui porte le lien, ou ne peut pas l'indexer", "Nofollow, sponsored, or on a page that passes nothing": "Nofollow, sponsored, ou sur une page qui ne transmet rien",
-    "Site traffic": "Trafic du site", "Ahrefs' estimate of the linking website's monthly visits from Google": "Estimation Ahrefs des visites mensuelles venant de Google sur le site qui fait le lien",
+    "Site traffic": "Trafic du site", "Ahrefs' estimate of the linking site's monthly visits from Google": "Estimation Ahrefs des visites mensuelles venant de Google sur le site qui fait le lien",
     "Brand": "Marque", "Bare URL": "URL nue", "Exact keyword": "Mot-clé exact", "Partial keyword": "Mot-clé partiel", "Generic": "Générique",
     "Automatic": "Automatique", "Set by hand.": "Choisi à la main.", "set by hand": "choisi à la main", "None of the kinds above.": "Aucun des types ci-dessus.",
     "Your brand or domain name. The safest kind of anchor.": "Votre marque ou votre nom de domaine. Le type d'ancre le plus sûr.",
@@ -578,14 +598,14 @@
     "Exactly one of your tracked keywords. Helps the most, but too many look bought.": "Exactement un de vos mots-clés suivis. Aide le plus, mais en excès cela paraît acheté.",
     "Holds one of your tracked keywords among other words.": "Contient un de vos mots-clés suivis parmi d'autres mots.",
     "Words like click here or read more. Natural, but tell Google little.": "Des mots comme cliquez ici ou en savoir plus. Naturel, mais cela dit peu de choses à Google.",
-    "No links match": "Aucun lien ne correspond", "Pick another filter.": "Choisissez un autre filtre.", "Links": "Liens", "live": "en ligne", "Best link": "Meilleur lien", "The best of this website's links, as the last check read it": "Le meilleur des liens de ce site, d'après le dernier contrôle", "Show this website's links": "Voir les liens de ce site",
-    "Monthly Google traffic of each website that links to you": "Trafic Google mensuel de chaque site qui pointe vers vous", "Paid": "Payant", "About 50 API units per website a month": "Environ 50 unités d'API par site et par mois",
-    "Off until you paste a key. The Site traffic column on Backlinks only shows while it's connected. At most 200 websites a month, about 10,000 units.": "Désactivé tant que vous ne collez pas de clé. La colonne Trafic du site des Backlinks n'apparaît que lorsqu'il est connecté. Au plus 200 sites par mois, environ 10 000 unités.",
+    "No links match": "Aucun lien ne correspond", "Pick another filter.": "Choisissez un autre filtre.", "Links": "Liens", "live": "en ligne", "Best link": "Meilleur lien", "The best of this site's links, as the last check read it": "Le meilleur des liens de ce site, d'après le dernier contrôle", "Show this site's links": "Voir les liens de ce site",
+    "Monthly Google traffic of each site that links to you": "Trafic Google mensuel de chaque site qui pointe vers vous", "Paid": "Payant", "About 50 API units per site a month": "Environ 50 unités d'API par site et par mois",
+    "Off until you paste a key. The Site traffic column on Backlinks only shows while it's connected. At most 200 sites a month, about 10,000 units.": "Désactivé tant que vous ne collez pas de clé. La colonne Trafic du site des Backlinks n'apparaît que lorsqu'il est connecté. Au plus 200 sites par mois, environ 10 000 unités.",
     "Check your plan": "Vérifiez votre forfait", "The Ahrefs API needs a plan with API units. Your plan page says how many you have.": "L'API Ahrefs nécessite un forfait avec des unités d'API. La page de votre forfait indique combien vous en avez.", "Open your limits": "Ouvrir vos limites",
     "Create a key": "Créer une clé", "Open API keys in your Ahrefs account, press Create API key, and copy it.": "Ouvrez Clés API dans votre compte Ahrefs, cliquez sur Créer une clé API, puis copiez-la.", "Open API keys": "Ouvrir les clés API",
     "Paste it in the API key box above and press Save. Test uses ahrefs.com, which Ahrefs never charges units for.": "Collez-la dans le champ Clé API ci-dessus et cliquez sur Enregistrer. Le test utilise ahrefs.com, pour lequel Ahrefs ne facture jamais d'unités.",
     "Your Ahrefs plan's units, every month": "Les unités de votre forfait Ahrefs, chaque mois",
-    "read on an earlier check of this website": "lu lors d'un contrôle précédent de ce site", "from {x} in the address": "d'après {x} dans l'adresse",
+    "read on an earlier check of this site": "lu lors d'un contrôle précédent de ce site", "from {x} in the address": "d'après {x} dans l'adresse",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 })();

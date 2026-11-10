@@ -6,10 +6,11 @@ import sys
 
 from seo.backlinks import ahrefs as backlink_ahrefs, indexed as backlink_indexed, live as backlink_checks, logos, reclaim as backlink_reclaim, source_index as backlink_source_index  # noqa: F401 - register their job handlers
 from seo.uptime import service as uptime_service  # registers the uptime check's job handler
-from seo.competitors import crawl as competitor_crawl, history, keywords, pages, quality  # noqa: F401 - register their job handlers
+from seo.competitors import crawl as competitor_crawl, firecrawl, history, keywords, pages, probe, quality  # noqa: F401 - register their job handlers
 from seo.collectors import jobs as collector_jobs
+from seo.extras import auto as extras_auto  # registers its job handler
 from seo.core.db import make_engine
-from seo.health import service as health_service  # registers the health test's job handler
+from seo.health import indexing as health_indexing, service as health_service  # register the health test's and the indexing check's job handlers
 from seo.insights import engine as insights_engine  # noqa: F401 - registers the Search insights job handler
 from seo.links import service as links_service  # registers the links checker's job handler
 from seo.notifications import new_queries  # noqa: F401 - registers the new-search notification's job handler
@@ -31,8 +32,9 @@ def main(argv: list[str] | None = None) -> int:
     health.add_argument("--test-db", action="store_true", help=argparse.SUPPRESS)
     rivals = commands.add_parser("competitors-due", help="queue today's read of each competitor, and carry on keyword lists that waited for a tool")
     rivals.add_argument("--test-db", action="store_true", help=argparse.SUPPRESS)
-    watch = commands.add_parser("uptime-due", help="queue an uptime check for each of my sites not checked in the last 15 minutes")
+    watch = commands.add_parser("uptime-due", help="queue an uptime check for each of my sites not checked in the last 10 minutes, and run them")
     watch.add_argument("--test-db", action="store_true", help=argparse.SUPPRESS)
+    watch.add_argument("--budget", type=float, default=240, help="seconds before it stops checking")
     placed = commands.add_parser("backlinks-due", help="queue a live check for each of my sites with a backlink due one")
     placed.add_argument("--test-db", action="store_true", help=argparse.SUPPRESS)
     collect = commands.add_parser("collect-due", help="queue each site's data sources that are due, and this month's authority scores")
@@ -47,7 +49,9 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "uptime-due":
         queued = uptime_service.enqueue_due(engine)
-        print(f"uptime-due: queued {len(queued)} site{'' if len(queued) == 1 else 's'}")
+        # Run at once, in uptime's own lane: a check never waits for the crawl lane's next tick, or behind a scan (F14).
+        done = tick(engine, uptime_service.LANE, budget_seconds=args.budget, db_wait_seconds=60)
+        print(f"uptime-due: queued {len(queued)} site{'' if len(queued) == 1 else 's'}, checked {done.processed}")
         return 0
     if args.command == "backlinks-due":
         queued = backlink_checks.enqueue_due(engine)
@@ -64,14 +68,19 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "health-due":
         queued = health_service.enqueue_due(engine)
-        print(f"health-due: queued {len(queued)} site{'' if len(queued) == 1 else 's'}")
+        inspecting = health_indexing.enqueue_due(engine)  # is every page on Google: URL Inspection, spread over days within the quota
+        print(f"health-due: queued {len(queued)} site{'' if len(queued) == 1 else 's'}" + (f", {len(inspecting)} for the indexing check" if inspecting else ""))
         return 0
     if args.command == "competitors-due":
         queued = competitor_crawl.enqueue_due(engine)
         resumed = keywords.resume_waiting(engine)
         quality.queue_checks(engine)  # linking domains still waiting for their home page to be read
         history.enqueue_due(engine)  # the Wayback Machine and domain dates: monthly, or the next day after a failed try
-        print(f"competitors-due: queued {len(queued)} competitor{'' if len(queued) == 1 else 's'}, resumed {len(resumed)} keyword list{'' if len(resumed) == 1 else 's'}")
+        extras_auto.enqueue_due(engine)  # Moz and Cloudflare for every website, once a month each
+        mine = competitor_crawl.own_count(engine, queued)  # my own sites are read daily too, so their pages sit beside a competitor's
+        rivals = len(queued) - mine
+        own_words = f" and {mine} of my sites" if mine else ""
+        print(f"competitors-due: queued {rivals} competitor{'' if rivals == 1 else 's'}{own_words}, resumed {len(resumed)} keyword list{'' if len(resumed) == 1 else 's'}")
         return 0
     result = tick(engine, args.lane, budget_seconds=args.budget, db_wait_seconds=args.db_wait)
     line = (

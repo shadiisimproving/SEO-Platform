@@ -18,7 +18,7 @@ from sqlalchemy import Engine, text
 from seo import config
 from seo.competitors import pages, pairs
 from seo.competitors.keywords import _iso, require_own
-from seo.core.errors import NotFound, Refused
+from seo.core.errors import Conflict, NotFound, Refused
 from seo.serp.store import canonical_url, clean_keyword, keyword_hash, to_ascii_host
 
 MAX_BYTES = 4_000_000  # far past any note; the column holds 16 MB
@@ -90,18 +90,29 @@ def _dict(row, files=()) -> dict:
         "id": row["id"], "scope": row["scope"], "site_id": row["site_id"], "competitor_id": row["competitor_id"], "competitor": row.get("competitor"),
         "page_url": row["page_url"], "screen": row["screen"], "keyword": row.get("keyword"), "day": row["day"].isoformat() if row.get("day") else None,
         "domain": row.get("domain"), "task_id": row.get("task_id"), "task": row.get("task"), "body": row["body"], "created_at": _iso(row["created_at"]), "updated_at": _iso(row["updated_at"]),
-        "deleted_at": _iso(row["deleted_at"]), "files": list(files),
+        "created_by": row.get("created_by"), "updated_by": row.get("updated_by"), "deleted_at": _iso(row["deleted_at"]), "files": list(files),
     }
 
 
 _SELECT = "SELECT n.*, s.host AS competitor, t.title AS task FROM notes n LEFT JOIN sites s ON s.id = n.competitor_id LEFT JOIN tasks t ON t.id = n.task_id"
 
 
-def _one(conn, note_id: int) -> dict:
-    row = conn.execute(text(f"{_SELECT} WHERE n.id = :i"), {"i": note_id}).mappings().first()
+DELETED = "Someone deleted this note."
+CHANGED_MEANWHILE = "Someone else changed this note while you were writing."
+
+
+def _one(conn, note_id: int, live: bool = False, lock: bool = False) -> dict:
+    """`live`: a deleted note answers 404 too, so words typed into it are never saved into a row nobody sees (F121)."""
+    row = conn.execute(text(f"{_SELECT} WHERE n.id = :i{' FOR UPDATE' if lock else ''}"), {"i": note_id}).mappings().first()
     if row is None:
         raise NotFound("That note doesn't exist.")
+    if live and row["deleted_at"] is not None:
+        raise NotFound(DELETED)
     return _dict(row, _files_of(conn, [note_id]).get(note_id, []))
+
+
+def _who(by) -> str | None:
+    return str(by).strip()[:120] or None if by else None
 
 
 def _clean_page(page_url) -> str:
@@ -148,7 +159,7 @@ def _clean_day(value) -> date:
     return day
 
 
-def create(engine: Engine, scope, body, site_id=None, competitor_id=None, page_url=None, screen=None, keyword=None, day=None, domain=None, task_id=None) -> dict:
+def create(engine: Engine, scope, body, site_id=None, competitor_id=None, page_url=None, screen=None, keyword=None, day=None, domain=None, task_id=None, by=None) -> dict:
     body = _check_body(body)
     if scope not in SCOPES:
         raise Refused(WRONG_SCOPE)
@@ -208,19 +219,31 @@ def create(engine: Engine, scope, body, site_id=None, competitor_id=None, page_u
             site_id = task[0]  # a task's notes belong to the task's site
         note_id = conn.execute(
             text(
-                "INSERT INTO notes (scope, site_id, competitor_id, page_url, page_hash, screen, keyword, keyword_hash, day, domain, task_id, body)"
-                " VALUES (:sc, :s, :c, :u, :h, :sn, :keyword, :keyword_hash, :day, :domain, :task_id, :b)"
+                "INSERT INTO notes (scope, site_id, competitor_id, page_url, page_hash, screen, keyword, keyword_hash, day, domain, task_id, body, created_by, updated_by)"
+                " VALUES (:sc, :s, :c, :u, :h, :sn, :keyword, :keyword_hash, :day, :domain, :task_id, :b, :by, :by)"
             ),
-            {"sc": scope, "s": site_id, "c": competitor_id if scope != "all" else None, "u": clean_url, "h": hashed, "sn": screen, "b": body, **fields},
+            {"sc": scope, "s": site_id, "c": competitor_id if scope != "all" else None, "u": clean_url, "h": hashed, "sn": screen, "b": body, "by": _who(by), **fields},
         ).lastrowid
         return _one(conn, note_id)
 
 
-def update(engine: Engine, note_id: int, body) -> dict:
+class Changed(Conflict):
+    """Answered with the note as it is now, so the screen can offer Keep mine or Use theirs."""
+
+    def __init__(self, note: dict):
+        super().__init__(CHANGED_MEANWHILE)
+        self.note = note
+
+
+def update(engine: Engine, note_id: int, body, expected=None, by=None) -> dict:
+    """`expected` is the note's updated_at as the person last saw it. If someone else saved since, nothing changes
+    and Changed carries their copy. Without it (a page closing, an old screen), the save goes through as before."""
     body = _check_body(body)
     with engine.begin() as conn:
-        _one(conn, note_id)
-        conn.execute(text("UPDATE notes SET body = :b, updated_at = UTC_TIMESTAMP(3) WHERE id = :i"), {"b": body, "i": note_id})
+        now = _one(conn, note_id, live=True, lock=True)
+        if expected is not None and expected != now["updated_at"] and now["body"] != body:
+            raise Changed(now)
+        conn.execute(text("UPDATE notes SET body = :b, updated_by = :by, updated_at = UTC_TIMESTAMP(3) WHERE id = :i"), {"b": body, "by": _who(by), "i": note_id})
         return _one(conn, note_id)
 
 
@@ -286,7 +309,7 @@ def list_notes(
 def add_file(engine: Engine, note_id: int, name, stream) -> dict:
     """Keep one file on a note, and answer with the note. The file is only recorded once all of it is on disk."""
     with engine.connect() as conn:
-        _one(conn, note_id)
+        _one(conn, note_id, live=True)
     stored = secrets.token_hex(16)
     path = files_dir() / stored
     size, head = 0, b""
@@ -324,8 +347,9 @@ def get_file(engine: Engine, file_id: int) -> dict:
     """Where a file is, and how it may be sent. A deleted file can't be fetched, though it can still be brought back."""
     with engine.connect() as conn:
         row = _file_row(conn, file_id)
+        note_gone = conn.execute(text("SELECT deleted_at IS NOT NULL FROM notes WHERE id = :i"), {"i": row["note_id"]}).scalar()
     path = files_dir() / row["stored_name"]
-    if row["deleted_at"] is not None or not path.is_file():
+    if row["deleted_at"] is not None or note_gone or not path.is_file():  # a deleted note's files go with it (F121)
         raise NotFound("That file doesn't exist.")
     return {"path": path, "name": row["name"], "image_type": row["image_type"]}
 

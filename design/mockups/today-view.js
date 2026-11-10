@@ -18,16 +18,29 @@
     if (fr) return `${word} ${change === 0 ? "stables" : `en ${change > 0 ? "hausse" : "baisse"} de ${size}`}`;
     return `${word} ${change === 0 ? "are steady" : `are ${change > 0 ? "up" : "down"} ${size}`}`;
   }
-  function answer(r) {
+  function answer(r, range) {
     const fr = UI().state.lang === "fr";
+    const byDays = !r.window || ["7d", "28d"].includes(r.window.range);
     const parts = [];
     const add = (figure, name, unit) => { if (parts.length < 2 && figure.value !== null && figure.change !== null) parts.push(clause(name, figure.change, unit, !parts.length)); };
-    add(r.leads, fr ? ["Demandes", "demandes"] : ["Leads", "leads"], false);
+    add(r.leads, fr ? ["Leads", "leads"] : ["Leads", "leads"], false);
     add(r.visits, fr ? ["Visites", "visites"] : ["Visits", "visits"], true);
     add(r.clicks, fr ? ["Clics Google", "clics Google"] : ["Google clicks", "Google clicks"], true);
+    if (parts.length && !byDays) return fr ? `${parts.join(" et ")} sur cette période (${range?.label || ""}).` : `${parts.join(" and ")} over this period (${range?.label || ""}).`;
     if (parts.length) return fr ? `${parts.join(" et ")} sur les ${r.days} derniers jours.` : `${parts.join(" and ")} over the last ${r.days} days.`;
     if (r.leads.value !== null || r.visits.value !== null || r.clicks.value !== null) return t("There isn't an earlier period to compare with yet.");
+    const states = [r.clicks?.source, r.visits?.source].filter(Boolean);
+    if (states.includes("waiting")) return t("Google is connected. The first numbers arrive after the next run.");
+    if (states.includes("failing")) return t("Google stopped answering. Settings says what to fix.");
     return t("No results yet. Connect Google to see leads, visits and clicks.");
+  }
+  /* What a box says when it has no number: the source's real state, in Channels' words. */
+  function stateWord(source, name) {
+    if (source === "waiting") return t("Connected. Waiting for its first data");
+    if (source === "failing") return `${name}: ${t("stopped working")}`;
+    if (source === "not_used") return `${name}: ${t("not used")}`;
+    if (source === "ok") return t("No data in this period");
+    return `${name}: ${t("not connected")}`;
   }
   function needsYou(count) {
     const fr = UI().state.lang === "fr";
@@ -56,23 +69,27 @@
     if (points.some((p) => p.was !== null)) series.push({ name: "Period before", color: "var(--muted)", values: values("was"), dash: true });
     return window.LV.lineChart(`today-${key}`, days, series, { legend: false });
   }
+  /* A link to another screen keeps the site picked here; the period goes along by itself (the app's one range). */
+  const withSite = (href, host = allSites() ? null : UI().siteHostPicked?.()) => (host && !href.includes("?") ? `${href}?site=${encodeURIComponent(host)}` : href);
   function figure(key, label, href, data, unit, emptyWord) {
     const covers = data.sites && data.sites < data.of ? `<span class="muted">${num(data.sites)} ${t("of")} ${num(data.of)} ${t("sites")}</span>` : "";
     let fig = esc(data.value === null ? "—" : num(data.value)), note;
     if (data.state === "not_set_up") { fig = `<span class="today-fig-word">${t("Not set up")}</span>`; note = `<span class="muted">${t("Mark your forms as key events in GA4")}</span>`; }
-    else if (data.value === null) note = `<span class="muted">${t(emptyWord)}</span>`;
+    else if (data.value === null) note = `<span class="muted">${data.source ? esc(stateWord(data.source, key === "clicks" ? "Search Console" : "GA4")) : t(emptyWord)}</span>`;
     else note = `${data.change === null ? `<span class="muted">${t("No earlier period to compare")}</span>` : pill(data.change, unit)}${covers}${key === "leads" ? `<span class="muted">${t("Graph: running total")}</span>` : ""}`;
-    return `<section class="tile today-num"><a class="today-num-link" href="${href}"><div class="lab">${t(label)}</div><div class="fig">${fig}</div></a><div class="delta">${note}</div>${data.state === "not_set_up" ? "" : graph(key, label, data.points)}</section>`;
+    return `<section class="tile today-num"><a class="today-num-link" href="${withSite(href)}"><div class="lab">${t(label)}</div><div class="fig">${fig}</div></a><div class="delta">${note}</div>${data.state === "not_set_up" ? "" : graph(key, label, data.points)}</section>`;
   }
-  function numbers(r) {
-    const caption = `${t("Last 28 days against the 28 before")}${r.through ? ` · ${t("Data through")} ${esc(day(r.through))}` : ""}`;
+  function numbers(r, range) {
+    const w = r.window, period = w?.from && w?.to ? `${day(w.from)} – ${day(w.to)}` : "";
+    const against = !w ? "" : w.compare_unavailable ? t("No earlier period stored to compare with") : w.compare === "none" ? t("No comparison") : w.compare === "yoy" ? t("against the same days a year before") : t("against the period before");
+    const caption = w ? `${esc(range?.label || "")}${range?.label ? " · " : ""}${esc(period)} · ${esc(against)}` : `${t("Last 28 days against the 28 before")}${r.through ? ` · ${t("Data through")} ${esc(day(r.through))}` : ""}`;
     const drawn = [r.leads, r.visits, r.clicks].some((x) => x.points?.some((p) => p.now !== null));
     const key = drawn ? `<span class="today-legend"><span><i class="today-key"></i>${t("This period")}</span><span><i class="today-key was"></i>${t("Period before")}</span></span>` : "";
     return `<div class="tiles today-nums">
         ${figure("leads", "Leads", "#conversions", r.leads, "", r.leads.state === "no_ga4" ? "GA4 not connected" : "No data yet")}
         ${figure("visits", "Visits", "#channels", r.visits, "%", "GA4 not connected")}
         ${figure("clicks", "Google clicks", "#overview", r.clicks, "%", "Search Console not connected")}
-      </div><p class="small muted today-caption"><span>${caption}</span>${key}</p>`;
+      </div><p class="small muted today-caption"><span>${caption}</span>${key}</p>${w?.ga4 && w.ga4.to !== w.to ? `<p class="small muted today-caption">${esc(t("Visits and leads: {a} – {b}, where Google Analytics' data ends.").replace("{a}", day(w.ga4.from)).replace("{b}", day(w.ga4.to)))}</p>` : ""}`;
   }
 
   // ---- do these first -----------------------------------------------------------------------------
@@ -101,8 +118,9 @@
   function workCard(vm) {
     const count = (word, value) => (value ? `<a class="stat-row" href="#backlinks"><span>${t(word)}</span><span class="num">${num(value)}</span></a>` : "");
     const s = vm.sources;
+    const waiting = s.waiting ? ` · ${num(s.waiting)} ${t("waiting for first data")}` : "";
     const line = s.total
-      ? `<a class="stat-row today-sources" href="#settings"><span>${t("Data sources")}${s.note ? `<span class="small muted today-note">${esc(s.note)}</span>` : ""}</span>${UI().status(s.ok === s.total ? "good" : "warn", `${num(s.ok)} ${t("of")} ${num(s.total)} ${t("OK")}`)}</a>`
+      ? `<a class="stat-row today-sources" href="#settings"><span>${t("Data sources")}${s.note ? `<span class="small muted today-note">${esc(s.note)}</span>` : ""}</span>${UI().status(s.ok === s.total ? "good" : s.ok + (s.waiting || 0) === s.total ? "info" : "warn", `${num(s.ok)} ${t("of")} ${num(s.total)} ${t("OK")}${waiting}`)}</a>`
       : `<div class="stat-row"><span class="muted">${t("No data sources connected yet.")}</span><button class="btn btn-small" ${s.connectAttr}>${t("Connect Google")}</button></div>`;
     return `<section class="card"><div class="card-head"><h2>${t("My work")}</h2></div>
         <div id="today-tasks">${tasksHtml()}</div>${count("Backlinks to follow up", vm.followUp)}${count("Renewals in 30 days", vm.renewals)}${line}</section>`;
@@ -117,11 +135,12 @@
     const task = down ? `<div class="acts">${UI().taskButton(moveFind(move), { label: "Task" })}</div>` : "";
     if (move.type === "keyword") {
       const up = move.places > 0;
-      return `<li><div class="what"><div class="t"><a class="today-link" href="#keywords" dir="auto">${esc(move.query)}</a>${hostTag(move.host)}</div><div class="d">${t("Search Console average")}</div></div>
+      const target = move.keyword_id ? "#keywords" : "#overview";
+      return `<li><div class="what"><div class="t"><a class="today-link" href="${target}" data-today-keyword="${esc(move.query)}" data-today-host="${esc(move.host || "")}" data-today-keyword-id="${esc(move.keyword_id || "")}" data-today-range="7d" dir="auto">${esc(move.query)}</a>${hostTag(move.host)}</div><div class="d">${t("Search Console average")}</div></div>
         <span class="chg ${up ? "good" : "crit"}">${icon(up ? "arrow-up" : "arrow-down")}#${num(move.was)} → #${num(move.now)}</span>${task}</li>`;
     }
     const up = move.change > 0;
-    return `<li><div class="what"><div class="t"><a class="today-link mono" href="#content" dir="auto">${esc(move.path)}</a>${hostTag(move.host)}</div><div class="d">${t("Google clicks")} ${num(move.was)} → ${num(move.clicks)}</div></div>
+    return `<li><div class="what"><div class="t">${PageLink.html(move.url || move.path, { text: move.path, host: move.host, cls: "today-link mono" })}${hostTag(move.host)}</div><div class="d">${t("Google clicks")} ${num(move.was)} → ${num(move.clicks)}</div></div>
       <span class="chg ${up ? "good" : "crit"}">${icon(up ? "arrow-up" : "arrow-down")}${up ? "+" : "−"}${num(Math.abs(move.change))}%</span>${task}</li>`;
   }
   const moveCard = (title, moves, down) => `<section class="card"><div class="card-head"><h2>${t(title)}</h2></div>
@@ -130,8 +149,8 @@
   // ---- rivals -------------------------------------------------------------------------------------
   function rivalRow(r) {
     const find = { title: `${r.host}: ${r.label} ${r.path}`, host: r.my_host, pages: [r.my_path], source: { type: "competitor", label: `${r.host}: ${r.label}`, host: r.my_host, facts: [r.path, `${t("Competes with your page")} ${r.my_path}`], link: `#competitors/pairs/${r.pair_id}`, key: `change|${r.id}` } };
-    return `<li><div class="what"><div class="t"><span class="mono" dir="auto">${esc(r.host)}</span> · ${esc(r.label)} · <span class="mono" dir="auto">${esc(r.path)}</span></div>
-        <div class="d">${t("Competes with your page")} <span class="mono" dir="auto">${esc(r.my_path)}</span>${hostTag(r.my_host)}${r.when ? ` · ${esc(r.when)}` : ""}</div>${window.ChangeSummary?.slot(r) || ""}</div>
+    return `<li><div class="what"><div class="t"><span class="mono" dir="auto">${esc(r.host)}</span> · ${esc(r.label)} · ${PageLink.html(r.url || r.path, { text: r.path, host: r.host, cls: "mono" })}</div>
+        <div class="d">${t("Competes with your page")} ${PageLink.html(r.my_url || r.my_path, { text: r.my_path, host: r.my_host, cls: "mono" })}${hostTag(r.my_host)}${r.when ? ` · ${esc(r.when)}` : ""}</div>${window.ChangeSummary?.slot(r) || ""}</div>
       <div class="acts">${UI().taskButton(find, { label: "Task" })}<button class="btn btn-small" data-today-pair="${esc(String(r.pair_id))}" data-today-site="${esc(String(r.site_id))}">${t("Compare")}</button></div></li>`;
   }
   function rivalCard(rivals, other) {
@@ -161,15 +180,15 @@
     const hasData = r.leads.value !== null || r.visits.value !== null || r.clicks.value !== null;
     const stopped = vm.googleStopped && r.through ? ` ${t("Google numbers stop at")} ${esc(day(r.through))}.` : "";
     const anyMove = vm.goingDown.length || vm.goingUp.length;
-    return `<div class="today-answer"><p class="today-lead" dir="auto">${esc(answer(r))}</p><p class="today-second" dir="auto">${esc(needsYou(urgent))}${stopped}</p></div>
-      ${numbers(r)}
+    return `<div class="today-answer"><p class="today-lead" dir="auto">${esc(answer(r, vm.range))}</p><p class="today-second" dir="auto">${esc(needsYou(urgent))}${stopped}</p></div>
+      ${numbers(r, vm.range)}
       <div class="cols"><div>${todoCard(vm.todo)}</div><div>${workCard(vm)}</div></div>
       ${anyMove || hasData ? `<div class="today-moves-head"><span class="small muted">${t("Last 7 days against the 7 before")}</span></div><div class="today-moves">${moveCard("Going down", vm.goingDown, true)}${moveCard("Going up", vm.goingUp, false)}</div>` : ""}
       ${vm.rivals.length || vm.otherEdits || hasData ? rivalCard(vm.rivals, vm.otherEdits) : ""}
       ${allSites() && vm.sites.length > 1 ? sitesCard(vm.sites) : ""}`;
   }
 
-  window.TodayView = { page, tasksHtml };
+  window.TodayView = { page, tasksHtml, withSite };
 
   /* Compare goes through the Competitors tab, so its list behind the pair belongs to the right site. */
   document.addEventListener("click", (e) => {
@@ -180,9 +199,16 @@
   });
 
   const fr = {
+    "Google is connected. The first numbers arrive after the next run.": "Google est connecté. Les premiers chiffres arrivent après le prochain passage.",
+    "Google stopped answering. Settings says what to fix.": "Google ne répond plus. Les réglages disent quoi corriger.",
+    "Connected. Waiting for its first data": "Connecté. En attente des premières données", "stopped working": "ne fonctionne plus", "not used": "non utilisé", "not connected": "non connecté",
+    "No data in this period": "Pas de données sur cette période", "waiting for first data": "en attente des premières données",
+    "No earlier period stored to compare with": "Pas de période antérieure enregistrée pour comparer", "No comparison": "Sans comparaison",
+    "against the same days a year before": "contre les mêmes jours un an avant", "against the period before": "contre la période précédente",
+    "Visits and leads: {a} – {b}, where Google Analytics' data ends.": "Visites et leads : {a} – {b}, là où s'arrêtent les données de Google Analytics.",
     "Do these first": "À faire en premier", "Going down": "En baisse", "Going up": "En hausse", "Nothing fell much.": "Pas de forte baisse.", "Nothing rose much.": "Pas de forte hausse.",
     "Nothing needs you today.": "Rien à traiter aujourd'hui.", "Google numbers stop at": "Les chiffres Google s'arrêtent au", "There isn't an earlier period to compare with yet.": "Il n'y a pas encore de période antérieure à comparer.",
-    "No results yet. Connect Google to see leads, visits and clicks.": "Pas encore de résultats. Connectez Google pour voir les demandes, les visites et les clics.",
+    "No results yet. Connect Google to see leads, visits and clicks.": "Pas encore de résultats. Connectez Google pour voir les leads, les visites et les clics.",
     "Not set up": "Non configuré", "Mark your forms as key events in GA4": "Marquez vos formulaires comme événements clés dans GA4", "GA4 not connected": "GA4 non connecté", "Search Console not connected": "Search Console non connecté",
     "No earlier period to compare": "Pas de période antérieure à comparer", "sites": "sites", "Google clicks": "Clics Google", "Search Console average": "Moyenne Search Console", "Late": "En retard", "No date": "Sans date",
     "No open tasks for you.": "Aucune tâche ouverte pour vous.", "View all tasks": "Voir toutes les tâches", "Competes with your page": "Concurrence votre page", "Compare": "Comparer", "Rivals, on pages that compete with yours": "Concurrents, sur les pages face aux vôtres",

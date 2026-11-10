@@ -16,7 +16,7 @@ from seo.backlinks.cleaner import decode_csv, parse_table
 from seo.core.errors import Conflict, NotFound, Refused
 from seo.links.service import OWN
 from seo.serp import connections, store
-from seo.serp.tools import SearchFailed, ToolStopped
+from seo.serp.tools import SearchFailed, TimedOut, ToolStopped
 from seo.worker import queue
 from seo.worker.runner import handler
 
@@ -26,6 +26,7 @@ MAX_KEYWORDS = 20_000
 MAX_LENGTH = 300
 CHUNK_SECONDS = 40.0  # a job gives the lane back about this often, and a new job carries on
 DEPTH = 10
+FAILS_BEFORE_DROP = 3  # as Refresh: a tool that fails this many searches in a row, timeouts included, is left for this run
 FIRST_CHECK_TRIES = 5  # a keyword that keeps failing stops holding its list back after this many tries
 STALE_RUN_SECONDS = 60  # a run with no job after this long lost its job, and must not block the button forever
 HEADER_NAMES = {
@@ -299,6 +300,7 @@ def run_check(job, engine: Engine) -> None:
     hour_limited = False
     checked, failed, tried = run["checked"], run["failed"], 0
     noted_ok = False
+    fails: dict[str, int] = {}  # failed searches in a row, timeouts included, per tool (F124)
 
     def out_of_time() -> bool:  # always one keyword per job at least, so a slow tool still moves forward
         return tried > 0 and time.monotonic() - started >= CHUNK_SECONDS
@@ -323,21 +325,28 @@ def run_check(job, engine: Engine) -> None:
                     line.pop(0)
                     continue
                 try:
-                    answer = tool.search(keyword["keyword"], name, keyword["country"], keyword["language"], "desktop", DEPTH)
+                    # Booked before it goes out and settled after, so a timeout stays counted (F15). No count_use after it.
+                    answer = connections.spend_on_search(engine, tool, keyword["keyword"], name, keyword["country"], keyword["language"], "desktop", DEPTH, keyword_id=keyword["id"], note=trigger)
                 except ToolStopped as exc:  # never moves to a paid tool: the list only holds free ones
                     stopped_because.append(str(exc))
                     connections.note_error(engine, tool.name, str(exc))
                     line.pop(0)
                 except Exception as exc:  # noqa: BLE001 - one keyword failing, or a tool answering oddly, must not strand the list
                     error = str(exc) if isinstance(exc, SearchFailed) else f"{type(exc).__name__}: {exc}"
+                    if isinstance(exc, TimedOut):  # never by another tool in this pass: it may already have been charged
+                        error = f"{exc} It wasn't tried again, because it may already have been charged."
                     store.save_failed_check(engine, keyword["id"], name, tool.name, error, trigger)
                     failed += 1
                     tried += 1
                     _set_run(engine, run_id, failed=failed)
+                    if isinstance(exc, SearchFailed):
+                        fails[tool.name] = fails.get(tool.name, 0) + 1
+                        if fails[tool.name] >= FAILS_BEFORE_DROP:
+                            stopped_because.append(f"{tool.name} failed {FAILS_BEFORE_DROP} searches in a row.")
+                            line.pop(0)
                     break
             if answer is not None:
-                # Counted first: a crash must never hide a search the tool has already counted.
-                connections.count_use(engine, answer.tool, answer.charged)
+                fails[answer.tool] = 0
                 store.save_check(engine, keyword["id"], name, answer, trigger)
                 checked += 1
                 tried += 1

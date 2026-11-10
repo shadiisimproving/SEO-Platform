@@ -1,6 +1,7 @@
 /* The bell at the top of every screen. News worth knowing that isn't a problem, starting with a search on Google that one
    of the sites never showed up for before (seo/notifications/new_queries.py). Problems stay on Today, as alerts.
-   It asks the server every 5 minutes and when the tab comes back; "read" is shared by the whole team. */
+   It asks the server every 5 minutes and when the tab comes back. New searches come as one row per site per day; "read"
+   is each person's own once people sign in. */
 (() => {
   "use strict";
   const POLL_MS = 5 * 60 * 1000;
@@ -30,6 +31,9 @@
     "{n} new searches on Google": "{n} nouvelles recherches sur Google",
     "Open Keywords to add it.": "Ouvrez Mots-clés pour l'ajouter.",
     "Sample": "Exemple",
+    "See it in the Search Console queries": "La voir dans les requêtes de la Search Console",
+    "Show all {n}": "Les afficher toutes ({n})", "Up to {d}": "Jusqu'au {d}",
+    "Searches with {n} impressions or more since they first showed.": "Recherches avec {n} impressions ou plus depuis leur première apparition.",
   };
   Object.keys(WORDS).forEach((w) => { if (window.FR && window.FR[w] === undefined) window.FR[w] = WORDS[w]; });
 
@@ -80,7 +84,7 @@
       B.loaded = true;
       B.failed = false;
       if (!B.firstLoad && fresh.length && window.UI) {
-        const count = fresh.reduce((n, i) => n + (i.kind === "new_query_more" ? i.detail?.count || 0 : 1), 0);
+        const count = fresh.reduce((n, i) => n + (i.kind === "new_query_more" || i.kind === "new_queries" ? i.detail?.count || 0 : 1), 0);
         UI.toast(plural(count, "1 new search on Google", "{n} new searches on Google"), { kind: "info" });
       }
       B.items.forEach((i) => B.shown.add(i.id));
@@ -109,12 +113,33 @@
   }
 
   // ---- the list ----------------------------------------------------------------------------------
+  const GROUP_SHOWN = 3;
+  /* The day's new searches for one site, in one row: the three most shown, the rest behind Show them. */
+  function groupHtml(item, readBtn, logo) {
+    const d = item.detail || {}, queries = d.queries || [], open = B.opened === item.id;
+    const list = (open ? queries : queries.slice(0, GROUP_SHOWN)).map((q, i) => `<li><button type="button" class="bell-go" data-bell-go="${item.id}" data-q="${i}" title="${esc(t("See it in the Search Console queries"))}"><span dir="auto">${esc(q.query)}</span></button>
+        <span class="bell-num">${esc([place(q.position), plural(q.impressions, "1 impression", "{n} impressions")].filter(Boolean).join(" · "))}</span>
+        <button type="button" class="icon-btn bell-track-one" data-bell-track="${item.id}" data-q="${i}" aria-label="${esc(`${t("Track")}: ${q.query}`)}" title="${esc(t("Track"))}">${UI.icon("plus")}</button></li>`).join("");
+    const more = queries.length > GROUP_SHOWN ? `<button type="button" class="link-btn" data-bell-more="${item.id}" aria-expanded="${open}">${esc(open ? t("Hide them") : fill("Show all {n}", { n: num(queries.length) }))}</button>` : "";
+    return `<li class="bell-row ${item.read ? "" : "unread"}" data-bell-row="${item.id}">
+      <span class="bell-dot" aria-hidden="true"></span>
+      <div class="bell-body">
+        <p class="bell-title">${esc(plural(d.count || queries.length, "1 new search on Google", "{n} new searches on Google"))}</p>
+        <p class="bell-meta">${logo}<span>${esc(item.host)}</span><span>·</span><span>${esc(fill("Up to {d}", { d: dayLabel(d.day) }))}</span></p>
+        <ul class="bell-more bell-group">${list}</ul>${more}
+        <p class="bell-meta bell-floor">${esc(fill("Searches with {n} impressions or more since they first showed.", { n: num(d.min_impressions || 10) }))}</p>
+      </div>
+      <div class="bell-acts">${readBtn}</div>
+    </li>`;
+  }
+
   function rowHtml(item) {
     const d = item.detail || {}, logo = UI.siteLogo ? UI.siteLogo(item.host, 14) : "";
     const readBtn = `<button type="button" class="icon-btn bell-mark" data-bell-read="${item.id}" data-read="${!item.read}" aria-label="${esc(t(item.read ? "Mark as unread" : "Mark as read"))}" title="${esc(t(item.read ? "Mark as unread" : "Mark as read"))}">${UI.icon(item.read ? "circle" : "check")}</button>`;
+    if (item.kind === "new_queries") return groupHtml(item, readBtn, logo);
     if (item.kind === "new_query_more") {
       const open = B.opened === item.id;
-      const list = open ? `<ul class="bell-more">${(d.queries || []).map((q) => `<li><span dir="auto">${esc(q.query)}</span><span class="bell-num">${esc(place(q.position))}</span></li>`).join("")}</ul>` : "";
+      const list = open ? `<ul class="bell-more">${(d.queries || []).map((q, i) => `<li><button type="button" class="bell-go" data-bell-go="${item.id}" data-q="${i}" title="${esc(t("See it in the Search Console queries"))}"><span dir="auto">${esc(q.query)}</span></button><span class="bell-num">${esc(place(q.position))}</span></li>`).join("")}</ul>` : "";
       return `<li class="bell-row ${item.read ? "" : "unread"}" data-bell-row="${item.id}">
         <span class="bell-dot" aria-hidden="true"></span>
         <div class="bell-body">
@@ -127,11 +152,11 @@
       </li>`;
     }
     const facts = [place(d.position), d.impressions !== undefined ? plural(d.impressions, "1 impression", "{n} impressions") : "", d.clicks ? plural(d.clicks, "1 click", "{n} clicks") : ""].filter(Boolean);
-    return `<li class="bell-row ${item.read ? "" : "unread"}" data-bell-row="${item.id}">
+    return `<li class="bell-row bell-row-go ${item.read ? "" : "unread"}" data-bell-row="${item.id}">
       <span class="bell-dot" aria-hidden="true"></span>
       <div class="bell-body">
-        <p class="bell-title"><span class="bell-kind">${esc(t("New search"))}</span> <b dir="auto">“${esc(d.query || "")}”</b></p>
-        <p class="bell-meta">${logo}<span>${esc(item.host)}</span>${d.page ? `<span>·</span><span class="bell-path" dir="auto" title="${esc(d.page)}">${esc(pathOf(d.page))}</span>` : ""}<span>·</span><span>${esc(dayLabel(d.day))}</span></p>
+        <p class="bell-title"><button type="button" class="bell-go" data-bell-go="${item.id}" title="${esc(t("See it in the Search Console queries"))}"><span class="bell-kind">${esc(t("New search"))}</span> <b dir="auto">“${esc(d.query || "")}”</b></button></p>
+        <p class="bell-meta">${logo}<span>${esc(item.host)}</span>${d.page ? `<span>·</span>${PageLink.html(d.page, { text: pathOf(d.page), host: item.host, cls: "bell-path" })}` : ""}<span>·</span><span>${esc(dayLabel(d.day))}</span></p>
         <p class="bell-meta">${facts.map((f) => `<span>${esc(f)}</span>`).join("<span>·</span>")}</p>
       </div>
       <div class="bell-acts">
@@ -228,11 +253,24 @@
     if ((el = hit("[data-bell-track]"))) {
       const item = B.items.find((i) => i.id === Number(el.dataset.bellTrack));
       if (!item) return;
+      const query = el.dataset.q !== undefined ? item.detail.queries?.[Number(el.dataset.q)]?.query : item.detail.query;
       setRead(item.id, true);
       const opener = document.getElementById("bell-open");
       closePanel();
       if (!window.KW) { UI.toast(t("Open Keywords to add it."), { kind: "info" }); return; }
-      window.KW.track([item.detail.query], item.host, opener, {});
+      window.KW.track([query], item.host, opener, {});
+      return;
+    }
+    // The search itself, or anywhere on its row but a button or link, opens it in Overview → Queries.
+    const go = hit("[data-bell-go]") || (!hit("button, a, input") && hit(".bell-row-go"));
+    if (go) {
+      const item = B.items.find((i) => i.id === Number(go.dataset.bellGo || go.dataset.bellRow));
+      if (!item) return;
+      const d = item.detail || {}, one = go.dataset.q !== undefined ? d.queries?.[Number(go.dataset.q)] : null, q = one ? one.query : d.query;
+      setRead(item.id, true);
+      closePanel();
+      if (window.OV?.openQuery) window.OV.openQuery({ host: item.host, query: q, day: one?.first_day || d.day });
+      else UI.go("overview");
       return;
     }
     if ((el = hit("[data-bell-row]"))) setRead(Number(el.dataset.bellRow), true);

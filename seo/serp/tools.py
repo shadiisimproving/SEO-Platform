@@ -6,6 +6,7 @@ instead of working around it, and the caller moves to the next free tool. Nothin
 from __future__ import annotations
 
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from urllib.parse import parse_qs, urlencode, urlsplit
 
@@ -38,13 +39,27 @@ class Answer:
 class ToolStopped(Exception):
     """This tool can't be used right now: a bot check, a captcha, a bad key, or no free credits left."""
 
+    charged = 0  # credits the pages before this one already used: a failure on page 3 doesn't give back pages 1 and 2
+
 
 class SearchFailed(Exception):
     """This one search failed. The tool itself may still work."""
 
+    charged = 0
+
 
 class TimedOut(SearchFailed):
     """No answer in time. The tool may already have charged for it, so this search is never tried again."""
+
+
+@contextmanager
+def _so_far(charged: int):
+    """Whatever stops a search part-way says what the pages before it already used."""
+    try:
+        yield
+    except (ToolStopped, SearchFailed) as exc:
+        exc.charged = charged
+        raise
 
 
 def pages_for(depth: int) -> int:
@@ -231,7 +246,8 @@ class SerpApi:
                 params = {"engine": "yandex", "text": keyword, "p": page}
             else:
                 params = {"engine": "duckduckgo", "q": keyword, "kl": ddg_region(country, language)}
-            data = self._get(params)
+            with _so_far(charged):
+                data = self._get(params)
             charged += 1
             rows = [item for item in data.get("organic_results") or [] if isinstance(item, dict) and item.get("link")]
             found += [Found(len(found) + i + 1, item["link"], str(item.get("title") or "")[:500]) for i, item in enumerate(rows)]
@@ -260,7 +276,8 @@ class SerpApi:
         for page in range(1, pages_for(depth)):
             if len(results) >= depth or not last_page_had_rows:
                 break
-            more = self._get({**params, "start": page * 10})
+            with _so_far(charged):
+                more = self._get({**params, "start": page * 10})
             charged += 1
             rows = [item for item in more.get("organic_results") or [] if isinstance(item, dict) and item.get("link")]
             results += [Found(len(results) + i + 1, item["link"], str(item.get("title") or "")[:500]) for i, item in enumerate(rows)]
@@ -383,7 +400,8 @@ class BrightData:
         seen: set[str] = set()
         charged = 0
         for page in range(pages_for(depth)):
-            data = self._page(self.page_address(keyword, engine, country, language, device, page))
+            with _so_far(charged):
+                data = self._page(self.page_address(keyword, engine, country, language, device, page))
             charged += 1
             rows = _rows(data.get("organic"), len(found), seen)
             found += rows
@@ -441,7 +459,8 @@ class HasData:
                     params["gl"] = country.lower()
                 if language:
                     params["hl"] = language.lower()
-            data = self._page(engine, params)
+            with _so_far(charged):
+                data = self._page(engine, params)
             charged += self.credits_per_page
             rows = _rows(data.get("organicResults"), len(found), seen)
             found += rows
@@ -493,7 +512,8 @@ class Searlo:
                 params["gl"] = country.lower()
             if language:
                 params["hl"] = language.lower()
-            data = self._page(params)
+            with _so_far(charged):
+                data = self._page(params)
             charged += 1
             rows = _rows(data.get("organic"), len(found), seen)
             found += rows

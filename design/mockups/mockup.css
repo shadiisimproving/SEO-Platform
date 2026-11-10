@@ -550,7 +550,9 @@ span.logo svg.i { width: 70%; height: 70%; }
 .tool-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid var(--line); min-height: 48px; transition: background var(--t-fast), opacity var(--t-base); }
 .tool-row:last-child { border-bottom: 0; }
 .tool-row:has(input:not(:disabled)):hover { background: var(--hover); cursor: pointer; }
-.tool-row.off .tool-main { opacity: .62; }
+/* A tool that can't be used here reads in grey, not see-through: see-through text fell to 2.6 to 1 (WCAG 1.4.3). */
+.tool-row.off .tool-main { color: var(--text-2); }
+.tool-row.off .tool-main .t { font-weight: 400; }
 .tool-row.off .logo { opacity: .55; }
 .tool-list.auto .chk { display: none; }
 .tool-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -1007,3 +1009,70 @@ body:has(#tray) .main { padding-bottom: 110px; }
 .fix-said p { margin: 4px 0 0; font-size: 12px; overflow-wrap: anywhere; color: var(--text-2); }
 #conn-test-result:has(.fix-box) { flex-basis: 100%; }
 .empty .fix-box { max-width: 52ch; margin: 8px auto 0; }
+
+/* A page address that opens the page (page-links.js): looks like the text it replaces, shows it's a link on hover. */
+a.page-link { color: inherit; text-decoration: none; cursor: pointer; overflow-wrap: anywhere; }
+a.page-link:hover, a.page-link:focus-visible { color: var(--accent-text); text-decoration: underline; text-underline-offset: 2px; }
+a.page-link.page-open { color: var(--accent-text); text-decoration: underline; text-underline-offset: 2px; }
+
+/* ---- shared helpers (shared-ui.js): loading shapes, a failure card, metric definitions, bigger hit areas -------------- */
+.sk { display: grid; gap: 14px; }
+.sk-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; }
+.sk-tile, .sk-card { background: var(--glass); border-radius: var(--r, 14px); box-shadow: inset 0 0 0 1px var(--line); padding: 16px; display: grid; gap: 10px; }
+.sk-chart .sk-area { height: 180px; border-radius: 10px; background: var(--track); }
+.sk-rows { display: grid; gap: 0; }
+.sk-row { display: grid; grid-template-columns: 1fr 70px 70px 90px; gap: 18px; align-items: center; padding: 13px 4px; border-bottom: 1px solid var(--line); }
+.sk-row:last-child { border-bottom: 0; }
+.sk-panel { display: grid; gap: 12px; padding: 4px 0; }
+.sk-bar { display: block; height: 10px; border-radius: 6px; background: var(--track); }
+.sk-bar.sk-big { height: 22px; }
+.sk-bar.w10 { width: 10%; min-width: 34px; } .sk-bar.w15 { width: 15%; min-width: 44px; } .sk-bar.w30 { width: 30%; } .sk-bar.w35 { width: 35%; } .sk-bar.w40 { width: 40%; }
+.sk-bar.w45 { width: 45%; } .sk-bar.w50 { width: 50%; } .sk-bar.w55 { width: 55%; } .sk-bar.w60 { width: 60%; } .sk-bar.w80 { width: 80%; } .sk-bar.w90 { width: 90%; }
+.sk-row .sk-bar { width: auto; min-width: 0; }
+.sk-row .sk-bar:first-child { max-width: 75%; }
+@keyframes sk-pulse { 0%, 100% { opacity: 1; } 50% { opacity: .55; } }
+.sk .sk-bar, .sk .sk-area { animation: sk-pulse 1.4s ease-in-out infinite; }
+@media (prefers-reduced-motion: reduce) { .sk .sk-bar, .sk .sk-area { animation: none; } }
+@media (max-width: 860px) { .sk-row { grid-template-columns: 1fr 60px; } .sk-row .sk-bar:nth-child(n+3) { display: none; } }
+
+.fail-card .empty h3 { margin-bottom: 6px; }
+.fail-acts { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 12px; }
+
+.def-i { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; margin: -6px -4px -6px 0; vertical-align: middle; color: var(--muted); cursor: help; border-radius: 50%; }
+.def-i .i { width: 13px; height: 13px; }
+.def-i:hover, .def-i:focus-visible { color: var(--text); }
+.def-i:focus-visible { outline: 2px solid var(--focus, var(--accent-1)); outline-offset: 1px; }
+.lab .def-i { margin-left: 2px; }
+
+/* Tick boxes in tables: the whole cell takes the click (mockup.js forwards it), and the box itself is at least 18 px. */
+.chk-cell, .ov-pick-col { cursor: pointer; }
+.ov-pick-col input[type="checkbox"] { width: 18px; height: 18px; }
+/* :not([hidden]) so a link button hidden by its screen stays hidden (the display here would otherwise show it). */
+.link-btn:not([hidden]) { min-height: 24px; display: inline-flex; align-items: center; }
+
+/* Keywords: search and pages under the table */
+.kw-find { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; }
+.kw-find .nb-search, .kw-search { position: relative; display: inline-flex; align-items: center; flex: 1 1 240px; max-width: 360px; }
+.kw-search .i { position: absolute; left: 10px; width: 16px; height: 16px; color: var(--muted); pointer-events: none; }
+.kw-search input { width: 100%; padding-left: 32px; }
+.kw-pager { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: space-between; margin-top: 12px; font-size: 13px; }
+.kw-pager .kw-pages { display: inline-flex; align-items: center; gap: 6px; }
+.kw-pager label { display: inline-flex; align-items: center; gap: 6px; }
+
+/* A failed part of a Refresh, listed in the tray */
+.tray-fails { margin: 8px 0 0; padding: 0; list-style: none; max-height: 160px; overflow: auto; font-size: 12.5px; display: grid; gap: 4px; }
+.tray-fails li { display: grid; gap: 1px; }
+.tray-fails .why { color: var(--text-2); }
+.range-picks { display: inline-flex; gap: 6px; flex-wrap: wrap; }
+.ov-span { margin: 0 0 10px; }
+/* Signing in again in place, after a session ended */
+dialog.resign { border: 0; border-radius: 16px; padding: 24px; width: min(380px, calc(100vw - 32px)); background: var(--panel-solid, var(--glass)); color: var(--text); box-shadow: var(--shadow-2, 0 12px 32px rgb(0 0 0 / .2)); }
+dialog.resign::backdrop { background: var(--scrim, rgb(0 0 0 / .35)); }
+.resign-form h2 { font-size: 18px; margin: 0 0 4px; }
+.resign-form .field { display: block; margin: 12px 0 0; }
+.resign-form .field > span { display: block; font-size: 13px; font-weight: 500; margin-bottom: 5px; }
+.resign-form .input { width: 100%; box-sizing: border-box; }
+.resign-acts { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; margin-top: 16px; }
+.member-note { margin: 0 0 12px; }
+.ov-live-error { margin: 0 0 12px; align-items: flex-start; }
+.ov-live-error p { margin: 0 0 6px; }

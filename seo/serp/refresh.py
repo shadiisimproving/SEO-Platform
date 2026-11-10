@@ -1,7 +1,8 @@
 """The Refresh button: preview, confirm, run in the background, stop.
 
 Only a person pressing Confirm starts this. No command, schedule or job in the app calls start().
-Free tools first, in the editable order. A tool that runs out or fails hands over to the next free one. Paid use only
+Free tools first, in the editable order; on Google a tool that reads AI Overviews (SerpApi) goes in front while it has free
+searches, then the order (connections.AI_FIRST_WHY, switchable). A tool that runs out or fails hands over to the next free one. Paid use only
 happens when the tool's own switch is on, this run asked for it, and the run's limit has room. A timeout is never tried
 again, because it may already have been charged. Credits are written down before the search, so a crash can't hide a spend.
 """
@@ -11,7 +12,7 @@ import json
 import time
 from decimal import Decimal
 
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine, bindparam, text
 from sqlalchemy.exc import IntegrityError
 
 from seo.core.errors import Conflict, NotFound, Refused
@@ -30,6 +31,7 @@ STALE_SECONDS = 60  # a run with no job after this long lost its job, and must n
 ACTIVE = ("queued", "running")
 ENGINE_NAMES = {"google": "Google", "duckduckgo": "DuckDuckGo", "bing": "Bing", "yandex": "Yandex"}
 INTERRUPTED = "The app stopped during this search. It isn't tried again, because it may already have been charged."
+RECENT_ONE = "Checked recently with this tool, so not checked again. Press again to spend a credit anyway."
 
 
 def _iso(value) -> str | None:
@@ -111,20 +113,25 @@ def _running_now(conn, keyword_ids: list[int], engines: list[str]) -> dict[tuple
     return {(row["keyword_id"], row["engine"]): row["by_name"] or "" for row in rows}
 
 
-def _just_checked(conn, keyword_ids: list[int], engines: list[str], depth: int, hours: int) -> dict[tuple[int, str], float]:
-    """A check at least this deep, this recently. A shallower one doesn't count: Check deeper must still work."""
+def _just_checked(conn, keyword_ids: list[int], engines: list[str], depth: int, hours: int, tools: list[str] | None = None) -> dict[tuple[int, str], float]:
+    """A check at least this deep, this recently. A shallower one doesn't count: Check deeper must still work.
+
+    With tools (Choose tools, and the keyword panel's Recheck), only a check by one of those tools counts: a check by
+    another tool doesn't stop a comparison, but the same tool twice within the window is the same spend twice.
+    """
     if hours <= 0:
         return {}
     marks, names = ",".join(str(i) for i in keyword_ids), ",".join(f"'{name}'" for name in engines)
+    by_tool = "AND c.tool IN :tools " if tools else ""
     # Only a check that can fill the keyword's row counts. One from another country, or one marked suspect, answers nothing.
     rows = conn.execute(
         text(
             f"SELECT t.keyword_id, t.engine, k.country, k.language, c.real_location, TIMESTAMPDIFF(MINUTE, MAX(c.checked_at), UTC_TIMESTAMP(3)) AS minutes "
             f"FROM serp_targets t JOIN keywords k ON k.id = t.keyword_id JOIN serp_checks c ON c.target_id = t.id "
             f"WHERE t.device = 'desktop' AND t.keyword_id IN ({marks}) AND t.engine IN ({names}) AND c.status = 'ok' AND c.depth >= :d "
-            "AND c.checked_at >= UTC_TIMESTAMP(3) - INTERVAL :h HOUR GROUP BY t.keyword_id, t.engine, k.country, k.language, c.real_location"
-        ),
-        {"d": depth, "h": hours},
+            "AND c.checked_at >= UTC_TIMESTAMP(3) - INTERVAL :h HOUR " + by_tool + "GROUP BY t.keyword_id, t.engine, k.country, k.language, c.real_location"
+        ).bindparams(*([bindparam("tools", expanding=True)] if tools else [])),
+        {"d": depth, "h": hours, **({"tools": list(tools)} if tools else {})},
     ).mappings().all()
     newest: dict[tuple[int, str], int] = {}
     for row in rows:
@@ -139,13 +146,13 @@ def _split(engine: Engine, ask: dict) -> dict:
     hours = int(connections.get_setting(engine, "just_checked_hours"))
     with engine.connect() as conn:
         running = _running_now(conn, ids, ask["engines"])
-        recent = {} if ask["include_recent"] else _just_checked(conn, ids, ask["engines"], ask["depth"], hours)
+        recent = {} if ask["include_recent"] else _just_checked(conn, ids, ask["engines"], ask["depth"], hours, ask["picked"] if ask["mode"] == "pick" else None)
     todo = [(k, name) for k in ids for name in ask["engines"] if (k, name) not in running and (k, name) not in recent]
     return {"todo": todo, "running": running, "recent": recent, "hours": hours}
 
 
 def _line(engine: Engine, name: str, ask: dict) -> list:
-    tools = connections.tools_for(engine, name, include_manual=ask["mode"] == "pick")
+    tools = connections.tools_for(engine, name, include_manual=ask["mode"] == "pick", ai_first=True)
     return [tool for tool in tools if tool.name in ask["picked"]] if ask["mode"] == "pick" else tools
 
 
@@ -238,6 +245,8 @@ def start(engine: Engine, body: dict, by: str | None = None) -> dict:
     if not parts["todo"]:
         if excluded:
             raise Conflict("These keywords are already being refreshed.")
+        if len(names) == 1 and ask["mode"] == "pick":  # the keyword panel's Recheck: the same rule as the Refresh dialog
+            raise Refused(RECENT_ONE)
         raise Refused("These keywords were all checked just now. Tick Check them again to go ahead.")
     tools_each = ask["picked"] if ask["mode"] == "pick" else [None]
     try:
@@ -357,7 +366,7 @@ class _Picker:
 
     def line(self, name: str) -> list:
         if name not in self.lines:
-            self.lines[name] = connections.tools_for(self.engine, name, include_manual=self.run["mode"] == "pick")
+            self.lines[name] = connections.tools_for(self.engine, name, include_manual=self.run["mode"] == "pick", ai_first=True)
         return self.lines[name]
 
     def drop(self, tool_name: str, why: str) -> None:
@@ -405,29 +414,30 @@ def _json(value):
     return value
 
 
+def _add_spent(engine: Engine, picker: _Picker, run_id: int, cost) -> None:
+    """Dollars held against the run's limit: what was charged, and what a timeout may have been charged (F58)."""
+    if not cost:
+        return
+    picker.spent += cost
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE rank_runs SET spent = spent + :c WHERE id = :i"), {"c": cost, "i": run_id})
+
+
 def _one_search(engine: Engine, picker: _Picker, run, item, tool, paid: bool):
-    """Returns the answer, or raises. The most it can cost is written down first."""
-    depth, name = run["depth"], item["engine"]
-    estimate = most_cost(tool, depth)
-    per = Decimal(str(getattr(tool, "paid_per", 0) or 0))
-    money = per * estimate if paid else None
-    connections.count_use(engine, tool.name, estimate, paid=paid, cost=money, run_id=run["id"], keyword_id=item["keyword_id"], search_engine=name)
+    """Returns the answer, or raises. connections.spend_on_search writes the most it can cost down first."""
     with engine.begin() as conn:
         conn.execute(text("UPDATE rank_run_items SET status = 'running', used_tool = :t WHERE id = :i"), {"t": tool.name, "i": item["id"]})
     try:
-        answer = tool.search(item["keyword"], name, item["country"], item["language"], "desktop", depth)
-    except TimedOut:
-        raise  # it may have been charged: the estimate stays
-    except (ToolStopped, SearchFailed):
-        connections.count_use(engine, tool.name, -estimate, paid=paid, cost=-money if money else None, run_id=run["id"], keyword_id=item["keyword_id"], search_engine=name, note="not charged")
+        answer = connections.spend_on_search(
+            engine, tool, item["keyword"], item["engine"], item["country"], item["language"], "desktop", run["depth"],
+            paid=paid, run_id=run["id"], keyword_id=item["keyword_id"],
+        )
+    except Exception as exc:
+        if paid:
+            _add_spent(engine, picker, run["id"], getattr(exc, "cost_kept", None))
         raise
-    difference = answer.charged - estimate
-    connections.count_use(engine, tool.name, difference, paid=paid, cost=per * difference if paid else None, run_id=run["id"], keyword_id=item["keyword_id"], search_engine=name, note="what the tool really charged")
     if paid:
-        final = per * answer.charged
-        picker.spent += final
-        with engine.begin() as conn:
-            conn.execute(text("UPDATE rank_runs SET spent = spent + :c WHERE id = :i"), {"c": final, "i": run["id"]})
+        _add_spent(engine, picker, run["id"], getattr(answer, "cost", None))
     return answer
 
 
@@ -464,6 +474,9 @@ def _work_item(engine: Engine, picker: _Picker, run, item, noted: set, fails: di
         except TimedOut as exc:  # never again, by this tool or another: press Recheck to spend on it knowingly
             store.save_failed_check(engine, item["keyword_id"], name, tool.name, str(exc))
             _settle_item(engine, item["id"], "timeout", tool.name, error=f"{exc} It wasn't tried again, because it may already have been charged.", run_id=run["id"], field="failed")
+            fails[tool.name] = fails.get(tool.name, 0) + 1  # a tool that keeps timing out is dropped like one that keeps failing (F58)
+            if fails[tool.name] >= FAILS_BEFORE_DROP:
+                picker.drop(tool.name, f"{tool.name} failed {FAILS_BEFORE_DROP} searches in a row.")
             return None
         except SearchFailed as exc:
             store.save_failed_check(engine, item["keyword_id"], name, tool.name, str(exc))
@@ -571,6 +584,10 @@ def run_refresh(job, engine: Engine) -> None:
 def run_dict(engine: Engine, run_id: int) -> dict:
     with engine.connect() as conn:
         row = conn.execute(text("SELECT * FROM rank_runs WHERE id = :i"), {"i": run_id}).mappings().first()
+        failed = conn.execute(text(
+            "SELECT i.keyword_id, k.keyword, i.engine, COALESCE(i.used_tool, i.tool) AS tool, i.status, i.error FROM rank_run_items i "
+            "JOIN keywords k ON k.id = i.keyword_id WHERE i.run_id = :i AND i.status IN ('failed', 'timeout') ORDER BY i.id LIMIT 200"
+        ), {"i": run_id}).mappings().all() if row is not None else []
     if row is None:
         raise NotFound("That Refresh doesn't exist.")
     message = row["message"] or ""
@@ -580,7 +597,16 @@ def run_dict(engine: Engine, run_id: int) -> dict:
         "moved": {"from": moved[0], "to": moved[1]} if moved else None, "stop_reason": row["stop_reason"], "depth": row["depth"], "mode": row["mode"],
         "engines": _json(row["engines"]) or [], "by": row["by_name"], "excluded": _json(row["excluded"]) or [], "spent": float(row["spent"] or 0),
         "cancel_requested": bool(row["cancel_requested"]), "created_at": _iso(row["created_at"]), "finished_at": _iso(row["finished_at"]),
+        # Which searches failed and why, so the tray can say so and offer "Retry these".
+        "failures": [{"keyword_id": f["keyword_id"], "keyword": f["keyword"], "engine": f["engine"], "tool": f["tool"], "timed_out": f["status"] == "timeout", "error": _plain(f["error"], f["status"])} for f in failed],
     }
+
+
+def _plain(error: str | None, status: str) -> str:
+    """One sentence a person can read. Tool messages are already sentences; an empty one gets a plain default."""
+    if error:
+        return error if error.endswith((".", "!", "?")) else error + "."
+    return "It didn't answer in time, and wasn't tried again because it may already have been charged." if status == "timeout" else "The search failed."
 
 
 def active_runs(engine: Engine) -> list[dict]:

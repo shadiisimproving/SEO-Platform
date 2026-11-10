@@ -63,3 +63,13 @@
 .ai-cap { margin: 0; max-width: 200px; }
 .in-ai-h2 { display: inline-block; margin-top: 4px; }
 .in-ai-h3 { font-weight: 600; padding-left: 12px; }
+
+/* What to do: one fixed line per kind, and what the page itself says about the search. */
+.in-do { margin: 12px 0 4px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r-s); }
+.in-do .ov-h3 { margin-top: 0; }
+.in-do p { margin: 4px 0 0; }
+.in-do-page { display: flex; gap: 6px; align-items: flex-start; font-weight: 500; }
+.in-do-page svg { width: 14px; height: 14px; flex: none; margin-top: 2px; }
+.in-countries { display: grid; gap: 6px; margin: 10px 0; }
+.in-countries .check-row { display: flex; align-items: center; gap: 8px; }
+.in-countries .check-row .muted { margin-left: auto; }

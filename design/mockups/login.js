@@ -3,7 +3,24 @@
   "use strict";
   const $ = (id) => document.getElementById(id);
   let csrf = "";
-  const fail = (text) => { $("err").textContent = text; $("err").hidden = !text; };
+  // French when the app was last used in French (its choice is kept in this browser).
+  const fr = document.documentElement.lang === "fr";
+  const FR = {
+    "Sign in": "Connexion", "Username or email": "Nom d'utilisateur ou e-mail", "Password": "Mot de passe",
+    "Forgot your password? Ask your admin to reset it. After 5 wrong tries, sign-in waits 15 minutes.": "Mot de passe oublié ? Demandez à votre admin de le réinitialiser. Après 5 essais erronés, la connexion attend 15 minutes.",
+    "Temporary password": "Mot de passe temporaire", "New password": "Nouveau mot de passe", "At least 10 characters.": "Au moins 10 caractères.", "Save and continue": "Enregistrer et continuer",
+    "Choose your password": "Choisissez votre mot de passe", "Your temporary password only works once.": "Votre mot de passe temporaire ne sert qu'une fois.",
+    "Enter your username and password.": "Saisissez votre nom d'utilisateur et votre mot de passe.", "That didn't work. Try again.": "Cela n'a pas marché. Réessayez.",
+    "Can't reach the app. Check it's running, then try again.": "L'application est injoignable. Vérifiez qu'elle tourne, puis réessayez.",
+    "Wrong username or password.": "Nom d'utilisateur ou mot de passe incorrect.",
+  };
+  const t = (text) => (fr && FR[text]) || text;
+  if (fr) {
+    document.title = `${t("Sign in")} · SEO Command Center`;
+    [["title", "Sign in"], ["go", "Sign in"], ["l-email", "Username or email"], ["l-password", "Password"], ["forgot", "Forgot your password? Ask your admin to reset it. After 5 wrong tries, sign-in waits 15 minutes."], ["current-label", "Temporary password"], ["l-next", "New password"], ["l-help", "At least 10 characters."], ["l-save", "Save and continue"]]
+      .forEach(([id, words]) => { if ($(id)) $(id).textContent = t(words); });
+  }
+  const fail = (text) => { $("err").textContent = t(text); $("err").hidden = !text; };
   async function send(path, body) {
     let reply;
     try {
@@ -15,11 +32,18 @@
   }
   function askForNewPassword(known) {
     $("sign-in").hidden = true; $("change").hidden = false;
-    $("title").textContent = "Choose your password";
-    $("sub").textContent = "Your temporary password only works once.";
+    $("title").textContent = t("Choose your password");
+    $("sub").textContent = t("Your temporary password only works once.");
     if (known) { $("current").value = known; $("current").closest(".field").hidden = true; $("next").focus(); } else $("current").focus();
   }
-  const enter = () => location.replace("./");
+  /* Back to where the person was going: the screen in the address (kept through the server's redirect), or the one the
+     app noted when the session ended. Only an address inside the app. */
+  function returnTo() {
+    let hash = location.hash;
+    try { hash = hash || sessionStorage.getItem("seocc-return") || ""; sessionStorage.removeItem("seocc-return"); } catch { /* private mode */ }
+    return /^#[\w/%?=&.:+~,-]*$/.test(hash) ? hash : "";
+  }
+  const enter = () => location.replace(`./${returnTo()}`);
   $("sign-in").addEventListener("submit", async (e) => {
     e.preventDefault(); fail("");
     const email = $("email").value.trim(), password = $("password").value;

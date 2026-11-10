@@ -21,11 +21,10 @@
     </section>`;
   }
 
+  /* The caveats sit behind an (i) beside the filters. Only the one action stays in view, and only while something isn't captured. */
   function plainNote(s) {
-    return `<div class="note ca-note">${UI.icon("info")}<div>
-        <p>${t("Updates when a check runs. It never spends credits by itself. Google only.")}</p>
-        ${s.not_captured ? `<p class="ca-note-more">${t("Not captured means the tool used can't see AI Overviews. It doesn't mean there isn't one.")} <button class="btn btn-small" data-ca-connect>${t("Connect a tool that can")}</button></p>` : ""}
-      </div></div>`;
+    const words = `${t("Updates when a check runs. It never spends credits by itself. Google only.")} ${t("Not captured means the tool used can't see AI Overviews. It doesn't mean there isn't one.")}`;
+    return `<div class="ca-note-line">${COMP.info(words)}${s.not_captured ? `<button class="btn btn-small" data-ca-connect>${t("Connect a tool that sees AI Overviews")}</button>` : ""}</div>`;
   }
 
   // ---- the table --------------------------------------------------------------------------------
@@ -44,7 +43,7 @@
     if (!row.cited_me) return statusWord("minus", "No", "muted");
     return `${UI.status("good", t("Yes"))}${row.my_cited_urls.map((url) => `<span class="second">${COMP.link(url)}</span>`).join("")}`;
   }
-  const rivalChips = (list) => (list.length ? `<span class="ca-chips">${list.map((c) => `<button class="chip" data-ca-rival="${c.id}" dir="auto" aria-label="${t("Open competitor")}: ${esc(c.host)}">${esc(c.host)}</button>`).join("")}</span>` : `<span class="muted">—</span>`);
+  const rivalChips = (list) => (list.length ? `<span class="ca-chips">${list.map((c) => `<button class="chip" data-ca-rival="${c.id}" dir="auto" aria-label="${t("Open competitor")}: ${esc(c.host)}">${window.UI.siteLogo(c.host, 16)}${esc(c.host)}</button>`).join("")}</span>` : `<span class="muted">—</span>`);
   const otherSites = (list) => (list.length ? `<span class="ca-others">${list.map((d) => `<span class="mono small" dir="auto">${esc(d)}</span>`).join("")}</span>` : `<span class="muted">—</span>`);
 
   function keywordTable(rows) {
@@ -54,17 +53,20 @@
     if (!shown.length) return `${chips}${COMP.empty(t("No keywords here"), t("No keyword matches this filter right now."))}`;
     // On phones each row is a card, so a tool shared by every row is said once, above them.
     const tools = new Set(shown.map((r) => r.tool));
-    const oneTool = tools.size === 1 ? shown[0].tool : "";
+    // Every row checked with the same tool at the same age: said once under the table, and the column goes (as on a competitor's Keywords tab).
+    const once = shown.length > 1 && tools.size === 1 && new Set(shown.map((r) => COMP.ago(r.checked_at))).size === 1;
+    const onceLine = once ? `<p class="small sec ca-once">${esc(t("All checked with {tool}, {when}.").replace("{tool}", shown[0].tool).replace("{when}", COMP.ago(shown[0].checked_at)))}</p>` : "";
+    const oneTool = !once && tools.size === 1 ? shown[0].tool : "";
     return `${chips}${oneTool ? `<p class="help ca-tool-line">${t("Tool")}: ${esc(oneTool)}</p>` : ""}<div class="table-wrap ${oneTool ? "ca-one-tool" : ""}"><table class="data ca-table" id="ca-table">
-      <thead><tr><th scope="col">${t("Keyword")}</th><th scope="col">${t("AI Overview")}</th><th scope="col">${t("You cited")}</th><th scope="col">${t("Competitors cited")}</th><th scope="col">${t("Other sites cited")}</th><th scope="col">${t("Tool and age")}</th></tr></thead>
+      <thead><tr><th scope="col">${t("Keyword")}</th><th scope="col">${t("AI Overview")}</th><th scope="col">${t("You cited")}</th><th scope="col">${t("Competitors cited")}</th><th scope="col">${t("Other sites cited")}</th>${once ? "" : `<th scope="col">${t("Tool and age")}</th>`}</tr></thead>
       <tbody>${shown.map((r) => `<tr>
         <td class="head-cell"><span class="kw" dir="auto">${esc(r.keyword)}</span></td>
         <td data-label="${t("AI Overview")}">${overviewCell(r.state)}</td>
         <td data-label="${t("You cited")}"><div class="cp-val">${citedCell(r)}</div></td>
         <td data-label="${t("Competitors cited")}"><div class="cp-val">${rivalChips(r.competitors_cited)}</div></td>
         <td data-label="${t("Other sites cited")}"><div class="cp-val">${otherSites(r.others_cited)}</div></td>
-        <td data-label="${t("Tool and age")}"><div class="cp-val"><span class="ca-tool-name">${esc(r.tool)}</span><span class="second">${esc(COMP.ago(r.checked_at))}</span></div></td>
-      </tr>`).join("")}</tbody></table></div>`;
+        ${once ? "" : `<td data-label="${t("Tool and age")}"><div class="cp-val"><span class="ca-tool-name">${esc(r.tool)}</span><span class="second">${esc(COMP.ago(r.checked_at))}</span></div></td>`}
+      </tr>`).join("")}</tbody></table></div>${onceLine}`;
   }
 
   // ---- what changed -----------------------------------------------------------------------------
@@ -227,7 +229,7 @@
     "No competitor cited yet": "Aucun concurrent cité pour l'instant",
     "Updates when a check runs. It never spends credits by itself. Google only.": "Se met à jour quand un relevé a lieu. Ne dépense jamais de crédits tout seul. Google uniquement.",
     "Not captured means the tool used can't see AI Overviews. It doesn't mean there isn't one.": "Non capté veut dire que l'outil utilisé ne voit pas les AI Overviews. Cela ne veut pas dire qu'il n'y en a pas.",
-    "Connect a tool that can": "Connecter un outil qui les voit",
+    "Connect a tool that can": "Connecter un outil qui les voit", "Connect a tool that sees AI Overviews": "Connecter un outil qui voit les AI Overviews",
     "Has an AI Overview": "Avec un AI Overview",
     "You're cited": "Vous êtes cité",
     "You're not cited": "Vous n'êtes pas cité",

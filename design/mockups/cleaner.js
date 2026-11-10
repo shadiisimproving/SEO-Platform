@@ -203,10 +203,28 @@
     return labels.length === 2 && labels[1].length === 2 && /^[a-z0-9-]+$/.test(labels[1]) && GENERIC_SECOND_LEVEL.has(labels[0]);
   }
 
+  // Shared hosting platforms: each subdomain is someone else's site (F105). Keep in step with PLATFORM_SUFFIXES in seo/backlinks/cleaner.py.
+  const PLATFORM_SUFFIXES = [
+    "blogspot.com", "blogspot.fr", "blogspot.co.uk", "blogspot.be", "blogspot.ca", "blogspot.ch", "blogspot.de", "blogspot.es", "blogspot.it",
+    "blogspot.com.au", "wordpress.com", "wpcomstaging.com", "tumblr.com", "medium.com", "substack.com", "ghost.io", "livejournal.com", "typepad.com",
+    "wixsite.com", "weebly.com", "weeblysite.com", "squarespace.com", "webflow.io", "jimdofree.com", "jimdosite.com", "jimdo.com", "strikingly.com",
+    "mystrikingly.com", "carrd.co", "godaddysites.com", "site123.me", "simplesite.com", "webnode.fr", "webnode.com", "github.io", "gitlab.io",
+    "netlify.app", "vercel.app", "pages.dev", "workers.dev", "herokuapp.com", "onrender.com", "fly.dev", "firebaseapp.com", "web.app", "appspot.com",
+    "azurewebsites.net", "cloudfront.net", "glitch.me", "neocities.org", "myshopify.com", "square.site", "over-blog.com", "overblog.com",
+    "canalblog.com", "hautetfort.com", "e-monsite.com", "unblog.fr", "eklablog.com", "skyrock.com", "wifeo.com", "centerblog.net", "blog4ever.com",
+    "free.fr", "pagesperso-orange.fr", "forumactif.com", "forumactif.org", "forumgratuit.org", "xooit.fr"
+  ];
+  // Endings that are also a real website when nothing comes before them: www.gov.uk is a site, co.uk is not.
+  const SITE_SUFFIXES = new Set(["gov.uk", "gouv.fr", "govt.nz"]);
+
   function rootDomain(value) {
     const host = hostname(value);
-    if (!usableHost(host) || isSuffix(host)) return "";
+    if (!usableHost(host)) return "";
     const labels = host.split(".");
+    const platform = PLATFORM_SUFFIXES.find((p) => host.endsWith(`.${p}`));
+    if (platform) return labels.slice(-(platform.split(".").length + 1)).join(".");
+    if (SITE_SUFFIXES.has(host)) return host;
+    if (isSuffix(host)) return "";
     if (labels.length >= 3 && isSuffix(labels.slice(-2).join("."))) return labels.slice(-3).join(".");
     return labels.slice(-2).join(".");
   }

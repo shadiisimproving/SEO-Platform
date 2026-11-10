@@ -477,3 +477,37 @@ def test_counts_leave_out_links_nobody_logged(world):
 
 def test_name_key_ignores_case_and_spacing():
     assert mediators.name_key("  Sara   LINK ") == mediators.name_key("sara link")
+
+
+# ---- one odd page never stops the rest (F59) ---------------------------------------------------------
+
+def test_a_redirect_to_a_malformed_address_is_saved_unknown_and_the_next_link_is_checked(world):
+    world.pages["bad.example/post"] = (301, "http://[bad")
+    bad = world.add(source_url="https://bad.example/post")
+    good = world.add()
+    with world.engine.begin() as conn:  # the bad one sorts first, as it would every night
+        conn.execute(text("UPDATE backlinks SET checked_at = UTC_TIMESTAMP(3) - INTERVAL 40 DAY WHERE id = :i"), {"i": bad})
+        conn.execute(text("UPDATE backlinks SET checked_at = UTC_TIMESTAMP(3) - INTERVAL 35 DAY WHERE id = :i"), {"i": good})
+    assert live.enqueue_due(world.engine) == [world.own]
+    world.tick()
+    assert world.link(bad)["check"]["outcome"] == "unknown" and world.link(bad)["status"] == "live"
+    assert world.link(good)["check"]["outcome"] == "found"
+
+
+def test_a_malformed_base_href_reads_links_against_the_page():
+    seen = live.find_link(b'<html><head><base href="http://[bad"></head><body><a href="/page/">x</a></body></html>', "https://shop.example/post", "shop.example", "/page/")
+    assert seen.found and seen.to_target
+
+
+def test_any_crash_while_reading_saves_unknown_and_moves_on(world, monkeypatch):
+    first, second = world.add(source_url="https://boom.example/a"), world.add()
+    real = live.read_page
+
+    def read(fetcher, source_url, *rest):
+        if "boom" in source_url:
+            raise RecursionError("deep page")
+        return real(fetcher, source_url, *rest)
+
+    monkeypatch.setattr(live, "read_page", read)
+    world.monthly()
+    assert world.link(first)["check"]["outcome"] == "unknown" and world.link(second)["check"]["outcome"] == "found"

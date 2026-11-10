@@ -104,6 +104,20 @@ def test_adding_sites_through_the_api(world):
     assert "rival-two.example" not in [s["host"] for s in world.client.get("/api/links/sites").get_json()["sites"]]
 
 
+def test_adding_my_own_site_starts_reading_its_pages_at_once(world):
+    """Owner, 2026-11-09: "it should read them once added", not wait for the nightly run."""
+    def reads(site_id):
+        with world.engine.connect() as conn:
+            job = conn.execute(text("SELECT 1 FROM jobs WHERE kind = 'competitors.crawl' AND payload LIKE :p"), {"p": f'%"competitor_id": {site_id}}}%'}).first()
+            state = conn.execute(text("SELECT status FROM competitor_crawls WHERE competitor_id = :s"), {"s": site_id}).scalar()
+        return job is not None, state
+
+    mine = world.client.post("/api/sites", json={"address": "blog.mine.example", "kind": "own"}).get_json()["id"]
+    assert reads(mine) == (True, "queued")
+    rival = world.client.post("/api/sites", json={"address": "rival-two.example", "kind": "competitor"}).get_json()["id"]
+    assert reads(rival) == (False, None)  # a competitor is read once a site of mine watches it, not on its own
+
+
 @pytest.mark.parametrize("body", [{"address": "", "kind": "own"}, {"address": "not a site", "kind": "own"}, {"address": "x.example", "kind": "friend"}, {"address": "x.example"}, {}])
 def test_bad_site_requests_are_refused(world, body):
     assert world.client.post("/api/sites", json=body).status_code == 400
@@ -579,3 +593,25 @@ def test_a_scan_just_started_is_not_taken_for_dead(world):
     with world.engine.begin() as conn:
         conn.execute(text("UPDATE jobs SET status = 'dead', active_key = NULL"))
     assert scan_of(world, scan_id)["status"] == "queued"  # it's written a moment before its job
+
+
+def test_a_stopped_weekly_scan_does_not_start_again_within_the_week(world):
+    """F106: only a complete scan used to count, so a stopped or failed weekly scan started again at the next hourly call."""
+    assert service.enqueue_due(world.engine) == [world.own]
+    with world.engine.connect() as conn:
+        scan_id = conn.execute(text("SELECT id FROM link_scans")).scalar()
+    world.client.post(f"/api/links/scans/{scan_id}/stop")
+    world.tick()
+    with world.engine.connect() as conn:
+        assert conn.execute(text("SELECT status FROM link_scans")).scalar() == "stopped"
+    assert service.enqueue_due(world.engine) == []
+    age_scans(world, 8)
+    assert service.enqueue_due(world.engine) == [world.own]
+
+
+def test_a_failed_weekly_scan_does_not_start_again_within_the_week(world):
+    service.enqueue_due(world.engine)
+    with world.engine.begin() as conn:
+        conn.execute(text("UPDATE jobs SET status = 'dead', active_key = NULL"))
+        conn.execute(text("UPDATE link_scans SET status = 'failed', finished_at = UTC_TIMESTAMP(3)"))
+    assert service.enqueue_due(world.engine) == []

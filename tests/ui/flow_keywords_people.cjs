@@ -84,14 +84,14 @@ async function refreshAll(page, engine) {
 
   // A member tries to change keys and the order.
   await b.page.goto(`${BASE}?m=1#settings`); await b.page.waitForSelector(".conn-row", { timeout: 15000 }); await settle(b.page, 700);
-  await b.page.click('[data-conn="hasdata"]'); await settle(b.page, 300); await b.page.fill("#conn-key", "SOMEKEY1234"); await b.page.click("#conn-save"); await settle(b.page, 500);
+  // Since 2026-11-10 a Member sees these greyed with the reason, before typing anything, instead of a refusal on Save.
+  await b.page.click('[data-conn="hasdata"]'); await settle(b.page, 500);
   await shot(b.page, "37-member-save");
-  const answer = await b.page.textContent("#conn-test-result");
-  note("   member save:", answer.trim());
-  check(/admin/i.test(answer), "a member is told only an admin can change a key");
-  await b.page.click("[data-discard-panel]"); await settle(b.page, 300);
-  await b.page.click('[data-tool-move="1"][data-tool="Bright Data"]'); await settle(b.page, 500);
-  note("   member order toast:", (await b.page.textContent("#toasts")).trim().slice(0, 100));
+  const answer = await b.page.textContent("#panel .member-note").catch(() => "");
+  note("   member sees:", answer.trim());
+  check(/admin/i.test(answer) && (await b.page.$eval("#conn-key", (x) => x.disabled)) && (await b.page.$eval("#conn-save", (x) => x.disabled)), "a member is told only an admin can change a key");
+  await b.page.keyboard.press("Escape"); await settle(b.page, 300);
+  note("   member order button greyed:", await b.page.$eval('[data-tool-move="1"][data-tool="Bright Data"]', (x) => x.disabled));
 
   // The admin really saves a key, sees only its end, and removes it.
   await a.page.goto(`${BASE}?k=1#settings`); await a.page.waitForSelector(".conn-row", { timeout: 15000 }); await settle(a.page, 700);

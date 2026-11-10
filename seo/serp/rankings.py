@@ -14,6 +14,7 @@ from sqlalchemy import Engine, text
 
 from seo.competitors.keywords import _iso, require_own
 from seo.core.errors import NotFound
+from seo.metrics import countries
 from seo.serp import connections, store
 from seo.serp.tools import counts_for_keyword, same_place
 
@@ -193,6 +194,17 @@ def _own_tools(conn, site_ids: list[int]) -> dict:
             {"s": site_id, "last": last},
         ).mappings():
             pages[(site_id, store.clean_keyword(row["query"]).casefold())].setdefault(row["page"], int(row["impressions"] or 0))
+        # The same, in each country the site's queries are read for: a keyword's own country, not a world average.
+        for row in conn.execute(
+            text(
+                "SELECT country, query, SUM(clicks) AS clicks, SUM(impressions) AS impressions, SUM(position * impressions) / NULLIF(SUM(impressions), 0) AS position "
+                f"FROM gsc_query_country WHERE site_id = :s AND day > :last - INTERVAL {OWN_DAYS} DAY AND day <= :last GROUP BY country, query_hash, query"
+            ),
+            {"s": site_id, "last": last},
+        ).mappings():
+            tables.setdefault("google_country", {})[(site_id, row["country"], store.clean_keyword(row["query"]).casefold())] = {
+                "position": float(row["position"]) if row["position"] is not None else None, "impressions": int(row["impressions"] or 0), "clicks": int(row["clicks"] or 0),
+            }
     for row in conn.execute(text(f"SELECT site_id, query, clicks, impressions, position FROM bing_query WHERE site_id IN ({marks})")).mappings():
         tables["bing"][(row["site_id"], store.clean_keyword(row["query"]).casefold())] = {"position": row["position"], "impressions": row["impressions"], "clicks": row["clicks"]}
     for row in conn.execute(text(f"SELECT site_id, query, clicks, shows, position FROM yandex_query WHERE site_id IN ({marks})")).mappings():
@@ -238,10 +250,17 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
         main_url = next((view["main"]["url"] for view in engines.values() if view["main"] and view["main"]["url"]), None)
         page = max(pages_seen, key=pages_seen.get) if pages_seen else main_url
         google_own = own["positions"]["google"].get((track["site_id"], key))
+        code3 = countries.alpha3(track["country"]) if track["country"] else None
+        local = own["positions"].get("google_country", {}).get((track["site_id"], code3, key)) if code3 else None
         rows.append({
             "id": f"{track['site_id']}:{track['id']}", "keyword_id": track["id"], "site_id": track["site_id"], "site": host, "keyword": track["keyword"],
             "country": track["country"], "language": track["language"], "engines": engines, "ai": ai, "page": page,
-            "two_pages": len(pages_seen) >= 2 or bool(scraped_two), "volume": google_own["impressions"] if google_own else None,
+            "two_pages": len(pages_seen) >= 2 or bool(scraped_two),
+            # "volume" is kept for older readers: it was never search volume, only our own impressions over 28 days.
+            "volume": google_own["impressions"] if google_own else None, "impressions": google_own["impressions"] if google_own else None,
+            # Search Console in the keyword's own country, when the site's queries are read for it (None otherwise; the
+            # world average stays in engines.google.own).
+            "own_country": {"country": track["country"].upper(), **{k: (round(v, 1) if k == "position" and v is not None else v) for k, v in local.items()}} if local else None,
         })
     return {"rows": rows, "through": own["through"], "last_refresh": last_run, "now": now, "order": order, "gap": gap}
 

@@ -1095,7 +1095,7 @@ def test_a_kill_does_not_count_a_page_twice_in_the_findings(world):
     assert findings(data) == PLANTED
     assert result["counts"] == {code: len(pages) for code, pages in PLANTED.items()}
     with world.engine.connect() as conn:
-        codes = [row[0] for row in conn.execute(text("SELECT code FROM health_issues WHERE audit_id = :i"), {"i": audit_id})]
+        codes = [row[0] for row in conn.execute(text("SELECT code FROM health_issues WHERE audit_id = :i AND code <> 'links_in'"), {"i": audit_id})]  # links_in is the internal links report, not a check
     assert sorted(codes) == sorted(PLANTED)  # one row each
 
 

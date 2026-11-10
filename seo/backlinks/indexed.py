@@ -96,11 +96,15 @@ def due_pages(engine: Engine, site_id: int, start_url: str, first: str | None = 
     return due
 
 
-def _asked_today(engine: Engine, site_id: int) -> int:
+def _asked_today(engine: Engine, site_id: int, start_url: str = "") -> int:
+    """This check's own inspections in the last day. The Health screen's check of every page (seo/health/indexing.py) has
+    its own allowance, so it never eats this one's 200."""
     with engine.connect() as conn:
-        return int(conn.execute(text(
-            "SELECT COUNT(*) FROM gsc_inspections WHERE site_id = :s AND inspected_at > UTC_TIMESTAMP(3) - INTERVAL 1 DAY"
-        ), {"s": site_id}).scalar() or 0)
+        mine = {url_hash(page) for page in _pages(conn, site_id, start_url)}
+        today = [r[0] for r in conn.execute(text(
+            "SELECT url_hash FROM gsc_inspections WHERE site_id = :s AND inspected_at > UTC_TIMESTAMP(3) - INTERVAL 1 DAY"
+        ), {"s": site_id})]
+    return sum(1 for h in today if h in mine)
 
 
 def _when(value: str | None):
@@ -144,7 +148,7 @@ def run(job, engine: Engine) -> None:
     if src is None:
         return  # Search Console was switched off since this was queued
     started = time.monotonic()
-    left = MAX_PER_DAY - _asked_today(engine, site_id)
+    left = MAX_PER_DAY - _asked_today(engine, site_id, src["start_url"])
     pages = due_pages(engine, site_id, src["start_url"], (job.payload or {}).get("first"))[:max(left, 0)]
     if not pages:
         return
@@ -169,6 +173,9 @@ def run(job, engine: Engine) -> None:
                 raise Retry(str(exc), 900, patient=True) from exc
             _save(engine, site_id, url, {**_EMPTY, "error": str(exc)[:500]})
             return  # the key can't inspect this property; asking about the next page would be refused the same way
+        except (ValueError, KeyError, TypeError, AttributeError):  # one answer that can't be read must not stop the rest
+            _save(engine, site_id, url, {**_EMPTY, "error": "Google's answer for this page couldn't be read."})
+            continue
         _save(engine, site_id, url, found)
 
 

@@ -13,7 +13,7 @@ from seo.serp import store
 from seo.sources import credentials
 from seo.web import create_app
 
-END = date(2026, 11, 7)
+END = date(2026, 11, 7)  # the last final day; the two after it aren't final yet
 
 
 @pytest.fixture
@@ -21,7 +21,7 @@ def site(engine):
     search._live_cache.clear()
     with engine.begin() as conn:
         site_id = conn.execute(text("INSERT INTO sites (host, start_url, kind) VALUES ('shop-one.test', 'https://shop-one.test/', 'own')")).lastrowid
-        conn.execute(text("INSERT INTO site_sources (site_id, source, data_through, fresh_from, fresh_through) VALUES (:s, 'gsc', :d, :f, :t)"), {"s": site_id, "d": END - timedelta(days=2), "f": END - timedelta(days=1), "t": END})
+        conn.execute(text("INSERT INTO site_sources (site_id, source, data_through, fresh_from, fresh_through) VALUES (:s, 'gsc', :d, :f, :t)"), {"s": site_id, "d": END, "f": END + timedelta(days=1), "t": END + timedelta(days=2)})
     return site_id
 
 
@@ -83,11 +83,13 @@ def test_month_ranges_are_calendar_months_back_like_search_console():
     assert search._months_back(date(2026, 11, 7), 16) == date(2025, 7, 8)
 
 
-def test_ranges_end_on_the_newest_day_google_has_fresh_days_included(engine, site):
+def test_ranges_end_on_the_last_final_day_and_the_fresh_days_are_only_drawn(engine, site):
+    _day(engine, site, END - timedelta(days=500), 1, 1, 1.0)  # history far enough back for every comparison
     _scope_, window = _scope(engine, site)
     assert (window["from"], window["to"]) == ((END - timedelta(days=27)).isoformat(), END.isoformat())
     assert (window["compare_from"], window["compare_to"]) == ((END - timedelta(days=55)).isoformat(), (END - timedelta(days=28)).isoformat())
-    assert window["fresh_from"] == (END - timedelta(days=1)).isoformat()
+    assert window["fresh_from"] == (END + timedelta(days=1)).isoformat() and window["fresh_to"] == (END + timedelta(days=2)).isoformat()
+    assert window["final_through"] == END.isoformat() and window["newest"] == (END + timedelta(days=2)).isoformat()
     _scope_, window = _scope(engine, site, "28d", "yoy")
     assert (window["compare_from"], window["compare_to"]) == ("2025-10-11", "2025-11-07")
     _scope_, window = _scope(engine, site, "7d", "none")
@@ -124,6 +126,7 @@ def test_overview_reads_google_live_and_keeps_it_ten_minutes(engine, site, googl
         return httpx.Response(200, json={"rows": rows})
     google.answers[("date",)] = dates
     _day(engine, site, END, 1, 1, 1.0)  # saved data that's out of date: live wins
+    _day(engine, site, END - timedelta(days=400), 1, 1, 1.0)  # the saved days reach back far enough to compare
     scope, window = _scope(engine, site, "7d", "prev")
     found = search.overview(scope, window)
     assert found["origin"] == "live" and found["totals"]["clicks"] == 35 and found["before"]["clicks"] == 35
@@ -154,13 +157,14 @@ def test_last_24_hours_come_from_googles_hourly_data(engine, site, google):
 
 
 def test_long_ranges_are_drawn_in_weeks_and_fresh_days_are_marked(engine, site):
-    for n in range(200):
+    for n in range(-2, 200):
         _day(engine, site, END - timedelta(days=n), 10, 100, 5.0)
     found = search.overview(*_scope(engine, site, "6m", "none"))
     assert found["granularity"] == "week" and found["series"][0]["clicks"] == 70
-    assert found["series"][-1]["fresh"] is True and found["series"][0]["fresh"] is False
-    days = search.overview(*_scope(engine, site, "7d", "none"))["series"]
-    assert [p["fresh"] for p in days][-3:] == [False, True, True]
+    assert not any(p["fresh"] for p in found["series"])  # weeks only hold final days
+    seven = search.overview(*_scope(engine, site, "7d", "none"))
+    assert [p["fresh"] for p in seven["series"]][-3:] == [False, True, True] and len(seven["series"]) == 9
+    assert seven["totals"]["clicks"] == 70  # drawn, never counted
 
 
 def test_the_answer_says_steady_below_the_noise_floor_and_names_what_moved(engine, site):
@@ -208,6 +212,36 @@ def test_brand_words_ignore_case_and_accents(engine, site):
     scope, _window = _scope(engine, site)
     assert sorted(r["name"] for r in search.breakdown(scope, "query", brand="brand")["rows"]) == ["SHÔP ONE", "shop one prices"]
     assert [r["name"] for r in search.breakdown(scope, "query", brand="non_brand")["rows"]] == ["sofa delivery"]
+
+
+def test_filters_match_text_like_search_console_and_cut_by_numbers(engine, site):
+    for name, clicks, shown, position in (("créer société dubai", 9, 300, 4.0), ("Creer Societe", 2, 40, 12.0), ("visa dubai", 0, 120, 25.0), ("tva", 1, 8, 3.0)):
+        _row(engine, site, "gsc_query", END, name, clicks, shown, position)
+    scope, _window = _scope(engine, site)
+
+    def names(**args):
+        return sorted(r["name"] for r in search.breakdown(scope, "query", filters=search.filter_from(args))["rows"])
+
+    assert names(q="CREER societe") == ["Creer Societe", "créer société dubai"]  # case and accents don't matter
+    assert names(q="dubai", q_mode="not") == ["Creer Societe", "tva"]
+    assert names(q="creer societe", q_mode="exact") == ["Creer Societe"]
+    assert names(q="CRÉER société dubai", q_mode="exact") == ["créer société dubai"]  # exact keeps accents, not case
+    assert names(q="^(visa|tva)", q_mode="regex") == ["tva", "visa dubai"]
+    assert names(min_clicks="1", min_impressions="10") == ["Creer Societe", "créer société dubai"]
+    assert names(pos_from="3,5", pos_to="20") == ["Creer Societe", "créer société dubai"]
+    counted = search.breakdown(scope, "query", filters=search.filter_from({"q": "dubai"}))
+    assert counted["counts"]["all"] == 2 and counted["total"] == 2  # the Show menu counts follow the filter
+    for bad in ({"q": "(", "q_mode": "regex"}, {"q_mode": "sounds like"}, {"min_clicks": "lots"}, {"q": "x" * 201}):
+        with pytest.raises(Refused):
+            search.breakdown(scope, "query", filters=search.filter_from(bad))
+
+
+def test_page_filters_read_the_address(engine, site):
+    for page in ("https://shop-one.test/blog/sofa/", "https://shop-one.test/prices/"):
+        _row(engine, site, "gsc_page", END, page, 3, 30, 4.0)
+    scope, _window = _scope(engine, site)
+    rows = search.breakdown(scope, "page", filters=search.filter_from({"q": "/blog/"}))["rows"]
+    assert [r["name"] for r in rows] == ["https://shop-one.test/blog/sofa/"]
 
 
 def test_a_query_already_tracked_says_so_whatever_its_market(engine, site):
@@ -334,6 +368,8 @@ def test_the_search_apis_answer_and_refuse(engine, site):
         assert client.get(f"/api/search/{path}{sep}site_id={site}&range=28d").status_code == 200, path
     assert client.get(f"/api/search/overview?site_id={site}&range=31d").status_code == 400
     assert client.get(f"/api/search/breakdown?site_id={site}&dim=colour").status_code == 400
+    assert client.get(f"/api/search/breakdown?site_id={site}&range=28d&q=sofa&q_mode=not&min_clicks=1&pos_to=10").status_code == 200
+    assert client.get(f"/api/search/breakdown?site_id={site}&range=28d&q=(&q_mode=regex").status_code == 400
     assert client.get(f"/api/search/breakdown?site_id={site}&show=gaining&compare=none").status_code == 400
     assert client.post("/api/search/notes", json={"site_id": site, "day": END.isoformat(), "text": "New menu"}).status_code == 201
     assert client.post("/api/search/verify", json={"site_id": site}).status_code == 400  # not connected

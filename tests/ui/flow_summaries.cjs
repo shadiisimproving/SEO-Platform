@@ -2,12 +2,18 @@
 const { open, menu } = require("./pw.cjs");
 const OUT = process.env.OUT, BASE = process.env.BASE;
 let failed = 0;
-// Competitors opens on all sites together. A site chip on a competitor's row opens its profile, where the timeline is.
+// Competitors opens on all sites together. A site chip on a competitor's row opens its profile; since the 2026-11-09 redesign
+// the timeline is on the profile's Activity tab, and a profile always opens on Keywords.
 let opened = null;
+async function activity(page) {
+  await page.waitForSelector('[data-pt-tab="activity"]', { timeout: 8000 });
+  await page.click('[data-pt-tab="activity"]');
+  await page.waitForSelector("#cl-timeline", { timeout: 8000 }); await page.waitForTimeout(500);
+}
 async function toTimeline(page) {
   await page.waitForTimeout(900);
   const chip = await page.$("[data-cs-open]");
-  if (chip) { opened = await chip.getAttribute("data-cs-open"); await chip.click(); await page.waitForSelector("#cl-timeline", { timeout: 8000 }); await page.waitForTimeout(500); }
+  if (chip) { opened = await chip.getAttribute("data-cs-open"); await chip.click(); await activity(page); }
 }
 const check = (ok, word) => { console.log(`${ok ? "ok  " : "FAIL"} ${word}`); if (!ok) failed++; };
 (async () => {
@@ -48,8 +54,8 @@ const check = (ok, word) => { console.log(`${ok ? "ok  " : "FAIL"} ${word}`); if
     check(/can be wrong/.test(await page.textContent(".cs-summary")), "it says AI wrote it and that it can be wrong");
     await page.reload(); await page.waitForTimeout(1500);
     await page.waitForTimeout(800); // a reload goes back to the list of competitors, so open the same one again
-    const back = await page.$(`[data-cl-open="${opened}"]`);
-    if (back) { await back.click(); await page.waitForSelector("#cl-timeline", { timeout: 8000 }); await page.waitForTimeout(500); }
+    const back = await page.$(`[data-cs-open="${opened}"]`);
+    if (back) { await back.click(); await activity(page); }
     check(Boolean(await page.$(".cs-summary")), "after a reload the answer is still there");
     await menu(page, "lang"); await page.waitForTimeout(500);
     check((await page.$$eval("[data-change-summary]", (e) => e.length)) > 0, "in French it offers its own summary, not the English one");

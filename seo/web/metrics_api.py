@@ -4,7 +4,7 @@ from __future__ import annotations
 from flask import Blueprint, current_app, g, jsonify, request
 
 from seo.core.errors import Refused
-from seo.extras import service as extras, summaries
+from seo.extras import auto as extras_auto, service as extras, summaries  # noqa: F401 - auto registers its job handler here too
 from seo.imports import clarity_reports
 from seo.metrics import backlink_traffic, service, today as today_view
 from seo.resources import service as resources
@@ -65,7 +65,20 @@ def today():
         site_id = int(site) if site not in (None, "", "all") else None
     except ValueError as exc:
         raise Refused("That site isn't one of yours.") from exc
-    return jsonify(today_view.today(_engine(), site_id))
+    period = {key: request.args.get(key) for key in ("range", "compare", "from", "to") if request.args.get(key)}
+    return jsonify(today_view.today(_engine(), site_id, period))
+
+
+@metrics_api.get("/today/attention")
+def today_attention():
+    """What Today's badge in the side menu counts, asked once per load on the other screens: a fraction of /api/today."""
+    site = request.args.get("site_id")
+    try:
+        site_id = int(site) if site not in (None, "", "all") else None
+    except ValueError as exc:
+        raise Refused("That site isn't one of yours.") from exc
+    keep = ("id", "severity", "kind", "host", "title", "words", "detail")
+    return jsonify(todo=[{k: row.get(k) for k in keep} for row in today_view.attention(_engine(), site_id)])
 
 
 @metrics_api.post("/today/seen")
@@ -158,7 +171,8 @@ def mark_important():
 
 @metrics_api.post("/important-domains/moz")
 def get_moz():
-    return jsonify(extras.fetch_moz(_engine()))
+    domains = _body().get("domains")  # a profile asks for just its two domains; Settings asks for all of them
+    return jsonify(extras.fetch_moz(_engine(), domains if isinstance(domains, list) and domains else None))
 
 
 @metrics_api.post("/important-domains/popularity")

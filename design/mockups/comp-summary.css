@@ -64,3 +64,59 @@
 .cs-head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px 14px; flex-wrap: wrap; }
 .cs-head-row .cs-head { flex: 1 1 280px; min-width: 0; }
 .cs-head-row > .btn { flex: none; }
+
+/* The competitor's name opens its profile: it looks like the name, and says it's a link on hover. */
+.cs-rival-open { display: inline-flex; align-items: center; gap: 8px; color: var(--text); text-align: start; border-radius: var(--r-s); }
+.cs-rival-open:hover .logo-text, .cs-rival-open:focus-visible .logo-text { color: var(--accent-text); text-decoration: underline; text-underline-offset: 3px; }
+#cs-rivals-table tbody tr[data-cs-row]:hover { background: var(--hover); }
+
+/* 2026-11-09: Summary and My competitors are one tab. Four data columns, the name never wraps, status and tracking after. */
+.cs-merged .head-cell { min-width: 220px; }
+.cs-merged th { white-space: nowrap; }
+.cs-merged td.c { white-space: nowrap; }
+.cs-lead { display: inline-flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+.cs-lead-side { display: inline-flex; align-items: center; gap: 2px; font-size: 13px; color: var(--text-2); }
+.cs-lead-side b { color: var(--text); margin-left: 3px; }
+.cs-lead-side .pt-key { margin-right: 4px; }
+.cs-merged .cl-watch .second { max-width: 220px; }
+/* All my sites: each site is its icon. */
+.cs-site { display: inline-grid; place-items: center; width: 26px; height: 26px; padding: 0; border-radius: var(--r-s); background: none; border: 0; cursor: pointer; }
+.cs-site:hover, .cs-site:focus-visible { background: var(--hover); }
+.cs-site .site-logo { vertical-align: middle; }
+.cs-head h2 .comp-info { margin-left: 6px; }
+.cs-head-row > .btn { align-self: flex-start; }
+/* Who is moving: five short rows, the rest behind See all. */
+.cs-compact .cl-tl > li { padding: 6px 12px; }
+.cs-compact .cl-tl .d.cs-who { margin-bottom: 0; }
+.cs-move { display: block; margin-top: 2px; }
+.cs-move .cp-verdict { font-size: 12px; }
+#cs-rivals-table tr.ct-row-pages td:not(:has(.ct-switch, .cl-row-btn)) { opacity: .78; }
+#cs-rivals-table tr.ct-row-off td:not(:has(.ct-switch, .cl-row-btn)) { opacity: .55; }
+@media (max-width: 1000px) { .cs-merged .head-cell { min-width: 160px; } }
+@media (max-width: 640px) { .cs-merged .head-cell { min-width: 0; } .cs-lead { justify-content: flex-end; } }
+.cs-basis:empty { display: none; }
+/* 2026-11-10: a competitor's name stays on one line at every table width (review F7); between a phone and a laptop the long
+   "why it's blocked" sentence gives way first, and the table scrolls inside its card rather than cutting a column. */
+.cs-merged .cs-rival-open .logo-text { white-space: nowrap; }
+@media (min-width: 641px) and (max-width: 1000px) {
+  .cs-merged .cl-watch .second { max-width: 150px; }
+  .cs-section > .table-wrap { overflow-x: auto; }
+}
+@media (min-width: 1000px) { #cs-links .head-cell .kw { white-space: nowrap; } }
+.cs-lead-cell { display: block; min-width: 0; }
+@media (max-width: 640px) { .cs-lead-cell .cs-lead { flex-wrap: nowrap; } }
+.cs-kw-foot { margin: 8px 2px 0; }
+/* Find and sort on the Competitors table (2026-11-10): a search box once there are several, and headers that sort. */
+.cs-find { margin: 0 0 10px; }
+.cs-find-box { position: relative; display: block; max-width: 320px; }
+.cs-find-box > svg.i { position: absolute; inset-inline-start: 10px; top: 50%; width: 15px; height: 15px; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.cs-find-box .input { width: 100%; padding-inline-start: 32px; }
+.cs-sort { display: inline; white-space: normal; padding: 0; background: none; border: 0; color: inherit; font: inherit; text-align: inherit; cursor: pointer; border-radius: var(--r-s); }
+.cs-sort:hover { color: var(--text); }
+.cs-sort.on { color: var(--text); }
+.cs-sort svg.i { width: 13px; height: 13px; margin-inline-start: 3px; vertical-align: -2px; }
+.cs-sort:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.cs-find-none { padding: 18px 16px; }
+.cs-find-none p { margin: 0 0 8px; }
+.cs-find-count { margin: 8px 2px 0; }
+@media (max-width: 640px) { .cs-find-box { max-width: none; } }

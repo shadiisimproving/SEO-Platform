@@ -1,6 +1,8 @@
 """Is each of my websites up, and when do its certificate and domain name run out.
 
-Cron queues a check every 15 minutes through enqueue_due(); on the Mac it only runs from the button. A check that's too old
+Cron queues a check every 15 minutes through enqueue_due() and runs it at once in the uptime lane; on the Mac it only runs from
+the button. The daily crawl budget is charged but never stops a check: it's one or two requests, and a site that goes down
+after a big scan used the day's budget must still raise its alert (F14). A check that's too old
 reads as unknown, never as up, so a stopped scheduler can't look like a healthy site. Only a site whose kind is `own` is checked.
 """
 from __future__ import annotations
@@ -18,7 +20,7 @@ import httpx
 from cryptography import x509
 from sqlalchemy import Engine, text
 
-from seo.backlinks.cleaner import root_domain
+from seo.backlinks.cleaner import registrable_domain
 from seo.core import budget
 from seo.core.errors import NotOwnSite, Refused, UnknownSite
 from seo.crawl.fetch import USER_AGENT
@@ -28,9 +30,12 @@ from seo.links import service as links_service
 from seo.worker import queue
 from seo.worker.runner import handler
 
-LANE = "crawl"
+LANE = "uptime"  # its own lane (F14): never behind a scan. Crawl ticks take its jobs first too, and uptime-due runs it itself.
 JOB_KIND = "uptime.check"
 CHECK_EVERY_MINUTES = 15
+# Due once the last check is this old. Cron asks every 15 minutes, so a check that landed a minute late must still be due
+# at the next call; "15 - 1" made it wait 30 minutes (F161).
+DUE_AFTER_MINUTES = 10
 STALE_AFTER_MINUTES = 45  # three checks missed: from here on nobody knows
 CERT_EVERY_HOURS = 20
 DOMAIN_EVERY_DAYS = 7
@@ -307,7 +312,7 @@ def check_domain(engine: Engine, site: dict, force: bool = False) -> None:
     with engine.connect() as conn:
         row = conn.execute(text("SELECT domain_source, domain_expires_on, domain_checked_at IS NULL OR domain_checked_at < UTC_TIMESTAMP(3) - INTERVAL :d DAY AS due FROM site_monitors WHERE site_id = :s"), {"d": DOMAIN_EVERY_DAYS, "s": site["id"]}).mappings().first()
     if row["domain_source"] != "manual" and (row["due"] or force):  # a date entered by hand is never replaced
-        domain = root_domain(site["host"])
+        domain = registrable_domain(site["host"])  # the registry's domain, even for a site on a shared platform
         expires, problem = None, None
         try:
             if not domain:
@@ -341,9 +346,7 @@ def run_check(job, engine: Engine) -> None:
     force = bool(payload.get("force"))
     if not watching and not force:
         return
-    if not budget.has_room(engine):
-        return  # nothing read, so nothing recorded: the screen shows unknown
-    fetcher = links_service.fetcher_factory()
+    fetcher = links_service.fetcher_factory()  # charged to the daily budget below, but never held back by it (F14)
     used = 0
     try:
         seen = probe(fetcher, site["start_url"])
@@ -364,7 +367,7 @@ def enqueue_due(engine: Engine) -> list[int]:
         due = [row[0] for row in conn.execute(text(
             "SELECT s.id FROM sites s LEFT JOIN site_monitors m ON m.site_id = s.id WHERE s.kind = 'own' AND COALESCE(m.watching, 1) = 1 "
             "AND (m.last_checked_at IS NULL OR m.last_checked_at < UTC_TIMESTAMP(3) - INTERVAL :m MINUTE) ORDER BY s.id"
-        ), {"m": CHECK_EVERY_MINUTES - 1})]
+        ), {"m": DUE_AFTER_MINUTES})]
     queued = []
     for site_id in due:
         if queue.enqueue(engine, LANE, JOB_KIND, payload={"site_id": site_id}, dedupe_key=f"uptime:{site_id}", max_attempts=2) is not None:
@@ -415,7 +418,7 @@ def _site_answer(conn, site, row, today: date) -> dict:
         "http_status": row["http_status"] if row and not stale else None, "since": _iso(row["state_since"]) if row and not stale else None, "last_checked_at": _iso(checked),
         "uptime_percent": round(ups * 100 / (ups + downs), 2) if ups + downs else None, "days": strip, "days_not_watched": sum(1 for d in strip if d["state"] == UNKNOWN),
         "certificate": {**_expiry(ssl_expires.date() if ssl_expires else None, today), "https": is_https, "problem": row["ssl_problem"] if row else None, "checked_at": _iso(row["ssl_checked_at"]) if row else None},
-        "domain": {**_expiry(row["domain_expires_on"] if row else None, today), "source": row["domain_source"] if row else None, "problem": row["domain_problem"] if row else None, "checked_at": _iso(row["domain_checked_at"]) if row else None, "name": root_domain(site["host"]) or site["host"]},
+        "domain": {**_expiry(row["domain_expires_on"] if row else None, today), "source": row["domain_source"] if row else None, "problem": row["domain_problem"] if row else None, "checked_at": _iso(row["domain_checked_at"]) if row else None, "name": registrable_domain(site["host"]) or site["host"]},
         "incidents": [{"id": i["id"], "started_at": _iso(i["started_at"]), "ended_at": _iso(i["ended_at"]), "reason": i["reason"], "http_status": i["http_status"], "minutes": i["minutes"]} for i in incidents],
     }
 

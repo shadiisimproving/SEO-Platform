@@ -1,7 +1,6 @@
 /* A competitor's profile: the answer, four tiles, the tabs and the monthly chart. Tokens only.
    Them and you keep one colour each everywhere on the page, the pair checked for colour blindness in both themes. */
-:root, [data-theme="light"] { --pt-them: #6D4AFF; --pt-you: #176AAB; }
-[data-theme="dark"] { --pt-them: #987EF2; --pt-you: #1872C0; }
+:root { --pt-them: var(--chart-them); --pt-you: var(--chart-you); }
 
 .pt-facts { margin: 2px 0 2px; color: var(--text); font-weight: 500; }
 
@@ -39,18 +38,27 @@
 .pt-fact { display: grid; gap: 4px; }
 .pt-fact-figs { display: flex; gap: 16px; flex-wrap: wrap; }
 
-.pt-legend { display: flex; gap: 16px; margin-bottom: 6px; color: var(--text-2); }
 .pt-chart-wrap { position: relative; }
-.pt-chart { width: 100%; height: auto; display: block; overflow: visible; }
-.pt-grid { stroke: var(--line); stroke-width: 1; }
-.pt-axis { fill: var(--muted); font-size: 11px; font-family: var(--font); }
-.pt-bar-them { fill: var(--pt-them); }
-.pt-bar-you { fill: var(--pt-you); }
-.pt-hit { fill: transparent; cursor: default; }
-.pt-month { transition: opacity var(--t-fast); }
-.pt-month.dim { opacity: .35; }
-.pt-tip { position: absolute; top: -6px; transform: translateX(-50%); display: grid; gap: 2px; padding: 8px 10px; border-radius: var(--r-s); background: var(--panel-solid); border: 1px solid var(--line-2); box-shadow: 0 6px 20px rgba(0, 0, 0, .12); font-size: 12px; pointer-events: none; white-space: nowrap; z-index: 3; }
-.pt-as-table { margin-top: 10px; }
+/* Fixed height in CSS pixels: labels keep their size however wide the screen is. */
+.pt-chart { padding: 6px 0 28px 40px; }
+.pt-plot { position: relative; height: 200px; }
+.pt-tick { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--line); }
+.pt-tick:first-child { border-top-color: var(--line-2); }
+.pt-tick span { position: absolute; left: -40px; width: 32px; transform: translateY(-50%); text-align: right; font-size: 11px; color: var(--muted); }
+.pt-cols { position: absolute; inset: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
+.pt-month { position: relative; display: flex; align-items: flex-end; justify-content: center; transition: opacity var(--t-fast); }
+.pt-month:hover { background: var(--hover); border-radius: var(--r-s) var(--r-s) 0 0; }
+.pt-month.dim { opacity: .4; }
+.pt-pair { display: flex; align-items: flex-end; justify-content: center; gap: 2px; width: 100%; height: 100%; }
+.pt-pair i { display: block; width: min(24px, 56%); border-radius: 4px 4px 0 0; }
+.pt-two .pt-pair i { width: min(14px, 32%); }
+.pt-pair .pt-bar-them { background: var(--pt-them); }
+.pt-pair .pt-bar-you { background: var(--pt-you); }
+.pt-mlabel { position: absolute; top: calc(100% + 7px); left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--muted); white-space: nowrap; }
+@media (max-width: 640px) { .pt-month:nth-child(even) .pt-mlabel { visibility: hidden; } }
+.pt-tip { position: absolute; top: 0; transform: translateX(-50%); display: grid; gap: 2px; padding: 8px 10px; border-radius: var(--r-s); background: var(--panel-solid); border: 1px solid var(--line-2); box-shadow: 0 6px 20px rgba(0, 0, 0, .12); font-size: 12px; pointer-events: none; white-space: nowrap; z-index: 3; }
+.pt-tip[hidden] { display: none; } /* display: grid above beats the browser's own [hidden]: the empty tip showed as a small hollow circle */
+.pt-as-table { margin-top: 4px; }
 .pt-as-table summary { cursor: pointer; color: var(--text-2); }
 
 .pt-years { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; max-width: 520px; }
@@ -65,3 +73,80 @@
 .pt-gap-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
 
 @media (forced-colors: active) { .pt-bar-them, .pt-bar-you, .pt-key { forced-color-adjust: none; } }
+
+
+/* Tables of a few short columns stay narrow, so each number sits next to its label. */
+.pt-narrow { max-width: 760px; }
+.pt-vs.pt-narrow td.c, .pt-vs.pt-narrow th.c { width: 140px; }
+.pt-vs th[scope="row"] .second { display: block; font-weight: 400; }
+.pt-lead { margin: 0 0 12px; font-size: 14px; }
+.pt-note { display: flex; gap: 8px; align-items: flex-start; margin: 12px 0 0; color: var(--text-2); max-width: 760px; }
+.pt-note svg { flex: none; margin-top: 2px; }
+.pt-missing { margin-top: 14px; max-width: 760px; }
+.pt-missing h3 { margin: 0 0 4px; font-weight: 500; }
+.pt-missing .rows li { align-items: center; }
+.pt-missing .what { display: grid; gap: 3px; }
+.pt-btns { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+.pt-empty-links { display: grid; gap: 12px; max-width: 760px; }
+.pt-q { font-weight: 500; }
+#pt-questions td.pt-act { width: 1%; white-space: nowrap; text-align: end; }
+.pt-more { margin-top: 10px; display: flex; align-items: center; justify-content: flex-start; gap: 10px; flex-wrap: wrap; }
+/* Row labels in "What / You / Them" tables are th for screen readers, but they aren't column headers: not sticky, body text. */
+.pt-vs tbody th[scope="row"] { position: static; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; font-size: 13px; color: var(--text); white-space: normal; padding: 10px 12px; border-radius: 0; }
+.pt-vs tbody tr:last-child :is(th, td) { border-bottom: 0; }
+
+/* 2026-11-09: one card. The answer and the figures sit under the name, inside the header card, so the first table row
+   lands above the fold at 1440×900. */
+.cl-head .pt-answer { margin: 14px 0 0; padding: 12px 0 0; border: 0; border-top: 1px solid var(--line); border-radius: 0; background: none; }
+.cl-head .pt-answer-text { display: flex; flex-wrap: wrap; gap: 6px 10px; align-items: center; max-width: none; }
+.cl-head .pt-answer-acts { margin-top: 10px; }
+.pt-strip { display: flex; flex-wrap: wrap; gap: 8px 28px; margin: 14px 0 2px; padding-top: 12px; border-top: 1px solid var(--line); }
+.pt-fig { display: grid; gap: 2px; min-width: 0; }
+.pt-fig-lab { font-size: 12px; color: var(--text-2); }
+.pt-fig-val { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.pt-fig-val > b { font-size: 20px; line-height: 24px; font-weight: 600; letter-spacing: -.02em; }
+.pt-fig-sub { font-size: 12px; color: var(--text-2); white-space: nowrap; }
+.pt-fig-sub .pt-key { margin-right: 4px; }
+/* Four tabs always fit: on a phone the strip scrolls sideways instead of cutting the last one. */
+.pt-tabs { margin-top: 10px; }
+@media (max-width: 640px) {
+  .pt-tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .pt-tabs::-webkit-scrollbar { display: none; }
+  .pt-tabs .cp-tab { flex: none; }
+  .pt-strip { gap: 8px 18px; }
+  .pt-fig-val > b { font-size: 18px; }
+}
+/* Their site: strength and who links to them side by side when there's room, and tables fill their card. */
+.pt-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-bottom: 14px; }
+.pt-grid > .card { margin: 0; min-width: 0; }
+.pt-grid .pt-narrow, .pt-grid .pt-missing, .pt-grid .pt-note, .pt-grid .pt-empty-links, .pt-panel .pt-vs.pt-narrow { max-width: none; }
+.pt-panel .pt-vs.pt-narrow td.c, .pt-panel .pt-vs.pt-narrow th.c { width: 22%; }
+@media (max-width: 1100px) { .pt-grid { grid-template-columns: minmax(0, 1fr); } }
+.pt-few-months { margin: 0 0 4px; }
+/* 2026-11-10: the answer's buttons sit at the end of the figures' row, and the card is tighter, so the first keyword row
+   is above 600 px at 1440×900. On a narrow screen the buttons drop under the figures. */
+.cl-head { padding: 14px 18px 12px; }
+.cl-head .pt-answer { margin-top: 10px; padding-top: 10px; }
+.pt-strip { align-items: center; margin: 10px 0 0; padding-top: 10px; }
+.pt-strip .pt-answer-acts { margin: 0 0 0 auto; flex: none; }
+.cl-head + .pt-tabs { margin: 6px 0 10px; }
+.pt-panel #cl-keywords.cl-section-body { padding-top: 12px; }
+@media (max-width: 640px) { .pt-strip .pt-answer-acts { margin-left: 0; width: 100%; } }
+/* The watching chip and "Last read…" share the meta line's centre, instead of the sentence sitting a little below the chip. */
+.cl-head-meta .cl-head-watch .cl-watch { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 2px 6px; text-align: start; }
+.cl-head-meta .cl-head-watch .cl-watch .second { margin: 0; }
+/* Their site, two cards side by side: a missing number's name keeps its own line, and its button sits under it. */
+.pt-grid .pt-missing .rows li { flex-wrap: wrap; }
+.pt-grid .pt-missing .rows li .what { flex: 1 1 100%; }
+/* A long answer (French) wraps as one paragraph beside its verdict, instead of dropping whole under it. */
+.cl-head .pt-answer-text { display: block; }
+.cl-head .pt-answer-text > .status { margin-right: 10px; vertical-align: 2px; }
+/* On a phone the floating Notes button sat on the profile card's button row, beside the card's own "Notes n". One Notes per card: the one with the count. */
+@media (max-width: 640px) { body:has(#comp-body .cl-head) #nb-fab { display: none; } }
+/* A blocked site: the reading note under the name says why, once. The same sentence under the chip stays hidden at every width. */
+.cl-head-meta .cl-head-watch .cl-wrap { display: none !important; }
+/* Their site on a phone: each row is a small card, so its You and Them values use the card's full width instead of a 22% column. */
+@media (max-width: 640px) {
+  .pt-panel .pt-vs td.c, .pt-panel .pt-vs.pt-narrow td.c, .pt-vs td.c { width: 100%; }
+  .pt-vs tbody th[scope="row"] { display: block; width: 100%; padding: 6px 0 2px; }
+}

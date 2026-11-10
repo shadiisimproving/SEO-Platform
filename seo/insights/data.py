@@ -70,6 +70,7 @@ class Ctx:
     tracked: set = field(default_factory=set)
     curve: Curve = field(default_factory=Curve)
     brand_numbers: dict = field(default_factory=dict)  # brand and non-brand clicks, now and before (C11)
+    countries: list = field(default_factory=list)  # the site's target countries (collectors.gsc.target_countries), Google's alpha-3
     memo: dict = field(default_factory=dict)  # what several detectors read, worked out once per run
 
     @property
@@ -120,7 +121,24 @@ def load(engine: Engine, site_id: int) -> Ctx | None:
     ctx.brand = search.brand_words(scope)
     ctx.tracked = search.tracked(scope)
     ctx.curve = _curve(ctx)
+    from seo.collectors import gsc
+
+    ctx.countries = gsc.target_countries(engine, site_id)["countries"]
     return ctx
+
+
+def market(ctx: Ctx, start: date, end: date) -> dict[str, dict]:
+    """Queries in the site's target countries only (gsc_query_country), by query hash: what a French site's buyers see,
+    not a world average. Empty when no country is read yet."""
+    if not ctx.countries:
+        return {}
+    statement = text(
+        "SELECT query_hash k, SUM(clicks) c, SUM(impressions) i, SUM(position * impressions) w FROM gsc_query_country "
+        "WHERE site_id = :s AND country IN :countries AND day BETWEEN :a AND :b AND day NOT IN :skip GROUP BY query_hash"
+    ).bindparams(bindparam("countries", expanding=True), bindparam("skip", expanding=True))
+    with ctx.engine.connect() as conn:
+        rows = conn.execute(statement, {"s": ctx.site_id, "countries": ctx.countries, "a": start, "b": end, "skip": ctx.skip or [NEVER]}).mappings().all()
+    return {r["k"]: {"clicks": int(r["c"] or 0), "impressions": int(r["i"] or 0), "position": float(r["w"]) / int(r["i"]) if r["i"] and r["w"] is not None else None} for r in rows}
 
 
 def _curve(ctx: Ctx) -> Curve:

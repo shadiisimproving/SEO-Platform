@@ -55,7 +55,7 @@ CURVE_RATIO_LIMITS = (0.3, 3.0)
 
 # A4, a query losing places: on the page that ranks for it.
 QUERY_PLACES_LOST = 3
-QUERY_MIN_IMPRESSIONS = 50  # in either period
+QUERY_MIN_IMPRESSIONS = 50  # in each period: a place 'lost' from 2 impressions says nothing
 QUERY_WORST_BEFORE = 30  # it ranked at least this well before; further down, places mean little
 QUERY_KEPT = 100
 
@@ -130,6 +130,11 @@ DATA_GAP_DAYS = 28
 RESULT_GAP_DAYS = 7  # skipped just after the change, while Google takes it in
 RESULT_DAYS = 28
 RESULT_LOOK_BACK = 365  # tasks done longer ago aren't worked out any more
+
+# Clicks at stake where Google shows an AI Overview on the search: the share of the curve's clicks kept. Published studies
+# of 2025 (Ahrefs, Seer Interactive, Pew) measured 35% to 60% fewer clicks on the plain results below an AI Overview; 0.6
+# keeps to the cautious end. Only when a rank check really read the results page (never on "not captured").
+AI_OVERVIEW_SHARE = 0.6
 
 INFO_BELOW = 3  # clicks a month at stake: below this a finding is only information
 GONE_KEPT_DAYS = 90  # findings that went away are kept this long, then deleted

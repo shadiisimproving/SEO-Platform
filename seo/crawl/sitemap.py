@@ -9,13 +9,34 @@ import gzip
 import io
 from collections import deque
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from urllib.parse import urljoin, urlsplit
 
 from lxml import etree
 
 COMMON_PATHS = ("/sitemap.xml", "/sitemap_index.xml", "/wp-sitemap.xml", "/sitemap-index.xml")
-MAX_SITEMAPS = 50
-MAX_UNZIPPED_BYTES = 50_000_000
+MAX_SITEMAPS = 50  # sitemap files read in one go (each is a polite request). Past this the list says it was cut (F98)
+MAX_UNZIPPED_BYTES = 50_000_000  # Google's own limit for one sitemap
+MAX_SITEMAP_BYTES = 20_000_000  # one file as sent. A page is held to 2 MB; a sitemap of 50,000 addresses is bigger (F98)
+
+
+def parse_lastmod(value: str | None) -> datetime | None:
+    """A sitemap date, once, in UTC: "2026-11-03", "2026-11-03T10:00:00+01:00", or the "Tue, 03 Feb 2015" some sites send.
+    None when it can't be read, so it's never compared as text (F128)."""
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    try:
+        found = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        try:
+            found = parsedate_to_datetime(raw)
+        except (TypeError, ValueError, IndexError):
+            return None
+    if found is None:
+        return None
+    return found.replace(tzinfo=timezone.utc) if found.tzinfo is None else found.astimezone(timezone.utc)
 
 
 @dataclass
@@ -23,13 +44,19 @@ class Entry:
     url: str
     lastmod: str | None = None
 
+    @property
+    def lastmod_at(self) -> datetime | None:
+        return parse_lastmod(self.lastmod)
+
 
 @dataclass
 class SitemapResult:
     entries: list[Entry] = field(default_factory=list)
     sources: list[str] = field(default_factory=list)
-    errors: list[str] = field(default_factory=list)
-    capped: bool = False
+    errors: list[str] = field(default_factory=list)  # sitemap files that couldn't be read: unreadable XML, too large, an error answer
+    capped: bool = False  # stopped at max_pages
+    cut: bool = False  # the list is not the whole sitemap: a file was too large or failed, or there were more files than MAX_SITEMAPS
+    problems: dict[str, str] = field(default_factory=dict)  # sitemap file -> why it wasn't read
 
 
 def parse_sitemap(xml: bytes) -> dict:
@@ -86,16 +113,23 @@ def discover(fetcher, base_url: str, max_pages: int = 5000, max_sitemaps: int = 
         queue = deque([top])
         while queue and not result.capped:
             url = queue.popleft()
-            if url in visited or len(visited) >= max_sitemaps:
+            if url in visited:
+                continue
+            if len(visited) >= max_sitemaps:
+                result.cut = True  # said, not dropped without a word
                 continue
             visited.add(url)
-            response = fetcher.get(url, any_type=True)
+            response = fetcher.get(url, any_type=True, max_bytes=MAX_SITEMAP_BYTES)
             if response.status != "ok" or response.body is None:
+                if url != top or listed:  # a common path that isn't there is only a guess that missed
+                    _problem(result, url, response.status)
                 continue
             body = _unzip(response.body)
             parsed = parse_sitemap(body) if body is not None else {"type": "error", "entries": []}
             if parsed["type"] in ("error", "unknown"):
                 result.errors.append(url)
+                result.problems[url] = "unreadable" if body is not None else "too_large"
+                result.cut = True
                 continue
             if url == top:
                 result.sources.append(top)
@@ -106,6 +140,12 @@ def discover(fetcher, base_url: str, max_pages: int = 5000, max_sitemaps: int = 
         if result.capped or (result.entries and not listed):
             break  # enough pages, or a common path worked and the others needn't be probed
     return result
+
+
+def _problem(result: SitemapResult, url: str, status: str) -> None:
+    result.errors.append(url)
+    result.problems[url] = status
+    result.cut = True
 
 
 def _take(parsed: dict, result: SitemapResult, seen: set[str], own_host: str, max_pages: int) -> None:

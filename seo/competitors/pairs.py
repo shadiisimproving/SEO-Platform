@@ -168,8 +168,10 @@ def _page_facts(page: dict | None) -> dict | None:
     }
 
 
-def _pair_dict(conn, row: dict, checks=None) -> dict:
-    my_page, their_page = pages.load(conn, row["my_url"]), pages.load(conn, row["their_url"])
+def _pair_dict(conn, row: dict, checks=None, loaded: dict | None = None) -> dict:
+    if loaded is None:
+        loaded = pages.load_many(conn, [row["my_url"], row["their_url"]])
+    my_page, their_page = loaded.get(row["my_url"]), loaded.get(row["their_url"])
     return {
         "ranking": ranking_summary(checks, row["my_url"], row["their_url"]) if checks is not None else None,
         "my_facts": _page_facts(my_page), "their_facts": _page_facts(their_page),
@@ -197,7 +199,8 @@ def list_pairs(engine: Engine, site_id: int, competitor_id: int | None = None, i
             ),
             {"s": site_id, "c": competitor_id},
         ).mappings().all()
-        return [_pair_dict(conn, dict(r), checks) for r in rows]
+        loaded = pages.load_many(conn, [u for r in rows for u in (r["my_url"], r["their_url"])])  # every pair's pages at once (F77)
+        return [_pair_dict(conn, dict(r), checks, loaded) for r in rows]
 
 
 def create_pair(engine: Engine, site_id: int, competitor_id: int, my_url: str, their_url: str) -> dict:

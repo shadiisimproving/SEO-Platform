@@ -174,8 +174,13 @@ def test_refuses_to_run_on_a_mismatched_schema(engine, tmp_path):
     ran = []
     with engine.connect() as conn:
         head = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+    from alembic.script import ScriptDirectory
+
+    from seo.core.schema import _alembic_config
+
+    older = ScriptDirectory.from_config(_alembic_config()).get_revision("head").down_revision  # an unknown one counts as newer
     with engine.begin() as conn:
-        conn.execute(text("UPDATE alembic_version SET version_num='0000old'"))
+        conn.execute(text("UPDATE alembic_version SET version_num=:r"), {"r": older})
     try:
         result = tick(engine, "crawl", handlers={"ok": lambda j, e: ran.append(1)}, lock_dir=tmp_path)
     finally:

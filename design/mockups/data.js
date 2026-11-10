@@ -35,7 +35,7 @@ window.FR = {
   "Refreshing": "Actualisation", "out of credits, continuing with": "sans crédits, on continue avec", "saved": "enregistrés", "Stop": "Arrêter", "Stopped": "Arrêté", "Finished": "Terminé",
   "Results": "Résultats", "Other locations": "Autres lieux", "Recheck": "Revérifier", "Check": "Vérifier", "never": "jamais", "Not compared with France": "Non comparé à la France", "Checked": "Relevé", "Position": "Position", "Status": "État", "Differs by": "Écart de",
   "Position over time": "Position dans le temps", "1 at the top; each dot is one real check": "1 en haut ; chaque point est un relevé réel", "Table view": "Vue tableau", "Chart view": "Vue graphique", "Competitors on this page": "Concurrents sur cette page", "AI Overview": "Aperçu IA", "average": "moyenne", "Date": "Date",
-  "Close": "Fermer", "Save": "Enregistrer", "Add backlink": "Ajouter un backlink", "Total": "Total", "Live": "Actifs", "Lost": "Perdus", "New": "Nouveaux", "Visits": "Visites", "Leads": "Demandes",
+  "Close": "Fermer", "Save": "Enregistrer", "Add backlink": "Ajouter un backlink", "Total": "Total", "Live": "Actifs", "Lost": "Perdus", "New": "Nouveaux", "Visits": "Visites", "Leads": "Leads",
   "All backlinks": "Tous les backlinks", "Mediators": "Intermédiaires", "Found but never logged": "Trouvés mais jamais saisis", "Source page": "Page source", "Target": "Cible", "Authority": "Autorité", "Cost": "Coût", "Cost per visit": "Coût par visite", "Mediator": "Intermédiaire", "Owner": "Responsable",
   "lost this week": "perdus cette semaine", "Live ": "Actif", "Lost ": "Perdu", "Nofollow": "Nofollow",
   "Our site": "Notre site", "Target page": "Page cible", "Anchor text": "Texte d'ancre", "Paste the link as placed": "Coller le lien tel que placé", "UTM in this link?": "UTM dans ce lien ?", "Yes": "Oui", "No": "Non", "Source": "Source", "Medium": "Support", "Campaign": "Campagne",
@@ -245,7 +245,7 @@ window.CONNECTIONS = [
     ] },
   { id: "anthropic", group: "extra", name: "Anthropic", logo: "anthropic", desc: "Claude for Search insights: explanations, new titles, content briefs and FAQs", status: "off", price: "Pay as you go, a few cents an answer", limit: "Your monthly cap in Settings → AI", auth: "key", sites: "all", url: "https://platform.claude.com/settings/keys",
     note: "Off until you paste a key, and used only by sites set to Claude under AI. Only a click asks, each answer is kept, and nothing is sent once the month's cap is reached.",
-    risk: "It sends the numbers Search Console gave for that insight, and the page's title and headings, to Anthropic. Nothing about your leads is sent.",
+    risk: "Only for a site you set to Claude under Settings → AI: it sends the numbers Search Console gave for that insight (queries, page addresses, clicks), and the page's title and headings, to Anthropic. Nothing about your leads is sent.",
     steps: [
       { title: "Create an account", text: "Create an account in the Claude Console and add a little credit.", url: "https://platform.claude.com/", link: "Open the Claude Console" },
       { title: "Create the key", text: "Open API keys and create a key. You can give its workspace a spending limit too.", url: "https://platform.claude.com/settings/keys", link: "Open API keys" },
@@ -253,11 +253,19 @@ window.CONNECTIONS = [
     ] },
   { id: "openrouter", group: "extra", name: "OpenRouter", logo: "openrouter", desc: "Plain-language summaries of competitors' changes", status: "off", price: "Free", limit: "50 requests a day, 20 a minute", auth: "key", sites: "all", url: "https://openrouter.ai/keys",
     note: "Off until you paste a key. Only a click uses a request, and each answer is kept.",
-    risk: "It sends the competitor's public page text to OpenRouter, and free models may keep what they're sent. Nothing about your own sites or leads is sent.",
+    risk: "Competitor summaries send the competitor's public page text. AI on Search insights sends your site's queries, page addresses and clicks, but only for a site you set to OpenRouter under Settings → AI (no site is, until you choose). Free models may keep what they're sent. Nothing about your leads is sent.",
     steps: [
       { title: "Create an account", text: "Create a free OpenRouter account. No card is needed.", url: "https://openrouter.ai/", link: "Open OpenRouter" },
       { title: "Create the key", text: "Open Keys and create a key. Give it a credit limit of 0 if you want to be sure it can't spend.", url: "https://openrouter.ai/keys", link: "Open Keys" },
       { title: "Paste it here", text: "Paste it here, press Test, then Save. A Summarise with AI button appears on competitors' changes." },
+    ] },
+  { id: "firecrawl", group: "extra", name: "Firecrawl", logo: "firecrawl", desc: "Backup reader for competitor sites the app can't read itself", status: "off", price: "Free plan, then from $16 a month", limit: "1 credit a page read, 1 credit a page list", auth: "key", sites: "all", url: "https://www.firecrawl.dev/app/api-keys",
+    note: "Off until you paste a key. It never runs by itself: a competitor's page shows what it would cost, and it only runs when you press the button. At most 50 pages a click.",
+    risk: "It sends the competitor's page addresses to Firecrawl, which reads them for you. Nothing about your own sites or leads is sent.",
+    steps: [
+      { title: "Create an account", text: "Create a Firecrawl account. The free plan has credits each month, and no card is needed.", url: "https://www.firecrawl.dev/signin", link: "Open Firecrawl" },
+      { title: "Copy the key", text: "Open API Keys and copy your key. It starts with fc-.", url: "https://www.firecrawl.dev/app/api-keys", link: "Open API Keys" },
+      { title: "Paste it here", text: "Paste it here, press Test, then Save. Test shows your credits and costs nothing." },
     ] },
   { id: "cloudflare", group: "extra", name: "Cloudflare Radar", logo: "cloudflare", desc: "Domain popularity bucket", status: "off", price: "No price listed", limit: "1,200 requests per 5 minutes", auth: "key", sites: "all", url: "https://dash.cloudflare.com/profile/api-tokens",
     steps: [

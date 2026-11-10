@@ -1,4 +1,4 @@
-// Adding many competitors at once: from Summary the first time (All my sites, so it asks which site), and from My competitors.
+// Adding many competitors at once: from Competitors the first time (All my sites, so it asks which site), and from one site's Competitors tab (Summary and My competitors were merged on 2026-11-10).
 // Run against an empty world: DB_NAME_TEST=test_x_test .venv/bin/python tests/ui/app_server.py --port 8247 --empty
 const { open } = require("./pw.cjs");
 const fs = require("fs");
@@ -47,11 +47,11 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   // Esc keeps the draft; then the Summary behind shows the competitors.
   await page.keyboard.press("Escape"); await page.waitForTimeout(1500);
   await page.screenshot({ path: OUT + "4-summary-after.png" });
-  check("Summary is no longer empty", (await page.locator("#comp-body #cl-add-open").count()) === 0);
+  check("Summary is no longer empty", (await page.locator("#comp-body [data-cl-go-find]").count()) === 0 && (await page.locator("#cs-rivals-table tbody tr").count()) === 3, await page.locator("#cs-rivals-table tbody tr").count()); // since the merge the table's own head carries "Add competitors", so the empty box is told by its Find button
 
   // My competitors, one site: no site question, one address keeps the single-add toast with Open.
   await page.selectOption("#comp-site", String(one.id)); await settle();
-  await page.click('[data-comp-tab="list"]'); await settle();
+  await page.click('[data-comp-tab="summary"]'); await settle();
   await page.click("#cl-add-open"); await page.waitForSelector("#cl-add-address");
   check("no site question for one site", (await page.locator("#cl-add-site").count()) === 0);
   await page.fill("#cl-add-address", `solo-${RUN}.example`);
@@ -61,7 +61,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await settle();
   await page.screenshot({ path: OUT + "5-list-one-added.png" });
   check("panel closed after a clean add", (await page.locator("#cl-add-address").count()) === 0);
-  check("it's in the list", (await page.locator(`#cl-table >> text=solo-${RUN}.example`).count()) > 0);
+  check("it's in the list", (await page.locator(`#cs-rivals-table >> text=solo-${RUN}.example`).count()) > 0);
 
   // Pasting only ones already there says so and adds nothing.
   await page.click("#cl-add-open"); await page.waitForSelector("#cl-add-address");

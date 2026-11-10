@@ -42,6 +42,10 @@ def add_site():
     body = _json_body({"address", "kind"})
     site = service.add_site(_engine(), body.get("address"), body.get("kind"), is_allowed=current_app.config["URL_ALLOWED"])
     logos.queue_for(_engine(), [site["host"]])  # its icon, for the site menu, read later by the crawl lane
+    if site["kind"] == service.OWN:
+        from seo.competitors import crawl  # my pages are read as soon as the site is added, not at the nightly run
+
+        crawl.queue_own_if_never_read(_engine(), site["id"])
     return jsonify(site), 201
 
 

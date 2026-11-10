@@ -101,7 +101,7 @@ def rivals(engine: Engine, site_id: int | None = None) -> dict:
         sites = _sites(conn, site_id)
         tracked = _tracked_by(conn, sites)
         found = _rivals(conn, sites)
-        crawls = {r["id"]: profile._crawl_state(conn, r["id"]) for r in found}
+        crawls = profile.crawl_states(conn, [r["id"] for r in found])
         edits = profile.edits_last_30_days(conn)
     hosts = {s["id"]: s["host"] for s in sites}
     checks = store.one_per_keyword(store.latest_checks_many(engine, list(hosts)))
@@ -179,15 +179,21 @@ def moves(engine: Engine, site_id: int | None = None) -> dict:
         sites = _sites(conn, site_id)
         tracked = _tracked_by(conn, sites)
         found = _rivals(conn, sites)
-        crawls = {r["id"]: profile._crawl_state(conn, r["id"]) for r in found}
+        crawls = profile.crawl_states(conn, [r["id"] for r in found])
         events: list[dict] = []
         page_changes = 0
-        for rival in found:
-            recent = {"h": rival["host"], "days": MOVE_DAYS}
-            where = "FROM change_events e JOIN pages p ON p.id = e.page_id JOIN domains d ON d.id = e.domain_id WHERE d.host = :h AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL :days DAY"
-            page_changes += conn.execute(text(f"SELECT COUNT(*) {where}"), recent).scalar_one()
-            changes = conn.execute(text(f"SELECT e.id, e.kind, e.before_value, e.after_value, e.detected_at, e.summaries, p.url {where} ORDER BY e.id DESC LIMIT :n"), {**recent, "n": MOVE_ROWS}).mappings().all()
-            events += [{"rival": rival, "id": r["id"], "kind": r["kind"], "at": _iso(r["detected_at"]), "url": r["url"], "before": r["before_value"], "after": r["after_value"], "summaries": json.loads(r["summaries"]) if isinstance(r["summaries"], str) else r["summaries"]} for r in changes]
+        by_host = {rival["host"].lower(): rival for rival in found}
+        if by_host:
+            # Every rival at once (F85): only the newest MOVE_ROWS can be shown, so those are all that is read.
+            names = {f"h{n}": host for n, host in enumerate(by_host)}
+            recent = {**names, "days": MOVE_DAYS}
+            where = (
+                "FROM change_events e JOIN pages p ON p.id = e.page_id JOIN domains d ON d.id = e.domain_id "
+                f"WHERE d.host IN ({','.join(':' + k for k in names)}) AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL :days DAY"
+            )
+            page_changes = conn.execute(text(f"SELECT COUNT(*) {where}"), recent).scalar_one()
+            changes = conn.execute(text(f"SELECT e.id, e.kind, e.before_value, e.after_value, e.detected_at, e.summaries, p.url, d.host {where} ORDER BY e.detected_at DESC, e.id DESC LIMIT :n"), {**recent, "n": MOVE_ROWS}).mappings().all()
+            events += [{"rival": by_host[r["host"].lower()], "id": r["id"], "kind": r["kind"], "at": _iso(r["detected_at"]), "url": r["url"], "before": r["before_value"], "after": r["after_value"], "summaries": json.loads(r["summaries"]) if isinstance(r["summaries"], str) else r["summaries"]} for r in changes if r["host"].lower() in by_host]
         cutoff = conn.execute(text("SELECT UTC_TIMESTAMP(3) - INTERVAL :days DAY"), {"days": MOVE_DAYS}).scalar_one()
     history = store.history_many(engine, [s["id"] for s in sites])
     start = _iso(cutoff)

@@ -1,6 +1,7 @@
 """The optional extras. Each is written from its documentation and tested on a fake: none has run on a real key yet.
 
-Moz only ever runs on domains someone marked important, from a button, and never by itself.
+Moz and Cloudflare run on the Important domains list. Since 2026-11-09 the owner wants every website on it: my own sites
+and each competitor that's On are added and looked up once a month by `seo.extras.auto`, within Moz's free rows.
 """
 from __future__ import annotations
 
@@ -86,12 +87,23 @@ def fetch_moz(engine: Engine, domains: list | None = None) -> dict:
     skipped = [d for d in waiting if d in paused]
     waiting = [d for d in waiting if d not in paused]
     if domains is not None:
-        wanted = {clean_domain(d) for d in domains}
-        waiting = [d for d in waiting if d in wanted]
-        skipped = [d for d in skipped if d in wanted]
+        order = {d: n for n, d in enumerate(dict.fromkeys(clean_domain(d) for d in domains))}
+        waiting = sorted((d for d in waiting if d in order), key=order.get)  # in the order asked: auto puts my own sites first
+        skipped = [d for d in skipped if d in order]
     left = max(0, MOZ_FREE_ROWS - moz_rows_used(engine))
     done, failed = 0, None
     for domain in waiting[:left]:
+        # Claimed before the call (F79): a profile click and the nightly job at the same moment fetch it once, and a
+        # call that dies half-way still counts as this month's row. Only a clear refusal gives the row back.
+        with engine.begin() as conn:
+            before = conn.execute(text("SELECT fetched_at FROM moz_metrics WHERE target = :t"), {"t": domain}).scalar()
+            claimed = conn.execute(
+                text("UPDATE moz_metrics SET fetched_at = UTC_TIMESTAMP(3) WHERE target = :t AND (fetched_at IS NULL OR fetched_at < DATE_FORMAT(UTC_DATE(), '%Y-%m-01'))"),
+                {"t": domain},
+            ).rowcount
+        if not claimed:
+            continue  # someone else is fetching it right now
+        give_back = lambda: _unclaim(engine, domain, before)  # noqa: E731
         try:
             reply = http.request(
                 "POST", MOZ_URL, "Moz", headers={"x-moz-token": key},
@@ -99,10 +111,13 @@ def fetch_moz(engine: Engine, domains: list | None = None) -> dict:
             ).json()
         except SourceError as exc:
             failed = str(exc)
+            if exc.kind in ("auth", "quota"):  # refused before anything was looked up
+                give_back()
             sources.note_app_key(engine, "moz", failed)
             break
         if isinstance(reply, dict) and reply.get("error"):
             failed = str(reply["error"].get("message") if isinstance(reply["error"], dict) else reply["error"])[:300]
+            give_back()
             break
         metrics = ((reply.get("result") or reply).get("site_metrics") or {}) if isinstance(reply, dict) else {}
         with engine.begin() as conn:
@@ -116,12 +131,22 @@ def fetch_moz(engine: Engine, domains: list | None = None) -> dict:
     return {**list_important(engine), "fetched": done, "held_back": max(0, len(waiting) - left), "skipped_competitors": len(skipped), "error": failed}
 
 
-def fetch_popularity(engine: Engine) -> dict:
+def _unclaim(engine: Engine, domain: str, before) -> None:
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE moz_metrics SET fetched_at = :b WHERE target = :t"), {"t": domain, "b": before})
+
+
+def fetch_popularity(engine: Engine, only: list | None = None, stale_only: bool = False) -> dict:
+    """Cloudflare's rank bucket for each important domain. `only` narrows it; `stale_only` skips what was read this month."""
     key = sources.app_key(engine, "cloudflare")
     if not key:
         raise Refused("Connect Cloudflare Radar in Settings first.")
+    stale = " AND (popularity_at IS NULL OR popularity_at < DATE_FORMAT(UTC_DATE(), '%Y-%m-01'))" if stale_only else ""
     with engine.connect() as conn:
-        domains = [row[0] for row in conn.execute(text("SELECT target FROM moz_metrics WHERE important = 1")).all()]
+        domains = [row[0] for row in conn.execute(text(f"SELECT target FROM moz_metrics WHERE important = 1{stale} ORDER BY created_at")).all()]
+    if only is not None:
+        wanted = {clean_domain(d) for d in only}
+        domains = [d for d in domains if d in wanted]
     failed = None
     for domain in domains:
         try:

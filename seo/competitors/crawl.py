@@ -13,6 +13,7 @@ lists has been tried.
 from __future__ import annotations
 
 import time
+from datetime import date, datetime
 from urllib.parse import urljoin
 
 from lxml import etree, html as lxml_html
@@ -21,6 +22,7 @@ from sqlalchemy import Engine, text
 from seo.competitors import pages, tracking
 from seo.core import budget
 from seo.crawl import sitemap, store as crawl_store
+from seo.crawl.fetch import FetchResult
 from seo.links import service as links_service
 from seo.links.checker import extract_links
 from seo.links.urls import page_key
@@ -101,8 +103,9 @@ def _finish(engine: Engine, competitor_id: int, status: str, message: str | None
         conn.execute(text(f"UPDATE competitor_crawls SET {clause}, finished_at = UTC_TIMESTAMP(3) WHERE competitor_id = :c"), {**values, "c": competitor_id})
 
 
-def _discover(fetcher, start_url: str, host: str, charge) -> tuple[dict[str, str | None], str, bool]:
-    """What the site lists itself. Returns address -> sitemap date, how the start page answered, and whether a sitemap listed everything."""
+def _discover(fetcher, start_url: str, host: str, charge) -> tuple[dict[str, str | None], str, bool, str, bool]:
+    """What the site lists itself. Returns address -> sitemap date, how the start page answered, whether a sitemap listed
+    everything, where the list came from (sitemap, feed or links), and whether the sitemap had more than MAX_DISCOVERED pages."""
 
     def stay_on(url: str) -> bool:
         return on_host(host_and_domain(url)[0], host)
@@ -115,6 +118,7 @@ def _discover(fetcher, start_url: str, host: str, charge) -> tuple[dict[str, str
         if normal:
             urls[normal] = entry.lastmod
     complete_list = bool(urls) and not found.capped
+    source = "sitemap" if urls else "links"
     front = fetcher.get(start_url, stay_on=stay_on)
     charge()
     if front.status == "ok" and front.body:
@@ -127,17 +131,55 @@ def _discover(fetcher, start_url: str, host: str, charge) -> tuple[dict[str, str
                     normal = canonical_url(url)
                     if normal and stay_on(normal):
                         urls.setdefault(normal, None)
+                        if source == "links":
+                            source = "feed"
         if not urls:  # no sitemap and no feed: follow the start page's own links
             for link in extract_links(front.body, base):
                 normal = canonical_url(link)
                 if normal and stay_on(normal):
                     urls.setdefault(normal, None)
     urls.setdefault(canonical_url(start_url), None)
-    return urls, front.status, complete_list
+    return urls, front.status, complete_list, source, bool(found.capped)
 
 
-def _sitemap_date_is_newer(lastmod: str | None, checked_at) -> bool:
-    return bool(lastmod and checked_at and lastmod.strip()[:10] > checked_at.strftime("%Y-%m-%d"))
+SAME_DATE_SHARE = 0.8  # when this share of a sitemap's dated pages carry one day, the dates say nothing (F62)
+SAME_DATE_MIN = 20
+OTHERS_SHARE = 3  # at least a third of the day's reads go to pages the sitemap's dates don't point at, when there are any
+
+
+def _lastmod(value: str | None) -> datetime | date | None:
+    """A sitemap date read once (F128): W3C/ISO as the protocol says, or the e-mail form some sites write ("Tue, 03 Feb 2015").
+    A date with a time is a moment in UTC; a plain day stays a day. Anything else is no date."""
+    raw = (value or "").strip()
+    if not raw:
+        return None
+    if len(raw) == 10:
+        try:
+            return date.fromisoformat(raw)
+        except ValueError:
+            return None
+    moment = sitemap.parse_lastmod(raw)  # aware, in UTC; None when it can't be read
+    return moment.replace(tzinfo=None) if moment else None
+
+
+def _sitemap_date_is_newer(lastmod, checked_at) -> bool:
+    """A day the same as the last read's counts as newer: the edit may have come after it, and it costs one read at most,
+    since the next read is on a later day."""
+    when = _lastmod(lastmod) if isinstance(lastmod, str) or lastmod is None else lastmod
+    if when is None or not checked_at:
+        return False
+    if isinstance(when, datetime):
+        return when > checked_at
+    return when >= checked_at.date()
+
+
+def _dates_say_nothing(urls: dict[str, str | None]) -> bool:
+    """A sitemap that stamps every page with the same day (often "today") tells nothing about what changed."""
+    days = [d.date() if isinstance(d, datetime) else d for d in (_lastmod(v) for v in urls.values()) if d is not None]
+    if len(days) < SAME_DATE_MIN:
+        return False
+    most = max(days.count(day) for day in set(days))
+    return most >= SAME_DATE_SHARE * len(days)
 
 
 def _read_today(engine: Engine, domain_id: int) -> int:
@@ -153,8 +195,10 @@ def _plan(engine: Engine, competitor_id: int, site, baseline_done: bool, fetcher
     if room <= 0:
         _finish(engine, competitor_id, "ok", TODAY_DONE_TEXT)
         return None
-    urls, front_status, complete_list = _discover(fetcher, start_url, host, charge)
+    urls, front_status, complete_list, source, capped = _discover(fetcher, start_url, host, charge)
     start_page_readable = front_status in READABLE_STATUSES
+    if start_page_readable or len(urls) > 1:  # a blocked site's empty list says nothing about how it lists its pages
+        _set(engine, competitor_id, list_source=source, list_capped=capped)
     if not start_page_readable and len(urls) <= 1:
         if front_status in ("robots", "blocked"):
             _finish(engine, competitor_id, "blocked", BLOCKED_TEXT)
@@ -183,7 +227,13 @@ def _plan(engine: Engine, competitor_id: int, site, baseline_done: bool, fetcher
         ]
 
     listed = {page_key(url): (url, lastmod) for url, lastmod in urls.items()}
+    site_lists = set(listed)  # what the site itself lists, before the pages only a Firecrawl list added (those aren't news)
+    for key, row in known.items():  # pages a Firecrawl list added, which the site itself doesn't list: never tried yet
+        if row["last_status"] is None and not row["content_hash"]:
+            listed.setdefault(key, (row["url"], None))
     ranking_by_key = {page_key(url): url for url in ranking if url}
+    trust_dates = not _dates_say_nothing(urls)
+    # Each holds (when it was last read, [url, can_be_new]): the longest unread go first, so no page waits for ever (F62).
     new, due, unlisted, rest = [], [], [], []
     # Pages that rank for my keywords are always watched, and go first: a large site's first pass takes days.
     for key in dict.fromkeys([*ranking_by_key, *listed]):
@@ -194,22 +244,31 @@ def _plan(engine: Engine, competitor_id: int, site, baseline_done: bool, fetcher
         elif row["today"]:
             continue
         elif not row["content_hash"]:
-            if row["last_status"] not in SETTLED_STATUSES or row["stale"]:
-                due.append([url, False])
-        elif _sitemap_date_is_newer(lastmod, row["last_checked_at"]):
-            due.append([url, False])
+            # Never read well yet, so its first good read can still be news (F69), when the site lists it.
+            if row["last_checked_at"] is None:  # known but never tried, such as a page a Firecrawl list added: first in line
+                due.append((None, [url, key in site_lists]))
+            elif row["last_status"] not in SETTLED_STATUSES or row["stale"]:
+                rest.append((row["last_checked_at"], [url, key in site_lists]))  # tried again, but not ahead of pages with news
+        elif trust_dates and _sitemap_date_is_newer(lastmod, row["last_checked_at"]):
+            due.append((row["last_checked_at"], [url, False]))
         elif row["stale"]:
-            rest.append([url, False])
+            rest.append((row["last_checked_at"], [url, False]))
     for key, row in known.items():  # the site no longer lists these: reading them is how a removed page gets noticed
         if key in listed or key in ranking_by_key or not row["content_hash"] or row["last_status"] == "gone" or row["today"]:
             continue
         if complete_list and row["unlisted_due"]:
-            unlisted.append([row["url"], False])
+            unlisted.append((row["last_checked_at"], [row["url"], False]))
         elif row["stale"]:
-            rest.append([row["url"], False])
+            rest.append((row["last_checked_at"], [row["url"], False]))
+    oldest = lambda items: [entry for _when, entry in sorted(items, key=lambda x: x[0] or datetime.min)]  # noqa: E731
+    due, others = oldest(due), oldest(unlisted + rest)
+    after_new = max(0, room - len(new))
+    keep = min(len(others), after_new // OTHERS_SHARE) if len(due) + len(others) > after_new else len(others)
+    todo = new + due[: after_new - keep] + others[:keep]
+    todo += [entry for entry in due[after_new - keep:] + others[keep:]][: max(0, room - len(todo))]
     return {
         "part": 0,
-        "todo": (new + due + unlisted + rest)[:room],
+        "todo": todo[:room],
         "first_pass_ends": not baseline_done and len(new) <= room,
         "start_page_readable": start_page_readable,
         "known": len(listed),
@@ -245,18 +304,22 @@ def _read_pages(engine: Engine, competitor_id: int, site, plan: dict, baseline_d
         url, can_be_new = todo.pop(0)
         with engine.connect() as conn:
             before = conn.execute(text("SELECT content_hash, last_status FROM pages WHERE url_hash = :h"), {"h": pages.url_hash(url)}).mappings().first()
-        outcome = pages.read_page(engine, url, host, fetcher)
+        try:
+            outcome = pages.read_page(engine, url, host, fetcher)
+        except Exception as exc:  # noqa: BLE001 - one page failing is saved as such, so it doesn't go first again tomorrow and stop the day (F97)
+            outcome = pages.UNREADABLE
+            crawl_store.save_fetch(engine, domain_id, url, FetchResult(url=url, status=pages.UNREADABLE, error=f"{type(exc).__name__}: {exc}"[:300]), None)
         meter.charged = fetcher.requests
         read_now += 1
         plan["read"] += 1
-        if before is None and can_be_new and baseline_done and outcome == "baseline":
+        if (before is None or not before["content_hash"]) and can_be_new and baseline_done and outcome == "baseline":  # a row with no text yet is new too (F69)
             _report_event(engine, url, domain_id, "new_page")
         elif before is not None and before["content_hash"] and before["last_status"] != "gone" and outcome == "gone":
             _report_event(engine, url, domain_id, "page_gone")
         _set(engine, competitor_id, pages_read=plan["read"], pages_known=plan["known"])
 
         plan["robots"] += outcome == "robots"
-        plan["good"] += outcome in ("baseline", "changed", "unchanged", "not_modified")
+        plan["good"] += outcome in ("baseline", "changed", "unchanged", "not_modified", "firecrawl")
         plan["failures"] = plan["failures"] + 1 if outcome in ("blocked", "network_error", "server_error") else 0
         if outcome == "rate_limited":
             stop = ("ok", SLOW_DOWN_TEXT)
@@ -294,11 +357,11 @@ def run_crawl(job, engine: Engine) -> None:
     competitor_id, plan = payload.get("competitor_id"), payload.get("plan")
     with engine.connect() as conn:
         site = conn.execute(text("SELECT id, host, start_url, kind FROM sites WHERE id = :i"), {"i": competitor_id}).mappings().first()
-        if site is None or site["kind"] != links_service.COMPETITOR:
-            return
+        if site is None or site["kind"] not in (links_service.COMPETITOR, links_service.OWN):
+            return  # my own sites are read too (owner, 2026-11-09), so a profile's "You" is real
         if plan is None and conn.execute(text("SELECT 1 FROM jobs WHERE active_key LIKE :k LIMIT 1"), {"k": f"competitor:{competitor_id}:part:%"}).first():
             return  # today's reading is still going, and it carries on by itself
-        paused = not tracking.reads_pages(conn, competitor_id)
+        paused = site["kind"] == links_service.COMPETITOR and not tracking.reads_pages(conn, competitor_id)
     if paused:
         # Turned off after this job was queued: nothing is fetched, and a read that never ran stops saying it's waiting.
         with engine.begin() as conn:
@@ -331,7 +394,9 @@ def run_crawl(job, engine: Engine) -> None:
 
 
 def enqueue_due(engine: Engine) -> list[int]:
-    """Every competitor a site of mine watches, once a day. Safe to call as often as cron likes."""
+    """Every competitor a site of mine watches, and my own sites, once a day. Safe to call as often as cron likes.
+    My sites are read the same way so their pages sit beside the competitor's on a profile; the row in
+    competitor_crawls is keyed by the site's id whatever its kind."""
     with engine.connect() as conn:
         due = [
             row[0]
@@ -342,6 +407,36 @@ def enqueue_due(engine: Engine) -> list[int]:
                 )
             )
         ]
+        due += [
+            row[0]
+            for row in conn.execute(
+                text(
+                    "SELECT s.id FROM sites s LEFT JOIN competitor_crawls cc ON cc.competitor_id = s.id "
+                    "WHERE s.kind = 'own' AND (cc.finished_at IS NULL OR cc.finished_at < UTC_DATE()) ORDER BY s.id"
+                )
+            )
+        ]
     for competitor_id in due:
         queue.enqueue(engine, LANE, JOB_KIND, payload={"competitor_id": competitor_id}, dedupe_key=f"competitor:{competitor_id}", max_attempts=2)
     return due
+
+
+def queue_own_if_never_read(engine: Engine, site_id: int) -> bool:
+    """When a competitor is added, my site is read now if it never was, so the profile can compare at once."""
+    with engine.connect() as conn:
+        kind = conn.execute(text("SELECT kind FROM sites WHERE id = :s"), {"s": site_id}).scalar()
+        read = conn.execute(text("SELECT 1 FROM competitor_crawls WHERE competitor_id = :s"), {"s": site_id}).first()
+    if kind != links_service.OWN or read:
+        return False
+    with engine.begin() as conn:
+        conn.execute(text("INSERT IGNORE INTO competitor_crawls (competitor_id, status) VALUES (:s, 'queued')"), {"s": site_id})
+    queue.enqueue(engine, LANE, JOB_KIND, payload={"competitor_id": site_id}, dedupe_key=f"competitor:{site_id}", max_attempts=2)
+    return True
+
+
+def own_count(engine: Engine, site_ids: list[int]) -> int:
+    """How many of these are my own sites, for the nightly log line."""
+    if not site_ids:
+        return 0
+    with engine.connect() as conn:
+        return int(conn.execute(text(f"SELECT COUNT(*) FROM sites WHERE kind = 'own' AND id IN ({','.join(str(int(i)) for i in site_ids)})")).scalar())

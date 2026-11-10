@@ -59,6 +59,7 @@ REASONS = {
     "many_outside_links": "Its home page is mostly links to other sites",
     "almost_empty": "Almost nothing on its home page",
     "noindex": "Its home page is hidden from search engines",
+    "unreadable": "Its home page couldn't be read",
     "my_choice": "You marked it as spam",
 }
 
@@ -201,8 +202,11 @@ def run_checks(job, engine: Engine) -> None:
                 if time.monotonic() - started >= CHUNK_SECONDS or not budget.has_room(engine):
                     break
                 seen.add(domain)
-                result, fields = read_home_page(domain, fetcher, lambda n: budget.charge(engine, n))
-                quality, reason, note = judge_page(result, fields, big_site)
+                try:
+                    result, fields = read_home_page(domain, fetcher, lambda n: budget.charge(engine, n))
+                    quality, reason, note = judge_page(result, fields, big_site)
+                except Exception:  # noqa: BLE001 - one odd home page counts as an attempt, and the next domain carries on (F100)
+                    fields, quality, reason, note = None, "retry", "unreadable", None
                 title = (fields.title or "")[:300] if fields else None
                 with engine.begin() as conn:
                     if quality == "retry":

@@ -205,6 +205,22 @@ def _ga4_rows(scope: Scope, start, end):
     )
 
 
+def _trim_to_data(scope: Scope) -> dict:
+    """A period that runs past GA4's last day (GA4 is read through yesterday) is cut back to that day, and the period it's
+    compared with is cut to the same number of days, so "Last 7 days" never compares 6 days of data with 7 (code review F112)."""
+    found = scope.fetch("SELECT MAX(day) d FROM ga4_source_daily WHERE site_id IN :sites")
+    last = found[0]["d"] if found else None
+    trimmed = bool(last and scope.start <= last < scope.end)
+    if trimmed:
+        scope.end = last
+        if scope.has_compare:
+            scope.compare_end = min(scope.compare_end, scope.compare_start + (scope.end - scope.start))
+    return {
+        "from": scope.start.isoformat(), "to": scope.end.isoformat(), "trimmed": trimmed,
+        "compare_from": scope.compare_start.isoformat() if scope.has_compare else None, "compare_to": scope.compare_end.isoformat() if scope.has_compare else None,
+    }
+
+
 def _hidden(scope: Scope, source: str = "ga4") -> bool:
     row = scope.fetch(f"SELECT MAX(hid_rows) h FROM coverage WHERE site_id IN :sites AND source = '{source}' AND day BETWEEN :a AND :b")
     return bool(row and row[0]["h"])
@@ -215,6 +231,7 @@ def _hidden(scope: Scope, source: str = "ga4") -> bool:
 
 def channels(scope: Scope) -> dict:
     status = _sources_state(scope, "ga4")
+    period = _trim_to_data(scope)
     namer = _channel_namer(scope.engine, scope.site_ids)
     totals: dict[str, dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0})
     per_day: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
@@ -258,7 +275,7 @@ def channels(scope: Scope) -> dict:
         "series_names": top + (["Other"] if len(order) > TOP_SERIES else []),
         "referrers": [{"domain": name, "sessions": item["sessions"], "leads": round(item["leads"], 2)} for name, item in sorted(referrers.items(), key=lambda pair: -pair[1]["sessions"])[:20]],
         "rules": rules(scope.engine, "channel", scope.site_ids),
-        "hid_rows": _hidden(scope),
+        "hid_rows": _hidden(scope), "period": period,
     }
 
 
@@ -373,6 +390,7 @@ def content(scope: Scope, limit: int = 500) -> dict:
 
 def ai_search(scope: Scope) -> dict:
     status = _sources_state(scope, "ga4")
+    period = _trim_to_data(scope)
     domains = _ai_domains(scope.engine, scope.site_ids)
     per_source: dict[str, dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0})
     per_day: dict[str, int] = defaultdict(int)
@@ -398,8 +416,18 @@ def ai_search(scope: Scope) -> dict:
         "sources": [{"source": name, "sessions": item["sessions"], "leads": round(item["leads"], 2)} for name, item in sorted(per_source.items(), key=lambda pair: -pair[1]["sessions"])],
         "series": [{"day": day, "sessions": per_day[day]} for day in sorted(per_day)],
         "pages": [{"host": host, "path": name, "sessions": count} for (host, name), count in sorted(pages.items(), key=lambda pair: -pair[1])[:25]],
-        "domains": sorted(domains), "hid_rows": _hidden(scope),
+        "domains": sorted(domains), "hid_rows": _hidden(scope), "period": period,
+        # Google's own AI report (AI Overviews and AI Mode impressions), when one was uploaded: totals only; the pages,
+        # countries and days are at /api/search/ai-report. Its period is the file's, not the one picked on the screen.
+        "google_ai": _google_ai(scope),
     }
+
+
+def _google_ai(scope: Scope) -> dict:
+    from seo.imports import gsc_ai_report
+
+    sites = gsc_ai_report.latest(scope.engine, scope.site_ids, full=False)["sites"]
+    return {"sites": sites, "impressions": sum(s["impressions"] or 0 for s in sites) if sites else None}
 
 
 # ---- Google Ads ----------------------------------------------------------------------------------

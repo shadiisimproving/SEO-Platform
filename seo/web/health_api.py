@@ -4,6 +4,7 @@ from __future__ import annotations
 from flask import Blueprint, current_app, jsonify, request
 
 from seo.core.errors import Refused
+from seo.health import indexing as page_indexing  # also registers the indexing check's job handler
 from seo.health import service
 
 health_api = Blueprint("health_api", __name__, url_prefix="/api")
@@ -39,6 +40,17 @@ def start():
         raise Refused(f"Only a site ID is accepted. This request also sent: {', '.join(sorted(request.args))}.")
     body = _body({"site_id"})
     return jsonify(audit_id=service.start(_engine(), body.get("site_id"))), 202
+
+
+@health_api.get("/health/sites/<int:site_id>/indexing")
+def indexing(site_id: int):
+    return jsonify(page_indexing.summary(_engine(), site_id))
+
+
+@health_api.post("/health/sites/<int:site_id>/indexing")
+def indexing_now(site_id: int):
+    page_indexing.summary(_engine(), site_id)  # refuses a site that isn't mine
+    return jsonify(queued=page_indexing.enqueue(_engine(), site_id)), 202
 
 
 @health_api.get("/health/sites/<int:site_id>/audits")

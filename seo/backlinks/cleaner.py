@@ -71,6 +71,23 @@ MULTI_SUFFIXES = frozenset({
     "gouv.fr", "asso.fr", "nom.fr", "com.fr", "tm.fr",
 })
 
+# Shared hosting platforms: each subdomain belongs to someone else, so the subdomain is the site (F105). Without this,
+# one spam blog on blogspot.com files every blogspot link under one domain, and the disavow file disavows the platform.
+# Keep in step with PLATFORM_SUFFIXES in design/mockups/cleaner.js.
+PLATFORM_SUFFIXES = frozenset({
+    "blogspot.com", "blogspot.fr", "blogspot.co.uk", "blogspot.be", "blogspot.ca", "blogspot.ch", "blogspot.de", "blogspot.es", "blogspot.it", "blogspot.com.au",
+    "wordpress.com", "wpcomstaging.com", "tumblr.com", "medium.com", "substack.com", "ghost.io", "livejournal.com", "typepad.com",
+    "wixsite.com", "weebly.com", "weeblysite.com", "squarespace.com", "webflow.io", "jimdofree.com", "jimdosite.com", "jimdo.com",
+    "strikingly.com", "mystrikingly.com", "carrd.co", "godaddysites.com", "site123.me", "simplesite.com", "webnode.fr", "webnode.com",
+    "github.io", "gitlab.io", "netlify.app", "vercel.app", "pages.dev", "workers.dev", "herokuapp.com", "onrender.com", "fly.dev",
+    "firebaseapp.com", "web.app", "appspot.com", "azurewebsites.net", "cloudfront.net", "glitch.me", "neocities.org", "myshopify.com", "square.site",
+    # French platforms
+    "over-blog.com", "overblog.com", "canalblog.com", "hautetfort.com", "e-monsite.com", "unblog.fr", "eklablog.com", "skyrock.com",
+    "wifeo.com", "centerblog.net", "blog4ever.com", "free.fr", "pagesperso-orange.fr", "forumactif.com", "forumactif.org", "forumgratuit.org", "xooit.fr",
+})
+# Endings that are also a real website when nothing comes before them: www.gov.uk is a site, co.uk is not.
+SITE_SUFFIXES = frozenset({"gov.uk", "gouv.fr", "govt.nz"})
+
 # The same pattern holds in most countries, so an ending nobody listed above still works.
 _GENERIC_SECOND_LEVEL = frozenset({"com", "co", "net", "org", "edu", "gov", "ac", "gob", "gouv", "mil"})
 _PLAIN_LABEL = re.compile(r"^[a-z0-9-]+$")
@@ -288,9 +305,26 @@ def root_domain(value: str) -> str:
 
     https://blog.example.co.uk/post -> example.co.uk
     shop.example.com                -> example.com
+    https://someone.blogspot.com/p  -> someone.blogspot.com (a shared platform: the subdomain is the site)
     """
     host = hostname(value)
-    if not _usable_host(host) or _is_suffix(host):
+    if not _usable_host(host):
+        return ""
+    labels = host.split(".")
+    for platform in PLATFORM_SUFFIXES:
+        if host.endswith("." + platform):
+            return ".".join(labels[-(platform.count(".") + 2):])
+    return registrable_domain(host)
+
+
+def registrable_domain(value: str) -> str:
+    """The domain a registry knows (for its dates), shared platforms included: someone.blogspot.com -> blogspot.com."""
+    host = hostname(value)
+    if not _usable_host(host):
+        return ""
+    if host in SITE_SUFFIXES:
+        return host
+    if _is_suffix(host):
         return ""
     labels = host.split(".")
     if len(labels) >= 3 and _is_suffix(".".join(labels[-2:])):

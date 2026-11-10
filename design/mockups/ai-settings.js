@@ -1,5 +1,6 @@
 /* Settings → AI: which AI writes the words on Search insights, per site, and the monthly cap on what Claude may cost.
-   OpenRouter's free models are the default and cost nothing. Claude needs an Anthropic key (under Extras) and spends money,
+   No AI until someone picks one for a site, because an insight carries that site's own Search Console numbers (F107).
+   OpenRouter's free models cost nothing. Claude needs an Anthropic key (under Extras) and spends money,
    so what it has cost this month shows here beside the cap. The server keeps all of it (GET/PUT /api/insights/ai). */
 (() => {
   "use strict";
@@ -8,12 +9,15 @@
   window.AI_SETTINGS = A;
   const U = () => window.UI;
 
-  function load() {
-    if ((A.data && Date.now() - A.at < FRESH_MS) || A.loading || !window.COMP?.server) return;
+  /* A failed ask is stamped too, so the redraw that shows the error doesn't ask again at once: Try again does (F4). */
+  function load({ force = false } = {}) {
+    if (A.loading || !window.COMP?.server) return;
+    if (!force && A.at && Date.now() - A.at < FRESH_MS && (A.data || A.error)) return;
+    if (!force && A.error && !A.data) return; // after a failure only the Try again button asks
     A.loading = true;
     window.COMP.api("GET", "insights/ai")
       .then((d) => { A.data = d; A.error = ""; A.at = Date.now(); })
-      .catch((err) => { A.error = err.message; })
+      .catch((err) => { A.error = err.message; A.at = Date.now(); })
       .finally(() => { A.loading = false; if (U()?.state.route === "settings" && !U().$("#panel")) U().render({ keepScroll: true }); });
   }
   const money = (v) => `$${Number(v || 0).toFixed(v && v < 1 ? 4 : 2)}`;
@@ -22,11 +26,13 @@
     const { t, esc, icon } = U();
     if (!window.COMP?.server) return "";
     load();
-    const head = `<div class="card-head"><h2>${t("AI on Search insights")}</h2><div class="hint-text">${t("Only a click asks AI, and each answer is kept. AI never changes what's found or how it's ranked.")}</div></div>`;
-    if (!A.data) return `<section class="card" id="ai-settings">${head}<div class="empty"><p class="muted">${esc(A.error ? t(A.error) : t("Loading…"))}</p></div></section>`;
+    const head = `<div class="card-head"><h2>${t("AI on Search insights")}</h2><div class="hint-text">${t("Only a click asks AI, and each answer is kept. AI never changes what's found or how it's ranked.")}</div></div>
+      <p class="small ai-sends">${icon("info")}<span>${t("What is sent: for the insight you click, this site's queries, page addresses and click numbers, plus the page's title and headings. Nothing about your leads. OpenRouter's free models may keep what they're sent. With No AI, nothing leaves the app.")}</span></p>`;
+    if (!A.data) return `<section class="card" id="ai-settings">${head}${A.error ? (U().failCard ? U().failCard(A.error, { retry: "data-ai-retry" }) : `<div class="empty"><p class="muted">${esc(t(A.error))}</p><button class="btn" data-ai-retry>${t("Try again")}</button></div>`) : (U().skeleton ? U().skeleton("rows", { rows: 3 }) : `<div class="empty"><p class="muted">${t("Loading…")}</p></div>`)}</section>`;
     const d = A.data;
     const rows = d.sites.map((s) => `<li><div class="what"><div class="t" dir="auto">${esc(s.host)}</div></div>
-      <label class="ai-pick"><span class="sr">${t("AI for")} ${esc(s.host)}</span><select class="select" data-ai-site="${s.id}">
+      <label class="ai-pick"><span class="sr">${t("AI for")} ${esc(s.host)}</span><select class="select" data-ai-site="${s.id}" ${U().canAdmin && !U().canAdmin() ? `disabled title="${esc(t("Only an admin can change this."))}"` : ""}>
+        <option value="none" ${s.provider === "none" ? "selected" : ""}>${t("No AI (nothing is sent)")}</option>
         <option value="openrouter" ${s.provider === "openrouter" ? "selected" : ""}>${t("Free models (OpenRouter)")}</option>
         <option value="claude" ${s.provider === "claude" ? "selected" : ""}>${t("Claude (Anthropic key)")}</option></select></label></li>`).join("");
     const usesClaude = d.sites.some((s) => s.provider === "claude");
@@ -54,6 +60,7 @@
     if (el) save({ sites: [{ id: Number(el.dataset.aiSite), provider: el.value }] }, "AI choice saved");
   });
   document.addEventListener("click", (e) => {
+    if (e.target.closest?.("[data-ai-retry]")) { A.error = ""; load({ force: true }); U().render({ keepScroll: true }); return; }
     if (e.target.closest?.("[data-ai-save-cap]")) { save({ cap: U().$("[data-ai-cap]")?.value }, "Cap saved"); return; }
     const key = e.target.closest?.("[data-ai-key]");
     if (key) U().openConnection?.(key.dataset.aiKey, key);
@@ -65,7 +72,10 @@
     "OpenRouter isn't connected yet.": "OpenRouter n'est pas encore connecté.", "Anthropic isn't connected yet.": "Anthropic n'est pas encore connecté.", "Connect it": "Le connecter",
     "Claude this month": "Claude ce mois-ci", "answer": "réponse", "answers": "réponses", "Monthly cap, in dollars": "Plafond mensuel, en dollars", "Save the cap": "Enregistrer le plafond",
     "Claude Haiku 5.5 explains, suggests titles and writes the weekly summary. Claude Sonnet 5.5 writes content briefs and FAQs. A request that could pass the cap isn't sent.": "Claude Haiku 5.5 explique, propose des titres et écrit le résumé de la semaine. Claude Sonnet 5.5 écrit les briefs et les FAQ. Une requête qui pourrait dépasser le plafond n'est pas envoyée.",
-    "AI choice saved": "Choix de l'IA enregistré", "Cap saved": "Plafond enregistré", "The monthly cap must be a number of dollars.": "Le plafond mensuel doit être un nombre de dollars.",
+    "AI choice saved": "Choix de l'IA enregistré", "No AI (nothing is sent)": "Pas d'IA (rien n'est envoyé)", "Only an admin can change this.": "Seul un admin peut modifier ceci.",
+    "What is sent: for the insight you click, this site's queries, page addresses and click numbers, plus the page's title and headings. Nothing about your leads. OpenRouter's free models may keep what they're sent. With No AI, nothing leaves the app.": "Ce qui est envoyé : pour l'analyse sur laquelle vous cliquez, les requêtes de ce site, les adresses de pages et les nombres de clics, ainsi que le titre et les intertitres de la page. Rien sur vos leads. Les modèles gratuits d'OpenRouter peuvent garder ce qu'ils reçoivent. Avec Pas d'IA, rien ne sort de l'application.",
+    "No AI is chosen for this site yet. Pick one in Settings → AI. Nothing about the site is sent until you do.": "Aucune IA n'est choisie pour ce site. Choisissez-en une dans Réglages → IA. Rien sur le site n'est envoyé avant.",
+    "Pick No AI, OpenRouter's free models or Claude.": "Choisissez Pas d'IA, les modèles gratuits d'OpenRouter ou Claude.", "Cap saved": "Plafond enregistré", "The monthly cap must be a number of dollars.": "Le plafond mensuel doit être un nombre de dollars.",
     "The monthly cap must be between 0 and 1,000 dollars.": "Le plafond mensuel doit être entre 0 et 1 000 dollars.", "Pick OpenRouter's free models or Claude.": "Choisissez les modèles gratuits d'OpenRouter ou Claude.",
   };
   window.FR = window.FR || {};

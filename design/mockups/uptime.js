@@ -9,7 +9,7 @@
   const up = { started: false, ready: false, failed: "", sites: [], every: 15, staleAfter: 45, alertDays: 14, checking: new Set(), timers: new Map() };
 
   const WHY = {
-    never_checked: "Not checked yet. On the live site this runs by itself. On this Mac, only when you press Check now.",
+    never_checked: "Not checked yet. On the live site this runs by itself. On this Mac, only when you press Run.",
     too_old: "The last check is too old to say. Nothing has checked this site lately.",
     not_watching: "You turned off watching for this site, so nobody knows.",
     turned_away: "The site turned the app away, so this check can't tell whether it's up.",
@@ -93,7 +93,7 @@
         <span class="small sec">${s.last_checked_at ? `${t("Last check")} ${esc(ago(s.last_checked_at))}` : t("Never checked")}</span>
         <span class="end">
           <label class="opt small"><input type="checkbox" class="chk" style="margin:0" data-up-watch="${s.id}" ${s.watching ? "checked" : ""}>${t("Watch this site")}</label>
-          <button class="btn btn-small" data-up-check="${s.id}" ${busy ? "disabled" : ""}>${icon("refresh-cw", busy ? "spin" : "")}${t(busy ? "Checking…" : "Check now")}</button>
+          <button class="btn btn-small" data-up-check="${s.id}" ${busy ? "disabled" : ""}>${icon("refresh-cw", busy ? "spin" : "")}${t(busy ? "Checking…" : s.last_checked_at ? "Run again" : "Run")}</button>
         </span>
       </div>
       ${why}
@@ -109,16 +109,16 @@
 
   function view() {
     const { t, esc, icon } = UI;
-    if (up.failed) return `<div class="table-wrap"><div class="empty"><h3>${t("That didn't load")}</h3><p>${esc(t(up.failed))}</p><div style="margin-top:12px"><button type="button" class="btn" data-up-retry>${t("Try again")}</button></div></div></div>`;
-    if (!up.ready) return `<div class="card"><div class="empty"><p>${t("Loading…")}</p></div></div>`;
-    if (!up.sites.length) return `<div class="table-wrap"><div class="empty"><h3>${t("No websites added yet")}</h3><p>${t("Add your own website, then watch whether it's up.")}</p><button class="btn btn-main" id="site-add">${icon("plus")}${t("Add a website")}</button></div></div>`;
+    if (up.failed) return UI.failCard ? UI.failCard(up.failed, { onRetry: () => { up.failed = ""; up.ready = false; paint(); load(); } }) : `<div class="table-wrap"><div class="empty"><h3>${t("That didn't load")}</h3><p>${esc(t(up.failed))}</p></div></div>`;
+    if (!up.ready) return UI.skeleton ? UI.skeleton("rows", { rows: 3 }) : `<div class="card"><div class="empty"><p>${t("Loading…")}</p></div></div>`;
+    if (!up.sites.length) return `<div class="table-wrap"><div class="empty"><h3>${t("No sites added yet")}</h3><p>${t("Add your own site, then watch whether it's up.")}</p><button class="btn btn-main" id="site-add">${icon("plus")}${t("Add a site")}</button></div></div>`;
     const picked = UI.siteHostPicked();
     const shown = picked ? up.sites.filter((s) => s.host === picked) : up.sites;
-    const rule = `<p class="note up-rule">${icon("info")}<span>${t("On the live site each website is read every {every} minutes. After {stale} minutes with no check it shows as Unknown, never as Online.").replace("{every}", up.every).replace("{stale}", up.staleAfter)} ${t("Certificates and domain names warn you {days} days before they run out.").replace("{days}", up.alertDays)}</span></p>`;
+    const rule = `<p class="note up-rule">${icon("info")}<span>${t("On the live site each site is read every {every} minutes. After {stale} minutes with no check it shows as Unknown, never as Online.").replace("{every}", up.every).replace("{stale}", up.staleAfter)} ${t("Certificates and domain names warn you {days} days before they run out.").replace("{days}", up.alertDays)}</span></p>`;
     const order = { down: 0, unknown: 1, up: 2 };
     const sorted = [...shown].sort((a, b) => order[a.state] - order[b.state] || a.host.localeCompare(b.host));
     const banners = sorted.map((s) => window.HealthTest?.bannersFor?.(s.id, ["uptime_down", "ssl_expiry", "domain_expiry"]) || "").join("");
-    return rule + banners + (shown.length ? sorted.map(card).join("") : `<div class="table-wrap"><div class="empty"><p>${t("This site isn't one of your own websites.")}</p></div></div>`);
+    return rule + banners + (shown.length ? sorted.map(card).join("") : `<div class="table-wrap"><div class="empty"><p>${t("This site isn't one of your own sites.")}</p></div></div>`);
   }
 
   /* A check finishing or an alert arriving redraws this tab, and that must never wipe a date being typed or lose someone's place. */
@@ -135,12 +135,25 @@
     if (spot) box.querySelector(spot)?.focus();
   };
 
+  /* Read again when what's shown is over 2 minutes old: on coming back to the tab, and every minute while it's on screen (F120).
+     A tab opened at 9:00 must not still say "Online" at 15:00 for a site that went down at 11:00. */
+  const FRESH_MS = 120000;
+  const stale = () => up.started && !up.loading && Date.now() - (up.loadedAt || 0) > FRESH_MS;
+  const onScreen = () => document.visibilityState !== "hidden" && !!UI?.$("#up-body");
+  function keepFresh() {
+    // The shared poll pauses while the browser tab is hidden and looks again as soon as it shows.
+    const watch = () => COMP.poll(async () => { if (onScreen() && stale()) await load(); return true; }, { every: 60000, slowest: 300000, most: 24 * 3600000, onEnd: (why) => { if (why === "ceiling") watch(); } });
+    watch();
+  }
+
   async function load() {
+    up.loading = true;
     try {
       const answer = await COMP.api("GET", "uptime/sites");
       up.sites = answer.sites; up.every = answer.every_minutes; up.staleAfter = answer.unknown_after_minutes; up.alertDays = answer.alert_days;
       up.failed = "";
     } catch (err) { up.failed = err.message; }
+    up.loading = false; up.loadedAt = Date.now(); // a failure waits as long as an answer, so a slow server isn't asked without end
     up.ready = true;
     paint();
   }
@@ -195,7 +208,7 @@
       const el = e.target;
       if (!el.dataset?.upWatch) return;
       const id = Number(el.dataset.upWatch), on = el.checked;
-      COMP.api("PATCH", `uptime/sites/${id}`, { watching: on }).then((answer) => { replace(answer); UI.toast(UI.t(on ? "This website is being watched" : "No longer watching this website"), { kind: "info" }); }).catch((err) => { el.checked = !on; COMP.fail(err); });
+      COMP.api("PATCH", `uptime/sites/${id}`, { watching: on }).then((answer) => { replace(answer); UI.toast(UI.t(on ? "This site is being watched" : "No longer watching this site"), { kind: "info" }); }).catch((err) => { el.checked = !on; COMP.fail(err); });
     });
     document.addEventListener("submit", (e) => {
       const form = e.target.closest?.("[data-up-date]");
@@ -228,9 +241,9 @@
   }
 
   window.UptimeWatch = {
-    init(helpers) { UI = helpers; bind(); sampleWrites(); },
+    init(helpers) { UI = helpers; bind(); sampleWrites(); keepFresh(); },
     body: () => `<div id="up-body">${view()}</div>`,
-    after() { if (!up.started) { up.started = true; load(); } },
+    after() { if (!up.started) { up.started = true; load(); } else if (stale()) load(); },
     paint,
     openProblems: () => up.sites.filter((s) => s.state === "down").length,
   };
@@ -245,18 +258,18 @@
     "Last 30 days": "30 derniers jours", "online": "en ligne", "with an outage": "avec une panne", "not watched": "non surveillés", "Not watched": "Non surveillé", "Outage": "Panne",
     "Outages seen": "Pannes constatées", "Ended": "Terminée", "Still down": "Toujours hors ligne", "Server error": "Erreur du serveur", "Page error": "Erreur de page", "No answer": "Pas de réponse", "Too many redirects": "Trop de redirections",
     "No checks yet in the last 30 days": "Aucun contrôle sur les 30 derniers jours", "Only counts the days it was watched.": "Ne compte que les jours surveillés.", "day not watched": "jour non surveillé", "days not watched": "jours non surveillés",
-    "Last check": "Dernier contrôle", "Never checked": "Jamais contrôlé", "Watch this site": "Surveiller ce site", "Checking…": "Contrôle en cours…", "Check now": "Vérifier", "Online, last 30 days": "En ligne, 30 derniers jours",
-    "Add your own website, then watch whether it's up.": "Ajoutez votre site, puis surveillez sa disponibilité.", "This site isn't one of your own websites.": "Ce site ne fait pas partie de vos sites.",
-    "On the live site each website is read every {every} minutes. After {stale} minutes with no check it shows as Unknown, never as Online.": "Sur le site en ligne, chaque site est lu toutes les {every} minutes. Après {stale} minutes sans contrôle, il s'affiche comme Inconnu, jamais comme En ligne.",
+    "Last check": "Dernier contrôle", "Never checked": "Jamais contrôlé", "Watch this site": "Surveiller ce site", "Checking…": "Contrôle en cours…", "Run": "Lancer", "Run again": "Relancer", "Online, last 30 days": "En ligne, 30 derniers jours",
+    "Add your own site, then watch whether it's up.": "Ajoutez votre site, puis surveillez sa disponibilité.", "This site isn't one of your own sites.": "Ce site ne fait pas partie de vos sites.",
+    "On the live site each site is read every {every} minutes. After {stale} minutes with no check it shows as Unknown, never as Online.": "Sur le site en ligne, chaque site est lu toutes les {every} minutes. Après {stale} minutes sans contrôle, il s'affiche comme Inconnu, jamais comme En ligne.",
     "Certificates and domain names warn you {days} days before they run out.": "Les certificats et noms de domaine vous préviennent {days} jours avant l'expiration.",
-    "Not checked yet. On the live site this runs by itself. On this Mac, only when you press Check now.": "Pas encore contrôlé. Sur le site en ligne, cela tourne tout seul. Sur ce Mac, seulement quand vous appuyez sur Vérifier.",
+    "Not checked yet. On the live site this runs by itself. On this Mac, only when you press Run.": "Pas encore contrôlé. Sur le site en ligne, cela tourne tout seul. Sur ce Mac, seulement quand vous appuyez sur Lancer.",
     "The last check is too old to say. Nothing has checked this site lately.": "Le dernier contrôle est trop ancien pour le dire. Rien n'a contrôlé ce site récemment.", "You turned off watching for this site, so nobody knows.": "Vous avez désactivé la surveillance de ce site : personne ne le sait.",
     "The site turned the app away, so this check can't tell whether it's up.": "Le site a refusé l'application : ce contrôle ne peut pas dire s'il est en ligne.", "Its robots.txt doesn't let the app read the start page, so this check can't tell whether it's up.": "Son robots.txt ne laisse pas l'application lire la page d'accueil : ce contrôle ne peut pas dire s'il est en ligne.",
     "The site asked the app to slow down, so this check can't tell whether it's up.": "Le site a demandé à l'application de ralentir : ce contrôle ne peut pas dire s'il est en ligne.", "This computer couldn't reach the internet, so this says nothing about the site.": "Cet ordinateur n'a pas pu accéder à internet : cela ne dit rien sur le site.",
     "That address isn't a public website, so it wasn't read.": "Cette adresse n'est pas un site public : elle n'a pas été lue.", "The server answered with an error.": "Le serveur a répondu par une erreur.", "The start page answered with an error.": "La page d'accueil a répondu par une erreur.",
     "The site didn't answer, twice.": "Le site n'a pas répondu, deux fois.", "The start page redirects too many times.": "La page d'accueil redirige trop de fois.", "The check is still waiting its turn. Come back in a moment.": "Le contrôle attend son tour. Revenez dans un instant.",
     "Date cleared": "Date effacée", "Date saved": "Date enregistrée", "Choose the date first.": "Choisissez d'abord la date.", "Enter the date as YYYY-MM-DD.": "Saisissez la date au format AAAA-MM-JJ.",
-    "This website is being watched": "Ce site est surveillé", "No longer watching this website": "Ce site n'est plus surveillé", "Uptime is only watched on your own websites.": "La disponibilité n'est surveillée que sur vos propres sites.",
+    "This site is being watched": "Ce site est surveillé", "No longer watching this site": "Ce site n'est plus surveillé", "Uptime is only watched on your own websites.": "La disponibilité n'est surveillée que sur vos propres sites.",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 })();

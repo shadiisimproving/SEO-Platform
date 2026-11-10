@@ -265,6 +265,13 @@ def test_address_without_a_scheme_is_completed():
     ("shop.example.co.ae", "example.co.ae"),
     ("service-public.gouv.fr", "service-public.gouv.fr"),
     ("www.impots.gouv.fr/page", "impots.gouv.fr"),
+    # Shared platforms: the subdomain is someone's own site (F105), and a suffix that is a website is one too.
+    ("https://spammy-site.blogspot.com/p", "spammy-site.blogspot.com"),
+    ("blogspot.com", "blogspot.com"),
+    ("a.b.blogspot.co.uk", "b.blogspot.co.uk"),
+    ("me.github.io/x", "me.github.io"),
+    ("monblog.over-blog.com", "monblog.over-blog.com"),
+    ("www.gov.uk/x", "gov.uk"),
     ("exämple.fr", "exämple.fr"),
     ("مثال.ae", "مثال.ae"),
     ("", ""),

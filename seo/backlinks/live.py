@@ -9,6 +9,7 @@ A person pressing Check now has asked for an answer, so a clean miss counts at o
 from __future__ import annotations
 
 import json
+import logging
 import re
 import time
 from dataclasses import dataclass, field
@@ -34,6 +35,7 @@ MISSES_TO_LOSE = 2
 FOUND, MISSING, PAGE_GONE, UNKNOWN = "found", "missing", "page_gone", "unknown"
 SHOWN_URLS = 10
 # Not worth waiting a month to find out again.
+log = logging.getLogger(__name__)
 _SOON_REASONS = ("network", "server", "rate_limited")
 _REASONS = {"robots": "robots", "blocked": "turned_away", "rate_limited": "rate_limited", "network_error": "network", "server_error": "server", "refused": "refused", "not_html": "not_html", "too_large": "too_large", "too_many_redirects": "redirects", "http_error": "http_error"}
 _SPACES = re.compile(r"\s+")
@@ -199,7 +201,10 @@ def find_link(body: bytes, page_url: str, site_host: str, target: str | None) ->
     if doc is None:
         return LinkSeen()
     base = doc.find(".//base[@href]")
-    base_url = urljoin(page_url, base.get("href")) if base is not None else page_url
+    try:
+        base_url = urljoin(page_url, base.get("href")) if base is not None else page_url
+    except ValueError:  # <base href="http://[bad">: links are read against the page itself (F59)
+        base_url = page_url
     wanted = clean_path(target)
     mine = host_key(f"https://{site_host}/")
     fallback = None
@@ -322,14 +327,19 @@ def check_one(engine: Engine, row, fetcher, trigger: str, resolved: dict[str, di
     with engine.connect() as conn:
         site_host = conn.execute(text("SELECT host FROM sites WHERE id = :s"), {"s": row["site_id"]}).scalar()
     sent_before = fetcher.requests
-    reading = read_page(fetcher, row["source_url"], site_host, row["target_url"])
     target = None
-    if reading.outcome == FOUND and reading.seen.href:
-        href = reading.seen.href
-        if href not in resolved:
-            resolved[href] = read_target(fetcher, href)
-        target = resolved[href]
-    budget.charge(engine, fetcher.requests - sent_before)
+    try:
+        reading = read_page(fetcher, row["source_url"], site_host, row["target_url"])
+        if reading.outcome == FOUND and reading.seen.href:
+            href = reading.seen.href
+            if href not in resolved:
+                resolved[href] = read_target(fetcher, href)
+            target = resolved[href]
+    except Exception:  # noqa: BLE001 - one odd page must not stop every later check of the site, every night (F59)
+        log.exception("Backlink %s: its page couldn't be read", row["id"])
+        reading, target = Reading(UNKNOWN, "unreadable"), None  # saved, so checked_at moves and the next link goes first
+    finally:
+        budget.charge(engine, fetcher.requests - sent_before)
     result = _save(engine, row, reading, trigger, target)
     if result["lost"]:
         _raise_alert(engine, row, "backlink_lost", "{host}: a backlink was lost", "{host}: {n} backlinks were lost")

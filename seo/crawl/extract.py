@@ -105,7 +105,7 @@ def _schema_types(root) -> list[str]:
     for script in root.iterfind(".//script[@type='application/ld+json']"):
         try:
             take(json.loads(script.text or ""))
-        except ValueError:
+        except (ValueError, RecursionError):  # a deeply nested ld+json script is as unreadable as a broken one (F97)
             continue
     return sorted(found)
 
@@ -159,7 +159,7 @@ def _schema_dates(root) -> dict:
     for script in root.iterfind(".//script[@type='application/ld+json']"):
         try:
             take(json.loads(script.text or ""))
-        except ValueError:
+        except (ValueError, RecursionError):  # a deeply nested ld+json script is as unreadable as a broken one (F97)
             continue
     for meta in root.iterfind(".//meta[@property]"):
         prop = (meta.get("property") or "").lower()
@@ -204,8 +204,9 @@ def _main_text(root) -> str:
         _drop(scope, ("header",))
     for element in scope.iter():
         if isinstance(element.tag, str) and element.tag in BLOCK:
-            element.text = " " + (element.text or "")
-            element.tail = " " + (element.tail or "")
+            # Cleaned again here: the parser turns &#11; into the real character, which lxml then refuses to write back (F97).
+            element.text = " " + _NOT_XML.sub(" ", element.text or "")
+            element.tail = " " + _NOT_XML.sub(" ", element.tail or "")
     return _clean(scope.text_content())
 
 

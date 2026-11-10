@@ -17,6 +17,9 @@ from seo.collectors.ga4 import NOT_SET
 from seo.metrics.service import _path, _pct_change, parse_day
 
 
+FINAL_LAG_DAYS = 3  # Search Console's days become final about this late, when the site's own "through" day isn't known
+
+
 def install() -> None:
     """Fills visits and leads on the Backlinks list."""
     backlink_service.traffic_provider = for_backlink_list
@@ -41,6 +44,7 @@ def traffic(engine: Engine, site_id: int, start, end) -> dict:
         item["leads"] += float(row["leads"] or 0)
     # Several links on one domain to one page can't be told apart, so they share one number and say so.
     groups: dict[tuple[str, tuple[str, ...]], list[int]] = defaultdict(list)
+    tagged: dict[tuple, list[int]] = defaultdict(list)
     answer = {}
     for link in traffic_targets(engine, site_id):
         utm = link["utm"]
@@ -48,6 +52,7 @@ def traffic(engine: Engine, site_id: int, start, end) -> dict:
             # Values are case sensitive, as in GA4.
             rows = [r for r in campaigns if (r["campaign"] == utm["campaign"] if utm["campaign"] else r["campaign"] in NOT_SET) and (not utm["source"] or r["source"] == utm["source"]) and (not utm["medium"] or r["medium"] == utm["medium"])]
             answer[link["id"]] = {"visits": sum(int(r["sessions"] or 0) for r in rows), "leads": round(sum(float(r["leads"] or 0) for r in rows), 2), "basis": "utm", "shared_by": 1, "pages": sorted({_path(r["path"]) for r in rows})}
+            tagged[(utm["campaign"], utm["source"], utm["medium"])].append(link["id"])
         elif link["paths"]:
             # The logged target, and where it really ends up: a target that redirects still matches.
             groups[(link["domain"], tuple(sorted({_path(path) for path in link["paths"]})))].append(link["id"])
@@ -62,6 +67,13 @@ def traffic(engine: Engine, site_id: int, start, end) -> dict:
                 leads += found["leads"]
         for backlink_id in ids:
             answer[backlink_id] = {"visits": sessions, "leads": round(leads, 2), "basis": "domain", "shared_by": len(ids), "pages": list(paths)}
+            if len(ids) > 1:
+                answer[backlink_id]["group"] = f"d{min(ids)}"
+    # Two links with the same UTM share one number too, and say so (F10).
+    for ids in tagged.values():
+        if len(ids) > 1:
+            for backlink_id in ids:
+                answer[backlink_id].update(shared_by=len(ids), group=f"u{min(ids)}")
     return {"has_data": True, "hid_rows": bool(hid), "links": answer}
 
 
@@ -76,6 +88,8 @@ def for_backlink_list(engine: Engine, site_id: int) -> dict[int, dict]:
             continue
         label = "shared" if item["shared_by"] > 1 else item["basis"]
         rows[backlink_id] = {"visits": item["visits"], "leads": item["leads"], "label": label, "shared": item["shared_by"] if item["shared_by"] > 1 else None}
+        if item.get("group"):  # links that share one number: a total counts the group once (F10)
+            rows[backlink_id]["group"] = item["group"]
     return rows
 
 
@@ -90,6 +104,15 @@ def before_after(engine: Engine, backlink_id: int, days: int = 28) -> dict:
     except ValueError:
         return {"state": "no_date", "note": "The date placed isn't written as YYYY-MM-DD, so it can't be compared."}
     windows = {"before": (placed - timedelta(days=days), placed - timedelta(days=1)), "after": (placed, placed + timedelta(days=days - 1))}
+    # The "after" days must all be final in Search Console, or a link placed 10 days ago compares 28 days with 8 (F11).
+    with engine.connect() as conn:
+        through = conn.execute(text("SELECT MAX(data_through) FROM site_sources WHERE site_id = :s AND source = 'gsc'"), {"s": link["site_id"]}).scalar()
+        today = conn.execute(text("SELECT UTC_DATE()")).scalar()
+    last_final = through or (today - timedelta(days=FINAL_LAG_DAYS))
+    if windows["after"][1] > last_final:
+        ready = windows["after"][1] + (timedelta(days=FINAL_LAG_DAYS) if through is None else (today - through))
+        return {"state": "waiting", "placed": placed.isoformat(), "days": days, "ready_on": max(ready, today).isoformat(),
+                "note": f"The {days} days after the link aren't all in Search Console yet."}
     target = _path(link["target_url"])
     out: dict = {"state": "ok", "placed": placed.isoformat(), "days": days, "label": "Correlation, not proof"}
     with engine.connect() as conn:

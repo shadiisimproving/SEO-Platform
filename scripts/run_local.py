@@ -19,7 +19,7 @@ from seo.accounts.service import count_users  # noqa: E402
 from seo.backlinks import live, logos  # noqa: E402, F401 - register their job handlers
 from seo.uptime import service as uptime  # noqa: E402, F401 - registers its job handler
 from seo.collectors import jobs as collector_jobs  # noqa: E402, F401 - registers its job handlers
-from seo.competitors import crawl, keywords, pages, quality  # noqa: E402, F401 - register their job handlers
+from seo.competitors import crawl, firecrawl, keywords, pages, probe, quality  # noqa: E402, F401 - register their job handlers
 from seo.core.db import make_engine  # noqa: E402
 from seo.core.schema import upgrade_to_head  # noqa: E402
 from seo.health import service as health  # noqa: E402, F401

@@ -8,7 +8,7 @@ import pytest
 from sqlalchemy import text
 
 from seo.backlinks import logos
-from seo.competitors import ai_watch, collective, crawl, gaps, keywords, notes, pairs, profile, suggest, quality
+from seo.competitors import ai_watch, collective, crawl, gaps, keywords, notes, pairs, profile, suggest, quality, insights
 from seo.competitors import pages as page_reader
 from seo.core import budget, crypto
 from seo.core.errors import Conflict, NotFound, Refused
@@ -63,6 +63,7 @@ def world(engine, monkeypatch, tmp_path):
     monkeypatch.setattr(connections, "tool_factory", lambda eng, name: list(w.tools.get(name, [])))
     monkeypatch.setattr(quality, "queue_checks", lambda eng, part=0: _pass_page_checks(eng))
     monkeypatch.setattr(logos, "queue_for", lambda eng, domains: None)  # icons have their own tests, and would add requests and jobs here
+    monkeypatch.setattr(crawl, "queue_own_if_never_read", lambda eng, site_id: False)  # my site's first read has its own tests, and would add jobs here
     monkeypatch.setattr(links, "fetcher_factory", lambda: PoliteFetcher(delay=0, is_allowed=ALLOW, transport=httpx.MockTransport(website)))
     w.own = links.add_site(engine, "https://me.example/", "own", is_allowed=ALLOW)["id"]
     w.drain = lambda lane="refresh": tick(engine, lane, lock_dir=tmp_path, budget_seconds=20, db_wait_seconds=1)
@@ -1440,16 +1441,40 @@ def test_daily_queue_is_once_a_day_and_only_for_watched_sites(world):
     rival = add_rival(world)
     links.add_site(world.engine, "https://unwatched.example/", "competitor", is_allowed=ALLOW)
     world.drain("crawl")
+    assert crawl.enqueue_due(world.engine) == [world.own]  # my site, never read yet; the rival was read today
+    world.drain("crawl")
     assert crawl.enqueue_due(world.engine) == []
     with world.engine.begin() as conn:
         conn.execute(text("UPDATE competitor_crawls SET finished_at = UTC_TIMESTAMP(3) - INTERVAL 2 DAY"))
-    assert crawl.enqueue_due(world.engine) == [rival]
+    assert crawl.enqueue_due(world.engine) == [rival, world.own]  # my own site is read daily too (owner, 2026-11-09)
 
 
-def test_the_crawler_refuses_my_own_site(world):
-    job = SimpleNamespace(payload={"competitor_id": world.own})
-    crawl.run_crawl(job, world.engine)
-    assert world.requests == []
+READ_MY_SITE_NOW = crawl.queue_own_if_never_read  # the real one, before the world fixture turns it off
+
+
+def test_my_own_site_is_read_too_so_a_profile_can_compare(world):
+    """Owner, 2026-11-09: "You" on a competitor's profile was always empty, because only competitors were read."""
+    world.pages["me.example/"] = page_html("My home")
+    for path in ("/a", "/b"):
+        world.pages[f"me.example{path}"] = page_html(f"My page {path}")
+    world.pages["me.example/sitemap.xml"] = sitemap_xml(("/a", "/b"), host="me.example")
+    crawl.run_crawl(SimpleNamespace(payload={"competitor_id": world.own}), world.engine)
+    world.drain("crawl")
+    assert crawl_state(world, world.own)["pages_read"] >= 2
+    rival_site(world)
+    rival = add_rival(world)
+    world.drain("crawl")
+    facts = insights.insights(world.engine, world.own, rival)["facts"]
+    assert facts["my_pages"] >= 2 and facts["my_reading"]["read_once"]
+
+
+def test_adding_a_competitor_reads_my_site_if_it_never_was(world, monkeypatch):
+    monkeypatch.setattr(crawl, "queue_own_if_never_read", READ_MY_SITE_NOW)
+    rival_site(world)
+    add_rival(world)
+    assert crawl_state(world, world.own)["status"] == "queued"
+    with world.engine.connect() as conn:
+        assert conn.execute(text("SELECT 1 FROM jobs WHERE kind = 'competitors.crawl' AND payload LIKE :p"), {"p": f'%"competitor_id": {world.own}%'}).first()
 
 
 # ---- the API, every route ---------------------------------------------------------------------------
@@ -1506,10 +1531,12 @@ def test_api_refuses_bad_requests_with_a_sentence(world, path, body):
 def test_api_needs_json_and_a_site_id(world):
     assert world.client.post("/api/keywords/refresh", data="site_id=1").status_code == 400
     for path in ("competitors", "competitors/suggestions", "page-pairs", "link-gaps", "ai-watch", "prospects", "competitors/1/profile"):
-        assert world.client.get(f"/api/{path}").status_code == 400, path
+        if path != "prospects":  # since 2026-11-10 no site_id means every one of my sites, so a page load asks once
+            assert world.client.get(f"/api/{path}").status_code == 400, path
         assert world.client.get(f"/api/{path}?site_id=abc").status_code == 400, path
         assert world.client.get(f"/api/{path}?site_id=²").status_code == 400, path
         assert world.client.get(f"/api/{path}?site_id=999999").status_code == 404, path
+    assert world.client.get("/api/prospects").status_code == 200
 
 
 def test_api_competitor_routes(world):

@@ -17,37 +17,49 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   const call = (method, p, body) => page.evaluate(([m, u, b]) => fetch(u, { method: m, headers: { "content-type": "application/json" }, body: b ? JSON.stringify(b) : undefined }).then((r) => r.json()), [method, BASE + "api/" + p, body]);
   await page.goto(BASE + "#today");
   await call("POST", "notifications/read-all", {});
-  const ids = (await call("GET", "notifications")).items.filter((i) => i.kind === "new_query").slice(0, 3).map((i) => i.id);
-  check("the seed made new-search notifications", ids.length >= 2, ids.length);
-  for (const id of ids) await call("POST", `notifications/${id}/read`, { read: false });
+  const group = (await call("GET", "notifications")).items.find((i) => i.kind === "new_queries");
+  const searches = group ? group.detail.queries.map((q) => q.query) : [];
+  check("the seed made one notification for the day's new searches", Boolean(group) && searches.length >= 2, searches.join(" | "));
+  check("the search under 10 impressions isn't in it", !searches.some((q) => /48 hours/.test(q)));
+  await call("POST", `notifications/${group.id}/read`, { read: false });
 
   for (const route of ["today", "overview", "keywords", "backlinks"]) {
     await page.goto("about:blank"); await page.goto(BASE + "#" + route); await page.waitForTimeout(1200);
-    check(`the bell shows ${ids.length} on ${route}`, (await page.textContent("#bell-open .bell-count").catch(() => "")) === String(ids.length));
+    check(`the bell shows 1 on ${route}`, (await page.textContent("#bell-open .bell-count").catch(() => "")) === "1");
   }
 
   await page.goto("about:blank"); await page.goto(BASE + "#overview");
   await page.click("#bell-open"); await page.waitForTimeout(1500);
   check("the list stays open while Overview redraws", Boolean(await page.$("#bell-pop")));
   await page.screenshot({ path: OUT + "1-open.png" });
-  const rows = await page.locator("#bell-pop .bell-row.unread").count();
-  check("each unread one has a dot", rows === ids.length, rows);
-  const first = await page.textContent("#bell-pop .bell-row .bell-title");
-  check("the most shown search comes first", /trade licence/.test(first), first.trim());
-  check("a row names its page, place and impressions", /\/prices\/.*Position 5\.4.*23 impressions/s.test(await page.textContent("#bell-pop .bell-row")));
+  check("the day's searches are one unread row with a dot", (await page.locator("#bell-pop .bell-row.unread").count()) === 1);
+  const title = await page.textContent("#bell-pop .bell-row .bell-title");
+  check("it says how many", /2 new searches on Google/.test(title), title.trim());
+  const firstSearch = await page.textContent("#bell-pop .bell-group li");
+  check("the most shown search comes first, with its place and impressions", /trade licence.*Position 5\.4.*23 impressions/s.test(firstSearch), firstSearch.replace(/\s+/g, " ").trim());
 
   await page.locator("#bell-pop [data-bell-read]").first().click(); await page.waitForTimeout(300);
-  check("✓ marks it read", (await page.textContent("#bell-open .bell-count")) === String(ids.length - 1));
+  check("✓ marks it read", !(await page.$("#bell-open .bell-count")));
   await page.locator("#bell-pop [data-bell-read]").first().click(); await page.waitForTimeout(300);
-  check("and the circle makes it unread again", (await page.textContent("#bell-open .bell-count")) === String(ids.length));
+  check("and the circle makes it unread again", (await page.textContent("#bell-open .bell-count")) === "1");
 
   await page.locator("#bell-pop [data-bell-track]").first().click(); await page.waitForTimeout(800);
   const box = await page.inputValue("#panel-root textarea").catch(() => "");
-  check("Track opens Add keywords with the search in it", /trade licence/.test(box), box);
+  check("+ on a search opens Add keywords with it in", /trade licence/.test(box), box);
   check("and closes the list", !(await page.$("#bell-pop")));
   await page.screenshot({ path: OUT + "2-track.png" });
   await page.keyboard.press("Escape"); await page.waitForTimeout(300);
 
+  await call("POST", `notifications/${group.id}/read`, { read: false });
+  await page.goto("about:blank"); await page.goto(BASE + "#today"); await page.waitForTimeout(1200);
+  await page.click("#bell-open"); await page.waitForTimeout(400);
+  await page.locator("#bell-pop .bell-group [data-bell-go]").nth(1).click(); await page.waitForTimeout(2000);
+  const landed = await page.evaluate(() => ({ route: window.UI.state.route, q: window.OV?.filters?.query?.q, mode: window.OV?.filters?.query?.q_mode }));
+  check("a search opens Overview → Queries filtered to exactly it", landed.route === "overview" && landed.q === searches[1] && landed.mode === "exact", JSON.stringify(landed));
+  await page.screenshot({ path: OUT + "2b-landed.png" });
+
+  await call("POST", `notifications/${group.id}/read`, { read: false });
+  await page.goto("about:blank"); await page.goto(BASE + "#overview"); await page.waitForTimeout(1200);
   await page.click("#bell-open"); await page.waitForSelector("#bell-read-all");
   await page.click("#bell-read-all"); await page.waitForTimeout(500);
   check("Mark all read clears the count", !(await page.$("#bell-open .bell-count")));

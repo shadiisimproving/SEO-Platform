@@ -24,7 +24,8 @@ from seo.core.errors import Conflict, NotFound, NotOwnSite, Refused, UnknownSite
 from seo.crawl.extract import extract
 from seo.health import audit
 from seo.links import saved_state, service as links_service
-from seo.links.checker import CrawlState, ScanResult, run_scan
+from seo.crawl import sitemap
+from seo.links.checker import CrawlState, ScanResult, extract_links, run_scan
 from seo.links.urls import host_key
 from seo.worker import queue
 from seo.worker.runner import Retry, handler
@@ -146,7 +147,8 @@ def start(engine: Engine, site_id: int, trigger: str = "button") -> int:
 def enqueue_due(engine: Engine) -> list[int]:
     """Queue a test for each of my sites with none this calendar month. Safe to call as often as cron likes.
 
-    Only a complete test uses up the month: one that failed or was stopped is tried again.
+    Only a complete test that read a page uses up the month. One that failed, was stopped, or read nothing (the start page
+    was down) is tried again, but not within the same day, so it doesn't restart every hour (F67, as F106 for links).
     """
     _close_abandoned(engine)
     with engine.connect() as conn:
@@ -155,7 +157,8 @@ def enqueue_due(engine: Engine) -> list[int]:
             for row in conn.execute(text(
                 "SELECT s.id FROM sites s WHERE s.kind = 'own' AND s.health_monthly = 1 AND NOT EXISTS ("
                 " SELECT 1 FROM health_audits a WHERE a.site_id = s.id AND (a.status IN ('queued', 'running') "
-                f" OR (a.status = 'complete' AND {_THIS_MONTH}))) ORDER BY s.id"
+                f" OR (a.status = 'complete' AND a.pages_read > 0 AND {_THIS_MONTH})"
+                " OR (a.trigger_kind = 'monthly' AND a.created_at > UTC_TIMESTAMP(3) - INTERVAL 1 DAY))) ORDER BY s.id"
             ))
         ]
     queued = []
@@ -245,7 +248,10 @@ def _stop_from_saved(engine: Engine, row) -> None:
     _finish(engine, row["id"], "stopped", "user")
 
 
-def _end_with_results(engine: Engine, audit_id: int, row, found: audit.Findings, scan: ScanResult, used: int | None = None) -> str:
+LINKS_IN_CODE = "links_in"  # a health_issues row that holds the internal links report, not a check: page_count stays 0
+
+
+def _end_with_results(engine: Engine, audit_id: int, row, found: audit.Findings, scan: ScanResult, used: int | None = None, listed: sitemap.SitemapResult | None = None) -> str:
     """The score, the issues, the test's end and the end of its saved state, in one go, so a kill can't leave half of them. Returns the status it ended with.
 
     A crawl that looked at nothing at all has nothing to score, and 100 would be a lie.
@@ -279,6 +285,13 @@ def _end_with_results(engine: Engine, audit_id: int, row, found: audit.Findings,
             conn.execute(
                 text("INSERT INTO health_issues (audit_id, code, page_count, pages) VALUES (:a, :c, :n, :p)"),
                 {"a": audit_id, "c": code, "n": len(urls), "p": json.dumps(urls[:audit.MAX_PAGES_LISTED], ensure_ascii=False)},
+            )
+        if found.linked_from and status == "complete":
+            report = audit.internal_links(found, [e.url for e in listed.entries] if listed else [], start_url, cut=bool(listed and (listed.cut or listed.capped)))
+            report["sitemap_read"] = listed is not None
+            conn.execute(
+                text("INSERT INTO health_issues (audit_id, code, page_count, pages) VALUES (:a, :c, 0, :p)"),
+                {"a": audit_id, "c": LINKS_IN_CODE, "p": json.dumps(report, ensure_ascii=False)},
             )
         saved_state.forget(conn, KIND, audit_id)
     return status
@@ -354,7 +367,13 @@ def run_audit(job, engine: Engine) -> None:
     def on_page(url, result) -> None:
         fields = None
         if result.status == "ok" and result.body is not None:
-            fields = extract(result.body, result.final_url or url, charset=result.charset)
+            page = result.final_url or url
+            try:
+                fields = extract(result.body, page, charset=result.charset)
+                if host_key(page) == host:  # the internal links report: who links to whom on my own site
+                    audit.count_links_in(found, page, extract_links(result.body, page, result.charset), lambda u: host_key(u) == host)
+            except (ValueError, RecursionError):  # one page the reader can't take must not end the whole test (F97)
+                fields = None
         audit.look_at_page(found, url, result, fields, start_url)
 
     fetcher = None
@@ -375,7 +394,15 @@ def run_audit(job, engine: Engine) -> None:
         if scan.paused:
             _save_chunk(engine, audit_id, row["site_id"], state, found, scan, used)
         else:
-            status = _end_with_results(engine, audit_id, row, found, scan, used)
+            listed = None
+            if found.linked_from and not scan.stopped:  # the sitemap, for the orphan pages: in it, but linked from nowhere
+                try:
+                    before = fetcher.requests
+                    listed = sitemap.discover(fetcher, start_url, max_pages=200_000)
+                    charge(fetcher.requests - before)
+                except Exception:  # noqa: BLE001 - no orphan list is better than no test result
+                    listed = None
+            status = _end_with_results(engine, audit_id, row, found, scan, used, listed)
     except OperationalError as exc:  # the database, not the test: what's saved is safe, so this chunk is simply tried again
         raise Retry(f"The database failed: {exc.orig}", links_service.DATABASE_RETRY_SECONDS) from exc
     except Exception as exc:  # noqa: BLE001 - a test that crashes must say so, not stay running
@@ -511,6 +538,7 @@ def detail(engine: Engine, audit_id: int) -> dict:
         if row is None:
             raise NotFound("That test doesn't exist.")
         issues = conn.execute(text("SELECT code, page_count, pages FROM health_issues WHERE audit_id = :i"), {"i": audit_id}).mappings().all()
+        links_row = next((i for i in issues if i["code"] == LINKS_IN_CODE), None)
         before = _comparable_before(conn, row) if row["status"] == "complete" else None  # the same comparison the alerts made
     previous = _counts(before["counts"]).get("issues", {}) if before else {}
     found = {i["code"]: i for i in issues}
@@ -529,6 +557,7 @@ def detail(engine: Engine, audit_id: int) -> dict:
         "previous_audit": _audit_dict(before) if before else None,  # the screen must name the same test the alerts compared with
         "checks": checks,
         "site_problems": [{"code": code, "meaning": audit.SITE_CHECKS[code][0]} for code in _counts(row["counts"]).get("site", [])],
+        "internal_links": internal_links_report(engine, row["site_id"], links_row),
     }
 
 
@@ -579,3 +608,32 @@ def acknowledge(engine: Engine, alert_id: int, seen: bool = True) -> None:
         if other:  # one open alert per kind per site
             raise Conflict("A newer alert of this kind is already open for this website.")
         conn.execute(text("UPDATE alerts SET acknowledged_at = NULL WHERE id = :i"), {"i": alert_id})
+
+
+# ---- the internal links report (on the Health screen, from the last test) ---------------------------------
+
+LINKS_SHOWN = 10
+
+
+def internal_links_report(engine: Engine, site_id: int, links_row) -> dict | None:
+    """Links in per page, orphan pages, and important pages with few links in. None for a test from before the report."""
+    if links_row is None:
+        return None
+    data = links_row["pages"] if isinstance(links_row["pages"], dict) else json.loads(links_row["pages"] or "{}")
+    pages = data.get("pages") or {}
+    from seo.health import indexing  # noqa: PLC0415 - indexing reads Search Console through metrics, which reads this module
+
+    weight = indexing.importance(engine, site_id)
+    rows = []
+    for url, count in pages.items():
+        clicks, shown = weight.get(indexing.path_of(url), (0, 0))
+        rows.append({"url": url, "links_in": count, "clicks": clicks, "impressions": shown})
+    important = sorted((r for r in rows if r["links_in"] <= audit.FEW_LINKS_IN and (r["clicks"] or r["impressions"])), key=lambda r: (-r["clicks"], -r["impressions"], r["links_in"]))
+    rows.sort(key=lambda r: (r["links_in"], -r["clicks"], -r["impressions"], r["url"]))
+    orphans = data.get("orphans") or []
+    return {
+        "pages_read": len(rows), "orphans": orphans[:audit.MAX_PAGES_LISTED], "orphan_count": len(orphans),
+        "few_links": important[:LINKS_SHOWN], "few_links_count": len(important), "few_links_line": audit.FEW_LINKS_IN,
+        "pages": rows[:audit.MAX_PAGES_LISTED * 5], "sitemap_pages": data.get("sitemap_pages", 0), "sitemap_read": bool(data.get("sitemap_read")),
+        "sitemap_cut": bool(data.get("sitemap_cut")), "has_search_data": bool(weight),
+    }

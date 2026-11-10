@@ -12,13 +12,15 @@ from seo.collectors.common import digest
 from seo.collectors.jobs import ALERT_KIND, NAMES
 from seo.competitors.pairs import _page_id
 from seo.core.errors import Refused
+from seo.metrics import search
+from seo.metrics.service import Scope
 
 CLARITY_LIMIT_HOURS = 72
 CLARITY_WARN_HOURS = 48
 LANE_STALE_MINUTES = {"crawl": 30, "refresh": 30, "collectors": 30}
 SEVERITY = {"crit": 0, "warn": 1, "info": 2}
+ALERT_KIND_SEARCH = "search_drop"  # seo.insights.engine.ALERT_KIND, the big drops Insights raises
 
-RESULT_DAYS = 28  # the three numbers on top, against the 28 before
 MOVE_PERCENT, MOVE_MIN_CLICKS = 20, 20  # a page shown under Going down or Going up
 BIG_DROP_PERCENT, BIG_DROP_MIN_CLICKS, BIG_DROPS_SHOWN = 30, 50, 3  # a page that joins the to-do list
 KEYWORD_MIN_PLACES, KEYWORD_MIN_IMPRESSIONS = 3, 50
@@ -76,10 +78,14 @@ def _attention(engine: Engine, site_id: int | None) -> list[dict]:
             if isinstance(detail, str):
                 detail = json.loads(detail or "{}")
             kind = row["kind"]
-            items.append({
+            item = {
                 "id": f"alert-{row['id']}", "alert_ids": [row["id"]], "severity": row["severity"], "kind": kind, "host": row["host"], "title": row["title"], "rank": _rank(kind, row["severity"], detail), "site_codes": (detail or {}).get("site"),
                 "detail": (detail or {}).get("error") or (detail or {}).get("detail") or "", "link": _link(kind), "created_at": _iso(row["created_at"]),
-            })
+            }
+            stake = re.match(r"^About (\d+) clicks a month at stake", item["detail"]) if kind == ALERT_KIND_SEARCH else None
+            if stake:
+                item["words"] = {"detail": ["About {n} clicks a month at stake. See Search → Insights.", {"n": int(stake.group(1))}]}
+            items.append(item)
         # Clarity only gives the last 3 days, so a gap becomes permanent. Say how long is left, counted from the last good pull.
         for row in conn.execute(
             text(
@@ -92,6 +98,7 @@ def _attention(engine: Engine, site_id: int | None) -> list[dict]:
                     "id": f"clarity-{row['site_id']}", "severity": "crit" if left <= 12 else "warn", "kind": "clarity_gap", "host": row["host"],
                     "title": f"Clarity data lost in {left} h" if left > 0 else "Clarity data is being lost",
                     "detail": "Clarity only keeps the last 3 days for the app to read.", "link": "#settings", "created_at": None, "rank": LOST_FOR_GOOD_SOON,
+                    "words": {"title": ["Clarity data lost in {n} h", {"n": left}] if left > 0 else ["Clarity data is being lost", {}], "detail": ["Clarity only keeps the last 3 days for the app to read.", {}]},
                 })
         for row in conn.execute(text("SELECT kind, last_error, id FROM jobs WHERE status = 'dead' AND finished_at > UTC_TIMESTAMP(3) - INTERVAL 7 DAY ORDER BY id DESC LIMIT 5")).mappings().all():
             if not site_id:
@@ -214,7 +221,7 @@ def _page_moves(engine: Engine, site_id: int | None) -> list[dict]:
                 was, now = int(row["was_c"]), int(row["now_c"])
                 change = round((now - was) / was * 100)
                 if abs(change) >= MOVE_PERCENT:
-                    moves.append({"type": "page", "page": row["page"], "path": _path(row["page"]), "host": site["host"], "change": change, "clicks": now, "was": was, "key": digest("drop", str(site["id"]), row["page_hash"])})
+                    moves.append({"type": "page", "page": row["page"], "url": row["page"], "path": _path(row["page"]), "host": site["host"], "site_id": site["id"], "change": change, "clicks": now, "was": was, "key": digest("drop", str(site["id"]), row["page_hash"])})
     return moves
 
 
@@ -235,10 +242,18 @@ def _keyword_moves(engine: Engine, site_id: int | None) -> list[dict]:
                 ),
                 {"nf": end - timedelta(days=6), "bt": end - timedelta(days=7), "bf": end - timedelta(days=13), "e": end, "s": site["id"]},
             ).mappings().all()
+            tracked = {
+                search._match(r[1]): r[0] for r in conn.execute(
+                    text("SELECT k.id, k.keyword FROM keywords k JOIN site_keywords sk ON sk.keyword_id = k.id WHERE sk.site_id = :s"), {"s": site["id"]}
+                ).all()
+            }
             for row in rows:
                 was, now = float(row["was_p"]) / float(row["was_i"]), float(row["now_p"]) / float(row["now_i"])
                 if abs(was - now) >= KEYWORD_MIN_PLACES:
-                    moves.append({"type": "keyword", "query": row["query"], "host": site["host"], "was": round(was), "now": round(now), "places": round(was - now, 1)})
+                    moves.append({
+                        "type": "keyword", "query": row["query"], "host": site["host"], "site_id": site["id"], "was": round(was), "now": round(now), "places": round(was - now, 1),
+                        "keyword_id": tracked.get(search._match(row["query"])),  # set when it's one of the site's keywords: the link opens it there
+                    })
     return moves
 
 
@@ -276,7 +291,9 @@ def _is_big_drop(move: dict) -> bool:
 def _drop_row(move: dict) -> dict:
     return {
         "id": f"drop-{move['key']}", "seen_key": move["key"], "kind": "page_drop", "severity": "crit" if move["change"] <= -50 else "warn", "rank": LOSING_RESULTS, "host": move["host"],
-        "title": f"{move['path']} lost {abs(move['change'])}% of its Google clicks", "detail": f"Last 7 days against the 7 before: {move['was']} → {move['clicks']}", "page": move["page"], "link": "#content", "created_at": None,
+        "title": f"{move['path']} lost {abs(move['change'])}% of its Google clicks", "detail": f"Last 7 days against the 7 before: {move['was']} → {move['clicks']}", "page": move["page"], "link": "#overview", "created_at": None,
+        "words": {"title": ["{path} lost {percent}% of its Google clicks", {"path": move["path"], "percent": abs(move["change"])}], "detail": ["Last 7 days against the 7 before: {was} → {now}", {"was": move["was"], "now": move["clicks"]}]},
+        "open": {"page": move["page"], "range": "7d"},
     }
 
 
@@ -315,7 +332,38 @@ def _finding_row(f: dict) -> dict:
         "rank": LOSING_RESULTS if f["group"] in ("changed", "decline") else OTHER, "host": f["host"],
         "title": _FINDING_TITLES.get(f["kind"], "{path}").format(**values), "detail": f"About {round(f['at_stake'])} clicks a month at stake",
         "page": f["page"], "query": f["query"], "link": f"#insights/{f['id']}", "created_at": None,
+        # The same sentence as parts, so the screen can say it in the reader's language (English key, values apart).
+        "words": {"title": [_FINDING_TITLES.get(f["kind"], "{path}"), values], "detail": ["About {n} clicks a month at stake", {"n": round(f["at_stake"])}],
+                  **({"segment_dim": evidence.get("dim")} if evidence.get("segment") else {})},
     }
+
+
+_AIO_TITLES = {
+    "aio_uncited": ("“{keyword}”: Google's AI Overview no longer cites you", "warn", LOSING_RESULTS),
+    "aio_appeared": ("“{keyword}”: an AI Overview now shows, without you", "warn", OTHER),
+    "aio_cited": ("“{keyword}”: Google's AI Overview now cites you", "info", INFORMATION),
+    "aio_cited_new": ("“{keyword}”: a new AI Overview cites you", "info", INFORMATION),
+    "aio_gone": ("“{keyword}”: the AI Overview has gone", "info", INFORMATION),
+}
+
+
+def _ai_overview_rows(engine: Engine, site_id: int | None) -> list[dict]:
+    """What changed in Google's AI Overview on a tracked keyword between its last two checks that could read it, this week."""
+    from seo.insights import aio
+
+    with engine.connect() as conn:
+        now = conn.execute(text("SELECT UTC_TIMESTAMP(3)")).scalar()
+    rows = []
+    for change in aio.changes(engine, site_id, now, days=SEEN_DROP_DAYS):
+        template, severity, rank = _AIO_TITLES[change["kind"]]
+        key = digest("aio", str(change["site_id"]), change["keyword"], change["kind"], change["at"].isoformat())
+        rows.append({
+            "id": f"aio-{key}", "seen_key": key, "kind": "ai_overview", "change": change["kind"], "severity": severity, "rank": rank, "host": change["host"],
+            "title": template.format(keyword=change["keyword"]), "detail": "From the last two rank checks that could read Google's AI Overview",
+            "query": change["keyword"], "link": "#competitors/ai", "created_at": _iso(change["at"]),
+            "words": {"title": [template, {"keyword": change["keyword"]}], "detail": ["From the last two rank checks that could read Google's AI Overview", {}]},
+        })
+    return rows
 
 
 def _todo(engine: Engine, site_id: int | None, moves: list[dict]) -> tuple[list[dict], set[str]]:
@@ -327,6 +375,7 @@ def _todo(engine: Engine, site_id: int | None, moves: list[dict]) -> tuple[list[
     from seo.insights import service as insights  # the biggest Search insights, one per query or page
 
     rows += [_finding_row(f) for f in insights.today_rows(engine, site_id) if f["key"] not in seen and not (f["page"] and f["page"] in named and f["kind"] == "page_down")]
+    rows += [row for row in _ai_overview_rows(engine, site_id) if row["seen_key"] not in seen]
     # Sorted is stable, and page drops were added in order of clicks lost.
     rows.sort(key=lambda item: (item["rank"], SEVERITY.get(item["severity"], 3)) if item["kind"] != "page_drop" else (item["rank"], -1))
     return rows, {move["key"] for move in drops}
@@ -363,58 +412,91 @@ def _lanes(engine: Engine) -> list[dict]:
     return [{"lane": row["lane"], "minutes": row["minutes"], "stale": row["minutes"] is None or row["minutes"] > LANE_STALE_MINUTES.get(row["lane"], 60), "error": row["last_error"]} for row in rows]
 
 
-def _windows(end) -> dict:
-    return {"e": end, "n": end - timedelta(days=RESULT_DAYS), "p": end - timedelta(days=RESULT_DAYS * 2)}
-
-
 def _percent(now, was) -> int | None:
     return round((now - was) / was * 100) if was else None
 
 
-def _site_strip(engine: Engine, site_id: int | None) -> list[dict]:
-    """Per site, the last 28 days of data against the 28 before. Blank means no data, never zero.
+def _search_args(args: dict | None) -> dict:
+    """The period as the shared date range sends it (range, compare, from, to). Today has no hours: 24 hours is 7 days here."""
+    args = dict(args or {})
+    picked = {"range": args.get("range") or search.DEFAULT_RANGE, "compare": args.get("compare") or "prev", "from": args.get("from"), "to": args.get("to")}
+    if picked["range"] == "24h":
+        picked["range"] = "7d"
+    return picked
 
-    The 28 days end where each source's data ends: Search Console runs 2-3 days late, so counting back from today would make every site look like it fell.
-    A site without a full earlier period has nothing fair to compare with, so it shows no change.
+
+def _clicks(engine: Engine, site, args: dict) -> dict:
+    """Search Console clicks for the period, worked out by search.resolve: the very definition Overview uses, so the number
+    on Today is the one its link opens. Saved days only (Overview may read Google live; both are final days)."""
+    scope, window = search.scope_for(engine, {"site_id": site, **args})
+    first, last = scope.start, scope.end
+    length = (last - first).days + 1
+    found = {r["day"]: int(r["c"] or 0) for r in scope.fetch("SELECT day, SUM(clicks) c FROM gsc_daily WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY day", first, last)}
+    before = {}
+    if scope.has_compare:
+        before = {r["day"]: int(r["c"] or 0) for r in scope.fetch("SELECT day, SUM(clicks) c FROM gsc_daily WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY day", scope.compare_start, scope.compare_end)}
+    value = sum(found.values()) if found else None
+    was = sum(before.values()) if before and value is not None else None
+    points = [
+        {"day": (first + timedelta(days=n)).isoformat(), "now": found.get(first + timedelta(days=n)), "was": before.get(scope.compare_start + timedelta(days=n)) if scope.has_compare else None}
+        for n in range(length)
+    ]
+    return {"value": value, "was": was, "change": _percent(value, was) if was is not None else None, "points": points, "window": window, "length": length,
+            "through": max(found).isoformat() if found else None}
+
+
+def _ga4_windows(last_day: date, length: int, compare: str) -> tuple[date, date, date | None, date | None]:
+    first = last_day - timedelta(days=length - 1)
+    if compare == "none":
+        return first, last_day, None, None
+    if compare == "yoy":
+        return first, last_day, search._year_before(first), search._year_before(last_day)
+    return first, last_day, first - timedelta(days=length), first - timedelta(days=1)
+
+
+def _site_strip(engine: Engine, site_id: int | None, args: dict, length: int) -> list[dict]:
+    """Per site, the period against the one before. Blank means no data, never zero.
+
+    Google clicks use the shared period (search.resolve). Visits and leads use a period of the same length ending on GA4's
+    own last day: GA4 ends a day or two after Search Console, and counting back from today would make every site look like
+    it fell. A site without a full earlier period has nothing fair to compare with, so it shows no change.
     """
     strip = []
+    compare = args.get("compare") or "prev"
     with engine.connect() as conn:
-        for site in _own_sites(conn, site_id):
-            row = {"id": site["id"], "host": site["host"], "visits": None, "visits_was": None, "visits_change": None, "leads": None, "leads_was": None, "leads_change": None, "leads_state": "no_ga4", "clicks": None, "clicks_was": None, "clicks_change": None, "through": None, "visits_through": None, "trend": [], "_daily": {"visits": {}, "leads": {}, "clicks": {}}}
+        sites = _own_sites(conn, site_id)
+    for site in sites:
+        row = {"id": site["id"], "host": site["host"], "visits": None, "visits_was": None, "visits_change": None, "leads": None, "leads_was": None, "leads_change": None, "leads_state": "no_ga4", "clicks": None, "clicks_was": None, "clicks_change": None, "through": None, "visits_through": None, "trend": [], "_daily": {"visits": {}, "leads": {}}}
+        with engine.connect() as conn:
             row["alerts"] = int(conn.execute(text("SELECT COUNT(*) FROM alerts WHERE site_id = :s AND acknowledged_at IS NULL"), {"s": site["id"]}).scalar() or 0)
             ga4 = conn.execute(text("SELECT MIN(day) first_day, MAX(day) last_day, SUM(key_events > 0) leads_rows FROM ga4_source_daily WHERE site_id = :s"), {"s": site["id"]}).mappings().first()
             if ga4["last_day"]:
-                bounds = _windows(ga4["last_day"])
+                a, b, ca, cb = _ga4_windows(ga4["last_day"], length, compare)
+                values = {"s": site["id"], "a": a, "b": b, "ca": ca or date(1900, 1, 1), "cb": cb or date(1900, 1, 1)}
                 found = conn.execute(
-                    text("SELECT SUM(IF(day > :n, sessions, 0)) now_v, SUM(IF(day <= :n, sessions, 0)) was_v, SUM(IF(day > :n, key_events, 0)) now_l, SUM(IF(day <= :n, key_events, 0)) was_l FROM ga4_source_daily WHERE site_id = :s AND day > :p AND day <= :e"),
-                    {**bounds, "s": site["id"]},
+                    text("SELECT SUM(IF(day BETWEEN :a AND :b, sessions, 0)) now_v, SUM(IF(day BETWEEN :ca AND :cb, sessions, 0)) was_v, SUM(IF(day BETWEEN :a AND :b, key_events, 0)) now_l, SUM(IF(day BETWEEN :ca AND :cb, key_events, 0)) was_l FROM ga4_source_daily WHERE site_id = :s AND (day BETWEEN :a AND :b OR day BETWEEN :ca AND :cb)"),
+                    values,
                 ).mappings().first()
-                compare = ga4["first_day"] <= bounds["p"] + timedelta(days=1)
-                row.update(visits=int(found["now_v"] or 0), visits_through=ga4["last_day"].isoformat())
-                days = conn.execute(text("SELECT day, SUM(sessions) v, SUM(key_events) l FROM ga4_source_daily WHERE site_id = :s AND day > :p AND day <= :e GROUP BY day"), {**bounds, "s": site["id"]}).mappings().all()
-                for found_day in days:
-                    back = (ga4["last_day"] - found_day["day"]).days
-                    row["_daily"]["visits"][back] = int(found_day["v"] or 0)
+                compared = ca is not None and ga4["first_day"] <= ca
+                row.update(visits=int(found["now_v"] or 0), visits_through=ga4["last_day"].isoformat(), _ga4={"from": a.isoformat(), "to": b.isoformat(), "compare_from": ca.isoformat() if ca else None, "compare_to": cb.isoformat() if cb else None})
+                for found_day in conn.execute(text("SELECT day, SUM(sessions) v, SUM(key_events) l FROM ga4_source_daily WHERE site_id = :s AND (day BETWEEN :a AND :b OR day BETWEEN :ca AND :cb) GROUP BY day"), values).mappings().all():
+                    day = found_day["day"]
+                    slot = ("now", (day - a).days) if a <= day <= b else ("was", (day - ca).days)
+                    row["_daily"]["visits"][slot] = int(found_day["v"] or 0)
                     if ga4["leads_rows"]:
-                        row["_daily"]["leads"][back] = round(float(found_day["l"] or 0))
-                row["trend"] = [row["_daily"]["visits"][back] for back in range(RESULT_DAYS - 1, -1, -1) if back in row["_daily"]["visits"]]
+                        row["_daily"]["leads"][slot] = round(float(found_day["l"] or 0))
+                row["trend"] = [row["_daily"]["visits"][("now", n)] for n in range(length) if ("now", n) in row["_daily"]["visits"]]
                 row["leads_state"] = "ok" if ga4["leads_rows"] else "not_set_up"
-                if compare:
+                if compared:
                     row.update(visits_was=int(found["was_v"] or 0), visits_change=_percent(int(found["now_v"] or 0), int(found["was_v"] or 0)))
                 if ga4["leads_rows"]:
                     row["leads"] = round(float(found["now_l"] or 0))
-                    if compare:
+                    if compared:
                         row.update(leads_was=round(float(found["was_l"] or 0)), leads_change=row["leads"] - round(float(found["was_l"] or 0)))
-            gsc = conn.execute(text(f"SELECT MIN(day) first_day, MAX(day) last_day FROM gsc_daily WHERE site_id = :s AND {_FINAL}"), {"s": site["id"]}).mappings().first()
-            if gsc["last_day"]:
-                bounds = _windows(gsc["last_day"])
-                found = conn.execute(text("SELECT SUM(IF(day > :n, clicks, 0)) now_c, SUM(IF(day <= :n, clicks, 0)) was_c FROM gsc_daily WHERE site_id = :s AND day > :p AND day <= :e"), {**bounds, "s": site["id"]}).mappings().first()
-                row.update(clicks=int(found["now_c"] or 0), through=gsc["last_day"].isoformat())
-                for found_day in conn.execute(text("SELECT day, clicks FROM gsc_daily WHERE site_id = :s AND day > :p AND day <= :e"), {**bounds, "s": site["id"]}).mappings().all():
-                    row["_daily"]["clicks"][(gsc["last_day"] - found_day["day"]).days] = int(found_day["clicks"] or 0)
-                if gsc["first_day"] <= bounds["p"] + timedelta(days=1):
-                    row.update(clicks_was=int(found["was_c"] or 0), clicks_change=_percent(int(found["now_c"] or 0), int(found["was_c"] or 0)))
-            strip.append(row)
+        clicks = _clicks(engine, site["id"], args)
+        if clicks["value"] is not None:
+            row.update(clicks=clicks["value"], clicks_was=clicks["was"], clicks_change=clicks["change"], through=clicks["through"])
+        strip.append(row)
     return strip
 
 
@@ -429,45 +511,68 @@ def _total(strip: list[dict], field: str, absolute: bool = False) -> dict:
     return {"value": sum(row[field] for row in known) if known else None, "change": change, "sites": len(known), "of": len(strip)}
 
 
-def _points(strip: list[dict], field: str) -> list[dict]:
-    """One point per day for the graph: this period, and the same day of the period before. A day nobody has data for stays empty, never zero.
-
-    Each site counts back from its own last day, as the totals do, so a site that runs late isn't drawn as a fall at the end.
-    """
+def _points(strip: list[dict], field: str, length: int) -> list[dict]:
+    """One point per day of the period for the graph, and the same day of the period before. A day nobody has data for stays
+    empty, never zero. Each site counts from its own GA4 period, so a site that runs late isn't drawn as a fall at the end."""
     known = [row for row in strip if row[field] is not None]
-    ends = [row["through"] if field == "clicks" else row["visits_through"] for row in known]
+    ends = [row["visits_through"] for row in known]
     if not known or not any(ends):
         return []
     end = date.fromisoformat(max(day for day in ends if day))
     compared = [row for row in known if row[f"{field}_was"] is not None]
 
-    def total(rows, back):
-        found = [row["_daily"][field][back] for row in rows if back in row["_daily"][field]]
+    def total(rows, slot):
+        found = [row["_daily"][field][slot] for row in rows if slot in row["_daily"][field]]
         return sum(found) if found else None
 
-    return [{"day": (end - timedelta(days=back)).isoformat(), "now": total(known, back), "was": total(compared, back + RESULT_DAYS)} for back in range(RESULT_DAYS - 1, -1, -1)]
+    return [{"day": (end - timedelta(days=length - 1 - n)).isoformat(), "now": total(known, ("now", n)), "was": total(compared, ("was", n))} for n in range(length)]
 
 
-def _results(strip: list[dict]) -> dict:
+def _results(strip: list[dict], clicks: dict, sources_state: dict) -> dict:
+    """The three numbers. Google clicks for the whole choice of sites come from one period (as Overview), the GA4 ones add
+    up each site's own. Each says the state of its source, in Channels' words: not connected, waiting, stopped, ok."""
+    length = clicks["length"]
     days = [day for row in strip for day in (row["through"], row["visits_through"]) if day]
     states = {row["leads_state"] for row in strip}
+    known = [row for row in strip if row["clicks"] is not None]
+    ga4_window = next((row.get("_ga4") for row in strip if row.get("_ga4")), None)
+    window = {**{k: clicks["window"][k] for k in ("range", "compare", "from", "to", "compare_from", "compare_to", "compare_unavailable", "final_through")}, "ga4": ga4_window}
     return {
-        "leads": {**_total(strip, "leads", absolute=True), "points": _points(strip, "leads"), "state": "ok" if "ok" in states else "not_set_up" if "not_set_up" in states else "no_ga4"},
-        "visits": {**_total(strip, "visits"), "points": _points(strip, "visits")}, "clicks": {**_total(strip, "clicks"), "points": _points(strip, "clicks")}, "through": min(days) if days else None, "days": RESULT_DAYS,
+        "leads": {**_total(strip, "leads", absolute=True), "points": _points(strip, "leads", length), "state": "ok" if "ok" in states else "not_set_up" if "not_set_up" in states else "no_ga4", "source": sources_state["ga4"]},
+        "visits": {**_total(strip, "visits"), "points": _points(strip, "visits", length), "source": sources_state["ga4"]},
+        "clicks": {"value": clicks["value"], "change": clicks["change"], "sites": len(known), "of": len(strip), "points": clicks["points"], "source": sources_state["gsc"]},
+        "through": min(days) if days else None, "days": length, "window": window,
     }
 
 
-def today(engine: Engine, site_id: int | None = None) -> dict:
-    sources, strip = _source_health(engine, site_id), _site_strip(engine, site_id)
+def _states(engine: Engine, site_id: int | None) -> dict:
+    """Search Console's and GA4's state for the sites shown, as Overview and Channels tell it (metrics.service._sources_state)."""
+    from seo.metrics.service import _sources_state
+
+    scope = Scope(engine, site_id or "all", "2000-01-01", "2000-01-01")
+    return {source: _sources_state(scope, source)["state"] for source in ("gsc", "ga4")}
+
+
+def today(engine: Engine, site_id: int | None = None, args: dict | None = None) -> dict:
+    """args: the shared date range (range, compare, from, to), as the screens send it. None: the last 28 days, as before."""
+    picked = _search_args(args)
+    clicks = _clicks(engine, site_id or "all", picked)
+    sources, strip = _source_health(engine, site_id), _site_strip(engine, site_id, picked, clicks["length"])
     pages, keywords = _page_moves(engine, site_id), _keyword_moves(engine, site_id)
     todo, named = _todo(engine, site_id, pages)
     pages = [move for move in pages if move["key"] not in named]
     rivals, other_edits = _rival_changes(engine, site_id)
-    results = _results(strip)
+    results = _results(strip, clicks, _states(engine, site_id))
     for row in strip:
         del row["_daily"]
+        row.pop("_ga4", None)
     return {
         "results": results, "google_stopped": any(s["source"] in ("gsc", "ga4") and not s["ok"] and not s["waiting"] for s in sources), "todo": todo,
         "going_down": _mix([m for m in pages if m["change"] < 0], [m for m in keywords if m["places"] < 0]), "going_up": _mix([m for m in pages if m["change"] > 0], [m for m in keywords if m["places"] > 0]),
         "rival_changes": rivals, "other_edits": other_edits, "sources": sources, "lanes": _lanes(engine), "sites": strip,
     }
+
+
+def attention(engine: Engine, site_id: int | None = None) -> list[dict]:
+    """Only the to-do list, for the side menu's Today badge on other screens: no numbers, moves or rivals are worked out."""
+    return _todo(engine, site_id, _page_moves(engine, site_id))[0]

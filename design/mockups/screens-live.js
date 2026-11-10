@@ -19,12 +19,9 @@
   const dayDate = (d) => { const p = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
   const shift = (day, by) => { const d = new Date(`${day}T00:00:00`); d.setDate(d.getDate() + by); return dayDate(d); };
 
+  /* The app's one date range (UI.range), as days. The server trims an end past its last day and answers the dates it used. */
   function periodQuery() {
-    const { from, to } = UI.periodWindow();
-    const days = Math.round((new Date(`${to}T00:00:00`) - new Date(`${from}T00:00:00`)) / 86400000) + 1;
-    const parts = [`from=${from}`, `to=${to}`];
-    if (UI.state.compare === "vs previous period") parts.push(`compare_from=${shift(from, -days)}`, `compare_to=${shift(from, -1)}`);
-    if (UI.state.compare === "vs last year") parts.push(`compare_from=${shift(from, -364)}`, `compare_to=${shift(to, -364)}`);
+    const parts = [UI.range.days()];
     const site = UI.siteIdPicked();
     if (site) parts.push(`site_id=${site}`);
     return parts.join("&");
@@ -45,9 +42,10 @@
   }
   const forget = () => LV.cache.clear();
   LV.forget = forget;
+  window.addEventListener("seocc:site-added", () => forget()); // an answer from before said "No site yet"
 
   // ---- states ---------------------------------------------------------------------------------
-  const loadingCard = () => `<section class="card" aria-busy="true"><div class="empty"><p>${t("Loading…")}</p></div></section>`;
+  const loadingCard = () => UI.skeleton("page");
   const emptyCard = (title, body, action = "") => `<section class="card"><div class="empty"><h3>${esc(title)}</h3><p>${body}</p>${action ? `<div style="margin-top:12px">${action}</div>` : ""}</div></section>`;
   const connectBtn = (id, word = "Connect") => `<button class="btn btn-main" data-lv-connect="${id}">${t(word)}</button>`;
   const NAMES = { gsc: "Search Console", ga4: "Google Analytics" };
@@ -55,7 +53,7 @@
   function stateCard(entry, source) {
     if (entry.loading) return loadingCard();
     if (entry.noServer) return emptyCard(t("Needs the running app"), t("Opened as a plain file there's no real data to show here."));
-    if (entry.error) return emptyCard(t("That didn't load"), esc(entry.error), `<button class="btn" data-lv-retry>${t("Try again")}</button>`);
+    if (entry.error) return UI.failCard(entry.error, { retry: "data-lv-retry" });
     const name = t(NAMES[source]);
     const d = entry.data;
     if (d.state === "no_sites") return emptyCard(t("No site yet"), t("Add a site to see its data."), `<button class="btn btn-main" id="site-switch-hint" data-lv-add-site>${t("Add a site")}</button>`);
@@ -111,15 +109,24 @@
     if (redraw) { forget(); if (!UI.$("#panel")) UI.render(); }
     if (!finished) { UI.toast(t("Still reading in the background. The numbers appear here when it finishes: press Refresh data again in a few minutes.") + laterNote, { kind: "info" }); return; }
     if (failed.length) {
-      const names = [...new Set(failed.map((s) => t(SOURCE_NAMES[s.source] || s.source)))].join(", ");
-      UI.toast(`${fillIn(t("{ok} of {total} read."), { ok: ids.length - failed.length, total: ids.length })} ${fillIn(t("{names} failed: the card on the page says why."), { names })}${laterNote}`, { kind: "crit" });
+      // Which source failed and why, in the message itself, with the button that opens its connection.
+      const why = failed.map((s) => { const name = t(SOURCE_NAMES[s.source] || s.source), plain = window.FIX?.explain?.(s.error, { tool: name, retry: "refresh" })?.summary; return `${name}: ${t(plain || UI.errorWords(s.error))}`; });
+      const google = failed.some((s) => ["gsc", "ga4", "pagespeed"].includes(s.source));
+      UI.toast(`${fillIn(t("{ok} of {total} read."), { ok: ids.length - failed.length, total: ids.length })} ${[...new Set(why)].join(" ")}${laterNote}`, { kind: "crit", stay: true, undo: () => UI.openConnection(google ? "google" : failed[0].source), undoLabel: t("Fix it") });
       return;
     }
     UI.toast(t("Updated with the latest data.") + laterNote, { kind: "good" });
   }
   const SOURCE_NAMES = { gsc: "Search Console", ga4: "Google Analytics", bing: "Bing Webmaster", yandex: "Yandex Webmaster", clarity: "Microsoft Clarity", pagespeed: "PageSpeed Insights" };
   LV.watchReads = watchReads;
-  const throughNote = (through, extra = "") => (through ? `<span class="small muted">${t("Data through")} ${esc(shortDay(through))}${extra ? ` · ${esc(t(extra))}` : ""}</span>` : "");
+  /* Both periods in words, from the dates the server really used, then how far the data goes. */
+  const throughNote = (through, extra = "", d = null) => {
+    const p = d?.period, bits = [];
+    if (p?.from && p?.to) bits.push(`${esc(UI.fmtRange(p.from, p.to))}${p.compare_from && p.compare_to ? ` ${t("vs")} ${esc(UI.fmtRange(p.compare_from, p.compare_to))}` : ""}`);
+    if (through) { bits.push(`${t("Data through")} ${esc(shortDay(through))}`); UI.range.end(UI.state.route, through); }
+    if (extra) bits.push(esc(t(extra)));
+    return bits.length ? `<span class="small muted">${bits.join(" · ")}</span>` : "";
+  };
   const hiddenNote = (hid) => (hid ? `<p class="note lv-note">${icon("info")}<span>${t("Google Analytics hid some rows with few visits, so small numbers may be missing. A longer period may show them.")}</span></p>` : "");
 
   const change = (now, before, opts = {}) => {
@@ -195,7 +202,7 @@
 
   /* columns: { key, label, num, get, html }. Sort is kept per table, and blanks always sort last. */
   const SORTS = new Map(), LIMITS = new Map();
-  function dataTable(id, columns, rows, { pageSize = 100, csv = true, empty = "Nothing in this period." } = {}) {
+  function dataTable(id, columns, rows, { pageSize = 100, csv = false, empty = "Nothing in this period." } = {}) { // downloads are the Export button in the top bar (export.js)
     if (!rows.length) return `<div class="empty"><p>${t(empty)}</p></div>`;
     const sort = SORTS.get(id);
     const value = (col, row) => (col.get ? col.get(row) : row[col.key]);
@@ -213,7 +220,7 @@
     const limit = LIMITS.get(id) || pageSize;
     const head = columns.map((c) => {
       const on = sort?.key === c.key;
-      return `<th class="${c.num ? "c" : ""}" scope="col" aria-sort="${on ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}"><button class="th-btn" data-lv-sort="${id}" data-key="${c.key}">${esc(t(c.label))}${on ? icon(sort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
+      return `<th class="${c.num ? "c" : ""}" scope="col" aria-sort="${on ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}"><button class="th-btn" data-lv-sort="${id}" data-key="${c.key}" ${UI.def(c.label) ? `data-tip="${esc(UI.def(c.label))}"` : ""}>${esc(t(c.label))}${on ? icon(sort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
     }).join("");
     LV.chartData.set(`table-${id}`, { columns, rows: shown });
     const body = shown.slice(0, limit).map((row) => `<tr style="cursor:default">${columns.map((c) => {
@@ -271,9 +278,9 @@
       { key: "clicks", label: "Clicks", num: true },
       { key: "change", label: "Change", num: true, html: move },
     ], rows, { csv: false, empty: word });
-    const compareOff = UI.state.compare === "No comparison";
+    const compareOff = UI.range.get().compare === "none";
     return page(head, `
-      <p class="small muted" style="margin:0 0 12px">${throughNote(d.through, d.lag_note)}</p>
+      <p class="small muted" style="margin:0 0 12px">${throughNote(d.through, d.lag_note, d)}</p>
       ${tileRow}${chart}
       <div class="lv-two">
         <section class="card"><div class="card-head"><h2>${t("Queries gaining clicks")}</h2></div>${compareOff ? `<div class="empty"><p>${t("Pick a comparison above to see this.")}</p></div>` : moves("gaining", d.gaining, "No query gained clicks.")}</section>
@@ -323,7 +330,7 @@
     const series = d.series_names.map((name) => ({ name, color: colourOf(name), values: Object.fromEntries(d.series.map((r) => [r.day, r.values[name] ?? 0])) }));
     const swatch = (name) => `<i class="lv-key" style="background:${colourOf(name)}"></i>${esc(t(name))}`;
     return page(head, `
-      <p class="small muted" style="margin:0 0 12px">${throughNote(d.through)}</p>${hiddenNote(d.hid_rows)}
+      <p class="small muted" style="margin:0 0 12px">${throughNote(d.through, "", d)}</p>${hiddenNote(d.hid_rows)}
       <section class="tiles">
         ${UI.tile(t("Visits"), UI.cnt(d.total.sessions), change(d.total.sessions, d.before?.sessions), { ic: "activity" })}
         ${UI.tile(t("Leads"), num(d.total.leads), change(d.total.leads, d.before?.leads), { ic: "filter" })}
@@ -363,7 +370,7 @@
         <div class="small muted">${num(r.lost)} ${t("visits didn't become a lead")}</div></div>`;
     }).join("");
     return page(head, `
-      <p class="small muted" style="margin:0 0 12px">${throughNote(d.through)}</p>${hiddenNote(d.hid_rows)}${setUp}
+      <p class="small muted" style="margin:0 0 12px">${throughNote(d.through, "", d)}</p>${hiddenNote(d.hid_rows)}${setUp}
       <section class="tiles">
         ${UI.tile(t("Visits"), UI.cnt(d.sessions), "", { ic: "activity" })}
         ${UI.tile(t("Leads"), d.key_events_set_up ? num(d.leads) : "—", d.key_events_set_up ? "" : `<span class="ab">${t("Key events not set up")}</span>`, { ic: "filter" })}
@@ -377,7 +384,7 @@
           { key: "rate", label: "Lead rate", num: true, html: rateCell },
         ], d.page_types, { csv: false })}</section>
         <section class="card"><div class="card-head"><h2>${t("Pages that bring leads")}</h2></div>${dataTable("converting", [
-          { key: "path", label: "Page", get: pageName, html: (r) => `<span class="mono lv-url" dir="auto">${esc(r.path)}</span>${siteOfPage(r)}` },
+          { key: "path", label: "Page", get: pageName, html: (r) => `${PageLink.html(r.path, { host: r.host, cls: "mono lv-url" })}${siteOfPage(r)}` },
           { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }, { key: "rate", label: "Lead rate", num: true, html: rateCell },
         ], d.pages, { csv: false, empty: "No page brought a lead in this period." })}</section>
       </div>`);
@@ -407,7 +414,7 @@
     return page(head, `
       ${missing ? `<p class="note lv-note">${icon("info")}<span>${t(missing)}</span></p>` : ""}${hiddenNote(d.hid_rows)}${clarityReportCard("dashboard")}${clarityCard}
       <section class="card"><div class="card-head"><h2>${t("All pages")}</h2><span class="end small muted">${num(d.total_pages)} ${t(d.total_pages === 1 ? "page" : "pages")}</span></div>${dataTable("content", [
-        { key: "path", label: "Page", get: pageName, html: (r) => `<div class="mono lv-url" dir="auto">${esc(r.path)}</div>${siteOfPage(r)}<div class="lv-cat" dir="auto">${esc(t(r.category))}</div>${UI.relatedTag?.({ host: r.host || UI.siteHostPicked() || "", page: r.path }) || ""}` },
+        { key: "path", label: "Page", get: pageName, html: (r) => `<div class="mono lv-url">${PageLink.html(r.path, { host: r.host })}</div>${siteOfPage(r)}<div class="lv-cat" dir="auto">${esc(t(r.category))}</div>${UI.relatedTag?.({ host: r.host || UI.siteHostPicked() || "", page: r.path }) || ""}` },
         { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }, { key: "clicks", label: "Google clicks", num: true },
         { key: "position", label: "Position", num: true, html: (r) => decimal(r.position) }, { key: "ai", label: "AI visits", num: true },
       ], d.pages)}</section>
@@ -470,7 +477,7 @@
                   <li><div class="what"><div class="t">${t("Pages per visit")}</div></div><div class="acts">${decimal(r.pages_per_session === null || r.pages_per_session === undefined ? null : Math.round(r.pages_per_session * 100) / 100)}</div></li>
                   <li><div class="what"><div class="t">${t("Active time per visit")}</div></div><div class="acts">${num(r.active_seconds)} s</div></li>
                   ${(r.smart_events || []).map((x) => `<li><div class="what"><div class="t" dir="auto">${esc(t(x.name))}</div><div class="s">${t("Smart event")}</div></div><div class="acts">${num(x.sessions)}</div></li>`).join("")}</ul></div></div>`
-            : dataTable("cr-pages", [{ key: "url", label: "Page", html: (x) => `<span class="mono lv-url" dir="ltr">${esc(x.url.replace(/^https?:\/\/[^/]+/, "") || "/")}</span>` }, { key: "sessions", label: "Visits", num: true }], r.top_pages || [], { csv: false, empty: "No pages in this file." });
+            : dataTable("cr-pages", [{ key: "url", label: "Page", html: (x) => PageLink.html(x.url, { text: x.url.replace(/^https?:\/\/[^/]+/, "") || "/", cls: "mono lv-url", dir: "ltr" }) }, { key: "sessions", label: "Visits", num: true }], r.top_pages || [], { csv: false, empty: "No pages in this file." });
       return `<section class="card" style="margin-bottom:14px">${headOf("Clarity report")}
         <p style="margin:0;padding:12px 18px 0">${answer}</p>
         <section class="tiles" style="padding:12px 18px 0;margin:0">
@@ -491,12 +498,12 @@
       ], sites, { csv: false })}<p class="small muted" style="margin:0;padding:10px 18px 14px">${t("Press a site to see which pages and questions.")}</p></section>`;
     }
     const top = (r.pages || [])[0];
-    const answer = r.citations ? `${t("Copilot cited this site")} ${num(r.citations)} ${t(r.citations === 1 ? "time" : "times")}${top ? `, ${t("most often")} <span class="mono" dir="ltr">${esc(top.url.replace(/^https?:\/\/[^/]+/, "") || "/")}</span> (${num(top.citations)})` : ""}.` : t("Copilot didn't cite this site in this file's period.");
+    const answer = r.citations ? `${t("Copilot cited this site")} ${num(r.citations)} ${t(r.citations === 1 ? "time" : "times")}${top ? `, ${t("most often")} ${PageLink.html(top.url, { text: top.url.replace(/^https?:\/\/[^/]+/, "") || "/", cls: "mono", dir: "ltr" })} (${num(top.citations)})` : ""}.` : t("Copilot didn't cite this site in this file's period.");
     const tab = crTabs.ai;
     const body = tab === "questions"
       ? (r.queries === undefined ? `<div class="empty"><p>${t("This download has no questions table. In Clarity, include the questions when you export, then upload it again.")}</p></div>`
         : dataTable("cr-ai-questions", [{ key: "query", label: "Question", html: (x) => `<span dir="auto">${esc(x.query)}</span>` }, { key: "citations", label: "Citations", num: true }, { key: "share", label: "Share of authority", num: true, html: (x) => pctOf(x.share) }], r.queries, { csv: false, empty: "No questions in this file." }))
-      : dataTable("cr-ai-pages", [{ key: "url", label: "Page", html: (x) => `<span class="mono lv-url" dir="ltr">${esc(x.url.replace(/^https?:\/\/[^/]+/, "") || "/")}</span>` }, { key: "citations", label: "Citations", num: true }], r.pages || [], { csv: false, empty: "No cited pages in this file." });
+      : dataTable("cr-ai-pages", [{ key: "url", label: "Page", html: (x) => PageLink.html(x.url, { text: x.url.replace(/^https?:\/\/[^/]+/, "") || "/", cls: "mono lv-url", dir: "ltr" }) }, { key: "citations", label: "Citations", num: true }], r.pages || [], { csv: false, empty: "No cited pages in this file." });
     return `<section class="card" style="margin-bottom:14px">${headOf("Cited by Microsoft Copilot")}
       <p style="margin:0;padding:12px 18px 0">${answer}</p>
       <section class="tiles" style="padding:12px 18px 0;margin:0">
@@ -512,17 +519,17 @@
     const entry = load("metrics/ai");
     const blocked = stateCard(entry, "ga4");
     const head = topbarFor("AI search", "Visits from AI assistants, from Google Analytics", entry);
-    if (blocked) return page(head, clarityReportCard("ai") + blocked);
+    if (blocked) return page(head, clarityReportCard("ai") + (window.GoogleAIReport?.card() || "") + blocked);
     const d = entry.data;
     const list = d.domains.map((name) => `<span class="tag mono" dir="auto">${esc(name)}</span>`).join(" ");
     const body = d.sessions ? `
       <section class="card"><div class="card-head"><h2>${t("AI assistant visits")}</h2></div>${lineChart("ai", d.series.map((r) => r.day), [{ name: "Visits", color: "var(--ch-1)", values: Object.fromEntries(d.series.map((r) => [r.day, r.sessions])) }])}</section>
       <div class="lv-two" style="margin-top:14px">
         <section class="card"><div class="card-head"><h2>${t("By assistant")}</h2></div>${dataTable("ai-sources", [{ key: "source", label: "Assistant", html: (r) => `<span class="mono" dir="auto">${esc(r.source)}</span>` }, { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }], d.sources, { csv: false })}</section>
-        <section class="card"><div class="card-head"><h2>${t("Pages they land on")}</h2></div>${dataTable("ai-pages", [{ key: "path", label: "Page", get: pageName, html: (r) => `<span class="mono lv-url" dir="auto">${esc(r.path)}</span>${siteOfPage(r)}` }, { key: "sessions", label: "Visits", num: true }], d.pages, { csv: false, empty: "No landing pages in this period." })}</section>
+        <section class="card"><div class="card-head"><h2>${t("Pages they land on")}</h2></div>${dataTable("ai-pages", [{ key: "path", label: "Page", get: pageName, html: (r) => `${PageLink.html(r.path, { host: r.host, cls: "mono lv-url" })}${siteOfPage(r)}` }, { key: "sessions", label: "Visits", num: true }], d.pages, { csv: false, empty: "No landing pages in this period." })}</section>
       </div>` : emptyCard(t("No visits from AI assistants in this period."), t("That's a real zero: Google Analytics has data, and none of it came from the assistants listed below."));
     return page(head, `
-      <p class="small muted" style="margin:0 0 12px">${throughNote(d.through)}</p>${hiddenNote(d.hid_rows)}${clarityReportCard("ai")}
+      <p class="small muted" style="margin:0 0 12px">${throughNote(d.through, "", d)}</p>${hiddenNote(d.hid_rows)}${clarityReportCard("ai")}${window.GoogleAIReport?.card() || ""}
       <section class="tiles">
         ${UI.tile(t("AI visits"), UI.cnt(d.sessions), change(d.sessions, d.before), { ic: "sparkles" })}
         ${UI.tile(t("Leads"), num(d.leads), "", { ic: "filter" })}
@@ -544,7 +551,7 @@
     if (!d.linked) return page(head, emptyCard(t("No Google Ads data yet"), t("In Google Analytics, link the property to your Google Ads account. Cost and clicks appear here the day after.")));
     const money = (value, currency) => new Intl.NumberFormat(UI.locale(), currency ? { style: "currency", currency } : { maximumFractionDigits: 2 }).format(value);
     return page(head, `
-      <p class="small muted" style="margin:0 0 12px">${throughNote(d.through)}</p>
+      <p class="small muted" style="margin:0 0 12px">${throughNote(d.through, "", d)}</p>
       <section class="tiles">
         ${d.costs.length ? d.costs.map((c) => UI.tile(`${t("Cost")}${d.costs.length > 1 ? ` · ${esc(c.currency || "")}` : ""}`, esc(money(c.cost, c.currency)), d.costs.length > 1 ? `<span class="ab">${t("Currencies aren't added together")}</span>` : "", { ic: "megaphone" })).join("") : UI.tile(t("Cost"), "—", "", { ic: "megaphone" })}
         ${UI.tile(t("Clicks"), UI.cnt(d.clicks), "", { ic: "mouse-pointer-click" })}
@@ -843,7 +850,7 @@
     "Clarity was already read today. It reads again after midnight UTC.": "Clarity a déjà été lu aujourd'hui. Il sera relu après minuit UTC.",
     "Still reading in the background. The numbers appear here when it finishes: press Refresh data again in a few minutes.": "La lecture continue en arrière-plan. Les chiffres apparaîtront ici à la fin : appuyez de nouveau sur Actualiser les données dans quelques minutes.",
     "{ok} of {total} read.": "{ok} sur {total} lus.",
-    "{names} failed: the card on the page says why.": "{names} a échoué : la carte sur la page explique pourquoi.",
+    "{names} failed: the card on the page says why.": "{names} a échoué : la carte sur la page explique pourquoi.", "Fix it": "Corriger",
     "Updated with the latest data.": "Mis à jour avec les dernières données.",
   });
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });

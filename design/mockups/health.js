@@ -123,12 +123,24 @@
     else if (UI.state.route === "health" && UI.state.healthTab === "test") { paint(); paintBadges(); } else { if (UI.state.route === "health" && UI.state.healthTab === "uptime") window.UptimeWatch?.paint?.(); paintBadges(); }
   }
 
-  async function loadAlerts() {
+  async function loadAlerts({ quiet = false } = {}) {
+    ht.alertsAt = Date.now();
     try {
       const answer = await COMP.api("GET", "alerts");
-      ht.alerts = answer.alerts || [];
+      const fresh = answer.alerts || [];
+      if (quiet && JSON.stringify(fresh) === JSON.stringify(ht.alerts)) return; // nothing new: no redraw anywhere
+      ht.alerts = fresh;
     } catch { return; } // the page still works, and the next test tries again
     refreshAlertViews();
+  }
+
+  /* The banners were read once per page load (F120). Read again when they're over 2 minutes old: on coming back to the
+     browser tab, and every minute while the tab is open on screen. Only a change redraws anything. */
+  function keepAlertsFresh() {
+    const due = () => ht.server && Date.now() - (ht.alertsAt || 0) > 120000;
+    // COMP.poll pauses while the browser tab is hidden and looks again as soon as it shows. Kept going for the whole day.
+    const watch = () => COMP.poll(async () => { if (due()) await loadAlerts({ quiet: true }); return true; }, { every: 60000, slowest: 300000, most: 24 * 3600000, onEnd: (why) => { if (why === "ceiling") watch(); } });
+    watch();
   }
 
   function setSeen(id, seen) {
@@ -167,7 +179,7 @@
 
   async function loadTests({ openId = null } = {}) {
     const id = ht.siteId;
-    clearTimeout(ht.timer);
+    ht.follow?.stop(); ht.follow = null;
     if (id === null) { ht.audits = []; ht.open = null; ht.activeId = null; ht.active = null; return; }
     const { audits } = await COMP.api("GET", `health/sites/${id}/audits`);
     if (!sameId(ht.siteId, id)) return;
@@ -191,25 +203,45 @@
     } catch (err) { ht.failed = err.message; }
     ht.ready = true;
     paint();
+    loadIndexing();
   }
 
+  /* Is every page on Google (build next 9): read beside the tests, and never in the way of them. */
+  async function loadIndexing() {
+    const id = ht.siteId;
+    if (!ht.server || id === null) { ht.indexing = null; return; }
+    try {
+      const answer = await COMP.api("GET", `health/sites/${id}/indexing`);
+      if (!sameId(ht.siteId, id)) return;
+      ht.indexing = answer;
+    } catch { ht.indexing = { failed: true }; }
+    const box = UI?.$("#ht-indexing");
+    if (box) UI.setHTML(box, indexingInner());
+  }
+
+  /* Follows the running test with the shared poll (F187): it backs off, pauses while the tab is hidden, and gives up after a
+     few failures in a row instead of asking every 1.5 s for ever. A whole-site test can take hours, so it watches up to 6. */
   function poll() {
-    clearTimeout(ht.timer);
-    ht.timer = setTimeout(async () => {
-      const id = ht.activeId;
-      if (!id) return;
-      let data;
-      try { data = await COMP.api("GET", `health/audits/${id}`); } catch { poll(); return; }
-      if (ht.activeId !== id) return;
+    ht.follow?.stop();
+    const id = ht.activeId;
+    if (!id) return;
+    ht.follow = COMP.poll(async () => {
+      if (ht.activeId !== id) return false;
+      const data = await COMP.api("GET", `health/audits/${id}`);
+      if (ht.activeId !== id) return false;
       ht.active = data.audit;
-      if (isActive(data.audit)) { paintProgress(); poll(); return; }
+      if (isActive(data.audit)) { paintProgress(); return true; }
       ht.activeId = null;
       ht.active = null;
       ht.stopping = false;
       await Promise.all([loadAll({ openId: id }), loadAlerts()]);
       const status = data.audit.status;
       UI.toast(UI.t(status === "complete" ? "Health test finished" : status === "stopped" ? "Health test stopped" : "Health test failed"), { kind: status === "failed" ? "crit" : status === "stopped" ? "info" : "good" });
-    }, POLL_MS);
+      return false;
+    }, {
+      every: POLL_MS, grow: 1.15, slowest: 30000, most: 6 * 3600000,
+      onEnd: (why) => { if (why === "errors" || why === "gone") UI.toast(UI.t("Lost touch with the health test. Reload the page to see where it is."), { kind: "warn" }); },
+    });
   }
 
   // ---- the screen ------------------------------------------------------------------------------
@@ -276,7 +308,7 @@
     return `<section class="card ht-plan">
       <p id="ht-line">${t(s.monthly ? "Runs by itself once a month." : "Runs only when you press Run now.")} ${last} ${next}</p>
       <p class="note ht-mac">${icon("info")}<span>${t("The monthly test runs on the hosted version. Here, press Run now.")}</span></p>
-      <label class="opt ht-monthly"><input type="checkbox" class="chk" style="margin:0" id="ht-monthly" ${s.monthly ? "checked" : ""}>${t("Test this website once a month")}</label>
+      <label class="opt ht-monthly"><input type="checkbox" class="chk" style="margin:0" id="ht-monthly" ${s.monthly ? "checked" : ""}>${t("Test this site once a month")}</label>
       <div class="lc-form ht-run-row">
         <button class="btn btn-main" id="ht-run" ${busy ? "disabled" : ""}>${icon("refresh-cw")}${t("Run now")}</button>
       </div>
@@ -399,6 +431,50 @@
     </section>`;
   }
 
+  // ---- on Google, and internal links: one answer, a short table, the rest behind one button ------------------
+  const pathOnly = (url) => { try { const u = new URL(url); return decodeURI(u.pathname + u.search) || "/"; } catch { return url || ""; } };
+  const SHORT = 5;
+
+  function indexingInner() {
+    const { t, num, esc } = UI, ix = ht.indexing;
+    if (!ix) return UI.skeleton ? UI.skeleton("rows", { rows: 3 }) : `<p class="lc-none small muted">${t("Loading…")}</p>`;
+    if (ix.failed) return `<p class="lc-none small sec">${t("That didn't load")}</p>`;
+    if (!ix.on) return `<p class="lc-none small sec">${t("Connect Search Console for this site and Google is asked, page by page, whether each one is indexed.")} <a href="#settings">${t("Data sources")}</a></p>`;
+    if (!ix.pages) return `<p class="lc-none small sec">${t("No page of this site has been read yet. The daily read fills this in.")}</p>`;
+    const parts = [ix.checked ? `${num(ix.indexed)} ${t("of")} ${num(ix.checked)} ${t(ix.checked === 1 ? "page checked is on Google." : "pages checked are on Google.")}` : t("No page has been checked yet.")];
+    if (ix.not_indexed_count) parts.push(`${num(ix.not_indexed_count)} ${t(ix.not_indexed_count === 1 ? "isn't, and Google says why below." : "aren't, and Google says why below.")}`);
+    if (ix.unchecked) parts.push(`${num(ix.unchecked)} ${t("still to check")} (${t("about")} ${num(ix.days_left)} ${t(ix.days_left === 1 ? "day" : "days")}, ${num(ix.per_day)} ${t("a day")}).`);
+    const rows = ix.not_indexed || [], shown = ht.indexAll ? rows : rows.slice(0, SHORT);
+    const table = rows.length ? `<div class="table-wrap"><table class="data lc-table" id="ht-not-indexed"><thead><tr><th scope="col">${t("Page")}</th><th scope="col">${t("Google says")}</th><th scope="col">${t("Asked on")}</th></tr></thead><tbody>
+      ${shown.map((a) => `<tr style="cursor:default"><td class="head-cell">${COMP.link(a.url, pathOnly(a.url))}</td><td data-label="${t("Google says")}" dir="auto">${esc(a.coverage || t(a.state === "unknown" ? "Unknown to Google" : "Not indexed"))}${a.google_canonical ? `<span class="second">${t("Google prefers")} ${COMP.link(a.google_canonical, pathOnly(a.google_canonical))}</span>` : ""}</td><td data-label="${t("Asked on")}" class="nowrap small muted">${esc(a.checked || "—")}</td></tr>`).join("")}</tbody></table></div>
+      ${rows.length > SHORT ? `<div style="padding:10px 18px 14px"><button type="button" class="btn btn-small" data-ht-index-all aria-expanded="${Boolean(ht.indexAll)}">${t(ht.indexAll ? "Show less" : "Show all")} (${num(rows.length)})</button></div>` : ""}` : "";
+    return `<p class="ht-answer lc-none">${parts.join(" ")}</p>${table}`;
+  }
+
+  function indexingCard() {
+    return `<section class="card ht-indexing"><div class="card-head"><h2>${UI.t("On Google")}</h2><span class="end small muted">${UI.t("Search Console, page by page")}</span></div><div id="ht-indexing">${indexingInner()}</div></section>`;
+  }
+
+  function linksCard(d) {
+    const { t, num } = UI, r = d.internal_links;
+    if (!r) return "";
+    const parts = [];
+    if (r.sitemap_read && r.sitemap_pages) parts.push(r.orphan_count ? `${num(r.orphan_count)} ${t(r.orphan_count === 1 ? "page in your sitemap has no link from another page of the site." : "pages in your sitemap have no link from another page of the site.")}` : t("Every page in your sitemap has a link from another page."));
+    else parts.push(t("No sitemap was found, so pages linked from nowhere can't be listed."));
+    if (r.has_search_data) parts.push(r.few_links_count ? `${num(r.few_links_count)} ${t(r.few_links_count === 1 ? "page that gets visits from Google has" : "pages that get visits from Google have")} ${num(r.few_links_line)} ${t("links in or fewer: link to them from related pages.")}` : t("Your pages that get visits from Google all have links in."));
+    const few = r.few_links || [];
+    const table = few.length ? `<div class="table-wrap"><table class="data lc-table" id="ht-few-links"><thead><tr><th scope="col">${t("Page")}</th><th scope="col" class="r">${t("Links in")}</th><th scope="col" class="r">${t("Clicks")}</th></tr></thead><tbody>
+      ${few.slice(0, SHORT).map((p) => `<tr style="cursor:default"><td class="head-cell">${COMP.link(p.url, pathOnly(p.url))}</td><td class="r tabular" data-label="${t("Links in")}">${num(p.links_in)}</td><td class="r tabular" data-label="${t("Clicks")}">${num(p.clicks)}</td></tr>`).join("")}</tbody></table></div>` : "";
+    const all = ht.linksAll ? `<div class="ht-links-all" style="padding:0 18px 14px">
+        ${r.orphans?.length ? `<h3>${t("In the sitemap, linked from nowhere")}</h3><ul class="ht-pages">${r.orphans.map((u) => `<li>${COMP.link(u, pathOnly(u))}</li>`).join("")}${r.orphan_count > r.orphans.length ? `<li class="small muted">${t("and")} ${num(r.orphan_count - r.orphans.length)} ${t("more")}</li>` : ""}</ul>` : ""}
+        <h3>${t("Links in, every page read")}</h3><div class="table-wrap"><table class="data lc-table" id="ht-links-in"><thead><tr><th scope="col">${t("Page")}</th><th scope="col" class="r">${t("Links in")}</th></tr></thead><tbody>
+        ${(r.pages || []).map((p) => `<tr style="cursor:default"><td class="head-cell">${COMP.link(p.url, pathOnly(p.url))}</td><td class="r tabular" data-label="${t("Links in")}">${num(p.links_in)}</td></tr>`).join("")}</tbody></table></div>
+        ${r.sitemap_cut ? `<p class="small muted">${t("The sitemap couldn't be read in full, so this list may be short.")}</p>` : ""}</div>` : "";
+    return `<section class="card ht-links"><div class="card-head"><h2>${t("Internal links")}</h2><span class="end small muted">${num(r.pages_read)} ${t(r.pages_read === 1 ? "page read" : "pages read")}</span></div>
+      <p class="ht-answer lc-none">${parts.join(" ")}</p>${table}
+      <div style="padding:10px 18px 14px"><button type="button" class="btn btn-small" data-ht-links-all aria-expanded="${Boolean(ht.linksAll)}">${t(ht.linksAll ? "Show less" : "Every page and its links in")}</button></div>${all}</section>`;
+  }
+
   function resultWord(a) {
     const { t } = UI;
     if (a.status === "complete") return t("Complete");
@@ -418,23 +494,23 @@
           <td class="r" data-label="${t("Pages")}" ${isActive(a) ? "data-ht-live-pages" : ""}>${num(a.pages_read)}</td>
           <td data-label="${t("Result")}"><span class="small sec" ${isActive(a) ? "data-ht-live-word" : ""}>${esc(resultWord(a))}</span></td>
           <td class="r nowrap" data-label=""><button class="btn btn-small" data-ht-open="${a.id}" aria-label="${t("Open")}: ${esc(UI.fmtStamp(a.created_at))}" ${isActive(a) ? "disabled" : ""}>${t("Open")}</button></td>
-        </tr>`).join("")}</tbody></table>` : `<p class="lc-none small muted">${t("No tests yet for this website.")}</p>`}
+        </tr>`).join("")}</tbody></table>` : `<p class="lc-none small muted">${t("No tests yet for this site.")}</p>`}
     </section>`;
   }
 
   function view() {
     const { t, esc, icon } = UI;
-    if (!ht.ready) return `<div class="card"><div class="empty"><p>${t("Loading…")}</p></div></div>`;
-    if (ht.failed) return `<div class="table-wrap"><div class="empty"><h3>${t("That didn't load")}</h3><p>${esc(t(ht.failed))}</p><div style="margin-top:12px"><button type="button" class="btn" data-ht-retry>${t("Try again")}</button></div></div></div>`;
+    if (!ht.ready) return UI.skeleton ? UI.skeleton("page", { tiles: 2, rows: 6, chart: false }) : `<div class="card"><div class="empty"><p>${t("Loading…")}</p></div></div>`;
+    if (ht.failed) return UI.failCard ? UI.failCard(ht.failed, { onRetry: () => { ht.failed = ""; ht.ready = false; paint(); loadAll(); } }) : `<div class="table-wrap"><div class="empty"><h3>${t("That didn't load")}</h3><p>${esc(t(ht.failed))}</p></div></div>`;
     if (!ht.sites.length) {
-      return `<div class="table-wrap"><div class="empty" id="ht-empty"><h3>${t("No websites added yet")}</h3><p>${t("Add your own website, then test its health.")}</p><button class="btn btn-main" id="site-add">${icon("plus")}${t("Add a website")}</button></div></div>`;
+      return `<div class="table-wrap"><div class="empty" id="ht-empty"><h3>${t("No sites added yet")}</h3><p>${t("Add your own site, then test its health.")}</p><button class="btn btn-main" id="site-add">${icon("plus")}${t("Add a site")}</button></div></div>`;
     }
     const s = site();
     const a = ht.open?.audit;
     const latest = ht.audits.find((x) => !isActive(x));
     const past = a && latest && a.id !== latest.id;
     const alerts = openAlerts().filter((x) => isTestAlert(x) && sameId(x.site_id, s.id) && !UI.state.seen.has(`alert-${x.id}`));
-    return `<div class="comp-bar ht-bar"><label class="field comp-site"><span>${t("Website")}</span><select class="select" id="ht-site">${ht.sites.map((x) => `<option value="${esc(x.id)}" ${sameId(x.id, ht.siteId) ? "selected" : ""}>${esc(x.host)}</option>`).join("")}</select></label>${UI.showingNote(hostShown())}</div>
+    return `<div class="comp-bar ht-bar"><label class="field comp-site"><span>${t("Site")}</span><select class="select" id="ht-site">${ht.sites.map((x) => `<option value="${esc(x.id)}" ${sameId(x.id, ht.siteId) ? "selected" : ""}>${esc(x.host)}</option>`).join("")}</select></label>${UI.showingNote(hostShown())}</div>
       ${alerts.map(bannerHtml).join("")}
       ${past ? `<p class="note ht-past">${icon("info")}<span>${t("You're looking at an older test.")} <button class="link-btn" data-ht-latest>${t("Back to the latest test")}</button></span></p>` : ""}
       <div class="ht-top">${scoreCard()}${planCard(s)}</div>
@@ -442,6 +518,8 @@
       ${a ? notices(a).map(noticeHtml).join("") : ""}
       ${ht.open ? wholeSiteCard(ht.open) : ""}
       ${ht.open?.checks ? checksCard(ht.open) : ""}
+      ${ht.server ? indexingCard() : ""}
+      ${ht.open?.internal_links ? linksCard(ht.open) : ""}
       ${historyCard()}`;
   }
 
@@ -517,6 +595,8 @@
       const target = e.target;
       let el;
       if ((el = target.closest?.("[data-ht-seen]"))) { markSeen(Number(el.dataset.htSeen)); return; }
+      if (target.closest?.("[data-ht-index-all]")) { ht.indexAll = !ht.indexAll; const box = UI.$("#ht-indexing"); if (box) UI.setHTML(box, indexingInner()); UI.$("[data-ht-index-all]")?.focus(); return; }
+      if (target.closest?.("[data-ht-links-all]")) { ht.linksAll = !ht.linksAll; paint(); UI.$("[data-ht-links-all]")?.focus(); return; }
       if (target.closest?.("#ht-run")) { runTest(); return; }
       if ((el = target.closest?.("#ht-stop"))) { stopTest(el); return; }
       if ((el = target.closest?.("[data-ht-open]"))) { openTest(Number(el.dataset.htOpen)); return; }
@@ -540,7 +620,7 @@
           Object.assign(s, answer);
           paint();
           UI.$("#ht-monthly")?.focus();
-          UI.toast(UI.t(answer.monthly ? "This website will be tested once a month" : "Monthly test turned off"), { kind: "info" });
+          UI.toast(UI.t(answer.monthly ? "This site will be tested once a month" : "Monthly test turned off"), { kind: "info" });
         }).catch((err) => { el.checked = !el.checked; COMP.fail(err); });
       }
     });
@@ -566,6 +646,7 @@
 
   window.HealthTest = {
     showCheck(code) { ht.openChecks.add(code); },
+    shownAudit: () => ht.open?.audit?.id ?? null, // export.js: the test on screen
     init(helpers) {
       UI = helpers;
       bindEvents();
@@ -573,6 +654,7 @@
         ht.server = server;
         ht.firstRun = UI.state.firstRun;
         loadAlerts();
+        keepAlertsFresh();
       });
     },
     body() {
@@ -754,7 +836,7 @@
     "Next test": "Prochain test le",
     "First test at the next monthly run.": "Premier test au prochain passage mensuel.",
     "The monthly test runs on the hosted version. Here, press Run now.": "Le test mensuel tourne sur la version hébergée. Ici, appuyez sur Lancer.",
-    "Test this website once a month": "Tester ce site une fois par mois",
+    "Test this site once a month": "Tester ce site une fois par mois",
     "You can leave this page: it keeps going.": "Vous pouvez quitter cette page : le test continue.",
     "This test failed.": "Ce test a échoué.",
     "This test is not complete.": "Ce test n'est pas complet.",
@@ -782,15 +864,33 @@
     "Monthly": "Mensuel",
     "By hand": "À la main",
     "partial": "partiel",
-    "No tests yet for this website.": "Pas encore de test pour ce site.",
-    "Add your own website, then test its health.": "Ajoutez votre site, puis testez sa santé.",
+    "No tests yet for this site.": "Pas encore de test pour ce site.",
+    "Add your own site, then test its health.": "Ajoutez votre site, puis testez sa santé.",
     "You're looking at an older test.": "Vous regardez un test plus ancien.",
     "Back to the latest test": "Revenir au dernier test",
-    "This website will be tested once a month": "Ce site sera testé une fois par mois",
+    "This site will be tested once a month": "Ce site sera testé une fois par mois",
     "Monthly test turned off": "Test mensuel désactivé",
     "Health test finished": "Test de santé terminé",
     "Health test stopped": "Test de santé arrêté",
     "Health test failed": "Test de santé échoué",
+    "On Google": "Sur Google", "Search Console, page by page": "Search Console, page par page",
+    "Connect Search Console for this site and Google is asked, page by page, whether each one is indexed.": "Connectez Search Console pour ce site et Google est interrogé, page par page, pour savoir si chacune est indexée.",
+    "No page of this site has been read yet. The daily read fills this in.": "Aucune page de ce site n'a encore été lue. La lecture quotidienne remplira cette partie.",
+    "No page has been checked yet.": "Aucune page n'a encore été vérifiée.",
+    "page checked is on Google.": "page vérifiée est sur Google.", "pages checked are on Google.": "pages vérifiées sont sur Google.",
+    "isn't, and Google says why below.": "n'y est pas, et Google dit pourquoi ci-dessous.", "aren't, and Google says why below.": "n'y sont pas, et Google dit pourquoi ci-dessous.",
+    "still to check": "encore à vérifier", "Google says": "Google dit", "Asked on": "Demandé le", "Google prefers": "Google préfère",
+    "Internal links": "Liens internes", "page read": "page lue", "pages read": "pages lues", "Links in": "Liens entrants",
+    "page in your sitemap has no link from another page of the site.": "page de votre sitemap n'a aucun lien depuis une autre page du site.",
+    "pages in your sitemap have no link from another page of the site.": "pages de votre sitemap n'ont aucun lien depuis une autre page du site.",
+    "Every page in your sitemap has a link from another page.": "Chaque page de votre sitemap a un lien depuis une autre page.",
+    "No sitemap was found, so pages linked from nowhere can't be listed.": "Aucun sitemap trouvé : les pages liées de nulle part ne peuvent pas être listées.",
+    "page that gets visits from Google has": "page qui reçoit des visites de Google a", "pages that get visits from Google have": "pages qui reçoivent des visites de Google ont",
+    "links in or fewer: link to them from related pages.": "liens entrants ou moins : ajoutez des liens depuis des pages proches.",
+    "Your pages that get visits from Google all have links in.": "Vos pages qui reçoivent des visites de Google ont toutes des liens entrants.",
+    "Every page and its links in": "Chaque page et ses liens entrants", "In the sitemap, linked from nowhere": "Dans le sitemap, liées de nulle part",
+    "Links in, every page read": "Liens entrants, chaque page lue", "The sitemap couldn't be read in full, so this list may be short.": "Le sitemap n'a pas pu être lu en entier : cette liste peut être incomplète.",
+    "Lost touch with the health test. Reload the page to see where it is.": "Le suivi du test de santé a été perdu. Rechargez la page pour voir où il en est.",
     "A health test of this website is already running.": "Un test de santé de ce site est déjà en cours.",
     "That test has already finished.": "Ce test est déjà terminé.",
     "That test doesn't exist.": "Ce test n'existe pas.",

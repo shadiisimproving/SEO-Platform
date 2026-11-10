@@ -59,17 +59,23 @@ class Findings:
     titles: dict[str, list[str]] = field(default_factory=dict)
     metas: dict[str, list[str]] = field(default_factory=dict)
     looked_at: set[str] = field(default_factory=set)
+    # Internal links: how many of the site's own pages link to each page, counted once per linking page. page key -> count
+    links_in: dict[str, int] = field(default_factory=dict)
+    link_names: dict[str, str] = field(default_factory=dict)  # page key -> its address, as first seen
+    linked_from: set[str] = field(default_factory=set)  # pages whose links are already counted
 
     def add(self, code: str, url: str) -> None:
         self.by_code.setdefault(code, []).append(url)
 
     def to_json(self) -> dict:
         """Saved with the crawl's own state and at the same moment, so a chunk repeated after a kill can't count a page twice."""
-        return {"pages_seen": self.pages_seen, "by_code": self.by_code, "site_codes": self.site_codes, "titles": self.titles, "metas": self.metas, "looked_at": sorted(self.looked_at)}
+        return {"pages_seen": self.pages_seen, "by_code": self.by_code, "site_codes": self.site_codes, "titles": self.titles, "metas": self.metas, "looked_at": sorted(self.looked_at),
+                "links_in": self.links_in, "link_names": self.link_names, "linked_from": sorted(self.linked_from)}
 
     @classmethod
     def from_json(cls, data: dict) -> Findings:
-        return cls(data["pages_seen"], data["by_code"], data["site_codes"], data["titles"], data["metas"], set(data["looked_at"]))
+        return cls(data["pages_seen"], data["by_code"], data["site_codes"], data["titles"], data["metas"], set(data["looked_at"]),
+                   dict(data.get("links_in") or {}), dict(data.get("link_names") or {}), set(data.get("linked_from") or []))  # saved before links were counted: none
 
     def first_look(self, url: str) -> bool:
         """Each page counts once, however many links or redirects lead to it."""
@@ -79,6 +85,50 @@ class Findings:
         self.looked_at.add(key)
         self.pages_seen += 1
         return True
+
+
+def count_links_in(found: Findings, page: str, links: list[str], on_site) -> None:
+    """One page read: each other page of the site it links to gets one more page linking to it. A page counts once."""
+    source = page_key(page)
+    if source in found.linked_from:
+        return
+    found.linked_from.add(source)
+    found.link_names.setdefault(source, page)
+    targets: dict[str, str] = {}
+    for link in links:
+        normal = normalize_url(link)
+        if not normal or not on_site(normal):
+            continue
+        key = page_key(normal)
+        if key != source:
+            targets.setdefault(key, normal)
+    for key, normal in targets.items():
+        found.links_in[key] = found.links_in.get(key, 0) + 1
+        found.link_names.setdefault(key, normal)
+
+
+FEW_LINKS_IN = 2  # an important page with this many pages or fewer linking to it
+
+
+def internal_links(found: Findings, sitemap_urls: list[str], start_url: str, cut: bool = False) -> dict:
+    """What the Health screen's internal links report needs, from one test: links in per page, and the orphans.
+
+    An orphan is a page the sitemap lists that no page the test read links to. Only pages that answered are counted: a
+    broken page with links in is the broken-links check's business.
+    """
+    start = page_key(start_url)
+    read = {key for key in found.linked_from}
+    pages = {found.link_names.get(key, key): found.links_in.get(key, 0) for key in read if key != start}
+    orphans, listed = [], 0
+    for url in dict.fromkeys(sitemap_urls):
+        normal = normalize_url(url)
+        if not normal:
+            continue
+        listed += 1
+        key = page_key(normal)
+        if key != start and not found.links_in.get(key):
+            orphans.append(found.link_names.get(key, normal))
+    return {"pages": pages, "orphans": orphans, "sitemap_pages": listed, "sitemap_cut": bool(cut)}
 
 
 def _points_elsewhere(canonical: str, page: str) -> bool:

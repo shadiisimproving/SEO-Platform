@@ -6,8 +6,10 @@
   const COMP = window.COMP;
   let UI = null, t = null, esc = null;
   const SECTIONS = ["rivals", "keywords", "moves", "links"];
-  const FIRST_ROWS = 25, MORE_ROWS = 50;
-  const S = { site: null, token: 0, data: {}, errors: {}, limit: {} };
+  /* Each section opens on a few rows: the page reads in seconds, and "Show more" brings the rest. */
+  const FIRST_ROWS = { rivals: 25, keywords: 8, moves: 5, links: 5, flagged: 25 }, MORE_ROWS = 50;
+  const S = { site: null, token: 0, data: {}, errors: {}, limit: {}, list: null, order: null, orderSite: null, find: "", sort: null };
+  const FIND_FROM = 6; // the search box shows from this many competitors, or while a search is on
 
   const fill = (words, values) => t(words).replace(/\{(\w+)\}/g, (all, name) => (name in values ? values[name] : all));
   const attr = (words) => esc(t(words));
@@ -31,11 +33,90 @@
     paintSection(part);
   }
 
+  /* One site: the competitors table also carries each one's tracking and how it was added, which only the list API knows. */
+  async function fetchList(token, site) {
+    if (site === COMP.ALL) { S.list = null; return; }
+    try {
+      const answer = await COMP.api("GET", `competitors?site_id=${site}`);
+      if (token !== S.token) return;
+      S.list = new Map(answer.competitors.map((c) => [c.id, c]));
+    } catch { if (token === S.token) S.list = new Map(); }
+    paintSection("rivals");
+    if (UI.$("#cs-keywords")) paintSection("keywords"); // its empty box depends on whether any competitor is On
+  }
+  const listRow = (id) => S.list?.get(id) || null;
+  /* The summary only counts competitors whose tracking is On. One set to Pages only or Off stays in the table, with — for its keyword numbers,
+     so the switch that turned it down is still there to turn it back up. */
+  function allRivals() {
+    const d = S.data.rivals;
+    if (!d) return [];
+    if (!S.list || S.site === COMP.ALL) return d.rivals;
+    const have = new Set(d.rivals.map((r) => r.id));
+    const mine = d.sites?.find((s) => String(s.id) === String(S.site)) || { id: Number(S.site), host: "" };
+    const extra = [...S.list.values()].filter((l) => !have.has(l.id)).map((l) => ({ id: l.id, host: l.host, display: l.display, crawl: l.crawl, edits_30d: l.edits_30d, ranks_on: null, they_ahead: null, i_ahead: null, not_found: 0, sites: [mine] }));
+    return extra.length ? [...d.rivals, ...extra] : d.rivals;
+  }
+  const listPending = () => S.site !== COMP.ALL && S.list === null;
+  /* How many competitors are On, Pages only and Off. At All my sites the summary only sends the ones that are On. */
+  function trackingCounts() {
+    const rows = allRivals(), out = { all: rows.length, on: 0, pages: 0, off: 0 };
+    rows.forEach((r) => { out[S.list?.get(r.id)?.tracking || "on"] += 1; });
+    return out;
+  }
+  /* No competitor is tracked for keywords (none is On): the keyword numbers aren't zero, they're unknown. */
+  const noneOn = () => { const c = trackingCounts(); return c.all > 0 && c.on === 0; };
+  /* Every competitor Off: none of their pages is read, so a count of changes or links is unknown, not 0. */
+  const allOff = () => { const c = trackingCounts(); return c.all > 0 && c.off === c.all; };
+  /* The line under "Competitors": only what's true. Off is paused; Pages only is still watched, but gives no keyword numbers. */
+  function watchingWords() {
+    const c = trackingCounts(), watched = c.on + c.pages;
+    const open = t(c.all === 1 ? "Click it to open it." : "Click one to open it.");
+    if (!watched) return plural(c.all, "{n} competitor, paused. Switch it to On to compare keywords.", "{n} competitors, all paused. Switch one to On to compare keywords.");
+    const first = c.off ? fill(watched === 1 ? "You're watching 1 of {n} competitors." : "You're watching {w} of {n} competitors.", { w: UI.num(watched), n: UI.num(c.all) }) : plural(c.all, "You're watching {n} competitor.", "You're watching {n} competitors.");
+    return `${first} ${c.on ? open : t("None is tracked for keywords: switch one to On to compare keywords.")}`;
+  }
+  /* For comp-list.js: Remove and its Undo need the row even when the list tab was never drawn. */
+  COMP.summaryRival = (id) => { const r = allRivals().find((x) => x.id === id); const l = listRow(id); return r ? { ...r, source: l?.source, tracking: l?.tracking } : l; };
+
+  /* Rows keep the order they were first shown in for this site, so a change of tracking doesn't move one under the hand.
+     A sort picked on a column header sets that order once, when it's picked; it isn't worked out again on each redraw. */
+  const SORTS = {
+    name: (r) => String(r.display || r.host).toLocaleLowerCase(),
+    ranks: (r) => (trackedOn(r) && r.ranks_on !== null && r.ranks_on !== undefined ? r.ranks_on : null),
+    leads: (r) => (trackedOn(r) && r.they_ahead !== null && r.they_ahead !== undefined ? (r.they_ahead || 0) - (r.i_ahead || 0) : null),
+    edits: (r) => (r.crawl?.baseline_done && listRow(r.id)?.tracking !== "off" ? r.edits_30d || 0 : null),
+  };
+  function sortedOnce(rows) {
+    const { key, dir } = S.sort, value = SORTS[key], up = dir === "up" ? 1 : -1;
+    // Unknown (—) always goes last, whichever way: it isn't a small number.
+    return [...rows].sort((a, b) => {
+      const x = value(a), y = value(b);
+      if (x === null || y === null) return (x === null) - (y === null);
+      return (x < y ? -1 : x > y ? 1 : 0) * up || rows.indexOf(a) - rows.indexOf(b);
+    });
+  }
+  function orderedRivals() {
+    const rows = allRivals();
+    if (S.orderSite !== S.site || !S.order) {
+      S.orderSite = S.site;
+      const first = S.sort && SORTS[S.sort.key] ? sortedOnce(rows) : rows;
+      S.order = new Map(first.map((r, i) => [r.id, i]));
+      return first;
+    }
+    const at = (r) => (S.order.has(r.id) ? S.order.get(r.id) : S.order.size + rows.indexOf(r));
+    return [...rows].sort((a, b) => at(a) - at(b));
+  }
+  /* Typed part of a name: case, accents and "www." don't matter. */
+  const folded = (text) => String(text || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase().replace(/^www\./, "").trim();
+  const matches = (r) => !S.find || folded(`${r.display || ""} ${r.host}`).includes(folded(S.find));
+
   function paintSection(part) {
     if (UI.state.route !== "competitors" || COMP.currentTab() !== tab) return;
-    if (part === "rivals" && S.data.rivals && !S.data.rivals.rivals.length) { COMP.paint(); return; } // no competitors: the whole page becomes one message
+    if (part === "rivals" && S.data.rivals && !listPending() && (!allRivals().length || !UI.$("#cs-rivals"))) { COMP.paint(); return; } // no competitors: the whole page becomes one message
     const box = UI.$(`#cs-${part}`);
+    const finding = part === "rivals" && document.activeElement?.id === "cs-find" ? [document.activeElement.selectionStart, document.activeElement.selectionEnd] : null;
     if (box) UI.setHTML(box, SECTION[part]());
+    if (finding) { const input = UI.$("#cs-find"); input?.focus({ preventScroll: true }); try { input?.setSelectionRange(...finding); } catch { /* not a text box */ } }
     const tiles = UI.$("#cs-tiles"), basisLine = UI.$("#cs-basis");
     if (tiles) UI.setHTML(tiles, tilesHtml());
     if (basisLine) UI.setHTML(basisLine, basisHtml());
@@ -46,71 +127,130 @@
   // ---- the top of the page ---------------------------------------------------------------------
   function basisHtml() {
     const c = S.data.rivals?.coverage;
-    if (!c) return "";
-    if (!c.keywords) return esc(t("No keywords uploaded yet, so there's nothing to compare positions on."));
-    if (!c.checked) return esc(plural(c.keywords, "{n} keyword saved, none checked yet. Ranking numbers show — until they are.", "{n} keywords saved, none checked yet. Ranking numbers show — until they are."));
+    if (!c || !c.keywords || !c.checked) return ""; // no list, or a list never checked: the setup banner above the tabs already says so, once
     const when = c.newest === c.oldest ? fill("checked {when}", { when: COMP.ago(c.newest) }) : fill("newest check {newest}, oldest {oldest}", { newest: COMP.ago(c.newest), oldest: COMP.ago(c.oldest) });
-    return esc(`${fill("{checked} of {total} keywords checked, with {tools}", { checked: UI.num(c.checked), total: UI.num(c.keywords), tools: c.tools.join(", ") })}, ${when}. ${t("Positions are only compared inside one check.")}`);
+    return `${esc(`${fill("{checked} of {total} keywords checked, with {tools}", { checked: UI.num(c.checked), total: UI.num(c.keywords), tools: c.tools.join(", ") })}, ${when}.`)} ${COMP.info("Positions are only compared inside one check.")}`;
+  }
+
+  /* Changes per day over the window, for the tile's small graph. Only when every change is in hand, so the line is the truth. */
+  function movesLine(d) {
+    if (!d || !d.moves.length || d.total > d.moves.length) return null;
+    const days = d.days || 30, today = Date.now(), counts = new Array(days).fill(0);
+    d.moves.forEach((m) => { const ago = Math.floor((today - new Date(m.at).getTime()) / 86400000); if (ago >= 0 && ago < days) counts[days - 1 - ago] += 1; });
+    return counts;
   }
 
   /* Unknown is unknown: with nothing checked, read or uploaded, a card says — and not 0. */
   function tilesHtml() {
-    const one = (part, label, value, sub, ic) => {
+    const one = (part, label, value, sub, ic, line = null) => {
       const words = value === null ? "…" : value === undefined ? "—" : UI.num(value);
-      return `<button type="button" class="cs-jump" data-cs-jump="${part}" aria-label="${attr(label)}: ${esc(words)}">${UI.tile(t(label), value === null || value === undefined ? `<span class="muted">${words}</span>` : UI.num(value), sub ? `<span class="ab">${esc(sub)}</span>` : "", { ic })}</button>`;
+      return `<button type="button" class="cs-jump" data-cs-jump="${part}" aria-label="${attr(label)}: ${esc(words)}">${UI.tile(t(label), value === null || value === undefined ? `<span class="muted"${value === undefined && sub ? ` title="${attr(sub)}"` : ""}>${words}</span>` : UI.num(value), sub ? `<span class="ab">${esc(sub)}</span>` : "", { ic, line: value ? line : null })}</button>`;
     };
     const d = S.data;
     const siteCount = (d.rivals || d.keywords || d.moves || d.links)?.sites?.length;
     const known = (answer, isKnown, value) => (!answer ? null : isKnown ? value : undefined);
-    const nothingRead = d.moves && d.rivals && d.moves.blocked.length + d.moves.not_started.length >= d.rivals.rivals.length;
+    const nothingRead = d.moves && d.rivals && d.moves.blocked.length + d.moves.not_started.length >= allRivals().length;
     const hasLinks = d.links && d.links.rivals_with_data > 0;
     return [
-      one("rivals", "Competitors", d.rivals ? d.rivals.rivals.length : null, siteCount ? plural(siteCount, "across {n} site", "across {n} sites") : "", "crosshair"),
-      one("keywords", "Keywords they beat you on", known(d.keywords, d.keywords?.coverage.checked > 0, d.keywords?.total), "", "trending-up"),
-      one("moves", "Changes in 30 days", known(d.moves, d.moves?.total > 0 || !nothingRead, d.moves?.total), "", "activity"),
-      one("links", "Domains linking to 2 or more", known(d.links, hasLinks, d.links?.funnel.shared), hasLinks ? plural(d.links.funnel.good, "{n} good domain in all", "{n} good domains in all") : "", "link-2"),
+      one("rivals", "Competitors", d.rivals ? allRivals().length : null, siteCount ? plural(siteCount, "across {n} site", "across {n} sites") : "", "crosshair"),
+      one("keywords", "Keywords they beat you on", known(d.keywords, d.keywords?.coverage.checked > 0 && !noneOn(), d.keywords?.total), d.keywords && noneOn() ? t("No competitor is tracked for keywords") : "", "trending-up"),
+      one("moves", "Changes in 30 days", known(d.moves, d.moves?.total > 0 || (!allOff() && !nothingRead && !allFirstRead()), d.moves?.total), d.moves && !d.moves.total ? (allOff() ? t("Every competitor is paused") : nothingRead ? (allRivals().length ? t("None of their pages could be read yet") : "") : allFirstRead() ? t("First reads only set the starting point") : "") : "", "activity", movesLine(d.moves)),
+      one("links", "Domains linking to 2 or more", known(d.links, hasLinks, d.links?.funnel.shared), hasLinks ? plural(d.links.funnel.good, "{n} good domain in all", "{n} good domains in all") : d.links && allOff() ? t("Every competitor is paused") : "", "link-2"),
     ].join("");
   }
 
   // ---- shared pieces -------------------------------------------------------------------------------
-  const sectionHead = (title, sub = "") => `<div class="cs-head"><h2 tabindex="-1">${esc(t(title))}</h2>${sub ? `<p class="small sec">${esc(sub)}</p>` : ""}</div>`;
+  const sectionHead = (title, sub = "", info = "") => `<div class="cs-head"><h2 tabindex="-1">${esc(t(title))}${info ? COMP.info(info) : ""}</h2>${sub ? `<p class="small sec">${esc(sub)}</p>` : ""}</div>`;
   /* Every competitor in view, so a link can be ticked for one a domain isn't listed under yet. */
   const rivalsInView = (d) => [...new Map([...(d.rivals || []), ...[...d.gaps, ...d.flagged].flatMap((row) => row.rivals)].map((r) => [r.id, r])).values()].sort((a, b) => a.host.localeCompare(b.host));
-  const linksHead = (title, sub, d) => `<div class="cs-head-row">${sectionHead(title, sub)}${rivalsInView(d).length ? `<button class="btn btn-small" data-cs-add-domain>${UI.icon("plus")}${t("Add a domain")}</button>` : ""}</div>`;
+  const linksHead = (title, sub, d) => `<div class="cs-head-row">${sectionHead(title, sub, "Spam is flagged, never removed, and only good domains can be added.")}${rivalsInView(d).length ? `<button class="btn btn-small" data-cs-add-domain>${UI.icon("plus")}${t("Add a domain")}</button>` : ""}</div>`;
   const loadingCard = (title) => `${sectionHead(title)}${COMP.loading()}`;
   const failedCard = (part, title) => `${sectionHead(title)}<div class="table-wrap"><div class="empty"><h3>${t("That didn't load")}</h3><p>${esc(t(S.errors[part]))}</p><button class="btn" data-cs-retry="${part}">${UI.icon("refresh-cw")}${t("Try again")}</button></div></div>`;
-  const limitOf = (part) => S.limit[part] || FIRST_ROWS;
-  function moreButton(part, shown, total) {
+  const limitOf = (part) => S.limit[part] || FIRST_ROWS[part] || 25;
+  function moreButton(part, shown, total, word = "Show more") {
     if (shown >= total) return "";
-    return `<div class="cs-more"><span class="small sec">${esc(fill("Showing {shown} of {total}", { shown: UI.num(shown), total: UI.num(total) }))}</span><button class="btn btn-small" data-cs-more="${part}">${t("Show more")}</button></div>`;
+    return `<div class="cs-more"><span class="small sec">${esc(fill("Showing {shown} of {total}", { shown: UI.num(shown), total: UI.num(total) }))}</span><button class="btn btn-small" data-cs-more="${part}">${t(word)} (${UI.num(total - shown)})</button></div>`;
   }
   /* The server keeps its lists short. Say so when there's more than it sent. */
   const sentNote = (sent, total) => (total > sent ? `<p class="help">${esc(fill("The {sent} with the most competitors are listed, of {total}.", { sent: UI.num(sent), total: UI.num(total) }))}</p>` : "");
-  const siteChip = (rival, site) => `<button type="button" class="chip cs-site mono" dir="auto" data-cs-open="${rival.id}" data-cs-site="${site.id}" aria-label="${esc(fill("Open {rival} for {site}", { rival: rival.display || rival.host, site: site.host }))}">${esc(site.host)}</button>`;
+  /* All my sites: each of my sites as its icon, with the name on hover and for screen readers, so the row stays one line. */
+  const siteChip = (rival, site) => `<button type="button" class="cs-site" data-cs-open="${rival.id}" data-cs-site="${site.id}" data-tip="${esc(site.host)}" aria-label="${esc(fill("Open {rival} for {site}", { rival: rival.display || rival.host, site: site.host }))}">${UI.siteLogo(site.host, 18)}<span class="sr">${esc(site.host)}</span></button>`;
 
   // ---- 1. Who are my biggest rivals? ---------------------------------------------------------------
-  const rivalRow = (r) => `<tr>
-      <td class="head-cell"><span class="with-logo">${UI.siteLogo(r.host)}<span class="logo-text kw mono" dir="auto">${esc(r.display || r.host)}</span></span></td>
-      <td data-label="${attr("Your sites")}"><span class="cs-sites">${r.sites.map((site) => siteChip(r, site)).join("")}</span></td>
-      <td class="c" data-label="${attr("Keywords it ranks on")}">${count(r.ranks_on)}</td>
-      <td class="c" data-label="${attr("They're ahead on")}">${count(r.they_ahead)}</td>
-      <td class="c" data-label="${attr("You're ahead on")}">${count(r.i_ahead)}</td>
-      <td class="c" data-label="${attr("You weren't found on")}">${count(r.not_found)}</td>
-      <td class="c" data-label="${attr("Edits in 30 days")}">${r.crawl?.status === "blocked" ? `<span class="muted" title="${attr("Edits can't be tracked on this site.")}">—</span>` : UI.num(r.edits_30d)}</td>
-      <td data-label="${attr("Watching")}">${COMP.watching(r.crawl)}</td>
+  /* The whole row opens the competitor, for its first site. The name is the real button, so it works from the keyboard too. */
+  /* Unknown is unknown: no check yet, or a site not read yet, shows — and never 0. */
+  const unknown = (why) => `<span class="muted" title="${attr(why)}">—</span>`;
+  const trackedOn = (r) => (listRow(r.id)?.tracking ?? "on") === "on";
+  function leadCell(r) {
+    if (!trackedOn(r)) return unknown("Keyword tracking isn't on for this competitor.");
+    if (r.ranks_on === null || r.ranks_on === undefined) return unknown("No ranking check yet");
+    const side = (who, n, cls) => `<span class="cs-lead-side"><i class="pt-key pt-key-${cls}" aria-hidden="true"></i>${t(who)} <b class="tabular">${UI.num(n || 0)}</b></span>`;
+    const absent = r.not_found ? `<span class="second">${esc(plural(r.not_found, "you're absent on {n}", "you're absent on {n}"))}</span>` : "";
+    return `<span class="cs-lead-cell"><span class="cs-lead">${side("Them", r.they_ahead, "them")}${side("You", r.i_ahead, "you")}</span>${absent}</span>`; // one box, so a phone's card keeps both sides on a line with the note under them
+  }
+  /* Added in the last day, with no edit seen: its pages have been read once, and a first read only sets the starting point.
+     So 0 would claim something the app can't know yet. (The API sends no count of reads, hence the day.) */
+  const FIRST_READ = "The first read only sets the starting point. Edits show from the next daily read.";
+  const firstReadOnly = (r) => { const at = listRow(r.id)?.added_at; return !r.edits_30d && Boolean(at) && Date.now() - new Date(at).getTime() < 86400000; };
+  const allFirstRead = () => { const rows = allRivals().filter((r) => listRow(r.id)?.tracking !== "off"); return rows.length > 0 && rows.every((r) => firstReadOnly(r) || !r.crawl?.baseline_done); };
+  function editsCell(r) {
+    const c = r.crawl || {};
+    if (c.status === "blocked") return unknown("Edits can't be tracked on this site.");
+    if (listRow(r.id)?.tracking === "off") return unknown("Tracking is off: its pages aren't read.");
+    if (!c.status || c.status === "none" || c.status === "queued" || !c.baseline_done) return unknown("The first read isn't done yet.");
+    if (firstReadOnly(r)) return unknown(FIRST_READ);
+    return UI.num(r.edits_30d);
+  }
+  const rivalRow = (r) => {
+    const all = S.site === COMP.ALL, l = listRow(r.id);
+    const name = `${UI.siteLogo(r.host)}<span class="logo-text kw mono" dir="auto">${esc(r.display || r.host)}</span>`;
+    return `<tr${r.sites[0] ? ` data-cs-row="${r.id}" data-cs-row-site="${r.sites[0].id}"` : ""} class="${l?.tracking && l.tracking !== "on" ? `ct-row-${l.tracking}` : ""}">
+      <td class="head-cell">${r.sites[0]
+        ? `<button type="button" class="cs-rival-open with-logo" data-cs-open="${r.id}" data-cs-site="${r.sites[0].id}" aria-label="${attr(fill("Open {rival}", { rival: r.display || r.host }))}">${name}</button>`
+        : `<span class="with-logo">${name}</span>`}${!all && l && l.source !== "suggested" ? `<span class="second">${t("Added by hand")}</span>` : ""}</td>
+      ${all ? `<td data-label="${attr("Your sites")}"><span class="cs-sites">${r.sites.map((site) => siteChip(r, site)).join("")}</span></td>` : ""}
+      <td class="c" data-label="${attr("Ranks on your keywords")}">${trackedOn(r) ? count(r.ranks_on) : unknown("Keyword tracking isn't on for this competitor.")}</td>
+      <td class="c" data-label="${attr("Who leads")}">${leadCell(r)}</td>
+      <td class="c" data-label="${attr("Edits in 30 days")}">${editsCell(r)}</td>
+      <td data-label="${attr("Watching")}" data-cl-watch="${r.id}">${l?.tracking === "off" ? `<span class="status sec">${UI.icon("pause")}${esc(t("Paused"))}</span>` : COMP.watching(r.crawl, r.sites[0] ? { id: r.id, site: r.sites[0].id } : null)}</td>
+      ${all ? "" : `<td data-label="${attr("Tracking")}">${l ? COMP.trackingSwitch?.({ ...l, tracking: l.tracking || "on" }) ?? "" : ""}</td>
+      <td class="r nowrap" data-label=""><button class="icon-btn cl-row-btn" data-cl-remove="${r.id}" aria-label="${attr("Remove")}: ${esc(r.host)}" data-tip="${attr("Remove")}">${UI.icon("trash-2")}</button></td>`}
     </tr>`;
+  };
 
   function rivalsHtml() {
-    const title = "Your biggest competitors";
+    const title = "Competitors";
     if (S.errors.rivals) return failedCard("rivals", title);
     const d = S.data.rivals;
     if (!d) return loadingCard(title);
-    const rows = d.rivals.slice(0, limitOf("rivals"));
-    return `${sectionHead(title, t("Most keywords where they beat you first. Pick one of your sites to open that competitor."))}
-      <div class="table-wrap"><table class="data" id="cs-rivals-table">
-        <thead><tr><th scope="col">${t("Competitor")}</th><th scope="col">${t("Your sites")}</th><th scope="col" class="c">${t("Keywords it ranks on")}</th><th scope="col" class="c">${t("They're ahead on")}</th><th scope="col" class="c">${t("You're ahead on")}</th><th scope="col" class="c" data-tip="${attr("Not in the results checked")}">${t("You weren't found on")}</th><th scope="col" class="c">${t("Edits in 30 days")}</th><th scope="col">${t("Watching")}</th></tr></thead>
+    const all = S.site === COMP.ALL;
+    const head = `<div class="cs-head-row">${sectionHead(title, watchingWords(), all ? "Most keywords where they beat you first. The icons are your sites: one opens the competitor for that site." : "Most keywords where they beat you first.")}<button class="btn btn-main" id="cl-add-open">${UI.icon("plus")}${t(all ? "Add competitors" : "Add a competitor")}</button></div>`;
+    const finder = allRivals().length >= FIND_FROM || S.find
+      ? `<div class="cs-find"><label class="cs-find-box">${UI.icon("search")}<span class="sr">${t("Find a competitor")}</span><input type="search" class="input" id="cs-find" placeholder="${attr("Find a competitor")}" value="${esc(S.find)}" autocomplete="off" spellcheck="false"></label></div>`
+      : "";
+    return `${head}${finder}<div id="cs-rivals-list">${rivalsList()}</div>`;
+  }
+  /* A header that sorts: first press most first (A to Z for names), the next one the other way. */
+  function sortHead(key, label, cls = "", tip = "") {
+    const on = S.sort?.key === key, dir = on ? S.sort.dir : null;
+    const aria = on ? ` aria-sort="${dir === "up" ? "ascending" : "descending"}"` : "";
+    const arrow = on ? UI.icon(dir === "up" ? "arrow-up" : "arrow-down") : "";
+    return `<th scope="col" class="${cls}"${aria}${tip ? ` data-tip="${attr(tip)}"` : ""}><button type="button" class="cs-sort${on ? " on" : ""}" data-cs-sort="${key}">${t(label)}${arrow}</button></th>`;
+  }
+  /* The table and its Show more, redrawn alone while someone types in the search box, so the box keeps its focus. */
+  function rivalsList() {
+    const all = S.site === COMP.ALL;
+    const every = orderedRivals().filter(matches), rows = every.slice(0, limitOf("rivals"));
+    if (S.find && !every.length) return `<div class="table-wrap"><div class="empty cs-find-none"><p>${esc(fill("No competitor matches “{text}”.", { text: S.find }))}</p><button type="button" class="btn btn-small" data-cs-find-clear>${t("Show all")}</button></div></div>`;
+    return `<div class="table-wrap"><table class="data cs-merged" id="cs-rivals-table">
+        <thead><tr>${sortHead("name", "Competitor")}${all ? `<th scope="col">${t("Your sites")}</th>` : ""}${sortHead("ranks", "Ranks on your keywords", "c")}${sortHead("leads", "Who leads", "c", "Who is ahead on the keywords you share, and how many keywords you weren't found on")}${sortHead("edits", "Edits in 30 days", "c")}<th scope="col">${t("Watching")}</th>${all ? "" : `<th scope="col">${t("Tracking")}</th><th scope="col"><span class="sr">${t("Action")}</span></th>`}</tr></thead>
         <tbody>${rows.map(rivalRow).join("")}</tbody>
-      </table></div>${moreButton("rivals", rows.length, d.rivals.length)}`;
+      </table></div>${moreButton("rivals", rows.length, every.length)}${S.find ? `<p class="small sec cs-find-count">${esc(fill("{n} of {total} competitors match.", { n: UI.num(every.length), total: UI.num(allRivals().length) }))}</p>` : ""}`;
+  }
+  function paintRivalsList() {
+    const box = UI.$("#cs-rivals-list");
+    if (box) UI.setHTML(box, rivalsList());
+    UI.syncUrl?.(); // the search and sort are in the address, so a reload keeps them
   }
 
   // ---- 2. Which keywords do they beat me on? --------------------------------------------------------
@@ -150,14 +290,16 @@
     return `<ul class="cs-ahead">${first.map((a) => aheadChip(k, a)).join("")}</ul>${rest.length ? `<details class="cs-rest"><summary><span class="cs-rest-closed">${esc(fill(t("Show {n} more"), { n: UI.num(rest.length) }))}</span><span class="cs-rest-open">${esc(t("Show less"))}</span></summary><ul class="cs-ahead">${rest.map((a) => aheadChip(k, a)).join("")}</ul></details>` : ""}`;
   }
 
-  function keywordRow(k) {
+  /* Four columns: the keyword (with where and when it was checked), your place and its last move, who's ahead, a task. */
+  /* Where a keyword was checked. When every row shown says the same, with the same age, it's said once under the table. */
+  const whereChecked = (k) => `${k.country} · ${engineName(k.engine)} · ${k.tool}`;
+  const sameCheck = (rows) => rows.length > 1 && new Set(rows.map((k) => `${whereChecked(k)}|${COMP.ago(k.checked_at)}`)).size === 1;
+  function keywordRow(k, once = false) {
+    const many = S.site === COMP.ALL && k.my_best?.host;
     return `<tr>
-      <td class="head-cell"><span class="kw mono" dir="auto">${esc(k.keyword)}</span><span class="second">${esc(k.country)}</span></td>
-      <td class="c cs-my-place" data-label="${attr("Your position")}"><div>${COMP.pos(k.my_best?.position, k.depth)}${k.my_best ? `<span class="second mono" dir="auto">${esc(k.my_best.host)}</span>` : ""}</div></td>
-      <td data-label="${attr("Latest change")}"><div>${moveCell(k)}</div></td>
-      <td class="c" data-label="${attr("How many")}">${UI.num(k.rivals_ahead.length)}</td>
+      <td class="head-cell"><span class="kw mono" dir="auto">${esc(k.keyword)}</span>${once ? "" : `<span class="second">${esc(whereChecked(k))} · ${esc(COMP.ago(k.checked_at))}</span>`}</td>
+      <td class="c cs-my-place" data-label="${attr("Your position")}"><div>${COMP.pos(k.my_best?.position, k.depth)}${many ? `<span class="second mono" dir="auto">${esc(k.my_best.host)}</span>` : ""}<span class="cs-move">${moveCell(k)}</span></div></td>
       <td data-label="${attr("Ahead of you")}"><div>${aheadCell(k)}</div></td>
-      <td data-label="${attr("Checked with")}"><div><span class="small">${esc(engineName(k.engine))} · ${esc(k.tool)}</span><span class="second">${esc(COMP.ago(k.checked_at))}</span></div></td>
       <td class="r nowrap" data-label="">${UI.taskButton(keywordFind(k), { label: "Task" })}</td>
     </tr>`;
   }
@@ -167,17 +309,21 @@
     if (S.errors.keywords) return failedCard("keywords", title);
     const d = S.data.keywords;
     if (!d) return loadingCard(title);
+    // None is On: nothing is compared, so this isn't "nobody beats you". The switch is in the table above, so no button here.
+    if (!d.total && d.coverage.checked && noneOn()) return `${sectionHead(title)}${COMP.empty(t("No competitor is tracked for keywords"), t("Switch a competitor to On in the table above, and the keywords they beat you on show here."))}`;
     if (!d.total) {
       const noChecks = !d.coverage.checked;
-      const words = noChecks ? t("This needs ranking checks. Add a search tool's key in Settings, then press Refresh on one of your sites. Viewing this page never spends a check.") : t("No competitor beats you on any keyword checked.");
-      return `${sectionHead(title)}${COMP.empty(t(noChecks ? "No ranking checks yet" : "Nothing here"), words, noChecks ? `<button class="btn" data-cl-settings>${UI.icon("settings")}${t("Open Settings")}</button>` : "")}`;
+      // The banner at the top says what's missing and where to go; this box only says what will show here.
+      const words = noChecks ? t("Positions appear here after the first check of your keywords. Viewing this page never spends a check.") : t("No competitor beats you on any keyword checked.");
+      return `${sectionHead(title)}${COMP.empty(t(noChecks ? "No ranking check yet" : "Nothing here"), words)}`;
     }
-    const rows = d.keywords.slice(0, limitOf("keywords"));
-    return `${sectionHead(title, t("Most competitors ahead first. A keyword counts once, however many of your sites track it."))}
+    const rows = d.keywords.slice(0, limitOf("keywords")), once = sameCheck(rows);
+    const checkedOnce = once ? `<p class="small sec cs-kw-foot">${esc(fill("All checked with {tool}, {when}.", { tool: whereChecked(rows[0]), when: COMP.ago(rows[0].checked_at) }))}</p>` : "";
+    return `${sectionHead(title, t("Most competitors ahead first."), "A keyword counts once, however many of your sites track it. Where and when it was checked is under each keyword, or once under the table when it's the same for all.")}
       <div class="table-wrap"><table class="data" id="cs-keywords-table">
-        <thead><tr><th scope="col">${t("Keyword")}</th><th scope="col" class="c">${t("Your position")}</th><th scope="col">${t("Latest change")}</th><th scope="col" class="c">${t("How many")}</th><th scope="col">${t("Ahead of you")}</th><th scope="col">${t("Checked with")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
-        <tbody>${rows.map(keywordRow).join("")}</tbody>
-      </table></div>${moreButton("keywords", rows.length, d.keywords.length)}${d.total > d.keywords.length ? `<p class="help">${esc(fill("The {sent} with the most competitors ahead are listed, of {total}.", { sent: UI.num(d.keywords.length), total: UI.num(d.total) }))}</p>` : ""}`;
+        <thead><tr><th scope="col">${t("Keyword")}</th><th scope="col" class="c">${t("Your position")}</th><th scope="col">${t("Ahead of you")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
+        <tbody>${rows.map((k) => keywordRow(k, once)).join("")}</tbody>
+      </table></div>${checkedOnce}${moreButton("keywords", rows.length, d.keywords.length)}${d.total > d.keywords.length ? `<p class="help">${esc(fill("The {sent} with the most competitors ahead are listed, of {total}.", { sent: UI.num(d.keywords.length), total: UI.num(d.total) }))}</p>` : ""}`;
   }
 
   // ---- 3. Who is moving right now? ------------------------------------------------------------------
@@ -198,8 +344,8 @@
     if (!d.moves.length) return `${sectionHead(title, sub)}${movesNote(d)}${COMP.empty(t("Nothing in the last 30 days"), t("Page changes and ranking moves appear here as they're found."))}`;
     const rows = d.moves.slice(0, limitOf("moves"));
     return `${sectionHead(title, sub)}${movesNote(d)}
-      <section class="card"><ul class="rows cl-tl" id="cs-moves-list">${rows.map((e) => COMP.timelineRow(e, { id: e.rival.id, rival: e.rival.host, display: e.rival.display, own: e.rival.sites[0]?.host })).join("")}</ul></section>
-      ${moreButton("moves", rows.length, d.moves.length)}${d.total > d.moves.length ? `<p class="help">${esc(fill("The newest {sent} are listed, of {total}.", { sent: UI.num(d.moves.length), total: UI.num(d.total) }))}</p>` : ""}`;
+      <section class="card cs-compact"><ul class="rows cl-tl" id="cs-moves-list">${rows.map((e) => COMP.timelineRow(e, { id: e.rival.id, rival: e.rival.host, display: e.rival.display, own: e.rival.sites[0]?.host })).join("")}</ul></section>
+      ${moreButton("moves", rows.length, d.moves.length, "See all")}${d.total > d.moves.length ? `<p class="help">${esc(fill("The newest {sent} are listed, of {total}.", { sent: UI.num(d.moves.length), total: UI.num(d.total) }))}</p>` : ""}`;
   }
 
   // ---- 4. Which links do many rivals share? ---------------------------------------------------------
@@ -243,26 +389,46 @@
     ].filter(Boolean).join(" · ");
     const flagged = d.flagged.length ? `<details class="fold cs-flagged"><summary>${UI.icon("chevron-right")}${esc(plural(f.flagged, "{n} flagged as spam", "{n} flagged as spam"))}</summary>${linkTable("cs-flagged-table", d.flagged.slice(0, limitOf("flagged")))}${moreButton("flagged", Math.min(limitOf("flagged"), d.flagged.length), d.flagged.length)}${sentNote(d.flagged.length, f.flagged)}</details>` : "";
     const good = rows.length ? linkTable("cs-links-table", rows) : COMP.empty(t("No good domains yet"), t("None of the domains found has passed the spam check yet."));
-    return `${linksHead(title, `${t("Most competitors first. Spam is flagged, never removed, and only good domains can be added.")} ${facts}.`, d)}${good}${moreButton("links", rows.length, d.gaps.length)}${sentNote(d.gaps.length, f.good)}${flagged}`;
+    return `${linksHead(title, `${t("Most competitors first.")} ${facts}.`, d)}${good}${moreButton("links", rows.length, d.gaps.length)}${sentNote(d.gaps.length, f.good)}${flagged}`;
   }
 
   const SECTION = { rivals: rivalsHtml, keywords: keywordsHtml, moves: movesHtml, links: linksHtml };
+  const SORT_DIRS = new Set(["up", "down"]);
 
   // ---- the tab ---------------------------------------------------------------------------------------
   const tab = {
-    id: "summary", order: 0, label: "Summary", icon: "layout-dashboard",
+    id: "summary", order: 0, label: "Competitors", icon: "crosshair",
+    /* In the address (competitors.js asks): #competitors/summary?site=…&find=rival&sort=ranks-down. */
+    address() {
+      return { find: S.find.trim() || undefined, sort: S.sort ? `${S.sort.key}-${S.sort.dir}` : undefined };
+    },
+    fromAddress(q) {
+      S.find = (q.get("find") || "").slice(0, 100);
+      const [key, dir] = (q.get("sort") || "").split("-");
+      S.sort = SORTS[key] && SORT_DIRS.has(dir) ? { key, dir } : null;
+      S.order = null;
+    },
     init(helpers) { UI = helpers; t = helpers.t; esc = helpers.esc; bindEvents(); },
     load() {
+      /* The same site again (a tracking change, an added competitor): what's on screen stays until the new answer is in,
+         and the caller can wait for the table, so focus can go back to the button that was pressed. */
+      const again = S.site === COMP.siteId && Boolean(S.data.rivals) && !S.errors.rivals;
       S.token += 1;
       S.site = COMP.siteId;
-      S.data = {};
+      if (!again) { S.data = {}; S.list = null; S.limit = {}; }
       S.errors = {};
-      S.limit = {};
-      SECTIONS.forEach((part) => { fetchSection(part, S.token, S.site); });
+      const asked = SECTIONS.map((part) => fetchSection(part, S.token, S.site));
+      const list = fetchList(S.token, S.site);
+      return again ? Promise.all([asked[SECTIONS.indexOf("rivals")], list]).then(() => {}) : undefined;
     },
     body() {
       if (S.site !== COMP.siteId) return COMP.loading();
-      if (S.data.rivals && !S.data.rivals.rivals.length) {
+      if (S.data.rivals && !S.data.rivals.rivals.length && listPending()) return COMP.loading();
+      // One site: the line above the tabs (comp-setup.js) already says there are none and offers Find competitors, so this card only adds what it doesn't.
+      if (S.data.rivals && !allRivals().length && S.site !== COMP.ALL && COMP.setup) {
+        return COMP.empty(t("Know one already?"), t("Add a competitor's address by hand, one or up to 200 at once."), `<div class="cl-empty-acts"><button class="btn" id="cl-add-open">${UI.icon("plus")}${t("Add competitors")}</button></div>`);
+      }
+      if (S.data.rivals && !allRivals().length) {
         return COMP.empty(t("No competitors yet"), t("Upload your keyword list in Find competitors to see who really ranks against you, or add a competitor by hand."), `<div class="cl-empty-acts"><button class="btn btn-main" data-cl-go-find>${UI.icon("target")}${t("Find competitors")}</button><button class="btn" id="cl-add-open">${UI.icon("plus")}${t("Add competitors")}</button></div>`);
       }
       return `<p class="small sec cs-basis" id="cs-basis">${basisHtml()}</p>
@@ -273,6 +439,18 @@
   COMP.addTab(tab);
 
   function bindEvents() {
+    document.addEventListener("input", (e) => {
+      if (e.target.id !== "cs-find" || UI.state.route !== "competitors" || COMP.currentTab() !== tab) return;
+      S.find = e.target.value.slice(0, 100);
+      paintRivalsList();
+    });
+    // Try again on a failed read (comp-list.js) changes a rival's state: keep this copy in step for the next redraw.
+    window.addEventListener("comp:crawl", (e) => {
+      const rival = S.data?.rivals?.rivals?.find((r) => r.id === e.detail.id);
+      if (rival) rival.crawl = e.detail.crawl;
+      const listed = S.list?.get(e.detail.id);
+      if (listed) listed.crawl = e.detail.crawl;
+    });
     document.addEventListener("click", async (e) => {
       if (UI.state.route !== "competitors" || COMP.currentTab() !== tab) return;
       const hit = (selector) => e.target.closest?.(selector);
@@ -284,6 +462,7 @@
         return;
       }
       if ((el = hit("[data-cs-open]"))) { COMP.open("list", { competitorId: Number(el.dataset.csOpen) }, Number(el.dataset.csSite)); return; }
+      if ((el = hit("[data-cs-row]")) && !hit("a, button, input, select, textarea, summary, label")) { COMP.open("list", { competitorId: Number(el.dataset.csRow) }, Number(el.dataset.csRowSite)); return; }
       if ((el = hit("[data-cs-review]"))) { COMP.open("gaps", {}, Number(el.dataset.csReview)); return; }
       if ((el = hit("[data-cs-retry]"))) {
         const part = el.dataset.csRetry;
@@ -292,6 +471,15 @@
         fetchSection(part, S.token, S.site);
         return;
       }
+      if ((el = hit("[data-cs-sort]"))) {
+        const key = el.dataset.csSort, first = key === "name" ? "up" : "down";
+        S.sort = S.sort?.key === key ? { key, dir: S.sort.dir === "up" ? "down" : "up" } : { key, dir: first };
+        S.order = null; // worked out once, now
+        paintRivalsList();
+        UI.$(`[data-cs-sort="${key}"]`)?.focus({ preventScroll: true });
+        return;
+      }
+      if (hit("[data-cs-find-clear]")) { S.find = ""; const input = UI.$("#cs-find"); if (input) input.value = ""; paintRivalsList(); input?.focus(); return; }
       if ((el = hit("[data-cs-more]"))) {
         const part = el.dataset.csMore;
         S.limit[part] = limitOf(part) + MORE_ROWS;
@@ -325,12 +513,48 @@
   }
 
   Object.assign(window.FR, {
+    "Know one already?": "Vous en connaissez déjà un ?",
+    "Find a competitor": "Chercher un concurrent",
+    "No competitor matches “{text}”.": "Aucun concurrent ne correspond à « {text} ».",
+    "{n} of {total} competitors match.": "{n} concurrents sur {total} correspondent.",
+    "Show all": "Tout afficher",
+    "Add a competitor's address by hand, one or up to 200 at once.": "Ajoutez l'adresse d'un concurrent à la main, une seule ou jusqu'à 200 à la fois.",
     "Summary": "Synthèse",
+    "Ranks on your keywords": "Se classe sur vos mots-clés",
+    "Who leads": "Qui est devant",
+    "Who is ahead on the keywords you share, and how many keywords you weren't found on": "Qui est devant sur les mots-clés communs, et sur combien de mots-clés vous êtes introuvable",
+    "you're absent on {n}": "vous êtes absent sur {n}",
+    "No ranking check yet": "Aucune vérification de classement",
+    "The first read isn't done yet.": "La première lecture n'est pas terminée.",
+    "Tracking is off: its pages aren't read.": "Suivi désactivé : ses pages ne sont pas lues.",
+    "You're watching {n} competitor.": "Vous suivez {n} concurrent.", "You're watching {n} competitors.": "Vous suivez {n} concurrents.",
+    "You're watching {w} of {n} competitors.": "Vous suivez {w} concurrents sur {n}.", "You're watching 1 of {n} competitors.": "Vous suivez 1 concurrent sur {n}.",
+    "The first read only sets the starting point. Edits show from the next daily read.": "La première lecture ne fait que poser le point de départ. Les modifications apparaissent à partir de la prochaine lecture quotidienne.",
+    "First reads only set the starting point": "Les premières lectures ne font que poser le point de départ",
+    "None of their pages could be read yet": "Aucune de leurs pages n'a encore pu être lue",
+    "Every competitor is paused": "Tous les concurrents sont en pause",
+    "A keyword counts once, however many of your sites track it. Where and when it was checked is under each keyword, or once under the table when it's the same for all.": "Un mot-clé compte une fois, quel que soit le nombre de vos sites qui le suivent. Où et quand il a été vérifié figure sous chaque mot-clé, ou une seule fois sous le tableau quand c'est pareil pour tous.",
+    "Click it to open it.": "Cliquez dessus pour l'ouvrir.", "Click one to open it.": "Cliquez sur l'un d'eux pour l'ouvrir.",
+    "{n} competitor, paused. Switch it to On to compare keywords.": "{n} concurrent, en pause. Passez-le sur Activé pour comparer les mots-clés.",
+    "{n} competitors, all paused. Switch one to On to compare keywords.": "{n} concurrents, tous en pause. Passez-en un sur Activé pour comparer les mots-clés.",
+    "None is tracked for keywords: switch one to On to compare keywords.": "Aucun n'est suivi pour les mots-clés : passez-en un sur Activé pour les comparer.",
+    "No competitor is tracked for keywords": "Aucun concurrent n'est suivi pour les mots-clés",
+    "Switch a competitor to On in the table above, and the keywords they beat you on show here.": "Passez un concurrent sur Activé dans le tableau ci-dessus : les mots-clés où il vous bat s'afficheront ici.",
+    "Most keywords where they beat you first. The icons are your sites: one opens the competitor for that site.": "D'abord ceux qui vous battent sur le plus de mots-clés. Les icônes sont vos sites : chacune ouvre le concurrent pour ce site.",
+    "Most keywords where they beat you first.": "D'abord ceux qui vous battent sur le plus de mots-clés.",
+    "Add competitors": "Ajouter des concurrents",
+    "Positions appear here after the first check of your keywords. Viewing this page never spends a check.": "Les positions apparaissent ici après la première vérification de vos mots-clés. Consulter cette page ne consomme aucune vérification.",
+    "Most competitors ahead first.": "D'abord les mots-clés avec le plus de concurrents devant vous.",
+    "A keyword counts once, however many of your sites track it. The second line under each keyword says where and when it was checked.": "Un mot-clé compte une fois, quel que soit le nombre de vos sites qui le suivent. La deuxième ligne sous chaque mot-clé dit où et quand il a été vérifié.",
+    "See all": "Tout voir",
+    "Most competitors first.": "D'abord ceux liés au plus de concurrents.",
+    "Spam is flagged, never removed, and only good domains can be added.": "Le spam est signalé, jamais retiré, et seuls les bons domaines peuvent être ajoutés.",
     "Your sites": "Vos sites",
     "Keywords it ranks on": "Mots-clés où il se classe",
     "You weren't found on": "Où vous êtes introuvable",
     "Your biggest competitors": "Vos principaux concurrents",
-    "Most keywords where they beat you first. Pick one of your sites to open that competitor.": "D'abord ceux qui vous battent sur le plus de mots-clés. Choisissez l'un de vos sites pour ouvrir ce concurrent.",
+    "Most keywords where they beat you first. Click a competitor to open it.": "D'abord ceux qui vous battent sur le plus de mots-clés. Cliquez sur un concurrent pour l'ouvrir.",
+    "Open {rival}": "Ouvrir {rival}",
     "Open {rival} for {site}": "Ouvrir {rival} pour {site}",
     "across {n} site": "sur {n} site",
     "across {n} sites": "sur {n} sites",

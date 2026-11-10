@@ -34,7 +34,7 @@ const slowAnswer = async (page, pattern, change, ms = 1200) => {
   const [A, B] = sites;
 
   // ---- Today ---------------------------------------------------------------------------------------
-  const today = await slowAnswer(page, new RegExp(`/api/today\\?site_id=${A.real}$`), (d) => { d.todo = [{ id: "x", severity: "crit", title: MARK, detail: "", host: A.host, kind: "x" }]; });
+  const today = await slowAnswer(page, new RegExp(`/api/today\\?(.*&)?site_id=${A.real}(&|$)`), (d) => { d.todo = [{ id: "x", severity: "crit", title: MARK, detail: "", host: A.host, kind: "x" }]; });
   await pickInMenu(page, A.ui);
   await wait(page, 100);
   await pickInMenu(page, B.ui);
@@ -113,7 +113,8 @@ const slowAnswer = async (page, pattern, change, ms = 1200) => {
   check("Settings: a failed load says so", text.includes("That didn't load"), text.slice(0, 200));
   await page.unrouteAll();
   await fresh(page, "settings");
-  text = await page.textContent("#main");
+  // The AI card lists the real sites by name (site-one.example is a real site here), so it is left out of the sample check.
+  text = await page.evaluate(() => { const m = document.querySelector("#main").cloneNode(true); m.querySelector("#ai-settings")?.remove(); return m.textContent; });
   check("Settings: a good load still lists the connections", text.includes("Google") && text.includes("Bing Webmaster") && !/c41d|e07a|site-one/.test(text), text.slice(0, 200));
 
   // A site failing partway through a save must not store the same Google key twice.

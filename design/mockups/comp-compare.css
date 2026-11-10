@@ -292,3 +292,33 @@
 #cg-table .head-cell .kw { overflow-wrap: anywhere; }
 @media (max-width: 640px) { #cg-table .head-cell { min-width: 0; } }
 .empty .btn + .btn { margin-left: 8px; }
+
+/* 2026-11-09: Link gaps with fewer columns. The count of competitors sits with their names; the example link is an icon by the domain. */
+.cg-count { margin-right: 4px; color: var(--text); }
+.cg-example-link { width: 22px; height: 22px; vertical-align: middle; margin-left: 2px; color: var(--muted); }
+.cg-example-link svg.i { width: 13px; height: 13px; }
+.cg-sources-fold > summary .comp-info { margin-left: 4px; }
+/* AI Overview watch: the caveats behind an (i), the one action beside it. */
+.ca-note-line { display: flex; align-items: center; gap: 8px; margin: -4px 0 10px; }
+/* 2026-11-10: on a wide screen the Status column was taking the room while a domain's name broke after its hyphen. */
+@media (min-width: 1000px) { #cg-table .head-cell { min-width: 300px; } }
+/* 2026-11-10, after the screenshot review. A status chip and a competitor's pill never break inside a word ("Spa / m" on a phone),
+   and a domain's name stays whole from tablet width up: the table scrolls inside its card before a column is cut. */
+#cg-table .cg-flag, #cg-table .cp-verdict, #cg-table .status, .cg-rivals .tag, #cg-table .cp-tags .tag { white-space: nowrap; overflow-wrap: normal; }
+#cg-table .cg-flag { flex: none; }
+@media (max-width: 640px) { #cg-table td[data-label] > :is(.cg-flag, .status) { flex: none; } #cg-table td { min-width: 0; } }
+@media (min-width: 641px) {
+  #cg-table .head-cell .kw { white-space: nowrap; overflow-wrap: normal; }
+  .table-wrap:has(> #cg-table) { overflow-x: auto; }
+  /* That makes the wrap the sticky box, so the head's page offset (76px) pushed it down onto the first row. It stays in its place. */
+  #cg-table thead th { top: 0; }
+}
+/* Page vs page and AI Overview: a competitor's name carries its icon, as in the Competitors table. */
+.cp-rival-name { align-items: center; }
+.ca-chips .chip { display: inline-flex; align-items: center; gap: 6px; }
+.ca-chips .chip .site-logo { vertical-align: 0; }
+.ca-once { margin: 8px 2px 0; }
+#cg-table .cg-flag { align-self: flex-start; }
+@media (min-width: 641px) and (max-width: 1000px) { #cg-table :is(td, th) { padding-left: 4px; padding-right: 4px; } #cg-table :is(td, th):first-child { padding-left: 10px; } #cg-table .head-cell { min-width: 0; } }
+/* 2026-11-10, re-review: a domain never breaks after its hyphen in Page vs page's Competitor column or in AI Overview's other sites ("rival- / one.example" at 820). */
+.cp-rival-name .logo-text, .ca-others > span { white-space: nowrap; overflow-wrap: normal; }

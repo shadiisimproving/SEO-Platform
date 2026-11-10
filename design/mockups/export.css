@@ -1,0 +1,25 @@
+/* Export: the button in the top bar and its small menu. Colours come from the look's own tokens, so dark mode follows. */
+.export-btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; min-height: 34px; border-radius: var(--r-m); background: var(--field); box-shadow: inset 0 0 0 1px var(--field-line); color: var(--text); font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; white-space: nowrap; transition: background var(--t-fast), box-shadow var(--t-fast); }
+.export-btn:hover { background: var(--hover); box-shadow: inset 0 0 0 1px var(--line-2); }
+.export-btn[aria-expanded="true"] { box-shadow: inset 0 0 0 1px var(--accent-1), 0 0 0 3px color-mix(in srgb, var(--accent-1) 28%, transparent); }
+.export-btn[aria-busy="true"] { opacity: .6; cursor: progress; }
+.export-btn svg { width: 15px; height: 15px; color: var(--accent-text); flex: none; }
+.export-menu { min-width: 250px; }
+.export-menu > button { align-items: flex-start; gap: 10px; padding: 9px 10px; }
+.export-menu > button svg { width: 16px; height: 16px; margin-top: 2px; color: var(--accent-text); flex: none; }
+.export-words { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.export-words b { font-weight: 550; color: var(--text); }
+.export-words small { font-size: 12px; color: var(--muted); }
+/* Phones: an icon in the title row, beside the screen's own main button, as that button already is. No extra row. */
+@media (max-width: 640px) {
+  .topbar .tools > .export-btn { width: 34px; min-width: 34px; height: 34px; min-height: 34px; padding: 0; justify-content: center; gap: 0; }
+  .topbar .tools > .export-btn span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .topbar .tools > .export-btn svg { width: 16px; height: 16px; }
+  /* Without date picks the tools sit in the title row: the icon stays there, leaving the spot the main button is pinned to (mockup.css). */
+  .topbar .tools:not(:has(.pick, .ov-picks)):has(> .btn:not(.kbd-hint)) > .export-btn { margin-right: 40px; }
+  /* With date picks the tools take a row of their own, so the icon is pinned up into the title row, beside the main button. */
+  .topbar .tools:has(.pick, .ov-picks) > .export-btn { position: absolute; top: 8px; right: 10px; }
+  .topbar .tools:has(.pick, .ov-picks):has(> .btn:not(.kbd-hint)) > .export-btn { right: 50px; }
+  .topbar:has(.tools .pick, .tools .ov-picks):has(.tools > .btn:not(.kbd-hint)):has(#export-btn) .grow { padding-right: 86px; }
+  .export-menu { min-width: 0; width: min(280px, calc(100vw - 16px)); }
+}

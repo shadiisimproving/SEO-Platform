@@ -15,7 +15,7 @@ from datetime import date
 
 from sqlalchemy import Engine, bindparam, text
 
-from seo.insights import data, decline, impact, movement, rules, technical, value, wins
+from seo.insights import aio, data, decline, impact, movement, onpage, rules, technical, value, wins
 from seo.insights.finding import Finding, Result
 from seo.worker import queue
 from seo.worker.runner import handler
@@ -61,12 +61,16 @@ def detect(ctx: data.Ctx) -> Result:
     take(technical.duplicates(ctx))
     take(technical.shown_broken(ctx, gone_pages))
     take(technical.data_gaps(ctx))
+    # Where Google shows an AI Overview, the click-rate curve's clicks are fewer: lowered here, before leads copy them.
+    aio.lower_stakes(ctx.engine, ctx.site_id, total.findings)
     # B3 labels the drops found above, before D copies their numbers.
     take(decline.seasonal(ctx, total.findings))
     # D. Leads, from the findings so far
     take(value.leads(ctx, total.findings))
     # F. Did it work
     take(impact.results(ctx))
+    # What the page itself says about the search: in its title, its H1?
+    onpage.add(ctx.engine, total.findings)
     return total
 
 
@@ -93,15 +97,25 @@ def _record(engine: Engine, site_id: int, through: date | None, started: float, 
         conn.execute(text("DELETE FROM search_finding_runs WHERE site_id = :s AND ran_at < UTC_TIMESTAMP(3) - INTERVAL 90 DAY"), {"s": site_id})
 
 
-def _task_states(conn, keys: list[str]) -> dict[str, str]:
-    """The newest task made from each finding: todo, doing or done."""
+def _task_states(conn, keys: list[str]) -> dict[str, tuple[str, object]]:
+    """The newest task made from each finding: todo, doing or done, and when it last changed."""
     if not keys:
         return {}
     statement = text(
-        "SELECT JSON_UNQUOTE(JSON_EXTRACT(source, '$.key')) k, status FROM tasks WHERE deleted_at IS NULL "
+        "SELECT JSON_UNQUOTE(JSON_EXTRACT(source, '$.key')) k, status, updated_at FROM tasks WHERE deleted_at IS NULL "
         "AND JSON_UNQUOTE(JSON_EXTRACT(source, '$.type')) = 'search' AND JSON_UNQUOTE(JSON_EXTRACT(source, '$.key')) IN :keys ORDER BY id"
     ).bindparams(bindparam("keys", expanding=True))
-    return {row["k"]: row["status"] for row in conn.execute(statement, {"keys": keys}).mappings().all()}
+    return {row["k"]: (row["status"], row["updated_at"]) for row in conn.execute(statement, {"keys": keys}).mappings().all()}
+
+
+def _task_for_now(task: tuple | None, appeared) -> str | None:
+    """A done task counts only for the appearance it was done in: a drop that went away and came back is new work (F109)."""
+    if task is None:
+        return None
+    status, changed = task
+    if status == "done" and appeared is not None and changed is not None and changed < appeared:
+        return None
+    return status
 
 
 def _status(old: dict | None, finding: Finding, task: str | None) -> tuple[str, float | None]:
@@ -123,12 +137,15 @@ def _save(engine: Engine, ctx: data.Ctx, result: Result) -> dict:
     for finding in result.findings:
         seen[finding.key(site_id)] = finding  # the last one wins if a detector said the same thing twice
     with engine.begin() as conn:
-        old = {row["finding_key"]: row for row in conn.execute(text("SELECT id, finding_key, kind, status, dismissed_stake FROM search_findings WHERE site_id = :s"), {"s": site_id}).mappings().all()}
+        old = {row["finding_key"]: row for row in conn.execute(text("SELECT id, finding_key, kind, status, dismissed_stake, first_seen FROM search_findings WHERE site_id = :s"), {"s": site_id}).mappings().all()}
         tasks = _task_states(conn, list(seen) + list(old))
+        now = conn.execute(text("SELECT UTC_TIMESTAMP(3)")).scalar()
         added = updated = 0
         for key, finding in seen.items():
             before = old.get(key)
-            status, dismissed = _status(before, finding, tasks.get(key))
+            back = before is not None and before["status"] == "gone"  # it went away and came back: a new appearance
+            appeared = now if before is None or back else before["first_seen"]
+            status, dismissed = _status(before, finding, _task_for_now(tasks.get(key), appeared))
             values = {
                 "s": site_id, "k": finding.kind, "g": finding.grp, "key": key, "q": (finding.query or None) and finding.query[:500], "p": finding.page,
                 "v": finding.severity, "a": finding.at_stake, "e": json.dumps(finding.evidence, ensure_ascii=False, default=str), "st": status, "ds": dismissed, "d": ctx.end,
@@ -143,9 +160,9 @@ def _save(engine: Engine, ctx: data.Ctx, result: Result) -> dict:
                 conn.execute(
                     text(
                         "UPDATE search_findings SET severity = :v, at_stake = :a, evidence = :e, status = :st, dismissed_stake = :ds, data_through = :d, "
-                        "last_seen = UTC_TIMESTAMP(3), gone_at = NULL, page = :p WHERE id = :i"
+                        "last_seen = UTC_TIMESTAMP(3), gone_at = NULL, page = :p, first_seen = IF(:back, UTC_TIMESTAMP(3), first_seen) WHERE id = :i"
                     ),
-                    {**values, "i": before["id"]},
+                    {**values, "i": before["id"], "back": back},
                 )
                 updated += 1
         vanished = [row["id"] for key, row in old.items() if key not in seen and row["kind"] in result.ran and row["status"] in ("open", "done")]
@@ -173,16 +190,25 @@ def _alerts(engine: Engine, ctx: data.Ctx) -> None:
     """One alert per big open finding. Once someone has seen it, it isn't raised again for the same finding."""
     with engine.begin() as conn:
         big = conn.execute(
-            text("SELECT finding_key, kind, evidence, at_stake FROM search_findings WHERE site_id = :s AND status = 'open' AND severity = 'big' AND kind IN ('dropped_out', 'page_down', 'odd_day')"),
+            text("SELECT finding_key, kind, evidence, at_stake, first_seen FROM search_findings WHERE site_id = :s AND status = 'open' AND severity = 'big' AND kind IN ('dropped_out', 'page_down', 'odd_day')"),
             {"s": ctx.site_id},
         ).mappings().all()
-        raised = {row["k"]: row["seen"] for row in conn.execute(
-            text("SELECT JSON_UNQUOTE(JSON_EXTRACT(detail, '$.finding_key')) k, acknowledged_at IS NOT NULL seen FROM alerts WHERE site_id = :s AND kind = :k"), {"s": ctx.site_id, "k": ALERT_KIND}
-        ).mappings().all()}
+        raised, raised_at = {}, {}
+        for row in conn.execute(
+            text("SELECT JSON_UNQUOTE(JSON_EXTRACT(detail, '$.finding_key')) k, acknowledged_at IS NOT NULL seen, created_at FROM alerts WHERE site_id = :s AND kind = :k"), {"s": ctx.site_id, "k": ALERT_KIND}
+        ).mappings().all():
+            raised[row["k"]] = row["seen"]
+            raised_at[row["k"]] = max(raised_at.get(row["k"]) or row["created_at"], row["created_at"])
         wanted = {row["finding_key"] for row in big}
         for row in big:
             if row["finding_key"] in raised:
-                continue
+                if raised_at[row["finding_key"]] >= row["first_seen"]:
+                    continue
+                # Seen for an earlier appearance of the same drop: this one is new, so it's raised again (F109).
+                conn.execute(
+                    text("DELETE FROM alerts WHERE site_id = :s AND kind = :k AND JSON_UNQUOTE(JSON_EXTRACT(detail, '$.finding_key')) = :f"),
+                    {"s": ctx.site_id, "k": ALERT_KIND, "f": row["finding_key"]},
+                )
             detail = {"finding_key": row["finding_key"], "finding": row["kind"], "detail": f"About {round(row['at_stake'])} clicks a month at stake. See Search → Insights."}
             conn.execute(
                 text("INSERT INTO alerts (site_id, kind, severity, title, detail) VALUES (:s, :k, 'crit', :t, :d)"),

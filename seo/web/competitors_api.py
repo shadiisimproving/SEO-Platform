@@ -11,7 +11,7 @@ from flask import Blueprint, current_app, g, jsonify, request, send_file
 
 from seo.backlinks import service as backlinks
 from seo.backlinks.cleaner import CleanerError, check_upload
-from seo.competitors import ai_watch, collective, gaps, history, insights, keywords, notes, pairs, profile, suggest, tracking  # noqa: F401 - history registers its job handler
+from seo.competitors import ai_watch, collective, firecrawl, gaps, history, insights, keywords, notes, pairs, probe, profile, suggest, tracking  # noqa: F401 - history, firecrawl and probe register their job handlers
 from seo.core.errors import Refused
 from seo.serp import connections
 from seo.web.auth import require_admin
@@ -168,6 +168,12 @@ def competitor_profile(competitor_id: int):
     return jsonify(tracking.apply_to_profile(_engine(), site_id, profile.profile(_engine(), site_id, competitor_id)))
 
 
+@competitors_api.get("/competitors/<int:competitor_id>/reading")
+def competitor_reading(competitor_id: int):
+    """How the read of this competitor's site stands, and nothing else: what the reading box polls (F60)."""
+    return jsonify(profile.reading_state(_engine(), _site_arg(), competitor_id))
+
+
 @competitors_api.get("/competitors/<int:competitor_id>/insights")
 def competitor_insights(competitor_id: int):
     return jsonify(insights.insights(_engine(), _site_arg(), competitor_id))
@@ -182,6 +188,66 @@ def crawl_now(competitor_id: int):
             raise Refused("Tracking is off for this competitor, so its pages aren't read. Turn it on, or to Pages only, first.")
     suggest.queue_crawl(_engine(), competitor_id)
     return jsonify(ok=True), 202
+
+
+@competitors_api.get("/competitors/<int:competitor_id>/firecrawl")
+def firecrawl_offer(competitor_id: int):
+    with _engine().connect() as conn:
+        pairs._competitor(conn, _site_arg(), competitor_id)
+    return jsonify(firecrawl.offer(_engine(), competitor_id))
+
+
+@competitors_api.post("/competitors/<int:competitor_id>/firecrawl")
+def firecrawl_start(competitor_id: int):
+    body = _body({"site_id", "action", "pages"}, ("site_id", "action"))
+    with _engine().connect() as conn:
+        pairs._competitor(conn, body["site_id"], competitor_id)
+        if tracking.of_site(conn, body["site_id"]).get(competitor_id) == tracking.OFF:
+            raise Refused("Tracking is off for this competitor, so its pages aren't read. Turn it on, or to Pages only, first.")
+    return jsonify(firecrawl.start(_engine(), competitor_id, body["action"], body.get("pages"))), 202
+
+
+# ---- keyword check: typed keywords, searched only when asked -----------------------------------------
+
+@competitors_api.get("/keyword-check")
+def keyword_check():
+    return jsonify(probe.listing(_engine(), _site_arg()))
+
+
+@competitors_api.post("/keyword-check/keywords")
+def keyword_check_add():
+    body = _body({"site_id", "keywords", "country", "language"}, ("site_id",))  # an empty box gets probe's own sentence, not "keywords is required"
+    return jsonify(probe.add(_engine(), body["site_id"], body.get("keywords"), body.get("country") or "", body.get("language") or "")), 201
+
+
+@competitors_api.delete("/keyword-check/keywords/<int:keyword_id>")
+def keyword_check_remove(keyword_id: int):
+    return jsonify(probe.remove(_engine(), _site_arg(), keyword_id))
+
+
+@competitors_api.post("/keyword-check/keywords/<int:keyword_id>/restore")
+def keyword_check_restore(keyword_id: int):
+    """Undo of a remove."""
+    body = _body({"site_id", "place"}, ("site_id",))
+    return jsonify(probe.restore(_engine(), body["site_id"], keyword_id, body.get("place")))
+
+
+@competitors_api.post("/keyword-check/keywords/<int:keyword_id>/track")
+def keyword_check_track(keyword_id: int):
+    body = _body({"site_id"}, ("site_id",))
+    return jsonify(probe.track(_engine(), body["site_id"], keyword_id))
+
+
+@competitors_api.post("/keyword-check/estimate")
+def keyword_check_estimate():
+    body = _body({"site_id", "only"}, ("site_id",))
+    return jsonify(probe.estimate(_engine(), body["site_id"], body.get("only")))
+
+
+@competitors_api.post("/keyword-check/run")
+def keyword_check_run():
+    body = _body({"site_id", "only"}, ("site_id",))
+    return jsonify(probe.start(_engine(), body["site_id"], body.get("only"))), 202
 
 
 # ---- page against page --------------------------------------------------------------------------
@@ -277,7 +343,7 @@ def add_gaps():
 
 @competitors_api.get("/prospects")
 def list_prospects():
-    return jsonify(prospects=gaps.list_prospects(_engine(), _site_arg()))
+    return jsonify(prospects=gaps.list_prospects(_engine(), _optional_site_arg()))  # no site_id: every one of my sites
 
 
 @competitors_api.post("/prospects")
@@ -370,13 +436,22 @@ def create_note():
     body = _body({"scope", "body", "site_id", "competitor_id", "page_url", "screen", "keyword", "day", "domain", "task_id"}, ("scope",))
     return jsonify(notes.create(
         _engine(), body["scope"], body.get("body", ""), body.get("site_id"), body.get("competitor_id"), body.get("page_url"), body.get("screen"),
-        body.get("keyword"), body.get("day"), body.get("domain"), body.get("task_id"),
+        body.get("keyword"), body.get("day"), body.get("domain"), body.get("task_id"), by=_my_name(),
     )), 201
+
+
+def _my_name() -> str | None:
+    return g.user["name"] if g.get("user") else None
 
 
 @competitors_api.patch("/notes/<int:note_id>")
 def update_note(note_id: int):
-    return jsonify(notes.update(_engine(), note_id, _body({"body"}).get("body")))
+    """`expected_updated_at`: the version the person was editing. A teammate's save since answers 409 with their copy."""
+    body = _body({"body", "expected_updated_at"})
+    try:
+        return jsonify(notes.update(_engine(), note_id, body.get("body"), body.get("expected_updated_at"), by=_my_name()))
+    except notes.Changed as clash:
+        return jsonify(error=str(clash), note=clash.note), 409
 
 
 @competitors_api.delete("/notes/<int:note_id>")

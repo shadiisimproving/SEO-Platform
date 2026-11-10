@@ -13,6 +13,7 @@ from seo.core import budget
 from seo.core.errors import Refused
 from seo.crawl import store as crawl_store
 from seo.crawl.extract import extract
+from seo.crawl.fetch import FetchResult
 from seo.links import service as links_service
 from seo.serp.store import canonical_url, host_and_domain, on_host
 from seo.worker import queue
@@ -20,6 +21,7 @@ from seo.worker.runner import handler
 
 LANE = "crawl"
 JOB_KIND = "pages.read"
+UNREADABLE = "parse_error"  # the page answered, but its text couldn't be read: tried again later, never ahead of the others
 # Letters and digits, plus the vowel signs of the Indian scripts, which regular expressions don't count as letters.
 _WORD = re.compile("(?:[^\\W_]|[\u0900-\u0963\u0966-\u0dff])+", re.UNICODE)
 _JAPANESE_VOICING = ("\u3099", "\u309a")  # they make カ and ガ different letters, unlike an accent
@@ -78,6 +80,12 @@ def queue_read(engine: Engine, site_id: int, url: str) -> None:
 def read_page(engine: Engine, url: str, host: str, fetcher) -> str:
     """Goes through the polite fetcher, so robots.txt, spacing and the address guard all apply."""
     domain_id = crawl_store.get_or_create_domain(engine, host)
+    with engine.connect() as conn:
+        read_with = conn.execute(text("SELECT read_with FROM pages WHERE url_hash = :h"), {"h": url_hash(url)}).scalar()
+    if read_with == "firecrawl":
+        # Its copy came from Firecrawl because this reader only saw an empty JavaScript shell. Reading it again here would
+        # replace the real text with that shell and report a fake edit, so only another Firecrawl read updates it.
+        return "firecrawl"
     etag, last_modified = crawl_store.validators(engine, url)
     before = fetcher.requests
     # A redirect to another site isn't followed: what's saved under this address must be this site's own page.
@@ -85,7 +93,10 @@ def read_page(engine: Engine, url: str, host: str, fetcher) -> str:
     budget.charge(engine, fetcher.requests - before)
     fields = None
     if result.status == "ok" and result.body is not None:
-        fields = extract(result.body, result.final_url or url, charset=result.charset)
+        try:
+            fields = extract(result.body, result.final_url or url, charset=result.charset)
+        except Exception as exc:  # noqa: BLE001 - one page the reader chokes on is saved as unreadable, and the next page carries on (F97)
+            result = FetchResult(url=url, status=UNREADABLE, http_status=result.http_status, error=f"{type(exc).__name__}: {exc}"[:300])
     return crawl_store.save_fetch(engine, domain_id, url, result, fields)
 
 
@@ -107,6 +118,18 @@ def run_read(job, engine: Engine) -> None:
 def load(conn, url: str) -> dict | None:
     row = conn.execute(text("SELECT * FROM pages WHERE url_hash = :h"), {"h": url_hash(url)}).mappings().first()
     return dict(row) if row else None
+
+
+def load_many(conn, urls) -> dict[str, dict | None]:
+    """load() for many addresses in a few queries, not one each (F77)."""
+    wanted = {url_hash(u): u for u in dict.fromkeys(u for u in urls if u)}
+    found: dict[str, dict | None] = {u: None for u in wanted.values()}
+    hashes = list(wanted)
+    for start in range(0, len(hashes), 500):
+        part = {f"h{n}": h for n, h in enumerate(hashes[start:start + 500])}
+        for row in conn.execute(text(f"SELECT * FROM pages WHERE url_hash IN ({','.join(':' + k for k in part)})"), part).mappings():
+            found[wanted[row["url_hash"]]] = dict(row)
+    return found
 
 
 def page_text(conn, page_id: int) -> str:

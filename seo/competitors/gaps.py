@@ -426,10 +426,14 @@ def add_to_prospects(engine: Engine, site_id: int, domains: list) -> dict:
     return {"added": added, "skipped": skipped}
 
 
-def list_prospects(engine: Engine, site_id: int) -> list[dict]:
+def list_prospects(engine: Engine, site_id: int | None) -> list[dict]:
+    """One site's prospects, or (site_id None) those of every one of my sites at once, so a page load asks once, not once per site."""
     with engine.connect() as conn:
-        require_own(conn, site_id)
-        rows = conn.execute(text("SELECT * FROM prospects WHERE site_id = :s ORDER BY id DESC"), {"s": site_id}).mappings().all()
+        if site_id is None:
+            rows = conn.execute(text("SELECT p.* FROM prospects p JOIN sites s ON s.id = p.site_id WHERE s.kind = 'own' ORDER BY p.id DESC")).mappings().all()
+        else:
+            require_own(conn, site_id)
+            rows = conn.execute(text("SELECT * FROM prospects WHERE site_id = :s ORDER BY id DESC"), {"s": site_id}).mappings().all()
     return [
         {"id": r["id"], "site_id": r["site_id"], "url": r["url"], "domain": r["domain"], "authority": r["authority"], "authority_label": r["authority_label"],
          "spam_score": r["spam_score"], "source_file": r["source_file"], "source_kind": r["source_kind"], "created_at": _iso(r["created_at"]), "owner": r["owner"] or "", "stage": r["stage"], "page_authority": r["page_authority"], "rating": r["rating"]}

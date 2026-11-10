@@ -1,8 +1,12 @@
 // Today, sample and real app, the way a person uses it, with screenshots to look at.
-// Needs: design/serve.py on 8201, and DB_NAME_TEST=seo_cc_snap_test .venv/bin/python tests/ui/app_server.py --port 8230 --slow 0
+// Needs the real app on a port of your own; the sample is the screens opened as a plain file (served over http without
+// the app, they show "The server didn't answer" on purpose, since 10 Nov 2026):
+//   DB_NAME_TEST=test_x_test .venv/bin/python tests/ui/app_server.py --port 8230 --slow 0
+// Run: node tests/ui/flow_today.cjs <screenshots folder> http://127.0.0.1:8230/ [sample address, default the file]
 const { open, menu } = require("./pw.cjs");
 const out = process.argv[2] || "reports/today-redesign-2026-11-05";
-const SAMPLE = "http://127.0.0.1:8201/index.html", REAL = process.argv[3] || "http://127.0.0.1:8230/";
+const SAMPLE = process.argv[4] || `file://${require("path").resolve(__dirname, "../../design/mockups/index.html")}`, REAL = process.argv[3] || "http://127.0.0.1:8230/";
+require("fs").mkdirSync(out, { recursive: true });
 const fails = [];
 const check = (ok, what) => { console.log(ok ? "ok  " : "FAIL", what); if (!ok) fails.push(what); };
 const settle = (page, ms = 700) => page.waitForTimeout(ms);
@@ -123,7 +127,7 @@ async function shared(page, label) {
   await menu(page, "lang"); await settle(page, 700);
   await shot(page, "after-real-french");
   const frLead = (await facts(page)).lead;
-  check(/^Demandes .*derniers jours/.test(frLead), `real: French sentence: ${frLead}`);
+  check(/^Leads .*derniers jours/.test(frLead), `real: French sentence: ${frLead}`);  // the glossary's word since 10 Nov 2026
   const frRows = await rowsText(page);
   check(!frRows.some((x) => /expires on|health fell/.test(x)), `real: French to-do rows: ${frRows.join(" / ")}`);
   await menu(page, "lang"); await settle(page, 500);

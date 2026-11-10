@@ -21,18 +21,18 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
 
   await page.goto("about:blank"); await page.goto(BASE + "#competitors/list"); await settle();
   if (await page.$("#comp-site")) { await page.selectOption("#comp-site", String(site.id)); await settle(); }
-  check("every row has the three choices", (await page.locator("#cl-table [data-ct-set]").count()) === rows.length * 3);
+  check("every row has the three choices", (await page.locator("#cs-rivals-table [data-ct-set]").count()) === rows.length * 3);
   check("new competitors start On", (await page.getAttribute(`[data-ct-id="${first.id}"][data-ct-set="on"]`, "aria-pressed")) === "true");
 
   await page.click(`[data-ct-id="${first.id}"][data-ct-set="pages"]`); await settle();
-  const pagesRow = page.locator(`[data-cl-row="${first.id}"]`);
+  const pagesRow = page.locator(`[data-cs-row="${first.id}"]`);
   check("Pages only blanks the keyword numbers", (await pagesRow.locator("td.c").first().textContent()).trim() === "—");
   check("Pages only keeps the reading state", !/Paused/.test(await pagesRow.textContent()));
   check("the choice is kept", (await page.getAttribute(`[data-ct-id="${first.id}"][data-ct-set="pages"]`, "aria-pressed")) === "true");
   check("focus stays on the choice after the redraw", await page.evaluate((id) => document.activeElement?.dataset?.ctId === String(id), first.id));
 
   await page.click(`[data-ct-id="${second.id}"][data-ct-set="off"]`); await settle();
-  check("Off shows Paused", /Paused/.test(await page.locator(`[data-cl-row="${second.id}"]`).textContent()));
+  check("Off shows Paused", /Paused/.test(await page.locator(`[data-cs-row="${second.id}"]`).textContent()));
   await page.screenshot({ path: OUT + "1-list.png" });
   const saved = (await call("GET", `competitors?site_id=${site.id}`)).competitors;
   check("the server kept both", saved.find((c) => c.id === first.id)?.tracking === "pages" && saved.find((c) => c.id === second.id)?.tracking === "off");
@@ -42,7 +42,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   check("a double click lands on one choice", (await call("GET", `competitors?site_id=${site.id}`)).competitors.find((c) => c.id === second.id)?.tracking === "pages");
 
   // The profile: the switch is in the header, and the keyword tab says why it's empty.
-  await page.click(`[data-cl-open="${first.id}"]`); await settle();
+  await page.click(`[data-cs-open="${first.id}"]`); await settle();
   await page.screenshot({ path: OUT + "2-profile-pages.png", fullPage: true });
   check("the profile shows the switch", (await page.locator(`#comp-body [data-ct-id="${first.id}"][data-ct-set]`).count()) === 3);
   check("the profile says the keywords are hidden", (await page.locator("#comp-body .ct-note").count()) >= 1);
@@ -50,9 +50,9 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   check("On brings the keywords back", (await page.locator("#comp-body .ct-note").count()) === 0);
 
   // French and a narrow screen.
-  await page.click("[data-cl-back]"); await settle();
+  await page.click('[data-comp-tab="summary"]'); await settle();
   await page.evaluate(() => { window.UI.state.lang = "fr"; window.UI.render?.(); }); await settle();
-  check("French words", /Pages seulement/.test(await page.textContent("#cl-table")) && /Niveau de suivi/.test(await page.textContent("#cl-table")));
+  check("French words", /Pages seulement/.test(await page.textContent("#cs-rivals-table")) && /Niveau de suivi/.test(await page.textContent("#cs-rivals-table")));
   await page.setViewportSize({ width: 390, height: 844 }); await settle();
   await page.screenshot({ path: OUT + "3-narrow-fr.png", fullPage: true });
   check("no sideways scroll at phone width", !(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));

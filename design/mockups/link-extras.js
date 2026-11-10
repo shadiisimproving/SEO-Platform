@@ -37,7 +37,7 @@
       </tr></thead><tbody>${rows.map((m) => {
         const list = all.filter((b) => key(b.mediator) === key(m.name));
         const live = list.filter((b) => b.status !== "lost" && b.status !== "planned").length, lost = list.filter((b) => b.status === "lost").length;
-        const visits = list.some((b) => b.visits !== null && b.visits !== undefined) ? num(list.reduce((s, b) => s + (b.visits || 0), 0)) : none;
+        const sum = window.BacklinkSeo?.trafficTotals?.(list), visits = sum ? (sum.known ? num(sum.visits) : none) : list.some((b) => b.visits !== null && b.visits !== undefined) ? num(list.reduce((s, b) => s + (b.visits || 0), 0)) : none; // a shared number counts once (F10)
         return `<tr style="cursor:default">
           <td class="head-cell"><button class="kw" data-bl-mediator="${esc(m.name)}" dir="auto" style="text-align:start" aria-label="${t("See the links from")} ${esc(m.name)}">${esc(m.name)}</button>${m.contact ? `<span class="second" dir="auto" style="overflow-wrap:anywhere">${esc(m.contact)}</span>` : ""}</td>
           ${cell("Platform", m.platform ? `<span dir="auto">${esc(m.platform)}</span>` : none)}
@@ -100,7 +100,7 @@
 
   function sentence(b) {
     const { t, esc, fmtStamp } = UI, c = b.check;
-    if (!c || !c.checked_at) return t(b.status === "planned" ? "Not checked yet. A planned link is only read when you ask, and that never changes its status." : "Not checked yet. It's read once a month on the live site, or when you press Check now.");
+    if (!c || !c.checked_at) return t(b.status === "planned" ? "Not checked yet. A planned link is only read when you ask, and that never changes its status." : "Not checked yet. It's read once a month on the live site, or when you press Run.");
     const when = esc(fmtStamp(c.checked_at));
     if (c.outcome === "found") return `${t("Checked on")} ${when}: ${t(c.is_nofollow ? "the link is there, marked nofollow." : "the link is there and passes value.")}`;
     if (c.outcome === "unknown") return `${t("Couldn't check on")} ${when}. ${t(REASONS[c.reason] || "That page couldn't be read.")} ${t("A page that can't be read never counts as a lost link.")}`;
@@ -147,7 +147,7 @@
     const { t, status, icon } = UI, busy = L.busy.has(b.serverId);
     const statusWord = L.helpers.linkStatus?.(b.status) || status("info", b.status);
     const latest = L.histories.get(b.serverId)?.[0];
-    return `<h3>${t("Link check")} <button class="btn btn-small end" id="link-check-now" data-id="${b.serverId}" ${busy ? "disabled" : ""}>${icon("refresh-cw", busy ? "spin" : "")}${t(busy ? "Checking…" : "Check now")}</button></h3>
+    return `<h3>${t("Link check")} <button class="btn btn-small end" id="link-check-now" data-id="${b.serverId}" ${busy ? "disabled" : ""}>${icon("refresh-cw", busy ? "spin" : "")}${t(busy ? "Checking…" : b.check?.checked_at ? "Run again" : "Run")}</button></h3>
       <p class="lk-result" role="status">${statusWord} ${busy ? t("Reading the page…") : sentence(b)}</p>
       ${latest?.changes?.length && latest.outcome === "found" ? `<ul class="lk-changes">${latest.changes.map((x) => `<li>${changeWords(x)}</li>`).join("")}</ul>` : ""}
       ${factsOf(b)}${historyHtml(b.serverId)}`;
@@ -240,8 +240,8 @@
     "Spent is only added up within one currency.": "Les dépenses ne s'additionnent que dans une même devise.", "Mediator saved": "Intermédiaire enregistré", "A mediator needs a name.": "Un intermédiaire a besoin d'un nom.",
     "There is already a mediator with that name.": "Il existe déjà un intermédiaire avec ce nom.", "That mediator doesn't exist.": "Cet intermédiaire n'existe pas.",
     "Known mediator: their details are filled in where empty.": "Intermédiaire connu : ses coordonnées sont remplies là où c'est vide.", "New mediator: {name}. Added when you save.": "Nouvel intermédiaire : {name}. Ajouté à l'enregistrement.", 
-    "Check now": "Vérifier", "Checking…": "Contrôle en cours…", "Reading the page…": "Lecture de la page…", "Checked on": "Contrôlé le", "Link checked": "Lien contrôlé", "Couldn't check on": "Contrôle impossible le", "This link is lost": "Ce lien est perdu",
-    "Not checked yet. A planned link is only read when you ask, and that never changes its status.": "Pas encore contrôlé. Un lien prévu n'est lu que sur demande, et cela ne change jamais son statut.", "Not checked yet. It's read once a month on the live site, or when you press Check now.": "Pas encore contrôlé. Il est lu une fois par mois sur le site en ligne, ou quand vous appuyez sur Vérifier.",
+    "Run": "Lancer", "Run again": "Relancer", "Checking…": "Contrôle en cours…", "Reading the page…": "Lecture de la page…", "Checked on": "Contrôlé le", "Link checked": "Lien contrôlé", "Couldn't check on": "Contrôle impossible le", "This link is lost": "Ce lien est perdu",
+    "Not checked yet. A planned link is only read when you ask, and that never changes its status.": "Pas encore contrôlé. Un lien prévu n'est lu que sur demande, et cela ne change jamais son statut.", "Not checked yet. It's read once a month on the live site, or when you press Run.": "Pas encore contrôlé. Il est lu une fois par mois sur le site en ligne, ou quand vous appuyez sur Lancer.",
     "the link is there, marked nofollow.": "le lien est là, marqué nofollow.", "the link is there and passes value.": "le lien est là et transmet de la valeur.", "the page no longer exists.": "la page n'existe plus.", "the link is no longer on the page.": "le lien n'est plus sur la page.",
     "A page that can't be read never counts as a lost link.": "Une page illisible ne compte jamais comme un lien perdu.", "That page couldn't be read.": "Cette page n'a pas pu être lue.", "It's read once more tomorrow before it counts as lost.": "Il est relu demain avant de compter comme perdu.",
     "Its robots.txt doesn't allow the app to read that page.": "Son robots.txt n'autorise pas l'application à lire cette page.", "The site turned the app away.": "Le site a refusé l'application.", "The site asked the app to slow down.": "Le site a demandé à l'application de ralentir.", "The site didn't answer.": "Le site n'a pas répondu.",

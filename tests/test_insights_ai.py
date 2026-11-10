@@ -81,8 +81,22 @@ def claude(engine, site, key, monkeypatch):
     return fake
 
 
-def test_the_free_models_are_the_default_and_an_answer_is_kept(engine, site, key, openrouter, no_reading):
+def test_no_ai_is_the_default_so_nothing_about_the_site_is_sent(engine, site, key, openrouter, no_reading):
     found = _finding(engine, site)
+    sources.save_app_key(engine, "openrouter", "sk-or-test-1234")  # a key pasted for competitor summaries doesn't count as a choice
+    assert ai.settings(engine)["sites"][0]["provider"] == "none" and service.one(engine, found)["ai"]["provider"] == "none"
+    with pytest.raises(Refused, match="No AI is chosen"):
+        ai.on_finding(engine, found, "explain")
+    assert openrouter == []
+    ai.save_settings(engine, {"sites": [{"id": site, "provider": "openrouter"}]})
+    ai.save_settings(engine, {"sites": [{"id": site, "provider": "none"}]})
+    with pytest.raises(Refused, match="No AI is chosen"):
+        ai.on_finding(engine, found, "explain")
+
+
+def test_the_free_models_once_picked_and_an_answer_is_kept(engine, site, key, openrouter, no_reading):
+    found = _finding(engine, site)
+    ai.save_settings(engine, {"sites": [{"id": site, "provider": "openrouter"}]})
     with pytest.raises(Refused, match="Connect OpenRouter"):
         ai.on_finding(engine, found, "explain")
     sources.save_app_key(engine, "openrouter", "sk-or-test-1234")

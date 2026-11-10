@@ -38,3 +38,16 @@
   .bell-row { grid-template-columns: 10px minmax(0, 1fr); }
   .bell-acts { grid-column: 2; }
 }
+
+/* The search opens it in Overview → Queries: the whole row is the target, the title is the button for keys. */
+.bell-row-go { cursor: pointer; }
+.bell-go { all: unset; cursor: pointer; border-radius: 3px; overflow-wrap: anywhere; }
+.bell-go:hover b, .bell-go:hover span[dir] { text-decoration: underline; text-underline-offset: 2px; }
+.bell-go:focus-visible { outline: 2px solid var(--c-blue); outline-offset: 2px; }
+
+/* The day's new searches: one row per site, each search opens itself, + tracks it. */
+.bell-group li { align-items: center; }
+.bell-group .bell-go { flex: 1 1 auto; min-width: 0; }
+.bell-track-one { width: 24px; height: 24px; flex: none; }
+.bell-track-one svg { width: 13px; height: 13px; }
+.bell-floor { margin-top: 4px; font-size: 11px; }

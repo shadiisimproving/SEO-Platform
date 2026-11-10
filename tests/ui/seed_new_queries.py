@@ -1,5 +1,5 @@
-"""Made-up Search Console days for trying the bell: 60 days of one old query, then new ones on the last two days, and the
-check run through the real code. Test databases only.
+"""Made-up Search Console days for trying the bell: 60 days of one old query, then new ones on the last two days (two over
+the floor of 10 impressions, one under), and the check run through the real code. Test databases only.
 
   DB_NAME_TEST=test_x_test .venv/bin/python tests/ui/seed_new_queries.py [site_id]
 """
@@ -20,7 +20,7 @@ from seo.notifications import new_queries  # noqa: E402
 NEW = (  # day back from the last day, query, impressions, clicks, position, page
     (0, "how much does a trade licence cost", 23, 2, 5.4, "/prices/"),
     (0, "open a company in 48 hours", 4, 0, 14.8, "/guide/"),
-    (1, "free zone vs mainland", 9, 1, 8.1, "/compare/"),
+    (1, "free zone vs mainland", 12, 1, 8.1, "/compare/"),  # over the bell's floor of 10 impressions; "open a company…" stays under
 )
 
 

@@ -1,7 +1,8 @@
 // Search → Insights with AI (built 2026-11-10), the way a person uses it: Settings → AI, then Explain, a brief, the weekly
 // summary, a kept answer, the monthly cap, French. Claude is faked (tests/ui/fake_claude.py): nothing reaches Anthropic.
-// Needs the test app with made-up shop-one.test findings (see flow_insights_catalogue.cjs) and the fake installed:
-//   a launcher that calls tests.ui.fake_claude.install() then tests.ui.app_server.main(), with --port 8233 --keep
+// Needs the test app with made-up shop-one.test findings and the fake Claude installed, which this does:
+//   DB_NAME_TEST=test_x_test .venv/bin/python tests/ui/insights_server.py --port 8233 --catalogue
+// Each site starts on "none" (no AI chosen); the flow picks OpenRouter for every site first (PUT /api/insights/ai).
 // Run: node tests/ui/flow_insights_ai.cjs reports/insights-ai http://127.0.0.1:8233/
 const fs = require("fs");
 const { open, menu } = require("./pw.cjs");

@@ -111,17 +111,22 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
   });
 
   await step("ranges like Search Console", async () => {
-    const wanted = ["Last 24 hours", "Last 7 days", "Last 28 days", "Last 3 months", "Last 6 months", "Last 12 months", "Last 16 months", "Custom"];
-    check(JSON.stringify((await texts("#ov-range option")).map((s) => s.trim())) === JSON.stringify(wanted), "the same ranges as Search Console");
-    await page.selectOption("[data-ov-range]", "6m"); await page.waitForTimeout(2500);
+    // Since 2026-11-10 the dates are the app's one picker in the top bar (UI.range), not Overview's own boxes.
+    const pick = async (preset) => { await page.click("#period"); await page.waitForTimeout(250); await page.click(`[data-preset="${preset}"]`); await page.waitForTimeout(2500); };
+    await page.click("#period"); await page.waitForTimeout(250);
+    const wanted = ["Last 24 hours", "Last 7 days", "Last 28 days", "Last 3 months", "Last 6 months", "Last 12 months", "Last 16 months"];
+    const shown = (await texts(".dp-presets [data-preset]")).map((s) => s.trim());
+    check(wanted.every((w) => shown.includes(w)) && Boolean(await page.$("#dp-from")), `the same ranges as Search Console, and custom dates (${shown.join(", ")})`);
+    await page.keyboard.press("Escape"); await page.waitForTimeout(200);
+    await pick("6m");
     check((await text(".ov-chart-card h2")) === "Week by week", "6 months is drawn week by week");
-    await page.selectOption("[data-ov-range]", "24h"); await page.waitForTimeout(2500);
+    await pick("24h");
     check((await text(".ov-chart-card h2")) === "Hour by hour" && (await text(".ov-answer")).length > 0, "24 hours is hour by hour, with a sentence");
     await shot("06-24-hours");
-    await page.selectOption("[data-ov-range]", "28d"); await page.waitForTimeout(1500);
-    await page.selectOption("[data-ov-compare]", "none"); await page.waitForTimeout(2000);
+    await pick("28d");
+    await page.click("#compare"); await page.waitForTimeout(200); await page.click('[data-compare="none"]'); await page.waitForTimeout(2000);
     check((await page.locator('#ov-show option[value="gaining"], [data-ov-show] option[value="gaining"]').count()) === 0, "with no comparison, Gaining and Losing go away");
-    await page.selectOption("[data-ov-compare]", "prev"); await page.waitForTimeout(1500);
+    await page.click("#compare"); await page.waitForTimeout(200); await page.click('[data-compare="prev"]'); await page.waitForTimeout(1500);
   });
 
   await step("French, dark, phone", async () => {

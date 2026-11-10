@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from sqlalchemy import Engine, text
 
-from seo.competitors import pairs
+from seo.competitors import pairs, reading
 from seo.competitors.keywords import _iso, require_own
 from seo.competitors.suggest import domain_of, tracked_competitors
 from seo.serp import store
@@ -14,13 +14,43 @@ TIMELINE_LIMIT = 300
 
 
 def _crawl_state(conn, competitor_id: int) -> dict:
-    row = conn.execute(text("SELECT * FROM competitor_crawls WHERE competitor_id = :c"), {"c": competitor_id}).mappings().first()
-    if row is None:
-        return {"status": "none"}
-    return {
-        "status": row["status"], "pages_known": row["pages_known"], "pages_read": row["pages_read"], "message": row["message"],
-        "baseline_done": bool(row["baseline_done"]), "started_at": _iso(row["started_at"]), "finished_at": _iso(row["finished_at"]),
-    }
+    return crawl_states(conn, [competitor_id])[competitor_id]
+
+
+def crawl_states(conn, ids) -> dict[int, dict]:
+    """How each site's read stands, for many at once in a fixed number of queries (F85)."""
+    ids = list(dict.fromkeys(int(i) for i in ids))
+    if not ids:
+        return {}
+    marks = ",".join(str(i) for i in ids)
+    rows = {r["competitor_id"]: dict(r) for r in conn.execute(text(f"SELECT * FROM competitor_crawls WHERE competitor_id IN ({marks})")).mappings()}
+    facts = reading.facts_many(conn, rows)
+    out = {}
+    for competitor_id in ids:
+        row = rows.get(competitor_id)
+        if row is None:
+            out[competitor_id] = {"status": "none"}
+            continue
+        state = {
+            "status": row["status"], "pages_known": row["pages_known"], "pages_read": row["pages_read"], "message": row["message"],
+            "baseline_done": bool(row["baseline_done"]), "started_at": _iso(row["started_at"]), "finished_at": _iso(row["finished_at"]),
+            **facts[competitor_id],
+        }
+        if state.pop("read_stopped"):  # its job died: say so, instead of "reading" until tomorrow
+            state.update(status="failed", message=reading.STOPPED_READ)
+        out[competitor_id] = state
+    return out
+
+
+def reading_state(engine: Engine, site_id: int, competitor_id: int) -> dict:
+    """Only how the read stands, for the reading box to follow a Firecrawl run without loading the whole profile (F60)."""
+    from seo.competitors import tracking  # tracking imports keywords like this file: imported late
+
+    with engine.connect() as conn:
+        require_own(conn, site_id)
+        pairs._competitor(conn, site_id, competitor_id)
+        mode = tracking.of_site(conn, site_id).get(competitor_id, tracking.ON)
+        return {"id": competitor_id, "tracking": mode, "crawl": _crawl_state(conn, competitor_id)}
 
 
 def edits_last_30_days(conn) -> dict[int, int]:
@@ -36,7 +66,7 @@ def overview(engine: Engine, site_id: int) -> list[dict]:
     with engine.connect() as conn:
         site = require_own(conn, site_id)
         tracked = tracked_competitors(conn, site_id)
-        crawls = {c["id"]: _crawl_state(conn, c["id"]) for c in tracked}
+        crawls = crawl_states(conn, [c["id"] for c in tracked])
         edits = edits_last_30_days(conn)
     checks = store.latest_checks(engine, site_id)
     out = []

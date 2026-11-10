@@ -3,7 +3,9 @@
   "use strict";
   if (!window.BOOT) return;
   let UI, t, esc;
-  const T = { key: null, data: null, error: "", summary: {}, at: 0 };
+  // at: when the last answer landed (not when it was asked), so a slow server isn't asked again the moment it answers (F5).
+  // busy: one load at a time. failed: the query that failed, so it isn't asked again until Try again or something changes.
+  const T = { key: null, data: null, error: "", summary: {}, at: 0, busy: false, failed: null };
   const KINDS = { new_page: "New page", page_gone: "Page removed", title: "Title changed", meta: "Meta description changed", h1: "Main heading changed", headings: "Headings changed", content: "Content changed", canonical: "Canonical changed", schema: "Structured data changed", links: "Links changed", redirect: "Redirect changed", status: "Page status changed", robots: "Indexing changed" };
 
   const words = (title) => {
@@ -30,31 +32,64 @@
   };
   const when = (iso) => { if (!iso) return ""; const m = Math.round((Date.now() - new Date(iso)) / 60000); return ago(Math.max(m, 0)); };
 
+  /* The site and the app's one date range, as Today asks for them. Search Console's end is worked out on the server
+     (seo.metrics.search.resolve), the very rule Overview uses, so Google clicks here are Overview's for the same range. */
+  const askFor = () => {
+    const site = UI.siteIdPicked(), parts = [];
+    if (site) parts.push(`site_id=${site}`);
+    if (UI.range?.search) parts.push(UI.range.search());
+    return parts.length ? `?${parts.join("&")}` : "";
+  };
   async function load() {
-    const site = UI.siteIdPicked(), query = site ? `?site_id=${site}` : "";
-    T.key = query; T.at = Date.now();
+    if (T.busy) return;
+    const query = askFor();
+    T.key = query; T.busy = true;
+    const site = UI.siteIdPicked();
     try {
       const [data, summary] = await Promise.all([
         window.COMP.api("GET", `today${query}`),
         window.COMP.api("GET", `backlinks/summary${site ? `?site_id=${site}` : ""}`).catch(() => null),
       ]);
-      if (T.key !== query) return; // another site was picked while this was on its way
-      T.data = data; T.summary = summary || {}; T.error = "";
-      window.ATTENTION = data.todo.map((a) => ({ id: a.id, sev: a.severity, title: a.title, detail: a.detail, host: a.host, act: "Open", key: a.kind }));
+      if (T.key === query) { // not when another site or range was picked, or a source changed, while this was on its way
+        T.data = data; T.summary = summary || {}; T.error = ""; T.failed = null;
+        window.ATTENTION = data.todo.map((a) => ({ id: a.id, sev: a.severity, title: say(a, "title"), detail: a.detail, host: a.host, act: "Open", key: a.kind }));
+        if (data.results?.window?.to) UI.range?.end?.("today", data.results.window.to);
+      }
     } catch (err) {
-      if (T.key !== query) return;
-      T.error = err.message;
+      if (T.key === query) { T.error = err.message; T.failed = query; }
+    } finally {
+      T.busy = false;
+      T.at = Date.now();
     }
+    if (T.key !== query || query !== askFor()) { if (UI.state.route === "today") load(); return; } // ask again for what's wanted now
     if (UI.state.route === "today" && !UI.$("#panel")) UI.render();
   }
 
-  const MAIN_WORD = { source_failing: "Fix", backlink_lost: "Review", backlink_changed: "Review", page_drop: "See page", search_finding: "See why" };
+  /* A sentence the server sends as an English key and its values: put into the reader's language, then filled in. */
+  const DEVICE_WORDS = { MOBILE: "Mobile", DESKTOP: "Desktop", TABLET: "Tablet" };
+  function say(a, part) {
+    const pair = a.words?.[part];
+    if (!pair) return part === "title" ? words(a.title) : a.detail ? words(a.detail) : "";
+    const [key, values] = pair;
+    return Object.entries(values || {}).reduce((out, [k, v]) => {
+      let shown = typeof v === "number" ? UI.num(v) : String(v ?? "");
+      if (k === "segment" && a.words.segment_dim === "device") shown = t(DEVICE_WORDS[String(v).toUpperCase()] || shown);
+      if (k === "day" && /^\d{4}-\d{2}-\d{2}$/.test(shown)) shown = new Intl.DateTimeFormat(UI.locale(), { day: "numeric", month: "long" }).format(new Date(`${shown}T00:00:00`));
+      return out.split(`{${k}}`).join(shown);
+    }, t(key));
+  }
+  const MAIN_WORD = { source_failing: "Fix", backlink_lost: "Review", backlink_changed: "Review", page_drop: "See page", search_finding: "See why", ai_overview: "See it" };
+  const mainButton = (a) => {
+    if (a.kind === "page_drop" && a.open?.page) return `<button class="btn btn-small" data-today-page="${esc(a.open.page)}" data-today-host="${esc(a.host || "")}" data-today-range="${esc(a.open.range || "")}">${t("See page")}</button>`;
+    const link = a.host && a.link && !a.link.includes("?") ? `${a.link}?site=${encodeURIComponent(a.host)}` : a.link;
+    return `<a class="btn btn-small" href="${esc(link || "#today")}">${t(MAIN_WORD[a.kind] || "Open")}</a>`;
+  };
   const todoItem = (a) => {
-    const title = words(a.title), detail = a.detail ? words(a.detail) : "";
+    const title = say(a, "title"), detail = say(a, "detail");
     return {
       id: a.id, severity: a.severity, kind: a.kind, title, detail, host: a.host,
       seenAttr: a.alert_ids ? `data-lv-seen="${esc(a.alert_ids.join(","))}"` : a.seen_key ? `data-lv-drop="${esc(a.seen_key)}"` : "",
-      mainHtml: `<a class="btn btn-small" href="${esc(a.link || "#today")}">${t(MAIN_WORD[a.kind] || "Open")}</a>`,
+      mainHtml: mainButton(a),
       find: a.kind === "search_finding" ? { title, host: a.host || null, priority: "medium", pages: a.page ? [a.page] : [], keywords: a.query ? [a.query] : [], source: { type: "search", key: a.seen_key, label: title, host: a.host || undefined, facts: detail ? [detail] : [], link: a.link } } : { title, host: a.host || null, priority: a.severity === "crit" ? "high" : "medium", ...(a.page ? { pages: [a.page] } : {}), source: { type: "alert", label: title, host: a.host || undefined, facts: detail ? [detail] : [], link: a.link, key: a.seen_key ? `drop|${a.seen_key}` : `alert|${a.kind}|${a.host || ""}|${a.title}` } },
     };
   };
@@ -67,20 +102,66 @@
       results: d.results, googleStopped: d.google_stopped, todo: d.todo.map(todoItem), goingDown: d.going_down, goingUp: d.going_up, otherEdits: d.other_edits,
       rivals: d.rival_changes.map((c) => ({ ...c, label: t(KINDS[c.kind] || c.kind), path: pathOf(c.url), my_path: pathOf(c.my_url), when: when(c.when) })),
       followUp: T.summary.follow_up, renewals: T.summary.renewals_30d,
-      sources: { ok: d.sources.filter((s) => s.ok).length, total: d.sources.length, connectAttr: 'data-lv-connect="google"', note: stale.length ? `${t("Background work")}: ${t("Last ran")} ${ago(stale[0].minutes) || t("never")}` : "" },
+      sources: { ok: d.sources.filter((s) => s.ok).length, waiting: d.sources.filter((s) => s.waiting).length, total: d.sources.length, connectAttr: 'data-lv-connect="google"', note: stale.length ? `${t("Background work")}: ${t("Last ran")} ${ago(stale[0].minutes) || t("never")}` : "" },
       sites: d.sites.map((s) => ({ ...s, pick: siteToPick(s.host) })),
+      range: UI.range?.get ? UI.range.get({ end: d.results?.window?.to, hours: false }) : null,
     });
   }
 
   function page() {
-    const site = UI.siteIdPicked(), query = site ? `?site_id=${site}` : "";
-    if (T.key !== query || Date.now() - T.at > 10000) load(); // coming back to Today shows what's true now
-    const head = UI.topbar(t("Today"), esc(new Intl.DateTimeFormat(UI.locale(), { weekday: "long", day: "numeric", month: "long" }).format(new Date())), "", false);
+    const query = askFor();
+    const head = UI.topbar(t("Today"), esc(new Intl.DateTimeFormat(UI.locale(), { weekday: "long", day: "numeric", month: "long" }).format(new Date())), "", true);
     const setup = UI.setupCard();
-    if (!window.SITES.length) return `${head}<div class="content page-enter">${setup}</div>`;
-    if (T.error && !T.data) return `${head}<div class="content page-enter">${setup}<section class="card"><div class="empty"><h3>${t("That didn't load")}</h3><p>${esc(T.error)}</p></div></section></div>`;
-    if (!T.data) return `${head}<div class="content page-enter">${setup}<section class="card" aria-busy="true"><div class="empty"><p>${t("Loading…")}</p></div></section></div>`;
+    if (!window.SITES.length) return `${head}<div class="content page-enter">${setup}</div>`; // nothing to ask yet: the sites come first
+    // Coming back to Today shows what's true now; a failed load waits for Try again or a new choice.
+    if (!T.busy && (T.key !== query ? T.failed !== query : !T.error && Date.now() - T.at > 10000)) load();
+    if (T.error && (!T.data || T.key !== query)) {
+      const failed = UI.failCard ? UI.failCard(T.error, { retry: "data-today-retry" }) : `<section class="card"><div class="empty"><h3>${t("That didn't load")}</h3><p>${esc(T.error)}</p><div style="margin-top:12px"><button class="btn" data-today-retry>${t("Try again")}</button></div></div></section>`;
+      return `${head}<div class="content page-enter">${setup}${failed}</div>`;
+    }
+    if (!T.data) return `${head}<div class="content page-enter">${setup}${UI.skeleton ? UI.skeleton("page", { tiles: 3, chart: true }) : `<section class="card" aria-busy="true"><div class="empty"><p>${t("Loading…")}</p></div></section>`}</div>`;
     return `${head}<div class="content page-enter">${setup}${view(T.data)}</div>`;
+  }
+
+  /* The side menu's Today badge on another screen: the to-do list only, for every site (the menu filters by the site
+     picked), asked once per page load. Today's own load replaces it with its full list. */
+  const B = { asked: false };
+  async function badge() {
+    if (B.asked || !window.SITES.length) return; // once per load, and only when there's a site to ask about
+    B.asked = true;
+    try {
+      const { todo } = await window.COMP.api("GET", "today/attention");
+      if (T.data) return;
+      window.ATTENTION = todo.map((a) => ({ id: a.id, sev: a.severity, title: say(a, "title"), detail: a.detail, host: a.host, act: "Open", key: a.kind }));
+      const host = UI.siteHostPicked?.() || null, item = UI.$('.nav-item[data-go="today"]');
+      const urgent = window.ATTENTION.filter((a) => !UI.state.seen?.has(a.id) && (a.sev === "crit" || a.sev === "warn") && (!host || !a.host || a.host === host)).length;
+      if (!item || UI.state.firstRun) return;
+      item.querySelector(".count")?.remove();
+      if (urgent) item.append(UI.fragment(`<span class="count" aria-label="${urgent} ${esc(t("Needs attention"))}">${urgent}</span>`));
+    } catch { /* the badge stays as it was; Today itself says what failed */ }
+  }
+
+  /* "See page": that page in Search → Overview → Pages, over the days the row speaks of. Overview owns its own state:
+     OV.openPage when it has one, otherwise the same steps OV.openQuery takes for a search. */
+  function openPage(page, host, range) {
+    if (range && UI.range?.set) UI.range.set({ preset: range });
+    if (window.OV?.openPage) { window.OV.openPage({ host, page }); return; }
+    const OV = window.OV;
+    if (!OV) { UI.go("overview"); return; }
+    if (host) UI.pickSite(host);
+    Object.assign(OV, { tab: "page", show: "all", page: 0, sort: null, moreFilters: false, toTable: true });
+    OV.selected?.clear?.();
+    OV.filters = OV.filters || {};
+    OV.filters.page = { q: page, q_mode: "exact", min_clicks: "", min_impressions: "", pos_from: "", pos_to: "" };
+    UI.go("overview");
+  }
+  /* A keyword in Going up / Going down: the site's own keyword opens in Keywords with its panel (KW.open, Keywords' hook);
+     a search nobody tracks yet opens in Overview → Queries, filtered to it. Either way over the same 7 days. */
+  function openKeyword(query, host, keywordId, range) {
+    if (range && UI.range?.set) UI.range.set({ preset: range });
+    if (keywordId && window.KW?.open) { if (host) UI.pickSite(host); window.KW.open({ keywordId: Number(keywordId), keyword: query, host }); return; }
+    if (window.OV?.openQuery) { window.OV.openQuery({ host, query }); return; }
+    UI.go(keywordId ? "keywords" : "overview");
   }
 
   window.SCREENS = window.SCREENS || {};
@@ -100,15 +181,43 @@
           UI.toast(t("Marked as seen"), { undo: async () => { await send(false); await load(); UI.toast(t("Restored"), { kind: "info" }); } });
         } catch (err) { el.disabled = false; UI.toast(err.message, { kind: "crit" }); }
       });
-      window.addEventListener("seocc:site-added", () => { T.key = null; });
-      window.addEventListener("seocc:sources-changed", () => { T.key = null; });
-      window.addEventListener("seocc:alerts-changed", () => { T.key = null; });
-      load();
+      document.addEventListener("click", (e) => {
+        if (e.target.closest?.("[data-today-retry]")) { T.error = ""; T.failed = null; T.key = null; load(); UI.render(); return; }
+        const el = e.target.closest?.("[data-today-page]");
+        if (el) openPage(el.dataset.todayPage, el.dataset.todayHost, el.dataset.todayRange);
+        const kw = e.target.closest?.("[data-today-keyword]");
+        if (kw) { e.preventDefault(); openKeyword(kw.dataset.todayKeyword, kw.dataset.todayHost, kw.dataset.todayKeywordId, kw.dataset.todayRange); }
+      });
+      window.addEventListener("seocc:site-added", () => { T.key = null; T.failed = null; });
+      window.addEventListener("seocc:sources-changed", () => { T.key = null; T.failed = null; });
+      // Health fires this each time it syncs its alerts, at start-up too: an answer already on its way is as fresh as that.
+      window.addEventListener("seocc:alerts-changed", () => { if (T.busy) return; T.key = null; T.failed = null; });
+      UI.range?.on?.(() => { T.failed = null; });
+      // Today loads its own data when it's drawn. Any other screen only needs the side menu's Today badge: one light call.
+      setTimeout(() => { if (UI.state.route !== "today" && !T.data && !T.busy) badge(); }, 0);
+      window.addEventListener("seocc:site-added", () => { if (UI.state.route !== "today" && !T.data && !B.asked) badge(); });
     },
     page,
   };
   const fr = {
-    "just now": "à l'instant", "See page": "Voir la page",
+    "just now": "à l'instant", "See page": "Voir la page", "See why": "Voir pourquoi", "See it": "Voir", "Try again": "Réessayer",
+    "Clarity data lost in {n} h": "Données Clarity perdues dans {n} h", "Clarity data is being lost": "Des données Clarity sont en train d'être perdues",
+    "Clarity only keeps the last 3 days for the app to read.": "Clarity ne garde que les 3 derniers jours à lire pour l'app.",
+    "{path} lost {percent}% of its Google clicks": "{path} a perdu {percent} % de ses clics Google", "Last 7 days against the 7 before: {was} → {now}": "7 derniers jours contre les 7 précédents : {was} → {now}",
+    "About {n} clicks a month at stake": "Environ {n} clics par mois en jeu", "About {n} clicks a month at stake. See Search → Insights.": "Environ {n} clics par mois en jeu. Voir Recherche → Analyses.",
+    "{path} dropped out of Google": "{path} est sortie de Google", "{path} is slowly losing clicks": "{path} perd lentement des clics",
+    "“{query}” is almost on page 1": "« {query} » est presque en page 1", "“{query}” is close to the top 3": "« {query} » est proche du top 3",
+    "“{query}” is clicked less than usual": "« {query} » est moins cliquée que d'habitude", "“{query}” is seen but never clicked": "« {query} » est vue mais jamais cliquée",
+    "Two of your pages compete for “{query}”": "Deux de vos pages se disputent « {query} »", "Google clicks fell on {day}": "Les clics Google ont baissé le {day}",
+    "“{query}” lost places on Google": "« {query} » a perdu des places sur Google", "{segment} carries most of the drop in clicks": "{segment} porte l'essentiel de la baisse des clics",
+    "Google keeps moving “{query}” up and down": "Google fait monter et descendre « {query} » sans arrêt", "Non-brand clicks fell {percent}%, hidden by brand searches": "Les clics hors marque ont baissé de {percent} %, masqués par les recherches de marque",
+    "“{query}” is slowly losing places": "« {query} » perd lentement des places", "{path} is close to page 1 on many searches": "{path} est proche de la page 1 sur beaucoup de recherches",
+    "“{query}” has no page of its own": "« {query} » n'a pas de page à elle", "Searches with “{word}” have no strong page": "Les recherches avec « {word} » n'ont pas de page forte",
+    "{path} brings leads and is losing clicks": "{path} apporte des leads et perd des clics", "Shown on Google, but it's broken": "Affichée sur Google, mais cassée", "Google shows {path}, but it's broken": "Google affiche {path}, mais elle est cassée",
+    "“{keyword}”: Google's AI Overview no longer cites you": "« {keyword} » : l'AI Overview de Google ne vous cite plus", "“{keyword}”: an AI Overview now shows, without you": "« {keyword} » : un AI Overview s'affiche désormais, sans vous",
+    "“{keyword}”: Google's AI Overview now cites you": "« {keyword} » : l'AI Overview de Google vous cite désormais", "“{keyword}”: a new AI Overview cites you": "« {keyword} » : un nouvel AI Overview vous cite",
+    "“{keyword}”: the AI Overview has gone": "« {keyword} » : l'AI Overview a disparu", "From the last two rank checks that could read Google's AI Overview": "D'après les deux derniers relevés qui ont pu lire l'AI Overview de Google",
+    "Mobile": "Mobile", "Desktop": "Ordinateur", "Tablet": "Tablette",
     "Background work": "Tâches de fond", "Last ran": "Dernier passage", "never": "jamais", "Marked as seen": "Marqué comme vu",
     "New page": "Nouvelle page", "Page removed": "Page retirée", "Title changed": "Titre modifié", "Meta description changed": "Méta description modifiée", "Main heading changed": "Titre principal modifié", "Headings changed": "Titres modifiés", "Content changed": "Contenu modifié", "Canonical changed": "Canonique modifiée", "Structured data changed": "Données structurées modifiées", "Links changed": "Liens modifiés", "Redirect changed": "Redirection modifiée", "Page status changed": "Statut de la page modifié", "Indexing changed": "Indexation modifiée",
   };

@@ -24,7 +24,7 @@ from seo.core.schema import upgrade_to_head  # noqa: E402
 from seo.web import create_app  # noqa: E402
 from seo.worker.runner import tick  # noqa: E402
 from seo.collectors import jobs as collector_jobs  # noqa: E402, F401 - registers its job handlers
-from tests.ui import demo_world, fake_google  # noqa: E402
+from tests.ui import demo_world, fake_firecrawl, fake_google  # noqa: E402
 
 
 def reset(engine) -> None:
@@ -67,6 +67,7 @@ def main() -> None:
             time.sleep(0.4)
 
     fake_google.install()
+    fake_firecrawl.install(websites)
     for lane in ("refresh", "crawl", "collectors"):
         threading.Thread(target=worker, args=(lane,), daemon=True).start()
     app = create_app(engine=engine, url_allowed=lambda url: True, screens_dir=ROOT / "design" / "mockups", auth=args.login, secret_key="local-test-harness-only")

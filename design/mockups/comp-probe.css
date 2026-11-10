@@ -1,0 +1,23 @@
+/* Competitors area: Keyword check (comp-probe.js). */
+.kc-band p { flex: 1 1 320px; margin: 0; font-size: 13px; color: var(--text-2); }
+.kc-confirm { margin: 0 0 12px; padding: 12px 14px; border-radius: var(--r-m); background: var(--chip); box-shadow: inset 0 0 0 1px var(--line); display: grid; gap: 6px; font-size: 12px; color: var(--text-2); }
+.kc-confirm p { margin: 0; }
+.kc-confirm b { color: var(--text); font-weight: 600; }
+.kc-go { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 2px; }
+.kc-run { margin: 0 0 12px; }
+.kc-last, .kc-hidden { margin: 0 0 10px; }
+.kc-table .kw { font-weight: 500; }
+.kc-table td.acts { text-align: right; }
+.kc-table td.acts .btn { margin-right: 4px; }
+.kc-ranks { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px; }
+.kc-rival { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px 2px 4px; border: 0; border-radius: 999px; background: var(--chip); box-shadow: inset 0 0 0 1px var(--line); font: inherit; font-size: 12px; color: var(--text); cursor: pointer; max-width: 100%; }
+.kc-rival:hover { box-shadow: inset 0 0 0 1px var(--accent-text, var(--line)); }
+.kc-host { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kc-pos { font-weight: 600; font-variant-numeric: tabular-nums; }
+.kc-add { margin-top: 14px; padding: 14px 18px; }
+.kc-words { width: 100%; resize: vertical; margin: 8px 0; font: inherit; }
+.kc-add-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.kc-field { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+.kc-code { width: 64px; text-transform: none; }
+.kc-tracked { display: inline-flex; align-items: center; gap: 4px; color: var(--good-t); margin-right: 8px; vertical-align: middle; }
+.kc-tracked .i { width: 14px; height: 14px; }

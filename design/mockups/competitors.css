@@ -18,3 +18,23 @@ a.comp-url:hover { color: var(--accent-text); }
 .url-cell .logo-text { flex: 1; min-width: 0; }
 .url-cell .logo-text > .kw, .url-cell .logo-text > .second { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .panel-head > .site-logo { margin-right: 10px; border-radius: 9px; }
+
+/* Loading: three grey lines in a card, no words flashing. */
+.comp-skel { display: grid; gap: 12px; padding: 18px; }
+.comp-skel i { display: block; height: 12px; border-radius: 6px; background: var(--chip); }
+.comp-skel i:nth-child(2) { width: 72%; }
+.comp-skel i:nth-child(3) { width: 88%; }
+.comp-skel i:nth-child(4) { width: 55%; }
+/* A section's caveat sits behind an (i), not in a sentence over the table. */
+.comp-info { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; color: var(--muted); vertical-align: middle; margin-left: 2px; }
+.comp-info:hover, .comp-info:focus-visible { color: var(--text); background: var(--hover); }
+.comp-info svg.i { width: 14px; height: 14px; }
+/* 2026-11-10: "Competitors of" sits beside its menu on one row (review §4.1), which gives every tab a line of height back. */
+@media (min-width: 641px) {
+  .comp-site { display: flex; flex-direction: row; align-items: center; gap: 10px; flex: 0 1 440px; }
+  .comp-site > span { flex: none; margin: 0; white-space: nowrap; }
+  .comp-site select { flex: 1 1 auto; min-width: 0; }
+  .comp-bar { align-items: center; }
+}
+/* On a phone the floating Notes button sits over the bottom of the page: leave room, so the last row's buttons aren't under it. */
+@media (max-width: 640px) { #comp-body { padding-bottom: 72px; } }

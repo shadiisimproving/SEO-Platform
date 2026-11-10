@@ -9,16 +9,22 @@ robots.txt block seen by the link check means it can't be indexed. Only the rest
 site: results are incomplete, and an indexed page sometimes doesn't show. So one miss is only "not found yet", and the page
 is searched again a few days later; two misses in a row make it "not indexed". Only free credits are used, never paid ones,
 and at most MAX_PER_DAY searches a day, so rankings keep most of the month's allowance.
+
+The address searched is where the link check ended up (a logged ?p=123 that redirects to /my-post/ is searched as /my-post/),
+query string and all, with an ASCII host (F2, F108). A miss only counts toward "not indexed" when Google showed no other page
+under that address: a home page, a section, or a ?t=123 thread answered with ten other threads, is "not found" (F2).
 """
 from __future__ import annotations
 
 import json
+import logging
 import time
-from urllib.parse import unquote, urlsplit
+from urllib.parse import quote, unquote, urlsplit
 
 from sqlalchemy import Engine, text
 
 from seo.serp import connections
+from seo.serp.store import to_ascii_host
 from seo.serp.tools import SearchFailed, TimedOut, ToolStopped, most_cost
 from seo.worker import queue
 from seo.worker.runner import RunAgain, handler
@@ -30,9 +36,10 @@ CHUNK_SECONDS = 40.0
 INDEXED, NOT_FOUND, NOT_INDEXED, NOT_INDEXABLE = "indexed", "not_found", "not_indexed", "not_indexable"
 NOTE = "site: check of a linking page"
 ASKED_AGAIN_HOURS = 20
+log = logging.getLogger(__name__)
 
 _DUE = (
-    "SELECT id, source_url, seo_reasons, check_outcome, gsc_seen, src_index, src_index_misses FROM backlinks WHERE status = 'live' "
+    "SELECT id, source_url, final_url, seo_reasons, check_outcome, gsc_seen, src_index, src_index_misses FROM backlinks WHERE status = 'live' "
     "AND COALESCE(gsc_seen, '') <> 'page' AND ("
     " src_index_at IS NULL"
     " OR (src_index = 'indexed' AND src_index_at < UTC_TIMESTAMP(3) - INTERVAL 60 DAY)"
@@ -70,19 +77,47 @@ def shown(row) -> dict | None:
     return None
 
 
+FOUND, OTHER_PAGES, NOTHING = "found", "other_pages", "nothing"
+
+
+def _parts(url: str):
+    try:
+        parts = urlsplit(url if "://" in url else "https://" + url)
+        host = to_ascii_host((parts.hostname or "").removeprefix("www.")).removeprefix("www.")
+    except ValueError:
+        return "", "", ""
+    return host, unquote(parts.path).rstrip("/"), parts.query
+
+
 def page_key(url: str) -> str:
-    """The same page whatever the scheme, www, trailing slash or #part: what a search result is matched on."""
-    parts = urlsplit(url if "://" in url else "https://" + url)
-    host = (parts.hostname or "").lower().removeprefix("www.")
-    path = unquote(parts.path).rstrip("/")
-    return host + path + (f"?{parts.query}" if parts.query else "")
+    """The same page whatever the scheme, www, trailing slash, accented or xn-- host, or #part: what a result is matched on."""
+    host, path, query = _parts(url)
+    return host + path + (f"?{query}" if query else "")
 
 
 def query_for(url: str) -> str:
-    parts = urlsplit(url)
-    host = (parts.hostname or "").lower().removeprefix("www.")
-    path = parts.path.rstrip("/")
-    return f"site:{host}{path}"
+    """The exact address, query string included (F2)."""
+    host, path, query = _parts(url)
+    return f"site:{host}{quote(path, safe='/%:@!$&()*+,;=-._~')}" + (f"?{query}" if query else "")
+
+
+def address_of(row) -> str:
+    """Where the link check last ended up, or the address as logged."""
+    return row.get("final_url") or row["source_url"]
+
+
+def outcome(wanted_url: str, results) -> str:
+    """FOUND: the page came back. OTHER_PAGES: Google showed other pages under the same address, so the search wasn't for
+    one page and a miss proves nothing. NOTHING: no page under that address came back."""
+    wanted = page_key(wanted_url)
+    keys = [page_key(found.url) for found in results]
+    if wanted in keys:
+        return FOUND
+    host, path, _ = _parts(wanted_url)
+    under = host + path
+    if any(key == under or key.startswith(under + "/") or key.startswith(under + "?") for key in keys):
+        return OTHER_PAGES
+    return NOTHING
 
 
 def _free_tools(engine: Engine) -> list:
@@ -99,27 +134,29 @@ def can_search(engine: Engine) -> bool:
     return bool(_free_tools(engine))
 
 
-def search(engine: Engine, url: str) -> tuple[str, bool] | None:
-    """(the tool used, whether the exact page came back). None when no tool could answer on free credits."""
-    wanted = page_key(url)
+def search(engine: Engine, url: str) -> tuple[str, str] | None:
+    """(the tool used, FOUND / OTHER_PAGES / NOTHING). None when no tool could answer on free credits."""
     for tool in _free_tools(engine):
-        estimate = most_cost(tool, 10)
-        connections.count_use(engine, tool.name, estimate, search_engine="google", note=NOTE)  # written down first, as rankings do
         try:
-            answer = tool.search(query_for(url), "google", "US", "en", "desktop", 10)
+            # Written down first and given back only for what wasn't charged, as rankings do.
+            answer = connections.spend_on_search(engine, tool, query_for(url), "google", "US", "en", "desktop", 10, note=NOTE)
         except TimedOut:
-            return None  # it may have charged: the estimate stays, and this page waits for the next run
+            return None  # it may have charged: that stays, and this page waits for the next run
         except (ToolStopped, SearchFailed):
-            connections.count_use(engine, tool.name, -estimate, search_engine="google", note="not charged")
             continue
-        connections.count_use(engine, tool.name, answer.charged - estimate, search_engine="google", note="what the tool really charged")
-        return tool.name, any(page_key(found.url) == wanted for found in answer.results)
+        return tool.name, outcome(url, answer.results)
     return None
 
 
-def _save(engine: Engine, row, tool: str, found: bool) -> None:
-    misses = 0 if found else int(row["src_index_misses"] or 0) + 1
-    state = INDEXED if found else NOT_INDEXED if misses >= 2 else NOT_FOUND
+def _save(engine: Engine, row, tool: str, found) -> None:
+    result = (FOUND if found else NOTHING) if isinstance(found, bool) else found
+    if result == FOUND:
+        misses = 0
+    elif result == OTHER_PAGES:  # not a search for one page: it neither proves nor counts against it
+        misses = int(row["src_index_misses"] or 0)
+    else:
+        misses = int(row["src_index_misses"] or 0) + 1
+    state = INDEXED if result == FOUND else NOT_INDEXED if result == NOTHING and misses >= 2 else NOT_FOUND
     with engine.begin() as conn:
         conn.execute(text(
             "UPDATE backlinks SET src_index = :s, src_index_via = :v, src_index_at = UTC_TIMESTAMP(3), src_index_misses = :m WHERE id = :i"
@@ -136,7 +173,7 @@ def _due(engine: Engine, first: int | None) -> list:
         rows = [r for r in conn.execute(text(_DUE)).mappings().all() if not _cannot_be_indexed(r)]
         if first:
             asked = conn.execute(text(
-                "SELECT id, source_url, seo_reasons, check_outcome, gsc_seen, src_index, src_index_misses FROM backlinks WHERE id = :i AND status = 'live' "
+                "SELECT id, source_url, final_url, seo_reasons, check_outcome, gsc_seen, src_index, src_index_misses FROM backlinks WHERE id = :i AND status = 'live' "
                 "AND COALESCE(gsc_seen, '') <> 'page' AND (src_index_at IS NULL OR src_index_at < UTC_TIMESTAMP(3) - INTERVAL :h HOUR)"
             ), {"i": first, "h": ASKED_AGAIN_HOURS}).mappings().first()
             if asked is not None and not _cannot_be_indexed(asked):
@@ -151,7 +188,12 @@ def run(job, engine: Engine) -> None:
     for row in rows:
         if time.monotonic() - started >= CHUNK_SECONDS:
             raise RunAgain(3)
-        answer = search(engine, row["source_url"])
+        try:
+            answer = search(engine, address_of(row))
+        except Exception:  # noqa: BLE001 - one odd address must not stop every later page (the F59 family)
+            log.exception("site: check failed for backlink %s", row["id"])
+            _save(engine, row, "", OTHER_PAGES)  # its date moves, so the next page goes first tomorrow
+            continue
         if answer is None:
             return  # no free searches left on any tool: the next daily run carries on
         _save(engine, row, *answer)

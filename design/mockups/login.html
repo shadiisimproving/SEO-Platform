@@ -1,5 +1,15 @@
 <!doctype html>
 <html lang="en" data-look="clear" data-theme="light">
+<script>
+  /* Before anything is drawn: the theme and language chosen in the app, or the computer's own dark setting. */
+  (function () {
+    var get = function (k) { try { return localStorage.getItem("seocc2-" + k); } catch (e) { return null; } };
+    var theme = get("theme");
+    if (theme !== "dark" && theme !== "light") theme = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+    document.documentElement.dataset.theme = theme;
+    if (get("lang") === "fr") document.documentElement.lang = "fr";
+  })();
+</script>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -17,6 +27,10 @@
   .login .btn-main { width: 100%; justify-content: center; margin-top: 4px; }
   .login .help { font-size: 13px; color: var(--sec, #5b6472); margin: -6px 0 14px; }
   .login .error { display: block; margin: 0 0 14px; font-size: 14px; }
+  .login .forgot { margin: 16px 0 0; font-size: 13px; color: var(--text-2, #3B4B59); }
+  [data-theme="dark"] body { background: var(--sky-base, #151a20); }
+  [data-theme="dark"] .login { background: var(--glass, #1E242B); color: var(--text, #F1F4F7); box-shadow: 0 0 0 1px var(--line, #323A44); }
+  [data-theme="dark"] .login p.sub, [data-theme="dark"] .login .help { color: var(--text-2, #CFD6DD); }
 </style>
 </head>
 <body>
@@ -25,15 +39,16 @@
   <p class="sub" id="sub">SEO Command Center</p>
   <div class="error" id="err" role="alert" hidden></div>
   <form id="sign-in" novalidate>
-    <label class="field"><span>Username or email</span><input class="input" id="email" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" autofocus required></label>
-    <label class="field"><span>Password</span><input class="input" id="password" type="password" autocomplete="current-password" required></label>
+    <label class="field"><span id="l-email">Username or email</span><input class="input" id="email" type="text" autocapitalize="none" autocorrect="off" spellcheck="false" autocomplete="username" autofocus required></label>
+    <label class="field"><span id="l-password">Password</span><input class="input" id="password" type="password" autocomplete="current-password" required></label>
     <button class="btn btn-main" id="go" type="submit">Sign in</button>
+    <p class="forgot" id="forgot">Forgot your password? Ask your admin to reset it. After 5 wrong tries, sign-in waits 15 minutes.</p>
   </form>
   <form id="change" novalidate hidden>
     <label class="field"><span id="current-label">Temporary password</span><input class="input" id="current" type="password" autocomplete="current-password" required></label>
-    <label class="field"><span>New password</span><input class="input" id="next" type="password" autocomplete="new-password" required></label>
-    <p class="help">At least 10 characters.</p>
-    <button class="btn btn-main" type="submit">Save and continue</button>
+    <label class="field"><span id="l-next">New password</span><input class="input" id="next" type="password" autocomplete="new-password" required></label>
+    <p class="help" id="l-help">At least 10 characters.</p>
+    <button class="btn btn-main" type="submit" id="l-save">Save and continue</button>
   </form>
 </main>
 <script src="login.js"></script>

@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from seo.insights import rules
-from seo.insights.data import Ctx, band_of, rnd, split
+from seo.insights.data import Ctx, band_of, market, rnd, split
 from seo.insights.finding import Finding, Result
 from seo.metrics import search
 
@@ -24,6 +24,15 @@ def _candidates(ctx: Ctx) -> tuple[list[dict], dict[str, list[dict]]]:
             "SELECT DISTINCT query_hash k FROM gsc_query WHERE site_id = :s AND day > :since AND day <= :e AND impressions > 0", since=ctx.end - timedelta(days=rules.WINS_RECENT_DAYS), e=ctx.end,
         )}
         rows = [r for r in split(ctx, "query", ctx.start, ctx.end) if r["impressions"] and r["position"] is not None and r["key"] in recent]
+        # In the site's target countries, a query's place is the one its buyers see: "almost on page 1" worldwide can be
+        # page 1 in France. The world's numbers are kept beside it.
+        local = market(ctx, ctx.start, ctx.end)
+        if local:
+            for r in rows:
+                found = local.get(r["key"])
+                if found and found["impressions"] and found["position"] is not None:
+                    r["world"] = {"clicks": r["clicks"], "impressions": r["impressions"], "position": r["position"]}
+                    r.update(clicks=found["clicks"], impressions=found["impressions"], position=found["position"])
         ctx.memo["wins"] = (rows, _pages_by_query(ctx))
     return ctx.memo["wins"]
 
@@ -38,6 +47,7 @@ def _query_fields(ctx: Ctx, r: dict, pages: list[dict]) -> dict:
         "clicks": r["clicks"], "impressions": r["impressions"], "position": rnd(r["position"]),
         "click_rate": round(r["clicks"] / r["impressions"] * 100, 2) if r["impressions"] else None,
         "page": best, "tracked": search._match(r["name"]) in ctx.tracked, "brand": search.is_brand(r["name"], ctx.brand) if ctx.brand else None,
+        **({"countries": ctx.countries, "world_position": rnd(r["world"]["position"]), "world_impressions": r["world"]["impressions"]} if r.get("world") else {}),
     }
 
 

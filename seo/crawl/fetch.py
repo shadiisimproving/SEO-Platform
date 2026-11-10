@@ -34,6 +34,7 @@ CHALLENGE_MARKERS = (
     b"incapsula incident",
 )
 CHALLENGE_CHECK_LIMIT = 60_000
+BAD_ADDRESS = "the page sent us to an address that can't be read"
 LONGEST_CRAWL_DELAY = 60.0  # a robots.txt can ask for anything. Waiting hours for one link would hold up the lane, and Stop with it.
 
 
@@ -146,14 +147,18 @@ class PoliteFetcher:
                 response = self._client.get(address, follow_redirects=False)
                 if not response.is_redirect:
                     break
-                address = urljoin(address, response.headers["location"])
+                try:
+                    address = urljoin(address, response.headers["location"])
+                except ValueError:  # a redirect to an address that can't be read: no rules can be read either
+                    host.robots_state = "allow_all"
+                    return
                 if not self.is_allowed(address):  # every hop is checked, as in get(). Rules it can't read are no rules.
                     host.robots_state = "allow_all"
                     return
             else:
                 host.robots_state = "allow_all"
                 return
-        except httpx.HTTPError:
+        except (httpx.HTTPError, httpx.InvalidURL, ValueError):
             host.robots_state = "network_error"
             return
         finally:
@@ -195,6 +200,7 @@ class PoliteFetcher:
         last_modified: str | None = None,
         any_type: bool = False,
         stay_on: Callable[[str], bool] | None = None,
+        max_bytes: int | None = None,  # a larger limit for this one read, such as a sitemap
     ) -> FetchResult:
         """Follow redirects one at a time, checking each address before asking for it.
 
@@ -205,14 +211,20 @@ class PoliteFetcher:
         current = url
         network = 0.0
         for hop in range(MAX_REDIRECTS + 1):
-            result = self._one(current, url, etag, last_modified, any_type)
+            result = self._one(current, url, etag, last_modified, any_type, max_bytes)
             network += result.request_seconds
             result.request_seconds = network
             if result.status != "redirect":
                 result.seconds = time.monotonic() - started
                 result.hops = hop
                 return result
-            current = urljoin(current, result.final_url or "")
+            try:
+                current = urljoin(current, result.final_url or "")
+            except ValueError:  # http://[bad and the like: one odd page must never stop a whole check (F59, F100)
+                return FetchResult(
+                    url=url, status="http_error", http_status=result.http_status, final_url=None, hops=hop + 1, error=BAD_ADDRESS,
+                    seconds=time.monotonic() - started, request_seconds=network,
+                )
             if stay_on is not None and not stay_on(current):
                 return FetchResult(
                     url=url, status="left_scope", http_status=result.http_status, final_url=current, hops=hop + 1,
@@ -224,11 +236,13 @@ class PoliteFetcher:
             seconds=time.monotonic() - started, request_seconds=network,
         )
 
-    def _one(self, current, original, etag, last_modified, any_type) -> FetchResult:
-        if not self.is_allowed(current):
-            return FetchResult(url=original, status="refused", final_url=current)
-
-        host = self._host(current)
+    def _one(self, current, original, etag, last_modified, any_type, max_bytes=None) -> FetchResult:
+        try:
+            if not self.is_allowed(current):
+                return FetchResult(url=original, status="refused", final_url=current)
+            host = self._host(current)
+        except ValueError:
+            return FetchResult(url=original, status="http_error", error=BAD_ADDRESS)
         if host.robots_state == "network_error":
             return FetchResult(url=original, status="network_error", error="could not reach the site", held_back=True)
         if host.robots_state == "server_error":
@@ -251,17 +265,20 @@ class PoliteFetcher:
         sent = time.monotonic()
         try:
             with self._client.stream("GET", current, headers=headers) as response:
-                result = self._read(response, host, current, original, any_type)
+                result = self._read(response, host, current, original, any_type, max_bytes or self.max_bytes)
                 result.request_seconds = time.monotonic() - sent
                 return result
         except httpx.TimeoutException:
             return FetchResult(url=original, status="network_error", error="timed out", request_seconds=time.monotonic() - sent)
         except httpx.HTTPError as exc:
             return FetchResult(url=original, status="network_error", error=str(exc)[:200] or type(exc).__name__, request_seconds=time.monotonic() - sent)
+        except (httpx.InvalidURL, ValueError):  # not an httpx.HTTPError, so it used to stop the whole check (F59)
+            return FetchResult(url=original, status="http_error", error=BAD_ADDRESS, request_seconds=time.monotonic() - sent)
         finally:
             self._spaced(host)
 
-    def _read(self, response, host, current, original, any_type) -> FetchResult:
+    def _read(self, response, host, current, original, any_type, max_bytes=None) -> FetchResult:
+        max_bytes = max_bytes or self.max_bytes
         code = response.status_code
         result = FetchResult(url=original, status="ok", http_status=code, final_url=current)
 
@@ -299,7 +316,7 @@ class PoliteFetcher:
         size = 0
         for chunk in response.iter_bytes():
             size += len(chunk)
-            if size > self.max_bytes:
+            if size > max_bytes:
                 result.status = "too_large"
                 result.bytes = size
                 return result

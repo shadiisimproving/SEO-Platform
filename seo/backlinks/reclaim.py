@@ -43,8 +43,13 @@ def run(job, engine: Engine) -> None:
                 return
             done.add(row["id"])
             sent = fetcher.requests
-            found = live.read_target(fetcher, row["target_url"])
-            budget.charge(engine, fetcher.requests - sent)
+            try:
+                found = live.read_target(fetcher, row["target_url"])
+            except Exception:  # noqa: BLE001 - one odd address must not stop the rest, every night (F59)
+                live.log.exception("Reclaim: page %s couldn't be read", row["id"])
+                found = {"http": None, "final": None}
+            finally:
+                budget.charge(engine, fetcher.requests - sent)
             with engine.begin() as conn:
                 conn.execute(
                     text("UPDATE gsc_linked_pages SET http_status = :h, final_url = :f, checked_at = UTC_TIMESTAMP(3) WHERE id = :i"),

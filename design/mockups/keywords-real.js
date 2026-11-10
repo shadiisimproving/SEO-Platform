@@ -34,7 +34,8 @@
     "Results": "Résultats", "Tool": "Outil", "Position": "Position", "Checked": "Contrôlé", "Status": "Statut", "Action": "Action", "Recheck": "Recontrôler", "Check": "Contrôler", "never": "jamais", "OK": "OK", "Use": "Utiliser", "Rechecking": "Nouveau contrôle",
     "Other locations": "Autres lieux", "Not compared with": "Non comparé avec", "None yet": "Aucun pour l'instant", "Position over time": "Position dans le temps", "1 at the top; each dot is one real check": "1 en haut ; chaque point est un vrai contrôle", "Hollow dots are suspect results, left out of Change.": "Les points vides sont des résultats suspects, exclus de l'évolution.",
     "Chart view": "Vue graphique", "Table view": "Vue tableau", "Date": "Date", "All results": "Tous les résultats", "Competitors on this page": "Concurrents sur cette page", "Website": "Site web", "Change": "Évolution", "AI Overview": "Aperçu IA", "Page": "Page", "average": "moyenne",
-    "Cited": "Cité", "Overview, not cited": "Aperçu, pas cité", "No overview": "Pas d'aperçu", "Not captured": "Non capturé", "Failed": "Échec", "Not connected": "Non connecté", "Check deeper": "Chercher plus loin", "Stop following": "Ne plus suivre", "Stopped following": "Suivi arrêté", "Follow": "Suivre",
+    "Cited": "Cité", "Overview, not cited": "Aperçu, pas cité", "No overview": "Pas d'aperçu", "Not captured": "Non capturé", "Failed": "Échec", "Not connected": "Non connecté", "Check deeper": "Chercher plus loin", "Stop following": "Ne plus suivre", "Stopped following": "Suivi arrêté", "Follow": "Suivre", "Stop tracking": "Ne plus suivre", "Stopped tracking": "Suivi arrêté", "Track": "Suivre", "Refresh": "Actualiser",
+    "Stop tracking this keyword on this site? Its past checks stay.": "Ne plus suivre ce mot-clé sur ce site ? Ses anciens contrôles restent.", "Site": "Site",
     "Stop following this keyword on this site? Its past checks stay.": "Ne plus suivre ce mot-clé sur ce site ? Ses anciens contrôles restent.",
     "No Search Console data yet": "Pas encore de données Search Console", "Connect Search Console for this site in Settings, and its queries appear here within 3 days.": "Connectez Search Console pour ce site dans les réglages : ses requêtes apparaîtront ici sous 3 jours.",
     "No Bing Webmaster data yet": "Pas encore de données Bing Webmaster", "No Yandex Webmaster data yet": "Pas encore de données Yandex Webmaster", "Connect it for this site in Settings, and its queries appear here.": "Connectez-le pour ce site dans les réglages : ses requêtes apparaîtront ici.",
@@ -69,14 +70,24 @@
   const K = {
     data: null, error: "", loading: false, stale: true, tools: null, order: {}, settings: {}, selected: new Set(), queries: {},
     run: null, poll: null, orderEngine: "google", panel: null, refresh: null, browserMissing: false,
+    search: "", page: 0, per: 50, wantOpen: null, // the search box, the page of the table, and a keyword named in the address
   };
+  const PER = [25, 50, 100]; // the same choice as Overview's tables
   const api = (...args) => window.COMP.api(...args);
   const mine = (run) => Boolean(run) && (!run.by || run.by === window.BOOT.user?.name);
   const engineOf = () => (state.engine === "all" ? "google" : state.engine);
   const name = (id) => ENGINES.find(([e]) => e === id)?.[1] || id;
   const token = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}abc`).replace(/-/g, "");
 
-  const age = (days) => (days === null || days === undefined ? t("never") : days < 0.04 ? t("just now") : days < 1 ? `${Math.max(1, Math.round(days * 24))} h` : `${Math.round(days)} ${state.lang === "fr" ? "j" : "d"}`);
+  // "just now" is the first two minutes only; then minutes, hours, days.
+  const age = (days) => {
+    if (days === null || days === undefined) return t("never");
+    const minutes = days * 1440;
+    if (minutes < 2) return t("just now");
+    if (minutes < 60) return `${Math.round(minutes)} min`;
+    if (days < 1) return `${Math.max(1, Math.round(days * 24))} h`;
+    return `${Math.round(days)} ${state.lang === "fr" ? "j" : "d"}`;
+  };
   const shortPath = (url) => { try { const u = new URL(url); return decodeURI(u.pathname + u.search) || "/"; } catch { return url || ""; } };
   const allRows = () => { const host = UI.siteHostPicked(); return (K.data?.rows || []).filter((row) => !host || row.site === host); };
 
@@ -84,6 +95,7 @@
   async function loadTools() {
     const answer = await api("GET", "tools");
     K.tools = answer.tools; K.order = answer.order; K.settings = answer.settings; K.browserMissing = answer.browser_missing;
+    K.aiFirst = answer.first_for_ai || {}; K.aiFirstWhy = answer.first_for_ai_why || "";
     syncSettings();
     return answer;
   }
@@ -119,6 +131,8 @@
     } catch (err) { K.error = err.message; K.stale = false; }
     K.loading = false;
     if (state.route === "keywords" || state.route === "settings") UI.render({ keepScroll: true });
+    openWanted();
+    if ($("#cmdk")?.open) $("#cmd-input")?.dispatchEvent(new Event("input", { bubbles: true })); // ⌘K opened before the keywords came
   }
 
   // ---- table cells ----------------------------------------------------------------------------
@@ -158,10 +172,19 @@
     none: `<span class="muted small">${t("No overview")}</span>`,
     "not-captured": `<span class="muted small" tabindex="0" data-tip="${t("Not captured")}">${t("Not captured")}</span>`,
   }[row.ai.state]);
-  const ownCell = (view) => (view.own === null || view.own === undefined
-    ? `<span class="muted dash" tabindex="0" data-tip="${esc(t("No number from this engine's own tool. It isn't connected for this site, or it hasn't reported this keyword."))}">—</span>`
-    : `<span class="tabular">${dec(Math.round(view.own * 10) / 10)}</span>`);
+  /* Google: the position in the keyword's own country when Search Console has it, with the all-countries average under it. */
+  const ownCell = (view, row = null, e = "") => {
+    const local = e === "google" ? row?.own_country : null;
+    if (local && local.position !== null && local.position !== undefined) {
+      const world = view.own === null || view.own === undefined ? "" : `<span class="second">${t("All countries")} ${dec(Math.round(view.own * 10) / 10)}</span>`;
+      return `<span class="cellval"><span class="tabular">${dec(local.position)}</span><span class="second">${esc(UI.countryName(local.country) || local.country)}</span>${world}</span>`;
+    }
+    return view.own === null || view.own === undefined
+      ? `<span class="muted dash" tabindex="0" data-tip="${esc(t("No number from this engine's own tool. It isn't connected for this site, or it hasn't reported this keyword."))}">—</span>`
+      : `<span class="tabular">${dec(Math.round(view.own * 10) / 10)}</span>`;
+  };
 
+  const impressionsOf = (row) => row.impressions ?? row.volume ?? null;
   function passes(row, e) {
     const view = row.engines[e], p = view.main?.status === "ok" ? view.main.p : null;
     switch (state.filter) {
@@ -175,11 +198,18 @@
       default: return true;
     }
   }
+  /* The search box: part of the keyword, or of its site or page, ignoring case and accents. */
+  const fold = (text) => String(text || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  function searched(rows) {
+    const needle = fold(K.search.trim());
+    if (!needle) return rows;
+    return rows.filter((row) => fold(row.keyword).includes(needle) || fold(row.page).includes(needle) || (state.site === "all" && fold(row.site).includes(needle)));
+  }
   function filtered() {
     const e = engineOf();
-    const value = (row) => { const v = row.engines[e]; return { k: row.keyword, own: v.own, pos: v.main?.status === "ok" ? v.main.p : null, chg: v.change, vol: row.volume }[state.sort.key]; };
+    const value = (row) => { const v = row.engines[e]; return { k: row.keyword, own: v.own, pos: v.main?.status === "ok" ? v.main.p : null, chg: v.change, vol: impressionsOf(row) }[state.sort.key]; };
     const sign = state.sort.dir === "ascending" ? 1 : -1;
-    return allRows().filter((row) => passes(row, e)).sort((a, b) => {
+    return searched(allRows()).filter((row) => passes(row, e)).sort((a, b) => {
       const x = value(a), y = value(b);
       if (x === null || x === undefined) return y === null || y === undefined ? 0 : 1; // unknowns go last, whichever way it's sorted
       if (y === null || y === undefined) return -1;
@@ -187,9 +217,11 @@
     });
   }
 
+  /* A column heading sorts; its definition (shared-ui.js) shows on hover and on keyboard focus of the heading's button. */
   function sortHeader(key, label, align = "", sub = "", tip = "") {
     const on = state.sort.key === key;
-    return `<th scope="col" class="${align}" ${on ? `aria-sort="${state.sort.dir}"` : ""} ${tip ? `data-tip="${esc(tip)}"` : ""}><button data-sort="${key}"><span>${esc(label)}${sub ? `<span class="th-sub">${esc(sub)}</span>` : ""}</span>${icon(on && state.sort.dir === "ascending" ? "arrow-up" : "arrow-down")}</button></th>`;
+    const def = tip || UI.def?.(UI.defKey?.(key === "vol" ? "Impressions (28 days)" : key === "own" ? "avg position" : label)) || "";
+    return `<th scope="col" class="${align}" ${on ? `aria-sort="${state.sort.dir}"` : ""}><button data-sort="${key}" ${def ? `data-tip="${esc(def)}"` : ""}><span>${esc(label)}${sub ? `<span class="th-sub">${esc(sub)}</span>` : ""}</span>${icon(on && state.sort.dir === "ascending" ? "arrow-up" : "arrow-down")}</button></th>`;
   }
 
   function rowHtml(row) {
@@ -197,12 +229,12 @@
     const trend = view.trend.length >= 2 ? UI.spark(view.trend.map((x) => x.p), { invert: true }) : `<span class="muted dash" data-tip="${t("Needs 2 checks with the same tool")}" tabindex="0">—</span>`;
     const cells = state.engine === "all"
       ? ENGINES.map(([id, label]) => `<td data-label="${label}">${scrapedCell(row, id)}</td>`).join("")
-      : `${OWN_TOOL[e] ? `<td class="c" data-label="${OWN_TOOL[e]} · ${t("avg position")}">${ownCell(view)}</td>` : ""}
+      : `${OWN_TOOL[e] ? `<td class="c" data-label="${OWN_TOOL[e]} · ${t("avg position")}">${ownCell(view, row, e)}</td>` : ""}
          <td data-label="${t("Scraped results")}">${scrapedCell(row, e)}</td>
          <td class="c" data-label="${t("Change")}">${changeCell(view)}</td>
-         ${state.cols.vol ? `<td class="c" data-label="${t("Volume")}">${row.volume === null ? '<span class="muted dash">—</span>' : num(row.volume)}</td>` : ""}
+         ${state.cols.vol ? `<td class="c" data-label="${t("Impressions (28 days)")}">${impressionsOf(row) === null ? '<span class="muted dash">—</span>' : num(impressionsOf(row))}</td>` : ""}
          ${state.cols.trend ? `<td data-label="${t("Trend")}">${trend}</td>` : ""}
-         ${state.cols.page ? `<td class="url-cell mono small" data-label="${t("Page")}" ${row.page ? `data-tip="${esc(row.page)}"` : ""}><span dir="auto">${row.page ? esc(shortPath(row.page)) : '<span class="muted dash">—</span>'}</span>${row.two_pages ? `<span class="warn" role="img" tabindex="0" data-tip="${esc(t("Two of your pages show up for this keyword."))}" aria-label="${esc(t("Same keyword on 2 pages"))}">${icon("triangle-alert")}</span>` : ""}</td>` : ""}
+         ${state.cols.page ? `<td class="url-cell mono small" data-label="${t("Page")}" ${row.page ? `data-tip="${esc(row.page)}"` : ""}>${row.page ? PageLink.html(row.page, { text: shortPath(row.page), title: "" }) : '<span class="muted dash">—</span>'}${row.two_pages ? `<span class="warn" role="img" tabindex="0" data-tip="${esc(t("Two of your pages show up for this keyword."))}" aria-label="${esc(t("Same keyword on 2 pages"))}">${icon("triangle-alert")}</span>` : ""}</td>` : ""}
          ${state.cols.ai ? `<td data-label="${t("AI")}">${aiCell(row)}</td>` : ""}`;
     return `<tr data-kwr-row="${esc(row.id)}" class="${K.selected.has(row.id) ? "sel" : ""} ${K.panel?.id === row.id && $("#panel") ? "open" : ""}">
       <td class="chk-cell"><input type="checkbox" class="chk" data-kwr-select="${esc(row.id)}" ${K.selected.has(row.id) ? "checked" : ""} aria-label="${t("selected")}: ${esc(row.keyword)}"></td>
@@ -210,19 +242,39 @@
       ${cells}</tr>`;
   }
 
-  function table(rows) {
-    if (!rows.length) return `<div class="table-wrap"><div class="empty"><h3>${t("No keywords match this filter")}</h3><p>${t("Try another filter, or show all keywords.")}</p><button class="btn" data-filter="all">${t("Show all keywords")}</button></div></div>`;
+  const pageNumbers = (pages, at) => {
+    const wanted = new Set([0, pages - 1, at - 1, at, at + 1].filter((p) => p >= 0 && p < pages));
+    const out = [];
+    [...wanted].sort((a, b) => a - b).forEach((p, i, list) => { if (i && p - list[i - 1] > 1) out.push(null); out.push(p); });
+    return out;
+  };
+  function pager(total) {
+    const pages = Math.max(1, Math.ceil(total / K.per)), at = Math.min(K.page, pages - 1), from = at * K.per;
+    const nav = pages > 1 ? `<nav class="ov-pager" aria-label="${t("Pages")}">
+        <button class="btn btn-small" data-kwr-page="${at - 1}" ${at === 0 ? "disabled" : ""}>${icon("chevron-left")}${t("Previous")}</button>
+        <span class="ov-pg-list">${pageNumbers(pages, at).map((p) => (p === null ? `<span class="ov-pg-gap" aria-hidden="true">…</span>` : `<button class="ov-pg" data-kwr-page="${p}" aria-label="${t("Page")} ${num(p + 1)}" ${p === at ? 'aria-current="page"' : ""}>${num(p + 1)}</button>`)).join("")}</span>
+        <span class="ov-pg-of">${t("Page")} ${num(at + 1)} ${t("of")} ${num(pages)}</span>
+        <button class="btn btn-small" data-kwr-page="${at + 1}" ${at === pages - 1 ? "disabled" : ""}>${t("Next")}${icon("chevron-right")}</button></nav>` : "";
+    const per = total > PER[0] ? `<label class="ov-per"><span class="sr">${t("Rows per page")}</span><select class="select" data-kwr-per>${PER.map((n) => `<option value="${n}" ${K.per === n ? "selected" : ""}>${num(n)} ${t("per page")}</option>`).join("")}</select></label>` : "";
+    return `<div class="lv-foot ov-foot kw-foot"><span class="ov-range" role="status">${num(total ? from + 1 : 0)}–${num(Math.min(total, from + K.per))} ${t("of")} ${num(total)}</span>${nav}${per}</div>`;
+  }
+  function table(all) {
+    if (!all.length && K.search.trim()) return `<div class="table-wrap"><div class="empty"><h3>${t("No keyword matches this search.")}</h3><p>${esc(K.search.trim())}</p><button class="btn" data-kwr-search-clear>${t("Clear the search")}</button></div></div>`;
+    if (!all.length) return `<div class="table-wrap"><div class="empty"><h3>${t("No keywords match this filter")}</h3><p>${t("Try another filter, or show all keywords.")}</p><button class="btn" data-filter="all">${t("Show all keywords")}</button></div></div>`;
+    const pages = Math.max(1, Math.ceil(all.length / K.per));
+    if (K.page > pages - 1) K.page = pages - 1;
+    const rows = all.slice(K.page * K.per, K.page * K.per + K.per);
     const e = engineOf();
     const head = state.engine === "all"
       ? ENGINES.map(([id, label]) => `<th scope="col"><span class="th-engine">${logo(id, 16)}${label}</span></th>`).join("")
       : `${OWN_TOOL[e] ? sortHeader("own", OWN_TOOL[e], "c", t("avg position")) : ""}
          ${sortHeader("pos", t("Scraped results"))}${sortHeader("chg", t("Change"), "c")}
-         ${state.cols.vol ? sortHeader("vol", t("Volume"), "c", "", t("Search Console impressions, last 28 days. Exact volume isn't available for free.")) : ""}
+         ${state.cols.vol ? sortHeader("vol", t("Impressions"), "c", t("28 days"), t("Search Console impressions, last 28 days. Exact volume isn't available for free.")) : ""}
          ${state.cols.trend ? `<th scope="col">${t("Trend")}</th>` : ""}${state.cols.page ? `<th scope="col">${t("Page")}</th>` : ""}${state.cols.ai ? `<th scope="col">${t("AI")}</th>` : ""}`;
-    const every = rows.every((row) => K.selected.has(row.id));
-    return `<div class="table-wrap ${state.dense ? "dense" : ""}"><table class="data" id="kw-table">
+    const every = all.every((row) => K.selected.has(row.id));
+    return `<div class="ov-list"><div class="table-wrap ${state.dense ? "dense" : ""}"><table class="data" id="kw-table" aria-label="${t("Keywords")}">
       <thead><tr><th scope="col" class="chk-cell"><input type="checkbox" class="chk" id="kwr-select-all" ${every ? "checked" : ""} aria-label="${t("All")}"></th>${sortHeader("k", t("Keyword"))}${head}</tr></thead>
-      <tbody>${rows.map(rowHtml).join("")}</tbody></table></div>`;
+      <tbody>${rows.map(rowHtml).join("")}</tbody></table></div>${pager(all.length)}</div>`;
   }
 
   function selectionBar() {
@@ -248,7 +300,7 @@
     if (e === "duckduckgo") return `<p class="note">${icon("info")}<span>${t("DuckDuckGo has no tool for site owners, so its rankings only come from Refresh.")}</span></p>`;
     const key = `${e}`;
     if (!K.queries[key]) { K.queries[key] = "loading"; api("GET", `rankings/queries?engine=${e}`).then((answer) => { K.queries[key] = answer.rows; if (state.view === "queries") UI.render({ keepScroll: true }); }).catch(() => { K.queries[key] = []; if (state.view === "queries") UI.render({ keepScroll: true }); }); }
-    if (K.queries[key] === "loading") return `<div class="table-wrap"><div class="empty"><p>${t("Loading…")}</p></div></div>`;
+    if (K.queries[key] === "loading") return UI.skeleton("table", { rows: 8 });
     const host = UI.siteHostPicked();
     const rows = K.queries[key].filter((row) => !host || row.site === host);
     if (!rows.length) {
@@ -257,7 +309,27 @@
     }
     const tracked = new Set(allRows().map((row) => `${row.site}|${row.keyword.toLowerCase()}`));
     return `<div class="table-wrap"><table class="data"><thead><tr><th scope="col">${t("Keyword")}</th><th scope="col" class="c">${t("Clicks")}</th><th scope="col" class="c">Impressions</th><th scope="col" class="c">${t("Click rate")}</th><th scope="col" class="c">${t("Position")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
-      <tbody>${rows.map((row) => `<tr style="cursor:default"><td class="head-cell kw" dir="auto">${esc(row.query)}${state.site === "all" ? `<span class="second mono">${esc(row.site)}</span>` : ""}</td><td class="c" data-label="${t("Clicks")}">${num(row.clicks)}</td><td class="c" data-label="Impressions">${num(row.impressions)}</td><td class="c" data-label="${t("Click rate")}">${row.impressions ? `${dec(Math.round((row.clicks / row.impressions) * 1000) / 10)}%` : "—"}</td><td class="c" data-label="${t("Position")}">${row.position === null ? "—" : dec(Math.round(row.position * 10) / 10)}</td><td class="r">${tracked.has(`${row.site}|${row.query.toLowerCase()}`) ? "" : `<button class="btn btn-small" data-kwr-follow="${esc(row.query)}" data-site-host="${esc(row.site)}">${t("Follow")}</button>`}</td></tr>`).join("")}</tbody></table></div>`;
+      <tbody>${rows.map((row) => `<tr style="cursor:default"><td class="head-cell kw" dir="auto">${esc(row.query)}${state.site === "all" ? `<span class="second mono">${esc(row.site)}</span>` : ""}</td><td class="c" data-label="${t("Clicks")}">${num(row.clicks)}</td><td class="c" data-label="Impressions">${num(row.impressions)}</td><td class="c" data-label="${t("Click rate")}">${row.impressions ? `${dec(Math.round((row.clicks / row.impressions) * 1000) / 10)}%` : "—"}</td><td class="c" data-label="${t("Position")}">${row.position === null ? "—" : dec(Math.round(row.position * 10) / 10)}</td><td class="r">${tracked.has(`${row.site}|${row.query.toLowerCase()}`) ? "" : `<button class="btn btn-small" data-kwr-follow="${esc(row.query)}" data-site-host="${esc(row.site)}">${t("Track")}</button>`}</td></tr>`).join("")}</tbody></table></div>`;
+  }
+
+  /* When every connected tool for this engine has no free checks left, Keywords says so where the unchecked rows are. */
+  function outOfChecks(rows) {
+    const e = engineOf();
+    const tools = (K.tools || []).filter((tool) => tool.connected && (tool.engines || []).includes(e) && !tool.manual_only);
+    if (!tools.length || tools.some((tool) => tool.left === null || tool.left === undefined || tool.left > 0)) return "";
+    const waiting = rows.filter((row) => !row.engines[e]?.main).length;
+    const refill = tools.every((tool) => tool.refills === "one-time") ? t("They don't refill: connect another tool in Settings.") : t("They refill each month, or connect another tool in Settings.");
+    return `<div class="note warn" role="status">${icon("triangle-alert")}<span><b>${t("No free checks left for")} ${esc(name(e))}.</b> ${waiting ? `${num(waiting)} ${t(waiting === 1 ? "keyword waits as Not checked yet." : "keywords wait as Not checked yet.")} ` : ""}${refill} <button class="link-btn" data-go="settings">${t("Open Settings")}</button></span></div>`;
+  }
+
+  /* The newest check on screen, whether a Refresh made it or the first check after adding: the header and the rows agree. */
+  function lastCheckWords(rows) {
+    let newest = null;
+    rows.forEach((row) => ENGINES.forEach(([e]) => { const a = row.engines[e]?.main?.age_days; if (a !== null && a !== undefined && (newest === null || a < newest)) newest = a; }));
+    const refreshAge = K.data.last_refresh ? (Date.now() - new Date(K.data.last_refresh).getTime()) / 864e5 : null;
+    if (refreshAge !== null && (newest === null || refreshAge <= newest + 1 / 1440)) return `${t("Last Refresh")} ${esc(UI.fmtStamp(K.data.last_refresh))}`;
+    if (newest === null) return t("No check yet");
+    return `${t("Last check")} ${esc(age(newest))}`;
   }
 
   function page() {
@@ -265,8 +337,8 @@
     const addButton = `<button class="btn" id="kwr-add">${icon("plus")}${t("Add keywords")}</button>`;
     if (K.stale && !K.loading) load();
     if (!K.data) {
-      const body = K.error ? `<div class="empty"><h3>${t("Couldn't load the keywords.")}</h3><p>${esc(t(K.error))}</p><button class="btn" id="kwr-retry">${t("Try again")}</button></div>` : `<div class="empty"><p>${t("Loading…")}</p></div>`;
-      return UI.topbar(title, lead, "", false) + `<div class="content page-enter"><div class="table-wrap">${body}</div></div>`;
+      const body = K.error ? UI.failCard(K.error, { title: "Couldn't load the keywords.", retry: 'id="kwr-retry"' }) : UI.skeleton("page", { chart: false, rows: 8 });
+      return UI.topbar(title, lead, "", false) + `<div class="content page-enter">${body}</div>`;
     }
     if (!window.BOOT.sites.length && !window.SITES.length) {
       return UI.topbar(title, lead, "", false) + `<div class="content page-enter"><div class="table-wrap"><div class="empty"><h3>${t("Add a site first")}</h3><p>${t("Keywords belong to a site. Add yours, then come back.")}</p><button class="btn btn-main" data-go="settings">${t("Go to Settings")}</button></div></div></div>`;
@@ -277,7 +349,8 @@
     }
     const e = engineOf();
     const local = K.data.tiles[e], view = (row) => row.engines[e], good = (row) => (view(row).main?.status === "ok" ? view(row).main.p : null);
-    const counts = { all: all.length, top3: all.filter((r) => good(r) && good(r) <= 3).length, top10: all.filter((r) => good(r) && good(r) <= 10).length, up: all.filter((r) => view(r).change > 0).length, down: all.filter((r) => view(r).change < 0).length, none: all.filter((r) => !good(r)).length, cited: all.filter((r) => r.ai.state === "cited").length, two: all.filter((r) => r.two_pages).length };
+    const found = searched(all);
+    const counts = { all: found.length, top3: found.filter((r) => good(r) && good(r) <= 3).length, top10: found.filter((r) => good(r) && good(r) <= 10).length, up: found.filter((r) => view(r).change > 0).length, down: found.filter((r) => view(r).change < 0).length, none: found.filter((r) => !good(r)).length, cited: found.filter((r) => r.ai.state === "cited").length, two: found.filter((r) => r.two_pages).length };
     const moved = (() => { // the same rule as the server's tile, on the rows this site shows
       let change = 0, compared = 0;
       all.forEach((r) => { const c = view(r).change, p = good(r); if (c === null || c === undefined || !p) return; compared += 1; const was = p + c; change += (p <= 10 && was > 10 ? 1 : 0) - (was <= 10 && p > 10 ? 1 : 0); });
@@ -286,26 +359,27 @@
     const chips = [["all", "All"], ["top3", "Top 3"], ["top10", "Top 10"], ["up", "Up"], ["down", "Down"], ["none", "Not ranked"], ["cited", "Cited by AI"], ["two", "Same keyword on 2 pages"]];
     const shown = filtered();
     const body = state.view === "bucket" ? bucketView(all) : state.view === "queries" ? queriesView() : `
+      <div class="kw-find"><label class="kw-search"><span class="sr">${t("Search keywords")}</span>${icon("search")}<input class="input" type="search" id="kwr-search" placeholder="${t("Search keywords")}" value="${esc(K.search)}" autocomplete="off" spellcheck="false" dir="auto"></label></div>
       <div class="chips" role="group" aria-label="${t("Keywords")}">
         ${chips.map(([id, label]) => `<button class="chip" data-filter="${id}" aria-pressed="${state.filter === id}">${t(label)}<b>${num(counts[id])}</b></button>`).join("")}
         <span style="margin-left:auto" class="table-tools">
           <button class="icon-btn" id="density" aria-label="${t(state.dense ? "Comfortable rows" : "Compact rows")}" data-tip="${t(state.dense ? "Comfortable rows" : "Compact rows")}">${icon("rows-3")}</button>
           <button class="icon-btn" id="columns" aria-label="${t("Columns")}" data-tip="${t("Columns")}">${icon("columns-3")}</button>
           <button class="icon-btn kwr-add-small" id="kwr-add-small" aria-label="${t("Add keywords")}" data-tip="${t("Add keywords")}">${icon("plus")}</button>
-          <button class="icon-btn" id="kwr-export" aria-label="${t("Export CSV")}" data-tip="${t("Export CSV")}">${icon("download")}</button>
         </span>
       </div>
       ${state.engine === "duckduckgo" ? `<p class="note">${icon("info")}<span>${t("DuckDuckGo has no tool for site owners, so its rankings only come from Refresh.")}</span></p>` : ""}
+      ${outOfChecks(all)}
       ${table(shown)}${selectionBar()}`;
-    const sub = [K.data.data_through ? `${t("Data through")} ${UI.fmtDateOnly(K.data.data_through)}` : "", K.data.last_refresh ? `${t("Last Refresh")} ${esc(UI.fmtStamp(K.data.last_refresh))}` : t("No Refresh yet")].filter(Boolean).join(" · ");
+    const sub = [K.data.data_through ? `${t("Data through")} ${UI.fmtDateOnly(K.data.data_through)}` : "", lastCheckWords(all)].filter(Boolean).join(" · ");
     const main = `${addButton}<button class="btn ${K.selected.size ? "" : "btn-main"}" id="kwr-refresh" ${mine(K.run) ? "disabled" : ""}>${icon("refresh-cw")}${t("Refresh")}</button>`;
     return UI.topbar(title, sub, main, false) + `
       <div class="content page-enter">
         <section class="tiles" id="kw-tiles">
-          ${UI.tile(t("Tracked"), UI.cnt(all.length), "", { ic: "key-round" })}
-          ${UI.tile(t("Ranked"), UI.cnt(all.length - counts.none), `<span class="ab">${t("of")} ${num(all.length)} · ${esc(name(e))}</span>`, { ic: "list-ordered" })}
-          ${UI.tile(`${t("Top 10")} <span class="muted">· ${t("Scraped results")}</span>`, UI.cnt(counts.top10), moved.compared ? `${moved.change ? UI.delta(moved.change, { noWord: false }) : ""}<span class="ab">${num(moved.compared)} ${t("compared")}</span>` : "", { ic: "target" })}
-          ${UI.tile(t("Cited by AI"), UI.cnt(counts.cited), `<span class="ab">${t("of")} ${num(all.length)}</span>`, { ic: "sparkles" })}
+          ${UI.tile(t("Tracked"), num(all.length), "", { ic: "key-round" })}
+          ${UI.tile(t("Ranked"), num(all.filter((r) => good(r)).length), `<span class="ab">${t("of")} ${num(all.length)} · ${esc(name(e))}</span>`, { ic: "list-ordered" })}
+          ${UI.tile(`${t("Top 10")} <span class="muted">· ${t("Scraped results")}</span>`, num(all.filter((r) => good(r) && good(r) <= 10).length), moved.compared ? `${moved.change ? UI.delta(moved.change, { noWord: false }) : ""}<span class="ab">${num(moved.compared)} ${t("compared")}</span>` : "", { ic: "target" })}
+          ${UI.tile(t("Cited by AI"), num(all.filter((r) => r.ai.state === "cited").length), `<span class="ab">${t("of")} ${num(all.length)}</span>`, { ic: "sparkles" })}
         </section>
         <div class="tabs-row">
           <div class="tabs" role="tablist" aria-label="${t("Engines")}">
@@ -491,8 +565,7 @@
       <div class="msg" id="tray-msg"></div>
       <div id="tray-actions" style="margin-top:8px"><button class="btn btn-small" id="kwr-stop">${t("Stop")}</button></div></div>`);
     paintTray(run);
-    clearTimeout(K.poll);
-    K.poll = setTimeout(pollRun, 1000);
+    startPoll();
   }
   function paintTray(run) {
     const count = $("#tray-count"), done = run.done + run.failed + run.not_run;
@@ -504,14 +577,29 @@
     if (run.by && run.by !== window.ME?.name) bits.push(`${t("started by")} ${run.by}`);
     $("#tray-msg").textContent = bits.join(" · ");
   }
-  async function pollRun() {
+  /* Followed with the app's one poller (COMP.poll in competitors.js): it pauses while the tab is hidden, waits longer after
+     each failure, respects a 429 cool-down, and stops on 404 or 401 or after 6 failures in a row (F21). */
+  function startPoll() {
+    K.poll?.stop?.();
     if (!K.run) return;
-    let run;
-    try { run = await api("GET", `refresh/runs/${K.run.id}`); } catch { K.poll = setTimeout(pollRun, 4000); return; }
-    K.run = run;
-    paintTray(run);
-    if (run.status === "queued" || run.status === "running") { K.poll = setTimeout(pollRun, 1500); return; }
-    finishTray(run);
+    const id = K.run.id;
+    K.poll = window.COMP.poll(async () => {
+      if (!K.run || K.run.id !== id) return false;
+      const run = await api("GET", `refresh/runs/${id}`);
+      K.run = run;
+      paintTray(run);
+      if (run.status === "queued" || run.status === "running") return true;
+      finishTray(run);
+      return false;
+    }, { every: 1000, grow: 1.15, slowest: 15000, errors: 6, onEnd: (why, err) => { if ((why === "gone" || why === "errors" || why === "ceiling") && K.run?.id === id) lostTray(why === "errors" ? err?.message || "" : ""); } });
+  }
+  function lostTray(message) {
+    K.run = null; K.poll?.stop?.();
+    const tray = $("#tray");
+    if (!tray) return;
+    UI.setHTML(tray.querySelector(".top"), `${icon("triangle-alert", "warn")}<span>${esc(t("Lost track of this Refresh"))}</span>`);
+    $("#tray-msg").textContent = message ? `${t(message)} ${t("Whatever was checked is saved. Reload the page to see it.")}` : t("Whatever was checked is saved. Reload the page to see it.");
+    UI.setHTML(tray.querySelector("#tray-actions"), `<button class="btn btn-small" id="kwr-tray-close">${t("Close")}</button>`);
   }
   function finishTray(run) {
     K.run = null;
@@ -523,7 +611,18 @@
       UI.setHTML(tray.querySelector("#tray-actions"), run.status === "stopped" ? `<button class="btn btn-small" id="kwr-tray-close">${t("Close")}</button>` : "");
       const why = run.stop_reason ? translateSentences(run.stop_reason) : "";
       if (why) $("#tray-msg").textContent = why;
-      if (run.status !== "stopped") {
+      // Which searches failed and why, with a Retry for those only. The run lists them in `failures` (keyword, engine, error).
+      const fails = Array.isArray(run.failures) ? run.failures : [];
+      if (run.failed && fails.length) {
+        UI.setHTML($("#tray-msg"), `${why ? `<p style="margin:0 0 4px">${esc(why)}</p>` : ""}<ul class="tray-fails">${fails.slice(0, 20).map((f) => `<li><b dir="auto">${esc(f.keyword || "")}</b> <span class="muted">· ${esc(name(f.engine))}${f.tool ? ` · ${esc(t(f.tool))}` : ""}</span><span class="why">${esc(UI.errorWords(translateSentences(f.error || "")))}${f.timed_out ? ` ${esc(t("It may have been charged, so a Retry spends again."))}` : ""}</span></li>`).join("")}</ul>${run.spent ? `<p class="small muted" style="margin:6px 0 0">${t("Only the searches that worked were charged.")}</p>` : ""}`);
+        const ids = [...new Set(fails.map((f) => f.keyword_id).filter(Boolean))], engines = [...new Set(fails.map((f) => f.engine).filter(Boolean))];
+        UI.setHTML(tray.querySelector("#tray-actions"), `${ids.length ? `<button class="btn btn-small btn-main" id="kwr-tray-retry" data-ids="${ids.join(",")}" data-engines="${esc(engines.join(","))}">${t("Retry these")} (${num(ids.length)})</button> ` : ""}<button class="btn btn-small" id="kwr-tray-close">${t("Close")}</button>`);
+      } else if (run.failed) {
+        // Older answers have no list: say so plainly, and keep the tray until it's closed.
+        $("#tray-msg").textContent = `${why ? `${why} ` : ""}${t("The keyword's own panel shows each failed check.")}`;
+        UI.setHTML(tray.querySelector("#tray-actions"), `<button class="btn btn-small" id="kwr-tray-close">${t("Close")}</button>`);
+      }
+      if (run.status !== "stopped" && !run.failed) {
         setTimeout(() => tray.classList.add("pill"), 5000);
         setTimeout(() => { if ($("#tray") === tray) $("#tray-root").replaceChildren(); }, 9000);
       }
@@ -543,7 +642,8 @@
     K.panel = { id, siteId: row.site_id, keywordId: row.keyword_id, engine: e, table: false, line: null };
     $$("tr.open").forEach((tr) => tr.classList.remove("open"));
     $$("#kw-table tbody tr").find((tr) => tr.dataset.kwrRow === id)?.classList.add("open");
-    UI.openPanel(`${UI.panelHead(row.keyword, `${esc(name(e))}`)}<div class="panel-body"><p class="muted">${t("Loading…")}</p></div>`, opener);
+    UI.openPanel(`${UI.panelHead(row.keyword, `${esc(name(e))}`)}<div class="panel-body">${UI.skeleton ? UI.skeleton("panel") : `<p class="muted">${t("Loading…")}</p>`}</div>`, opener);
+    UI.syncUrl(); // the address names the open keyword, so a reload or a pasted link opens it again
     await loadPanel(K.panel);
   }
   async function loadPanel(info) {
@@ -593,7 +693,7 @@
       const canRun = tool.connected && tool.engines.includes(e);
       const empty = tool.left !== null && tool.left < Math.max(1, tool.credits_per_search) && !tool.paid_on;
       const elsewhere = !x && view.away.find((a) => a.tool === tool.name);
-      const button = !canRun ? `<span class="small muted">${t("Not connected")}</span>` : `<button class="btn btn-small" data-kwr-check="${esc(tool.name)}" data-low="${low ? tool.left : ""}" ${mine(K.run) || empty ? "disabled" : ""} ${empty ? `data-tip="${esc(t("No free checks left on this tool."))}"` : ""}>${t(x || elsewhere ? "Recheck" : "Check")}</button>${tool.left === null ? "" : `<span class="second">${num(tool.left)} ${t("left")}</span>`}`;
+      const button = !canRun ? `<span class="small muted">${t("Not connected")}</span>` : `<button class="btn btn-small" data-kwr-check="${esc(tool.name)}" data-low="${low ? tool.left : ""}" ${mine(K.run) || empty ? "disabled" : ""} ${empty ? `data-tip="${esc(t("No free checks left on this tool."))}"` : ""}>${t("Refresh")}</button>${tool.left === null ? "" : `<span class="second">${num(tool.left)} ${t("left")}</span>`}`;
       return `<tr><td class="nowrap">${logo(tool.name, 16)} ${esc(t(tool.name))}</td><td>${x ? posBadge(x) : '<span class="muted">—</span>'}</td><td class="sec small nowrap">${x ? age(x.age_days) : elsewhere ? age(elsewhere.age_days) : t("never")}</td><td>${x ? statusOf(x) : elsewhere ? `<span class="small sec">${t("Another location")}</span>` : ""}</td><td class="r">${button}</td></tr>`;
     }).join("");
     const suspects = view.suspects.map((x) => `<tr><td class="nowrap">${logo(x.tool, 16)} ${esc(t(x.tool))}</td><td>${posBadge(x)}</td><td class="sec small nowrap">${age(x.age_days)}</td><td>${status("warn", t("Suspect result"))}</td><td></td></tr>`).join("");
@@ -609,7 +709,7 @@
       : chart(shownLine);
     const hasSuspect = shownLine?.points.some((p) => p.suspect);
     const competitors = detail.competitors.length
-      ? `<table class="mini"><thead><tr><th scope="col">${t("Position")}</th><th scope="col">${t("Website")}</th><th scope="col" class="r">${t("Change")}</th></tr></thead><tbody>${detail.competitors.slice(0, 20).map((c) => `<tr><td class="pos" style="width:40px">#${c.position}</td><td class="mono small" dir="auto">${c.mine ? `<b>${esc(c.host)}</b>` : esc(c.host)}${c.rival ? ` ${icon("crosshair", "muted")}` : ""}</td><td class="r">${c.change ? `<span class="chg ${c.change > 0 ? "good" : "crit"}">${icon(c.change > 0 ? "arrow-up" : "arrow-down")}${Math.abs(c.change)}</span>` : '<span class="muted">—</span>'}</td></tr>`).join("")}</tbody></table>`
+      ? `<table class="mini"><thead><tr><th scope="col">${t("Position")}</th><th scope="col">${t("Site")}</th><th scope="col" class="r">${t("Change")}</th></tr></thead><tbody>${detail.competitors.slice(0, 20).map((c) => `<tr><td class="pos" style="width:40px">#${c.position}</td><td class="mono small" dir="auto">${c.mine ? `<b>${esc(c.host)}</b>` : esc(c.host)}${c.rival ? ` ${icon("crosshair", "muted")}` : ""}</td><td class="r">${c.change ? `<span class="chg ${c.change > 0 ? "good" : "crit"}">${icon(c.change > 0 ? "arrow-up" : "arrow-down")}${Math.abs(c.change)}</span>` : '<span class="muted">—</span>'}</td></tr>`).join("")}</tbody></table>`
       : `<p class="small muted">${t("None yet")}</p>`;
     const checks = detail.checks.length
       ? `<table class="mini"><thead><tr><th>${t("Date")}</th><th>${t("Tool")}</th><th>${t("Position")}</th><th>${t("Status")}</th></tr></thead><tbody>${detail.checks.slice(0, 30).map((c) => `<tr><td class="nowrap small">${esc(UI.fmtDateOnly(c.checked_at.slice(0, 10)))}</td><td class="small">${esc(t(c.tool))}<span class="second">${esc(c.location || "—")} · ${t("Top")} ${c.depth}</span></td><td>${c.status === "failed" ? "—" : c.p ? `#${c.p}` : `&gt;${c.depth}`}</td><td>${c.status === "failed" ? `<span class="crit small" data-tip="${esc(c.error || "")}" tabindex="0">${t("Failed")}</span>` : c.status === "suspect" ? status("warn", t("Suspect result")) : status("good", t("OK"))}</td></tr>`).join("")}</tbody></table>`
@@ -636,8 +736,9 @@
         ${e === "google" ? `<h3>${t("AI Overview")}</h3>${aiCell(row)}` : ""}
         <h3>${t("All results")}</h3>
         ${checks}
+        ${UI.relatedTasks ? UI.relatedTasks({ host: row.site || "", keyword: row.keyword, page: row.page || "" }) : ""}
       </div>
-      <div class="panel-foot">${task}<button class="btn btn-ghost danger" id="kwr-forget">${t("Stop following")}</button></div>`);
+      <div class="panel-foot">${task}<button class="btn btn-ghost danger" id="kwr-forget">${t("Stop tracking")}</button></div>`);
     const body = $(".panel-body", $("#panel"));
     if (body) body.scrollTop = scroll;
   }
@@ -646,7 +747,8 @@
     const p = view.main?.p, c = view.change, engine = name(e);
     const title = c && p ? `${row.keyword} ${t(c < 0 ? "fell" : "rose")} #${p + c} → #${p} ${t("on")} ${engine}` : p ? `${row.keyword} ${t("is at")} #${p} ${t("on")} ${engine}` : `${row.keyword}: ${t("not in the results checked on")} ${engine}`;
     const facts = [p ? `#${p} · ${view.main.tool} · ${age(view.main.age_days)}` : "", row.page || ""].filter(Boolean);
-    return { title, host: row.site, source: { type: "keyword", label: `${row.keyword} · ${engine}`, host: row.site, facts, link: "#keywords", key: `keyword|${row.site_id}|${row.keyword_id}|${e}` } };
+    // The task starts linked to this keyword and its page, and its link opens this keyword again (the address keeps it).
+    return { title, host: row.site, keywords: [row.keyword], pages: row.page ? [row.page] : [], source: { type: "keyword", label: `${row.keyword} · ${engine}`, host: row.site, facts, link: `#keywords?site=${encodeURIComponent(row.site)}&kw=${encodeURIComponent(row.id)}`, key: `keyword|${row.site_id}|${row.keyword_id}|${e}` } };
   }
 
   async function recheck(button) {
@@ -659,38 +761,35 @@
     button.disabled = true;
     UI.setHTML(button, icon("refresh-cw", "spin"));
     const depth = info.detail.row.engines[info.engine].main?.depth || 10;
+    // The first press respects the 12-hour guard; the server says when it was checked recently, and a second press spends anyway.
+    const again = button.dataset.recent === "1";
     try {
-      const run = await api("POST", "refresh/runs", { keyword_ids: [info.keywordId], engines: [info.engine], depth, mode: "pick", picked: [toolName], include_recent: true, token: token() });
+      const run = await api("POST", "refresh/runs", { keyword_ids: [info.keywordId], engines: [info.engine], depth, mode: "pick", picked: [toolName], include_recent: again, token: token() });
+      delete button.dataset.recent;
       follow(run);
     } catch (err) {
-      UI.toast(t(err.message), { kind: "crit" });
       button.disabled = false;
-      button.textContent = t("Recheck");
+      if (!again && /Checked recently/.test(err.message || "")) {
+        button.dataset.recent = "1";
+        button.textContent = t("Check again? 1 credit");
+        UI.toast(t(err.message), { kind: "info" });
+        return;
+      }
+      UI.toast(t(err.message), { kind: "crit" });
+      button.textContent = t("Refresh");
     }
   }
 
   async function forget() {
     const info = K.panel, row = rowById(info.id);
-    if (!window.confirm(t("Stop following this keyword on this site? Its past checks stay."))) return;
+    if (!window.confirm(t("Stop tracking this keyword on this site? Its past checks stay."))) return;
     try {
       await api("DELETE", `rankings/${info.keywordId}?site_id=${info.siteId}`);
     } catch (err) { UI.toast(t(err.message), { kind: "crit" }); return; }
     UI.closePanel();
     K.panel = null;
     K.stale = true; load();
-    UI.toast(`${t("Stopped following")}: ${row?.keyword || ""}`, { undo: async () => { await api("POST", `rankings/${info.keywordId}/restore?site_id=${info.siteId}`); K.stale = true; load(); } });
-  }
-
-  function exportCsv() {
-    const e = engineOf();
-    const cell = (value) => { const text = value === null || value === undefined ? "" : String(value); return /[",\n]/.test(text) || /^[=+\-@]/.test(text) ? `"${(/^[=+\-@]/.test(text) ? "'" : "") + text.replace(/"/g, '""')}"` : text; };
-    const rows = filtered().map((row) => { const v = row.engines[e]; return [row.keyword, row.site, name(e), v.own === null || v.own === undefined ? "" : Math.round(v.own * 10) / 10, v.main ? (v.main.p ?? `>${v.main.depth}`) : "", v.main?.tool || "", v.main?.checked_at || "", v.main?.status || "", v.change ?? v.change_note ?? "", row.volume ?? "", row.page || "", row.ai.state]; });
-    const lines = [["keyword", "site", "engine", "own tool average", "scraped position", "tool", "checked at", "status", "change", "impressions 28 days", "page", "ai overview"], ...rows].map((r) => r.map(cell).join(","));
-    const url = URL.createObjectURL(new Blob([`﻿${lines.join("\n")}`], { type: "text/csv;charset=utf-8" }));
-    const a = document.createElement("a");
-    a.href = url; a.download = `keywords-${e}.csv`; a.click();
-    setTimeout(() => URL.revokeObjectURL(url), 2000);
-    UI.toast(t("Export ready"));
+    UI.toast(`${t("Stopped tracking")}: ${row?.keyword || ""}`, { undo: async () => { await api("POST", `rankings/${info.keywordId}/restore?site_id=${info.siteId}`); K.stale = true; load(); } });
   }
 
   // ---- Settings: the search tools -------------------------------------------------------------
@@ -705,11 +804,15 @@
       return `${error}<label class="opt" style="margin:0 0 4px"><input type="checkbox" class="chk" style="margin:0" id="kwr-paid-on" data-tool="${esc(tool.name)}" ${tool.paid_on ? "checked" : ""}>${t("Allow paid use")}</label><p class="help" style="margin:0 0 12px">${t("Off until you switch it on. Refresh still uses free credits first, and each run asks for its own limit.")}</p>`;
     },
     /* The order is per engine, so the list says which engine it's showing. */
-    orderPicker: () => `<span class="seg" role="group" aria-label="${t("Order for")}" style="margin-left:auto">${ENGINES.map(([id, label]) => `<button type="button" data-kwr-order="${id}" aria-pressed="${K.orderEngine === id}">${label}</button>`).join("")}</span>`,
+    orderPicker: () => `<span class="seg" role="group" aria-label="${t("Order for")}" style="margin-left:auto">${ENGINES.map(([id, label]) => `<button type="button" data-kwr-order="${id}" aria-pressed="${K.orderEngine === id}">${label}</button>`).join("")}</span>${K.aiFirst?.[K.orderEngine]?.length && K.aiFirstWhy ? `<p class="small sec kwr-ai-first" style="flex-basis:100%;margin:6px 0 0">${icon("sparkles")} ${esc(t(K.aiFirstWhy))}</p>` : ""}`,
     openRefresh,
-    commands: () => (K.data?.rows || []).map((row) => ({ label: row.keyword, kind: t("Keyword"), icon: "key-round", run: () => { const open = () => openKeyword(row.id); if (state.route === "keywords") open(); else { UI.go("keywords"); setTimeout(open, 300); } } })),
-    filteredIds: () => filtered().map((row) => row.keyword_id),
+    wanted: () => { if (K.stale && !K.loading) load(); },
+    commands: () => { if (!K.data && !K.loading) load(); return commandRows(); },
   };
+  const commandRows = () => (K.data?.rows || []).map((row) => ({ label: row.keyword, kind: t("Keyword"), icon: "key-round", run: () => { const open = () => openKeyword(row.id); if (state.route === "keywords") open(); else { UI.go("keywords"); setTimeout(open, 300); } } }));
+  Object.assign(window.KW_REAL, {
+    filteredIds: () => filtered().map((row) => row.keyword_id),
+  });
 
   async function saveTool(c, button) {
     const box = $("#conn-test-result");
@@ -793,6 +896,10 @@
       const hit = (sel) => e.target.closest?.(sel);
       let el;
       if (hit("#kwr-retry")) { K.stale = true; K.error = ""; load(); UI.render(); return; }
+      if ((el = hit("[data-kwr-page]")) && !el.disabled) { K.page = Number(el.dataset.kwrPage); UI.render({ keepScroll: true }); $("#kw-table")?.scrollIntoView({ block: "start", behavior: "instant" }); ($(`[data-kwr-page="${K.page}"][aria-current]`) || $("[data-kwr-page]"))?.focus({ preventScroll: true }); return; }
+      if (hit("[data-kwr-search-clear]")) { K.search = ""; K.page = 0; UI.render({ keepScroll: true }); $("#kwr-search")?.focus(); return; }
+      if (hit("[data-filter]") && state.route === "keywords") K.page = 0;
+      if (hit("[data-engine]") && state.route === "keywords") K.page = 0;
       if (hit("#kwr-refresh")) { openRefresh(K.selected.size ? idsOfSelected() : filtered().map((row) => row.keyword_id)); return; }
       if (hit("#kwr-sel-refresh")) { openRefresh(idsOfSelected()); return; }
       if (hit("#kwr-sel-clear")) { K.selected.clear(); UI.render({ keepScroll: true }); return; }
@@ -804,7 +911,6 @@
       if (hit("#kwr-add, #kwr-add-small")) { addPanel(hit("#kwr-add, #kwr-add-small")); return; }
       if ((el = hit("#kwr-add-save"))) { saveKeywords(el); return; }
       if ((el = hit("[data-kwr-follow]"))) { addPanel(el, el.dataset.kwrFollow, el.dataset.siteHost); return; }
-      if (hit("#kwr-export")) { exportCsv(); return; }
       if ((el = hit("[data-kwr-open]"))) { openKeyword(el.dataset.kwrOpen, el); return; }
       if ((el = hit("[data-kwr-deeper]"))) {
         const row = rowById(el.dataset.kwrDeeper), now = row.engines[el.dataset.engineId].main?.depth || 10, next = [20, 30, 50].find((d) => d > now) || 50;
@@ -816,6 +922,7 @@
       if (hit("#kwr-chart-toggle")) { K.panel.table = !K.panel.table; paintPanel(K.panel); $("#kwr-chart-toggle")?.focus(); return; }
       if (hit("#kwr-stop")) { const b = hit("#kwr-stop"); b.disabled = true; b.textContent = t("Stopping…"); if (K.run) api("POST", `refresh/runs/${K.run.id}/cancel`).catch(() => {}); return; }
       if (hit("#kwr-tray-close")) { $("#tray-root").replaceChildren(); return; }
+      if ((el = hit("#kwr-tray-retry"))) { const ids = el.dataset.ids.split(",").map(Number).filter(Boolean), engines = el.dataset.engines.split(",").filter(Boolean); $("#tray-root").replaceChildren(); openRefresh(ids, engines.length ? engines : undefined); return; }
       if ((el = hit("[data-kwr-mode]"))) { K.refresh.mode = el.dataset.kwrMode; $$("[data-kwr-mode]").forEach((b) => b.setAttribute("aria-pressed", b === el)); updatePreview(); return; }
       if ((el = hit("[data-kwr-connect]"))) { const id = CONN_ID[el.dataset.kwrConnect]; $("#dlg").close(); K.refresh = null; UI.openConnection(id); return; }
       if (hit("#kwr-confirm") && !hit("#kwr-confirm").disabled) { confirmRefresh(hit("#kwr-confirm")); return; }
@@ -824,6 +931,7 @@
     document.addEventListener("change", (e) => {
       const el = e.target;
       if (el.matches?.("[data-kwr-select]")) { if (el.checked) K.selected.add(el.dataset.kwrSelect); else K.selected.delete(el.dataset.kwrSelect); const id = el.dataset.kwrSelect; UI.render({ keepScroll: true }); $$("[data-kwr-select]").find((x) => x.dataset.kwrSelect === id)?.focus(); return; }
+      if (el.matches?.("[data-kwr-per]")) { K.per = PER.includes(Number(el.value)) ? Number(el.value) : 50; K.page = 0; UI.render({ keepScroll: true }); $("[data-kwr-per]")?.focus({ preventScroll: true }); return; }
       if (el.id === "kwr-select-all") { filtered().forEach((row) => { if (el.checked) K.selected.add(row.id); else K.selected.delete(row.id); }); UI.render({ keepScroll: true }); $("#kwr-select-all")?.focus(); return; }
       if (el.matches?.("[data-kwr-engine]")) { if (el.checked) K.refresh.engines.add(el.dataset.kwrEngine); else K.refresh.engines.delete(el.dataset.kwrEngine); updatePreview(); return; }
       if (el.id === "kwr-depth") { K.refresh.depth = Number(el.value); updatePreview(); return; }
@@ -838,25 +946,82 @@
       }
     });
     document.addEventListener("close", (e) => { if (e.target.id === "dlg") K.refresh = null; }, true);
+    // Typing filters as you go; the box keeps its cursor through the redraw.
+    let typing = null;
+    document.addEventListener("input", (e) => {
+      if (e.target.id !== "kwr-search") return;
+      K.search = e.target.value.slice(0, 200); K.page = 0;
+      clearTimeout(typing);
+      typing = setTimeout(() => {
+        const box = $("#kwr-search"), at = box?.selectionStart ?? null;
+        UI.render({ keepScroll: true });
+        const again = $("#kwr-search");
+        if (again) { again.focus({ preventScroll: true }); if (at !== null) again.setSelectionRange(at, at); }
+      }, 200);
+    });
   }
   const idsOfSelected = () => [...new Set([...K.selected].map((id) => rowById(id)?.keyword_id).filter(Boolean))];
 
+  window.KW_REAL.seen = () => filtered().map((row) => row.id); // export.js: the rows on screen, in their order
   window.SCREENS = window.SCREENS || {};
   window.SCREENS.keywords = {
     init(helpers) {
       UI = helpers;
       ({ t, esc, icon, num, dec, status, logo, $, $$, state } = helpers);
       bind();
-      load();
+      if (state.route === "keywords" || state.route === "settings") load(); // otherwise when Keywords, Settings or ⌘K first needs it (F17)
       // A Refresh started before a reload, or by a colleague, still shows.
       api("GET", "refresh/runs").then((answer) => { if (answer.runs[0] && !K.run) follow(answer.runs[0]); }).catch(() => {});
     },
     page,
     after() {
       if (K.stale && !K.loading) load();
+      openWanted();
+    },
+    address() {
+      const out = {};
+      if (K.search.trim()) out.q = K.search.trim();
+      if (K.page) out.page = K.page + 1;
+      if (K.per !== 50) out.per = K.per;
+      if (K.panel && $("#panel") && !$("#panel.closing")) out.kw = K.panel.id;
+      return out;
+    },
+    fromAddress(q) {
+      K.search = (q.get("q") || "").slice(0, 200);
+      K.per = PER.includes(Number(q.get("per"))) ? Number(q.get("per")) : 50;
+      K.page = Math.max(0, (Number(q.get("page")) || 1) - 1);
+      K.wantOpen = q.get("kw") || null;
     },
   };
+  /* A keyword named in the address opens once the rows are in. */
+  function openWanted() {
+    if (K.wantKeyword && K.data && state.route === "keywords") {
+      const w = K.wantKeyword;
+      const found = K.data.rows.find((r) => (w.keywordId ? r.keyword_id === w.keywordId : r.keyword.toLowerCase() === w.keyword) && (!w.host || r.site === w.host));
+      K.wantKeyword = null;
+      if (found) {
+        K.wantOpen = found.id; K.search = "";
+        if (!filtered().some((r) => r.id === found.id)) state.filter = "all"; // a chip that hides it is lifted
+        K.page = Math.max(0, Math.floor(filtered().findIndex((r) => r.id === found.id) / K.per));
+      }
+    }
+    if (!K.wantOpen || !K.data || state.route !== "keywords") return;
+    const id = K.wantOpen;
+    K.wantOpen = null;
+    if (rowById(id) && !$("#panel")) setTimeout(() => openKeyword(id), 0);
+  }
   window.addEventListener("seocc:site-added", () => { K.stale = true; });
+  // Keywords added elsewhere (Competitors → Keyword check → Add to my keywords) show here without a reload.
+  document.addEventListener("keywords:changed", () => { K.stale = true; K.queries = {}; if (state.route === "keywords" && !K.loading) load(); });
   /* Other screens track a query through the same panel, so there's one way to add a keyword. queries: one or many. */
-  window.KW = { track: (queries, host, opener, market) => addPanel(opener, [].concat(queries).join("\n"), host, market || {}) };
+  window.KW = {
+    track: (queries, host, opener, market) => addPanel(opener, [].concat(queries).join("\n"), host, market || {}),
+    /* Open one keyword's panel from anywhere: Keywords opens on its site, and the panel opens once the rows are in. */
+    open({ keywordId = null, keyword = "", host = null } = {}) {
+      if (host) UI.pickSite(host);
+      K.wantKeyword = { keywordId, keyword: String(keyword || "").toLowerCase(), host };
+      if (state.route !== "keywords") UI.go("keywords"); else openWanted();
+      if (K.stale && !K.loading) load(); else openWanted();
+    },
+  };
 })();

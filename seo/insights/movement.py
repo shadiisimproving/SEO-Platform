@@ -279,7 +279,7 @@ def queries_down(ctx: Ctx) -> Result:
     found = []
     for r in split(ctx, "query", ctx.start, ctx.end, ctx.before_start, ctx.before_end):
         p1, p0, i1, i0 = r["position"], r["position_before"], r["impressions"], r["impressions_before"]
-        if p1 is None or p0 is None or not i1 or max(i0, i1) < rules.QUERY_MIN_IMPRESSIONS or p0 > rules.QUERY_WORST_BEFORE:
+        if p1 is None or p0 is None or not i1 or min(i0, i1) < rules.QUERY_MIN_IMPRESSIONS or p0 > rules.QUERY_WORST_BEFORE:  # both sides: 2 impressions say nothing (F110)
             continue
         if p1 - p0 < rules.QUERY_PLACES_LOST:
             continue

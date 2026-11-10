@@ -66,6 +66,22 @@ def test_moz_only_reads_domains_marked_important_and_keeps_the_result(engine, ke
     assert extras.fetch_moz(engine)["fetched"] == 0 and len(web.calls) == 1  # a row is never used twice in a month
 
 
+def test_a_competitor_profile_asks_moz_for_its_two_domains_only(engine, key, web):
+    """The profile's "Get these numbers" marks two domains and must not spend rows on every other important domain."""
+    from seo.web import create_app
+    sources.save_app_key(engine, "moz", "moz-token-1234")
+    for domain in ("waiting-one.example", "waiting-two.example"):
+        extras.mark(engine, domain)
+    web.answers["api.moz.com"] = MOZ
+    client = create_app(engine=engine, auth=False).test_client()
+    answer = client.post("/api/important-domains/moz", json={"domains": ["rival.example", "mine.example"]}).get_json()
+    assert answer.get("fetched", 0) == 0 and web.calls == []  # neither is marked yet, and the two waiting ones are left alone
+    extras.mark(engine, "rival.example")
+    answer = extras.fetch_moz(engine, ["rival.example", "mine.example"])
+    assert answer["fetched"] == 1 and len(web.calls) == 1
+    assert json.loads(web.calls[0].content)["params"]["data"]["site_query"]["query"] == "rival.example"
+
+
 def test_moz_stops_at_its_free_rows(engine, key, web):
     sources.save_app_key(engine, "moz", "moz-token-1234")
     with engine.begin() as conn:
@@ -165,25 +181,100 @@ def test_clarity_totals_weight_scroll_depth_and_say_when_there_is_nothing(engine
     assert answer["sessions"] == 400 and answer["scroll_depth"] == 35.0 and answer["rage_clicks"] == 2
 
 
+COMPLETE = b"-- dump\n-- Dump completed on 2026-11-10  2:20:01\n"  # the dump tool's own last line
+
+
 class FakeDump:
-    def __init__(self, data=b"-- dump\n", code=0, stderr=b""):
+    def __init__(self, data=COMPLETE, code=0, stderr=b""):
         self.stdout, self.stderr, self.code = io.BytesIO(data), io.BytesIO(stderr), code
     def wait(self):
         return self.code
 
 
-def test_backup_is_compressed_private_and_keeps_only_the_newest(tmp_path, monkeypatch):
+def test_backup_is_compressed_private_and_drops_copies_by_age(tmp_path, monkeypatch):
     monkeypatch.setattr(backup_db.shutil, "which", lambda name: "/fake/dump")
-    for n in range(3):
+    for n in range(1, 4):
         (tmp_path / f"old-2020010{n}-000000.sql.gz").write_bytes(b"x")
     seen = {}
     def runner(command, **kwargs):
         seen["command"], seen["env"] = command, kwargs["env"]
         return FakeDump()
-    target = backup_db.run(tmp_path, keep=2, runner=runner)
-    assert gzip.open(target).read() == b"-- dump\n" and oct(target.stat().st_mode)[-3:] == "600"
-    assert len(list(tmp_path.glob("*.sql.gz"))) == 2 and target.exists()
+    target = backup_db.run(tmp_path, runner=runner)
+    assert gzip.open(target).read() == COMPLETE and oct(target.stat().st_mode)[-3:] == "600"
+    # Three days in the same week and month of 2020: the daily rule keeps them all
+    assert len(list(tmp_path.glob("*.sql.gz"))) == 4 and target.exists()
     assert not any("DB_PASSWORD" in part or part == seen["env"]["MYSQL_PWD"] for part in seen["command"])
+
+
+@pytest.mark.parametrize("data", [b"-- dump\nCREATE TABLE half", b""])
+def test_a_dump_that_stops_early_is_refused_and_removed(tmp_path, monkeypatch, data):
+    """The dump tool can exit 0 and still stop short, e.g. a full disk on the way. Its last line is only there when done."""
+    monkeypatch.setattr(backup_db.shutil, "which", lambda name: "/fake/dump")
+    with pytest.raises(SystemExit) as err:
+        backup_db.run(tmp_path, runner=lambda command, **kwargs: FakeDump(data))
+    assert "removed" in str(err.value)
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_a_cut_off_gzip_file_does_not_pass(tmp_path):
+    whole = tmp_path / "whole.sql.gz"
+    with gzip.open(whole, "wb") as out:
+        out.write(COMPLETE * 1000)
+    backup_db.verify_dump(whole)
+    cut = tmp_path / "cut.sql.gz"
+    cut.write_bytes(whole.read_bytes()[:-20])
+    with pytest.raises(SystemExit):
+        backup_db.verify_dump(cut)
+
+
+def _copies(folder, stamps):
+    for stamp in stamps:
+        (folder / f"seo-{stamp:%Y%m%d-%H%M%S}.sql.gz").write_bytes(b"x")
+
+
+def test_copies_are_kept_by_age_not_by_count(tmp_path):
+    """A day of many uploads used to push out every older copy. Now: all from the last two days, then the newest of
+    each of 14 days, 8 weeks and 6 months."""
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime(2026, 11, 10, 12, 0, tzinfo=timezone.utc)
+    nightly = [now.replace(hour=2, minute=20) - timedelta(days=n) for n in range(400)]
+    uploads_today = [now - timedelta(minutes=10 * n) for n in range(1, 15)]
+    _copies(tmp_path, nightly + uploads_today)
+    (tmp_path / "copied-by-hand.sql.gz").write_bytes(b"x")
+    backup_db.prune(tmp_path, "*.sql.gz", backup_db.KEEP, now=now)
+    left = sorted(datetime.strptime(backup_db.STAMP.search(p.name).group(1), "%Y%m%d-%H%M%S").replace(tzinfo=timezone.utc) for p in tmp_path.glob("seo-*.sql.gz"))
+    assert all(stamp in left for stamp in uploads_today), "every copy from today stays"
+    assert all(stamp in left for stamp in nightly[:14]), "the last 14 nights stay"
+    weeks = sorted({stamp.isocalendar()[:2] for stamp in nightly}, reverse=True)[:8]
+    assert {week: max(s for s in nightly if s.isocalendar()[:2] == week) in left for week in weeks} == {week: True for week in weeks}, "the newest of each of 8 weeks"
+    months = sorted({(stamp.year, stamp.month) for stamp in nightly}, reverse=True)
+    assert {(stamp.year, stamp.month) for stamp in left} == set(months[:6]), "the newest of each of 6 months, nothing older"
+    assert len(left) <= 14 + 1 + 14 + 8 + 6
+    assert (tmp_path / "copied-by-hand.sql.gz").exists(), "a file with no date in its name is never removed"
+
+
+def test_a_restore_never_empties_a_database_without_replace(engine, tmp_path):
+    """Only the refusals run here; a full dump-and-restore was tried by hand on made-up databases (deploy/DEPLOY.md)."""
+    from scripts import restore_db
+
+    good = tmp_path / "good.sql.gz"
+    with gzip.open(good, "wb") as out:
+        out.write(COMPLETE)
+    with pytest.raises(SystemExit) as err:
+        restore_db.restore(good, engine.url.database)
+    assert "--replace" in str(err.value)
+    assert "sites" in restore_db.row_counts(engine), "nothing was dropped"
+
+
+def test_a_restore_checks_the_file_before_touching_any_database(tmp_path):
+    from scripts import restore_db
+
+    cut = tmp_path / "cut.sql.gz"
+    cut.write_bytes(b"\x1f\x8b not really gzip")
+    with pytest.raises(SystemExit) as err:
+        restore_db.restore(cut, "never_reached")
+    assert "removed" in str(err.value) or "read back" in str(err.value)
 
 
 def test_a_failed_backup_leaves_no_file_behind(tmp_path, monkeypatch):
@@ -293,7 +384,7 @@ def test_a_backup_doesnt_hang_on_a_dump_full_of_warnings(tmp_path, monkeypatch):
     import threading
 
     monkeypatch.setattr(backup_db.shutil, "which", lambda name: "/fake/dump")
-    noisy = "import sys; sys.stderr.write('warning ' * 50000); sys.stderr.flush(); sys.stdout.write('-- dump')"
+    noisy = "import sys; sys.stderr.write('warning ' * 50000); sys.stderr.flush(); sys.stdout.write('-- dump\\n-- Dump completed')"
     done = []
 
     def runner(command, **kwargs):
@@ -302,7 +393,7 @@ def test_a_backup_doesnt_hang_on_a_dump_full_of_warnings(tmp_path, monkeypatch):
     worker = threading.Thread(target=lambda: done.append(backup_db.run(tmp_path, runner=runner)), daemon=True)
     worker.start()
     worker.join(20)
-    assert done and gzip.open(done[0]).read() == b"-- dump"
+    assert done and gzip.open(done[0]).read() == b"-- dump\n-- Dump completed"
 
 
 def test_a_cloudflare_token_is_tested_on_radar_itself_and_its_refusal_reads_plainly(engine, key, web):

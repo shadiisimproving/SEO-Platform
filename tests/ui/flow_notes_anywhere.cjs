@@ -73,7 +73,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   // 3. A competitor: Notes in the header, no block at the end of the page.
   await goto("#competitors");
   await oneSite();
-  const rival = page.locator("#comp-body [data-cl-open]").first();
+  const rival = page.locator("#comp-body [data-cs-open]").first();
   check("a competitor to open", (await rival.count()) === 1);
   if (await rival.count()) {
     await rival.click();
@@ -92,7 +92,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
     await page.keyboard.press("Escape"); await settle(400);
     await page.reload(); await settle(2200);
     if (!(await page.$("#cl-profile-title"))) {
-      const again = page.locator("#comp-body [data-cl-open]").first();
+      const again = page.locator("#comp-body [data-cs-open]").first();
       if (await again.count()) { await again.click(); await page.waitForSelector("#cl-profile-title"); }
     }
     await settle(1500);

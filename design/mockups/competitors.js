@@ -50,28 +50,157 @@
     return Promise.reject(new Error("That isn't available in the sample data."));
   }
 
-  /* COMP.api("GET", "competitors?site_id=1"), COMP.api("POST", "notes", {...}), or { form: FormData } for files.
-     A refused request rejects with the server's own sentence as err.message. */
+  /* The app's one way to call the server (F17, F19, F20). Any script may use it: it is loaded before every screen.
+
+       COMP.api("GET", "competitors?site_id=1")            → the answer's JSON
+       COMP.api("POST", "notes", { scope: "all", body })    → JSON body; PATCH, PUT, DELETE the same
+       COMP.api("POST", "notes/4/files", null, { form })    → a FormData upload
+       opts: { keepalive: true } lets a save outlive the page; { fresh: true } never shares a GET.
+
+     A refusal rejects with an Error whose message is the server's own sentence (or a plain one), with err.status
+     (0 when the server can't be reached), and err.data, the answer's JSON.
+     - The same GET asked while one is on its way shares that one request. Each caller gets its own copy of the answer.
+       A change sent in between starts a new GET, so nobody is handed an answer from before their own change.
+     - 429: waits as long as the server's Retry-After says (1 to 30 s, 5 s if it says nothing), then tries again, twice
+       at most. COMP.coolUntil holds that moment, and COMP.poll waits for it too. Then it rejects with a plain sentence.
+     - 403 "This page is out of date": asks auth/me again once (window.whoAmI.again) and sends the change again. */
+  const inflight = new Map();
+  /* Counts changes sent by any script, through COMP.api or not, so a GET started before one is never shared after it. */
+  let changes = 0;
+  if (location.protocol.startsWith("http") && !window.fetch.countsChanges) {
+    const pageFetch = window.fetch;
+    window.fetch = function countingFetch(input, init) {
+      const method = String(init?.method || (input instanceof Request ? input.method : "GET")).toUpperCase();
+      if (method === "GET" || method === "HEAD") return pageFetch(input, init);
+      changes += 1;
+      return pageFetch(input, init).finally(() => { changes += 1; });
+    };
+    window.fetch.countsChanges = true;
+  }
+  const RETRIES_429 = 2;
+  COMP.coolUntil = 0;
+  const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+  const BUSY = "The server is busy. Wait a minute, then try again.";
+  const OFFLINE = "The server can't be reached. Check the connection, then try again.";
+  const BROKEN = "Something went wrong on the server. Try again in a moment.";
+  function retryAfter(reply) {
+    const said = reply.headers.get("Retry-After");
+    let ms = said === null ? 5000 : /^\d+$/.test(said.trim()) ? Number(said) * 1000 : new Date(said).getTime() - Date.now();
+    if (!Number.isFinite(ms)) ms = 5000;
+    return Math.min(30000, Math.max(1000, ms));
+  }
+  async function call(method, path, body, opts) {
+    let busyTries = 0, askedAgain = false;
+    for (;;) {
+      const wait = COMP.coolUntil - Date.now();
+      if (wait > 0) await sleep(wait);
+      const init = { method };
+      if (opts.keepalive) init.keepalive = true;
+      if (opts.form) init.body = opts.form;
+      else if (body !== undefined && body !== null) { init.headers = { "Content-Type": "application/json" }; init.body = JSON.stringify(body); }
+      let reply;
+      try { reply = await fetch(`api/${path}`, init); } catch (cause) { throw Object.assign(new Error(OFFLINE), { status: 0, cause }); }
+      if (reply.status === 429 && busyTries < RETRIES_429) { // nothing was done: safe to send again, even a change
+        busyTries += 1;
+        COMP.coolUntil = Math.max(COMP.coolUntil, Date.now() + retryAfter(reply));
+        continue;
+      }
+      const data = await reply.json().catch(() => ({}));
+      if (reply.status === 403 && !askedAgain && method !== "GET" && /out of date/.test(data.error || "") && window.whoAmI?.again) {
+        askedAgain = true;
+        await window.whoAmI.again();
+        continue;
+      }
+      if (!reply.ok) {
+        const words = reply.status === 429 ? BUSY : data.error || (reply.status >= 500 ? BROKEN : `Error ${reply.status}`);
+        throw Object.assign(new Error(words), { status: reply.status, headers: data.headers, data });
+      }
+      return data;
+    }
+  }
   COMP.api = async (method, path, body, opts = {}) => {
     if (!(await isServer())) return sampleCall(method, path, body, opts);
-    const init = { method };
-    if (opts.form) init.body = opts.form;
-    else if (body !== undefined) { init.headers = { "Content-Type": "application/json" }; init.body = JSON.stringify(body); }
-    const reply = await fetch(`api/${path}`, init);
-    const data = await reply.json().catch(() => ({}));
-    if (!reply.ok) {
-      const err = new Error(data.error || `Error ${reply.status}`);
-      err.status = reply.status;
-      err.headers = data.headers;
-      throw err;
+    method = String(method || "GET").toUpperCase();
+    if (method !== "GET" || opts.fresh) return call(method, path, body, opts);
+    let shared = inflight.get(path);
+    if (!shared || shared.changes !== changes) {
+      const promise = call(method, path, body, opts);
+      shared = { promise, changes };
+      inflight.set(path, shared);
+      const forget = () => { if (inflight.get(path) === shared) inflight.delete(path); };
+      promise.then(forget, forget);
     }
-    return data;
+    return shared.promise.then(clone);
+  };
+
+  /* One way to follow something on the server while it works (F21, F60, F115, F181, F187). Any script may use it.
+
+       const follow = COMP.poll(async () => { const now = await COMP.api("GET", "…"); paint(now); return stillRunning(now); },
+                                { every: 2500, slowest: 30000, grow: 1.2, most: 15 * 60000, onEnd: (why, err) => … });
+       follow.stop();
+
+     step() runs after `every` ms. It answers false to stop; anything else carries on. The wait grows by `grow` after each
+     answer and doubles after each failure, up to `slowest`. It pauses while the browser tab is hidden and starts again
+     when it shows, waits out a 429 cool-down, and stops by itself on a 401 or 404, after `errors` failures in a row (6),
+     or after `most` ms of watching with the tab in view (15 min). onEnd(why) says why: "done", "gone", "errors", "ceiling", "stopped". */
+  COMP.poll = (step, { every = 2500, slowest = 30000, grow = 1, errors = 6, most = 15 * 60000, onEnd } = {}) => {
+    let delay = every, failures = 0, timer = null, stopped = false, running = false, watched = 0, since = Date.now();
+    const end = (why, err) => {
+      if (stopped) return;
+      stopped = true;
+      clearTimeout(timer);
+      document.removeEventListener("visibilitychange", seen);
+      try { onEnd?.(why, err); } catch { /* the caller's own clean-up */ }
+    };
+    const later = (ms) => { clearTimeout(timer); timer = setTimeout(tick, ms); };
+    function seen() {
+      if (stopped) return;
+      if (document.hidden) { watched += Date.now() - since; clearTimeout(timer); timer = null; return; }
+      since = Date.now();
+      if (!timer && !running) later(Math.min(delay, 1000)); // back in view: look soon
+    }
+    async function tick() {
+      timer = null;
+      if (stopped || document.hidden) return; // seen() starts it again
+      const cool = COMP.coolUntil - Date.now();
+      if (cool > 0) { later(cool); return; }
+      if (watched + (Date.now() - since) > most) { end("ceiling"); return; }
+      running = true;
+      let more;
+      try {
+        more = await step();
+        failures = 0;
+        delay = Math.min(slowest, delay * grow);
+      } catch (err) {
+        running = false;
+        if (err?.status === 401 || err?.status === 404) { end("gone", err); return; }
+        failures += 1;
+        if (failures >= errors) { end("errors", err); return; }
+        delay = Math.min(slowest, delay * 2);
+      }
+      running = false;
+      if (stopped) return;
+      if (more === false) { end("done"); return; }
+      later(delay);
+    }
+    document.addEventListener("visibilitychange", seen);
+    later(every);
+    return { stop: () => end("stopped"), get active() { return !stopped; } };
   };
 
   // ---- small shared pieces ------------------------------------------------------------------
-  COMP.loading = () => `<div class="card"><div class="empty"><p>${UI.t("Loading…")}</p></div></div>`;
+  /* Loading: a few grey lines where the rows will be, so the page doesn't flash a sentence. The words stay for screen readers. */
+  COMP.loading = () => `<div class="card comp-skel" role="status" aria-label="${UI.esc(UI.t("Loading…"))}"><span class="sr">${UI.t("Loading…")}</span><i></i><i></i><i></i></div>`;
   COMP.empty = (title, text, action = "") => `<div class="table-wrap"><div class="empty"><h3>${UI.esc(title)}</h3><p>${UI.esc(text)}</p>${action}</div></div>`;
   COMP.fail = (err) => UI.toast(UI.t(err.message), { kind: "crit" });
+  /* Try again on a screen or tab that didn't load. It loads the same thing again, from the list of sites if that failed. */
+  COMP.retryButton = () => `<button type="button" class="btn btn-main" data-comp-retry>${UI.icon("refresh-cw")}${UI.t("Try again")}</button>`;
+  /* The app's failure card (shared-ui.js) when it's there: a plain reason and Try again. `what` says what didn't load. */
+  COMP.failed = (err, what = "") => {
+    const why = UI.errorWords ? UI.errorWords(err) : UI.t(err?.message || "");
+    const words = what ? `${UI.t(what)} ${why}` : why;
+    return UI.failCard ? UI.failCard(words, { retry: "data-comp-retry" }) : COMP.empty(UI.t("That didn't load"), words, COMP.retryButton());
+  };
   COMP.site = () => COMP.sites.find((s) => s.id === COMP.siteId) || null;
 
   /* How long ago, in the language on screen. */
@@ -87,11 +216,29 @@
   COMP.pos = (n, depth = 10) => (n === null || n === undefined ? `<span class="muted" title="${UI.t("Not in the results checked")}">&gt;${depth}</span>` : `<span class="tabular">#${n}</span>`);
   COMP.shortUrl = (url) => String(url || "").replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") || "/";
   /* Text from other websites can be any language or direction, so it always carries dir="auto" and goes through esc. */
-  COMP.link = (url, text = null, cls = "mono small") => `<a class="${cls} comp-url" dir="auto" href="${UI.esc(url)}" target="_blank" rel="noopener noreferrer nofollow">${UI.esc(text ?? COMP.shortUrl(url)).replace(/([/-])/g, "$1<wbr>")}</a>`; // an address breaks after a slash or hyphen, not mid-word
+  /* Every address goes through PageLink (page-links.js), like the rest of the app: a click opens the page and never the row it sits in.
+     It keeps its comp-url class, nofollow, and a break after each slash or hyphen, so an address wraps there and not mid-word. */
+  COMP.link = (url, text = null, cls = "mono small") => {
+    const breaks = (label) => label.replace(/\//g, "/<wbr>"); // only after a slash: a domain like my-shop.example stays whole
+    if (!window.PageLink) return `<a class="${cls} comp-url" dir="auto" href="${UI.esc(url)}" target="_blank" rel="noopener noreferrer nofollow">${breaks(UI.esc(text ?? COMP.shortUrl(url)))}</a>`;
+    return window.PageLink.html(url, { text: text ?? COMP.shortUrl(url), cls: `${cls} comp-url` })
+      .replace('rel="noopener noreferrer"', 'rel="noopener noreferrer nofollow"')
+      .replace(/>([^<]*)<\/(a|span)>$/, (all, label, tag) => `>${breaks(label)}</${tag}>`);
+  };
   COMP.foreign = (text) => `<span dir="auto">${UI.esc(text)}</span>`;
+  /* A caveat behind an (i): the sentence shows on hover or focus, instead of sitting over the table. */
+  COMP.info = (text) => `<button type="button" class="comp-info" data-tip="${UI.esc(UI.t(text))}" aria-label="${UI.esc(UI.t(text))}">${UI.icon("info")}</button>`;
 
   // ---- the shell ----------------------------------------------------------------------------
-  COMP.currentTab = () => COMP.tabs.find((tab) => tab.id === (COMP.siteId === ALL ? "summary" : COMP.tab)) || COMP.tabs[0];
+  /* "My competitors" (id list) lives inside the Competitors tab (id summary) since 2026-11-09: with no competitor open, the merged tab shows.
+     An old address naming either tab lands on the same screen. */
+  COMP.currentTab = () => {
+    let id = COMP.siteId === ALL ? "summary" : COMP.tab;
+    if (id === "list" && !COMP.tabs.find((x) => x.id === "list")?.competitorId) id = "summary";
+    return COMP.tabs.find((tab) => tab.id === id) || COMP.tabs[0];
+  };
+  /* The Competitors tab stays lit while one of its competitors is open. */
+  COMP.tabLit = (x, current) => x.id === current.id || (x.id === "summary" && current.id === "list");
   COMP.canShowAll = () => COMP.sites.length >= 2;
 
   /* Show a site, or ALL, here and in the side menu. Every tab loads again for it. */
@@ -121,7 +268,7 @@
     try {
       await tab.load?.();
     } catch (err) {
-      if (COMP.currentTab() === tab) { const box = UI.$("#comp-body"); if (box) UI.setHTML(box, COMP.empty(UI.t("That didn't load"), UI.t(err.message))); }
+      if (COMP.currentTab() === tab) { const box = UI.$("#comp-body"); if (box) UI.setHTML(box, COMP.failed(err)); }
       return;
     }
     if (COMP.currentTab() === tab && COMP.siteId === site) COMP.paint();
@@ -180,9 +327,11 @@
   function page() {
     const { t, esc, icon, topbar } = UI;
     const head = topbar(t("Competitors"), t("Who ranks against you, and what they do"), "", false);
+    // The list of sites didn't come: say what failed and offer Try again, instead of loading for ever (UX review bug 3).
+    if (!COMP.ready && COMP.loadError) return `${head}<div class="content page-enter" id="comp-load-failed">${COMP.failed(COMP.loadError, "The list of sites didn't load.")}</div>`;
     if (!COMP.ready) return `${head}<div class="content page-enter">${COMP.loading()}</div>`;
     if (!COMP.sites.length) {
-      return `${head}<div class="content page-enter"><div class="table-wrap"><div class="empty" id="comp-no-sites"><h3>${t("No websites added yet")}</h3><p>${t("Add your own website, then upload its keyword list.")}</p><button class="btn btn-main" id="site-add">${icon("plus")}${t("Add a website")}</button></div></div></div>`;
+      return `${head}<div class="content page-enter"><div class="table-wrap"><div class="empty" id="comp-no-sites"><h3>${t("No sites added yet")}</h3><p>${t("Add your own site, then upload its keyword list.")}</p><button class="btn btn-main" id="site-add">${icon("plus")}${t("Add a site")}</button></div></div></div>`;
     }
     const picked = UI.siteHostPicked();
     const match = picked && COMP.sites.find((s) => s.host === picked);
@@ -193,7 +342,9 @@
       COMP.siteId = ALL;
       COMP.tab = "summary"; // choosing a site after this narrows the same view
       COMP.tabs.forEach((tab) => { tab.loadedFor = undefined; });
-      UI.replaceNextUrl();
+      // Only when the address is about to change. Asked while it already reads #competitors/summary, the request was left waiting,
+      // and it swallowed the next real step: opening a competitor from All my sites, so Back skipped this screen.
+      if (location.hash !== "#competitors/summary") UI.replaceNextUrl();
     }
     COMP.tabFromAddress = false;
     COMP.lastPicked = picked;
@@ -202,18 +353,23 @@
     const allOption = COMP.canShowAll() ? `<option value="${ALL}" ${all ? "selected" : ""}>${t("All my sites")}</option>` : "";
     return `${head}<div class="content page-enter">
       <div class="comp-bar"><label class="field comp-site"><span>${t("Competitors of")}</span><select class="select" id="comp-site">${allOption}${COMP.sites.map((s) => `<option value="${s.id}" ${s.id === COMP.siteId ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></label>${UI.showingNote(COMP.site()?.host)}</div>
-      ${all ? "" : `<div class="tabs comp-tabs" role="tablist" aria-label="${t("Competitors")}">${COMP.tabs.map((x) => `<button class="tab" role="tab" data-comp-tab="${x.id}" aria-selected="${x.id === tab.id}">${x.icon ? icon(x.icon) : ""}${esc(t(x.label))}${x.badge?.() ? `<span class="count">${x.badge()}</span>` : ""}</button>`).join("")}</div>`}
+      ${all ? "" : `<div class="tabs comp-tabs" role="tablist" aria-label="${t("Competitors")}">${COMP.tabs.filter((x) => !x.hidden).map((x) => `<button class="tab" role="tab" data-comp-tab="${x.id}" aria-selected="${COMP.tabLit(x, tab)}">${x.icon ? icon(x.icon) : ""}${esc(t(x.label))}${x.badge?.() ? `<span class="count">${x.badge()}</span>` : ""}</button>`).join("")}</div>`}
+      <div id="comp-setup">${COMP.setup?.html?.() ?? ""}</div>
       <div id="comp-body">${tab.loadedFor === COMP.siteId ? tab.body() : COMP.loading()}</div>
     </div>`;
   }
 
   function after() {
     if (!COMP.ready) {
-      loadSites().then(() => { if (UI.state.route === "competitors") UI.render(); }).catch(COMP.fail);
+      if (COMP.loadError || COMP.loadingSites) return; // Try again asks again
+      COMP.loadingSites = true;
+      loadSites().then(() => { COMP.loadError = null; }, (err) => { COMP.loadError = err; })
+        .finally(() => { COMP.loadingSites = false; if (UI.state.route === "competitors") UI.render(); });
       return;
     }
     const tab = COMP.currentTab();
     if (!tab || !COMP.sites.length) return;
+    COMP.setup?.refresh?.(); // the one "what's missing" line above every tab (comp-setup.js)
     if (tab.loadedFor !== COMP.siteId) COMP.reload();
     else tab.after?.();
   }
@@ -226,6 +382,10 @@
       COMP.tabs.forEach((tab) => tab.init?.(helpers));
       COMP.refreshLogos();
       document.addEventListener("click", (e) => {
+        if (e.target.closest?.("[data-comp-retry]")) {
+          if (!COMP.ready) { COMP.loadError = null; UI.render(); } else COMP.reload();
+          return;
+        }
         const button = e.target.closest?.("[data-comp-tab]");
         if (!button) return;
         COMP.tab = button.dataset.compTab;
@@ -245,14 +405,22 @@
     },
     page,
     after,
+    /* The open tab's own view in the address (mockup.js asks), such as the Competitors table's search and sort. */
+    address: () => COMP.currentTab?.()?.address?.() || {},
+    fromAddress: (q) => COMP.tabs.forEach((tab) => tab.fromAddress?.(q)),
   };
 
   Object.assign(window.FR, {
     "Who ranks against you, and what they do": "Qui se classe face à vous, et ce qu'ils font",
     "Competitors of": "Concurrents de",
     "All my sites": "Tous mes sites",
-    "Add your own website, then upload its keyword list.": "Ajoutez votre site, puis importez sa liste de mots-clés.",
+    "Add your own site, then upload its keyword list.": "Ajoutez votre site, puis importez sa liste de mots-clés.",
+    "No sites added yet": "Aucun site ajouté", "Add a site": "Ajouter un site",
     "That didn't load": "Le chargement a échoué",
+    "The list of sites didn't load.": "La liste des sites ne s'est pas chargée.",
+    "The server is busy. Wait a minute, then try again.": "Le serveur est occupé. Attendez une minute, puis réessayez.",
+    "The server can't be reached. Check the connection, then try again.": "Le serveur est injoignable. Vérifiez la connexion, puis réessayez.",
+    "Something went wrong on the server. Try again in a moment.": "Un problème est survenu sur le serveur. Réessayez dans un instant.",
     "Not in the results checked": "Absent des résultats vérifiés",
   });
 })();

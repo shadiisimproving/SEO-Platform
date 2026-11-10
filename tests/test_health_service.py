@@ -113,6 +113,12 @@ class World:
     def run_test(self, site_id=None) -> dict:
         audit_id = self.start(site_id)
         self.tick()
+        for _ in range(3):  # a start page that fails is asked again in a later chunk before the test settles (F67)
+            data = self.detail(audit_id)
+            if data["audit"]["status"] not in ("queued", "running") or data["audit"].get("paused_until"):
+                return data
+            self.sql("UPDATE jobs SET run_after = UTC_TIMESTAMP(3) WHERE status = 'queued'")
+            self.tick()
         return self.detail(audit_id)
 
     def stop(self, audit_id):
@@ -271,7 +277,8 @@ def test_one_unusable_link_on_a_page_does_not_end_the_test(world):
 
 def test_requests_count_inside_the_daily_budget(world):
     data = world.run_test()
-    assert budget.used_today(world.engine) == len(world.site.requests) == data["audit"]["requests_used"] == 6  # robots.txt and 5 pages
+    # robots.txt, 5 pages, and the 4 usual sitemap addresses asked for the orphan pages (none here)
+    assert budget.used_today(world.engine) == len(world.site.requests) == data["audit"]["requests_used"] == 10
 
 
 def test_a_test_has_no_limit(world):
@@ -303,7 +310,8 @@ def test_a_job_run_twice_does_not_double_the_issues(world):
     health.run_audit(job, world.engine)
     world.sql("UPDATE health_audits SET status = 'running' WHERE id = :i", i=audit_id)
     health.run_audit(job, world.engine)
-    assert world.value("SELECT COUNT(*) FROM health_issues WHERE audit_id = :i", i=audit_id) == 1
+    assert world.value("SELECT COUNT(*) FROM health_issues WHERE audit_id = :i AND code <> 'links_in'", i=audit_id) == 1
+    assert world.value("SELECT COUNT(*) FROM health_issues WHERE audit_id = :i AND code = 'links_in'", i=audit_id) == 1
 
 
 def test_the_job_of_a_finished_test_does_nothing(world):
@@ -932,11 +940,21 @@ def test_a_stopped_test_does_not_use_up_the_month(world):
 
 def test_a_test_stopped_part_way_does_not_use_up_the_month(world):
     world.past_test(90, status="stopped")
+    assert health.enqueue_due(world.engine) == []  # not again within the day: it would restart every hour
+    world.sql("UPDATE health_audits SET created_at = created_at - INTERVAL 25 HOUR")
     assert health.enqueue_due(world.engine) == [world.own]
 
 
 def test_a_failed_test_does_not_use_up_the_month(world):
     world.past_test(None, status="failed")
+    assert health.enqueue_due(world.engine) == []
+    world.sql("UPDATE health_audits SET created_at = created_at - INTERVAL 25 HOUR")
+    assert health.enqueue_due(world.engine) == [world.own]
+
+
+def test_a_test_that_read_no_page_does_not_use_up_the_month(world):
+    world.past_test(40, pages=0, site=("start_page_down",))
+    world.sql("UPDATE health_audits SET pages_read = 0, created_at = created_at - INTERVAL 25 HOUR")
     assert health.enqueue_due(world.engine) == [world.own]
 
 
@@ -1532,8 +1550,8 @@ def test_links_due_command(world, capsys):
 def test_competitors_due_command(world, capsys):
     world.sql("INSERT INTO site_competitors (site_id, competitor_id) VALUES (:s, :c)", s=world.own, c=world.rival)
     assert main(["competitors-due", "--test-db"]) == 0
-    assert capsys.readouterr().out.strip() == "competitors-due: queued 1 competitor, resumed 0 keyword lists"
-    assert world.value("SELECT COUNT(*) FROM jobs WHERE kind = 'competitors.crawl'") == 1
+    assert capsys.readouterr().out.strip() == "competitors-due: queued 1 competitor and 1 of my sites, resumed 0 keyword lists"
+    assert world.value("SELECT COUNT(*) FROM jobs WHERE kind = 'competitors.crawl'") == 2  # the competitor and my own site
 
 
 def test_the_monthly_test_runs_from_the_commands_alone(world, capsys, monkeypatch, tmp_path):
@@ -1563,3 +1581,34 @@ def test_detail_names_the_test_it_was_compared_with(world):
     second = world.run_test()
     assert second["previous_audit"]["id"] == first["audit"]["id"]
     assert first["previous_audit"] is None
+
+
+# ---- the internal links report (build next 10) ---------------------------------------------------------------
+
+def test_a_test_counts_links_in_and_finds_pages_in_the_sitemap_linked_from_nowhere(world):
+    world.site.pages = {
+        "/": good("Home", links_=("/a", "/b")),
+        "/a": good("Page A", links_=("/b",)),
+        "/b": good("Page B"),
+        "/lonely": good("Lonely"),
+        "/sitemap.xml": '<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+                        + "".join(f"<url><loc>{HOME.rstrip('/')}{p}</loc></url>" for p in ("/", "/a", "/b", "/lonely")) + "</urlset>",
+    }
+    data = world.run_test()
+    report = data["internal_links"]
+    assert data["audit"]["status"] == "complete"
+    counts = {row["url"]: row["links_in"] for row in report["pages"]}
+    assert counts == {f"{HOME}a": 1, f"{HOME}b": 2}
+    assert report["orphans"] == [f"{HOME}lonely"] and report["orphan_count"] == 1 and report["sitemap_read"]
+    assert "links_in" not in data["audit"]["counts"]  # it isn't a check, and never moves the score
+    with world.engine.connect() as conn:
+        assert conn.execute(text("SELECT page_count FROM health_issues WHERE code = 'links_in'")).scalar() == 0
+
+
+def test_important_pages_with_few_links_in_are_named(world, monkeypatch):
+    from seo.health import indexing
+    world.site.pages = {"/": good("Home", links_=("/a", "/b")), "/a": good("Page A", links_=("/b",)), "/b": good("Page B")}
+    monkeypatch.setattr(indexing, "importance", lambda engine, site_id: {"/a": (120, 3000), "/b": (2, 40)})
+    report = world.run_test()["internal_links"]
+    assert [r["url"] for r in report["few_links"]] == [f"{HOME}a", f"{HOME}b"] and report["few_links"][0]["clicks"] == 120
+    assert report["has_search_data"]

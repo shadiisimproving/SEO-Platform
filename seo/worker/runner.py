@@ -171,6 +171,19 @@ def _run_one(engine, job, owner, handlers, lease_seconds, heartbeat_seconds) -> 
     return True
 
 
+# Quick checks that must never wait behind a long scan (F14): a crawl tick takes one of these first, whenever one is due.
+# The lane also has its own ticks (uptime-due runs it), so on hosting it doesn't depend on the crawl lane at all.
+SERVED_FIRST = {"crawl": ("uptime",)}
+
+
+def _claim_next(engine: Engine, lane: str, owner: str, lease_seconds: int):
+    for first in SERVED_FIRST.get(lane, ()):
+        jobs = queue.claim(engine, first, owner, lease_seconds=lease_seconds)
+        if jobs:
+            return jobs
+    return queue.claim(engine, lane, owner, lease_seconds=lease_seconds)
+
+
 def tick(
     engine: Engine,
     lane: str,
@@ -202,7 +215,7 @@ def tick(
         owner = _new_owner()
         deadline = time.monotonic() + budget_seconds
         while time.monotonic() < deadline:
-            jobs = queue.claim(engine, lane, owner, lease_seconds=lease_seconds)
+            jobs = _claim_next(engine, lane, owner, lease_seconds)
             if not jobs:
                 break
             if _run_one(engine, jobs[0], owner, handlers, lease_seconds, heartbeat_seconds):

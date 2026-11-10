@@ -110,10 +110,10 @@ def _events(conn, host: str, kind: str, days: int) -> list[str]:
 
 def _moz(conn, host: str) -> dict:
     row = conn.execute(
-        text("SELECT domain_authority, popularity FROM moz_metrics WHERE target IN (:h, :d) ORDER BY (target = :h) DESC LIMIT 1"),
+        text("SELECT domain_authority, popularity, linking_domains FROM moz_metrics WHERE target IN (:h, :d) ORDER BY (target = :h) DESC LIMIT 1"),
         {"h": host, "d": domain_of(host)},
     ).mappings().first()
-    return dict(row) if row else {"domain_authority": None, "popularity": None}
+    return dict(row) if row else {"domain_authority": None, "popularity": None, "linking_domains": None}
 
 
 def _languages(pages: list[dict]) -> list[str]:
@@ -132,6 +132,7 @@ def _facts(conn, host: str, my_host: str, theirs: list[dict], mine: list[dict], 
         "my_registered_on": _date_iso(my_past.get("registered_on")),
         "da": moz["domain_authority"], "my_da": my_moz["domain_authority"],
         "popularity": moz["popularity"], "my_popularity": my_moz["popularity"],
+        "moz_links": moz["linking_domains"], "my_moz_links": my_moz["linking_domains"],  # Moz's count, shown when no CSV of their links exists
         "pages": None if blocked or not theirs else len(theirs),
         "my_pages": len(mine),
         "languages": _languages(theirs),
@@ -361,6 +362,8 @@ def insights(engine: Engine, site_id: int, competitor_id: int) -> dict:
         crawl = conn.execute(text("SELECT status FROM competitor_crawls WHERE competitor_id = :c"), {"c": competitor_id}).scalar()
         theirs, mine = _pages(conn, host), _pages(conn, my_host)
         facts = _facts(conn, host, my_host, theirs, mine, crawl == "blocked")
+        mine_read = conn.execute(text("SELECT status, finished_at, message FROM competitor_crawls WHERE competitor_id = :s"), {"s": site_id}).mappings().first()
+        facts["my_reading"] = None if mine_read is None else {"status": mine_read["status"], "read_once": mine_read["finished_at"] is not None}
         past = history.state(conn, host) or {}
         rhythm = _rhythm(conn, host, theirs, mine, past.get("pages_by_year"))
         links = _links(conn, site_id, competitor_id, host) if setting != tracking.OFF else {"linking_domains": None, "my_linking_domains": None, "not_to_me": 0, "top": []}

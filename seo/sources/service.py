@@ -20,7 +20,7 @@ from seo.sources import credentials
 SOURCES = ("gsc", "ga4", "clarity", "bing", "yandex", "pagespeed")
 GOOGLE_SOURCES = ("gsc", "ga4")
 # Keys kept once for the whole app, in the connections table with the search tools.
-APP_KEYS = {"bing": "Bing Webmaster", "yandex": "Yandex Webmaster", "pagespeed": "PageSpeed Insights", "openpagerank": "Open PageRank", "moz": "Moz", "cloudflare": "Cloudflare Radar", "indexnow": "IndexNow", "openrouter": "OpenRouter", "ahrefs": "Ahrefs", "anthropic": "Anthropic"}
+APP_KEYS = {"bing": "Bing Webmaster", "yandex": "Yandex Webmaster", "pagespeed": "PageSpeed Insights", "openpagerank": "Open PageRank", "moz": "Moz", "cloudflare": "Cloudflare Radar", "indexnow": "IndexNow", "openrouter": "OpenRouter", "ahrefs": "Ahrefs", "firecrawl": "Firecrawl", "anthropic": "Anthropic"}
 
 
 def _iso(value) -> str | None:
@@ -321,6 +321,11 @@ def test_app_key(engine: Engine, source: str) -> dict:
             daily = http.request("GET", "https://openrouter.ai/api/v1/key", tool, headers={"Authorization": f"Bearer {key}"}).json().get("data", {}).get("free_model_daily_requests") or {}
             note_app_key(engine, source, None)
             return {"ok": True, "note": "Works.", "left": daily.get("remaining"), "of": daily.get("limit")}
+        elif source == "firecrawl":
+            # Its credit balance, which costs nothing, and is what the competitor screens show before anything is spent.
+            data = http.request("GET", "https://api.firecrawl.dev/v2/team/credit-usage", tool, headers={"Authorization": f"Bearer {key}"}).json().get("data") or {}
+            note_app_key(engine, source, None)
+            return {"ok": True, "note": "Works.", "left": data.get("remainingCredits"), "of": data.get("planCredits")}
         elif source == "anthropic":
             from seo.extras import ai  # listing one model is free and proves the key
 

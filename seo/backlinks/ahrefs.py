@@ -55,16 +55,25 @@ def run(job, engine: Engine) -> None:
         return  # the key was removed since this was queued
     month, started = _month(engine), time.monotonic()
     day = common.today(engine).isoformat()
+    refused_in_a_row = 0
     for domain in _missing(engine, month):
         if time.monotonic() - started >= CHUNK_SECONDS:
             raise RunAgain(3)
         try:
             value, error = traffic(key, domain, day), None
+            refused_in_a_row = 0
         except SourceError as exc:
-            sources.note_app_key(engine, "ahrefs", str(exc))
-            if exc.kind == "temporary":
-                raise Retry(str(exc), 900, patient=True) from exc
-            return  # a refused key or no units left: nothing more this month until it's fixed
+            one_website = exc.kind == "auth" and "refused the request" in str(exc)  # a 4xx about this target, not the key
+            if one_website and refused_in_a_row < 2:  # one refused website mustn't stop all the others, every day (F138)
+                refused_in_a_row += 1
+                value, error = None, str(exc)[:500]
+            else:
+                sources.note_app_key(engine, "ahrefs", str(exc))
+                if exc.kind == "temporary":
+                    raise Retry(str(exc), 900, patient=True) from exc
+                return  # a refused key or no units left: nothing more this month until it's fixed
+        except (ValueError, TypeError, AttributeError):  # an answer that can't be read: this website only
+            value, error = None, "Ahrefs' answer couldn't be read."
         with engine.begin() as conn:
             conn.execute(text(
                 "INSERT INTO ahrefs_monthly (domain, month, org_traffic, error, fetched_at) VALUES (:d, :m, :t, :e, UTC_TIMESTAMP(3)) "

@@ -470,3 +470,106 @@ def test_anchor_types(world, anchor, expected):
 def test_the_list_gives_each_link_its_anchor_type(world):
     backlink = world.add(anchor="click here")
     assert world.link(backlink)["anchor_type"] == "generic"
+
+
+# ---- F2, F108, F105: the right address, never "not indexed" from other pages, platforms -----------------
+
+class GoogleLike(Searcher):
+    """site: searches the way Google answers them: every page whose address starts with what was asked, query string ignored."""
+
+    def search(self, keyword, engine, country, language, device, depth):
+        from seo.serp.tools import Answer, Found
+        self.calls.append(keyword)
+        prefix = keyword.removeprefix("site:").split("?")[0]
+        rows = [Found(i + 1, f"https://{p}") for i, p in enumerate(p for p in self.on_google if p.removeprefix("www.").startswith(prefix))][:10]
+        return Answer(self.name, "US", depth, rows, "not_captured", [], 1)
+
+
+def miss_twice(search, backlink):
+    from seo.backlinks import source_index
+    search.press(backlink)
+    search.searching()
+    with search.engine.begin() as conn:
+        conn.execute(text("UPDATE backlinks SET src_index_at = UTC_TIMESTAMP(3) - INTERVAL 4 DAY"))
+    source_index.enqueue_due(search.engine)
+    search.searching()
+    return search.link(backlink)
+
+
+def test_a_page_with_a_query_string_is_searched_with_it_and_other_threads_never_make_it_not_indexed(search):
+    search.tools[:] = [GoogleLike([f"forum.example/viewtopic.php?t={n}" for n in (999, 998, 997)])]
+    search.pages["forum.example/viewtopic.php?t=123"] = LINK
+    backlink = search.add("https://forum.example/viewtopic.php?t=123")
+    link = miss_twice(search, backlink)
+    assert search.tools[0].calls[0] == "site:forum.example/viewtopic.php?t=123"
+    assert link["source_index"]["state"] == "not_found" and link["check"]["verdict"] == "counts"
+
+
+def test_a_home_page_answered_with_other_pages_of_the_site_is_not_called_not_indexed(search):
+    search.tools[:] = [GoogleLike(["blog.example/a", "blog.example/b"])]
+    search.pages["blog.example/"] = LINK
+    backlink = search.add("https://blog.example/")
+    link = miss_twice(search, backlink)
+    assert link["source_index"]["state"] == "not_found" and link["check"]["verdict"] == "counts"
+
+
+def test_a_page_with_a_query_string_that_comes_back_is_indexed(search):
+    search.tools[:] = [GoogleLike(["www.forum.example/viewtopic.php?t=999", "www.forum.example/viewtopic.php?t=123"])]
+    search.pages["forum.example/viewtopic.php?t=123"] = LINK
+    backlink = search.add("https://forum.example/viewtopic.php?t=123")
+    search.press(backlink)
+    search.searching()
+    assert search.link(backlink)["source_index"]["state"] == "indexed"
+
+
+def test_a_logged_address_that_redirects_is_searched_where_it_ends_up(search):
+    search.tools[:] = [GoogleLike(["blog.example/my-post"])]
+    search.pages["blog.example/?p=123"] = (301, "", {"location": "https://blog.example/my-post"})
+    search.pages["blog.example/my-post"] = LINK
+    backlink = search.add("https://blog.example/?p=123")
+    search.press(backlink)
+    search.searching()
+    assert search.tools[0].calls == ["site:blog.example/my-post"]
+    assert search.link(backlink)["source_index"]["state"] == "indexed"
+
+
+def test_an_accented_host_matches_its_xn_spelling():
+    from seo.backlinks import source_index
+    assert source_index.page_key("https://café.example/a/") == source_index.page_key("https://xn--caf-dma.example/a")
+    assert source_index.query_for("https://www.café.example/a") == "site:xn--caf-dma.example/a"
+
+
+def test_one_link_on_a_shared_platform_is_filed_under_its_own_blog(world):
+    spam = world.add("https://spammy-site.blogspot.com/p")
+    good = world.add("https://good-blog.blogspot.com/post")
+    rows = {b["id"]: b for b in world.client.get(f"/api/backlinks?site_id={world.own}").get_json()["backlinks"]}
+    assert rows[spam]["domain"] == "spammy-site.blogspot.com" and rows[good]["domain"] == "good-blog.blogspot.com"
+    protect.mark_disavow(world.engine, spam, True)
+    body, count = protect.disavow_file(world.engine, world.own)
+    assert "domain:spammy-site.blogspot.com" in body and "domain:blogspot.com\n" not in body and count == 1
+
+
+def test_a_link_saved_under_the_platform_before_the_fix_disavows_only_its_blog(world):
+    spam = world.add("https://spammy-site.blogspot.com/p")
+    with world.engine.begin() as conn:
+        conn.execute(text("UPDATE backlinks SET domain = 'blogspot.com', disavow = 1 WHERE id = :i"), {"i": spam})
+    body, _ = protect.disavow_file(world.engine, world.own)
+    assert "domain:spammy-site.blogspot.com" in body and "domain:blogspot.com\n" not in body
+
+
+def test_one_website_ahrefs_refuses_does_not_stop_the_others(ahrefs_api, monkeypatch):
+    """F138: a 400 about one target ended the month's run for every website after it."""
+    from seo.collectors import http as source_http
+    first = ahrefs_api.add("https://bad-target.example/x")
+    second = ahrefs_api.add()
+
+    def fake(request):
+        ahrefs_api.ahrefs_calls.append(request)
+        if request.url.params.get("target") == "bad-target.example":
+            return httpx.Response(400, json={"error": "invalid target"})
+        return httpx.Response(200, json={"metrics": {"org_traffic": 51578}})
+
+    ahrefs_api.client.put("/api/app-keys/ahrefs", json={"key": "k"})
+    monkeypatch.setattr(source_http, "transport", httpx.MockTransport(fake))
+    ahrefs_api.collect()
+    assert ahrefs_api.link(second)["site_traffic"] == 51578 and ahrefs_api.link(first)["site_traffic"] is None

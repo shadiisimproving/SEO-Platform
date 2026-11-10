@@ -329,6 +329,9 @@ def _json_list(value) -> list:
 
 
 def list_for_site(engine: Engine, site_id: int) -> list[dict]:
+    # Asked before the connection below is taken: asking inside it held one connection while waiting for a second, so a few
+    # requests at once each held one and waited 30 s for another, then answered 500 (the pool fault of 2026-11-10).
+    ahrefs_on = ahrefs.connected(engine)
     with engine.connect() as conn:
         require_own(conn, site_id)
         rows = conn.execute(text(
@@ -340,7 +343,7 @@ def list_for_site(engine: Engine, site_id: int) -> list[dict]:
         start_url = site["start_url"]
         inspected = indexed.for_site(conn, site_id)
         brand, keywords = anchors.words_for_site(conn, site_id, site["host"])
-        traffic_of = ahrefs.for_domains(conn, {r["domain"] for r in rows}) if ahrefs.connected(engine) else {}
+        traffic_of = ahrefs.for_domains(conn, {r["domain"] for r in rows}) if ahrefs_on else {}
     answer = []
     for row in rows:
         item = _as_dict(row)
@@ -362,7 +365,7 @@ def list_for_site(engine: Engine, site_id: int) -> list[dict]:
     for row in answer:
         found = traffic.get(row["id"])
         if found:
-            row.update(visits=found.get("visits"), leads=found.get("leads"), traffic_label=found.get("label"), shared=found.get("shared"))
+            row.update(visits=found.get("visits"), leads=found.get("leads"), traffic_label=found.get("label"), shared=found.get("shared"), traffic_group=found.get("group"))
     return answer
 
 
@@ -430,7 +433,9 @@ def update_one(engine: Engine, backlink_id: int, row) -> dict:
         removed = _remove_prospects(conn, clean["site_id"], clean["domain"]) if clean["status"] != LOST else []
         answer = _rows_by_id(conn, [backlink_id])[0]
     _ask_for_icons(engine, {answer["domain"]})
-    return {"saved": answer, "prospects_removed": removed}
+    # The row as the list shows it: an edit to a note mustn't blank the visits, leads and index marks on screen (F113).
+    full = next((item for item in list_for_site(engine, clean["site_id"]) if item["id"] == backlink_id), None)
+    return {"saved": full or answer, "prospects_removed": removed}
 
 
 def _note_status_change(conn, backlink_id: int, before: str, after: str) -> None:

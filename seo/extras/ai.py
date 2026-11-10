@@ -1,7 +1,7 @@
 """AI on Search insights: words written from the numbers the code already found. One `ask()` for every use.
 
-Two providers, picked per site in Settings:
-- OpenRouter's free models (the default): `openrouter/free`, priced at zero, the key pasted for competitor summaries.
+No provider until one is picked per site in Settings (an insight carries the site's own queries, pages and clicks). Then one of two:
+- OpenRouter's free models: `openrouter/free`, priced at zero, the key pasted for competitor summaries.
 - Claude, with an Anthropic key pasted in Settings: Claude Haiku 5.5 for explanations, titles and the weekly summary, Claude
   Sonnet 5.5 for content briefs and FAQs. It costs money, so there's a monthly cap in Settings; a request that could pass it
   isn't sent, and what each answer cost is added up per month.
@@ -22,7 +22,9 @@ from seo.collectors.http import SourceError
 from seo.core.errors import NotFound, Refused
 from seo.sources import service as sources
 
-PROVIDERS = ("openrouter", "claude")
+# "none" until someone picks: Insights sends the site's own Search Console numbers, so nothing goes anywhere by default (F107).
+PROVIDERS = ("none", "openrouter", "claude")
+NO_PROVIDER = "none"
 LANGUAGES = {"en": "English", "fr": "French"}
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 OPENROUTER_MODEL = "openrouter/free"
@@ -91,7 +93,7 @@ def settings(engine: Engine) -> dict:
         cap = _setting(conn, "ai_cap_usd")
         spent = {r["tool"]: int(r["used"]) for r in conn.execute(text("SELECT tool, used FROM tool_usage WHERE period = :p AND tool IN (:a, :b)"), {"p": _month(), "a": SPEND_TOOL, "b": REQUESTS_TOOL}).mappings()}
     return {
-        "sites": [{"id": s["id"], "host": s["host"], "provider": picked.get(f"ai_provider:{s['id']}", "openrouter")} for s in sites],
+        "sites": [{"id": s["id"], "host": s["host"], "provider": picked.get(f"ai_provider:{s['id']}", NO_PROVIDER)} for s in sites],
         "cap": float(cap) if cap else DEFAULT_CAP, "spent": round(spent.get(SPEND_TOOL, 0) / 1e6, 6), "requests": spent.get(REQUESTS_TOOL, 0),
         "keys": {"openrouter": sources.app_key_status(engine, "openrouter")["connected"], "claude": sources.app_key_status(engine, "anthropic")["connected"]},
         "models": {"explain": HAIKU, "brief": SONNET, "free": OPENROUTER_MODEL}, "prices": {m: {"input": p[0], "output": p[1]} for m, p in PRICES.items()},
@@ -110,7 +112,7 @@ def save_settings(engine: Engine, body: dict) -> dict:
             if site_id not in own:
                 raise Refused("That site isn't one of yours.")
             if provider not in PROVIDERS:
-                raise Refused("Pick OpenRouter's free models or Claude.")
+                raise Refused("Pick No AI, OpenRouter's free models or Claude.")
             _set(conn, f"ai_provider:{site_id}", provider)
         if "cap" in body:
             try:
@@ -125,7 +127,7 @@ def save_settings(engine: Engine, body: dict) -> dict:
 
 def provider_of(engine: Engine, site_id: int) -> str:
     with engine.connect() as conn:
-        return _setting(conn, f"ai_provider:{site_id}") or "openrouter"
+        return _setting(conn, f"ai_provider:{site_id}") or NO_PROVIDER
 
 
 # ---- Asking --------------------------------------------------------------------------------------
@@ -250,6 +252,8 @@ def ask(engine: Engine, site_id: int, purpose: str, facts: dict, lang: str = "en
         raise Refused("That isn't something AI can write here.")
     lang = lang if lang in LANGUAGES else "en"
     provider = provider_of(engine, site_id)
+    if provider not in ("openrouter", "claude"):
+        raise Refused("No AI is chosen for this site yet. Pick one in Settings → AI. Nothing about the site is sent until you do.")
     system = _system(purpose, lang)
     user = f"<facts>\n{json.dumps(facts, ensure_ascii=False, default=str)[:20000]}\n</facts>"
     words, model, dollars = (_claude if provider == "claude" else _openrouter)(engine, purpose, system, user)

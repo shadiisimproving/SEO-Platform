@@ -10,6 +10,7 @@ const shot = (page, name) => page.screenshot({ path: `${out}/${name}.png`, fullP
 const settle = (page, ms = 500) => page.waitForTimeout(ms);
 (async () => {
   const { browser, page, problems } = await open({ width: 1440, height: 900 });
+  page.on("response", (r) => { if (r.status() >= 400 && !r.url().endsWith("/api/auth/me")) note(`   ${r.status()} ${r.request().method()} ${r.url().replace(BASE, "")}`); });
   await page.goto(`${BASE}login`); await page.fill("#email", "admin@example.com"); await page.fill("#password", "demo-password-1"); await page.click("#go"); await page.waitForTimeout(800);
   await page.goto(`${BASE}#keywords`); await page.waitForSelector("#kw-table", { timeout: 15000 }); await settle(page);
   await shot(page, "01-list");
@@ -62,9 +63,26 @@ const settle = (page, ms = 500) => page.waitForTimeout(ms);
   note("   tray:", (await page.textContent("#tray")).replace(/\s+/g, " "));
   const after = await page.evaluate(async () => (await (await fetch("api/tools")).json()).tools.find((t) => t.name === "Bright Data").left);
   note("   Bright Data left:", before, "->", after);
+  // On Google, SerpApi (the only tool that reads AI Overviews) goes ahead of the saved order while it has free searches,
+  // so Bright Data, first in the saved order, isn't touched.
+  check(after === before, `SerpApi goes first for Google, so Bright Data isn't used (${before} -> ${after})`);
   await settle(page, 600); await shot(page, "12-after-refresh");
+
+  // The order moving on: with "SerpApi first" switched off, Bright Data leads, runs out of its 12 free checks part way,
+  // and the run moves to the next tool. A row now read by another tool says "tool changed".
+  await page.evaluate(() => window.COMP.api("PATCH", "tools/settings", { ai_first: "0" }));
+  await page.click("#kwr-refresh"); await page.waitForSelector("#kwr-recent", { timeout: 8000 }); await page.check("#kwr-recent"); await page.waitForFunction(() => { const b = document.querySelector("#kwr-confirm"); return b && !b.disabled; }, null, { timeout: 8000 });
+  await page.click("#kwr-confirm"); await page.waitForSelector("#tray", { timeout: 8000 }); await settle(page, 700);
+  await page.waitForFunction(async () => !(await (await fetch("api/refresh/runs")).json()).runs.length, null, { timeout: 90000, polling: 1000 }); // this run, not the last one's tray
+  await page.waitForFunction(() => /saved|enregistr/.test(document.querySelector("#tray .top")?.textContent || ""), null, { timeout: 30000 });
+  await settle(page, 800); await shot(page, "12b-after-order-moved");
+  note("   tray:", (await page.textContent("#tray")).replace(/\s+/g, " "));
+  const spent = await page.evaluate(async () => (await (await fetch("api/tools")).json()).tools.find((t) => t.name === "Bright Data").left);
+  note("   Bright Data left:", after, "->", spent);
+  check(spent < after, `with SerpApi first switched off, the saved order leads with Bright Data (${after} -> ${spent})`);
   const changed = await page.$$eval("#kw-table .second", (els) => els.map((e) => e.textContent).filter((x) => x.includes("tool changed")).length);
   check(changed > 0, `a tool switch shows "tool changed" (${changed} rows)`);
+  await page.evaluate(() => window.COMP.api("PATCH", "tools/settings", { ai_first: "1" }));
 
   // Recheck with another tool from the panel
   await page.click("[data-kwr-open]"); await page.waitForSelector("#tool-table [data-kwr-check]", { timeout: 8000 }); await settle(page, 300);

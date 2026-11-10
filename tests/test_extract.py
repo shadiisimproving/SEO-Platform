@@ -161,3 +161,17 @@ def test_as_dict_is_json_friendly_and_leaves_out_the_text():
     assert data["title"] == "Créer une société à Séville"
     assert "text" not in data
     assert data["word_count"] > 0
+
+
+def test_a_control_character_written_as_a_number_does_not_crash_the_reader():
+    """F97: &#11; became the real character after parsing, and writing it back raised ValueError."""
+    from seo.crawl.extract import extract
+    page = extract(b"<html><body><p>a&#11;b</p><div>c&#x0c;d&#1;e</div></body></html>", "https://shop-one.test/")
+    assert page.word_count == 5 and page.content_hash
+
+
+def test_a_deeply_nested_json_ld_script_is_skipped():
+    from seo.crawl.extract import extract
+    deep = b'<html><body><script type="application/ld+json">' + b"[" * 50_000 + b"]" * 50_000 + b"</script><p>hello there</p></body></html>"
+    page = extract(deep, "https://shop-one.test/")
+    assert page.schema_types == [] and page.word_count == 2

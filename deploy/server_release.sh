@@ -4,6 +4,7 @@
 # The order is what makes a failure safe: until the last step the live folder hasn't changed, so a failed install,
 # import check, backup or migration leaves the old version running. Migrations run while the old code still serves,
 # so they must only add things. Settings (.env) and everything in var/ (note files, backups, locks, logs) are never touched.
+# ROLLBACK=1 (deploy.sh --rollback) puts older code back without running migrations.
 set -euo pipefail
 
 : "${APP_DIR:?APP_DIR is not set}"
@@ -29,7 +30,14 @@ cd "$STAGING_DIR"
 [[ -f "$KEY" ]] || "$VENV_BIN/python" -m seo.core.crypto init
 "$VENV_BIN/python" -c "import passenger_wsgi"
 "$VENV_BIN/python" "$STAGING_DIR/scripts/backup_db.py"
-"$VENV_BIN/alembic" upgrade head
+if [[ "${ROLLBACK:-}" == "1" ]]; then
+  # Going back to older code. Its folder has no file for the newest migration, so Alembic would stop here and the
+  # broken version would stay live. Skip it, and ask the older code whether it can run on the database as it is:
+  # it can, unless a migration it doesn't know was marked breaking (seo/core/schema.py). Then nothing is switched.
+  "$VENV_BIN/python" -m seo.core.schema || die "Not switched: this older version can't run on the database as it is. Upload a fixed version instead, or restore the database copy from before the bad release (deploy/DEPLOY.md)."
+else
+  "$VENV_BIN/alembic" upgrade head
+fi
 
 rsync -a --delete --exclude /.env --exclude /var --exclude /tmp --exclude /.htaccess "$STAGING_DIR/" "$APP_DIR/"
 # rsync copies the staged folder's private mode onto this one, and Passenger can't enter it then: every page answers 500.
@@ -38,4 +46,4 @@ chmod 755 "$APP_DIR"
 chmod 700 "$APP_DIR/var"
 mkdir -p "$APP_DIR/tmp"
 touch "$APP_DIR/tmp/restart.txt"
-echo "Released $(cat "$APP_DIR/REVISION" 2>/dev/null || echo unknown)"
+echo "Released $(cat "$APP_DIR/REVISION" 2>/dev/null || echo unknown)$([[ "${ROLLBACK:-}" == "1" ]] && echo ", going back: no database changes ran")"

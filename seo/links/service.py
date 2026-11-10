@@ -566,7 +566,8 @@ def enqueue_due(engine: Engine) -> list[int]:
                 text(
                     "SELECT s.id FROM sites s WHERE s.kind = 'own' AND s.links_weekly = 1 AND NOT EXISTS ("
                     " SELECT 1 FROM link_scans l WHERE l.site_id = s.id AND (l.status IN ('queued', 'running')"
-                    " OR (l.status = 'complete' AND l.created_at > UTC_TIMESTAMP(3) - INTERVAL :d DAY))) ORDER BY s.id"
+                    # A weekly scan counts whatever its end: stopped or failed, it isn't started again within the hour (F106).
+                    " OR (l.created_at > UTC_TIMESTAMP(3) - INTERVAL :d DAY AND (l.status = 'complete' OR l.trigger_kind = 'weekly')))) ORDER BY s.id"
                 ),
                 {"d": WEEK_DAYS},
             )

@@ -30,7 +30,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   check("and its years", (ins.rhythm?.by_year || []).length >= 3, (ins.rhythm?.by_year || []).length);
 
   await page.goto("about:blank"); await page.goto(BASE + "#competitors/list"); await settle();
-  await page.click(`[data-cl-open="${added.id}"]`); await settle();
+  await page.click(`[data-cs-open="${added.id}"]`); await settle();
   check("the header says since when they're online", /Online since/.test(await page.locator(".pt-facts").innerText().catch(() => "")));
   await tab("activity");
   const grew = page.locator("section.card", { hasText: "How their site grew" });
@@ -51,8 +51,8 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
 
   // An older competitor of the demo, with pages read: the Their site tables fill in.
   const rows = (await call("GET", `competitors?site_id=${site.id}`)).competitors.filter((c) => c.id !== added.id && c.crawl?.status !== "blocked");
-  await page.click("[data-cl-back]").catch(() => {}); await settle();
-  await page.click(`[data-cl-open="${rows[0].id}"]`); await settle();
+  await page.click('[data-comp-tab="summary"]').catch(() => {}); await settle();
+  await page.click(`[data-cs-open="${rows[0].id}"]`); await settle();
   await tab("site");
   await page.screenshot({ path: OUT + "4-their-site-read.png", fullPage: true });
   check("a competitor whose pages were read shows the build table", (await page.locator("#pt-panel table").count()) >= 2);

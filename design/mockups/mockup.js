@@ -37,7 +37,7 @@
     theme: params.get("theme") || store.get("theme") || "light",
     lang: params.get("lang") || store.get("lang") || "en",
     firstRun: params.get("data") === "first" || Boolean(window.BOOT && !window.BOOT.sites.length), served: Boolean(window.BOOT),
-    route: "today", site: "all", period: "Last 30 days", range: null, compare: "vs previous period",
+    route: "today", site: "all", rng: null, // the one date range of the app: UI.range below
     engine: "google", view: "positions", filter: "all", sort: { key: "vol", dir: "descending" },
     selected: new Set(), dense: store.get("dense") === "1", rail: wantsRail(),
     cols: { vol: true, trend: true, page: true, ai: true },
@@ -58,7 +58,7 @@
     return `<span class="status ${map[sev][1]}">${icon(map[sev][0])}${esc(word)}</span>`;
   };
   // Logos are copied into the project, so nothing loads from outside.
-  const LOGOS = { google: "google.svg", googleads: "googleads.svg", duckduckgo: "duckduckgo.png", bing: "bing.svg", yandex: "yandex.png", "Bright Data": "brightdata.png", SerpApi: "serpapi.png", HasData: "hasdata.png", Searlo: "searlo.png", "DuckDuckGo direct": "duckduckgo.png", SearXNG: "searxng.svg", clarity: "clarity.png", analytics: "analytics.svg", openpagerank: "openpagerank.png", searchconsole: "searchconsole.png", pagespeed: "pagespeed.png", moz: "moz.png", cloudflare: "cloudflare.png", commoncrawl: "commoncrawl.jpg", indexnow: "indexnow.png", openrouter: "openrouter.png", ahrefs: "ahrefs.png", anthropic: "anthropic.png" };
+  const LOGOS = { google: "google.svg", googleads: "googleads.svg", duckduckgo: "duckduckgo.png", bing: "bing.svg", yandex: "yandex.png", "Bright Data": "brightdata.png", SerpApi: "serpapi.png", HasData: "hasdata.png", Searlo: "searlo.png", "DuckDuckGo direct": "duckduckgo.png", SearXNG: "searxng.svg", clarity: "clarity.png", analytics: "analytics.svg", openpagerank: "openpagerank.png", searchconsole: "searchconsole.png", pagespeed: "pagespeed.png", moz: "moz.png", cloudflare: "cloudflare.png", commoncrawl: "commoncrawl.jpg", indexnow: "indexnow.png", openrouter: "openrouter.png", ahrefs: "ahrefs.png", firecrawl: "firecrawl.png", anthropic: "anthropic.png" };
   const logo = (name, size = 18, cls = "") => (LOGOS[name]
     ? `<img class="logo ${cls}" src="logos/${LOGOS[name]}" alt="" width="${size}" height="${size}">`
     : `<span class="logo ${cls}" style="width:${size}px;height:${size}px" aria-hidden="true">${name === "Browser on this Mac" ? icon("globe") : esc(String(name || "?")[0].toUpperCase())}</span>`);
@@ -81,24 +81,105 @@
   const countryOptions = (selected) => COUNTRY_CODES.map((c) => [c, countryName(c)]).sort((a, b) => a[1].localeCompare(b[1], state.lang)).map(([c, n]) => `<option value="${c}" ${c === selected ? "selected" : ""}>${esc(n)}</option>`).join("");
 
   // ---- dates ------------------------------------------------------------------
-  const TODAY = window.BOOT?.today || "2026-11-04", DATA_END = window.BOOT?.today || "2026-11-01", FIRST_DAY = window.BOOT ? "2020-01-01" : "2025-07-01";
+  const TODAY = window.BOOT?.today || "2026-11-04", FIRST_DAY = window.BOOT ? "2020-01-01" : "2025-07-01";
   const pad = (n) => String(n).padStart(2, "0");
   const iso = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
   const parseDay = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
   const addDays = (s, n) => { const d = parseDay(s); d.setDate(d.getDate() + n); return iso(d); };
   const dayCount = (a, b) => Math.round((parseDay(b) - parseDay(a)) / 864e5) + 1;
+  // The last day with data: Google Analytics is read through yesterday (F112). A screen that knows better says so (UI.range.end).
+  const DATA_END = window.BOOT ? addDays(TODAY, -1) : "2026-11-01";
   const locale = () => (state.lang === "fr" ? "fr-FR" : "en-GB");
   const fmtDay = (s, opts = { day: "numeric", month: "short", year: "numeric" }) => new Intl.DateTimeFormat(locale(), opts).format(parseDay(s));
   const fmtShort = (s) => fmtDay(s, { day: "numeric", month: "short" });
   const fmtRange = (a, b) => (a === b ? fmtDay(a) : a.slice(0, 4) === b.slice(0, 4) ? `${fmtShort(a)} – ${fmtDay(b)}` : `${fmtDay(a)} – ${fmtDay(b)}`);
-  const lastDays = (n) => () => [addDays(DATA_END, -(n - 1)), DATA_END];
-  const PRESETS = [["Last 7 days", lastDays(7)], ["Last 30 days", lastDays(30)], ["Last 3 months", lastDays(91)], ["Last 6 months", lastDays(182)], ["Last year", lastDays(365)], ["This month", () => [`${DATA_END.slice(0, 7)}-01`, DATA_END]], ["Last month", () => { const first = parseDay(`${DATA_END.slice(0, 7)}-01`); return [iso(new Date(first.getFullYear(), first.getMonth() - 1, 1)), iso(new Date(first.getFullYear(), first.getMonth(), 0))]; }]];
-  const periodWindow = () => {
-    if (state.range) return state.range;
-    const [from, to] = (PRESETS.find(([name]) => name === state.period) || PRESETS[1])[1]();
-    return { from, to };
+
+  /* ---- one date range for the whole app -------------------------------------------------------------
+     Every dated screen draws the same picker in the same place (the top bar), and reads the same choice: it is kept in this
+     browser and in the address, so it survives moving between screens, a reload and a pasted link. Presets end on the last day
+     with data. Search Console screens send the preset itself (UI.range.search()) and the server ends it on Google's last final
+     day; day-based screens send dates (UI.range.days()).
+       UI.range.get({ end, hours })  → { preset, from, to, compare, compareFrom, compareTo, days, label, compareLabel }
+       UI.range.set({ preset } | { from, to } | { compare })  saves, updates the address, tells listeners, redraws
+       UI.range.on(fn)  → off();   window event "seocc:range" too
+       UI.range.search() → "range=28d&compare=prev" (or range=custom&from=…&to=…)
+       UI.range.days({ end }) → "from=…&to=…&compare_from=…&compare_to=…"
+       UI.range.end(route, day)  the last day with data a screen learnt from its answer, so the picker's dates match it */
+  const RANGE_PRESETS = [["24h", "Last 24 hours"], ["7d", "Last 7 days"], ["28d", "Last 28 days"], ["3m", "Last 3 months"], ["6m", "Last 6 months"], ["12m", "Last 12 months"], ["16m", "Last 16 months"], ["tm", "This month"], ["lm", "Last month"]];
+  const RANGE_COMPARES = [["prev", "vs previous period"], ["yoy", "vs same period last year"], ["none", "No comparison"]];
+  const RANGE_DEFAULT = { preset: "28d", from: null, to: null, compare: "prev" };
+  const HOURLY_SCREENS = new Set(["overview"]); // only these can show the last 24 hours hour by hour
+  const DATED_SCREENS = new Set(["today", "overview", "insights", "channels", "conversions", "content", "ai", "backlinks"]);
+  const validDay = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && iso(parseDay(v)) === v;
+  function cleanRange(r = {}) {
+    const out = { ...RANGE_DEFAULT };
+    if (RANGE_COMPARES.some(([id]) => id === r.compare)) out.compare = r.compare;
+    if (r.preset === "custom") { if (validDay(r.from) && validDay(r.to) && r.from <= r.to) Object.assign(out, { preset: "custom", from: r.from, to: r.to }); }
+    else if (RANGE_PRESETS.some(([id]) => id === r.preset)) out.preset = r.preset;
+    return out;
+  }
+  state.rng = cleanRange((() => { try { return JSON.parse(store.get("range") || "{}"); } catch { return {}; } })());
+  const rangeEnds = {}, rangeListeners = new Set();
+  const monthsBack = (day, n) => { const d = parseDay(day); return addDays(iso(new Date(d.getFullYear(), d.getMonth() - n, d.getDate())), 1); };
+  function rangeGet({ end = null, hours = HOURLY_SCREENS.has(state.route) } = {}) {
+    const r = state.rng, last = validDay(end) ? end : rangeEnds[state.route] || DATA_END;
+    let from = last, to = last;
+    switch (r.preset) {
+      case "24h": break; // a day-based screen shows the last day; an hourly one asks the server for the hours
+      case "7d": from = addDays(last, -6); break;
+      case "28d": from = addDays(last, -27); break;
+      case "3m": from = monthsBack(last, 3); break;
+      case "6m": from = monthsBack(last, 6); break;
+      case "12m": from = monthsBack(last, 12); break;
+      case "16m": from = monthsBack(last, 16); break;
+      case "tm": from = `${last.slice(0, 7)}-01`; break;
+      case "lm": { const first = parseDay(`${last.slice(0, 7)}-01`); from = iso(new Date(first.getFullYear(), first.getMonth() - 1, 1)); to = iso(new Date(first.getFullYear(), first.getMonth(), 0)); break; }
+      case "custom": from = r.from; to = r.to; break;
+      default: from = addDays(last, -27);
+    }
+    const days = dayCount(from, to);
+    let compareFrom = null, compareTo = null;
+    if (r.compare === "prev") { compareTo = addDays(from, -1); compareFrom = addDays(compareTo, -(days - 1)); }
+    if (r.compare === "yoy") { compareFrom = addDays(from, -364); compareTo = addDays(to, -364); }
+    const name = RANGE_PRESETS.find(([id]) => id === r.preset)?.[1];
+    const label = r.preset === "custom" ? fmtRange(from, to) : r.preset === "24h" && !hours ? fmtDay(to) : t(name);
+    const compareLabel = r.compare === "none" ? t("No comparison") : `${t("vs")} ${fmtRange(compareFrom, compareTo)}`;
+    return { preset: r.preset, from, to, compare: r.compare, compareFrom, compareTo, days, label, compareLabel, hours: r.preset === "24h" && hours };
+  }
+  function rangeSet(partial = {}) {
+    const next = cleanRange({ ...state.rng, ...partial, ...(partial.from || partial.to ? { preset: "custom" } : {}) });
+    if (JSON.stringify(next) === JSON.stringify(state.rng)) return;
+    state.rng = next;
+    store.set("range", JSON.stringify(next));
+    const now = rangeGet();
+    rangeListeners.forEach((fn) => { try { fn(now); } catch (err) { console.error(err); } });
+    window.dispatchEvent(new CustomEvent("seocc:range", { detail: now }));
+    if (urlReady) render({ enter: true });
+  }
+  const UIRange = {
+    get: rangeGet, set: rangeSet,
+    on(fn) { rangeListeners.add(fn); return () => rangeListeners.delete(fn); },
+    // Called while a page is being drawn, so the picker is brought up to date just after, once the new top bar is in.
+    end(route, day) {
+      if (!validDay(day) || rangeEnds[route] === day) return;
+      rangeEnds[route] = day;
+      setTimeout(() => { const picks = $(".range-picks"); if (picks && state.route === route && !$("#popover")) picks.replaceWith(fragment(datePicks())); }, 0);
+    },
+    search() {
+      const r = state.rng, parts = [`range=${r.preset}`, `compare=${r.compare}`];
+      if (r.preset === "custom") parts.push(`from=${r.from}`, `to=${r.to}`);
+      return parts.join("&");
+    },
+    days(opts = {}) {
+      const g = rangeGet({ end: opts.end || DATA_END, hours: false }), parts = [`from=${g.from}`, `to=${g.to}`];
+      if (g.compareFrom) parts.push(`compare_from=${g.compareFrom}`, `compare_to=${g.compareTo}`);
+      return parts.join("&");
+    },
+    presets: RANGE_PRESETS, compares: RANGE_COMPARES, isDefault: () => JSON.stringify(state.rng) === JSON.stringify(RANGE_DEFAULT),
   };
-  const periodLabel = () => (state.range ? fmtRange(state.range.from, state.range.to) : t(state.period));
+  // Older callers: the window as { from, to }, and its words.
+  const periodWindow = () => { const g = rangeGet({ hours: false }); return { from: g.from, to: g.to }; };
+  const periodLabel = () => rangeGet().label;
 
   // ---- shell ----------------------------------------------------------------
   const NAV = [
@@ -110,7 +191,7 @@
     { group: "Ads" },
     { id: "ads", label: "Google Ads", icon: "megaphone", logo: "googleads" },
     { group: "Work" },
-    { id: "tasks", label: "Tasks", icon: "square-check" }, { id: "backlinks", label: "Backlinks", icon: "link-2" }, { id: "resources", label: "Resources", icon: "folder-open" },
+    { id: "tasks", label: "Tasks", icon: "square-check" }, { id: "notes", label: "Notes", icon: "sticky-note" }, { id: "backlinks", label: "Backlinks", icon: "link-2" }, { id: "resources", label: "Resources", icon: "folder-open" },
     { group: "Health" },
     { id: "health", label: "Site health", icon: "heart-pulse" },
   ];
@@ -170,9 +251,12 @@
       <div class="side-foot">${sideAccount()}</div>`);
   }
 
-  const compares = ["vs previous period", "vs last year", "No comparison"];
-  const datePicks = () => `<button class="pick" id="period" aria-haspopup="dialog" aria-expanded="false" aria-label="${t("Period")}: ${esc(periodLabel())}">${icon("calendar-days")}<span class="pick-label">${esc(periodLabel())}</span>${icon("chevron-down", "chev")}</button>
-        <button class="pick" id="compare" aria-haspopup="true" aria-expanded="false" aria-label="${t("Compare with")}: ${esc(t(state.compare))}"><span class="pick-label">${esc(t(state.compare))}</span>${icon("chevron-down", "chev")}</button>`;
+  /* The one date control: the period in words, then what it's compared with, as dates. Same place on every dated screen. */
+  const datePicks = () => {
+    const g = rangeGet(), cmpName = t(RANGE_COMPARES.find(([id]) => id === g.compare)[1]);
+    return `<span class="range-picks" role="group" aria-label="${t("Dates")}"><button class="pick" id="period" aria-haspopup="dialog" aria-expanded="false" aria-label="${t("Period")}: ${esc(g.label)}, ${esc(fmtRange(g.from, g.to))}" data-tip="${esc(g.hours ? t("Last 24 hours") : fmtRange(g.from, g.to))}">${icon("calendar-days")}<span class="pick-label">${esc(g.label)}</span>${icon("chevron-down", "chev")}</button>
+        <button class="pick" id="compare" aria-haspopup="true" aria-expanded="false" aria-label="${t("Compare with")}: ${esc(cmpName)}${g.compareFrom ? `, ${esc(fmtRange(g.compareFrom, g.compareTo))}` : ""}" data-tip="${esc(cmpName)}"><span class="pick-label">${esc(g.compareLabel)}</span>${icon("chevron-down", "chev")}</button></span>`;
+  };
   const topbar = (title, sub, main = "", withDates = true) => `
     <header class="topbar" id="topbar">
       <button class="icon-btn menu-btn" id="menu-btn" aria-label="${t("Open menu")}">${icon("menu")}</button>
@@ -221,8 +305,9 @@
   }
 
   const cnt = (n) => `<span class="countup" data-n="${n}">${num(n)}</span>`;
-  const tile = (label, fig, extra = "", { ic = "", tone = "", line = null } = {}) => `<div class="tile">
-    <div class="tile-top"><div class="lab">${label}</div>${ic ? `<span class="ico ${tone}">${icon(ic)}</span>` : ""}</div>
+  // A headline number. Its definition, if it has one (shared-ui.js), is one hover or focus away on the (i) after the label.
+  const tile = (label, fig, extra = "", { ic = "", tone = "", line = null, def = null } = {}) => `<div class="tile">
+    <div class="tile-top"><div class="lab">${label}${def === false ? "" : window.UI?.defIcon?.(def || label) || ""}</div>${ic ? `<span class="ico ${tone}">${icon(ic)}</span>` : ""}</div>
     <div class="fig-row"><div class="fig">${fig}</div>${line ? `<div class="tile-spark">${spark(line, { w: 88, h: 34, area: true })}</div>` : ""}</div>
     <div class="delta">${extra}</div></div>`;
 
@@ -444,9 +529,9 @@
       : `${e !== "duckduckgo" ? `<td class="c" data-label="${OWN_TOOL[e]} · ${t("avg position")}"><span class="tabular">${own === null ? '<span class="muted dash">—</span>' : dec(own)}</span></td>` : ""}
          <td data-label="${t("Scraped results")}">${scrapedCell(row, e)}</td>
          <td class="c" data-label="${t("Change")}">${changeCell(row, e)}</td>
-         ${state.cols.vol ? `<td class="r" data-label="${t("Volume")}">${num(row.vol)}</td>` : ""}
+         ${state.cols.vol ? `<td class="r" data-label="${t("Impressions (28 days)")}">${num(row.vol)}</td>` : ""}
          ${state.cols.trend ? `<td data-label="${t("Trend")}">${trend}</td>` : ""}
-         ${state.cols.page ? `<td class="url-cell mono small" data-label="${t("Page")}" ${row.page ? `data-tip="${esc(row.page)}"` : ""}>${row.page ? esc(row.page) : '<span class="muted dash">—</span>'}</td>` : ""}
+         ${state.cols.page ? `<td class="url-cell mono small" data-label="${t("Page")}" ${row.page ? `data-tip="${esc(row.page)}"` : ""}>${row.page ? PageLink.html(row.page, { host: row.site, title: "" }) : '<span class="muted dash">—</span>'}</td>` : ""}
          ${state.cols.ai ? `<td data-label="${t("AI")}">${aiCell(row)}</td>` : ""}`;
     return `<tr data-kw="${esc(row.k)}" class="${selected ? "sel" : ""}">
       <td class="chk-cell"><input type="checkbox" class="chk" data-select="${esc(row.k)}" ${selected ? "checked" : ""} aria-label="${t("selected")}: ${esc(row.k)}"></td>
@@ -468,7 +553,7 @@
       ? ENGINES.map(([id, name]) => `<th scope="col"><span class="th-engine">${logo(id, 16)}${name}</span></th>`).join("")
       : `${e !== "duckduckgo" ? sortHeader("own", OWN_TOOL[e], "c", t("avg position")) : ""}
          ${sortHeader("pos", t("Scraped results"))}${sortHeader("chg", t("Change"), "c")}
-         ${state.cols.vol ? sortHeader("vol", t("Volume"), true) : ""}
+         ${state.cols.vol ? sortHeader("vol", t("Impressions"), true, t("28 days")) : ""}
          ${state.cols.trend ? `<th scope="col">${t("Trend")}</th>` : ""}${state.cols.page ? `<th scope="col">${t("Page")}</th>` : ""}${state.cols.ai ? `<th scope="col">${t("AI")}</th>` : ""}`;
     const allChecked = rows.every((r) => state.selected.has(r.k));
     return `<div class="table-wrap ${state.dense ? "dense" : ""}"><table class="data" id="kw-table">
@@ -567,7 +652,7 @@
   const toBacklink = (row, host) => ({
     id: `srv${row.id}`, serverId: row.id, src: row.source_url, domain: row.domain, site: host, target: row.target_url, anchor: row.anchor, status: row.status, auth: row.authority ?? null, spam: row.spam_score ?? null, authLabel: row.authority_label || null,
     // Unknown until something measures them. Unknown isn't 0: that would make a paid link look worthless.
-    visits: row.visits ?? null, leads: row.leads ?? null, label: row.traffic_label || "no-ga4", shared: row.shared ?? null, check: row.check || null,
+    visits: row.visits ?? null, leads: row.leads ?? null, label: row.traffic_label || "no-ga4", shared: row.shared ?? null, group: row.traffic_group || null, check: row.check || null,
     cost: row.cost ?? 0, priceText: row.price_text, mediator: row.mediator, owner: row.owner, placed: row.placed, utm: utmOf(row.utm_source, row.utm_medium, row.utm_campaign), before: null, after: null,
     pageAuthority: row.page_authority ?? null, rating: row.rating ?? null, articleUrl: row.article_url || null, sentAt: row.sent_at || null,
     linkType: row.link_type, due: row.due, renewal: row.renewal, contact: row.contact, platform: row.platform, notes: row.notes, createdAt: row.created_at,
@@ -636,18 +721,32 @@
   function noteRealSites(sites) {
     bl.sites = sites;
     // So the site picker can show a real site's links too.
-    sites.forEach((s) => { if (!window.SITES.some((x) => x.host === s.host)) window.SITES.push({ id: `real-${s.id}`, host: s.host, visits: 0, vd: 0, clicks: 0, cd: 0, alerts: 0, thru: "—", added: true }); });
-    sites.forEach((s) => { setupFacts[s.host] = { ...setupFacts[s.host], siteId: s.id, notUsed: s.setup_not_used || [] }; });
+    // With realId, as boot.js's own sites have it: Settings, Refresh data and every screen ask the server by that id.
+    // Without it, a site added on this page was saved as sites/undefined (a 405) until a reload.
+    sites.forEach((s) => {
+      const known = window.SITES.find((x) => x.host === s.host);
+      if (!known) window.SITES.push({ id: `real-${s.id}`, realId: s.id, host: s.host, visits: 0, vd: 0, clicks: 0, cd: 0, alerts: 0, thru: "—", added: true });
+      else if (!known.realId) known.realId = s.id;
+    });
+    // A tick still being saved wins over a list read before it was sent.
+    sites.forEach((s) => { const kept = setupPending && Array.isArray(setupFacts[s.host]?.notUsed); setupFacts[s.host] = { ...setupFacts[s.host], siteId: s.id, notUsed: kept ? setupFacts[s.host].notUsed : s.setup_not_used || [] }; });
     // An address that named this site was waiting for it.
     if (wantedSite && window.SITES.some((x) => x.host === wantedSite)) { applySite(wantedSite); render(); }
   }
 
   /* With a server the sample rows go, whatever happens: a link that isn't really there must never be counted. */
+  /* At start only the site list is read. Each site's links are read when Backlinks opens, not on every load (F17), and the old
+     rows stay on screen until the new ones are in, so a redraw in between never shows 0 links. */
+  async function loadRealSites() {
+    if (!(await COMP.isServer())) return;
+    bl.server = true;
+    try { noteRealSites((await COMP.api("GET", "links/sites")).sites); } catch { /* Backlinks asks again when it opens */ }
+  }
   async function loadRealBacklinks() {
     if (!(await COMP.isServer())) { if (!bl.ready) { bl.ready = true; if (state.route === "backlinks") render(); } return; }
     bl.server = true;
-    window.BACKLINKS = [];
-    window.FOUND_LINKS = [];
+    bl.asked = true;
+    if (!bl.ready) { window.BACKLINKS = []; window.FOUND_LINKS = []; }
     bl.error = "";
     try {
       noteRealSites((await COMP.api("GET", "links/sites")).sites);
@@ -663,13 +762,14 @@
     bl.ready = true;
     if (state.route === "backlinks") render();
   }
+  const backlinksWanted = () => { if (!bl.asked && state.served !== false) loadRealBacklinks(); };
 
   /* What was spent, per currency: adding AED to euros would make a number that means nothing. A price with no currency stays a bare number. */
   const inCurrency = (currency, n) => (currency === "USD" ? `$${n}` : currency === "EUR" ? `${n} €` : currency === "GBP" ? `£${n}` : currency ? `${currency} ${n}` : n);
   const currencyOfLink = (b) => (b.priceText ? window.BulkLinks.currencyOf(b.priceText) : "USD");
   // Only when it means something: one currency, and visits that were actually measured.
   function mediatorCost(list) {
-    const visits = list.reduce((s, b) => s + (b.visits || 0), 0), spent = list.filter((b) => b.cost);
+    const visits = window.BacklinkSeo.trafficTotals(list).visits, spent = list.filter((b) => b.cost);
     const currencies = new Set(spent.map(currencyOfLink));
     if (!visits || !spent.length || currencies.size !== 1) return '<span class="muted">—</span>';
     return inCurrency([...currencies][0], dec((spent.reduce((s, b) => s + b.cost, 0) / visits).toFixed(2)));
@@ -684,7 +784,7 @@
   function isNewLink(b) {
     const { from, to } = periodWindow();
     const day = /^\d{4}-\d{2}-\d{2}/.test(b.placed || "") ? b.placed.slice(0, 10) : (b.createdAt || "").slice(0, 10);
-    return b.status !== "lost" && Boolean(day) && day >= from && day <= (state.range ? to : iso(new Date()));
+    return b.status !== "lost" && Boolean(day) && day >= from && day <= (state.rng.preset === "custom" ? to : iso(new Date()));
   }
 
   function linkStatus(s) {
@@ -814,14 +914,16 @@
       : `<div class="table-wrap"><div class="empty"><h3>${t("Nothing in consideration yet")}</h3><p>${t("Filter a backlink CSV, then choose the links you might pursue.")}</p></div></div>`}`;
   }
 
+  // Found links of the site picked in the menu (all of them at All sites: F114).
+  const foundHere = () => window.FOUND_LINKS.filter((f) => state.site === "all" || !f.site || f.site === siteName());
   const lostThisWeek = (links) => links.filter((b) => b.status === "lost" && b.check?.lost_at && Date.now() - new Date(b.check.lost_at) < 7 * 864e5).length;
 
   function backlinksPage() {
     const section = state.blSection;
     const main = section === "done" ? `<button class="btn btn-main" id="add-backlink">${icon("plus")}${t("Add backlink")}</button>` : "";
     const title = t("Backlinks"), sub = t("Links built for your sites, and what they brought");
-    if (!bl.ready) return topbar(title, sub) + `<div class="content page-enter"><div class="card"><div class="empty"><p>${t("Loading…")}</p></div></div></div>`;
-    if (bl.error) return topbar(title, sub) + `<div class="content page-enter"><div class="table-wrap"><div class="empty"><h3>${t("That didn't load")}</h3><p>${esc(t(bl.error))}</p></div></div></div>`;
+    if (!bl.ready) return topbar(title, sub) + `<div class="content page-enter">${window.UI.skeleton("page", { tiles: 6, chart: false })}</div>`;
+    if (bl.error) return topbar(title, sub) + `<div class="content page-enter">${window.UI.failCard(bl.error, { onRetry: () => { bl.error = ""; bl.ready = false; bl.asked = false; render(); } })}</div>`;
     const sections = `<div class="tabs sections" role="tablist" aria-label="${t("Backlink sections")}">
       <button class="tab" role="tab" data-bl-section="consideration" aria-selected="${section === "consideration"}">${icon("filter")}${t("In consideration")} <span class="muted">${prospectsForSite().length}</span></button>
       <button class="tab" role="tab" data-bl-section="todo" aria-selected="${section === "todo"}">${icon("clock")}${t("To do")} <span class="muted">${state.firstRun ? 0 : window.LinkTodo.count()}</span></button>
@@ -835,8 +937,9 @@
     const lost = real.filter((b) => b.status === "lost").length;
     const live = real.length - lost;
     const planned = all.length - real.length;
-    const visits = all.reduce((s, b) => s + (b.visits || 0), 0), leads = all.reduce((s, b) => s + (b.leads || 0), 0), visitsKnown = all.some((b) => b.visits !== null && b.visits !== undefined);
-    const tabs = [["all", "All backlinks", all.length], ["mediators", "Mediators", window.LinkExtras.count(all)], ["found", "Found but never logged", window.FOUND_LINKS.filter((f) => !f.ignored).length]];
+    // Links that share one GA4 number count it once (3 links sharing 40 visits are 40, not 120: F10).
+    const sum = window.BacklinkSeo.trafficTotals(all), visits = sum.visits, leads = sum.leads, visitsKnown = sum.known;
+    const tabs = [["all", "All backlinks", all.length], ["mediators", "Mediators", window.LinkExtras.count(all)], ["found", "Found but never logged", foundHere().filter((f) => !f.ignored).length]];
     const reclaimN = window.BacklinkSeo.reclaimCount(); // a tab only when there's something to reclaim
     if (reclaimN || state.blTab === "reclaim") tabs.push(["reclaim", "Reclaim", reclaimN]);
     let body = "";
@@ -852,14 +955,14 @@
         <thead><tr><th scope="col">${t("Source page")}</th><th scope="col">${t("Target")}</th><th scope="col">${t("Keyword")}</th><th scope="col">${t("Anchor type")}</th><th scope="col">${t("Status")}</th><th scope="col" class="r">${t("Authority")}</th>${window.BacklinkSeo.trafficHead()}<th scope="col" class="r">${t("Visits")}</th><th scope="col" class="r">${t("Leads")}</th><th scope="col" class="r">${t("Cost per visit")}</th><th scope="col">${t("Mediator")}</th></tr></thead>
         <tbody>${rows.slice(0, state.blLimit).map((b) => `<tr data-bl="${b.id}" id="row-${b.id}">
           <td class="head-cell url-cell"><span class="with-logo">${siteLogo(linkDomain(b.src))}<span class="logo-text"><span class="nb-inline"><button class="kw mono small" data-open-bl="${b.id}" style="text-align:start" data-tip="${esc(b.src)}">${esc(b.src.replace(/^https?:\/\//, ""))}</button>${window.COMP?.notes?.badge ? window.COMP.notes.badge({ scope: "domain", domain: linkDomain(b.src), siteId: window.UI.siteIdPicked?.() ?? null }, linkDomain(b.src)) : ""}</span><span class="second" dir="auto">${esc(b.anchor || b.check?.anchor || "—")}</span>${state.site === "all" && b.site ? `<span class="second mono" dir="auto">${t("For")} ${esc(b.site)}</span>` : ""}</span></span></td>
-          <td class="mono small url-cell" data-label="${t("Target")}"><span dir="auto">${esc(b.target || "—")}</span></td>
+          <td class="mono small url-cell" data-label="${t("Target")}">${b.target ? PageLink.html(b.target, { host: b.site }) : "—"}</td>
           <td data-label="${t("Keyword")}">${b.keyword ? `<span dir="auto">${esc(b.keyword)}</span>` : '<span class="muted">—</span>'}</td>
           <td data-label="${t("Anchor type")}">${window.BacklinkSeo.anchorTag(b) || '<span class="muted">—</span>'}</td>
           <td data-label="${t("Status")}">${linkStatus(b.status)}${window.LinkExtras.rowNote(b)}${window.BacklinkSeo.badge(b)}</td>
           <td class="r" data-label="${t("Authority")}">${window.BacklinkSeo.authorityCell(b)}</td>${window.BacklinkSeo.trafficCell(b)}
           <td class="r nowrap" data-label="${t("Visits")}">${trafficCell(b)}</td>
           <td class="r" data-label="${t("Leads")}">${b.leads === null ? '<span class="muted">—</span>' : num(b.leads)}</td>
-          <td class="r ${b.status === "lost" ? "muted" : ""}" data-label="${t("Cost per visit")}" ${b.status === "lost" ? `data-tip="${t("This link is lost, so the cost per visit is from when it was live.")}"` : ""}>${b.cost && b.visits ? inCurrency(currencyOfLink(b), dec((b.cost / b.visits).toFixed(2))) : '<span class="muted">—</span>'}</td>
+          <td class="r ${b.status === "lost" ? "muted" : ""}" data-label="${t("Cost per visit")}" ${b.status === "lost" ? `data-tip="${t("This link is lost, so the cost per visit is from when it was live.")}"` : ""}>${b.shared ? `<span class="muted" tabindex="0" data-tip="${t("Several links share these visits, so one link's cost per visit can't be told.")}">—</span>` : b.cost && b.visits ? inCurrency(currencyOfLink(b), dec((b.cost / b.visits).toFixed(2))) : '<span class="muted">—</span>'}</td>
           <td data-label="${t("Mediator")}">${b.mediator ? `<span dir="auto">${esc(b.mediator)}</span>` : '<span class="muted">—</span>'}</td>
         </tr>`).join("")}</tbody></table></div>
       ${rows.length > state.blLimit ? `<p style="margin-top:10px"><button class="btn btn-small" id="bl-more">${t("Show more")} (${num(rows.length - state.blLimit)})</button></p>` : ""}`}`;
@@ -868,10 +971,10 @@
     } else if (state.blTab === "reclaim") {
       body = window.BacklinkSeo.reclaimBody();
     } else {
-      const ignoredCount = window.FOUND_LINKS.filter((f) => f.ignored).length;
+      const ignoredCount = foundHere().filter((f) => f.ignored).length;
       body = `<div class="chips">${ignoredCount ? `<button class="chip" data-found-show-ignored aria-pressed="${Boolean(state.blShowIgnored)}">${t("Show ignored")}<b>${num(ignoredCount)}</b></button>` : ""}<span style="margin-left:auto" class="bl-tools">${window.BacklinkSeo.foundTools(state.site === "all" ? null : siteName())}</span></div><div class="table-wrap"><table class="data"><thead><tr><th scope="col">${t("Source page")}</th><th scope="col">${t("Target")}</th><th scope="col">${t("Seen by")}</th><th scope="col" class="r">${t("Authority")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead><tbody>
-        ${window.FOUND_LINKS.filter((f) => state.blShowIgnored || !f.ignored).length ? "" : `<tr style="cursor:default"><td colspan="5"><div class="empty"><h3>${t("Nothing found yet")}</h3><p>${t("Links other tools find will show here, until you log them.")}</p></div></td></tr>`}
-        ${window.FOUND_LINKS.map((f, i) => [f, i]).filter(([f]) => state.blShowIgnored || !f.ignored).map(([f, i]) => `<tr style="cursor:default" class="${f.ignored ? "cg-off" : ""}"><td class="head-cell mono small url-cell" data-tip="${esc(f.src)}">${esc(f.src.replace(/^https?:\/\//, ""))}</td><td class="mono small" data-label="${t("Target")}">${esc(f.target || "—")}</td><td data-label="${t("Seen by")}">${window.BacklinkSeo.foundSeen(f)}</td><td class="r" data-label="${t("Authority")}">${f.auth === null ? "—" : dec(f.auth)}</td><td class="r nowrap"><button class="btn btn-small" data-log-found="${i}">${t("Log it")}</button> <button class="btn btn-small" data-found-ignore="${i}">${t(f.ignored ? "Bring back" : "Ignore")}</button>${window.BacklinkSeo.foundButton(f)} ${window.UI.taskButton({ title: `${t("Look into a link we didn't log")}: ${f.src.replace(/^https?:\/\//, "")}`, host: f.site || null, source: { type: "backlink", label: f.src.replace(/^https?:\/\//, ""), host: f.site || undefined, facts: [f.target, f.first].filter(Boolean), link: "#backlinks", key: `found|${f.src}` } }, { label: "Task" })}</td></tr>`).join("")}</tbody></table></div>`;
+        ${foundHere().filter((f) => state.blShowIgnored || !f.ignored).length ? "" : `<tr style="cursor:default"><td colspan="5"><div class="empty"><h3>${t("Nothing found yet")}</h3><p>${t("Links other tools find will show here, until you log them.")}</p></div></td></tr>`}
+        ${window.FOUND_LINKS.map((f, i) => [f, i]).filter(([f]) => (state.site === "all" || !f.site || f.site === siteName()) && (state.blShowIgnored || !f.ignored)).map(([f, i]) => `<tr style="cursor:default" class="${f.ignored ? "cg-off" : ""}"><td class="head-cell mono small url-cell" data-tip="${esc(f.src)}">${PageLink.html(f.src, { text: f.src.replace(/^https?:\/\//, ""), title: "" })}</td><td class="mono small" data-label="${t("Target")}">${f.target ? PageLink.html(f.target, { host: f.site }) : "—"}</td><td data-label="${t("Seen by")}">${window.BacklinkSeo.foundSeen(f)}</td><td class="r" data-label="${t("Authority")}">${f.auth === null ? "—" : dec(f.auth)}</td><td class="r nowrap"><button class="btn btn-small" data-log-found="${i}">${t("Log it")}</button> <button class="btn btn-small" data-found-ignore="${i}">${t(f.ignored ? "Bring back" : "Ignore")}</button>${window.BacklinkSeo.foundButton(f)} ${window.UI.taskButton({ title: `${t("Look into a link we didn't log")}: ${f.src.replace(/^https?:\/\//, "")}`, host: f.site || null, source: { type: "backlink", label: f.src.replace(/^https?:\/\//, ""), host: f.site || undefined, facts: [f.target, f.first].filter(Boolean), link: "#backlinks", key: `found|${f.src}` } }, { label: "Task" })}</td></tr>`).join("")}</tbody></table></div>`;
     }
     return topbar(title, sub, main) + `<div class="content page-enter">
       <section class="tiles" id="bl-tiles">
@@ -879,8 +982,8 @@
         ${tile(t("Live"), cnt(live), window.BacklinkSeo.liveNote(real), { ic: "circle-check" })}
         ${tile(t("Lost"), lost ? `<span class="serious">${cnt(lost)}</span>` : "0", lost && !bl.server ? status("serious", t("lost this week")) : lostThisWeek(real) ? status("serious", lostThisWeek(real) === 1 ? t("1 lost this week") : `${num(lostThisWeek(real))} ${t("lost this week")}`) : "", { ic: "link-2-off", tone: lost ? "serious" : "" })}
         ${tile(t("New"), cnt((bl.server ? 0 : 2) + real.filter(isNewLink).length), `<span class="ab">${esc(periodLabel())}</span>`, { ic: "plus" })}
-        ${bl.server ? tile(t("Visits"), visitsKnown ? cnt(visits) : "—", visitsKnown ? "" : `<span class="ab">${t("GA4 not connected")}</span>`, { ic: "eye" }) : tile(t("Visits"), cnt(visits), delta(12, { unit: "%" }), { ic: "eye", line: [40, 44, 48, 52, 50, 58, 66, 72] })}
-        ${bl.server ? tile(t("Leads"), visitsKnown ? cnt(leads) : "—", visitsKnown ? "" : `<span class="ab">${t("GA4 not connected")}</span>`, { ic: "users" }) : tile(t("Leads"), cnt(leads), delta(1), { ic: "users", line: [1, 1, 2, 2, 3, 3, 3, 4] })}
+        ${bl.server ? tile(t("Visits"), visitsKnown ? cnt(visits) : "—", visitsKnown ? `<span class="ab">${t("Last 12 months")}</span>` : `<span class="ab">${t("GA4 not connected")}</span>`, { ic: "eye" }) : tile(t("Visits"), cnt(visits), delta(12, { unit: "%" }), { ic: "eye", line: [40, 44, 48, 52, 50, 58, 66, 72] })}
+        ${bl.server ? tile(t("Leads"), visitsKnown ? cnt(leads) : "—", visitsKnown ? `<span class="ab">${t("Last 12 months")}</span>` : `<span class="ab">${t("GA4 not connected")}</span>`, { ic: "users" }) : tile(t("Leads"), cnt(leads), delta(1), { ic: "users", line: [1, 1, 2, 2, 3, 3, 3, 4] })}
       </section>
       ${sections}
       ${section === "consideration" ? considerationBody() : section === "todo" ? window.LinkTodo.body() : `<div class="tabs" role="tablist" aria-label="${t("Backlinks")}">${tabs.map(([id, label, n]) => `<button class="tab" role="tab" data-bl-tab="${id}" aria-selected="${state.blTab === id}">${t(label)} <span class="muted">${n}</span></button>`).join("")}</div>
@@ -903,7 +1006,14 @@
   // A plain calendar day stays that day. A moment in time is shown on the reader's own clock.
   const fmtDateOnly = (iso) => (iso ? new Intl.DateTimeFormat(locale(), { day: "numeric", month: "short", year: "numeric", ...(/T00:00:00(\.0+)?Z$|^\d{4}-\d{2}-\d{2}$/.test(iso) ? { timeZone: "UTC" } : {}) }).format(new Date(iso)) : "—");
 
-  async function apiCall(path, options) {
+  /* Through the app's one wrapper (COMP.api in competitors.js): it waits out a 429, shares a GET already on its way and asks
+     auth/me again after a stale token, so this screen gets the same plain sentences as the others (F20). */
+  async function apiCall(path, options = {}) {
+    if (window.COMP?.api) {
+      let body;
+      try { body = options.body ? JSON.parse(options.body) : undefined; } catch { body = options.body; }
+      return window.COMP.api(options.method || "GET", path, body);
+    }
     const reply = await fetch(`api/${path}`, options);
     const body = await reply.json().catch(() => ({}));
     if (!reply.ok) { const err = new Error(body.error || `Error ${reply.status}`); err.status = reply.status; throw err; }
@@ -1025,7 +1135,7 @@
   }
 
   function resetLinks() {
-    clearTimeout(lc.timer);
+    clearTimeout(lc.timer); lc.poll?.stop?.();
     Object.assign(lc, { started: false, ready: false, sites: [], siteId: null, scans: [], open: null, activeId: null, active: null, timer: null, stopping: false, loadError: "" });
   }
 
@@ -1041,7 +1151,7 @@
   }
 
   async function loadLinkHistory({ openLatest = true } = {}) {
-    clearTimeout(lc.timer);
+    clearTimeout(lc.timer); lc.poll?.stop?.();
     lc.scans = lc.siteId === null ? [] : await lc.api.scans(lc.siteId);
     const running = lc.scans.find(isActiveScan);
     if (running) {
@@ -1074,19 +1184,24 @@
     if (historyWord) historyWord.textContent = t(waiting ? "Waiting" : "Running");
   }
 
+  /* A running links check is followed with the app's one poller (COMP.poll): paused while the tab is hidden, slower after
+     failures, stopped on 404/401 (F115). As a plain file there's no poller, so a short timer stands in. */
   function pollLinkScan() {
+    lc.poll?.stop?.();
     clearTimeout(lc.timer);
-    lc.timer = setTimeout(async () => {
-      if (!lc.activeId) return;
-      let data;
-      try { data = await lc.api.scan(lc.activeId); } catch { pollLinkScan(); return; }
+    const step = async () => {
+      if (!lc.activeId) return false;
+      const data = await lc.api.scan(lc.activeId);
       lc.active = data.scan;
-      if (isActiveScan(data.scan)) { paintLinkProgress(); pollLinkScan(); return; }
+      if (isActiveScan(data.scan)) { paintLinkProgress(); return true; }
       lc.activeId = null; lc.active = null; lc.stopping = false; lc.open = data;
       await loadLinkHistory({ openLatest: false });
       const word = data.scan.status === "complete" ? t("Links check finished") : data.scan.status === "stopped" ? t("Links check stopped") : t("Links check failed");
       toast(word, { kind: data.scan.status === "failed" ? "crit" : data.scan.status === "stopped" ? "info" : "good" });
-    }, 900);
+      return false;
+    };
+    if (window.COMP?.poll && bl.server) { lc.poll = window.COMP.poll(step, { every: 900, grow: 1.1, slowest: 10000, errors: 6 }); return; }
+    lc.timer = setTimeout(async () => { try { if (await step()) pollLinkScan(); } catch { pollLinkScan(); } }, 900);
   }
 
   function lcNotices(scan) {
@@ -1137,7 +1252,6 @@
     return `<section class="lc-result" aria-label="${t("Result")}">
       <div class="lc-result-head">
         <div><h2>${esc(scan.host || lcSite()?.host || "")}</h2><p class="small sec">${esc(fmtStamp(scan.created_at))} · ${how} · ${num(scan.pages_read)} ${t(scan.pages_read === 1 ? "page read" : "pages read")} · ${num(scan.links_checked)} ${t("links checked")}</p></div>
-        <button class="btn" id="lc-export">${icon("download")}${t("Export CSV")}</button>
       </div>
       ${notes.length ? `<div class="lc-notes">${notes.map(([kind, text]) => `<p class="note ${kind === "info" ? "" : kind}" style="margin:0">${icon(kind === "crit" ? "octagon-alert" : kind === "warn" ? "triangle-alert" : "info")}<span>${esc(text)}</span></p>`).join("")}</div>` : ""}
       <div class="tiles lc-tiles">${LC_GROUPS.map(([id, name]) => `<a class="tile lc-jump" href="#lc-${id}" data-lc-jump="${id}"><div class="lab">${t(name)}</div><div class="fig tabular ${id === "broken" && counts[id] ? "crit" : ""}">${num(counts[id] || 0)}</div></a>`).join("")}</div>
@@ -1150,7 +1264,7 @@
     const tabs = `<div class="tabs health-tabs" role="tablist" aria-label="${t("Site health")}"><button class="tab" role="tab" data-health-tab="test" aria-selected="${state.healthTab === "test"}">${icon("heart-pulse")}${t("Monthly health test")}</button><button class="tab" role="tab" data-health-tab="links" aria-selected="${state.healthTab === "links"}">${icon("link-2")}${t("Links checker")}</button><button class="tab" role="tab" data-health-tab="uptime" aria-selected="${state.healthTab === "uptime"}">${icon("activity")}${t("Uptime")}</button></div>`;
     if (state.healthTab === "test" && window.HealthTest) return `${head}<div class="content page-enter">${tabs}${window.HealthTest.body()}</div>`;
     if (state.healthTab === "uptime") return `${head}<div class="content page-enter">${tabs}${window.UptimeWatch.body()}</div>`;
-    if (!lc.ready) return `${head}<div class="content page-enter">${tabs}<div class="card"><div class="empty"><p>${t("Loading…")}</p></div></div></div>`;
+    if (!lc.ready) return `${head}<div class="content page-enter">${tabs}${window.UI.skeleton("table")}</div>`;
     if (!lc.sites.length && lc.loadError) { // the server refused or failed: never pretend there are no websites
       return `${head}<div class="content page-enter">${tabs}<div class="table-wrap"><div class="empty" id="lc-load-error" role="alert">
         <h3>${t("The server didn't answer")}</h3><p>${esc(lc.loadError)}. ${t("Wait a moment, then try again.")}</p>
@@ -1159,7 +1273,7 @@
     if (!lc.sites.length) {
       return `${head}<div class="content page-enter">${tabs}<div class="table-wrap"><div class="empty" id="lc-empty">
         <h3>${t("No websites added yet")}</h3><p>${t("Add your own website, then check its links.")}</p>
-        <button class="btn btn-main" id="site-add">${icon("plus")}${t("Add a website")}</button></div></div></div>`;
+        <button class="btn btn-main" id="site-add">${icon("plus")}${t("Add a site")}</button></div></div></div>`;
     }
     // The side menu leads here too, unless a check is running: its list is locked until then.
     const picked = window.UI.siteHostPicked();
@@ -1187,7 +1301,7 @@
           <label class="opt"><input type="checkbox" class="chk" style="margin:0" id="lc-weekly" ${site.weekly ? "checked" : ""}>${t("Check this website once a week")}<span class="small muted" id="lc-weekly-note">(${weekly})</span></label>
         </div>
         <p class="help">${esc(t(LC_LIMITS))}</p>
-        <p class="help"><button class="link-btn" id="site-add">${t("Add a website")}</button></p>
+        <p class="help"><button class="link-btn" id="site-add">${t("Add a site")}</button></p>
       </section>
       ${busy ? `<section class="card lc-progress" role="status"><div class="top"><span class="spin-wrap" id="lc-spin">${icon("refresh-cw", "spin")}</span><div class="lc-progress-words"><b id="lc-progress-text"></b><span class="small sec" id="lc-progress-sub"></span></div><button class="btn" id="lc-stop" ${lc.stopping ? "disabled" : ""}>${t(lc.stopping ? "Stopping…" : "Stop")}</button></div><div class="tray-bar"><i id="lc-bar"></i></div></section>` : ""}
       ${lcResult()}
@@ -1210,7 +1324,7 @@
     const rivalOf = window.SITES.length
       ? `<label class="field"><span>${t("A competitor of which of your websites?")}</span><select class="select" id="site-rival-site" style="width:100%">${window.SITES.map((s) => `<option ${s.host === current ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></label>`
       : `<p class="help">${t("Add your own website first, then its competitors.")}</p>`;
-    openPanel(`${panelHead(t("Add a website"), t("Your own website, or a competitor to watch"))}
+    openPanel(`${panelHead(t("Add a site"), t("Your own site, or a competitor to watch"))}
       <form class="panel-body" id="site-form" novalidate>
         <label class="field"><span>${t("Website address")} <span class="req">*</span></span><input class="input mono" id="site-address" placeholder="https://" data-autofocus aria-describedby="site-error"><div id="site-error"></div><div class="help" id="site-preview" role="status"></div></label>
         <fieldset class="scope"><legend>${t("Whose website is it?")}</legend>
@@ -1267,20 +1381,25 @@
   const SETUP_NOT_USED = (host, id) => (setupFacts[host]?.notUsed ? setupFacts[host].notUsed.includes(id) : Boolean(setupChoices()[host]?.[id]));
   /* On the real app the server keeps the choice. Ticks go in the order they were made, so a slow answer can't undo a later tick,
      and one made before the sites have loaded still gets there. */
-  let setupSaving = Promise.resolve();
+  let setupSaving = Promise.resolve(), setupPending = 0;
+  /* While a tick is on its way, nothing read from the server earlier (a site list, the setup facts) may put the old list back:
+     the save sends the whole list, so an old copy taken in between would drop a tick (seen as "only [google]" after a reload). */
   function saveSetupNotUsed(host, id, on) {
+    setupPending += 1;
     setupSaving = setupSaving.then(async () => {
       if (!(await COMP.isServer())) return;
       let facts = setupFacts[host];
-      if (!facts?.siteId) {
-        const site = (await COMP.api("GET", "links/sites")).sites.find((s) => s.host === host);
+      const knownId = window.SITES.find((s) => s.host === host)?.realId;
+      if (!facts?.siteId || !Array.isArray(facts.notUsed)) {
+        // Not known here yet: the server's own list, read now, is what the tick changes. Never an empty list on a guess.
+        const site = (await COMP.api("GET", "links/sites", undefined, { fresh: true })).sites.find((s) => s.host === host || s.id === knownId);
         if (!site) throw new Error("That website isn't saved yet.");
-        facts = setupFacts[host] = { ...facts, siteId: site.id, notUsed: facts?.notUsed || site.setup_not_used || [] };
+        facts = setupFacts[host] = { ...setupFacts[host], siteId: site.id, notUsed: Array.isArray(setupFacts[host]?.notUsed) ? setupFacts[host].notUsed : site.setup_not_used || [] };
       }
       facts.notUsed = facts.notUsed.filter((x) => x !== id).concat(on ? [id] : []);
       await COMP.api("PATCH", `links/sites/${facts.siteId}`, { setup_not_used: facts.notUsed });
       if (id === "google" || id === "clarity") window.dispatchEvent(new CustomEvent("seocc:sources-changed"));
-    }).catch(async (err) => {
+    }).finally(() => { setupPending -= 1; }).catch(async (err) => {
       toast(t(err.message), { kind: "crit" });
       // What's on screen goes back to what the server really has.
       try { noteRealSites((await COMP.api("GET", "links/sites")).sites); } catch { /* the next load shows it */ }
@@ -1324,14 +1443,31 @@
     ];
     return steps.map((step) => ({ ...step, skipped: step.id !== "site" && host ? SETUP_NOT_USED(host, step.id) : false }));
   }
-  async function loadSetupFacts(host) {
-    if (!host || !(await COMP.isServer())) return;
-    try {
-      const site = (await COMP.api("GET", "links/sites")).sites.find((s) => s.host === host);
-      if (!site) return;
-      const [rivals, suggestions, audits] = await Promise.all([COMP.api("GET", `competitors?site_id=${site.id}`), COMP.api("GET", `competitors/suggestions?site_id=${site.id}`), COMP.api("GET", `health/sites/${site.id}/audits`)]);
-      setupFacts[host] = { siteId: site.id, notUsed: site.setup_not_used || [], competitors: rivals.competitors.length > 0, keywords: (suggestions.keywords_total || 0) > 0, checks: audits.audits.length > 0 };
-    } catch { /* the steps stay as to do, which is what they are until shown otherwise */ }
+  /* Each site's facts are asked once a minute at most, and a second ask while one is on its way waits for it (F3). The site's id
+     comes from the list already loaded, not from another links/sites call. */
+  const setupAsked = new Map(); // host: { at, promise }
+  const SETUP_FRESH_MS = 60000;
+  function loadSetupFacts(host, { force = false } = {}) {
+    if (!host) return Promise.resolve();
+    const held = setupAsked.get(host);
+    if (held && !force && (held.loading || Date.now() - held.at < SETUP_FRESH_MS)) return held.promise;
+    const entry = { at: Date.now(), loading: true };
+    entry.promise = (async () => {
+      if (!(await COMP.isServer())) return;
+      const known = window.SITES.find((s) => s.host === host);
+      let siteId = known?.realId, notUsed = null;
+      if (!siteId) {
+        const site = (await COMP.api("GET", "links/sites")).sites.find((s) => s.host === host);
+        if (!site) return;
+        siteId = site.id; notUsed = site.setup_not_used || null;
+      }
+      const [rivals, suggestions, audits] = await Promise.all([COMP.api("GET", `competitors?site_id=${siteId}`), COMP.api("GET", `competitors/suggestions?site_id=${siteId}`), COMP.api("GET", `health/sites/${siteId}/audits`)]);
+      // The list as it is now (a tick may have changed it while these were asked), not as it was when they were asked.
+      const current = setupFacts[host]?.notUsed;
+      setupFacts[host] = { ...setupFacts[host], siteId, notUsed: Array.isArray(current) ? current : notUsed || undefined, competitors: rivals.competitors.length > 0, keywords: (suggestions.keywords_total || 0) > 0, checks: audits.audits.length > 0, loaded: true };
+    })().catch(() => { /* unknown stays unknown: the card isn't drawn on a guess (F22) */ }).finally(() => { entry.loading = false; entry.at = Date.now(); });
+    setupAsked.set(host, entry);
+    return entry.promise;
   }
   const setupStillOpen = (host) => siteSteps(host).some((step) => !step.done && !step.skipped);
   const setupHidden = () => { try { return JSON.parse(store.get("setupHidden") || "[]"); } catch { return []; } };
@@ -1340,23 +1476,31 @@
     if (state.firstRun) return added[0]?.host || null;
     if (state.site !== "all") { const current = window.SITES.find((s) => s.id === state.site); return added.includes(current) ? current.host : null; }
     // At All sites, the first site still without keywords, so a half set-up site can't be forgotten.
-    return added.find((s) => setupFacts[s.host] && !setupFacts[s.host].keywords && !SETUP_NOT_USED(s.host, "keywords"))?.host || null;
+    // Only a site known to have no keywords counts: one still loading is unknown, not "to do" (F22).
+    return added.find((s) => setupFacts[s.host]?.loaded && setupFacts[s.host].keywords === false && !SETUP_NOT_USED(s.host, "keywords"))?.host || null;
   }
   /* Progress is read again whenever Today opens, so the card never disagrees with what's been done elsewhere. */
   let setupSeen = "";
   async function refreshSetup() {
-    const hosts = window.SITES.filter((s) => s.added).slice(0, 10).map((s) => s.host);
+    // One site picked: only that one. All sites: each site in turn until one still needs keywords, which is the one the card shows.
+    const picked = state.site === "all" ? null : window.SITES.find((s) => s.id === state.site);
+    const hosts = (picked ? [picked] : window.SITES).filter((s) => s.added && !setupHidden().includes(s.host)).slice(0, 10).map((s) => s.host);
     if (!hosts.length || !(await COMP.isServer())) return;
-    await Promise.all(hosts.map(loadSetupFacts));
+    for (const host of hosts) {
+      await loadSetupFacts(host);
+      if (picked || (setupFacts[host]?.keywords === false && !SETUP_NOT_USED(host, "keywords"))) break;
+    }
     const now = JSON.stringify(hosts.map((h) => setupFacts[h]));
     if (now !== setupSeen) { setupSeen = now; if (state.route === "today" && !$("#panel")) render(); }
   }
   function setupCard() {
     const host = setupHost();
     if (state.setupHidden || (!state.firstRun && !host) || (host && !setupStillOpen(host))) return "";
+    if (host && state.served && !setupFacts[host]?.loaded) return ""; // not loaded yet: unknown, so no card that may be wrong
     const steps = siteSteps(host), finished = steps.filter((s) => s.done || s.skipped).length;
-    const heading = host ? `${t("Set up")} ${host} · ${finished} ${t("of")} ${steps.length} ${t("done")}` : t("Welcome. Three steps to your first data");
-    const shown = host ? steps : steps.slice(0, 3); // nothing else makes sense before there's a site
+    // The same six steps before and after the site is added, so the count never changes under the person's eyes.
+    const heading = host ? `${t("Set up")} ${host} · ${finished} ${t("of")} ${steps.length} ${t("done")}` : `${t("Welcome.")} ${steps.length} ${t("steps to your first data. Only the first is needed to start.")}`;
+    const shown = steps;
     return `<section class="setup" aria-label="${esc(heading)}">
         <h2 dir="auto">${esc(heading)}</h2>
         ${shown.map((step, i) => `<div class="step ${step.done || step.skipped ? "done" : ""}"><span class="n">${step.done || step.skipped ? icon("check") : i + 1}</span>${t(step.word)}${step.skipped ? ` <span class="small muted">${t("Not used")}</span>` : ""}${step.done || step.skipped || (!host && step.id !== "site") ? "" : ` <button class="btn ${step.main ? "btn-main" : ""} btn-small" data-setup="${step.id}" data-setup-host="${esc(host || "")}" ${step.id === "site" ? "data-add-site" : ""}>${t(step.action)}</button>`}</div>`).join("")}
@@ -1374,7 +1518,7 @@
   }
   async function openSiteSetup(host, opener = null) {
     openPanel(setupPanelHtml(host), opener || $("#site-switch"));
-    await loadSetupFacts(host);
+    await loadSetupFacts(host, { force: true });
     if ($(".setup-list")) setHTML($("#panel"), setupPanelHtml(host));
   }
   function runSetupStep(id, host) {
@@ -1403,6 +1547,8 @@
     const screen = window.SCREENS?.[state.route];
     const html = screen ? screen.page() : state.route === "keywords" ? keywordsPage() : state.route === "backlinks" ? backlinksPage() : state.route === "settings" ? settingsPage() : state.route === "health" ? healthPage() : todayPage();
     setHTML($("#page"), html);
+    nameTables($("#page"));
+    defineHeaders($("#page"));
     if (!enter) $$(".page-enter", main).forEach((el) => el.classList.remove("page-enter"));
     if (keepScroll) main.scrollTop = top;
     syncTopbar();
@@ -1422,6 +1568,33 @@
     store.set("look", state.look); store.set("theme", state.theme); store.set("lang", state.lang);
     syncUrl();
     if (state.route === "today") refreshSetup();
+    if (state.route === "backlinks") backlinksWanted();
+    if (state.route === "settings") window.KW_REAL?.wanted?.();
+  }
+  /* A column heading that names a metric gets its definition (shared-ui.js), on every screen: on the heading's sort button
+     if it has one, or as a small (i) after its words. Written once, so every table explains the same number the same way. */
+  function defineHeaders(scope) {
+    const UIx = window.UI;
+    if (!UIx?.defKey) return;
+    [...scope.querySelectorAll("table.data thead th")].forEach((th) => {
+      if (th.querySelector(".def-i, [data-tip]") || th.dataset.tip) return;
+      const key = UIx.defKey(th.textContent.replace(/\s+/g, " ").trim());
+      if (!key) return;
+      const button = th.querySelector("button");
+      if (button) button.dataset.tip = UIx.def(key);
+      else th.append(fragment(UIx.defIcon(key)));
+    });
+  }
+  /* Every table gets a name for assistive tools: its card's heading, or the page title (WCAG 1.3.1). */
+  function nameTables(scope) {
+    [...scope.querySelectorAll("table.data:not([aria-label]):not([aria-labelledby])")].forEach((table) => {
+      if (table.querySelector("caption")) return;
+      const card = table.closest(".card, section, .panel");
+      const heading = card?.querySelector(".card-head h2, h2, h3") || document.querySelector("#topbar h1");
+      const tab = card?.querySelector('[role="tab"][aria-selected="true"]');
+      const name = [heading?.textContent.trim(), tab?.textContent.trim()].filter(Boolean).join(" · ");
+      if (name) table.setAttribute("aria-label", name);
+    });
   }
   const syncTopbar = () => { const bar = $("#topbar"); if (bar) root.style.setProperty("--topbar-h", bar.offsetHeight + "px"); };
   addEventListener("resize", () => { syncTopbar(); placeInks({ instant: true }); updateCues(); });
@@ -1441,7 +1614,7 @@
 
   // ---- the address: screen, tab, one thing on it, and the site ------------------------
   /* #competitors/pairs/12?site=shop.example. Back goes back, and an address can be sent to a teammate. */
-  let urlReady = false, wantedSite = null, replaceNext = false;
+  let urlReady = false, wantedSite = null, replaceNext = false, following = false;
   function urlNow() {
     const parts = [state.route];
     if (state.route === "competitors") { parts.push(COMP.currentTab?.()?.id || COMP.tab); const pair = COMP.siteId === COMP.ALL ? null : COMP.pairShown?.(); if (pair) parts.push(pair); }
@@ -1449,7 +1622,42 @@
     if (state.route === "backlinks") parts.push(state.blSection === "done" ? state.blTab : state.blSection);
     const host = state.site === "all" ? null : window.SITES.find((s) => s.id === state.site)?.host;
     const path = parts.filter((x) => x !== undefined && x !== null && x !== "").map((x) => encodeURIComponent(x)).join("/");
-    return `#${path}${host ? `?site=${encodeURIComponent(host)}` : ""}`;
+    // After the site: the dates on a dated screen (left out when they're the default), then the screen's own view.
+    const q = new URLSearchParams();
+    if (host) q.set("site", host);
+    if (DATED_SCREENS.has(state.route) && !UIRange.isDefault()) {
+      const r = state.rng;
+      if (r.preset === "custom") { q.set("from", r.from); q.set("to", r.to); } else q.set("range", r.preset);
+      if (r.compare !== "prev") q.set("cmp", r.compare);
+    }
+    Object.entries(screenAddress()).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "" && v !== false) q.set(k, String(v)); });
+    const qs = q.toString().replace(/%2F/g, "/").replace(/%3A/g, ":");
+    return `#${path}${qs ? `?${qs}` : ""}`;
+  }
+  /* The view itself, so a reload or a pasted link opens the same thing: Keywords' chip, engine, view and sort here; each screen
+     file adds its own with SCREENS[route].address() and reads it back with SCREENS[route].fromAddress(params). */
+  const SORTS = new Set(["k", "own", "pos", "chg", "vol"]);
+  function screenAddress() {
+    const out = {};
+    if (state.route === "keywords") {
+      if (state.filter !== "all") out.chip = state.filter;
+      if (state.engine !== "google") out.engine = state.engine;
+      if (state.view !== "positions") out.view = state.view;
+      if (state.sort.key !== "vol" || state.sort.dir !== "descending") out.sort = `${state.sort.key}-${state.sort.dir === "ascending" ? "up" : "down"}`;
+    }
+    try { Object.assign(out, window.SCREENS?.[state.route]?.address?.() || {}); } catch (err) { console.error(err); }
+    return out;
+  }
+  function applyScreenAddress(route, q) {
+    if (route === "keywords") {
+      const chip = q.get("chip"), engine = q.get("engine"), view = q.get("view"), sort = q.get("sort");
+      state.filter = ["all", "top3", "top10", "up", "down", "none", "cited", "two"].includes(chip) ? chip : "all";
+      state.engine = [...ENGINES.map(([id]) => id), "all"].includes(engine) ? engine : "google";
+      state.view = ["positions", "bucket", "queries"].includes(view) ? view : "positions";
+      const [key, dir] = (sort || "").split("-");
+      state.sort = SORTS.has(key) ? { key, dir: dir === "up" ? "ascending" : "descending" } : { key: "vol", dir: "descending" };
+    }
+    try { window.SCREENS?.[route]?.fromAddress?.(q); } catch (err) { console.error(err); }
   }
   /* A new screen or tab is a step Back can return to. A change of site only updates the address. */
   function syncUrl() {
@@ -1485,7 +1693,15 @@
       if (rest[0] === "consideration" || rest[0] === "todo") state.blSection = rest[0];
       else { state.blSection = "done"; if (["all", "mediators", "found"].includes(rest[0])) state.blTab = rest[0]; }
     }
-    applySite(new URLSearchParams(query).get("site"));
+    const q = new URLSearchParams(query);
+    applySite(q.get("site"));
+    // Dates named in the address win over the ones kept in this browser, and are kept from now on.
+    if (q.get("from") || q.get("range") || q.get("cmp")) {
+      const named = q.get("from") && q.get("to") ? { preset: "custom", from: q.get("from"), to: q.get("to") } : { preset: q.get("range") || state.rng.preset, from: state.rng.from, to: state.rng.to };
+      state.rng = cleanRange({ ...named, compare: q.get("cmp") || "prev" });
+      store.set("range", JSON.stringify(state.rng));
+    }
+    applyScreenAddress(route, q);
     return true;
   }
   /* Which site a screen with no site chosen shows: the last one used here, or the oldest, so a new empty site doesn't take over. */
@@ -1518,6 +1734,8 @@
 
   // ---- toasts and tooltips ------------------------------------------------------
   function toast(message, { kind = "good", undo = null, undoLabel = "", stay = false } = {}) {
+    // Raw server or browser words ("Internal Server Error", "Failed to fetch", "Too Many Requests") become a plain sentence.
+    if (kind === "crit" && typeof message === "string" && window.UI?.errorWords) message = window.UI.errorWords(message);
     const wrap = $("#toasts");
     // The same words twice would only be noise: the new one replaces the old one.
     [...wrap.children].forEach((old) => { if (old.dataset.words === message) old.remove(); });
@@ -1556,6 +1774,15 @@
     }, 300);
   }
   function hideTip() { clearTimeout(tipTimer); if (tipEl) { tipEl.remove(); tipEl = null; } }
+  // A tick box's whole cell takes the click, so the target is the cell (36 px and more), not the 17 px box (WCAG 2.5.8).
+  document.addEventListener("click", (e) => {
+    const cell = e.target.closest?.(".chk-cell, .ov-pick-col");
+    if (!cell || e.target.closest("input, label, button, a")) return;
+    const box = cell.querySelector('input[type="checkbox"]:not(:disabled)');
+    if (box) { e.preventDefault(); e.stopPropagation(); box.click(); }
+  }, true);
+  // Esc closes a tooltip first, and only that (WCAG 1.4.13). A second Esc does what it did before.
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && tipEl) { hideTip(); e.stopImmediatePropagation(); e.preventDefault(); } }, true);
   document.addEventListener("mouseover", (e) => { const el = e.target.closest?.("[data-tip]"); if (el) showTip(el); });
   document.addEventListener("mouseout", (e) => { if (e.target.closest?.("[data-tip]")) hideTip(); });
   document.addEventListener("focusin", (e) => { const el = e.target.closest?.("[data-tip]"); if (el && el.matches(":focus-visible")) showTip(el); });
@@ -1589,8 +1816,10 @@
   function openPanel(html, opener, formInfo = null) {
     if (keepDraft()) draftToast(panelForm.reopen);
     panelOpener = opener || document.activeElement;
-    setHTML($("#panel-root"), `<aside class="panel fresh ${formInfo?.wide ? "wide" : ""}" id="panel" tabindex="-1" aria-label="Detail">${html}</aside>`);
+    // Named after what it holds (its title), not "Detail" whatever it is.
+    setHTML($("#panel-root"), `<aside class="panel fresh ${formInfo?.wide ? "wide" : ""}" id="panel" tabindex="-1" aria-labelledby="panel-title">${html}</aside>`);
     const opened = $("#panel");
+    if (!$("#panel-title")) { const h = opened.querySelector("h2, h3"); opened.removeAttribute("aria-labelledby"); opened.setAttribute("aria-label", h?.textContent.trim() || t("Detail")); }
     setTimeout(() => opened.classList.remove("fresh"), 800);
     panelForm = null;
     if (formInfo) {
@@ -1614,7 +1843,11 @@
     if (!panel) return;
     if (keep && keepDraft()) draftToast(panelForm.reopen);
     panelForm = null;
+    // Leave the field while it is still on the page, so what it does on leaving happens: a note written in the Notes panel
+    // joins its list then. Removed first, its "left the field" never came and the note stayed out of the list until a reload.
+    if (panel.contains(document.activeElement)) document.activeElement.blur();
     panel.classList.add("closing");
+    if (!following) syncUrl(); // an open item named in the address (a keyword) leaves it
     $$("tr.open").forEach((r) => r.classList.remove("open"));
     const opener = panelOpener;
     // A redraw may have replaced what opened the panel. Find its twin, or the keyboard falls back to the top of the page.
@@ -1626,7 +1859,7 @@
       else if (twin) $(twin.name === "id" ? `#${CSS.escape(twin.value)}` : `[${twin.name}="${CSS.escape(twin.value)}"]`)?.focus({ preventScroll: true });
     }, reduceMotion() ? 0 : 120);
   }
-  const panelHead = (title, sub = "", lead = "") => `<div class="panel-head">${lead}<div><h2 dir="auto">${esc(title)}</h2>${sub ? `<div class="sub" ${lead ? 'dir="auto"' : ""}>${sub}</div>` : ""}</div><button class="icon-btn" data-close-panel aria-label="${t("Close")}">${icon("x")}</button></div>`;
+  const panelHead = (title, sub = "", lead = "") => `<div class="panel-head">${lead}<div><h2 dir="auto" id="panel-title">${esc(title)}</h2>${sub ? `<div class="sub" ${lead ? 'dir="auto"' : ""}>${sub}</div>` : ""}</div><button class="icon-btn" data-close-panel aria-label="${t("Close")}">${icon("x")}</button></div>`;
 
   function rankChart(row, engine) {
     const values = row.trend.slice(-window.DATES.length);
@@ -1655,7 +1888,7 @@
     const statusOf = (x) => x.flag === "suspect" ? status("warn", t("Suspect result")) : x.flag === "differs" ? status("warn", `${t("Differs by")} ${Math.abs(x.p - row.tools[0].p)}`) : x.flag === "tool-changed" ? `<span class="small sec">${t("tool changed")}</span>` : x.age === null ? "" : status("good", t("OK"));
     // Every connected tool that covers this engine is listed, so any keyword can be checked with a second tool.
     window.TOOLS.filter((x) => x.connected && x.engines.includes(e) && !row.tools.some((y) => y.tool === x.name)).forEach((x) => row.tools.push({ tool: x.name, p: null, age: null }));
-    const toolRows = row.tools.map((x, i) => `<tr><td class="nowrap">${logo(x.tool, 16)} ${esc(t(x.tool))}</td><td>${x.age === null ? '<span class="muted">—</span>' : posBadge(x)}</td><td class="sec small">${x.age === null ? t("never") : days(x.age)}</td><td>${statusOf(x)}</td><td class="r"><button class="btn btn-small" data-recheck="${i}">${x.age === null ? t("Check") : t("Recheck")}</button>${creditsLeftOf(x.tool) === null ? "" : `<span class="second">${num(creditsLeftOf(x.tool))} ${t("left")}</span>`}</td></tr>`).join("");
+    const toolRows = row.tools.map((x, i) => `<tr><td class="nowrap">${logo(x.tool, 16)} ${esc(t(x.tool))}</td><td>${x.age === null ? '<span class="muted">—</span>' : posBadge(x)}</td><td class="sec small">${x.age === null ? t("never") : days(x.age)}</td><td>${statusOf(x)}</td><td class="r"><button class="btn btn-small" data-recheck="${i}">${x.age === null ? t("Check") : t("Refresh")}</button>${creditsLeftOf(x.tool) === null ? "" : `<span class="second">${num(creditsLeftOf(x.tool))} ${t("left")}</span>`}</td></tr>`).join("");
     const values = row.trend.slice(-window.DATES.length);
     const labels = window.DATES.slice(-values.length);
     const chart = showTable
@@ -1667,7 +1900,7 @@
       <div class="panel-body">
         <div class="kv">
           ${ownName ? `<div><div class="k">${ownName}</div><div class="v">${own === null ? '<span class="muted">—</span>' : dec(own)}${own === null ? "" : ` <span class="small muted" style="font-weight:400">${t("average")}</span>`}</div></div>` : ""}
-          <div><div class="k">${t("Page")}</div><div class="mono small" style="margin-top:6px;overflow-wrap:anywhere">${esc(row.page || "—")}</div></div>
+          <div><div class="k">${t("Page")}</div><div class="mono small" style="margin-top:6px;overflow-wrap:anywhere">${row.page ? PageLink.html(row.page, { host: row.site }) : "—"}</div></div>
         </div>
         ${window.UI.relatedTasks({ host: row.site || "", keyword: row.k, page: row.page || "" })}
         <h3>${t("Results")} · France</h3>
@@ -1708,14 +1941,14 @@
     const ch = window.CHANGES.find((c) => c.id === id);
     const d = ch.diff;
     const lines = d.text.map(([kind, text]) => `<div class="ln ${kind}"><span class="mk" aria-label="${kind === "add" ? "Added" : kind === "del" ? "Removed" : "Unchanged"}">${kind === "add" ? "+" : kind === "del" ? "−" : ""}</span><span ${d.rtl ? 'dir="rtl"' : 'dir="auto"'}>${esc(text)}</span></div>`).join("");
-    openPanel(`${panelHead(ch.who, `<span class="mono">${esc(ch.page)}</span> · ${ch.when}`)}
+    openPanel(`${panelHead(ch.who, `${PageLink.html(ch.page, { host: ch.who, cls: "mono" })} · ${ch.when}`)}
       <div class="panel-body">
         <h3>${t(ch.kind)}</h3>
         ${d.title ? `<div class="diff"><div class="ln del"><span class="mk" aria-label="Removed">−</span><span>${esc(d.before)}</span></div><div class="ln add"><span class="mk" aria-label="Added">+</span><span>${esc(d.after)}</span></div></div>` : ""}
         <h3>${t("Page text")} <span class="end small muted">${t("Words")}: ${d.words[0]} → ${d.words[1]}</span></h3>
         <div class="diff">${lines}</div>
       </div>
-      <div class="panel-foot">${window.UI.taskButton(changeFind(ch), { cls: "btn btn-main" })}<button class="btn" data-toast="Not built yet">${icon("external-link")}${t("Open page")}</button></div>`, opener);
+      <div class="panel-foot">${window.UI.taskButton(changeFind(ch), { cls: "btn btn-main" })}${PageLink.href(ch.page, ch.who) ? `<a class="btn" href="${esc(PageLink.href(ch.page, ch.who))}" target="_blank" rel="noopener noreferrer">${icon("external-link")}${t("Open page")}</a>` : ""}</div>`, opener);
   }
 
   function backlinkPanel(b, opener) {
@@ -1731,7 +1964,7 @@
     // Only what has a value, so a link with one field isn't a page of dashes. Any language keeps its direction.
     const fact = (label, value, { cls = "", style = "" } = {}) => (value ? `<tr><td class="sec">${t(label)}</td><td class="${cls}" dir="auto" style="overflow-wrap:anywhere;${style}">${esc(value)}</td></tr>` : "");
     const utm = b.utm ? fact("Source", b.utm.source, { cls: "mono" }) + fact("Medium", b.utm.medium, { cls: "mono" }) + fact("Campaign", b.utm.campaign, { cls: "mono" }) : "";
-    openPanel(`${panelHead(b.src.replace(/^https?:\/\//, ""), `→ <span class="mono" dir="auto">${esc(b.target || "—")}</span>`, siteLogo(linkDomain(b.src), 34))}
+    openPanel(`${panelHead(b.src.replace(/^https?:\/\//, ""), `→ ${b.target ? PageLink.html(b.target, { host: b.site, cls: "mono" }) : "—"}`, siteLogo(linkDomain(b.src), 34))}
       <div class="panel-body">
         <h3>${t("Traffic from this link")}</h3>${traffic}
         ${utm ? `<h3>UTM</h3><table class="mini"><tbody>${utm}</tbody></table>` : ""}
@@ -2479,7 +2712,21 @@
     ];
     const sites = window.SITES.map((s) => ({ label: s.host, kind: t("Site"), icon: "globe", run: () => { state.site = s.id; render(); } }));
     const kws = window.KEYWORDS.map((k) => ({ label: k.k, kind: t("Keyword"), icon: "key-round", run: () => { const open = () => openKeyword(k.k); if (state.route === "keywords") open(); else { go("keywords"); setTimeout(open, 200); } } }));
-    return [...pages, ...actions, ...sites, ...kws, ...(window.KW_REAL?.commands?.() || [])];
+    const rivals = cmdRivals.list.map((c) => ({ label: c.display || c.host, kind: `${t("Competitor")} · ${c.site}`, icon: "crosshair", run: () => { location.hash = `#competitors/list/${c.id}?site=${encodeURIComponent(c.site)}`; } }));
+    return [...pages, ...actions, ...sites, ...kws, ...(window.KW_REAL?.commands?.() || []), ...rivals];
+  }
+  /* Competitors in ⌘K: each own site's list, asked only when the bar opens (never at load), kept a minute. A name opens
+     that competitor's profile at its own address (#competitors/list/<id>). */
+  const cmdRivals = { list: [], at: 0, loading: false };
+  async function loadCmdRivals() {
+    if (cmdRivals.loading || Date.now() - cmdRivals.at < 60000 || !(await COMP.isServer?.())) return;
+    cmdRivals.loading = true;
+    try {
+      const own = window.SITES.filter((x) => x.realId);
+      const lists = await Promise.all(own.map((site) => COMP.api("GET", `competitors?site_id=${site.realId}`).then((a) => (a.competitors || []).map((c) => ({ id: c.id, host: c.host, display: c.display, site: site.host }))).catch(() => [])));
+      cmdRivals.list = lists.flat(); cmdRivals.at = Date.now();
+    } finally { cmdRivals.loading = false; }
+    if ($("#cmdk").open) renderCmdList($("#cmd-input")?.value || "");
   }
   let cmdList = [], cmdIndex = 0;
   function renderCmdList(query = "") {
@@ -2495,6 +2742,7 @@
     setHTML(d, `<input id="cmd-input" placeholder="${t("Search or jump to…")}" aria-label="${t("Search or jump to…")}" autocomplete="off"><ul id="cmd-list"></ul>`);
     cmdIndex = 0;
     d.showModal();
+    loadCmdRivals();
     renderCmdList();
     $("#cmd-input").focus();
   }
@@ -2602,12 +2850,12 @@
     dp = { from, to, phase: "start", hover: null, right: monthOf(to), focus: to };
     const el = popover(anchor, `<div class="dp" role="dialog" aria-label="${t("Choose dates")}">
       <div class="dp-presets" role="group" aria-label="${t("Period")}">
-        ${PRESETS.map(([name]) => { const on = !state.range && state.period === name; return `<button type="button" data-preset="${esc(name)}" aria-pressed="${on}" ${on ? "data-autofocus" : ""}>${t(name)}</button>`; }).join("")}
+        ${RANGE_PRESETS.filter(([id]) => id !== "24h" || HOURLY_SCREENS.has(state.route)).map(([id, name]) => { const on = state.rng.preset === id; return `<button type="button" data-preset="${esc(id)}" aria-pressed="${on}" ${on ? "data-autofocus" : ""}>${t(name)}</button>`; }).join("")}
       </div>
       <div class="dp-main">
         <div class="dp-title">${t("Custom date")}</div>
         <div class="dp-fields">
-          <label>${t("From")}<input class="input" type="date" id="dp-from" min="${FIRST_DAY}" max="${TODAY}" value="${from}" ${state.range ? "data-autofocus" : ""}></label>
+          <label>${t("From")}<input class="input" type="date" id="dp-from" min="${FIRST_DAY}" max="${TODAY}" value="${from}" ${state.rng.preset === "custom" ? "data-autofocus" : ""}></label>
           <label>${t("To")}<input class="input" type="date" id="dp-to" min="${FIRST_DAY}" max="${TODAY}" value="${to}"></label>
         </div>
         <div id="dp-cal"></div>
@@ -2631,7 +2879,10 @@
 
   const connStatus = (c) => {
     const ago = (when) => (state.lang === "fr" ? `il y a ${when}` : `${when} ago`);
-    return { ok: status("good", t("Connected")), failing: status("crit", c.since ? `${t("Failing")}, ${ago(c.since)}` : t("Failing")), off: `<span class="status sec">${t("Not connected")}</span>`, nokey: status("good", t("No key needed")) }[c.status];
+    // "Failing" says why on hover and focus: the plain reason, from the tool's own message (fix-hints.js).
+    const why = c.status === "failing" && c.error ? (window.FIX?.explain?.(c.error, { tool: c.name })?.summary || c.error) : "";
+    const failing = status("crit", c.since ? `${t("Failing")}, ${ago(c.since)}` : t("Failing"));
+    return { ok: status("good", t("Connected")), failing: why ? `<span class="nowrap" tabindex="0" data-tip="${esc(t(why))}" aria-label="${esc(`${t("Failing")}: ${t(why)}`)}">${failing}</span>` : failing, off: `<span class="status sec">${t("Not connected")}</span>`, nokey: status("good", t("No key needed")) }[c.status];
   };
 
   // What each limit does when it runs out. Asked for: what refills, and what is one-time.
@@ -2939,7 +3190,6 @@
       lc.api.stop(lc.activeId).catch(() => {});
       return;
     }
-    if (hit("#lc-export")) { lc.api.exportScan(lc.open.scan.id); return; }
     if ((el = hit("[data-lc-jump]"))) { e.preventDefault(); $(`.lc-group[data-group="${el.dataset.lcJump}"]`)?.scrollIntoView({ block: "start", behavior: reduceMotion() ? "auto" : "smooth" }); return; }
     if ((el = hit("[data-lc-open]"))) {
       const id = el.dataset.lcOpen;
@@ -2968,11 +3218,11 @@
     if ((el = hit("#period"))) { if (popAnchor === el) closePopover({ focus: true }); else openDatePicker(el); return; }
     if ((el = hit("#compare"))) {
       if (popAnchor === el) { closePopover({ focus: true }); return; }
-      popover(el, compares.map((c) => `<button type="button" data-compare="${esc(c)}" aria-pressed="${state.compare === c}" ${state.compare === c ? "data-autofocus" : ""}>${t(c)}${state.compare === c ? `<span class="tick">${icon("check")}</span>` : ""}</button>`).join(""));
+      popover(el, RANGE_COMPARES.map(([id, name]) => { const on = state.rng.compare === id; return `<button type="button" data-compare="${esc(id)}" aria-pressed="${on}" ${on ? "data-autofocus" : ""}>${t(name)}${on ? `<span class="tick">${icon("check")}</span>` : ""}</button>`; }).join(""));
       return;
     }
-    if ((el = hit("[data-compare]"))) { state.compare = el.dataset.compare; applyPeriod("compare"); return; }
-    if ((el = hit("[data-preset]"))) { state.range = null; state.period = el.dataset.preset; applyPeriod(); return; }
+    if ((el = hit("[data-compare]"))) { closePopover(); rangeSet({ compare: el.dataset.compare }); $("#compare")?.focus(); return; }
+    if ((el = hit("[data-preset]"))) { closePopover(); rangeSet({ preset: el.dataset.preset }); $("#period")?.focus(); return; }
     if ((el = hit("[data-dp-move]"))) {
       dp.right = addMonths(dp.right, Number(el.dataset.dpMove));
       const move = el.dataset.dpMove;
@@ -2992,7 +3242,7 @@
       $$(".dp-day").forEach((b) => { b.tabIndex = b.dataset.day === day ? 0 : -1; });
       return;
     }
-    if (hit("#dp-apply")) { state.range = { from: dp.from, to: dp.to }; state.period = "custom"; applyPeriod(); return; }
+    if (hit("#dp-apply")) { const { from, to } = dp; closePopover(); rangeSet({ preset: "custom", from, to }); $("#period")?.focus(); return; }
     if (hit("[data-dp-cancel]")) { closePopover({ focus: true }); return; }
 
 
@@ -3157,14 +3407,14 @@
     if ((el = hit("[data-cmd]"))) { runCmd(Number(el.dataset.cmd)); return; }
     if (hit("#site-switch")) {
       if ($("#popover")) { closePopover(); return; }
-      popover(hit("#site-switch"), `<button data-pick-site="all">${icon("globe")}${t("All sites")}</button><hr>${window.SITES.map((s) => `<button data-pick-site="${s.id}">${siteMark(s.host)}<span class="mono small">${esc(s.host)}</span></button>`).join("")}<hr><button data-add-site>${icon("plus")}${t("Add a website")}</button>`);
+      popover(hit("#site-switch"), `<button data-pick-site="all">${icon("globe")}${t("All sites")}</button><hr>${window.SITES.map((s) => `<button data-pick-site="${s.id}">${siteMark(s.host)}<span class="mono small">${esc(s.host)}</span></button>`).join("")}<hr><button data-add-site>${icon("plus")}${t("Add a site")}</button>`);
       return;
     }
     if ((el = hit("[data-pick-site]"))) { state.site = el.dataset.pickSite; closePopover(); render(); return; }
     if ((el = hit("[data-site]"))) { state.site = el.dataset.site; render(); return; }
     if (hit("#columns")) {
       if ($("#popover")) { closePopover(); return; }
-      popover(hit("#columns"), Object.entries({ vol: "Volume", trend: "Trend", page: "Page", ai: "AI" }).map(([k, label]) => `<label class="opt" style="display:flex;padding:6px 8px;margin:0"><input type="checkbox" class="chk" style="margin:0" data-col="${k}" ${state.cols[k] ? "checked" : ""}>${t(label)}</label>`).join(""));
+      popover(hit("#columns"), Object.entries({ vol: "Impressions (28 days)", trend: "Trend", page: "Page", ai: "AI" }).map(([k, label]) => `<label class="opt" style="display:flex;padding:6px 8px;margin:0"><input type="checkbox" class="chk" style="margin:0" data-col="${k}" ${state.cols[k] ? "checked" : ""}>${t(label)}</label>`).join(""));
       return;
     }
     if ((el = hit("[data-toast]"))) { toast(t(el.dataset.toast), { kind: "info" }); closePopover(); return; }
@@ -3309,7 +3559,7 @@
     if ((el = hit("[data-bl-tab]"))) { state.blTab = el.dataset.blTab; render(); $(`[data-bl-tab="${state.blTab}"]`)?.focus(); return; }
     if ((el = hit("[data-bl-filter]"))) { state.blFilter = el.dataset.blFilter; render(); $(`[data-bl-filter="${state.blFilter}"]`)?.focus(); return; }
     if (hit("#add-backlink")) { addBacklinkPanel({}, hit("#add-backlink")); return; }
-    if ((el = hit("[data-log-found]"))) { const f = window.FOUND_LINKS[Number(el.dataset.logFound)]; addBacklinkPanel({ src: f.src, target: f.target }, el); return; }
+    if ((el = hit("[data-log-found]"))) { const f = window.FOUND_LINKS[Number(el.dataset.logFound)]; addBacklinkPanel({ src: f.src, target: f.target, site: f.site }, el); return; }
     if ((el = hit("[data-open-bl]"))) { backlinkPanel(window.BACKLINKS.find((b) => b.id === el.dataset.openBl), el); return; }
     if (hit("#check-now")) {
       const btn = hit("#check-now");
@@ -3606,6 +3856,81 @@
     }, { passive: true });
   }
 
+  // ---- a Member sees admin settings, but can't press what only fails on Save --------------------------------------
+  /* The server refuses these to a Member (require_admin). So in Settings and in a connection's panel, they are greyed with
+     the reason as their tip, and one line at the top says why. Copying, folding and closing still work. */
+  const ADMIN_CONTROLS = "#conn-save, #conn-test, #conn-disconnect, [data-lv-google-test], [data-lv-google-del], [data-tool-move], [data-kwr-order], #kwr-paid-on, [data-ai-site], [data-ai-cap], [data-ai-save-cap], [data-prop], [data-prop-other], [data-lv-site-conn], [data-site-none], [data-conn-site], input[name=\"conn-scope\"], input[name=\"google-type\"], [data-key-input], #conn-json, #conn-client, #conn-secret, #conn-refresh, #conn-zone, #conn-url, #conn-country, #ca-file, #cr-file, #cr-site";
+  function memberLock(scope) {
+    if (!scope || window.UI?.canAdmin?.() !== false) return;
+    const why = t("Only an admin can change connections.");
+    let locked = 0;
+    [...scope.querySelectorAll(ADMIN_CONTROLS)].forEach((el) => {
+      if (el.disabled && el.dataset.memberLocked) return;
+      el.disabled = true; el.dataset.memberLocked = "1"; el.setAttribute("aria-disabled", "true"); el.title = why;
+      if (el.matches("button")) el.dataset.tip = why;
+      locked += 1;
+    });
+    if (locked && !scope.querySelector(".member-note")) {
+      const where = scope.querySelector(".panel-body") || scope.querySelector(".content");
+      where?.prepend(fragment(`<p class="note member-note" role="note">${icon("lock")}<span>${esc(why)} ${t("You can see everything here; ask an admin to make a change.")}</span></p>`));
+    }
+  }
+  if (window.BOOT?.user && window.BOOT.user.role !== "admin") {
+    let lockLater = 0;
+    new MutationObserver(() => { cancelAnimationFrame(lockLater); lockLater = requestAnimationFrame(() => { if ($("#panel")) memberLock($("#panel")); if (state.route === "settings") memberLock($("#page")); }); })
+      .observe(document.body, { childList: true, subtree: true });
+  }
+
+  // ---- a session that ends while someone works: sign in again here, and nothing typed is lost --------------------
+  /* auth.js asks this before sending the page to the sign-in screen. Answering true keeps the page: an open form, a half-typed
+     task and the screen all stay, a small sign-in box opens on top, and after it the person presses Save again. */
+  let reSigning = false;
+  window.AUTH_HOOKS = window.AUTH_HOOKS || {};
+  window.AUTH_HOOKS.signedOut = () => {
+    try { sessionStorage.setItem("seocc-return", location.hash); } catch { /* private mode: the sign-in page starts on Today */ }
+    if (!window.BOOT?.user) return false; // no login on this server: nothing to sign in to
+    if (!reSigning) signInAgain();
+    return true;
+  };
+  function signInAgain() {
+    reSigning = true;
+    const box = document.createElement("dialog");
+    box.id = "resign"; box.className = "resign";
+    box.setAttribute("aria-labelledby", "resign-title");
+    setHTML(box, `<form id="resign-form" class="resign-form" novalidate>
+      <h2 id="resign-title">${t("Your session ended")}</h2>
+      <p class="small sec">${t("Sign in again to carry on. What you were doing is still on the page.")}</p>
+      <div class="error" id="resign-err" role="alert" hidden></div>
+      <label class="field"><span>${t("Username or email")}</span><input class="input" id="resign-email" autocomplete="username" autocapitalize="none" spellcheck="false" value="${esc(window.BOOT?.user?.email || "")}"></label>
+      <label class="field"><span>${t("Password")}</span><input class="input" id="resign-password" type="password" autocomplete="current-password"></label>
+      <div class="resign-acts"><button type="button" class="btn" id="resign-leave">${t("Go to the sign-in page")}</button><button type="submit" class="btn btn-main" id="resign-go">${t("Sign in")}</button></div>
+    </form>`);
+    document.body.append(box);
+    box.showModal();
+    (box.querySelector("#resign-email").value ? box.querySelector("#resign-password") : box.querySelector("#resign-email")).focus();
+    const fail = (words) => { const err = box.querySelector("#resign-err"); err.textContent = words; err.hidden = !words; };
+    const done = () => { reSigning = false; box.close(); box.remove(); };
+    box.addEventListener("cancel", (e) => e.preventDefault()); // Esc mustn't leave a page that can't save
+    box.addEventListener("keydown", (e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); } }); // nor close the form under it
+    box.querySelector("#resign-leave").addEventListener("click", () => location.replace("login"));
+    box.querySelector("#resign-form").addEventListener("submit", async (e) => {
+      e.preventDefault(); fail("");
+      const email = box.querySelector("#resign-email").value.trim(), password = box.querySelector("#resign-password").value;
+      if (!email || !password) { fail(t("Enter your username and password.")); return; }
+      const go = box.querySelector("#resign-go");
+      go.disabled = true;
+      try {
+        const reply = await fetch("api/auth/login", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email, password }) });
+        const data = await reply.json().catch(() => ({}));
+        if (!reply.ok) { fail(t(data.error || "That didn't work. Try again.")); box.querySelector("#resign-password").value = ""; box.querySelector("#resign-password").focus(); return; }
+        if (data.user?.must_change_password) { location.replace("login?change=1"); return; }
+        await window.whoAmI?.again?.(); // the new session's token, so the next Save is accepted
+        done();
+        toast(t("Signed in again. Press Save to send what you were doing."), { kind: "info", stay: true });
+      } catch { fail(t("Can't reach the app. Check it's running, then try again.")); } finally { go.disabled = false; }
+    });
+  }
+
   // ---- what screens in their own files can use ------------------------------------------
   window.UI = {
     $, $$, state, store, t, num, dec, esc, icon, status, logo, siteLogo, setHTML, fragment, locale, reduceMotion,
@@ -3613,11 +3938,14 @@
     countryName, countryOptions, COUNTRY_CODES, fmtStamp, fmtDateOnly, ENGINES, WHOLE_SITE_WORDS, BUDGET_PAUSE_WORDS, readingWords,
     siteHostPicked: () => (state.site === "all" ? null : window.SITES.find((x) => x.id === state.site)?.host || null),
     ignoreClicks: (ms = 400) => { ignoreClicksUntil = performance.now() + ms; },
-    openConnection, pickSite, showingNote, preferredSite, syncUrl, periodWindow, settingsPage, setupCard,
+    openConnection, pickSite, showingNote, preferredSite, syncUrl, periodWindow, settingsPage, setupCard, range: UIRange, fmtRange, fmtDay,
+    /* export.js: the rows on screen, in their order, and the links scan that is open. */
+    exportSeen: () => ({ done: window.BacklinkSeo.filterRows(siteLinks().filter((b) => b.status !== "planned" && (!state.blMediator || b.mediator === state.blMediator)), state.blFilter).map((b) => b.id), consideration: prospectsForSite().filter(prospectMatches).map((p) => p.id), scan: lc.open?.scan?.id ?? null }),
     siteIdPicked: () => (state.site === "all" ? null : window.SITES.find((x) => x.id === state.site)?.realId || null), toBacklink,
     siteComing: () => Boolean(wantedSite), // an address named a site that hasn't joined the list yet
     replaceNextUrl: () => { replaceNext = true; }, // the next address replaces this one, so Back doesn't land on a step nobody chose
   };
+  window.SHARED_UI?.install(window.UI); // skeleton, failCard, errorWords, definitions: before any screen draws
   Object.values(window.SCREENS || {}).forEach((screen) => screen.init?.(window.UI));
   window.HealthTest?.init?.(window.UI);
   window.UptimeWatch.init(window.UI);
@@ -3634,7 +3962,7 @@
   applyUrl();
   const followUrl = () => {
     if (location.hash === urlNow()) return;
-    closePanel();
+    following = true; closePanel(); following = false; // closing must not write the old view back over the address just opened
     if (applyUrl()) { render({ enter: true, keepScroll: false }); $("#main").scrollTop = 0; }
   };
   addEventListener("popstate", followUrl);
@@ -3643,7 +3971,7 @@
   render({ enter: true });
   urlReady = true;
   history.replaceState(null, "", location.pathname + location.search + urlNow());
-  loadRealBacklinks();
+  loadRealSites();
   window.addEventListener("seocc:site-added", (e) => {
     if (bl.server && e.detail?.kind === "own") COMP.api("GET", "links/sites").then((answer) => noteRealSites(answer.sites)).catch(() => {});
   });

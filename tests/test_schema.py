@@ -5,25 +5,68 @@ from alembic.migration import MigrationContext
 from sqlalchemy import inspect, text
 
 from seo.core.models import Base
-from seo.core.schema import SchemaMismatch, assert_schema_current
+from alembic.script import ScriptDirectory
+
+from seo.core.schema import SchemaMismatch, _alembic_config, assert_schema_current, mark_breaking
 
 
 def test_current_schema_passes(engine):
     assert_schema_current(engine)
 
 
-def test_old_schema_is_refused(engine):
+@pytest.fixture
+def stored(engine):
+    """Sets the revision the database says it's at, and the breaking mark, then puts both back."""
     with engine.connect() as conn:
         head = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
-    with engine.begin() as conn:
-        conn.execute(text("UPDATE alembic_version SET version_num='0000old'"))
-    try:
-        with pytest.raises(SchemaMismatch) as err:
-            assert_schema_current(engine)
-        assert "alembic upgrade head" in str(err.value)
-    finally:
+
+    def put(revision, breaking=None):
         with engine.begin() as conn:
-            conn.execute(text("UPDATE alembic_version SET version_num=:h"), {"h": head})
+            conn.execute(text("UPDATE alembic_version SET version_num=:r"), {"r": revision})
+            if breaking:
+                mark_breaking(conn, breaking)
+
+    yield put
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE alembic_version SET version_num=:h"), {"h": head})
+        conn.execute(text("ALTER TABLE alembic_version COMMENT = ''"))
+
+
+def _older_revision():
+    return ScriptDirectory.from_config(_alembic_config()).get_revision("head").down_revision
+
+
+def test_old_schema_is_refused(engine, stored):
+    stored(_older_revision())
+    with pytest.raises(SchemaMismatch) as err:
+        assert_schema_current(engine)
+    assert "alembic upgrade head" in str(err.value)
+
+
+def test_a_database_newer_than_the_code_runs_with_a_warning(engine, stored, caplog):
+    """What going back to an older release leaves: the database has a migration this code has no file for."""
+    stored("f00dnewer0001")
+    assert_schema_current(engine)
+    assert "newer than this code" in caplog.text and "f00dnewer0001" in caplog.text
+
+
+def test_a_breaking_migration_this_code_does_not_know_is_refused(engine, stored):
+    stored("f00dnewer0002", breaking="f00dnewer0001")
+    with pytest.raises(SchemaMismatch) as err:
+        assert_schema_current(engine)
+    assert "f00dnewer0001" in str(err.value) and "restore" in str(err.value)
+
+
+def test_a_breaking_migration_this_code_already_has_is_fine(engine, stored, caplog):
+    """Code from after the breaking change can still go back over newer, ordinary migrations."""
+    stored("f00dnewer0003", breaking=_older_revision())
+    assert_schema_current(engine)
+    assert "newer than this code" in caplog.text
+
+
+def test_the_breaking_mark_takes_only_a_revision_id(engine):
+    with engine.begin() as conn, pytest.raises(ValueError):
+        mark_breaking(conn, "x'; DROP TABLE sites; --")
 
 
 def test_models_describe_every_table_the_migrations_made(engine):

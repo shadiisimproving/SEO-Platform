@@ -186,6 +186,10 @@ def queue_history(engine: Engine, host: str, site_id: int) -> None:
         mine = conn.execute(text("SELECT host FROM sites WHERE id = :s"), {"s": site_id}).scalar()
     if mine:
         history.queue_for(engine, mine)
+    from seo.competitors import crawl
+    crawl.queue_own_if_never_read(engine, site_id)  # my pages, for the "You" side of the profile
+    from seo.extras import auto  # Moz and Cloudflare for both, within the free rows
+    auto.queue_for(engine, [host, mine] if mine else [host])
 
 
 def add_competitor(engine: Engine, site_id: int, address: str, source: str = "manual", is_allowed=None, refresh_pairs: bool = True) -> dict:

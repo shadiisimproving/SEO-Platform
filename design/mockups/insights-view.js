@@ -110,7 +110,7 @@
       case "dropped_out": return `${fill("No impressions for {n} days; {c} clicks in the 4 weeks before", { n: num(e.days), c: num(e.clicks_before) })}${e.causes?.length ? ` · ${e.causes.map(cause).join(", ")}` : ""}`;
       case "odd_day": return e.low ? `${fill("Usually about {u} on a {d}", { u: num(Math.round(e.usual)), d: new Intl.DateTimeFormat(UI.locale(), { weekday: "long" }).format(new Date(`${e.day}T00:00:00`)) })}${e.in_a_row ? ` · ${t("two days in a row")}` : ""}` : t("A spike: far more than usual");
       case "decay": return fill("{p}% under its best 4 weeks: {a} → {b} clicks a week", { p: num(e.below_peak), a: dec1(e.peak), b: dec1(e.last) });
-      case "almost": case "top3": return fill("Position {p} · {i} impressions · {c} clicks", { p: dec1(e.position), i: num(e.impressions), c: num(e.clicks) });
+      case "almost": case "top3": return `${fill("Position {p} · {i} impressions · {c} clicks", { p: dec1(e.position), i: num(e.impressions), c: num(e.clicks) })}${marketWords(e) ? ` · ${marketWords(e)}` : ""}`;
       case "low_ctr": return fill("Clicked {r}% at position {p}; usual here is {u}%", { r: UI.dec(e.click_rate ?? 0), p: dec1(e.position), u: UI.dec(e.expected_rate ?? 0) });
       case "no_click": return fill("{i} impressions at position {p}, 0 clicks", { i: num(e.impressions), p: dec1(e.position) });
       case "compete": return (e.pages || []).slice(0, 2).map((p) => `${pathOf(p.page)} ${p.share}% (${t("pos.")} ${dec1(p.position)})`).join(" · ");
@@ -188,17 +188,92 @@
       <button class="link-btn" data-in-open="${change.id}">${t(up ? "See what gained" : "See what lost")}</button></div>`;
   }
 
+  // ---- what to do: one fixed line per kind -----------------------------------------------------------
+  const DO = {
+    page_down: "Check the page still works and hasn't changed, then see which of its searches lost places.",
+    dropped_out: "Check the page loads and isn't set to noindex, then ask Google to index it again in Search Console.",
+    decay: "Bring the page up to date: new facts, this year's numbers, a fuller answer to its main search.",
+    odd_day: "Check the site was up that day and nothing was changed on it. A one-off day needs nothing.",
+    almost: "Make this page the best answer to the search: put it in the title and H1, and cover what the pages above it cover.",
+    top3: "Rewrite the title and description so more people click, and cover what the top 3 pages cover.",
+    low_ctr: "Rewrite the title and description so they answer this search plainly.",
+    no_click: "Rewrite the title and description so they match what people searching this want.",
+    compete: "Pick one page for this search, make it the best, and link the other one to it, or merge them.",
+    query_down: "Compare your page with the ones that passed it, and add what they cover.",
+    segment: "Open that country or device in Overview to see which pages fell.",
+    unstable: "Make one page clearly the answer: the search in its title and H1, and links to it from related pages.",
+    brand_split: "Look at non-brand searches in Overview: something lost places behind the brand traffic.",
+    slide: "Refresh the page and link to it from your other pages.",
+    page_near: "Improve this one page: it lifts all these searches at once.",
+    no_page: "Write a page for this search, or give it a clear section on the page that ranks.",
+    questions: "Answer these questions on the page, in a short FAQ or in its headings.",
+    topic: "Write one strong page on this topic and link to it from the others.",
+    track: "Add it to Keywords to follow its rank.",
+    lead_page: "Fix this page first, it brings leads: see what changed on it and which searches it lost.",
+    no_leads: "Make the next step clear on this page: a form, a phone number, one plain call to action.",
+    duplicate: "Point the other addresses to one with a redirect or a canonical tag.",
+    shown_broken: "Fix the page: Google keeps showing it, so visitors land on an error.",
+    data_gaps: "Read those days again from Overview, with Matches Search Console.",
+  };
+  /* What the page itself says, when the reader has read it: only ever said when it's true. */
+  function onPageLine(f) {
+    const o = f.evidence?.on_page;
+    if (!o) return "";
+    if (!o.title && !o.h1) return t("The search isn't in the page's title or H1: put it there first.");
+    if (!o.title) return t("The search isn't in the page's title.");
+    if (!o.h1) return t("The search isn't in the page's H1.");
+    return t("The search is already in the page's title and H1.");
+  }
+  const doLine = (f) => (DO[f.kind] ? t(DO[f.kind]) : "");
+  function doBlock(f) {
+    const line = doLine(f), page = onPageLine(f);
+    if (!line && !page) return "";
+    return `<div class="in-do"><h3 class="ov-h3">${t("What to do")}</h3>${page ? `<p class="small in-do-page">${icon("file-text")}${esc(page)}</p>` : ""}${line ? `<p class="small">${esc(line)}</p>` : ""}</div>`;
+  }
+  // A position in the site's target countries comes with the world's beside it.
+  const countryName = (code3) => { const two = COUNTRIES[code3] || (code3 || "").slice(0, 2).toUpperCase(); try { return new Intl.DisplayNames([UI.locale()], { type: "region" }).of(two) || two; } catch { return two; } };
+  const marketWords = (e) => (e.countries?.length && e.world_position !== undefined ? fill("in {c}; worldwide {p}", { c: e.countries.map(countryName).join(", "), p: dec1(e.world_position) }) : "");
+
+  // ---- target countries: whose searches the quick wins read --------------------------------------
+  const C = { site: null, data: null, busy: false };
+  function countriesLine() {
+    const site = UI.siteIdPicked();
+    if (!site || !window.COMP?.server) return "";
+    if (C.site !== site && !C.busy) {
+      C.busy = true; C.site = site;
+      window.COMP.api("GET", `search/countries?site_id=${site}`).then((d) => { C.data = d; }).catch(() => { C.data = null; }).finally(() => { C.busy = false; redraw(); });
+    }
+    const d = C.site === site ? C.data : null;
+    if (!d) return "";
+    const names = d.countries.length ? d.countries.map((c) => countryName(c.key)).join(", ") : t("not set yet");
+    return `<span class="ov-dot" aria-hidden="true">·</span><span>${t(d.chosen ? "Countries" : "Countries, picked by clicks")}: ${esc(names)} <button class="link-btn" data-in-countries>${t("Change")}</button></span>`;
+  }
+  function countriesPanel(opener) {
+    const d = C.data;
+    if (!d) return;
+    const picked = new Set(d.countries.map((c) => c.key));
+    const options = [...new Map([...d.countries.map((c) => [c.key, { key: c.key, clicks: null }]), ...d.top.map((c) => [c.key, c])]).values()];
+    const rows = options.map((c) => `<label class="check-row"><input type="checkbox" name="f_country" value="${esc(c.key)}" ${picked.has(c.key) ? "checked" : ""}> <span>${esc(countryName(c.key))}</span>${c.clicks !== null && c.clicks !== undefined ? `<span class="muted small">${num(c.clicks)} ${t("clicks")}</span>` : ""}</label>`).join("");
+    UI.openPanel(`${UI.panelHead(t("Target countries"), t("Quick wins and Keywords read Search Console in these countries"))}<div class="panel-body">
+      <form id="in-countries-form"><p class="small muted">${fill("Up to {n}. None ticked: the top country by clicks, and the second when it brings a quarter as many.", { n: num(d.most) })}</p>
+        <div class="in-countries">${rows || `<p class="muted">${t("No country data yet.")}</p>`}</div>
+        <p class="error" data-in-countries-error hidden></p>
+        <div class="panel-actions"><button class="btn btn-main" type="submit">${t("Save")}</button></div></form></div>`, opener);
+  }
+
   // ---- the page -----------------------------------------------------------------------------------
   function page() {
     const entry = load();
     const run = `<button class="btn" data-in-run>${icon("refresh-cw")}${t("Run again")}</button>`;
-    const head = UI.topbar(t("Insights"), t("What the code found in your Search Console data, worked out after each new day"), entry.data ? run : "", false);
+    const head = UI.topbar(t("Insights"), t("What the code found in your Search Console data, worked out after each new day"), entry.data?.summary?.ran_at ? run : "", false);
     const wrap = (body) => `${head}<div class="content page-enter in">${body}</div>`;
-    if (entry.loading) return wrap(`<section class="card" aria-busy="true"><div class="empty"><p>${t("Loading…")}</p></div></section>`);
+    if (entry.loading) return wrap(UI.skeleton ? UI.skeleton("page", { tiles: 3, chart: false }) : `<section class="card" aria-busy="true"><div class="empty"><p>${t("Loading…")}</p></div></section>`);
     if (entry.noServer) return wrap(`<section class="card"><div class="empty"><h3>${t("Needs the running app")}</h3><p>${t("Opened as a plain file there's no real data to show here.")}</p></div></section>`);
-    if (entry.error) return wrap(`<section class="card"><div class="empty"><h3>${t("That didn't load")}</h3><p>${esc(t(entry.error))}</p><div class="ov-empty-act"><button class="btn" data-in-retry>${t("Try again")}</button></div></div></section>`);
+    if (entry.error) return wrap(UI.failCard ? UI.failCard(entry.error, { retry: "data-in-retry" }) : `<section class="card"><div class="empty"><h3>${t("That didn't load")}</h3><p>${esc(t(entry.error))}</p><div class="ov-empty-act"><button class="btn" data-in-retry>${t("Try again")}</button></div></div></section>`);
     const d = entry.data, s = d.summary;
-    if (!s.ran_at) return wrap(`<section class="card"><div class="empty"><h3>${t("Nothing worked out yet")}</h3><p>${t("Insights run by themselves after each new day of Search Console data. Run them now to see the first ones.")}</p><div class="ov-empty-act">${run}</div></div></section>`);
+    // No site yet: the server has nothing to sum up (F199).
+    if (!s) return wrap(`<section class="card"><div class="empty"><h3>${t("No site yet")}</h3><p>${t("Add a site and connect Search Console: insights are worked out from its data.")}</p><div class="ov-empty-act"><button class="btn btn-main" data-lv-add-site>${t("Add a site")}</button></div></div></section>`);
+    if (!s.ran_at) return wrap(`<section class="card"><div class="empty"><h3>${t("Nothing worked out yet")}</h3><p>${t("Insights run by themselves after each new day of Search Console data. Run them now to see the first ones.")}</p><div class="ov-empty-act"><button class="btn btn-main" data-in-run>${icon("refresh-cw")}${t("Run")}</button></div></div></section>`);
     const changes = s.changes || [];
     aiSettings();
     const top = changes.length ? `<div class="in-answer">${changes.slice(0, 3).map((c) => `<p class="ov-answer" dir="auto">${esc(answer(c, changes.length > 1))}</p>`).join("")}${changes.length === 1 && !changes[0].evidence.steady ? partsRow(changes[0]) : ""}${changes.length === 1 ? weeklyBlock(changes[0]) : ""}</div>` : "";
@@ -207,7 +282,7 @@
       <div class="in-fig"><div class="lab">${t("Clicks a month at stake")}</div><div class="fig">${num(s.at_stake)}</div></div>
       <div class="in-fig"><div class="lab">${t("Fixed or gone in 30 days")}</div><div class="fig">${num(s.fixed)}</div></div>
     </div>`;
-    const trust = `<p class="ov-trust small" role="status"><span>${icon("clock")}${t("Worked out")} ${esc(since(s.ran_at))}</span><span class="ov-dot" aria-hidden="true">·</span><span>${t("Final days only, last 28 days against the 28 before")}</span></p>`;
+    const trust = `<p class="ov-trust small" role="status"><span>${icon("clock")}${t("Worked out")} ${esc(since(s.ran_at))}</span><span class="ov-dot" aria-hidden="true">·</span><span>${t("Final days only, last 28 days against the 28 before")}</span>${countriesLine()}</p>`;
     return wrap(`${trust}${top}${figs}${tabsCard(d)}`);
   }
 
@@ -270,6 +345,7 @@
     const info = f.ai;
     const lang = UI.state.lang === "fr" ? "fr" : "en";
     const kept = info.kept?.[lang] || {};
+    if (info.provider === "none") return `<h3 class="ov-h3">${t("With AI")}</h3><p class="small muted">${t("No AI is chosen for this site yet. Pick one in Settings → AI. Nothing about the site is sent until you do.")} <a href="#settings">${t("Open Settings")}</a></p>`;
     const ready = aiReady(info.provider);
     const head = `<h3 class="ov-h3">${t("With AI")} <span class="muted small">${t(info.provider === "claude" ? "Claude, from your Anthropic key" : "OpenRouter's free models")}</span></h3>`;
     if (!ready && !Object.keys(kept).length) return `${head}<p class="small muted">${t(info.provider === "claude" ? "Paste an Anthropic key in Settings to use Claude here." : "Connect OpenRouter in Settings, or pick Claude for this site, to use AI here.")} <a href="#settings">${t("Open Settings")}</a></p>`;
@@ -389,7 +465,8 @@
       lead_page: "The clicks at stake of the page's drop. Leads: those clicks × the page's own lead rate.",
       shown_broken: "The clicks it had in the last 28 days, as a month.",
     }[f.kind];
-    return words ? `<p class="small muted in-how">${icon("info")}${esc(fill(words, { p: e.target ?? "" }))}</p>` : "";
+    const aio = e.ai_overview ? `<p class="small muted in-how">${icon("sparkles")}${esc(fill("Counted at {p}%: Google shows an AI Overview on this search ({d}), which takes some of the clicks.", { p: num(Math.round((e.ai_overview.share || 0) * 100)), d: dayLabel(e.ai_overview.checked) }))}</p>` : "";
+    return `${words ? `<p class="small muted in-how">${icon("info")}${esc(fill(words, { p: e.target ?? "" }))}</p>` : ""}${aio}`;
   }
   async function openFinding(id, opener) {
     IN.opened = id;
@@ -411,7 +488,7 @@
       ${f.status === "dismissed" ? `<button class="btn btn-ghost" data-in-undismiss="${f.id}">${t("Bring it back")}</button>` : f.status === "open" ? `<button class="btn btn-ghost" data-in-dismiss="${f.id}">${t("Not useful")}</button>` : ""}
     </div>`;
     const where = f.page ? `<p class="small">${pageLink(f.page, { text: pathOf(f.page), host: f.host })}</p>` : "";
-    UI.openPanel(`${UI.panelHead(title, sub)}<div class="panel-body">${stake}${where}${f.kind !== "change" ? `<p class="small" dir="auto">${esc(reasonOf(f))}</p>` : ""}${chart}${evidenceList(f)}${stakeWords(f)}${aiBlock(f)}
+    UI.openPanel(`${UI.panelHead(title, sub)}<div class="panel-body">${stake}${where}${f.kind !== "change" ? `<p class="small" dir="auto">${esc(reasonOf(f))}</p>` : ""}${doBlock(f)}${chart}${evidenceList(f)}${stakeWords(f)}${aiBlock(f)}
       ${f.status === "dismissed" ? `<p class="small muted">${t("Hidden as not useful. It comes back by itself if it gets twice as big.")}</p>` : ""}${actions}</div>`, opener);
     IN.current = f;
   }
@@ -423,7 +500,7 @@
       title: titleOf(f), host: f.host, opener, priority: f.severity === "big" ? "high" : "medium",
       keywords: f.query ? [f.query] : [], pages: f.page ? [f.page] : [],
       source: { type: "search", key: f.key, label: `${t("Search insights")}: ${kindName(f)}`, facts: [reasonOf(f), f.at_stake >= 1 ? `${num(Math.round(f.at_stake))} ${t("clicks a month at stake")}` : ""].filter(Boolean), link: `#insights/${f.id}`, host: f.host },
-      description: e.path ? `${f.page}` : "",
+      description: [e.path ? f.page : "", onPageLine(f), doLine(f)].filter(Boolean).join("\n"),
     });
   }
   function bind() {
@@ -440,6 +517,7 @@
         catch (err) { UI.toast(err.message, { kind: "crit" }); el.disabled = false; }
         return;
       }
+      if ((el = hit("[data-in-countries]"))) { countriesPanel(el); return; }
       if ((el = hit("[data-in-weekly]"))) { askWeekly(el); return; }
       if ((el = hit("[data-in-ai]"))) { askAI(el); return; }
       if ((el = hit("[data-in-ai-copy]"))) {
@@ -471,6 +549,17 @@
       const row = e.target.closest?.("tr[data-in-open]");
       if (row && e.target === row) { e.preventDefault(); openFinding(Number(row.dataset.inOpen), row); }
     });
+    document.addEventListener("submit", async (e) => {
+      if (e.target.id !== "in-countries-form") return;
+      e.preventDefault();
+      const countries = [...e.target.querySelectorAll('input[name="f_country"]:checked')].map((x) => x.value);
+      const error = e.target.querySelector("[data-in-countries-error]");
+      try {
+        C.data = await window.COMP.api("PUT", "search/countries", { site_id: UI.siteIdPicked(), countries });
+        UI.closePanel(); forget(); UI.render({ keepScroll: true });
+        UI.toast(t("Saved. The next Search Console pull reads those countries."));
+      } catch (err) { error.hidden = false; error.textContent = t(err.message); }
+    });
     document.addEventListener("change", (e) => {
       if (e.target.matches?.("[data-in-status]")) { IN.status = e.target.value; IN.limit = PAGE; UI.render({ keepScroll: true }); UI.$("[data-in-status]")?.focus({ preventScroll: true }); }
     });
@@ -485,6 +574,41 @@
   window.SCREENS.insights = { init(helpers) { UI = helpers; ({ t, esc, num, icon } = helpers); bind(); }, page };
 
   const words = {
+    "No site yet": "Pas encore de site", "Add a site and connect Search Console: insights are worked out from its data.": "Ajoutez un site et connectez la Search Console : les analyses sont calculées à partir de ses données.",
+    "No AI is chosen for this site yet. Pick one in Settings → AI. Nothing about the site is sent until you do.": "Aucune IA n'est encore choisie pour ce site. Choisissez-en une dans Réglages → IA. Rien sur le site n'est envoyé avant.",
+    "Add a site": "Ajouter un site", "Run": "Lancer", "What to do": "Que faire",
+    "The search isn't in the page's title or H1: put it there first.": "La recherche n'est ni dans le titre ni dans le H1 de la page : mettez-la d'abord là.",
+    "The search isn't in the page's title.": "La recherche n'est pas dans le titre de la page.", "The search isn't in the page's H1.": "La recherche n'est pas dans le H1 de la page.",
+    "The search is already in the page's title and H1.": "La recherche est déjà dans le titre et le H1 de la page.",
+    "Check the page still works and hasn't changed, then see which of its searches lost places.": "Vérifiez que la page fonctionne et n'a pas changé, puis voyez lesquelles de ses recherches ont perdu des places.",
+    "Check the page loads and isn't set to noindex, then ask Google to index it again in Search Console.": "Vérifiez que la page se charge et n'est pas en noindex, puis demandez à Google de la réindexer dans la Search Console.",
+    "Bring the page up to date: new facts, this year's numbers, a fuller answer to its main search.": "Mettez la page à jour : faits récents, chiffres de cette année, réponse plus complète à sa recherche principale.",
+    "Check the site was up that day and nothing was changed on it. A one-off day needs nothing.": "Vérifiez que le site était en ligne ce jour-là et que rien n'a changé. Un jour isolé ne demande rien.",
+    "Make this page the best answer to the search: put it in the title and H1, and cover what the pages above it cover.": "Faites de cette page la meilleure réponse à la recherche : mettez-la dans le titre et le H1, et traitez ce que traitent les pages au-dessus.",
+    "Rewrite the title and description so more people click, and cover what the top 3 pages cover.": "Réécrivez le titre et la description pour que plus de gens cliquent, et traitez ce que traitent les 3 premières pages.",
+    "Rewrite the title and description so they answer this search plainly.": "Réécrivez le titre et la description pour qu'ils répondent clairement à cette recherche.",
+    "Rewrite the title and description so they match what people searching this want.": "Réécrivez le titre et la description pour qu'ils correspondent à ce que veulent les gens qui cherchent cela.",
+    "Pick one page for this search, make it the best, and link the other one to it, or merge them.": "Choisissez une page pour cette recherche, rendez-la la meilleure, et faites un lien de l'autre vers elle, ou fusionnez-les.",
+    "Compare your page with the ones that passed it, and add what they cover.": "Comparez votre page à celles qui l'ont dépassée, et ajoutez ce qu'elles traitent.",
+    "Open that country or device in Overview to see which pages fell.": "Ouvrez ce pays ou cet appareil dans Vue d'ensemble pour voir quelles pages ont baissé.",
+    "Make one page clearly the answer: the search in its title and H1, and links to it from related pages.": "Faites d'une page la réponse claire : la recherche dans son titre et son H1, et des liens vers elle depuis les pages proches.",
+    "Look at non-brand searches in Overview: something lost places behind the brand traffic.": "Regardez les recherches hors marque dans Vue d'ensemble : quelque chose a perdu des places derrière le trafic de marque.",
+    "Refresh the page and link to it from your other pages.": "Rafraîchissez la page et faites des liens vers elle depuis vos autres pages.",
+    "Improve this one page: it lifts all these searches at once.": "Améliorez cette seule page : elle fait monter toutes ces recherches à la fois.",
+    "Write a page for this search, or give it a clear section on the page that ranks.": "Écrivez une page pour cette recherche, ou donnez-lui une section claire sur la page qui se classe.",
+    "Answer these questions on the page, in a short FAQ or in its headings.": "Répondez à ces questions sur la page, dans une courte FAQ ou dans ses intertitres.",
+    "Write one strong page on this topic and link to it from the others.": "Écrivez une page forte sur ce sujet et faites des liens vers elle depuis les autres.",
+    "Add it to Keywords to follow its rank.": "Ajoutez-la aux mots-clés pour suivre son classement.",
+    "Fix this page first, it brings leads: see what changed on it and which searches it lost.": "Corrigez d'abord cette page, elle apporte des leads : voyez ce qui a changé et quelles recherches elle a perdues.",
+    "Make the next step clear on this page: a form, a phone number, one plain call to action.": "Rendez l'étape suivante claire sur cette page : un formulaire, un numéro, un appel à l'action simple.",
+    "Point the other addresses to one with a redirect or a canonical tag.": "Faites pointer les autres adresses vers une seule, par une redirection ou une balise canonique.",
+    "Fix the page: Google keeps showing it, so visitors land on an error.": "Corrigez la page : Google continue de l'afficher, et les visiteurs tombent sur une erreur.",
+    "Read those days again from Overview, with Matches Search Console.": "Relisez ces jours depuis Vue d'ensemble, avec « Conforme à la Search Console ».",
+    "in {c}; worldwide {p}": "en {c} ; monde {p}", "Countries": "Pays", "Countries, picked by clicks": "Pays, choisis d'après les clics", "not set yet": "pas encore définis", "Change": "Modifier",
+    "Target countries": "Pays visés", "Quick wins and Keywords read Search Console in these countries": "Les gains rapides et les mots-clés lisent la Search Console dans ces pays",
+    "Up to {n}. None ticked: the top country by clicks, and the second when it brings a quarter as many.": "Jusqu'à {n}. Aucun coché : le premier pays en clics, et le deuxième s'il en apporte au moins le quart.",
+    "No country data yet.": "Pas encore de données par pays.", "Save": "Enregistrer", "clicks": "clics", "Saved. The next Search Console pull reads those countries.": "Enregistré. La prochaine lecture de la Search Console lit ces pays.",
+    "Counted at {p}%: Google shows an AI Overview on this search ({d}), which takes some of the clicks.": "Compté à {p} % : Google affiche un AI Overview sur cette recherche ({d}), qui prend une partie des clics.",
     "Insights": "Analyses", "What the code found in your Search Console data, worked out after each new day": "Ce que le code a trouvé dans vos données de la Search Console, recalculé après chaque nouveau jour",
     "To do first": "À faire d'abord", "What changed": "Ce qui a changé", "Slow decline": "Lent déclin", "Quick wins": "Gains rapides",
     "Still open": "En cours", "Went away": "Disparues", "Done": "Fait",
@@ -546,16 +670,16 @@
     "The Anthropic account is out of credit. Add some in the Claude Console.": "Le compte Anthropic n'a plus de crédit. Ajoutez-en dans la Claude Console.",
     "Anthropic says too many requests right now. Try again in a minute.": "Anthropic signale trop de requêtes. Réessayez dans une minute.", "Anthropic couldn't be reached. Try again in a moment.": "Anthropic est injoignable. Réessayez dans un instant.",
     "AI can't write that for this kind of insight.": "L'IA ne peut pas écrire cela pour ce type d'analyse.",
-    "Leads": "Prospects", "Technical": "Technique", "Did it work": "Ça a marché ?",
+    "Leads": "Leads", "Technical": "Technique", "Did it work": "Ça a marché ?",
     "Query losing places": "Requête qui perd des places", "One device or country": "Un appareil ou un pays", "Unstable ranking": "Classement instable", "Brand hides a loss": "La marque cache une perte",
     "Slowly losing places": "Perd lentement des places", "Near page 1 on many searches": "Proche de la page 1 sur beaucoup de recherches", "No page of its own": "Pas de page à elle",
-    "Question searches": "Recherches en questions", "Topic without a strong page": "Sujet sans page forte", "Worth tracking": "À suivre", "Page that brings leads": "Page qui apporte des prospects",
-    "Clicks but no leads": "Des clics mais pas de prospects", "One page, several addresses": "Une page, plusieurs adresses", "Shown but broken": "Affichée mais cassée", "Data gaps": "Trous dans les données",
+    "Question searches": "Recherches en questions", "Topic without a strong page": "Sujet sans page forte", "Worth tracking": "À suivre", "Page that brings leads": "Page qui apporte des leads",
+    "Clicks but no leads": "Des clics mais pas de leads", "One page, several addresses": "Une page, plusieurs adresses", "Shown but broken": "Affichée mais cassée", "Data gaps": "Trous dans les données",
     "Task result": "Résultat d'une tâche", "Note result": "Résultat d'une note",
     "{segment}: {sign}{percent}% clicks": "{segment} : {sign}{percent} % de clics", "Non-brand clicks fell {percent}%": "Les clics hors marque ont baissé de {percent} %",
-    "Searches with “{word}”": "Recherches avec « {word} »", "{path} brings leads and is losing clicks": "{path} apporte des prospects et perd des clics", "Search Console data has gaps": "Les données de la Search Console ont des trous",
+    "Searches with “{word}”": "Recherches avec « {word} »", "{path} brings leads and is losing clicks": "{path} apporte des leads et perd des clics", "Search Console data has gaps": "Les données de la Search Console ont des trous",
     "Mobile": "Mobile", "Desktop": "Ordinateur", "Tablet": "Tablette", "Better": "Mieux", "Worse": "Moins bien", "About the same": "À peu près pareil",
-    "≈ {n} leads a month": "≈ {n} prospects par mois", "Position {a} → {b} · {i} impressions": "Position {a} → {b} · {i} impressions",
+    "≈ {n} leads a month": "≈ {n} leads par mois", "Position {a} → {b} · {i} impressions": "Position {a} → {b} · {i} impressions",
     "{a} → {b} clicks; the rest of the site moved {c}": "{a} → {b} clics ; le reste du site a bougé de {c}",
     "Between position {a} and {b} from day to day, usually {p}": "Entre la position {a} et {b} d'un jour à l'autre, d'habitude {p}",
     "Non-brand {a} → {b} clicks; brand {c} → {d}": "Hors marque {a} → {b} clics ; marque {c} → {d}",
@@ -564,11 +688,11 @@
     "Only the home page ranks for it, at position {p} · {i} impressions": "Seule la page d'accueil se classe dessus, en position {p} · {i} impressions",
     "Ranks through {page}, a page about something else, at position {p}": "Se classe via {page}, une page sur un autre sujet, en position {p}",
     "{n} questions people ask · {i} impressions": "{n} questions que les gens posent · {i} impressions", "{n} searches · {i} impressions · average position {p}": "{n} recherches · {i} impressions · position moyenne {p}",
-    "{n} leads in {d} days": "{n} prospects en {d} jours", "clicks {p}%": "clics {p} %", "{c} search clicks and {s} visits in {d} days, 0 leads": "{c} clics de recherche et {s} visites en {d} jours, 0 prospect",
+    "{n} leads in {d} days": "{n} leads en {d} jours", "clicks {p}%": "clics {p} %", "{c} search clicks and {s} visits in {d} days, 0 leads": "{c} clics de recherche et {s} visites en {d} jours, 0 lead",
     "{n} addresses for one page · {i} impressions": "{n} adresses pour une page · {i} impressions", "Shown {i} times this week": "Affichée {i} fois cette semaine",
     "{n} days only partly read": "{n} jours lus en partie seulement", "{n} days differ from Search Console": "{n} jours diffèrent de la Search Console",
     "Done {d}. The result is ready on {r}.": "Fait le {d}. Le résultat sera prêt le {r}.", "{a} → {b} clicks in 28 days": "{a} → {b} clics en 28 jours",
-    "{path} is new on Google": "{path} est nouvelle sur Google", "new": "nouvelle", "searches": "recherches", "leads": "prospects", "addresses": "adresses", "waiting": "en attente",
+    "{path} is new on Google": "{path} est nouvelle sur Google", "new": "nouvelle", "searches": "recherches", "leads": "leads", "addresses": "adresses", "waiting": "en attente",
     "Its impressions now × (the click rate this site usually gets at its old position − at its new one), as a month.": "Ses impressions actuelles × (le taux de clic habituel du site à son ancienne position − à la nouvelle), ramenées au mois.",
     "What it would bring if it stayed at its better days' position, as a month.": "Ce qu'elle apporterait si elle restait à la position de ses meilleurs jours, ramené au mois.",
     "The non-brand clicks lost against the 28 days before, as a month.": "Les clics hors marque perdus par rapport aux 28 jours d'avant, ramenés au mois.",
@@ -576,7 +700,7 @@
     "For each of these searches: its impressions × the click rate this site usually gets at position {p}, less the clicks it has, as a month.": "Pour chacune de ces recherches : ses impressions × le taux de clic habituel du site en position {p}, moins ses clics, ramené au mois.",
     "Its impressions × the click rate this site usually gets at position {p}, less the clicks it has, as a month.": "Ses impressions × le taux de clic habituel du site en position {p}, moins ses clics, ramené au mois.",
     "The topic's impressions × the click rate this site usually gets at position {p}, less the clicks it has, as a month.": "Les impressions du sujet × le taux de clic habituel du site en position {p}, moins ses clics, ramené au mois.",
-    "The clicks at stake of the page's drop. Leads: those clicks × the page's own lead rate.": "Les clics en jeu de la baisse de la page. Prospects : ces clics × le taux de prospects de la page.",
+    "The clicks at stake of the page's drop. Leads: those clicks × the page's own lead rate.": "Les clics en jeu de la baisse de la page. Leads : ces clics × le taux de leads de la page.",
     "The clicks it had in the last 28 days, as a month.": "Les clics qu'elle a eus les 28 derniers jours, ramenés au mois.",
     "Questions people ask": "Questions que les gens posent", "Its biggest searches": "Ses plus grosses recherches", "Searches just past page 1": "Recherches juste après la page 1",
     "Its addresses on Google": "Ses adresses sur Google", "Point the others to one address with a redirect or a canonical tag, so Google adds them up.": "Faites pointer les autres vers une seule adresse, par une redirection ou une balise canonique, pour que Google les additionne.",
@@ -584,11 +708,11 @@
     "28 days before {d}, against 28 days from a week after": "28 jours avant le {d}, contre 28 jours à partir d'une semaine après",
     "The whole site, around the day of the note.": "Tout le site, autour du jour de la note.", "The task's keywords.": "Les mots-clés de la tâche.", "The task's pages.": "Les pages de la tâche.",
     "Seasonal": "Saisonnier", "The same weeks last year: {a} → {b} clicks ({p}%).": "Les mêmes semaines l'an dernier : {a} → {b} clics ({p} %).", "So it counts half.": "Elle compte donc pour moitié.",
-    "at stake": "en jeu", "this page turns {r}% of visits into leads": "cette page transforme {r} % des visites en prospects", "the site turns {r}% of visits into leads": "le site transforme {r} % des visites en prospects",
+    "at stake": "en jeu", "this page turns {r}% of visits into leads": "cette page transforme {r} % des visites en leads", "the site turns {r}% of visits into leads": "le site transforme {r} % des visites en leads",
     "Days Search Console gave only part of": "Jours que la Search Console n'a donnés qu'en partie",
     "The last “Matches Search Console” check found {n} days that differ. Read them again from Overview.": "La dernière vérification « Conforme à la Search Console » a trouvé {n} jours différents. Relisez-les depuis la Vue d'ensemble.",
     "Brand and non-brand searches": "Recherches de marque et hors marque", "Brand": "Marque", "Non-brand": "Hors marque",
-    "GA4 has no key events for this site yet. Mark your form or call event as a key event in GA4, and leads show here.": "GA4 n'a pas encore d'événement clé pour ce site. Marquez votre formulaire ou votre appel comme événement clé dans GA4, et les prospects apparaîtront ici.",
+    "GA4 has no key events for this site yet. Mark your form or call event as a key event in GA4, and leads show here.": "GA4 n'a pas encore d'événement clé pour ce site. Marquez votre formulaire ou votre appel comme événement clé dans GA4, et les leads apparaîtront ici.",
     "Add your brand words to see when brand searches hide a loss.": "Ajoutez vos mots de marque pour voir quand les recherches de marque cachent une perte.",
     "Pages and searches sliding a little every week.": "Pages et recherches qui reculent un peu chaque semaine.", "Searches a small push would pay for, using this site's own click rates.": "Recherches pour lesquelles un petit effort paierait, d'après les taux de clic du site.",
     "Search clicks joined with GA4's key events over 90 days.": "Les clics de recherche joints aux événements clés de GA4 sur 90 jours.",

@@ -224,8 +224,9 @@
         if (!sel) return undefined;
         return sel.value === "__other" ? UI.$(`[data-prop-other="${kind}"][data-site="${s.id}"]`).value.trim() : sel.value;
       };
+      // A key just pasted (by Save or by Test) is for every site, unless someone picked another connection for this site by hand.
       const chosen = UI.$(`[data-lv-site-conn="${s.id}"]`);
-      const connection_id = chosen ? +chosen.value : fallback;
+      const connection_id = chosen && (chosen.dataset.touched || !newest) ? +chosen.value : fallback;
       for (const [kind, source] of [["sc", "gsc"], ["ga4", "ga4"]]) {
         const value = pick(kind);
         if (value === undefined) continue;
@@ -268,7 +269,7 @@
       else if (c.id === "clarity") await saveClarity();
       else await saveKey(c);
       await reload();
-      window.LV?.forget?.();
+      window.LV?.forget?.(); window.OV?.forget?.();
       UI.forgetPanelForm(); UI.closePanel(); UI.render();
       UI.toast(t("Connection saved"));
     } catch (err) { sayError(err.message); button.disabled = false; }
@@ -308,7 +309,8 @@
       if (c.id === "google") {
         let id = L.data.google[0]?.id;
         const typed = typedGoogle();
-        if (typed) { id = (await api("POST", "google-connections", typed)).id; UI.$("#conn-json") && (UI.$("#conn-json").value = ""); ["#conn-client", "#conn-secret", "#conn-refresh"].forEach((f) => { if (UI.$(f)) UI.$(f).value = ""; }); await reload(); }
+        // The connection Test makes is the one Save then uses: otherwise every site stays on the old key (F119).
+        if (typed) { L.newGoogle = await api("POST", "google-connections", typed); id = L.newGoogle.id; UI.$("#conn-json") && (UI.$("#conn-json").value = ""); ["#conn-client", "#conn-secret", "#conn-refresh"].forEach((f) => { if (UI.$(f)) UI.$(f).value = ""; }); await reload(); }
         if (!id) { sayError("Paste the key first."); return; }
         showGoogleResult(await api("POST", `google-connections/${id}/test`, {}));
       } else if (c.id === "clarity") {
@@ -318,7 +320,7 @@
         if (key) { await api("PUT", `app-keys/${c.id}`, { key }); UI.$("#conn-key").value = ""; }
         const answer = await api("POST", `app-keys/${c.id}/test`, {});
         if (answer.ok !== false) UI.$("#conn-fix")?.remove(); // it works now: the old advice would only confuse
-        say(answer.ok === true ? status("good", `${t("Works.")}${answer.left === null || answer.left === undefined ? "" : ` ${num(answer.left)} ${t("of")} ${num(answer.of)} ${t("free requests left today")}`}`) : answer.ok === null ? `<span class="note inline-note">${icon("info")}<span>${esc(t(answer.note))}</span></span>` : `<span class="error" style="margin:0">${icon("octagon-alert")}${esc(t(answer.note))}</span>${fixFor(answer.note, c)}`);
+        say(answer.ok === true ? status("good", `${t("Works.")}${answer.left === null || answer.left === undefined ? "" : ` ${num(answer.left)} ${t("of")} ${num(answer.of)} ${t(c.id === "firecrawl" ? "credits left this month" : "free requests left today")}`}`) : answer.ok === null ? `<span class="note inline-note">${icon("info")}<span>${esc(t(answer.note))}</span></span>` : `<span class="error" style="margin:0">${icon("octagon-alert")}${esc(t(answer.note))}</span>${fixFor(answer.note, c)}`);
         await reload();
       }
     } catch (err) { sayError(err.message); } finally { if (button.isConnected) { button.disabled = false; button.textContent = was; } }
@@ -348,7 +350,7 @@
     if (UI.state.route === "settings" && L.tab === "team" && !UI.$("#panel")) UI.render();
   }
   function teamTab() {
-    if (L.team === null) { loadTeam(); return `<section class="card"><div class="empty"><p>${t("Loading…")}</p></div></section>`; }
+    if (L.team === null) { loadTeam(); return UI.skeleton("table", { rows: 3 }); }
     if (L.team.error) return `<section class="card"><div class="empty"><h3>${t("That didn't load")}</h3><p>${esc(L.team.error)}</p></div></section>`;
     if (!L.team.users) return `<section class="card"><div class="card-head"><h2>${t("Team")}</h2></div><ul class="rows">${L.team.names.map((name) => `<li><div class="what"><div class="t" dir="auto">${esc(name)}</div></div></li>`).join("")}</ul><p class="help" style="padding:8px 18px">${t("Only an admin can add or change accounts.")}</p></section>`;
     const me = window.BOOT.user?.id;
@@ -383,7 +385,7 @@
     if (UI.state.route === "settings" && L.tab === "domains" && !UI.$("#panel")) UI.render();
   }
   function domainsTab() {
-    if (!L.domains) { loadDomains(); return `<section class="card"><div class="empty"><p>${t("Loading…")}</p></div></section>`; }
+    if (!L.domains) { loadDomains(); return UI.skeleton("table", { rows: 4 }); }
     const d = L.domains;
     if (d.error) return `<section class="card"><div class="empty"><h3>${t("That didn't load")}</h3><p>${esc(d.error)}</p></div></section>`;
     const waiting = d.domains.filter((x) => !x.fetched_at).length;
@@ -492,6 +494,7 @@
       }
     }, true);
     document.addEventListener("change", async (e) => {
+      if (e.target.matches?.("[data-lv-site-conn]")) { e.target.dataset.touched = "1"; return; }
       if (e.target.id === "ca-file") { sendArchive(true); return; }
       if (e.target.id === "cr-file" || (e.target.id === "cr-site" && UI.$("#cr-file")?.files?.length)) { sendReports(true); return; }
       const el = e.target.closest?.("[data-lv-user-role]");
@@ -529,10 +532,8 @@
       const tabs = `<div class="tabs" role="tablist" aria-label="${t("Settings")}">${LIVE.tabs()}</div>`;
       if (L.tab === "connections") {
         if (L.data) return UI.settingsPage();
-        const waiting = L.failed
-          ? `<h3>${t("That didn't load")}</h3><p>${esc(t(L.failed))}</p><div style="margin-top:12px"><button type="button" class="btn" data-lv-sources-retry>${t("Try again")}</button></div>`
-          : `<p>${t("Loading…")}</p>`;
-        return UI.topbar(t("Settings"), t("Connect your tools and choose which sites use them"), "", false) + `<div class="content page-enter">${tabs}<section class="card"><div class="empty">${waiting}</div></section></div>`;
+        const waiting = L.failed ? UI.failCard(L.failed, { retry: "data-lv-sources-retry" }) : UI.skeleton("page", { chart: false, rows: 5 });
+        return UI.topbar(t("Settings"), t("Connect your tools and choose which sites use them"), "", false) + `<div class="content page-enter">${tabs}${waiting}</div>`;
       }
       const sub = { sites: "Your sites and where their data comes from", team: "Who can sign in", domains: "Domains worth a closer look" }[L.tab];
       return UI.topbar(t("Settings"), t(sub), "", false) + `<div class="content page-enter">${tabs}${L.tab === "sites" ? sitesTab() : L.tab === "domains" ? domainsTab() : teamTab()}</div>`;
@@ -564,6 +565,7 @@
     "Add a domain": "Ajouter un domaine", "Get Moz data": "Obtenir les données Moz", "Get popularity": "Obtenir la popularité", "Domain": "Domaine", "Authority": "Autorité", "Moz Domain Authority": "Domain Authority Moz", "Linking domains": "Domaines référents", "Links": "Liens", "Popularity": "Popularité", "No domains yet. Add the ones worth a closer look.": "Pas encore de domaines. Ajoutez ceux qui méritent un examen.", "domains updated": "domaines mis à jour", "held back: no free rows left": "en attente : plus de lignes gratuites", "Popularity updated": "Popularité mise à jour", "Not ranked": "Non classé",
     "Tell Bing and Yandex about new pages": "Signaler les nouvelles pages à Bing et Yandex", "IndexNow. Google doesn't take part.": "IndexNow. Google n'y participe pas.", "Addresses, one per line": "Adresses, une par ligne", "Send": "Envoyer", "Connect IndexNow first: paste its key, and put the key file on your site.": "Connectez d'abord IndexNow : collez sa clé et placez le fichier de clé sur votre site.", "addresses sent": "adresses envoyées", "The key is still being checked.": "La clé est encore en cours de vérification.", "Enter a domain, such as example.com.": "Saisissez un domaine, par exemple example.com.",
     "free requests left today": "requêtes gratuites restantes aujourd'hui",
+    "credits left this month": "crédits restants ce mois-ci",
     "Sign out": "Se déconnecter", "Google connections": "Connexions Google", "To add another, press Add another Google connection below. Each site then picks which one it uses.": "Pour en ajouter une autre, cliquez sur Ajouter une autre connexion Google ci-dessous. Chaque site choisit ensuite laquelle il utilise.", "Add another Google connection": "Ajouter une autre connexion Google",
     "Google connection": "Connexion Google", "works": "fonctionne", "property": "propriété", "properties": "propriétés", "It didn't work.": "Ça n'a pas fonctionné.", "Testing…": "Test…", "Works.": "Fonctionne.",
     "It can't see any Search Console property yet. Add its email in Search Console, then test again.": "Elle ne voit encore aucune propriété Search Console. Ajoutez son e-mail dans la Search Console, puis testez à nouveau.",

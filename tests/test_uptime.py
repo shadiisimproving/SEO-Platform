@@ -209,17 +209,53 @@ def test_uptime_due_queues_only_what_is_due_and_respects_not_watching(world):
     assert state["watching"] is False and state["state"] == "unknown" and state["reason"] == "not_watching"
 
 
-def test_checks_count_in_the_daily_budget_and_stop_without_room(world):
+def test_checks_count_in_the_daily_budget_but_never_stop_when_it_is_used(world):
+    """F14: a big scan that used the day's requests by 14:00 used to stop every uptime check until midnight."""
     world.check()
     assert budget.used_today(world.engine) >= 2  # robots.txt and the page
     with world.engine.begin() as conn:
         conn.execute(text("UPDATE crawl_budget SET used = :n"), {"n": budget.DAILY_CRAWL_REQUESTS})
-    with world.engine.begin() as conn:
-        conn.execute(text("DELETE FROM uptime_days"))
-    world.site.requests.clear()
+    world.site.answer = 503
     world.check()
-    assert world.site.requests == []
-    assert world.state()["days"][-1]["state"] == "unknown"
+    assert world.state()["state"] == "down"  # the alert still comes
+    assert budget.used_today(world.engine) > budget.DAILY_CRAWL_REQUESTS  # and it is still counted
+
+
+def test_uptime_has_its_own_lane_and_a_crawl_tick_takes_it_before_a_scan(world, tmp_path):
+    from seo.links import service as links_service
+    from seo.worker import queue
+    links_service.start_scan(world.engine, world.own)
+    assert uptime.enqueue_due(world.engine) == [world.own]
+    with world.engine.connect() as conn:
+        assert conn.execute(text("SELECT lane FROM jobs WHERE kind = 'uptime.check'")).scalar() == "uptime"
+    owner = "test"
+    from seo.worker.runner import _claim_next
+    first = _claim_next(world.engine, "crawl", owner, 60)
+    assert first[0].kind == "uptime.check"
+    queue.complete(world.engine, first[0].id, owner)
+
+
+def test_the_uptime_lane_runs_on_its_own(world, tmp_path):
+    assert uptime.enqueue_due(world.engine) == [world.own]
+    result = tick(world.engine, "uptime", lock_dir=tmp_path, budget_seconds=20, db_wait_seconds=1)
+    assert result.processed == 1 and world.state()["state"] == "up"
+
+
+def test_a_check_that_landed_a_minute_late_is_still_due_at_the_next_call(world):
+    """F161: due meant "older than 14 minutes", so a check 13 min 50 s old at the next 15-minute call waited 30 minutes."""
+    world.check()
+    with world.engine.begin() as conn:
+        conn.execute(text("UPDATE site_monitors SET last_checked_at = UTC_TIMESTAMP(3) - INTERVAL 830 SECOND"))
+    assert uptime.enqueue_due(world.engine) == [world.own]
+
+
+def test_the_uptime_due_command_queues_and_checks(world, monkeypatch, capsys, tmp_path):
+    from seo.worker import __main__ as cli
+    monkeypatch.setattr(cli, "make_engine", lambda test=False: world.engine)
+    monkeypatch.setenv("SEO_LOCK_DIR", str(tmp_path))
+    assert cli.main(["uptime-due", "--budget", "20"]) == 0
+    assert "queued 1 site, checked 1" in capsys.readouterr().out
+    assert world.state()["state"] == "up"
 
 
 def test_a_certificate_near_its_end_alerts_once_and_a_renewal_clears_it(world, monkeypatch):

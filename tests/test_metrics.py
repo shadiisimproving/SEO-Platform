@@ -276,6 +276,8 @@ def test_before_and_after_a_link_stands_beside_the_sites_own_change(engine, site
             conn.execute(text("INSERT INTO gsc_page (site_id, day, page_hash, page, clicks, impressions, position) VALUES (:s, :d, 'h', 'https://mine.example/page/', :c, 100, 5)"), {"s": site, "d": day, "c": clicks})
     _gsc(engine, site, date(2026, 9, 20), 100, 1000, 5)
     _gsc(engine, site, date(2026, 10, 10), 110, 1000, 5)
+    with engine.begin() as conn:  # the 28 days after the link are all final, or the answer is "waiting" (F11)
+        conn.execute(text("UPDATE site_sources SET data_through = '2026-11-05' WHERE site_id = :s AND source = 'gsc'"), {"s": site})
     answer = backlink_traffic.before_after(engine, link)
     assert answer["before"]["clicks"] == 10 and answer["after"]["clicks"] == 30 and answer["page_change"] == 200 and answer["site_change"] == 10 and answer["label"] == "Correlation, not proof"
 

@@ -536,3 +536,28 @@ def test_a_yandex_check_from_another_country_is_still_away():
 def test_a_google_check_with_no_location_is_still_away():
     view = engine_view([_seen("google", "")], "mine.example", "FR", "fr", ["brightdata"], 5, datetime(2026, 11, 5))
     assert view["main"] is None and len(view["away"]) == 1
+
+
+def test_a_failure_on_a_later_page_says_what_the_pages_before_it_used():
+    """F57: HasData at depth 30, pages 1 and 2 answer, page 3 answers 500. The 20 credits used stay counted."""
+    from seo.serp.tools import HasData
+
+    def answer(request):
+        start = int(request.url.params.get("start", "0"))
+        if start >= 20:
+            return httpx.Response(500, json={})
+        return httpx.Response(200, json={"organicResults": [{"link": f"https://r{start + i}.example/", "title": "T"} for i in range(10)]})
+
+    tool = HasData("KEY", client=httpx.Client(transport=httpx.MockTransport(answer)))
+    with pytest.raises(SearchFailed) as caught:
+        tool.search("k", "google", "FR", "fr", "desktop", 30)
+    assert caught.value.charged == 20
+
+
+def test_a_failure_on_the_first_page_used_nothing():
+    from seo.serp.tools import BrightData
+
+    tool = BrightData("KEY", "zone", client=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(500))))
+    with pytest.raises(SearchFailed) as caught:
+        tool.search("k", "google", "FR", "fr", "desktop", 30)
+    assert caught.value.charged == 0

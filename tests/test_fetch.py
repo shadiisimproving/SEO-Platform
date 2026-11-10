@@ -339,3 +339,19 @@ def test_a_robots_redirect_to_a_refused_address_is_not_followed(site, fetcher):
 def test_a_robots_redirect_on_the_same_site_is_followed(site, fetcher):
     site.robots_status, site.robots_location = 302, "/real-robots"
     assert fetcher.get(site.base + "/private").status == "robots"
+
+
+def test_a_redirect_to_a_malformed_address_is_an_answer_not_a_crash():
+    """F59, F100: urljoin raised ValueError on http://[bad, and httpx.InvalidURL isn't an httpx.HTTPError."""
+    import httpx as _httpx
+    from seo.crawl.fetch import PoliteFetcher
+
+    def site(request):
+        if request.url.path == "/robots.txt":
+            return _httpx.Response(404)
+        return _httpx.Response(301, headers={"location": "http://[bad"})
+
+    fetcher = PoliteFetcher(delay=0, is_allowed=lambda url: True, transport=_httpx.MockTransport(site))
+    answer = fetcher.get("https://odd.example/a")
+    assert answer.status == "http_error" and answer.error
+    assert fetcher.get("http://[bad/x").status == "http_error"

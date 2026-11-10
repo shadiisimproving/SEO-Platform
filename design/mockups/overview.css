@@ -33,7 +33,8 @@
 .lv-line.ov-fresh { stroke-dasharray: 2 4; opacity: .75; }
 .ov-flag line { stroke: var(--c-purple, var(--ch-2)); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; opacity: .8; }
 .ov-flag.task line { stroke: var(--good-t); }
-.ov-ylab { position: absolute; top: 10px; font-size: 11px; font-variant-numeric: tabular-nums; background: var(--glass); padding: 0 3px; border-radius: 3px; pointer-events: none; }
+.ov-ylab { position: absolute; top: 10px; font-size: 11px; font-variant-numeric: tabular-nums; background: var(--glass); padding: 0 3px; border-radius: 3px; pointer-events: none; color: var(--text-2); display: inline-flex; align-items: center; gap: 4px; }
+.ov-ylab-key { width: 8px; height: 8px; border-radius: 2px; flex: none; }
 .ov-ylab.left { left: 18px; } .ov-ylab.right { right: 18px; }
 .ov-ylab.bottom { top: auto; bottom: 34px; }
 .ov-key-dash, .ov-key-fresh, .ov-key-flag { display: inline-block; width: 16px; height: 0; margin-right: 6px; vertical-align: 3px; border-top: 2px dashed var(--muted); }
@@ -51,11 +52,50 @@
 .ov-tabs-head .tabs { margin-bottom: 0; }
 .ov-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; padding: 12px 18px 4px; }
 .ov-show { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
-.ov-selbar { display: inline-flex; align-items: center; gap: 10px; margin-left: auto; padding: 4px 6px 4px 12px; border-radius: var(--r-m); background: var(--c-blue-pale, var(--track)); font-size: 13px; }
+/* Picked queries and "Track them". In the heading where the heading sticks (1024px and wider), so it is in view anywhere in the list
+   and no row moves when it appears; narrower, it floats at the foot of the screen like the Keywords bar. */
+.ov-selbar { display: none; align-items: center; gap: 10px; padding: 3px 5px 3px 12px; border-radius: var(--r-m); background: linear-gradient(var(--c-blue-pale, var(--track)), var(--c-blue-pale, var(--track))), var(--panel-solid); font-size: 13px; font-weight: 400; color: var(--text); white-space: nowrap; }
+@media (min-width: 1024px) { .ov-selbar-head { display: inline-flex; margin: -6px 0 -6px 14px; vertical-align: middle; } }
+/* Heading buttons are styled as plain sort titles by the shared table rules; these two are real buttons and get their own look back. */
+.ov-table th .ov-selbar .btn-main, .ov-table th .ov-selbar .btn-main:hover { color: var(--on-accent); font-weight: 650; gap: 5px; }
+.ov-table th .ov-selbar .btn-main svg { opacity: 1; color: inherit; }
+.ov-table th .ov-selbar .link-btn { color: var(--accent-text); }
+@media (max-width: 1023px) { .ov-selbar-foot { display: flex; position: sticky; bottom: 16px; z-index: 6; width: fit-content; max-width: calc(100% - 24px); margin: 8px auto; flex-wrap: wrap; white-space: normal; box-shadow: var(--shadow-2), inset 0 0 0 1px var(--line); } }
+@media (max-width: 640px) { .ov-selbar-foot { bottom: 64px; } } /* clear of the floating Notes button */
 .ov-hint { margin: 6px 18px 4px; }
 .ov-empty-act { margin-top: 12px; }
 
 .ov-table { box-shadow: none; border-radius: 0; }
+/* 500 rows is a long scroll: the heading stays in view. This card doesn't scroll by itself, so the page's own offset is the right one.
+   The card clips instead of hiding its overflow: "hidden" would make the card the heading's scroll box, and it would never stick. */
+.ov-tabs-card { overflow: clip; scroll-margin-top: calc(var(--topbar-h, 62px) + 10px); } /* "Back to top" lands below the top bar, tabs in view */
+@media (min-width: 1024px) { /* narrower, the shared rules let tables scroll sideways in their box, where a heading can't stick */
+  .ov-tabs-card .ov-table.table-wrap .data th { position: sticky; top: var(--topbar-h, 62px); } /* flush under the top bar: no strip of rows showing above it */
+}
+/* The floating Notes button sits over the end of the footer otherwise, hiding "Download CSV". */
+@media (min-width: 641px) { .ov-tabs-card .lv-foot { padding-inline-end: 124px; } }
+@media (max-width: 640px) { .ov-tabs-card .lv-foot { padding-bottom: 62px; } } /* on a phone the links wrap, so the room goes under them */
+/* Pages: Previous, the page numbers, Next, and rows per page. Narrow screens swap the numbers for "Page 2 of 10". */
+.ov-foot { gap: 8px 14px; }
+.ov-tabs-card .ov-table { scroll-margin-top: calc(var(--topbar-h, 62px) + 4px); } /* a new page starts at the table's top, under the top bar */
+.ov-pager { display: inline-flex; align-items: center; gap: 6px; }
+.ov-pager .btn svg { width: 13px; height: 13px; }
+.ov-pg-list { display: inline-flex; align-items: center; gap: 2px; }
+.ov-pg { min-width: 28px; height: 28px; padding: 0 6px; border: 0; border-radius: var(--r-s); background: none; font: inherit; font-variant-numeric: tabular-nums; color: var(--text-2); cursor: pointer; }
+.ov-pg:hover { background: var(--hover); color: var(--text); }
+.ov-pg[aria-current="page"] { background: var(--c-blue-pale, var(--track)); color: var(--accent-text); font-weight: 600; }
+.ov-pg:focus-visible { outline: 2px solid var(--c-blue); outline-offset: 1px; }
+.ov-pg-gap { padding: 0 2px; }
+.ov-pg-of { display: none; white-space: nowrap; }
+.ov-per .select { min-height: 28px; padding-block: 2px; font-size: 12px; width: auto; }
+/* The footer stays at the bottom of the screen while the table is in view: the pages are always in reach, and Next doesn't move
+   from under the pointer when a new page jumps back to its top. On a phone it would take too much of the screen. */
+@media (min-width: 641px) { .ov-tabs-card .ov-foot { position: sticky; bottom: 0; z-index: 6; background: var(--panel-solid); } }
+@media (min-width: 641px) and (max-width: 1023px) { .ov-selbar-foot { bottom: 60px; } } /* the picked bar floats just above it */
+@media (max-width: 760px) { .ov-pg-list { display: none; } .ov-pg-of { display: inline; } }
+@media (max-width: 640px) { .ov-pager { flex: 1 1 100%; justify-content: space-between; } }
+.ov-pick-col input { cursor: pointer; }
+.ov-capped { color: var(--warn-t); }
 .ov-row { cursor: pointer; }
 .ov-row:hover, .ov-row:focus-within { background: var(--hover); }
 .ov-row:focus-visible { outline: 2px solid var(--c-blue); outline-offset: -2px; }
@@ -67,7 +107,23 @@
 .ov-acts svg { width: 13px; height: 13px; }
 .ov-tracked { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; color: var(--good-t); white-space: nowrap; }
 .ov-tracked svg { width: 13px; height: 13px; }
-.ov-d { margin-left: 4px; font-size: 11px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Number columns: tight and on the right, so a query and its numbers read as one line instead of across a gap.
+   Each cell is the value then its change in a fixed slot, so changes line up down the column. */
+.ov-table { --ov-dslot: 54px; }
+@media (min-width: 641px) { /* below this, tables are cards and keep their own layout */
+  .ov-table :is(th, td).ov-n { width: 1%; white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; padding-inline: 14px; }
+  .ov-table:has(.ov-dslot) th.ov-n { padding-inline-end: calc(14px + var(--ov-dslot) + 6px); } /* header sits over the value */
+}
+@media (max-width: 640px) { .ov-dslot { width: auto; } .ov-dslot:empty { display: none; } }
+/* The sort arrow hangs to the left of the heading, so the heading stays right above its numbers. */
+.ov-table th.ov-n button { position: relative; }
+.ov-table th.ov-n button svg { position: absolute; left: auto; right: 100%; margin: 0 3px 0 0; }
+.ov-table th.ov-sorted, .ov-table th.ov-sorted button { color: var(--accent-text); font-weight: 600; }
+.ov-table td.ov-sorted .ov-v { font-weight: 600; }
+.ov-nc { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.ov-dslot { display: inline-block; width: var(--ov-dslot); text-align: left; }
+.ov-d { font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ov-table .pos { min-width: 42px; text-align: center; }
 .ov-pages { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; font-size: 13px; }
 
 .ov-panel-nums { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 14px; }
@@ -84,6 +140,12 @@
 
 /* No hover on touch screens: the row actions stay visible. */
 @media (hover: none), (max-width: 760px) { .ov-acts { opacity: 1; } }
+/* 641 to 760px: those always-shown buttons squeezed the query down to one letter a line. They go under the query instead. */
+@media (min-width: 641px) and (max-width: 760px) {
+  .ov-cell { flex-wrap: wrap; }
+  .ov-name { min-width: min(12ch, 100%); }
+  .ov-acts { margin-left: 0; }
+}
 @media (max-width: 640px) {
   .ov-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
   .ov-card { padding: 10px 12px; }
@@ -93,7 +155,25 @@
   .ov-answer { font-size: 15px; }
   .ov-picks { width: 100%; }
   .ov-picks .select { flex: 1 1 140px; }
-  .ov-selbar { margin-left: 0; }
   .ov-ylab.bottom { bottom: 30px; }
 }
 @media (prefers-reduced-motion: reduce) { .ov-acts, .ov-card { transition: none; } }
+
+/* Filters on Queries and Pages: a text box like Search Console's, and number filters behind one button. */
+.ov-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; flex: 1 1 100%; margin: 0; }
+.ov-filter-box { display: inline-flex; align-items: stretch; min-width: 0; flex: 0 1 460px; }
+.ov-filter-box .select { border-start-end-radius: 0; border-end-end-radius: 0; flex: none; width: auto; }
+.ov-filter-text { position: relative; flex: 1 1 auto; min-width: 0; display: flex; }
+.ov-filter-text svg { position: absolute; inset-inline-start: 10px; top: 50%; width: 14px; height: 14px; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+.ov-filter-text .input { width: 100%; padding-inline-start: 30px; margin-inline-start: -1px; border-start-start-radius: 0; border-end-start-radius: 0; }
+.ov-filter .btn svg { width: 14px; height: 14px; }
+.ov-filter .btn.is-on { border-color: var(--c-blue); color: var(--c-blue); }
+.ov-filter-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--c-blue); color: #fff; font-size: 11px; }
+.ov-filter-more { display: flex; flex-wrap: wrap; gap: 8px 14px; flex: 1 1 100%; }
+.ov-filter-num { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
+.ov-filter-num .input { width: 84px; }
+@media (max-width: 640px) {
+  .ov-filter-box { flex: 1 1 100%; }
+  .ov-filter-num { flex: 1 1 calc(50% - 7px); justify-content: space-between; }
+  .ov-filter-num .input { width: 70px; }
+}

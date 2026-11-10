@@ -48,7 +48,10 @@ const sitesCount = (page) => page.$eval("#cs-rivals-table", (t) => [...t.querySe
   check("picking a site keeps the view, on the Summary tab", (await page.getAttribute('[data-comp-tab="summary"]', "aria-selected")) === "true");
   check("the side menu follows the dropdown", (await menu(page)) === "site-one.example");
   check("the address carries the site", (await route(page)) === "#competitors/summary?site=site-one.example", await route(page));
-  check("narrowed rows name only that site", (await sitesCount(page)).every(([, n]) => n === 1), await sitesCount(page));
+  // One site: every row belongs to it, and the "Your sites" column is gone, since it would repeat the same site on each row (2026-11-09).
+  const narrowed = await page.$eval("#cs-rivals-table", (t) => ({ sites: [...new Set([...t.querySelectorAll("tbody tr")].map((r) => r.dataset.csRowSite))], rows: t.querySelectorAll("tbody tr").length, chips: t.querySelectorAll(".cs-site").length, heads: [...t.querySelectorAll("thead th")].map((h) => h.textContent.trim()) }));
+  const siteOne = await page.$eval("#comp-site", (x) => x.value);
+  check("narrowed rows are only that site's, with no Your sites column", narrowed.rows > 0 && narrowed.sites.length === 1 && narrowed.sites[0] === siteOne && narrowed.chips === 0 && !narrowed.heads.includes("Your sites"), narrowed);
   await page.selectOption("#comp-site", "all");
   await summaryReady(page);
   check("back to All my sites hides the tabs", (await page.$$("[data-comp-tab]")).length === 0);
@@ -57,9 +60,12 @@ const sitesCount = (page) => page.$eval("#cs-rivals-table", (t) => [...t.querySe
   // ---- a site with nothing ------------------------------------------------------------------------
   await page.selectOption("#comp-site", { label: "site-three.example" });
   await summaryReady(page);
-  check("an empty site says so, and offers Find competitors", Boolean(await page.$("#comp-body [data-cl-go-find]")));
+  // Since 2026-11-10 the line above the tabs says it and offers Find competitors, once; the card under it only keeps Add competitors.
+  await page.waitForSelector("#comp-setup [data-cl-go-find]", { timeout: 10000 }).catch(() => {});
+  const emptySite = await page.evaluate(() => ({ find: document.querySelectorAll("[data-cl-go-find]").length, inBanner: Boolean(document.querySelector("#comp-setup [data-cl-go-find]")), addInCard: Boolean(document.querySelector("#comp-body .empty #cl-add-open")) }));
+  check("an empty site says so, and offers Find competitors", emptySite.find === 1 && emptySite.inBanner && emptySite.addInCard, emptySite);
   await shot(page, "empty-site");
-  await page.click("#comp-body [data-cl-go-find]");
+  await page.click("#comp-setup [data-cl-go-find]");
   await page.waitForFunction(() => location.hash.startsWith("#competitors/find"));
   check("Find competitors opens for that site", (await picked(page)) === "site-three.example");
 
@@ -82,7 +88,7 @@ const sitesCount = (page) => page.$eval("#cs-rivals-table", (t) => [...t.querySe
   await page.waitForSelector('[data-comp-tab="gaps"][aria-selected="true"]');
   check("an address naming a tab and a site goes there", (await picked(page)) === "site-two.example");
   await fresh(page, "competitors/list");
-  await page.waitForSelector('[data-comp-tab="list"][aria-selected="true"]');
+  await page.waitForSelector('[data-comp-tab="summary"][aria-selected="true"]');
   check("an old address naming a tab, no site, opens one site as before", (await picked(page)) !== "All my sites", await picked(page));
   await fresh(page, "today");
   await page.click('[data-go="competitors"]');
@@ -92,7 +98,7 @@ const sitesCount = (page) => page.$eval("#cs-rivals-table", (t) => [...t.querySe
   check("Back from Competitors goes straight to the screen before", (await route(page)).startsWith("#today"), await route(page));
   // Again with the screen already loaded once, coming from a site to All sites by way of another screen.
   await fresh(page, "competitors/list?site=site-one.example");
-  await page.waitForSelector('[data-comp-tab="list"][aria-selected="true"]');
+  await page.waitForSelector('[data-comp-tab="summary"][aria-selected="true"]');
   await page.click('[data-go="today"]');
   await page.waitForFunction(() => location.hash.startsWith("#today"));
   await page.evaluate(() => { window.UI.pickSite("all"); window.UI.render(); });
@@ -121,7 +127,7 @@ const sitesCount = (page) => page.$eval("#cs-rivals-table", (t) => [...t.querySe
   await summaryReady(page);
   await page.selectOption("#comp-site", { label: "site-one.example" });
   await summaryReady(page);
-  for (const id of ["list", "find", "pairs", "gaps", "ai", "notes", "summary"]) {
+  for (const id of ["find", "check", "pairs", "gaps", "ai", "notes", "summary"]) { // "list" has no tab of its own since the merge; Keyword check is the new one
     await page.click(`[data-comp-tab="${id}"]`);
     await page.waitForFunction((tab) => document.querySelector(`[data-comp-tab="${tab}"]`)?.getAttribute("aria-selected") === "true" && !document.querySelector("#comp-body")?.textContent.includes("That didn't load"), id);
     await page.waitForTimeout(250);
@@ -139,7 +145,9 @@ const sitesCount = (page) => page.$eval("#cs-rivals-table", (t) => [...t.querySe
   await page.waitForTimeout(1700);
   slow = false;
   await summaryReady(page);
-  check("a late answer never lands on the site now shown", (await sitesCount(page)).every(([, n]) => n === 1) && (await picked(page)) === "site-two.example", await sitesCount(page));
+  // At one site the rows carry their site's id (the Your sites column is hidden there), so a late All-my-sites answer would show as another id or as site icons.
+  const landed = await page.$eval("#cs-rivals-table", (t) => ({ sites: [...new Set([...t.querySelectorAll("tbody tr")].map((r) => r.dataset.csRowSite))], chips: t.querySelectorAll(".cs-site").length }));
+  check("a late answer never lands on the site now shown", landed.sites.length === 1 && landed.sites[0] === (await page.$eval("#comp-site", (x) => x.value)) && landed.chips === 0 && (await picked(page)) === "site-two.example", landed);
   await page.unroute("**/api/collective/**");
 
   // ---- adding a link for one site -------------------------------------------------------------------------------------
@@ -179,24 +187,26 @@ const sitesCount = (page) => page.$eval("#cs-rivals-table", (t) => [...t.querySe
   bad.length = 0; problems.length = 0;
 
   const none = (extra) => (r) => r.request().url().includes("/collective/") ? extra(r) : r.continue();
-  await page.route("**/api/collective/rivals**", async (r) => { const a = await (await r.fetch()).json(); a.coverage = { keywords: 5, checked: 0, tools: [], newest: null, oldest: null }; a.rivals.forEach((x) => Object.assign(x, { compared: 0, ranks_on: null, they_ahead: null, i_ahead: null, level: null, not_found: null })); r.fulfill({ json: a }); });
+  await page.route("**/api/collective/rivals**", async (r) => { const a = await (await r.fetch()).json(); a.coverage = { keywords: 5, checked: 0, tools: [], newest: null, oldest: null }; a.rivals.forEach((x) => Object.assign(x, { compared: 0, ranks_on: null, they_ahead: null, i_ahead: null, level: null, not_found: null })); await r.fulfill({ json: a }).catch(() => {}); }); // a request still in flight when the routes are taken away below (the setup banner asks for this too) is dropped, not an error
   await page.route("**/api/collective/keywords**", none((r) => r.fulfill({ json: { sites: [], coverage: { keywords: 5, checked: 0, tools: [], newest: null, oldest: null }, total: 0, keywords: [] } })));
   await page.route("**/api/collective/moves**", none((r) => r.fulfill({ json: { sites: [], days: 30, total: 0, moves: [], blocked: ["cafe-monde.example"], not_started: ["new.example"] } })));
   await page.route("**/api/collective/links**", none((r) => r.fulfill({ json: { sites: [], gaps: [], flagged: [], funnel: { found: 0, good: 0, flagged: 0, checking: 0, shared: 0 }, rivals_total: 3, rivals_with_data: 0 } })));
   await fresh(page);
   await summaryReady(page);
   const cells = await page.$$eval("#cs-rivals-table tbody tr:first-child td.c", (x) => x.map((c) => c.textContent.trim()));
-  check("no checks shows —, never 0", cells.slice(0, 4).every((c) => c === "—"), cells);
+  check("no checks shows —, never 0", cells.length >= 2 && cells.slice(0, 2).every((c) => c === "—"), cells); // the merged table has two keyword cells (Ranks on your keywords, Who leads); the third is edits, which is known here
   const cards = await page.$$eval("#cs-tiles .cs-jump", (x) => x.map((c) => c.getAttribute("aria-label")));
   check("number cards say — when nothing is known, never 0", cards[1].endsWith("—") && cards[3].endsWith("—"), cards);
   check("a real zero stays 0: one rival here is being read and hasn't changed", cards[2].endsWith(": 0"), cards);
-  check("no checks points to Settings", Boolean(await page.$("#cs-keywords [data-cl-settings]")));
+  // Since 2026-11-09 the one "what's missing" line above the tabs (comp-setup.js) says what to do; this box only says what it will show, with no button of its own.
+  const noChecks = await page.$eval("#cs-keywords", (x) => ({ title: x.querySelector(".empty h3")?.textContent.trim(), buttons: x.querySelectorAll(".empty button, .empty a").length }));
+  check("no checks says so in one box, with no second instruction", noChecks.title === "No ranking check yet" && noChecks.buttons === 0, noChecks);
   check("a blocked rival is named when nothing moved", (await page.$eval("#cs-moves", (x) => x.textContent)).includes("cafe-monde.example"));
   await shot(page, "no-data");
   await page.click("#cs-links [data-cs-review]");
   await page.waitForSelector('[data-comp-tab="gaps"][aria-selected="true"]');
   check("Open Link gaps from All my sites lands on a real site", (await picked(page)) !== "All my sites");
-  await page.unrouteAll();
+  await page.unrouteAll({ behavior: "ignoreErrors" });
 
   await page.route("**/api/links/sites", async (r) => { const a = await (await r.fetch()).json(); a.sites = a.sites.slice(0, 1); r.fulfill({ json: a }); });
   await fresh(page);
@@ -212,7 +222,7 @@ const sitesCount = (page) => page.$eval("#cs-rivals-table", (t) => [...t.querySe
   await summaryReady(page);
   await page.focus('[data-cs-jump="links"]');
   await page.keyboard.press("Enter");
-  check("a number card moves the keyboard to its section", (await page.evaluate(() => document.activeElement.textContent)) === "Links many competitors share");
+  check("a number card moves the keyboard to its section", (await page.evaluate(() => `${document.activeElement.tagName}:${document.activeElement.textContent.trim()}`)) === "H2:Links many competitors share"); // the heading now ends with its (i) button, an icon with no words
   await page.focus("#comp-site");
   await page.selectOption("#comp-site", { label: "site-one.example" });
   await summaryReady(page);

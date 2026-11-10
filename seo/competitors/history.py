@@ -18,7 +18,7 @@ from typing import Callable
 import httpx
 from sqlalchemy import Engine, text
 
-from seo.backlinks.cleaner import root_domain
+from seo.backlinks.cleaner import registrable_domain
 from seo.crawl.fetch import USER_AGENT
 from seo.crawl.guard import is_public_url
 from seo.serp.store import to_ascii_host
@@ -182,7 +182,7 @@ def _write_page_dates(engine: Engine, host: str, first_by_page: dict[str, date])
 def _domain_dates(host: str) -> dict:
     """Registry dates. A failure here leaves the dates already known in place."""
     try:
-        registered, expires = uptime.rdap_dates_lookup(root_domain(host))
+        registered, expires = uptime.rdap_dates_lookup(registrable_domain(host))  # the registry knows blogspot.com, not someone.blogspot.com
     except uptime.NoRdap:
         return {"domain_problem": "no_rdap"}
     except Exception:  # noqa: BLE001 - RdapFailed, or anything unexpected from a registry: the Wayback part still counts

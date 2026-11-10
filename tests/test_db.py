@@ -19,11 +19,23 @@ def test_now_matches_utc_timestamp():
     assert gap <= 2
 
 
-def test_pool_stays_well_under_the_hosting_limit():
-    # o2switch allows 35 connections per DB user, shared by every process.
-    engine = make_engine(test=True)
-    assert engine.pool.size() <= 3
-    assert engine.pool._max_overflow <= 2
+def test_pool_stays_well_under_the_hosting_limit(monkeypatch):
+    # o2switch allows 35 connections per DB user, shared by every process: about 6 web processes and 5 cron ticks.
+    from seo.core import db
+    monkeypatch.delenv("DB_POOL_SIZE", raising=False)
+    monkeypatch.delenv("DB_MAX_OVERFLOW", raising=False)
+    size, overflow = db.pool_sizes(platform="linux")
+    assert (6 + 5) * (size + overflow) <= 35
+    assert size + overflow >= 3  # a job, its heartbeat, and one nested read
+    assert make_engine(test=True).pool.timeout() <= 10  # a fault shows in seconds, not after 30
+
+
+def test_the_local_pool_is_larger_and_can_be_set(monkeypatch):
+    from seo.core import db
+    assert db.pool_sizes(platform="darwin") == db.LOCAL_POOL
+    monkeypatch.setenv("DB_POOL_SIZE", "1")
+    monkeypatch.setenv("DB_MAX_OVERFLOW", "0")
+    assert db.pool_sizes(platform="linux") == (1, 0)
 
 
 def test_connects_through_127_0_0_1():

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Callable
 
@@ -32,6 +33,7 @@ def create_app(engine: Engine | None = None, url_allowed: Callable[[str], bool] 
     from seo.web.search_api import search_api
     from seo.web.insights_api import insights_api
     from seo.web.notifications_api import notifications_api
+    from seo.web.exports_api import exports_api
 
     backlink_traffic.install()
     app = Flask(__name__, static_folder=None)
@@ -50,6 +52,7 @@ def create_app(engine: Engine | None = None, url_allowed: Callable[[str], bool] 
     app.register_blueprint(search_api)
     app.register_blueprint(insights_api)
     app.register_blueprint(notifications_api)
+    app.register_blueprint(exports_api)
     app.config["AUTH_ON"] = auth
     if auth:
         from seo.core import crypto
@@ -68,12 +71,49 @@ def create_app(engine: Engine | None = None, url_allowed: Callable[[str], bool] 
     def refused(error: Refused):
         return jsonify(error=str(error)), error.http
 
+    # One answer for every error under /api/: a sentence a person can read, never Flask's HTML page or a trace (F166).
+    @app.errorhandler(Exception)
+    def any_error(error: Exception):
+        from flask import request
+        from werkzeug.exceptions import HTTPException
+
+        if isinstance(error, HTTPException):
+            if request.path.startswith("/api/"):
+                words = API_ERROR_WORDS.get(error.code or 500, "That request didn't work. Try again.")
+                return jsonify(error=words), error.code
+            if error.code == 404 and screens_dir:
+                return not_found_page(), 404
+            return error
+        app.logger.exception("Unhandled error on %s", request.path)
+        if request.path.startswith("/api/"):
+            return jsonify(error=API_ERROR_WORDS[500]), 500
+        return error_page(), 500
+
     if screens_dir:
         folder = str(screens_dir)
+        files = Path(folder)
+
+        def versioned(page: str) -> str:
+            """The page with ?v=<size and time of each file> on its scripts and styles, so a browser keeps them until a deploy changes them."""
+            html = (files / page).read_text(encoding="utf-8")
+
+            def stamp(match: re.Match) -> str:
+                name = match.group(2)
+                try:
+                    info = (files / name).stat()
+                except OSError:
+                    return match.group(0)
+                return f'{match.group(1)}="{name}?v={info.st_mtime_ns:x}{info.st_size:x}"'
+
+            return re.sub(r'\b(src|href)="([\w./-]+\.(?:js|css))"', stamp, html)
+
+        def html_answer(page: str):
+            from flask import Response
+            return Response(versioned(page), mimetype="text/html")
 
         @app.get("/")
         def index():
-            return send_from_directory(folder, "index.html")
+            return html_answer("index.html")
 
         @app.get("/boot.js")
         def boot():
@@ -91,15 +131,84 @@ def create_app(engine: Engine | None = None, url_allowed: Callable[[str], bool] 
 
         @app.get("/login")
         def login_page():
-            return send_from_directory(folder, "login.html")
+            return html_answer("login.html")
 
         @app.get("/<path:name>")
         def screen_file(name):
             return send_from_directory(folder, name)
 
-        @app.after_request
-        def no_cache(response):
+    @app.after_request
+    def caching(response):
+        """The API, the pages and boot.js are never kept. A script or style asked for with ?v= is kept a year: its address changes
+        with the file. Anything else is checked each time (an answer of 304 when it hasn't changed)."""
+        from flask import request
+        path = request.path
+        if path.startswith("/api/") or path in ("/", "/login", "/boot.js") or path.endswith(".html") or response.status_code >= 400:
             response.headers["Cache-Control"] = "no-store"
-            return response
+        elif request.args.get("v"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        else:
+            response.headers["Cache-Control"] = "no-cache"
+        return response
 
     return app
+
+
+API_ERROR_WORDS = {
+    400: "The app couldn't read that request. Reload the page and try again.",
+    401: "Please sign in.",
+    403: "You can't do that with this account.",
+    404: "That address isn't part of the app.",
+    405: "That address doesn't take this kind of request.",
+    409: "Someone else changed this at the same time. Reload and try again.",
+    413: f"That upload is too large. The limit is {MAX_REQUEST_BYTES // (1024 * 1024)} MB.",
+    429: "Too many requests at once. Wait a minute, then try again.",
+    500: "Something went wrong on the server. Try again; if it keeps happening, tell your admin.",
+    502: "The server didn't answer. Try again in a minute.",
+    503: "The server is busy. Try again in a minute.",
+}
+
+_PAGE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title_en} · SEO Command Center</title>
+<style>
+  :root {{ --bg:#f6f7f9; --card:#fff; --ink:#1f2937; --sec:#4b5563; --main:#1d4ed8; --on-main:#fff; color-scheme: light; }}
+  @media (prefers-color-scheme: dark) {{ :root:not([data-theme="light"]) {{ --bg:#0f141b; --card:#18202b; --ink:#e5e9f0; --sec:#aab4c3; --main:#6b9bff; --on-main:#0b1220; color-scheme: dark; }} }}
+  :root[data-theme="dark"] {{ --bg:#0f141b; --card:#18202b; --ink:#e5e9f0; --sec:#aab4c3; --main:#6b9bff; --on-main:#0b1220; color-scheme: dark; }}
+  body {{ margin:0; min-height:100vh; display:grid; place-items:center; padding:16px; box-sizing:border-box; background:var(--bg); color:var(--ink); font:16px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }}
+  main {{ width:min(420px,100%); background:var(--card); border-radius:16px; padding:28px; box-shadow:0 1px 3px rgb(0 0 0 / .08), 0 12px 32px rgb(0 0 0 / .06); }}
+  h1 {{ font-size:20px; margin:0 0 8px; }} p {{ margin:0 0 20px; color:var(--sec); }}
+  a {{ display:inline-flex; align-items:center; min-height:40px; padding:0 16px; border-radius:10px; background:var(--main); color:var(--on-main); text-decoration:none; font-weight:600; }}
+  a:focus-visible {{ outline:3px solid var(--ink); outline-offset:2px; }}
+</style></head>
+<body><main><h1 id="t">{title_en}</h1><p id="s">{body_en}</p><a href="{root}" id="home">Go to Today</a></main>
+<script>
+(function () {{
+  var get = function (k) {{ try {{ return localStorage.getItem("seocc2-" + k); }} catch (e) {{ return null; }} }};
+  var theme = get("theme"); if (theme === "dark" || theme === "light") document.documentElement.dataset.theme = theme;
+  if (get("lang") === "fr") {{
+    document.documentElement.lang = "fr"; document.title = "{title_fr} · SEO Command Center";
+    document.getElementById("t").textContent = "{title_fr}"; document.getElementById("s").textContent = "{body_fr}";
+    document.getElementById("home").textContent = "Aller à Aujourd'hui";
+  }}
+}})();
+</script></body></html>"""
+
+
+def _root() -> str:
+    from flask import request
+    return (request.script_root or "") + "/"
+
+
+def not_found_page() -> str:
+    return _PAGE.format(root=_root(), 
+        title_en="This page doesn't exist", body_en="The address may be mistyped, or the page was moved. Today has everything else.",
+        title_fr="Cette page n'existe pas", body_fr="L'adresse est peut-être mal saisie, ou la page a été déplacée. Aujourd'hui donne accès à tout le reste.",
+    )
+
+
+def error_page() -> str:
+    return _PAGE.format(root=_root(), 
+        title_en="Something went wrong", body_en="The server couldn't show this page. Try again in a minute.",
+        title_fr="Un problème est survenu", body_fr="Le serveur n'a pas pu afficher cette page. Réessayez dans une minute.",
+    )

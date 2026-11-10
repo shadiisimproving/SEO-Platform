@@ -46,7 +46,7 @@
       <datalist id="td-types">${H.LINK_TYPES.map((name) => `<option value="${esc(name)}"></option>`).join("")}</datalist>
       <datalist id="td-mediators">${names.map((name) => `<option value="${esc(name)}"></option>`).join("")}</datalist>
       <div class="table-wrap"><table class="data" id="td-table">
-        <thead><tr><th scope="col">${t("Website")}</th><th scope="col">${t("Link type")}</th><th scope="col">${t("Article")}</th><th scope="col">${t("Mediator")}</th><th scope="col">${t("Status")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
+        <thead><tr><th scope="col">${t("Site")}</th><th scope="col">${t("Link type")}</th><th scope="col">${t("Article")}</th><th scope="col">${t("Mediator")}</th><th scope="col">${t("Status")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
         <tbody>${list.map(rowHtml).join("") || `<tr style="cursor:default"><td colspan="6"><div class="empty"><p>${t("Nothing here for this mediator.")}</p></div></td></tr>`}</tbody>
       </table></div>
       <p class="help" style="margin-top:10px">${t("Links in To do aren't counted in the cards above and aren't checked until they're placed.")}</p>`;
@@ -185,7 +185,7 @@
       return `<div class="td-group"><div><b dir="auto">${esc(name)}</b><div class="small sec">${num(toSend.length)} ${t("to send")}${sent ? ` · ${num(sent)} ${t("sent")}` : ""}</div>${missing ? `<div class="small warn td-missing">${icon("triangle-alert")}${num(missing)} ${t(missing === 1 ? "guest post has no article link" : "guest posts have no article link")}</div>` : ""}</div>
         <span class="td-group-acts">${toSend.length ? `<button class="btn btn-main btn-small" data-td-export="${at}">${icon("download")}${t("Export")} ${num(toSend.length)}</button>` : ""}${sent ? `<button class="link-btn" data-td-export-again="${at}">${t(toSend.length ? "Include sent" : "Download again")}</button>` : ""}</span></div>`;
     }).join("");
-    UI.openPanel(`${UI.panelHead(t("Export for a mediator"), t("One file per mediator, with the website, link type and article."))}
+    UI.openPanel(`${UI.panelHead(t("Export for a mediator"), t("One file per mediator, with the site, link type and article."))}
       <div class="panel-body">
         <p class="note">${icon("info")}<span>${t("Before you send it, set each Google Doc to \"Anyone with the link can view\", or the mediator won't be able to open it.")}</span></p>
         ${rows}
@@ -199,7 +199,7 @@
   };
 
   function downloadCsv(name, links) {
-    const lines = [["Website", "Link type", "Article"], ...links.map((b) => [b.domain, b.linkType || "", b.articleUrl || ""])];
+    const lines = [["Site", "Link type", "Article"], ...links.map((b) => [b.domain, b.linkType || "", b.articleUrl || ""])];
     const url = URL.createObjectURL(new Blob(["﻿", lines.map((row) => row.map(csvCell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
     const safe = name.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-|-$/g, "") || "mediator";
@@ -320,6 +320,7 @@
   window.LinkTodo = {
     init(helpers, extras) { UI = helpers; H = extras; bind(); },
     body, openMove, count: () => planned().length,
+    seen: () => ({ ids: planned().filter((b) => !T.mediator || b.mediator === T.mediator).map((b) => b.id), mediator: T.mediator || "" }), // export.js: the rows on screen
   };
 
   const fr = {
@@ -330,7 +331,7 @@
     "Move to To do": "Déplacer vers À faire", "Move": "Déplacer", "link": "lien", "links": "liens", "You add each article's Google Docs link in To do.": "Vous ajoutez le lien Google Docs de chaque article dans À faire.", "Choose a mediator.": "Choisissez un intermédiaire.",
     "link moved to To do": "lien déplacé vers À faire", "links moved to To do": "liens déplacés vers À faire", "already logged, so left where they are": "déjà enregistrés, laissés à leur place",
     "No mediator": "Sans intermédiaire", "Give them a mediator first.": "Attribuez-leur d'abord un intermédiaire.", "guest post has no article link": "article invité sans lien", "guest posts have no article link": "articles invités sans lien", "Export": "Exporter", "Include sent": "Inclure les envoyés", "Download again": "Télécharger de nouveau",
-    "One file per mediator, with the website, link type and article.": "Un fichier par intermédiaire, avec le site, le type de lien et l'article.", "Before you send it, set each Google Doc to \"Anyone with the link can view\", or the mediator won't be able to open it.": "Avant l'envoi, réglez chaque Google Doc sur « Tous les utilisateurs disposant du lien peuvent consulter », sinon l'intermédiaire ne pourra pas l'ouvrir.",
+    "One file per mediator, with the site, link type and article.": "Un fichier par intermédiaire, avec le site, le type de lien et l'article.", "Before you send it, set each Google Doc to \"Anyone with the link can view\", or the mediator won't be able to open it.": "Avant l'envoi, réglez chaque Google Doc sur « Tous les utilisateurs disposant du lien peuvent consulter », sinon l'intermédiaire ne pourra pas l'ouvrir.",
     "link marked as Sent": "lien marqué comme envoyé", "links marked as Sent": "liens marqués comme envoyés", "File downloaded": "Fichier téléchargé", "The file downloaded, but the links weren't marked as Sent.": "Le fichier a été téléchargé, mais les liens n'ont pas été marqués comme envoyés.",
     "The article's real address": "L'adresse réelle de l'article", "The page where the article was published. The monthly check reads this page to see that your link is still there, so it must be the exact address.": "La page où l'article a été publié. Le contrôle mensuel lit cette page pour vérifier que votre lien est toujours là : l'adresse doit être exacte.", "Move to Done": "Déplacer vers Réalisés", "Paste the article's address.": "Collez l'adresse de l'article.", "moved to Done as Live": "déplacé vers Réalisés, actif", "The article's address must be a web address starting with https://.": "L'adresse de l'article doit commencer par https://.", "The article link must be a web address starting with https://.": "Le lien de l'article doit commencer par https://.",
     "selected": "sélectionnés", "Select": "Sélectionner", "Already in To do": "Déjà dans À faire",

@@ -932,3 +932,61 @@ def test_a_very_long_retry_after_is_only_waited_for_so_long():
     result = run_scan("https://shop.co.ae/", "shop.co.ae", fetcher)
     assert result.paused is True
     assert result.wait_seconds <= 3600
+
+
+# ---- endless addresses and a start page that fails once (F66, F67) ----------------------------------
+
+def test_one_path_with_endless_query_strings_stops_at_a_cap_and_the_rest_of_the_site_is_still_read(monkeypatch):
+    from seo.links import checker
+    monkeypatch.setattr(checker, "QUERY_VARIANTS_PER_PATH", 5)
+
+    def calendar(request):
+        month = int(request.url.params.get("m", "0"))
+        return httpx.Response(200, html=links(f"/calendar?m={month + 1}", f"/calendar?m={month + 2}"))
+
+    pages = {"shop.co.ae/": links("/calendar?m=1", "/about"), "shop.co.ae/about": links("/"), **{f"shop.co.ae/calendar?m={m}": calendar for m in range(1, 200)}}
+    result, fixture = scan(pages, max_pages=None)
+    assert len(fixture.asked_for("/calendar")) == 5 and fixture.asked_for("/about")
+    assert not result.paused and not result.stopped_at_limit
+
+
+def test_a_scan_ends_with_a_note_past_the_safety_ceiling(monkeypatch):
+    from seo.links import checker
+    monkeypatch.setattr(checker, "SAFETY_PAGES", 3)
+    pages = {"shop.co.ae/": links("/a", "/b", "/c", "/d"), **{f"shop.co.ae/{p}": links("/") for p in "abcd"}}
+    result, _ = scan(pages, max_pages=None)
+    assert result.pages_read == 3 and result.stopped_at_limit
+
+
+def test_a_start_page_that_times_out_once_is_asked_again_before_the_scan_settles():
+    tries = []
+
+    def flaky(request):
+        tries.append(1)
+        if len(tries) == 1:
+            raise httpx.ReadTimeout("slow")
+        return httpx.Response(200, html=links("/a"))
+
+    pages = {"shop.co.ae/": flaky, "shop.co.ae/a": links("/")}
+    fixture = Fixture(pages)
+    fetcher = PoliteFetcher(delay=0, is_allowed=lambda url: True, transport=httpx.MockTransport(fixture))
+    first = run_scan("https://shop.co.ae/", "shop.co.ae", fetcher, max_pages=None)
+    assert first.paused and first.wait_seconds > 0 and first.pages_read == 0  # not "complete with one issue"
+    again = run_scan("https://shop.co.ae/", "shop.co.ae", fetcher, max_pages=None, state=CrawlState.from_json(json.loads(json.dumps(first.state.to_json()))))
+    assert not again.paused and again.pages_read == 2 and not again.issues
+
+
+def test_a_start_page_that_keeps_failing_is_reported_after_three_tries():
+    pages = {"shop.co.ae/": 500}
+    fixture = Fixture(pages)
+    fetcher = PoliteFetcher(delay=0, is_allowed=lambda url: True, transport=httpx.MockTransport(fixture))
+    state = None
+    for _ in range(3):
+        result = run_scan("https://shop.co.ae/", "shop.co.ae", fetcher, max_pages=None, state=state)
+        state = result.state
+    assert not result.paused and len(fixture.asked_for("shop.co.ae/")) >= 3
+    assert [i.category for i in result.issues] == ["unverified"]
+
+
+def test_a_malformed_base_href_keeps_the_links_readable():
+    assert extract_links(b'<html><head><base href="http://[bad"></head><body><a href="/a">x</a></body></html>', "https://shop.co.ae/p") == ["https://shop.co.ae/a"]

@@ -37,6 +37,14 @@ LONG_CHAIN_HOPS = 2
 ROBOTS_RETRY_SECONDS = 300
 ROBOTS_TRIES = 288  # a day of asking, every 5 minutes, before believing that robots.txt really has gone
 LONGEST_WAIT_SECONDS = 3600  # a site's Retry-After is only obeyed this far: it can say anything
+# Guards against endless addresses (F66), not a page limit: a scan still reads the whole site. A calendar, faceted filters
+# or ?replytocom= make every variant a new page, so one path keeps at most this many query-string variants...
+QUERY_VARIANTS_PER_PATH = 50
+# ...and a scan ends, complete with a note, past this many pages. Far above any site this app reads.
+SAFETY_PAGES = 100_000
+START_TRIES = 3  # a passing failure on the start page is tried again in a later chunk before it's believed (F67)
+START_RETRY_SECONDS = 120
+_PASSING = ("network_error", "server_error", "rate_limited")
 
 BROKEN, UNVERIFIED, REDIRECT, SLOW = "broken", "unverified", "redirect", "slow"
 SKIPPED_SCHEMES = ("#", "javascript:", "mailto:", "tel:", "data:", "sms:", "ftp:", "file:", "about:")
@@ -94,6 +102,9 @@ class CrawlState:
     robots_tries: int = 0  # later chunks in a row that found robots.txt failing
     last_request_at: float = 0.0  # seconds since 1970. A new fetcher knows nothing of the last one's requests.
     gap_seconds: float = 0.0  # the longest gap the site asked for, which a new fetcher only learns after asking again
+    variants: dict[str, int] = field(default_factory=dict)  # path key -> query-string variants queued (F66)
+    start_tries: int = 0  # passing failures of the start page so far (F67)
+    variants_skipped: int = 0
 
     def __post_init__(self):
         self.result.state = self
@@ -146,6 +157,9 @@ class CrawlState:
             "robots_tries": self.robots_tries,
             "last_request_at": self.last_request_at,
             "gap_seconds": self.gap_seconds,
+            "variants": self.variants,
+            "start_tries": self.start_tries,
+            "variants_skipped": self.variants_skipped,
         }
 
     @classmethod
@@ -162,7 +176,21 @@ class CrawlState:
             robots_tries=data["robots_tries"],
             last_request_at=data["last_request_at"],
             gap_seconds=data["gap_seconds"],
+            variants=dict(data.get("variants") or {}),  # states saved before F66 have none
+            start_tries=int(data.get("start_tries") or 0),
+            variants_skipped=int(data.get("variants_skipped") or 0),
         )
+
+    def room_for(self, key: str) -> bool:
+        """A new address to queue. One path with endless query strings (a calendar, filters) stops at QUERY_VARIANTS_PER_PATH."""
+        if "?" not in key:
+            return True
+        path = key.split("?", 1)[0]
+        if self.variants.get(path, 0) >= QUERY_VARIANTS_PER_PATH:
+            self.variants_skipped += 1
+            return False
+        self.variants[path] = self.variants.get(path, 0) + 1
+        return True
 
 
 def extract_links(body: bytes, page_url: str, charset: str | None = None) -> list[str]:
@@ -179,7 +207,10 @@ def extract_links(body: bytes, page_url: str, charset: str | None = None) -> lis
     base = page_url
     tag = doc.find(".//base")
     if tag is not None and (tag.get("href") or "").strip():
-        base = urljoin(page_url, tag.get("href").strip())
+        try:
+            base = urljoin(page_url, tag.get("href").strip())
+        except ValueError:  # <base href="http://[bad">: links are read against the page itself
+            base = page_url
     found: list[str] = []
     for anchor in doc.iter("a"):
         href = (anchor.get("href") or "").strip()
@@ -302,6 +333,11 @@ def run_scan(
 
     def must_wait(result: FetchResult, key: str) -> bool:
         """Every page would get the same answer without being asked, in no time. That would use up the whole queue, so it waits instead."""
+        if key == start_key and not state.read_pages and result.status in _PASSING and state.start_tries < START_TRIES - 1:
+            # One timeout or 5xx on the start page would end the scan as "complete" with one issue (F67): ask again later.
+            state.start_tries += 1
+            out.wait_seconds = START_RETRY_SECONDS
+            return True
         if not result.held_back:
             if state.robots_tries < ROBOTS_TRIES:  # once given up, stay given up: www and non-www can each have their own robots.txt
                 state.robots_tries = 0
@@ -320,7 +356,7 @@ def run_scan(
     while state.queue:
         if not can_continue():
             break
-        if max_pages is not None and out.pages_read >= max_pages:
+        if out.pages_read >= (max_pages if max_pages is not None else SAFETY_PAGES):
             out.stopped_at_limit = True
             break
         url = state.queue.popleft()
@@ -359,6 +395,8 @@ def run_scan(
                     continue
                 link_key = page_key(normal)
                 if on_site(normal):
+                    if link_key not in state.seen_pages and not state.room_for(link_key):
+                        continue  # one more variant of an endless address: neither read nor listed
                     state.note_link(link_key, normal, page)
                     if link_key not in state.seen_pages:
                         state.seen_pages.add(link_key)

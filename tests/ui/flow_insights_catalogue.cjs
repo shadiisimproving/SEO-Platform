@@ -1,8 +1,7 @@
 // Search → Insights, the rest of the catalogue (built 2026-11-09): the Leads, Technical and Did it work tabs and the new
 // kinds' rows and panels, driven the way a person uses them, with screenshots to look at.
-// Needs the test app with made-up shop-one.test data that sets off every kind, worked out once:
-//   DB_NAME_TEST=test_catalogue_ui_test .venv/bin/python tests/ui/app_server.py --port 8233 --empty
-//   then a script writing gsc_*, ga4_page_daily, tasks and health rows for shop-one.test, and one insights run.
+// Needs the test app with made-up shop-one.test data that sets off every kind, worked out once, which this does:
+//   DB_NAME_TEST=test_x_test .venv/bin/python tests/ui/insights_server.py --port 8233 --catalogue   (tests/ui/seed_insights.py)
 // Run: node tests/ui/flow_insights_catalogue.cjs reports/insights-catalogue http://127.0.0.1:8233/
 const fs = require("fs");
 const { open, menu } = require("./pw.cjs");

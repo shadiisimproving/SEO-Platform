@@ -14,7 +14,7 @@
     Bing: "bing.svg", Yandex: "yandex.png", DuckDuckGo: "duckduckgo.png",
     "Microsoft Clarity": "clarity.png", Clarity: "clarity.png",
     "Bright Data": "brightdata.png", SerpApi: "serpapi.png", HasData: "hasdata.png", Searlo: "searlo.png", SearXNG: "searxng.svg", "Open PageRank": "openpagerank.png", "Keywords Everywhere": "openpagerank.png",
-    OpenRouter: "openrouter.png", Moz: "moz.png", Ahrefs: "ahrefs.png", Cloudflare: "cloudflare.png", "Common Crawl": "commoncrawl.jpg", IndexNow: "indexnow.png",
+    OpenRouter: "openrouter.png", Firecrawl: "firecrawl.png", Moz: "moz.png", Ahrefs: "ahrefs.png", Cloudflare: "cloudflare.png", "Common Crawl": "commoncrawl.jpg", IndexNow: "indexnow.png",
     SEMrush: "semrush.png", Ubersuggest: "ubersuggest.svg", Excel: "excel.svg", Mac: "apple.svg",
     Anthropic: "anthropic.png", Claude: "anthropic.png",
   };

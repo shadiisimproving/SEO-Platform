@@ -11,6 +11,7 @@ from decimal import Decimal, InvalidOperation
 from sqlalchemy import Engine, text
 
 from seo.backlinks import live
+from seo.backlinks.cleaner import root_domain
 from seo.competitors.keywords import require_own
 from seo.core.errors import NotFound, Refused
 
@@ -39,7 +40,9 @@ def disavow_file(engine: Engine, site_id: int) -> tuple[str, int]:
     with engine.connect() as conn:
         require_own(conn, site_id)
         host = conn.execute(text("SELECT host FROM sites WHERE id = :s"), {"s": site_id}).scalar()
-        domains = [r[0] for r in conn.execute(text("SELECT DISTINCT domain FROM backlinks WHERE site_id = :s AND disavow = 1 ORDER BY domain"), {"s": site_id})]
+        rows = conn.execute(text("SELECT domain, source_url FROM backlinks WHERE site_id = :s AND disavow = 1"), {"s": site_id}).all()
+    # Worked out again from the address, so a link saved under a platform's domain before F105 disavows its own blog, not the platform.
+    domains = sorted({root_domain(url) or domain for domain, url in rows})
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     lines = [
         f"# Disavow file for {host}, made {stamp}",

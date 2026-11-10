@@ -1,8 +1,7 @@
 // Search → Insights the way a person uses it, with screenshots to look at (built 2026-11-09).
-// Needs the real app on a test database with Search Console days for shop-one.test, and insights worked out once:
-//   DB_NAME_TEST=test_insights_ui_test .venv/bin/python tests/ui/app_server.py --port 8231 --empty
-//   then fill made-up days for shop-one.test (any script writing gsc_* rows) and press Run again on the screen.
-// Run: node tests/ui/flow_insights.cjs reports/insights-2026-11-09 http://127.0.0.1:8231/
+// Needs the test app with made-up Search Console days for shop-one.test and insights worked out once, which this does:
+//   DB_NAME_TEST=test_x_test .venv/bin/python tests/ui/insights_server.py --port 8231   (seeds with tests/ui/seed_insights.py)
+// Run: node tests/ui/flow_insights.cjs reports/insights http://127.0.0.1:8231/
 const fs = require("fs");
 const { open, menu } = require("./pw.cjs");
 const out = process.argv[2] || "reports/insights";

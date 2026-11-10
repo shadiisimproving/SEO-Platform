@@ -127,8 +127,8 @@
     const reading = isWaiting(p.my_state) || isWaiting(p.their_state);
     const position = (word, value) => `<td class="c cp-simple-pos" data-label="${t(word)}">${lead ? COMP.pos(value, lead.keyword.depth) : dash()}</td>`;
     return `<tr data-cp-row="${p.id}">
-      <td class="head-cell cp-page">${p.my_title ? `<span class="cp-page-title" dir="auto">${esc(p.my_title)}</span><span class="second mono" dir="ltr">${esc(pathOf(p.my_url))}</span>` : `<span class="cp-page-title mono" dir="ltr">${esc(pathOf(p.my_url))}</span>`}</td>
-      <td data-label="${t("Competitor")}"><div class="cp-val"><span dir="auto">${esc(p.competitor || COMP.shortUrl(p.their_url).split("/")[0])}</span>${p.source === "manual" ? ` <span class="tag cp-yours">${t("Your choice")}</span>` : ""}${reading ? `<span class="second">${W.expired ? plainStatus("clock", "Waiting") : plainStatus("refresh-cw", "Reading…", "spin")}</span>` : ""}</div></td>
+      <td class="head-cell cp-page">${p.my_title ? `<span class="cp-page-title" dir="auto">${esc(p.my_title)}</span>${PageLink.html(p.my_url, { text: pathOf(p.my_url), cls: "second mono", dir: "ltr" })}` : PageLink.html(p.my_url, { text: pathOf(p.my_url), cls: "cp-page-title mono", dir: "ltr" })}</td>
+      <td data-label="${t("Competitor")}"><div class="cp-val"><span class="with-logo cp-rival-name">${window.UI.siteLogo(p.competitor || COMP.shortUrl(p.their_url).split("/")[0], 16)}<span class="logo-text" dir="auto">${esc(p.competitor || COMP.shortUrl(p.their_url).split("/")[0])}</span></span>${p.source === "manual" ? ` <span class="tag cp-yours">${t("Your choice")}</span>` : ""}${reading ? `<span class="second">${W.expired ? plainStatus("clock", "Waiting") : plainStatus("refresh-cw", "Reading…", "spin")}</span>` : ""}</div></td>
       <td data-label="${t("Keyword")}"><div class="cp-val">${lead ? `<span dir="auto">${esc(lead.keyword.keyword)}</span>${lead.rest > 0 ? `<span class="second">+ ${UI.num(lead.rest)} ${t(lead.rest === 1 ? "more keyword" : "more keywords")}</span>` : ""}` : `<span class="muted small">${t("No keyword in the latest check")}</span>`}</div></td>
       ${position("You", lead?.keyword.my_position)}
       ${position("Them", lead?.keyword.their_position)}
@@ -152,7 +152,7 @@
     if (S.verdict === null) S.verdict = counts.behind ? "behind" : "all";
     const chip = (id, word, n) => `<button class="chip" data-cp-verdict="${id}" aria-pressed="${S.verdict === id}">${t(word)}<b>${UI.num(n)}</b></button>`;
     const tools = `<div class="cp-tools">
-      <label class="field"><span>${t("Competitor")}</span><select class="select" id="cp-filter">
+      <label class="field"><span>${t("Against")}</span><select class="select" id="cp-filter">
         <option value="">${t("All competitors")} (${UI.num(S.pairs.length)})</option>
         ${S.competitors.map((c) => { const n = S.pairs.filter((p) => p.competitor_id === c.id).length; return `<option value="${c.id}" ${String(c.id) === S.filter ? "selected" : ""}>${esc(c.display || c.host)} (${UI.num(n)})</option>`; }).join("")}
       </select></label>
@@ -348,7 +348,7 @@
   const noAiWords = (row) => (row.ai_state === "not_captured"
     ? `<span class="muted" data-tip="${t("The tool used can't see AI Overviews. It doesn't mean there isn't one.")}">${t("Not captured")}</span>`
     : none("No AI Overview"));
-  const otherPage = (other, word) => (other ? `<span class="second cp-other">${fill(esc(t(word)), { path: `<span class="mono" dir="ltr">${esc(pathOf(other.url))}</span>`, n: UI.num(other.position) })}</span>` : "");
+  const otherPage = (other, word) => (other ? `<span class="second cp-other">${fill(esc(t(word)), { path: PageLink.html(other.url, { text: pathOf(other.url), cls: "mono", dir: "ltr" }), n: UI.num(other.position) })}</span>` : "");
 
   /* Who's ahead on this one keyword. A page missing from the results isn't a loss if another page of that site ranks instead. */
   function keywordResult(r) {
@@ -471,7 +471,7 @@
         </div>
         <div class="cp-answer">${verdict.text ? verdictBadge(verdict) : ""}${answerNote(d)}</div>
         ${UI.relatedTasks({ host: COMP.site()?.host || "", page: d.my_url })}
-        ${d.same_language === false ? `<p class="note warn cp-choice">${UI.icon("languages")}<span>${t("These pages are in different languages, so comparing their words means little.")}</span></p>` : ""}
+        ${d.same_language === false ? `<p class="note cp-choice">${UI.icon("languages")}<span>${t("These pages are in different languages, so comparing their words means little.")}</span></p>` : ""}
         ${S.readWaiting ? `<p class="note cp-choice" role="status">${UI.icon("clock")}<span>${t("The new read is waiting for the next worker run.")}</span></p>` : ""}
         <div class="cp-versus">${sideHead("mine", d.mine)}${sideHead("theirs", d.theirs)}</div>
       </section>
@@ -1140,6 +1140,7 @@
     "Words in their headings that appear nowhere on your page. Plain word matching, no AI.": "Mots de leurs titres absents de toute votre page. Simple comparaison de mots, sans IA.",
     "Words in your headings that appear nowhere on their page. Plain word matching, no AI.": "Mots de vos titres absents de toute leur page. Simple comparaison de mots, sans IA.",
     "These pages are in different languages, so comparing their words means little.": "Ces pages sont dans des langues différentes : comparer leurs mots n'a guère de sens.",
+    "Against": "Face à",
     "Notes on my page": "Notes sur ma page",
     "Notes on their page": "Notes sur leur page",
     "1 shared keyword": "1 mot-clé commun",

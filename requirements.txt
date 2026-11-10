@@ -9,3 +9,5 @@ Flask>=3,<4
 google-auth>=2.30,<3
 tzdata>=2024.1  # Pacific time for Search Console days, on hosts without a system zone database
 anthropic>=1.17,<2  # Claude for Search insights' AI add-on, only with a key pasted in Settings
+openpyxl==3.1.5  # Excel exports (seo/exports). Pure Python
+reportlab==5.1.0  # PDF exports. Pure Python; brings Pillow, which installs as a ready-made wheel with no system library

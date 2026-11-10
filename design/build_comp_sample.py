@@ -44,7 +44,7 @@ def main() -> None:
     for site_id in world["sites"].values():
         for part in ("rivals", "keywords", "moves", "links"):
             take(f"collective/{part}?site_id={site_id}")
-        for path in ("competitors", "competitors/suggestions", "page-pairs", "link-gaps", "ai-watch", "prospects"):
+        for path in ("competitors", "competitors/suggestions", "page-pairs", "link-gaps", "ai-watch", "prospects", "keyword-check"):
             take(f"{path}?site_id={site_id}")
         take(f"sites/{site_id}/pages")
         take(f"backlinks/summary?site_id={site_id}")

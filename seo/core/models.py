@@ -167,6 +167,7 @@ class Page(Base):
     external_links: Mapped[int | None] = mapped_column(Integer, nullable=True)
     content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     js_only: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))
+    read_with: Mapped[str | None] = mapped_column(String(10), nullable=True)  # firecrawl: the daily reader leaves this page alone
     extras: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     sitemap_lastmod: Mapped[date | None] = mapped_column(Date, nullable=True)  # the date the site's own sitemap gives
     first_archived: Mapped[date | None] = mapped_column(Date, nullable=True)  # the Wayback Machine's first copy of this page
@@ -240,6 +241,36 @@ class SiteKeyword(Base):
     keyword_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("keywords.id", ondelete="CASCADE"), primary_key=True)
     upload_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
+class ProbeKeyword(Base):
+    """A keyword typed in Keyword check, to see which competitors rank for it. Never part of the site's own list."""
+
+    __tablename__ = "probe_keywords"
+    __table_args__ = (UniqueConstraint("site_id", "keyword_id", name="uq_probe_keyword"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    keyword_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("keywords.id", ondelete="CASCADE"))
+    created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
+class ProbeRun(Base):
+    __tablename__ = "probe_runs"
+    __table_args__ = (Index("ix_probe_runs_site", "site_id", "id"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    engine: Mapped[str] = mapped_column(String(12))
+    only_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    status: Mapped[str] = mapped_column(String(10), server_default="queued")  # queued, running, complete, waiting
+    total: Mapped[int] = mapped_column(Integer, server_default="0")
+    checked: Mapped[int] = mapped_column(Integer, server_default="0")
+    failed: Mapped[int] = mapped_column(Integer, server_default="0")
+    tool: Mapped[str | None] = mapped_column(String(40), nullable=True)
+    stop_reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+    finished_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
 
 
 class SerpTarget(Base):
@@ -364,6 +395,14 @@ class CompetitorCrawl(Base):
     message: Mapped[str | None] = mapped_column(String(500), nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
     finished_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+    list_source: Mapped[str | None] = mapped_column(String(10), nullable=True)  # sitemap, feed or links
+    list_capped: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))
+    fc_status: Mapped[str | None] = mapped_column(String(10), nullable=True)  # the last Firecrawl run someone asked for
+    fc_action: Mapped[str | None] = mapped_column(String(6), nullable=True)  # map or read
+    fc_message: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    fc_done: Mapped[int] = mapped_column(Integer, server_default="0")
+    fc_asked: Mapped[int] = mapped_column(Integer, server_default="0")
+    fc_finished_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
 
 
 class PagePair(Base):
@@ -589,6 +628,8 @@ class Note(Base):
     task_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("tasks.id", ondelete="CASCADE", name="fk_notes_task"), nullable=True)
     # A "section" note keeps its group's address in page_url, ending in "/": it shows on every page under it.
     body: Mapped[str] = mapped_column(MEDIUMTEXT)
+    created_by: Mapped[str | None] = mapped_column(String(120), nullable=True)  # the signed-in person's name; empty on older notes and without login
+    updated_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
     created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
     updated_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
@@ -1525,3 +1566,57 @@ class SearchFindingRun(Base):
     seconds: Mapped[float | None] = mapped_column(Float, nullable=True)
     counts: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+class GscQueryCountry(Base):
+    """Search Console's query report again, filtered to one of the site's target countries (see SiteSearchCountry)."""
+
+    __tablename__ = "gsc_query_country"
+    __table_args__ = (Index("ix_gsc_query_country_hash", "site_id", "country", "query_hash", "day"),)
+
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    country: Mapped[str] = mapped_column(String(3), primary_key=True)  # Google's alpha-3, lower case
+    query_hash: Mapped[str] = mapped_column(String(32), primary_key=True)
+    query: Mapped[str] = mapped_column(String(500))
+    clicks: Mapped[int] = mapped_column(Integer, server_default="0")
+    impressions: Mapped[int] = mapped_column(Integer, server_default="0")
+    position: Mapped[float | None] = mapped_column(Float, nullable=True)
+
+
+class SiteSearchCountry(Base):
+    """The countries a site targets on Google. None set: its top one or two by clicks."""
+
+    __tablename__ = "site_search_countries"
+
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True)
+    country: Mapped[str] = mapped_column(String(3), primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
+class NotificationRead(Base):
+    """One person's "read" on a bell notification, so one person's Mark all read doesn't clear it for the others."""
+
+    __tablename__ = "notification_reads"
+
+    notification_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("notifications.id", ondelete="CASCADE"), primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    read_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
+class GscAiReport(Base):
+    """An export of Search Console's generative AI performance report (AI Overviews and AI Mode), uploaded by hand: Google's
+    API doesn't give it. Totals for one period; uploading the same site, search type and period again replaces it."""
+
+    __tablename__ = "gsc_ai_reports"
+    __table_args__ = (UniqueConstraint("site_id", "search_type", "period_start", "period_end", name="uq_gsc_ai_report_period"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    search_type: Mapped[str] = mapped_column(String(20), server_default="web")
+    period_start: Mapped[date] = mapped_column(Date)
+    period_end: Mapped[date] = mapped_column(Date)
+    file_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    data: Mapped[dict] = mapped_column(JSON)
+    uploaded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    uploaded_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)

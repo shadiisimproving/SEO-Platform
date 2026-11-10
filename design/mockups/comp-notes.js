@@ -101,9 +101,17 @@
         e = [...entries.values()].find((x) => !x.id && x.leftover && x.scope === n.scope && (x.competitorId ?? null) === (n.competitor_id ?? null) && (n.body === x.text || (x.sent && n.body === x.sent))) || null;
         if (e) { e.id = n.id; e.leftover = false; e.saved = n.body; e.status = dirty(e) ? "saving" : "idle"; e.savedAt = dirty(e) ? null : new Date(stamp(n.updated_at)); }
       }
+      let take = true; // the server's text and version replace what's here
       if (!e) e = newEntry({ id: n.id, text: n.body, saved: n.body, sortAt: stamp(n.updated_at) });
-      else if (!dirty(e) && !e.leftover) { e.text = n.body; e.saved = n.body; fieldsFor(e).forEach((el) => fill(el, e)); }
-      Object.assign(e, { scope: n.scope, competitorId: n.competitor_id, competitor: n.competitor, pageUrl: n.page_url, siteId: n.site_id, screen: n.screen ?? null, keyword: n.keyword ?? null, day: n.day ?? null, domain: n.domain ?? null, taskId: n.task_id ?? null, task: n.task ?? null, createdAt: n.created_at, updatedAt: n.updated_at });
+      else {
+        // An answer that left before this person's own save (F122), a field someone is in, or unsaved words: the copy here stays,
+        // and so does its version, so a teammate's newer text is caught as a clash on the next save instead of being overwritten.
+        const older = e.updatedAt && stamp(n.updated_at) < stamp(e.updatedAt);
+        take = !older && !dirty(e) && !e.leftover && !isFocused(e) && e.status !== "clash";
+        if (take) { e.text = n.body; e.saved = n.body; fieldsFor(e).forEach((el) => fill(el, e)); }
+      }
+      Object.assign(e, { scope: n.scope, competitorId: n.competitor_id, competitor: n.competitor, pageUrl: n.page_url, siteId: n.site_id, screen: n.screen ?? null, keyword: n.keyword ?? null, day: n.day ?? null, domain: n.domain ?? null, taskId: n.task_id ?? null, task: n.task ?? null, createdAt: n.created_at, createdBy: n.created_by ?? null });
+      if (take) Object.assign(e, { updatedAt: n.updated_at, updatedBy: n.updated_by ?? null });
       if (n.files) { e.files = n.files; paintFiles(e); }
       if (!isFocused(e) && !e.composer) e.sortAt = stamp(n.updated_at);
       if (key) e.targets.add(key);
@@ -163,7 +171,7 @@
     if (note) {
       const twin = byId(note.id);
       if (twin && twin !== e) { entries.delete(twin.uid); }
-      Object.assign(e, { id: note.id, saved: note.body, updatedAt: note.updated_at, createdAt: note.created_at, competitor: note.competitor, pageUrl: note.page_url, sent: null });
+      Object.assign(e, { id: note.id, saved: note.body, updatedAt: note.updated_at, createdAt: note.created_at, createdBy: note.created_by ?? null, updatedBy: note.updated_by ?? null, competitor: note.competitor, pageUrl: note.page_url, sent: null });
       const newer = !knew || e.base === note.updated_at || e.at > stamp(note.updated_at);
       if (!newer) e.text = note.body;
       if (!dirty(e)) { e.status = "saved"; e.savedAt = new Date(); }
@@ -183,22 +191,17 @@
     return "";
   }
 
-  /* Plain fetch for the server, so a save still reaches it after the page has gone (keepalive), and so the request
-     leaves in this very tick. Browsers cap keepalive at about 64 KB. A longer note relies on its draft instead. */
+  /* Through COMP.api, the app's one way to the server (competitors.js): it waits out a 429, asks for a fresh sign-in token
+     once on "out of date", and its errors carry .status and .data. keepalive lets a save still reach the server after the
+     page has gone. Browsers cap keepalive at about 64 KB, so a longer note relies on its draft instead. */
   async function send(method, path, body) {
     if (serverMode === null) serverMode = await COMP.isServer();
     if (!serverMode) return COMP.api(method, path, body);
-    const init = { method, keepalive: true };
-    if (body !== undefined) {
-      init.body = JSON.stringify(body);
-      init.headers = { "Content-Type": "application/json" };
-      init.keepalive = init.body.length <= KEEPALIVE_CHARS;
-    }
-    const reply = await fetch(`api/${path}`, init);
-    const data = await reply.json().catch(() => ({}));
-    if (!reply.ok) throw Object.assign(new Error(data.error || `Error ${reply.status}`), { status: reply.status });
-    return data;
+    const keepalive = body === undefined || JSON.stringify(body).length <= KEEPALIVE_CHARS;
+    return COMP.api(method, path, body, { keepalive });
   }
+  /* Answers that mean "not now", not "no": the words wait on this computer and go again (F194). 0 is no connection. */
+  const tryAgainLater = (status) => status === undefined || status === 0 || status === 401 || status === 403 || status === 408 || status === 429 || status >= 500;
 
   async function fetchNotes(path) {
     if (serverMode === null) serverMode = await COMP.isServer();
@@ -207,6 +210,7 @@
   }
 
   function save(e, { parallel = false } = {}) {
+    if (e.status === "clash" && !e.resolved) return; // waits for Keep mine or Use theirs
     clearTimeout(e.timer);
     e.timer = null;
     if (e.removed) return;
@@ -218,13 +222,17 @@
     if (blank(e.text) && !holdsFiles(e)) { e.status = e.id ? "emptied" : "idle"; paintStatus(e); return; }
     if (!e.id && needs(e)) { e.status = "waiting"; e.message = needs(e); paintStatus(e); return; }
     if (e.busy && !(parallel && e.id)) { e.again = true; return; }
-    e.inflight = e.leftover ? reconcile(e) : write(e);
+    e.inflight = e.leftover ? reconcile(e) : write(e, { blind: parallel });
   }
 
-  async function write(e) {
+  /* blind: the page is closing, so no version check; a clash then can't be shown to anyone. */
+  async function write(e, { blind = false } = {}) {
     e.busy = true;
     e.again = false;
+    e.resolved = false;
     const sending = e.text, isNew = !e.id;
+    // The version this person was editing: a teammate's save since then answers 409, and nothing is overwritten.
+    const expected = blind || e.forceMine ? null : e.base || e.updatedAt || null;
     e.sending = sending;
     e.status = "saving";
     paintStatus(e);
@@ -232,14 +240,19 @@
     try {
       const note = isNew
         ? await send("POST", "notes", { scope: e.scope, body: sending, site_id: siteOf(e.siteId), competitor_id: e.competitorId, page_url: e.scope === "page" ? withScheme(e.pageUrl) : null, screen: e.scope === "screen" ? e.screen : null, ...(e.scope === "keyword" ? { keyword: e.keyword } : {}), ...(e.scope === "section" ? { page_url: e.pageUrl } : {}), ...(e.scope === "date" ? { day: e.day } : {}), ...(e.scope === "domain" ? { domain: e.domain } : {}), ...(e.scope === "task" ? { task_id: e.taskId } : {}) })
-        : await send("PATCH", `notes/${e.id}`, { body: sending });
-      Object.assign(e, { id: note.id, saved: sending, sent: null, updatedAt: note.updated_at, createdAt: note.created_at, competitor: note.competitor, pageUrl: note.page_url, siteId: note.site_id, savedAt: new Date(), base: null, leftover: false });
+        : await send("PATCH", `notes/${e.id}`, { body: sending, ...(expected ? { expected_updated_at: expected } : {}) });
+      Object.assign(e, { id: note.id, saved: sending, sent: null, updatedAt: note.updated_at, createdAt: note.created_at, createdBy: note.created_by ?? null, updatedBy: note.updated_by ?? null, competitor: note.competitor, pageUrl: note.page_url, siteId: note.site_id, savedAt: new Date(), base: null, leftover: false, forceMine: false, clash: null });
       if (!dirty(e)) e.status = "saved";
       writeDrafts();
       paintWhere(e);
     } catch (err) {
-      if (err.status === 404 && !isNew) { e.id = null; e.saved = ""; e.again = true; } // deleted elsewhere: write it again
-      else if (err.status >= 400 && err.status < 500) { e.status = "refused"; e.message = err.message; }
+      if (err.status === 404 && !isNew) { // deleted by someone else while this person typed (F121): say so, and keep the words as a new note
+        e.id = null; e.saved = ""; e.again = true; e.base = null; e.updatedAt = null;
+        UI.toast(UI.t("Someone deleted this note while you were writing. Your words are kept: they're saved as a new note."), { kind: "info" });
+      } else if (err.status === 409 && err.data?.note) { // a teammate saved this note since this person started: they choose
+        e.clash = err.data.note;
+        e.status = "clash";
+      } else if (!tryAgainLater(err.status)) { e.status = "refused"; e.message = err.message; }
       else {
         e.status = "failed";
         if (isNew) e.leftover = true; // it may have arrived: check before sending it again
@@ -248,7 +261,7 @@
     }
     e.busy = false;
     paintStatus(e);
-    if (e.removed || e.status === "refused" || e.status === "failed") return;
+    if (e.removed || e.status === "refused" || e.status === "failed" || e.status === "clash") return;
     if (dirty(e) && (e.again || !e.timer)) save(e);
     else if (e.composer && !dirty(e) && !isFocused(e)) whenReleased(() => settle(e)); // saved after they'd left the field
   }
@@ -282,7 +295,7 @@
     writeDrafts();
     if (!serverMode) return;
     entries.forEach((e) => {
-      if (e.removed || !dirty(e) || (blank(e.text) && !holdsFiles(e)) || e.leftover || e.status === "refused" || e.status === "waiting") return;
+      if (e.removed || !dirty(e) || (blank(e.text) && !holdsFiles(e)) || e.leftover || e.status === "refused" || e.status === "waiting" || e.status === "clash") return;
       if (e.busy && e.sending === e.text) return; // already on its way, and keepalive carries it
       save(e, { parallel: true });
     });
@@ -328,10 +341,7 @@
     if (!serverMode) return sampleDb.addFile(e.id, file);
     const form = new FormData();
     form.append("file", file, file.name || "image.png");
-    const reply = await fetch(`api/notes/${e.id}/files`, { method: "POST", body: form });
-    const data = await reply.json().catch(() => ({}));
-    if (!reply.ok) throw Object.assign(new Error(data.error || `Error ${reply.status}`), { status: reply.status });
-    return data;
+    return COMP.api("POST", `notes/${e.id}/files`, null, { form });
   }
   /* A file needs a note to belong to, so a note that has only just been started is saved first. */
   async function addFiles(e, list) {
@@ -539,10 +549,21 @@
     if (e.status === "refused") return `${icon("octagon-alert")}<span>${esc(t(e.message))}</span>`;
     if (e.status === "waiting") return `${icon("info")}<span>${esc(t(e.message))}</span>`;
     if (e.status === "emptied") return `${icon("info")}<span>${t("An empty note isn't kept.")}</span>`;
-    if (e.updatedAt && !e.composer) return `<span title="${esc(fullDate(e.updatedAt))}">${t("Last changed")} ${esc(COMP.ago(e.updatedAt))}</span>`;
+    if (e.status === "clash" && e.clash) {
+      // As Tasks do: nothing is overwritten until this person has seen the other text and chosen.
+      const by = e.clash.updated_by ? ` ${t("by {name}").replace("{name}", esc(e.clash.updated_by))}` : "";
+      const theirs = String(e.clash.body || "").trim();
+      return `${icon("octagon-alert")}<span>${t("Someone else changed this note while you were writing, so yours isn't saved yet.")}${by ? ` (${t("changed")}${by})` : ""} ${t("It now says")}: <q dir="auto">${esc(theirs.length > 140 ? `${theirs.slice(0, 140)}…` : theirs || "—")}</q></span>
+        <span class="nb-clash-acts"><button type="button" class="btn btn-small" data-note-keep-mine="${e.uid}">${t("Keep mine")}</button><button type="button" class="btn btn-small" data-note-use-theirs="${e.uid}">${t("Use theirs")}</button></span>`;
+    }
+    if (e.updatedAt && !e.composer) {
+      const by = e.updatedBy ? ` ${t("by {name}").replace("{name}", esc(e.updatedBy))}` : "";
+      const made = e.createdBy ? ` · ${t("Written by {name}").replace("{name}", e.createdBy)}` : "";
+      return `<span title="${esc(fullDate(e.updatedAt) + made)}">${t("Last changed")} ${esc(COMP.ago(e.updatedAt))}${by}</span>`;
+    }
     return "";
   }
-  const statusClass = (e) => `nb-status small${e.status === "failed" || e.status === "waiting" ? " warn" : e.status === "refused" ? " crit" : ""}`;
+  const statusClass = (e) => `nb-status small${e.status === "failed" || e.status === "waiting" ? " warn" : e.status === "refused" || e.status === "clash" ? " crit" : ""}`;
   function paintStatus(e) {
     if (!UI) return;
     UI.$$(`[data-note-status="${e.uid}"]`).forEach((el) => { el.className = statusClass(e); UI.setHTML(el, statusHtml(e)); });
@@ -550,9 +571,11 @@
   const statusLine = (e) => `<p class="${statusClass(e)}" data-note-status="${e.uid}" role="status">${statusHtml(e)}</p>`;
 
   /* Where a note belongs: a plain label, a link to the competitor's profile, or an outside link to the page. */
-  function whereHtml(e) {
+  /* everySite: the Notes screen lists every site's notes, so each one says which site it's for. */
+  const hostOf = (siteId) => COMP.sites.find((s) => s.id === siteId)?.host || (window.SITES || []).find((s) => s.realId === siteId)?.host || null;
+  function whereHtml(e, everySite = false) {
     const { t, esc, icon } = UI;
-    const site = e.siteId !== null && e.siteId !== COMP.siteId ? COMP.sites.find((s) => s.id === e.siteId)?.host : null;
+    const site = e.siteId !== null && e.siteId !== undefined && (everySite || e.siteId !== COMP.siteId) ? hostOf(e.siteId) : null;
     const forSite = site ? `<span class="muted">${t("for")} ${esc(site)}</span>` : "";
     if (e.scope === "competitor") return `${icon("crosshair")}<button class="link-btn nb-link" data-note-competitor="${esc(e.competitorId)}" dir="auto">${esc(e.competitor || t("A competitor"))}</button>${forSite}`;
     if (e.scope === "page") return `${icon("file-text")}${e.pageUrl ? COMP.link(e.pageUrl) : `<span>${t("A page")}</span>`}${forSite}`;
@@ -571,23 +594,36 @@
   const screenName = (id) => UI.t(SCREEN_NAMES[id] || id || "A screen");
   const whereText = (e) => (e.scope === "competitor" ? e.competitor || "" : e.scope === "page" ? e.pageUrl || "" : e.scope === "keyword" ? e.keyword || "" : e.scope === "section" ? e.pageUrl || "" : e.scope === "date" ? (e.day ? `${dayName(e.day)} ${e.day}` : "") : e.scope === "domain" ? e.domain || "" : e.scope === "task" ? e.task || "" : e.scope === "screen" ? screenName(e.screen) : e.scope === "site" ? UI.t("The whole website") : UI.t("All competitors"));
   function paintWhere(e) {
-    UI.$$(`[data-note-where="${e.uid}"]`).forEach((el) => UI.setHTML(el, whereHtml(e)));
+    UI.$$(`[data-note-where="${e.uid}"]`).forEach((el) => UI.setHTML(el, whereHtml(e, Boolean(el.closest("[data-note-every-site]")))));
   }
   const fieldLabel = (e) => `${UI.t("Note")}: ${e.scope === "competitor" ? e.competitor || UI.t("A competitor") : e.scope === "page" ? e.pageUrl || UI.t("A page") : e.scope === "keyword" ? e.keyword || UI.t("A keyword") : whereText(e) || UI.t("Note")}`;
 
-  function rowHtml(e, listKey) {
+  function rowHtml(e, listKey, everySite = false) {
     const { t, esc, icon } = UI;
     const showWhere = listKey === ALL_NOTES || !listKey.startsWith(`${e.scope === "all" ? "all" : e.scope}`);
     return `<li class="nb-row" data-note-row="${e.uid}">
-      ${showWhere ? `<div class="nb-where small" data-note-where="${e.uid}">${whereHtml(e)}</div>` : ""}
+      ${showWhere ? `<div class="nb-where small" data-note-where="${e.uid}">${whereHtml(e, everySite)}</div>` : ""}
       <textarea class="input nb-text" dir="auto" rows="1" data-note-field="${e.uid}" placeholder="${t("Add text")}" aria-label="${esc(fieldLabel(e))}"></textarea>
       <div class="nb-files" data-note-files="${e.uid}" hidden></div>
       <div class="nb-foot">${statusLine(e)}${attachButton(e)}<button class="icon-btn nb-delete" data-note-delete="${e.uid}" aria-label="${t("Delete this note")}" data-tip="${t("Delete")}">${icon("trash-2")}</button></div>
     </li>`;
   }
 
-  function wantedFor(key) {
-    const list = [...entries.values()].filter((e) => !e.removed && !e.composer && (key === ALL_NOTES || e.targets.has(key)) && !(blank(e.text) && !e.id));
+  /* The Notes screen's filter: what a note is about, in fewer, wider kinds than the scopes. */
+  const KINDS = [
+    ["page", "Pages", "file-text"], ["keyword", "Keywords", "key-round"], ["competitor", "Competitors", "crosshair"], ["domain", "Linking websites", "link-2"],
+    ["task", "Tasks", "square-check"], ["date", "Days", "calendar-days"], ["screen", "Screens", "layout-dashboard"], ["site", "Websites", "globe"],
+  ];
+  const kindOf = (e) => (e.scope === "section" ? "page" : e.scope === "all" ? "competitor" : e.scope);
+  const listed = () => [...entries.values()].filter((e) => !e.removed && !e.composer && !(blank(e.text) && !e.id));
+  function kindCounts() {
+    const counts = new Map();
+    listed().forEach((e) => counts.set(kindOf(e), (counts.get(kindOf(e)) || 0) + 1));
+    return counts;
+  }
+
+  function wantedFor(key, kind = "") {
+    const list = [...entries.values()].filter((e) => !e.removed && !e.composer && (key === ALL_NOTES || e.targets.has(key)) && !(blank(e.text) && !e.id) && (!kind || kindOf(e) === kind));
     const needle = key === ALL_NOTES ? tabState.search.trim().toLowerCase() : "";
     const shown = needle ? list.filter((e) => `${e.text} ${whereText(e)} ${e.files.map((f) => f.name).join(" ")}`.toLowerCase().includes(needle)) : list;
     return shown.sort((a, b) => b.sortAt - a.sortAt || (b.id || 0) - (a.id || 0));
@@ -596,13 +632,14 @@
   /* Rows that are already there stay there, so a click or typing under way isn't disturbed. */
   function paintList(listEl) {
     const key = listEl.dataset.noteList;
-    const wanted = wantedFor(key);
+    const everySite = listEl.hasAttribute("data-note-every-site");
+    const wanted = wantedFor(key, listEl.dataset.noteKind || "");
     const have = new Map([...listEl.children].map((li) => [li.dataset.noteRow, li]));
     const focused = document.activeElement?.dataset?.noteField ? { el: document.activeElement, start: document.activeElement.selectionStart, end: document.activeElement.selectionEnd } : null;
     wanted.forEach((e, i) => {
       let li = have.get(e.uid);
       if (!li) {
-        li = UI.fragment(rowHtml(e, key)).firstElementChild;
+        li = UI.fragment(rowHtml(e, key, everySite)).firstElementChild;
         listEl.insertBefore(li, listEl.children[i] || null);
         fill(li.querySelector("textarea"), e);
         fillFiles(li.querySelector("[data-note-files]"), e);
@@ -619,6 +656,7 @@
     paintTabSummary();
     paintCounts();
     paintPanelEmpty();
+    document.dispatchEvent(new CustomEvent("seocc:notes-painted")); // the Notes screen recounts its filters
   }
   function paintAll() {
     if (!UI) return;
@@ -1017,7 +1055,23 @@
     return allOnce;
   }
 
-  COMP.notes = { block, mount, panel, preload, keyOf, screenName, button, badge, loadAllOnce };
+  /* The Notes screen in the side menu (notes-view.js): every note of every site, in one list.
+     loadEvery() asks the server each time the screen opens, so a note written on another computer shows. */
+  async function loadEvery() {
+    if (serverMode === null) serverMode = await COMP.isServer();
+    ingest(await fetchNotes("notes"), ALL_NOTES);
+    allOnce = Promise.resolve();
+  }
+  const every = {
+    KINDS, kindCounts, loadEvery,
+    total: () => listed().length,
+    shown: (kind) => wantedFor(ALL_NOTES, kind).length,
+    search: () => tabState.search,
+    setSearch(text) { tabState.search = text; },
+    paint() { if (UI) { UI.$$("[data-note-list]").forEach(paintList); paintCounts(); } },
+  };
+
+  COMP.notes = { block, mount, panel, preload, keyOf, screenName, button, badge, loadAllOnce, every };
 
   // ---- the Notes tab ---------------------------------------------------------------------------
   const tabState = { way: "all", competitorId: null, pageUrl: "", pageTyped: "", search: "", competitors: [], listFailed: false };
@@ -1245,6 +1299,24 @@
         (next?.isConnected ? next : composer)?.focus({ preventScroll: true });
         return;
       }
+      if ((el = target.closest?.("[data-note-keep-mine]"))) { // a clash: this person's words go over the teammate's
+        const e = entries.get(el.dataset.noteKeepMine);
+        if (e?.clash) { Object.assign(e, { updatedAt: e.clash.updated_at, base: null, clash: null, forceMine: true, resolved: true, status: "saving" }); save(e); fieldsFor(e)[0]?.focus({ preventScroll: true }); }
+        return;
+      }
+      if ((el = target.closest?.("[data-note-use-theirs]"))) { // a clash: the teammate's words replace these
+        const e = entries.get(el.dataset.noteUseTheirs);
+        if (e?.clash) {
+          const n = e.clash;
+          Object.assign(e, { text: n.body, saved: n.body, updatedAt: n.updated_at, updatedBy: n.updated_by ?? null, base: null, clash: null, resolved: true, status: "saved", savedAt: new Date() });
+          clearTimeout(e.timer); e.timer = null;
+          fieldsFor(e).forEach((field) => fill(field, e));
+          writeDrafts();
+          paintStatus(e);
+          fieldsFor(e)[0]?.focus({ preventScroll: true });
+        }
+        return;
+      }
       if ((el = target.closest?.("[data-note-next]"))) {
         const e = entries.get(el.dataset.noteNext);
         const key = e?.composer;
@@ -1405,6 +1477,11 @@
     "An empty note isn't kept.": "Une note vide n'est pas gardée.",
     "Empty note removed": "Note vide retirée",
     "Note deleted": "Note supprimée",
+    "Someone deleted this note while you were writing. Your words are kept: they're saved as a new note.": "Quelqu'un a supprimé cette note pendant que vous écriviez. Vos mots sont gardés : ils sont enregistrés dans une nouvelle note.",
+    "Someone else changed this note while you were writing, so yours isn't saved yet.": "Quelqu'un d'autre a modifié cette note pendant que vous écriviez : la vôtre n'est pas encore enregistrée.",
+    "It now says": "Elle indique maintenant", "changed": "modifiée",
+    "Keep mine": "Garder la mienne", "Use theirs": "Reprendre la leur",
+    "by {name}": "par {name}", "Written by {name}": "Écrite par {name}",
     "Couldn't delete this note. Try again.": "Impossible de supprimer cette note. Réessayez.",
     "Delete this note": "Supprimer cette note",
     "Enter the page's address to save this note. It's kept on this computer.": "Saisissez l'adresse de la page pour enregistrer cette note. Elle est gardée sur cet ordinateur.",

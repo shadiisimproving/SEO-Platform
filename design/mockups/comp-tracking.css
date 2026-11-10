@@ -9,3 +9,7 @@
 .ct-switch button { font-weight: 400; }
 .ct-switch button[aria-pressed="true"] { font-weight: 600; }
 .ct-short { font-size: 13px; }
+/* A laptop-narrow screen in French (820 px): "Activé · Pages seulement · Désactivé" made the Competitors table scroll sideways. */
+@media (min-width: 641px) and (max-width: 1000px) {
+  .cs-merged .ct-switch button { padding: 3px 6px; font-size: 12px; white-space: normal; line-height: 1.2; max-width: 7.5em; }
+}

@@ -88,12 +88,58 @@ def listing(engine: Engine, site_id, group: str = "first", status: str = "open")
     return {"group": group, "status": status, "rows": rows, "counts": counts(engine, sites), "summary": summary(engine, sites)}
 
 
-def counts(engine: Engine, sites: list[int]) -> dict:
+# Findings that restate the site's own change (a country, brand searches, one day, data gaps): their clicks are already in
+# the findings about its queries and pages, so the total at stake leaves them out.
+SITE_WIDE = frozenset({"change", "segment", "brand_split", "odd_day", "data_gaps"})
+
+
+def stake_total(rows) -> float:
+    """Clicks a month at stake, each lost or winnable click counted once (code review F7).
+
+    Several findings can be about the same clicks: a page losing clicks, its main query losing places, the same query
+    "close to the top 3", the page "bringing leads". So each query counts once, at its biggest estimate; a page counts
+    once, at the bigger of its own biggest estimate and the sum of its queries' ones; site-wide findings count nothing.
+    """
+    queries: dict = {}
+    pages: dict = {}
+    for row in rows:
+        stake, kind = float(row["at_stake"] or 0), row["kind"]
+        if kind in SITE_WIDE or stake <= 0:
+            continue
+        site = row["site_id"]
+        if row["query"]:
+            key = (site, row["query"])
+            if key not in queries or stake > queries[key][0]:
+                queries[key] = (stake, row["page"])
+        else:
+            key = (site, row["page"] or row.get("finding_key") or kind)
+            pages[key] = max(stake, pages.get(key, 0.0))
+    by_page: dict = {}
+    total = 0.0
+    for (site, _query), (stake, page) in queries.items():
+        if page:
+            by_page[(site, page)] = by_page.get((site, page), 0.0) + stake
+        else:
+            total += stake
+    for key in set(by_page) | set(pages):
+        total += max(by_page.get(key, 0.0), pages.get(key, 0.0))
+    return total
+
+
+def _stake_rows(engine: Engine, sites: list[int], where: str) -> list[dict]:
     statement = text(
-        "SELECT grp, COUNT(*) n, SUM(at_stake) stake FROM search_findings WHERE site_id IN :sites AND status = 'open' AND kind <> 'change' GROUP BY grp"
+        f"SELECT site_id, kind, grp, query, page, finding_key, at_stake FROM search_findings WHERE site_id IN :sites AND status = 'open' AND kind <> 'change' {where}"
     ).bindparams(bindparam("sites", expanding=True))
     with engine.connect() as conn:
-        found = {r["grp"]: {"open": int(r["n"]), "at_stake": round(float(r["stake"] or 0))} for r in conn.execute(statement, {"sites": sites}).mappings().all()}
+        return [dict(r) for r in conn.execute(statement, {"sites": sites}).mappings().all()]
+
+
+def counts(engine: Engine, sites: list[int]) -> dict:
+    rows = _stake_rows(engine, sites, "")
+    found: dict = {}
+    for grp in sorted({r["grp"] for r in rows}):
+        mine = [r for r in rows if r["grp"] == grp]
+        found[grp] = {"open": len(mine), "at_stake": round(stake_total(mine))}
     return found
 
 
@@ -101,7 +147,7 @@ def summary(engine: Engine, sites: list[int]) -> dict:
     """The sentence on top (the change breakdown of each site), the three numbers, and when it last ran."""
     changes = _fetch(engine, "WHERE f.site_id IN :sites AND f.kind = 'change' AND f.status IN ('open', 'dismissed', 'done')", {"sites": sites})
     statement = text(
-        "SELECT COUNT(*) n, COALESCE(SUM(at_stake), 0) stake, "
+        "SELECT COUNT(*) n, "
         "(SELECT COUNT(*) FROM search_findings g WHERE g.site_id IN :sites AND g.kind <> 'change' AND g.status IN ('gone', 'done') AND COALESCE(g.gone_at, g.last_seen) > UTC_TIMESTAMP(3) - INTERVAL 30 DAY) fixed, "
         "(SELECT MAX(ran_at) FROM search_finding_runs r WHERE r.site_id IN :sites AND r.error IS NULL) ran_at "
         "FROM search_findings WHERE site_id IN :sites AND status = 'open' AND kind <> 'change' AND severity <> 'info'"
@@ -116,7 +162,7 @@ def summary(engine: Engine, sites: list[int]) -> dict:
             found = r[0] if isinstance(r[0], dict) else json.loads(r[0] or "{}")
             needs.update(found.get("needs") or {})
     return {
-        "changes": changes, "open": int(row["n"]), "at_stake": round(float(row["stake"])), "fixed": int(row["fixed"] or 0),
+        "changes": changes, "open": int(row["n"]), "at_stake": round(stake_total(_stake_rows(engine, sites, "AND severity <> 'info'"))), "fixed": int(row["fixed"] or 0),
         "ran_at": row["ran_at"].isoformat() + "Z" if row["ran_at"] else None, "needs": needs, "sites": len(sites),
     }
 

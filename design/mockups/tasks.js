@@ -173,7 +173,9 @@
       if (!served) seedSample();
       const answer = await COMP.api("GET", "tasks");
       // Only the server's own ids can be saved, and the sample's site list has none on the real API.
-      T.sites = served ? (await COMP.api("GET", "links/sites")).sites.map((s) => ({ id: s.id, host: s.host })) : window.SITES.map((s) => ({ id: s.id, host: s.host }));
+      // The server's own ids: boot.js already has them, so no second ask for the site list (F17). A site added since is in links/sites.
+      const known = served ? (window.BOOT?.sites || []).map((s) => ({ id: s.id, host: s.host })) : null;
+      T.sites = served ? (known.length && known.length === window.SITES.filter((s) => s.realId).length ? known : (await COMP.api("GET", "links/sites")).sites.map((s) => ({ id: s.id, host: s.host }))) : window.SITES.map((s) => ({ id: s.id, host: s.host }));
       T.tasks = !served && UI.state.firstRun ? [] : answer.tasks;
       T.sampleFirstRun = UI.state.firstRun;
       T.failed = "";
@@ -317,7 +319,8 @@
   }
   function drawLinks(id) {
     const box = UI.$(`[data-links="${id}"] .tk-chips`);
-    if (box) UI.setHTML(box, linksOf(id).map((value, i) => `<span class="tk-chip" dir="auto"><span>${esc(value)}</span><button type="button" class="tk-chip-x" data-link-remove="${i}" aria-label="${t("Remove")}: ${esc(value)}">${icon("x")}</button></span>`).join(""));
+    const host = id === "task-pages" ? T.sites.find((s) => String(s.id) === UI.$("#task-site")?.value)?.host : null;
+    if (box) UI.setHTML(box, linksOf(id).map((value, i) => `<span class="tk-chip" dir="auto">${id === "task-pages" ? PageLink.html(value, { host }) : `<span>${esc(value)}</span>`}<button type="button" class="tk-chip-x" data-link-remove="${i}" aria-label="${t("Remove")}: ${esc(value)}">${icon("x")}</button></span>`).join(""));
   }
   /* What's typed in the box joins the list. Keywords can be pasted with commas; addresses can hold commas, so only spaces split them. */
   function commitLink(id) {
@@ -619,8 +622,8 @@
   }
 
   function bodyHtml() {
-    if (!T.ready) return COMP.loading();
-    if (T.failed) return COMP.empty(t("That didn't load"), t(T.failed), `<button class="btn" id="tk-retry">${t("Try again")}</button>`);
+    if (!T.ready) return UI.skeleton ? UI.skeleton("table", { rows: 6 }) : COMP.loading();
+    if (T.failed) return UI.failCard ? UI.failCard(T.failed, { retry: 'id="tk-retry"' }) : COMP.empty(t("That didn't load"), t(T.failed), `<button class="btn" id="tk-retry">${t("Try again")}</button>`);
     if (!T.tasks.length) return COMP.empty(t("No tasks yet"), t("Create one here, or press Create task on a finding: a ranking drop, a broken link, a failed health check."), `<button class="btn btn-main" data-task-new>${icon("plus")}${t("New task")}</button>`);
     const list = visible();
     const hidden = undatedHidden();
@@ -660,6 +663,7 @@
     UI.setHTML(box, bodyHtml());
     const total = UI.$("#tk-total");
     if (total && T.ready) { const n = counted().length; total.textContent = `${num(n)} ${t(n === 1 ? "task" : "tasks")}`; }
+    UI.syncUrl(); // the filters are in the address, so a reload or a pasted link shows the same tasks
   }
 
   function page() {
@@ -852,6 +856,33 @@
       load().then(() => { changed(); if (UI.state.route === "tasks") UI.render(); else if (UI.state.route === "today") UI.render(); });
     },
     page,
+    /* The view in the address: board or table, the search, status, type, owner and dates. */
+    address() {
+      const out = {};
+      if (T.view !== "kanban") out.view = T.view;
+      if (T.query.trim()) out.q = T.query.trim();
+      if (T.view === "table" && T.status) out.status = T.status;
+      if (T.kind) out.type = T.kind;
+      if (T.owner) out.owner = T.owner === UNASSIGNED ? "none" : T.owner;
+      if (T.period !== "all") out.when = T.period;
+      if (T.period === "month" && T.month) out.month = T.month;
+      if (T.period === "dates") { if (T.from) out.from = T.from; if (T.to) out.to = T.to; }
+      return out;
+    },
+    fromAddress(q) {
+      const view = q.get("view");
+      if (view === "table" || view === "kanban") T.view = view;
+      T.query = (q.get("q") || "").slice(0, 200);
+      T.status = STATUSES.some(([k]) => k === q.get("status")) ? q.get("status") : "";
+      T.kind = (q.get("type") || "").slice(0, 60);
+      T.owner = q.get("owner") === "none" ? UNASSIGNED : (q.get("owner") || "").slice(0, 120);
+      const when = q.get("when");
+      T.period = ["all", "week", "month", "dates"].includes(when) ? when : "all";
+      if (/^\d{4}-\d{2}$/.test(q.get("month") || "")) T.month = q.get("month");
+      const day = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v || "") ? v : "");
+      T.from = day(q.get("from")); T.to = day(q.get("to"));
+      if (T.query || T.kind || T.owner || T.status) T.filtersOpen = true;
+    },
     after() {
       if (T.ready) { const total = UI.$("#tk-total"); if (total) { const n = counted().length; total.textContent = `${num(n)} ${t(n === 1 ? "task" : "tasks")}`; } }
     },
