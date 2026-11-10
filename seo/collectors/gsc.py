@@ -51,7 +51,9 @@ def _spine(engine: Engine, site_id: int, token: str, prop: str, start: date, end
                 {"s": site_id, "d": row["keys"][0], "c": int(row.get("clicks", 0)), "i": int(row.get("impressions", 0)), "p": row.get("position")},
             )
     newest = date.fromisoformat(max(row["keys"][0] for row in rows)) if rows else None
-    incomplete = (reply.get("metadata") or {}).get("first_incomplete_date")
+    # The JSON reply says firstIncompleteDate; Google's reference table writes it first_incomplete_date, which never comes.
+    metadata = reply.get("metadata") or {}
+    incomplete = metadata.get("firstIncompleteDate") or metadata.get("first_incomplete_date")
     return newest, date.fromisoformat(incomplete) if incomplete else None
 
 

@@ -69,6 +69,8 @@ class Ctx:
     brand: list[str] = field(default_factory=list)
     tracked: set = field(default_factory=set)
     curve: Curve = field(default_factory=Curve)
+    brand_numbers: dict = field(default_factory=dict)  # brand and non-brand clicks, now and before (C11)
+    memo: dict = field(default_factory=dict)  # what several detectors read, worked out once per run
 
     @property
     def has_before(self) -> bool:

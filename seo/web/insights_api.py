@@ -38,3 +38,31 @@ def run():
     if not sites:
         raise Refused("Add a site first.")
     return jsonify([insights_engine.run(_engine(), site_id) for site_id in sites])
+
+
+# ---- AI on insights (seo/extras/ai.py) -----------------------------------------------------------
+
+
+@insights_api.get("/ai")
+def ai_settings():
+    from seo.extras import ai
+
+    return jsonify(ai.settings(_engine()))
+
+
+@insights_api.put("/ai")
+def save_ai_settings():
+    from seo.extras import ai
+    from seo.web.auth import require_admin
+
+    require_admin()
+    return jsonify(ai.save_settings(_engine(), request.get_json(silent=True) or {}))
+
+
+@insights_api.post("/<int:finding_id>/ai")
+def ask_ai(finding_id: int):
+    """Only a click asks. An answer already kept for this finding, language and provider comes back free."""
+    from seo.extras import ai
+
+    body = request.get_json(silent=True) or {}
+    return jsonify(ai.on_finding(_engine(), finding_id, str(body.get("purpose") or ""), str(body.get("lang") or "en"), again=bool(body.get("again"))))

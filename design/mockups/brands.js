@@ -16,6 +16,7 @@
     "Bright Data": "brightdata.png", SerpApi: "serpapi.png", HasData: "hasdata.png", Searlo: "searlo.png", SearXNG: "searxng.svg", "Open PageRank": "openpagerank.png", "Keywords Everywhere": "openpagerank.png",
     OpenRouter: "openrouter.png", Moz: "moz.png", Ahrefs: "ahrefs.png", Cloudflare: "cloudflare.png", "Common Crawl": "commoncrawl.jpg", IndexNow: "indexnow.png",
     SEMrush: "semrush.png", Ubersuggest: "ubersuggest.svg", Excel: "excel.svg", Mac: "apple.svg",
+    Anthropic: "anthropic.png", Claude: "anthropic.png",
   };
   const quoted = Object.keys(FILES).sort((a, b) => b.length - a.length).map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   // Whole names only, and not part of an address: "Bing," yes, "Excellent" and "Bing.com" no. Capitals matter: "clarity" is a word.

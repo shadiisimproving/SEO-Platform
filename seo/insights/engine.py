@@ -15,7 +15,7 @@ from datetime import date
 
 from sqlalchemy import Engine, bindparam, text
 
-from seo.insights import data, decline, movement, rules, wins
+from seo.insights import data, decline, impact, movement, rules, technical, value, wins
 from seo.insights.finding import Finding, Result
 from seo.worker import queue
 from seo.worker.runner import handler
@@ -32,13 +32,41 @@ def detect(ctx: data.Ctx) -> Result:
         total.ran |= result.ran
         total.needs.update(result.needs)
 
+    # A. What changed
     take(movement.breakdown(ctx))
+    take(movement.brand_split(ctx))
+    for f in total.findings:  # the brand and non-brand numbers go on the breakdown too, for its panel
+        if f.kind == "change" and ctx.brand_numbers:
+            f.evidence["brand"] = ctx.brand_numbers
     take(movement.odd_days(ctx))
     gone = movement.dropped_out(ctx)
     take(gone)
-    take(movement.pages(ctx, {f.page for f in gone.findings}))  # a page that left Google is said once, as that
+    gone_pages = {f.page for f in gone.findings}
+    take(movement.pages(ctx, gone_pages))  # a page that left Google is said once, as that
+    lost = movement.queries_down(ctx)
+    take(lost)
+    take(movement.segments(ctx))
+    take(movement.unstable(ctx))
+    # B. Slow decline
     take(decline.decay(ctx))
+    take(decline.slide(ctx, {f.query for f in lost.findings}))  # a query that already lost 3 places is said once, as that
+    # C. Quick wins
     take(wins.wins(ctx))
+    take(wins.page_near(ctx))
+    take(wins.no_page(ctx))
+    take(wins.questions(ctx))
+    take(wins.topics(ctx))
+    take(wins.worth_tracking(ctx))
+    # E. Technical
+    take(technical.duplicates(ctx))
+    take(technical.shown_broken(ctx, gone_pages))
+    take(technical.data_gaps(ctx))
+    # B3 labels the drops found above, before D copies their numbers.
+    take(decline.seasonal(ctx, total.findings))
+    # D. Leads, from the findings so far
+    take(value.leads(ctx, total.findings))
+    # F. Did it work
+    take(impact.results(ctx))
     return total
 
 

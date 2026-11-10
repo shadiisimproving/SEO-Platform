@@ -4,11 +4,11 @@
 (() => {
   "use strict";
   let UI = null, t, esc, num, icon;
-  const TABS = [["first", "To do first"], ["changed", "What changed"], ["decline", "Slow decline"], ["wins", "Quick wins"]];
+  const TABS = [["first", "To do first"], ["changed", "What changed"], ["decline", "Slow decline"], ["wins", "Quick wins"], ["leads", "Leads"], ["technical", "Technical"], ["impact", "Did it work"]];
   const STATUSES = [["open", "Still open"], ["dismissed", "Not useful"], ["gone", "Went away"], ["done", "Done"]];
   const KIND = {
     page_down: { name: "Page losing clicks", title: "{path} lost {percent}% of its clicks" },
-    page_up: { name: "Page gaining clicks", title: "{path} gained {percent}% clicks" },
+    page_up: { name: "Page gaining clicks", title: "{path} gained {percent}% clicks", fresh: "{path} is new on Google" },
     dropped_out: { name: "Dropped out of Google", title: "{path} dropped out of Google" },
     odd_day: { name: "Odd day", title: "{day}: {clicks} clicks, usually {usual}" },
     decay: { name: "Slowly losing clicks", title: "{path} is slowly losing clicks" },
@@ -17,6 +17,23 @@
     low_ctr: { name: "Low click rate", title: "{query}" },
     no_click: { name: "Seen but never clicked", title: "{query}" },
     compete: { name: "Two pages compete", title: "{query}" },
+    query_down: { name: "Query losing places", title: "{query}" },
+    segment: { name: "One device or country", title: "{segment}: {sign}{percent}% clicks" },
+    unstable: { name: "Unstable ranking", title: "{query}" },
+    brand_split: { name: "Brand hides a loss", title: "Non-brand clicks fell {percent}%" },
+    slide: { name: "Slowly losing places", title: "{query}" },
+    page_near: { name: "Near page 1 on many searches", title: "{path}" },
+    no_page: { name: "No page of its own", title: "{query}" },
+    questions: { name: "Question searches", title: "{path}" },
+    topic: { name: "Topic without a strong page", title: "Searches with “{word}”" },
+    track: { name: "Worth tracking", title: "{query}" },
+    lead_page: { name: "Page that brings leads", title: "{path} brings leads and is losing clicks" },
+    no_leads: { name: "Clicks but no leads", title: "{path}" },
+    duplicate: { name: "One page, several addresses", title: "{path}" },
+    shown_broken: { name: "Shown but broken", title: "{path}" },
+    data_gaps: { name: "Data gaps", title: "Search Console data has gaps" },
+    task_result: { name: "Task result", title: "{title}" },
+    note_result: { name: "Note result", title: "{title}" },
   };
   const PARTS = {
     demand: ["More searches", "Fewer searches"], ranking: ["Ranking higher", "Ranking lower"], appeal: ["Clicked more at the same place", "Clicked less at the same place"],
@@ -61,12 +78,25 @@
     UI.render({ keepScroll: true });
   }
   const forget = () => IN.cache.forEach((entry) => { entry.stale = true; });
+  /* Which AI each site uses and whether its key is there. Asked once; Settings → AI tells this screen when it changes. */
+  function aiSettings() {
+    if ((IN.ai && Date.now() - (IN.aiAt || 0) < 15000) || IN.aiLoading || !window.COMP?.server) return IN.ai;
+    IN.aiLoading = true;
+    const had = JSON.stringify(IN.ai);
+    window.COMP.api("GET", "insights/ai").then((d) => { IN.ai = d; }).catch(() => { IN.ai = IN.ai || { sites: [], keys: {} }; })
+      .finally(() => { IN.aiLoading = false; IN.aiAt = Date.now(); if (JSON.stringify(IN.ai) !== had) redraw(); });
+    return IN.ai;
+  }
+  addEventListener("seocc:ai-settings", (e) => { IN.ai = e.detail || null; IN.aiAt = Date.now(); });
 
   // ---- words --------------------------------------------------------------------------------------
   function titleOf(f) {
     const e = f.evidence || {};
     const kind = KIND[f.kind] || { title: "{path}" };
-    return fill(kind.title, { path: e.path || pathOf(f.page), percent: num(Math.abs(e.percent || 0)), query: f.query || "", day: dayLabel(e.day, true), clicks: num(e.clicks ?? 0), usual: num(Math.round(e.usual ?? 0)) });
+    return fill(kind.fresh && (e.percent === null || e.percent === undefined) ? kind.fresh : kind.title, {
+      path: e.path || pathOf(f.page), percent: num(Math.abs(e.percent || 0)), query: f.query || "", day: dayLabel(e.day, true), clicks: num(e.clicks ?? 0), usual: num(Math.round(e.usual ?? 0)),
+      segment: segmentName(e), sign: e.down ? "−" : "+", word: e.label || e.word || "", title: e.title || "",
+    });
   }
   /* One line under the title: the numbers that make it a finding. */
   function reasonOf(f) {
@@ -84,21 +114,61 @@
       case "low_ctr": return fill("Clicked {r}% at position {p}; usual here is {u}%", { r: UI.dec(e.click_rate ?? 0), p: dec1(e.position), u: UI.dec(e.expected_rate ?? 0) });
       case "no_click": return fill("{i} impressions at position {p}, 0 clicks", { i: num(e.impressions), p: dec1(e.position) });
       case "compete": return (e.pages || []).slice(0, 2).map((p) => `${pathOf(p.page)} ${p.share}% (${t("pos.")} ${dec1(p.position)})`).join(" · ");
+      case "query_down": return fill("Position {a} → {b} · {i} impressions", { a: dec1(e.position_before), b: dec1(e.position), i: num(e.impressions) });
+      case "segment": return fill("{a} → {b} clicks; the rest of the site moved {c}", { a: num(e.clicks_before), b: num(e.clicks), c: signed(e.others_change) });
+      case "unstable": return fill("Between position {a} and {b} from day to day, usually {p}", { a: dec1(e.better), b: dec1(e.worse), p: dec1(e.position) });
+      case "brand_split": return fill("Non-brand {a} → {b} clicks; brand {c} → {d}", { a: num(e.other.clicks_before), b: num(e.other.clicks), c: num(e.brand.clicks_before), d: num(e.brand.clicks) });
+      case "slide": return fill("Position {a} → {b} over 8 weeks, a little every week", { a: dec1(e.position_before), b: dec1(e.position) });
+      case "page_near": return fill("{n} searches at positions 11 to 30 · {i} impressions", { n: num(e.queries_count), i: num(e.impressions) });
+      case "no_page": return e.home ? fill("Only the home page ranks for it, at position {p} · {i} impressions", { p: dec1(e.position), i: num(e.impressions) }) : fill("Ranks through {page}, a page about something else, at position {p}", { page: pathOf(e.page), p: dec1(e.position) });
+      case "questions": return fill("{n} questions people ask · {i} impressions", { n: num(e.queries_count), i: num(e.impressions) });
+      case "topic": return fill("{n} searches · {i} impressions · average position {p}", { n: num(e.queries_count), i: num(e.impressions), p: dec1(e.position) });
+      case "track": return fill("Position {p} · {i} impressions · {c} clicks", { p: dec1(e.position), i: num(e.impressions), c: num(e.clicks) });
+      case "lead_page": return `${fill("{n} leads in {d} days", { n: UI.dec(e.leads), d: num(e.days) })}${e.percent !== undefined ? ` · ${fill("clicks {p}%", { p: signed(e.percent) })}` : ""}`;
+      case "no_leads": return fill("{c} search clicks and {s} visits in {d} days, 0 leads", { c: num(e.clicks), s: num(e.sessions), d: num(e.days) });
+      case "duplicate": return fill("{n} addresses for one page · {i} impressions", { n: num(e.count), i: num(e.impressions) });
+      case "shown_broken": return `${fill("Shown {i} times this week", { i: num(e.impressions) })} · ${e.causes.map(cause).join(", ")}`;
+      case "data_gaps": return [e.partial?.length ? fill("{n} days only partly read", { n: num(e.partial.length) }) : "", e.verify ? fill("{n} days differ from Search Console", { n: num(e.verify.days) }) : ""].filter(Boolean).join(" · ");
+      case "task_result": case "note_result":
+        if (!e.ready) return fill("Done {d}. The result is ready on {r}.", { d: dayLabel(e.done), r: dayLabel(e.ready_on) });
+        return `${verdictWord(e.verdict)} · ${fill("{a} → {b} clicks in 28 days", { a: num(e.before.clicks), b: num(e.after.clicks) })}${e.before.position !== null && e.after.position !== null ? ` · ${t("pos.")} ${dec1(e.before.position)} → ${dec1(e.after.position)}` : ""}`;
       default: return "";
     }
   }
+  // Clickable page addresses come from page-links.js when it's loaded; plain text otherwise.
+  const pageLink = (url, opts = {}) => (window.PageLink ? window.PageLink.html(url, opts) : `<span dir="auto">${esc(opts.text || url)}</span>`);
+  const DEVICES = { MOBILE: "Mobile", DESKTOP: "Desktop", TABLET: "Tablet" };
+  function segmentName(e) {
+    if (!e.segment) return "";
+    if (e.dim === "device") return t(DEVICES[e.segment] || e.segment);
+    try { return new Intl.DisplayNames([UI.locale()], { type: "region" }).of(COUNTRIES[e.segment] || e.segment.toUpperCase()) || e.segment.toUpperCase(); } catch { return e.segment.toUpperCase(); }
+  }
+  // Google writes countries in three letters; the browser names them from two.
+  const COUNTRIES = { fra: "FR", bel: "BE", che: "CH", can: "CA", are: "AE", gbr: "GB", usa: "US", esp: "ES", deu: "DE", ita: "IT", mar: "MA", dza: "DZ", tun: "TN", lux: "LU", nld: "NL", prt: "PT", sau: "SA", ind: "IN", pak: "PK", irl: "IE", aus: "AU", egy: "EG", qat: "QA", kwt: "KW", omn: "OM", bhr: "BH", sen: "SN", civ: "CI", cmr: "CM", rus: "RU", tur: "TR", pol: "PL", swe: "SE", nor: "NO", dnk: "DK", aut: "AT", grc: "GR", rou: "RO", bra: "BR", mex: "MX", chn: "CN", jpn: "JP", kor: "KR", sgp: "SG", phl: "PH", nga: "NG", zaf: "ZA", ken: "KE", lbn: "LB", jor: "JO", isr: "IL" };
+  const verdictWord = (v) => t({ better: "Better", worse: "Worse", same: "About the same" }[v] || v);
+  const leadsLine = (e) => (e.leads_at_stake >= 0.1 ? fill("≈ {n} leads a month", { n: UI.dec(Math.round(e.leads_at_stake * 10) / 10) }) : "");
   const cause = (code) => t({ noindex: "hidden from search engines (noindex)", broken_pages: "answers with an error", server_errors: "server error", canonical_elsewhere: "points to another page", almost_no_text: "almost no text", link_broken: "a link to it is broken", link_redirect: "it redirects" }[code] || code);
   /* The number in the third column: what a reader checks first for that kind. */
   function keyNumber(f) {
     const e = f.evidence || {};
-    if (["almost", "top3", "no_click", "low_ctr", "compete"].includes(f.kind)) return `${t("pos.")} ${dec1(e.position)}`;
-    if (f.kind === "page_down" || f.kind === "page_up") return `${e.percent > 0 ? "+" : "−"}${num(Math.abs(e.percent || 0))}%`;
+    if (["almost", "top3", "no_click", "low_ctr", "compete", "no_page", "track", "topic"].includes(f.kind)) return `${t("pos.")} ${dec1(e.position)}`;
+    if (f.kind === "query_down" || f.kind === "slide") return `${dec1(e.position_before)} → ${dec1(e.position)}`;
+    if (f.kind === "unstable") return `${dec1(e.better)}–${dec1(e.worse)}`;
+    if (f.kind === "segment" || f.kind === "brand_split") return e.percent === null || e.percent === undefined ? "" : `${e.percent > 0 ? "+" : "−"}${num(Math.abs(e.percent))}%`;
+    if (f.kind === "page_near" || f.kind === "questions") return `${num(e.queries_count)} ${t("searches")}`;
+    if (f.kind === "lead_page") return leadsLine(e) || `${UI.dec(e.leads)} ${t("leads")}`;
+    if (f.kind === "no_leads") return `0 ${t("leads")}`;
+    if (f.kind === "duplicate") return `${num(e.count)} ${t("addresses")}`;
+    if (f.kind === "task_result" || f.kind === "note_result") return e.ready ? verdictWord(e.verdict) : t("waiting");
+    if (f.kind === "page_down" || f.kind === "page_up") return e.percent === null || e.percent === undefined ? t("new") : `${e.percent > 0 ? "+" : "−"}${num(Math.abs(e.percent))}%`;
     if (f.kind === "decay") return `−${num(e.below_peak)}%`;
     if (f.kind === "odd_day") return `${num(e.clicks)} / ${num(Math.round(e.usual))}`;
     if (f.kind === "dropped_out") return t("gone");
     return "";
   }
   const kindName = (f) => t(KIND[f.kind]?.name || f.kind);
+  // Kinds about a page: the page is named on top already, so "Page that ranks" would say it twice.
+  const PAGE_IS_SUBJECT = ["dropped_out", "page_down", "page_up", "decay", "lead_page", "no_leads", "duplicate", "shown_broken", "questions", "page_near", "task_result"];
 
   /* The sentence on top: why clicks moved, from the change breakdown. */
   function answer(change, many) {
@@ -130,7 +200,8 @@
     const d = entry.data, s = d.summary;
     if (!s.ran_at) return wrap(`<section class="card"><div class="empty"><h3>${t("Nothing worked out yet")}</h3><p>${t("Insights run by themselves after each new day of Search Console data. Run them now to see the first ones.")}</p><div class="ov-empty-act">${run}</div></div></section>`);
     const changes = s.changes || [];
-    const top = changes.length ? `<div class="in-answer">${changes.slice(0, 3).map((c) => `<p class="ov-answer" dir="auto">${esc(answer(c, changes.length > 1))}</p>`).join("")}${changes.length === 1 && !changes[0].evidence.steady ? partsRow(changes[0]) : ""}</div>` : "";
+    aiSettings();
+    const top = changes.length ? `<div class="in-answer">${changes.slice(0, 3).map((c) => `<p class="ov-answer" dir="auto">${esc(answer(c, changes.length > 1))}</p>`).join("")}${changes.length === 1 && !changes[0].evidence.steady ? partsRow(changes[0]) : ""}${changes.length === 1 ? weeklyBlock(changes[0]) : ""}</div>` : "";
     const figs = `<div class="in-figs">
       <div class="in-fig"><div class="lab">${t("Still open")}</div><div class="fig">${num(s.open)}</div></div>
       <div class="in-fig"><div class="lab">${t("Clicks a month at stake")}</div><div class="fig">${num(s.at_stake)}</div></div>
@@ -142,16 +213,25 @@
 
   function tabsCard(d) {
     const counts = d.counts || {};
-    const tabs = `<div class="tabs" role="tablist" aria-label="${t("Insights")}">${TABS.map(([id, name]) => {
+    const needs = d.summary.needs || {};
+    const shownTabs = TABS.filter(([id]) => id !== "leads" || counts.leads?.open || (needs.lead_page && needs.lead_page !== "ga4") || (!needs.lead_page && d.summary.ran_at));
+    if (!shownTabs.some(([id]) => id === IN.tab)) IN.tab = "first";
+    const tabs = `<div class="tabs" role="tablist" aria-label="${t("Insights")}">${shownTabs.map(([id, name]) => {
       const n = id === "first" ? null : counts[id]?.open;
       return `<button class="tab" role="tab" data-in-tab="${id}" aria-selected="${IN.tab === id}">${t(name)}${n ? ` <span class="in-count">${num(n)}</span>` : ""}</button>`;
     }).join("")}</div>`;
     const controls = `<div class="ov-controls"><label class="ov-show"><span>${t("Show")}</span><select class="select" data-in-status>${STATUSES.map(([id, name]) => `<option value="${id}" ${IN.status === id ? "selected" : ""}>${t(name)}</option>`).join("")}</select></label></div>`;
-    const needs = d.summary.needs || {};
     const notes = [];
     if (IN.tab === "wins" && needs.low_ctr === "brand_words") notes.push(`${t("Low click rates need your brand words: brand searches are clicked far more and would make every other query look weak.")} <a href="#overview">${t("Add them on Overview")}</a>`);
     if ((IN.tab === "decline" && needs.decay) || (IN.tab === "changed" && needs.page_down)) notes.push(t("Needs more saved history: slow decline looks at 16 weeks, changes at 8."));
-    const hint = { first: "The biggest of everything, one row per query or page.", changed: "Last 28 days against the 28 before, plus odd days this week.", decline: "Pages sliding a little every week for 16 weeks.", wins: "Queries a small push would pay for, using this site's own click rates." }[IN.tab];
+    if (IN.tab === "leads" && needs.lead_page === "key_events") notes.push(t("GA4 has no key events for this site yet. Mark your form or call event as a key event in GA4, and leads show here."));
+    if (IN.tab === "changed" && needs.brand_split === "brand_words") notes.push(`${t("Add your brand words to see when brand searches hide a loss.")} <a href="#overview">${t("Add them on Overview")}</a>`);
+    const hint = {
+      first: "The biggest of everything, one row per query or page.", changed: "Last 28 days against the 28 before, plus odd days this week.",
+      decline: "Pages and searches sliding a little every week.", wins: "Searches a small push would pay for, using this site's own click rates.",
+      leads: "Search clicks joined with GA4's key events over 90 days.", technical: "What the Search Console data says about addresses, broken pages and missing days.",
+      impact: "Done tasks and dated notes: 28 days before against 28 days from a week after.",
+    }[IN.tab];
     return `<section class="card ov-tabs-card"><div class="card-head ov-tabs-head">${tabs}</div>${controls}
       <p class="small muted ov-hint">${t(hint)}</p>${notes.map((n) => `<p class="small ov-hint in-need">${n}</p>`).join("")}${table(d.rows)}</section>`;
   }
@@ -160,13 +240,79 @@
     if (!rows.length) return `<div class="empty"><p>${t(IN.status === "open" ? "Nothing here right now. That's good news." : "Nothing here.")}</p></div>`;
     const many = !UI.siteIdPicked();
     const body = rows.slice(0, IN.limit).map((f) => `<tr class="ov-row" data-in-open="${f.id}" tabindex="0">
-      <td class="head-cell" data-label="${t("What")}"><div class="in-what"><span class="in-kind ${f.group}">${esc(kindName(f))}</span>${f.task ? `<span class="in-task">${icon("square-check")}${t(f.task === "done" ? "Task done" : "Task open")}</span>` : ""}${many ? `<span class="muted small">${esc(f.host)}</span>` : ""}</div>
+      <td class="head-cell" data-label="${t("What")}"><div class="in-what"><span class="in-kind ${f.group}">${esc(kindName(f))}</span>${f.evidence?.seasonal ? `<span class="in-season">${t("Seasonal")}</span>` : ""}${f.task ? `<span class="in-task">${icon("square-check")}${t(f.task === "done" ? "Task done" : "Task open")}</span>` : ""}${many ? `<span class="muted small">${esc(f.host)}</span>` : ""}</div>
         <div class="t" dir="auto">${esc(titleOf(f))}</div><div class="s muted small" dir="auto">${esc(reasonOf(f))}</div></td>
       <td class="c" data-label="${t("Clicks a month")}">${f.at_stake >= 1 ? num(Math.round(f.at_stake)) : "—"}</td>
       <td class="c" data-label="${t("Key number")}">${esc(keyNumber(f))}</td>
       <td class="c in-act-col"><button class="btn btn-small btn-ghost" data-in-open="${f.id}">${t("Open")}</button></td></tr>`).join("");
     return `<div class="table-wrap ov-table in-table"><table class="data"><thead><tr><th scope="col">${t("What")}</th><th class="c" scope="col">${t("Clicks a month")}</th><th class="c" scope="col">${t("Key number")}</th><th class="c" scope="col"><span class="sr">${t("Open")}</span></th></tr></thead><tbody>${body}</tbody></table></div>
       <div class="lv-foot"><span>${num(Math.min(IN.limit, rows.length))} ${t("of")} ${num(rows.length)}</span>${IN.limit < rows.length ? `<button class="link-btn" data-in-more>${t("Show more")}</button>` : ""}</div>`;
+  }
+
+  // ---- AI, on a click only ------------------------------------------------------------------------
+  const AI_ASK = { explain: "Explain this", titles: "Suggest titles", brief: "Write a brief", faq: "Write an FAQ", compete: "Which page to keep", weekly: "Summary by AI" };
+  const MODEL_NAMES = { "claude-haiku-5-5": "Claude Haiku 5.5", "claude-sonnet-5-5": "Claude Sonnet 5.5" };
+  const aiReady = (provider) => Boolean(IN.ai?.keys?.[provider]);
+  // Headings a brief marks with ## or ### show bold, without the marks; every line is escaped like everything else.
+  const aiText = (words) => words.split("\n").map((line) => {
+    const m = line.match(/^\s*(#{2,3})\s+(.*)$/);
+    return m ? `<b class="in-ai-h${m[1].length}">${esc(m[2])}</b>` : esc(line);
+  }).join("\n");
+  function aiAnswer(purpose, answer) {
+    const by = answer.provider === "claude" ? MODEL_NAMES[answer.model] || answer.model : t("a free model");
+    const cost = answer.cost ? ` · $${answer.cost < 0.01 ? answer.cost.toFixed(4) : answer.cost.toFixed(2)}` : "";
+    return `<div class="in-ai-answer" data-in-ai-box="${purpose}"><p class="in-ai-label">${icon("sparkles")}${t("Written by AI")} · ${esc(by)}${cost}</p>
+      <div class="in-ai-text" dir="auto">${aiText(answer.text)}</div>
+      <div class="in-ai-acts"><button class="link-btn" data-in-ai-copy="${purpose}">${t("Copy")}</button><button class="link-btn" data-in-ai="${purpose}" data-in-ai-again="1">${t("Ask again")}</button></div></div>`;
+  }
+  const aiBlock = (f) => (f.ai?.purposes?.length ? `<section class="in-ai-wrap" data-in-ai-wrap>${aiInner(f)}</section>` : "");
+  function aiInner(f) {
+    const info = f.ai;
+    const lang = UI.state.lang === "fr" ? "fr" : "en";
+    const kept = info.kept?.[lang] || {};
+    const ready = aiReady(info.provider);
+    const head = `<h3 class="ov-h3">${t("With AI")} <span class="muted small">${t(info.provider === "claude" ? "Claude, from your Anthropic key" : "OpenRouter's free models")}</span></h3>`;
+    if (!ready && !Object.keys(kept).length) return `${head}<p class="small muted">${t(info.provider === "claude" ? "Paste an Anthropic key in Settings to use Claude here." : "Connect OpenRouter in Settings, or pick Claude for this site, to use AI here.")} <a href="#settings">${t("Open Settings")}</a></p>`;
+    const buttons = info.purposes.filter((p) => !kept[p]).map((p) => `<button class="btn btn-small" data-in-ai="${p}" ${ready ? "" : "disabled"}>${icon("sparkles")}${t(AI_ASK[p])}</button>`).join("");
+    return `${head}<div class="in-ai">${info.purposes.filter((p) => kept[p]).map((p) => aiAnswer(p, kept[p])).join("")}${buttons ? `<div class="in-ai-buttons">${buttons}</div>` : ""}
+      <p class="small muted">${t("Only the numbers above and the page's title and headings are sent. AI never changes what's found or how it's ranked.")}</p></div>`;
+  }
+  async function askAI(button) {
+    const purpose = button.dataset.inAi, again = Boolean(button.dataset.inAiAgain), f = IN.current;
+    if (!f) return;
+    const was = button.innerHTML;
+    button.disabled = true;
+    button.textContent = t("Writing…");
+    try {
+      const answer = await window.COMP.api("POST", `insights/${f.id}/ai`, { purpose, lang: UI.state.lang === "fr" ? "fr" : "en", again });
+      const lang = answer.language;
+      f.ai.kept = { ...(f.ai.kept || {}), [lang]: { ...(f.ai.kept?.[lang] || {}), [purpose]: answer } };
+      const wrap = UI.$("#panel [data-in-ai-wrap]");
+      if (wrap && IN.current === f) UI.setHTML(wrap, aiInner(f));
+
+    } catch (err) {
+      UI.toast(t(err.message), { kind: "crit" });
+      if (button.isConnected) { button.disabled = false; button.innerHTML = was; }
+    }
+  }
+  async function askWeekly(button) {
+    const id = Number(button.dataset.inWeekly);
+    button.disabled = true;
+    const was = button.innerHTML;
+    button.textContent = t("Writing…");
+    try {
+      const answer = await window.COMP.api("POST", `insights/${id}/ai`, { purpose: "weekly", lang: UI.state.lang === "fr" ? "fr" : "en", again: Boolean(button.dataset.inAiAgain) });
+      IN.weekly = { id, lang: answer.language, answer };
+      UI.render({ keepScroll: true });
+    } catch (err) { UI.toast(t(err.message), { kind: "crit" }); if (button.isConnected) { button.disabled = false; button.innerHTML = was; } }
+  }
+  function weeklyBlock(change) {
+    if (!change) return "";
+    const site = (IN.ai?.sites || []).find((x) => x.id === change.site_id);
+    if (!site || !aiReady(site.provider)) return "";
+    const held = IN.weekly && IN.weekly.id === change.id && IN.weekly.lang === (UI.state.lang === "fr" ? "fr" : "en") ? IN.weekly.answer : null;
+    if (held) return `<div class="in-weekly">${aiAnswer("weekly", held).replace('data-in-ai="weekly"', `data-in-weekly="${change.id}"`)}</div>`;
+    return `<button class="link-btn in-weekly-btn" data-in-weekly="${change.id}">${icon("sparkles")}${t("Summary by AI")}</button>`;
   }
 
   // ---- one finding, in the side panel ---------------------------------------------------------------
@@ -176,7 +322,9 @@
     const rows = [];
     if (f.kind === "change") {
       Object.entries(e.parts).filter(([, v]) => Math.round(v)).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).forEach(([id, v]) => rows.push(li(PARTS[id][v > 0 ? 0 : 1], signed(v))));
-      return `<ul class="rows ov-split">${rows.join("")}</ul>${moversList(e)}`;
+      const brand = e.brand ? `<h3 class="ov-h3">${t("Brand and non-brand searches")}</h3><ul class="rows ov-split">${[["brand", "Brand"], ["other", "Non-brand"]].map(([k, name]) => li(name, `${num(e.brand[k].clicks_before)} → ${num(e.brand[k].clicks)}`)).join("")}</ul>` : "";
+      const season = e.last_year ? `<p class="small ${e.seasonal ? "" : "muted"}">${e.seasonal ? `<b>${t("Seasonal")}</b>: ` : ""}${fill("The same weeks last year: {a} → {b} clicks ({p}%).", { a: num(e.last_year.clicks_before), b: num(e.last_year.clicks), p: signed(e.last_year.percent) })}</p>` : "";
+      return `<ul class="rows ov-split">${rows.join("")}</ul>${season}${brand}${moversList(e)}`;
     }
     if (e.clicks_before !== undefined && e.clicks !== undefined) rows.push(li("Clicks", `${num(e.clicks_before)} → ${num(e.clicks)}`));
     else if (e.clicks !== undefined) rows.push(li("Clicks", num(e.clicks)));
@@ -191,11 +339,26 @@
     if (e.usual !== undefined) rows.push(li("Usual that weekday", num(Math.round(e.usual))));
     if (e.last_seen) rows.push(li("Last seen on Google", esc(dayLabel(e.last_seen))));
     const list = `<ul class="rows ov-split">${rows.join("")}</ul>`;
-    const queries = e.queries?.length ? `<h3 class="ov-h3">${t("Queries behind it")}</h3><ul class="rows ov-split">${e.queries.map((q) => `<li><div class="what"><div class="t" dir="auto">${esc(q.query)}</div><div class="s muted">${t("pos.")} ${dec1(q.position_before)} → ${dec1(q.position)}</div></div><span>${num(q.clicks_before)} → ${num(q.clicks)}</span></li>`).join("")}</ul>` : "";
-    const pages = e.pages?.length ? `<h3 class="ov-h3">${t("Pages that share it")}</h3><ul class="rows ov-split">${e.pages.map((p) => `<li><div class="what"><div class="t" dir="auto">${esc(pathOf(p.page))}</div><div class="s muted">${t("pos.")} ${dec1(p.position)} · ${num(p.clicks)} ${t("clicks")}</div></div><span>${p.share}%</span></li>`).join("")}</ul>` : "";
+    const queryRow = (q) => q.clicks_before !== undefined
+      ? `<li><div class="what"><div class="t" dir="auto">${esc(q.query)}</div><div class="s muted">${t("pos.")} ${dec1(q.position_before)} → ${dec1(q.position)}</div></div><span>${num(q.clicks_before)} → ${num(q.clicks)}</span></li>`
+      : `<li><div class="what"><div class="t" dir="auto">${esc(q.query)}</div><div class="s muted">${t("pos.")} ${dec1(q.position)} · ${num(q.impressions)} ${t("impressions")}</div></div><span>${num(q.clicks)} ${t("clicks")}</span></li>`;
+    const queriesTitle = { questions: "Questions people ask", topic: "Its biggest searches", page_near: "Searches just past page 1" }[f.kind] || "Queries behind it";
+    const queries = e.queries?.length ? `<h3 class="ov-h3">${t(queriesTitle)}</h3><ul class="rows ov-split">${e.queries.map(queryRow).join("")}</ul>` : "";
+    const variants = e.variants?.length ? `<h3 class="ov-h3">${t("Its addresses on Google")}</h3><ul class="rows ov-split">${e.variants.map((v) => `<li><div class="what"><div class="t" dir="auto">${pageLink(v.page, { text: v.page })}</div><div class="s muted">${t("pos.")} ${dec1(v.position)} · ${num(v.clicks)} ${t("clicks")}</div></div><span>${num(v.impressions)}</span></li>`).join("")}</ul>
+      <p class="small muted">${t("Point the others to one address with a redirect or a canonical tag, so Google adds them up.")}${e.kinds?.length ? ` ${t("They differ by")}: ${e.kinds.map((k) => t({ query: "a query string", scheme: "http or https", www: "www", slash: "the last slash", case: "capital letters" }[k] || k)).join(", ")}.` : ""}</p>` : "";
+    const results = e.before && e.after ? `<h3 class="ov-h3">${fill("28 days before {d}, against 28 days from a week after", { d: dayLabel(e.done) })}</h3><ul class="rows ov-split">
+      <li><div class="what"><div class="t">${t("Clicks")}</div></div><span>${num(e.before.clicks)} → ${num(e.after.clicks)}</span></li>
+      <li><div class="what"><div class="t">${t("Impressions")}</div></div><span>${num(e.before.impressions)} → ${num(e.after.impressions)}</span></li>
+      <li><div class="what"><div class="t">${t("Position")}</div></div><span>${dec1(e.before.position)} → ${dec1(e.after.position)}</span></li>
+      <li><div class="what"><div class="t">${t("Click rate")}</div></div><span>${e.before.click_rate ?? "—"}% → ${e.after.click_rate ?? "—"}%</span></li></ul>
+      <p class="small muted">${t(e.on === "site" ? "The whole site, around the day of the note." : e.on === "keywords" ? "The task's keywords." : "The task's pages.")}</p>` : "";
+    const season = e.last_year ? `<p class="small ${e.seasonal ? "" : "muted"}">${e.seasonal ? `<b>${t("Seasonal")}</b>: ` : ""}${fill("The same weeks last year: {a} → {b} clicks ({p}%).", { a: num(e.last_year.clicks_before), b: num(e.last_year.clicks), p: signed(e.last_year.percent) })}${e.seasonal ? ` ${t("So it counts half.")}` : ""}</p>` : "";
+    const leads = leadsLine(e) ? `<p class="small">${esc(leadsLine(e))} ${t("at stake")} <span class="muted">(${fill(e.lead_rate?.basis === "page" ? "this page turns {r}% of visits into leads" : "the site turns {r}% of visits into leads", { r: UI.dec(e.lead_rate?.rate ?? 0) })})</span></p>` : "";
+    const gaps = f.kind === "data_gaps" ? `<p class="small">${e.partial?.length ? `${t("Days Search Console gave only part of")}: ${e.partial.map((d) => esc(dayLabel(d))).join(", ")}. ` : ""}${e.verify ? fill("The last “Matches Search Console” check found {n} days that differ. Read them again from Overview.", { n: num(e.verify.days) }) : ""}</p>` : "";
+    const pages = e.pages?.length ? `<h3 class="ov-h3">${t("Pages that share it")}</h3><ul class="rows ov-split">${e.pages.map((p) => `<li><div class="what"><div class="t" dir="auto">${pageLink(p.page, { text: pathOf(p.page) })}</div><div class="s muted">${t("pos.")} ${dec1(p.position)} · ${num(p.clicks)} ${t("clicks")}</div></div><span>${p.share}%</span></li>`).join("")}</ul>` : "";
     const causes = e.causes?.length ? `<p class="small">${t("The last health test or Links Checker saw")}: ${e.causes.map((c) => esc(cause(c))).join(", ")}.</p>` : f.kind === "dropped_out" ? `<p class="small muted">${t("The last health test saw nothing wrong with it. Check it in Search Console's page indexing report.")}</p>` : "";
-    const page = f.page && f.kind !== "dropped_out" && !["page_down", "page_up", "decay"].includes(f.kind) ? `<p class="small muted">${t("Page that ranks")}: <span dir="auto">${esc(pathOf(f.page))}</span></p>` : "";
-    return `${list}${page}${queries}${pages}${causes}`;
+    const page = f.page && !PAGE_IS_SUBJECT.includes(f.kind) ? `<p class="small muted">${t("Page that ranks")}: ${pageLink(f.page, { text: pathOf(f.page) })}</p>` : "";
+    return `${list}${season}${leads}${page}${queries}${variants}${pages}${results}${gaps}${causes}`;
   }
   function moversList(e) {
     const groups = Object.entries(e.movers || {}).filter(([, list]) => list.length).sort((a, b) => Math.abs(e.parts[b[0]]) - Math.abs(e.parts[a[0]]));
@@ -215,6 +378,16 @@
       no_click: "Its impressions × the click rate this site usually gets at its position, as a month.",
       compete: "What it would bring if the best of these pages took all its impressions, as a month.",
       change: "The clicks the site lost against the 28 days before, as a month.",
+      query_down: "Its impressions now × (the click rate this site usually gets at its old position − at its new one), as a month.",
+      segment: "The clicks it lost against the 28 days before, as a month.",
+      unstable: "What it would bring if it stayed at its better days' position, as a month.",
+      brand_split: "The non-brand clicks lost against the 28 days before, as a month.",
+      slide: "Its weekly impressions × (the click rate this site usually gets at its position 8 weeks ago − now), as a month.",
+      page_near: "For each of these searches: its impressions × the click rate this site usually gets at position {p}, less the clicks it has, as a month.",
+      no_page: "Its impressions × the click rate this site usually gets at position {p}, less the clicks it has, as a month.",
+      topic: "The topic's impressions × the click rate this site usually gets at position {p}, less the clicks it has, as a month.",
+      lead_page: "The clicks at stake of the page's drop. Leads: those clicks × the page's own lead rate.",
+      shown_broken: "The clicks it had in the last 28 days, as a month.",
     }[f.kind];
     return words ? `<p class="small muted in-how">${icon("info")}${esc(fill(words, { p: e.target ?? "" }))}</p>` : "";
   }
@@ -237,8 +410,8 @@
       ${canTrack ? `<button class="btn" data-in-track="${esc(f.query)}">${icon("plus")}${t("Track as a keyword")}</button>` : ""}
       ${f.status === "dismissed" ? `<button class="btn btn-ghost" data-in-undismiss="${f.id}">${t("Bring it back")}</button>` : f.status === "open" ? `<button class="btn btn-ghost" data-in-dismiss="${f.id}">${t("Not useful")}</button>` : ""}
     </div>`;
-    const where = f.page ? `<p class="small"><a href="${esc(f.page)}" target="_blank" rel="noopener" dir="auto">${esc(pathOf(f.page))}</a></p>` : "";
-    UI.openPanel(`${UI.panelHead(title, sub)}<div class="panel-body">${stake}${where}${f.kind !== "change" ? `<p class="small" dir="auto">${esc(reasonOf(f))}</p>` : ""}${chart}${evidenceList(f)}${stakeWords(f)}
+    const where = f.page ? `<p class="small">${pageLink(f.page, { text: pathOf(f.page), host: f.host })}</p>` : "";
+    UI.openPanel(`${UI.panelHead(title, sub)}<div class="panel-body">${stake}${where}${f.kind !== "change" ? `<p class="small" dir="auto">${esc(reasonOf(f))}</p>` : ""}${chart}${evidenceList(f)}${stakeWords(f)}${aiBlock(f)}
       ${f.status === "dismissed" ? `<p class="small muted">${t("Hidden as not useful. It comes back by itself if it gets twice as big.")}</p>` : ""}${actions}</div>`, opener);
     IN.current = f;
   }
@@ -265,6 +438,13 @@
         el.disabled = true;
         try { await window.COMP.api("POST", "insights/run", { site_id: UI.siteIdPicked() || null }); forget(); UI.render({ keepScroll: true }); UI.toast(t("Insights worked out again.")); }
         catch (err) { UI.toast(err.message, { kind: "crit" }); el.disabled = false; }
+        return;
+      }
+      if ((el = hit("[data-in-weekly]"))) { askWeekly(el); return; }
+      if ((el = hit("[data-in-ai]"))) { askAI(el); return; }
+      if ((el = hit("[data-in-ai-copy]"))) {
+        const box = el.closest(".in-ai-answer")?.querySelector(".in-ai-text");
+        try { await navigator.clipboard.writeText(box?.textContent || ""); UI.toast(t("Copied")); } catch { UI.toast(t("Select the text to copy it."), { kind: "info" }); }
         return;
       }
       if ((el = hit("[data-in-task]"))) { if (IN.current) taskFor(IN.current, el); return; }
@@ -353,6 +533,67 @@
     "The clicks the site lost against the 28 days before, as a month.": "Les clics perdus par le site par rapport aux 28 jours d'avant, ramenés au mois.",
     "Search insights": "Analyses de recherche", "Insights worked out again.": "Analyses recalculées.", "Brought back": "Remise", "Hidden. It comes back if it gets twice as big.": "Masquée. Elle revient si elle double.",
     "Click rate": "Taux de clic", "Position": "Position", "d": "j",
+    "Explain this": "Expliquer", "Suggest titles": "Proposer des titres", "Write a brief": "Écrire un brief", "Write an FAQ": "Écrire une FAQ", "Which page to keep": "Quelle page garder",
+    "Summary by AI": "Résumé par l'IA", "Written by AI": "Écrit par l'IA", "a free model": "un modèle gratuit", "Ask again": "Redemander", "Writing…": "Rédaction…", "Copied": "Copié",
+    "Select the text to copy it.": "Sélectionnez le texte pour le copier.", "With AI": "Avec l'IA", "Claude, from your Anthropic key": "Claude, avec votre clé Anthropic", "OpenRouter's free models": "Les modèles gratuits d'OpenRouter",
+    "Paste an Anthropic key in Settings to use Claude here.": "Collez une clé Anthropic dans les réglages pour utiliser Claude ici.",
+    "Connect OpenRouter in Settings, or pick Claude for this site, to use AI here.": "Connectez OpenRouter dans les réglages, ou choisissez Claude pour ce site, pour utiliser l'IA ici.", "Open Settings": "Ouvrir les réglages",
+    "Only the numbers above and the page's title and headings are sent. AI never changes what's found or how it's ranked.": "Seuls les chiffres ci-dessus et le titre et les intertitres de la page sont envoyés. L'IA ne change jamais ce qui est trouvé ni son classement.",
+    "Paste an Anthropic key in Settings first, or pick OpenRouter's free models for this site.": "Collez d'abord une clé Anthropic dans les réglages, ou choisissez les modèles gratuits d'OpenRouter pour ce site.",
+    "Connect OpenRouter in Settings first, or pick Claude for this site.": "Connectez d'abord OpenRouter dans les réglages, ou choisissez Claude pour ce site.",
+    "Anthropic refused this key. Paste it again in Settings.": "Anthropic a refusé cette clé. Collez-la à nouveau dans les réglages.", "Claude declined to answer this one.": "Claude a refusé de répondre à celle-ci.",
+    "Claude gave no answer. Try again.": "Claude n'a pas répondu. Réessayez.", "Claude is busy or down right now. Try again in a moment.": "Claude est occupé ou indisponible. Réessayez dans un instant.",
+    "The Anthropic account is out of credit. Add some in the Claude Console.": "Le compte Anthropic n'a plus de crédit. Ajoutez-en dans la Claude Console.",
+    "Anthropic says too many requests right now. Try again in a minute.": "Anthropic signale trop de requêtes. Réessayez dans une minute.", "Anthropic couldn't be reached. Try again in a moment.": "Anthropic est injoignable. Réessayez dans un instant.",
+    "AI can't write that for this kind of insight.": "L'IA ne peut pas écrire cela pour ce type d'analyse.",
+    "Leads": "Prospects", "Technical": "Technique", "Did it work": "Ça a marché ?",
+    "Query losing places": "Requête qui perd des places", "One device or country": "Un appareil ou un pays", "Unstable ranking": "Classement instable", "Brand hides a loss": "La marque cache une perte",
+    "Slowly losing places": "Perd lentement des places", "Near page 1 on many searches": "Proche de la page 1 sur beaucoup de recherches", "No page of its own": "Pas de page à elle",
+    "Question searches": "Recherches en questions", "Topic without a strong page": "Sujet sans page forte", "Worth tracking": "À suivre", "Page that brings leads": "Page qui apporte des prospects",
+    "Clicks but no leads": "Des clics mais pas de prospects", "One page, several addresses": "Une page, plusieurs adresses", "Shown but broken": "Affichée mais cassée", "Data gaps": "Trous dans les données",
+    "Task result": "Résultat d'une tâche", "Note result": "Résultat d'une note",
+    "{segment}: {sign}{percent}% clicks": "{segment} : {sign}{percent} % de clics", "Non-brand clicks fell {percent}%": "Les clics hors marque ont baissé de {percent} %",
+    "Searches with “{word}”": "Recherches avec « {word} »", "{path} brings leads and is losing clicks": "{path} apporte des prospects et perd des clics", "Search Console data has gaps": "Les données de la Search Console ont des trous",
+    "Mobile": "Mobile", "Desktop": "Ordinateur", "Tablet": "Tablette", "Better": "Mieux", "Worse": "Moins bien", "About the same": "À peu près pareil",
+    "≈ {n} leads a month": "≈ {n} prospects par mois", "Position {a} → {b} · {i} impressions": "Position {a} → {b} · {i} impressions",
+    "{a} → {b} clicks; the rest of the site moved {c}": "{a} → {b} clics ; le reste du site a bougé de {c}",
+    "Between position {a} and {b} from day to day, usually {p}": "Entre la position {a} et {b} d'un jour à l'autre, d'habitude {p}",
+    "Non-brand {a} → {b} clicks; brand {c} → {d}": "Hors marque {a} → {b} clics ; marque {c} → {d}",
+    "Position {a} → {b} over 8 weeks, a little every week": "Position {a} → {b} en 8 semaines, un peu chaque semaine",
+    "{n} searches at positions 11 to 30 · {i} impressions": "{n} recherches en positions 11 à 30 · {i} impressions",
+    "Only the home page ranks for it, at position {p} · {i} impressions": "Seule la page d'accueil se classe dessus, en position {p} · {i} impressions",
+    "Ranks through {page}, a page about something else, at position {p}": "Se classe via {page}, une page sur un autre sujet, en position {p}",
+    "{n} questions people ask · {i} impressions": "{n} questions que les gens posent · {i} impressions", "{n} searches · {i} impressions · average position {p}": "{n} recherches · {i} impressions · position moyenne {p}",
+    "{n} leads in {d} days": "{n} prospects en {d} jours", "clicks {p}%": "clics {p} %", "{c} search clicks and {s} visits in {d} days, 0 leads": "{c} clics de recherche et {s} visites en {d} jours, 0 prospect",
+    "{n} addresses for one page · {i} impressions": "{n} adresses pour une page · {i} impressions", "Shown {i} times this week": "Affichée {i} fois cette semaine",
+    "{n} days only partly read": "{n} jours lus en partie seulement", "{n} days differ from Search Console": "{n} jours diffèrent de la Search Console",
+    "Done {d}. The result is ready on {r}.": "Fait le {d}. Le résultat sera prêt le {r}.", "{a} → {b} clicks in 28 days": "{a} → {b} clics en 28 jours",
+    "{path} is new on Google": "{path} est nouvelle sur Google", "new": "nouvelle", "searches": "recherches", "leads": "prospects", "addresses": "adresses", "waiting": "en attente",
+    "Its impressions now × (the click rate this site usually gets at its old position − at its new one), as a month.": "Ses impressions actuelles × (le taux de clic habituel du site à son ancienne position − à la nouvelle), ramenées au mois.",
+    "What it would bring if it stayed at its better days' position, as a month.": "Ce qu'elle apporterait si elle restait à la position de ses meilleurs jours, ramené au mois.",
+    "The non-brand clicks lost against the 28 days before, as a month.": "Les clics hors marque perdus par rapport aux 28 jours d'avant, ramenés au mois.",
+    "Its weekly impressions × (the click rate this site usually gets at its position 8 weeks ago − now), as a month.": "Ses impressions par semaine × (le taux de clic habituel du site à sa position d'il y a 8 semaines − maintenant), ramenées au mois.",
+    "For each of these searches: its impressions × the click rate this site usually gets at position {p}, less the clicks it has, as a month.": "Pour chacune de ces recherches : ses impressions × le taux de clic habituel du site en position {p}, moins ses clics, ramené au mois.",
+    "Its impressions × the click rate this site usually gets at position {p}, less the clicks it has, as a month.": "Ses impressions × le taux de clic habituel du site en position {p}, moins ses clics, ramené au mois.",
+    "The topic's impressions × the click rate this site usually gets at position {p}, less the clicks it has, as a month.": "Les impressions du sujet × le taux de clic habituel du site en position {p}, moins ses clics, ramené au mois.",
+    "The clicks at stake of the page's drop. Leads: those clicks × the page's own lead rate.": "Les clics en jeu de la baisse de la page. Prospects : ces clics × le taux de prospects de la page.",
+    "The clicks it had in the last 28 days, as a month.": "Les clics qu'elle a eus les 28 derniers jours, ramenés au mois.",
+    "Questions people ask": "Questions que les gens posent", "Its biggest searches": "Ses plus grosses recherches", "Searches just past page 1": "Recherches juste après la page 1",
+    "Its addresses on Google": "Ses adresses sur Google", "Point the others to one address with a redirect or a canonical tag, so Google adds them up.": "Faites pointer les autres vers une seule adresse, par une redirection ou une balise canonique, pour que Google les additionne.",
+    "They differ by": "Elles diffèrent par", "a query string": "des paramètres après ?", "http or https": "http ou https", "the last slash": "la barre finale", "capital letters": "les majuscules",
+    "28 days before {d}, against 28 days from a week after": "28 jours avant le {d}, contre 28 jours à partir d'une semaine après",
+    "The whole site, around the day of the note.": "Tout le site, autour du jour de la note.", "The task's keywords.": "Les mots-clés de la tâche.", "The task's pages.": "Les pages de la tâche.",
+    "Seasonal": "Saisonnier", "The same weeks last year: {a} → {b} clicks ({p}%).": "Les mêmes semaines l'an dernier : {a} → {b} clics ({p} %).", "So it counts half.": "Elle compte donc pour moitié.",
+    "at stake": "en jeu", "this page turns {r}% of visits into leads": "cette page transforme {r} % des visites en prospects", "the site turns {r}% of visits into leads": "le site transforme {r} % des visites en prospects",
+    "Days Search Console gave only part of": "Jours que la Search Console n'a donnés qu'en partie",
+    "The last “Matches Search Console” check found {n} days that differ. Read them again from Overview.": "La dernière vérification « Conforme à la Search Console » a trouvé {n} jours différents. Relisez-les depuis la Vue d'ensemble.",
+    "Brand and non-brand searches": "Recherches de marque et hors marque", "Brand": "Marque", "Non-brand": "Hors marque",
+    "GA4 has no key events for this site yet. Mark your form or call event as a key event in GA4, and leads show here.": "GA4 n'a pas encore d'événement clé pour ce site. Marquez votre formulaire ou votre appel comme événement clé dans GA4, et les prospects apparaîtront ici.",
+    "Add your brand words to see when brand searches hide a loss.": "Ajoutez vos mots de marque pour voir quand les recherches de marque cachent une perte.",
+    "Pages and searches sliding a little every week.": "Pages et recherches qui reculent un peu chaque semaine.", "Searches a small push would pay for, using this site's own click rates.": "Recherches pour lesquelles un petit effort paierait, d'après les taux de clic du site.",
+    "Search clicks joined with GA4's key events over 90 days.": "Les clics de recherche joints aux événements clés de GA4 sur 90 jours.",
+    "What the Search Console data says about addresses, broken pages and missing days.": "Ce que disent les données de la Search Console sur les adresses, les pages cassées et les jours manquants.",
+    "Done tasks and dated notes: 28 days before against 28 days from a week after.": "Tâches faites et notes datées : 28 jours avant contre 28 jours à partir d'une semaine après.",
   };
   Object.keys(words).forEach((w) => { if (window.FR[w] === undefined) window.FR[w] = words[w]; });
 })();

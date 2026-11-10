@@ -127,7 +127,24 @@ def one(engine: Engine, finding_id: int) -> dict:
         raise NotFound("That insight doesn't exist any more.")
     row = rows[0]
     row["series"] = _series(engine, row)
+    row["ai"] = _ai(engine, row)
     return row
+
+
+def _ai(engine: Engine, row: dict) -> dict:
+    """What AI can write for this finding, with the provider its site uses and the answers already kept (any language)."""
+    from seo.extras import ai
+
+    provider = ai.provider_of(engine, row["site_id"])
+    with engine.connect() as conn:
+        held = conn.execute(text("SELECT ai FROM search_findings WHERE id = :i"), {"i": row["id"]}).scalar()
+    held = json.loads(held) if isinstance(held, str) else (held or {})
+    kept = {}
+    for slot, answer in held.items():
+        purpose, lang, by = (slot.split("|") + ["", ""])[:3]
+        if by == provider and answer.get("data_through") == row["data_through"]:
+            kept.setdefault(lang, {})[purpose] = answer
+    return {"provider": provider, "purposes": ai.purposes_for(row["kind"]), "kept": kept}
 
 
 def _series(engine: Engine, row: dict) -> list[dict]:

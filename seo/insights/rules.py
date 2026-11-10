@@ -53,6 +53,84 @@ CURVE_DAYS, CURVE_MIN_IMPRESSIONS, CURVE_MIN_QUERIES = 90, 100, 10
 CURVE_BANDS = ((1, 1), (2, 2), (3, 3), (4, 5), (6, 10), (11, 20))
 CURVE_RATIO_LIMITS = (0.3, 3.0)
 
+# A4, a query losing places: on the page that ranks for it.
+QUERY_PLACES_LOST = 3
+QUERY_MIN_IMPRESSIONS = 50  # in either period
+QUERY_WORST_BEFORE = 30  # it ranked at least this well before; further down, places mean little
+QUERY_KEPT = 100
+
+# A6, one country or device carries the change.
+SEGMENT_SHARE = 0.7  # of the site's change, pulling the same way
+SEGMENT_MIN_CLICKS = 20
+SEGMENT_OTHERS_STEADY = 0.15  # the rest of the site moved less than this share of its clicks
+
+# A7, unstable ranking: Google keeps moving it.
+UNSTABLE_MIN_DAYS = 14  # of the 28, with impressions
+UNSTABLE_MIN_IMPRESSIONS = 100
+UNSTABLE_SPREAD = 3.0  # places, the spread between its better and worse days (interquartile)
+UNSTABLE_TOP = 20  # its usual position at or above this
+UNSTABLE_KEPT = 50
+
+# B2, a slow position slide.
+SLIDE_WEEKS = 8
+SLIDE_MIN_IMPRESSIONS = 200  # over the 8 weeks
+SLIDE_MIN_WEEKS = 6  # weeks with impressions
+SLIDE_SLOPE = 0.25  # places lost a week, at least
+SLIDE_TOTAL = 2.0  # places lost over the 8 weeks, on the fitted line
+SLIDE_FIT = 0.5
+SLIDE_TOP = 30
+SLIDE_KEPT = 100
+
+# B3, seasonal or real: the same weeks a year earlier.
+SEASON_DAYS = 364  # 52 weeks, so weekdays line up
+SEASON_SHARE = 0.5  # last year fell at least half as much, in percent, over the same weeks
+SEASON_STAKE = 0.5  # a seasonal drop counts half
+
+# C6, a page close to page 1 on many queries.
+NEAR_BAND, NEAR_MIN_QUERIES, NEAR_MIN_IMPRESSIONS = (11, 30), 10, 5  # impressions per query
+NEAR_KEPT = 50
+
+# C7, no page of its own.
+NO_PAGE_MIN_IMPRESSIONS = 100
+NO_PAGE_TARGET = 5  # where a page made for it could rank: what "at stake" is worked out against
+NO_PAGE_KEPT = 50
+NO_PAGE_HOME_TOP = 10  # the home page on page 1 for it is fine
+
+# C8, question searches, by the page that ranks.
+QUESTION_MIN_QUERIES, QUESTION_MIN_IMPRESSIONS = 3, 10
+QUESTION_KEPT = 50
+
+# C9, topics: queries that share a word.
+TOPIC_MIN_QUERIES, TOPIC_MIN_IMPRESSIONS = 5, 200
+TOPIC_COMMON = 0.3  # a word in more than this share of the site's queries says nothing (its city, its trade)
+TOPIC_WEAK_POSITION = 10  # demand, but no page in the top 10 for it
+TOPIC_TARGET = 8  # like almost on page 1: a topic page is a bigger job, so a modest target
+TOPIC_KEPT = 30
+TOPIC_OVERLAP = 0.5  # two words over this share of the same searches are one topic
+
+# C10, worth tracking.
+TRACK_MIN_IMPRESSIONS, TRACK_TOP, TRACK_KEPT = 100, 30, 20
+
+# C11, brand against non-brand.
+BRAND_HIDES_PERCENT, BRAND_HIDES_CLICKS = 15, 20  # non-brand fell this much while brand held the total up
+
+# D, leads (GA4 key events).
+LEAD_DAYS = 90
+LEAD_MIN_SESSIONS = 30  # a page's own lead rate needs this many sessions; below, the site's rate is used
+NO_LEADS_MIN_CLICKS = 100  # search clicks in 90 days, with 0 leads
+NO_LEADS_KEPT = 30
+LEAD_BIG = 1.0  # leads a month at stake that make a lead page's loss big
+
+# E, technical.
+DUPLICATE_MIN_IMPRESSIONS = 10  # each address
+BROKEN_DAYS = 7  # shown on Google in the last week
+DATA_GAP_DAYS = 28
+
+# F1, did it work.
+RESULT_GAP_DAYS = 7  # skipped just after the change, while Google takes it in
+RESULT_DAYS = 28
+RESULT_LOOK_BACK = 365  # tasks done longer ago aren't worked out any more
+
 INFO_BELOW = 3  # clicks a month at stake: below this a finding is only information
 GONE_KEPT_DAYS = 90  # findings that went away are kept this long, then deleted
 DISMISS_COMES_BACK = 2.0  # "Not useful" comes back when the clicks at stake reach this many times what they were

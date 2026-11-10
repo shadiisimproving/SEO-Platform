@@ -38,7 +38,7 @@ def _gsc(request: httpx.Request) -> httpx.Response:
         for ordinal in range(max(first, last - 480), last + 1):
             day = date.fromordinal(ordinal).isoformat()
             rows.append({"keys": [day], "clicks": _wave(day, 120), "impressions": _wave(day, 120) * 22, "position": 6 + (ordinal % 9) / 3})
-        extra = {"metadata": {"first_incomplete_date": date.fromordinal(last - 1).isoformat()}} if fresh and rows else {}
+        extra = {"metadata": {"firstIncompleteDate": date.fromordinal(last - 1).isoformat()}} if fresh and rows else {}
         return _gsc_page(body, rows, **extra)
     pages = [("https://mine-one.test/visa/", 60, 4.2), ("https://mine-one.test/creer-societe/", 35, 7.5), ("https://mine-one.test/", 20, 3.1), ("https://mine-one.test/blog/zone-franche-seville/", 9, 14.0)]
     queries = [("créer société seville", 40, 5.1), ("visa seville prix", 30, 3.4), ("titre de séjour", 18, 5.2), ("zone franche séville", 11, 12.0), ("loyer a seville", 6, 23.0), ("coût de la vie séville", 3, 44.0), ("ouvrir un compte", 1, 61.0)]
@@ -49,7 +49,7 @@ def _gsc(request: httpx.Request) -> httpx.Response:
         for back in (1, 0):
             day = date.fromordinal(last.toordinal() - back).isoformat()
             rows += [{"keys": [f"{day}T{h:02d}:00:00-08:00"], "clicks": max(0, _wave(day, 6, h) // 2), "impressions": _wave(day, 6, h) * 11, "position": 6 + h % 5 / 2} for h in range(24)]
-        return _gsc_page(body, rows, metadata={"first_incomplete_hour": f"{last.isoformat()}T20:00:00-08:00"})
+        return _gsc_page(body, rows, metadata={"firstIncompleteHour": f"{last.isoformat()}T20:00:00-08:00"})
     countries = [("fra", 70, 6.0), ("esp", 20, 9.5), ("bel", 8, 7.1), ("che", 4, 8.0)]
     devices = [("MOBILE", 60, 7.2), ("DESKTOP", 40, 5.9), ("TABLET", 3, 8.4)]
     table = {"page": pages, "query": queries, "country": countries, "device": devices}.get(dims[0] if len(dims) == 1 else "", queries)

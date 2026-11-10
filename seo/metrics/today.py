@@ -290,12 +290,26 @@ _FINDING_TITLES = {
     "no_click": "“{query}” is seen but never clicked",
     "compete": "Two of your pages compete for “{query}”",
     "odd_day": "Google clicks fell on {day}",
+    "query_down": "“{query}” lost places on Google",
+    "segment": "{segment} carries most of the drop in clicks",
+    "unstable": "Google keeps moving “{query}” up and down",
+    "brand_split": "Non-brand clicks fell {percent}%, hidden by brand searches",
+    "slide": "“{query}” is slowly losing places",
+    "page_near": "{path} is close to page 1 on many searches",
+    "no_page": "“{query}” has no page of its own",
+    "topic": "Searches with “{word}” have no strong page",
+    "lead_page": "{path} brings leads and is losing clicks",
+    "shown_broken": "Google shows {path}, but it's broken",
 }
 
 
 def _finding_row(f: dict) -> dict:
     evidence = f["evidence"]
-    values = {"path": evidence.get("path") or _path(f["page"] or "/"), "percent": abs(evidence.get("percent") or 0), "query": f["query"] or "", "day": evidence.get("day") or ""}
+    segment = evidence.get("segment") or ""
+    values = {
+        "path": evidence.get("path") or _path(f["page"] or "/"), "percent": abs(evidence.get("percent") or 0), "query": f["query"] or "", "day": evidence.get("day") or "",
+        "word": evidence.get("label") or evidence.get("word") or "", "segment": segment.capitalize() if evidence.get("dim") == "device" else segment.upper(),
+    }
     return {
         "id": f"finding-{f['key']}", "seen_key": f["key"], "kind": "search_finding", "finding": f["kind"], "finding_id": f["id"], "severity": "warn",
         "rank": LOSING_RESULTS if f["group"] in ("changed", "decline") else OTHER, "host": f["host"],

@@ -40,3 +40,26 @@
   .in-fig { display: flex; align-items: baseline; justify-content: space-between; padding: 10px 14px; }
   .in-fig .fig { font-size: 20px; }
 }
+.in-kind.leads { color: var(--c-teal); background: var(--c-teal-pale); }
+.in-kind.technical { color: var(--c-indigo); background: var(--c-indigo-pale); }
+.in-kind.impact { color: var(--c-blue); background: var(--c-blue-pale); }
+.in-season { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; color: var(--warn-t); background: var(--line); }
+.in-ai-wrap { margin-top: 16px; }
+.in-ai { display: grid; gap: 10px; }
+.in-ai-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+.in-ai-buttons .btn svg, .in-weekly-btn svg, .in-ai-label svg { width: 14px; height: 14px; }
+.in-ai-answer { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--c-blue-pale); }
+.in-ai-label { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: .02em; color: var(--c-blue); margin: 0 0 6px; }
+.in-ai-text { white-space: pre-line; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.in-ai-acts { display: flex; gap: 14px; margin-top: 8px; }
+.in-weekly-btn { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; }
+.in-weekly { margin-top: 10px; max-width: 760px; }
+.ai-pick .select { min-width: 220px; }
+.ai-foot { padding: 12px 16px 16px; display: grid; gap: 10px; }
+.ai-need { display: flex; align-items: center; gap: 6px; margin: 0; }
+.ai-need svg { width: 14px; height: 14px; }
+.ai-spend { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 16px; }
+.ai-spend .fig { font-size: 20px; font-weight: 600; }
+.ai-cap { margin: 0; max-width: 200px; }
+.in-ai-h2 { display: inline-block; margin-top: 4px; }
+.in-ai-h3 { font-weight: 600; padding-left: 12px; }

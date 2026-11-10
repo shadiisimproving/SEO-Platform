@@ -8,3 +8,4 @@ python-dotenv>=1.0,<2
 Flask>=3,<4
 google-auth>=2.30,<3
 tzdata>=2024.1  # Pacific time for Search Console days, on hosts without a system zone database
+anthropic>=1.17,<2  # Claude for Search insights' AI add-on, only with a key pasted in Settings

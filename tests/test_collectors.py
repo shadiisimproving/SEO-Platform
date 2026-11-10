@@ -457,7 +457,7 @@ def _fresh_answer(final_lag=2, clicks=10, extra_days=()):
         if dims == ["date"]:
             days = [end - timedelta(days=n) for n in range(4)] + list(extra_days)
             rows = [{"keys": [d.isoformat()], "clicks": clicks, "impressions": 100, "position": 7.5} for d in days]
-            meta = {"metadata": {"first_incomplete_date": (end - timedelta(days=final_lag - 1)).isoformat()}} if final_lag else {}
+            meta = {"metadata": {"firstIncompleteDate": (end - timedelta(days=final_lag - 1)).isoformat()}} if final_lag else {}
             return httpx.Response(200, json={"rows": rows, **meta})
         return _gsc_answer(request)
     return answer

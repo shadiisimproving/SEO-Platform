@@ -253,3 +253,191 @@ def _known_problems(ctx: Ctx) -> dict[str, list]:
     ):
         add(row["target_url"], f"link_{row['category']}")
     return found
+
+
+# ---- A4. Queries losing places -------------------------------------------------------------------
+
+
+def _best_pages(ctx: Ctx) -> dict[str, str]:
+    """The page that ranks for each query now: the one with the most impressions over the period."""
+    best: dict[str, tuple[int, str]] = {}
+    for r in split(ctx, "pair", ctx.start, ctx.end):
+        if r["impressions"] and r["impressions"] > best.get(r["query"], (0, ""))[0]:
+            best[r["query"]] = (r["impressions"], r["page"])
+    return {query: page for query, (_, page) in best.items()}
+
+
+def queries_down(ctx: Ctx) -> Result:
+    """A query that dropped at least 3 places with real impressions, while it still shows: the clicks its old place would
+    bring now, at today's impressions, are what's at stake."""
+    out = Result()
+    if not ctx.has_before:
+        out.needs["query_down"] = "history"
+        return out
+    out.ran.add("query_down")
+    pages = None
+    found = []
+    for r in split(ctx, "query", ctx.start, ctx.end, ctx.before_start, ctx.before_end):
+        p1, p0, i1, i0 = r["position"], r["position_before"], r["impressions"], r["impressions_before"]
+        if p1 is None or p0 is None or not i1 or max(i0, i1) < rules.QUERY_MIN_IMPRESSIONS or p0 > rules.QUERY_WORST_BEFORE:
+            continue
+        if p1 - p0 < rules.QUERY_PLACES_LOST:
+            continue
+        if pages is None:
+            pages = _best_pages(ctx)
+        lost = i1 * max(0.0, ctx.curve.rate(p0) - ctx.curve.rate(p1))
+        found.append(Finding(
+            "query_down", "changed", r["name"], query=r["name"], page=pages.get(r["name"]), at_stake=lost * rules.MONTH,
+            evidence={
+                "clicks": r["clicks"], "clicks_before": r["clicks_before"], "impressions": i1, "impressions_before": i0,
+                "position": rnd(p1), "position_before": rnd(p0), "places": rnd(p1 - p0), "page": pages.get(r["name"]),
+                "tracked": _tracked(ctx, r["name"]),
+            },
+        ).settle())
+    out.findings += sorted(found, key=lambda f: -f.at_stake)[: rules.QUERY_KEPT]
+    return out
+
+
+def _tracked(ctx: Ctx, query: str) -> bool:
+    from seo.metrics import search
+
+    return search._match(query) in ctx.tracked
+
+
+# ---- A6. One country or device carries the change ------------------------------------------------
+
+
+SEGMENTS = {"device": ("gsc_device", "device"), "country": ("gsc_country", "country")}
+
+
+def segments(ctx: Ctx) -> Result:
+    out = Result()
+    if not ctx.has_before:
+        out.needs["segment"] = "history"
+        return out
+    out.ran.add("segment")
+    for dim, (table, column) in SEGMENTS.items():
+        rows = ctx.fetch(
+            f"SELECT {column} k, SUM(IF(day BETWEEN :a AND :b, clicks, 0)) c, SUM(IF(day BETWEEN :ca AND :cb, clicks, 0)) pc, "
+            f"SUM(IF(day BETWEEN :a AND :b, impressions, 0)) i, SUM(IF(day BETWEEN :ca AND :cb, impressions, 0)) pi "
+            f"FROM {table} WHERE site_id = :s AND day BETWEEN :ca AND :b AND day NOT IN :skip GROUP BY {column}",
+            a=ctx.start, b=ctx.end, ca=ctx.before_start, cb=ctx.before_end,
+        )
+        now = sum(int(r["c"] or 0) for r in rows)
+        before = sum(int(r["pc"] or 0) for r in rows)
+        change = now - before
+        if abs(change) < rules.STEADY_CLICKS:
+            continue
+        for r in rows:
+            c1, c0 = int(r["c"] or 0), int(r["pc"] or 0)
+            mine = c1 - c0
+            others_before = before - c0
+            others_change = change - mine
+            if mine * change <= 0 or abs(mine) < rules.SEGMENT_MIN_CLICKS or abs(mine) < abs(change) * rules.SEGMENT_SHARE:
+                continue
+            if others_before and abs(others_change) > others_before * rules.SEGMENT_OTHERS_STEADY:
+                continue
+            down = mine < 0
+            finding = Finding(
+                "segment", "changed", f"{dim}:{r['k']}", at_stake=-mine * rules.MONTH if down else 0.0, severity="normal" if down else "info",
+                evidence={
+                    "dim": dim, "segment": r["k"], "clicks": c1, "clicks_before": c0, "impressions": int(r["i"] or 0), "impressions_before": int(r["pi"] or 0),
+                    "percent": round(mine / c0 * 100) if c0 else None, "site_change": change, "others_change": others_change, "down": down,
+                },
+            )
+            out.findings.append(finding.settle() if down else finding)
+            break  # one country or one device carries it; the next one can't
+    return out
+
+
+# ---- A7. Unstable ranking ------------------------------------------------------------------------
+
+
+def _quartiles(values: list[float]) -> tuple[float, float, float]:
+    ordered = sorted(values)
+    q = statistics.quantiles(ordered, n=4, method="inclusive")
+    return q[0], q[1], q[2]
+
+
+def unstable(ctx: Ctx) -> Result:
+    """A query whose position swings from day to day: Google is trying it at different places. If it settled at its better
+    days, it would get the clicks of that place, which is what's at stake."""
+    out = Result()
+    out.ran.add("unstable")
+    candidates = ctx.fetch(
+        "SELECT query_hash k FROM gsc_query WHERE site_id = :s AND day BETWEEN :a AND :b AND day NOT IN :skip AND impressions > 0 AND position IS NOT NULL "
+        "GROUP BY query_hash HAVING COUNT(*) >= :d AND SUM(impressions) >= :i",
+        a=ctx.start, b=ctx.end, d=rules.UNSTABLE_MIN_DAYS, i=rules.UNSTABLE_MIN_IMPRESSIONS,
+    )
+    keys = [r["k"] for r in candidates]
+    if not keys:
+        return out
+    days: dict[str, dict] = {}
+    for chunk in range(0, len(keys), 500):
+        statement = text(
+            "SELECT query_hash k, query, clicks, impressions, position FROM gsc_query WHERE site_id = :s AND day BETWEEN :a AND :b "
+            "AND day NOT IN :skip AND impressions > 0 AND position IS NOT NULL AND query_hash IN :keys"
+        ).bindparams(bindparam("skip", expanding=True), bindparam("keys", expanding=True))
+        with ctx.engine.connect() as conn:
+            for r in conn.execute(statement, {"s": ctx.site_id, "a": ctx.start, "b": ctx.end, "skip": ctx.skip or [NEVER], "keys": keys[chunk: chunk + 500]}).mappings():
+                slot = days.setdefault(r["k"], {"query": r["query"], "positions": [], "clicks": 0, "impressions": 0})
+                slot["positions"].append(float(r["position"]))
+                slot["clicks"] += int(r["clicks"] or 0)
+                slot["impressions"] += int(r["impressions"] or 0)
+    pages = None
+    found = []
+    for slot in days.values():
+        if len(slot["positions"]) < rules.UNSTABLE_MIN_DAYS:
+            continue
+        better, middle, worse = _quartiles(slot["positions"])
+        if middle > rules.UNSTABLE_TOP or worse - better < rules.UNSTABLE_SPREAD:
+            continue
+        if pages is None:
+            pages = _best_pages(ctx)
+        shown = slot["impressions"]
+        gain = max(0.0, shown * ctx.curve.rate(better) - slot["clicks"])
+        found.append(Finding(
+            "unstable", "changed", slot["query"], query=slot["query"], page=pages.get(slot["query"]), at_stake=gain * rules.MONTH,
+            evidence={
+                "clicks": slot["clicks"], "impressions": shown, "position": rnd(middle), "better": rnd(better), "worse": rnd(worse),
+                "best": rnd(min(slot["positions"])), "worst": rnd(max(slot["positions"])), "days": len(slot["positions"]), "tracked": _tracked(ctx, slot["query"]),
+            },
+        ).settle())
+    out.findings += sorted(found, key=lambda f: -f.at_stake)[: rules.UNSTABLE_KEPT]
+    return out
+
+
+# ---- C11. Brand against non-brand ----------------------------------------------------------------
+
+
+def brand_split(ctx: Ctx) -> Result:
+    """Brand searches are people who already know the site. When they rise while the others fall, the total looks fine and
+    hides an SEO loss. Said only then; the numbers of both are also kept on the change breakdown."""
+    from seo.metrics import search
+
+    out = Result()
+    if not ctx.brand:
+        out.needs["brand_split"] = "brand_words"
+        return out
+    if not ctx.has_before:
+        out.needs["brand_split"] = "history"
+        return out
+    out.ran.add("brand_split")
+    sums = {"brand": [0, 0, 0, 0], "other": [0, 0, 0, 0]}
+    for r in split(ctx, "query", ctx.start, ctx.end, ctx.before_start, ctx.before_end):
+        slot = sums["brand" if search.is_brand(r["name"], ctx.brand) else "other"]
+        slot[0] += r["clicks"]
+        slot[1] += r["clicks_before"]
+        slot[2] += r["impressions"]
+        slot[3] += r["impressions_before"]
+    brand, other = sums["brand"], sums["other"]
+    other_change, brand_change = other[0] - other[1], brand[0] - brand[1]
+    percent = round(other_change / other[1] * 100) if other[1] else None
+    ctx.brand_numbers = {name: {"clicks": s[0], "clicks_before": s[1], "impressions": s[2], "impressions_before": s[3]} for name, s in sums.items()}
+    if other_change > -rules.BRAND_HIDES_CLICKS or percent is None or percent > -rules.BRAND_HIDES_PERCENT or brand_change <= 0:
+        return out
+    out.findings.append(Finding(
+        "brand_split", "changed", "site", at_stake=-other_change * rules.MONTH,
+        evidence={"brand": ctx.brand_numbers["brand"], "other": ctx.brand_numbers["other"], "percent": percent, "brand_change": brand_change, "other_change": other_change, "words": ctx.brand},
+    ).settle())
+    return out
