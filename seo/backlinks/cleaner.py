@@ -418,3 +418,67 @@ def clean_csv(data: bytes, known: Mapping[str, str] | None = None, *, need_spam:
         unknown_spam=unknown_spam,
         rows=kept,
     )
+
+
+# Only read for competitors' files (Link gaps). clean_csv and its browser copy don't use them.
+DETAIL_ALIASES: dict[str, list[str]] = {
+    "anchor": ["anchor text", "anchor", "link anchor", "anchor_text"],
+    "target_url": ["target url", "destination url", "target page", "link url", "url to"],
+    "source_title": ["source page title", "source title", "referring page title", "page title", "title"],
+    "first_seen": ["first seen", "first_seen", "first seen date"],
+    "last_seen": ["last seen", "last_seen", "last seen date"],
+}
+_ISO_DAY = re.compile(r"^(\d{4})-(\d{2})-(\d{2})")
+
+
+def _day(raw: str) -> str | None:
+    match = _ISO_DAY.match(raw.strip())
+    return f"{match.group(1)}-{match.group(2)}-{match.group(3)}" if match else None
+
+
+def _text(raw: str, limit: int) -> str | None:
+    value = re.sub(r"\s+", " ", raw).strip()
+    return value[:limit] if value and value != "-" else None
+
+
+def link_rows(data: bytes) -> list[dict]:
+    """Every link of a competitor's backlink file, one dict each, spam included: the page it's on, the page it points to, anchor text and scores.
+
+    Rows with no usable URL are left out, as clean_csv leaves them out. A file with only a domain column has no links to give.
+    """
+    rows, _ = parse_table(decode_csv(data))
+    if len(rows) < 2:
+        return []
+    headers = [h.strip() for h in rows[0]]
+    mapping = _detect_columns(headers, required=())
+    if "backlink_url" not in mapping:
+        return []
+    positions: dict[str, int] = {}
+    for i, header in enumerate(headers):
+        positions.setdefault(_normalize_header(header), i)
+    for logical, aliases in DETAIL_ALIASES.items():
+        for alias in aliases:
+            if alias in positions and positions[alias] not in mapping.values():
+                mapping[logical] = positions[alias]
+                break
+    cell = lambda r, name: r[mapping[name]] if name in mapping and mapping[name] < len(r) else ""  # noqa: E731
+    found: list[dict] = []
+    for r in rows[1:]:
+        url = cell(r, "backlink_url").strip()
+        domain = root_domain(url)
+        if not domain:
+            continue
+        target = cell(r, "target_url").strip()
+        found.append({
+            "domain": domain,
+            "source_url": full_url(url),
+            "source_title": _text(cell(r, "source_title"), 500),
+            "target_url": full_url(target) if target and root_domain(target) else None,
+            "anchor": _text(cell(r, "anchor"), 500),
+            "authority": parse_authority(cell(r, "authority")),
+            "page_authority": parse_authority(cell(r, "page_authority")),
+            "spam_score": parse_spam(cell(r, "spam_score")),
+            "first_seen": _day(cell(r, "first_seen")),
+            "last_seen": _day(cell(r, "last_seen")),
+        })
+    return found

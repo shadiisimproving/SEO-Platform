@@ -322,3 +322,25 @@
 @media (min-width: 641px) and (max-width: 1000px) { #cg-table :is(td, th) { padding-left: 4px; padding-right: 4px; } #cg-table :is(td, th):first-child { padding-left: 10px; } #cg-table .head-cell { min-width: 0; } }
 /* 2026-11-10, re-review: a domain never breaks after its hyphen in Page vs page's Competitor column or in AI Overview's other sites ("rival- / one.example" at 820). */
 .cp-rival-name .logo-text, .ca-others > span { white-space: nowrap; overflow-wrap: normal; }
+
+/* Link gaps: each link of the domain inside its row: anchor text, Page Authority, the page it's on → the competitor page. */
+#cg-table .cg-links-cell { min-width: 240px; max-width: 340px; }
+.cg-links { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
+.cg-links li { display: grid; gap: 1px; min-width: 0; }
+.cg-link-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.cg-anchor { font-size: 13px; color: var(--text); overflow-wrap: anywhere; min-width: 0; }
+.cg-anchor:not(.muted)::before { content: "“"; color: var(--text-3, var(--text-2)); }
+.cg-anchor:not(.muted)::after { content: "”"; color: var(--text-3, var(--text-2)); }
+.tag.cg-pa { flex: none; font-size: 11px; }
+.tag.cg-pa b { font-weight: 600; }
+.cg-link-pages { display: flex; flex-wrap: wrap; gap: 0 6px; font-size: 11.5px; color: var(--text-2); min-width: 0; }
+.cg-link-from { color: var(--text-2); overflow-wrap: anywhere; text-decoration: none; }
+.cg-link-from:hover, .cg-link-from:focus-visible { color: var(--accent, var(--text)); text-decoration: underline; }
+.cg-link-to { overflow-wrap: anywhere; }
+.cg-links-more { margin-top: 6px; font-size: 12px; }
+.cg-links-cell .small { display: block; margin-top: 3px; }
+@media (max-width: 640px) {
+  /* On a phone the links get the card's full width under their label, read left to right like the domain. */
+  #cg-table td.cg-links-cell { display: block; min-width: 0; max-width: none; text-align: left; }
+  #cg-table td.cg-links-cell::before { display: block; margin-bottom: 4px; }
+}

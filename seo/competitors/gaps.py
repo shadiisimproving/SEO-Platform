@@ -6,6 +6,7 @@ only good domains can be added. Adding a gap makes a prospect, which never count
 """
 from __future__ import annotations
 
+import hashlib
 from urllib.parse import urlsplit
 
 from sqlalchemy import Engine, bindparam, text
@@ -59,6 +60,7 @@ def import_referrers(engine: Engine, site_id: int, competitor_id: int, data: byt
                 ),
                 {"c": competitor_id, "d": domain[:190], "u": row.url, "a": row.authority, "l": result.authority_label, "sp": row.spam_score, "f": file_name[:255], "sl": result.source_label},
             )
+    _save_links(engine, competitor_id, data, file_name, result.source_label)
     quality.note_domains(engine, [{"domain": domain} for domain in domains])
     over = [domain for domain, row in domains.items() if row.spam_score is not None and row.spam_score > cleaner.SPAM_THRESHOLD]
     if over:
@@ -75,6 +77,59 @@ def import_referrers(engine: Engine, site_id: int, competitor_id: int, data: byt
         "total": result.total, "kept": result.kept - result.removed_spam, "removed": result.removed, "removed_spam": result.removed_spam, "removed_no_url": result.removed_no_url,
         "domains": len(domains), "flagged": flagged, "source_label": result.source_label, "unknown_spam": result.unknown_spam,
     }
+
+
+MAX_LINKS_PER_DOMAIN = 50  # the row lists the strongest; a forum can carry hundreds of links to one competitor
+
+
+def _link_hash(link: dict) -> str:
+    key = "\n".join((link["source_url"], link["target_url"] or "", link["anchor"] or ""))
+    return hashlib.sha1(key.encode("utf-8")).hexdigest()
+
+
+def _save_links(engine: Engine, competitor_id: int, data: bytes, file_name: str, source_label: str) -> int:
+    """Every link in the file, with its anchor text and Page Authority. A link already saved gets the file's newer scores and dates."""
+    links = cleaner.link_rows(data)
+    rows = [
+        {**link, "c": competitor_id, "d": store.to_ascii_host(link["domain"])[:190], "h": _link_hash(link), "f": file_name[:255], "sl": source_label}
+        for link in links
+    ]
+    if not rows:
+        return 0
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                "INSERT INTO competitor_referrer_links (competitor_id, domain, link_hash, source_url, source_title, target_url, anchor, authority, page_authority, spam_score, "
+                "first_seen, last_seen, source_file, source_label) VALUES (:c, :d, :h, :source_url, :source_title, :target_url, :anchor, :authority, :page_authority, :spam_score, "
+                ":first_seen, :last_seen, :f, :sl) ON DUPLICATE KEY UPDATE source_title = COALESCE(VALUES(source_title), source_title), authority = VALUES(authority), "
+                "page_authority = VALUES(page_authority), spam_score = VALUES(spam_score), first_seen = COALESCE(LEAST(first_seen, VALUES(first_seen)), VALUES(first_seen), first_seen), "
+                "last_seen = COALESCE(GREATEST(last_seen, VALUES(last_seen)), VALUES(last_seen), last_seen), source_file = VALUES(source_file), source_label = VALUES(source_label)"
+            ),
+            rows,
+        )
+    return len(rows)
+
+
+def _links_by_domain(conn, site_id: int, removed: dict[str, list[int]]) -> dict[str, list[dict]]:
+    """Each domain's links to the tracked competitors, strongest page first. A competitor someone untied from the domain brings none."""
+    found: dict[str, list[dict]] = {}
+    for row in conn.execute(
+        text(
+            "SELECT l.*, s.host FROM competitor_referrer_links l JOIN site_competitors sc ON sc.competitor_id = l.competitor_id AND sc.site_id = :s AND sc.tracking <> 'off' "
+            "JOIN sites s ON s.id = l.competitor_id"
+        ),
+        {"s": site_id},
+    ).mappings():
+        if row["competitor_id"] in removed.get(row["domain"], ()):
+            continue
+        found.setdefault(row["domain"], []).append({
+            "competitor_id": row["competitor_id"], "host": row["host"], "source_url": row["source_url"], "source_title": row["source_title"], "target_url": row["target_url"],
+            "anchor": row["anchor"], "page_authority": row["page_authority"], "spam_score": row["spam_score"],
+            "first_seen": row["first_seen"].isoformat() if row["first_seen"] else None, "last_seen": row["last_seen"].isoformat() if row["last_seen"] else None,
+        })
+    for links in found.values():
+        links.sort(key=lambda l: (-(l["page_authority"] if l["page_authority"] is not None else -1), l["anchor"] or "", l["source_url"]))
+    return found
 
 
 def _read_common_crawl_file(data: bytes) -> tuple[list[dict], str] | None:
@@ -171,6 +226,7 @@ def _all_gaps(engine: Engine, site_id: int) -> dict:
             ),
             {"s": site_id},
         ).mappings().all()
+        links = _links_by_domain(conn, site_id, removed)
     # A domain can have several rows: a lost link and a new live one means it links to me. A planned link doesn't, yet.
     linking = {domain for domain, status in logged if status in ("live", "found")}
     typed_in = {row["domain"] for row in rows if row["source_label"] == BY_HAND}
@@ -217,7 +273,7 @@ def _all_gaps(engine: Engine, site_id: int) -> dict:
             entry["sources"].add("Common Crawl")
         entry["first_seen"] = min(entry["first_seen"], row["first_seen_at"])
     everything = [
-        _with_edit({**entry, "sources": sorted(entry["sources"]), "first_seen": _iso(entry["first_seen"]), "competitor_count": len(entry["competitors"])}, edits.get(entry["domain"]), removed.get(entry["domain"], []))
+        _with_edit({**entry, "sources": sorted(entry["sources"]), "first_seen": _iso(entry["first_seen"]), "competitor_count": len(entry["competitors"]), **_link_fields(links.get(entry["domain"], []))}, edits.get(entry["domain"]), removed.get(entry["domain"], []))
         for entry in by_domain.values()
     ]
     # Most competitors first, then the best authority. Common Crawl's rank only orders those with no score from a file.
@@ -235,6 +291,12 @@ def _all_gaps(engine: Engine, site_id: int) -> dict:
         "already_linking": len(already),
         "everything": everything,
     }
+
+
+def _link_fields(links: list[dict]) -> dict:
+    """The links the row lists, how many there are, and the best Page Authority among them, for sorting."""
+    scores = [l["page_authority"] for l in links if l["page_authority"] is not None]
+    return {"links": links[:MAX_LINKS_PER_DOMAIN], "link_count": len(links), "best_page_authority": max(scores) if scores else None}
 
 
 def link_gaps(engine: Engine, site_id: int) -> dict:

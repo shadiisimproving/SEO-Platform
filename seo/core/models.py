@@ -445,6 +445,33 @@ class CompetitorReferrer(Base):
     last_seen_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
 
 
+class CompetitorReferrerLink(Base):
+    """Every link inside a CompetitorReferrer, as the competitor's backlink file lists it: anchor text, Page Authority, both pages."""
+
+    __tablename__ = "competitor_referrer_links"
+    __table_args__ = (
+        UniqueConstraint("competitor_id", "link_hash", name="uq_competitor_referrer_link"),
+        Index("ix_competitor_referrer_links_domain", "domain", "competitor_id"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    competitor_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    domain: Mapped[str] = mapped_column(String(190))
+    link_hash: Mapped[str] = mapped_column(String(40))  # source page + target page + anchor
+    source_url: Mapped[str] = mapped_column(Text)
+    source_title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    target_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    anchor: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    authority: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    page_authority: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    spam_score: Mapped[float | None] = mapped_column(Float, nullable=True)
+    first_seen: Mapped[date | None] = mapped_column(Date, nullable=True)
+    last_seen: Mapped[date | None] = mapped_column(Date, nullable=True)
+    source_file: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    source_label: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    imported_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
 class LinkDomain(Base):
     """Is a linking domain any good? One judgement per domain, shared by every competitor."""
 

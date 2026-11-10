@@ -1,0 +1,33 @@
+/* Pages and a search box for long tables (table-pages.js), drawn like Search → Overview's query table. */
+.tp-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 14px; padding: 10px 18px; font-size: 12px; color: var(--muted); border-top: 1px solid var(--line); }
+.tp-range { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tp-pager { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
+.tp-list { display: inline-flex; align-items: center; gap: 2px; }
+.tp-num { min-width: 28px; height: 28px; padding: 0 6px; border: 0; border-radius: var(--r-s); background: none; font: inherit; font-variant-numeric: tabular-nums; color: var(--muted); cursor: pointer; }
+.tp-num:hover { background: var(--hover); color: var(--text); }
+.tp-num[aria-current="page"] { background: var(--c-blue-pale, var(--track)); color: var(--accent-text); font-weight: 600; }
+.tp-num:focus-visible { outline: 2px solid var(--c-blue); outline-offset: 1px; }
+.tp-gap { padding: 0 2px; }
+.tp-of { display: none; white-space: nowrap; }
+.tp-per .select { min-height: 28px; padding-block: 2px; font-size: 12px; width: auto; }
+.tp-capped { flex-basis: 100%; }
+/* While a long table is in view its footer stays at the bottom of the screen, so the pages are always at hand. A card hides
+   its overflow, which stops anything inside it from sticking: clip keeps the rounded corners and lets the footer stick. */
+.card:has(.tp-foot) { overflow: clip; }
+@media (min-width: 641px) { .tp-foot { position: sticky; bottom: 0; z-index: 6; background: var(--panel-solid); padding-inline-end: 124px; } } /* room for the floating Notes button */
+@media (max-width: 640px) { .tp-foot { padding-bottom: 62px; } } /* on a phone the pages wrap, so the room goes under them */
+@media (max-width: 760px) { .tp-list { display: none; } .tp-of { display: inline; } .tp-pager { margin-left: 0; } }
+
+.tp-search { position: relative; display: inline-flex; align-items: center; min-width: 220px; flex: 0 1 280px; }
+.tp-search > svg { position: absolute; left: 10px; width: 15px; height: 15px; color: var(--muted); pointer-events: none; }
+.tp-search .input { width: 100%; padding-left: 32px; padding-right: 30px; }
+.tp-search .tp-clear { position: absolute; right: 4px; }
+@media (max-width: 640px) { .tp-search { flex-basis: 100%; min-width: 0; } }
+
+/* A sorted heading reads as the one in charge, as on Search → Overview. */
+.data th[aria-sort="ascending"] .th-btn, .data th[aria-sort="descending"] .th-btn { color: var(--accent-text); font-weight: 600; }
+.data th .th-btn svg { display: inline-block; width: 13px; height: 13px; margin-left: 3px; vertical-align: -2px; }
+/* The browser's own clear mark would sit beside the helper's: one is enough. */
+.tp-search input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
+/* When rows are picked, the "N selected" bar sticks to the bottom too: the pages sit just above it, never under it. */
+@media (min-width: 641px) { body:has(.selbar:not(:empty)) .tp-foot { bottom: 72px; } }

@@ -1,0 +1,68 @@
+// Link gaps works like every long table (2026-11-10): one competitor or all together with counts, "2 or more of them",
+// a search, sortable headings, and pages of 25 / 50 / 100. 300 made-up domains are added to the demo's answer.
+//   DB_NAME_TEST=test_rivals_test .venv/bin/python tests/ui/app_server.py --port 8272
+//   node tests/ui/flow_link_gaps_pages.cjs http://127.0.0.1:8272/
+const { open } = require("./pw.cjs");
+const fs = require("fs");
+const path = require("path");
+const BASE = process.argv[2] || "http://127.0.0.1:8272/";
+const OUT = path.resolve("var/ui-link-gaps-pages") + "/";
+fs.mkdirSync(OUT, { recursive: true });
+let bad = 0;
+const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ? "PASS" : "FAIL"}  ${name}${extra !== "" ? `  [${extra}]` : ""}`); };
+(async () => {
+  const { browser, page, problems } = await open({ width: 1440, height: 950 });
+  await page.route(/\/api\/link-gaps\?site_id=\d+$/, async (route) => {
+    const res = await route.fetch(); const d = await res.json();
+    const rivals = d.competitors.filter((c) => c.has_data);
+    const base = d.gaps[0];
+    for (let i = 0; i < 300; i++) d.gaps.push({ ...base, domain: `made-up-${i}.example`, display: `made-up-${i}.example`, title: `Made up ${i}`, authority: (i * 7) % 90, spam_score: i % 13, competitors: rivals.slice(0, 1 + (i % rivals.length)), competitor_count: 1 + (i % rivals.length), quality: i % 9 === 0 ? "spam" : "good", in_consideration: false });
+    await route.fulfill({ response: res, json: d });
+  });
+  await page.goto(BASE + "#competitors/gaps"); await page.waitForSelector("#cg-table", { timeout: 20000 }); await page.waitForTimeout(800);
+  const rows = () => page.locator("#cg-table tbody tr").count();
+  const range = async () => (await page.locator(".tp-range").textContent()).trim();
+  const options = await page.locator("#cg-filter option").allTextContents();
+  check("the competitor choice offers all together and each one, with counts", /^All competitors, together \(\d+\)$/.test(options[0]) && options.length >= 3 && options.slice(1).every((o) => /\(\d+\)$/.test(o)), options.join(" | "));
+  check("25 rows on the first page", (await rows()) === 25);
+  check("the footer gives the real total", /^1–25 of \d+ domains$/.test(await range()), await range());
+  await page.screenshot({ path: OUT + "1-first-page.png" });
+  await page.click('[data-tp-step="next"]'); await page.waitForTimeout(500);
+  check("Next shows rows 26–50 and keeps focus on Next", /^26–50 of/.test(await range()) && (await page.evaluate(() => document.activeElement?.dataset?.tpStep)) === "next");
+  await page.click('.tp-num[aria-label="Page 1"]'); await page.waitForTimeout(500);
+  check("a page number goes back to page 1", /^1–25 of/.test(await range()));
+  await page.selectOption("[data-tp-per]", "100"); await page.waitForTimeout(500);
+  check("100 per page shows 100 rows", (await rows()) === 100);
+  await page.fill("[data-tp-search]", "made-up-1"); await page.waitForTimeout(700);
+  check("search filters as you type, and the cursor stays in the box", /of 111 domains/.test(await range()) && (await page.evaluate(() => document.activeElement?.hasAttribute("data-tp-search"))), await range());
+  await page.click("[data-tp-clear]"); await page.waitForTimeout(500);
+  const all = Number((await range()).match(/of (\d+)/)[1]);
+  await page.selectOption("#cg-filter", { index: 1 }); await page.waitForTimeout(500);
+  const one = Number((await range()).match(/of (\d+)/)[1]);
+  const said = Number((await page.locator("#cg-filter option").nth(1).textContent()).match(/\((\d+)\)/)[1]);
+  check("one competitor shows its own domains, as many as its option said", one < all && one === said, `${one} of ${all}, option said ${said}`);
+  await page.selectOption("#cg-filter", ""); await page.waitForTimeout(400);
+  await page.click('[data-cg-reach="several"]'); await page.waitForTimeout(500);
+  const several = await page.locator("#cg-table tbody tr td:nth-child(3) b").allTextContents();
+  check("2 or more of them keeps only domains linking to several", several.length > 0 && several.every((n) => Number(n) >= 2));
+  await page.click('[data-cg-reach="any"]'); await page.waitForTimeout(400);
+  await page.click('[data-cg-sort="authority"]'); await page.waitForTimeout(500);
+  const auth = (await page.locator("#cg-table tbody tr td:nth-child(4)").allTextContents()).map((x) => parseInt(x, 10)).filter((n) => !Number.isNaN(n));
+  check("Authority sorts biggest first", auth.length > 5 && auth.every((n, i) => !i || n <= auth[i - 1]));
+  check("the sorted heading says so", (await page.locator('th[aria-sort="descending"] [data-cg-sort="authority"]').count()) === 1);
+  await page.click("#cg-all"); await page.waitForTimeout(300);
+  const picked = await page.locator("#cg-sel-count").textContent().catch(() => "");
+  check("the pick-all box picks only this page's good rows", /^\d+ selected$/.test(picked.trim()) && parseInt(picked, 10) <= 100, picked);
+  await page.click("[data-cg-clear]").catch(() => {});
+  await page.screenshot({ path: OUT + "2-sorted.png" });
+  await page.evaluate(() => { window.UI.state.lang = "fr"; window.UI.render?.(); }); await page.waitForTimeout(800);
+  check("French words", /Tous les concurrents, ensemble/.test(await page.textContent("body")) && /par page/.test(await page.textContent(".tp-foot")));
+  await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(600);
+  check("no sideways scroll at phone width", !(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
+  await page.screenshot({ path: OUT + "3-phone-fr.png", fullPage: true });
+  const real = problems.filter((p) => !/Failed to load resource/.test(p));
+  check("no script errors", real.length === 0, real.slice(0, 3).join(" | "));
+  await browser.close();
+  console.log(bad ? `${bad} FAILED` : "ALL PASSED");
+  process.exit(bad ? 1 : 0);
+})();
