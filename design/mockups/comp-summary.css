@@ -36,7 +36,8 @@
 .cs-who .logo-text { font-size: 12px; }
 #cs-rivals-table .head-cell, #cs-links-table .head-cell, #cs-flagged-table .head-cell { min-width: 170px; }
 #cs-rivals-table .cl-wrap { max-width: 240px; white-space: normal; }
-@media (min-width: 641px) and (max-width: 860px) { .cs-section .data :is(th, td) { padding-inline: 6px; } #cs-rivals-table .cs-site { padding-inline: 6px; font-size: 12px; } }
+/* Up to 1000px, not 860: the tick column added to every table (table-tools.js) needs the room at 861 to 1000. */
+@media (min-width: 641px) and (max-width: 1000px) { .cs-section .data :is(th, td) { padding-inline: 6px; } #cs-rivals-table .cs-site { padding-inline: 6px; font-size: 12px; } }
 @media (max-width: 1000px) { #cs-rivals-table .head-cell, #cs-links-table .head-cell, #cs-flagged-table .head-cell { min-width: 130px; } #cs-rivals-table .cl-wrap { max-width: 150px; } }
 @media (max-width: 640px) {
   #cs-rivals-table .head-cell, #cs-links-table .head-cell, #cs-flagged-table .head-cell { min-width: 0; }
