@@ -19,7 +19,9 @@ const scan = (page) => page.evaluate(() => {
     const name = `${cell.tagName.toLowerCase()} "${cell.textContent.trim().replace(/\s+/g, " ").slice(0, 40)}" in ${cell.closest("table").className}`;
     if (cell.tagName === "TD" && (cell.dataset.label === "" || cell.querySelector(":scope > button"))) { right.push(name); continue; }
     cells += 1;
-    const box = cell.getBoundingClientRect(), label = cell.tagName === "TH" && cell.querySelector("button > span");
+    // A heading table-tools.js made sortable holds its words, (i) and logo in one button (its arrow sits outside the flow), so
+    // the button is the label; a screen's own sort button keeps its words in a span.
+    const box = cell.getBoundingClientRect(), label = cell.tagName === "TH" && (cell.querySelector("button.tt-th") || cell.querySelector("button > span"));
     const inner = label ? label.getBoundingClientRect() : textBox(cell);
     const gap = Math.abs((box.left + box.right) / 2 - (inner.left + inner.right) / 2);
     if (gap > 2) off.push(`${name}: ${gap.toFixed(1)}px off`);

@@ -20,7 +20,7 @@ from seo.core.db import make_engine  # noqa: E402
 from tests.ui import app_server, fake_claude, seed_insights  # noqa: E402
 
 
-def _seed_when_up(port: int, catalogue: bool) -> None:
+def _seed_when_up(port: int, catalogue: bool, mix: bool = False) -> None:
     """After app_server has emptied and migrated the database and is answering: the made-up days, then the run."""
     for _ in range(240):
         try:
@@ -28,18 +28,19 @@ def _seed_when_up(port: int, catalogue: bool) -> None:
             break
         except OSError:
             time.sleep(0.5)
-    print("insights seeded:", seed_insights.seed(make_engine(test=True), catalogue), flush=True)
+    print("insights seeded:", seed_insights.seed(make_engine(test=True), catalogue, mix), flush=True)
 
 
 def main() -> None:
     catalogue = "--catalogue" in sys.argv
-    argv = [a for a in sys.argv[1:] if a != "--catalogue"]
+    mix = "--mix" in sys.argv  # rank checks too, for flow_insights_mix.cjs
+    argv = [a for a in sys.argv[1:] if a not in ("--catalogue", "--mix")]
     if "--empty" not in argv:
         argv.append("--empty")
     port = int(argv[argv.index("--port") + 1]) if "--port" in argv else 8210
     sys.argv = [sys.argv[0], *argv]
     fake_claude.install()
-    threading.Thread(target=_seed_when_up, args=(port, catalogue), daemon=True).start()
+    threading.Thread(target=_seed_when_up, args=(port, catalogue, mix), daemon=True).start()
     app_server.main()
 
 

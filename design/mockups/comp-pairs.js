@@ -106,7 +106,7 @@
     const keyword = [...list].sort((a, b) => (worstFirst ? keywordOrder(b) - keywordOrder(a) : keywordOrder(a) - keywordOrder(b)))[0];
     return { keyword, rest: (both.length ? r.shared : r.keywords_total) - 1 };
   }
-  const youThemNumbers = (mine, theirs) => `<span class="cp-youthem"><span class="muted">${t("You")}</span> <span class="tabular">${UI.num(mine)}</span> <span class="muted">·</span> <span class="muted">${t("Them")}</span> <span class="tabular">${UI.num(theirs)}</span></span>`;
+  const youThemNumbers = (mine, theirs) => `<span class="cp-youthem">${youThemHead("mine")} <span class="tabular">${UI.num(mine)}</span> <span class="muted">·</span> ${youThemHead("theirs")} <span class="tabular">${UI.num(theirs)}</span></span>`;
 
   /* A competitor none of whose pages can be read is said once, not on every row. */
   function unreadableNotes(list) {
@@ -182,7 +182,7 @@
     };
     return `${tools}
       <div class="cp-pages"><div class="table-wrap"><table class="data" id="cp-table">
-        <thead><tr>${head("page", t("My page"))}<th scope="col">${t("Competitor")}</th><th scope="col">${t("Keyword")}</th>${head("mine", youThemHead("mine"), "c")}${head("theirs", youThemHead("theirs"), "c")}<th scope="col">${t("Who's ahead")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
+        <thead><tr>${head("page", COMP.who("you", null, t("My page")))}<th scope="col">${COMP.who("them", null, t("Competitor"))}</th><th scope="col">${t("Keyword")}</th>${head("mine", youThemHead("mine"), "c")}${head("theirs", youThemHead("theirs"), "c")}<th scope="col">${t("Who's ahead")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
         <tbody>${page.rows.map(pairRow).join("")}</tbody>
       </table></div>${TP.footer(PAGES, page, { noun: t("pairs") })}</div>`;
   }
@@ -577,7 +577,7 @@
     return `${list.map((p) => `<option value="${esc(p.url)}" dir="auto" ${p.url === current ? "selected" : ""}>${esc(optionText(p))}</option>`).join("")}<option value="${TYPE_OWN}" ${current ? "" : "selected"}>${t("Type another address…")}</option>`;
   }
   function picker(key, label, pages, current, host) {
-    return `<label class="field"><span>${esc(label)}</span><select class="select cp-pick" id="cp-${key}" data-cp-pick="${key}">${pickerOptions(pages, current)}</select></label>
+    return `<label class="field"><span>${label}</span><select class="select cp-pick" id="cp-${key}" data-cp-pick="${key}">${pickerOptions(pages, current)}</select></label>
       <label class="field cp-typed" id="cp-${key}-typed" hidden><span>${t("Address")}</span><input class="input mono" id="cp-${key}-url" type="text" inputmode="url" dir="ltr" autocomplete="off" spellcheck="false" placeholder="https://${esc(host)}/page" aria-describedby="cp-${key}-error"></label>
       <div id="cp-${key}-error" class="cp-field-error"></div>`;
   }
@@ -628,8 +628,8 @@
     const [mine, theirs] = await Promise.all([pagesOf(S.site), pagesOf(pair.competitor_id)]);
     UI.openPanel(`${UI.panelHead(t("Change this pair"), `<span dir="auto">${esc(pair.competitor)}</span>`)}
       <form class="panel-body" id="cp-form" data-cp-id="${pair.id}" novalidate>
-        ${picker("my", t("My page"), mine, pair.my_url, site()?.host || "")}
-        ${picker("their", t("Their page"), theirs, pair.their_url, pair.competitor)}
+        ${picker("my", COMP.who("you", null, t("My page")), mine, pair.my_url, site()?.host || "")}
+        ${picker("their", COMP.who("them", null, t("Their page")), theirs, pair.their_url, pair.competitor)}
         <p class="note">${UI.icon("info")}<span>${t("Saving makes this your choice. Later rankings won't replace it.")}</span></p>
       </form>
       ${panelFoot(pair)}`, opener, { key: `cp-change|${pair.id}`, reopen: () => openChange(id, opener), after: syncPickers });
@@ -646,8 +646,8 @@
     UI.openPanel(`${UI.panelHead(t("Add a pair"), t("One of your pages, and one of theirs."))}
       <form class="panel-body" id="cp-form" novalidate>
         <label class="field"><span>${t("Competitor")}</span><select class="select" id="cp-comp" style="width:100%">${S.competitors.map((c) => `<option value="${c.id}" ${c.id === competitor.id ? "selected" : ""}>${esc(c.display || c.host)}</option>`).join("")}</select></label>
-        ${picker("my", t("My page"), mine, "", site()?.host || "")}
-        ${picker("their", t("Their page"), theirs, "", competitor.host)}
+        ${picker("my", COMP.who("you", null, t("My page")), mine, "", site()?.host || "")}
+        ${picker("their", COMP.who("them", null, t("Their page")), theirs, "", competitor.host)}
         <p class="note">${UI.icon("info")}<span>${t("A pair you add is your choice. Later rankings won't replace it.")}</span></p>
       </form>
       ${panelFoot(null)}`, opener, { key: "cp-add", reopen: () => openAdd(opener), after: () => {

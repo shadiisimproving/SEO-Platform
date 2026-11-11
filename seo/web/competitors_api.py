@@ -9,7 +9,7 @@ import re
 
 from flask import Blueprint, current_app, g, jsonify, request, send_file
 
-from seo.backlinks import service as backlinks
+from seo.backlinks import logos, service as backlinks
 from seo.backlinks.cleaner import CleanerError, check_upload
 from seo.competitors import ai_watch, collective, firecrawl, gaps, history, insights, keywords, notes, pairs, probe, profile, suggest, tracking  # noqa: F401 - history, firecrawl and probe register their job handlers
 from seo.core.errors import Refused
@@ -176,7 +176,10 @@ def competitor_reading(competitor_id: int):
 
 @competitors_api.get("/competitors/<int:competitor_id>/insights")
 def competitor_insights(competitor_id: int):
-    return jsonify(insights.insights(_engine(), _site_arg(), competitor_id))
+    answer = insights.insights(_engine(), _site_arg(), competitor_id)
+    # The sites on "Who links to them" get their icons, as on Link gaps. Only ones never asked about are written.
+    logos.queue_missing(_engine(), [row["domain"] for row in (answer.get("links") or {}).get("top") or []])
+    return jsonify(answer)
 
 
 @competitors_api.post("/competitors/<int:competitor_id>/crawl")

@@ -271,6 +271,11 @@ def _finish(engine: Engine, run_id: int, status: str, reason: str | None = None)
             text("UPDATE keyword_uploads SET status = :st, stop_reason = :r, finished_at = UTC_TIMESTAMP(3) WHERE id = :i"),
             {"st": status, "r": reason[:300] if reason else None, "i": run_id},
         )
+        site_id = conn.execute(text("SELECT site_id FROM keyword_uploads WHERE id = :i"), {"i": run_id}).scalar()
+    from seo.insights import engine as insights_engine  # imported here: insights reads what this module saves
+
+    if site_id:
+        insights_engine.enqueue(engine, site_id)  # Rank and clicks reads these checks
 
 
 NO_TOOL = "No search tool is connected yet. The keywords are saved, and they'll be checked once a tool's key is added in Settings."

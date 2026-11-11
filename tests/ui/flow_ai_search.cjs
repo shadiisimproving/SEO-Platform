@@ -41,6 +41,10 @@ const text = (page, sel) => page.locator(sel).first().innerText().catch(() => ""
   const lead = await text(page, ".ai-answer .today-lead");
   check(/AI assistants sent \d+ visits and \d+ leads/.test(lead) && lead.includes("chatgpt.com"), `answer first: ${lead}`);
   check((await page.locator(".ai-tiles .tile").count()) === 4, "four numbers");
+  check((await text(page, '[data-ai-half="ga4"] h3')).includes("Google Analytics") && (await text(page, '[data-ai-half="clarity"] h3')).includes("Clarity"), "the weekly card has one part per source");
+  check(await page.locator('[data-ai-half="ga4"] [data-lv-chart="ai-weeks"]').count() === 1 && await page.locator('[data-ai-half="clarity"] [data-lv-chart="ai-weeks-clarity"]').count() === 1, "each part draws its own chart");
+  check(await page.locator('[data-lv-chart="ai-weeks-clarity"] .lv-lone').count() >= 1, "a Clarity week alone between gaps still shows as a dot");
+  check(/so far/.test(await text(page, '[data-ai-half="clarity"] .ai-half-foot')), "Clarity says how many days it has read");
   check(!(await page.locator("text=Share of all visits").count()), "share of all visits is gone");
   check((await page.locator(".ai-actions .rows > li").count()) <= 3, "at most three next actions");
   check((await text(page, ".ai-sources-line")).includes("All 4 sources up to date"), "sources line says all is well");
@@ -49,7 +53,7 @@ const text = (page, sel) => page.locator(sel).first().innerText().catch(() => ""
 
   for (const [tab, name] of [["pages", "after-tab-pages.png"], ["cited", "after-tab-cited.png"], ["questions", "after-tab-questions.png"]]) {
     await page.click(`[data-ai-tab="${tab}"]`); await settle(page, 500);
-    check((await page.locator(".ai-tabs-card th").count()) <= 4, `${tab}: four columns at most`);
+    check((await page.locator(".ai-tabs-card th:not(.tt-pick)").count()) <= 4, `${tab}: four columns at most`);
     await page.locator(".ai-tabs-card").screenshot({ path: SHOTS ? path.join(SHOTS, name) : undefined }).catch(() => {});
   }
   check((await page.locator(".ai-tabs-card .lv-url").count()) > 0 && (await page.locator(".ai-tabs-card a.lv-url, .ai-tabs-card .lv-url a, a.lv-url").count()) > 0, "page paths are links");

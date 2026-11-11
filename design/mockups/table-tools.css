@@ -1,0 +1,48 @@
+/* Tick boxes, the Filter button and sortable headings on every table (table-tools.js). */
+
+/* Every heading that sorts shows it before any click. */
+table thead th button.th-btn, table thead th button[data-sort] { cursor: pointer; }
+table.data thead th button svg.tt-idle, table.lc-table thead th button svg.tt-idle, table.mini thead th button svg.tt-idle,
+table.data thead th:not([aria-sort]) button:not(.icon-btn) svg, table.data thead th[aria-sort="none"] button:not(.icon-btn) svg { opacity: .45; color: inherit; }
+table thead th button.tt-th { display: inline-flex; align-items: center; gap: 3px; padding: 0; border: 0; background: none; font: inherit; color: inherit; text-align: inherit; }
+table thead th button.tt-th:hover { color: var(--text); }
+table thead th button.tt-th svg { display: inline-block; width: 12px; height: 12px; flex: none; }
+table thead th[aria-sort="ascending"] button.tt-th, table thead th[aria-sort="descending"] button.tt-th { color: var(--accent-text); font-weight: 600; }
+table thead th[aria-sort="ascending"] button.tt-th svg, table thead th[aria-sort="descending"] button.tt-th svg { opacity: 1; }
+/* While the table is sorted by another column, a screen's own sorted heading stops looking like the one in charge. */
+table.tt-sorted thead th:not([data-tt-col]) button:not(.icon-btn) { color: inherit; font-weight: inherit; }
+table.tt-sorted thead th:not([data-tt-col]) button:not(.icon-btn) svg { opacity: .45; color: inherit; }
+
+/* Tick boxes. */
+table.mini .tt-pick, table.lc-table .tt-pick { width: 30px; padding-right: 0; }
+table tr.is-picked > td { background: var(--selected); }
+#tt-bar { position: fixed; left: 50%; transform: translateX(-50%); bottom: 16px; z-index: 30; margin: 0; }
+@media (max-width: 1100px) { #tt-bar { bottom: 64px; } }
+/* On a phone each row is a card with its tick in the top corner: the row's first line keeps clear of it. */
+@media (max-width: 640px) { .data tr:has(> td.tt-pick) > td:nth-child(2) { padding-right: 34px; } }
+/* A full-width bar keeps its clear button out from under the floating Notes button. */
+@media (min-width: 641px) { .selbar:not(.cg-selbar) { padding-right: 124px; } }
+
+/* The row above a table: what's filtered, and the Filter button at its end. */
+.tt-tools { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px 8px; padding: 8px 12px; }
+.tt-filter { white-space: nowrap; }
+.tt-filter .tt-count { min-width: 16px; padding: 0 4px; border-radius: 999px; background: var(--accent-text); color: var(--panel-solid); font-size: 11px; text-align: center; }
+.tt-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 320px; padding: 2px 4px 2px 10px; border-radius: 999px; background: var(--selected); font-size: 12px; }
+.tt-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tt-chip-x { display: inline-flex; padding: 3px; border: 0; border-radius: 999px; background: none; color: inherit; cursor: pointer; }
+.tt-chip-x:hover { background: var(--hover); }
+.tt-chip-x svg { width: 12px; height: 12px; }
+
+/* The Filter window. */
+.tt-pop { width: 300px; max-width: calc(100vw - 16px); max-height: min(480px, calc(100vh - 16px)); padding: 12px; display: flex; flex-direction: column; gap: 10px; background: var(--panel-solid); }
+.tt-pop .field { margin: 0; }
+.tt-range { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tt-values { display: flex; flex-direction: column; max-height: 220px; overflow: auto; }
+.tt-values .opt { display: flex; margin: 0; }
+.tt-values .opt > span[dir] { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.tt-n { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.tt-sortrow { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 12.5px; }
+.tt-sortrow > span { margin-right: auto; color: var(--muted); }
+.tt-sortrow .btn[aria-pressed="true"] { background: var(--selected); color: var(--accent-text); }
+.tt-popfoot { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tt-popfoot .link-btn:disabled { opacity: .45; cursor: default; }

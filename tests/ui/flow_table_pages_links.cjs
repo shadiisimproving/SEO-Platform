@@ -116,7 +116,7 @@ const day = (n) => new Date(Date.UTC(2026, 10, 10) - n * 864e5).toISOString().re
   check("By page: the Lost chip goes back to page 1 with the lost ones", /^1–25 of 77 links$/.test(await range("bl-links")), await range("bl-links"));
   await page.click('[data-bl-filter="all"]'); await wait(400);
   await page.click('[data-bl-sort="authority"]'); await wait(400);
-  const auths = await page.locator("#bl-table tbody tr td:nth-child(6)").evaluateAll((c) => c.slice(0, 5).map((x) => Number(x.textContent.trim()) || 0));
+  const auths = await page.locator("#bl-table tbody tr td:nth-child(7)").evaluateAll((c) => c.slice(0, 5).map((x) => Number(x.textContent.trim()) || 0));
   check("By page: Authority sorts biggest first, focus on the heading", auths.every((n, i) => !i || auths[i - 1] >= n) && auths[0] >= 80 && (await page.evaluate(() => document.activeElement?.dataset.blSort)) === "authority", auths.join(","));
   check("By page: the sorted heading says so", (await page.locator('th:has([data-bl-sort="authority"])').getAttribute("aria-sort")) === "descending");
   await page.click('[data-bl-sort="authority"]'); await wait(300);
@@ -131,7 +131,7 @@ const day = (n) => new Date(Date.UTC(2026, 10, 10) - n * 864e5).toISOString().re
   await page.click('[data-vd-view="website"]'); await wait(500);
   await drive("By site", "bl-sites", "#bl-sites tbody tr", 305, "sites", "made-up-2", 111);
   await page.click('[data-bls-sort="authority"]'); await wait(400);
-  const siteAuth = await page.locator("#bl-sites tbody tr td:nth-child(4)").evaluateAll((c) => c.slice(0, 5).map((x) => Number(x.textContent.trim()) || 0));
+  const siteAuth = await page.locator("#bl-sites tbody tr td:nth-child(5)").evaluateAll((c) => c.slice(0, 5).map((x) => Number(x.textContent.trim()) || 0));
   check("By site: Authority sorts, biggest first by default", siteAuth.every((n, i) => !i || siteAuth[i - 1] >= n), siteAuth.join(","));
   await page.click('[data-bls-sort="domain"]'); await wait(400);
   const names = await page.locator("#bl-sites tbody tr [data-vd-domain]").allTextContents();
@@ -156,7 +156,7 @@ const day = (n) => new Date(Date.UTC(2026, 10, 10) - n * 864e5).toISOString().re
   await page.click('[data-bl-tab="mediators"]'); await wait(800);
   await drive("Mediators", "bl-mediators", "#md-table tbody tr", 42, "mediators", "agency 35", 1);
   await page.click('[data-md-sort="links"]'); await wait(400);
-  const links = await page.locator("#md-table tbody tr td:nth-child(4)").evaluateAll((c) => c.slice(0, 3).map((x) => Number(x.textContent.trim())));
+  const links = await page.locator("#md-table tbody tr td:nth-child(5)").evaluateAll((c) => c.slice(0, 3).map((x) => Number(x.textContent.trim())));
   check("Mediators: Links sorts biggest first", links[0] >= links[1] && links[0] >= 1, links.join(","));
   await shot("4-mediators");
 
@@ -164,7 +164,7 @@ const day = (n) => new Date(Date.UTC(2026, 10, 10) - n * 864e5).toISOString().re
   await page.click('[data-bl-tab="reclaim"]'); await wait(600);
   await drive("Reclaim", "bl-reclaim", "#rc-table tbody tr", 60, "pages", "other-3", 9);
   await page.click('[data-rc-sort="sites"]'); await wait(400);
-  const sites = await page.locator("#rc-table tbody tr td:nth-child(3)").evaluateAll((c) => c.slice(0, 5).map((x) => parseInt(x.firstChild.textContent, 10)));
+  const sites = await page.locator("#rc-table tbody tr td:nth-child(4)").evaluateAll((c) => c.slice(0, 5).map((x) => parseInt(x.firstChild.textContent, 10)));
   check("Reclaim: Sites linking sorts biggest first", sites.every((n, i) => !i || sites[i - 1] >= n) && sites[0] === 9, sites.join(","));
   await shot("5-reclaim");
 
@@ -211,7 +211,7 @@ const day = (n) => new Date(Date.UTC(2026, 10, 10) - n * 864e5).toISOString().re
   check("Not on Google: no Show all button any more", (await page.locator("[data-ht-index-all]").count()) === 0);
   check("Few links in: the 10 the server sends, and how many there are", (await range("ht-few-links")) === "1–10 of 10 pages" && /The 10 with the most clicks are listed, of 37/.test(await foot("ht-few-links").innerText()), await foot("ht-few-links").innerText());
   await page.click('[data-ht-sort="few"][data-ht-sort-by="links_in"]'); await wait(400);
-  const fewIn = await page.locator("#ht-few-links tbody tr td:nth-child(2)").evaluateAll((c) => c.map((x) => Number(x.textContent)));
+  const fewIn = await page.locator("#ht-few-links tbody tr td:nth-child(3)").evaluateAll((c) => c.map((x) => Number(x.textContent)));
   check("Few links in: Links in sorts", fewIn.every((n, i) => !i || fewIn[i - 1] >= n), fewIn.join(","));
   await page.click("[data-ht-links-all]"); await wait(500);
   await drive("Every page's links in", "ht-links-in", "#ht-links-in tbody tr", 400, "pages", "page-39", 11);

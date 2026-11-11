@@ -89,12 +89,12 @@
     const found = sorted(d.keywords.filter((k) => TP.matches(PAGES, k.keyword)));
     if (!found.length) return `${search}<div class="table-wrap"><div class="empty"><p>${esc(t("No keyword matches this search."))}</p><button type="button" class="btn btn-small" data-tp-clear data-tp-key="${PAGES}">${t("Clear the search")}</button></div></div>`;
     const page = TP.view(PAGES, found);
-    const head = (key, label, cls = "") => {
+    const head = (key, label, cls = "", who = "") => {
       const on = S.sort?.key === key;
-      return `<th scope="col" class="${cls}" aria-sort="${on ? (S.sort.dir === "asc" ? "ascending" : "descending") : "none"}"><button type="button" class="th-btn" data-kc-sort="${key}">${t(label)}${on ? UI.icon(S.sort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
+      return `<th scope="col" class="${cls}" aria-sort="${on ? (S.sort.dir === "asc" ? "ascending" : "descending") : "none"}"><button type="button" class="th-btn" data-kc-sort="${key}">${who ? COMP.who(who, null, t(label)) : t(label)}${on ? UI.icon(S.sort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
     };
     return `${search}<div class="kc-pages"><div class="table-wrap"><table class="data kc-table" id="kc-table">
-      <thead><tr>${head("keyword", "Keyword")}${head("me", "You", "c")}${head("rivals", "Competitors that rank")}<th scope="col">${t("Checked")}</th><th scope="col"><span class="sr-only">${t("Actions")}</span></th></tr></thead>
+      <thead><tr>${head("keyword", "Keyword")}${head("me", "You", "c pt-col-you", "you")}${head("rivals", "Competitors that rank", "pt-col-them", "them")}<th scope="col">${t("Checked")}</th><th scope="col"><span class="sr-only">${t("Actions")}</span></th></tr></thead>
       <tbody>${page.rows.map((k) => `<tr>
         <td class="head-cell" data-label="${esc(t("Keyword"))}"><span class="kw" dir="auto">${esc(k.keyword)}</span><span class="second">${esc([k.country, k.language].filter(Boolean).join(" · ") || t("Any country"))}</span></td>
         <td class="c" data-label="${esc(t("You"))}">${k.me ? `<span class="kc-pos tabular">#${UI.num(k.me.position)}</span>` : `<span class="muted">${k.checked ? "—" : ""}</span>`}</td>

@@ -26,13 +26,13 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
   await step("top of the page", async () => {
     await shot("01-insights", true);
     check((await text(".in-answer")).match(/Clicks (fell|rose|are steady)/) !== null, "a sentence says why clicks moved");
-    check((await count(".in-part")) >= 2, "the parts of the change are listed");
+    check((await count(".in-bar-row")) >= 2, "the parts of the change are listed");
     check((await count(".in-fig")) === 3, "three numbers");
     const rows = await page.locator(".in-table tbody tr").count();
     check(rows > 0 && rows <= 15, `To do first has rows (${rows})`);
     const titles = await page.locator(".in-table tbody tr .t").allTextContents();
     check(new Set(titles).size === titles.length, "each query or page shows once in To do first");
-    const stakes = (await page.locator(".in-table tbody tr td:nth-child(2)").allTextContents()).map((x) => Number(x.replace(/[^\d]/g, "")) || 0);
+    const stakes = (await page.locator(".in-table tbody tr td.in-stake-col").allTextContents()).map((x) => Number(x.replace(/[^\d]/g, "")) || 0);
     check(stakes.every((v, i) => i === 0 || v <= stakes[i - 1]), "ranked by clicks at stake");
   });
 
@@ -84,7 +84,7 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
   });
 
   await step("the change breakdown", async () => {
-    await page.click(".in-parts [data-in-open]");
+    await page.click(".in-see[data-in-open]");
     await page.waitForSelector("#panel .ov-split", { timeout: 4000 });
     await page.waitForTimeout(400);
     await shot("07-change-panel");

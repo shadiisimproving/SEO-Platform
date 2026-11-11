@@ -1071,7 +1071,16 @@
     paint() { if (UI) { UI.$$("[data-note-list]").forEach(paintList); paintCounts(); } },
   };
 
-  COMP.notes = { block, mount, panel, preload, keyOf, screenName, button, badge, loadAllOnce, every };
+  /* Save a finished note without a field on screen. A refusal throws; a lost connection is retried like any other note. */
+  async function add(where, text) {
+    const e = newEntry({ ...where, text, sortAt: Date.now() });
+    await write(e);
+    if (!e.id && e.status === "refused") { entries.delete(e.uid); throw new Error(e.message); }
+    paintAll();
+    return e;
+  }
+
+  COMP.notes = { block, mount, panel, preload, keyOf, screenName, button, badge, loadAllOnce, every, add };
 
   // ---- the Notes tab ---------------------------------------------------------------------------
   const tabState = { way: "all", competitorId: null, pageUrl: "", pageTyped: "", search: "", competitors: [], listFailed: false };

@@ -31,9 +31,9 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
   };
   const closePanel = async () => { await page.keyboard.press("Escape"); await page.waitForTimeout(450); };
 
-  await step("all seven tabs", async () => {
+  await step("all eight tabs", async () => {
     const tabs = await page.locator("[data-in-tab]").allInnerTexts();
-    check(tabs.length === 7, `seven tabs (${tabs.map((x) => x.split(" ")[0]).join(", ")})`);
+    check(tabs.length === 8, `eight tabs (${tabs.map((x) => x.split(" ")[0]).join(", ")})`);
   });
 
   await step("What changed", async () => {
@@ -69,7 +69,7 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
     await page.selectOption('[data-tp-foot="in"] [data-tp-per]', "100").catch(() => {}); // pages since 2026-11-10 (table-pages.js), was Show more
     await page.waitForTimeout(500);
     const all = await rowsText();
-    check(all.includes("Question searches") && all.includes("Worth tracking"), "questions and worth tracking are there (information rows)");
+    check(all.includes("Question searches") && !all.includes("Worth tracking"), "questions are there, and worth tracking moved to Rank and clicks");
   });
 
   await step("Leads", async () => {

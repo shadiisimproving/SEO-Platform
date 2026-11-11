@@ -157,13 +157,12 @@
   }
 
   function blockInner(b) {
-    const { t, status, icon } = UI, busy = L.busy.has(b.serverId);
-    const statusWord = L.helpers.linkStatus?.(b.status) || status("info", b.status);
+    const { t, icon } = UI, busy = L.busy.has(b.serverId);
     const latest = L.histories.get(b.serverId)?.[0];
-    return `<h3>${t("Link check")} <button class="btn btn-small end" id="link-check-now" data-id="${b.serverId}" ${busy ? "disabled" : ""}>${icon("refresh-cw", busy ? "spin" : "")}${t(busy ? "Checking…" : b.check?.checked_at ? "Run again" : "Run")}</button></h3>
-      <p class="lk-result" role="status">${statusWord} ${busy ? t("Reading the page…") : sentence(b)}</p>
+    return `<p class="lk-result" role="status">${busy ? t("Reading the page…") : sentence(b)}</p>
       ${latest?.changes?.length && latest.outcome === "found" ? `<ul class="lk-changes">${latest.changes.map((x) => `<li>${changeWords(x)}</li>`).join("")}</ul>` : ""}
-      ${factsOf(b)}${historyHtml(b.serverId)}`;
+      ${factsOf(b)}${historyHtml(b.serverId)}
+      <button class="btn btn-small" id="link-check-now" style="margin-top:10px" data-id="${b.serverId}" ${busy ? "disabled" : ""}>${icon("refresh-cw", busy ? "spin" : "")}${t(busy ? "Checking…" : b.check?.checked_at ? "Run again" : "Run")}</button>`;
   }
 
   const paintBlock = (b) => { const box = UI.$(`#lk-block[data-id="${b.serverId}"]`); if (box) UI.setHTML(box, blockInner(b)); };
@@ -193,6 +192,7 @@
         const row = await COMP.api("GET", `backlinks/${id}`);
         if (row.check?.checked_at !== before) {
           Object.assign(b, UI.toBacklink(row, b.site));
+          window.BacklinkSeo?.repaint?.(b);
           await loadHistory(b);
           window.HealthTest?.reloadAlerts?.();
           stop(UI.t(b.status === "lost" ? "This link is lost" : "Link checked"), b.status === "lost" ? "crit" : "info");

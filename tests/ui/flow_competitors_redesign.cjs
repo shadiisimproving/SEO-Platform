@@ -51,7 +51,7 @@ const fakeQuestions = (host, about) => { const groups = Array.from({ length: 25 
   const tableReady = () => page.waitForSelector("#cs-rivals-table tbody tr", { timeout: 15000 });
   const lang = async (to) => { await page.evaluate((l) => { window.UI.state.lang = l; window.UI.render?.(); }, to); await settle(); };
   const tabsNow = () => page.evaluate(() => [...document.querySelectorAll("[data-comp-tab]")].map((b) => ({ id: b.dataset.compTab, text: [...b.childNodes].filter((n) => n.nodeType === 3).map((n) => n.textContent).join("").trim(), lit: b.getAttribute("aria-selected") === "true" })));
-  const headsNow = () => page.evaluate(() => [...document.querySelectorAll("#cs-rivals-table thead th")].map((th) => th.textContent.trim()));
+  const headsNow = () => page.evaluate(() => [...document.querySelectorAll("#cs-rivals-table thead th:not(.tt-pick)")].map((th) => th.textContent.trim()));
   const rowIds = () => page.evaluate(() => [...document.querySelectorAll("#cs-rivals-table tbody tr[data-cs-row]")].map((tr) => Number(tr.dataset.csRow)));
   const onProfile = () => page.evaluate(() => Boolean(document.querySelector("[data-pt-tab], #cl-profile-title")));
   // Each part runs on its own: one that breaks is one FAIL line, and the rest still run.
@@ -238,7 +238,7 @@ const fakeQuestions = (host, about) => { const groups = Array.from({ length: 25 
     const four = p.figures.slice(0, 4).join() === "Shared keywords,Only them,Only you,Pages";
     check("7. the figure strip has 4 figures (a fifth only for Authority, when a score is known)", four && (p.figures.length === 4 || (p.figures.length === 5 && p.figures[4] === "Authority")), p.figures.join(" · "));
     check("7. the profile opens on Keywords", p.tab === "keywords", p.tab);
-    check("7. the first keyword row starts above y=600 at 1440×900", p.rowTop !== null && p.scroll === 0 && p.rowTop < 600, `y=${p.rowTop}`);
+    check("7. the first keyword row starts above y=650 at 1440×900 (the Filter row sits above it)", p.rowTop !== null && p.scroll === 0 && p.rowTop < 650, `y=${p.rowTop}`);
   });
 
   // ---- 10. page paths are links (the profile, on the real answer) -------------------------------

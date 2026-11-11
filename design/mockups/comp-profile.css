@@ -61,11 +61,14 @@
 .pt-as-table { margin-top: 4px; }
 .pt-as-table summary { cursor: pointer; color: var(--text-2); }
 
-.pt-years { list-style: none; margin: 10px 0 0; padding: 0; display: grid; gap: 6px; max-width: 520px; }
-.pt-years li { display: grid; grid-template-columns: 44px 1fr 40px; gap: 10px; align-items: center; font-size: 13px; }
-.pt-year-bar { height: 10px; border-radius: 4px; background: var(--track, var(--line)); overflow: hidden; }
-.pt-year-bar i { display: block; height: 100%; width: var(--w); border-radius: 4px; }
-.pt-dates { margin-top: 10px; }
+/* How old their site is: the dates as figures, the years as columns across the whole card. */
+.pt-age-figs { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px 24px; padding-bottom: 16px; border-bottom: 1px solid var(--line); }
+.pt-age-title { margin: 16px 0 0; font-size: 12px; color: var(--text-2); }
+.pt-years { list-style: none; margin: 8px 0 0; padding: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 8px; align-items: end; height: 150px; }
+.pt-years li { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; gap: 4px; height: 100%; min-width: 0; }
+.pt-years b { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.pt-years i { display: block; width: min(56px, 70%); height: max(3px, calc(var(--h) * 100px)); border-radius: 4px 4px 0 0; background: var(--pt-them); }
+.pt-years span { font-size: 12px; color: var(--muted); padding-top: 2px; border-top: 1px solid transparent; }
 
 .pt-vs th[scope="row"] { font-weight: 500; }
 .pt-vs td.c, .pt-vs th.c { width: 22%; }
@@ -79,6 +82,12 @@
 .pt-narrow { max-width: 760px; }
 .pt-vs.pt-narrow td.c, .pt-vs.pt-narrow th.c { width: 140px; }
 .pt-vs th[scope="row"] .second { display: block; font-weight: 400; }
+/* You and Them: each column carries its chart colour from head to foot. */
+.pt-vs .pt-col-you { background: color-mix(in oklab, var(--pt-you) 12%, transparent); }
+.pt-vs .pt-col-them { background: color-mix(in oklab, var(--pt-them) 12%, transparent); }
+.pt-vs thead .pt-col-you { box-shadow: inset 0 -2px 0 var(--pt-you); color: var(--text); font-weight: 600; }
+.pt-vs thead .pt-col-them { box-shadow: inset 0 -2px 0 var(--pt-them); color: var(--text); font-weight: 600; }
+.pt-col-name { display: inline-flex; align-items: center; gap: 6px; }
 .pt-lead { margin: 0 0 12px; font-size: 14px; }
 .pt-note { display: flex; gap: 8px; align-items: flex-start; margin: 12px 0 0; color: var(--text-2); max-width: 760px; }
 .pt-note svg { flex: none; margin-top: 2px; }
@@ -167,7 +176,18 @@
 .pt-qpage-head .cl-cell { min-width: 0; flex: 1 1 auto; text-align: start; align-items: flex-start; }
 .pt-qpage-head .t { font-weight: 500; }
 .pt-qlist { margin: 8px 0 0; padding-inline-start: 18px; display: grid; gap: 3px; font-size: 13px; color: var(--text); }
-.pt-qpage > .link-btn { margin: 4px 0 0 18px; }
+.pt-qpage > .link-btn { margin: 6px 0 0 36px; }
+.pt-qpage.is-picked { background: var(--hover); box-shadow: -8px 0 0 var(--hover), 8px 0 0 var(--hover); }
+.pt-qpage-head .nb-inline { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+/* Their page's questions on the left, my page and its questions on the right. */
+.pt-qcompare { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 32px; margin: 10px 0 0 36px; }
+.pt-qside { min-width: 0; }
+.pt-qside .cl-cell { text-align: start; align-items: flex-start; }
+.pt-qside .pt-qlist { margin-top: 6px; }
+.pt-qside-lab { margin: 0 0 4px; font-size: 12px; color: var(--text-2); display: flex; align-items: center; gap: 6px; }
+.pt-qn-context { margin: 0; max-height: 300px; overflow: auto; padding: 10px 12px; border-radius: var(--r-s); background: var(--track, var(--line)); font: inherit; font-size: 12.5px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+#pt-q-selbar { display: contents; }
+@media (max-width: 720px) { .pt-qcompare { grid-template-columns: minmax(0, 1fr); } }
 .pt-qother { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
 .pt-qpages-other .pt-qlist { color: var(--text-2); }
 
@@ -184,3 +204,21 @@
 }
 /* A card clips instead of hiding its overflow, so the pages footer can stick: "hidden" would make the card its scroll box. */
 .pt-panel > .card:has(.tp-foot) { overflow: clip; }
+
+/* How strong they are: the answer on top, then each figure as two side-by-side tiles, the one ahead tinted. */
+.pt-verdict { margin: 0 0 14px; font-size: 15px; font-weight: 600; color: var(--text); }
+.pt-duels { list-style: none; margin: 0; padding: 0; display: grid; gap: 16px; }
+.pt-duel-head { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; margin-bottom: 6px; font-size: 13px; }
+.pt-duel-head b { font-weight: 500; color: var(--text); }
+.pt-sides { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.pt-sides-one { grid-template-columns: minmax(0, 1fr); }
+.pt-side { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 10px 12px; border-radius: var(--r-s); box-shadow: inset 0 0 0 1px var(--line); }
+.pt-side-ahead { background: var(--c-blue-pale); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-blue) 35%, transparent); }
+.pt-side-who { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
+.pt-side-who .site-logo { vertical-align: 0; border-radius: 3px; }
+.pt-side-flag { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--accent-text); }
+.pt-side-val { font-size: 20px; font-weight: 600; line-height: 26px; color: var(--text); overflow-wrap: anywhere; }
+.pt-side-bar { display: block; height: 4px; margin-top: 4px; border-radius: 2px; background: var(--track); overflow: hidden; }
+.pt-side-bar i { display: block; height: 100%; border-radius: 2px; background: var(--c-blue); }
+.pt-link-score b { font-weight: 600; color: var(--text); margin-right: 4px; }
+@media (max-width: 640px) { .pt-side-val { font-size: 17px; line-height: 22px; } }

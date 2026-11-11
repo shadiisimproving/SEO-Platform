@@ -74,7 +74,7 @@
     const onceLine = once ? `<p class="small sec ca-once">${esc(t("All checked with {tool}, {when}.").replace("{tool}", shown[0].tool).replace("{when}", COMP.ago(shown[0].checked_at)))}</p>` : "";
     const oneTool = !once && tools.size === 1 ? shown[0].tool : "";
     return `${chips}${oneTool ? `<p class="help ca-tool-line">${t("Tool")}: ${esc(oneTool)}</p>` : ""}<div class="ca-pages"><div class="table-wrap ${oneTool ? "ca-one-tool" : ""}"><table class="data ca-table" id="ca-table">
-      <thead><tr><th scope="col">${t("Keyword")}</th><th scope="col">${t("AI Overview")}</th><th scope="col">${t("You cited")}</th><th scope="col">${t("Competitors cited")}</th><th scope="col">${t("Other sites cited")}</th>${once ? "" : `<th scope="col">${t("Tool and age")}</th>`}</tr></thead>
+      <thead><tr><th scope="col">${t("Keyword")}</th><th scope="col">${t("AI Overview")}</th><th scope="col" class="pt-col-you">${COMP.who("you", null, t("You cited"))}</th><th scope="col" class="pt-col-them">${COMP.who("them", null, t("Competitors cited"))}</th><th scope="col">${t("Other sites cited")}</th>${once ? "" : `<th scope="col">${t("Tool and age")}</th>`}</tr></thead>
       <tbody>${page.rows.map((r) => `<tr>
         <td class="head-cell"><span class="kw" dir="auto">${esc(r.keyword)}</span></td>
         <td data-label="${t("AI Overview")}">${overviewCell(r.state)}</td>

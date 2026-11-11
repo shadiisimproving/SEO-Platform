@@ -20,6 +20,8 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   page.on("response", (r) => { if (r.status() >= 400 && !r.url().includes("/api/auth/me")) failed.push(`${r.status()} ${r.url()}`); });
   await page.goto(BASE + "#backlinks?site=site-one.example");
   const settle = (ms = 700) => page.waitForTimeout(ms);
+  // The link panel shows one row per question; the proof sits folded under each row.
+  const openRows = async () => { await page.evaluate(() => document.querySelectorAll("#panel details.vd-q").forEach((d) => { d.open = true; })); await settle(150); };
   await page.waitForSelector("#bl-tiles", { timeout: 30000 }); await settle(1200);
   if (await page.$('[data-bl-section="done"][aria-selected="false"]')) { await page.click('[data-bl-section="done"]'); await settle(); }
 
@@ -33,7 +35,10 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await page.screenshot({ path: OUT + "1-done.png" });
 
   // the panel: why, before and after, mark as spam
-  await barista.locator("[data-open-bl]").click(); await settle(1200);
+  await barista.locator("[data-open-bl]").dispatchEvent("click"); await settle(1200);
+  check("panel leads with one verdict", (await page.locator("#panel .vd-answer strong").innerText()).length > 0);
+  check("panel keeps the proof folded", (await page.locator("#panel details.vd-q[data-vd-row='google'][open]").count()) === 0);
+  await openRows();
   const panel = await page.locator("#panel").innerText();
   check("panel asks: does Google count it", /Does\s+Google\s+count it\?/.test(panel));
   check("panel gives the sponsored reason", panel.includes("Marked sponsored"));
@@ -99,7 +104,8 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
     check("Search Console connected on the fake Google", ok);
   }
   await page.click('[data-bl-tab="all"]'); await settle();
-  await page.locator("#bl-table tbody tr", { hasText: "barista-mag.example" }).locator("[data-open-bl]").click(); await settle(800);
+  await page.locator("#bl-table tbody tr", { hasText: "barista-mag.example" }).locator("[data-open-bl]").dispatchEvent("click"); await settle(800);
+  await openRows();
   await page.click("#link-check-now"); await settle(800);
   let notIndexed = false;
   for (let i = 0; i < 40 && !notIndexed; i += 1) {
@@ -107,15 +113,17 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
     notIndexed = (await page.locator("#bl-table tbody tr", { hasText: "barista-mag.example" }).locator(".vd-tag", { hasText: "Your page isn't indexed" }).count()) === 1;
   }
   check("the table says the target page isn't indexed", notIndexed);
-  await page.locator("#bl-table tbody tr", { hasText: "barista-mag.example" }).locator("[data-open-bl]").click(); await settle(1000);
+  await page.locator("#bl-table tbody tr", { hasText: "barista-mag.example" }).locator("[data-open-bl]").dispatchEvent("click"); await settle(1000);
+  check("panel: the index row opens by itself when the page isn't indexed", (await page.locator("#panel details.vd-q[data-vd-row='index'][open]").count()) === 1);
+  await openRows();
   const ixPanel = await page.locator("#panel").innerText();
   check("panel: Not indexed, with Google's words", ixPanel.includes("Not indexed") && ixPanel.includes("Crawled - currently not indexed"), ixPanel.slice(0, 0));
   check("panel: a task to get it indexed", (await page.locator("#panel button", { hasText: /^Task$/ }).count()) >= 1);
-  await page.locator("#panel h3", { hasText: /Is your page in/ }).scrollIntoViewIfNeeded();
+  await page.locator("#panel [data-vd-row='index']").scrollIntoViewIfNeeded();
   await page.screenshot({ path: OUT + "10-not-indexed.png" });
   await page.keyboard.press("Escape"); await settle(400);
   check("an indexed page has no warning in the table", (await page.locator("#bl-table tbody tr", { hasText: "foodblog.example" }).locator(".vd-tag", { hasText: "Your page isn't indexed" }).count()) === 0);
-  await page.locator("#bl-table tbody tr", { hasText: "foodblog.example" }).locator("[data-open-bl]").click(); await settle(1000);
+  await page.locator("#bl-table tbody tr", { hasText: "foodblog.example" }).locator("[data-open-bl]").dispatchEvent("click"); await settle(1000);
   check("panel: Indexed", /\bIndexed\b/.test(await page.locator("#panel").innerText()));
   await page.keyboard.press("Escape"); await settle(400);
 
@@ -125,10 +133,12 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   for (let i = 0; i < 30 && !searched; i += 1) { searched = (await linkOf("barista-mag.example"))?.source_index; if (!searched) await settle(1000); }
   check("the site: search ran on a free credit", searched?.state === "not_found" && searched?.via === "SerpApi", JSON.stringify(searched));
   await page.goto("about:blank"); await page.goto(BASE + "#backlinks?site=site-one.example"); await settle(1500);
-  await page.locator("#bl-table tbody tr", { hasText: "barista-mag.example" }).locator("[data-open-bl]").click(); await settle(1000);
+  await page.locator("#bl-table tbody tr", { hasText: "barista-mag.example" }).locator("[data-open-bl]").dispatchEvent("click"); await settle(1000);
+  await openRows();
   check("panel: not found on Google yet, searched again before saying not indexed", (await page.locator("#panel").innerText()).includes("Not found on Google yet"));
   await page.keyboard.press("Escape"); await settle(400);
-  await page.locator("#bl-table tbody tr", { hasText: "foodblog.example" }).locator("[data-open-bl]").click(); await settle(1000);
+  await page.locator("#bl-table tbody tr", { hasText: "foodblog.example" }).locator("[data-open-bl]").dispatchEvent("click"); await settle(1000);
+  await openRows();
   check("panel: the linking page is on Google", (await page.locator("#panel").innerText()).includes("The linking page is on"));
   await page.keyboard.press("Escape"); await settle(400);
 

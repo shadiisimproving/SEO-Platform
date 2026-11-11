@@ -65,14 +65,14 @@ fs.writeFileSync(FILE, "﻿" + [
   const linkRows = panel.locator(".cg-links-table tbody tr");
   const focused = await page.evaluate(() => document.activeElement?.dataset?.cgLinks);
   check("the button opens all the links under the row, focus stays on it", (await linkRows.count()) === 6 && focused === "coffee-review.example", `${await linkRows.count()} ${focused}`);
-  const subHeads = (await panel.locator("thead th").allTextContents()).map((h) => h.trim());
+  const subHeads = (await panel.locator("thead th:not(.tt-pick)").allTextContents()).map((h) => h.trim());
   check("the links table has one column each", subHeads.join() === "Anchor text,Page Authority,Linking page,Points to", subHeads.join(" | "));
   const first = linkRows.first();
-  check("each link gives its own anchor, PA, page and target", /best coffee subscription/.test(await first.textContent()) && (await first.locator("td:nth-child(2)").textContent()).trim() === "44" && /best-subscriptions/.test(await first.locator("td:nth-child(3)").textContent()) && /subscribe/.test(await first.locator("td:nth-child(4)").textContent()));
-  check("the linking page opens in a new tab", (await first.locator("td:nth-child(3) a").getAttribute("target")) === "_blank");
+  check("each link gives its own anchor, PA, page and target", /best coffee subscription/.test(await first.textContent()) && (await first.locator("td:nth-child(3)").textContent()).trim() === "44" && /best-subscriptions/.test(await first.locator("td:nth-child(4)").textContent()) && /subscribe/.test(await first.locator("td:nth-child(5)").textContent()));
+  check("the linking page opens in a new tab", (await first.locator("td:nth-child(4) a").getAttribute("target")) === "_blank");
   check("the route didn't change: no other page opened", (await page.evaluate(() => location.hash)) === "#competitors/gaps");
   await page.screenshot({ path: OUT + "2-row-open.png" });
-  const pas = async () => (await linkRows.locator("td:nth-child(2)").allTextContents()).map((x) => parseInt(x, 10)).filter((n) => !Number.isNaN(n));
+  const pas = async () => (await linkRows.locator("td:nth-child(3)").allTextContents()).map((x) => parseInt(x, 10)).filter((n) => !Number.isNaN(n));
   await page.click('[data-cg-link-sort="pa"]'); await page.waitForTimeout(300);
   const paDown = await pas();
   check("the links sort by Page Authority, biggest first", paDown.length >= 4 && paDown.every((n, i) => !i || n <= paDown[i - 1]), paDown.join());

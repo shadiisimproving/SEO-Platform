@@ -202,6 +202,8 @@
     return UI.failCard ? UI.failCard(words, { retry: "data-comp-retry" }) : COMP.empty(UI.t("That didn't load"), words, COMP.retryButton());
   };
   COMP.site = () => COMP.sites.find((s) => s.id === COMP.siteId) || null;
+  /* Mine and theirs, one look across the app: blue is you, purple is them, always with the word. With a host, its logo replaces the dot. */
+  COMP.who = (who, host, label) => `<span class="who who-${who}">${host ? UI.siteLogo(host, 16) : `<i class="pt-key pt-key-${who}" aria-hidden="true"></i>`}<span>${label || UI.t(who === "you" ? "You" : "Them")}</span></span>`;
 
   /* How long ago, in the language on screen. */
   COMP.ago = (iso) => {
@@ -308,7 +310,7 @@
         const active = document.activeElement;
         if (active?.matches?.("input, textarea, select")) return; // never redraw under someone typing: the next look catches up
         const scroll = UI.$("#main")?.scrollTop;
-        if (UI.state.route === "competitors" && UI.$("#comp-body")) COMP.paint(); else if (["backlinks"].includes(UI.state.route)) UI.render();
+        if (UI.state.route === "competitors" && UI.$("#comp-body")) COMP.paint(); else if (["backlinks", "channels"].includes(UI.state.route)) UI.render();
         // The site menu's button was drawn with letters before the list arrived. An open menu is left alone: it has the icons already.
         if (!UI.$("#popover")) UI.renderSidebar?.();
         if (UI.$("#main") && scroll !== undefined) UI.$("#main").scrollTop = scroll;

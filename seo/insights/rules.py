@@ -8,6 +8,8 @@ MONTH = 30 / PERIOD_DAYS  # clicks in a period → clicks a month
 STEADY_PERCENT, STEADY_CLICKS = 10, 20
 BIG_CHANGE_PERCENT, BIG_CHANGE_CLICKS = 30, 50
 CHANGE_MOVERS = 5
+CHANGE_PAGES = 5  # pages listed under the change
+PAGE_EXPLAINS = 0.5  # one page is named as the cause when it carries this share of the net change
 
 # A2, odd day: against the same weekday of the last 8 weeks.
 ODD_LOOK_DAYS = 7
@@ -135,6 +137,20 @@ RESULT_LOOK_BACK = 365  # tasks done longer ago aren't worked out any more
 # of 2025 (Ahrefs, Seer Interactive, Pew) measured 35% to 60% fewer clicks on the plain results below an AI Overview; 0.6
 # keeps to the cautious end. Only when a rank check really read the results page (never on "not captured").
 AI_OVERVIEW_SHARE = 0.6
+
+# Rank and clicks (mix.py): saved rank checks joined with Search Console.
+MIX_FRESH_DAYS = 14  # a check older than this can't say something just moved
+MIX_USABLE_DAYS = 45  # nor, past this, say where a keyword stands
+MIX_GAP = 5  # places between a check and Search Console's average: checks are desktop from one place, so small gaps are normal
+MIX_WORST = 20  # further down than this on average, a drop means little
+MIX_CONFIRM_PLACES = 3  # moved at least this much since the previous like-for-like check
+MIX_DEPTH_MARGIN = 3  # "beyond the depth checked" only counts when the average sat this far inside it
+MIX_MIN_IMPRESSIONS = 50
+MIX_RIVAL_TOP, MIX_RIVAL_ME_PAST, MIX_RIVAL_TARGET = 5, 10, 5
+MIX_STRIKING, MIX_STRIKING_GAP, MIX_STRIKING_MIN, MIX_STRIKING_TARGET = (8, 20), 5, 20, 5
+MIX_NO_CLICK_TOP, MIX_NO_CLICK_MIN, MIX_NO_CLICK_SHARE = 7, 100, 0.6
+MIX_PAGE_SHARE, MIX_PAGE_MIN_CLICKS = 0.6, 5
+MIX_KEPT = 200
 
 INFO_BELOW = 3  # clicks a month at stake: below this a finding is only information
 GONE_KEPT_DAYS = 90  # findings that went away are kept this long, then deleted

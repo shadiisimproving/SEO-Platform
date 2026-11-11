@@ -254,6 +254,18 @@ def test_a_query_already_tracked_says_so_whatever_its_market(engine, site):
     assert rows == {"Sofa  Delivery": True, "sofa repair": False}
 
 
+def test_a_keyword_tracked_with_and_without_accents_counts_both_spellings(engine, site):
+    """The keywords table compares without accents, so asking it for DISTINCT names would fold the two into one."""
+    _row(engine, site, "gsc_query", END, "cafe moulu", 3, 30, 4.0)
+    _row(engine, site, "gsc_query", END, "café moulu", 2, 30, 4.0)
+    with engine.begin() as conn:
+        for words in ("café moulu", "cafe moulu"):
+            keyword_id = conn.execute(text("INSERT INTO keywords (keyword, keyword_hash, country, language) VALUES (:w, :h, 'fr', 'fr')"), {"w": words, "h": store.keyword_hash(words)}).lastrowid
+            conn.execute(text("INSERT INTO site_keywords (site_id, keyword_id) VALUES (:s, :k)"), {"s": site, "k": keyword_id})
+    rows = {r["name"]: r["tracked"] for r in search.breakdown(_scope(engine, site)[0], "query")["rows"]}
+    assert rows == {"cafe moulu": True, "café moulu": True}
+
+
 def test_countries_carry_a_two_letter_code_for_names(engine, site):
     _row(engine, site, "gsc_country", END, "fra", 5, 50, 4.0)
     _row(engine, site, "gsc_country", END, "zzz", 1, 5, 9.0)

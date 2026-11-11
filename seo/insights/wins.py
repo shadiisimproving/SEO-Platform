@@ -343,7 +343,7 @@ def worth_tracking(ctx: Ctx) -> Result:
     picked.sort(key=lambda r: -r["impressions"])
     for r in picked[: rules.TRACK_KEPT]:
         out.findings.append(Finding(
-            "track", "wins", r["name"], query=r["name"], page=_best(pages.get(r["name"], [])), severity="info",
+            "track", "mix", r["name"], query=r["name"], page=_best(pages.get(r["name"], [])), severity="info",
             evidence={"clicks": r["clicks"], "impressions": r["impressions"], "position": rnd(r["position"]), "tracked": False},
         ))
     return out

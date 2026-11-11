@@ -33,11 +33,12 @@
   /* Letters as people read them: case and accents don't matter. */
   const fold = (value) => String(value ?? "").normalize("NFKD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-  function view(key, list) {
+  function view(key, all) {
+    const list = window.TT ? window.TT.arrange(key, all) : all; // a column's sort and filters, across every page (table-tools.js)
     const s = state(key), total = list.length, pages = Math.max(1, Math.ceil(total / s.per));
     s.page = Math.max(0, Math.min(s.page, pages - 1));
-    const from = s.page * s.per;
-    return { rows: list.slice(from, from + s.per), from, at: s.page, pages, total };
+    const from = s.page * s.per, rows = list.slice(from, from + s.per);
+    return { rows: window.TT ? window.TT.watch(key, rows) : rows, from, at: s.page, pages, total };
   }
 
   /* The first, the last, and the ones around where you are, with a gap mark between far ones. */
@@ -48,7 +49,7 @@
   };
 
   function footer(key, v, { noun = "", capped = null } = {}) {
-    if (!v.total) return "";
+    if (!v.total) return window.TT ? window.TT.emptyFoot(key) : "";
     const { icon } = U(), s = state(key), last = v.pages - 1, k = esc(key);
     const pager = v.pages > 1 ? `<nav class="tp-pager" aria-label="${t("Pages")}">
         <button type="button" class="btn btn-small" data-tp-key="${k}" data-tp-page="${v.at - 1}" data-tp-step="prev" ${v.at === 0 ? "disabled" : ""}>${icon("chevron-left")}${t("Previous")}</button>
@@ -129,7 +130,7 @@
     }, 180));
   }, true);
 
-  window.TP = { PER, view, footer, search, matches, reset, on, state, fold };
+  window.TP = { PER, view, footer, search, matches, reset, on, state, fold, paint };
 
   Object.assign(window.FR = window.FR || {}, {
     "Pages": "Pages", "Previous": "Précédent", "Next": "Suivant", "Page": "Page", "of": "sur", "Rows per page": "Lignes par page", "per page": "par page",

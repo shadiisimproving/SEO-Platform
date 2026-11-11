@@ -177,6 +177,24 @@ def test_clarity_live_is_a_second_opinion_on_the_days_both_have_and_never_added(
     assert answer["sessions"] == 12
 
 
+def test_clarity_has_its_own_weeks_with_gaps_and_days_read_and_never_touches_ga4(engine, site):
+    _ga4(engine, site, D1, "Referral", "chatgpt.com", "referral", 7)
+    with engine.begin() as conn:
+        for day, refs in ((D2, [{"source": "chatgpt.com", "sessions": 8}, {"source": "google.com", "sessions": 90}]), (D1, [{"source": "perplexity.ai", "sessions": 2}])):
+            conn.execute(text("INSERT INTO clarity_daily (site_id, day, sessions, referrers) VALUES (:s, :d, 100, :r)"), {"s": site, "d": day, "r": json.dumps(refs)})
+    answer = service.ai_search(_scope(engine))
+    weeks = answer["clarity_weekly"]
+    assert [(w["start"], w["end"]) for w in weeks] == [(w["start"], w["end"]) for w in answer["weekly"]]  # the two charts share their weeks
+    assert weeks[-1]["sessions"] == 10 and weeks[-1]["days"] == 2  # the read on D covers D-1; google.com isn't AI
+    assert weeks[0]["sessions"] is None and weeks[0]["days"] == 0  # no read that week: a gap, not a zero
+    assert answer["weekly"][-1]["sessions"] == 7  # GA4's own count, with nothing from Clarity in it
+
+
+def test_no_clarity_reads_leaves_every_clarity_week_a_gap(engine, site):
+    _ga4(engine, site, D1, "Referral", "chatgpt.com", "referral", 7)
+    assert all(w["sessions"] is None and w["days"] == 0 for w in service.ai_search(_scope(engine))["clarity_weekly"])
+
+
 def test_no_clarity_live_reads_gives_no_second_opinion(engine, site):
     _ga4(engine, site, D1, "Referral", "chatgpt.com", "referral", 7)
     assert service.ai_search(_scope(engine))["second_opinion"] is None

@@ -60,17 +60,34 @@ def breakdown(ctx: Ctx) -> Result:
     steady = abs(change) < rules.STEADY_CLICKS or (percent is not None and abs(percent) < rules.STEADY_PERCENT)
     big = change < 0 and abs(change) >= rules.BIG_CHANGE_CLICKS and percent is not None and percent <= -rules.BIG_CHANGE_PERCENT
     # The cause named first: the biggest part pulling the same way as the change.
-    main = max((n for n in parts if parts[n] * direction > 0), key=lambda n: abs(parts[n]), default=None)
+    # "hidden" is only what's left after the named searches, so it can't be acted on and is never the cause named.
+    main = max((n for n in parts if n != "hidden" and parts[n] * direction > 0), key=lambda n: abs(parts[n]), default=None)
+    pages, explains = _page_moves(ctx, change)
     out.findings.append(Finding(
         "change", "changed", "site", at_stake=-change * rules.MONTH, severity="info" if steady else "big" if big else "normal",
         evidence={
             "now": now, "before": before, "change": change, "percent": percent, "steady": steady, "main": main,
-            "parts": {name: round(value) for name, value in parts.items()}, "movers": top,
+            "parts": {name: round(value) for name, value in parts.items()}, "movers": top, "pages": pages, "explains": explains,
             "from": ctx.start.isoformat(), "to": ctx.end.isoformat(), "before_from": ctx.before_start.isoformat(), "before_to": ctx.before_end.isoformat(),
             "days": ctx.days_in(ctx.start, ctx.end), "curve": "own" if ctx.curve.own else "generic",
         },
     ).settle())
     return out
+
+
+def _page_moves(ctx: Ctx, change: int) -> tuple[list[dict], list[dict]]:
+    """The pages that moved most, and the ones that explain the change. Page tables hold the clicks of the rare searches
+    Google leaves out of its query tables, so they can name a cause where the queries can't."""
+    moved = [
+        {"page": r["page"], "path": _path(r["page"]), "clicks": r["clicks"], "clicks_before": r["clicks_before"], "change": r["clicks"] - r["clicks_before"]}
+        for r in split(ctx, "page", ctx.start, ctx.end, ctx.before_start, ctx.before_end) if r["clicks"] != r["clicks_before"]
+    ]
+    moved.sort(key=lambda m: (-abs(m["change"]), m["path"]))
+    same_way = [m for m in moved if m["change"] * change > 0]
+    if not same_way:
+        return moved[: rules.CHANGE_PAGES], []
+    one = abs(same_way[0]["change"]) >= abs(change) * rules.PAGE_EXPLAINS
+    return moved[: rules.CHANGE_PAGES], same_way[:1] if one else same_way[:3]
 
 
 # ---- A2. Odd days --------------------------------------------------------------------------------

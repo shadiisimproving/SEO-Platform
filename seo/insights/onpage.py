@@ -14,7 +14,7 @@ from seo.competitors import pages
 from seo.insights.finding import Finding
 from seo.serp import store
 
-QUERY_KINDS = frozenset({"almost", "top3", "low_ctr", "no_click", "query_down", "unstable", "slide", "no_page", "compete"})
+QUERY_KINDS = frozenset({"almost", "top3", "low_ctr", "no_click", "query_down", "unstable", "slide", "no_page", "compete", "striking", "rank_no_click", "rival_gap"})
 
 
 def _list(value) -> list:

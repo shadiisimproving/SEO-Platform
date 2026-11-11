@@ -19,7 +19,7 @@ from seo.serp.tools import same_place
 
 # Kinds whose clicks at stake come from a click-rate curve: the curve assumes ten plain results, so an AI Overview above
 # them lowers it. Kinds that measure clicks really lost (a page losing clicks, dropped out) are left alone.
-CURVE_KINDS = frozenset({"almost", "top3", "no_click", "low_ctr", "compete", "no_page", "query_down", "unstable", "slide"})
+CURVE_KINDS = frozenset({"almost", "top3", "no_click", "low_ctr", "compete", "no_page", "query_down", "unstable", "slide", "rank_drop", "rival_passed", "rival_gap", "striking", "rank_no_click"})
 
 
 def _key(keyword: str) -> str:

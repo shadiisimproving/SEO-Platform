@@ -111,7 +111,7 @@
     let inner;
     const how = follow && COMP.reading?.follow ? COMP.reading.follow(c) : null;
     const howWords = how ? ` · <span class="cl-follow" data-tip="${esc(how.text)}" tabindex="0">${esc(how.short)}</span>` : "";
-    if (c.status === "ok") inner = `${UI.status("good", t("Watching"))}<span class="second">${esc(fill("Last read {when}", { when: COMP.ago(c.finished_at) }))}${howWords}</span>`;
+    if (c.status === "ok") inner = `${follow ? "" : UI.status("good", t("Watching"))}<span class="second">${esc(fill("Last read {when}", { when: COMP.ago(c.finished_at) }))}${howWords}</span>`;
     else if (c.status === "running") inner = `<span class="status sec">${icon("refresh-cw", "spin")}${esc(t("Reading now"))}</span>${c.pages_read ? `<span class="second">${esc(many(c.pages_read, "{n} page read so far", "{n} pages read so far"))}</span>` : ""}`;
     else if (c.status === "queued") inner = `<span class="status sec">${icon("clock")}${esc(t("Waiting to read"))}</span>`;
     else if (c.status === "blocked") inner = `${UI.status("warn", t("Blocked"))}<span class="second cl-wrap">${esc(say(c.message || BLOCKED_TEXT))}</span>`;
@@ -386,7 +386,7 @@
 
   function compareTile(label, mine, theirs, { note = "", verdict = "" } = {}) {
     const side = (who, value) => `<div class="cl-side"><span class="cl-who">${who}</span><span class="cl-fig tabular">${value}</span></div>`;
-    return `<div class="tile cl-cmp"><div class="lab">${esc(label)}</div><div class="cl-sides">${side(t("You"), mine)}${side(t("Them"), theirs)}</div><div class="delta">${verdict}${note ? `<span class="ab">${esc(note)}</span>` : ""}</div></div>`;
+    return `<div class="tile cl-cmp"><div class="lab">${esc(label)}</div><div class="cl-sides">${side(COMP.who("you"), mine)}${side(COMP.who("them"), theirs)}</div><div class="delta">${verdict}${note ? `<span class="ab">${esc(note)}</span>` : ""}</div></div>`;
   }
   /* Said in words with an icon, never by colour alone. */
   function verdict(mine, theirs, lowerWins = false) {
@@ -524,7 +524,7 @@
       known(e.location) && String(e.location).toUpperCase() !== String(e.country || "").toUpperCase() ? factChip(esc(e.location)) : "", // "FR" again after France says nothing
       known(e.depth) ? factChip(esc(fill("top {n} checked", { n: UI.num(e.depth) }))) : "",
     ].filter(Boolean);
-    const mine = e.mine ? `<div class="cl-facts cl-facts-you">${factChip(`${esc(t("You"))} ${COMP.pos(e.mine.position, e.depth ?? 100)}${e.mine.host ? ` <span class="mono">${esc(e.mine.host)}</span>` : ""}`, "Your best place in this same check")}</div>` : "";
+    const mine = e.mine ? `<div class="cl-facts cl-facts-you">${factChip(`${COMP.who("you")} ${COMP.pos(e.mine.position, e.depth ?? 100)}${e.mine.host ? ` <span class="mono">${esc(e.mine.host)}</span>` : ""}`, "Your best place in this same check")}</div>` : "";
     return `${known(e.title) ? `<div class="cl-facts-title" dir="auto">${esc(e.title)}</div>` : ""}${bits.length ? `<div class="cl-facts">${bits.join("")}</div>` : ""}${mine}`;
   }
 
@@ -627,21 +627,21 @@
     const everyKeyword = p.keywords.length + (p.past_keywords || []).length;
     const listed = p.keywords.filter(found);
     const groups = { shared: listed.filter((k) => k.status === "shared"), theirs_only: listed.filter((k) => k.status === "theirs_only"), mine_only: listed.filter((k) => k.status === "mine_only"), past: (p.past_keywords || []).filter(found) };
-    const seg = `<div class="seg cl-seg" role="group" aria-label="${attr("Which keywords")}">${[["shared", "Shared"], ["theirs_only", "Only them"], ["mine_only", "Only you"], ["past", "Past"]].map(([id, word]) => `<button data-cl-kw="${id}" aria-pressed="${view.kw === id}">${t(word)}${unknown ? "" : ` <span class="tabular muted">${UI.num(groups[id].length)}</span>`}</button>`).join("")}</div>`;
-    if (unknown && !p.keywords.length && !(p.past_keywords || []).length) return `${seg}<p class="cl-none small sec" data-cl-kw-unknown>${esc(unknown)}</p>`;
+    const seg = `<div class="seg cl-seg" role="group" aria-label="${attr("Which keywords")}">${[["shared", "Shared"], ["theirs_only", "Only them", "them"], ["mine_only", "Only you", "you"], ["past", "Past"]].map(([id, word, who]) => `<button data-cl-kw="${id}" aria-pressed="${view.kw === id}">${who ? COMP.who(who, null, t(word)) : t(word)}${unknown ? "" : ` <span class="tabular muted">${UI.num(groups[id].length)}</span>`}</button>`).join("")}</div>`;
+    if (unknown && !p.keywords.length && !(p.past_keywords || []).length) return `<p class="cl-none small sec" data-cl-kw-unknown>${esc(unknown)}</p>`; // nothing to choose between yet, so no Shared / Only them buttons
     const search = everyKeyword >= FIND_FROM || q ? `<div class="cp-tools cl-tools">${TP.search(PAGES.keywords, t("Search keywords"))}</div>` : "";
     const rows = groups[view.kw] || [];
     const page = TP.view(PAGES.keywords, sortRows(rows, view.sort.key, view.sort.dir)), sorted = page.rows;
-    const head = (key, label, cls = "") => {
+    const head = (key, label, cls = "", logo = "") => {
       const on = view.sort.key === key;
-      return `<th scope="col" class="${cls}" aria-sort="${on ? (view.sort.dir > 0 ? "ascending" : "descending") : "none"}"><button type="button" class="th-btn" data-cl-sort="${key}">${t(label)}${icon(on && view.sort.dir < 0 ? "arrow-down" : "arrow-up")}</button></th>`;
+      return `<th scope="col" class="${cls}" aria-sort="${on ? (view.sort.dir > 0 ? "ascending" : "descending") : "none"}"><button type="button" class="th-btn" data-cl-sort="${key}">${logo}${t(label)}${icon(on && view.sort.dir < 0 ? "arrow-down" : "arrow-up")}</button></th>`;
     };
     const emptyWords = { shared: "You don't rank together on any keyword yet.", theirs_only: "They don't rank on any keyword without you.", mine_only: "You don't rank on any keyword without them.", past: "Nothing yet. A keyword lands here when they used to rank for it and the latest check no longer shows them." };
     if (!rows.length && q) return `${seg}${search}<p class="cl-none small sec">${esc(t("No keyword matches this search."))} <button type="button" class="link-btn" data-tp-clear data-tp-key="${PAGES.keywords}">${t("Clear the search")}</button></p>`;
     if (!rows.length) return `${seg}${search}<p class="cl-none small sec">${t(emptyWords[view.kw])}</p>`;
     const place = (n, url, depth) => `<span class="cl-cell">${COMP.pos(n, depth)}${url ? `<span class="cl-url">${COMP.link(url)}</span>` : ""}</span>`;
     const table = view.kw === "past"
-      ? `<table class="data cl-table"><thead><tr>${head("keyword", "Keyword")}${head("last_position", "Their last position")}${head("last_seen", "Last seen")}<th scope="col">${t("Tool")}</th></tr></thead><tbody>${sorted.map((k) => `<tr>
+      ? `<table class="data cl-table"><thead><tr>${head("keyword", "Keyword")}${head("last_position", "Their last position", "pt-col-them", UI.siteLogo(p.host, 16))}${head("last_seen", "Last seen")}<th scope="col">${t("Tool")}</th></tr></thead><tbody>${sorted.map((k) => `<tr>
           <td class="head-cell"><span class="kw" dir="auto">${esc(k.keyword)}</span></td>
           <td data-label="${attr("Their last position")}">${place(k.last_position, k.last_url)}</td>
           <td data-label="${attr("Last seen")}"><span class="nowrap">${esc(COMP.ago(k.last_seen))}</span></td>
@@ -656,7 +656,8 @@
     const ages = new Set(sorted.map((k) => COMP.ago(k.checked_at))), tools = new Set(sorted.map(toolOf));
     const once = sorted.length > 1 && tools.size === 1 && ages.size === 1;
     const toolCell = (k) => `<td data-label="${attr("Tool and age")}"><span class="cl-cell">${esc(toolOf(k))}<span class="second">${esc(COMP.ago(k.checked_at))}</span></span></td>`;
-    return `<table class="data cl-table cl-kw-table"><thead><tr>${head("keyword", "Keyword")}${head("my_position", "You", "c")}${head("their_position", "Them", "c")}${once ? "" : head("checked_at", "Tool and age")}</tr></thead><tbody>${sorted.map((k) => `<tr>
+    const logo = (host) => (host ? UI.siteLogo(host, 16) : ""); // You and Them carry their site's logo and colour, as on every table of the profile
+    return `<table class="data cl-table cl-kw-table"><thead><tr>${head("keyword", "Keyword")}${head("my_position", "You", "c pt-col-you", logo(COMP.site?.()?.host || view.data?.site?.host))}${head("their_position", "Them", "c pt-col-them", logo(view.data?.host))}${once ? "" : head("checked_at", "Tool and age")}</tr></thead><tbody>${sorted.map((k) => `<tr>
           <td class="head-cell"><span class="kw" dir="auto">${esc(k.keyword)}</span>${COMP.profileTabs?.keywordMarks?.(k) ?? ""}</td>
           <td class="c" data-label="${attr("You")}">${place(k.my_position, k.my_url, k.depth)}</td>
           <td class="c" data-label="${attr("Them")}">${place(k.their_position, k.their_url, k.depth)}</td>
@@ -675,7 +676,7 @@
     const page = (who, title, url) => `<div class="cl-pair-side"><span class="cl-who">${who}</span><span class="t" dir="auto">${esc(title || COMP.shortUrl(url))}</span>${COMP.link(url)}</div>`;
     return `<section class="card" aria-label="${attr("Their pages against mine")}"><div class="card-head"><h2>${t("Their pages against mine")}</h2>${rows.length ? `<span class="tag tabular">${UI.num(rows.length)}</span>` : ""}</div>
       ${rows.length ? `<ul class="rows cl-pairs">${rows.map((x) => `<li>
-        <div class="what cl-pair">${page(t("Them"), x.their_title, x.their_url)}${page(t("You"), x.my_title, x.my_url)}</div>
+        <div class="what cl-pair">${page(COMP.who("them"), x.their_title, x.their_url)}${page(COMP.who("you"), x.my_title, x.my_url)}</div>
         <div class="acts"><span class="small muted nowrap">${esc(many(x.shared_keywords || 0, "{n} shared keyword", "{n} shared keywords"))}</span><button class="btn btn-small" data-cl-pair="${x.id}">${icon("columns-3")}${t("Compare")}</button></div>
       </li>`).join("")}</ul>` : `<p class="cl-none small sec">${t("No pages to compare yet. A pair appears when you both rank for the same keyword.")}</p>`}</section>`;
   }
@@ -708,7 +709,7 @@
           <div class="cl-head-main">
             <h2 id="cl-profile-title" tabindex="-1">${UI.siteLogo(p.host, 24)} ${COMP.link(url, p.display || p.host, "cl-head-link")}${icon("external-link", "muted")}${COMP.trackingSwitch?.(p) ?? ""}</h2>
             ${COMP.profileTabs?.factsLine?.(p, view.insights) ?? ""}
-            <p class="small sec cl-head-meta">${esc(howAdded(p.source))} · ${esc(fill("added {when}", { when: COMP.ago(p.added_at) }))} · ${esc(fill("compared with {site}", { site: p.site?.host || COMP.site()?.host || "" }))} · <span id="cl-watch-state" class="cl-head-watch">${watchArea(p)}</span></p>
+            <p class="small sec cl-head-meta" data-tip="${esc(`${howAdded(p.source)} · ${fill("added {when}", { when: COMP.ago(p.added_at) })}`)}">${COMP.siteId === COMP.ALL ? `${esc(fill("compared with {site}", { site: p.site?.host || "" }))} · ` : ""}<span id="cl-watch-state" class="cl-head-watch">${watchArea(p)}</span></p>
           </div>
           <div class="cl-head-acts">${COMP.notes?.button?.([{ label: p.display || p.host, icon: "crosshair", where: { scope: "competitor", competitorId: p.id, siteId: COMP.siteId } }]) ?? ""}<button class="btn" data-cl-read="${p.id}" ${crawling(p.crawl) ? "disabled" : ""} ${paused(p) ? "hidden" : ""}>${icon("refresh-cw")}${t("Refresh data")}</button><button class="btn btn-ghost" data-cl-remove="${p.id}">${icon("trash-2")}${t("Remove")}</button></div>
         </div>
@@ -918,7 +919,7 @@
     });
     const place = (e) => `<span class="cl-cell">${COMP.pos(e.position, e.my_depth)}${e.url ? `<span class="cl-url">${COMP.link(e.url)}</span>` : ""}</span>`;
     const capped = (item.keywords || 0) > page.total ? fill("Showing the first {n}.", { n: UI.num(page.total) }) : null;
-    return `<div class="cl-pages"><div class="cl-scroll"><table class="data cl-table"><thead><tr><th scope="col">${t("Keyword")}</th><th scope="col">${t("Their position")}</th><th scope="col">${t("Your position")}</th><th scope="col">${t("Checked with")}</th></tr></thead><tbody>
+    return `<div class="cl-pages"><div class="cl-scroll"><table class="data cl-table"><thead><tr><th scope="col">${t("Keyword")}</th><th scope="col" class="pt-col-them">${COMP.who("them", null, t("Their position"))}</th><th scope="col" class="pt-col-you">${COMP.who("you", null, t("Your position"))}</th><th scope="col">${t("Checked with")}</th></tr></thead><tbody>
       ${rows.map((e) => `<tr>
         <td class="head-cell"><span class="kw" dir="auto">${esc(e.keyword)}</span></td>
         <td data-label="${attr("Their position")}">${place(e)}</td>

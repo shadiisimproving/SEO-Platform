@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from flask import Blueprint, current_app, g, jsonify, request
 
+from seo.backlinks import logos
+from seo.backlinks.cleaner import registrable_domain
 from seo.core.errors import Refused
 from seo.extras import auto as extras_auto, service as extras, summaries  # noqa: F401 - auto registers its job handler here too
 from seo.imports import clarity_reports
@@ -35,7 +37,11 @@ def overview():
 
 @metrics_api.get("/metrics/channels")
 def channels():
-    return jsonify(service.channels(_scope()))
+    answer = service.channels(_scope())
+    # A subdomain may have no icon of its own (ps.popcash.net), so the site it belongs to is asked for as well.
+    names = [row["domain"] for row in answer.get("referrers") or []]
+    logos.queue_missing(_engine(), [*names, *map(registrable_domain, names)])
+    return jsonify(answer)
 
 
 @metrics_api.get("/metrics/conversions")

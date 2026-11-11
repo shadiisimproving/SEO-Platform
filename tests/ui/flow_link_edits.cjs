@@ -26,7 +26,7 @@ const check = (name, ok, extra = "") => { results.push(Boolean(ok)); console.log
   await row().scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${shots}/links-table.png` });
   check("every row has an Edit button", (await page.locator("#cs-links-table tbody tr").count()) === (await page.locator("#cs-links-table [data-cs-edit]").count()));
-  const startCount = Number((await row().locator("td").nth(2).innerText()).trim());
+  const startCount = Number((await row().locator("td").nth(3).innerText()).trim());
 
   await row().locator("[data-cs-edit]").click();
   await settle();
@@ -77,7 +77,7 @@ const check = (name, ok, extra = "") => { results.push(Boolean(ok)); console.log
   check("saving closes the panel", !(await panel()));
   const text = await row().innerText();
   check("the table shows the new score and tool", text.includes("81") && text.includes("Ahrefs"), text.replace(/\s+/g, " ").slice(0, 110));
-  check("How many follows the ticks", Number((await row().locator("td").nth(2).innerText()).trim()) === startCount - 1);
+  check("How many follows the ticks", Number((await row().locator("td").nth(3).innerText()).trim()) === startCount - 1);
   check("it says it was typed by hand", (await row().locator(".cg-by-hand").count()) === 1);
   await row().scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${shots}/links-edited.png` });
@@ -109,10 +109,10 @@ const check = (name, ok, extra = "") => { results.push(Boolean(ok)); console.log
   await page.locator("#panel").screenshot({ path: `${shots}/edit-panel-edited.png` });
   await page.locator("#cg-edit-reset").click();
   await settle(800);
-  check("back to automatic restores the row", !(await row().innerText()).includes("Ahrefs") && (await row().locator(".cg-by-hand").count()) === 0 && Number((await row().locator("td").nth(2).innerText()).trim()) === startCount);
+  check("back to automatic restores the row", !(await row().innerText()).includes("Ahrefs") && (await row().locator(".cg-by-hand").count()) === 0 && Number((await row().locator("td").nth(3).innerText()).trim()) === startCount);
   await page.locator('.toast button:has-text("Undo")').last().click();
   await settle(800);
-  check("Undo brings the edit back", (await row().innerText()).includes("Ahrefs") && Number((await row().locator("td").nth(2).innerText()).trim()) === startCount - 1);
+  check("Undo brings the edit back", (await row().innerText()).includes("Ahrefs") && Number((await row().locator("td").nth(3).innerText()).trim()) === startCount - 1);
 
   // A domain the list doesn't have, read in a tool.
   const NEW = "fresh-from-a-tool.example";

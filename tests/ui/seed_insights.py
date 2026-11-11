@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import json
 import sys
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
@@ -99,7 +99,48 @@ def _catalogue(engine, site_id: int, w: World) -> None:
         conn.execute(text("INSERT INTO search_notes (site_id, day, text) VALUES (:s, :d, 'Moved to a faster host')"), {"s": site_id, "d": END - timedelta(days=45)})
 
 
-def seed(engine, catalogue: bool = False) -> dict:
+def _mix(engine, site_id: int, w: World) -> None:
+    """Rank and clicks: tracked keywords, rank checks and Search Console numbers in France, one for each signal."""
+    from seo.serp import store
+    from seo.serp.tools import Answer, Found
+
+    w.spread(*NOW, "green socks", HOME + "socks", 1, 60, 5)
+    w.spread(*NOW, "linen shirts", HOME + "shirts", 12, 90, 3)
+    w.save()
+    rival, other = "rival-one.test", "rival-two.test"
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO gsc_query_country (site_id, day, country, query_hash, query, clicks, impressions, position) SELECT site_id, day, 'fra', query_hash, query, clicks, impressions, position FROM gsc_query WHERE site_id = :s"), {"s": site_id})
+        for host in (rival, other):
+            found = conn.execute(text("INSERT INTO sites (host, start_url, kind) VALUES (:h, :u, 'competitor')"), {"h": host, "u": f"https://{host}/"}).lastrowid
+            conn.execute(text("INSERT INTO site_competitors (site_id, competitor_id, source, tracking) VALUES (:s, :r, 'manual', 'on')"), {"s": site_id, "r": found})
+
+    def keyword(words: str) -> int:
+        with engine.begin() as conn:
+            kid = conn.execute(text("INSERT INTO keywords (keyword, keyword_hash, country, language) VALUES (:k, :h, 'fr', 'fr')"), {"k": words, "h": store.keyword_hash(words)}).lastrowid
+            conn.execute(text("INSERT INTO site_keywords (site_id, keyword_id) VALUES (:s, :k)"), {"s": site_id, "k": kid})
+        return kid
+
+    def check(kid: int, results: list, ago: int = 1, depth: int = 30, ai: str = "not_captured", cited: tuple = ()) -> None:
+        at = (datetime.now(UTC) - timedelta(days=ago)).strftime("%Y-%m-%d %H:%M:%S")
+        store.save_check(engine, kid, "google", Answer("SerpApi", "FR", depth, [Found(p, u) for p, u in results], ai_state=ai, ai_citations=list(cited)), "refresh", at=at)
+
+    a, b = f"https://{rival}/guide", f"https://{other}/page"
+    kid = keyword("blue shoes")
+    check(kid, [(1, b), (9, HOME + "blue/")], ago=12)
+    check(kid, [(1, b), (2, a), (18, HOME + "blue/")])
+    check(keyword("green socks"), [(16, HOME + "socks")])  # a drop seen once: to check
+    kid = keyword("shoe laces")
+    check(kid, [(5, HOME + "laces"), (8, a)], ago=12)
+    check(kid, [(3, a), (6, HOME + "laces")])
+    check(keyword("boot polish"), [(13, HOME + "polish")])
+    check(keyword("red shoes"), [(6, HOME + "red")], ai="present")
+    check(keyword("linen shirts"), [(3, HOME + "other-shirts")])  # people click another page
+    check(keyword("garden furniture"), [(1, a), (2, b)], depth=10)
+    check(keyword("forgotten phrase"), [(1, b)], depth=10)
+    keyword("never checked yet")
+
+
+def seed(engine, catalogue: bool = False, mix: bool = False) -> dict:
     assert engine.url.database.endswith("_test"), "test databases only"
     site_id = _site(engine)
     w = World(engine, site_id)
@@ -107,11 +148,13 @@ def seed(engine, catalogue: bool = False) -> dict:
     if catalogue:
         _catalogue(engine, site_id, w)
     w.save()
+    if mix:
+        _mix(engine, site_id, w)
     return insights.run(engine, site_id)
 
 
 def main() -> None:
-    found = seed(make_engine(test=True), "--catalogue" in sys.argv[1:])
+    found = seed(make_engine(test=True), "--catalogue" in sys.argv[1:], "--mix" in sys.argv[1:])
     print({k: found[k] for k in ("site_id", "data_through", "added") if k in found})
 
 

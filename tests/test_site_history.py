@@ -5,6 +5,7 @@ import pytest
 from sqlalchemy import text
 
 from seo.competitors import gaps, history, insights, tracking
+from seo.web import create_app
 from seo.core.errors import NotFound
 from seo.uptime import service as uptime
 from tests.test_competitors_backend import REFERRERS, add_rival, scalar, second_site, seed, world  # noqa: F401  (world is a fixture)
@@ -264,3 +265,19 @@ def test_an_archive_that_is_down_is_not_asked_a_second_time(real_lookup):
     with pytest.raises(history.HistoryFailed, match="http_503"):
         history.read_cdx("rival.example")
     assert len(seen) == 1
+
+
+def test_opening_a_profile_asks_for_the_icons_of_the_sites_linking_to_them(world, monkeypatch):
+    rival = add_rival(world)
+    real, asked = insights.insights, []
+
+    def with_links(*args):
+        found = real(*args)
+        found["links"]["top"] = [{"domain": "linking-site.example", "authority": 40, "authority_label": None, "spam": False}]
+        return found
+
+    monkeypatch.setattr(insights, "insights", with_links)
+    monkeypatch.setattr("seo.web.competitors_api.logos.queue_missing", lambda engine, domains: asked.extend(domains))
+    client = create_app(engine=world.engine, auth=False).test_client()
+    assert client.get(f"/api/competitors/{rival}/insights?site_id={world.own}").status_code == 200
+    assert asked == ["linking-site.example"]

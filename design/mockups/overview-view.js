@@ -146,6 +146,7 @@
   };
   const numCell = (value, change) => `<span class="ov-nc"><span class="ov-v">${value}</span>${change === null ? "" : `<span class="ov-dslot">${change}</span>`}</span>`;
   const posBadge = (p) => (p === null || p === undefined ? "—" : `<span class="pos ${p <= 3 ? "pos-top3" : p <= 10 ? "pos-top10" : ""}">${dec1(p)}</span>`);
+  window.OV_CELLS = { cellChange, numCell, posBadge }; // the same cells on Insights
 
   // ---- the sentence on top ----------------------------------------------------------------------
   // The sentence is HTML: a page in it opens that page, and everything taken from the data is escaped here.

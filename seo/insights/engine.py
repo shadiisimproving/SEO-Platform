@@ -15,7 +15,7 @@ from datetime import date
 
 from sqlalchemy import Engine, bindparam, text
 
-from seo.insights import aio, data, decline, impact, movement, onpage, rules, technical, value, wins
+from seo.insights import aio, data, decline, impact, mix, movement, onpage, rules, technical, value, wins
 from seo.insights.finding import Finding, Result
 from seo.worker import queue
 from seo.worker.runner import handler
@@ -57,6 +57,8 @@ def detect(ctx: data.Ctx) -> Result:
     take(wins.questions(ctx))
     take(wins.topics(ctx))
     take(wins.worth_tracking(ctx))
+    # Rank and clicks: saved rank checks joined with Search Console
+    take(mix.signals(ctx))
     # E. Technical
     take(technical.duplicates(ctx))
     take(technical.shown_broken(ctx, gone_pages))
@@ -159,7 +161,7 @@ def _save(engine: Engine, ctx: data.Ctx, result: Result) -> dict:
             else:
                 conn.execute(
                     text(
-                        "UPDATE search_findings SET severity = :v, at_stake = :a, evidence = :e, status = :st, dismissed_stake = :ds, data_through = :d, "
+                        "UPDATE search_findings SET grp = :g, severity = :v, at_stake = :a, evidence = :e, status = :st, dismissed_stake = :ds, data_through = :d, "
                         "last_seen = UTC_TIMESTAMP(3), gone_at = NULL, page = :p, first_seen = IF(:back, UTC_TIMESTAMP(3), first_seen) WHERE id = :i"
                     ),
                     {**values, "i": before["id"], "back": back},

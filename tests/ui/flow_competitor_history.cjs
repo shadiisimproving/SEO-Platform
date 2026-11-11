@@ -55,7 +55,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await page.click(`[data-cs-open="${rows[0].id}"]`); await settle();
   await tab("site");
   await page.screenshot({ path: OUT + "4-their-site-read.png", fullPage: true });
-  check("a competitor whose pages were read shows the build table", (await page.locator("#pt-panel table").count()) >= 2);
+  check("a competitor whose pages were read shows the build table", (await page.locator("#pt-panel table").count()) >= 1 && (await page.locator("#pt-panel .pt-duels .pt-duel").count()) >= 1);
 
   // Phone width.
   await page.setViewportSize({ width: 390, height: 860 }); await settle();

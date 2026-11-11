@@ -169,7 +169,10 @@
         pen = true;
       });
       const single = days.length === 1 && s.values[days[0]] !== undefined ? `<circle cx="${x(0)}" cy="${y(s.values[days[0]])}" r="4" fill="${s.color}"/>` : "";
-      return `<path class="lv-line" d="${d}" stroke="${s.color}"${s.dash ? ' stroke-dasharray="5 5"' : ""}/>${single}`;
+      // A point with a gap on both sides has no line to sit on, so it would not show at all: it gets a round dot of its own.
+      const has = (i) => s.values[days[i]] !== null && s.values[days[i]] !== undefined;
+      const lone = days.length === 1 ? "" : days.map((day, i) => (has(i) && !has(i - 1) && !has(i + 1) ? `<path class="lv-line lv-lone" d="M${x(i).toFixed(1)},${y(s.values[day]).toFixed(1)}h0" stroke="${s.color}"/>` : "")).join("");
+      return `<path class="lv-line" d="${d}" stroke="${s.color}"${s.dash ? ' stroke-dasharray="5 5"' : ""}/>${single}${lone}`;
     }).join("");
     const grid = [0, .5, 1].map((f) => `<line class="lv-grid" x1="0" x2="${W}" y1="${f * H}" y2="${f * H}"/>`).join("");
     // Dots sit over the chart in HTML: inside the stretched SVG a circle would turn into an oval.
@@ -358,6 +361,9 @@
     const days = d.series.map((r) => r.day);
     const series = d.series_names.map((name) => ({ name, color: colourOf(name), values: Object.fromEntries(d.series.map((r) => [r.day, r.values[name] ?? 0])) }));
     const swatch = (name) => `<i class="lv-key" style="background:${colourOf(name)}"></i>${esc(t(name))}`;
+    // The server starts fetching these sites' icons when this data is asked for, so look for them once per list.
+    const referrerList = d.referrers.map((r) => r.domain).join(",");
+    if (referrerList !== LV.referrersWatched) { LV.referrersWatched = referrerList; window.COMP?.refreshLogos?.({ watch: true }); }
     return page(head, `
       <p class="small muted" style="margin:0 0 12px">${throughNote(d.through, "", d)}</p>${hiddenNote(d.hid_rows)}
       <section class="tiles">
@@ -376,7 +382,7 @@
         { key: "change", label: "Change", num: true, html: (r) => (r.change === null ? `<span class="muted">—</span>` : `<span class="${r.change >= 0 ? "good" : "crit"} d-pill">${r.change >= 0 ? "+" : "−"}${num(Math.abs(r.change))}%</span>`) },
       ], d.channels)}</section>
       <section class="card" style="margin-top:14px"><div class="card-head"><h2>${t("Referring sites")}</h2></div>${dataTable("referrers", [
-        { key: "domain", label: "Site", html: (r) => `<span class="mono" dir="auto">${esc(r.domain)}</span>` },
+        { key: "domain", label: "Site", html: (r) => `<span class="with-logo">${UI.siteLogo(r.domain, 16)}<span class="logo-text mono" dir="auto">${esc(r.domain)}</span></span>` },
         { key: "sessions", label: "Visits", num: true },
         { key: "leads", label: "Leads", num: true },
       ], d.referrers, { empty: "No referring sites in this period.", search: "Search sites" })}</section>

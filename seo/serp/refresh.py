@@ -504,6 +504,7 @@ def _work_item(engine: Engine, picker: _Picker, run, item, noted: set, fails: di
 
 def _refresh_pairs(engine: Engine, run_id: int) -> None:
     from seo.competitors import pairs  # imported here: pairs reads what this saves
+    from seo.insights import engine as insights_engine
 
     with engine.connect() as conn:
         sites = [row[0] for row in conn.execute(
@@ -512,6 +513,7 @@ def _refresh_pairs(engine: Engine, run_id: int) -> None:
         ).all()]
     for site_id in sites:
         pairs.refresh_auto_pairs(engine, site_id)
+        insights_engine.enqueue(engine, site_id)  # Rank and clicks reads these checks
 
 
 @handler(JOB_KIND)

@@ -10,7 +10,7 @@ from seo.collectors.common import digest
 from seo.core.errors import NotFound, Refused
 from seo.insights import rules
 
-GROUPS = ("first", "changed", "decline", "wins", "leads", "technical", "impact")
+GROUPS = ("first", "changed", "decline", "wins", "leads", "technical", "impact", "mix")
 FIRST_SHOWN = 15
 LIST_ROWS = 300
 
@@ -85,7 +85,12 @@ def listing(engine: Engine, site_id, group: str = "first", status: str = "open")
     rows = _fetch(engine, where + f"ORDER BY f.at_stake DESC, f.id LIMIT {LIST_ROWS}", values)
     if group == "first":
         rows = _one_per_subject(rows)[:FIRST_SHOWN]
-    return {"group": group, "status": status, "rows": rows, "counts": counts(engine, sites), "summary": summary(engine, sites)}
+    found = {"group": group, "status": status, "rows": rows, "counts": counts(engine, sites), "summary": summary(engine, sites)}
+    if group == "mix":
+        from seo.insights import mix
+
+        found["coverage"] = mix.coverage(engine, sites)
+    return found
 
 
 # Findings that restate the site's own change (a country, brand searches, one day, data gaps): their clicks are already in
@@ -134,6 +139,26 @@ def _stake_rows(engine: Engine, sites: list[int], where: str) -> list[dict]:
         return [dict(r) for r in conn.execute(statement, {"sites": sites}).mappings().all()]
 
 
+# Findings about clicks already lost; the rest are clicks that could be won.
+LOSS_KINDS = frozenset({"page_down", "dropped_out", "query_down", "decay", "slide", "shown_broken", "lead_page", "rank_drop", "rival_passed", "page_switch"})
+
+
+def recover_and_win(rows: list[dict]) -> tuple[int, int]:
+    """The two figures on top. A query or page counted as a loss isn't counted again as something to win."""
+    lost = [r for r in rows if r["kind"] in LOSS_KINDS]
+    taken = {(r["site_id"], r["query"]) for r in lost if r["query"]} | {(r["site_id"], r["page"]) for r in lost if r["page"]}
+    win = [r for r in rows if r["kind"] not in LOSS_KINDS and (r["site_id"], r["query"]) not in taken and (r["site_id"], r["page"]) not in taken]
+    return round(stake_total(lost)), round(stake_total(win))
+
+
+def _days(engine: Engine, change: dict) -> list[dict]:
+    """Clicks day by day over both periods, for the small graph beside the sentence."""
+    e = change["evidence"]
+    with engine.connect() as conn:
+        rows = conn.execute(text("SELECT day, clicks FROM gsc_daily WHERE site_id = :s AND day BETWEEN :a AND :b ORDER BY day"), {"s": change["site_id"], "a": e["before_from"], "b": e["to"]}).mappings().all()
+    return [{"day": r["day"].isoformat(), "clicks": int(r["clicks"] or 0)} for r in rows]
+
+
 def counts(engine: Engine, sites: list[int]) -> dict:
     rows = _stake_rows(engine, sites, "")
     found: dict = {}
@@ -161,8 +186,11 @@ def summary(engine: Engine, sites: list[int]) -> dict:
         ).all():
             found = r[0] if isinstance(r[0], dict) else json.loads(r[0] or "{}")
             needs.update(found.get("needs") or {})
+    serious = _stake_rows(engine, sites, "AND severity <> 'info'")
+    to_recover, to_win = recover_and_win(serious)
     return {
-        "changes": changes, "open": int(row["n"]), "at_stake": round(stake_total(_stake_rows(engine, sites, "AND severity <> 'info'"))), "fixed": int(row["fixed"] or 0),
+        "changes": changes, "open": int(row["n"]), "at_stake": round(stake_total(serious)), "fixed": int(row["fixed"] or 0), "to_recover": to_recover, "to_win": to_win,
+        "days": _days(engine, changes[0]) if len(changes) == 1 and changes[0]["evidence"].get("before_from") else [],
         "ran_at": row["ran_at"].isoformat() + "Z" if row["ran_at"] else None, "needs": needs, "sites": len(sites),
     }
 

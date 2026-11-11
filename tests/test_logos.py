@@ -264,6 +264,22 @@ def test_opening_the_link_gaps_asks_for_icons_never_asked_before(world):
     assert {"old.example", "rival.example"} <= asked
 
 
+def test_opening_channels_asks_for_each_referring_site_and_its_parent(world, monkeypatch):
+    """A subdomain may have no icon of its own, so the site it belongs to is asked for too. A name that isn't a domain is left out."""
+    rows = [{"domain": name, "sessions": 1, "leads": 0} for name in ("plain.example", "m.social.example", "(not set)")]
+    monkeypatch.setattr("seo.web.metrics_api._scope", lambda: None)
+    monkeypatch.setattr("seo.web.metrics_api.service.channels", lambda scope: {"referrers": rows})
+    assert world.client.get("/api/metrics/channels").get_json()["referrers"] == rows
+    assert pending(world) == ["m.social.example", "plain.example", "social.example"]
+
+
+def test_channels_with_nothing_to_show_asks_for_no_icon(world, monkeypatch):
+    monkeypatch.setattr("seo.web.metrics_api._scope", lambda: None)
+    monkeypatch.setattr("seo.web.metrics_api.service.channels", lambda scope: {"state": "not_connected"})
+    assert world.client.get("/api/metrics/channels").status_code == 200
+    assert pending(world) == []
+
+
 def test_an_accented_domain_gets_its_icon_under_either_spelling(world):
     ascii_name = "café-du-matin.example".encode("idna").decode()
     # httpx hands the fake internet the host as people read it, whatever went over the wire.

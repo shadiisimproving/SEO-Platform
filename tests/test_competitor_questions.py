@@ -90,3 +90,54 @@ def test_a_page_that_answers_one_question_keeps_it(topics):
     theirs = [page("https://rival.example/visa-investisseur/", "Comment obtenir un visa investisseur ?", ["Comment obtenir un visa investisseur ?"])]
     out = insights._questions(None, 1, theirs, [])
     assert out["groups"][0]["questions"] == ["Comment obtenir un visa investisseur ?"]
+
+
+class _NoPairs:
+    """A connection with the given rows in page_pairs."""
+    def __init__(self, rows=()):
+        self.rows = list(rows)
+
+    def execute(self, *_):
+        rows = self.rows
+
+        class Result:
+            def mappings(self):
+                return rows
+        return Result()
+
+
+def group(url, title):
+    return {"url": url, "title": title, "questions": ["Une question ?"], "other": [], "related": True, "score": 1}
+
+
+MY_VISA = page("https://mine.example/visa-investisseur/", "Visa investisseur à Ville", ["Quel prix pour ce visa ?", "Qui peut le demander ?"])
+MY_PRICE = page("https://mine.example/prix/", "Tarifs comptables", ["Combien ça coûte ?"])
+
+
+def test_a_saved_pair_wins_and_brings_my_questions():
+    groups = [group("https://rival.example/a/", "Tout autre sujet")]
+    conn = _NoPairs([{"my_url": MY_PRICE["url"], "their_url": "https://rival.example/a/"}])
+    best = [{"url": "https://rival.example/a/", "my_url": MY_VISA["url"]}]
+    insights._attach_my_pages(conn, 1, 2, groups, best, [MY_VISA, MY_PRICE])
+    mine = groups[0]["mine"]
+    assert (mine["url"], mine["how"], mine["read"]) == (MY_PRICE["url"], "paired", True)
+    assert mine["questions"] == ["Combien ça coûte ?"]
+
+
+def test_same_keyword_comes_before_a_guess():
+    groups = [group("https://rival.example/a/", "Visa investisseur à Ville")]
+    insights._attach_my_pages(_NoPairs(), 1, 2, groups, [{"url": "https://rival.example/a/", "my_url": MY_PRICE["url"]}], [MY_VISA, MY_PRICE])
+    assert (groups[0]["mine"]["url"], groups[0]["mine"]["how"]) == (MY_PRICE["url"], "keyword")
+
+
+def test_closest_heading_needs_two_shared_words_and_says_it_is_a_guess():
+    close, loose = group("https://rival.example/a/", "Obtenir un visa investisseur"), group("https://rival.example/b/", "Visa touristique pour enfants")
+    insights._attach_my_pages(_NoPairs(), 1, 2, [close, loose], [], [MY_VISA, MY_PRICE])
+    assert (close["mine"]["url"], close["mine"]["how"]) == (MY_VISA["url"], "topic")
+    assert loose["mine"] is None
+
+
+def test_a_compared_page_not_read_yet_says_so():
+    groups = [group("https://rival.example/a/", "Sujet")]
+    insights._attach_my_pages(_NoPairs([{"my_url": "https://mine.example/unread/", "their_url": "https://rival.example/a/"}]), 1, 2, groups, [], [MY_VISA])
+    assert groups[0]["mine"] == {"url": "https://mine.example/unread/", "how": "paired", "read": False, "title": None, "questions": []}

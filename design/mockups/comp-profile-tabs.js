@@ -32,6 +32,8 @@
   const share = (v) => (known(v) ? `${Math.round(v * 100)}%` : dash);
   /* The app doesn't read my own site's pages yet, so a "You" there would be a false 0. Leave "You" out and say why once. */
   const mineRead = (ins) => Boolean(ins?.facts?.my_pages);
+  // You and Them column heads: the site's logo and the same colour as the charts, so the two sides can't be mixed up.
+  const vsHead = (who, host, label) => `<th scope="col" class="c pt-col-${who}"><span class="pt-col-name">${host ? UI().siteLogo(host, 16) : `<i class="pt-key pt-key-${who}" aria-hidden="true"></i>`}${label || t(who === "you" ? "You" : "Them")}</span></th>`;
   /* Why "You" is missing: my site is being read for the first time, couldn't be read, or waits for tonight's run. */
   const notReadNote = () => {
     const r = S.ins?.facts?.my_reading;
@@ -54,7 +56,12 @@
       const key = `competitors/${p.id}/insights?site_id=${site}`;
       window.COMP_SAMPLE.get[key] ||= sampleInsights(p);
     }
-    try { return await COMP.api("GET", `competitors/${p.id}/insights?site_id=${site}`); } catch { return null; }
+    try {
+        const answer = await COMP.api("GET", `competitors/${p.id}/insights?site_id=${site}`);
+        // The server has just asked for the icons of the sites linking to them; they arrive a little later.
+        if (answer?.links?.top?.some((d) => !window.LOGOS_KNOWN?.has(d.domain))) COMP.refreshLogos?.({ watch: true });
+        return answer;
+      } catch { return null; }
   }
 
   // ---- the answer, in one sentence ------------------------------------------------------------
@@ -100,8 +107,7 @@
     const out = [];
     if (f.first_capture) out.push(fill("Online since {date}", { date: monthYear(f.first_capture) }));
     if (known(f.da)) out.push(fill("DA {n}", { n: num(f.da) }));
-    if (known(f.pages)) out.push(many(f.pages, "{n} page", "{n} pages"));
-    if (f.cms) out.push(esc(f.cms));
+    if (f.cms) out.push(esc(f.cms)); // the page count is in the figures below: said once
     if (f.languages?.length) out.push(f.languages.map((l) => esc(languageName(l))).join(", "));
     return out.length ? `<p class="pt-facts small">${out.join(" · ")}</p>` : "";
   }
@@ -115,24 +121,20 @@
   function tiles(p, ins, acts = []) {
     const c = p.compare || {}, f = ins?.facts || {};
     const off = p.tracking && p.tracking !== "on";
-    const fig = (label, value, sub = "", tip = "") => `<div class="pt-fig" ${tip ? `data-tip="${esc(tip)}"` : ""}><span class="pt-fig-lab">${esc(label)}</span><span class="pt-fig-val"><b class="tabular">${value}</b>${sub ? `<span class="pt-fig-sub">${sub}</span>` : ""}</span></div>`;
-    const them = `<i class="pt-key pt-key-them" aria-hidden="true"></i>`, you = `<i class="pt-key pt-key-you" aria-hidden="true"></i>`;
+    const fig = (label, value, sub = "", tip = "", who = "") => `<div class="pt-fig" ${tip ? `data-tip="${esc(tip)}"` : ""}><span class="pt-fig-lab">${who ? COMP.who(who, null, esc(label)) : esc(label)}</span><span class="pt-fig-val"><b class="tabular">${value}</b>${sub ? `<span class="pt-fig-sub">${sub}</span>` : ""}</span></div>`;
     const out = [];
-    if (!off) {
-      const why = kwUnknown();
-      const blank = why ? `<span class="muted" title="${esc(t(KW_WHY[why]))}">—</span>` : "";
-      if (why) [["Shared keywords"], ["Only them"], ["Only you"]].forEach(([label]) => out.push(fig(t(label), blank, "", t(KW_WHY[why]))));
-      else {
-      out.push(fig(t("Shared keywords"), figure(c.shared), c.shared ? esc(fill("{them} lead {they} · {you} lead {mine}", { them: t("Them"), they: num(c.they_ahead), you: t("You"), mine: num(c.i_ahead) })) : "", t("Keywords you both rank on in the results checked.")));
-      out.push(fig(t("Only them"), figure(c.theirs_only), "", t("Keywords they rank on and you weren't found on.")));
-      out.push(fig(t("Only you"), figure(c.mine_only), "", t("Keywords you rank on and they weren't found on.")));
-      }
+    // With no keyword list or no check yet there are no keyword figures to show, and the Keywords tab says why: no row of dashes.
+    if (!off && !kwUnknown()) {
+      out.push(fig(t("Shared keywords"), figure(c.shared), c.shared ? fill("{them} lead {they} · {you} lead {mine}", { them: COMP.who("them"), they: num(c.they_ahead), you: COMP.who("you"), mine: num(c.i_ahead) }) : "", t("Keywords you both rank on in the results checked.")));
+      out.push(fig(t("Only them"), figure(c.theirs_only), "", t("Keywords they rank on and you weren't found on."), "them"));
+      out.push(fig(t("Only you"), figure(c.mine_only), "", t("Keywords you rank on and they weren't found on."), "you"));
     }
-    // The big number is theirs, and says so: "8  Them 8 · You 8", like the shared-keywords figure beside it. Yours is — until your site is read.
+    // Each number once, with its owner's logo and name beside it. Yours is left out until your site is read.
+    const myHost = COMP.site?.()?.host || p.site?.host;
+    const owned = (who, host, value) => `${COMP.who(who, host)}${value}`;
     const theirPages = p.crawl?.status === "blocked" ? dash : figure(f.pages);
-    const pagesBoth = `${them}${t("Them")} ${theirPages} · ${you}${t("You")} ${known(f.my_pages) && f.my_pages > 0 ? num(f.my_pages) : dash}`;
-    out.push(fig(t("Pages"), theirPages, pagesBoth, f.my_pages ? t("Pages found on each site.") : t("Yours are counted once your site is read.")));
-    if (known(f.da) || known(f.my_da)) out.push(fig(t("Authority"), figure(f.da), known(f.my_da) ? `${you}${t("You")} ${num(f.my_da)}` : "", t("Moz Domain Authority.")));
+    out.push(fig(t("Pages"), `${f.my_pages ? owned("you", myHost, num(f.my_pages)) : ""}${owned("them", p.host, theirPages)}`, "", f.my_pages ? t("Pages found on each site.") : t("Yours are counted once your site is read.")));
+    if (known(f.da) || known(f.my_da)) out.push(fig(t("Authority"), `${known(f.my_da) ? owned("you", myHost, num(f.my_da)) : ""}${owned("them", p.host, figure(f.da))}`, "", t("Moz Domain Authority.")));
     return `<section class="pt-strip" aria-label="${esc(t("How you compare"))}">${out.join("")}${acts.length ? `<div class="pt-answer-acts">${acts.join("")}</div>` : ""}</section>`;
   }
 
@@ -196,7 +198,7 @@
     };
     const tools = best.length > 10 ? `<div class="pt-tools">${TP().search(BEST, t("Search their pages"))}</div>` : "";
     if (!rows.length) return `${tools}<p class="cl-none small sec">${t("No page matches the search.")}</p>`;
-    return `${tools}<div class="cl-scroll"><table class="data cl-table pt-table" id="pt-best"><thead><tr><th scope="col">${t("Their page")}</th>${head("keywords", "Keywords")}${head("position", "Best position")}<th scope="col">${t("Your page")}</th></tr></thead><tbody>${page.rows.map((b) => `<tr>
+    return `${tools}<div class="cl-scroll"><table class="data cl-table pt-table" id="pt-best"><thead><tr><th scope="col" class="pt-col-them">${COMP.who("them", p.host, t("Their page"))}</th>${head("keywords", "Keywords")}${head("position", "Best position")}<th scope="col" class="pt-col-you">${COMP.who("you", COMP.site?.()?.host || p.site?.host, t("Your page"))}</th></tr></thead><tbody>${page.rows.map((b) => `<tr>
           <td class="head-cell"><span class="cl-cell"><span class="t" dir="auto">${esc(b.title || COMP.shortUrl(b.url))}</span><span class="second">${COMP.link(b.url)}</span></span></td>
           <td class="c tabular" data-label="${esc(t("Keywords"))}">${num(b.keywords)}</td>
           <td class="c" data-label="${esc(t("Best position"))}">${COMP.pos(b.best_position)}</td>
@@ -210,11 +212,12 @@
     const top = sections[0];
     const lead = top ? `<p class="pt-lead">${esc(fill("Most of their pages are in {path}: {n} of {total}.", { path: top.path, n: num(top.pages), total: num(total) }))}${top.new_90d ? ` ${esc(many(top.new_90d, "{n} of them is new in the last 90 days.", "{n} of them are new in the last 90 days."))}` : ""}</p>` : "";
     const changes = sections.some((x) => x.last_change);
-    const head = `<th scope="col">${t("Folder")}</th><th scope="col" class="c">${t("Their pages")}</th>${showMine ? `<th scope="col" class="c">${t("Your pages")}</th>` : ""}<th scope="col" class="c">${t("New in 90 days")}</th>${changes ? `<th scope="col">${t("Last change")}</th>` : ""}`;
+    // You first, as on every table here. Their page count, New and Last change are all about them, so all three carry their colour.
+    const head = `<th scope="col">${t("Folder")}</th>${showMine ? vsHead("you", COMP.site?.()?.host || S.p?.site?.host, t("Your pages")) : ""}${vsHead("them", host, t("Their pages"))}<th scope="col" class="c pt-col-them">${t("New in 90 days")}</th>${changes ? `<th scope="col" class="pt-col-them">${t("Last change")}</th>` : ""}`;
     const rows = sections.map((x) => `<tr>
         <td class="head-cell">${PageLink.html(x.path, { host, cls: "mono", dir: "ltr" })}</td>
-        <td class="c tabular" data-label="${esc(t("Their pages"))}">${num(x.pages)}</td>
         ${showMine ? `<td class="c tabular" data-label="${esc(t("Your pages"))}">${num(x.my_pages || 0)}</td>` : ""}
+        <td class="c tabular" data-label="${esc(t("Their pages"))}">${num(x.pages)}</td>
         <td class="c tabular" data-label="${esc(t("New in 90 days"))}">${x.new_90d ? `<b>${num(x.new_90d)}</b>` : `<span class="muted">0</span>`}</td>
         ${changes ? `<td data-label="${esc(t("Last change"))}"><span class="nowrap">${x.last_change ? esc(COMP.ago(x.last_change)) : dash}</span></td>` : ""}
       </tr>`).join("");
@@ -238,16 +241,23 @@
     const row = (g) => {
       const open = S.qOpen?.has(g.url);
       const list = open ? g.questions : g.questions.slice(0, PAGE_QS);
-      const hidden = g.questions.length - list.length;
+      const myAll = g.mine?.questions || [], myList = open ? myAll : myAll.slice(0, PAGE_QS);
+      const hidden = g.questions.length - list.length + myAll.length - myList.length;
+      const folds = g.questions.length > PAGE_QS || myAll.length > PAGE_QS;
+      const picked = S.qPicked?.has(g.url);
+      const name = g.title || COMP.shortUrl(g.url);
       const task = UI().taskButton({
         title: g.questions.length === 1 ? fill("Answer \"{q}\" on your site", { q: g.questions[0] }) : fill("Answer {n} questions from {page} on your site", { n: num(g.questions.length), page: COMP.shortUrl(g.url) }),
         host,
         source: { type: "competitor", label: p.host, host, facts: [...g.questions, g.url], link: `#competitors/list/${p.id}`, key: `questions|${p.id}|${g.url}` },
       }, { label: "Task" });
-      return `<li class="pt-qpage">
-        <div class="pt-qpage-head"><span class="cl-cell"><span class="t" dir="auto">${esc(g.title || COMP.shortUrl(g.url))}</span><span class="second">${COMP.link(g.url)}</span></span><span class="pt-act">${task}</span></div>
-        <ul class="pt-qlist">${list.map((q) => `<li dir="auto">${esc(q)}</li>`).join("")}</ul>
-        ${hidden > 0 ? `<button class="link-btn small" data-pt-qpage="${esc(g.url)}">${esc(fill("+{n} more", { n: num(hidden) }))}</button>` : open && g.questions.length > PAGE_QS ? `<button class="link-btn small" data-pt-qpage="${esc(g.url)}">${t("Show fewer")}</button>` : ""}
+      return `<li class="pt-qpage${picked ? " is-picked" : ""}">
+        <div class="pt-qpage-head"><input type="checkbox" class="chk" data-pt-qpick="${esc(g.url)}" aria-label="${esc(fill("Select {page}", { page: name }))}" ${picked ? "checked" : ""}><span class="cl-cell"><span class="nb-inline"><span class="t" dir="auto">${esc(name)}</span>${COMP.notes?.badge ? COMP.notes.badge(noteWhere(p, g), COMP.shortUrl(g.url)) : ""}</span><span class="second">${COMP.link(g.url)}</span></span><span class="pt-act">${task}</span></div>
+        <div class="pt-qcompare">
+          <div class="pt-qside"><p class="pt-qside-lab">${COMP.who("them", p.host, t("Their questions"))}</p><ul class="pt-qlist">${list.map((q) => `<li dir="auto">${esc(q)}</li>`).join("")}</ul></div>
+          <div class="pt-qside">${mySide(g.mine, myList, showMine)}</div>
+        </div>
+        ${hidden > 0 ? `<button class="link-btn small" data-pt-qpage="${esc(g.url)}">${esc(fill("+{n} more", { n: num(hidden) }))}</button>` : open && folds ? `<button class="link-btn small" data-pt-qpage="${esc(g.url)}">${t("Show fewer")}</button>` : ""}
       </li>`;
     };
     // Pages of 25, like every long list, and one search through their pages and questions for both lists.
@@ -263,7 +273,73 @@
           ? `<p class="small sec">${esc(many(otherCount, "{n} question on other topics", "{n} questions on other topics"))} <button class="link-btn small" data-pt-q-others>${t("Hide them")}</button></p>${otherHits.length ? `<ul class="rows pt-qpages pt-qpages-other">${otherPage.rows.map(row).join("")}</ul>${TP().footer(QO, otherPage, { noun: t("pages") })}` : noHit}`
           : `<button class="btn btn-small btn-ghost" data-pt-q-others>${esc(many(otherCount, "Show {n} question on other topics", "Show {n} questions on other topics"))}</button>`}</div>`
       : "";
-    return `<p class="pt-lead">${esc(lead + unread)}</p>${tools}${main}${otherBlock}`;
+    return `<p class="pt-lead">${esc(lead + unread)}</p>${tools}${main}${otherBlock}<div id="pt-q-selbar">${questionBar()}</div>`;
+  }
+
+  /* The right half of a row: my page it's compared with, how it was matched, and the questions it asks. */
+  const MATCH = { paired: ["Paired", "You paired these two in Page vs page."], keyword: ["Same keyword", "Both pages rank for the same keyword."], topic: ["Closest topic", "A best guess: their main headings share the most words."] };
+  function mySide(m, list, showMine) {
+    const yours = COMP.who("you", COMP.site?.()?.host || S.p?.site?.host, t("Your page"));
+    if (!m) return `<p class="pt-qside-lab">${yours}</p><p class="small sec">${t(showMine ? "No page of yours on this yet." : "Your pages haven't been read yet.")}</p>`;
+    const [word, tip] = MATCH[m.how] || MATCH.topic;
+    const asks = !m.read ? t("This page hasn't been read yet.") : list.length ? "" : t("No questions in its headings.");
+    return `<p class="pt-qside-lab">${yours} <span class="tag pt-mark" data-tip="${esc(t(tip))}">${t(word)}</span></p>
+      <span class="cl-cell"><span class="t" dir="auto">${esc(m.title || COMP.shortUrl(m.url))}</span><span class="second">${COMP.link(m.url)}</span></span>
+      ${asks ? `<p class="small sec">${asks}</p>` : `<ul class="pt-qlist pt-qlist-mine">${list.map((q) => `<li dir="auto">${esc(q)}</li>`).join("")}</ul>`}`;
+  }
+
+  // ---- ticking rows, and one note on them ---------------------------------------------------------
+  const noteWhere = (p, g) => ({ scope: "page", pageUrl: g.url, competitorId: p.id, competitor: p.host, siteId: typeof COMP.siteId === "number" ? COMP.siteId : p.site?.id ?? null });
+  const pickedGroups = () => (S.ins?.questions?.groups || []).filter((g) => S.qPicked?.has(g.url));
+
+  function questionBar() {
+    const n = pickedGroups().length;
+    if (!n) return "";
+    return `<div class="selbar cg-selbar" role="region" aria-label="${t("selected")}">
+      <b class="cg-sel-count">${num(n)} ${t("selected")}</b>
+      <button class="btn btn-main btn-small" data-pt-q-note>${icon("pencil")}${t("Add a note")}</button>
+      <button class="icon-btn" data-pt-q-clear aria-label="${t("Clear selection")}" data-tip="${t("Clear selection")}">${icon("x")}</button>
+    </div>`;
+  }
+
+  /* What's saved under the note: both pages and all their questions, so the note still makes sense once the pages change. */
+  function noteContext(g) {
+    const bullets = (list) => list.map((q) => `- ${q}`);
+    const m = g.mine;
+    return [
+      fill("Their page: {title}", { title: g.title || COMP.shortUrl(g.url) }), g.url, ...bullets(g.questions), "",
+      ...(m ? [fill("Your page: {title}", { title: m.title || COMP.shortUrl(m.url) }), m.url, ...bullets(m.questions)] : [t("Your page: none yet")]),
+    ].join("\n");
+  }
+
+  function openQuestionNote(opener) {
+    const picked = pickedGroups();
+    if (!picked.length) return;
+    UI().openPanel(`${UI().panelHead(t("Add a note"), esc(many(picked.length, "One note on this page", "One note on each of these {n} pages")))}
+      <form class="panel-body" id="pt-qn-form" novalidate>
+        <label class="field"><span>${t("Your note")}</span><textarea class="input" id="pt-qn-text" rows="5" dir="auto" data-autofocus></textarea></label>
+        <div class="field"><span>${t("Saved with it")}</span><pre class="pt-qn-context" dir="auto" tabindex="0">${esc(picked.map(noteContext).join("\n\n———\n\n"))}</pre></div>
+        <div id="pt-qn-error"></div>
+      </form>
+      <div class="panel-foot"><button class="btn btn-main" id="pt-qn-save" data-pt-qn-save>${t("Save note")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button></div>`, opener, { key: `pt-qnote|${S.p.id}`, reopen: () => openQuestionNote(opener) });
+  }
+
+  async function saveQuestionNote(button) {
+    const words = UI().$("#pt-qn-text")?.value.trim() || "", picked = pickedGroups(), total = picked.length;
+    button.disabled = true;
+    try {
+      for (const g of picked) { // one at a time, each unticked once saved, so trying again never writes a note twice
+        await COMP.notes.add(noteWhere(S.p, g), `${words ? `${words}\n\n` : ""}${noteContext(g)}`);
+        S.qPicked.delete(g.url);
+      }
+      UI().closePanel({ keep: false });
+      repaint();
+      COMP.notes.loadAllOnce();
+      UI().toast?.(many(total, "Note saved on {n} page.", "Note saved on {n} pages."));
+    } catch (err) {
+      button.disabled = false;
+      UI().setHTML(UI().$("#pt-qn-error"), `<p class="note warn">${icon("triangle-alert")}<span>${esc(err.message || t("The note didn't save. Your text is still here."))}</span></p>`);
+    }
   }
 
   // Activity: one sentence on how fast they publish, the months as bars with their numbers on, then the timeline.
@@ -308,66 +384,75 @@
     for (let v = 0; v <= ceil; v += step) ticks.push(`<span class="pt-tick" style="bottom:${(v / ceil) * 100}%"><span class="tabular">${num(v)}</span></span>`);
     const cols = months.map((m, i) => `<div class="pt-month" data-pt-month="${i}"><div class="pt-pair"><i class="pt-bar-them" style="height:${height(m.theirs)}">${m.theirs ? `<b class="pt-bar-val tabular">${num(m.theirs)}</b>` : ""}</i>${showMine ? `<i class="pt-bar-you" style="height:${height(m.mine)}">${m.mine ? `<b class="pt-bar-val tabular">${num(m.mine)}</b>` : ""}</i>` : ""}</div><span class="pt-mlabel">${esc(shortMonth(m.month))}</span></div>`).join("");
     const label = showMine ? t("New pages each month, them against you") : t("Their new pages each month");
-    const table = `<details class="pt-as-table"><summary class="small">${t("See these numbers as a table")}</summary><div class="cl-scroll"><table class="data cl-table pt-narrow"><thead><tr><th scope="col">${t("Month")}</th><th scope="col" class="c">${t("Them")}</th>${showMine ? `<th scope="col" class="c">${t("You")}</th>` : ""}</tr></thead><tbody>${months.map((m) => `<tr><td class="head-cell">${esc(longMonth(m.month))}</td><td class="c tabular">${num(m.theirs || 0)}</td>${showMine ? `<td class="c tabular">${num(m.mine || 0)}</td>` : ""}</tr>`).join("")}</tbody></table></div></details>`;
-    const key = showMine ? `<p class="pt-chart-key small sec"><span><i class="pt-key pt-key-them" aria-hidden="true"></i>${t("Them")}</span><span><i class="pt-key pt-key-you" aria-hidden="true"></i>${t("You")}</span></p>` : "";
+    const table = `<details class="pt-as-table"><summary class="small">${t("See these numbers as a table")}</summary><div class="cl-scroll"><table class="data cl-table pt-narrow"><thead><tr><th scope="col">${t("Month")}</th>${vsHead("them", S.p?.host)}${showMine ? vsHead("you", COMP.site?.()?.host || S.p?.site?.host) : ""}</tr></thead><tbody>${months.map((m) => `<tr><td class="head-cell">${esc(longMonth(m.month))}</td><td class="c tabular">${num(m.theirs || 0)}</td>${showMine ? `<td class="c tabular">${num(m.mine || 0)}</td>` : ""}</tr>`).join("")}</tbody></table></div></details>`;
+    const key = showMine ? `<p class="pt-chart-key small sec">${COMP.who("them", S.p?.host)}${COMP.who("you", COMP.site?.()?.host || S.p?.site?.host)}</p>` : "";
     return `${key}<div class="pt-chart-wrap"><div class="pt-chart${showMine ? " pt-two" : ""}" role="img" aria-label="${esc(label)}"><div class="pt-plot">${ticks.join("")}<div class="pt-cols">${cols}</div></div></div><div class="pt-tip" id="pt-tip" hidden></div></div>${table}`;
   }
   const niceStep = (max) => { const raw = max / 4; const mag = 10 ** Math.floor(Math.log10(raw)); const n = raw / mag; return Math.max(1, (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag); };
   const shortMonth = (ym) => { try { return new Date(`${ym}-01T00:00:00Z`).toLocaleDateString(UI().state.lang || undefined, { month: "short", timeZone: "UTC" }); } catch { return ym; } };
   const longMonth = (ym) => { try { return new Date(`${ym}-01T00:00:00Z`).toLocaleDateString(UI().state.lang || undefined, { month: "long", year: "numeric", timeZone: "UTC" }); } catch { return ym; } };
 
-  /* Their site's age, in one sentence: online since, domain registered, how much the Wayback Machine kept.
-     The per-year bars count what the archive saved, not what they published, so they sit folded with that said. */
+  /* Their site's age: the dates as figures, then the pages the archive first saved each year, as columns.
+     Where the numbers come from, and why they're lower than the monthly chart's, sits on the info mark. */
   function historyBlock(ins) {
     const f = ins?.facts || {}, h = f.history || {}, years = ins?.rhythm?.by_year || [];
-    const bits = [];
-    if (f.first_capture) bits.push(fill("Online since {date}", { date: monthYear(f.first_capture) }));
-    if (f.registered_on) bits.push(fill("domain registered {date}", { date: monthYear(f.registered_on) }));
-    let first = bits.join(", ");
-    if (first) first = `${first[0].toUpperCase()}${first.slice(1)}.`;
-    let body;
-    if (h.status === "ok" && years.length) {
+    const fig = (label, value) => `<div class="pt-fig"><span class="pt-fig-lab">${t(label)}</span><span class="pt-fig-val"><b class="tabular">${esc(value)}</b></span></div>`;
+    const ok = h.status === "ok" && years.length;
+    const figs = [
+      f.registered_on ? fig("Domain registered", monthYear(f.registered_on)) : "",
+      f.first_capture ? fig("Online since", monthYear(f.first_capture)) : "",
+      ok ? fig("Pages in the archive", `${num(h.archived_pages || 0)}${h.capped ? "+" : ""}`) : "",
+      f.expires_on ? fig("Domain renews", monthYear(f.expires_on)) : "",
+    ].join("");
+    const facts = figs ? `<div class="pt-age-figs">${figs}</div>` : "";
+    let chart = "";
+    if (ok) {
       const max = Math.max(1, ...years.map((x) => x.pages));
-      const busiest = years.reduce((b, x) => (x.pages > b.pages ? x : b), years[0]);
-      const said = `${first} ${fill("The Wayback Machine has saved {n} of their pages, most of them first in {year}.", { n: num(h.archived_pages || 0), year: String(busiest.year) })}${h.capped ? ` ${t("The archive holds more than the first 5,000 read here.")}` : ""}`;
-      body = `<p class="pt-lead">${esc(said.trim())}</p>
-        <details class="pt-as-table"><summary class="small">${t("Pages first saved by the archive, each year")}</summary>
-          <p class="small sec">${t("The archive doesn't save every page, so these counts are lower than the dates on their pages above.")}</p>
-          <ul class="pt-years">${years.map((x) => `<li><span class="tabular">${esc(String(x.year))}</span><span class="pt-year-bar" style="--w:${(x.pages / max) * 100}%"><i class="pt-key-them"></i></span><span class="tabular">${num(x.pages)}</span></li>`).join("")}</ul></details>`;
+      chart = `<p class="pt-age-title">${t("Pages first archived, by year")}</p>
+        <ol class="pt-years">${years.map((x) => `<li style="--h:${x.pages / max}"><b class="tabular">${num(x.pages)}</b><i class="pt-key-them" aria-hidden="true"></i><span class="tabular">${esc(String(x.year))}</span></li>`).join("")}</ol>`;
     } else {
       const why = h.status === "failed" ? t("The Wayback Machine didn't answer this time. It tries again tomorrow.")
         : h.status === "ok" ? t("The Wayback Machine has no copy of this site.")
         : h.message ? t("The Wayback Machine is busy. The app asks again in a few minutes.")
         : t("Looking them up in the Wayback Machine. It takes a minute or two after a competitor is added, then it's checked again each month.");
-      body = `${first ? `<p class="pt-lead">${esc(first)}</p>` : ""}<p class="cl-none small sec">${esc(why)}</p>`;
+      chart = `<p class="cl-none small sec">${esc(why)}</p>`;
     }
-    const renew = f.expires_on ? `<p class="small muted pt-dates">${esc(fill("Their domain renews by {date}.", { date: UI().fmtDateOnly(`${f.expires_on}T00:00:00Z`) }))}</p>` : "";
-    return `<section class="card"><div class="card-head"><h2>${t("How old their site is")}</h2><span class="end small muted">${t("From the Wayback Machine and the domain registry")}</span></div><div class="cl-section-body">${body}${renew}</div></section>`;
+    return `<section class="card"><div class="card-head"><h2>${t("How old their site is")}</h2>${COMP.info("From the Wayback Machine and the domain registry. The archive doesn't save every page, so these counts are lower than the monthly chart above.")}</div><div class="cl-section-body">${facts}${chart}</div></section>`;
   }
 
   // Their site: authority, who links to them, and how they build pages.
   function siteTab(p, ins) {
     if (!ins) return unavailable();
     const f = ins.facts || {}, l = ins.links || {};
-    const row = (label, mine, theirs) => `<tr><th scope="row" class="head-cell">${esc(label)}</th><td class="c tabular" data-label="${esc(t("You"))}">${mine}</td><td class="c tabular" data-label="${esc(t("Them"))}">${theirs}</td></tr>`;
+    const row = (label, mine, theirs) => `<tr><th scope="row" class="head-cell">${esc(label)}</th><td class="c tabular pt-col-you" data-label="${esc(t("You"))}">${mine}</td><td class="c tabular pt-col-them" data-label="${esc(t("Them"))}">${theirs}</td></tr>`;
     const authority = strengthBody(p, f, l, row);
     const top = l.top || [];
     const links = top.length
-      ? `<ul class="rows pt-links">${top.slice(0, 10).map((d) => `<li><div class="what"><span class="with-logo">${UI().siteLogo(d.domain, 16)}<span class="logo-text mono" dir="ltr">${esc(d.domain)}</span></span>${d.spam ? ` ${UI().status("warn", t("Looks like spam"))}` : ""}</div><div class="acts small muted tabular">${known(d.authority) ? `${num(d.authority)} · ${esc((d.authority_label || t("Authority")).replace(/^Authority score\s*\(([^)]+)\)$/i, "$1"))}` : ""}</div></li>`).join("")}</ul>
+      ? `<ul class="rows pt-links">${top.slice(0, 10).map((d) => `<li><div class="what"><span class="with-logo">${UI().siteLogo(d.domain, 16)}<span class="logo-text mono" dir="ltr">${esc(d.domain)}</span></span>${d.spam ? ` ${UI().status("warn", t("Looks like spam"))}` : ""}</div><div class="acts small muted tabular">${known(d.authority) ? `<span class="pt-link-score" tabindex="0" data-tip="${esc(d.authority_label || t("Authority"))}"><b>${num(d.authority)}</b> ${esc((d.authority_label || t("Authority")).replace(/^(?:Authority score|Domain Authority)\s*\(([^)]+)\)$/i, "$1"))}</span>` : ""}</div></li>`).join("")}</ul>
         ${l.not_to_me ? `<p class="pt-gap-line">${esc(many(l.not_to_me, "{n} of these doesn't link to you.", "{n} of these don't link to you."))} <button class="btn btn-small" data-pt-gaps>${icon("link-2")}${t("Open Link gaps")}</button></p>` : ""}`
       : `<div class="pt-empty-links"><p class="small sec">${esc(fill("No linking sites known yet. Upload a CSV of links to {host} from any backlink tool (Semrush, Ubersuggest, Ahrefs…), or add the ones you know one by one.", { host: p.host }))}</p><div class="pt-btns">${linkButtons(true)}</div></div>`;
     const build = (ins.build || []);
     const main = build.filter((b) => !b.more), more = build.filter((b) => b.more);
     const showMine = mineRead(ins);
-    const buildRow = (b) => (showMine ? row(t(b.label), value(b, b.mine), value(b, b.theirs)) : `<tr><th scope="row" class="head-cell">${esc(t(b.label))}</th><td class="c tabular" data-label="${esc(t("Them"))}">${value(b, b.theirs)}</td></tr>`);
+    const buildRow = (b) => (showMine ? row(t(b.label), value(b, b.mine), value(b, b.theirs)) : `<tr><th scope="row" class="head-cell">${esc(t(b.label))}</th><td class="c tabular pt-col-them" data-label="${esc(t("Them"))}">${value(b, b.theirs)}</td></tr>`);
     const buildTable = build.length
-      ? `<table class="data cl-table pt-table pt-vs pt-narrow"><thead><tr><th scope="col">${t("What")}</th>${showMine ? `<th scope="col" class="c">${t("You")}</th>` : ""}<th scope="col" class="c">${t("Them")}</th></tr></thead><tbody>${main.map(buildRow).join("")}${S.buildMore ? more.map(buildRow).join("") : ""}</tbody></table>${showMine ? "" : notReadNote()}
+      ? `<table class="data cl-table pt-table pt-vs pt-narrow"><thead><tr><th scope="col">${t("What")}</th>${showMine ? vsHead("you", COMP.site?.()?.host || p.site?.host) : ""}${vsHead("them", p.host)}</tr></thead><tbody>${main.map(buildRow).join("")}${S.buildMore ? more.map(buildRow).join("") : ""}</tbody></table>${showMine ? "" : notReadNote()}
          ${more.length ? `<p class="cl-more"><button class="btn btn-small" data-pt-build-more aria-expanded="${S.buildMore}">${t(S.buildMore ? "Fewer details" : "More details")}</button></p>` : ""}`
       : `<p class="cl-none small sec">${t("These facts appear once their pages are read.")}</p>`;
     return `<div class="pt-grid"><section class="card"><div class="card-head"><h2>${t("How strong they are")}</h2></div><div class="cl-section-body"><div class="cl-scroll">${authority}</div></div></section>
       <section class="card"><div class="card-head"><h2>${t("Who links to them")}</h2>${known(l.linking_domains) ? `<span class="tag tabular">${num(l.linking_domains)}</span>` : ""}${top.length ? `<span class="end pt-btns">${linkButtons(false)}</span>` : ""}</div><div class="cl-section-body">${links}</div></section></div>
       <section class="card"><div class="card-head"><h2>${t("How they build pages")}</h2>${COMP.info("Facts read from the pages, not advice")}</div><div class="cl-section-body"><div class="cl-scroll">${buildTable}</div></div></section>`;
   }
+
+  /* Cloudflare gives a bucket such as ">200000": the words say what it means, the rank compares two sites (smaller is more popular). */
+  const popularityRank = (v) => { if (/not ranked/i.test(v)) return Infinity; const m = String(v).match(/\d[\d,]*/); if (!m) return NaN; const n = Number(m[0].replace(/,/g, "")); return String(v).trim().startsWith(">") ? n + 1 : n; };
+  function popularityWords(v) {
+    const m = String(v).match(/\d[\d,]*/);
+    if (!m) return t(String(v));
+    const n = num(Number(m[0].replace(/,/g, "")));
+    return fill(String(v).trim().startsWith(">") ? "Outside the top {n}" : "Top {n}", { n });
+  }
+  const ageWords = (iso) => { const years = Math.floor((Date.now() - Date.parse(`${String(iso).slice(0, 10)}T00:00:00Z`)) / 31557600000); return years < 1 ? t("Under a year old") : many(years, "{n} year old", "{n} years old"); };
 
   /* Each figure says where it comes from. Rows with nothing yet aren't a wall of dashes: they're listed under the
      table with the reason and the one thing that fills them. */
@@ -379,43 +464,37 @@
     const linkSource = known(l.linking_domains) ? t("from Link gaps uploads") : known(f.moz_links) ? t("from Moz") : "";
     const h = f.history?.status;
     const items = [
-      { label: t("Moz Domain Authority"), mine: f.my_da, theirs: f.da, show: figure, why: "moz" },
-      { label: t("Websites linking to the site"), sub: linkSource, mine: myLinks, theirs: theirLinks, show: figure, why: "links", needTheirs: true },
-      { label: t("Popularity (Cloudflare)"), mine: f.my_popularity, theirs: f.popularity, show: (v) => (v ? esc(v) : dash), why: "moz" },
-      { label: t("Domain registered"), mine: f.my_registered_on, theirs: f.registered_on, show: (v) => (v ? esc(monthYear(v)) : dash), why: "registry" },
+      { label: t("Moz Domain Authority"), mine: f.my_da, theirs: f.da, show: figure, why: "moz", bar: true, better: (a, b) => a - b },
+      { label: t("Websites linking to the site"), sub: linkSource, mine: myLinks, theirs: theirLinks, show: figure, why: "links", needTheirs: true, bar: true, better: (a, b) => a - b },
+      { label: t("Popularity"), sub: t("from Cloudflare"), mine: f.my_popularity, theirs: f.popularity, show: (v) => (v ? esc(popularityWords(v)) : dash), why: "moz", better: (a, b) => popularityRank(b) - popularityRank(a) },
+      { label: t("Domain registered"), mine: f.my_registered_on, theirs: f.registered_on, show: (v) => (v ? esc(monthYear(v)) : dash), note: ageWords, why: "registry", better: (a, b) => (a < b ? 1 : a > b ? -1 : 0) },
     ];
     // A row is only a comparison when their side is known; mine alone (my Backlinks list against nothing) moves to "Not known yet".
     const shows = (x) => (x.needTheirs ? known(x.theirs) : known(x.mine) || known(x.theirs));
     const has = items.filter(shows);
     const missing = items.filter((x) => !shows(x));
-    const said = [];
-    if (f.registered_on && f.my_registered_on) {
-      const them = monthYear(f.registered_on), you = monthYear(f.my_registered_on);
-      said.push(them === you ? fill("Both domains were registered in {month}.", { month: them })
-        : fill(f.registered_on < f.my_registered_on ? "Their domain is older than yours: {them} against {you}." : "Your domain is older than theirs: {you} against {them}.", { them, you }));
-    }
-    if (known(f.da) && known(f.my_da)) said.push(fill("Moz rates them {them} out of 100, you {you}.", { them: num(f.da), you: num(f.my_da) }));
-    if (known(theirLinks) && known(myLinks)) said.push(fill("{them} websites link to them, {you} to you.", { them: num(theirLinks), you: num(myLinks) }));
-    else if (known(theirLinks)) said.push(many(theirLinks, "{n} website links to them.", "{n} websites link to them."));
-    if (f.registered_on && !f.my_registered_on) said.push(fill("Their domain was registered in {month}.", { month: monthYear(f.registered_on) }));
-    const lead = said.length ? `<p class="pt-lead">${esc(said.join(" "))}</p>` : "";
-    // "You" only when at least one of my figures is known: a column of dashes says nothing.
+    // "You" only when at least one of my figures is known: a side of dashes says nothing.
     const withMine = has.some((x) => known(x.mine));
-    const line = (x) => (withMine ? row(x.label, x.show(x.mine), x.show(x.theirs)) : `<tr><th scope="row" class="head-cell">${esc(x.label)}</th><td class="c tabular" data-label="${esc(t("Them"))}">${x.show(x.theirs)}</td></tr>`);
-    const table = has.length
-      ? `<table class="data cl-table pt-table pt-vs pt-narrow"><thead><tr><th scope="col">${t("What")}</th>${withMine ? `<th scope="col" class="c">${t("You")}</th>` : ""}<th scope="col" class="c">${t("Them")}</th></tr></thead><tbody>
-          ${has.map((x) => line(x).replace(`${esc(x.label)}</th>`, `${esc(x.label)}${x.sub ? `<span class="second small muted">${esc(x.sub)}</span>` : ""}</th>`)).join("")}
-        </tbody></table>`
-      : "";
+    /* Who is ahead on a figure: 1 you, -1 them, 0 level or not comparable. */
+    const lead = (x) => { if (!known(x.mine) || !known(x.theirs)) return null; const n = x.better(x.mine, x.theirs); return n > 0 ? 1 : n < 0 ? -1 : 0; };
+    const compared = has.map(lead).filter((n) => n !== null), mineWon = compared.filter((n) => n > 0).length, theirsWon = compared.filter((n) => n < 0).length;
+    const verdict = !compared.length ? "" : `<p class="pt-verdict">${esc(mineWon === theirsWon ? (mineWon ? fill("You're level: each ahead on {n} of {total}.", { n: num(mineWon), total: num(compared.length) }) : t("You're level on everything known so far.")) : fill(theirsWon > mineWon ? "They're ahead on {n} of {total}." : "You're ahead on {n} of {total}.", { n: num(Math.max(mineWon, theirsWon)), total: num(compared.length) }))}</p>`;
+    const side = (x, who, host, won) => {
+      const v = who === "you" ? x.mine : x.theirs, most = x.bar ? Math.max(x.mine ?? 0, x.theirs ?? 0) : 0;
+      const bar = most > 0 && known(x.mine) && known(x.theirs) ? `<span class="pt-side-bar" aria-hidden="true"><i style="width:${Math.max(2, Math.round(((v ?? 0) / most) * 100))}%"></i></span>` : "";
+      return `<div class="pt-side${won ? " pt-side-ahead" : ""}"><span class="pt-side-who">${host ? UI().siteLogo(host, 16) : ""}<span>${t(who === "you" ? "You" : "Them")}</span>${won ? `<span class="pt-side-flag">${t("Ahead")}</span>` : ""}</span><span class="pt-side-val tabular">${x.show(v)}</span>${x.note && known(v) ? `<span class="small sec">${esc(x.note(v))}</span>` : ""}${bar}</div>`;
+    };
+    const duel = (x) => { const n = lead(x); return `<li class="pt-duel"><div class="pt-duel-head"><b>${esc(x.label)}</b>${x.sub ? `<span class="small muted">${esc(x.sub)}</span>` : ""}</div><div class="pt-sides${withMine ? "" : " pt-sides-one"}">${withMine ? side(x, "you", myHost, n === 1) : ""}${side(x, "them", p.host, n === -1)}</div></li>`; };
+    const table = has.length ? `<ul class="pt-duels">${has.map(duel).join("")}</ul>` : "";
     const why = {
-      moz: () => `<li><div class="what"><b>${t("Authority and popularity")}</b><span class="small sec">${t("From Moz and Cloudflare, free, once a month. Not looked up yet.")}</span>${S.strengthError ? `<span class="small crit" role="alert">${esc(t(S.strengthError))}</span>` : ""}</div><div class="acts"><button class="btn btn-small" data-pt-strength-fetch ${S.strengthBusy ? 'disabled aria-busy="true"' : ""}>${icon(S.strengthBusy ? "loader" : "download")}${t(S.strengthBusy ? "Fetching…" : "Get these numbers")}</button></div></li>`,
+      moz: () => `<li><div class="what"><b>${t(known(f.popularity) ? "Authority" : "Authority and popularity")}</b><span class="small sec">${t(known(f.popularity) ? "From Moz, free, once a month. Not looked up yet." : "From Moz and Cloudflare, free, once a month. Not looked up yet.")}</span>${S.strengthError ? `<span class="small crit" role="alert">${esc(t(S.strengthError))}</span>` : ""}</div><div class="acts"><button class="btn btn-small" data-pt-strength-fetch ${S.strengthBusy ? 'disabled aria-busy="true"' : ""}>${icon(S.strengthBusy ? "loader" : "download")}${t(S.strengthBusy ? "Fetching…" : "Get these numbers")}</button></div></li>`,
       links: () => `<li><div class="what"><b>${t("Websites linking to them")}</b><span class="small sec">${esc(known(myLinks) ? fill("You have {n} in your Backlinks list. Theirs aren't known: upload a list of their links (a CSV from any backlink tool).", { n: num(myLinks) }) : t("Not known: upload a list of their links (a CSV from any backlink tool)."))}</span></div><div class="acts"><button class="btn btn-small" data-pt-gaps>${icon("link-2")}${t("Open Link gaps")}</button></div></li>`,
       registry: () => `<li><div class="what"><b>${t("Domain registered")}</b><span class="small sec">${t(h === "failed" ? "The domain registry didn't answer. The app asks again tomorrow." : "Being looked up in the domain registry. It's ready a few minutes after a competitor is added.")}</span></div></li>`,
     };
     const kinds = [...new Set(missing.map((x) => x.why))];
     const list = kinds.length ? `<div class="pt-missing">${has.length ? `<h3 class="small sec">${t("Not known yet")}</h3>` : `<p class="pt-lead">${t("None of these are known yet. Here's what fills each one.")}</p>`}<ul class="rows">${kinds.map((k) => why[k]()).join("")}</ul></div>` : "";
-    void mozWait; void myHost;
-    return `${lead}${table}${list}`;
+    void mozWait;
+    return `${verdict}${table}${list}`;
   }
   const linkButtons = (main) => `<button class="btn btn-small${main ? " btn-main" : ""}" data-pt-links-upload>${icon("upload")}${t("Upload their links")}</button><button class="btn btn-small" data-pt-links-add>${icon("plus")}${t("Add a linking site")}</button>`;
 
@@ -477,7 +556,7 @@
   function body(p, ins, parts) {
     Object.assign(S, { p, ins, parts });
     if (S.shownId !== p.id) {
-      S.shownId = p.id; S.tab = "keywords"; S.buildMore = false; S.qOpen = new Set(); S.qOthers = false; S.bestSort = null;
+      S.shownId = p.id; S.tab = "keywords"; S.buildMore = false; S.qOpen = new Set(); S.qPicked = new Set(); S.qOthers = false; S.bestSort = null;
       [BEST, QS, QO].forEach((key) => { TP().state(key).q = ""; TP().reset(key); }); // another competitor starts on page 1, unsearched
     }
     [BEST, QS, QO].forEach((key) => TP().on(key, () => repaint()));
@@ -565,6 +644,9 @@
         return;
       }
       if ((el = hit("[data-pt-qpage]"))) { const url = el.dataset.ptQpage; S.qOpen ||= new Set(); S.qOpen.has(url) ? S.qOpen.delete(url) : S.qOpen.add(url); repaint(() => UI().$(`[data-pt-qpage="${CSS.escape(url)}"]`)?.focus({ preventScroll: true })); return; }
+      if ((el = hit("[data-pt-q-note]"))) { openQuestionNote(el); return; }
+      if ((el = hit("[data-pt-qn-save]"))) { saveQuestionNote(el); return; }
+      if (hit("[data-pt-q-clear]")) { S.qPicked?.clear(); repaint(); return; }
       if (hit("[data-pt-q-others]")) { S.qOthers = !S.qOthers; repaint(() => UI().$("[data-pt-q-others]")?.focus({ preventScroll: true })); return; }
       if (hit("[data-pt-strength-fetch]")) { fetchStrength(); return; }
       if ((el = hit("[data-pt-links-upload]"))) { openLinksUpload(el); return; }
@@ -580,6 +662,15 @@
       const ids = TABS.map(([id]) => id), at = ids.indexOf(tab.dataset.ptTab);
       const next = e.key === "Home" ? 0 : e.key === "End" ? ids.length - 1 : (at + (e.key === "ArrowRight" ? 1 : -1) + ids.length) % ids.length;
       pickTab(ids[next]);
+    });
+    document.addEventListener("change", (e) => {
+      const url = e.target.dataset?.ptQpick;
+      if (url === undefined) return;
+      S.qPicked ||= new Set();
+      e.target.checked ? S.qPicked.add(url) : S.qPicked.delete(url);
+      e.target.closest(".pt-qpage")?.classList.toggle("is-picked", e.target.checked);
+      const bar = UI().$("#pt-q-selbar");
+      if (bar) UI().setHTML(bar, questionBar());
     });
     document.addEventListener("change", (e) => { if (e.target.id === "pt-up-file") { const b = UI().$("#pt-up-send"); if (b) b.disabled = !e.target.files?.length; } });
     document.addEventListener("pointerover", (e) => { const g = e.target.closest?.(".pt-month"); if (g) showTip(g); });
@@ -656,6 +747,18 @@
     "No page matches the search.": "Aucune page ne correspond à la recherche.", "pages": "pages",
   });
 
+  // Ticking question rows, my page beside theirs, and the age card (11 Nov).
+  Object.assign(window.FR, {
+    "Their questions": "Leurs questions", "Your page": "Votre page", "Paired": "Associée", "Same keyword": "Même mot-clé", "Closest topic": "Sujet le plus proche",
+    "You paired these two in Page vs page.": "Vous avez associé ces deux pages dans Page contre page.", "Both pages rank for the same keyword.": "Les deux pages se positionnent sur le même mot-clé.", "A best guess: their main headings share the most words.": "Une estimation : leurs titres principaux ont le plus de mots en commun.",
+    "No page of yours on this yet.": "Vous n'avez pas encore de page sur ce sujet.", "Your pages haven't been read yet.": "Vos pages n'ont pas encore été lues.", "This page hasn't been read yet.": "Cette page n'a pas encore été lue.", "No questions in its headings.": "Aucune question dans ses titres.",
+    "Select {page}": "Sélectionner {page}", "Add a note": "Ajouter une note", "Your note": "Votre note", "Saved with it": "Enregistré avec", "Save note": "Enregistrer la note",
+    "One note on this page": "Une note sur cette page", "One note on each of these {n} pages": "Une note sur chacune de ces {n} pages", "Note saved on {n} page.": "Note enregistrée sur {n} page.", "Note saved on {n} pages.": "Note enregistrée sur {n} pages.",
+    "Their page: {title}": "Leur page : {title}", "Your page: {title}": "Votre page : {title}", "Your page: none yet": "Votre page : aucune pour l'instant", "The note didn't save. Your text is still here.": "La note n'a pas été enregistrée. Votre texte est toujours là.",
+    "Domain registered": "Domaine enregistré", "Online since": "En ligne depuis", "Pages in the archive": "Pages dans l'archive", "Domain renews": "Renouvellement du domaine", "Pages first archived, by year": "Pages archivées pour la première fois, par an",
+    "From the Wayback Machine and the domain registry. The archive doesn't save every page, so these counts are lower than the monthly chart above.": "D'après la Wayback Machine et le registre du domaine. L'archive ne garde pas toutes les pages : ces chiffres sont donc plus bas que ceux du graphique mensuel ci-dessus.",
+  });
+
   // The 10 Nov rework of Activity, questions and strength.
   Object.assign(window.FR, {
     "No questions found in their pages' headings yet.": "Aucune question trouvée dans les titres de leurs pages pour l'instant.",
@@ -689,8 +792,6 @@
     "you": "vous",
     "domain registered {date}": "domaine enregistré en {date}",
     "The Wayback Machine has saved {n} of their pages, most of them first in {year}.": "La Wayback Machine a gardé {n} de leurs pages, la plupart vues pour la première fois en {year}.",
-    "Pages first saved by the archive, each year": "Pages gardées pour la première fois par l'archive, par an",
-    "The archive doesn't save every page, so these counts are lower than the dates on their pages above.": "L'archive ne garde pas toutes les pages, ces chiffres sont donc plus bas que les dates de leurs pages plus haut.",
     "Their domain renews by {date}.": "Leur domaine est à renouveler avant le {date}.",
     "How old their site is": "L'âge de leur site",
     "From the Wayback Machine and the domain registry": "D'après la Wayback Machine et le registre des domaines",
@@ -766,6 +867,7 @@
     "Over the last 12 months": "Sur les 12 derniers mois", "Their new pages each month": "Leurs nouvelles pages par mois",
     "{n} question": "{n} question", "{n} questions": "{n} questions", "Question": "Question", "Where they answer it": "Où ils y répondent", "Answer \"{q}\" on your site": "Répondre à « {q} » sur votre site",
     "Showing {shown} of {total}": "{shown} sur {total} affichées", "Show {n} more": "En voir {n} de plus", "Show all": "Tout afficher", "All {total} shown": "Les {total} sont affichées", "Show fewer": "En voir moins",
+    "From Moz, free, once a month. Not looked up yet.": "De Moz, gratuit, une fois par mois. Pas encore consulté.", "Popularity": "Popularité", "from Cloudflare": "d'après Cloudflare", "Ahead": "Devant", "They're ahead on {n} of {total}.": "Ils sont devant sur {n} critères sur {total}.", "You're ahead on {n} of {total}.": "Vous êtes devant sur {n} critères sur {total}.", "You're level: each ahead on {n} of {total}.": "À égalité : chacun devant sur {n} critères sur {total}.", "You're level on everything known so far.": "À égalité sur tout ce qui est connu pour l'instant.", "Outside the top {n}": "Hors du top {n}", "Top {n}": "Top {n}", "Under a year old": "Moins d'un an", "{n} year old": "{n} an", "{n} years old": "{n} ans",
     "from Link gaps uploads": "d'après les fichiers de Liens manquants", "from Moz": "d'après Moz", "Not known yet": "Pas encore connu", "None of these are known yet. Here's what fills each one.": "Rien de tout cela n'est encore connu. Voici ce qui remplit chaque ligne.",
     "Looked up by itself for each website, once a month, while free Moz rows last. Not here yet: the button gets it now.": "Consulté tout seul pour chaque site, une fois par mois, tant qu'il reste des lignes Moz gratuites. Pas encore là : le bouton le récupère tout de suite.",
     "Get these numbers": "Obtenir ces chiffres", "Fetching…": "Récupération…",

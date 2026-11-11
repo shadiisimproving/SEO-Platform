@@ -92,15 +92,85 @@
   const looksSpammy = (b) => (b.check?.outbound_links || 0) > MANY_OUTBOUND || (b.spam !== null && b.spam !== undefined && b.spam >= SPAM_SCORE);
 
   // ---- on a link's panel -----------------------------------------------------------------------------
-  function panelBlocks(b, { server }) {
+  /* The panel reads in seconds: one verdict on top, then one short question per row with its answer on the right.
+     The proof behind an answer opens under its row. A row opens by itself only when it holds something to do. */
+  const tagOf = (cls, word) => `<span class="tag vd-tag ${cls}">${t(word)}</span>`;
+  const quiet = (word) => `<span class="muted">${t(word)}</span>`;
+  const indexBad = (ix) => ix?.state === "not_indexed" || ix?.state === "unknown";
+
+  /* [tone, headline, one sentence or nothing]: is this link doing its job, and if not, the one reason that matters most. */
+  function answerOf(b) {
+    const c = b.check || {}, firstReason = c.reasons?.[0] ? t(REASONS[c.reasons[0]] || c.reasons[0]) : "";
+    if (b.disavow) return ["bad", t("Marked as spam"), t("It's in the disavow file.")];
+    if (b.status === "planned") return ["idle", t("Not placed yet"), ""];
+    if (b.status === "lost") return ["bad", t("This link is lost"), t(c.outcome === "page_gone" ? "The page no longer exists." : "The link is no longer on the page.")];
+    if (c.target_http === 404 || c.target_http === 410) return ["bad", t("Your page is gone"), t("Your target page answers {n}, so this link is wasted until the page redirects to a live one.").replace("{n}", c.target_http)];
+    if (c.misses > 0) return ["warn", t("Not found on the last check"), t("It's read once more tomorrow before it counts as lost.")];
+    if (c.verdict === "none") return ["bad", t("Google doesn't count it"), firstReason];
+    if (b.sourceIndex?.state === "not_indexed") return ["bad", t("Linking page not indexed"), t("Ask the website to get it indexed, or the link passes nothing.")];
+    if (indexBad(b.targetIndex)) return ["warn", t("Your page isn't indexed"), ""]; // its row opens below with the why and a task
+    if (c.verdict === "weak") return ["warn", t("Weak link"), firstReason];
+    if (c.verdict === "counts") return ["good", t("Working"), t("The link is live and Google counts it.")];
+    if (c.outcome === "unknown") return ["idle", t("Couldn't check it"), t("A page that can't be read never counts as a lost link.")];
+    return ["idle", t("Not checked yet"), ""];
+  }
+
+  function answerInner(b) {
+    const [tone, word, why] = answerOf(b);
+    const mark = { good: "circle-check", warn: "triangle-alert", bad: "octagon-alert", idle: "info" }[tone];
+    return `<div class="vd-answer ${tone}">${UI.icon(mark)}<div><strong>${esc(word)}</strong>${why ? `<p>${esc(why)}</p>` : ""}</div></div>`;
+  }
+
+  const qRow = (key, label, value, body, open = false) => `<details class="fold vd-q" data-vd-row="${key}" ${open ? "open" : ""}><summary>${UI.icon("chevron-right")}<span class="vd-q-label">${label}</span><span class="vd-q-value">${value}</span></summary><div class="vd-q-body">${body}</div></details>`;
+  const googleValue = (b) => (b.check?.verdict ? tagOf(VERDICT[b.check.verdict][0], VERDICT[b.check.verdict][1]) : quiet("Not checked"));
+  function indexValue(b) {
+    const ix = b.targetIndex;
+    if (!ix) return quiet("Not checked");
+    if (ix.state === "indexed") return tagOf("vd-counts", "Indexed");
+    if (ix.state === "error") return quiet("Couldn't check");
+    return tagOf("vd-none", ix.state === "unknown" ? "Unknown to Google" : "Not indexed");
+  }
+
+  /* The whole panel body. mockup.js hands over the parts it owns: the link check, the traffic and the details table. */
+  function panelBlocks(b, { server, linkStatus, check, traffic, trafficValue, sampleEffect, details, anchor }) {
+    S.linkStatus = linkStatus;
+    const id = b.serverId, google = googleBody(b, server), index = indexBody(b, server), spammy = looksSpammy(b) || b.disavow, spam = spamBody(b, server);
+    let html = `<div id="vd-answer" data-id="${id ?? ""}">${answerInner(b)}</div>`;
+    html += qRow("link", t("Is the link on the page?"), linkStatus(b.status), check, b.status === "live" && !b.check?.checked_at);
+    if (google) html += qRow("google", t("Does Google count it?"), googleValue(b), google);
+    if (index) html += qRow("index", t("Is your page in Google?"), indexValue(b), index, indexBad(b.targetIndex));
+    if (server && id) {
+      html += `<div id="vd-effect" data-id="${id}">${effectInner(id)}</div>`;
+      if (!S.effects.has(id)) loadEffect(id);
+    } else if (sampleEffect) html += qRow("effect", t("Before and after"), sampleEffect.value, sampleEffect.body);
+    html += qRow("traffic", t("Traffic from this link"), trafficValue, traffic);
+    if (spammy && spam) html += qRow("spam", t("Spam"), tagOf("vd-none", b.disavow ? "Marked as spam" : "Looks like spam"), spam);
+    html += qRow("details", t("Details"), anchor ? `<span class="muted" dir="auto">${esc(anchor)}</span>` : "", details + (spammy ? "" : spam));
+    return html;
+  }
+
+  /* After Run again: the verdict and the answers on the right change, and any row the person opened stays open. */
+  function repaint(b) {
+    const box = UI.$(`#vd-answer[data-id="${b.serverId}"]`);
+    if (!box) return;
+    UI.setHTML(box, answerInner(b));
+    const fill = (key, value, body) => {
+      const row = UI.$(`[data-vd-row="${key}"]`);
+      if (!row) return;
+      UI.setHTML(row.querySelector(".vd-q-value"), value);
+      if (body !== undefined) UI.setHTML(row.querySelector(".vd-q-body"), body);
+    };
+    if (S.linkStatus) fill("link", S.linkStatus(b.status));
+    fill("google", googleValue(b), googleBody(b, true));
+    fill("index", indexValue(b), indexBody(b, true));
+  }
+
+  function googleBody(b, server) {
     const c = b.check || {};
     let html = "";
     if (c.verdict) {
-      const [cls, word] = VERDICT[c.verdict];
       const reasons = (c.reasons || []).map((r) => `<li>${esc(t(REASONS[r] || r))}</li>`).join("");
-      html += `<h3>${t("Does Google count it?")}</h3>
-        <p class="lk-result"><span class="tag vd-tag ${cls}">${t(word)}</span> ${c.verdict === "counts" ? t("Google can see this page and the link passes value.") : ""}</p>
-        ${reasons ? `<ul class="vd-reasons">${reasons}</ul>` : ""}`;
+      html += c.verdict === "counts" ? `<p class="lk-result">${t("Google can see this page and the link passes value.")}</p>` : reasons ? `<ul class="vd-reasons">${reasons}</ul>` : "";
       const lang = (v) => (v || "").slice(0, 2);
       if (lang(c.page_lang) && lang(c.target_lang) && lang(c.page_lang) !== lang(c.target_lang)) {
         html += `<p class="note">${UI.icon("info")}<span>${t("The linking page is in {a} and your page is in {b}. Links from pages in the same language and on the same topic usually help more.").replace("{a}", esc(lang(c.page_lang).toUpperCase())).replace("{b}", esc(lang(c.target_lang).toUpperCase()))}</span></p>`;
@@ -110,13 +180,8 @@
     if (c.target_http === 404 || c.target_http === 410) {
       html += `<p class="note warn">${UI.icon("triangle-alert")}<span>${t("Your target page answers {n}, so this link is wasted until the page redirects to a live one.").replace("{n}", c.target_http)}</span></p>`;
     }
-    html += indexBlock(b, server);
     const g = b.gsc || {};
     if (g.seen || g.not_listed) html += `<p class="small sec">${UI.icon("search")} ${g.seen === "page" ? t("Search Console lists this page among your links") : g.seen === "site" ? t("Search Console lists this site among your links, but not this exact page.") : t("Not in your last Search Console upload.")}${g.crawled ? ` · ${t("last crawled")} ${esc(g.crawled)}` : ""}</p>`;
-    if (server && b.serverId) {
-      html += `<div id="vd-effect" data-id="${b.serverId}">${effectInner(b.serverId)}</div>`;
-      if (!S.effects.has(b.serverId)) loadEffect(b.serverId);
-    }
     return html;
   }
 
@@ -245,31 +310,30 @@
     return `${t("Google hasn't indexed this page, so the link can't help it rank yet.")}${ix.coverage ? ` ${t("Google says:")} “${ix.coverage}”` : ""}`;
   }
 
-  function indexBlock(b, server) {
+  function indexBody(b, server) {
     if (b.status !== "live") return "";
     const ix = b.targetIndex, facts = S.sites.get(b.site) || {};
-    const head = `<h3>${t("Is your page in Google?")}</h3>`;
     if (!ix) {
       if (!server) return "";
-      if (!facts.index_check) return `${head}<p class="small sec">${t("Connect Search Console for this site and Google is asked whether your target page is indexed.")} <a href="#settings">${t("Data sources")}</a></p>`;
-      return `${head}<p class="small sec">${t("Google is asked on the next check. Press Run to ask today.")}</p>`;
+      if (!facts.index_check) return `<p class="small sec">${t("Connect Search Console for this site and Google is asked whether your target page is indexed.")} <a href="#settings">${t("Data sources")}</a></p>`;
+      return `<p class="small sec">${t("Google is asked on the next check. Press Run to ask today.")}</p>`;
     }
     const page = pathOf(ix.url);
     const from = `<p class="small muted vd-from">${t("From Search Console's URL Inspection")}${ix.checked ? `, ${esc(ix.checked)}` : ""}.</p>`;
-    if (ix.state === "error") return `${head}<p class="small sec">${UI.icon("triangle-alert")} ${esc(t(ix.error))}</p>${from}`;
+    if (ix.state === "error") return `<p class="small sec">${UI.icon("triangle-alert")} ${esc(t(ix.error))}</p>${from}`;
     if (ix.state === "indexed") {
-      return `${head}<p class="lk-result"><span class="tag vd-tag vd-counts">${t("Indexed")}</span> ${PageLink.html(ix.url, { text: page, cls: "mono small" })}${ix.crawled ? ` · ${t("last crawled")} ${esc(ix.crawled)}` : ""}</p>${from}`;
+      return `<p class="lk-result">${PageLink.html(ix.url, { text: page, cls: "mono small" })}${ix.crawled ? ` · ${t("last crawled")} ${esc(ix.crawled)}` : ""}</p>${from}`;
     }
     const canonical = ix.google_canonical ? `<p class="small sec">${t("Google treats another page as the main version:")} ${PageLink.html(ix.google_canonical, { text: pathOf(ix.google_canonical), cls: "mono" })}</p>` : "";
     const task = UI.taskButton ? UI.taskButton({ title: `${t("Get indexed:")} ${page}`, host: b.site, source: { type: "backlink", label: page, host: b.site, facts: [ix.coverage || t("Not indexed")], link: "#backlinks", key: `index|${b.site}|${page}` } }, { label: "Task" }) : "";
-    return `${head}<p class="lk-result"><span class="tag vd-tag vd-none">${t(ix.state === "unknown" ? "Unknown to Google" : "Not indexed")}</span> ${PageLink.html(ix.url, { text: page, cls: "mono small" })}</p>
+    return `<p class="lk-result">${PageLink.html(ix.url, { text: page, cls: "mono small" })}</p>
       <p class="note warn">${UI.icon("triangle-alert")}<span>${esc(indexWhy(ix))}</span></p>${canonical}<div style="margin:6px 0">${task}</div>${from}`;
   }
 
   /* Below the link check: the one thing a person decides about a bad link. */
-  function spamBlock(b, { server }) {
+  function spamBody(b, server) {
     if (!server || !b.serverId) return "";
-    return `<h3>${t("Spam")}</h3><p class="small sec">${looksSpammy(b) ? `${t("This page looks like spam: it has many outbound links or a high spam score.")} ` : ""}${t("Mark a link you can't get removed and that could look paid or spammy. It goes in the disavow file.")}</p>
+    return `<p class="small sec vd-spam">${looksSpammy(b) ? `${t("This page looks like spam: it has many outbound links or a high spam score.")} ` : ""}${t("Mark a link you can't get removed and that could look paid or spammy. It goes in the disavow file.")}</p>
       <button class="btn btn-small" data-vd-disavow="${b.serverId}" data-on="${b.disavow ? "1" : ""}">${UI.icon(b.disavow ? "check" : "ban")}${t(b.disavow ? "Not spam" : "Mark as spam")}</button>`;
   }
 
@@ -283,14 +347,15 @@
   function effectInner(id) {
     const e = S.effects.get(id);
     if (!e || e.loading) return "";
-    if (e.state === "waiting") return `<h3>${t("Before and after")}</h3><p class="small sec">${t("The days after the link aren't all in Search Console yet, so there's nothing fair to compare.")} ${t("Ready on")} ${esc(UI.fmtDateOnly ? UI.fmtDateOnly(e.ready_on) : e.ready_on)}.</p>`; // F11
-    if (e.state !== "ok") return e.state === "no_date" ? `<h3>${t("Before and after")}</h3><p class="small sec">${t(e.note)}</p>` : "";
+    const label = t("Before and after");
+    if (e.state === "waiting") return qRow("effect", label, quiet("Not ready yet"), `<p class="small sec">${t("The days after the link aren't all in Search Console yet, so there's nothing fair to compare.")} ${t("Ready on")} ${esc(UI.fmtDateOnly ? UI.fmtDateOnly(e.ready_on) : e.ready_on)}.</p>`); // F11
+    if (e.state !== "ok") return e.state === "no_date" ? qRow("effect", label, '<span class="muted">—</span>', `<p class="small sec">${t(e.note)}</p>`) : "";
     const pct = (v) => (v === null || v === undefined ? "—" : `${v > 0 ? "+" : ""}${UI.num(v)}%`);
     const unit = UI.state.lang === "fr" ? "j" : "d";
-    return `<h3>${t("Before and after")} <span class="tag">${t("Correlation, not proof")}</span></h3>
-      <div class="kv"><div><div class="k">${t("Clicks to the target page")} · ${e.days} ${unit} ${t("before")}</div><div class="v">${UI.num(e.before.clicks)}</div></div><div><div class="k">${e.days} ${unit} ${t("after")}</div><div class="v">${UI.num(e.after.clicks)}</div></div></div>
-      <p class="small sec" style="margin-top:6px">${t("This page")} ${pct(e.page_change)} · ${t("the whole site")} ${pct(e.site_change)}${e.after.position ? ` · ${t("position")} ${UI.dec(e.before.position ?? "—")} → ${UI.dec(e.after.position)}` : ""}</p>
-      <p class="small muted">${t("From Search Console. Timing only: this does not prove the link caused the change.")}</p>`;
+    const line = (word, value) => `<tr><td class="sec">${t(word)}</td><td class="tabular">${value}</td></tr>`;
+    return qRow("effect", label, `<span class="tabular">${UI.num(e.before.clicks)} → ${UI.num(e.after.clicks)}</span> ${t("clicks")}`, `<p class="small sec">${t("Clicks to the target page")} · ${e.days} ${unit} ${t("before")} / ${t("after")}</p>
+      <table class="mini"><tbody>${line("This page", pct(e.page_change))}${line("The whole site", pct(e.site_change))}${e.after.position ? line("Position", `${UI.dec(e.before.position ?? "—")} → ${UI.dec(e.after.position)}`) : ""}</tbody></table>
+      <p class="small muted vd-from">${t("From Search Console. Timing only: this does not prove the link caused the change.")}</p>`);
   }
 
   async function toggleDisavow(button) {
@@ -559,7 +624,7 @@
     init(ui, helpers) { UI = ui; H = helpers; bind(); sample(); TP.on(PAGES.sites, () => UI.render()); TP.on(PAGES.reclaim, () => UI.render()); },
     noteSite: (host, facts) => { if (host && facts) S.sites.set(host, facts); },
     filterRows, filterChips, viewSwitch, trafficTotals, byWebsite, websiteTable, searchBox, resetPages, sortRows, sortHead, nextSort, PAGES, trafficHead, trafficCell, anchorTag, anchorWord, anchorOptions,
-    badge, liveNote, authorityCell, panelBlocks, spamBlock, foundTools, foundButton, foundSeen, reclaimBody, reclaimCount, budgetBar, duplicateNote,
+    badge, liveNote, authorityCell, panelBlocks, repaint, foundTools, foundButton, foundSeen, reclaimBody, reclaimCount, budgetBar, duplicateNote,
     forget: () => { S.reclaim.clear(); S.budgets.clear(); S.effects.clear(); },
   };
 
@@ -581,6 +646,10 @@
     "The page names another page as its main version, so Google may count that one instead.": "La page désigne une autre page comme version principale : Google peut compter celle-là à la place.",
     "The page links to more than 100 other sites, which looks like a link list.": "La page pointe vers plus de 100 autres sites, ce qui ressemble à une liste de liens.",
     "Does Google count it?": "Google le compte-t-il ?",
+    "Is the link on the page?": "Le lien est-il sur la page ?", "Working": "Ça fonctionne", "The link is live and Google counts it.": "Le lien est en ligne et Google le compte.", "Weak link": "Lien faible", "Google doesn't count it": "Google ne le compte pas",
+    "Not placed yet": "Pas encore placé", "Your page is gone": "Votre page n'existe plus", "Not found on the last check": "Introuvable au dernier contrôle", "Couldn't check it": "Contrôle impossible", "It's in the disavow file.": "Il est dans le fichier de désaveu.",
+    "The page no longer exists.": "La page n'existe plus.", "The link is no longer on the page.": "Le lien n'est plus sur la page.", "Ask the website to get it indexed, or the link passes nothing.": "Demandez au site de la faire indexer, sinon le lien ne transmet rien.",
+    "Not checked": "Non contrôlé", "Not ready yet": "Pas encore prêt", "Looks like spam": "Ressemble à du spam", "The whole site": "Tout le site", "visit": "visite", "visits": "visites", "lead": "prospect", "leads": "prospects", "clicks": "clics",
     "The linking page is in {a} and your page is in {b}. Links from pages in the same language and on the same topic usually help more.": "La page qui fait le lien est en {a} et votre page en {b}. Les liens venant de pages de même langue et de même sujet aident en général davantage.",
     "Your target page answers {n}, so this link is wasted until the page redirects to a live one.": "Votre page cible répond {n} : ce lien est perdu tant qu'elle ne redirige pas vers une page en ligne.",
     "Not in your last Search Console upload.": "Absent de votre dernier import Search Console.",

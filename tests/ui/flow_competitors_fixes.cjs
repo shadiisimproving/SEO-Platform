@@ -42,13 +42,13 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
 
   // ---- 2. search and sort ---------------------------------------------------------------------------------
   const listed = (await call("GET", `competitors?site_id=${site.id}`)).competitors || [];
-  for (let n = listed.length; n < 7; n += 1) await call("POST", "competitors", { site_id: site.id, address: `find-me-${n}.example` });
+  for (let n = listed.length; n < 11; n += 1) await call("POST", "competitors", { site_id: site.id, address: `find-me-${n}.example` }); // the search box shows past 10 rows (FIND_FROM in comp-summary.js)
   await page.goto("about:blank"); await page.goto(BASE + `#competitors/summary?${q}`); await until(() => page.$("#cs-rivals-table"));
   await settle(1500);
   const names = () => texts("#cs-rivals-table tbody tr .logo-text");
   const all = await names();
   check("2a. a search box shows with this many competitors", Boolean(await page.$("#cs-find")), all.length);
-  const cols = (await texts("#cs-rivals-table thead th")).length;
+  const cols = (await texts("#cs-rivals-table thead th:not(.tt-pick)")).length;
   check("2b. the table keeps its columns", cols === 7, cols);
   const target = all.find((n) => /find-me-3/.test(n)) || all[all.length - 1];
   const part = target.slice(0, 9);

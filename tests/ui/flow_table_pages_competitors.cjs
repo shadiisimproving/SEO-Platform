@@ -126,7 +126,7 @@ async function longer(page, pattern, change) {
     await next("cs-links");
     check("S3. links: Next", /^26–50 of 300/.test(await range("cs-links")));
     await page.click('#cs-links-table [data-cs-ln-sort="authority"]'); await settle();
-    const auth = await all("#cs-links-table tbody tr", (r) => r.slice(0, 6).map((x) => Number(x.children[3].textContent.replace(/\D/g, "")) || 0));
+    const auth = await all("#cs-links-table tbody tr", (r) => r.slice(0, 6).map((x) => Number(x.children[4].textContent.replace(/\D/g, "")) || 0));
     check("S3. links: sort by authority, the highest first, back on page 1", auth.every((n, i) => !i || auth[i - 1] >= n) && /^1–25/.test(await range("cs-links")), JSON.stringify(auth));
     await page.click(".cs-flagged > summary"); await settle();
     check("S3. links: the spam list has its own pages", (await rows("#cs-flagged-table")) === 25 && /of 60 domains/.test(await range("cs-flagged")), await range("cs-flagged"));
@@ -187,7 +187,7 @@ async function longer(page, pattern, change) {
     check("P1. pairs: no match says so, with a way back", /No pair matches this search/.test(await text("#comp-body")) && Boolean(await page.$("#comp-body .empty [data-tp-clear]")));
     await page.click("#comp-body .empty [data-tp-clear]"); await settle();
     await page.click('[data-cp-sort="mine"]'); await settle();
-    const mine = await all("#cp-table tbody tr", (r) => r.slice(0, 8).map((x) => Number(x.children[3].textContent.match(/\d+/)?.[0] || 999)));
+    const mine = await all("#cp-table tbody tr", (r) => r.slice(0, 8).map((x) => Number(x.children[4].textContent.match(/\d+/)?.[0] || 999)));
     check("P1. pairs: sort by your position, the best first", mine.every((n, i) => !i || mine[i - 1] <= n) && (await focusIs(() => document.activeElement?.dataset?.cpSort === "mine")), JSON.stringify(mine));
     await shot("#comp-body", "p1-pairs.png");
     await page.click('[data-cp-sort="mine"]'); await settle(); await page.click('[data-cp-sort="mine"]'); await settle(); // back to the usual order
@@ -301,7 +301,7 @@ async function longer(page, pattern, change) {
     await page.click('[data-cl-kw="shared"]'); await settle();
     await next("cl-kw");
     await page.click('[data-cl-sort="their_position"]'); await settle();
-    const theirs = await all("#cl-keywords .cl-table tbody tr", (r) => r.slice(0, 8).map((x) => Number(x.children[2].textContent.match(/\d+/)?.[0] || 999)));
+    const theirs = await all("#cl-keywords .cl-table tbody tr", (r) => r.slice(0, 8).map((x) => Number(x.children[3].textContent.match(/\d+/)?.[0] || 999)));
     check("C1. sort by their position, back on page 1", theirs.every((n, i) => !i || theirs[i - 1] <= n) && /^1–/.test(await range("cl-kw")) && (await focusIs(() => document.activeElement?.dataset?.clSort === "their_position")), JSON.stringify(theirs));
     await typeIn("cl-kw", "profile keyword 1");
     const segText = await text("#cl-keywords .cl-seg");

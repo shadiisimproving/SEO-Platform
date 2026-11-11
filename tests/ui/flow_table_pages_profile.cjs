@@ -74,12 +74,12 @@ function longInsights(d, host) {
   await page.click('[data-tp-clear][data-tp-key="pt-best"]'); await settle();
   check("clearing the search brings every page back", (await range(bestFoot)) === `1–25 of ${total} pages`);
   await page.click('[data-pt-best-sort="keywords"]'); await settle();
-  const kw = await page.locator(`${best} td:nth-child(2)`).allTextContents();
+  const kw = await page.locator(`${best} td:nth-child(3)`).allTextContents();
   check("Keywords sorts the most first", Number(kw[0]) === 9 && kw.every((x, i) => !i || Number(kw[i - 1]) >= Number(x)), kw.slice(0, 4).join(","));
   check("the sorted heading says so", (await page.locator('th:has([data-pt-best-sort="keywords"])').getAttribute("aria-sort")) === "descending");
   check("focus stays on the heading", (await focused()) === "keywords");
   await page.click('[data-pt-best-sort="position"]'); await settle();
-  const pos = await page.locator(`${best} td:nth-child(3)`).allTextContents();
+  const pos = await page.locator(`${best} td:nth-child(4)`).allTextContents();
   const posN = pos.map((x) => Number(x.replace(/\D/g, "")));
   check("Best position sorts the best first", posN[0] === 1 && posN.every((x, i) => !i || posN[i - 1] <= x), pos.slice(0, 3).join(","));
   await page.click('[data-pt-best-sort="position"]'); await page.click('[data-pt-best-sort="position"]'); await settle(); // a third click goes back
@@ -162,7 +162,7 @@ function longInsights(d, host) {
   check("Content: 50 per page", (await page.locator(cRows).count()) === 50 && (await focused()) === "per");
   await page.selectOption(`${cFoot} [data-tp-per]`, "25"); await settle();
   await page.click('[data-lv-sort="content"][data-key="sessions"]'); await settle();
-  const visits = await page.locator(`${cRows} td:nth-child(2)`).allTextContents();
+  const visits = await page.locator(`${cRows} td:nth-child(3)`).allTextContents();
   check("Content: sorting by Visits goes back to page 1 with the most first", (await range(cFoot)).startsWith("1–25") && Number(visits[0].replace(/\D/g, "")) === 897, visits[0]);
   check("Content: focus stays on the sorted heading", (await focused()) === "content");
   const cBox = '[data-tp-search][data-tp-key="lv-content"]';

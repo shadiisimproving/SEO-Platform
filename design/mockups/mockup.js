@@ -63,10 +63,17 @@
     ? `<img class="logo ${cls}" src="logos/${LOGOS[name]}" alt="" width="${size}" height="${size}">`
     : `<span class="logo ${cls}" style="width:${size}px;height:${size}px" aria-hidden="true">${name === "Browser on this Mac" ? icon("globe") : esc(String(name || "?")[0].toUpperCase())}</span>`);
 
-  /* A website's own icon, once our server has fetched it. Until then its first letter, so rows still line up. */
-  const siteLogo = (domain, size = 20) => (window.LOGOS_KNOWN?.has(domain)
-    ? `<img class="site-logo" src="api/logos/${encodeURIComponent(domain)}" alt="" width="${size}" height="${size}" loading="lazy">`
-    : `<span class="site-logo letter" style="width:${size}px;height:${size}px" aria-hidden="true">${esc(String(domain || "?")[0].toUpperCase())}</span>`);
+  /* These big sites tell bots to stay away, so our server can never fetch their icon: the app carries a copy. */
+  const SITE_FILES = new Map([["facebook.com", "facebook.svg"], ["instagram.com", "instagram.svg"], ["linkedin.com", "linkedin.svg"], ["trustpilot.com", "trustpilot.svg"]]);
+
+  /* A website's own icon, once our server has fetched it. A subdomain with none uses its parent's: m.facebook.com is Facebook. Until then its first letter, so rows still line up. */
+  const siteLogo = (domain, size = 20) => {
+    const names = String(domain || "").toLowerCase().split(".").map((_, i, all) => all.slice(i).join("."));
+    const carried = names.find((name) => SITE_FILES.has(name));
+    const fetched = names.find((name) => window.LOGOS_KNOWN?.has(name));
+    if (!carried && !fetched) return `<span class="site-logo letter" style="width:${size}px;height:${size}px" aria-hidden="true">${esc(String(domain || "?")[0].toUpperCase())}</span>`;
+    return `<img class="site-logo" src="${carried ? `logos/${SITE_FILES.get(carried)}` : `api/logos/${encodeURIComponent(fetched)}`}" alt="" width="${size}" height="${size}" loading="lazy">`;
+  };
 
   /* The site menu's mark: the site's own icon once fetched, its first letter until then. */
   const siteMark = (host) => (window.LOGOS_KNOWN?.has(host)
@@ -988,7 +995,7 @@
       ${window.BacklinkSeo.byWebsite() ? window.BacklinkSeo.websiteTable(rows) : `<div class="bl-list"><div class="table-wrap"><table class="data" id="bl-table">
         <thead><tr>${head("src", "Source page")}<th scope="col">${t("Target")}</th><th scope="col">${t("Keyword")}</th><th scope="col">${t("Anchor type")}</th><th scope="col">${t("Status")}</th>${head("authority", "Authority", "r")}${window.BacklinkSeo.trafficHead()}${head("visits", "Visits", "r")}${head("leads", "Leads", "r")}<th scope="col" class="r">${t("Cost per visit")}</th><th scope="col">${t("Mediator")}</th></tr></thead>
         <tbody>${page.rows.length ? "" : `<tr style="cursor:default"><td colspan="12"><div class="empty"><h3>${t("No link matches this search")}</h3><p>${t("Change the search or pick another filter.")}</p></div></td></tr>`}${page.rows.map((b) => `<tr data-bl="${b.id}" id="row-${b.id}">
-          <td class="head-cell url-cell"><span class="with-logo">${siteLogo(linkDomain(b.src))}<span class="logo-text"><span class="nb-inline"><button class="kw mono small" data-open-bl="${b.id}" style="text-align:start" data-tip="${esc(b.src)}">${esc(b.src.replace(/^https?:\/\//, ""))}</button>${window.COMP?.notes?.badge ? window.COMP.notes.badge({ scope: "domain", domain: linkDomain(b.src), siteId: window.UI.siteIdPicked?.() ?? null }, linkDomain(b.src)) : ""}</span><span class="second" dir="auto">${esc(b.anchor || b.check?.anchor || "—")}</span>${state.site === "all" && b.site ? `<span class="second mono" dir="auto">${t("For")} ${esc(b.site)}</span>` : ""}</span></span></td>
+          <td class="head-cell url-cell"><span class="with-logo">${siteLogo(linkDomain(b.src))}<span class="logo-text"><span class="nb-inline">${PageLink.html(b.src, { text: b.src.replace(/^https?:\/\//, ""), cls: "kw mono small" })}<button class="sr" data-open-bl="${b.id}">${t("Open details")}</button>${window.COMP?.notes?.badge ? window.COMP.notes.badge({ scope: "domain", domain: linkDomain(b.src), siteId: window.UI.siteIdPicked?.() ?? null }, linkDomain(b.src)) : ""}</span><span class="second" dir="auto">${esc(b.anchor || b.check?.anchor || "—")}</span>${state.site === "all" && b.site ? `<span class="second mono" dir="auto">${t("For")} ${esc(b.site)}</span>` : ""}</span></span></td>
           <td class="mono small url-cell" data-label="${t("Target")}">${b.target ? PageLink.html(b.target, { host: b.site }) : "—"}</td>
           <td data-label="${t("Keyword")}">${b.keyword ? `<span dir="auto">${esc(b.keyword)}</span>` : '<span class="muted">—</span>'}</td>
           <td data-label="${t("Anchor type")}">${window.BacklinkSeo.anchorTag(b) || '<span class="muted">—</span>'}</td>
@@ -2010,25 +2017,17 @@
     const unit = state.lang === "fr" ? "j" : "d";
     const traffic = b.label === "no-ga4"
       ? `<p class="note">${icon("info")}<span>${t("GA4 not connected for this site")}</span></p>`
-      : `<div class="kv"><div><div class="k">${t("Visits")}</div><div class="v">${num(b.visits)}</div></div><div><div class="k">${t("Leads")}</div><div class="v">${num(b.leads)}</div></div></div>
-         ${label ? `<p class="small sec" style="margin-top:6px"><span class="tag">${label[0]}</span> ${t(label[1])}</p>` : `<p class="small sec" style="margin-top:6px">${t("No visits counted yet. Links that hide their source show as Direct.")}</p>`}`;
-    const effect = b.before === null ? "" : `<h3>${t("Before and after")}</h3>
-        <div class="kv"><div><div class="k">${t("Clicks to the target page")} · 30 ${unit} ${t("before")}</div><div class="v">${num(b.before)}</div></div><div><div class="k">30 ${unit} ${t("after")}</div><div class="v">${num(b.after)}</div></div></div>
-        <p class="small muted" style="margin-top:6px">${t("Timing only: this does not prove the link caused the change.")}</p>`;
+      : label ? `<p class="small sec"><span class="tag">${label[0]}</span> ${t(label[1])}</p>` : `<p class="small sec">${t("No visits counted yet. Links that hide their source show as Direct.")}</p>`;
+    const trafficValue = b.label === "no-ga4" ? '<span class="muted">—</span>' : `<span class="tabular">${num(b.visits)}</span> ${t(b.visits === 1 ? "visit" : "visits")} · <span class="tabular">${num(b.leads)}</span> ${t(b.leads === 1 ? "lead" : "leads")}`;
+    const sampleEffect = b.before === null || b.before === undefined ? null : {
+      value: `<span class="tabular">${num(b.before)} → ${num(b.after)}</span> ${t("clicks")}`,
+      body: `<p class="small sec">${t("Clicks to the target page")} · 30 ${unit} ${t("before")} / ${t("after")}</p><p class="small muted vd-from">${t("Timing only: this does not prove the link caused the change.")}</p>`,
+    };
     // Only what has a value, so a link with one field isn't a page of dashes. Any language keeps its direction.
     const fact = (label, value, { cls = "", style = "" } = {}) => (value ? `<tr><td class="sec">${t(label)}</td><td class="${cls}" dir="auto" style="overflow-wrap:anywhere;${style}">${esc(value)}</td></tr>` : "");
     const utm = b.utm ? fact("Source", b.utm.source, { cls: "mono" }) + fact("Medium", b.utm.medium, { cls: "mono" }) + fact("Campaign", b.utm.campaign, { cls: "mono" }) : "";
-    openPanel(`${panelHead(b.src.replace(/^https?:\/\//, ""), `→ ${b.target ? PageLink.html(b.target, { host: b.site, cls: "mono" }) : "—"}`, siteLogo(linkDomain(b.src), 34))}
-      <div class="panel-body">
-        <h3>${t("Traffic from this link")}</h3>${traffic}
-        ${utm ? `<h3>UTM</h3><table class="mini"><tbody>${utm}</tbody></table>` : ""}
-        ${effect}
-        ${window.BacklinkSeo.panelBlocks(b, { server: bl.server })}
-        ${bl.server ? window.LinkExtras.checkBlock(b, { linkStatus }) : `<h3>${t("Link check")} <button class="btn btn-small end" id="check-now">${t("Check now")}</button></h3>
-        <p class="small sec" id="check-result">${linkStatus(b.status)} ${b.status === "live" ? `· ${t("Checked today: live, follow, same anchor")}` : ""}</p>`}
-        ${window.BacklinkSeo.spamBlock(b, { server: bl.server })}
-        <h3>${t("Details")}</h3>
-        <table class="mini"><tbody>
+    const check = bl.server ? window.LinkExtras.checkBlock(b, { linkStatus }) : `<p class="small sec" id="check-result">${b.status === "live" ? t("Checked today: live, follow, same anchor") : ""}</p><button class="btn btn-small" id="check-now">${t("Check now")}</button>`;
+    const details = `<table class="mini"><tbody>
           ${fact("Site", b.site, { cls: "mono small" })}
           ${fact("Anchor text", b.anchor)}
           ${fact("Anchor type", window.BacklinkSeo.anchorWord(b))}
@@ -2043,7 +2042,11 @@
           ${fact("Due date", b.due)}
           ${fact("Renewal date", b.renewal)}
           ${fact("Notes", b.notes, { style: "white-space:pre-wrap" })}
-        </tbody></table>
+        </tbody></table>`;
+    const pagePath = b.src.replace(/^https?:\/\/[^/]+/, "") || "/";
+    openPanel(`${panelHead(linkDomain(b.src), `<span class="vd-head-line">${PageLink.html(b.src, { text: pagePath, cls: "mono" })}</span><span class="vd-head-line">→ ${b.target ? PageLink.html(b.target, { host: b.site, cls: "mono" }) : "—"}</span>`, siteLogo(linkDomain(b.src), 34))}
+      <div class="panel-body">
+        ${window.BacklinkSeo.panelBlocks(b, { server: bl.server, linkStatus, check, traffic: traffic + (utm ? `<table class="mini"><tbody>${utm}</tbody></table>` : ""), trafficValue, sampleEffect, details, anchor: b.anchor || b.check?.anchor })}
       </div>
       <div class="panel-foot"><button class="btn btn-main" id="bl-edit" data-id="${esc(b.id)}">${icon("pencil")}${t("Edit")}</button>${window.UI.taskButton(backlinkFind(b), { cls: "btn" })}<button class="btn btn-ghost danger" id="bl-delete" data-id="${esc(b.id)}">${t("Delete")}</button></div>`, opener);
   }

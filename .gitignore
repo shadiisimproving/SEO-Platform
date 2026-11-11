@@ -14,3 +14,6 @@ design/mockups/.axe.min.js
 deploy/deploy.local.env
 deploy/known_hosts.local
 reports/
+# Screenshots that browser tests drop in the project root, and folders made when a test took a URL as its output path.
+/*.png
+/http:/

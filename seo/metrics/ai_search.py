@@ -4,8 +4,8 @@ Every block says where its numbers come from, for which days, and how fresh they
 data and a failing source fails only its own card. Four sources feed it:
 - GA4: visits and leads from AI assistants, the pages they land on (the period picked on the screen).
 - Clarity download: Copilot's citations, share of authority and questions (the file's own period, uploaded by hand).
-- Clarity live: the referrers Clarity's API gave for the last 24 hours, read once a UTC day. Only a second opinion beside
-  GA4, on the days both have, and never added to it.
+- Clarity live: the referrers Clarity's API gave for the last 24 hours, read once a UTC day. It has its own weekly chart,
+  and a second opinion beside GA4 on the days both have. It's never added to GA4.
 - SerpApi (or whichever tool checked the keywords): Google AI Overviews, from the AI Overview watch.
 
 A visit counts as AI when its source is on the AI list, whatever channel GA4 filed it under (ChatGPT's own links carry
@@ -245,7 +245,31 @@ def _copilot_visits(scope, site_id: int, start: date, end: date) -> dict[str, in
     return {path: item["sessions"] for (_, path), item in found.items()}
 
 
-# ---- Clarity live: a second opinion --------------------------------------------------------------------------
+# ---- Clarity live: its own weeks, and a second opinion ---------------------------------------------------------
+
+
+def _clarity_ai_visits(row, domains: set[str]) -> int:
+    referrers = row["referrers"] if isinstance(row["referrers"], list) else json.loads(row["referrers"] or "[]")
+    return int(sum(float(r.get("sessions") or 0) for r in referrers if base._is_ai(_domain(r.get("source") or ""), domains)))
+
+
+def _clarity_weekly(scope, domains: set[str], weeks: list[tuple[date, date]]) -> list[dict]:
+    """Clarity's own AI visits on the same weeks as GA4's chart. A read on day D covers D-1. A week with no read is a gap,
+    not a zero, and each week says how many days were read: Clarity can't look back, so most weeks are only partly read."""
+    rows = scope.fetch(
+        "SELECT site_id, day, referrers FROM clarity_daily WHERE site_id IN :sites AND day BETWEEN :a AND :b AND referrers IS NOT NULL",
+        weeks[0][0] + timedelta(days=1), weeks[-1][1] + timedelta(days=1),
+    )
+    visits: dict[int, int] = defaultdict(int)
+    read: dict[int, set] = defaultdict(set)
+    for row in rows:
+        covered = row["day"] - timedelta(days=1)
+        for n, (a, b) in enumerate(weeks):
+            if a <= covered <= b:
+                visits[n] += _clarity_ai_visits(row, domains)
+                read[n].add(covered)
+    return [{"start": a.isoformat(), "end": b.isoformat(), "sessions": visits[n] if read[n] else None, "days": len(read[n])} for n, (a, b) in enumerate(weeks)]
+
 
 
 def _second_opinion(scope, domains: set[str], ga4_ai_by_day: dict, ga4_days: set) -> dict | None:
@@ -262,9 +286,8 @@ def _second_opinion(scope, domains: set[str], ga4_ai_by_day: dict, ga4_days: set
         last = max(last or row["day"], row["day"])
         if (row["site_id"], covered) not in ga4_days:
             continue
-        referrers = row["referrers"] if isinstance(row["referrers"], list) else json.loads(row["referrers"] or "[]")
         days += 1
-        clarity += int(sum(float(r.get("sessions") or 0) for r in referrers if base._is_ai(_domain(r.get("source") or ""), domains)))
+        clarity += _clarity_ai_visits(row, domains)
         ga4 += ga4_ai_by_day.get((row["site_id"], covered), 0)
     return {"days": days, "clarity": clarity, "ga4": ga4, "last_read": last.isoformat() if last else None}
 
@@ -504,6 +527,7 @@ def build(scope) -> dict:
         ],
         "series": [{"day": day, "sessions": per_day[day]} for day in sorted(per_day)],
         "weekly": weekly,
+        "clarity_weekly": _clarity_weekly(scope, domains, weeks),
         "pages": pages,
         "copilot": copilot,
         "second_opinion": _second_opinion(scope, domains, ai_by_site_day, ga4_days),

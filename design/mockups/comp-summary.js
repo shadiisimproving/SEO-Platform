@@ -211,7 +211,7 @@
   function leadCell(r) {
     if (!trackedOn(r)) return unknown("Keyword tracking isn't on for this competitor.");
     if (r.ranks_on === null || r.ranks_on === undefined) return unknown("No ranking check yet");
-    const side = (who, n, cls) => `<span class="cs-lead-side"><i class="pt-key pt-key-${cls}" aria-hidden="true"></i>${t(who)} <b class="tabular">${UI.num(n || 0)}</b></span>`;
+    const side = (who, n, cls) => `<span class="cs-lead-side">${COMP.who(cls, null, t(who))} <b class="tabular">${UI.num(n || 0)}</b></span>`;
     const absent = r.not_found ? `<span class="second">${esc(plural(r.not_found, "you're absent on {n}", "you're absent on {n}"))}</span>` : "";
     return `<span class="cs-lead-cell"><span class="cs-lead">${side("Them", r.they_ahead, "them")}${side("You", r.i_ahead, "you")}</span>${absent}</span>`; // one box, so a phone's card keeps both sides on a line with the note under them
   }

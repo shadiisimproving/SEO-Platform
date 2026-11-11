@@ -41,7 +41,7 @@
   }
   /* The column the table is sorted by, read from its heading. */
   function sortWords(root = "#page") {
-    const th = document.querySelector(`${root} th[aria-sort="ascending"], ${root} th[aria-sort="descending"]`);
+    const th = document.querySelector(`${root} th[aria-sort="ascending"]:not([data-tt-col]), ${root} th[aria-sort="descending"]:not([data-tt-col])`);
     if (!th) return [];
     const copy = th.cloneNode(true);
     copy.querySelectorAll("svg, img, .th-sub").forEach((extra) => { extra.textContent = ""; });

@@ -328,6 +328,58 @@ def _questions(conn, site_id: int, theirs: list[dict], mine: list[dict]) -> dict
     }
 
 
+def _stem(word: str) -> str:
+    return word[: topic_words.PREFIX] if len(word) >= topic_words.PREFIX else word
+
+
+def _my_questions(page: dict) -> list[str]:
+    own = fold(_h1(page)).strip(" ?")
+    return [q for q in page["extras"].get("questions") or [] if isinstance(q, str) and fold(q).strip(" ?") != own]
+
+
+def _closest_page(title: str, candidates: list[tuple[dict, set[str]]], common: set[str]) -> dict | None:
+    """My page whose main heading shares the most words with theirs. Two shared words at least: one word alone ("visa") is too loose to call it the same subject."""
+    wanted = {_stem(w) for w in topic_words.tokens(title or "")} - common
+    best, most = None, 1
+    for page, words in candidates:
+        shared = len(wanted & words)
+        if shared > most:
+            best, most = page, shared
+    return best
+
+
+def _attach_my_pages(conn, site_id: int, competitor_id: int, groups: list[dict], best: list[dict], mine: list[dict]) -> None:
+    """Beside each page of theirs, the page of mine it's compared with, and the questions that page asks.
+
+    In order: the pair saved in Page vs page, then my page ranking for the same keyword, then my page with the closest main heading.
+    "how" says which, so a guess never reads as a fact. None when nothing of mine is close."""
+    if not groups:
+        return
+    paired = {
+        history.page_key(row["their_url"]): row["my_url"]
+        for row in conn.execute(
+            text("SELECT my_url, their_url FROM page_pairs WHERE site_id = :s AND competitor_id = :c AND hidden = 0"), {"s": site_id, "c": competitor_id}
+        ).mappings()
+    }
+    ranked = {history.page_key(row["url"]): row["my_url"] for row in best if row.get("my_url")}
+    read = {history.page_key(p["url"]): p for p in mine}
+    candidates = [(p, {_stem(w) for w in topic_words.tokens(_h1(p))}) for p in mine if not _is_listing(p["url"])]
+    counts: Counter = Counter(w for _, words in candidates for w in words)
+    common = {w for w, n in counts.items() if len(candidates) >= 10 and n > EVERYWHERE * len(candidates)}  # a city's name on a site about that city says nothing
+    candidates = [(p, words - common) for p, words in candidates]
+    for group in groups:
+        key = history.page_key(group["url"])
+        url, how = (paired[key], "paired") if key in paired else (ranked[key], "keyword") if key in ranked else (None, None)
+        page = read.get(history.page_key(url)) if url else _closest_page(group["title"], candidates, common)
+        if url is None and page is not None:
+            url, how = page["url"], "topic"
+        group["mine"] = None if url is None else {
+            "url": url, "how": how, "read": page is not None,
+            "title": (_h1(page) or page["title"]) if page else None,
+            "questions": _my_questions(page) if page else [],
+        }
+
+
 def _best_pages(conn, site_id: int, competitor_id: int, my_host: str, host: str, checks: list[store.Check], theirs: list[dict]) -> list[dict]:
     """Their pages by how many of my keywords each ranks for, from the latest check of each keyword."""
     titles = {history.page_key(p["url"]): p["title"] for p in theirs if p["title"]}
@@ -477,6 +529,7 @@ def insights(engine: Engine, site_id: int, competitor_id: int) -> dict:
         best, cannibal = [], {}
         if setting == tracking.ON:  # keyword numbers only for a competitor that's followed
             best = _best_pages(conn, site_id, competitor_id, my_host, host, store.latest_checks(engine, site_id), theirs)
+        _attach_my_pages(conn, site_id, competitor_id, questions["groups"], best, mine)
     if setting == tracking.ON:
         cannibal = _cannibal(store.history(engine, site_id), host)
     return {

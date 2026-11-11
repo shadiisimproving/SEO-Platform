@@ -292,7 +292,8 @@ def _match(query: str) -> str:
 
 
 def tracked(scope: Scope) -> set[str]:
-    rows = scope.fetch("SELECT DISTINCT k.keyword FROM keywords k JOIN site_keywords sk ON sk.keyword_id = k.id WHERE sk.site_id IN :sites")
+    # No DISTINCT here: the keywords table compares without accents, so it would keep "café" and drop "cafe". The set does it.
+    rows = scope.fetch("SELECT k.keyword FROM keywords k JOIN site_keywords sk ON sk.keyword_id = k.id WHERE sk.site_id IN :sites")
     return {_match(row["keyword"]) for row in rows}
 
 

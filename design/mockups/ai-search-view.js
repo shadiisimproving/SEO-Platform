@@ -125,21 +125,43 @@
     return `<section class="tiles ai-tiles">${visits}${leads}${rate}${cite}</section>`;
   }
 
-  // ---- the weekly chart, and Clarity live beside it ------------------------------------------------
-  function chartCard(d) {
+  // ---- the weekly charts: Google Analytics and Clarity live, each showing only its own numbers ------
+  const NOT_ON = ["not_connected", "not_used", "no_sites"];
+  const half = (id, name, src, body, foot = "") => `<div class="ai-half" data-ai-half="${id}"><div class="ai-half-head"><h3>${esc(name)}</h3>${chip(src, { short: true, bare: true })}</div>${body}${foot}</div>`;
+  const weekWords = (w) => tf("Week {a} – {b}", { a: day(w.start), b: day(w.end) });
+  function ga4Half(d) {
     const ga4 = stateOf(d, "ga4");
     const weeks = d.weekly, days = weeks.map((w) => w.end);
     const values = Object.fromEntries(weeks.map((w) => [w.end, w.sessions]));
     const marks = d.key_events_set_up ? Object.fromEntries(weeks.filter((w) => w.leads > 0).map((w) => [w.end, w.leads])) : null;
     const weekOf = Object.fromEntries(weeks.map((w) => [w.end, w]));
-    const label = (end) => tf("Week {a} – {b}", { a: day(weekOf[end].start), b: day(end) });
-    const off = ["not_connected", "not_used", "no_sites"].includes(ga4.state);
+    const off = NOT_ON.includes(ga4.state), any = weeks.some((w) => w.sessions);
     const body = off ? `<div class="empty"><p>${t("Connect Google Analytics to see visits from AI assistants.")}</p><div style="margin-top:10px"><button class="btn btn-main" data-lv-connect="google">${t("Connect")}</button></div></div>`
-      : !weeks.some((w) => w.sessions) ? `<div class="empty"><p>${t("No visits from AI assistants in these weeks.")}</p></div>`
-      : LVx().lineChart("ai-weeks", days, [{ name: "AI visits", color: "var(--ch-1)", values }], { marks, markName: "Leads", dayLabel: label });
-    const legend = !off && weeks.some((w) => w.sessions) && marks && Object.keys(marks).length ? `<span class="ai-legend"><i class="ai-dot"></i>${t("a week with a lead")}</span>` : "";
-    return `<section class="card ai-chart"><div class="card-head"><h2>${t("AI visits per week")}</h2><span class="end">${chip(ga4, { short: true })}</span></div>
-      ${body}${legend || secondOpinion(d) ? `<div class="ai-chart-foot">${legend}${secondOpinion(d)}</div>` : ""}</section>`;
+      : !any ? `<div class="empty"><p>${t("No visits from AI assistants in these weeks.")}</p></div>`
+      : LVx().lineChart("ai-weeks", days, [{ name: "AI visits", color: "var(--ch-1)", values }], { marks, markName: "Leads", dayLabel: (end) => weekWords(weekOf[end]) });
+    const legend = !off && any && marks && Object.keys(marks).length ? `<div class="ai-half-foot"><span class="ai-legend"><i class="ai-dot"></i>${t("a week with a lead")}</span></div>` : "";
+    return half("ga4", t("Google Analytics"), ga4, body, legend);
+  }
+  function clarityHalf(d) {
+    const live = stateOf(d, "clarity_live");
+    const weeks = d.clarity_weekly, days = weeks.map((w) => w.end);
+    const values = Object.fromEntries(weeks.map((w) => [w.end, w.sessions]));
+    const weekOf = Object.fromEntries(weeks.map((w) => [w.end, w]));
+    const read = weeks.reduce((n, w) => n + w.days, 0), any = weeks.some((w) => w.sessions);
+    const label = (end) => (weekOf[end].days ? `${weekWords(weekOf[end])} · ${plural(weekOf[end].days, "{n} day read", "{n} days read")}` : weekWords(weekOf[end]));
+    const empty = (words, button = "") => `<div class="empty"><p>${esc(words)}</p>${button ? `<div style="margin-top:10px">${button}</div>` : ""}</div>`;
+    const body = live.state === "not_connected" ? empty(t("Connect Clarity to see its own count of AI visits."), `<button class="btn btn-main" data-lv-connect="clarity">${t("Connect")}</button>`)
+      : NOT_ON.includes(live.state) ? empty(t("Clarity isn't used here."))
+      : !read ? empty(t("Clarity hasn't been read on these weeks yet."))
+      : !any ? empty(tf("Clarity was read on {n} and saw no visits from AI assistants.", { n: plural(read, "{n} day", "{n} days") }))
+      : LVx().lineChart("ai-weeks-clarity", days, [{ name: "AI visits", color: "var(--ch-2)", values }], { dayLabel: label });
+    const note = read && !NOT_ON.includes(live.state) ? `<div class="ai-half-foot"><p class="small muted ai-second"><span>${esc(tf("Clarity only gives its last 3 days, so a week counts only the days read: {n} so far.", { n: num(read) }))}</span></p></div>` : "";
+    return half("clarity", t("Clarity live"), live, body, note);
+  }
+  function chartCard(d) {
+    const second = secondOpinion(d);
+    return `<section class="card ai-chart"><div class="card-head"><h2>${t("AI visits per week")}</h2></div>
+      <div class="ai-halves">${ga4Half(d)}${clarityHalf(d)}</div>${second ? `<div class="ai-chart-foot">${second}</div>` : ""}</section>`;
   }
   function secondOpinion(d) {
     const s = d.second_opinion, live = stateOf(d, "clarity_live");
@@ -504,6 +526,9 @@
     "needs {need} AI visits, {n} so far": "il faut {need} visites IA, {n} pour l'instant", "organic search": "recherche organique", "{l} of {v}": "{l} sur {v}", "Lead rate": "Taux de lead",
     "Upload a Clarity AI download": "Importer un export IA de Clarity", "since the last upload": "depuis l'import précédent", "share": "part", "pts": "pts", "Copilot citations": "Citations Copilot",
     "Week {a} – {b}": "Semaine du {a} au {b}", "Connect Google Analytics to see visits from AI assistants.": "Connectez Google Analytics pour voir les visites des assistants IA.", "Connect": "Connecter",
+    "Connect Clarity to see its own count of AI visits.": "Connectez Clarity pour voir son propre décompte des visites IA.", "Clarity isn't used here.": "Clarity n'est pas utilisé ici.", "Clarity hasn't been read on these weeks yet.": "Clarity n'a pas encore été relevé sur ces semaines.",
+    "Clarity was read on {n} and saw no visits from AI assistants.": "Clarity a été relevé sur {n} et n'a vu aucune visite d'assistant IA.", "Clarity only gives its last 3 days, so a week counts only the days read: {n} so far.": "Clarity ne donne que ses 3 derniers jours : une semaine ne compte donc que les jours relevés, {n} pour l'instant.",
+    "{n} day read": "{n} jour relevé", "{n} days read": "{n} jours relevés", "{n} day": "{n} jour",
     "No visits from AI assistants in these weeks.": "Aucune visite d'assistant IA sur ces semaines.", "a week with a lead": "une semaine avec un lead", "AI visits per week": "Visites IA par semaine",
     "Clarity live has no reads on these days yet, so there's nothing to set beside Google Analytics.": "Clarity en direct n'a pas encore de relevé sur ces jours : rien à mettre à côté de Google Analytics.",
     "Second opinion: Clarity live saw {c} on the {n} it read; Google Analytics saw {g} on the same days. They count differently, so they're never added.": "Deuxième avis : Clarity en direct a vu {c} sur les {n} relevés ; Google Analytics en a vu {g} les mêmes jours. Ils ne comptent pas pareil, donc on ne les additionne jamais.",

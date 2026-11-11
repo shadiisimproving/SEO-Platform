@@ -295,6 +295,11 @@ def tiles(rows: list[dict], engine_name: str) -> dict:
     }
 
 
+def rows_of_site(engine: Engine, site_id: int) -> list[dict]:
+    """The same rows the Keywords screen shows, for Insights to read beside Search Console."""
+    return _rows(engine, site_id)["rows"]
+
+
 def listing(engine: Engine, site_id: int | None = None) -> dict:
     built = _rows(engine, site_id)
     through = [day for day in built["through"].values() if day]
