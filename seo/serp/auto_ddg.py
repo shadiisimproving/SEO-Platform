@@ -9,8 +9,9 @@ Which tool:
    search, twice), so after one it rests for REST_HOURS. It gets one try a day, and the app never tries to get past a check.
 2. Bright Data, on its free credits only (Refresh never pays without a person's own limit): it reads DuckDuckGo's page as
    HTML (tools.BrightData._duckduckgo). Its free 5,000 a month also serve Google, so these checks take at most
-   MONTH_CAP a month, spread evenly over the month's days, oldest DuckDuckGo positions first. When Bright Data refuses
-   DuckDuckGo (live, 2026-11-11: the owner's zone has "No parser found" for it), it rests for REST_HOURS too.
+   MONTH_CAP a month, spread evenly over the month's days, oldest DuckDuckGo positions first. It asks for the page as
+   Markdown: live on 2026-11-11 the owner's zone refused DuckDuckGo any other way ("No parser found"). When Bright Data
+   refuses or keeps failing, it rests for REST_HOURS too, until a search by it works again.
 
 When: every day for each of my sites, from collect-due (hourly cron), and on Refresh data. Keywords with a DuckDuckGo
 position newer than FRESH_HOURS are left alone, so pressing Refresh data twice doesn't search twice.
@@ -64,16 +65,24 @@ STOPS = {
 
 
 def _resting(engine: Engine, tool: str) -> bool:
-    """This tool was dropped from a Refresh run in the last REST_HOURS for one of its STOPS reasons."""
+    """This tool was dropped from a Refresh run in the last REST_HOURS for one of its STOPS reasons, and no DuckDuckGo
+    search by it has worked since that run ended: one that works lifts the rest at once."""
     with engine.connect() as conn:
-        reasons = [row[0] for row in conn.execute(
+        drops = conn.execute(
             text(
-                "SELECT JSON_UNQUOTE(JSON_EXTRACT(dropped, :path)) FROM rank_runs "
+                "SELECT COALESCE(finished_at, UTC_TIMESTAMP(3)), JSON_UNQUOTE(JSON_EXTRACT(dropped, :path)) FROM rank_runs "
                 "WHERE created_at >= UTC_TIMESTAMP(3) - INTERVAL :h HOUR AND JSON_EXTRACT(dropped, :path) IS NOT NULL"
             ),
             {"h": REST_HOURS, "path": f'$."{tool}"'},
-        ).all()]
-    return any(word in (reason or "") for reason in reasons for word in STOPS[tool])
+        ).all()
+        stopped = [at for at, reason in drops if any(word in (reason or "") for word in STOPS[tool])]
+        if not stopped:
+            return False
+        worked = conn.execute(
+            text("SELECT MAX(c.checked_at) FROM serp_checks c JOIN serp_targets t ON t.id = c.target_id WHERE t.engine = :e AND c.tool = :t AND c.status = 'ok'"),
+            {"e": ENGINE_NAME, "t": tool},
+        ).scalar()
+    return worked is None or worked < max(stopped)
 
 
 def _due(engine: Engine, site_id: int) -> list[int]:

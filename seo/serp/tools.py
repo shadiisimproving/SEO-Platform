@@ -5,6 +5,7 @@ instead of working around it, and the caller moves to the next free tool. Nothin
 """
 from __future__ import annotations
 
+import re
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -144,6 +145,28 @@ def parse_ddg(body: bytes) -> list[Found]:
         if not href.startswith(("http://", "https://")):
             continue
         found.append(Found(len(found) + 1, href, anchor.text_content().strip()[:500]))
+    return found
+
+
+# Bright Data's DuckDuckGo page as Markdown (data_format "markdown"): each result's title is a level-2 heading that links to
+# the page, in order, as DuckDuckGo shows them. Sub-links are level 3, and related searches are plain links, so neither counts.
+_DDG_MD_RESULT = re.compile(r"^[ \t]*##[ \t]+\[(?P<title>[^\]\n]*)\]\((?P<url>https?://[^\s)]+)\)", re.MULTILINE)
+
+
+def parse_ddg_markdown(text: str) -> list[Found]:
+    """Normal results only: a heading that links back to DuckDuckGo (its adverts go through duckduckgo.com/y.js) is left out."""
+    found: list[Found] = []
+    seen: set[str] = set()
+    for match in _DDG_MD_RESULT.finditer(text or ""):
+        url = match.group("url")
+        try:
+            host = urlsplit(url).hostname or ""
+        except ValueError:
+            continue
+        if not host or host == "duckduckgo.com" or host.endswith(".duckduckgo.com") or url in seen:
+            continue
+        seen.add(url)
+        found.append(Found(len(found) + 1, url, match.group("title").replace("**", "").strip()[:500]))
     return found
 
 
@@ -383,18 +406,18 @@ class BrightData:
             base, params = "https://www.bing.com/search", {"q": keyword, "first": page * 10 + 1, **({"cc": country.lower()} if country else {}), **({"setLang": language.lower()} if language else {})}
         elif engine == "duckduckgo":
             # The address Bright Data's own DuckDuckGo examples use, without brd_json: there's no parsed JSON for DuckDuckGo
-            # (live, 2026-11-11, "answered 200 without data"). It sends the drawn page back as HTML, read by parse_ddg.
-            # html.duckduckgo.com was refused the same way ("No parser found"), so it isn't asked for.
+            # (live, 2026-11-11: brd_json=1 "No parser found", brd_json=0 "JSON output is not supported"). _duckduckgo asks
+            # for it as Markdown, the one way that answered. html.duckduckgo.com was refused too, so it isn't asked for.
             return f"https://duckduckgo.com/?{urlencode({'q': keyword, 'kl': ddg_region(country, language), **mobile})}"
         else:
             base, params = "https://yandex.com/search/", {"text": keyword, "p": page}
         return f"{base}?{urlencode({**params, **mobile, 'brd_json': '1'})}"
 
-    def _reply(self, address: str) -> httpx.Response:
+    def _reply(self, address: str, **extra) -> httpx.Response:
         reply = _request(lambda: self.client.post(
             "https://api.brightdata.com/request",
             headers={"Authorization": f"Bearer {self.key}"},
-            json={"zone": self.zone, "url": address, "format": "raw"},
+            json={"zone": self.zone, "url": address, "format": "raw", **extra},
         ), self.name)
         if reply.status_code in (401, 403):
             raise ToolStopped("Bright Data refused the key or the zone name.")
@@ -408,22 +431,23 @@ class BrightData:
         return _json_or_fail(self._reply(address), self.name)
 
     def _duckduckgo(self, keyword: str, country: str, language: str, device: str, depth: int) -> Answer:
-        """DuckDuckGo's page as HTML, read the same way DuckDuckGo direct reads it. One page, one credit.
+        """DuckDuckGo's page as Markdown, one heading per result. One page, one credit.
 
         DuckDuckGo shows the hosting server a bot check (live, 2026-11-11), so this is how the server gets DuckDuckGo's
-        results without SerpApi (owner, 2026-11-11). A page with nothing readable is one failed search: it was still billed.
-        An empty answer with Bright Data's own error code is a refusal, not a page: live on 2026-11-11 the owner's zone
-        answered "No parser found for this resource" (parse_no_parser) to every DuckDuckGo address. It stops the tool, and
-        isn't counted as a credit.
+        results without SerpApi (owner, 2026-11-11). Live that day, the owner's zone answered "No parser found for this
+        resource" (parse_no_parser) to DuckDuckGo as raw HTML or with brd_json, and the page itself once asked for as
+        Markdown. A page with nothing readable is one failed search: it was still billed. An empty answer with Bright
+        Data's own error code is a refusal, not a page: it stops the tool, and isn't counted as a credit.
         """
         with _so_far(0):
-            reply = self._reply(self.page_address(keyword, "duckduckgo", country, language, device, 0))
+            reply = self._reply(self.page_address(keyword, "duckduckgo", country, language, device, 0), data_format="markdown")
             refused = reply.headers.get("x-brd-error-code")
             if refused and not reply.content:
                 raise ToolStopped(f"Bright Data can't read DuckDuckGo with this zone: {reply.headers.get('x-brd-error') or refused}.")
         body = reply.content
-        results = parse_ddg(body)[:depth]
-        if not results and b"no-results" not in body:
+        text = body.decode("utf-8", "replace")
+        results = (parse_ddg_markdown(text) or parse_ddg(body))[:depth]  # an HTML page, should the zone ever send one
+        if not results and b"no-results" not in body and "No results found" not in text:
             failed = SearchFailed("Bright Data's DuckDuckGo page had no results the app could read.")
             failed.charged = 1
             raise failed

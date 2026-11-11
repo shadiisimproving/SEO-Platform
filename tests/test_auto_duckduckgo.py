@@ -147,6 +147,19 @@ def test_when_bright_data_refuses_duckduckgo_it_rests_a_day_and_counts_no_credit
     assert len(world.bright.calls) == 1 and world.serp.calls == []
 
 
+def test_a_bright_data_search_that_works_lifts_its_rest_at_once(world):
+    tools(world, ddg=blocked_ddg(), bright=RefusingBrightData(BRIGHT, free_monthly=5000))
+    ids = track(world, "one", "two")
+    auto_ddg.enqueue_due(world.engine)
+    world.drain()
+    auto_ddg.enqueue_due(world.engine)
+    world.drain()  # refused: Bright Data rests
+    assert auto_ddg.enqueue_due(world.engine) == []
+    save(world, ids[0], tool=BRIGHT, name="duckduckgo")  # e.g. the zone was fixed and a Refresh got through
+    assert auto_ddg.enqueue_due(world.engine) == [world.site]
+    assert tools_of(world, runs(world)[-1]["id"]) == [BRIGHT]
+
+
 def test_serpapi_alone_is_never_used(world):
     world.tools["duckduckgo"] = [Fake("SerpApi", free_monthly=250)]
     track(world, "one")
@@ -231,7 +244,7 @@ def test_bright_data_asks_for_duckduckgos_page_as_its_docs_show_and_reads_it_lik
     found = _bright(_ddg_html("a.example", "mine.example", "b.example"), seen).search("café dubaï", "duckduckgo", "AE", "fr", "desktop", 10)
     sent = json.loads(seen[0].content)
     address = urlsplit(sent["url"])
-    assert len(seen) == 1 and sent["zone"] == "serp_api1" and sent["format"] == "raw"
+    assert len(seen) == 1 and sent["zone"] == "serp_api1" and sent["format"] == "raw" and sent["data_format"] == "markdown"
     assert address.netloc == "duckduckgo.com" and address.path == "/"
     assert parse_qs(address.query) == {"q": ["café dubaï"], "kl": ["xa-en"]}  # no brd_json: there's no parsed JSON for DuckDuckGo
     assert [(r.position, r.url) for r in found.results] == [(1, "https://a.example/page"), (2, "https://mine.example/page"), (3, "https://b.example/page")]
@@ -262,3 +275,59 @@ def test_bright_data_refusing_duckduckgo_stops_the_tool_and_counts_nothing():
     with pytest.raises(ToolStopped) as stopped:
         _bright(b"", [], headers=refused).search("x", "duckduckgo", "FR", "fr", "desktop", 10)
     assert "can't read DuckDuckGo" in str(stopped.value) and "No parser found" in str(stopped.value) and stopped.value.charged == 0
+
+
+# Bright Data's DuckDuckGo page as Markdown, shaped like the one the owner's zone sent back live on 2026-11-11. Made-up sites.
+DDG_MARKDOWN = """coffee subscription at DuckDuckGo
+
+*   [**All**](/?q=coffee+subscription&kl=fr-fr&ia=web)
+*   [Search Assist](/?q=coffee+subscription&kl=fr-fr&ia=web&assist=true)
+
+1.  ads.example
+
+    ## [Best coffee deals | Ads Example](https://duckduckgo.com/y.js?ad_domain=ads.example&u3=https%3A%2F%2Fads.example%2F)
+
+2.  rival-one.example
+
+    [Only include results for this site](?q=coffee%20subscription%20site%3Arival-one.example)
+
+    [
+
+    https://rival-one.example › subscription
+
+    ](https://rival-one.example/subscription)
+
+    ## [The **coffee** subscription people love](https://rival-one.example/subscription)
+
+    Choose your **coffee** subscription.
+
+    *   [
+
+        ### How it works
+
+        Three sizes.
+
+        ](https://rival-one.example/how-it-works)
+
+3.  mine.example
+
+    ## [Coffee subscription | Mine](https://mine.example/subscription/)
+
+4.  Searches related to **coffee subscription**
+
+    1.  [best **coffee** subscription](?q=best%20coffee%20subscription&origin=related&kl=fr-fr)
+"""
+
+
+def test_bright_data_reads_duckduckgos_markdown_page_headings_only():
+    found = _bright(DDG_MARKDOWN.encode(), [], headers={"content-type": "text/html; charset=UTF-8"}).search("coffee subscription", "duckduckgo", "FR", "fr", "desktop", 10)
+    assert [(r.position, r.url, r.title) for r in found.results] == [
+        (1, "https://rival-one.example/subscription", "The coffee subscription people love"),
+        (2, "https://mine.example/subscription/", "Coffee subscription | Mine"),
+    ]  # the advert (through duckduckgo.com), the sub-link (a level-3 heading) and related searches are left out
+    assert found.charged == 1 and found.real_location == "fr-fr"
+
+
+def test_a_markdown_page_with_no_results_says_nobody_ranks():
+    page = b"zzzq at DuckDuckGo\n\nNo results found for **zzzq**.\n"
+    assert _bright(page, []).search("zzzq", "duckduckgo", "FR", "fr", "desktop", 10).results == []
