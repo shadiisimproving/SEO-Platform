@@ -1,0 +1,85 @@
+/* The row side panel's look (UI.rowPanel in row-panel.js, plan change 6). Owner: track D.
+   One 760 px layout for every table row, full width at 860 px and below (mockup.css). Colours are look-clear.css tokens and
+   sizes mockup.css's (--r-m, --gap), in light and dark alike. Nothing below 12 px. */
+.panel.rp { --panel-w: 760px; }
+/* ↑ or ↓ to the next row swaps what's inside: the panel doesn't slide in again. */
+.panel.rp.rp-swap, .panel.rp.rp-swap .panel-body > * { animation: none; }
+
+/* ---- Head: what the row is and for which days, then its name ---- */
+.rp-head { align-items: flex-start; }
+.rp-titles { flex: 1; min-width: 0; }
+.rp-kind { margin-bottom: 2px; font-size: 12px; line-height: 16px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.rp-head h2 { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.rp-head h2 > span[dir], .rp-title-link { min-width: 0; overflow-wrap: anywhere; }
+.rp-title-link { color: inherit; text-decoration: none; }
+.rp-title-link:hover { color: var(--accent-text); text-decoration: underline; text-underline-offset: 2px; }
+.rp-title-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+.rp-logo { display: inline-flex; flex: none; }
+.rp-logo .site-logo { vertical-align: 0; border-radius: 5px; }
+.rp-sub { margin-top: 2px; }
+
+/* ---- Numbers: three a row, each on the pale track ---- */
+.rp-nums { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0 0 16px; }
+.rp-nums[data-n="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); } /* four in one row, not three and one alone */
+.rp-num { min-width: 0; padding: 10px 12px; border-radius: var(--r-m); background: var(--track); }
+.rp-num-lab { display: flex; align-items: center; gap: 2px; min-width: 0; font-size: 12px; line-height: 16px; color: var(--text-2); }
+.rp-num-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rp-num-lab .def-i { flex: none; }
+.rp-num-row { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; margin-top: 4px; }
+.rp-num-val { font-size: 20px; line-height: 26px; font-weight: 600; letter-spacing: -.015em; font-variant-numeric: tabular-nums; color: var(--text); }
+.rp-num-val.unknown { color: var(--muted); }
+.rp-num .d-pill { font-size: 12px; line-height: 20px; }
+.rp-num-sub { margin-top: 2px; font-size: 12px; line-height: 16px; color: var(--muted); font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---- One chart over time, 160 px, the period before dashed ---- */
+.rp-chart { margin: 0 0 16px; border-radius: var(--r-m); background: var(--glass); box-shadow: inset 0 0 0 1px var(--line); overflow: clip; }
+.rp-chart-head { display: flex; align-items: center; gap: 8px; padding: 10px 14px 0; }
+.rp-chart-head:empty { display: none; }
+.panel .rp-chart-head h3 { margin: 0; font-size: 13px; font-weight: 600; }
+.rp-chart-pick { margin: 0; }
+.rp-chart .lv-chart { --lv-h: 160px; padding: 14px 14px 8px; }
+.rp-chart .lv-chart svg { height: 160px; }
+.rp-chart .lv-ylab { left: 14px; }
+.rp-chart .lv-legend { padding: 0 14px 10px; }
+.rp-chart .lv-foot { padding: 8px 14px; }
+.rp-chart .lv-chart-table { border-radius: 0; box-shadow: none; }
+.rp-chart .rp-empty { padding: 28px 16px; }
+
+/* ---- Up to two short lists ---- */
+.rp-sec { margin: 0 0 16px; }
+.rp-sec:last-child { margin-bottom: 0; }
+.rp-sec-head { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; min-height: 24px; }
+.panel .rp-sec-head h3 { margin: 0; font-size: 13px; font-weight: 600; }
+.rp-badge { display: inline-block; min-width: 20px; padding: 0 7px; border-radius: 999px; background: var(--track); color: var(--text-2); font-size: 12px; line-height: 20px; font-weight: 500; text-align: center; font-variant-numeric: tabular-nums; }
+.rp-sec .tt-tools { margin: 0 0 6px; }
+.rp-table { background: var(--glass); border-radius: var(--r-m); box-shadow: inset 0 0 0 1px var(--line); overflow: clip; }
+.rp-table .data { width: 100%; }
+/* Inside the panel's own scroll the headings sit still: stuck under the app's top bar height they'd float mid-panel. */
+.rp-table .data th { position: static; -webkit-backdrop-filter: none; backdrop-filter: none; }
+.rp-table .data th:first-child, .rp-table .data tbody tr:last-child td:first-child { border-radius: 0; }
+.rp-table .data th:last-child, .rp-table .data tbody tr:last-child td:last-child { border-radius: 0; }
+.rp-table .data tbody tr { cursor: default; }
+.rp-table .data tbody tr:hover td:first-child { box-shadow: none; }
+.rp-table .data td { padding-top: 8px; padding-bottom: 8px; }
+.rp-url { overflow-wrap: anywhere; }
+.rp-more { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px; margin: 8px 0 0; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.rp-none, .rp-text { margin: 0; font-size: 13px; line-height: 1.45; color: var(--text-2); }
+.rp-none { color: var(--muted); }
+.rp-body > .rp-empty { padding: 40px 16px; }
+
+/* ---- Foot: the main action first, then Task, Add a note and Open page ↗ ---- */
+.rp-foot { flex-wrap: wrap; }
+.rp-foot a.btn { color: var(--text); text-decoration: none; }
+.rp-foot a.btn-main { color: var(--on-accent); }
+
+@media (max-width: 640px) {
+  /* Tables become cards here (mockup.css): each row is its own small card, so the frame around the list goes. */
+  .rp-table { background: none; box-shadow: none; overflow: visible; }
+  .rp-table .data tbody tr { margin-bottom: 8px; padding: 9px 12px; border-radius: var(--r-m); }
+}
+@media (max-width: 560px) {
+  .rp-nums, .rp-nums[data-n="4"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rp-num-val { font-size: 18px; line-height: 24px; }
+  .rp-chart .lv-chart { --lv-h: 140px; }
+  .rp-chart .lv-chart svg { height: 140px; }
+}

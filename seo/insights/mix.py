@@ -181,7 +181,7 @@ def _evidence(ctx: Ctx, k: Keyword, rivals: list[str], **extra) -> dict:
 
 def _finding(ctx: Ctx, k: Keyword, kind: str, rivals: list[str], at_stake: float = 0.0, severity: str = "normal", page: str | None = None, **extra) -> Finding:
     return Finding(
-        kind, GROUP, f"{k.text}|{k.code3 or ''}", at_stake=at_stake, severity=severity, query=k.text, page=page or k.main["url"], evidence=_evidence(ctx, k, rivals, **extra),
+        kind, GROUP, f"{k.text}|{k.code3 or ''}", at_stake=at_stake, severity=severity, query=k.text, page=page or k.main["url"] or None, evidence=_evidence(ctx, k, rivals, **extra),
     ).settle()
 
 

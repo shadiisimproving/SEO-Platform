@@ -210,7 +210,7 @@ def _tool_line(engine: Engine, run) -> list[tuple[str, object]]:
     names = [run["engine"]]
     if run["kind"] != "refresh":
         names += [name for name in connections.ENGINE_ORDER if name != run["engine"]]
-    return [(name, tool) for name in names for tool in connections.tools_for(engine, name)]
+    return [(name, tool) for name in names for tool in connections.not_blocked(engine, connections.tools_for(engine, name))]  # not one resting after a bot check
 
 
 def _start(engine: Engine, run_id: int) -> None:

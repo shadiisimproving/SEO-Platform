@@ -8,6 +8,7 @@ from __future__ import annotations
 import json
 import sys
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Callable
 from urllib.parse import urlsplit
@@ -156,6 +157,57 @@ def note_error(engine: Engine, tool: str, error: str) -> None:
 def note_ok(engine: Engine, tool: str) -> None:
     with engine.begin() as conn:
         conn.execute(text("UPDATE connections SET last_ok_at = UTC_TIMESTAMP(3), last_error = NULL WHERE tool = :t"), {"t": tool})
+
+
+# ---- a tool resting after a bot check ---------------------------------------------------------------
+# DuckDuckGo shows a bot check to the hosting server's address, and the app never tries to get past one. Without this,
+# every Refresh hit the same check first. So an automatic run skips the tool for BLOCK_HOURS, and a search that works
+# lifts it at once. Ticked by hand under Choose tools, it still runs: the Refresh window warns first.
+# Kept in serp_settings as "blocked:<tool>" = "<UTC time>|<the tool's own words>", so no table had to change.
+
+BLOCK_HOURS = 24
+_BLOCK_STAMP = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _block_name(tool: str) -> str:
+    return f"blocked:{tool}"[:40]
+
+
+def note_blocked(engine: Engine, tool: str, why: str) -> None:
+    value = f"{_now().strftime(_BLOCK_STAMP)}|{why}"[:190]
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO serp_settings (name, value) VALUES (:n, :v) ON DUPLICATE KEY UPDATE value = :v"), {"n": _block_name(tool), "v": value})
+
+
+def clear_blocked(engine: Engine, tool: str) -> None:
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM serp_settings WHERE name = :n"), {"n": _block_name(tool)})
+
+
+def blocked(engine: Engine, tool: str) -> dict | None:
+    """{name, at, until, why} while the tool rests after a bot check, else None. Times are UTC, ISO."""
+    with engine.connect() as conn:
+        value = conn.execute(text("SELECT value FROM serp_settings WHERE name = :n"), {"n": _block_name(tool)}).scalar()
+    if not value:
+        return None
+    stamp, _, why = value.partition("|")
+    try:
+        at = datetime.strptime(stamp, _BLOCK_STAMP).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+    until = at + timedelta(hours=BLOCK_HOURS)
+    if _now() >= until:
+        return None
+    return {"name": tool, "at": at.strftime(_BLOCK_STAMP), "until": until.strftime(_BLOCK_STAMP), "why": why}
+
+
+def not_blocked(engine: Engine, tools: list) -> list:
+    """The tools an automatic search may use now: the same list without those resting after a bot check."""
+    return [tool for tool in tools if blocked(engine, tool.name) is None]
 
 
 def _build(engine: Engine, name: str, key_path=None):
@@ -377,6 +429,8 @@ def spend_on_search(engine: Engine, tool, keyword: str, search_engine: str, coun
         kept = min(estimate, max(0, int(getattr(exc, "charged", 0) or 0)))
         book(kept - estimate, "not charged")
         exc.credits_kept, exc.cost_kept = kept, money(kept)
+        if getattr(exc, "bot_check", False):  # every job searches through here, so each one rests the tool
+            note_blocked(engine, tool.name, str(exc))
         raise
     except Exception as exc:
         exc.credits_kept, exc.cost_kept = estimate, money(estimate)
@@ -384,6 +438,7 @@ def spend_on_search(engine: Engine, tool, keyword: str, search_engine: str, coun
     charged = int(answer.charged or 0)
     book(charged - estimate, "what the tool really charged")
     answer.cost = money(charged)
+    clear_blocked(engine, tool.name)  # it got through, so the next automatic run may use it again
     return answer
 
 

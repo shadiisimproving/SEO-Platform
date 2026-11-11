@@ -254,7 +254,7 @@ def run_probe(job, engine: Engine) -> None:
         return
     _set(engine, run_id, status="running")
     name = run["engine"]
-    line = list(connections.tools_for(engine, name))  # one engine only, so every position compares
+    line = connections.not_blocked(engine, list(connections.tools_for(engine, name)))  # one engine only, so every position compares; not a tool resting after a bot check
     started, tried, stopped, fails = time.monotonic(), 0, [], {}
     checked, failed = run["checked"], run["failed"]
     with engine.connect() as conn:

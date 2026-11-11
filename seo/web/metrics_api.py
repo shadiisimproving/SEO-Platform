@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from flask import Blueprint, current_app, g, jsonify, request
 
-from seo.backlinks import logos
+from seo.backlinks import live as backlinks_live, logos
 from seo.backlinks.cleaner import registrable_domain
 from seo.core.errors import Refused
 from seo.extras import auto as extras_auto, service as extras, summaries  # noqa: F401 - auto registers its job handler here too
@@ -30,6 +30,23 @@ def _scope() -> service.Scope:
     return service.Scope(_engine(), args.get("site_id"), args.get("from"), args.get("to"), args.get("compare_from"), args.get("compare_to"))
 
 
+def _include(*allowed: str) -> set[str]:
+    """?include=a,b folds into one answer what a simpler screen would otherwise ask for one by one (plan change 7).
+    Without it an answer is exactly what it always was, so the screens as they are pay nothing for it."""
+    asked = {part.strip() for part in (request.args.get("include") or "").split(",") if part.strip()}
+    unknown = sorted(asked - set(allowed))
+    if unknown:
+        raise Refused(f"include takes {', '.join(allowed)}; not {', '.join(unknown)}.")
+    return asked
+
+
+def _queue_logos(names) -> None:
+    """A row panel lists sites (sources, assistants): their icons are asked for, as the Channels list does for its own."""
+    names = [name for name in names if isinstance(name, str) and "." in name]
+    if names:
+        logos.queue_missing(_engine(), [*names, *filter(None, map(registrable_domain, names))])
+
+
 @metrics_api.get("/metrics/overview")
 def overview():
     return jsonify(service.overview(_scope()))
@@ -37,10 +54,13 @@ def overview():
 
 @metrics_api.get("/metrics/channels")
 def channels():
+    wanted = _include("logos")
     answer = service.channels(_scope())
     # A subdomain may have no icon of its own (ps.popcash.net), so the site it belongs to is asked for as well.
     names = [row["domain"] for row in answer.get("referrers") or []]
     logos.queue_missing(_engine(), [*names, *map(registrable_domain, names)])
+    if "logos" in wanted:  # which of these have an icon already, instead of a second call to /api/logos
+        answer["logos"] = service.known_logos(_engine(), names)
     return jsonify(answer)
 
 
@@ -51,7 +71,49 @@ def conversions():
 
 @metrics_api.get("/metrics/content")
 def content():
-    return jsonify(service.content(_scope()))
+    wanted = _include("clarity", "speed", "clarity_reports")
+    scope = _scope()
+    answer = service.content(scope)
+    # Each in the shape its own route answers (/metrics/clarity, /metrics/speed, /metrics/clarity-reports), for the same days.
+    if "clarity" in wanted:
+        answer["clarity"] = service.clarity(scope)
+    if "speed" in wanted:
+        answer["speed"] = {"runs": service.page_speed(scope)}
+    if "clarity_reports" in wanted:
+        answer["clarity_reports"] = clarity_reports.latest(_engine(), scope.site_ids)
+    return jsonify(answer)
+
+
+# ---- One table row's side panel (simpler screens): the row's own numbers, its days and what is inside it ----------
+
+
+@metrics_api.get("/metrics/channel")
+def channel_detail():
+    answer = service.channel_detail(_scope(), request.args.get("name"))
+    _queue_logos([row["source"] for row in answer["sources"]])
+    return jsonify(answer)
+
+
+@metrics_api.get("/metrics/referrer")
+def referrer_detail():
+    answer = service.referrer_detail(_scope(), request.args.get("domain"))
+    _queue_logos([answer["domain"]])
+    return jsonify(answer)
+
+
+@metrics_api.get("/metrics/page")
+def page_detail():
+    args = request.args
+    answer = service.page_detail(_scope(), args.get("path"), args.get("host"))
+    _queue_logos([row["source"] for row in answer["ai_sources"]])
+    return jsonify(answer)
+
+
+@metrics_api.get("/metrics/assistant")
+def assistant_detail():
+    answer = service.assistant_detail(_scope(), request.args.get("source"))
+    _queue_logos([answer["source"]])
+    return jsonify(answer)
 
 
 @metrics_api.get("/metrics/ai")
@@ -66,13 +128,20 @@ def ads():
 
 @metrics_api.get("/today")
 def today():
+    wanted = _include("setup", "backlinks")
     site = request.args.get("site_id")
     try:
         site_id = int(site) if site not in (None, "", "all") else None
     except ValueError as exc:
         raise Refused("That site isn't one of yours.") from exc
     period = {key: request.args.get(key) for key in ("range", "compare", "from", "to") if request.args.get(key)}
-    return jsonify(today_view.today(_engine(), site_id, period))
+    answer = today_view.today(_engine(), site_id, period)
+    # The setup line's facts and the backlinks numbers, which Today asked for in four more calls (plan change 7).
+    if "setup" in wanted:
+        answer["setup"] = service.setup_facts(_engine(), site_id)
+    if "backlinks" in wanted:
+        answer["backlinks"] = backlinks_live.summary(_engine(), site_id)
+    return jsonify(answer)
 
 
 @metrics_api.get("/today/attention")

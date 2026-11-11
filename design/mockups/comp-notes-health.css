@@ -7,6 +7,8 @@
 .nb-beside-panel .nb-fab { right: calc(min(var(--panel-w), 100% - var(--gap) * 2) + var(--gap) * 2); }
 @media (max-width: 720px) { .nb-beside-panel .nb-fab { display: none; } }
 @media print { .nb-fab { display: none; } }
+/* The Refresh progress box shares the bottom-right corner: it sits above the Notes button, which stays where it always is. */
+body:has(#nb-fab) .tray { bottom: 64px; }
 .nb-panel { padding: 14px 18px 18px; overflow: auto; }
 .nb-panel .nb-ways { margin-bottom: 14px; }
 /* The second row: anything else, picked from a list. */

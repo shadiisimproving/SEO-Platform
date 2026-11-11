@@ -70,6 +70,11 @@
 .cs-rival-open { display: inline-flex; align-items: center; gap: 8px; color: var(--text); text-align: start; border-radius: var(--r-s); }
 .cs-rival-open:hover .logo-text, .cs-rival-open:focus-visible .logo-text { color: var(--accent-text); text-decoration: underline; text-underline-offset: 3px; }
 #cs-rivals-table tbody tr[data-cs-row]:hover { background: var(--hover); }
+/* My own site, pinned above the competitors: a light tint of "you" blue, and it opens nothing. */
+#cs-rivals-table tbody tr.cs-you-row { cursor: default; }
+#cs-rivals-table tbody tr.cs-you-row td, #cs-rivals-table tbody tr.cs-you-row:hover td { background: color-mix(in oklab, var(--chart-you) 7%, transparent); }
+#cs-rivals-table tbody tr.cs-you-row:hover td:first-child { box-shadow: none; }
+@media (max-width: 640px) { #cs-rivals-table .cs-you-gap { display: none; } }
 
 /* 2026-11-09: Summary and My competitors are one tab. Four data columns, the name never wraps, status and tracking after. */
 .cs-merged .head-cell { min-width: 220px; }

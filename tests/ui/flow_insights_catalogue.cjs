@@ -45,7 +45,9 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
     check(body.includes("Brand hides a loss"), "brand hiding a non-brand loss");
     await openRow("Query losing places");
     await shot("02-query-down-panel");
-    check((await text("#panel .in-how")).includes("old position"), "the panel says how its clicks at stake were worked out");
+    // Since 11 November the formula sits behind the (i) beside the figure (stakeBlock); .in-how only holds the AI Overview line.
+    const how = await page.locator("#panel .in-stake .def-i").first().getAttribute("data-tip", { timeout: 1500 }).catch(() => "");
+    check((how || "").includes("old position"), "the panel says how its clicks at stake were worked out, behind the (i) beside the figure");
     check((await count("#panel [data-in-track]")) === 1, "it can be tracked as a keyword");
     await closePanel();
   });

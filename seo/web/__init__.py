@@ -15,6 +15,9 @@ from seo.crawl.guard import is_public_url
 
 
 MAX_REQUEST_BYTES = 26 * 1024 * 1024
+# Routes whose answer keeps its own Cache-Control. Only a site's logo image (/api/logos/<domain>): the list of known logos,
+# a logo not found, and every other API answer stay no-store.
+KEEPS_OWN_CACHING = frozenset({"logos_api.image"})
 
 
 def create_app(engine: Engine | None = None, url_allowed: Callable[[str], bool] = is_public_url, screens_dir: str | Path | None = None, auth: bool = True, secret_key: str | None = None) -> Flask:
@@ -140,9 +143,12 @@ def create_app(engine: Engine | None = None, url_allowed: Callable[[str], bool] 
     @app.after_request
     def caching(response):
         """The API, the pages and boot.js are never kept. A script or style asked for with ?v= is kept a year: its address changes
-        with the file. Anything else is checked each time (an answer of 304 when it hasn't changed)."""
+        with the file. Anything else is checked each time (an answer of 304 when it hasn't changed).
+        One API answer keeps the header its route set: a site's logo (a day). With no-store, every redraw downloaded each logo again."""
         from flask import request
         path = request.path
+        if request.endpoint in KEEPS_OWN_CACHING and response.status_code < 400 and "Cache-Control" in response.headers:
+            return response
         if path.startswith("/api/") or path in ("/", "/login", "/boot.js") or path.endswith(".html") or response.status_code >= 400:
             response.headers["Cache-Control"] = "no-store"
         elif request.args.get("v"):

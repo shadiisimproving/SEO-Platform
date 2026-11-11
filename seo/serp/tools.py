@@ -14,6 +14,8 @@ from urllib.parse import parse_qs, urlencode, urlsplit
 import httpx
 from lxml import etree, html as lxml_html
 
+from seo.backlinks.cleaner import root_domain
+
 BOT_NAME = "PageChangeBot/0.1"
 PRESENT, ABSENT, NOT_CAPTURED = "present", "absent", "not_captured"
 TIMEOUT = 45.0
@@ -22,8 +24,9 @@ TIMEOUT = 45.0
 @dataclass
 class Found:
     position: int
-    url: str
+    url: str  # "" when Google hid the result's link: the page is unknown, and never guessed
     title: str = ""
+    host: str = ""  # only then: the site Google showed under the title (shown_site), so the result still counts for that site
 
 
 @dataclass
@@ -38,9 +41,22 @@ class Answer:
 
 
 class ToolStopped(Exception):
-    """This tool can't be used right now: a bot check, a captcha, a bad key, or no free credits left."""
+    """This tool can't be used right now: a bot check, a captcha, a bad key, or no free credits left.
+
+    bot_check: the site asked for proof of a person. The app rests the tool for a while (connections.BLOCK_HOURS)
+    rather than hit the same check on every Refresh.
+    """
 
     charged = 0  # credits the pages before this one already used: a failure on page 3 doesn't give back pages 1 and 2
+
+    def __init__(self, message: str = "", *, bot_check: bool = False):
+        super().__init__(message)
+        self.bot_check = bot_check
+
+
+class HiddenAddresses(ToolStopped):
+    """Google hid where a result leads and didn't show its site either, so the answer can't say who isn't on the page.
+    A ToolStopped, so every caller already moves to the next tool, as at a bot check."""
 
 
 class SearchFailed(Exception):
@@ -196,7 +212,7 @@ class DuckDuckGoDirect:
             raise SearchFailed(f"The request failed: {type(exc).__name__}") from exc
         # It answers 202 with a challenge page when it wants proof of a person. That is a no: stop, don't try again.
         if reply.status_code in (202, 403):
-            raise ToolStopped(self.BOT_CHECK)
+            raise ToolStopped(self.BOT_CHECK, bot_check=True)
         if reply.status_code == 429:
             raise ToolStopped("DuckDuckGo asked us to slow down, so this tool stopped.")
         if reply.status_code != 200:
@@ -206,7 +222,7 @@ class DuckDuckGoDirect:
             # The word alone proves nothing on a page of results: "anomaly detection" is a fine keyword.
             says_none = b"no-results" in reply.content
             if b"anomaly" in reply.content[:60000] and not says_none:
-                raise ToolStopped(self.BOT_CHECK)
+                raise ToolStopped(self.BOT_CHECK, bot_check=True)
             if not says_none:  # a page we can't read must not pass as "nobody ranks"
                 raise SearchFailed("DuckDuckGo's page had no results the app could read.")
         return Answer(self.name, region, depth, results, NOT_CAPTURED, [], 0)
@@ -295,10 +311,11 @@ class SerpApi:
             params["hl"] = language.lower()
         data = self._get(params)
         results = [
-            Found(_position(item, i), item["link"], str(item.get("title") or "")[:500])
+            _found(_position(item, i), item, str(item["link"]))
             for i, item in enumerate(data.get("organic_results") or []) if isinstance(item, dict) and item.get("link")
         ]
         charged = 1
+        _refuse_hidden(self.name, results, charged)
         # Google stopped honouring num in September 2025, so a deeper check reads further pages, each one a search.
         # A page can hold 9 results and still have a next one, so only an empty page means the end.
         last_page_had_rows = bool(results)
@@ -309,7 +326,9 @@ class SerpApi:
                 more = self._get({**params, "start": page * 10})
             charged += 1
             rows = [item for item in more.get("organic_results") or [] if isinstance(item, dict) and item.get("link")]
-            results += [Found(len(results) + i + 1, item["link"], str(item.get("title") or "")[:500]) for i, item in enumerate(rows)]
+            found = [_found(len(results) + i + 1, item, str(item["link"])) for i, item in enumerate(rows)]
+            _refuse_hidden(self.name, found, charged)
+            results += found
             last_page_had_rows = bool(rows)
         results = results[:depth]
         location = country.upper() if country else ""
@@ -328,8 +347,10 @@ class SerpApi:
             return Answer(self.name, location, depth, results, ABSENT, [], charged)
         if overview.get("error"):
             return Answer(self.name, location, depth, results, NOT_CAPTURED, [], charged)
-        cited = [ref["link"] for ref in overview.get("references") or [] if isinstance(ref, dict) and ref.get("link")]
-        return Answer(self.name, location, depth, results, PRESENT, cited, charged)
+        cited = [result_address(str(ref["link"])) for ref in overview.get("references") or [] if isinstance(ref, dict) and ref.get("link")]
+        if any(hidden for _, hidden in cited):  # Google hid a source: who it cites can't be said, and that's not a "no"
+            return Answer(self.name, location, depth, results, NOT_CAPTURED, [], charged)
+        return Answer(self.name, location, depth, results, PRESENT, [address for address, _ in cited], charged)
 
     def test(self) -> int | None:
         """Asks SerpApi how many searches are left. This call uses no credit."""
@@ -348,29 +369,129 @@ class SerpApi:
         return data.get("total_searches_left")
 
 
+# ---- Google's hidden result links -------------------------------------------------------------------
+# Since June 2026 Google may put its own redirect, https://www.google.com/goto?url=CAES…, where a result's address should be.
+# The token can't be decoded: only a request to Google turns it into an address, and the app never sends one (Google slows
+# those down per results page, and it may count as a click on the site). A rank check needs the site, not the page, and
+# Google still writes the site under the title. So a hidden result counts for that site, at its own place, with its page
+# unknown. One whose site isn't shown either is unknown, and an answer holding one is refused (_refuse_hidden).
+
+_GOOGLE = re.compile(r"^(?:www\.)?google\.[a-z]{2,3}(?:\.[a-z]{2})?$")  # google.com, google.fr, google.co.uk; not support.google.com
+# Where each tool puts the address Google shows under a title: Searlo, Bright Data, SerpApi, HasData.
+_SHOWN = ("domain", "display_link", "displayed_link", "displayedLink")
+# A post on a big platform shows numbers there ("Plus de 1,7 k abonnés", "3 \"J'aime\" · il y a 7 mois") and its source names the
+# platform. Only these names are trusted, each for its own domain: any other source is a site's own name, and stays unknown.
+_PLATFORMS = {
+    "instagram": "instagram.com", "facebook": "facebook.com", "quora": "quora.com", "reddit": "reddit.com", "youtube": "youtube.com",
+    "linkedin": "linkedin.com", "tiktok": "tiktok.com",
+}
+
+
+def google_redirect(link: str) -> bool:
+    """Google's own redirect (/goto or /url on google.com, google.fr…) where a result's address should be."""
+    try:
+        parts = urlsplit(str(link or "").strip())
+        host = (parts.hostname or "").lower()
+    except ValueError:
+        return False
+    return bool(_GOOGLE.match(host)) and parts.path in ("/goto", "/url")
+
+
+def result_address(link: str) -> tuple[str, bool]:
+    """(the result's address, hidden?). /url?q=https://shop.example/a still names the page; /goto?url=CAES… doesn't."""
+    if not google_redirect(link):
+        return link, False
+    query = parse_qs(urlsplit(str(link).strip()).query)
+    for name in ("q", "url"):
+        value = (query.get(name) or [""])[0]
+        if value.startswith(("http://", "https://")) and not google_redirect(value):
+            return value, False
+    return "", True
+
+
+def _shown_host(value) -> str:
+    """The host in an address Google writes under a title: "https://www.shop.example › blog › a-post-cut-sh..." gives
+    www.shop.example. Words ("Plus de 30 réponses · il y a 3 ans", "17M+ views"), Google itself, or a host cut short give ""."""
+    words = str(value or "").split("›", 1)[0].split()
+    if not words or "…" in words[0] or "..." in words[0]:
+        return ""
+    try:
+        host = (urlsplit(words[0] if "://" in words[0] else f"https://{words[0]}").hostname or "").rstrip(".")
+    except ValueError:
+        return ""
+    labels = host.split(".")
+    ending = labels[-1]
+    if len(labels) < 2 or not ((ending.isalpha() and len(ending) >= 2) or ending.startswith("xn--")) or _GOOGLE.match(host):
+        return ""
+    return host if root_domain(host) else ""
+
+
+def shown_site(item: dict) -> str:
+    """The site of a result whose link Google hid, from what Google shows under its title, "" when that isn't known."""
+    for name in _SHOWN:
+        host = _shown_host(item.get(name))
+        if host:
+            return host
+    return _PLATFORMS.get(str(item.get("source") or "").split("·", 1)[0].strip().casefold(), "")
+
+
+def _found(position: int, item: dict, link: str) -> Found:
+    """One result. One whose link Google hid keeps its place, with its site and no page."""
+    title = str(item.get("title") or "")[:500]
+    url, hidden = result_address(link)
+    return Found(position, "", title, shown_site(item)) if hidden else Found(position, url, title)
+
+
+def _refuse_hidden(tool: str, rows: list[Found], charged: int) -> None:
+    """A result with neither its address nor its site means the answer can't say who isn't on the page, so none of it is
+    used. The tool stops for Google as at a bot check, the next one is asked, and the page that came back stays counted."""
+    unknown = sum(1 for row in rows if not row.url and not row.host)
+    if unknown:
+        exc = HiddenAddresses(
+            f"Google hid the address of {unknown} of the {len(rows)} results in {tool}'s answer and didn't show their site either, "
+            f"so {tool} can't be used for Google right now. Nothing from that answer was saved."
+        )
+        exc.charged = charged  # the page came back and may have been billed
+        raise exc
+
+
 # ---- Shared by the tools below -------------------------------------------------------------------
+
+def _what_came_back(reply: httpx.Response) -> str:
+    """A reply that isn't data, in a few words for the check's error: its type and size, the vendor's own headers about it,
+    and its first words. The key never comes back: it only goes out, in the request."""
+    kind = (reply.headers.get("content-type") or "no content type").split(";")[0].strip()
+    said = sorted(((name.lower(), value) for name, value in reply.headers.items() if name.lower().startswith(("x-brd-", "x-luminati-"))), key=lambda pair: ("error" not in pair[0], "status" not in pair[0], pair[0]))
+    parts = [kind, f"{len(reply.content)} bytes" if reply.content else "empty", *[f"{name}: {value[:80]}" for name, value in said[:3]]]
+    words = " ".join(reply.text[:2000].split())[:120] if reply.content else ""
+    return f"({'; '.join(parts)})" + (f": {words}" if words else "")
+
 
 def _json_or_fail(reply: httpx.Response, who: str) -> dict:
     try:
         data = reply.json()
     except ValueError as exc:
-        raise SearchFailed(f"{who} answered {reply.status_code} without data") from exc
+        raise SearchFailed(f"{who} answered {reply.status_code} without data {_what_came_back(reply)}") from exc
     if not isinstance(data, dict):
-        raise SearchFailed(f"{who} answered {reply.status_code} without data")
+        raise SearchFailed(f"{who} answered {reply.status_code} without data {_what_came_back(reply)}")
     return data
 
 
 def _rows(items, offset: int, seen: set[str]) -> list[Found]:
-    """The rows of one page, numbered from the top of the whole search. The same address twice counts once."""
+    """The rows of one page, numbered from the top of the whole search. The same address twice counts once. A row whose
+    link Google hid keeps its place, so the rows under it keep theirs, and two hidden rows never merge into one."""
     found: list[Found] = []
     for item in items or []:
         if not isinstance(item, dict):
             continue
-        url = str(item.get("link") or item.get("url") or "").strip()
-        if not url.startswith(("http://", "https://")) or url in seen:
+        link = str(item.get("link") or item.get("url") or "").strip()
+        if not link.startswith(("http://", "https://")):
             continue
-        seen.add(url)
-        found.append(Found(offset + len(found) + 1, url, str(item.get("title") or "")[:500]))
+        row = _found(offset + len(found) + 1, item, link)
+        if (row.url or link) in seen:
+            continue
+        seen.add(row.url or link)
+        found.append(row)
     return found
 
 
@@ -428,7 +549,18 @@ class BrightData:
         return reply
 
     def _page(self, address: str) -> dict:
-        return _json_or_fail(self._reply(address), self.name)
+        """A parsed results page (Google, Bing, Yandex). DuckDuckGo's HTML page reads its own refusal, in _duckduckgo."""
+        reply = self._reply(address)
+        # It answers 200 even when it couldn't get the page, and says why in its own headers. Seen on 2026-11-11: an empty body,
+        # x-brd-error-code "captcha", x-brd-error "redirect location was rejected", x-brd-status-code 502. A failed search,
+        # never "not ranked", and one more toward dropping the tool.
+        why = f"{reply.headers.get('x-brd-error-code', '')} {reply.headers.get('x-brd-error', '')}".strip()
+        if "captcha" in why.lower():
+            engine = "Bing" if "bing.com" in address else "Yandex" if "yandex." in address else "Google"
+            raise SearchFailed(f"{engine} showed Bright Data a captcha, so this search failed. The app doesn't try to get past it.")
+        if why:
+            raise SearchFailed(f"Bright Data couldn't get the results page {_what_came_back(reply)}")
+        return _json_or_fail(reply, self.name)
 
     def _duckduckgo(self, keyword: str, country: str, language: str, device: str, depth: int) -> Answer:
         """DuckDuckGo's page as Markdown, one heading per result. One page, one credit.
@@ -464,6 +596,7 @@ class BrightData:
                 data = self._page(self.page_address(keyword, engine, country, language, device, page))
             charged += 1
             rows = _rows(data.get("organic"), len(found), seen)
+            _refuse_hidden(self.name, rows, charged)  # before a deeper page is asked for, so nothing more is spent
             found += rows
             if not rows:
                 break
@@ -520,6 +653,7 @@ class HasData:
                 data = self._page(engine, params)
             charged += self.credits_per_page
             rows = _rows(data.get("organicResults"), len(found), seen)
+            _refuse_hidden(self.name, rows, charged)
             found += rows
             if not rows:
                 break
@@ -572,7 +706,8 @@ class Searlo:
             with _so_far(charged):
                 data = self._page(params)
             charged += 1
-            rows = _rows(data.get("organic"), len(found), seen)
+            rows = _rows(data.get("organic"), len(found), seen)  # on a hidden row its link stays Google's, and its domain names the site
+            _refuse_hidden(self.name, rows, charged)
             found += rows
             if not rows:
                 break
@@ -648,7 +783,14 @@ def read_browser_page(engine: str, page: bytes) -> list[Found]:
         anchors = doc.xpath("//li[contains(concat(' ', normalize-space(@class), ' '), ' b_algo ')]//h2/a")
     else:
         anchors = doc.xpath("//li[contains(concat(' ', normalize-space(@class), ' '), ' serp-item ')]//a[contains(@class, 'organic__url') or contains(@class, 'OrganicTitle-Link')]")
-    items = [{"link": anchor.get("href"), "title": anchor.text_content().strip()} for anchor in anchors]
+    items = []
+    for anchor in anchors:
+        item = {"link": (anchor.get("href") or "").strip(), "title": anchor.text_content().strip()}
+        if engine == "google":
+            if item["link"].startswith(("/goto?", "/url?")):  # Google's redirect, written relative: kept in its place, never dropped
+                item["link"] = "https://www.google.com" + item["link"]
+            item["display_link"] = " ".join(anchor.xpath("string(.//cite)").split())  # the address shown under the title
+        items.append(item)
     return _rows(items, 0, set())
 
 
@@ -731,9 +873,10 @@ class BrowserBackup:
                     raise TimedOut(f"The request failed: {type(exc).__name__}") from exc
                 raise SearchFailed(f"The browser failed: {type(exc).__name__}") from exc
             rows = read_browser_page(engine, body)
+            _refuse_hidden(self.name, rows, 0)
             if not rows:
                 if not found:
                     raise SearchFailed("The page had no results the app could read.")
                 break
-            found += [Found(len(found) + i + 1, row.url, row.title) for i, row in enumerate(rows)]
+            found += [Found(len(found) + i + 1, row.url, row.title, row.host) for i, row in enumerate(rows)]
         return Answer(self.name, self.country, depth, found[:depth], NOT_CAPTURED, [], 0)

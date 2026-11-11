@@ -97,6 +97,19 @@ def _site_ids(rival: dict) -> set[int]:
     return {s["id"] for s in rival["sites"]}
 
 
+def _mine(conn, sites: list[dict]) -> list[dict]:
+    """My own sites' page edits, counted exactly as a rival's, so the two compare. reading_since is the first page ever read:
+    the count can't reach further back than that, however long the period."""
+    if not sites:
+        return []
+    ids = [int(s["id"]) for s in sites]
+    crawls = profile.crawl_states(conn, ids)
+    edits = profile.edits_last_30_days(conn, OWN)
+    marks = ",".join(str(i) for i in ids)
+    since = dict(conn.execute(text(f"SELECT s.id, MIN(p.first_seen_at) FROM sites s JOIN domains d ON d.host = s.host JOIN pages p ON p.domain_id = d.id WHERE s.id IN ({marks}) GROUP BY s.id")).all())
+    return [{**site, "display": store.to_display_host(site["host"]), "edits_30d": int(edits.get(site["id"], 0)), "reading_since": _iso(since.get(site["id"])), "crawl": crawls[site["id"]]} for site in sites]
+
+
 def rivals(engine: Engine, site_id: int | None = None) -> dict:
     with engine.connect() as conn:
         sites = _sites(conn, site_id)
@@ -104,6 +117,7 @@ def rivals(engine: Engine, site_id: int | None = None) -> dict:
         found = _rivals(conn, sites)
         crawls = profile.crawl_states(conn, [r["id"] for r in found])
         edits = profile.edits_last_30_days(conn)
+        my_sites = _mine(conn, sites)
     hosts = {s["id"]: s["host"] for s in sites}
     checks = store.one_per_keyword(store.latest_checks_many(engine, list(hosts)))
     out = []
@@ -131,7 +145,7 @@ def rivals(engine: Engine, site_id: int | None = None) -> dict:
         counts = {"ranks_on": ranks_on, "they_ahead": they_ahead, "i_ahead": i_ahead, "level": level, "not_found": not_found} if compared else {"ranks_on": None, "they_ahead": None, "i_ahead": None, "level": None, "not_found": None}
         out.append({**rival, "compared": compared, **counts, "edits_30d": int(edits.get(rival["id"], 0)), "crawl": crawls[rival["id"]]})
     out.sort(key=lambda r: (-((r["they_ahead"] or 0) + (r["not_found"] or 0)), -(r["ranks_on"] or 0), -len(r["sites"]), r["host"]))
-    return {"sites": sites, "coverage": _coverage(checks, tracked), "rivals": out}
+    return {"sites": sites, "coverage": _coverage(checks, tracked), "rivals": out, "mine": my_sites}
 
 
 def keywords(engine: Engine, site_id: int | None = None) -> dict:

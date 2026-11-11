@@ -1782,6 +1782,26 @@ def test_a_rival_on_two_of_my_sites_counts_each_keyword_and_edit_once(world):
     assert collective.moves(world.engine)["total"] == 1
 
 
+def test_my_own_edits_sit_beside_the_rivals_counted_the_same_way(world):
+    two = second_site(world)
+    add_rival(world)
+    seed(world.engine, world.own, "shared word", ["https://rival.example/a", "https://me.example/a"])  # with a ranking check too, as on a real site
+    add_page_change(world, "rival.example")
+    add_page_change(world, "me.example")
+    add_page_change(world, "me.example", kind="h1")
+    with world.engine.begin() as conn:  # an edit older than the period doesn't count, for me as for them
+        conn.execute(text("UPDATE change_events e JOIN domains d ON d.id = e.domain_id SET e.detected_at = UTC_TIMESTAMP(3) - INTERVAL 31 DAY WHERE d.host = 'me.example' AND e.kind = 'h1'"))
+    answer = collective.rivals(world.engine)
+    mine = {m["host"]: m for m in answer["mine"]}
+    assert list(mine) == ["me.example", "me-two.example"]
+    assert mine["me.example"]["edits_30d"] == 1 and mine["me.example"]["reading_since"]
+    assert mine["me-two.example"]["edits_30d"] == 0 and mine["me-two.example"]["reading_since"] is None
+    assert mine["me-two.example"]["crawl"]["status"] == "none" or "baseline_done" in mine["me-two.example"]["crawl"]
+    assert rival_row(answer)["edits_30d"] == 1
+    one = collective.rivals(world.engine, two)
+    assert [m["host"] for m in one["mine"]] == ["me-two.example"]
+
+
 RIVAL_PAGE, MY_PAGE = "https://rival.example/a", "https://me.example/a"
 
 

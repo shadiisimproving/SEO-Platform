@@ -54,14 +54,15 @@ const inventory = () => [...document.querySelectorAll("table.data, table.lc-tabl
   await page.goto("about:blank"); await page.goto(BASE + "#tasks"); await settle(2500);
   await page.click('[data-task-view="table"]').catch(() => {}); await settle(); await note("tasks/table");
   await page.goto("about:blank"); await page.goto(BASE + "#keywords"); await settle(2500);
-  await page.locator("#kw-table tbody tr td:nth-child(2)").first().click().catch(() => {}); await settle(1500); await note("keywords/panel"); console.log("tables in the keyword panel:", await page.evaluate(() => document.querySelectorAll("#panel table").length));
+  // The keyword's own name opens its panel (the middle of its wide cell can miss it): the run stops if no panel table shows.
+  await page.locator("#kw-table tbody tr [data-kwr-open]").first().click(); await page.waitForSelector("#panel table", { timeout: 10000 }); await settle(1500); await note("keywords/panel"); console.log("tables in the keyword panel:", await page.evaluate(() => document.querySelectorAll("#panel table").length));
   await page.goto("about:blank"); await page.goto(BASE + "#competitors"); await settle(3000);
   const compSite = await page.evaluate(() => window.COMP.sites[0].id);
   const compTabs = await page.evaluate(() => window.COMP.tabs.filter((x) => !x.hidden).map((x) => x.id));
   console.log("competitor tabs:", compTabs.join(", "));
   for (const tab of compTabs) { await page.evaluate(([x, s]) => window.COMP.open(x, {}, s), [tab, compSite]); await settle(2500); await note(`comp:${tab}`); }
   await page.goto("about:blank"); await page.goto(BASE + "#competitors/summary"); await page.waitForSelector("#cs-rivals-table tbody tr", { timeout: 20000 }); await settle(2500);
-  await page.locator("#cs-rivals-table tbody tr td:nth-child(3)").first().click(); await page.waitForSelector("[data-pt-tab]", { timeout: 20000 }); await settle(2500);
+  await page.locator("#cs-rivals-table tbody tr[data-cs-row] td:nth-child(3)").first().click(); await page.waitForSelector("[data-pt-tab]", { timeout: 20000 }); await settle(2500);
   for (const tab of ["keywords", "pages", "activity", "site"]) { await page.click(`[data-pt-tab="${tab}"]`).catch(() => {}); await settle(2000); await note(`profile:${tab}`); }
 
   let gaps = 0;

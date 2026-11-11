@@ -33,6 +33,7 @@ ACTIVE = ("queued", "running")
 ENGINE_NAMES = {"google": "Google", "duckduckgo": "DuckDuckGo", "bing": "Bing", "yandex": "Yandex"}
 INTERRUPTED = "The app stopped during this search. It isn't tried again, because it may already have been charged."
 RECENT_ONE = "Checked recently with this tool. Press again to spend a credit anyway."
+SKIPPED = "{tool} was skipped: it was blocked by a bot check in the last {hours} hours."
 
 
 def _iso(value) -> str | None:
@@ -185,7 +186,10 @@ def preview(engine: Engine, body: dict) -> dict:
     def fits_paid(p) -> bool:
         return bool(ask["allow_paid"] and p["paid_on"] and p["paid_per"] and cost_total + Decimal(str(p["paid_per"])) * p["cost"] <= ask["paid_cap"])
 
-    lines = {name: _line(engine, name, ask) for name in ask["engines"]}
+    full = {name: _line(engine, name, ask) for name in ask["engines"]}
+    resting = {tool.name: connections.blocked(engine, tool.name) for tools in full.values() for tool in tools}
+    # An automatic run skips a tool resting after a bot check, so its checks go to the next tool. Ticked by hand, it still runs.
+    lines = full if ask["mode"] == "pick" else {name: [tool for tool in tools if not resting[tool.name]] for name, tools in full.items()}
     for tools in lines.values():
         for tool in tools:
             pool(tool)
@@ -218,7 +222,8 @@ def preview(engine: Engine, body: dict) -> dict:
         "running": [{"keyword": names[k], "engine": name, "by": by} for (k, name), by in parts["running"].items()],
         "recent": [{"keyword": names[k], "engine": name, "hours": hours} for (k, name), hours in parts["recent"].items()],
         "just_checked_hours": parts["hours"],
-        "no_tools_for": [name for name, tools in lines.items() if not tools],
+        "no_tools_for": [name for name, tools in full.items() if not tools],
+        "blocked": [rest for rest in resting.values() if rest],  # {name, at, until, why}: the window says so before Confirm
     }
 
 
@@ -347,7 +352,7 @@ def assess(engine: Engine, keyword_id: int, name: str, answer) -> str:
         if previous is None:
             return "ok"
         before = {row[0] for row in conn.execute(text("SELECT domain FROM serp_results WHERE check_id = :c"), {"c": previous}).all()}
-    now = {store.host_and_domain(found.url)[1] for found in answer.results}
+    now = {store.site_of(found)[1] for found in answer.results}  # a hidden result counts for the site Google showed
     if len(before) >= 5 and len(now) >= 5 and not before & now:
         return "suspect"
     if len(before) >= 8 and len(now) <= 2:
@@ -367,7 +372,12 @@ class _Picker:
 
     def line(self, name: str) -> list:
         if name not in self.lines:
-            self.lines[name] = connections.tools_for(self.engine, name, include_manual=self.run["mode"] == "pick", ai_first=True)
+            tools = connections.tools_for(self.engine, name, include_manual=self.run["mode"] == "pick", ai_first=True)
+            if self.run["mode"] == "auto":  # resting after a bot check: skipped, and the run says so when it ends
+                for tool in tools:
+                    if tool.name not in self.dropped and connections.blocked(self.engine, tool.name):
+                        self.drop(tool.name, SKIPPED.format(tool=tool.name, hours=connections.BLOCK_HOURS))
+            self.lines[name] = tools
         return self.lines[name]
 
     def drop(self, tool_name: str, why: str) -> None:
@@ -595,14 +605,33 @@ def run_dict(engine: Engine, run_id: int) -> dict:
         raise NotFound("That Refresh doesn't exist.")
     message = row["message"] or ""
     moved = message.split("|")[1:3] if message.startswith("moved|") else None
+    dropped = _json(row["dropped"]) or {}
     return {
         "id": row["id"], "status": row["status"], "total": row["total"], "done": row["done"], "failed": row["failed"], "not_run": row["not_run"],
-        "moved": {"from": moved[0], "to": moved[1]} if moved else None, "stop_reason": row["stop_reason"], "depth": row["depth"], "mode": row["mode"],
+        "moved": {"from": moved[0], "to": moved[1], "why": short_why(dropped.get(moved[0], ""))} if moved else None, "stop_reason": row["stop_reason"], "depth": row["depth"], "mode": row["mode"],
         "engines": _json(row["engines"]) or [], "by": row["by_name"], "excluded": _json(row["excluded"]) or [], "spent": float(row["spent"] or 0),
         "cancel_requested": bool(row["cancel_requested"]), "created_at": _iso(row["created_at"]), "finished_at": _iso(row["finished_at"]),
         # Which searches failed and why, so the tray can say so and offer "Retry these".
         "failures": [{"keyword_id": f["keyword_id"], "keyword": f["keyword"], "engine": f["engine"], "tool": f["tool"], "timed_out": f["status"] == "timeout", "error": _plain(f["error"], f["status"])} for f in failed],
     }
+
+
+def short_why(reason: str) -> str:
+    """Why a tool handed over, in a few words for the tray's one line. Each tool words its own reason, so this reads the gist."""
+    low = (reason or "").lower()
+    if any(words in low for words in ("no free checks left", "no free searches left", "no credits left", "checks for this hour")):
+        return "ran out of free checks"
+    if "bot check" in low or "captcha" in low:
+        return "was blocked by a bot check"
+    if "slow down" in low:
+        return "was asked to slow down"
+    if "refused the key" in low:
+        return "refused the key"
+    if "searches in a row" in low:
+        return "kept failing"
+    if "can't read" in low:
+        return "answered in a way the app can't read"
+    return "stopped working"
 
 
 def _plain(error: str | None, status: str) -> str:

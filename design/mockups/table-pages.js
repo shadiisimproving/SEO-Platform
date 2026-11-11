@@ -38,7 +38,7 @@
     const s = state(key), total = list.length, pages = Math.max(1, Math.ceil(total / s.per));
     s.page = Math.max(0, Math.min(s.page, pages - 1));
     const from = s.page * s.per, rows = list.slice(from, from + s.per);
-    return { rows: window.TT ? window.TT.watch(key, rows) : rows, from, at: s.page, pages, total };
+    return { rows: window.TT ? window.TT.watch(key, rows) : rows, from, at: s.page, pages, total, list }; // list: every page, for a "Select all"
   }
 
   /* The first, the last, and the ones around where you are, with a gap mark between far ones. */
@@ -47,6 +47,12 @@
     const keep = [...new Set([0, 1, at - 1, at, at + 1, pages - 2, pages - 1])].filter((p) => p >= 0 && p < pages).sort((a, b) => a - b);
     return keep.flatMap((p, i) => (i && p - keep[i - 1] > 1 ? [null, p] : [p]));
   };
+
+  /* The simpler screens (UI.simple(), 2026-11-11): the footer says the total for the count badge after the card's title
+     (table-tools.js), and a footer with nothing to press, one page of 25 rows or fewer and no note, is marked quiet: the badge
+     says its count, so CSS hides it. Its markup stays, because flows and the pages' own code read it. */
+  const simpleOn = () => !!U()?.simple?.();
+  const footMarks = (v, quiet) => (simpleOn() ? ` data-tp-total="${Number(v.total) || 0}"${quiet ? " data-tp-quiet" : ""}` : "");
 
   function footer(key, v, { noun = "", capped = null } = {}) {
     if (!v.total) return window.TT ? window.TT.emptyFoot(key) : "";
@@ -58,7 +64,8 @@
         <button type="button" class="btn btn-small" data-tp-key="${k}" data-tp-page="${v.at + 1}" data-tp-step="next" ${v.at === last ? "disabled" : ""}>${t("Next")}${icon("chevron-right")}</button></nav>` : "";
     const per = v.total > PER[0] ? `<label class="tp-per"><span class="sr">${t("Rows per page")}</span><select class="select" data-tp-key="${k}" data-tp-per>${PER.map((n) => `<option value="${n}" ${s.per === n ? "selected" : ""}>${num(n)} ${t("per page")}</option>`).join("")}</select></label>` : "";
     const cut = capped ? `<span class="tp-capped">${esc(capped)}</span>` : "";
-    return `<div class="tp-foot" data-tp-foot="${k}"><span class="tp-range">${num(v.from + 1)}–${num(v.from + v.rows.length)} ${t("of")} ${num(v.total)}${noun ? ` ${esc(noun)}` : ""}</span>${pager}${per}${cut}</div>`;
+    const quiet = v.pages === 1 && v.total <= PER[0] && !capped;
+    return `<div class="tp-foot" data-tp-foot="${k}"${footMarks(v, quiet)}><span class="tp-range">${num(v.from + 1)}–${num(v.from + v.rows.length)} ${t("of")} ${num(v.total)}${noun ? ` ${esc(noun)}` : ""}</span>${pager}${per}${cut}</div>`;
   }
 
   function search(key, placeholder) {

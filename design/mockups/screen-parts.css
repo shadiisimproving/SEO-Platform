@@ -1,0 +1,108 @@
+/* Shared parts of the simpler screens (plan-seo-command-center-simplify-screens-like-mickaz.md, section 3).
+   Owner: track B. The number card (3.2, .ncard), the (i) info button and the page tabs. The screen head (3.1) is track A's,
+   in mockup.css.
+   Rules: tokens from look-clear.css only, no raw colours. Everything new is scoped to html[data-simple="1"] until the owner
+   chooses, so the screens look exactly as before with the switch off. */
+
+/* ---- The number card (UI.card in shared-ui.js, plan 3.2) -------------------------------------------------------------------
+   Label, figure, change pill, before → now, and the card's own small graph, the same on every screen. The card's colour
+   (--c, --c-pale) comes from look-clear.css, one per card, and shows only on its graph: no icon square.
+   Old class names (.tile, .today-num, .ov-card, .in-fig, .cs-jump) may ride along on a card during the review, so these
+   rules set everything those would, and win over them. */
+html[data-simple="1"] .ncard {
+  position: relative; display: flex; flex-direction: column; min-width: 0; height: auto; margin: 0;
+  padding: 14px 16px 12px; border: 0; border-radius: var(--r); overflow: clip;
+  background: var(--glass); color: var(--text); box-shadow: var(--shadow), inset 0 0 0 1px var(--line);
+  font: inherit; text-align: start; text-decoration: none; transform: none;
+  transition: box-shadow var(--t-fast);
+}
+html[data-simple="1"] .ncard::before { display: none; }
+html[data-simple="1"] .ncard:hover { transform: none; background: var(--glass); box-shadow: var(--shadow), inset 0 0 0 1px var(--line); }
+/* A card that opens a screen or a tab, or switches a chart line: the whole card is one control. */
+html[data-simple="1"] :is(a, button).ncard { cursor: pointer; }
+html[data-simple="1"] :is(a, button).ncard:hover { box-shadow: var(--shadow-hover), inset 0 0 0 1px var(--line-2); }
+html[data-simple="1"] :is(a, button).ncard:active { transform: none; }
+html[data-simple="1"] :is(a, button).ncard:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+html[data-simple="1"] .ncard.is-toggle[aria-pressed="true"] { box-shadow: var(--shadow), inset 0 3px 0 var(--ncard-line, var(--c)), inset 0 0 0 1px var(--line); }
+html[data-simple="1"] .ncard.is-toggle[aria-pressed="true"]:hover { box-shadow: var(--shadow-hover), inset 0 3px 0 var(--ncard-line, var(--c)), inset 0 0 0 1px var(--line-2); }
+
+html[data-simple="1"] .ncard .ncard-lab { display: flex; align-items: center; min-width: 0; min-height: 16px; margin: 0; padding: 0; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--text-2); }
+html[data-simple="1"] .ncard .ncard-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html[data-simple="1"] .ncard .ncard-lab .def-i { flex: none; margin: -4px -4px -4px 2px; }
+/* A switch: a dot before the label, filled while its line is on the chart. */
+html[data-simple="1"] .ncard .ncard-key { flex: none; width: 8px; height: 8px; margin-right: 7px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--ncard-line, var(--c)); }
+html[data-simple="1"] .ncard[aria-pressed="true"] .ncard-key { background: var(--ncard-line, var(--c)); }
+
+html[data-simple="1"] .ncard .ncard-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 8px; min-width: 0; margin-top: 2px; }
+html[data-simple="1"] .ncard .ncard-fig { min-height: 0; margin: 0; padding: 0; font-size: 28px; line-height: 34px; font-weight: 600; letter-spacing: -.03em; font-variant-numeric: tabular-nums; color: var(--text); white-space: nowrap; }
+html[data-simple="1"] .ncard .ncard-fig.is-unknown { color: var(--muted); }
+/* A word in place of a number ("Not set up") is smaller: on the baseline it would make the line, and the card, taller. */
+html[data-simple="1"] .ncard .ncard-fig > * { vertical-align: top; }
+html[data-simple="1"] .ncard .ncard-row .d-pill { font-size: 12px; line-height: 20px; }
+
+/* The sub line: before → now, one short fact or one link. While a day of the graph is read, that day replaces it. */
+html[data-simple="1"] .ncard .ncard-sub { display: block; min-width: 0; min-height: 16px; margin-top: 2px; font-size: 12px; line-height: 16px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A link there keeps its 24 px target, as a block in the line (as a flex box it drops the space after a brand's logo), and
+   wraps rather than being cut: what it does must stay readable on a phone. */
+html[data-simple="1"] .ncard .ncard-sub:has(.link-btn) { white-space: normal; overflow: visible; }
+html[data-simple="1"] .ncard .ncard-sub .link-btn { display: inline-block; min-height: 24px; padding: 4px 0; line-height: 16px; vertical-align: top; text-align: start; white-space: normal; }
+html[data-simple="1"] .ncard .ncard-read { display: none; color: var(--text-2); }
+html[data-simple="1"] .ncard.is-reading .ncard-read { display: inline; }
+html[data-simple="1"] .ncard.is-reading .ncard-rest { display: none; }
+
+/* The graph: full width, 36 px (64 px on a tall card), 8 px under the sub line, at the foot so a row's graphs line up.
+   This period in the card's colour over its pale area, the period before dashed grey. No axes, no labels. */
+html[data-simple="1"] .ncard .ncard-graph { display: block; position: relative; margin-top: auto; padding-top: 8px; border-radius: 4px; touch-action: pan-y; }
+html[data-simple="1"] .ncard .ncard-graph:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+html[data-simple="1"] .ncard .ncard-plot { display: block; position: relative; height: 36px; }
+html[data-simple="1"] .ncard.is-tall .ncard-plot { height: 64px; }
+html[data-simple="1"] .ncard .ncard-spark { display: block; width: 100%; height: 100%; overflow: visible; }
+html[data-simple="1"] .ncard .ncard-spark .area { fill: var(--c-pale, var(--hover)); stroke: none; }
+html[data-simple="1"] .ncard .ncard-spark .now { fill: none; stroke: var(--c, var(--series-1)); stroke-width: 1.75px; stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+html[data-simple="1"] .ncard .ncard-spark .was { fill: none; stroke: var(--muted); stroke-width: 1.25px; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+html[data-simple="1"] .ncard .ncard-cursor { position: absolute; top: 0; bottom: 0; left: 0; width: 1px; margin-left: -.5px; background: var(--line-2); display: none; pointer-events: none; }
+html[data-simple="1"] .ncard .ncard-pt { position: absolute; left: 0; top: 0; width: 7px; height: 7px; margin: -3.5px 0 0 -3.5px; border-radius: 50%; box-shadow: 0 0 0 2px var(--glass); display: none; pointer-events: none; }
+html[data-simple="1"] .ncard .ncard-pt.now { background: var(--c, var(--series-1)); }
+html[data-simple="1"] .ncard .ncard-pt.was { background: var(--muted); }
+html[data-simple="1"] .ncard.is-reading .ncard-cursor, html[data-simple="1"] .ncard.is-reading .ncard-pt:not([hidden]) { display: block; }
+html[data-simple="1"] .ncard .ncard-days { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; font-size: 12px; line-height: 16px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* Opening a page: each card rises in turn and its graph draws in from the left (both off under prefers-reduced-motion). */
+html[data-simple="1"] .page-enter .ncard { animation: rise 560ms var(--ease-out) both; animation-delay: calc(var(--i, 0) * 45ms); }
+html[data-simple="1"] .page-enter .ncard:nth-child(2) { --i: 1; }
+html[data-simple="1"] .page-enter .ncard:nth-child(3) { --i: 2; }
+html[data-simple="1"] .page-enter .ncard:nth-child(4) { --i: 3; }
+html[data-simple="1"] .page-enter .ncard:nth-child(5) { --i: 4; }
+html[data-simple="1"] .page-enter .ncard:nth-child(6) { --i: 5; }
+html[data-simple="1"] .page-enter .ncard-spark { animation: reveal 1100ms var(--ease-out) 240ms both; }
+/* A new period is loading: the figures and their sub lines pulse until it answers. */
+html[data-simple="1"] .is-updating .ncard .ncard-fig, html[data-simple="1"] .is-updating .ncard .ncard-sub { animation: pulse 900ms ease-in-out infinite; }
+
+/* Phones: two cards a row (a last odd one takes the whole row, so none sits alone), a smaller figure and graph. */
+@media (max-width: 640px) {
+  html[data-simple="1"] .tiles:has(> .ncard) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  html[data-simple="1"] .tiles > .ncard:last-child:nth-child(odd) { grid-column: 1 / -1; }
+  html[data-simple="1"] .ncard { padding: 10px 12px; }
+  html[data-simple="1"] .ncard .ncard-fig { font-size: 22px; line-height: 28px; }
+  html[data-simple="1"] .ncard .ncard-plot { height: 28px; }
+  html[data-simple="1"] .ncard.is-tall .ncard-plot { height: 48px; }
+}
+
+/* ---- The (i): UI.info's caveats, one a line (it joins them with a line break). Its mark is .def-i, as UI.defIcon's. ------ */
+html[data-simple="1"] .tooltip { white-space: pre-line; }
+
+/* ---- Page tabs: the underline tabs under the head, and inside a card, so the app has one tab look (plan 3.1) ---------------
+   <div class="page-tabs" role="tablist" aria-label="…"><button class="page-tab" role="tab" aria-selected="true">…</button>…</div>
+   A link can be a tab too, with aria-current="page". Inside a card, right under its head: .page-tabs.in-card.
+   The competitor profile's .cp-tabs / .cp-tab are the same look (their margins stay theirs). .seg stays for two- or three-way
+   switches, and .chip for filters with counts. */
+html[data-simple="1"] :is(.page-tabs, .cp-tabs) { display: flex; gap: 2px; border-bottom: 1px solid var(--line-2); overflow-x: auto; scrollbar-width: none; }
+html[data-simple="1"] :is(.page-tabs, .cp-tabs)::-webkit-scrollbar { display: none; }
+html[data-simple="1"] .page-tabs { margin: 0 0 14px; }
+html[data-simple="1"] .page-tabs.in-card { margin: 0; padding: 0 4px; border-bottom-color: var(--line); }
+html[data-simple="1"] :is(.page-tab, .cp-tab) { flex: none; display: inline-flex; align-items: center; gap: 6px; min-height: 40px; padding: 8px 14px; margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; font-size: 14px; font-weight: 500; color: var(--text-2); white-space: nowrap; text-decoration: none; cursor: pointer; transition: color var(--t-fast), border-color var(--t-fast); }
+html[data-simple="1"] :is(.page-tab, .cp-tab):hover { color: var(--text); }
+html[data-simple="1"] :is(.page-tab, .cp-tab):is([aria-selected="true"], [aria-current="page"]) { color: var(--accent-text); font-weight: 600; border-bottom-color: var(--accent-2); }
+html[data-simple="1"] :is(.page-tab, .cp-tab):focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: 6px 6px 0 0; }
+html[data-simple="1"] :is(.page-tab, .cp-tab) svg.i { width: 15px; height: 15px; }
+html[data-simple="1"] .page-tab :is(img.logo, .logo) { width: 16px; height: 16px; }

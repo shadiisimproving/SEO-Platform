@@ -47,7 +47,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   // Esc keeps the draft; then the Summary behind shows the competitors.
   await page.keyboard.press("Escape"); await page.waitForTimeout(1500);
   await page.screenshot({ path: OUT + "4-summary-after.png" });
-  check("Summary is no longer empty", (await page.locator("#comp-body [data-cl-go-find]").count()) === 0 && (await page.locator("#cs-rivals-table tbody tr").count()) === 3, await page.locator("#cs-rivals-table tbody tr").count()); // since the merge the table's own head carries "Add competitors", so the empty box is told by its Find button
+  check("Summary is no longer empty", (await page.locator("#comp-body [data-cl-go-find]").count()) === 0 && (await page.locator("#cs-rivals-table tbody tr[data-cs-row]").count()) === 3, await page.locator("#cs-rivals-table tbody tr").count()); // since the merge the table's own head carries "Add competitors", so the empty box is told by its Find button
 
   // My competitors, one site: no site question, one address keeps the single-add toast with Open.
   await page.selectOption("#comp-site", String(one.id)); await settle();

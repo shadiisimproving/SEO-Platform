@@ -28,6 +28,8 @@ FR: dict[str, str] = {
     "Keywords": "Mots-clés", "Keyword": "Mot-clé", "Search engine": "Moteur de recherche", "Keywords followed": "Mots-clés suivis", "In the top 10": "Dans le top 10", "Moved up": "En hausse", "Moved down": "En baisse",
     "Own tool average": "Moyenne de l'outil du moteur", "Searches a month": "Recherches par mois", "Checked with": "Vérifié avec", "Checked": "Vérifié", "Keywords checked": "Mots-clés vérifiés",
     "No keywords followed yet.": "Aucun mot-clé suivi pour l'instant.", "Empty position: not found in the results read.": "Position vide : absent des résultats lus.",
+    "Empty position on a suspect check: it couldn't read every result.": "Position vide sur un contrôle suspect : il n'a pas pu lire tous les résultats.",
+    "Empty position: not found in the results read, except on suspect checks, which couldn't read every result.": "Position vide : absent des résultats lus, sauf sur les contrôles suspects, qui n'ont pas pu lire tous les résultats.",
     # Traffic
     "Channels": "Canaux", "Channel": "Canal", "Visits": "Visites", "Share of visits": "Part des visites", "Lead rate": "Taux de lead", "Visits by channel": "Visites par canal",
     "Referring sites": "Sites référents", "No visits from other sites in this period.": "Aucune visite venue d'autres sites sur cette période.",

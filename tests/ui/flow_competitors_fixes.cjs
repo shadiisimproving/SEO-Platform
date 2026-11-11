@@ -45,7 +45,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   for (let n = listed.length; n < 11; n += 1) await call("POST", "competitors", { site_id: site.id, address: `find-me-${n}.example` }); // the search box shows past 10 rows (FIND_FROM in comp-summary.js)
   await page.goto("about:blank"); await page.goto(BASE + `#competitors/summary?${q}`); await until(() => page.$("#cs-rivals-table"));
   await settle(1500);
-  const names = () => texts("#cs-rivals-table tbody tr .logo-text");
+  const names = () => texts("#cs-rivals-table tbody tr[data-cs-row] .logo-text");
   const all = await names();
   check("2a. a search box shows with this many competitors", Boolean(await page.$("#cs-find")), all.length);
   const cols = (await texts("#cs-rivals-table thead th:not(.tt-pick)")).length;
@@ -74,7 +74,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   check("2k. a second press sorts Z to A", JSON.stringify(za) === JSON.stringify([...az].reverse()), za);
   // A tracking change keeps every row where it was (F12).
   const before = await names();
-  const second = await page.$("#cs-rivals-table tbody tr:nth-child(2)");
+  const second = await page.$("#cs-rivals-table tbody tr[data-cs-row]:nth-child(3)"); // the second competitor: my own site's You row is first
   const options = second ? await second.$$("[data-ct-set], .ct-switch button, [role=radio]") : [];
   if (options.length >= 2) {
     await options[1].click(); await settle(2500);

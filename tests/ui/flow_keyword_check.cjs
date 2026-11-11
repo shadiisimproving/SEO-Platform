@@ -24,12 +24,14 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await page.goto("about:blank"); await page.goto(BASE + "#competitors/list"); await settle();
   if (await page.$("#comp-site")) { await page.selectOption("#comp-site", String(site.id)); await settle(); }
   await page.click('[data-comp-tab="check"]'); await settle();
+  await page.waitForSelector(".kc-add", { timeout: 15000 }).catch(() => {}); // a busy Mac can take longer than the settle to load the tab
   check("the tab is there and starts empty", /No keywords yet/.test(await page.textContent("#comp-body, body")));
   await page.screenshot({ path: OUT + "1-empty.png", fullPage: true });
 
   const used0 = await searches();
   await page.fill("[data-kc-words]", "dubai company setup cost\nfree zone visa price\nmainland licence");
   await page.click("[data-kc-add]"); await settle();
+  await page.waitForSelector(".kc-table tbody tr", { timeout: 15000 }).catch(() => {}); // the same, for the list once added
   check("three keywords are listed, not checked", (await page.locator(".kc-table tbody tr").count()) === 3 && /Not checked/.test(await page.textContent(".kc-table")));
   check("adding spent no search", (await searches()) === used0, `${used0} → ${await searches()}`);
   const own = (await call("GET", `rankings?site_id=${site.id}`).catch(() => ({})));

@@ -76,13 +76,21 @@ def test_parse_ddg_on_an_empty_page_finds_nothing(body):
 
 
 def test_202_bot_check_stops_the_tool():
-    with pytest.raises(ToolStopped):
+    with pytest.raises(ToolStopped) as stopped:
         search(ddg(202, b"<html>anomaly-modal</html>"))
+    assert stopped.value.bot_check  # so the app rests the tool instead of hitting the check again on the next Refresh
 
 
 def test_a_challenge_page_answered_as_200_stops_the_tool():
-    with pytest.raises(ToolStopped):
+    with pytest.raises(ToolStopped) as stopped:
         search(ddg(200, b'<html><form id="challenge-form" action="//duckduckgo.com/anomaly.js"></form></html>'))
+    assert stopped.value.bot_check
+
+
+def test_slow_down_stops_the_tool_without_calling_it_a_bot_check():
+    with pytest.raises(ToolStopped) as stopped:
+        search(ddg(429, b"no"))
+    assert not stopped.value.bot_check
 
 
 def test_the_word_anomaly_on_a_page_of_results_is_not_a_bot_check():

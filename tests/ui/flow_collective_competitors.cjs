@@ -27,7 +27,7 @@ const picked = (page) => page.$eval("#comp-site", (x) => x.options[x.selectedInd
 const menu = (page) => page.evaluate(() => window.UI.siteHostPicked());
 const route = (page) => page.evaluate(() => location.hash);
 const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: `${SHOTS}/${name}.png` }); };
-const sitesCount = (page) => page.$eval("#cs-rivals-table", (t) => [...t.querySelectorAll("tbody tr")].map((r) => [r.querySelector(".kw").textContent.trim(), r.querySelectorAll(".cs-site").length]));
+const sitesCount = (page) => page.$eval("#cs-rivals-table", (t) => [...t.querySelectorAll("tbody tr[data-cs-row]")].map((r) => [r.querySelector(".kw").textContent.trim(), r.querySelectorAll(".cs-site").length]));
 
 (async () => {
   const { browser, page, problems, bad } = await session();
@@ -49,7 +49,7 @@ const sitesCount = (page) => page.$eval("#cs-rivals-table", (t) => [...t.querySe
   check("the side menu follows the dropdown", (await menu(page)) === "site-one.example");
   check("the address carries the site", (await route(page)) === "#competitors/summary?site=site-one.example", await route(page));
   // One site: every row belongs to it, and the "Your sites" column is gone, since it would repeat the same site on each row (2026-11-09).
-  const narrowed = await page.$eval("#cs-rivals-table", (t) => ({ sites: [...new Set([...t.querySelectorAll("tbody tr")].map((r) => r.dataset.csRowSite))], rows: t.querySelectorAll("tbody tr").length, chips: t.querySelectorAll(".cs-site").length, heads: [...t.querySelectorAll("thead th")].map((h) => h.textContent.trim()) }));
+  const narrowed = await page.$eval("#cs-rivals-table", (t) => ({ sites: [...new Set([...t.querySelectorAll("tbody tr[data-cs-row]")].map((r) => r.dataset.csRowSite))], rows: t.querySelectorAll("tbody tr[data-cs-row]").length, chips: t.querySelectorAll(".cs-site").length, heads: [...t.querySelectorAll("thead th")].map((h) => h.textContent.trim()) }));
   const siteOne = await page.$eval("#comp-site", (x) => x.value);
   check("narrowed rows are only that site's, with no Your sites column", narrowed.rows > 0 && narrowed.sites.length === 1 && narrowed.sites[0] === siteOne && narrowed.chips === 0 && !narrowed.heads.includes("Your sites"), narrowed);
   await page.selectOption("#comp-site", "all");
@@ -146,7 +146,7 @@ const sitesCount = (page) => page.$eval("#cs-rivals-table", (t) => [...t.querySe
   slow = false;
   await summaryReady(page);
   // At one site the rows carry their site's id (the Your sites column is hidden there), so a late All-my-sites answer would show as another id or as site icons.
-  const landed = await page.$eval("#cs-rivals-table", (t) => ({ sites: [...new Set([...t.querySelectorAll("tbody tr")].map((r) => r.dataset.csRowSite))], chips: t.querySelectorAll(".cs-site").length }));
+  const landed = await page.$eval("#cs-rivals-table", (t) => ({ sites: [...new Set([...t.querySelectorAll("tbody tr[data-cs-row]")].map((r) => r.dataset.csRowSite))], chips: t.querySelectorAll(".cs-site").length }));
   check("a late answer never lands on the site now shown", landed.sites.length === 1 && landed.sites[0] === (await page.$eval("#comp-site", (x) => x.value)) && landed.chips === 0 && (await picked(page)) === "site-two.example", landed);
   await page.unroute("**/api/collective/**");
 
@@ -193,7 +193,7 @@ const sitesCount = (page) => page.$eval("#cs-rivals-table", (t) => [...t.querySe
   await page.route("**/api/collective/links**", none((r) => r.fulfill({ json: { sites: [], gaps: [], flagged: [], funnel: { found: 0, good: 0, flagged: 0, checking: 0, shared: 0 }, rivals_total: 3, rivals_with_data: 0 } })));
   await fresh(page);
   await summaryReady(page);
-  const cells = await page.$$eval("#cs-rivals-table tbody tr:first-child td.c", (x) => x.map((c) => c.textContent.trim()));
+  const cells = await page.$$eval("#cs-rivals-table tbody tr[data-cs-row] td.c", (x) => x.map((c) => c.textContent.trim()));
   check("no checks shows —, never 0", cells.length >= 2 && cells.slice(0, 2).every((c) => c === "—"), cells); // the merged table has two keyword cells (Ranks on your keywords, Who leads); the third is edits, which is known here
   const cards = await page.$$eval("#cs-tiles .cs-jump", (x) => x.map((c) => c.getAttribute("aria-label")));
   check("number cards say — when nothing is known, never 0", cards[1].endsWith("—") && cards[3].endsWith("—"), cards);

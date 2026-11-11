@@ -54,7 +54,9 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
     await page.waitForTimeout(400);
     await shot("05-panel");
     check((await count("#panel .in-spark svg")) >= 1, "the panel has a chart");
-    check((await text("#panel .in-how")).length > 20, "the panel says how clicks at stake were worked out");
+    // Since 11 November the formula sits behind the (i) beside the figure (stakeBlock); .in-how only holds the AI Overview line.
+    const how = await page.locator("#panel .in-stake .def-i").first().getAttribute("data-tip", { timeout: 1500 }).catch(() => "");
+    check((how || "").length > 20, "the panel says how clicks at stake were worked out, behind the (i) beside the figure");
     check((await count("#panel [data-in-task]")) === 1, "Create a task is there");
     await page.keyboard.press("Escape");
     await page.waitForTimeout(500);

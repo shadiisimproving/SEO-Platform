@@ -6,7 +6,18 @@
    - A paged table is sorted and filtered across all its pages, not just the one on show. TP.view hands the whole list to
      arrange(), and watch() notes the function the screen draws its rows with, so a row's cells can be read without showing it.
    - A table with its own tick boxes keeps them, and its bar gains Add a note.
-   - Left alone: tables with no heading row, fixed comparisons (.cp-facts, .pt-vs), and anything marked data-tt-off. */
+   - Left alone: tables with no heading row, fixed comparisons (.cp-facts, .pt-vs), and anything marked data-tt-off.
+
+   Quiet tables, on the simpler screens only (html[data-simple="1"], UI.simple(); 2026-11-11). Nothing is taken away:
+   - Filter and its chips sit in the card's head (.card-head) when the card holds just this table. Elsewhere a screen marks
+     the place with data-tt-slot: empty, for the first table after it in the same card or section; or naming a table's id
+     or key, data-tt-slot="kw-table". Without either, the row above the table stays.
+   - A count badge (.n-badge) follows the title of that head. A footer with nothing to press (one page, 25 rows or fewer)
+     then hides; its markup stays. data-tt-own-count: the screen shows the count itself, so no badge, and the footer hides.
+   - data-tt-filter-off on a table or around it: no Filter. Ticks and sorting stay.
+   - Row tick boxes, the ones added here and a screen's own, show on hover or focus of their row, and on every row once one
+     is ticked (table.tt-some). A screen marks a row's own buttons with .row-act to have them do the same (table-tools.css).
+   With the switch off, none of these marks does anything, so a screen can add them unconditionally. */
 (() => {
   "use strict";
   const TABLES = "table.data, table.lc-table, table.mini";
@@ -21,6 +32,8 @@
   const num = (n) => U().num(n);
   const fold = (value) => window.TP.fold(value);
   const fill = (text, values) => Object.entries(values).reduce((s, [k, v]) => s.replace(`{${k}}`, v), t(text));
+
+  const simple = () => (U()?.simple ? !!U().simple() : document.documentElement.dataset.simple === "1"); // mockup.js's switch
 
   const states = new Map();
   function stateOf(key) {
@@ -120,6 +133,7 @@
   function arrange(key, list) {
     const st = stateOf(key);
     st.all = list;
+    st.count = list.length;
     if (!st.draw || !active(st)) return list;
     const cells = list.map((row, i) => rowCells(st, row, i));
     const order = list.map((_, i) => i).filter((i) => [...st.filters].every(([col, f]) => passes(f, cells[i][col])));
@@ -127,6 +141,7 @@
       const { col, dir } = st.sort, kind = kindOf(order.map((i) => cells[i][col]));
       order.sort((a, b) => compare(cells[a][col], cells[b][col], kind, dir));
     }
+    st.count = order.length;
     return order.map((i) => list[i]);
   }
   /* Notes how this table draws a row, from the screen's own rows.map(...). A map that doesn't make table rows is ignored. */
@@ -144,20 +159,21 @@
   /* A filter can leave nothing: the footer stays, so the table is still known as this one and the filter can be undone. */
   function emptyFoot(key) {
     if (!stateOf(key).filters.size) return "";
-    return `<div class="tp-foot" data-tp-foot="${esc(key)}"><span class="tp-range">${t("No row matches these filters.")}</span></div>`;
+    return `<div class="tp-foot" data-tp-foot="${esc(key)}"${simple() ? ` data-tp-total="0"` : ""}><span class="tp-range">${t("No row matches these filters.")}</span></div>`;
   }
 
   // ---- a table's parts -----------------------------------------------------------------------------
   const dataCells = (tr) => [...tr.cells].filter((c) => !c.classList.contains("tt-pick"));
   const headRowOf = (table) => table.tHead?.rows[table.tHead.rows.length - 1] || null;
   const wrapOf = (table) => table.closest(".table-wrap, .cl-scroll") || table;
-  function pagedKey(table) {
+  function footOf(table) {
     for (const node of [table, wrapOf(table)]) {
       const next = node.nextElementSibling;
-      if (next?.matches("[data-tp-foot]")) return next.dataset.tpFoot;
+      if (next?.matches("[data-tp-foot]")) return next;
     }
     return null;
   }
+  const pagedKey = (table) => footOf(table)?.dataset.tpFoot ?? null;
   function headLabel(th) {
     const copy = th.cloneNode(true);
     copy.querySelectorAll(".sr, svg, img, .th-sub, input").forEach((extra) => extra.remove());
@@ -201,6 +217,23 @@
     const lines = labels.map((label, i) => (label && !EMPTY.test(texts[i] || "") ? `${label}: ${texts[i]}` : null)).filter(Boolean);
     return { where: whereOf(table, tr, labels, texts), context: lines.join("\n") };
   }
+  /* A screen whose own picks reach past the page on show (Keywords' "Select all") names the picked rows itself. Each is read
+     through the screen's own row drawing, the way a filter reads rows that aren't shown, so its note matches a ticked row's. */
+  const ownSources = new Map(); // the bar's id → () => [the table's key, the picked rows' data]
+  function recordsOf(key, list) {
+    const st = stateOf(key), table = tableOf(key);
+    if (!st.draw || !table) return null;
+    const out = new Map();
+    list.forEach((row, i) => {
+      const tr = parser.parseFromString(`<table>${st.draw(row, i)}</table>`, "text/html").querySelector("tr");
+      if (tr) out.set(`${key}\u0001${rowKey(tr)}`, recordOf(table, tr));
+    });
+    return out;
+  }
+  function ownRecords(button) {
+    const bar = button.closest(OWN_BARS), from = bar?.id ? ownSources.get(bar.id)?.() : null;
+    return (from && recordsOf(from[0], from[1])) || ownPicked;
+  }
 
   function paintBar() {
     let bar = document.getElementById("tt-bar");
@@ -221,7 +254,9 @@
     const all = headRowOf(table)?.querySelector(":scope > .tt-pick input");
     const shown = rows.filter((tr) => !tr.hidden).length;
     if (all) { all.checked = shown > 0 && on === shown; all.indeterminate = on > 0 && on < shown; }
+    if (simple()) table.classList.toggle("tt-some", anyOf(picked, key)); // once one row is ticked, every row shows its box
   }
+  const anyOf = (map, key) => { const start = `${key}\u0001`; for (const id of map.keys()) if (id.startsWith(start)) return true; return false; };
   function clearPicks() {
     picked.clear();
     paintBar();
@@ -273,11 +308,22 @@
     const table = tableOf(key), head = table && headRowOf(table);
     return head ? dataCells(head).map(headLabel) : [];
   }
-  function paintTools(table, key, st, rowCount) {
+  /* host: on the simpler screens, the card head or data-tt-slot the tools sit in (else the row above the table); off: no Filter. */
+  function paintTools(table, key, st, rowCount, host = null, off = false) {
     const wrap = wrapOf(table);
     let bar = wrap.previousElementSibling?.matches?.(".tt-tools") ? wrap.previousElementSibling : null;
-    if (rowCount < 2 && !st.filters.size) { bar?.remove(); return; }
-    if (!bar) { bar = document.createElement("div"); bar.className = "tt-tools"; wrap.before(bar); }
+    if (host) { bar?.remove(); bar = headBar(key, host); }
+    if (off || (rowCount < 2 && !st.filters.size)) { bar?.remove(); return; }
+    if (!bar) {
+      bar = document.createElement("div");
+      bar.className = "tt-tools";
+      if (host) { // at the head's end, on the title's line: before a hint that takes a line of its own
+        bar.classList.add("tt-in-head");
+        bar.dataset.ttFor = key;
+        host.insertBefore(bar, host.querySelector(":scope > .hint-text"));
+        claimed.add(bar);
+      } else wrap.before(bar);
+    }
     const labels = dataCells(headRowOf(table)).map(headLabel), k = esc(key);
     const chips = [...st.filters].map(([col, f]) => `<span class="tt-chip"><span>${esc(labels[col] || "")}: ${esc(describe(f))}</span><button type="button" class="tt-chip-x" data-tt-key="${k}" data-tt-unfilter="${col}" aria-label="${esc(fill("Remove the filter on {column}", { column: labels[col] || "" }))}">${U().icon("x")}</button></span>`).join("");
     const signature = `${key}|${U().state?.lang}|${labels.join("|")}|${chips}`;
@@ -340,6 +386,72 @@
     const clear = pop.el.querySelector("[data-tt-col-clear]");
     if (clear) clear.disabled = !f;
   }
+
+  // ---- quiet tables, on the simpler screens only (see the top of this file) ----------------------------
+  const BOX = ".card, section, details, .panel, dialog";
+  const before = (a, b) => !a.contains(b) && !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+  /* The place a screen chose: a data-tt-slot naming this table, or an empty one before it in the same box, with no other
+     table between them. */
+  function slotFor(table, key) {
+    for (const name of [table.id, key]) {
+      const named = name && document.querySelector(`[data-tt-slot="${CSS.escape(name)}"]`);
+      if (named && !named.contains(table)) return named;
+    }
+    const box = table.closest(BOX), scope = box || table.closest("#page, #panel") || document.body;
+    const slot = [...scope.querySelectorAll('[data-tt-slot=""]')].filter((s) => s.closest(BOX) === box && before(s, table)).pop();
+    if (!slot) return null;
+    return [...scope.querySelectorAll(TABLES)].some((other) => other !== table && before(slot, other) && before(other, table)) ? null : slot;
+  }
+  /* Else the head of a card that holds this one table, unless the table sits further in, in a fold or a section of its own. */
+  function cardHeadFor(table) {
+    const card = table.closest(".card");
+    if (!card || table.closest(BOX) !== card || card.querySelectorAll(TABLES).length !== 1) return null;
+    const head = [...card.children].find((child) => child.classList.contains("card-head"));
+    return head && before(head, table) ? head : null;
+  }
+  /* The head tools and badges drawn in this pass. Any other one is left over (its table went, or now sits elsewhere) and goes. */
+  const claimed = new Set();
+  function headBar(key, host) {
+    const bar = host.querySelector(`:scope > .tt-in-head[data-tt-for="${CSS.escape(key)}"]`);
+    if (bar) claimed.add(bar);
+    return bar;
+  }
+  /* The count badge after the head's title, before the title's (i). A footer with nothing to press then hides (CSS). */
+  function paintCount(table, key, count, host) {
+    const own = !!table.closest("[data-tt-own-count]");
+    const title = own || !host ? null : (host.closest(".card-head") || host).querySelector("h2, h3");
+    if (title) {
+      let badge = title.querySelector(`:scope > .n-badge[data-tt-badge-for="${CSS.escape(key)}"]`);
+      if (!badge) {
+        badge = document.createElement("span");
+        badge.className = "n-badge";
+        badge.dataset.ttBadgeFor = key;
+        title.insertBefore(badge, [...title.children].find((child) => child.matches(".def-i, .comp-info, .icon-btn, [data-tip]")) || null);
+      }
+      claimed.add(badge);
+      const text = num(count);
+      if (badge.textContent !== text) badge.textContent = text;
+    }
+    footOf(table)?.classList.toggle("tt-counted", own || !!title);
+  }
+  /* A screen's own tick boxes: the column whose heading holds a box. They show the same way as the ones added here. */
+  function markOwnTicks(head, rows) {
+    const at = [...head.cells].findIndex((cell) => !cell.classList.contains("tt-pick") && cell.querySelector("input[type=checkbox]"));
+    if (at < 0) return;
+    rows.forEach((tr) => { const td = tr.cells[at]; if (td?.querySelector("input[type=checkbox]")) td.classList.add("tt-own-pick"); });
+  }
+  function finishQuiet() {
+    document.querySelectorAll("table[data-tt-key]").forEach((table) => {
+      if (!table.querySelector(":scope > tbody > tr > td.tt-own-pick")) return;
+      const key = table.dataset.ttKey;
+      table.classList.toggle("tt-some", !!table.querySelector(":scope > tbody > tr > td.tt-own-pick input:checked") || anyOf(ownPicked, key));
+    });
+    // A head or title can outlive its table: its tools and badge go with the table.
+    document.querySelectorAll(".tt-in-head, .n-badge[data-tt-badge-for]").forEach((el) => { if (!claimed.has(el)) el.remove(); });
+    claimed.clear();
+  }
+  /* A chip removed from a head leaves the keyboard on that table's Filter, beside it, rather than at the top of the page. */
+  const backToFilter = (el) => (simple() ? () => document.querySelector(`[data-tt-filter][data-tt-key="${CSS.escape(el.dataset.ttKey)}"]`)?.focus() : undefined);
 
   // ---- drawing the tools on a table ----------------------------------------------------------------
   function rowsOf(table, count) {
@@ -442,7 +554,12 @@
       table._ttArranged = active(st);
     }
     if (!ownTicks) paintTicks(table, key, rows);
-    if (canArrange) paintTools(table, key, st, paged ? st.all.length : rows.length);
+    const quiet = simple(), host = quiet ? slotFor(table, key) || cardHeadFor(table) : null;
+    if (canArrange) paintTools(table, key, st, paged ? st.all.length : rows.length, host, quiet && !!table.closest("[data-tt-filter-off]"));
+    if (!quiet) return;
+    if (ownTicks) markOwnTicks(head, rows);
+    const total = paged ? Number(footOf(table)?.dataset.tpTotal ?? st.count ?? st.all.length) : rows.filter((tr) => !tr.hidden).length;
+    paintCount(table, key, total, host);
   }
   function syncOwn(table, key, rows) {
     rows.forEach((tr) => {
@@ -472,8 +589,10 @@
 
   function run() {
     if (!window.UI?.icon || !window.TP) return;
+    claimed.clear();
     document.querySelectorAll(TABLES).forEach(enhance);
     paintOwnBars();
+    if (simple()) finishQuiet();
     observer.takeRecords(); // what this just changed needn't be looked at again
   }
   function rearrange(key, focus) {
@@ -505,10 +624,10 @@
     if (own) { const key = own.closest("table")?.dataset.ttKey; if (key) stateOf(key).sort = null; return; } // the screen's sort takes over
     let el;
     if ((el = target.closest("[data-tt-filter]"))) { event.preventDefault(); event.stopPropagation(); openPop(el); return; }
-    if ((el = target.closest("[data-tt-unfilter]"))) { event.stopPropagation(); stateOf(el.dataset.ttKey).filters.delete(Number(el.dataset.ttUnfilter)); rearrange(el.dataset.ttKey); if (pop) paintPop(); return; }
-    if ((el = target.closest("[data-tt-unfilter-all]"))) { event.stopPropagation(); stateOf(el.dataset.ttKey).filters.clear(); rearrange(el.dataset.ttKey); if (pop) paintPop(); return; }
+    if ((el = target.closest("[data-tt-unfilter]"))) { event.stopPropagation(); stateOf(el.dataset.ttKey).filters.delete(Number(el.dataset.ttUnfilter)); rearrange(el.dataset.ttKey, backToFilter(el)); if (pop) paintPop(); return; }
+    if ((el = target.closest("[data-tt-unfilter-all]"))) { event.stopPropagation(); stateOf(el.dataset.ttKey).filters.clear(); rearrange(el.dataset.ttKey, backToFilter(el)); if (pop) paintPop(); return; }
     if (target.closest("[data-tt-note]")) { event.stopPropagation(); openNote(target.closest("[data-tt-note]"), picked); return; }
-    if ((el = target.closest("[data-tt-note-own]"))) { event.stopPropagation(); run(); openNote(el, ownPicked); return; }
+    if ((el = target.closest("[data-tt-note-own]"))) { event.stopPropagation(); run(); openNote(el, ownRecords(el)); return; }
     if ((el = target.closest("[data-tt-note-save]"))) { event.stopPropagation(); saveNote(el); return; }
     if (target.closest("[data-tt-clear-picks]")) { event.stopPropagation(); clearPicks(); return; }
     if (!pop || !pop.el.contains(target)) return;
@@ -566,7 +685,7 @@
   }, true);
   window.addEventListener("hashchange", () => { closePop(); picked.clear(); ownPicked.clear(); paintBar(); });
 
-  window.TT = { arrange, watch, emptyFoot, run };
+  window.TT = { arrange, watch, emptyFoot, run, ownSource: (barId, fn) => ownSources.set(barId, fn) };
 
   Object.assign(window.FR = window.FR || {}, {
     "Filter": "Filtrer", "Column": "Colonne", "From": "De", "To": "À", "Contains": "Contient", "Empty": "Vide", "Sort": "Trier", "Ascending": "Croissant", "Descending": "Décroissant",

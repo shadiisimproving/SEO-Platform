@@ -123,6 +123,8 @@ const settle = (page, ms = 700) => page.waitForTimeout(ms);
 
   // Before any upload, Content points to where the files go.
   await page.goto("about:blank"); await page.goto(`${ROOT}#content`); await settle(page, 1500);
+  // A busy Mac can take longer than the settle to draw Content the first time: wait for it, up to 15 s, before reading it.
+  await page.waitForFunction(() => (document.querySelector(".content")?.innerText || "").includes("Clarity dashboard downloads"), null, { timeout: 15000 }).catch(() => {});
   check("Content says where Clarity downloads go", (await page.locator(".content").innerText()).includes("Clarity dashboard downloads"));
 
   const openFold = async () => {
@@ -188,14 +190,18 @@ const settle = (page, ms = 700) => page.waitForTimeout(ms);
   check("the site itself isn't listed as a referrer", !text.includes(`\nwww.${ONE.host}\t`) && text.includes("left out"));
   check("the tab keeps focus for the keyboard", await page.evaluate(() => document.activeElement?.dataset?.crTab === "dashboard:referrers"));
 
-  // AI search, one site: questions kept from the file that had them.
+  // AI search, redesigned on 2026-11-10: an answer first, then tabs, and a site is picked in the side menu as everywhere.
+  // All sites: every site's downloads count, then one site: questions kept from the file that had them.
+  const allCited = SITES.reduce((n, x) => n + x.citations, 0);
   await page.goto("about:blank"); await page.goto(`${ROOT}#ai`); await settle(page, 1500);
   text = await page.locator(".content").innerText();
-  check("AI search lists the three sites even without Google Analytics", HOSTS.every((h) => text.includes(h)) && text.includes(fmt(ONE.citations)), text.slice(0, 400));
-  await page.click(`.content [data-pick-site="${oneId}"]`); await settle(page, 1500);
+  await page.click('[data-ai-tab="cited"]'); await settle(page, 500);
+  const cited = await page.locator(".ai-tabs-card").innerText();
+  check("AI search counts the three sites even without Google Analytics", text.includes(`Copilot cited your sites ${fmt(allCited)} times`) && HOSTS.every((h) => cited.includes(h)), `${text.slice(0, 200)} | ${cited.slice(0, 300)}`);
+  await page.click("#site-switch"); await page.click(`[data-pick-site="${oneId}"]`); await settle(page, 1500);
   text = await page.locator(".content").innerText();
-  check("one site leads with how often Copilot cited it", text.includes(`Copilot cited this site ${fmt(ONE.citations)} times`), text.slice(0, 500));
-  await page.click('[data-cr-tab="ai:questions"]'); await settle(page, 300);
+  check("one site leads with how often Copilot cited it", text.includes(`Copilot cited you ${fmt(ONE.citations)} times`), text.slice(0, 500));
+  await page.click('[data-ai-tab="questions"]'); await settle(page, 300);
   text = await page.locator(".content").innerText();
   check("the questions are there", text.includes("how to open a shop"), text.slice(0, 400));
   await shot(page, "6-ai-one");
@@ -203,8 +209,9 @@ const settle = (page, ms = 700) => page.waitForTimeout(ms);
   // All sites, in French, and on a phone.
   await page.click("#site-switch"); await page.click('[data-pick-site="all"]'); await settle(page, 1200);
   await menu(page, "lang"); await settle(page, 800);
+  await page.click('[data-ai-tab="cited"]'); await settle(page, 500);
   text = await page.locator(".content").innerText();
-  check("French: AI search table", text.includes("Cité par Microsoft Copilot") && text.includes("Part d'autorité"), text.slice(0, 400));
+  check("French: AI search table", text.includes(`Copilot a cité vos sites ${allCited} fois`) && text.includes("Pages citées") && HOSTS.every((h) => text.includes(h)), text.slice(0, 400));
   await shot(page, "7-ai-all-fr");
   await page.setViewportSize({ width: 390, height: 900 });
   await page.goto("about:blank"); await page.goto(`${ROOT}#content`); await settle(page, 1500);

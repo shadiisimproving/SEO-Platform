@@ -53,12 +53,12 @@ def reading_state(engine: Engine, site_id: int, competitor_id: int) -> dict:
         return {"id": competitor_id, "tracking": mode, "crawl": _crawl_state(conn, competitor_id)}
 
 
-def edits_last_30_days(conn) -> dict[int, int]:
-    """By competitor. It belongs to the competitor, not to a site: never add it up across sites."""
+def edits_last_30_days(conn, kind: str = "competitor") -> dict[int, int]:
+    """By site of that kind. A competitor's count belongs to the competitor, not to one of my sites: never add it up across sites."""
     return dict(conn.execute(text(
         "SELECT s.id, COUNT(*) FROM sites s JOIN domains d ON d.host = s.host JOIN change_events e ON e.domain_id = d.id "
-        "WHERE s.kind = 'competitor' AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL 30 DAY GROUP BY s.id"
-    )).all())
+        "WHERE s.kind = :kind AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL 30 DAY GROUP BY s.id"
+    ), {"kind": kind}).all())
 
 
 def overview(engine: Engine, site_id: int) -> list[dict]:

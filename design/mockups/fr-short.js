@@ -1818,6 +1818,8 @@ Object.assign(window.FR, {
  "Retry these": "Relancer ceux-ci",
  "Table view": "Vue tableau",
  "Chart view": "Vue graphique",
+ "Tools that missed it": "Outils qui ne l'ont pas trouvé",
+ "All tools": "Tous les outils"
 });
 
 /* The 83 edits approved last (2026-11-11): French for the new short texts and tips, and the old English kept as a key. */

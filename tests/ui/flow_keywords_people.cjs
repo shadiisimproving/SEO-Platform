@@ -1,4 +1,6 @@
 // Two people at once, Stop, a captcha, a member touching keys, and a reload during a run.
+// Needs a fresh one, with the admin and Sara: DB_NAME_TEST=seo_cc_refresh_test .venv/bin/python tests/ui/keywords_server.py --port 8222 --login
+// Run: node tests/ui/flow_keywords_people.cjs <folder for screenshots> http://127.0.0.1:8222/
 const { open } = require("./pw.cjs");
 const out = process.argv[2] || "/tmp";
 const BASE = process.argv[3] || "http://127.0.0.1:8222/";
@@ -8,7 +10,9 @@ const check = (ok, what) => { note(ok ? "ok  " : "FAIL", what); if (!ok) fails.p
 const settle = (page, ms = 500) => page.waitForTimeout(ms);
 const shot = (page, name) => page.screenshot({ path: `${out}/${name}.png` });
 async function signIn(page, email) {
-  await page.goto(`${BASE}login`); await page.fill("#email", email); await page.fill("#password", "demo-password-1"); await page.click("#go"); await page.waitForTimeout(800);
+  await page.goto(`${BASE}login`); await page.fill("#email", email); await page.fill("#password", "demo-password-1"); await page.click("#go");
+  // Leaving the login page before its sign-in answers lands on the login page again: wait for it to move on, however long a busy Mac takes.
+  await page.waitForURL((u) => !u.pathname.endsWith("/login"), { timeout: 20000 });
   await page.goto(`${BASE}#keywords`); await page.waitForSelector("#kw-table", { timeout: 15000 }); await settle(page);
 }
 const ready = (page) => page.waitForFunction(() => { const b = document.querySelector("#kwr-confirm"); return b && !b.disabled; }, null, { timeout: 8000 });
@@ -34,7 +38,7 @@ async function refreshAll(page, engine) {
   await b.page.click("#kwr-refresh"); await b.page.waitForSelector("#kwr-summary p", { timeout: 8000 }); await settle(b.page, 500);
   await shot(b.page, "30-colleague-dialog");
   note("   Sara's summary:", (await b.page.textContent("#kwr-summary")).replace(/\s+/g, " ").slice(0, 220));
-  check(/Already being refreshed/.test(await b.page.textContent("#kwr-summary")) && /Demo admin/.test(await b.page.textContent("#kwr-summary")), "the keywords a colleague is running are named, with who");
+  check(/Already refreshing/.test(await b.page.textContent("#kwr-summary")) && /Demo admin/.test(await b.page.textContent("#kwr-summary")), "the keywords a colleague is running are named, with who");
   await b.page.keyboard.press("Escape"); await settle(b.page, 200);
 
   // The admin reloads in the middle: the run carries on and the tray comes back. Then Stop.
@@ -52,7 +56,7 @@ async function refreshAll(page, engine) {
   const tools = await a.page.evaluate(async () => (await (await fetch("api/tools")).json()).tools.map((t) => [t.name, t.left]));
   note("   left:", JSON.stringify(tools));
   await refreshAll(a.page); await a.page.click("#kwr-confirm"); await a.page.waitForSelector("#tray"); await settle(a.page, 400);
-  await a.page.waitForFunction(() => /out of credits|saved|Finished/.test(document.querySelector("#tray")?.textContent || ""), null, { timeout: 60000 }).catch(() => {});
+  await a.page.waitForFunction(() => /continuing with|saved|Finished/.test(document.querySelector("#tray")?.textContent || ""), null, { timeout: 60000 }).catch(() => {});
   note("   while moving:", (await a.page.textContent("#tray")).replace(/\s+/g, " "));
   await shot(a.page, "33-moving-on");
   await finished(a.page); await settle(a.page, 1500);
@@ -79,7 +83,9 @@ async function refreshAll(page, engine) {
   check(!hidden, "the tray isn't hidden behind the side panel");
   const said = (await a.page.textContent("#tray")).replace(/\s+/g, " ");
   note("   captcha tray:", said);
-  check(/captcha/.test(said), "a captcha that doesn't clear stops the browser and says so");
+  // Since 2026-11-11 the tray says it in a few words ("Blocked by a bot check"), and the whole sentence naming the captcha is its (i) tip.
+  const tips = await a.page.evaluate(() => [...document.querySelectorAll("#tray [data-tip]")].map((e) => e.dataset.tip).join(" "));
+  check(/Stopped/.test(said) && /Blocked by a bot check/.test(said) && /captcha/.test(tips), `a captcha that doesn't clear stops the browser and says so (tip: ${tips.slice(0, 120)})`);
   await a.page.keyboard.press("Escape"); await settle(a.page, 300);
 
   // A member tries to change keys and the order.

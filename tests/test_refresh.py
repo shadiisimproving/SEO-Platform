@@ -18,16 +18,18 @@ ME = "me.example"
 class Fake:
     """A search tool that answers from a table, and writes down each search that really went out."""
 
-    def __init__(self, name, free_monthly=None, position=3, location="FR", free_once=None, paid_per=None, credits_per_page=1, stop_after=None, fail=(), time_out=(), per_hour=None, manual_only=False, explode=None):
+    def __init__(self, name, free_monthly=None, position=3, location="FR", free_once=None, paid_per=None, credits_per_page=1, stop_after=None, fail=(), time_out=(), per_hour=None, manual_only=False, explode=None, bot_check=False):
         self.name, self.free_monthly, self.position, self.location, self.stop_after = name, free_monthly, position, location, stop_after
         self.free_once, self.paid_per, self.credits_per_page, self.fail, self.time_out = free_once, paid_per, credits_per_page, set(fail), set(time_out)
         self.most_per_search = credits_per_page
-        self.per_hour, self.manual_only, self.explode = per_hour, manual_only, explode
+        self.per_hour, self.manual_only, self.explode, self.bot_check = per_hour, manual_only, explode, bot_check
         self.calls = []
+        self.tries = 0  # every search asked of it, including the ones it refused
 
     def search(self, keyword, engine, country, language, device, depth):
+        self.tries += 1
         if self.stop_after is not None and len(self.calls) >= self.stop_after:
-            raise ToolStopped(f"{self.name} asked for a bot check.")
+            raise ToolStopped(f"{self.name} asked for a bot check.", bot_check=self.bot_check)
         self.calls.append((keyword, engine, depth))
         if self.explode:
             raise self.explode
@@ -187,7 +189,7 @@ def test_running_out_of_free_credits_moves_to_the_next_free_tool_and_says_so(wor
     run = run_now(world, track(world, "a", "b", "c", "d"))
     assert run["status"] == "done" and run["done"] == 4
     assert len(first.calls) == 2 and len(second.calls) == 2
-    assert run["moved"] == {"from": "SerpApi", "to": "Searlo"}
+    assert run["moved"] == {"from": "SerpApi", "to": "Searlo", "why": "ran out of free checks"}
     assert connections.free_left(world.engine, first) == 0
 
 
@@ -215,6 +217,71 @@ def test_a_bot_check_refunds_the_estimate_and_moves_on(world):
     run = run_now(world, track(world, "a", "b"))
     assert run["status"] == "done" and run["done"] == 2 and spent(world, "SerpApi") == 1 and spent(world, "Searlo") == 1
     assert "bot check" in run["stop_reason"]
+
+
+def ddg_world(world, works=False):
+    """DuckDuckGo direct first, as on a server DuckDuckGo blocks, then SerpApi."""
+    blocked, other = Fake("DuckDuckGo direct", stop_after=None if works else 0, bot_check=True), Fake("SerpApi", free_monthly=250)
+    world.tools["duckduckgo"] = [blocked, other]
+    return blocked, other
+
+
+def test_the_tray_says_why_a_tool_handed_over_not_always_credits(world):
+    blocked, other = ddg_world(world)
+    run = run_now(world, track(world, "a", "b"), engines=["duckduckgo"])
+    assert run["done"] == 2 and blocked.tries == 1 and len(other.calls) == 2
+    assert run["moved"] == {"from": "DuckDuckGo direct", "to": "SerpApi", "why": "was blocked by a bot check"}
+
+
+def test_after_a_bot_check_automatic_runs_skip_that_tool_for_a_day(world):
+    blocked, other = ddg_world(world)
+    ids = track(world, "a", "b")
+    run_now(world, ids, engines=["duckduckgo"])
+    seen = refresh.preview(world.engine, ask(ids, engines=["duckduckgo"]))
+    assert [b["name"] for b in seen["blocked"]] == ["DuckDuckGo direct"] and "bot check" in seen["blocked"][0]["why"]
+    assert seen["blocked"][0]["at"] and seen["blocked"][0]["until"] > seen["blocked"][0]["at"]
+    assert {tool["name"]: tool["checks"] for tool in seen["tools"]} == {"SerpApi": 2}  # the checks go to the next tool
+    second = run_now(world, ids, engines=["duckduckgo"])
+    assert blocked.tries == 1 and second["status"] == "done" and second["done"] == 2 and second["moved"] is None
+    assert "DuckDuckGo direct was skipped" in second["stop_reason"]
+
+
+def test_the_skip_ends_after_a_day_and_a_search_that_works_lifts_it(world, monkeypatch):
+    from datetime import timedelta
+
+    blocked, _other = ddg_world(world)
+    ids = track(world, "a")
+    run_now(world, ids, engines=["duckduckgo"])
+    assert connections.blocked(world.engine, "DuckDuckGo direct")
+    real_now = connections._now
+    monkeypatch.setattr(connections, "_now", lambda: real_now() + timedelta(hours=connections.BLOCK_HOURS, minutes=1))
+    assert connections.blocked(world.engine, "DuckDuckGo direct") is None
+    blocked.stop_after = None  # DuckDuckGo lets it through again
+    run_now(world, ids, engines=["duckduckgo"])
+    assert blocked.tries == 2 and len(blocked.calls) == 1
+    monkeypatch.setattr(connections, "_now", real_now)
+    connections.note_blocked(world.engine, "DuckDuckGo direct", "DuckDuckGo asked for a bot check.")
+    run_now(world, ids, engines=["duckduckgo"], mode="pick", picked=["DuckDuckGo direct"])
+    assert connections.blocked(world.engine, "DuckDuckGo direct") is None
+
+
+def test_a_blocked_tool_picked_by_hand_still_runs_and_the_preview_warns_first(world):
+    blocked, other = ddg_world(world, works=True)
+    ids = track(world, "a")
+    connections.note_blocked(world.engine, "DuckDuckGo direct", "DuckDuckGo asked for a bot check.")
+    body = ask(ids, engines=["duckduckgo"], mode="pick", picked=["DuckDuckGo direct"])
+    seen = refresh.preview(world.engine, body)
+    assert [b["name"] for b in seen["blocked"]] == ["DuckDuckGo direct"] and seen["checks"] == 1
+    run = run_now(world, ids, engines=["duckduckgo"], mode="pick", picked=["DuckDuckGo direct"])
+    assert blocked.tries == 1 and run["done"] == 1 and other.calls == []
+
+
+def test_a_bot_check_in_another_job_also_rests_the_tool(world):
+    blocked, _other = ddg_world(world)
+    with pytest.raises(ToolStopped):
+        connections.spend_on_search(world.engine, blocked, "a", "duckduckgo", "FR", "fr")
+    assert connections.blocked(world.engine, "DuckDuckGo direct")
+    assert [tool.name for tool in connections.not_blocked(world.engine, world.tools["duckduckgo"])] == ["SerpApi"]
 
 
 def test_a_failed_search_goes_to_the_next_tool_without_charging(world):

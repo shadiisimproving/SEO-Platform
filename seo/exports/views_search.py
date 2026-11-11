@@ -132,6 +132,9 @@ FINDING_NAMES = {'page_down': 'Losing clicks', 'page_up': 'Gaining clicks', 'dro
 GROUP_WORDS = {"first": "To do first", "changed": "What changed", "decline": "Slow decline", "wins": "Quick wins", "leads": "Leads", "technical": "Technical", "impact": "Impact", "mix": "Rank and clicks"}
 STATUS_WORDS = {"open": "Open", "dismissed": "Dismissed", "gone": "Gone", "done": "Done"}
 ENGINE_NAMES = {"google": "Google", "bing": "Bing", "yandex": "Yandex", "duckduckgo": "DuckDuckGo"}
+_NOT_FOUND = "Empty position: not found in the results read."
+_SUSPECT = "Empty position on a suspect check: it couldn't read every result."
+KEYWORD_NOTES = {(True, False): _NOT_FOUND, (False, True): _SUSPECT, (True, True): "Empty position: not found in the results read, except on suspect checks, which couldn't read every result."}
 
 
 @view("keywords", "Keywords")
@@ -179,8 +182,10 @@ def keywords(engine, args) -> Report:
     report.tables.append(Table("keywords", "Keywords", columns, data.get("rows") or [], empty="No keywords followed yet.", key="id"))
 
     def note(report: Report) -> None:  # once the table holds only the rows on screen
-        if any(main(r) and position(r) is None for r in report.tables[0].rows):
-            report.tables[0].note = "Empty position: not found in the results read."
+        # Only a check that read every result can say the site wasn't there. A suspect one says nothing either way.
+        empty = {main(r).get("status") for r in report.tables[0].rows if main(r) and position(r) is None}
+        if empty & {"ok", "suspect"}:
+            report.tables[0].note = KEYWORD_NOTES[("ok" in empty, "suspect" in empty)]
 
     report.recount = note
     return report

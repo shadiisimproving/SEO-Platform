@@ -33,7 +33,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await page.goto(BASE + "#competitors/summary");
   await page.waitForSelector("#cs-rivals-table tbody tr", { timeout: 15000 });
   await settle();
-  await page.click("#cs-rivals-table tbody tr td:nth-child(3)");
+  await page.click("#cs-rivals-table tbody tr[data-cs-row] td:nth-child(3)");
   await settle(1800);
   check("clicking anywhere on the row opens it", await onProfile());
 

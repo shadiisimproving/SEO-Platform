@@ -1,5 +1,6 @@
 // Keywords and Refresh on the real app, the way a person uses them, with screenshots to look at.
-// Needs: DB_NAME_TEST=seo_cc_refresh_test .venv/bin/python tests/ui/keywords_server.py --port 8222
+// Needs a fresh one (it signs in as the admin): DB_NAME_TEST=seo_cc_refresh_test .venv/bin/python tests/ui/keywords_server.py --port 8222 --login
+// Run: node tests/ui/flow_keywords.cjs <folder for screenshots> http://127.0.0.1:8222/
 const { open } = require("./pw.cjs");
 const out = process.argv[2] || "/tmp";
 const BASE = process.argv[3] || "http://127.0.0.1:8222/";
@@ -11,7 +12,9 @@ const settle = (page, ms = 500) => page.waitForTimeout(ms);
 (async () => {
   const { browser, page, problems } = await open({ width: 1440, height: 900 });
   page.on("response", (r) => { if (r.status() >= 400 && !r.url().endsWith("/api/auth/me")) note(`   ${r.status()} ${r.request().method()} ${r.url().replace(BASE, "")}`); });
-  await page.goto(`${BASE}login`); await page.fill("#email", "admin@example.com"); await page.fill("#password", "demo-password-1"); await page.click("#go"); await page.waitForTimeout(800);
+  await page.goto(`${BASE}login`); await page.fill("#email", "admin@example.com"); await page.fill("#password", "demo-password-1"); await page.click("#go");
+  // Leaving the login page before its sign-in answers lands on the login page again: wait for it to move on, however long a busy Mac takes.
+  await page.waitForURL((u) => !u.pathname.endsWith("/login"), { timeout: 20000 });
   await page.goto(`${BASE}#keywords`); await page.waitForSelector("#kw-table", { timeout: 15000 }); await settle(page);
   await shot(page, "01-list");
   const bodyText = await page.textContent("#page");
@@ -105,7 +108,7 @@ const settle = (page, ms = 500) => page.waitForTimeout(ms);
   await page.click("#kwr-sel-clear"); await settle(page, 150);
   await page.click("#kwr-add"); await settle(page, 300);
   await page.click("#kwr-add-save"); await settle(page, 200); await shot(page, "15-add-empty-error");
-  check(/at least one keyword/.test(await page.textContent("#panel")), "an empty Add says what's missing");
+  check(/Add a keyword or choose a file/.test(await page.textContent("#panel")), "an empty Add says what's missing");
   await page.fill("#kwr-add-text", "coffee from the fake tool\nnew keyword two"); await page.keyboard.press("Escape"); await settle(page, 300);
   check(/Draft kept|Reopen/.test(await page.textContent("#toasts")), "Esc in the form keeps a draft");
   await page.click("#kwr-add"); await settle(page, 300);

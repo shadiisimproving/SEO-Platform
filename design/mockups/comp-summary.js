@@ -248,6 +248,25 @@
     </tr>`;
   };
 
+  /* My own sites, pinned above the competitors: the same count over the same 30 days, in the same column, shown once.
+     Drawn outside the table's pages and with wide blank cells, so table-tools gives it no tick box and sorting, filtering and paging leave it on top. */
+  const DAY = 86400000;
+  function youEdits(m) {
+    const c = m.crawl || {}, since = m.reading_since ? new Date(m.reading_since).getTime() : null;
+    if (c.status === "blocked") return unknown("Edits can't be tracked on this site.");
+    if (!c.baseline_done) return unknown("The first read isn't done yet.");
+    if (!m.edits_30d && since && Date.now() - since < DAY) return unknown(FIRST_READ);
+    const short = since && Date.now() - since < 30 * DAY; // read for less than the period: say from when, so it isn't taken for a full 30 days
+    return `<span class="cs-lead-cell">${UI.num(m.edits_30d)}${short ? `<span class="second">${esc(fill("since {date}", { date: UI.fmtDateOnly(m.reading_since) }))}</span>` : ""}</span>`; // one box, so a phone's card keeps the date under the number
+  }
+  const youRow = (m, all) => `<tr class="cs-you-row">
+      <td class="head-cell"><span class="with-logo">${UI.siteLogo(m.host)}<span class="logo-text kw mono" dir="auto">${esc(m.display || m.host)}</span></span><span class="second">${COMP.who("you", null, t("You"))}</span></td>
+      <td class="cs-you-gap" colspan="${all ? 3 : 2}"></td>
+      <td class="c" data-label="${attr("Edits in 30 days")}">${youEdits(m)}</td>
+      <td data-label="${attr("Watching")}">${COMP.watching(m.crawl, null)}</td>
+      ${all ? "" : `<td class="cs-you-gap" colspan="2"></td>`}
+    </tr>`;
+
   function rivalsHtml() {
     const title = "Competitors";
     if (S.errors.rivals) return failedCard("rivals", title);
@@ -274,7 +293,7 @@
     if (S.find && !every.length) return `<div class="table-wrap"><div class="empty cs-find-none"><p>${esc(fill("No competitor matches “{text}”.", { text: S.find }))}</p><button type="button" class="btn btn-small" data-cs-find-clear>${t("Show all")}</button></div></div>`;
     return `<div class="cs-pages"><div class="table-wrap"><table class="data cs-merged" id="cs-rivals-table">
         <thead><tr>${sortHead("name", "Competitor")}${all ? `<th scope="col">${t("Your sites")}</th>` : ""}${sortHead("ranks", "Ranks on your keywords", "c")}${sortHead("leads", "Who leads", "c", "Who's ahead on shared keywords, and how many you're absent on.")}${sortHead("edits", "Edits in 30 days", "c")}<th scope="col">${t("Watching")}</th>${all ? "" : `<th scope="col">${t("Tracking")}</th><th scope="col"><span class="sr">${t("Action")}</span></th>`}</tr></thead>
-        <tbody>${rows.map(rivalRow).join("")}</tbody>
+        <tbody>${(S.data.rivals?.mine || []).map((m) => youRow(m, all)).join("")}${rows.map(rivalRow).join("")}</tbody>
       </table></div>${TP.footer(PAGES.rivals, page, { noun: t("competitors") })}${COMP.watchNotes?.([...(S.data.rivals?.mine || []), ...every.map((r) => ({ host: r.host, display: r.display, crawl: r.crawl, tracking: listRow(r.id)?.tracking }))]) || ""}</div>${S.find ? `<p class="small sec cs-find-count">${esc(fill("{n} of {total} competitors match.", { n: UI.num(every.length), total: UI.num(allRivals().length) }))}</p>` : ""}`;
   }
   function paintRivalsList() {
@@ -693,6 +712,7 @@
     "Summary": "Synthèse",
     "Ranks on your keywords": "Se classe sur vos mots-clés",
     "Who leads": "Qui est devant",
+    "since {date}": "depuis le {date}",
     "Who's ahead on shared keywords, and how many you're absent on.": "Qui est devant sur les mots-clés communs, et sur combien vous êtes absent.",
     "you're absent on {n}": "vous êtes absent sur {n}",
     "No ranking check yet": "Aucune vérification de classement",

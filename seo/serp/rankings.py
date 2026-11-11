@@ -16,7 +16,7 @@ from seo.competitors.keywords import _iso, require_own
 from seo.core.errors import NotFound
 from seo.metrics import countries
 from seo.serp import connections, store
-from seo.serp.tools import counts_for_keyword, same_place
+from seo.serp.tools import counts_for_keyword, google_redirect, same_place
 
 ENGINES = connections.ENGINE_ORDER
 DEVICE = "desktop"  # the screen shows desktop. A mobile check is another target, so it can never be compared with these.
@@ -246,7 +246,8 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
         ai = _ai(checks.get((track["id"], "google"), []), host, track["country"], track["language"], now)
         pages_seen = own["pages"].get((track["site_id"], key), {})
         latest_google = checks.get((track["id"], "google"), [])
-        scraped_two = latest_google and len({row[1] for row in latest_google[-1].rows if store.on_host(row[2], host)}) >= 2
+        # Two addresses: a result whose address Google hid may be either page, so it isn't a second one.
+        scraped_two = latest_google and len({row[1] for row in latest_google[-1].rows if row[1] and store.on_host(row[2], host)}) >= 2
         main_url = next((view["main"]["url"] for view in engines.values() if view["main"] and view["main"]["url"]), None)
         page = max(pages_seen, key=pages_seen.get) if pages_seen else main_url
         google_own = own["positions"]["google"].get((track["site_id"], key))
@@ -346,6 +347,8 @@ def detail(engine: Engine, site_id: int, keyword_id: int, engine_name: str) -> d
                 competitors.append({
                     "position": result["position"], "host": store.to_display_host(result["host"]), "url": result["url"], "mine": mine,
                     "rival": any(store.on_host(result["host"], rival) for rival in rival_hosts), "change": (was - result["position"]) if before and was else None,
+                    # Saved before 2026-11-11 from Google's hidden link, under google.com: whose result it was isn't known.
+                    "hidden": google_redirect(result["url"]),
                 })
     # A line per tool, location and depth: only those can share a chart.
     lines: dict[tuple, dict] = {}

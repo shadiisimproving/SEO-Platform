@@ -1,5 +1,8 @@
 // Every brand name on every screen should sit beside its logo. Lists the ones that don't, and any logo that fails to load.
-// Needs design/serve.py running. Usage: node tests/ui/flow_brand_logos.cjs [folder for screenshots]
+// Needs the screens served with their data, by the real app on the demo world. design/serve.py no longer does: since
+// 2026-11-09 the plain files served over http show "The server didn't answer" instead of sample rows, so nothing was checked.
+//   DB_NAME_TEST=<your>_test .venv/bin/python tests/ui/app_server.py --port 8201
+//   SCREENS_URL=http://127.0.0.1:8201/ node tests/ui/flow_brand_logos.cjs [folder for screenshots]
 const { open } = require("./pw.cjs");
 
 const ROOT = process.env.SCREENS_URL || "http://127.0.0.1:8201/";
@@ -24,19 +27,21 @@ const scan = (page) => page.evaluate(() => {
     }
   }
   const broken = [...document.images].filter((i) => i.complete && !i.naturalWidth && !i.src.includes("api/logos")).map((i) => i.getAttribute("src"));
-  return { missing: [...missing], left: [...left], broken: [...new Set(broken)], logos: document.querySelectorAll(".brand-logo").length };
+  // No app shell means the screen never loaded (the error page of a server with no data): nothing on it was checked.
+  return { missing: [...missing], left: [...left], broken: [...new Set(broken)], logos: document.querySelectorAll(".brand-logo").length, shown: Boolean(document.querySelector("#page")) };
 });
 
 (async () => {
   const { browser, page, problems } = await open({ width: 1440, height: 1000 });
   const notFound = new Set();
   page.on("response", (r) => { if (r.status() >= 400) notFound.add(new URL(r.url()).pathname); });
-  const seen = { missing: new Set(), left: new Set(), broken: new Set() };
+  const seen = { missing: new Set(), left: new Set(), broken: new Set(), "not loaded": new Set() };
   let logos = 0;
   const take = async (where) => {
     await page.waitForTimeout(250);
     const r = await scan(page);
     logos += r.logos;
+    if (!r.shown) seen["not loaded"].add(where);
     // Left alone on purpose: printed once each, so a person can read the list and judge it.
     r.left.forEach((x) => seen.left.add(x));
     for (const k of ["missing", "broken"]) r[k].forEach((x) => seen[k].add(`${where} | ${x}`));
@@ -72,7 +77,7 @@ const scan = (page) => page.evaluate(() => {
       await page.waitForTimeout(150);
     }
   }
-  for (const k of ["missing", "broken", "left"]) {
+  for (const k of ["missing", "broken", "not loaded", "left"]) {
     console.log(`\n== ${k} (${seen[k].size})`);
     [...seen[k]].slice(0, 120).forEach((x) => console.log(x));
   }
@@ -81,5 +86,8 @@ const scan = (page) => page.evaluate(() => {
   const other = problems.filter((p) => !p.includes("status of 404"));
   console.log(`page errors other than 404: ${other.length}`); other.slice(0, 10).forEach((p) => console.log(p));
   await browser.close();
-  process.exit(seen.missing.size || seen.broken.size ? 1 : 0);
+  // A run where no screen loaded, or not one logo was drawn, checked nothing: it fails rather than passing empty.
+  const empty = seen["not loaded"].size > 0 || logos === 0;
+  if (empty) console.log("\nFAIL  the screens didn't load with data, so no brand name was checked");
+  process.exit(seen.missing.size || seen.broken.size || empty ? 1 : 0);
 })();

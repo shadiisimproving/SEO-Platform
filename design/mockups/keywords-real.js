@@ -5,56 +5,68 @@
   "use strict";
   const fr = {
     "Scraped results": "Résultats scrapés", "tool changed": "outil changé", "depth changed": "profondeur changée", "location changed": "lieu changé",
-    "The last checks used different tools, so the change can't be compared.": "Les derniers contrôles viennent d'outils différents : l'évolution ne peut pas être comparée.",
-    "The last checks read a different depth, so the change can't be compared.": "Les derniers contrôles n'ont pas lu la même profondeur : l'évolution ne peut pas être comparée.",
-    "The last checks searched from a different place, so the change can't be compared.": "Les derniers contrôles ne cherchaient pas depuis le même endroit : l'évolution ne peut pas être comparée.",
-    "Not checked yet": "Pas encore contrôlé", "Unverified": "Non vérifié", "No earlier check with this tool, and nothing from the engine's own tool to compare with.": "Aucun contrôle précédent avec cet outil, et rien de l'outil du moteur pour comparer.", "Another location": "Autre lieu", "No free checks left on this tool.": "Plus de contrôles gratuits sur cet outil.", "Nothing changed": "Rien n'a changé",
+    "Different tools: can't compare.": "Outils différents : comparaison impossible.",
+    "Different depth: can't compare.": "Profondeur différente : comparaison impossible.",
+    "Different place: can't compare.": "Lieu différent : comparaison impossible.",
+    "Not checked": "Pas encore contrôlé", "Unverified": "Non vérifié", "First check with this tool, and no engine data to compare.": "Premier contrôle avec cet outil, et aucune donnée du moteur pour comparer.", "Another location": "Autre lieu", "No free checks left.": "Plus de contrôles gratuits.", "Nothing changed": "Rien n'a changé",
     "No free tools left for Google.": "Plus d'outil gratuit pour Google.", "No free tools left for DuckDuckGo.": "Plus d'outil gratuit pour DuckDuckGo.", "No free tools left for Bing.": "Plus d'outil gratuit pour Bing.", "No free tools left for Yandex.": "Plus d'outil gratuit pour Yandex.",
     "Bright Data has no free checks left.": "Bright Data n'a plus de contrôles gratuits.", "SerpApi has no free checks left.": "SerpApi n'a plus de contrôles gratuits.", "HasData has no free checks left.": "HasData n'a plus de contrôles gratuits.", "Searlo has no free checks left.": "Searlo n'a plus de contrôles gratuits.",
-    "A captcha appeared and didn't clear, so the browser backup stopped.": "Un captcha est apparu et n'a pas disparu : la sauvegarde par navigateur s'est arrêtée.", "The app doesn't try to get past it.": "L'application ne cherche pas à le contourner.",
-    "DuckDuckGo asked for a bot check, so this tool stopped.": "DuckDuckGo a demandé une vérification anti-robot : cet outil s'est arrêté.", "The app does not try to get past it.": "L'application ne cherche pas à la contourner.", "Not in top": "Hors du top", "just now": "à l'instant", "today": "aujourd'hui", "Search Console impressions, last 28 days. Exact volume isn't available for free.": "Impressions Search Console, 28 derniers jours. Le volume exact n'est pas disponible gratuitement.",
-    "No number from this engine's own tool. It isn't connected for this site, or it hasn't reported this keyword.": "Aucun chiffre de l'outil de ce moteur. Il n'est pas connecté pour ce site, ou n'a pas signalé ce mot-clé.",
-    "Needs 2 checks with the same tool": "Il faut 2 contrôles avec le même outil", "Tools disagree": "Les outils ne sont pas d'accord", "Suspect result": "Résultat suspect", "Can't verify yet": "Vérification impossible pour l'instant",
-    "No Refresh yet": "Aucune actualisation", "Add keywords": "Ajouter des mots-clés", "No keywords yet": "Pas encore de mots-clés", "Add the keywords you want to follow for this site.": "Ajoutez les mots-clés à suivre pour ce site.",
-    "Add a site first": "Ajoutez d'abord un site", "Keywords belong to a site. Add yours, then come back.": "Les mots-clés appartiennent à un site. Ajoutez le vôtre, puis revenez.", "Go to Settings": "Aller aux réglages",
-    "Keywords, one per line": "Mots-clés, un par ligne", "Or upload a file": "Ou importez un fichier", "For which site?": "Pour quel site ?", "Country": "Pays", "Language": "Langue", "Any country": "Tous les pays", "Optional, such as fr": "Facultatif, par exemple fr", "Country and language are the ones this site's keywords use most.": "Le pays et la langue sont ceux que les mots-clés de ce site utilisent le plus.",
+    "A captcha didn't clear, so the browser backup stopped.": "Un captcha n'a pas disparu : la sauvegarde par navigateur s'est arrêtée.", "The app won't bypass captchas.": "L'application ne contourne pas les captchas.",
+    "DuckDuckGo stopped at a bot check.": "DuckDuckGo a demandé une vérification anti-robot : cet outil s'est arrêté.", "The app won't bypass it.": "L'application ne cherche pas à la contourner.", "Not in top": "Hors du top", "just now": "à l'instant", "today": "aujourd'hui", "Search Console impressions, last 28 days. Exact volume isn't available for free.": "Impressions Search Console, 28 derniers jours. Le volume exact n'est pas disponible gratuitement.",
+    "Not connected for this site, or no data for this keyword.": "Non connecté pour ce site, ou pas de donnée pour ce mot-clé.",
+    "Needs 2 checks, same tool": "Il faut 2 contrôles avec le même outil", "Tools disagree": "Les outils ne sont pas d'accord", "Suspect result": "Résultat suspect", "Can't verify yet": "Vérification impossible pour l'instant",
+    "No Refresh yet": "Aucune actualisation", "Add keywords": "Ajouter des mots-clés", "No keywords yet": "Pas encore de mots-clés", "Add the keywords to follow.": "Ajoutez les mots-clés à suivre.",
+    "Add a site first": "Ajoutez d'abord un site", "Keywords belong to a site.": "Les mots-clés appartiennent à un site.", "Open Settings": "Ouvrir les réglages",
+    "Keywords, one per line": "Mots-clés, un par ligne", "Or upload a file": "Ou importez un fichier", "Country": "Pays", "Language": "Langue", "Any country": "Tous les pays", "Optional, such as fr": "Facultatif, par exemple fr", "Most used by this site's keywords.": "Les plus utilisés par les mots-clés de ce site.",
+    "This check couldn't read every result, so it can't say whether you're there": "Ce contrôle n'a pas pu lire tous les résultats : il ne peut pas dire si vous y êtes", "Hidden by Google": "Masqué par Google",
+    "Google showed Bright Data a captcha, so this search failed.": "Google a montré un captcha à Bright Data : cette recherche a échoué.", "Nothing from that answer was saved.": "Rien de cette réponse n'a été enregistré.",
     "Each new keyword gets one check with a free tool, to see who really ranks. After that, DuckDuckGo is checked by itself every day, and the other engines when you press Refresh.": "Chaque nouveau mot-clé reçoit un contrôle avec un outil gratuit, pour voir qui se classe vraiment. Ensuite, DuckDuckGo est vérifié tout seul chaque jour, et les autres moteurs quand vous appuyez sur Actualiser.",
-    "Put at least one keyword, or choose a file.": "Indiquez au moins un mot-clé, ou choisissez un fichier.", "Keywords added": "Mots-clés ajoutés",
+    "Add a keyword or choose a file.": "Ajoutez un mot-clé ou choisissez un fichier.", "Keywords added": "Mots-clés ajoutés",
     "Couldn't load the keywords.": "Impossible de charger les mots-clés.", "Try again": "Réessayer", "Loading…": "Chargement…",
     "Refresh keywords": "Actualiser les mots-clés", "keyword": "mot-clé", "keywords": "mots-clés", "Engines": "Moteurs", "Depth": "Profondeur", "Top": "Top", "Tools": "Outils", "Automatic: free first": "Automatique : gratuits d'abord", "Choose tools": "Choisir les outils",
     "Connect": "Connecter", "No credits needed": "Aucun crédit nécessaire", "left": "restants", "of": "sur", "monthly": "chaque mois", "one-time": "une seule fois", "no credits": "sans crédits", "Refills monthly": "Se recharge chaque mois", "Never refills": "Ne se recharge jamais",
-    "Not for these engines": "Pas pour ces moteurs", "Only when you pick it": "Seulement si vous le choisissez", "check": "contrôle", "checks": "contrôles", "credit": "crédit", "credits": "crédits", "paid": "payants", "This will use": "Cela utilisera", "over": "pour",
-    "Runs out after": "S'arrête après", "Nothing to check.": "Rien à contrôler.", "Choose at least one engine.": "Choisissez au moins un moteur.", "Pick at least one tool.": "Choisissez au moins un outil.", "Confirm": "Confirmer", "Cancel": "Annuler", "Close": "Fermer",
-    "Already being refreshed:": "Déjà en cours d'actualisation :", "by": "par", "Checked in the last": "Contrôlés dans les dernières", "hours, so left out:": "heures, donc écartés :", "Check them again": "Les contrôler quand même",
-    "No tool can search": "Aucun outil ne peut chercher sur", "Connect one in Settings.": "Connectez-en un dans les réglages.", "Paid use is off.": "L'usage payant est désactivé.", "Use paid credits if free ones run out": "Utiliser des crédits payants si les gratuits sont épuisés", "Limit this run to": "Limiter cette actualisation à", "Estimated cost": "Coût estimé",
-    "Free tools first. Paid use is off.": "Outils gratuits d'abord. Usage payant désactivé.", "A real browser on this Mac reads the results. It stops at the first captcha that doesn't clear.": "Un vrai navigateur sur ce Mac lit les résultats. Il s'arrête au premier captcha qui ne disparaît pas.",
-    "Set the country this Mac is in first, in Settings.": "Indiquez d'abord le pays de ce Mac, dans les réglages.",
-    "Refreshing": "Actualisation", "Stop": "Arrêter", "Stopping…": "Arrêt…", "out of credits, continuing with": "n'a plus de crédits, on continue avec", "Finished": "Terminé", "Stopped": "Arrêté", "saved": "enregistrés", "failed": "échoués", "not run": "non lancés", "Stopped: no free tools left": "Arrêté : plus d'outil gratuit",
+    "Not for these engines": "Pas pour ces moteurs", "Only if picked": "Seulement si choisi", "check": "contrôle", "checks": "contrôles", "credit": "crédit", "credits": "crédits", "paid": "payants", "Will use": "Utilisera", "over": "pour",
+    "Runs out after": "S'arrête après", "Nothing to check.": "Rien à contrôler.", "Pick an engine.": "Choisissez un moteur.", "Pick a tool.": "Choisissez un outil.", "Confirm": "Confirmer", "Cancel": "Annuler", "Close": "Fermer",
+    "Already refreshing:": "Déjà en cours :", "by": "par", "Checked within": "Contrôlés depuis moins de", "h, left out:": "h, écartés :", "Check them again": "Les contrôler quand même",
+    "No tool can search": "Aucun outil ne peut chercher sur", "Connect one in Settings.": "Connectez-en un dans les réglages.", "Paid use is off.": "L'usage payant est désactivé.", "Use paid credits after free ones": "Utiliser des crédits payants si les gratuits sont épuisés", "Limit to": "Limiter cette actualisation à", "Estimated cost": "Coût estimé",
+    "Free tools only": "Outils gratuits d'abord. Usage payant désactivé.", "Uses a real browser on this Mac; stops at the first captcha.": "Utilise un vrai navigateur sur ce Mac ; s'arrête au premier captcha.",
+    "Set this Mac's country in Settings first.": "Indiquez d'abord le pays de ce Mac dans les réglages.",
+    "Refreshing": "Actualisation", "Stop": "Arrêter", "Stopping…": "Arrêt…", "continuing with": "on continue avec", "ran out of free checks": "n'a plus de contrôles gratuits", "was blocked by a bot check": "a été bloqué par une vérification anti-robot", "was asked to slow down": "a dû ralentir", "refused the key": "a refusé la clé", "kept failing": "a échoué plusieurs fois de suite", "answered in a way the app can't read": "a répondu d'une façon que l'application ne sait pas lire", "stopped working": "a cessé de fonctionner",
+    "Skipped: bot check": "Écarté : vérification anti-robot", "Automatic runs try it again in": "Les actualisations automatiques le réessaient dans", "hit a bot check": "a rencontré une vérification anti-robot", "so it will probably stop at once.": "il s'arrêtera donc sans doute tout de suite.", "Pick one of these instead:": "Choisissez plutôt :",
+    "DuckDuckGo direct was skipped: it was blocked by a bot check in the last 24 hours.": "DuckDuckGo direct a été écarté : il a été bloqué par une vérification anti-robot ces dernières 24 heures.", "Finished": "Terminé", "Stopped": "Arrêté", "saved": "enregistrés", "failed": "échoués", "not run": "non lancés", "Stopped: no free tools left": "Arrêté : plus d'outil gratuit",
     "started by": "lancée par", "Refresh started": "Actualisation lancée", "This Refresh is already running.": "Cette actualisation est déjà en cours.",
-    "Results": "Résultats", "Tool": "Outil", "Position": "Position", "Checked": "Contrôlé", "Status": "Statut", "Action": "Action", "Recheck": "Recontrôler", "Check": "Contrôler", "never": "jamais", "OK": "OK", "Use": "Utiliser", "Rechecking": "Nouveau contrôle",
-    "Other locations": "Autres lieux", "Not compared with": "Non comparé avec", "None yet": "Aucun pour l'instant", "Position over time": "Position dans le temps", "1 at the top; each dot is one real check": "1 en haut ; chaque point est un vrai contrôle", "Hollow dots are suspect results, left out of Change.": "Les points vides sont des résultats suspects, exclus de l'évolution.",
-    "Chart view": "Vue graphique", "Table view": "Vue tableau", "Date": "Date", "All results": "Tous les résultats", "Competitors on this page": "Concurrents sur cette page", "Website": "Site web", "Change": "Évolution", "AI Overview": "Aperçu IA", "Page": "Page", "average": "moyenne",
-    "Cited": "Cité", "Overview, not cited": "Aperçu, pas cité", "No overview": "Pas d'aperçu", "Not captured": "Non capturé", "Failed": "Échec", "Not connected": "Non connecté", "Check deeper": "Chercher plus loin", "Stop following": "Ne plus suivre", "Stopped following": "Suivi arrêté", "Follow": "Suivre", "Stop tracking": "Ne plus suivre", "Stopped tracking": "Suivi arrêté", "Track": "Suivre", "Refresh": "Actualiser",
-    "Stop tracking this keyword on this site? Its past checks stay.": "Ne plus suivre ce mot-clé sur ce site ? Ses anciens contrôles restent.", "Site": "Site",
+    "Results": "Résultats", "Tool": "Outil", "Position": "Position", "Checked": "Vérifié", "Status": "Statut", "Action": "Action", "Recheck": "Recontrôler", "Check": "Contrôler", "never": "jamais", "OK": "OK", "Use": "Utiliser", "Rechecking": "Nouveau contrôle",
+    "Other locations": "Autres lieux", "Not compared with": "Non comparé avec", "None yet": "Aucun pour l'instant", "Position history": "Historique des positions", "1 = top. One dot per check.": "1 en haut ; chaque point est un vrai contrôle", "Hollow dots: suspect, left out of Change.": "Points vides : suspects, exclus de l'évolution.",
+    "Chart": "Graphique", "Table": "Tableau", "Date": "Date", "All results": "Tous les résultats", "Competitors on this page": "Concurrents sur cette page", "Website": "Site web", "Change": "Évolution", "AI Overview": "Aperçu IA", "Page": "Page", "average": "moyenne",
+    "Cited": "Cité", "Not cited": "Aperçu, pas cité", "No overview": "Pas d'aperçu", "Not captured": "Non capturé", "Failed": "Échec", "Not connected": "Non connecté", "Check deeper": "Chercher plus loin", "Stop following": "Ne plus suivre", "Stopped following": "Suivi arrêté", "Follow": "Suivre", "Stop tracking": "Ne plus suivre", "Stopped tracking": "Suivi arrêté", "Track": "Suivre", "Refresh": "Actualiser",
+    "Stop tracking this keyword here? Past checks stay.": "Ne plus suivre ce mot-clé ici ? Les anciens contrôles restent.", "Site": "Site",
     "Stop following this keyword on this site? Its past checks stay.": "Ne plus suivre ce mot-clé sur ce site ? Ses anciens contrôles restent.",
-    "No Search Console data yet": "Pas encore de données Search Console", "Connect Search Console for this site in Settings, and its queries appear here within 3 days.": "Connectez Search Console pour ce site dans les réglages : ses requêtes apparaîtront ici sous 3 jours.",
-    "No Bing Webmaster data yet": "Pas encore de données Bing Webmaster", "No Yandex Webmaster data yet": "Pas encore de données Yandex Webmaster", "Connect it for this site in Settings, and its queries appear here.": "Connectez-le pour ce site dans les réglages : ses requêtes apparaîtront ici.",
+    "No Search Console data yet": "Pas encore de données Search Console", "Connect it in Settings; queries appear within 3 days.": "Connectez-la dans les réglages : les requêtes apparaissent sous 3 jours.",
+    "No Bing Webmaster data yet": "Pas encore de données Bing Webmaster", "No Yandex Webmaster data yet": "Pas encore de données Yandex Webmaster", "Connect it in Settings; queries appear here.": "Connectez-le dans les réglages : les requêtes apparaissent ici.",
     "DuckDuckGo has no tool for site owners, so the app checks its positions by itself every day, oldest first, on free searches only. Refresh and Refresh data check them now.": "DuckDuckGo n'a pas d'outil pour les propriétaires de sites : l'app vérifie ses positions toute seule chaque jour, les plus anciennes d'abord, avec des recherches gratuites uniquement. Actualiser et Actualiser les données les vérifient tout de suite.",
     "Automatic DuckDuckGo check": "Contrôle DuckDuckGo automatique", "automatic check": "contrôle automatique",
-    "Clicks": "Clics", "Click rate": "Taux de clic", "selected": "sélectionnés", "Clear selection": "Effacer la sélection", "Create task": "Créer une tâche", "Export CSV": "Exporter en CSV", "Export ready": "Export prêt",
-    "Up": "En hausse", "Down": "En baisse", "Top 3": "Top 3", "Top 10": "Top 10", "All": "Tous", "Not ranked": "Non classés", "Cited by AI": "Cités par l'IA", "Same keyword on 2 pages": "Même mot-clé sur 2 pages", "Two of your pages show up for this keyword.": "Deux de vos pages ressortent pour ce mot-clé.",
+    "Clicks": "Clics", "Click rate": "Taux de clic", "selected": "sélectionnés", "Clear selection": "Effacer la sélection", "{n} selected on this page": "{n} sélectionnés sur cette page", "Select all {n} keywords": "Sélectionner les {n} mots-clés", "All {n} keywords selected": "Les {n} mots-clés sont sélectionnés", "Create task": "Créer une tâche", "Export CSV": "Exporter en CSV", "Export ready": "Export prêt",
+    "Up": "En hausse", "Down": "En baisse", "Top 3": "Top 3", "Top 10": "Top 10", "All": "Tous", "Not ranked": "Non classés", "Cited by AI": "Cités par l'IA", "Two pages compete": "Deux pages en concurrence", "Two of your pages rank for it.": "Deux de vos pages se classent dessus.",
     "Tracked": "Suivis", "Ranked": "Classés", "compared": "comparés", "Positions": "Positions", "By bucket": "Par tranche", "Queries": "Requêtes", "All engines": "Tous les moteurs", "Volume": "Volume", "Trend": "Tendance", "AI": "IA", "avg position": "position moy.",
-    "No keywords match this filter": "Aucun mot-clé ne correspond à ce filtre", "Try another filter, or show all keywords.": "Essayez un autre filtre, ou affichez tous les mots-clés.", "Show all keywords": "Afficher tous les mots-clés", "Data through": "Données jusqu'au", "Last Refresh": "Dernière actualisation", "Rankings from each engine's own tool and from scraped results": "Positions venant de l'outil de chaque moteur et de résultats scrapés",
+    "No keyword matches": "Aucun mot-clé ne correspond", "Try another filter.": "Essayez un autre filtre.", "Show all": "Tout afficher", "Data through": "Données jusqu'au", "Refreshed": "Actualisé le", "Rankings from engines' own tools and scraped results": "Positions venant de l'outil de chaque moteur et de résultats scrapés",
     "Order for": "Ordre pour", "This tool doesn't search this engine.": "Cet outil ne couvre pas ce moteur.", "Order saved": "Ordre enregistré",
-    "Allow paid use": "Autoriser l'usage payant", "Off until you switch it on. Refresh still uses free credits first, and each run asks for its own limit.": "Désactivé tant que vous ne l'activez pas. Actualiser utilise d'abord les crédits gratuits, et chaque actualisation demande sa limite.",
-    "No pay-as-you-go price, so paid use can't be switched on.": "Pas de prix à l'usage : l'usage payant ne peut pas être activé.", "Connection saved": "Connexion enregistrée", "Disconnected": "Déconnecté", "Paste the key first.": "Collez d'abord la clé.", "Works.": "Fonctionne.",
-    "Save the key first.": "Enregistrez d'abord la clé.", "This key wasn't checked, because a check would use a credit. Save it, and the first search shows whether it works.": "Cette clé n'a pas été vérifiée, car cela utiliserait un crédit. Enregistrez-la : la première recherche montrera si elle fonctionne.",
-    "The browser backup needs Playwright, which isn't installed. Install it with: .venv/bin/pip install playwright": "La sauvegarde par navigateur a besoin de Playwright, qui n'est pas installé. Installez-le avec : .venv/bin/pip install playwright",
-    "Add the zone name too. Bright Data needs both.": "Ajoutez aussi le nom de la zone. Bright Data a besoin des deux.", "Paste the whole address, starting with https://.": "Collez l'adresse entière, en commençant par https://.", "Paste the address first.": "Collez d'abord l'adresse.",
-    "These keywords are already being refreshed.": "Ces mots-clés sont déjà en cours d'actualisation.", "These keywords were all checked just now. Tick Check them again to go ahead.": "Ces mots-clés viennent tous d'être contrôlés. Cochez Les contrôler quand même pour continuer.",
+    "Allow paid use": "Autoriser l'usage payant", "Refresh still uses free credits first; each run asks its own limit.": "Actualiser utilise d'abord les crédits gratuits ; chaque actualisation demande sa limite.",
+    "No pay-as-you-go price: paid use unavailable.": "Pas de prix à l'usage : usage payant indisponible.", "Connection saved": "Connexion enregistrée", "Disconnected": "Déconnecté", "Paste the key first.": "Collez d'abord la clé.", "Works.": "Fonctionne.",
+    "Save the key first.": "Enregistrez d'abord la clé.", "Not checked, to save a credit. Save it; the first search shows if it works.": "Non vérifiée, pour économiser un crédit. Enregistrez-la : la première recherche montrera si elle fonctionne.",
+    "The browser backup needs Playwright. Install it: .venv/bin/pip install playwright": "La sauvegarde par navigateur a besoin de Playwright. Installez-le : .venv/bin/pip install playwright",
+    "Add the zone name too.": "Ajoutez aussi le nom de la zone.", "Paste the whole address, starting with https://.": "Collez l'adresse entière, en commençant par https://.", "Paste the address first.": "Collez d'abord l'adresse.",
+    "Already refreshing.": "Actualisation déjà en cours.", "All checked just now. Tick Check them again to go ahead.": "Tous viennent d'être contrôlés. Cochez Les contrôler quand même pour continuer.",
     "No search tool can run these engines. Connect one in Settings.": "Aucun outil de recherche ne couvre ces moteurs. Connectez-en un dans les réglages.",
     "This run lost its background job. Everything checked so far is saved.": "Cette actualisation a perdu sa tâche de fond. Tout ce qui a été contrôlé est enregistré.",
-    "Search queries": "Chercher une requête", "No query matches this search.": "Aucune requête ne correspond à cette recherche.", "queries": "requêtes", "query": "requête", "keyword": "mot-clé", "keywords": "mots-clés",
+    "Search queries": "Chercher une requête", "No query matches.": "Aucune requête ne correspond.", "queries": "requêtes", "query": "requête", "keyword": "mot-clé", "keywords": "mots-clés",
+    // the Refresh tray's failed searches, said once per tool (finishTray), and the panel's Other locations heading
+    "Dropped after {n} in a row": "Écarté après {n} échecs de suite", "dropped after {n} in a row": "écarté après {n} échecs de suite", "dropped": "écarté",
+    "It failed {n} searches in a row, so this Refresh stopped using it.": "{n} recherches de suite ont échoué : cette actualisation a cessé de l'utiliser.",
+    "No free checks left": "Plus de contrôles gratuits", "no free checks left": "plus de contrôles gratuits", "Blocked by a bot check": "Bloqué par une vérification anti-robot", "blocked by a bot check": "bloqué par une vérification anti-robot",
+    "asked to slow down": "demande de ralentir", "Key refused": "Clé refusée", "key refused": "clé refusée", "Unreadable answer": "Réponse illisible", "unreadable answer": "réponse illisible",
+    "The search failed.": "La recherche a échoué.", "The app stopped during this search.": "L'application s'est arrêtée pendant cette recherche.",
+    "It wasn't tried again, because it may already have been charged.": "Elle n'a pas été relancée : elle a peut-être déjà été facturée.", "It isn't tried again, because it may already have been charged.": "Elle n'est pas relancée : elle a peut-être déjà été facturée.",
+    "not compared with": "non comparés avec",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 
@@ -73,7 +85,9 @@
     data: null, error: "", loading: false, stale: true, tools: null, order: {}, settings: {}, selected: new Set(), queries: {},
     run: null, poll: null, orderEngine: "google", panel: null, refresh: null, browserMissing: false,
     wantOpen: null, qsort: null, // a keyword named in the address; the Queries table's sorted heading
+    allPages: false, shownList: null, // picks kept on every page after "Select all N keywords"; the list the table last drew
   };
+  const fill = (words, n) => t(words).replace("{n}", n);
   /* Both tables page and search the way every long table does (table-pages.js): TP keeps the search, the page and the size. */
   const KW_PAGES = "kw", Q_PAGES = "kwq";
   const kwPages = () => TP.state(KW_PAGES);
@@ -82,6 +96,10 @@
   const AUTO_BY = "Automatic"; // seo/serp/auto_ddg.py: the daily DuckDuckGo check, and the one Refresh data starts
   const engineOf = () => (state.engine === "all" ? "google" : state.engine);
   const name = (id) => ENGINES.find(([e]) => e === id)?.[1] || id;
+  // A tool or engine by its logo alone where its name would repeat on every row: the name is the tooltip and what a screen reader says.
+  const logoMark = (id, label, size = 16) => `<span class="kw-logo" role="img" data-tip="${esc(label)}" aria-label="${esc(label)}">${logo(id, size)}</span>`;
+  // The green OK on every normal row is a tick; Suspect result, Unverified and Failed keep their words, so they stand out.
+  const okMark = () => `<span class="status good kw-ok" role="img" title="${esc(t("OK"))}" aria-label="${esc(t("OK"))}">${icon("check")}</span>`;
   const token = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}abc`).replace(/-/g, "");
 
   // "just now" is the first two minutes only; then minutes, hours, days.
@@ -95,6 +113,14 @@
   };
   const shortPath = (url) => { try { const u = new URL(url); return decodeURI(u.pathname + u.search) || "/"; } catch { return url || ""; } };
   const allRows = () => { const host = UI.siteHostPicked(); return (K.data?.rows || []).filter((row) => !host || row.site === host); };
+  /* What the Keyword ideas card needs from here: the words already tracked, and the country and language used most. */
+  const ideasCard = () => {
+    if (!window.LV?.ideasCard) return "";
+    const rows = allRows(), counts = new Map();
+    rows.forEach((r) => { const key = `${r.country || ""}|${r.language || ""}`; counts.set(key, (counts.get(key) || 0) + 1); });
+    const [country = "", language = ""] = ([...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || "|").split("|");
+    return window.LV.ideasCard({ tracked: new Set(rows.map((r) => r.keyword.toLowerCase())), market: { country: country.toUpperCase(), language } });
+  };
 
   // ---- loading --------------------------------------------------------------------------------
   async function loadTools() {
@@ -120,7 +146,7 @@
       c.since = ""; c.last4 = tool.last4 ? tool.last4.replace("…", "") : ""; c.zone = tool.zone || ""; c.sites = "all"; c.error = tool.last_error || "";
       if (tool.name === "HasData") c.desc = "Checks rankings on Google and Bing";
       if (tool.name === "Searlo") c.desc = "Checks rankings on Google";
-      c.note = keyless && tool.auth === "browser" && K.browserMissing ? "The browser backup needs Playwright, which isn't installed. Install it with: .venv/bin/pip install playwright" : "";
+      c.note = keyless && tool.auth === "browser" && K.browserMissing ? "The browser backup needs Playwright. Install it: .venv/bin/pip install playwright" : "";
       if (tool.auth === "browser") c.country = K.settings.mac_country || "";
     });
   }
@@ -141,19 +167,27 @@
   }
 
   // ---- table cells ----------------------------------------------------------------------------
+  const UNSURE = "This check couldn't read every result, so it can't say whether you're there";
+  /* "Not ranked" is a check that read every result and didn't find you: never a keyword not checked yet, or one whose only check is suspect. */
+  const notRanked = (view) => view.main?.status === "ok" && !view.main.p;
   function posBadge(view) {
     if (view.p) return `<span class="pos ${view.p <= 3 ? "pos-top3" : view.p <= 10 ? "pos-top10" : ""}">#${view.p}</span>`;
+    if (view.status === "suspect") { // it couldn't read every result, so it never says "not in the top 10"
+      const unsure = t(UNSURE);
+      return `<span class="pos pos-none" role="img" tabindex="0" data-tip="${esc(unsure)}" aria-label="${esc(unsure)}">?</span>`;
+    }
     const words = `${t("Not in top")} ${view.depth}`;
     return `<span class="pos pos-none" role="img" tabindex="0" data-tip="${esc(words)}" aria-label="${esc(words)}">&gt;${view.depth}</span>`;
   }
   const flagged = (view) => (view.status === "suspect" ? `<span class="warn" role="img" data-tip="${t("Suspect result")}" tabindex="0" aria-label="${t("Suspect result")}">${icon("shield-question")}</span>` : "");
-  const line = (view, extra = "") => `<span class="res-line">${logo(view.tool, 16)}${posBadge(view)}${flagged(view)}${extra}<span class="res-meta">${esc(t(view.tool))} · ${age(view.age_days)}</span></span>`;
+  const line = (view, extra = "") => `<span class="res-line">${logoMark(view.tool, t(view.tool))}${posBadge(view)}${flagged(view)}${extra}<span class="res-meta">· ${age(view.age_days)}</span></span>`;
 
   function scrapedCell(row, e) {
     const view = row.engines[e];
     if (!view.main) {
-      if (view.away.length) return `<span class="res"><span class="muted small">${t("Not checked yet")}</span>${view.away.slice(0, 1).map((a) => `<span class="res-line">${logo(a.tool, 16)}${posBadge(a)}<span class="res-meta">${esc(a.location || "?")} · ${t("Not compared with")} ${esc(UI.countryName(row.country) || row.country)}</span></span>`).join("")}</span>`;
-      return `<span class="muted small">${t("Not checked yet")}</span>`;
+      // A result from another place: the place only, "Not compared with <country>" in the line's tooltip.
+      if (view.away.length) return `<span class="res"><span class="muted small">${t("Not checked")}</span>${view.away.slice(0, 1).map((a) => `<span class="res-line" tabindex="0" data-tip="${esc(`${t("Not compared with")} ${UI.countryName(row.country) || row.country}`)}">${logo(a.tool, 16)}${posBadge(a)}<span class="res-meta">${esc(UI.countryName(a.location) || a.location || "?")}</span></span>`).join("")}</span>`;
+      return `<span class="muted dash" role="img" tabindex="0" data-tip="${esc(t("Not checked"))}" aria-label="${esc(t("Not checked"))}">—</span>`;
     }
     const differs = view.disagree ? `<span class="warn" role="img" data-tip="${esc(t("Tools disagree"))}: ${esc(view.disagree.tools.map((x) => t(x)).join(" / "))}, ${view.disagree.diff}" tabindex="0" aria-label="${t("Tools disagree")}">${icon("triangle-alert")}</span>` : "";
     const rest = [...view.suspects.slice(-1), ...view.others].slice(0, 2).map((x) => line(x)).join("");
@@ -161,7 +195,7 @@
     return `<span class="res">${line(view.main, differs)}${rest}${deeper}</span>`;
   }
 
-  const CHANGE_WHY = { "tool changed": "The last checks used different tools, so the change can't be compared.", "depth changed": "The last checks read a different depth, so the change can't be compared.", "location changed": "The last checks searched from a different place, so the change can't be compared." };
+  const CHANGE_WHY = { "tool changed": "Different tools: can't compare.", "depth changed": "Different depth: can't compare.", "location changed": "Different place: can't compare." };
   function changeCell(view) {
     const c = view.change;
     if (c === null || c === undefined) {
@@ -173,7 +207,7 @@
   }
   const aiCell = (row) => ({
     cited: `<span class="nowrap">${icon("sparkles")} ${t("Cited")}</span>`,
-    overview: `<span class="sec small">${t("Overview, not cited")}</span>`,
+    overview: `<span class="sec small">${t("Not cited")}</span>`,
     none: `<span class="muted small">${t("No overview")}</span>`,
     "not-captured": `<span class="muted small" tabindex="0" data-tip="${t("Not captured")}">${t("Not captured")}</span>`,
   }[row.ai.state]);
@@ -185,7 +219,7 @@
       return `<span class="cellval"><span class="tabular">${dec(local.position)}</span><span class="second">${esc(UI.countryName(local.country) || local.country)}</span>${world}</span>`;
     }
     return view.own === null || view.own === undefined
-      ? `<span class="muted dash" tabindex="0" data-tip="${esc(t("No number from this engine's own tool. It isn't connected for this site, or it hasn't reported this keyword."))}">—</span>`
+      ? `<span class="muted dash" tabindex="0" data-tip="${esc(t("Not connected for this site, or no data for this keyword."))}">—</span>`
       : `<span class="tabular">${dec(Math.round(view.own * 10) / 10)}</span>`;
   };
 
@@ -197,7 +231,7 @@
       case "top10": return p && p <= 10;
       case "up": return view.change > 0;
       case "down": return view.change < 0;
-      case "none": return !p;
+      case "none": return notRanked(view);
       case "cited": return row.ai.state === "cited";
       case "two": return row.two_pages;
       default: return true;
@@ -226,7 +260,7 @@
 
   function rowHtml(row) {
     const e = engineOf(), view = row.engines[e];
-    const trend = view.trend.length >= 2 ? UI.spark(view.trend.map((x) => x.p), { invert: true }) : `<span class="muted dash" data-tip="${t("Needs 2 checks with the same tool")}" tabindex="0">—</span>`;
+    const trend = view.trend.length >= 2 ? UI.spark(view.trend.map((x) => x.p), { invert: true }) : `<span class="muted dash" data-tip="${t("Needs 2 checks, same tool")}" tabindex="0">—</span>`;
     const cells = state.engine === "all"
       ? ENGINES.map(([id, label]) => `<td data-label="${label}">${scrapedCell(row, id)}</td>`).join("")
       : `${OWN_TOOL[e] ? `<td class="c" data-label="${OWN_TOOL[e]} · ${t("avg position")}">${ownCell(view, row, e)}</td>` : ""}
@@ -234,7 +268,7 @@
          <td class="c" data-label="${t("Change")}">${changeCell(view)}</td>
          ${state.cols.vol ? `<td class="c" data-label="${t("Impressions (28 days)")}">${impressionsOf(row) === null ? '<span class="muted dash">—</span>' : num(impressionsOf(row))}</td>` : ""}
          ${state.cols.trend ? `<td data-label="${t("Trend")}">${trend}</td>` : ""}
-         ${state.cols.page ? `<td class="url-cell mono small" data-label="${t("Page")}" ${row.page ? `data-tip="${esc(row.page)}"` : ""}>${row.page ? PageLink.html(row.page, { text: shortPath(row.page), title: "" }) : '<span class="muted dash">—</span>'}${row.two_pages ? `<span class="warn" role="img" tabindex="0" data-tip="${esc(t("Two of your pages show up for this keyword."))}" aria-label="${esc(t("Same keyword on 2 pages"))}">${icon("triangle-alert")}</span>` : ""}</td>` : ""}
+         ${state.cols.page ? `<td class="url-cell mono small" data-label="${t("Page")}" ${row.page ? `data-tip="${esc(row.page)}"` : ""}>${row.page ? PageLink.html(row.page, { text: shortPath(row.page), title: "" }) : '<span class="muted dash">—</span>'}${row.two_pages ? `<span class="warn" role="img" tabindex="0" data-tip="${esc(t("Two of your pages rank for it."))}" aria-label="${esc(t("Two pages compete"))}">${icon("triangle-alert")}</span>` : ""}</td>` : ""}
          ${state.cols.ai ? `<td data-label="${t("AI")}">${aiCell(row)}</td>` : ""}`;
     return `<tr data-kwr-row="${esc(row.id)}" class="${K.selected.has(row.id) ? "sel" : ""} ${K.panel?.id === row.id && $("#panel") ? "open" : ""}">
       <td class="chk-cell"><input type="checkbox" class="chk" data-kwr-select="${esc(row.id)}" ${K.selected.has(row.id) ? "checked" : ""} aria-label="${t("selected")}: ${esc(row.keyword)}"></td>
@@ -243,12 +277,15 @@
   }
 
   function table(all) {
-    if (!all.length && kwPages().q.trim()) return `<div class="table-wrap"><div class="empty"><h3>${t("No keyword matches this search.")}</h3><p dir="auto">${esc(kwPages().q.trim())}</p><button class="btn" data-kwr-search-clear>${t("Clear the search")}</button></div></div>`;
-    if (!all.length) return `<div class="table-wrap"><div class="empty"><h3>${t("No keywords match this filter")}</h3><p>${t("Try another filter, or show all keywords.")}</p><button class="btn" data-filter="all">${t("Show all keywords")}</button></div></div>`;
+    K.shownList = null;
+    if (!all.length && kwPages().q.trim()) return `<div class="table-wrap"><div class="empty"><h3>${t("No keyword matches.")}</h3><p dir="auto">${esc(kwPages().q.trim())}</p><button class="btn" data-kwr-search-clear>${t("Clear search")}</button></div></div>`;
+    if (!all.length) return `<div class="table-wrap"><div class="empty"><h3>${t("No keyword matches")}</h3><p>${t("Try another filter.")}</p><button class="btn" data-filter="all">${t("Show all")}</button></div></div>`;
     const view = TP.view(KW_PAGES, all), rows = view.rows;
-    // A pick only counts on the page it was made on: the bar under the table acts on what's in view.
-    const here = new Set(rows.map((row) => row.id));
+    // A pick counts on the page it was made on, so the bar acts on what's in view. After "Select all N keywords" in the bar,
+    // picks count on every page of this list (its chip, search and filters) until the selection is cleared.
+    const here = new Set((K.allPages ? view.list : rows).map((row) => row.id));
     [...K.selected].forEach((id) => { if (!here.has(id)) K.selected.delete(id); });
+    if (!K.selected.size) K.allPages = false;
     const e = engineOf();
     const head = state.engine === "all"
       ? ENGINES.map(([id, label]) => `<th scope="col"><span class="th-engine">${logo(id, 16)}${label}</span></th>`).join("")
@@ -257,14 +294,20 @@
          ${state.cols.vol ? sortHeader("vol", t("Impressions"), "c", t("28 days"), t("Search Console impressions, last 28 days. Exact volume isn't available for free.")) : ""}
          ${state.cols.trend ? `<th scope="col">${t("Trend")}</th>` : ""}${state.cols.page ? `<th scope="col">${t("Page")}</th>` : ""}${state.cols.ai ? `<th scope="col">${t("AI")}</th>` : ""}`;
     const every = rows.length > 0 && rows.every((row) => K.selected.has(row.id));
+    K.shownList = { total: view.total, pageFull: every };
     return `<div class="ov-list"><div class="table-wrap ${state.dense ? "dense" : ""}"><table class="data" id="kw-table" aria-label="${t("Keywords")}">
       <thead><tr><th scope="col" class="chk-cell"><input type="checkbox" class="chk" id="kwr-select-all" ${every ? "checked" : ""} aria-label="${t("All")}"></th>${sortHeader("k", t("Keyword"))}${head}</tr></thead>
       <tbody>${rows.map(rowHtml).join("")}</tbody></table></div>${TP.footer(KW_PAGES, view, { noun: t(view.total === 1 ? "keyword" : "keywords") })}</div>`;
   }
 
+  /* The heading's box ticks the page on show; the bar offers the whole list, on every page, as Gmail does. */
   function selectionBar() {
     if (!K.selected.size) return "";
-    return `<div class="selbar" role="region" aria-label="${t("selected")}"><b>${num(K.selected.size)} ${t("selected")}</b>
+    const n = K.selected.size, list = K.shownList;
+    // Offered from the first tick, since on a phone the rows are cards with no heading box to tick a whole page.
+    const offer = Boolean(list) && list.total > n;
+    const words = K.allPages && list && n === list.total ? fill("All {n} keywords selected", num(n)) : offer && !K.allPages && list.pageFull ? fill("{n} selected on this page", num(n)) : `${num(n)} ${t("selected")}`;
+    return `<div class="selbar" id="kwr-selbar" role="region" aria-label="${t("selected")}"><b>${words}</b>${offer ? `<button class="link-btn kwr-sel-all" id="kwr-sel-all">${fill("Select all {n} keywords", num(list.total))}</button>` : ""}
       <button class="btn btn-main btn-small" id="kwr-sel-refresh">${icon("refresh-cw")}${t("Refresh")}</button>
       <button class="btn btn-small" id="kwr-sel-task">${t("Create task")}</button>
       <button class="icon-btn" id="kwr-sel-clear" aria-label="${t("Clear selection")}" data-tip="${t("Clear selection")}">${icon("x")}</button></div>`;
@@ -273,7 +316,7 @@
   function bucketView(rows) {
     const e = engineOf();
     const pos = rows.map((row) => (row.engines[e].main?.status === "ok" ? row.engines[e].main.p : null));
-    const buckets = [["1-3", pos.filter((p) => p && p <= 3).length], ["4-10", pos.filter((p) => p > 3 && p <= 10).length], ["11-20", pos.filter((p) => p > 10 && p <= 20).length], ["21+", pos.filter((p) => p > 20).length], [t("Not ranked"), pos.filter((p) => !p).length]];
+    const buckets = [["1-3", pos.filter((p) => p && p <= 3).length], ["4-10", pos.filter((p) => p > 3 && p <= 10).length], ["11-20", pos.filter((p) => p > 10 && p <= 20).length], ["21+", pos.filter((p) => p > 20).length], [t("Not ranked"), rows.filter((row) => notRanked(row.engines[e])).length]];
     const max = Math.max(...buckets.map((b) => b[1]), 1);
     return `<section class="card" style="padding:16px">${buckets.map(([label, n]) => `
       <div style="display:grid;grid-template-columns:90px 1fr 30px;gap:10px;align-items:center;padding:6px 0;font-size:13px">
@@ -282,20 +325,20 @@
 
   function queriesView() {
     const e = engineOf();
-    if (e === "duckduckgo") return `<p class="note">${icon("info")}<span>${t("DuckDuckGo has no tool for site owners, so the app checks its positions by itself every day, oldest first, on free searches only. Refresh and Refresh data check them now.")}</span></p>`;
+    if (e === "duckduckgo") return `<p class="note">${UI.tip("DuckDuckGo has no tool for site owners, so the app checks its positions by itself every day, oldest first, on free searches only. Refresh and Refresh data check them now.").trim()}<span>${t("Checked daily by itself, on free searches.")}</span></p>`;
     const key = `${e}`;
     if (!K.queries[key]) { K.queries[key] = "loading"; api("GET", `rankings/queries?engine=${e}`).then((answer) => { K.queries[key] = answer.rows; if (state.view === "queries") UI.render({ keepScroll: true }); }).catch(() => { K.queries[key] = []; if (state.view === "queries") UI.render({ keepScroll: true }); }); }
     if (K.queries[key] === "loading") return UI.skeleton("table", { rows: 8 });
     const host = UI.siteHostPicked();
     const rows = K.queries[key].filter((row) => !host || row.site === host);
     if (!rows.length) {
-      const words = e === "google" ? ["No Search Console data yet", "Connect Search Console for this site in Settings, and its queries appear here within 3 days."] : [e === "bing" ? "No Bing Webmaster data yet" : "No Yandex Webmaster data yet", "Connect it for this site in Settings, and its queries appear here."];
-      return `<div class="table-wrap"><div class="empty"><h3>${t(words[0])}</h3><p>${t(words[1])}</p><button class="btn" data-go="settings">${t("Go to Settings")}</button></div></div>`;
+      const words = e === "google" ? ["No Search Console data yet", "Connect it in Settings; queries appear within 3 days."] : [e === "bing" ? "No Bing Webmaster data yet" : "No Yandex Webmaster data yet", "Connect it in Settings; queries appear here."];
+      return `<div class="table-wrap"><div class="empty"><h3>${t(words[0])}</h3><p>${t(words[1])}</p><button class="btn" data-go="settings">${t("Open Settings")}</button></div></div>`;
     }
     const tracked = new Set(allRows().map((row) => `${row.site}|${row.keyword.toLowerCase()}`));
     const found = sortedQueries(rows.filter((row) => TP.matches(Q_PAGES, row.query, state.site === "all" ? row.site : "")));
     const tools = `<div class="kw-find">${TP.search(Q_PAGES, t("Search queries"))}</div>`;
-    if (!found.length) return `${tools}<div class="table-wrap"><div class="empty"><h3>${t("No query matches this search.")}</h3><p dir="auto">${esc(TP.state(Q_PAGES).q.trim())}</p><button class="btn" data-kwq-search-clear>${t("Clear the search")}</button></div></div>`;
+    if (!found.length) return `${tools}<div class="table-wrap"><div class="empty"><h3>${t("No query matches.")}</h3><p dir="auto">${esc(TP.state(Q_PAGES).q.trim())}</p><button class="btn" data-kwq-search-clear>${t("Clear search")}</button></div></div>`;
     const view = TP.view(Q_PAGES, found);
     const head = (id, label) => {
       const on = K.qsort?.id === id;
@@ -328,8 +371,8 @@
     const tools = (K.tools || []).filter((tool) => tool.connected && (tool.engines || []).includes(e) && !tool.manual_only);
     if (!tools.length || tools.some((tool) => tool.left === null || tool.left === undefined || tool.left > 0)) return "";
     const waiting = rows.filter((row) => !row.engines[e]?.main).length;
-    const refill = tools.every((tool) => tool.refills === "one-time") ? t("They don't refill: connect another tool in Settings.") : t("They refill each month, or connect another tool in Settings.");
-    return `<div class="note warn" role="status">${icon("triangle-alert")}<span><b>${t("No free checks left for")} ${esc(name(e))}.</b> ${waiting ? `${num(waiting)} ${t(waiting === 1 ? "keyword waits as Not checked yet." : "keywords wait as Not checked yet.")} ` : ""}${refill} <button class="link-btn" data-go="settings">${t("Open Settings")}</button></span></div>`;
+    const refill = tools.every((tool) => tool.refills === "one-time") ? t("They don't refill; connect another tool in Settings.") : t("They refill monthly, or connect another tool in Settings.");
+    return `<div class="note warn" role="status">${icon("triangle-alert")}<span><b>${t("No free checks left for")} ${esc(name(e))}.</b> ${waiting ? `${num(waiting)} ${t(waiting === 1 ? "keyword stays Not checked." : "keywords stay Not checked.")} ` : ""}${refill} <button class="link-btn" data-go="settings">${t("Open Settings")}</button></span></div>`;
   }
 
   /* The newest check on screen, whether a Refresh made it or the first check after adding: the header and the rows agree. */
@@ -337,13 +380,13 @@
     let newest = null;
     rows.forEach((row) => ENGINES.forEach(([e]) => { const a = row.engines[e]?.main?.age_days; if (a !== null && a !== undefined && (newest === null || a < newest)) newest = a; }));
     const refreshAge = K.data.last_refresh ? (Date.now() - new Date(K.data.last_refresh).getTime()) / 864e5 : null;
-    if (refreshAge !== null && (newest === null || refreshAge <= newest + 1 / 1440)) return `${t("Last Refresh")} ${esc(UI.fmtStamp(K.data.last_refresh))}`;
+    if (refreshAge !== null && (newest === null || refreshAge <= newest + 1 / 1440)) return `${t("Refreshed")} ${esc(UI.fmtStamp(K.data.last_refresh))}`;
     if (newest === null) return t("No check yet");
     return `${t("Last check")} ${esc(age(newest))}`;
   }
 
   function page() {
-    const title = t("Keywords"), lead = t("Rankings from each engine's own tool and from scraped results");
+    const title = t("Keywords"), lead = t("Rankings from engines' own tools and scraped results");
     const addButton = `<button class="btn" id="kwr-add">${icon("plus")}${t("Add keywords")}</button>`;
     if (K.stale && !K.loading) load();
     if (!K.data) {
@@ -351,22 +394,22 @@
       return UI.topbar(title, lead, "", false) + `<div class="content page-enter">${body}</div>`;
     }
     if (!window.BOOT.sites.length && !window.SITES.length) {
-      return UI.topbar(title, lead, "", false) + `<div class="content page-enter"><div class="table-wrap"><div class="empty"><h3>${t("Add a site first")}</h3><p>${t("Keywords belong to a site. Add yours, then come back.")}</p><button class="btn btn-main" data-go="settings">${t("Go to Settings")}</button></div></div></div>`;
+      return UI.topbar(title, lead, "", false) + `<div class="content page-enter"><div class="table-wrap"><div class="empty"><h3>${t("Add a site first")}</h3><p>${t("Keywords belong to a site.")}</p><button class="btn btn-main" data-go="settings">${t("Open Settings")}</button></div></div></div>`;
     }
     const all = allRows();
     if (!all.length) {
-      return UI.topbar(title, lead, "", false) + `<div class="content page-enter"><div class="table-wrap"><div class="empty"><h3>${t("No keywords yet")}</h3><p>${t("Add the keywords you want to follow for this site.")}</p><button class="btn btn-main" id="kwr-add">${t("Add keywords")}</button></div></div></div>`;
+      return UI.topbar(title, lead, "", false) + `<div class="content page-enter"><div class="table-wrap"><div class="empty"><h3>${t("No keywords yet")}</h3><p>${t("Add the keywords to follow.")}</p><button class="btn btn-main" id="kwr-add">${t("Add keywords")}</button></div></div>${ideasCard()}</div>`;
     }
     const e = engineOf();
     const local = K.data.tiles[e], view = (row) => row.engines[e], good = (row) => (view(row).main?.status === "ok" ? view(row).main.p : null);
     const found = searched(all);
-    const counts = { all: found.length, top3: found.filter((r) => good(r) && good(r) <= 3).length, top10: found.filter((r) => good(r) && good(r) <= 10).length, up: found.filter((r) => view(r).change > 0).length, down: found.filter((r) => view(r).change < 0).length, none: found.filter((r) => !good(r)).length, cited: found.filter((r) => r.ai.state === "cited").length, two: found.filter((r) => r.two_pages).length };
+    const counts = { all: found.length, top3: found.filter((r) => good(r) && good(r) <= 3).length, top10: found.filter((r) => good(r) && good(r) <= 10).length, up: found.filter((r) => view(r).change > 0).length, down: found.filter((r) => view(r).change < 0).length, none: found.filter((r) => notRanked(view(r))).length, cited: found.filter((r) => r.ai.state === "cited").length, two: found.filter((r) => r.two_pages).length };
     const moved = (() => { // the same rule as the server's tile, on the rows this site shows
       let change = 0, compared = 0;
       all.forEach((r) => { const c = view(r).change, p = good(r); if (c === null || c === undefined || !p) return; compared += 1; const was = p + c; change += (p <= 10 && was > 10 ? 1 : 0) - (was <= 10 && p > 10 ? 1 : 0); });
       return { change, compared };
     })();
-    const chips = [["all", "All"], ["top3", "Top 3"], ["top10", "Top 10"], ["up", "Up"], ["down", "Down"], ["none", "Not ranked"], ["cited", "Cited by AI"], ["two", "Same keyword on 2 pages"]];
+    const chips = [["all", "All"], ["top3", "Top 3"], ["top10", "Top 10"], ["up", "Up"], ["down", "Down"], ["none", "Not ranked"], ["cited", "Cited by AI"], ["two", "Two pages compete"]];
     const shown = filtered();
     const body = state.view === "bucket" ? bucketView(all) : state.view === "queries" ? queriesView() : `
       <div class="kw-find">${TP.search(KW_PAGES, t("Search keywords"))}</div>
@@ -378,7 +421,7 @@
           <button class="icon-btn kwr-add-small" id="kwr-add-small" aria-label="${t("Add keywords")}" data-tip="${t("Add keywords")}">${icon("plus")}</button>
         </span>
       </div>
-      ${state.engine === "duckduckgo" ? `<p class="note">${icon("info")}<span>${t("DuckDuckGo has no tool for site owners, so the app checks its positions by itself every day, oldest first, on free searches only. Refresh and Refresh data check them now.")}</span></p>` : ""}
+      ${state.engine === "duckduckgo" ? `<p class="note">${UI.tip("DuckDuckGo has no tool for site owners, so the app checks its positions by itself every day, oldest first, on free searches only. Refresh and Refresh data check them now.").trim()}<span>${t("Checked daily by itself, on free searches.")}</span></p>` : ""}
       ${outOfChecks(all)}
       ${table(shown)}${selectionBar()}`;
     const sub = [K.data.data_through ? `${t("Data through")} ${UI.fmtDateOnly(K.data.data_through)}` : "", lastCheckWords(all)].filter(Boolean).join(" · ");
@@ -398,7 +441,7 @@
           <span class="seg" role="group" aria-label="${t("Positions")}">${[["positions", "Positions"], ["bucket", "By bucket"], ["queries", "Queries"]].map(([id, label]) => `<button data-view="${id}" aria-pressed="${state.view === id}">${t(label)}</button>`).join("")}</span>
         </div>
         ${body}
-        ${window.LV?.ideasCard ? window.LV.ideasCard() : ""}
+        ${ideasCard()}
       </div>`;
   }
 
@@ -406,15 +449,15 @@
   function addPanel(opener, prefill = "", hostWanted = null, market = {}) {
     const sites = window.BOOT.sites.length ? window.SITES.filter((s) => window.BOOT.sites.some((x) => x.host === s.host)) : window.SITES;
     const picked = hostWanted || UI.siteHostPicked() || sites[0]?.host;
-    UI.openPanel(`${UI.panelHead(t("Add keywords"), t("Each new keyword gets one check with a free tool, to see who really ranks. After that, DuckDuckGo is checked by itself every day, and the other engines when you press Refresh."))}
+    UI.openPanel(`${UI.panelHead(t("Add keywords"), t("One free check each; then DuckDuckGo daily, the rest on Refresh.") + UI.tip("Each new keyword gets one check with a free tool, to see who really ranks. After that, DuckDuckGo is checked by itself every day, and the other engines when you press Refresh."))}
       <form class="panel-body" id="kwr-add-form" novalidate>
         <div id="kwr-add-error" role="alert"></div>
-        <label class="field"><span>${t("For which site?")}</span><select class="select" id="kwr-add-site" style="width:100%">${sites.map((s) => `<option value="${esc(s.host)}" ${s.host === picked ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></label>
+        <label class="field"><span>${t("Site")}</span><select class="select" id="kwr-add-site" style="width:100%">${sites.map((s) => `<option value="${esc(s.host)}" ${s.host === picked ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></label>
         <label class="field"><span>${t("Keywords, one per line")}</span><textarea class="input" id="kwr-add-text" rows="8" dir="auto" spellcheck="false">${esc(prefill)}</textarea></label>
         <label class="field"><span>${t("Or upload a file")}</span><input class="input" id="kwr-add-file" type="file" accept=".csv,.txt,.tsv"></label>
         <label class="field"><span>${t("Country")}</span><select class="select" id="kwr-add-country" style="width:100%"><option value="">${t("Any country")}</option>${UI.countryOptions((market.country || "").toUpperCase())}</select></label>
         <label class="field"><span>${t("Language")}</span><input class="input" id="kwr-add-language" placeholder="${esc(t("Optional, such as fr"))}" value="${esc(market.language || "")}" autocomplete="off"></label>
-        ${market.country || market.language ? `<p class="small muted" style="margin:0">${t("Country and language are the ones this site's keywords use most.")}</p>` : ""}
+        ${market.country || market.language ? `<p class="small muted" style="margin:0">${t(market.why || "Most used by this site's keywords.")}</p>` : ""}
       </form>
       <div class="panel-foot"><button class="btn btn-main" id="kwr-add-save">${t("Add keywords")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button></div>`, opener, { key: `kwr-add|${prefill}`, reopen: () => addPanel(opener, prefill, hostWanted, market) });
   }
@@ -422,7 +465,7 @@
   async function saveKeywords(button) {
     const text = $("#kwr-add-text").value, file = $("#kwr-add-file").files[0], host = $("#kwr-add-site").value;
     const fail = (message, field) => { UI.setHTML($("#kwr-add-error"), `<p class="error" style="margin:0 0 10px">${icon("octagon-alert")}<span>${esc(t(message))}</span></p>`); field?.focus(); };
-    if (!text.trim() && !file) { fail("Put at least one keyword, or choose a file.", $("#kwr-add-text")); return; }
+    if (!text.trim() && !file) { fail("Add a keyword or choose a file.", $("#kwr-add-text")); return; }
     const site = window.BOOT.sites.find((s) => s.host === host) || (await api("GET", "links/sites")).sites.find((s) => s.host === host);
     if (!site) { fail("Add a site first"); return; }
     button.disabled = true;
@@ -448,41 +491,58 @@
     return { keyword_ids: r.ids, engines: [...r.engines], depth: r.depth, mode: r.mode, picked: [...r.picked], include_recent: r.includeRecent, allow_paid: r.paid, paid_cap: r.paid ? r.cap : undefined, site_id: undefined };
   };
 
-  function openRefresh(ids, engines, depth = 10, mode = "auto", picked = []) {
-    if (mine(K.run)) { UI.toast(t("A refresh is already running."), { kind: "info" }); return; }
+  /* `deeper` is Check deeper's own view of the dialog: { keyword, tools } names the one keyword and the tools that missed it. */
+  function openRefresh(ids, engines, depth = 10, mode = "auto", picked = [], deeper = null) {
+    if (mine(K.run)) { UI.toast(t("Already refreshing."), { kind: "info" }); return; }
     const unique = [...new Set(ids)];
-    K.refresh = { ids: unique, engines: new Set(engines || [state.engine === "all" ? "google" : state.engine]), depth, mode, picked: new Set(picked), includeRecent: false, paid: false, cap: 5, token: token(), asked: 0, preview: null };
+    K.refresh = { ids: unique, engines: new Set(engines || [state.engine === "all" ? "google" : state.engine]), depth, mode, picked: new Set(picked), includeRecent: false, paid: false, cap: 5, token: token(), asked: 0, preview: null, deeper };
     $("#dlg").classList.remove("wide");
     renderRefresh();
     $("#dlg").showModal();
   }
 
+  /* Check deeper: this keyword on this engine only, past the depth already searched, with the tools whose latest result
+     didn't find the site. A tool that found it isn't asked again. */
+  function checkDeeper(row, e) {
+    if (!row) return;
+    const view = row.engines[e];
+    const missed = [view.main, ...view.others].filter((x) => x && x.status === "ok" && !x.p && K.tools.some((tool) => tool.name === x.tool));
+    const now = Math.max(view.main?.depth || 10, ...missed.map((x) => x.depth || 10)), next = [20, 30, 50].find((d) => d > now) || 50;
+    if (!missed.length) { openRefresh([row.keyword_id], [e], next); return; } // only a suspect result: the usual dialog
+    const tools = missed.map((x) => x.tool), ready = tools.filter((n) => K.tools.find((tool) => tool.name === n)?.connected);
+    openRefresh([row.keyword_id], [e], next, "pick", ready, { keyword: row.keyword, tools });
+  }
+
   function renderRefresh() {
     const r = K.refresh;
-    const credit = (tool) => (tool.left === null ? t("No credits needed") : `${num(tool.left)} ${t("of")} ${num(tool.of)} ${t("left")} · ${t(tool.refills === "one-time" ? "Never refills" : "Refills monthly")}`);
+    const credit = (tool) => (tool.left === null ? t("No credits needed") : `${num(tool.left)}/${num(tool.of)} ${t("left")} · ${t(tool.refills === "one-time" ? "Never refills" : "Refills monthly")}`);
     const anyPaid = K.tools.some((tool) => tool.paid_on && tool.connected);
+    // Check deeper: one keyword on one engine, its tools picked; only the tools that missed it show until All tools.
+    const deep = r.deeper, only = deep && !deep.all ? new Set(deep.tools) : null, engine = [...r.engines][0];
     UI.setHTML($("#dlg"), `
-      <div class="dlg-head"><h2 id="dlg-title">${t("Refresh keywords")}</h2><button class="icon-btn" data-close-dlg aria-label="${t("Close")}">${icon("x")}</button></div>
+      <div class="dlg-head"><h2 id="dlg-title">${t(deep ? "Check deeper" : "Refresh keywords")}</h2><button class="icon-btn" data-close-dlg aria-label="${t("Close")}">${icon("x")}</button></div>
       <div class="dlg-body">
-        <p style="margin-bottom:12px"><b>${num(r.ids.length)}</b> ${t(r.ids.length === 1 ? "keyword" : "keywords")}</p>
+        ${deep ? `<p class="kwr-deeper-kw" style="margin-bottom:12px;display:flex;align-items:center;gap:8px" dir="auto">${logoMark(engine, name(engine))}<b>${esc(deep.keyword)}</b></p>`
+          : `<p style="margin-bottom:12px"><b>${num(r.ids.length)}</b> ${t(r.ids.length === 1 ? "keyword" : "keywords")}</p>
         <fieldset style="border:0;padding:0;margin:0 0 8px"><legend class="small sec" style="padding:0;margin-bottom:6px;font-weight:500">${t("Engines")}</legend>
           ${ENGINES.map(([id, label]) => `<label class="opt engine-opt"><input type="checkbox" class="chk" style="margin:0" data-kwr-engine="${id}" ${r.engines.has(id) ? "checked" : ""}>${logo(id, 16)}${label}</label>`).join("")}
-        </fieldset>
+        </fieldset>`}
         <label class="field" style="margin-bottom:6px"><span>${t("Depth")}</span><select class="select" id="kwr-depth">${[10, 20, 30, 50].map((d) => `<option value="${d}" ${r.depth === d ? "selected" : ""}>${t("Top")} ${d}</option>`).join("")}</select></label>
-        <div class="ref-tools-head"><span>${t("Tools")}</span><span class="seg" role="group" aria-label="${t("Tools")}"><button type="button" data-kwr-mode="auto" aria-pressed="${r.mode === "auto"}">${t("Automatic: free first")}</button><button type="button" data-kwr-mode="pick" aria-pressed="${r.mode === "pick"}">${t("Choose tools")}</button></span></div>
+        ${deep ? `<div class="ref-tools-head"><span>${t(only ? "Tools that missed it" : "Tools")}</span>${only ? `<button type="button" class="link-btn" id="kwr-deeper-all">${t("All tools")}</button>` : ""}</div>`
+          : `<div class="ref-tools-head"><span>${t("Tools")}</span><span class="seg" role="group" aria-label="${t("Tools")}"><button type="button" data-kwr-mode="auto" aria-pressed="${r.mode === "auto"}">${t("Automatic: free first")}</button><button type="button" data-kwr-mode="pick" aria-pressed="${r.mode === "pick"}">${t("Choose tools")}</button></span></div>`}
         <div class="tool-list ${r.mode === "auto" ? "auto" : ""}" id="kwr-tool-list">
-          ${orderedTools().map((tool) => `<label class="tool-row" data-kwr-tool-row="${esc(tool.name)}">
+          ${orderedTools().filter((tool) => !only || only.has(tool.name)).map((tool) => `<label class="tool-row" data-kwr-tool-row="${esc(tool.name)}">
             <input type="checkbox" class="chk" style="margin:0" data-kwr-tool="${esc(tool.name)}" ${r.picked.has(tool.name) ? "checked" : ""}>
             ${logo(tool.name, 22)}
             <span class="tool-main"><span class="t">${esc(t(tool.name))}</span><span class="d">${esc(credit(tool))}${tool.price ? ` · ${t("then")} ${esc(t(tool.price))}` : ""}</span></span>
             <span class="tool-engines" role="img" aria-label="${esc(tool.engines.map(name).join(", "))}" data-tip="${esc(tool.engines.map(name).join(", "))}">${tool.engines.map((e) => logo(e, 14)).join("")}</span>
             <span class="tool-checks"></span></label>`).join("")}
         </div>
-        ${anyPaid ? `<div class="paid-row"><label class="opt"><input type="checkbox" class="chk" style="margin:0" id="kwr-paid" ${r.paid ? "checked" : ""}>${t("Use paid credits if free ones run out")}</label>
-          <label class="paid-cap" id="kwr-paid-cap" ${r.paid ? "" : "hidden"}>${t("Limit this run to")} $<input class="input" id="kwr-cap" type="number" min="1" step="1" value="${r.cap}"></label></div>` : ""}
+        ${anyPaid ? `<div class="paid-row"><label class="opt"><input type="checkbox" class="chk" style="margin:0" id="kwr-paid" ${r.paid ? "checked" : ""}>${t("Use paid credits after free ones")}</label>
+          <label class="paid-cap" id="kwr-paid-cap" ${r.paid ? "" : "hidden"}>${t("Limit to")} $<input class="input" id="kwr-cap" type="number" min="1" step="1" value="${r.cap}"></label></div>` : ""}
         <div id="kwr-summary" aria-live="polite"></div>
       </div>
-      <div class="dlg-foot"><span class="left" id="kwr-foot">${t(anyPaid && r.paid ? "Estimated cost" : "Free tools first. Paid use is off.")}</span><button class="btn" data-close-dlg>${t("Cancel")}</button><button class="btn btn-main" id="kwr-confirm" disabled>${t("Confirm")}</button></div>`);
+      <div class="dlg-foot"><span class="left" id="kwr-foot">${t(anyPaid && r.paid ? "Estimated cost" : "Free tools only")}</span><button class="btn" data-close-dlg>${t("Cancel")}</button><button class="btn btn-main" id="kwr-confirm" disabled>${t("Confirm")}</button></div>`);
     updatePreview();
   }
 
@@ -501,7 +561,7 @@
     confirm.disabled = true;
     $("#kwr-tool-list").classList.toggle("auto", r.mode === "auto");
     if (!r.engines.size || (r.mode === "pick" && !r.picked.size)) {
-      UI.setHTML(box, `<p class="note" style="margin:10px 0 0">${icon("info")}<span>${t(!r.engines.size ? "Choose at least one engine." : "Pick at least one tool.")}</span></p>`);
+      UI.setHTML(box, `<p class="note" style="margin:10px 0 0">${icon("info")}<span>${t(!r.engines.size ? "Pick an engine." : "Pick a tool.")}</span></p>`);
       paintToolRows(null);
       return;
     }
@@ -517,11 +577,16 @@
     const plural = (n, one, many) => `${num(n)} ${t(n === 1 ? one : many)}`;
     const notes = [];
     if (answer.no_tools_for.length) notes.push(`<p class="note warn" style="margin:10px 0 0">${icon("triangle-alert")}<span>${t("No tool can search")} ${esc(answer.no_tools_for.map(name).join(", "))}. ${t("Connect one in Settings.")}</span></p>`);
+    if (r.mode === "pick") (answer.blocked || []).filter((b) => r.picked.has(b.name)).forEach((b) => {
+      const tool = K.tools.find((x) => x.name === b.name), covers = [...r.engines].filter((e) => tool?.engines.includes(e));
+      const others = K.tools.filter((x) => x.name !== b.name && x.connected && !x.manual_only && covers.some((e) => x.engines.includes(e)) && !answer.blocked.some((y) => y.name === x.name)).map((x) => t(x.name));
+      notes.push(`<p class="note warn" style="margin:10px 0 0">${icon("triangle-alert")}<span>${esc(t(b.name))} ${t("hit a bot check")} ${esc(window.COMP.ago(b.at))}, ${t("so it will probably stop at once.")}${others.length ? ` ${t("Pick one of these instead:")} ${esc(others.join(", "))}.` : ""}</span></p>`);
+    });
     if (answer.runs_out_after !== null) notes.push(`<p class="note warn" style="margin:10px 0 0">${icon("triangle-alert")}<span>${t("Runs out after")} ${plural(answer.runs_out_after, "check", "checks")}.</span></p>`);
-    if (answer.running.length) notes.push(`<p class="note" style="margin:10px 0 0">${icon("info")}<span>${t("Already being refreshed:")} ${esc(answer.running.slice(0, 5).map((x) => `${x.keyword}${x.by ? ` (${x.by === AUTO_BY ? t("automatic check") : `${t("by")} ${x.by}`})` : ""}`).join(", "))}${answer.running.length > 5 ? ` +${answer.running.length - 5}` : ""}</span></p>`);
-    if (answer.recent.length || r.includeRecent) notes.push(`<div style="margin:10px 0 0">${answer.recent.length ? `<p class="small sec" style="margin:0 0 4px" dir="auto">${t("Checked in the last")} ${num(answer.just_checked_hours)} ${t("hours, so left out:")} ${esc(answer.recent.slice(0, 5).map((x) => x.keyword).join(", "))}${answer.recent.length > 5 ? ` +${answer.recent.length - 5}` : ""}</p>` : ""}<label class="opt small"><input type="checkbox" class="chk" style="margin:0" id="kwr-recent" ${r.includeRecent ? "checked" : ""}>${t("Check them again")}</label></div>`);
-    if (r.mode === "pick" && r.picked.has("Browser on this Mac")) notes.push(`<p class="note" style="margin:10px 0 0">${icon("info")}<span>${t("A real browser on this Mac reads the results. It stops at the first captcha that doesn't clear.")}</span></p>`);
-    const sum = answer.checks ? `<p class="small sec" style="margin:0">${t("This will use")} <b>${plural(answer.credits, "credit", "credits")}</b> ${t("over")} ${plural(answer.checks, "check", "checks")}.${answer.cost ? ` <b>${t("Estimated cost")}: $${dec(Number(answer.cost.toFixed(2)))}</b>` : ""}</p>` : `<p class="small sec" style="margin:0">${t("Nothing to check.")}</p>`;
+    if (answer.running.length) notes.push(`<p class="note" style="margin:10px 0 0">${icon("info")}<span>${t("Already refreshing:")} ${esc(answer.running.slice(0, 5).map((x) => `${x.keyword}${x.by ? ` (${x.by === AUTO_BY ? t("automatic check") : `${t("by")} ${x.by}`})` : ""}`).join(", "))}${answer.running.length > 5 ? ` +${answer.running.length - 5}` : ""}</span></p>`);
+    if (answer.recent.length || r.includeRecent) notes.push(`<div style="margin:10px 0 0">${answer.recent.length ? `<p class="small sec" style="margin:0 0 4px" dir="auto">${t("Checked within")} ${num(answer.just_checked_hours)} ${t("h, left out:")} ${esc(answer.recent.slice(0, 5).map((x) => x.keyword).join(", "))}${answer.recent.length > 5 ? ` +${answer.recent.length - 5}` : ""}</p>` : ""}<label class="opt small"><input type="checkbox" class="chk" style="margin:0" id="kwr-recent" ${r.includeRecent ? "checked" : ""}>${t("Check them again")}</label></div>`);
+    if (r.mode === "pick" && r.picked.has("Browser on this Mac")) notes.push(`<p class="note" style="margin:10px 0 0">${icon("info")}<span>${t("Uses a real browser on this Mac; stops at the first captcha.")}</span></p>`);
+    const sum = answer.checks ? `<p class="small sec" style="margin:0">${t("Will use")} <b>${plural(answer.credits, "credit", "credits")}</b> ${t("over")} ${plural(answer.checks, "check", "checks")}.${answer.cost ? ` <b>${t("Estimated cost")}: $${dec(Number(answer.cost.toFixed(2)))}</b>` : ""}</p>` : `<p class="small sec" style="margin:0">${t("Nothing to check.")}</p>`;
     const hadFocus = document.activeElement?.id === "kwr-recent";
     UI.setHTML(box, sum + notes.join(""));
     if (hadFocus) $("#kwr-recent")?.focus(); // the summary is redrawn, and the keyboard stays where it was
@@ -540,10 +605,13 @@
       const box = $("input", row);
       box.disabled = !pick || !usable;
       const checks = planned?.checks || 0;
+      const rest = (answer?.blocked || []).find((b) => b.name === tool.name);
+      const restTip = rest ? `${translateSentences(rest.why)} ${t("Automatic runs try it again in")} ${num(Math.max(1, Math.ceil((new Date(rest.until).getTime() - Date.now()) / 3600000)))} h.` : "";
       const words = !tool.connected ? (tool.manual_only ? "" : `<button type="button" class="link-btn" data-kwr-connect="${esc(tool.name)}">${t("Connect")}</button>`)
         : !fits ? `<span class="quiet">${t("Not for these engines")}</span>`
-        : !pick && tool.manual_only ? `<span class="quiet">${t("Only when you pick it")}</span>`
-        : checks ? `${num(checks)} ${t(checks === 1 ? "check" : "checks")}${planned.paid_credits ? ` · ${num(planned.paid_credits)} ${t("paid")}` : ""}` : "";
+        : !pick && tool.manual_only ? `<span class="quiet">${t("Only if picked")}</span>`
+        : rest && !pick ? `<span class="quiet" data-tip="${esc(restTip)}" tabindex="0">${t("Skipped: bot check")}</span>`
+        : checks ? `${rest ? `<span data-tip="${esc(restTip)}" tabindex="0">${icon("triangle-alert", "warn")}</span> ` : ""}${num(checks)} ${t(checks === 1 ? "check" : "checks")}${planned.paid_credits ? ` · ${num(planned.paid_credits)} ${t("paid")}` : ""}` : "";
       UI.setHTML($(".tool-checks", row), words);
     });
   }
@@ -561,7 +629,7 @@
     UI.ignoreClicks();
     K.refresh = null;
     K.selected.clear();
-    if (run.excluded?.length) UI.toast(`${t("Already being refreshed:")} ${run.excluded.slice(0, 3).map((x) => `${x.keyword}${x.by ? ` (${x.by === AUTO_BY ? t("automatic check") : x.by})` : ""}`).join(", ")}`, { kind: "info" });
+    if (run.excluded?.length) UI.toast(`${t("Already refreshing:")} ${run.excluded.slice(0, 3).map((x) => `${x.keyword}${x.by ? ` (${x.by === AUTO_BY ? t("automatic check") : x.by})` : ""}`).join(", ")}`, { kind: "info" });
     follow(run);
     if (state.route === "keywords") UI.render({ keepScroll: true });
   }
@@ -583,7 +651,7 @@
     count.textContent = `${num(done)} / ${num(run.total)}`;
     $("#tray-bar").style.setProperty("--p", run.total ? done / run.total : 0);
     const bits = [];
-    if (run.moved) bits.push(`${t(run.moved.from)} ${t("out of credits, continuing with")} ${t(run.moved.to)}`);
+    if (run.moved) bits.push(`${t(run.moved.from)} ${t(run.moved.why || "stopped working")}, ${t("continuing with")} ${t(run.moved.to)}`);
     if (run.by && run.by !== window.ME?.name) bits.push(run.by === AUTO_BY ? t("Automatic DuckDuckGo check") : `${t("started by")} ${run.by}`);
     $("#tray-msg").textContent = bits.join(" · ");
   }
@@ -608,7 +676,7 @@
     const tray = $("#tray");
     if (!tray) return;
     UI.setHTML(tray.querySelector(".top"), `${icon("triangle-alert", "warn")}<span>${esc(t("Lost track of this Refresh"))}</span>`);
-    $("#tray-msg").textContent = message ? `${t(message)} ${t("Whatever was checked is saved. Reload the page to see it.")}` : t("Whatever was checked is saved. Reload the page to see it.");
+    $("#tray-msg").textContent = message ? `${t(message)} ${t("Progress is saved. Reload to see it.")}` : t("Progress is saved. Reload to see it.");
     UI.setHTML(tray.querySelector("#tray-actions"), `<button class="btn btn-small" id="kwr-tray-close">${t("Close")}</button>`);
   }
   function finishTray(run) {
@@ -620,13 +688,13 @@
       UI.setHTML(tray.querySelector(".top"), `${run.status === "done" && !run.failed ? icon("circle-check", "good") : icon("triangle-alert", "warn")}<span>${esc(title)}</span>`);
       UI.setHTML(tray.querySelector("#tray-actions"), run.status === "stopped" ? `<button class="btn btn-small" id="kwr-tray-close">${t("Close")}</button>` : "");
       const why = run.stop_reason ? translateSentences(run.stop_reason) : "";
-      if (why) $("#tray-msg").textContent = why;
       // Which searches failed and why, with a Retry for those only. The run lists them in `failures` (keyword, engine, error).
       const fails = Array.isArray(run.failures) ? run.failures : [];
+      if (why) UI.setHTML($("#tray-msg"), trayFails([], run.stop_reason));
       if (run.failed && fails.length) {
-        UI.setHTML($("#tray-msg"), `${why ? `<p style="margin:0 0 4px">${esc(why)}</p>` : ""}<ul class="tray-fails">${fails.slice(0, 20).map((f) => `<li><b dir="auto">${esc(f.keyword || "")}</b> <span class="muted">· ${esc(name(f.engine))}${f.tool ? ` · ${esc(t(f.tool))}` : ""}</span><span class="why">${esc(UI.errorWords(translateSentences(f.error || "")))}${f.timed_out ? ` ${esc(t("It may have been charged, so a Retry spends again."))}` : ""}</span></li>`).join("")}</ul>${run.spent ? `<p class="small muted" style="margin:6px 0 0">${t("Only the searches that worked were charged.")}</p>` : ""}`);
+        UI.setHTML($("#tray-msg"), `${trayFails(fails, run.stop_reason)}${run.spent ? `<p class="small muted" style="margin:6px 0 0">${t("Only successful searches were charged.")}</p>` : ""}`);
         const ids = [...new Set(fails.map((f) => f.keyword_id).filter(Boolean))], engines = [...new Set(fails.map((f) => f.engine).filter(Boolean))];
-        UI.setHTML(tray.querySelector("#tray-actions"), `${ids.length ? `<button class="btn btn-small btn-main" id="kwr-tray-retry" data-ids="${ids.join(",")}" data-engines="${esc(engines.join(","))}">${t("Retry these")} (${num(ids.length)})</button> ` : ""}<button class="btn btn-small" id="kwr-tray-close">${t("Close")}</button>`);
+        UI.setHTML(tray.querySelector("#tray-actions"), `${ids.length ? `<button class="btn btn-small btn-main" id="kwr-tray-retry" data-ids="${ids.join(",")}" data-engines="${esc(engines.join(","))}">${t("Retry")} (${num(ids.length)})</button> ` : ""}<button class="btn btn-small" id="kwr-tray-close">${t("Close")}</button>`);
       } else if (run.failed) {
         // Older answers have no list: say so plainly, and keep the tray until it's closed.
         $("#tray-msg").textContent = `${why ? `${why} ` : ""}${t("The keyword's own panel shows each failed check.")}`;
@@ -642,6 +710,72 @@
   }
   // A server sentence is English: each one is translated if it's known, and stays readable if it isn't.
   const translateSentences = (text) => text.split(/(?<=\.)\s+/).map((part) => t(part)).join(" ");
+
+  /* The tray's failed searches: one line per tool and error with a count, then each keyword with its engine's logo. A tool's stop
+     reason joins its line ("dropped after 3 in a row"); one with no failed rows gets a line of its own. The whole sentences are
+     the tooltips. [pattern, its own line, joined to a line, the tooltip when the server's sentence isn't the best one] */
+  const STOPS = [
+    [/\bfailed (\d+) searches in a row\b/i, "Dropped after {n} in a row", "dropped after {n} in a row", "It failed {n} searches in a row, so this Refresh stopped using it."],
+    [/no free (?:checks|searches) left|no credits left|checks for this hour/i, "No free checks left", "no free checks left"],
+    [/bot check|captcha/i, "Blocked by a bot check", "blocked by a bot check"],
+    [/slow down/i, "Asked to slow down", "asked to slow down"],
+    [/refused the key/i, "Key refused", "key refused"],
+    [/can't read/i, "Unreadable answer", "unreadable answer"],
+  ];
+  const sentencesOf = (text) => String(text || "").trim().split(/(?<=\.)\s+/).filter(Boolean);
+  function toolNamed(sentence, names) {
+    const hit = names.find((n) => sentence.startsWith(`${n} `) || sentence.startsWith(`${n}'s `));
+    if (hit) return hit;
+    if (/^DuckDuckGo\b/.test(sentence)) return "DuckDuckGo direct";
+    return /browser backup|captcha/i.test(sentence) ? "Browser on this Mac" : "";
+  }
+  // One entry per tool: a sentence that names none ("The app won't bypass it.") belongs to the one before it.
+  function stopsOf(text, names) {
+    const out = [];
+    sentencesOf(text).forEach((s) => {
+      const tool = toolNamed(s, names), last = out[out.length - 1];
+      if (!tool && last?.tool) last.text += ` ${s}`;
+      else out.push({ tool, text: s });
+    });
+    return out.map((r) => {
+      const hit = r.tool && STOPS.find(([re]) => re.test(r.text)), full = translateSentences(r.text);
+      if (!hit) return { ...r, own: "", fold: t("dropped"), tip: full };
+      const n = r.text.match(hit[0])[1] || "", fill = (words) => t(words).split("{n}").join(n ? num(Number(n)) : "");
+      return { ...r, own: fill(hit[1]), fold: fill(hit[2]), tip: hit[3] ? fill(hit[3]) : full };
+    });
+  }
+  // A failed search's error in a few words ("Empty answer (200)", from UI.errorParts), and its whole sentence for the tooltip.
+  function failWords(error) {
+    const [head = "", ...rest] = sentencesOf(error);
+    const parts = UI.errorParts ? UI.errorParts(head.replace(/^(The request failed: \w+)\.$/, "$1")) : { words: UI.errorWords(head), full: "" };
+    const after = rest.length ? translateSentences(rest.join(" ")) : "";
+    return { words: parts.words || t("The search failed."), full: [parts.full || (after ? translateSentences(head) : ""), after].filter(Boolean).join(" ") };
+  }
+  function trayFails(fails, stopReason) {
+    const names = [...new Set([...(K.tools || []).map((x) => x.name), ...Object.keys(CONN_ID), ...fails.map((f) => f.tool).filter(Boolean)])].sort((a, b) => b.length - a.length);
+    const groups = new Map();
+    fails.forEach((f) => {
+      const key = `${f.tool || ""}|${f.error || ""}`;
+      if (!groups.has(key)) groups.set(key, { tool: f.tool || "", error: f.error || "", rows: [] });
+      groups.get(key).rows.push(f);
+    });
+    const stops = stopsOf(stopReason, names);
+    stops.forEach((s) => { const g = s.tool && [...groups.values()].find((x) => x.tool === s.tool && !x.stop); if (g) { g.stop = s; s.used = true; } });
+    const tipped = (tip, html) => `<span${tip ? ` data-tip="${esc(tip)}" tabindex="0"` : ""}>${html}</span>`;
+    // The words may name the tool already, and that name gets its logo on screen (brands.js), so it isn't drawn twice.
+    const lead = (tool, words) => (tool && !words.includes(tool) && !words.includes(t(tool)) ? logoMark(tool, t(tool)) : "");
+    let rowsLeft = 20; // keyword rows shown, as before; each line's count still covers every one
+    const lines = [...groups.values()].map((g) => {
+      const { words, full } = failWords(g.error), shown = g.rows.slice(0, Math.max(0, rowsLeft));
+      rowsLeft -= shown.length;
+      const head = `${esc(words)}${g.rows.length > 1 ? ` ×${num(g.rows.length)}` : ""}${g.stop ? ` · ${esc(g.stop.fold)}` : ""}`;
+      const charged = g.rows.some((f) => f.timed_out) ? `<li class="kwr-fk why">${esc(t("May have been charged: a Retry spends again."))}</li>` : "";
+      const more = g.rows.length > shown.length ? `<li class="kwr-fk muted">+${num(g.rows.length - shown.length)}</li>` : "";
+      return `<li class="kwr-fg">${lead(g.tool, words)}${tipped([full, g.stop?.tip].filter(Boolean).join(" "), head)}</li>${charged}${shown.map((f) => `<li class="kwr-fk"><span class="k" dir="auto">${esc(f.keyword || "")}</span>${f.engine ? logoMark(f.engine, name(f.engine), 14) : ""}</li>`).join("")}${more}`;
+    });
+    stops.filter((s) => !s.used).forEach((s) => lines.push(s.own ? `<li class="kwr-fg">${logoMark(s.tool, t(s.tool))}${tipped(s.tip, esc(s.own))}</li>` : `<li class="kwr-fg kwr-plain"><span>${esc(s.tip)}</span></li>`));
+    return lines.length ? `<ul class="tray-fails kwr-fails">${lines.join("")}</ul>` : "";
+  }
 
   // ---- side panel -----------------------------------------------------------------------------
   const rowById = (id) => K.data?.rows.find((row) => row.id === id);
@@ -670,7 +804,7 @@
   function chart(line) {
     const points = line.points;
     const known = points.map((p) => p.p).filter(Boolean);
-    if (known.length < 2) return `<p class="note">${icon("info")}<span>${t("Needs 2 checks with the same tool")}</span></p>`;
+    if (known.length < 2) return `<p class="note">${icon("info")}<span>${t("Needs 2 checks, same tool")}</span></p>`;
     const w = 440, h = 160, left = 26, right = 8, top = 10, bottom = 28;
     const hi = Math.max(...known) + 1;
     const x = (i) => left + (points.length === 1 ? 0 : (i / (points.length - 1)) * (w - left - right));
@@ -682,7 +816,7 @@
     const dateOf = (p) => UI.fmtDateOnly(p.at.slice(0, 10));
     const dots = points.map((p, i) => (p.p ? `<circle cx="${x(i).toFixed(1)}" cy="${y(p.p).toFixed(1)}" r="4" fill="${p.suspect ? "var(--panel-solid)" : "var(--series-1)"}" stroke="${p.suspect ? "var(--series-1)" : "var(--panel-solid)"}" stroke-width="2" data-tip="${esc(dateOf(p))}: #${p.p}${p.suspect ? ` · ${esc(t("Suspect result"))}` : ""}" tabindex="0"/>` : "")).join("");
     const edges = [0, points.length - 1];
-    return `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${t("Position over time")}: ${esc(points.map((p) => `${dateOf(p)} ${p.p ? `#${p.p}` : `>${line.depth}`}`).join(", "))}">
+    return `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${t("Position history")}: ${esc(points.map((p) => `${dateOf(p)} ${p.p ? `#${p.p}` : `>${line.depth}`}`).join(", "))}">
       ${ticks.map((v) => `<line x1="${left}" x2="${w - right}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${left - 6}" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join("")}
       ${edges.map((i, n) => `<text x="${x(i)}" y="${h - 6}" text-anchor="${n ? "end" : "start"}">${esc(dateOf(points[i]))}</text>`).join("")}
       <path class="chart-line" d="${path}"/>${dots}</svg>`;
@@ -696,34 +830,34 @@
     if (view.main) latest[view.main.tool] = view.main;
     view.others.forEach((x) => { latest[x.tool] = x; });
     const listed = (detail.order || []).map((tool) => detail.tools.find((x) => x.name === tool)).filter((tool) => tool && (tool.connected || latest[tool.name]));
-    const statusOf = (x) => (x.verdict === "suspect" || x.status === "suspect" ? status("warn", t("Suspect result")) : x.verdict === "unverifiable" ? `<span class="small sec" data-tip="${esc(t("No earlier check with this tool, and nothing from the engine's own tool to compare with."))}" tabindex="0">${t("Unverified")}</span>` : status("good", t("OK")));
+    const statusOf = (x) => (x.verdict === "suspect" || x.status === "suspect" ? status("warn", t("Suspect result")) : x.verdict === "unverifiable" ? `<span class="small sec" data-tip="${esc(t("First check with this tool, and no engine data to compare."))}" tabindex="0">${t("Unverified")}</span>` : okMark());
     const toolRows = listed.map((tool) => {
       const x = latest[tool.name];
       const low = tool.left !== null && tool.left < 10;
       const canRun = tool.connected && tool.engines.includes(e);
       const empty = tool.left !== null && tool.left < Math.max(1, tool.credits_per_search) && !tool.paid_on;
       const elsewhere = !x && view.away.find((a) => a.tool === tool.name);
-      const button = !canRun ? `<span class="small muted">${t("Not connected")}</span>` : `<button class="btn btn-small" data-kwr-check="${esc(tool.name)}" data-low="${low ? tool.left : ""}" ${mine(K.run) || empty ? "disabled" : ""} ${empty ? `data-tip="${esc(t("No free checks left on this tool."))}"` : ""}>${t("Refresh")}</button>${tool.left === null ? "" : `<span class="second">${num(tool.left)} ${t("left")}</span>`}`;
+      const button = !canRun ? `<span class="small muted">${t("Not connected")}</span>` : `<button class="btn btn-small" data-kwr-check="${esc(tool.name)}" data-low="${low ? tool.left : ""}" ${mine(K.run) || empty ? "disabled" : ""} ${empty ? `data-tip="${esc(t("No free checks left."))}"` : ""}>${t("Refresh")}</button>${tool.left === null ? "" : `<span class="second">${num(tool.left)} ${t("left")}</span>`}`;
       return `<tr><td class="nowrap">${logo(tool.name, 16)} ${esc(t(tool.name))}</td><td>${x ? posBadge(x) : '<span class="muted">—</span>'}</td><td class="sec small nowrap">${x ? age(x.age_days) : elsewhere ? age(elsewhere.age_days) : t("never")}</td><td>${x ? statusOf(x) : elsewhere ? `<span class="small sec">${t("Another location")}</span>` : ""}</td><td class="r">${button}</td></tr>`;
     }).join("");
     const suspects = view.suspects.map((x) => `<tr><td class="nowrap">${logo(x.tool, 16)} ${esc(t(x.tool))}</td><td>${posBadge(x)}</td><td class="sec small nowrap">${age(x.age_days)}</td><td>${status("warn", t("Suspect result"))}</td><td></td></tr>`).join("");
     const away = view.away.length
-      ? `<table class="mini"><tbody>${view.away.map((x) => `<tr><td>${esc(t(x.tool))} · ${esc(UI.countryName(x.location) || x.location || "?")}</td><td>${posBadge(x)}</td><td class="sec small nowrap">${age(x.age_days)}</td><td class="sec small">${t("Not compared with")} ${esc(place)}</td></tr>`).join("")}</tbody></table>`
+      ? `<table class="mini"><tbody>${view.away.map((x) => `<tr><td>${logoMark(x.tool, t(x.tool))} ${esc(UI.countryName(x.location) || x.location || "?")}</td><td>${posBadge(x)}</td><td class="sec small nowrap">${age(x.age_days)}</td></tr>`).join("")}</tbody></table>`
       : `<p class="small muted">${t("None yet")}</p>`;
     const lines = detail.lines;
     const wanted = info.line || (view.main ? lineKey(view.main) : lines[0] ? lineKey(lines[0]) : null);
     const shownLine = lines.find((x) => lineKey(x) === wanted) || lines[0];
     const picker = lines.length > 1 ? `<select class="select" id="kwr-line" aria-label="${t("Tool")}" style="margin-bottom:6px;width:100%">${lines.map((x) => `<option value="${esc(lineKey(x))}" ${x === shownLine ? "selected" : ""}>${esc(t(x.tool))} · ${esc(UI.countryName(x.location) || x.location || "?")} · ${t("Top")} ${x.depth}</option>`).join("")}</select>` : "";
     const history = !shownLine ? `<p class="small muted">${t("None yet")}</p>` : info.table
-      ? `<table class="mini"><thead><tr><th>${t("Date")}</th><th>${t("Position")}</th><th>${t("Status")}</th></tr></thead><tbody>${shownLine.points.map((p) => `<tr><td>${esc(UI.fmtDateOnly(p.at.slice(0, 10)))}</td><td>${p.p ? `#${p.p}` : `&gt;${shownLine.depth}`}</td><td>${p.suspect ? status("warn", t("Suspect result")) : status("good", t("OK"))}</td></tr>`).join("")}</tbody></table>`
+      ? `<table class="mini"><thead><tr><th>${t("Date")}</th><th>${t("Position")}</th><th>${t("Status")}</th></tr></thead><tbody>${shownLine.points.map((p) => `<tr><td>${esc(UI.fmtDateOnly(p.at.slice(0, 10)))}</td><td>${p.p ? `#${p.p}` : p.suspect ? `<span data-tip="${esc(t(UNSURE))}" tabindex="0">?</span>` : `&gt;${shownLine.depth}`}</td><td>${p.suspect ? status("warn", t("Suspect result")) : okMark()}</td></tr>`).join("")}</tbody></table>`
       : chart(shownLine);
     const hasSuspect = shownLine?.points.some((p) => p.suspect);
     const competitors = detail.competitors.length
-      ? `<table class="mini"><thead><tr><th scope="col">${t("Position")}</th><th scope="col">${t("Site")}</th><th scope="col" class="r">${t("Change")}</th></tr></thead><tbody>${detail.competitors.slice(0, 20).map((c) => `<tr><td class="pos" style="width:40px">#${c.position}</td><td class="mono small" dir="auto">${c.mine ? `<b>${esc(c.host)}</b> <span class="who who-you"><i class="pt-key pt-key-you" aria-hidden="true"></i><span>${t("You")}</span></span>` : esc(c.host)}${c.rival ? ` <span class="who who-them"><i class="pt-key pt-key-them" aria-hidden="true"></i><span>${t("Competitor")}</span></span>` : ""}</td><td class="r">${c.change ? `<span class="chg ${c.change > 0 ? "good" : "crit"}">${icon(c.change > 0 ? "arrow-up" : "arrow-down")}${Math.abs(c.change)}</span>` : '<span class="muted">—</span>'}</td></tr>`).join("")}</tbody></table>`
+      ? `<table class="mini"><thead><tr><th scope="col">${t("Position")}</th><th scope="col">${t("Site")}</th><th scope="col" class="r">${t("Change")}</th></tr></thead><tbody>${detail.competitors.slice(0, 20).map((c) => `<tr><td class="pos" style="width:40px">#${c.position}</td><td class="mono small" dir="auto">${c.hidden ? `<span class="muted">${t("Hidden by Google")}</span>` : c.mine ? `<b>${esc(c.host)}</b> <span class="who who-you"><i class="pt-key pt-key-you" aria-hidden="true"></i><span>${t("You")}</span></span>` : esc(c.host)}${c.rival ? ` <span class="who who-them"><i class="pt-key pt-key-them" aria-hidden="true"></i><span>${t("Competitor")}</span></span>` : ""}</td><td class="r">${c.change ? `<span class="chg ${c.change > 0 ? "good" : "crit"}">${icon(c.change > 0 ? "arrow-up" : "arrow-down")}${Math.abs(c.change)}</span>` : '<span class="muted">—</span>'}</td></tr>`).join("")}</tbody></table>`
       : `<p class="small muted">${t("None yet")}</p>`;
     const checks = detail.checks.length
-      ? `<table class="mini"><thead><tr><th>${t("Date")}</th><th>${t("Tool")}</th><th>${t("Position")}</th><th>${t("Status")}</th></tr></thead><tbody>${detail.checks.slice(0, 30).map((c) => `<tr><td class="nowrap small">${esc(UI.fmtDateOnly(c.checked_at.slice(0, 10)))}</td><td class="small">${esc(t(c.tool))}<span class="second">${esc(c.location || "—")} · ${t("Top")} ${c.depth}</span></td><td>${c.status === "failed" ? "—" : c.p ? `#${c.p}` : `&gt;${c.depth}`}</td><td>${c.status === "failed" ? `<span class="crit small" data-tip="${esc(c.error || "")}" tabindex="0">${t("Failed")}</span>` : c.status === "suspect" ? status("warn", t("Suspect result")) : status("good", t("OK"))}</td></tr>`).join("")}</tbody></table>`
-      : `<p class="small muted">${t("Not checked yet")}</p>`;
+      ? `<table class="mini"><thead><tr><th>${t("Date")}</th><th>${t("Tool")}</th><th>${t("Position")}</th><th>${t("Status")}</th></tr></thead><tbody>${detail.checks.slice(0, 30).map((c) => `<tr><td class="nowrap small">${esc(UI.fmtDateOnly(c.checked_at.slice(0, 10)))}</td><td class="small">${logoMark(c.tool, t(c.tool))}<span class="second">${esc(c.location || "—")} · ${t("Top")} ${c.depth}</span></td><td>${c.status === "failed" ? "—" : c.p ? `#${c.p}` : c.status === "suspect" ? `<span data-tip="${esc(t(UNSURE))}" tabindex="0">?</span>` : `&gt;${c.depth}`}</td><td>${c.status === "failed" ? `<span class="crit small" data-tip="${esc(c.error || "")}" tabindex="0">${t("Failed")}</span>` : c.status === "suspect" ? status("warn", t("Suspect result")) : okMark()}</td></tr>`).join("")}</tbody></table>`
+      : `<p class="small muted">${t("Not checked")}</p>`;
     const own = OWN_TOOL[e];
     const task = UI.taskButton ? UI.taskButton(findOf(row, e, view), { cls: "btn" }) : "";
     const scroll = $(".panel-body", $("#panel"))?.scrollTop || 0;
@@ -735,11 +869,11 @@
         </div>
         <h3>${t("Results")} · ${esc(place)}</h3>
         <table class="mini" id="tool-table"><thead><tr><th>${t("Tool")}</th><th>${t("Position")}</th><th>${t("Checked")}</th><th>${t("Status")}</th><th><span class="sr">${t("Action")}</span></th></tr></thead><tbody>${toolRows}${suspects}</tbody></table>
-        ${view.main && !view.main.p ? `<p style="margin-top:8px"><button class="link-btn" data-kwr-deeper="${esc(row.id)}" data-engine-id="${e}">${t("Check deeper")}</button></p>` : ""}
-        <h3>${t("Other locations")}</h3>
+        ${notRanked(view) ? `<p style="margin-top:8px"><button class="link-btn" data-kwr-deeper="${esc(row.id)}" data-engine-id="${e}">${t("Check deeper")}</button></p>` : ""}
+        <h3>${t("Other locations")}${view.away.length ? ` · ${t("not compared with")} ${esc(place)}` : ""}</h3>
         ${away}
-        <h3>${t("Position over time")} ${shownLine ? `<button class="link-btn end" id="kwr-chart-toggle">${t(info.table ? "Chart view" : "Table view")}</button>` : ""}</h3>
-        <p class="small muted" style="margin-bottom:6px">${t("1 at the top; each dot is one real check")}${hasSuspect ? ` ${t("Hollow dots are suspect results, left out of Change.")}` : ""}</p>
+        <h3>${t("Position history")} ${shownLine ? `<button class="link-btn end" id="kwr-chart-toggle">${t(info.table ? "Chart" : "Table")}</button>` : ""}</h3>
+        <p class="small muted" style="margin-bottom:6px">${t("1 = top. One dot per check.")}${hasSuspect ? ` ${t("Hollow dots: suspect, left out of Change.")}` : ""}</p>
         ${picker}${history}
         <h3>${t("Competitors on this page")}</h3>
         ${competitors}
@@ -755,7 +889,7 @@
 
   function findOf(row, e, view) {
     const p = view.main?.p, c = view.change, engine = name(e);
-    const title = c && p ? `${row.keyword} ${t(c < 0 ? "fell" : "rose")} #${p + c} → #${p} ${t("on")} ${engine}` : p ? `${row.keyword} ${t("is at")} #${p} ${t("on")} ${engine}` : `${row.keyword}: ${t("not in the results checked on")} ${engine}`;
+    const title = c && p ? `${row.keyword} ${t(c < 0 ? "fell" : "rose")} #${p + c} → #${p} ${t("on")} ${engine}` : p ? `${row.keyword} ${t("is at")} #${p} ${t("on")} ${engine}` : `${row.keyword}: ${t("not found on")} ${engine}`;
     const facts = [p ? `#${p} · ${view.main.tool} · ${age(view.main.age_days)}` : "", row.page || ""].filter(Boolean);
     // The task starts linked to this keyword and its page, and its link opens this keyword again (the address keeps it).
     return { title, host: row.site, keywords: [row.keyword], pages: row.page ? [row.page] : [], source: { type: "keyword", label: `${row.keyword} · ${engine}`, host: row.site, facts, link: `#keywords?site=${encodeURIComponent(row.site)}&kw=${encodeURIComponent(row.id)}`, key: `keyword|${row.site_id}|${row.keyword_id}|${e}` } };
@@ -792,7 +926,7 @@
 
   async function forget() {
     const info = K.panel, row = rowById(info.id);
-    if (!window.confirm(t("Stop tracking this keyword on this site? Its past checks stay."))) return;
+    if (!window.confirm(t("Stop tracking this keyword here? Past checks stay."))) return;
     try {
       await api("DELETE", `rankings/${info.keywordId}?site_id=${info.siteId}`);
     } catch (err) { UI.toast(t(err.message), { kind: "crit" }); return; }
@@ -810,11 +944,11 @@
       const tool = c.group === "serp" ? toolOf(c) : null;
       if (!tool) return "";
       const error = tool.last_error && !window.FIX ? `<p class="note warn" style="margin:0 0 12px">${icon("triangle-alert")}<span dir="auto">${esc(translateSentences(tool.last_error))}</span></p>` : "";
-      if (!tool.paid_per) return error + (tool.auth === "key" || tool.auth === "key+zone" ? `<p class="help" style="margin:0 0 12px">${t("No pay-as-you-go price, so paid use can't be switched on.")}</p>` : "");
-      return `${error}<label class="opt" style="margin:0 0 4px"><input type="checkbox" class="chk" style="margin:0" id="kwr-paid-on" data-tool="${esc(tool.name)}" ${tool.paid_on ? "checked" : ""}>${t("Allow paid use")}</label><p class="help" style="margin:0 0 12px">${t("Off until you switch it on. Refresh still uses free credits first, and each run asks for its own limit.")}</p>`;
+      if (!tool.paid_per) return error + (tool.auth === "key" || tool.auth === "key+zone" ? `<p class="help" style="margin:0 0 12px">${t("No pay-as-you-go price: paid use unavailable.")}</p>` : "");
+      return `${error}<label class="opt" style="margin:0 0 4px"><input type="checkbox" class="chk" style="margin:0" id="kwr-paid-on" data-tool="${esc(tool.name)}" ${tool.paid_on ? "checked" : ""}>${t("Allow paid use")}</label><p class="help" style="margin:0 0 12px">${t("Refresh still uses free credits first; each run asks its own limit.")}</p>`;
     },
     /* The order is per engine, so the list says which engine it's showing. */
-    orderPicker: () => `<span class="seg" role="group" aria-label="${t("Order for")}" style="margin-left:auto">${ENGINES.map(([id, label]) => `<button type="button" data-kwr-order="${id}" aria-pressed="${K.orderEngine === id}">${label}</button>`).join("")}</span>${K.aiFirst?.[K.orderEngine]?.length && K.aiFirstWhy ? `<p class="small sec kwr-ai-first" style="flex-basis:100%;margin:6px 0 0">${icon("sparkles")} ${esc(t(K.aiFirstWhy))}</p>` : ""}`,
+    orderPicker: () => `<span class="seg" role="group" aria-label="${t("Order for")}" style="margin-left:auto">${ENGINES.map(([id, label]) => `<button type="button" data-kwr-order="${id}" aria-pressed="${K.orderEngine === id}">${label}</button>`).join("")}</span>${K.aiFirst?.[K.orderEngine]?.length && K.aiFirstWhy ? `<p class="small sec kwr-ai-first" style="flex-basis:100%;margin:6px 0 0">${icon("sparkles")} ${esc(t(K.aiFirstWhy))}${UI.tip("SerpApi goes first for Google while it has free searches: it is the only tool that reads AI Overviews.")}</p>` : ""}`,
     openRefresh,
     wanted: () => { if (K.stale && !K.loading) load(); },
     commands: () => { if (!K.data && !K.loading) load(); return commandRows(); },
@@ -856,8 +990,8 @@
     try {
       const answer = await api("POST", `tools/${encodeURIComponent(c.tool)}/test`);
       if (answer.ok === true) $("#conn-fix")?.remove();
-      UI.setHTML(box, answer.ok === true ? status("good", `${t(answer.message)}${answer.searches_left === null || answer.searches_left === undefined ? "" : ` ${num(answer.searches_left)} ${t("left")}`}`) : answer.ok === false ? `<span class="error" style="margin:0">${icon("octagon-alert")}${esc(t(answer.message))}</span>${fixFor(c, answer.message)}` : `<span class="note inline-note">${icon("info")}<span>${esc(t(answer.message))}</span></span>`);
-    } catch (err) { UI.setHTML(box, `<span class="error" style="margin:0">${icon("octagon-alert")}${esc(t(err.message))}</span>${fixFor(c, err.message)}`); }
+      UI.setHTML(box, answer.ok === true ? status("good", `${t(answer.message)}${answer.searches_left === null || answer.searches_left === undefined ? "" : ` ${num(answer.searches_left)} ${t("left")}`}`) : answer.ok === false ? `<span class="error" style="margin:0">${icon("octagon-alert")}${UI.errorHtml ? UI.errorHtml(answer.message) : esc(t(answer.message))}</span>${fixFor(c, answer.message)}` : `<span class="note inline-note">${icon("info")}<span>${esc(t(answer.message))}</span></span>`);
+    } catch (err) { UI.setHTML(box, `<span class="error" style="margin:0">${icon("octagon-alert")}${UI.errorHtml ? UI.errorHtml(err) : esc(t(err.message))}</span>${fixFor(c, err.message)}`); }
     button.disabled = false;
   }
   // Under a failed Test, what to do about it. It takes the place of the advice at the top of the panel.
@@ -918,7 +1052,14 @@
       }
       if (hit("#kwr-refresh")) { openRefresh(K.selected.size ? idsOfSelected() : filtered().map((row) => row.keyword_id)); return; }
       if (hit("#kwr-sel-refresh")) { openRefresh(idsOfSelected()); return; }
-      if (hit("#kwr-sel-clear")) { K.selected.clear(); UI.render({ keepScroll: true }); return; }
+      if (hit("#kwr-sel-clear")) { K.selected.clear(); K.allPages = false; UI.render({ keepScroll: true }); return; }
+      if (hit("#kwr-sel-all")) {
+        K.allPages = true;
+        TP.view(KW_PAGES, filtered()).list.forEach((row) => K.selected.add(row.id)); // every page of this list, with its column filters
+        UI.render({ keepScroll: true });
+        $("#kwr-sel-refresh")?.focus({ preventScroll: true });
+        return;
+      }
       if (hit("#kwr-sel-task")) {
         const picked = [...K.selected].map(rowById).filter(Boolean);
         UI.openTask({ title: `${t("Keywords")}: ${picked.slice(0, 3).map((r) => r.keyword).join(", ")}${picked.length > 3 ? ` +${picked.length - 3}` : ""}`, opener: hit("#kwr-sel-task"), source: { type: "keyword", label: `${num(picked.length)} ${t("keywords")}`, facts: picked.slice(0, 10).map((r) => r.keyword), link: "#keywords" } });
@@ -928,11 +1069,8 @@
       if ((el = hit("#kwr-add-save"))) { saveKeywords(el); return; }
       if ((el = hit("[data-kwr-follow]"))) { addPanel(el, el.dataset.kwrFollow, el.dataset.siteHost); return; }
       if ((el = hit("[data-kwr-open]"))) { openKeyword(el.dataset.kwrOpen, el); return; }
-      if ((el = hit("[data-kwr-deeper]"))) {
-        const row = rowById(el.dataset.kwrDeeper), now = row.engines[el.dataset.engineId].main?.depth || 10, next = [20, 30, 50].find((d) => d > now) || 50;
-        openRefresh([row.keyword_id], [el.dataset.engineId], next);
-        return;
-      }
+      if ((el = hit("[data-kwr-deeper]"))) { checkDeeper(rowById(el.dataset.kwrDeeper), el.dataset.engineId); return; }
+      if (hit("#kwr-deeper-all") && K.refresh?.deeper) { K.refresh.deeper.all = true; renderRefresh(); ($("#kwr-tool-list .chk:checked") || $("#kwr-tool-list .chk"))?.focus(); return; }
       if ((el = hit("[data-kwr-check]"))) { recheck(el); return; }
       if (hit("#kwr-forget")) { forget(); return; }
       if (hit("#kwr-chart-toggle")) { K.panel.table = !K.panel.table; paintPanel(K.panel); $("#kwr-chart-toggle")?.focus(); return; }
@@ -974,6 +1112,8 @@
       // Another page, another size or a search draws the screen again; the helper puts the focus back where it was.
       TP.on(KW_PAGES, () => UI.render({ keepScroll: true }));
       TP.on(Q_PAGES, () => UI.render({ keepScroll: true }));
+      // Add a note in the bar (table-tools.js) writes one per picked keyword, on other pages too.
+      window.TT?.ownSource?.("kwr-selbar", () => [KW_PAGES, [...K.selected].map(rowById).filter(Boolean)]);
       if (state.route === "keywords" || state.route === "settings") load(); // otherwise when Keywords, Settings or ⌘K first needs it (F17)
       // A Refresh started before a reload, or by a colleague, still shows.
       api("GET", "refresh/runs").then((answer) => { if (answer.runs[0] && !K.run) follow(answer.runs[0]); }).catch(() => {});

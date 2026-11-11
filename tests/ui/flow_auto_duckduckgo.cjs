@@ -1,7 +1,7 @@
 // DuckDuckGo positions come by themselves now (owner, 2026-11-11): Refresh data starts a free DuckDuckGo check, the
 // Keywords tray follows it as "Automatic DuckDuckGo check", and the DuckDuckGo note says so. Made-up sites only.
 // Needs a demo world whose DuckDuckGo direct reads a fake DuckDuckGo page (app_server.py has no DuckDuckGo tool of its own):
-//   DB_NAME_TEST=test_autoddg_test .venv/bin/python <wrapper adding DuckDuckGo direct to tests/ui/app_server.py> --port 8273
+//   DB_NAME_TEST=test_autoddg_test .venv/bin/python tests/ui/ddg_app_server.py --port 8273
 const { open, menu } = require("./pw.cjs");
 const fs = require("fs");
 const path = require("path");
@@ -19,13 +19,15 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   const until = async (test, ms = 90000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await test()) return true; await page.waitForTimeout(700); } return false; };
   const ddgPositions = async () => ((await call("GET", "rankings")).rows || []).map((r) => r.engines?.duckduckgo?.main).filter((m) => m && m.status === "ok");
   const textOf = async (sel) => { const el = await page.$(sel); return el ? (await el.textContent()) || "" : ""; };
+  // Since 2026-11-11 the note is a few words, and the whole sentence is its (i) tip (UI.tip: a .def-i with data-tip).
+  const tipOf = async (sel) => { const el = await page.$(`${sel} .def-i[data-tip]`); return el ? (await el.getAttribute("data-tip")) || "" : ""; };
 
   await page.goto(BASE + "#keywords"); await settle();
   const before = await ddgPositions();
   check("no DuckDuckGo positions before", before.length === 0, before.length);
   await page.click('[data-engine="duckduckgo"]'); await settle();
-  const note = await textOf(".content .note");
-  check("the DuckDuckGo note says it's checked every day, on free searches only", /checks its positions by itself every day, oldest first, on free searches only/.test(note), note);
+  const note = await textOf(".content .note"), noteTip = await tipOf(".content .note");
+  check("the DuckDuckGo note says it's checked every day, on free searches only", /Checked daily by itself, on free searches/.test(note) && /checks its positions by itself every day, oldest first, on free searches only/.test(noteTip), `${note.trim()} | tip: ${noteTip}`);
   await page.screenshot({ path: OUT + "1-keywords-duckduckgo-note.png" });
 
   // Refresh data starts the free DuckDuckGo check, and says so. The first screen of the demo that shows the button.
@@ -70,8 +72,8 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   // French.
   await menu(page, "lang"); await settle();
   await page.click('[data-engine="duckduckgo"]').catch(() => {}); await settle();
-  const fr = await textOf(".content .note");
-  check("the note is in French too", /vérifie ses positions toute seule chaque jour/.test(fr), fr);
+  const fr = await textOf(".content .note"), frTip = await tipOf(".content .note");
+  check("the note is in French too", /Relevé chaque jour automatiquement/.test(fr) && /vérifie ses positions toute seule chaque jour/.test(frTip), `${fr.trim()} | tip: ${frTip}`);
   await page.screenshot({ path: OUT + "5-keywords-duckduckgo-fr.png" });
   await menu(page, "lang"); await settle();
 

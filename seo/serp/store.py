@@ -64,6 +64,13 @@ def host_and_domain(url: str) -> tuple[str, str]:
     return host, root_domain(host) or host
 
 
+def site_of(found) -> tuple[str, str]:
+    """(host, domain) of a result. One whose link Google hid has no address, only the site it showed under the title."""
+    if found.url:
+        return host_and_domain(found.url)
+    return host_and_domain(f"https://{found.host}/") if getattr(found, "host", "") else ("", "")
+
+
 def on_host(host: str, site_host: str) -> bool:
     """An address is on a site if it's that host or a subdomain of it, whichever way either is spelled."""
     host, site_host = to_ascii_host(host), to_ascii_host(site_host)
@@ -101,7 +108,7 @@ def save_check(engine: Engine, keyword_id: int, engine_name: str, answer: Answer
             {"t": target, "tool": answer.tool, "loc": answer.real_location, "depth": answer.depth, "status": status, "ai": answer.ai_state, "trig": trigger, "at": at},
         ).lastrowid
         for found in answer.results:
-            host, domain = host_and_domain(found.url)
+            host, domain = site_of(found)  # a hidden result is saved with its site and an empty address
             if not host:
                 continue
             conn.execute(
@@ -159,6 +166,10 @@ class Check:
             if on_host(row.host, site_host):
                 return row
         return None
+
+    def unnamed_on(self, site_host: str) -> bool:
+        """A result on this site whose address Google didn't give: any page of the site may be that one."""
+        return any(not row.url and on_host(row.host, site_host) for row in self.results)
 
     def cites(self, site_host: str) -> bool:
         return any(on_host(row.host, site_host) for row in self.citations)

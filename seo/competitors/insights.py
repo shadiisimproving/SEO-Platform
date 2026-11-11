@@ -399,13 +399,13 @@ def _best_pages(conn, site_id: int, competitor_id: int, my_host: str, host: str,
     by_url: dict[str, dict] = {}
     for check in store.one_per_keyword(checks):
         found, mine = check.best_on(host), check.best_on(my_host)
-        if found is None:
+        if found is None or not found.url:  # Google didn't give that page's address: it can't count for any page of theirs
             continue
         key = history.page_key(found.url)
         row = by_url.setdefault(key, {"url": found.url, "title": titles.get(key) or found.title or None, "keywords": 0, "best_position": found.position, "my_url": None, "my_title": None, "pair_id": None})
         row["keywords"] += 1
         row["best_position"] = min(row["best_position"], found.position)
-        if mine is not None and row["my_url"] is None:
+        if mine is not None and mine.url and row["my_url"] is None:
             row["my_url"] = mine.url
     for key, row in by_url.items():
         pair = paired.get(key)
@@ -421,7 +421,7 @@ def _cannibal(past: list[store.Check], host: str) -> dict[str, int]:
     urls: dict[str, set[str]] = defaultdict(set)
     for check in past:
         found = check.best_on(host)
-        if found is not None:
+        if found is not None and found.url:  # a result with no address is no page at all, never "another page"
             urls[check.keyword].add(history.page_key(found.url))
     return {keyword: len(found) for keyword, found in urls.items() if len(found) > 1}
 

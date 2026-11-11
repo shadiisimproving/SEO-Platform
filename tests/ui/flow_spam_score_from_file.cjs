@@ -23,6 +23,9 @@ fs.writeFileSync(FILE, "﻿" + [
 
 (async () => {
   const { browser, page, problems } = await open({ width: 1440, height: 950 });
+  // The test server runs with no login, so /api/auth/me answers 404 (asked before the upload, for its token). Any other failed request counts.
+  const failed = [];
+  page.on("response", (r) => { if (r.status() >= 400 && !r.url().includes("/api/auth/me")) failed.push(`${r.status()} ${r.url()}`); });
   await page.goto(BASE + "#competitors/gaps"); await page.waitForSelector("#cg-table", { timeout: 20000 }); await page.waitForTimeout(600);
   await page.click("#cg-upload");
   await page.waitForSelector("#cg-up-file");
@@ -54,7 +57,8 @@ fs.writeFileSync(FILE, "﻿" + [
   const none = await row("lucky-casino.example");
   check("no score in the file: the system flags it and says so", none && none.disabled && none.tips.includes("Flagged by the system") && /Spam words in name/.test(none.text), none && `${none.text} | tips: ${none.tips}`);
   await page.screenshot({ path: OUT + "4-system.png" });
-  check("no errors in the page", problems.length === 0, problems.join(" | "));
+  const real = problems.filter((p) => !/Failed to load resource: the server responded with a status of 404/.test(p) || failed.length);
+  check("no errors in the page", real.length === 0 && failed.length === 0, [...real, ...failed].join(" | "));
   await browser.close();
   console.log(bad ? `${bad} FAILED` : "ALL PASS");
   process.exit(bad ? 1 : 0);

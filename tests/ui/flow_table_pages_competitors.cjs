@@ -76,8 +76,11 @@ async function longer(page, pattern, change) {
     await page.goto(BASE + "#competitors/summary"); await page.waitForSelector("#cs-rivals-table tbody tr", { timeout: 20000 }); await settle(2500);
     const rivalsTotal = Number((await range("cs-rivals")).match(/of (\d+)/)?.[1] || 0);
 
-    // Competitors table
-    check("S1. competitors: 25 on the first page", (await rows("#cs-rivals-table")) === 25, await rows("#cs-rivals-table"));
+    // Competitors table. Since 2026-11-11 my own sites' "You" rows are pinned above the competitors, outside the pages.
+    const rivalRows = () => page.locator("#cs-rivals-table > tbody > tr:not(.cs-you-row)").count();
+    const youRows = () => page.locator("#cs-rivals-table > tbody > tr.cs-you-row").count();
+    const mine = await youRows();
+    check("S1. competitors: 25 on the first page, my own sites' You rows on top of them", (await rivalRows()) === 25 && mine >= 1 && (await page.locator("#cs-rivals-table > tbody > tr").first().evaluate((tr) => tr.classList.contains("cs-you-row"))), `${await rivalRows()} competitors, ${mine} You rows`);
     check("S1. competitors: the real total", rivalsTotal >= 60 && /^1–25 of \d+ competitors$/.test(await range("cs-rivals")), await range("cs-rivals"));
     await next("cs-rivals");
     check("S1. competitors: Next shows 26–50", /^26–50 of /.test(await range("cs-rivals")), await range("cs-rivals"));
@@ -85,14 +88,14 @@ async function longer(page, pattern, change) {
     await page.locator(`${foot("cs-rivals")} .tp-num`).filter({ hasText: /^3$/ }).click(); await settle();
     check("S1. competitors: page 3 holds the rest", /^51–/.test(await range("cs-rivals")) && (await focusIs(() => document.activeElement?.getAttribute("aria-current") === "page")), await range("cs-rivals"));
     await page.selectOption(`${foot("cs-rivals")} [data-tp-per]`, "100"); await settle();
-    check("S1. competitors: 100 a page shows them all", (await rows("#cs-rivals-table")) === rivalsTotal && !(await page.$(`${foot("cs-rivals")} .tp-pager`)) && (await focusIs(() => document.activeElement?.hasAttribute("data-tp-per"))));
+    check("S1. competitors: 100 a page shows them all, the You rows still once", (await rivalRows()) === rivalsTotal && (await youRows()) === mine && !(await page.$(`${foot("cs-rivals")} .tp-pager`)) && (await focusIs(() => document.activeElement?.hasAttribute("data-tp-per"))), `${await rivalRows()} of ${rivalsTotal}, ${await youRows()} You rows`);
     await page.selectOption(`${foot("cs-rivals")} [data-tp-per]`, "25"); await settle();
     await next("cs-rivals");
     await page.click("#cs-find"); await page.keyboard.type("rival-1", { delay: 30 }); await settle(900);
     check("S1. competitors: a search goes back to page 1 and keeps the focus", /^1–11 of 11 competitors$/.test(await range("cs-rivals")) && (await focusIs(() => document.activeElement?.id === "cs-find")), await range("cs-rivals"));
     await page.fill("#cs-find", ""); await settle(700);
     await page.click('[data-cs-sort="ranks"]'); await settle();
-    const ranks = await all("#cs-rivals-table tbody tr", (r) => r.slice(0, 6).map((x) => Number(x.querySelector('td[data-label="Ranks on your keywords"]')?.textContent.replace(/\D/g, "")) || 0));
+    const ranks = await all("#cs-rivals-table tbody tr[data-cs-row]", (r) => r.slice(0, 6).map((x) => Number(x.querySelector('td[data-label="Ranks on your keywords"]')?.textContent.replace(/\D/g, "")) || 0));
     check("S1. competitors: sorting by Ranks puts the most first, on page 1", ranks.every((n, i) => !i || ranks[i - 1] >= n) && /^1–25/.test(await range("cs-rivals")), JSON.stringify(ranks));
     check("S1. competitors: the sorted heading says so", await one('[data-cs-sort="ranks"]', (b) => b.classList.contains("on") && b.closest("th").getAttribute("aria-sort") === "descending"));
     await shot("#cs-rivals", "s1-competitors.png");

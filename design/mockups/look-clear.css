@@ -67,6 +67,12 @@
 [data-look="clear"] .tile .spark-line { stroke: var(--c); }
 [data-look="clear"] .tile .spark-dot { fill: var(--c); }
 [data-look="clear"] .tile .spark-area { fill: var(--c-pale); }
+/* The simpler screens' number card (UI.card, screen-parts.css) takes the same colours, on its small graph instead of an icon
+   square. Counted among the cards only, so a heading beside them doesn't shift the colours. Off with the switch off. */
+[data-look="clear"][data-simple="1"] .ncard { --c: var(--c-blue); --c-pale: var(--c-blue-pale); }
+[data-look="clear"][data-simple="1"] .ncard:nth-child(4n+2 of .ncard) { --c: var(--c-purple); --c-pale: var(--c-purple-pale); }
+[data-look="clear"][data-simple="1"] .ncard:nth-child(4n+3 of .ncard) { --c: var(--c-teal); --c-pale: var(--c-teal-pale); }
+[data-look="clear"][data-simple="1"] .ncard:nth-child(4n+4 of .ncard) { --c: var(--c-indigo); --c-pale: var(--c-indigo-pale); }
 /* In a table the small trend lines stay quiet: the numbers beside them matter more. */
 [data-look="clear"] .data .spark-line { stroke: var(--muted); }
 [data-look="clear"] .data .spark-dot { fill: var(--muted); }

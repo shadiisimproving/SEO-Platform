@@ -16,6 +16,7 @@ from seo.core.errors import Conflict, NotFound, Refused
 from seo.competitors.keywords import _iso, latest_run, require_own
 from seo.links import service as sites
 from seo.serp import store
+from seo.serp.tools import google_redirect
 from seo.worker import queue
 
 NEW_DAYS = 7
@@ -81,7 +82,9 @@ def suggestions(engine: Engine, site_id: int) -> dict:
         ).all())
         new_after = conn.execute(text("SELECT UTC_TIMESTAMP(3) - INTERVAL :d DAY"), {"d": NEW_DAYS}).scalar()
 
-    checks = store.latest_checks(engine, site_id)
+    # A check saved before 2026-11-11 from Google's hidden links filed them under google.com: it can't say who ranks, and
+    # would make google.com the top suggestion. scripts/mark_hidden_google_links.py marks those suspect; until then, skipped.
+    checks = [check for check in store.latest_checks(engine, site_id) if not any(google_redirect(row.url) for row in check.results)]
     checked = {check.keyword_id for check in checks}
     seen: dict[str, dict] = {}
     engine_rank = {name: i for i, name in enumerate(store.ENGINE_ORDER)}

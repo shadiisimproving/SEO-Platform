@@ -1,4 +1,7 @@
 // To do, the whole way: In consideration, ticked, moved, an article, exported, sent, placed, in Done. On the real app, with reloads.
+// On a fresh demo world each run (its made-up links stay behind and are skipped as duplicates the second time):
+//   DB_NAME_TEST=<your>_test .venv/bin/python tests/ui/app_server.py --port 8235
+//   node tests/ui/flow_backlink_todo.cjs http://127.0.0.1:8235/
 const { open } = require("./pw.cjs");
 const path = require("path"), fs = require("fs");
 const BASE = process.argv[2] || "http://127.0.0.1:8235/";
@@ -138,6 +141,8 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   check("gone from To do", (await row("alpha-blog").count()) === 0);
   check("Done went up by one", (await tabCount("done")) === doneBefore + 1, await tabCount("done"));
   await reloadTo("all");
+  // Done's table is drawn once every site's links are in, which takes longer than the pause on a busy machine.
+  await page.waitForSelector("#bl-table tbody tr", { timeout: 20000 }).catch(() => {});
   const done = page.locator("tr", { hasText: "our-guest-post" });
   check("it's in Done after reload, with the real address", (await done.count()) >= 1);
   check("it's Live", (await done.first().innerText()).includes("Live"));

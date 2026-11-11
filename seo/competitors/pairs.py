@@ -61,6 +61,9 @@ def refresh_auto_pairs(engine: Engine, site_id: int) -> int:
     for competitor in competitors:
         together: dict[str, dict[str, set[int]]] = defaultdict(lambda: defaultdict(set))
         their_best: dict[str, int] = {}
+        # Both sites on the page, but Google didn't give one of the addresses: those pairs can't be judged, so none goes.
+        kept: set[str] = set()  # my pages beside a page of theirs with no address
+        mine_unnamed = False  # a page of mine with no address: it may be any of them
         for check in checks:
             mine = check.best_on(site["host"])
             theirs = check.best_on(competitor["host"])
@@ -70,6 +73,10 @@ def refresh_auto_pairs(engine: Engine, site_id: int) -> int:
             if my_url and their_url:
                 together[my_url][their_url].add(check.keyword_id)  # by keyword: one seen on two engines is still one
                 their_best[their_url] = min(their_best.get(their_url, 999), theirs.position)
+            elif my_url:
+                kept.add(pages.url_hash(my_url))
+            else:
+                mine_unnamed = True
         with engine.begin() as conn:
             live_hashes = set()
             for my_url, counts in together.items():
@@ -93,7 +100,7 @@ def refresh_auto_pairs(engine: Engine, site_id: int) -> int:
                 {"s": site_id, "c": competitor["id"]},
             ).mappings().all()
             for row in rows:
-                if row["my_url_hash"] not in live_hashes:
+                if row["my_url_hash"] not in live_hashes and row["my_url_hash"] not in kept and not mine_unnamed:
                     conn.execute(text("DELETE FROM page_pairs WHERE id = :i"), {"i": row["id"]})
             # A manual pair keeps its pages. Only its count follows the rankings.
             mine_chosen = conn.execute(
@@ -129,12 +136,16 @@ def _side_state(page: dict | None) -> str:
 def ranking_summary(checks, my_url: str, their_url: str) -> dict:
     """Who ranks higher, in the latest check of each keyword. Both positions always come from the same check."""
     my_key, their_key = _page_id(my_url), _page_id(their_url)
+    my_host, their_host = store.host_and_domain(my_url)[0], store.host_and_domain(their_url)[0]
     keywords, gaps = [], []
-    they_ahead = i_ahead = level = only_mine = only_theirs = 0
+    they_ahead = i_ahead = level = only_mine = only_theirs = not_known = 0
     for check in store.one_per_keyword(checks):  # a keyword checked on two engines is one keyword, and its positions aren't averaged across them
         mine = next((r for r in check.results if _page_id(r.url) == my_key), None)
         theirs = next((r for r in check.results if _page_id(r.url) == their_key), None)
         if mine is None and theirs is None:
+            continue
+        if (mine is None and check.unnamed_on(my_host)) or (theirs is None and check.unnamed_on(their_host)):
+            not_known += 1  # Google gave a page of that site without its address: it may be this one, so nothing is said
             continue
         if mine is not None and theirs is not None:
             gaps.append(mine.position - theirs.position)
@@ -153,7 +164,7 @@ def ranking_summary(checks, my_url: str, their_url: str) -> dict:
     keywords.sort(key=lambda k: (k["my_position"] is None or k["their_position"] is None, -abs((k["my_position"] or 0) - (k["their_position"] or 0)), k["keyword"]))
     return {
         "shared": len(gaps), "they_ahead": they_ahead, "i_ahead": i_ahead, "level": level, "only_mine": only_mine, "only_theirs": only_theirs,
-        "gap": round(sum(gaps) / len(gaps), 1) if gaps else None, "keywords": keywords[:5], "keywords_total": len(keywords),
+        "not_known": not_known, "gap": round(sum(gaps) / len(gaps), 1) if gaps else None, "keywords": keywords[:5], "keywords_total": len(keywords),
     }
 
 
@@ -357,6 +368,8 @@ def _keyword_rows(engine: Engine, row: dict, my_side: dict, their_side: dict) ->
         keyword = check.keyword
         captured = check.ai_state != "not_captured"  # no AI data is "not captured", never "not cited"
         # This page may be missing while another page of the same site ranks. Saying so stops ">10" reading as "the site isn't there".
+        # An "other" with an empty address is a page of that site whose address Google didn't give: it may be this very page,
+        # so the side is unknown (my_unknown, their_unknown), never "only theirs".
         my_other = check.best_on(row["my_host"]) if mine is None else None
         their_other = check.best_on(row["their_host"]) if theirs is None else None
         rows.append({
@@ -364,6 +377,7 @@ def _keyword_rows(engine: Engine, row: dict, my_side: dict, their_side: dict) ->
             "checked_at": _iso(check.checked_at), "my_position": mine.position if mine else None, "their_position": theirs.position if theirs else None,
             "my_other": {"url": my_other.url, "position": my_other.position} if my_other else None,
             "their_other": {"url": their_other.url, "position": their_other.position} if their_other else None,
+            "my_unknown": mine is None and check.unnamed_on(row["my_host"]), "their_unknown": theirs is None and check.unnamed_on(row["their_host"]),
             "ai_state": check.ai_state,
             "ai_cites_me": any(_page_id(c.url) == my_key for c in check.citations) if captured else None,
             "ai_cites_them": any(_page_id(c.url) == their_key for c in check.citations) if captured else None,

@@ -1,7 +1,7 @@
 // DuckDuckGo blocks the hosting server, as it did live on 2026-11-11: DuckDuckGo direct meets a bot check, and the next
 // Refresh data goes to Bright Data's free credits instead, never to SerpApi. Made-up sites only.
 // Needs a demo world where DuckDuckGo answers DuckDuckGo direct with its bot check and Bright Data reads its HTML page:
-//   DDG_BLOCKED=1 DB_NAME_TEST=test_autoddg_test .venv/bin/python <wrapper adding the DuckDuckGo tools to tests/ui/app_server.py> --port 8273
+//   DDG_BLOCKED=1 DB_NAME_TEST=test_autoddg_test .venv/bin/python tests/ui/ddg_app_server.py --port 8273
 const { open } = require("./pw.cjs");
 const fs = require("fs");
 const path = require("path");

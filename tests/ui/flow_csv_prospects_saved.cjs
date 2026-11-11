@@ -1,8 +1,12 @@
 // CSV rows added to In consideration must still be there after a reload, with their status and owner, on the real app.
+// On a fresh demo world each run (its made-up rows stay behind and are skipped as duplicates the second time):
+//   DB_NAME_TEST=<your>_test .venv/bin/python tests/ui/app_server.py --port 8231
+//   node tests/ui/flow_csv_prospects_saved.cjs http://127.0.0.1:8231/
 const { open } = require("./pw.cjs");
 const path = require("path"), fs = require("fs");
 const BASE = process.argv[2] || "http://127.0.0.1:8231/";
 const OUT = path.resolve("var/ui-csv-prospects") + "/";
+fs.mkdirSync(OUT, { recursive: true }); // var/ isn't in the repo: a fresh copy has no folder to write the test file in
 let bad = 0;
 const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ? "PASS" : "FAIL"}  ${name}${extra !== "" ? `  [${extra}]` : ""}`); };
 (async () => {

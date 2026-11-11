@@ -67,6 +67,7 @@
     const r = p.ranking;
     if (!r) return { kind: "none", text: "" };
     if (!r.shared) {
+      if (r.not_known && !r.only_theirs && !r.only_mine) return { kind: "none", text: t("Not known: Google didn't give every address") };
       if (r.only_theirs && !r.only_mine) return { kind: "behind", text: t("Only they rank") };
       if (r.only_mine && !r.only_theirs) return { kind: "ahead", text: t("Only you rank") };
       if (r.only_mine && r.only_theirs) return { kind: "level", text: t("Different keywords") };
@@ -396,7 +397,8 @@
   const noAiWords = (row) => (row.ai_state === "not_captured"
     ? `<span class="muted" data-tip="${t("The tool can't see AI Overviews. One may still exist.")}">${t("Not captured")}</span>`
     : none("No AI Overview"));
-  const otherPage = (other, word) => (other ? `<span class="second cp-other">${fill(esc(t(word)), { path: PageLink.html(other.url, { text: pathOf(other.url), cls: "mono", dir: "ltr" }), n: UI.num(other.position) })}</span>` : "");
+  // An empty address: Google showed that site there without saying which page. It may be this very page, so it's never "another page".
+  const otherPage = (other, word, unnamed) => (other ? `<span class="second cp-other">${other.url ? fill(esc(t(word)), { path: PageLink.html(other.url, { text: pathOf(other.url), cls: "mono", dir: "ltr" }), n: UI.num(other.position) }) : esc(fill(t(unnamed), { n: UI.num(other.position) }))}</span>` : "");
 
   /* Who's ahead on this one keyword. A page missing from the results isn't a loss if another page of that site ranks instead. */
   function keywordResult(r) {
@@ -406,6 +408,7 @@
       if (!gap) return { kind: "level", text: t("Same position") };
       return gap > 0 ? { kind: "behind", text: fill(t("{n} behind"), { n: places(gap) }) } : { kind: "ahead", text: fill(t("{n} ahead"), { n: places(-gap) }) };
     }
+    if ((mine === null && r.my_unknown) || (theirs === null && r.their_unknown)) return { kind: "none", text: t("Not known: Google didn't give every address") };
     if (theirs !== null) return { kind: r.my_other ? "level" : "behind", text: t("Only their page ranks") };
     if (mine !== null) return { kind: r.their_other ? "level" : "ahead", text: t("Only your page ranks") };
     return { kind: "none", text: "" };
@@ -414,9 +417,11 @@
   function keywordOrder(r) {
     const mine = r.my_position, theirs = r.their_position;
     if (mine !== null && theirs !== null) return mine === theirs ? 0 : (mine > theirs ? 1000 : -1000) + mine - theirs;
+    if ((mine === null && r.my_unknown) || (theirs === null && r.their_unknown)) return -1500; // not known: neither behind nor ahead
     return theirs !== null ? 500 : mine !== null ? -500 : -2000;
   }
-  function positionCell(position, other, depth, label) {
+  function positionCell(position, other, depth, label, unknown = false) {
+    if (position === null && unknown) return `<td class="r cp-pos" data-label="${esc(label)}"><span class="muted" data-tip="${esc(t("Google didn't give this page's address, so whether it's there isn't known."))}" tabindex="0">?</span></td>`;
     const leads = position !== null && (other === null || position < other);
     return `<td class="r cp-pos${leads ? " cp-pos-lead" : ""}" data-label="${esc(label)}">${COMP.pos(position, depth)}</td>`;
   }
@@ -427,15 +432,15 @@
     return `<tbody class="cp-kw-group">
       <tr class="cp-kw-mine">
         <td class="head-cell cp-kw-name" rowspan="2"><span class="kw" dir="auto">${esc(r.keyword)}</span>${checked}</td>
-        <td class="cp-kw-result" rowspan="2" data-label="${t("Who's ahead")}">${verdictBadge(keywordResult(r))}${otherPage(r.my_other, "Your {path} is #{n}")}${otherPage(r.their_other, "Their {path} is #{n}")}</td>
+        <td class="cp-kw-result" rowspan="2" data-label="${t("Who's ahead")}">${verdictBadge(keywordResult(r))}${otherPage(r.my_other, "Your {path} is #{n}", "A page of yours is #{n}, address not given by Google")}${otherPage(r.their_other, "Their {path} is #{n}", "A page of theirs is #{n}, address not given by Google")}</td>
         <td class="cp-kw-who">${youThemHead("mine")}</td>
-        ${positionCell(r.my_position, r.their_position, r.depth, t("Position"))}
+        ${positionCell(r.my_position, r.their_position, r.depth, t("Position"), r.my_unknown)}
         ${markCells(r.mine)}
         ${hasAi ? `<td class="cp-kw-ai" data-label="${t("AI Overview")}">${citedCell(r.ai_cites_me)}</td>` : `<td class="cp-kw-ai cp-kw-ai-none" rowspan="2" data-label="${t("AI Overview")}">${noAiWords(r)}</td>`}
       </tr>
       <tr class="cp-kw-theirs">
         <td class="cp-kw-who">${youThemHead("theirs")}</td>
-        ${positionCell(r.their_position, r.my_position, r.depth, t("Position"))}
+        ${positionCell(r.their_position, r.my_position, r.depth, t("Position"), r.their_unknown)}
         ${markCells(r.theirs)}
         ${hasAi ? `<td class="cp-kw-ai" data-label="${t("AI Overview")}">${citedCell(r.ai_cites_them)}</td>` : ""}
       </tr>
@@ -1127,6 +1132,8 @@
     "Headings ": "Sous-titres", "Page structure": "Structure de la page", "Both pages": "Les deux pages", "No headings found.": "Aucun titre trouvé.", "A tick: the keyword appears there.": "Une coche : le mot-clé y apparaît.", ">{n}: not in the top {n}.": ">{n} : hors des {n} premiers.", 
     "Their page can't be read: rankings only.": "Leur page ne peut pas être lue : positions seulement.", "Your page can't be read: rankings only.": "Votre page ne peut pas être lue : positions seulement.", "Neither page could be read: rankings only.": "Aucune des deux pages n'a pu être lue : positions seulement.", "Position": "Position", "Difference": "Différence", "Numbers": "Chiffres", "Text": "Textes", "Setup": "Configuration",
     "Your {path} is #{n}": "Votre page {path} est n°{n}", "Their {path} is #{n}": "Leur page {path} est n°{n}",
+    "A page of yours is #{n}, address not given by Google": "Une de vos pages est n°{n}, adresse non donnée par Google", "A page of theirs is #{n}, address not given by Google": "Une de leurs pages est n°{n}, adresse non donnée par Google",
+    "Not known: Google didn't give every address": "Inconnu : Google n'a pas donné toutes les adresses", "Google didn't give this page's address, so whether it's there isn't known.": "Google n'a pas donné l'adresse de cette page : on ne sait pas si elle y est.",
     "Add a pair": "Ajouter une paire",
     "Add": "Ajouter",
     "No competitors yet": "Aucun concurrent pour l'instant",

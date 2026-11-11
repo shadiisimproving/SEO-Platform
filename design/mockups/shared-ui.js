@@ -13,8 +13,56 @@
      UI.defIcon(name)                 a small (i) after a label: hover or focus shows the definition, Esc closes it.
      UI.canAdmin()                    whether the signed-in account may change admin settings (true when there's no login).
      UI.adminOnly()                   attributes for a control a Member can't use: disabled, with the reason as its tip.
+     UI.card(opts)                    one number card, the same on every screen (simpler screens). API below.
+     UI.info(text, opts)              the (i) that holds caveats, sources and how it works (simpler screens). API below.
 
-   The metric definitions are written once, here, in English and French (window.METRIC_DEFS). */
+   The metric definitions are written once, here, in English and French (window.METRIC_DEFS).
+
+   ---- The number card and the (i): the API the screens call (plan-seo-command-center-simplify-screens-like-mickaz.md, 3.2, 3.3)
+   Both are for the simpler screens. Their CSS (screen-parts.css, look-clear.css) only applies under html[data-simple="1"], so a
+   screen draws them only when UI.simple() is on, and keeps its old markup otherwise. Both return an HTML string for setHTML.
+   Words are English and go through t(). Strings marked HTML are inserted as they are: esc() anything that came from data.
+
+   UI.card({ id, label, value, format, change, sub, spark, def, info, href, button, toggle, tall, cls, attrs })
+     id      "visits"            data-card="visits" on the card: the hook screens and flows use.
+     label   "Visits"            HTML. One line, cut with "…" when long.
+     value   7921                a number, shown with `format`; a whole number counts up when the page opens.
+             null                unknown: "—" in grey, never 0 (MASTER). Say why in `sub`.
+             "<span>…</span>"    or ready HTML, such as a word ("Not set up") or UI.cnt(n).
+     format  "num"               numbers on the figure, in "before → now" and on the graph's days: "num" 1,706 / 1 706 (the
+                                 default), "dec" one decimal (8.3), "pct" one decimal and a % (4.5%), or (n) => text.
+     change  { now, before, unit, lowerIsBetter, value }
+                                 the pill beside the figure ("↑ +2% better") and "before → now" as the sub line. unit: "%" for
+                                 counts (the default), "pts" for rates, "places" for a position (lower is better by itself), ""
+                                 for the plain difference (leads). value: the change already worked out (now against before, in
+                                 that unit) when there's no `before`, as Today's server gives it. lowerIsBetter: down is better.
+     sub     "of 10 · Google"    HTML for the sub line instead of "before → now": one short fact, the reason a number is
+                                 unknown, or one .link-btn. A link, button or switch card holds no other control: text only there.
+     spark   { now: [...], before: [...], days: ["2026-10-12", ...], invert }   or just [...] (this period only)
+                                 the card's own graph: this period in the card's colour, the period before dashed grey, on one
+                                 scale. null in a list leaves a gap. invert: lower is better (position). Under 2 points: no
+                                 graph. Hover, a tap or the arrow keys read one day in the sub line ("12 Oct · 325 · before
+                                 310"); Escape, or leaving, puts the line back.
+     def     "AI lead rate"      the metric whose definition the (i) after the label shows, when the label isn't its name.
+                                 false: none. By default the label's own (UI.def), as UI.tile does.
+     info    "Graph: running total."   a caveat (or a list) for the same (i), after the definition.
+     href    "#channels"         the whole card is a link.
+     button  true                the whole card is a button: the screen handles the click through `attrs`.
+     toggle  { pressed, color }  the whole card switches a chart line: aria-pressed, a dot before the label, and when pressed
+                                 a 3 px top line in `color`, the line's series colour ("var(--ch-1)"; default the card's own).
+     tall    true                Today: a 64 px graph, with its first and last day under it.
+     cls     "tile today-num"    more classes, so the old hooks keep working during the review.
+     attrs   { "data-ov-line": "clicks", "aria-label": "…" }   more attributes, escaped; true writes the name alone.
+     A row of cards goes in the existing .tiles grid. While a new period loads, .is-updating on a parent makes the figures pulse.
+     Example: UI.card({ id: "visits", label: "Visits", value: 7921, change: { now: 7921, before: 7750 }, spark: { now, before, days } })
+
+   UI.info(text, { vars })
+     text    "Google Analytics hid some rows with few visits."   or a list, one caveat a line. "" or [] draws nothing, so a
+             screen can always call it.
+     vars    { n: 3 }            fills {n} after the translation, as UI.tip does.
+     The same mark as UI.defIcon (.def-i, a 24 px target): focusable, its words on hover, keyboard focus or a tap; Escape
+     closes them. It goes at the end of the date line and in card heads.
+     Example: `<p class="head-line">…${UI.info(["Counts only: no personal data comes into this app."])}</p>` */
 (() => {
   "use strict";
 
@@ -121,6 +169,9 @@
     "Lost track of this Refresh": "Le suivi de cette actualisation s'est arrêté", "Progress is saved. Reload to see it.": "La progression est enregistrée. Rechargez pour la voir.",
     "Search keywords": "Chercher un mot-clé", "No keyword matches.": "Aucun mot-clé ne correspond.", "Clear search": "Effacer la recherche",
     "Showing": "Affichés", "Rows per page": "Lignes par page", "Previous": "Précédent", "Next": "Suivant", "Page": "Page", "of": "sur",
+    // the number card's graph, for screen readers (UI.card)
+    "Graph of this period, with the period before dashed. The arrow keys read each day.": "Graphique de cette période, la période précédente en pointillés. Les flèches lisent chaque jour.",
+    "Graph of this period. The arrow keys read each day.": "Graphique de cette période. Les flèches lisent chaque jour.",
   };
   window.FR = window.FR || {};
   Object.keys(FR).forEach((w) => { if (window.FR[w] === undefined) window.FR[w] = FR[w]; });
@@ -243,6 +294,231 @@
     const role = () => window.BOOT?.user?.role || window.ME?.role || null;
     UI.canAdmin = () => !window.BOOT?.user || role() === "admin";
     UI.adminOnly = (why = "Only an admin can do this.") => (UI.canAdmin() ? "" : `disabled aria-disabled="true" data-tip="${esc(t(why))}" title="${esc(t(why))}"`);
+
+    /* ---- the (i) of the simpler screens: caveats, sources and how it works (API at the top of this file) ------------------ */
+    const plain = (html) => String(html ?? "").replace(/<[^>]*>/g, "").replace(/\s+/g, " ").trim();
+    const withVars = (text, vars) => {
+      let out = t(text);
+      if (vars) for (const [k, v] of Object.entries(vars)) out = out.split(`{${k}}`).join(String(v));
+      return out;
+    };
+    const sentences = (text, vars = null) => (Array.isArray(text) ? text : [text]).filter((s) => s !== null && s !== undefined && String(s).trim()).map((s) => withVars(String(s).trim(), vars));
+    UI.info = (text, { vars = null } = {}) => {
+      const words = sentences(text, vars);
+      if (!words.length) return "";
+      return `<span class="def-i info-i" role="img" tabindex="0" data-tip="${esc(words.join("\n"))}" aria-label="${esc(words.join(" "))}">${icon("info")}</span>`;
+    };
+
+    /* ---- the number card of the simpler screens (API at the top of this file) --------------------------------------------- */
+    // Its own words: another screen's French for "worse" ("pire") must not reach it. The plan says mieux and moins bien.
+    const CARD_WORDS = { better: ["better", "mieux"], worse: ["worse", "moins bien"], same: ["No change", "Sans changement"], before: ["before", "avant"], place: ["place", "place"], places: ["places", "places"], pts: ["pts", "pts"] };
+    const cardWord = (key) => CARD_WORDS[key][fr() ? 1 : 0];
+    const isNum = (v) => v !== null && v !== undefined && v !== "" && typeof v !== "boolean" && Number.isFinite(Number(v));
+    const oneDecimal = (n) => new Intl.NumberFormat(UI.locale(), { maximumFractionDigits: 1 }).format(n);
+    const percentSign = () => (fr() ? " %" : "%"); // French puts a space before %, as Today and Overview do
+    const CARD_FORMATS = { num: (n) => UI.num(n), dec: oneDecimal, pct: (n) => `${oneDecimal(n)}${percentSign()}` };
+    const cardFormat = (format) => (typeof format === "function" ? format : CARD_FORMATS[format] || CARD_FORMATS.num);
+
+    // The pill beside the figure, and "before → now" for the sub line. Counts change in %, rates in points, a position in places.
+    function cardChange(change, show) {
+      if (!change || typeof change !== "object") return { pill: "", sub: "" };
+      const unit = change.unit ?? "%", lower = change.lowerIsBetter ?? unit === "places";
+      const now = isNum(change.now) ? Number(change.now) : null, before = isNum(change.before) ? Number(change.before) : null;
+      let diff = isNum(change.value) ? Number(change.value) : null;
+      if (diff === null && now !== null && before !== null) {
+        if (unit === "%") diff = before ? Math.round(((now - before) / Math.abs(before)) * 100) : null;
+        else if (unit === "pts" || unit === "places") diff = Math.round((now - before) * 10) / 10;
+        else diff = now - before;
+      }
+      const sub = now !== null && before !== null ? `${esc(show(before))} → ${esc(show(now))}` : "";
+      if (diff === null) return { pill: "", sub };
+      if (diff === 0) return { pill: `<span class="sec d-pill">${esc(cardWord("same"))}</span>`, sub };
+      const better = lower ? diff < 0 : diff > 0, size = Math.abs(diff), sign = diff > 0 ? "+" : "−";
+      const amount = unit === "places" ? `${oneDecimal(size)} ${cardWord(size === 1 ? "place" : "places")}`
+        : unit === "%" ? `${sign}${UI.num(size)}${percentSign()}`
+          : unit === "pts" ? `${sign}${oneDecimal(size)} ${cardWord("pts")}`
+            : `${sign}${show(size)}`;
+      // A position goes up the page when it gets better, so its arrow follows better and worse. Every other arrow follows the number.
+      const up = unit === "places" ? better : diff > 0;
+      return { pill: `<span class="${better ? "good" : "crit"} d-pill">${icon(up ? "arrow-up" : "arrow-down")}${esc(amount)} ${esc(cardWord(better ? "better" : "worse"))}</span>`, sub };
+    }
+
+    // A smooth line through the points, gentle enough not to overshoot them much (as mockup.js draws its sparklines).
+    function smoothPath(pts) {
+      const at = ([x, y]) => `${x.toFixed(2)},${y.toFixed(1)}`;
+      if (pts.length < 3) return pts.map((p, i) => `${i ? "L" : "M"}${at(p)}`).join("");
+      let d = `M${at(pts[0])}`;
+      const k = 0.16;
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [x0, y0] = pts[i - 1] || pts[i], [x1, y1] = pts[i], [x2, y2] = pts[i + 1], [x3, y3] = pts[i + 2] || pts[i + 1];
+        d += `C${at([x1 + (x2 - x0) * k, y1 + (y2 - y0) * k])} ${at([x2 - (x3 - x1) * k, y2 - (y3 - y1) * k])} ${at([x2, y2])}`;
+      }
+      return d;
+    }
+    const dayWords = (day) => {
+      const s = String(day ?? "");
+      if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return UI.fmtDay(s, { day: "numeric", month: "short" });
+      if (/^\d{4}-\d{2}-\d{2}[T ]\d/.test(s)) { // an hour, on a Last 24 hours period
+        const when = new Date(s.replace(" ", "T"));
+        return Number.isNaN(when.getTime()) ? s : new Intl.DateTimeFormat(UI.locale(), { hour: "2-digit", minute: "2-digit" }).format(when);
+      }
+      return s;
+    };
+
+    /* The card's own graph: this period and the period before, on one scale, no axes. Each day's words and the points' heights
+       ride along in data- attributes, so reading a day needs nothing but the markup (it survives any redraw). */
+    function cardGraph(spark, { name, show, tall, own }) {
+      const s = Array.isArray(spark) ? { now: spark } : spark && typeof spark === "object" ? spark : null;
+      if (!s) return "";
+      const clean = (list) => (Array.isArray(list) ? list : []).map((v) => (isNum(v) ? Number(v) : null));
+      const now = clean(s.now), was = clean(s.before), hasWas = was.some((v) => v !== null);
+      if (now.filter((v) => v !== null).length < 2) return "";
+      const n = Math.max(now.length, hasWas ? was.length : 0);
+      const H = tall ? 64 : 36, PAD = 3;
+      const all = [...now, ...was].filter((v) => v !== null);
+      let lo = Math.min(...all), hi = Math.max(...all);
+      if (hi === lo) { lo -= 1; hi += 1; } // a flat line sits in the middle
+      const x = (i) => (i / (n - 1)) * 100;
+      const y = (v) => { const f = (v - lo) / (hi - lo); return PAD + (s.invert ? f : 1 - f) * (H - PAD * 2); };
+      const runs = (list) => { // a gap (null) breaks the line
+        const out = [];
+        let run = [];
+        list.forEach((v, i) => { if (v === null) { if (run.length) out.push(run); run = []; } else run.push([x(i), y(v)]); });
+        if (run.length) out.push(run);
+        return out;
+      };
+      const lines = (list) => runs(list).map((r) => (r.length === 1 ? `M${r[0][0].toFixed(2)},${r[0][1].toFixed(1)}h.01` : smoothPath(r))).join("");
+      const area = runs(now).filter((r) => r.length > 1).map((r) => `${smoothPath(r)}L${r[r.length - 1][0].toFixed(2)},${H}L${r[0][0].toFixed(2)},${H}Z`).join("");
+      const days = Array.isArray(s.days) ? s.days : [];
+      const said = (v) => (v === null || v === undefined ? "—" : show(v));
+      const read = Array.from({ length: n }, (_, i) => [dayWords(days[i]), said(now[i]), hasWas ? `${cardWord("before")} ${said(was[i])}` : ""].filter(Boolean).join(" · "));
+      const heights = (list) => Array.from({ length: n }, (_, i) => (list[i] === null || list[i] === undefined ? null : Math.round((y(list[i]) / H) * 1000) / 10));
+      const words = `${plain(name)}: ${t(hasWas ? "Graph of this period, with the period before dashed. The arrow keys read each day." : "Graph of this period. The arrow keys read each day.")}`;
+      const focus = own ? `tabindex="0" role="img" aria-label="${esc(words)}"` : 'aria-hidden="true"';
+      const ends = tall && days.length ? `<span class="ncard-days" aria-hidden="true"><span>${esc(dayWords(days[0]))}</span><span>${esc(dayWords(days[Math.min(n, days.length) - 1]))}</span></span>` : "";
+      return `<span class="ncard-graph" ${focus} data-read="${esc(JSON.stringify(read))}" data-ny="${esc(JSON.stringify(heights(now)))}"${hasWas ? ` data-wy="${esc(JSON.stringify(heights(was)))}"` : ""}>`
+        + `<span class="ncard-plot"><svg class="ncard-spark" viewBox="0 0 100 ${H}" preserveAspectRatio="none" aria-hidden="true">${area ? `<path class="area" d="${area}"/>` : ""}${hasWas ? `<path class="was" d="${lines(was)}"/>` : ""}<path class="now" d="${lines(now)}"/></svg>`
+        + `<i class="ncard-cursor"></i><i class="ncard-pt was" hidden></i><i class="ncard-pt now" hidden></i></span>${ends}</span>`;
+    }
+
+    let cardSeq = 0;
+    const NOT_ATTRS = new Set(["class", "style", "href", "type", "data-card", "aria-pressed", "aria-describedby"]);
+    const SERIES_COLOUR = /^(var\(--[\w-]+\)|#[0-9a-f]{3,8}|[a-z]+)$/i;
+    UI.card = (opts = {}) => {
+      const { id = "", label = "", value = null, format = "num", change = null, sub = null, spark = null, def = null, info = "", href = "", button = false, toggle = null, tall = false, cls = "", attrs = null } = opts;
+      const show = cardFormat(format), name = t(String(label ?? ""));
+      const kind = href ? "link" : toggle ? "toggle" : button ? "button" : "";
+      const { pill, sub: beforeNow } = cardChange(change, show);
+      const unknown = value === null || value === undefined || value === "" || value === "—" || (typeof value === "number" && !Number.isFinite(value));
+      const fig = unknown ? "—" : typeof value === "number" ? (format === "num" && Number.isInteger(value) ? `<span class="countup" data-n="${value}">${esc(show(value))}</span>` : esc(show(value))) : String(value);
+      // The (i): the metric's definition, then the caveats. A link or a switch holds them itself (hover, keyboard focus), since
+      // a second control inside it can't be reached.
+      const key = def === false ? "" : keyOf(def || name);
+      const tip = [key ? UI.def(key) : "", ...sentences(info)].filter(Boolean).join("\n");
+      const described = tip && kind ? `ncard-d-${(cardSeq += 1)}` : "";
+      const mark = !tip ? "" : kind ? `<span class="def-i" aria-hidden="true">${icon("info")}</span>`
+        : `<span class="def-i" role="img" tabindex="0" data-tip="${esc(tip)}" aria-label="${esc(`${plain(name)}: ${tip.replace(/\n/g, " ")}`)}">${icon("info")}</span>`;
+      const graph = cardGraph(spark, { name, show, tall, own: !kind });
+      const rest = sub !== null && sub !== undefined && sub !== "" ? String(sub) : beforeNow;
+      const inner = `<span class="ncard-lab lab">${toggle ? '<i class="ncard-key" aria-hidden="true"></i>' : ""}<span class="ncard-name">${name}</span>${mark}</span>`
+        + `<span class="ncard-row"><span class="ncard-fig fig${unknown ? " is-unknown" : ""}">${fig}</span>${unknown ? "" : pill}</span>`
+        + `<span class="ncard-sub"><span class="ncard-rest">${rest}</span><span class="ncard-read" aria-hidden="true"></span></span>`
+        + `${graph}${described ? `<span hidden id="${described}">${esc(tip.replace(/\n/g, " "))}</span>` : ""}`;
+      const classes = ["ncard", kind ? `is-${kind}` : "", graph ? (tall ? "is-tall" : "") : "no-graph", String(cls || "").trim()].filter(Boolean).join(" ");
+      const more = Object.entries(attrs || {}).filter(([k, v]) => /^[a-z][\w:-]*$/i.test(k) && !/^on/i.test(k) && !NOT_ATTRS.has(k.toLowerCase()) && v !== false && v !== null && v !== undefined)
+        .map(([k, v]) => (v === true ? ` ${k}` : ` ${k}="${esc(v)}"`)).join("");
+      const colour = toggle && SERIES_COLOUR.test(String(toggle.color || "")) ? ` style="--ncard-line:${esc(toggle.color)}"` : "";
+      const open = `class="${esc(classes)}"${id ? ` data-card="${esc(id)}"` : ""}${colour}${described ? ` data-tip="${esc(tip)}" aria-describedby="${described}"` : ""}${more}`;
+      if (kind === "link") return `<a ${open} href="${esc(href)}">${inner}</a>`;
+      if (kind) return `<button type="button" ${open}${toggle ? ` aria-pressed="${toggle.pressed ? "true" : "false"}"` : ""}>${inner}</button>`;
+      return `<section ${open}>${inner}</section>`;
+    };
+
+    /* Reading a card's graph one day at a time: the pointer or a tap over it, or the arrow keys once the graph (on a link,
+       button or switch card: the card) has keyboard focus. The sub line reads that day; Escape, or leaving, puts it back. */
+    const graphDays = new WeakMap();
+    const reading = { card: null, at: null, by: "" };
+    const graphOf = (card) => card?.querySelector(".ncard-graph[data-read]") || null;
+    const daysOf = (graph) => {
+      let d = graphDays.get(graph);
+      if (!d) {
+        const list = (v) => { try { const out = JSON.parse(v || "[]"); return Array.isArray(out) ? out : []; } catch { return []; } };
+        d = { read: list(graph.dataset.read), now: list(graph.dataset.ny), was: list(graph.dataset.wy) };
+        graphDays.set(graph, d);
+      }
+      return d;
+    };
+    let liveLine = null; // one quiet line for screen readers, so arrowing through the days is heard
+    const say = (words) => {
+      if (!liveLine?.isConnected) { liveLine = document.createElement("div"); liveLine.className = "sr"; liveLine.setAttribute("aria-live", "polite"); document.body.append(liveLine); }
+      liveLine.textContent = words;
+    };
+    function stopReading() {
+      const card = reading.card;
+      Object.assign(reading, { card: null, at: null, by: "" });
+      if (!card) return;
+      card.classList.remove("is-reading");
+      const out = card.querySelector(".ncard-read");
+      if (out) out.textContent = "";
+    }
+    function readDay(card, index, by) {
+      const graph = graphOf(card);
+      if (!graph) return;
+      const d = daysOf(graph), n = d.read.length;
+      if (!n) return;
+      if (reading.card && reading.card !== card) stopReading();
+      const at = Math.max(0, Math.min(n - 1, index)), left = `${n === 1 ? 50 : (at / (n - 1)) * 100}%`;
+      Object.assign(reading, { card, at, by });
+      const cursor = graph.querySelector(".ncard-cursor");
+      if (cursor) cursor.style.left = left;
+      [["now", d.now], ["was", d.was]].forEach(([part, heights]) => {
+        const dot = graph.querySelector(`.ncard-pt.${part}`);
+        if (!dot) return;
+        dot.hidden = heights[at] === null || heights[at] === undefined;
+        if (!dot.hidden) { dot.style.left = left; dot.style.top = `${heights[at]}%`; }
+      });
+      const out = card.querySelector(".ncard-read");
+      if (out) out.textContent = d.read[at];
+      card.classList.add("is-reading");
+      if (by === "key") say(d.read[at]);
+    }
+    const follow = (e) => {
+      const graph = e.target.closest?.(".ncard-graph[data-read]"), card = graph?.closest(".ncard");
+      if (!card) { if (reading.by === "pointer") stopReading(); return; }
+      const box = (graph.querySelector(".ncard-plot") || graph).getBoundingClientRect(), n = daysOf(graph).read.length;
+      readDay(card, box.width > 0 && n > 1 ? Math.round(((e.clientX - box.left) / box.width) * (n - 1)) : n - 1, "pointer");
+    };
+    document.addEventListener("pointermove", follow, { passive: true });
+    document.addEventListener("pointerdown", follow, { passive: true }); // a tap on a phone
+    // The mouse left the window. A finger lifting fires this too, and its reading stays until the next tap elsewhere.
+    document.addEventListener("pointerout", (e) => { if (!e.relatedTarget && e.pointerType === "mouse" && reading.by === "pointer") stopReading(); });
+    const READ_KEYS = new Set(["ArrowLeft", "ArrowRight", "Home", "End"]);
+    document.addEventListener("keydown", (e) => {
+      if (!READ_KEYS.has(e.key) && e.key !== "Escape") return;
+      const el = e.target;
+      const card = el.matches?.(".ncard-graph[data-read]") ? el.closest(".ncard") : el.matches?.(".ncard:is(.is-link, .is-toggle, .is-button)") ? el : null;
+      const graph = graphOf(card);
+      if (!graph) return;
+      if (e.key === "Escape") { if (reading.card === card) { stopReading(); e.preventDefault(); } return; }
+      if (e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      const n = daysOf(graph).read.length, from = reading.card === card ? reading.at : null;
+      readDay(card, e.key === "Home" ? 0 : e.key === "End" || from === null ? n - 1 : from + (e.key === "ArrowRight" ? 1 : -1), "key");
+      e.preventDefault();
+    });
+    document.addEventListener("focusin", (e) => {
+      const graph = e.target.matches?.(".ncard-graph[data-read]") ? e.target : null;
+      if (graph && graph.matches(":focus-visible")) readDay(graph.closest(".ncard"), daysOf(graph).read.length - 1, "key");
+    });
+    document.addEventListener("focusout", (e) => {
+      if (reading.by === "key" && reading.card?.contains(e.target) && !reading.card.contains(e.relatedTarget)) stopReading();
+    });
+    // A tap shows an (i)'s words too: a phone has no hover, and a tap isn't keyboard focus. The app's own tooltip draws them.
+    document.addEventListener("click", (e) => {
+      if (!UI.simple?.()) return;
+      const mark = e.target.closest?.(".def-i[data-tip]");
+      if (!mark || mark.closest("a, button") || document.querySelector("body > .tooltip")) return;
+      mark.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    });
 
     document.addEventListener("click", (e) => {
       const el = e.target.closest?.("[data-ui-retry]");

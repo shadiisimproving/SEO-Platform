@@ -44,6 +44,11 @@
     attentionAll: false, seen: new Set(), setupHidden: false,
     healthTab: "test", blSection: "done", blTab: "all", blFilter: "all", blLimit: 100, prospectLimit: 100, refreshBusy: false, lastRefresh: 2,
   };
+  // The simpler screens (2026-11-11) are built behind this switch, so the owner can see old and new side by side.
+  // ?simple=1 or ?simple=0 sets it and it is remembered. It shows as data-simple on <html>, read by CSS and by UI.simple().
+  if (params.get("simple") === "1" || params.get("simple") === "0") store.set("simple", params.get("simple"));
+  state.simple = store.get("simple") === "1";
+  root.dataset.simple = state.simple ? "1" : "0";
 
   // ---- text and numbers -----------------------------------------------------
   const t = (s) => (state.lang === "fr" && window.FR[s] !== undefined ? window.FR[s] : s);
@@ -181,7 +186,12 @@
     end(route, day) {
       if (!validDay(day) || rangeEnds[route] === day) return;
       rangeEnds[route] = day;
-      setTimeout(() => { const picks = $(".range-picks"); if (picks && state.route === route && !$("#popover")) picks.replaceWith(fragment(datePicks())); }, 0);
+      setTimeout(() => {
+        if (state.route !== route || $("#popover")) return;
+        if (state.simple) { redrawHeadRange(); return; } // the simpler head: only its dates and comparison phrase
+        const picks = $(".range-picks");
+        if (picks) picks.replaceWith(fragment(datePicks()));
+      }, 0);
     },
     search() {
       const r = state.rng, parts = [`range=${r.preset}`, `compare=${r.compare}`];
@@ -264,6 +274,7 @@
           ${state.site === "all" ? `<span class="dot-site">${icon("globe")}</span>` : siteMark(siteName())}
           <span class="name">${esc(siteName())}</span>${icon("chevron-down", "chev muted")}
         </button>
+        ${state.simple ? sideSearch() : ""}
       </div>
       <nav class="nav" aria-label="Main">${items}</nav>
       <div class="side-foot">${sideAccount()}</div>`);
@@ -275,7 +286,8 @@
     return `<span class="range-picks" role="group" aria-label="${t("Dates")}"><button class="pick" id="period" aria-haspopup="dialog" aria-expanded="false" aria-label="${t("Period")}: ${esc(g.label)}, ${esc(fmtRange(g.from, g.to))}" data-tip="${esc(g.hours ? t("Last 24 hours") : fmtRange(g.from, g.to))}">${icon("calendar-days")}<span class="pick-label">${esc(g.label)}</span>${icon("chevron-down", "chev")}</button>
         <button class="pick" id="compare" aria-haspopup="true" aria-expanded="false" aria-label="${t("Compare with")}: ${esc(cmpName)}${g.compareFrom ? `, ${esc(fmtRange(g.compareFrom, g.compareTo))}` : ""}" data-tip="${esc(cmpName)}"><span class="pick-label">${esc(g.compareLabel)}</span>${icon("chevron-down", "chev")}</button></span>`;
   };
-  const topbar = (title, sub, main = "", withDates = true) => `
+  // With the simpler screens switch on, the same call draws the new head (UI.head below), so screens not yet moved still draw.
+  const topbar = (title, sub, main = "", withDates = true) => (state.simple ? drawHead({ title, period: withDates, main, ...subParts(sub) }) : `
     <header class="topbar" id="topbar">
       <button class="icon-btn menu-btn" id="menu-btn" aria-label="${t("Open menu")}">${icon("menu")}</button>
       <div class="grow"><h1>${esc(title)}</h1><p class="sub">${sub}</p></div>
@@ -285,7 +297,142 @@
         ${withDates ? datePicks() : ""}
         ${main}
       </div>
+    </header>`);
+
+  /* ---- the simpler screens' head (plan-seo-command-center-simplify-screens-like-mickaz.md, 3.1) ---------------------------
+     Drawn only while UI.simple() is on. The same place and shape on every screen: the title, one date line, and on the right
+     the period as visible buttons, the bell, Export (export.js adds it to #topbar .tools) and the screen's one main action.
+       UI.head({ title, period = true, source = null, status = null, line = "", info = "", main = "" })
+     period  a dated screen: 7 days · 28 days · 3 months · 12 months · More, and the dates and the comparison phrase in the line
+     source  { name, through } or a list of them: "Google Analytics, through 10 Nov", through only when the data ends before the
+             period does. Or a chip that opens a panel: { word, open }, with sev "warn" | "crit" when it needs the owner.
+     status  { sev: "good" | "warn" | "crit", word, open }: a chip, only when something needs the owner
+     line    HTML: what the data covers and how fresh, on an undated screen (on a dated one it comes before the dates)
+     info    a sentence or a list behind the (i) at the end of the line: the caveats and the screen's old subtitle sentence.
+             English goes through t(), as with UI.info.
+     main    the screen's one main action (HTML)
+     open    a function, or the attributes of a control the app already handles, such as 'data-go="settings"'.
+     #period (More) and #compare (the comparison phrase) keep their ids, so the date picker and flows find them. */
+  const HEAD_PRESETS = [["7d", "7 days"], ["28d", "28 days"], ["3m", "3 months"], ["12m", "12 months"]];
+  const HEAD_SEP = '<span class="head-sep"> · </span>';
+  [["7 days", "7 jours"], ["28 days", "28 jours"], ["3 months", "3 mois"], ["12 months", "12 mois"], ["More", "Plus"], ["More periods", "Autres périodes"],
+    ["vs {range}", "par rapport au {range}"], ["no comparison", "sans comparaison"], ["vs the 24 hours before", "par rapport aux 24 heures d'avant"],
+    ["vs same days last year", "vs mêmes jours l'an dernier"], ["through {day}", "jusqu'au {day}"], ["{a} and {b}", "{a} et {b}"],
+    ["Open the checklist", "Ouvrir la liste"], ["Set up {host}: {done} of {all} done", "Configurer {host} : {done} sur {all} faits"]]
+    .forEach(([en, fr]) => { if (window.FR[en] === undefined) window.FR[en] = fr; });
+  const headWords = (key, vars = {}) => Object.entries(vars).reduce((text, [k, v]) => text.split(`{${k}}`).join(String(v)), t(key));
+  const plainText = (html) => fragment(String(html ?? "")).textContent.replace(/\s+/g, " ").trim();
+  // A function handed to the head as `open` is kept here, and the click finds it by number.
+  const headOpeners = new Map();
+  let headOpenerN = 0;
+  function headOpen(open) {
+    if (!open) return "";
+    if (typeof open !== "function") return String(open);
+    headOpenerN += 1;
+    headOpeners.set(String(headOpenerN), open);
+    if (headOpeners.size > 40) headOpeners.delete(headOpeners.keys().next().value);
+    return `data-head-open="${headOpenerN}"`;
+  }
+  // The comparison's dates leave out the year when it is the period's own.
+  function compareDates(g) {
+    const sameYear = g.compareFrom.slice(0, 4) === g.to.slice(0, 4) && g.compareTo.slice(0, 4) === g.to.slice(0, 4);
+    if (g.compareFrom === g.compareTo) return sameYear ? fmtShort(g.compareTo) : fmtDay(g.compareTo);
+    return sameYear ? `${fmtShort(g.compareFrom)} – ${fmtShort(g.compareTo)}` : fmtRange(g.compareFrom, g.compareTo);
+  }
+  // The dates and the comparison phrase: the part UI.range.end draws again once a screen knows its last day.
+  function headRange() {
+    const g = rangeGet(), none = g.compare === "none" || !g.compareFrom;
+    const phrase = none ? t("no comparison") : g.hours && g.compare === "prev" ? t("vs the 24 hours before") : headWords("vs {range}", { range: compareDates(g) });
+    const cmpName = t(g.compare === "yoy" ? "vs same days last year" : RANGE_COMPARES.find(([id]) => id === g.compare)[1]);
+    return `<span class="head-range"><span class="head-dates">${esc(g.hours ? t("Last 24 hours") : fmtRange(g.from, g.to))}</span>${HEAD_SEP}<button type="button" class="head-cmp ${none ? "none" : ""}" id="compare" aria-haspopup="menu" aria-expanded="false" data-tip="${esc(`${t("Compare with")}: ${cmpName}`)}">${esc(phrase)}</button></span>`;
+  }
+  function headPeriod() {
+    const g = rangeGet(), shown = HEAD_PRESETS.some(([id]) => id === g.preset);
+    return `<span class="seg head-period" role="group" aria-label="${t("Period")}">${HEAD_PRESETS.map(([id, name]) => `<button type="button" data-preset="${id}" aria-pressed="${g.preset === id}">${t(name)}</button>`).join("")}<button type="button" class="head-more" id="period" aria-haspopup="dialog" aria-expanded="false" aria-pressed="${!shown}" ${shown ? `aria-label="${t("More periods")}"` : ""}><span class="head-more-label">${esc(shown ? t("More") : g.label)}</span>${icon("chevron-down", "chev")}</button></span>`;
+  }
+  function headSource(source, period) {
+    if (!source) return "";
+    if (source.word) { // a chip that opens a panel, a status chip when it needs the owner
+      const sev = source.sev === "warn" || source.sev === "crit" ? source.sev : "";
+      const open = headOpen(source.open), inner = `${sev ? icon(sev === "crit" ? "octagon-alert" : "triangle-alert") : ""}${esc(source.word)}`;
+      if (!open) return `<span class="${sev ? `status ${sev} head-status` : "head-src"}">${inner}</span>`;
+      return `<button type="button" class="${sev ? `status ${sev} head-status` : "head-chip"}" ${open}>${inner}${sev ? "" : '<span aria-hidden="true"> ›</span>'}</button>`;
+    }
+    const list = (Array.isArray(source) ? source : [source]).filter((s) => s && s.name);
+    if (!list.length) return "";
+    const names = list.map((s) => t(s.name));
+    const named = names.length > 1 ? headWords("{a} and {b}", { a: names.slice(0, -1).join(", "), b: names[names.length - 1] }) : names[0];
+    const through = list.map((s) => String(s.through || "").slice(0, 10)).filter(validDay).sort()[0];
+    const shown = through && (!period || through < rangeGet().to); // only when the data ends before the period does
+    return `<span class="head-src">${esc(named)}${shown ? `, ${esc(headWords("through {day}", { day: fmtShort(through) }))}` : ""}</span>`;
+  }
+  function headStatus(s) {
+    if (!s?.word) return "";
+    const [ic, cls] = { crit: ["octagon-alert", "crit"], good: ["circle-check", "good"] }[s.sev] || ["triangle-alert", "warn"];
+    const open = headOpen(s.open);
+    return open ? `<button type="button" class="status ${cls} head-status" ${open}>${icon(ic)}${esc(s.word)}</button>` : `<span class="status ${cls} head-status">${icon(ic)}${esc(s.word)}</span>`;
+  }
+  // The caveats' (i): UI.info (shared-ui.js) when it is there, else the same mark drawn here. Each caveat goes through t().
+  const headInfo = (list) => (!list.length ? "" : window.UI?.info ? window.UI.info(list.length > 1 ? list : list[0]) : `<span class="def-i" role="img" tabindex="0" data-tip="${esc(list.map(t).join(" "))}" aria-label="${esc(list.map(t).join(" "))}">${icon("info")}</span>`);
+  // On a phone the line is cut to one line, so this (i) holds all of it, and the caveats after it (mockup.css shows it there only).
+  const headAllTip = (text, info) => [text, info].filter(Boolean).join(". ");
+  function drawHead({ title = "", period = true, source = null, status = null, line = "", info = "", main = "" } = {}) {
+    // info: a sentence or a list, in English (translated here) or already in the screen's language; markup is dropped.
+    const infoList = (Array.isArray(info) ? info : [info]).map((x) => String(x ?? "").trim()).filter(Boolean).map((x) => (/<[a-z!/]/i.test(x) ? plainText(x) : x));
+    const infoText = infoList.map(t).join(" ");
+    const text = [line, period ? headRange() : "", headSource(source, period)].filter(Boolean).join(HEAD_SEP) + (status?.word ? ` ${headStatus(status)}` : "");
+    const all = headAllTip(plainText(text), infoText);
+    return `
+    <header class="topbar head" id="topbar">
+      <button class="icon-btn menu-btn" id="menu-btn" aria-label="${t("Open menu")}">${icon("menu")}</button>
+      <div class="grow head-title">
+        ${text || !infoText ? `<h1>${esc(title)}</h1>` : `<div class="head-name"><h1>${esc(title)}</h1>${headInfo(infoList)}</div>`}
+        ${text ? `<p class="head-line"><span class="head-text">${text}</span>${headInfo(infoList)}<span class="def-i head-i-all" role="img" tabindex="0" data-tip="${esc(all)}" aria-label="${esc(all)}" data-info="${esc(infoText)}">${icon("info")}</span></p>` : ""}
+      </div>
+      <div class="tools">
+        ${period ? headPeriod() : ""}
+        ${window.Bell ? window.Bell.button() : ""}
+        ${main}
+      </div>
     </header>`;
+  }
+  function redrawHeadRange() {
+    const range = $("#topbar .head-range");
+    if (!range) return;
+    const focused = document.activeElement?.id === "compare";
+    range.replaceWith(fragment(headRange()));
+    const all = $("#topbar .head-i-all");
+    if (all) { all.dataset.tip = headAllTip(plainText($("#topbar .head-text")?.innerHTML), all.dataset.info); all.setAttribute("aria-label", all.dataset.tip); }
+    if (focused) $("#compare")?.focus({ preventScroll: true });
+  }
+  // Where the keyboard is in the head, so a redraw can put it back: a period button, or anything with an id (More, the comparison).
+  function headFocusKey() {
+    const el = document.activeElement;
+    if (!el?.closest?.("#topbar")) return null;
+    if (el.dataset?.preset) return `#topbar [data-preset="${CSS.escape(el.dataset.preset)}"]`;
+    return el.id ? `#${CSS.escape(el.id)}` : null;
+  }
+  /* The old subtitle of a screen that still calls topbar(): the sentence about the screen goes behind the (i), and every other
+     part (a date, how fresh, a count the screen fills in later) stays on the date line. */
+  const SCREEN_SENTENCES = ["Who ranks against you, and what they do", "Your Google results, from Search Console", "Worked out daily from your Search Console data",
+    "Links and documents, per site", "Rankings from engines' own tools and scraped results", "Links built and what they brought", "Problems on your sites",
+    "Connect tools and choose their sites", "Where each site's data comes from", "Who can sign in", "Domains worth a closer look", "Every note, on every site",
+    "Who does what, where, by when", "Do AI assistants send you leads, and do AI answers cite you?", "Visit and lead sources, from Google Analytics",
+    "From visit to lead. Counts only, no personal data.", "Every page and its results", "Cost, clicks and leads from Google Ads, via Google Analytics"];
+  function subParts(sub) {
+    const own = new Set(SCREEN_SENTENCES.map((s) => t(s)));
+    const info = [], line = [], parts = String(sub ?? "").split(" · ");
+    // A " · " inside a tag's attribute would cut the tag in two: then the whole subtitle stays on the line, as it was.
+    if (parts.some((part) => (part.match(/</g) || []).length !== (part.match(/>/g) || []).length)) return { line: String(sub), info };
+    parts.forEach((part) => {
+      const markup = /<[a-z]/i.test(part), text = plainText(part);
+      if (!text && !markup) return;
+      if (!markup && own.has(text)) info.push(text); else line.push(part);
+    });
+    return { line: line.join(HEAD_SEP), info };
+  }
+  // The side menu's search row, under the site switcher (simpler screens): ⌘K moves here from the head, the shortcut is the same.
+  const sideSearch = () => `<button class="nav-item side-search" id="cmd-open" aria-label="${t("Search or jump to…")}" aria-keyshortcuts="Meta+K Control+K" ${state.rail ? `data-tip="${t("Search or jump to…")} ⌘K"` : ""}>${icon("search")}<span class="label">${t("Search or jump to…")}</span><span class="kbd" aria-hidden="true">⌘K</span></button>`;
 
   // ---- small drawings ---------------------------------------------------------
   // A smooth line through the points, gentle enough not to overshoot them much.
@@ -324,10 +471,14 @@
 
   const cnt = (n) => `<span class="countup" data-n="${n}">${num(n)}</span>`;
   // A headline number. Its definition, if it has one (shared-ui.js), is one hover or focus away on the (i) after the label.
-  const tile = (label, fig, extra = "", { ic = "", tone = "", line = null, def = null } = {}) => `<div class="tile">
+  // With the simpler screens switch on, the number card draws it (UI.card, plan 3.2), so every UI.tile caller changes at once:
+  // no icon square (the card's colour is on its graph), the delta line is the card's sub line, and .tile stays on as a hook.
+  const tile = (label, fig, extra = "", { ic = "", tone = "", line = null, def = null } = {}) => (state.simple && window.UI?.card
+    ? window.UI.card({ label, value: fig, sub: extra, spark: line, def, cls: "tile" })
+    : `<div class="tile">
     <div class="tile-top"><div class="lab">${label}${def === false ? "" : window.UI?.defIcon?.(def || label) || ""}</div>${ic ? `<span class="ico ${tone}">${icon(ic)}</span>` : ""}</div>
     <div class="fig-row"><div class="fig">${fig}</div>${line ? `<div class="tile-spark">${spark(line, { w: 88, h: 34, area: true })}</div>` : ""}</div>
-    <div class="delta">${extra}</div></div>`;
+    <div class="delta">${extra}</div></div>`);
 
   // ---- motion helpers ------------------------------------------------------------
   // Numbers count up when a page opens. The final text is always the exact number.
@@ -1601,6 +1752,16 @@
     if (state.setupHidden || (!state.firstRun && !host) || (host && !setupStillOpen(host))) return "";
     if (host && state.served && !setupFacts[host]?.loaded) return ""; // not loaded yet: unknown, so no card that may be wrong
     const steps = siteSteps(host), finished = steps.filter((s) => s.done || s.skipped).length;
+    // The simpler screens: one line while a step is open, with the next step and Hide. The line opens the checklist panel.
+    // Before any site is added the welcome card stays as it is: it is the whole of Today then, and there is no checklist yet.
+    if (state.simple && host) {
+      const next = steps.find((s) => !s.done && !s.skipped), line = headWords("Set up {host}: {done} of {all} done", { host, done: finished, all: steps.length });
+      return `<section class="setup setup-line" aria-label="${esc(line)}">
+        <button type="button" class="setup-open" data-setup-panel="${esc(host)}" aria-label="${esc(`${line}. ${t("Open the checklist")}`)}"><span class="setup-meter" aria-hidden="true"><i style="width:${Math.round((finished / steps.length) * 100)}%"></i></span><span class="setup-words" dir="auto">${esc(line)}</span>${icon("chevron-right", "chev")}</button>
+        ${next ? `<button class="btn ${next.main ? "btn-main" : ""} btn-small" data-setup="${next.id}" data-setup-host="${esc(host)}">${t(next.word)}</button>` : ""}
+        <button class="link-btn" data-setup-hide="${esc(host)}">${t("Hide")}</button>
+      </section>`;
+    }
     // The same six steps before and after the site is added, so the count never changes under the person's eyes.
     const heading = host ? `${t("Set up")} ${host} · ${finished} ${t("of")} ${steps.length} ${t("done")}` : `${t("Welcome.")} ${steps.length} ${t("steps to your first data. Only step 1 is required.")}`;
     const shown = steps;
@@ -1649,7 +1810,10 @@
     const top = main.scrollTop;
     const screen = window.SCREENS?.[state.route];
     const html = screen ? screen.page() : state.route === "keywords" ? keywordsPage() : state.route === "backlinks" ? backlinksPage() : state.route === "settings" ? settingsPage() : state.route === "health" ? healthPage() : todayPage();
+    // The simpler head is drawn again with the page: a period button or the comparison keeps the keyboard's place.
+    const headFocus = state.simple ? headFocusKey() : null;
     setHTML($("#page"), html);
+    if (headFocus) $(headFocus)?.focus({ preventScroll: true });
     nameTables($("#page"));
     defineHeaders($("#page"));
     if (!enter) $$(".page-enter", main).forEach((el) => el.classList.remove("page-enter"));
@@ -1925,8 +2089,9 @@
     if (!$("#panel-title")) { const h = opened.querySelector("h2, h3"); opened.removeAttribute("aria-labelledby"); opened.setAttribute("aria-label", h?.textContent.trim() || t("Detail")); }
     setTimeout(() => opened.classList.remove("fresh"), 800);
     panelForm = null;
-    if (formInfo) {
-      const form = $("#panel form");
+    // Only a panel that asks to keep a draft (a key) and holds a form is read, so { wide: true } alone just opens wide.
+    const form = formInfo?.key != null ? $("#panel form") : null;
+    if (form) {
       panelForm = { ...formInfo, initial: readForm(form) };
       const draft = drafts.get(formInfo.key);
       if (draft) {
@@ -2949,10 +3114,16 @@
   function openDatePicker(anchor) {
     const { from, to } = periodWindow();
     dp = { from, to, phase: "start", hover: null, right: monthOf(to), focus: to };
-    const el = popover(anchor, `<div class="dp" role="dialog" aria-label="${t("Choose dates")}">
-      <div class="dp-presets" role="group" aria-label="${t("Period")}">
-        ${RANGE_PRESETS.filter(([id]) => id !== "24h" || HOURLY_SCREENS.has(state.route)).map(([id, name]) => { const on = state.rng.preset === id; return `<button type="button" data-preset="${esc(id)}" aria-pressed="${on}" ${on ? "data-autofocus" : ""}>${t(name)}</button>`; }).join("")}
-      </div>
+    // The simpler head's More: only the periods its buttons don't show, then the comparison, so a phone that cuts the date
+    // line still reaches it.
+    const inHead = state.simple && anchor.closest(".head-period");
+    const presets = RANGE_PRESETS.filter(([id]) => (id !== "24h" || HOURLY_SCREENS.has(state.route)) && !(inHead && HEAD_PRESETS.some(([shown]) => shown === id)));
+    const presetButtons = `<div class="dp-presets" role="group" aria-label="${t("Period")}">
+        ${presets.map(([id, name]) => { const on = state.rng.preset === id; return `<button type="button" data-preset="${esc(id)}" aria-pressed="${on}" ${on ? "data-autofocus" : ""}>${t(name)}</button>`; }).join("")}
+      </div>`;
+    const compares = `<div class="dp-cmp" role="group" aria-labelledby="dp-cmp-label"><div class="dp-group" id="dp-cmp-label">${t("Compare with")}</div>${RANGE_COMPARES.map(([id, name]) => `<button type="button" data-compare="${esc(id)}" aria-pressed="${state.rng.compare === id}">${t(id === "yoy" ? "vs same days last year" : name)}</button>`).join("")}</div>`;
+    const el = popover(anchor, `<div class="dp ${inHead ? "dp-head" : ""}" role="dialog" aria-label="${t("Choose dates")}">
+      ${inHead ? `<div class="dp-side">${presetButtons}${compares}</div>` : presetButtons}
       <div class="dp-main">
         <div class="dp-title">${t("Custom date")}</div>
         <div class="dp-fields">
@@ -3328,15 +3499,18 @@
       return;
     }
 
+    // The head's chips that open a panel with a function (UI.head's open)
+    if ((el = hit("[data-head-open]"))) { const fn = headOpeners.get(el.dataset.headOpen); if (fn) { try { fn(el); } catch (err) { console.error(err); } } return; }
     // Dates
     if ((el = hit("#period"))) { if (popAnchor === el) closePopover({ focus: true }); else openDatePicker(el); return; }
     if ((el = hit("#compare"))) {
       if (popAnchor === el) { closePopover({ focus: true }); return; }
-      popover(el, RANGE_COMPARES.map(([id, name]) => { const on = state.rng.compare === id; return `<button type="button" data-compare="${esc(id)}" aria-pressed="${on}" ${on ? "data-autofocus" : ""}>${t(name)}${on ? `<span class="tick">${icon("check")}</span>` : ""}</button>`; }).join(""));
+      popover(el, RANGE_COMPARES.map(([id, name]) => { const on = state.rng.compare === id; return `<button type="button" data-compare="${esc(id)}" aria-pressed="${on}" ${on ? "data-autofocus" : ""}>${t(state.simple && id === "yoy" ? "vs same days last year" : name)}${on ? `<span class="tick">${icon("check")}</span>` : ""}</button>`; }).join(""));
       return;
     }
-    if ((el = hit("[data-compare]"))) { closePopover(); rangeSet({ compare: el.dataset.compare }); $("#compare")?.focus(); return; }
-    if ((el = hit("[data-preset]"))) { closePopover(); rangeSet({ preset: el.dataset.preset }); $("#period")?.focus(); return; }
+    // The simpler head: a choice made in More's picker goes back to More, and a period button keeps the focus it had.
+    if ((el = hit("[data-compare]"))) { const fromMore = state.simple && el.closest(".dp"); closePopover(); rangeSet({ compare: el.dataset.compare }); $(fromMore ? "#period" : "#compare")?.focus(); return; }
+    if ((el = hit("[data-preset]"))) { const inHead = state.simple && el.closest(".head-period"); closePopover(); rangeSet({ preset: el.dataset.preset }); $(inHead ? `.head-period [data-preset="${CSS.escape(el.dataset.preset)}"]` : "#period")?.focus(); return; }
     if ((el = hit("[data-dp-move]"))) {
       dp.right = addMonths(dp.right, Number(el.dataset.dpMove));
       const move = el.dataset.dpMove;
@@ -4048,6 +4222,8 @@
 
   // ---- what screens in their own files can use ------------------------------------------
   window.UI = {
+    simple: () => state.simple, // the simpler screens switch, see state above
+    head: drawHead, // the simpler screens' head (plan 3.1); UI.topbar draws it too while the switch is on
     $, $$, state, store, t, num, dec, esc, icon, status, logo, siteLogo, setHTML, fragment, locale, reduceMotion,
     topbar, tile, cnt, spark, delta, toast, render, renderSidebar, go, openPanel, closePanel, panelHead, forgetPanelForm,
     countryName, countryOptions, COUNTRY_CODES, languageOptions, fmtStamp, fmtDateOnly, ENGINES, WHOLE_SITE_WORDS, BUDGET_PAUSE_WORDS, readingWords,

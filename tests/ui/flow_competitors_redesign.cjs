@@ -104,7 +104,7 @@ const fakeQuestions = (host, about) => { const groups = Array.from({ length: 25 
     const heads = await headsNow();
     check("3. one site: Competitor, Ranks on your keywords, Who leads, Edits in 30 days, Watching, Tracking", JSON.stringify(heads.slice(0, 6)) === JSON.stringify([...HEADS_EN, "Tracking"]), heads.join(" | "));
     check("3. one site: 'Your sites' is hidden", !heads.includes("Your sites"));
-    const rows = await page.evaluate(() => [...document.querySelectorAll("#cs-rivals-table tbody tr")].map((tr) => ({ remove: (tr.querySelector("[data-cl-remove]")?.getAttribute("aria-label") || ""), tracking: tr.querySelectorAll("[data-ct-set]").length })));
+    const rows = await page.evaluate(() => [...document.querySelectorAll("#cs-rivals-table tbody tr[data-cs-row]")].map((tr) => ({ remove: (tr.querySelector("[data-cl-remove]")?.getAttribute("aria-label") || ""), tracking: tr.querySelectorAll("[data-ct-set]").length })));
     check("3. one site: every row has Remove and the tracking choice", rows.length > 0 && rows.every((r) => /^Remove/.test(r.remove) && r.tracking === 3), rows);
     if (await page.$('#comp-site option[value="all"]')) {
       await page.selectOption("#comp-site", "all"); await tableReady(); await settle();

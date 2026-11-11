@@ -1,7 +1,9 @@
 // Search → Overview filters, by hand: the text box (contains, doesn't contain, exactly, regex) keeps the cursor while it
 // redraws, More filters cuts by clicks, impressions and position, Clear filters, a bad regex says so, the Pages tab has
 // its own box; and a new search in the bell opens Overview → Queries on that search.
-// DB_NAME_TEST=test_x_test .venv/bin/python tests/ui/app_server.py --port 8247, then
+// DB_NAME_TEST=test_x_test .venv/bin/python tests/ui/app_server.py --port 8247, then connect the fake Google for site-one.example
+// once and let it read (Channels → Connect, then Refresh data, as for flow_overview.cjs): only then does Search Console have days
+// that aren't final yet, which the bell's search must say it includes. Then
 // DB_NAME_TEST=test_x_test .venv/bin/python tests/ui/seed_new_queries.py, then node tests/ui/flow_overview_filters.cjs http://127.0.0.1:8247/
 const { open } = require("./pw.cjs");
 const fs = require("fs");

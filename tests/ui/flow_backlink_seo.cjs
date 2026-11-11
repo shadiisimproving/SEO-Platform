@@ -174,6 +174,8 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   let traffic = null;
   for (let i = 0; i < 30 && !traffic; i += 1) { traffic = (await linkOf("barista-mag.example"))?.site_traffic; if (!traffic) await settle(1000); }
   await page.goto("about:blank"); await page.goto(BASE + "#backlinks?site=site-one.example"); await settle(1500);
+  // The table is drawn once every site's links are in, which takes longer than the pause on a busy machine.
+  await page.waitForSelector("#bl-table tbody tr", { timeout: 20000 }).catch(() => {});
   check("with Ahrefs connected, a Site traffic column", (await page.locator("#bl-table th", { hasText: "Site traffic" }).count()) === 1);
   const cell = await page.locator("#bl-table tbody tr", { hasText: "barista-mag.example" }).locator('td[data-label="Site traffic"]').innerText();
   check("and each website's traffic from Ahrefs", traffic > 0 && cell.replace(/\D/g, "") === String(traffic), `${cell} / ${traffic}`);

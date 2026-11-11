@@ -1,4 +1,7 @@
 // In consideration: DA, PA, a rating and filters, in the table and the import window, on the real app.
+// On a fresh demo world each run (it counts In consideration from empty):
+//   DB_NAME_TEST=<your>_test .venv/bin/python tests/ui/app_server.py --port 8234
+//   node tests/ui/flow_consideration_filters.cjs http://127.0.0.1:8234/
 const { open } = require("./pw.cjs");
 const path = require("path"), fs = require("fs");
 const BASE = process.argv[2] || "http://127.0.0.1:8234/";

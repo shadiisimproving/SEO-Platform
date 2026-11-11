@@ -31,3 +31,8 @@
 .tp-search input::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
 /* When rows are picked, the "N selected" bar sticks to the bottom too: the pages sit just above it, never under it. */
 @media (min-width: 641px) { body:has(.selbar:not(:empty)) .tp-foot { bottom: 72px; } }
+
+/* The simpler screens (html[data-simple="1"], 2026-11-11): a footer with nothing to press, one page of 25 rows or fewer and
+   no note (data-tp-quiet), hides once the count badge after the card's title says how many (tt-counted, table-tools.js).
+   Past one page the whole footer is back. Its markup stays, for the flows and the screens' own code. */
+html[data-simple="1"] .tp-foot[data-tp-quiet].tt-counted { display: none; }

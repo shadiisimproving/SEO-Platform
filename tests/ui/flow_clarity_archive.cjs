@@ -92,7 +92,7 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: pa
   await page.locator('[data-go="content"]').first().click();
   await page.waitForTimeout(800);
   const pickPeriod = async (from, to) => {
-    await page.locator("button:has-text('Last 30 days'), button:has-text(' – ')").first().click();
+    await page.locator("#period").click(); // the app's one period button (Last 28 days by default since 2026-11-10)
     await page.locator("#dp-from").fill(from);
     await page.locator("#dp-to").fill(to);
     await page.locator("#dp-apply").click();

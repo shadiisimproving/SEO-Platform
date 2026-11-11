@@ -1094,3 +1094,94 @@ dialog.resign::backdrop { background: var(--scrim, rgb(0 0 0 / .35)); }
 /* Settings → AI: the "What is sent" line reads like the app's other notes, not a full-width run of text. */
 .ai-sends { display: flex; gap: 6px; align-items: flex-start; max-width: 72ch; margin: 8px 0 0; color: var(--text-2); }
 .ai-sends .i { flex: none; width: 14px; height: 14px; margin-top: 2px; }
+
+/* ---- The simpler screens (plan-seo-command-center-simplify-screens-like-mickaz.md, 3.1): the head, the side menu's search row
+   and Today's setup line. Only under html[data-simple="1"] (?simple=1), so every screen looks as before with the switch off.
+   Colours are look-clear.css tokens only. ---- */
+
+/* The head: the title, one date line, and on the right the period buttons, the bell, Export and the one main action.
+   The same 58 px row on every screen; when the tools don't fit (side menu open, under about 1,300 px) they wrap right. */
+html[data-simple="1"] .topbar.head { padding: 8px 14px 8px 18px; gap: 8px 16px; min-height: 58px; }
+html[data-simple="1"] .topbar.head .head-title { flex: 1 1 280px; min-width: 280px; min-height: 42px; display: flex; flex-direction: column; justify-content: center; }
+html[data-simple="1"] .topbar.head h1 { font-size: 20px; line-height: 26px; font-weight: 650; letter-spacing: -.02em; color: var(--text); }
+html[data-simple="1"] .topbar.head .tools { margin-left: auto; justify-content: flex-end; gap: 8px; }
+/* In the flow of the words, so the (i) follows the last one, even when the line takes two lines. */
+html[data-simple="1"] .head-line { min-width: 0; font-size: 12px; line-height: 16px; color: var(--muted); }
+html[data-simple="1"] .head-dates { color: var(--text-2); font-variant-numeric: tabular-nums; }
+html[data-simple="1"] :is(.head-dates, .head-cmp) { white-space: nowrap; } /* a line that wraps breaks between its dates, not inside them */
+html[data-simple="1"] .head-sep { color: var(--muted); }
+/* The comparison, and a source that opens a panel: words in the line, a dotted underline says they can be pressed. */
+html[data-simple="1"] :is(.head-cmp, .head-chip) { font-size: inherit; line-height: inherit; color: var(--text-2); font-variant-numeric: tabular-nums; text-decoration: underline dotted var(--line-2); text-underline-offset: 3px; border-radius: 4px; transition: color var(--t-fast); }
+html[data-simple="1"] :is(.head-cmp, .head-chip):hover, html[data-simple="1"] .head-cmp[aria-expanded="true"] { color: var(--accent-text); text-decoration-color: currentColor; }
+html[data-simple="1"] .head-cmp.none { color: var(--muted); }
+html[data-simple="1"] .head-status { margin-left: 6px; line-height: 14px; vertical-align: 1px; }
+html[data-simple="1"] button.head-status { cursor: pointer; transition: background var(--t-fast); }
+html[data-simple="1"] button.head-status:hover { background: color-mix(in srgb, currentColor 22%, transparent); }
+html[data-simple="1"] .head-line .def-i { flex: none; margin: -4px -4px -4px 2px; vertical-align: top; } /* its 24 px target stays inside the 16 px line */
+/* No date line (an undated screen with nothing to say yet): the (i) follows the title. */
+html[data-simple="1"] .head-name { display: flex; align-items: center; gap: 4px; min-width: 0; }
+html[data-simple="1"] .head-name h1 { min-width: 0; }
+html[data-simple="1"] .head-name .def-i { flex: none; margin: -4px 0; }
+html[data-simple="1"] .head-i-all { display: none; }
+/* The period: the existing segmented control, blue words on the chosen one (look-clear.css), More at its end. */
+html[data-simple="1"] .head-period button { font-variant-numeric: tabular-nums; }
+html[data-simple="1"] .head-more { display: inline-flex; align-items: center; gap: 3px; }
+html[data-simple="1"] .head-more .chev { width: 13px; height: 13px; color: var(--muted); transition: transform var(--t-base) var(--ease-out); }
+html[data-simple="1"] .head-more[aria-expanded="true"] .chev { transform: rotate(180deg); }
+html[data-simple="1"] .head-more-label { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+/* More's picker: the other periods, then the comparison, beside the custom dates. */
+html[data-simple="1"] .dp.dp-head { grid-template-columns: 184px auto; }
+html[data-simple="1"] .dp-head .dp-side { display: flex; flex-direction: column; min-width: 0; border-right: 1px solid var(--line); }
+html[data-simple="1"] .dp-head .dp-presets { border-right: 0; }
+html[data-simple="1"] .dp-cmp { padding: 6px 8px 8px; border-top: 1px solid var(--line); display: flex; flex-direction: column; gap: 2px; }
+html[data-simple="1"] .dp-group { font-size: 12px; font-weight: 500; color: var(--muted); padding: 2px 10px 4px; }
+html[data-simple="1"] .dp-cmp button { padding: 6px 10px; border-radius: var(--r-s); text-align: left; font-size: 13px; color: var(--text-2); min-height: 32px; transition: background var(--t-fast), color var(--t-fast); }
+html[data-simple="1"] .dp-cmp button:hover { background: var(--hover); color: var(--text); }
+html[data-simple="1"] .dp-cmp button[aria-pressed="true"] { background: var(--selected); color: var(--text); font-weight: 550; box-shadow: inset 2px 0 0 var(--accent-1); }
+
+/* ⌘K moves into the side menu: one search row under the site switcher. */
+html[data-simple="1"] .side-search { margin-top: 6px; color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); border-radius: var(--r-m); }
+html[data-simple="1"] .side-search:hover { box-shadow: inset 0 0 0 1px var(--line-2); }
+html[data-simple="1"] .side-search .kbd { margin-left: auto; flex: none; }
+html[data-simple="1"] .app.rail .side-search .kbd { display: none; }
+
+/* Today's setup: one line while a step is open (40 px instead of the 128 px card). The line opens the checklist. */
+html[data-simple="1"] .setup.setup-line { padding: 6px 12px 6px 8px; min-height: 40px; gap: 6px 12px; flex-wrap: nowrap; }
+html[data-simple="1"] .setup-open { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 10px; min-height: 28px; padding: 2px 8px; border-radius: var(--r-s); text-align: left; font-size: 13px; font-weight: 500; color: var(--text); transition: background var(--t-fast); }
+html[data-simple="1"] .setup-open:hover { background: var(--hover); }
+html[data-simple="1"] .setup-open .chev { flex: none; color: var(--muted); }
+html[data-simple="1"] .setup-words { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html[data-simple="1"] .setup-meter { flex: none; width: 44px; height: 6px; border-radius: 999px; overflow: hidden; background: var(--track); box-shadow: inset 0 0 0 1px var(--line); }
+html[data-simple="1"] .setup-meter i { display: block; height: 100%; border-radius: inherit; background: var(--accent-2); }
+html[data-simple="1"] .setup-line > .btn, html[data-simple="1"] .setup-line > .link-btn { flex: none; }
+
+/* Under 860 px: the title, the bell, Export and the main action in one row, the period buttons full width under it (they
+   scroll sideways if they must), and the date line cut to one line with all of it on its (i). */
+@media (max-width: 860px) {
+  html[data-simple="1"] #topbar.head { padding: 8px 10px; gap: 6px 8px; }
+  html[data-simple="1"] #topbar.head .tools { display: contents; }
+  html[data-simple="1"] #topbar.head .head-title { order: 1; flex: 1 1 0; min-width: 120px; min-height: 38px; padding-right: 0; }
+  html[data-simple="1"] #topbar.head h1 { font-size: 17px; line-height: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  html[data-simple="1"] #topbar.head .tools > * { order: 2; }
+  html[data-simple="1"] #topbar.head .tools > .head-period { order: 3; flex: 1 0 100%; display: flex; overflow-x: auto; scrollbar-width: none; }
+  html[data-simple="1"] #topbar.head .head-period button { flex: 1 0 auto; padding-left: 7px; padding-right: 7px; }
+  html[data-simple="1"] .head-line { display: flex; align-items: center; }
+  html[data-simple="1"] .head-text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  html[data-simple="1"] .head-line > :not(.head-text, .head-i-all) { display: none; } /* the caveats' (i): its words are on the one below */
+  html[data-simple="1"] .head-line > .head-i-all { display: inline-flex; }
+}
+@media (max-width: 760px) {
+  html[data-simple="1"] .dp.dp-head { grid-template-columns: minmax(0, 1fr); }
+  html[data-simple="1"] .dp-head .dp-side { border-right: 0; }
+  html[data-simple="1"] .dp-head .dp-presets { border-bottom: 0; }
+  html[data-simple="1"] .dp-cmp { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 6px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 8px; }
+  html[data-simple="1"] .dp-cmp .dp-group { flex-basis: 100%; padding: 0 2px; }
+  html[data-simple="1"] .dp-cmp button { padding: 4px 10px; min-height: 28px; font-size: 12px; box-shadow: inset 0 0 0 1px var(--line); border-radius: 999px; }
+  html[data-simple="1"] .dp-cmp button[aria-pressed="true"] { box-shadow: inset 0 0 0 1px var(--accent-1); }
+}
+/* Phones: Export and the main action are icons (the rule above this section), here in the title row's flow, not pinned. */
+@media (max-width: 640px) {
+  html[data-simple="1"] #topbar.head .tools > .btn:not(.kbd-hint), html[data-simple="1"] #topbar.head .tools > .export-btn { position: static; margin-right: 0; }
+  html[data-simple="1"] .setup.setup-line { flex-wrap: wrap; }
+  html[data-simple="1"] .setup-line > .setup-open { flex-basis: 100%; }
+}

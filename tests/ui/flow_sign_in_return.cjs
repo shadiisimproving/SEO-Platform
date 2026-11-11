@@ -47,7 +47,9 @@ const signIn = async (page, email = "admin@example.com", password = "demo-passwo
     check(Boolean(await page.$("dialog#resign[open]")), "Esc doesn't throw the sign-in box away");
     await page.fill("#resign-password", "wrong-password-1"); await page.click("#resign-go"); await page.waitForTimeout(1000);
     check(!(await page.locator("#resign-err").isHidden()), "a wrong password says so in the box");
-    await page.fill("#resign-password", "demo-password-1"); await page.click("#resign-go"); await page.waitForTimeout(1500);
+    await page.fill("#resign-password", "demo-password-1"); await page.click("#resign-go");
+    // Signing in is two requests (the password, then the new session's token): a busy computer can take over 1.5 s for them.
+    await page.waitForSelector("dialog#resign", { state: "detached", timeout: 10000 }).catch(() => {}); await page.waitForTimeout(300);
     check(!(await page.$("dialog#resign")), "signing in closes the box");
     await shot("01b-after-resign");
     await page.click("#task-save"); await page.waitForTimeout(1500);

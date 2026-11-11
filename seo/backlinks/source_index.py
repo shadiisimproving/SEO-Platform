@@ -77,7 +77,8 @@ def shown(row) -> dict | None:
     return None
 
 
-FOUND, OTHER_PAGES, NOTHING = "found", "other_pages", "nothing"
+FOUND, OTHER_PAGES, NOTHING, HIDDEN = "found", "other_pages", "nothing", "hidden"
+FAILS_BEFORE_DROP = 3  # failed searches in a row, as Refresh counts them: Google showing a tool a captcha is one
 
 
 def _parts(url: str):
@@ -108,11 +109,14 @@ def address_of(row) -> str:
 
 def outcome(wanted_url: str, results) -> str:
     """FOUND: the page came back. OTHER_PAGES: Google showed other pages under the same address, so the search wasn't for
-    one page and a miss proves nothing. NOTHING: no page under that address came back."""
+    one page and a miss proves nothing. NOTHING: no page under that address came back. HIDDEN: Google gave results without
+    their address, and none of the others is the page: it may be one of those, so this answer says nothing at all."""
     wanted = page_key(wanted_url)
-    keys = [page_key(found.url) for found in results]
+    keys = [page_key(found.url) for found in results if found.url]
     if wanted in keys:
         return FOUND
+    if any(not found.url for found in results):
+        return HIDDEN
     host, path, _ = _parts(wanted_url)
     under = host + path
     if any(key == under or key.startswith(under + "/") or key.startswith(under + "?") for key in keys):
@@ -134,17 +138,37 @@ def can_search(engine: Engine) -> bool:
     return bool(_free_tools(engine))
 
 
-def search(engine: Engine, url: str) -> tuple[str, str] | None:
-    """(the tool used, FOUND / OTHER_PAGES / NOTHING). None when no tool could answer on free credits."""
+def search(engine: Engine, url: str, stopped: set[str] | None = None, fails: dict[str, int] | None = None) -> tuple[str, str] | None:
+    """(the tool used, FOUND / OTHER_PAGES / NOTHING). None when no tool could answer on free credits.
+
+    `stopped` holds the tools that sit out the rest of the run, so none is paid for once per page: one that stopped (a bot
+    check, Google hiding where its results lead, no free searches), one whose answer hid the addresses (it can't tell one
+    page from another while Google does that), and one that failed FAILS_BEFORE_DROP searches in a row (a captcha each
+    time). A failed or hidden answer is never a miss: the next tool is asked, or the page waits for the next run."""
+    stopped = set() if stopped is None else stopped
+    fails = {} if fails is None else fails
     for tool in _free_tools(engine):
+        if tool.name in stopped:
+            continue
         try:
             # Written down first and given back only for what wasn't charged, as rankings do.
             answer = connections.spend_on_search(engine, tool, query_for(url), "google", "US", "en", "desktop", 10, note=NOTE)
         except TimedOut:
             return None  # it may have charged: that stays, and this page waits for the next run
-        except (ToolStopped, SearchFailed):
+        except ToolStopped:
+            stopped.add(tool.name)
             continue
-        return tool.name, outcome(url, answer.results)
+        except SearchFailed:
+            fails[tool.name] = fails.get(tool.name, 0) + 1
+            if fails[tool.name] >= FAILS_BEFORE_DROP:
+                stopped.add(tool.name)
+            continue
+        fails[tool.name] = 0
+        found = outcome(url, answer.results)
+        if found == HIDDEN:
+            stopped.add(tool.name)
+            continue
+        return tool.name, found
     return None
 
 
@@ -184,12 +208,18 @@ def _due(engine: Engine, first: int | None) -> list:
 @handler(JOB_KIND)
 def run(job, engine: Engine) -> None:
     started = time.monotonic()
-    rows = _due(engine, (job.payload or {}).get("first"))[:max(0, MAX_PER_DAY - _searched_today(engine))]
+    payload = dict(job.payload or {})
+    stopped = set(payload.get("stopped") or [])  # tools that sit out this job, kept in it across its 40-second parts
+    fails: dict[str, int] = {}
+    rows = _due(engine, payload.get("first"))[:max(0, MAX_PER_DAY - _searched_today(engine))]
     for row in rows:
         if time.monotonic() - started >= CHUNK_SECONDS:
+            if stopped:
+                with engine.begin() as conn:
+                    conn.execute(text("UPDATE jobs SET payload = :p WHERE id = :i"), {"p": json.dumps({**payload, "stopped": sorted(stopped)}), "i": job.id})
             raise RunAgain(3)
         try:
-            answer = search(engine, address_of(row))
+            answer = search(engine, address_of(row), stopped, fails)
         except Exception:  # noqa: BLE001 - one odd address must not stop every later page (the F59 family)
             log.exception("site: check failed for backlink %s", row["id"])
             _save(engine, row, "", OTHER_PAGES)  # its date moves, so the next page goes first tomorrow
