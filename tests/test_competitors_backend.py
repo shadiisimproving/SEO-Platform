@@ -1249,7 +1249,8 @@ def test_after_the_first_pass_new_removed_and_edited_pages_are_events(world):
     assert len(events(world)) == before
 
 
-def test_a_newer_sitemap_date_means_read_it_now(world):
+def test_a_newer_sitemap_date_means_read_it_now(world, monkeypatch):
+    monkeypatch.setattr(crawl, "FULL_DAILY_PAGES", 1)  # a big site: a small one has every page read daily anyway
     rival_site(world)
     rival = add_rival(world)
     world.drain("crawl")
@@ -2325,3 +2326,48 @@ def test_a_month_with_no_credits_left_still_says_so(world):
     run = keywords.upload(world.engine, world.own, "one\ntwo")
     world.drain()
     assert "this month" in run_of(world, run["id"])["stop_reason"]
+
+
+# ---- Who is moving: everything known behind each row (2026-11-10, "as much data as possible") ---------------------------------
+def test_a_page_change_carries_everything_known_about_its_page_in_both_views(world):
+    add_rival(world)
+    add_page_change(world, "rival.example", kind="new_page")
+    add_page_change(world, "rival.example", kind="title")
+    with world.engine.begin() as conn:
+        conn.execute(text(
+            "UPDATE pages SET title = 'Their page', meta_description = 'What it says', h1 = '[\"Big heading\"]', "
+            "headings = '[[\"h2\", \"How much?\"], [\"h3\", \"Fees\"]]', word_count = 1240, schema_types = '[\"FAQPage\"]', "
+            "internal_links = 30, external_links = 4, http_status = 200, lang = 'en', sitemap_lastmod = '2026-11-01', "
+            "extras = '{\"images\": 6, \"images_no_alt\": 2, \"videos\": 1, \"published\": \"2026-10-30\", \"questions\": [\"How much?\"]}'"
+        ))
+    found = collective.moves(world.engine)["moves"]
+    assert len(found) == 2 and all("page_id" not in m for m in found)
+    page = found[0]["page"]
+    assert page["title"] == "Their page" and page["description"] == "What it says" and page["h1"] == ["Big heading"]
+    assert page["headings"] == [["h2", "How much?"], ["h3", "Fees"]] and page["headings_total"] == 2
+    assert (page["words"], page["internal_links"], page["external_links"], page["status"], page["lang"]) == (1240, 30, 4, 200, "en")
+    assert page["schema"] == ["FAQPage"] and page["sitemap_date"] == "2026-11-01"
+    assert (page["images"], page["images_no_alt"], page["videos"], page["published"]) == (6, 2, 1, "2026-10-30")
+    assert page["questions"] == ["How much?"] and page["edits"] == 1  # the title edit; finding the page isn't an edit
+    timeline = profile.profile(world.engine, world.own, rival_row(collective.rivals(world.engine))["id"])["timeline"]
+    assert {e["kind"] for e in timeline} == {"new_page", "title"} and all(e["page"]["words"] == 1240 for e in timeline)
+
+
+def test_a_ranking_move_says_where_it_was_checked_and_where_i_stood(world):
+    add_rival(world)
+    seed(world.engine, world.own, "word", ["https://x.example/a", "https://me.example/a", "https://rival.example/a"])
+    seed(world.engine, world.own, "word", ["https://rival.example/a", "https://me.example/a"])
+    [move] = collective.moves(world.engine)["moves"]
+    assert move["kind"] == "rank_up" and move["mine"]["position"] == 2 and move["mine"]["host"] == "me.example"
+    assert {"country", "device", "location", "depth", "language"} <= set(move)
+
+
+def test_who_is_moving_can_look_further_back_but_only_over_the_periods_offered(world):
+    add_rival(world)
+    add_page_change(world, "rival.example")
+    with world.engine.begin() as conn:
+        conn.execute(text("UPDATE change_events SET detected_at = UTC_TIMESTAMP(3) - INTERVAL 60 DAY"))
+    assert collective.moves(world.engine)["total"] == 0
+    longer = collective.moves(world.engine, days=90)
+    assert longer["total"] == 1 and longer["days"] == 90 and longer["periods"] == [7, 30, 90, 365]
+    assert collective.moves(world.engine, days=5000)["days"] == 30

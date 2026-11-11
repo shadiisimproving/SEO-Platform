@@ -189,9 +189,10 @@ const check = (name, ok, extra) => { console.log(`${ok ? "ok  " : "FAIL"} ${name
     await page.locator(".clean-stat").first().waitFor({ timeout: 20000 });
     await page.locator("#cleaner-all").check(); await wait(80);
     check("5,000 rows: all can be picked, 200 are drawn", (await page.locator(".clean-table tbody tr").count()) === 200 && (await page.locator("#cleaner-add").innerText()).includes("5,000"), await page.locator("#cleaner-add").innerText());
-    await page.locator("#cleaner-add").click(); await page.locator("#prospect-more").waitFor({ timeout: 30000 });
+    await page.locator("#cleaner-add").click(); await page.locator('[data-tp-foot="bl-prospects"] [data-tp-step="next"]').waitFor({ timeout: 30000 });
     console.log(`     5,000 rows: read, picked and added in ${Date.now() - t0} ms`);
-    check("a long list shows 100 and Show more", (await rows()) === 100);
+    // Pages, like every long table (2026-11-10): 25 a page first, the real total in the footer.
+    check("a long list shows 25 a page, with the total", (await rows()) === 25 && /^1–25 of 5,0\d\d links$/.test((await page.locator('[data-tp-foot="bl-prospects"] .tp-range').innerText()).trim()), await page.locator('[data-tp-foot="bl-prospects"] .tp-range').innerText());
     check("the boxes still count real backlinks only", (await tiles()).split(" ")[0] === (await tiles()).split(" ")[0] && !/5[,  ]?0\d\d/.test((await tiles()).split(" ")[0]));
     await clearToasts();
 

@@ -77,10 +77,13 @@ def main(argv: list[str] | None = None) -> int:
         quality.queue_checks(engine)  # linking domains still waiting for their home page to be read
         history.enqueue_due(engine)  # the Wayback Machine and domain dates: monthly, or the next day after a failed try
         extras_auto.enqueue_due(engine)  # Moz and Cloudflare for every website, once a month each
+        firecrawl_weekly = firecrawl.enqueue_weekly(engine)  # only where the owner said yes to its weekly cost
+        guessed = competitor_crawl.guess_blocked_edits(engine)  # sites that block the reader: titles that changed in my ranking checks
         mine = competitor_crawl.own_count(engine, queued)  # my own sites are read daily too, so their pages sit beside a competitor's
         rivals = len(queued) - mine
         own_words = f" and {mine} of my sites" if mine else ""
-        print(f"competitors-due: queued {rivals} competitor{'' if rivals == 1 else 's'}{own_words}, resumed {len(resumed)} keyword list{'' if len(resumed) == 1 else 's'}")
+        weekly_words = f", {len(firecrawl_weekly)} weekly Firecrawl check{'' if len(firecrawl_weekly) == 1 else 's'}" if firecrawl_weekly else ""
+        print(f"competitors-due: queued {rivals} competitor{'' if rivals == 1 else 's'}{own_words}, resumed {len(resumed)} keyword list{'' if len(resumed) == 1 else 's'}{weekly_words}{f', {guessed} probable edit' + ('' if guessed == 1 else 's') + ' on blocked sites' if guessed else ''}")
         return 0
     result = tick(engine, args.lane, budget_seconds=args.budget, db_wait_seconds=args.db_wait)
     line = (

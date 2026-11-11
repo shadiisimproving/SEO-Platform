@@ -33,11 +33,11 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await page.click(`[data-cs-open="${added.id}"]`); await settle();
   check("the header says since when they're online", /Online since/.test(await page.locator(".pt-facts").innerText().catch(() => "")));
   await tab("activity");
-  const grew = page.locator("section.card", { hasText: "How their site grew" });
+  const grew = page.locator("section.card", { hasText: "How old their site is" });
   const grewText = await grew.innerText();
-  check("Activity shows how their site grew, by year", (await grew.locator(".pt-years li").count()) >= 3, grewText.slice(0, 100));
+  check("Activity shows how old their site is, with the years folded", (await grew.locator(".pt-years li").count()) >= 3, grewText.slice(0, 100));
   check("no 'waiting' text once it's known", !/Looking them up|Waiting for/.test(grewText));
-  check("the domain's dates show", /Domain registered/.test(grewText));
+  check("the domain's dates show", /domain registered/i.test(grewText));
   await page.screenshot({ path: OUT + "1-activity.png", fullPage: true });
 
   await tab("site");

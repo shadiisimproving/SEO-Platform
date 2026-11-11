@@ -82,15 +82,16 @@ def collect_now(engine: Engine, site_id: int) -> list[str]:
     return [entry["source"] for entry in collect_now_jobs(engine, site_id) if entry["new"]]
 
 
-def collect_now_jobs(engine: Engine, site_id: int) -> list[dict]:
+def collect_now_jobs(engine: Engine, site_id: int, only: list[str] | None = None) -> list[dict]:
     """Same, with each read's job, so the screen can wait for the reads to finish instead of guessing.
 
     A read already queued or running is followed too (new = False): pressing Refresh while one runs isn't "nothing to read".
     Sources it leaves out say why, so the screen never says "updated" about something it didn't read.
+    only: read just these sources (AI search's "Refresh this one"), else every source the site has set up.
     """
     entries = []
     for row in _rows(engine, site_id):
-        if not ready_to_run(row):
+        if not ready_to_run(row) or (only is not None and row["source"] not in only):
             continue
         if row["source"] == "clarity" and row["tried_today"]:
             entries.append({"source": "clarity", "job_id": None, "new": False, "skipped": "clarity_daily"})

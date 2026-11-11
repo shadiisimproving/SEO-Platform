@@ -269,10 +269,13 @@
       ${marks.length ? `<ul class="ov-marks">${marks.map((m) => `<li>${icon(m.kind === "task" ? "circle-check" : "pencil")}<span class="muted">${esc(dayLabel(m.day))}</span> ${m.kind === "dated" ? `<button class="link-btn" dir="auto" data-notes-open="${esc(JSON.stringify([{ label: dayLabel(m.day), icon: "calendar-days", where: { scope: "date", day: m.day, siteId: m.site_id } }]))}">${esc(m.text)}</button>` : `<span dir="auto">${esc(m.text)}</span>`}${m.kind === "note" ? `<button class="icon-btn ov-mark-del" data-ov-note-del="${m.id}" aria-label="${t("Delete the note")}">${icon("x")}</button>` : ""}</li>`).join("")}</ul>` : ""}
       ${OV.table ? chartTable(d) : ""}`;
   }
+  /* The chart as a table, in pages like every long table (table-pages.js): a year of days is 365 rows. */
   function chartTable(d) {
-    const was = d.compare_series || [];
+    const was = d.compare_series || [], key = "ov-chart-table";
+    window.TP.on(key, () => UI.render({ keepScroll: true }));
+    const view = window.TP.view(key, d.series.map((p, i) => [p, i]));
     return `<div class="table-wrap ov-chart-table"><table class="data"><thead><tr><th>${t(d.granularity === "week" ? "Week from" : d.granularity === "hour" ? "Hour" : "Date")}</th>${METRICS.map((m) => `<th class="c">${esc(t(m.name))}</th>`).join("")}${was.length ? `<th class="c">${t("Clicks before")}</th>` : ""}</tr></thead>
-      <tbody>${d.series.map((p, i) => `<tr><td data-label="${t("Date")}">${esc(dayLabel(p.day, true))}${p.fresh ? ` <span class="muted small">${t("not final")}</span>` : ""}</td>${METRICS.map((m) => `<td class="c" data-label="${esc(t(m.name))}">${esc(fmt[m.id](p[m.id]))}</td>`).join("")}${was.length ? `<td class="c" data-label="${t("Clicks before")}">${was[i] ? num(was[i].clicks) : "—"}</td>` : ""}</tr>`).join("")}</tbody></table></div>`;
+      <tbody>${view.rows.map(([p, i]) => `<tr><td data-label="${t("Date")}">${esc(dayLabel(p.day, true))}${p.fresh ? ` <span class="muted small">${t("not final")}</span>` : ""}</td>${METRICS.map((m) => `<td class="c" data-label="${esc(t(m.name))}">${esc(fmt[m.id](p[m.id]))}</td>`).join("")}${was.length ? `<td class="c" data-label="${t("Clicks before")}">${was[i] ? num(was[i].clicks) : "—"}</td>` : ""}</tr>`).join("")}</tbody></table></div>${window.TP.footer(key, view)}`;
   }
   function moveCross(box, index) {
     const info = window.OV.chart;
@@ -596,7 +599,7 @@
         try { await window.COMP.api("DELETE", `rules/${el.dataset.ovBrandDel}`); forget(); await brandPanel(); redraw(); UI.toast(t("Brand word removed")); } catch (err) { UI.toast(err.message, { kind: "crit" }); }
         return;
       }
-      if (hit("[data-ov-table]")) { OV.table = !OV.table; UI.render({ keepScroll: true }); return; }
+      if (hit("[data-ov-table]")) { OV.table = !OV.table; UI.render({ keepScroll: true }); UI.$("[data-ov-table]")?.focus({ preventScroll: true }); return; }
       if (hit("[data-ov-more-filters]")) {
         const f = filterOf(OV.tab), open = OV.moreFilters || numbersOn(f) > 0;
         if (open && numbersOn(f)) { UI.$('[data-ov-f="min_clicks"]')?.focus(); return; } // filters in use stay in sight
@@ -673,7 +676,8 @@
         const before = current()?.last_pull;
         el.disabled = true;
         try {
-          await Promise.all(ids.map((id) => window.COMP.api("POST", `sites/${id}/collect`, {})));
+          const answers = await Promise.all(ids.map((id) => window.COMP.api("POST", `sites/${id}/collect`, {})));
+          if (answers.some((a) => a.pages) && window.LV?.PAGES_NOTE) UI.toast(t(window.LV.PAGES_NOTE), { kind: "info" }); // my pages are read too (2026-11-10)
           OV.fresh = true; forget();
           startPolling(before);
         } catch (err) { UI.toast(err.message, { kind: "crit" }); el.disabled = false; }

@@ -214,6 +214,11 @@
 
   /* A position beside its tool. Beyond the depth checked it says so: it never reads as a number. */
   COMP.pos = (n, depth = 10) => (n === null || n === undefined ? `<span class="muted" title="${UI.t("Not in the results checked")}">&gt;${depth}</span>` : `<span class="tabular">#${n}</span>`);
+  /* Why a domain is flagged. The file's reason and a person's already say who; the system's own checks say so first. */
+  COMP.spamWhy = (gap) => {
+    const words = UI.t(gap.reason_words || "Flagged as spam");
+    return gap.flagged_by === "system" ? `${UI.t("Flagged by the system")}: ${words}` : words;
+  };
   COMP.shortUrl = (url) => String(url || "").replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") || "/";
   /* Text from other websites can be any language or direction, so it always carries dir="auto" and goes through esc. */
   /* Every address goes through PageLink (page-links.js), like the rest of the app: a click opens the page and never the row it sits in.

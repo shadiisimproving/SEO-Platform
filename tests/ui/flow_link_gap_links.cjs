@@ -91,12 +91,12 @@ fs.writeFileSync(FILE, "﻿" + [
   await page.click("[data-tp-clear]"); await page.waitForTimeout(400);
 
   // One competitor chosen: only its links show.
-  const two = await page.locator("#cg-filter option").evaluateAll((opts) => opts.find((o) => /^rival-two\.example/.test(o.textContent.trim()))?.value);
-  await page.selectOption("#cg-filter", two); await page.waitForTimeout(400);
+  await page.click("#cg-filter"); await page.waitForTimeout(300);
+  await page.locator(".cg-pick-menu [data-cg-choose]", { hasText: "rival-two.example" }).click(); await page.waitForTimeout(400);
   // The demo's rival-two file gives coffee-review one link, with no anchor text in that file.
   const onlyTwo = await cr.locator(".cg-links-cell").textContent();
   check("with rival-two chosen, coffee-review shows only rival-two's link", (await cr.locator(".cg-links li").count()) === 1 && /No anchor text/.test(onlyTwo) && /rival-two/.test(onlyTwo) === false && !/best coffee subscription/.test(onlyTwo), onlyTwo.replace(/\s+/g, " ").trim());
-  await page.selectOption("#cg-filter", ""); await page.waitForTimeout(300);
+  await page.click("#cg-filter"); await page.click('[data-cg-choose=""]'); await page.waitForTimeout(300);
 
   // French.
   await page.evaluate(() => { UI.state.lang = "fr"; UI.render(); }); await page.waitForTimeout(500);

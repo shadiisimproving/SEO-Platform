@@ -5,7 +5,9 @@
   let UI = null;
   const TYPE_OWN = "__own__"; // the "Type another address" choice in a page picker
   const WATCH_EVERY = 2000, WATCH_FOR = 60000;
-  const S = { site: null, view: "list", filter: "", verdict: null, showSame: false, pairs: [], competitors: [], detail: null, dirty: false, listScroll: 0, rereading: null, readWaiting: false, section: "keywords" };
+  const S = { site: null, view: "list", filter: "", verdict: null, showSame: false, pairs: [], competitors: [], detail: null, dirty: false, listScroll: 0, rereading: null, readWaiting: false, section: "keywords", sort: null };
+  const PAGES = "cp-pairs", KW_PAGES = "cp-kw"; // the pairs and a pair's keywords have pages and a search (table-pages.js), like every long table
+  const FIND_FROM = 11; // more than 10 rows, as on every table: a search box shows from this many rows, or while a search is on
   const W = { key: null, started: 0, expired: false, timer: null };
 
   const t = (s) => UI.t(s);
@@ -85,7 +87,10 @@
   };
 
   // ---- the list ---------------------------------------------------------------------------------
-  const byCompetitor = () => (S.filter ? S.pairs.filter((p) => String(p.competitor_id) === S.filter) : S.pairs);
+  /* A search finds a pair by my page (its address or title), the competitor, or a keyword they share. */
+  const found = (p) => TP.matches(PAGES, p.my_url, p.my_title, p.competitor, p.their_url, ...(p.ranking?.keywords || []).map((k) => k.keyword));
+  const searchedPairs = () => S.pairs.filter(found);
+  const byCompetitor = () => (S.filter ? searchedPairs().filter((p) => String(p.competitor_id) === S.filter) : searchedPairs());
   const shownPairs = () => { const list = byCompetitor(); return S.verdict === "all" || S.verdict === null ? list : list.filter((p) => verdictOf(p).kind === S.verdict); };
   const pathOf = (url) => { try { const parsed = new URL(url); return `${parsed.pathname}${parsed.search}`; } catch { return COMP.shortUrl(url); } };
 
@@ -152,9 +157,10 @@
     if (S.verdict === null) S.verdict = counts.behind ? "behind" : "all";
     const chip = (id, word, n) => `<button class="chip" data-cp-verdict="${id}" aria-pressed="${S.verdict === id}">${t(word)}<b>${UI.num(n)}</b></button>`;
     const tools = `<div class="cp-tools">
+      ${S.pairs.length >= FIND_FROM || TP.state(PAGES).q ? TP.search(PAGES, t("Search pages and keywords")) : ""}
       <label class="field"><span>${t("Against")}</span><select class="select" id="cp-filter">
-        <option value="">${t("All competitors")} (${UI.num(S.pairs.length)})</option>
-        ${S.competitors.map((c) => { const n = S.pairs.filter((p) => p.competitor_id === c.id).length; return `<option value="${c.id}" ${String(c.id) === S.filter ? "selected" : ""}>${esc(c.display || c.host)} (${UI.num(n)})</option>`; }).join("")}
+        <option value="">${t("All competitors")} (${UI.num(searchedPairs().length)})</option>
+        ${S.competitors.map((c) => { const n = searchedPairs().filter((p) => p.competitor_id === c.id).length; return `<option value="${c.id}" ${String(c.id) === S.filter ? "selected" : ""}>${esc(c.display || c.host)} (${UI.num(n)})</option>`; }).join("")}
       </select></label>
       <div class="chips cp-chips" role="group" aria-label="${t("Who's ahead")}">
         ${chip("all", "All", base.length)}${chip("behind", "They're ahead", counts.behind)}${chip("ahead", "You're ahead", counts.ahead)}${counts.level ? chip("level", "Even", counts.level) : ""}
@@ -164,14 +170,33 @@
     </div>
     ${unreadableNotes(base)}`;
     const shown = shownPairs();
-    if (!shown.length) return tools + COMP.empty(t("Nothing here"), S.filter && !base.length ? t("Pairs appear once a competitor ranks for the same keywords as you. You can also add one by hand.") : t("No pair matches this filter."));
-    // One list, the furthest behind on top, so the first row is always the first thing to look at.
-    const sorted = [...shown].sort((a, b) => pressure(b) - pressure(a) || a.my_url.localeCompare(b.my_url));
+    if (!shown.length) {
+      if (TP.state(PAGES).q) return tools + COMP.empty(t("Nothing here"), t("No pair matches this search."), `<button type="button" class="btn btn-small" data-tp-clear data-tp-key="${PAGES}">${t("Clear the search")}</button>`);
+      return tools + COMP.empty(t("Nothing here"), S.filter && !base.length ? t("Pairs appear once a competitor ranks for the same keywords as you. You can also add one by hand.") : t("No pair matches this filter."));
+    }
+    // One list, the furthest behind on top, so the first row is always the first thing to look at. A heading can sort it another way.
+    const page = TP.view(PAGES, sortedPairs(shown));
+    const head = (key, label, cls = "") => {
+      const on = S.sort?.key === key;
+      return `<th scope="col" class="${cls}" aria-sort="${on ? (S.sort.dir === "asc" ? "ascending" : "descending") : "none"}"><button type="button" class="th-btn" data-cp-sort="${key}">${label}${on ? UI.icon(S.sort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
+    };
     return `${tools}
-      <div class="table-wrap"><table class="data" id="cp-table">
-        <thead><tr><th scope="col">${t("My page")}</th><th scope="col">${t("Competitor")}</th><th scope="col">${t("Keyword")}</th><th scope="col" class="c">${youThemHead("mine")}</th><th scope="col" class="c">${youThemHead("theirs")}</th><th scope="col">${t("Who's ahead")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
-        <tbody>${sorted.map(pairRow).join("")}</tbody>
-      </table></div>`;
+      <div class="cp-pages"><div class="table-wrap"><table class="data" id="cp-table">
+        <thead><tr>${head("page", t("My page"))}<th scope="col">${t("Competitor")}</th><th scope="col">${t("Keyword")}</th>${head("mine", youThemHead("mine"), "c")}${head("theirs", youThemHead("theirs"), "c")}<th scope="col">${t("Who's ahead")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
+        <tbody>${page.rows.map(pairRow).join("")}</tbody>
+      </table></div>${TP.footer(PAGES, page, { noun: t("pairs") })}</div>`;
+  }
+  /* My page: A to Z. You and Them: the position on the pair's keyword, the best first. Not in the results always goes last. */
+  const PAIR_SORTS = { page: (p) => pathOf(p.my_url), mine: (p) => leadKeyword(p)?.keyword.my_position ?? null, theirs: (p) => leadKeyword(p)?.keyword.their_position ?? null };
+  function sortedPairs(list) {
+    const usual = [...list].sort((a, b) => pressure(b) - pressure(a) || a.my_url.localeCompare(b.my_url));
+    if (!S.sort || !PAIR_SORTS[S.sort.key]) return usual;
+    const value = PAIR_SORTS[S.sort.key], dir = S.sort.dir === "asc" ? 1 : -1;
+    return usual.sort((a, b) => {
+      const x = value(a), y = value(b);
+      if (x === null || y === null) return (x === null) - (y === null);
+      return (typeof x === "number" ? x - y : String(x).localeCompare(String(y), UI.state.lang)) * dir;
+    });
   }
 
   // ---- the detail: facts, row by row ------------------------------------------------------------
@@ -393,12 +418,17 @@
   }
   function keywordsPanel(d) {
     if (!d.keywords.length) return `<div class="table-wrap"><div class="empty"><p>${t("Neither page shows up for your keywords in the latest checks.")}</p></div></div>`;
-    const rows = [...d.keywords].sort((a, b) => keywordOrder(b) - keywordOrder(a)).map(keywordRows).join("");
+    // The furthest behind first, in pages, with a search for one keyword when there are enough to look through.
+    const q = TP.state(KW_PAGES).q;
+    const search = d.keywords.length >= FIND_FROM || q ? `<div class="cp-tools cp-kw-tools">${TP.search(KW_PAGES, t("Search keywords"))}</div>` : "";
+    const list = [...d.keywords].filter((r) => TP.matches(KW_PAGES, r.keyword)).sort((a, b) => keywordOrder(b) - keywordOrder(a));
+    if (!list.length) return `${search}<div class="table-wrap"><div class="empty"><p>${t("No keyword matches this search.")}</p><button type="button" class="btn btn-small" data-tp-clear data-tp-key="${KW_PAGES}">${t("Clear the search")}</button></div></div>`;
+    const page = TP.view(KW_PAGES, list);
     const missing = d.keywords.find((r) => r.my_position === null || r.their_position === null);
     const notes = [t("A tick shows where the keyword appears on the page."), missing ? fill(t(">{n} means it isn't in the first {n} results."), { n: UI.num(missing.depth) }) : ""].filter(Boolean).join(" ");
-    return `<div class="table-wrap"><table class="data cp-kw" id="cp-kw">
+    return `${search}<div class="cp-pages"><div class="table-wrap"><table class="data cp-kw" id="cp-kw">
       <thead><tr><th scope="col">${t("Keyword")}</th><th scope="col">${t("Who's ahead")}</th><th scope="col"><span class="sr">${t("Page")}</span></th><th scope="col" class="c">${t("Position")}</th>${MARKS.map(([, label]) => `<th scope="col" class="c">${t(label)}</th>`).join("")}<th scope="col">${t("AI Overview")}</th></tr></thead>
-      ${rows}</table><p class="cp-foot-note">${esc(notes)}</p></div>`;
+      ${page.rows.map(keywordRows).join("")}</table><p class="cp-foot-note">${esc(notes)}</p></div>${TP.footer(KW_PAGES, page, { noun: t("keywords") })}</div>`;
   }
 
   // ---- the detail: headings and words -----------------------------------------------------------
@@ -708,6 +738,7 @@
     try {
       detail = await COMP.api("GET", `page-pairs/${id}`);
     } catch (err) { COMP.fail(err); return; }
+    if (S.detail?.id !== detail.id) { TP.state(KW_PAGES).q = ""; TP.reset(KW_PAGES); } // another pair starts on its first keywords
     S.detail = detail; S.view = "detail"; S.rereading = null; S.readWaiting = false; S.section = "keywords";
     resetWatch();
     COMP.paint();
@@ -754,7 +785,13 @@
       let el;
       if (hit('[data-comp-tab="pairs"]')) { S.view = "list"; S.detail = null; S.rereading = null; return; }
       if ((el = hit("[data-cp-open]"))) { openDetail(Number(el.dataset.cpOpen)); return; }
-      if ((el = hit("[data-cp-verdict]"))) { S.verdict = el.dataset.cpVerdict; COMP.paint(); UI.$(`[data-cp-verdict="${S.verdict}"]`)?.focus(); return; }
+      if ((el = hit("[data-cp-sort]"))) {
+        const key = el.dataset.cpSort, first = "asc"; // names A to Z, positions the best (smallest) first
+        S.sort = S.sort?.key !== key ? { key, dir: first } : S.sort.dir === first ? { key, dir: "desc" } : null; // a third press goes back to the usual order
+        TP.reset(PAGES); COMP.paint(); UI.$(`[data-cp-sort="${key}"]`)?.focus();
+        return;
+      }
+      if ((el = hit("[data-cp-verdict]"))) { S.verdict = el.dataset.cpVerdict; TP.reset(PAGES); COMP.paint(); UI.$(`[data-cp-verdict="${S.verdict}"]`)?.focus(); return; }
       if (hit("[data-cp-same]")) { S.showSame = !S.showSame; repaint(); UI.$("#cp-same")?.focus({ preventScroll: true }); return; }
       if ((el = hit("[data-cp-section]"))) { S.section = el.dataset.cpSection; repaint(); UI.$(`#cp-tab-${S.section}`)?.focus({ preventScroll: true }); return; }
       if (hit("#cp-back")) { backToList(); return; }
@@ -773,6 +810,7 @@
       const id = e.target.id;
       if (id === "cp-filter") {
         S.filter = e.target.value;
+        TP.reset(PAGES);
         COMP.paint();
         UI.$("#cp-filter")?.focus();
         return;
@@ -817,10 +855,17 @@
   // ---- the tab ----------------------------------------------------------------------------------
   const tab = {
     id: "pairs", order: 30, label: "Page vs page", icon: "columns-3",
-    init(helpers) { UI = helpers; bind(); },
+    init(helpers) {
+      UI = helpers; bind();
+      TP.on(PAGES, () => COMP.paint()); // another page, another size or a search; the helper keeps the focus
+      TP.on(KW_PAGES, () => COMP.paint());
+    },
     async load() {
       const siteId = COMP.siteId;
-      if (S.site !== siteId) { S.site = siteId; S.view = "list"; S.detail = null; S.filter = ""; S.verdict = null; S.rereading = null; S.readWaiting = false; }
+      if (S.site !== siteId) {
+        S.site = siteId; S.view = "list"; S.detail = null; S.filter = ""; S.verdict = null; S.rereading = null; S.readWaiting = false; S.sort = null;
+        [PAGES, KW_PAGES].forEach((key) => { TP.state(key).q = ""; TP.reset(key); });
+      }
       resetWatch();
       const openId = tab.openPairId;
       tab.openPairId = null;
@@ -834,7 +879,9 @@
       const wanted = openId ?? (S.view === "detail" ? S.detail?.id : null);
       if (!wanted) return;
       try {
-        S.detail = await COMP.api("GET", `page-pairs/${wanted}`);
+        const next = await COMP.api("GET", `page-pairs/${wanted}`);
+        if (S.detail?.id !== next.id) { TP.state(KW_PAGES).q = ""; TP.reset(KW_PAGES); }
+        S.detail = next;
         S.view = "detail";
       } catch (err) {
         S.view = "list"; S.detail = null;
@@ -1028,6 +1075,9 @@
 
   Object.assign(window.FR, {
     "Page vs page": "Page contre page",
+    "Search pages and keywords": "Chercher une page ou un mot-clé", "Search keywords": "Chercher un mot-clé",
+    "pairs": "paires", "keywords": "mots-clés", "No pair matches this search.": "Aucune paire ne correspond à cette recherche.",
+    "No keyword matches this search.": "Aucun mot-clé ne correspond à cette recherche.", "Clear the search": "Effacer la recherche",
     "place": "place", "places": "places",
     "Only they rank": "Eux seuls se classent", "Only you rank": "Vous seul vous classez", "Each ranks for different keywords": "Chacun se classe sur des mots-clés différents",
     "No shared keyword in the latest check": "Aucun mot-clé commun dans la dernière vérification", "No keyword in the latest check": "Aucun mot-clé dans la dernière vérification",

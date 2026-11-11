@@ -8,13 +8,15 @@
     const { t, esc, icon } = window.UI;
     return `<div class="cs-summary"><div class="cs-summary-text" dir="auto">${esc(held.text)}</div><div class="cs-summary-by">${icon("sparkles")}${t("Written by AI from the page's text. It can be wrong.")}</div></div>`;
   };
+  /* As seo/extras/summaries.py usable(): at least a short sentence. */
+  const usable = (words) => { const w = String(words || "").trim().split(/\s+/).filter(Boolean); return w.join(" ").length >= 8 && w.length >= 2; };
   window.ChangeSummary = {
     /* e: { id, summaries }. A kept answer shows even if the key was removed later. */
     slot(e) {
       if (!e?.id) return "";
       const { t, icon } = window.UI;
       const held = e.summaries?.[lang()];
-      if (held) return box(held);
+      if (held && usable(held.text)) return box(held); // a one-letter answer kept by an older version ("A") is asked for again
       if (!on()) return "";
       return `<div class="cs-summary-slot"><button type="button" class="link-btn cs-summary-btn" data-change-summary="${Number(e.id)}">${icon("sparkles")}${t("Summarise with AI")}</button><span class="error" role="alert" hidden></span></div>`;
     },

@@ -178,3 +178,89 @@ def test_the_insights_route_answers(world):
     reply = world.client.get(f"/api/competitors/{rival}/insights?site_id={world.own}")
     assert reply.status_code == 200, reply.get_data(as_text=True)
     assert set(reply.get_json()) == {"facts", "best_pages", "sections", "questions", "rhythm", "links", "build", "keywords"}
+
+
+# ---- asking the archive (2026-11-10: pages whose first copy was a redirect were lost) -----------------------------
+
+# The archive's index, one row per copy, in its own order: by address, then by time.
+COPIES = [
+    (f"{SURT}/", "20180809121618", "text/html", "302"),  # years of redirects before the site's first real page
+    (f"{SURT}/", "20240810151126", "text/html", "301"),
+    (f"{SURT}/", "20240810151126", "text/html", "200"),
+    (f"{SURT}/", "20250221042717", "text/html", "200"),
+    (f"{SURT}/guide", "20220101000000", "warc/revisit", "-"),
+    (f"{SURT}/guide", "20230301000000", "text/html", "200"),
+    (f"{SURT}/logo.png", "20190101000000", "image/png", "200"),
+    (f"{SURT}/moved", "20210101000000", "text/html", "301"),  # never a page
+]
+
+
+def fake_archive(filtering_works=True, seen=None):
+    import httpx
+
+    def answer(request):
+        query = request.url.params
+        if seen is not None:
+            seen.append(query)
+        filters = query.get_list("filter")
+        if filters and not filtering_works:
+            raise httpx.ReadTimeout("too slow to filter", request=request)
+        rows = [r for r in COPIES if all(r[3 if f.startswith("statuscode") else 2] == f.split(":", 1)[1] for f in filters)]
+        if query.get("collapse") == "urlkey":
+            rows = [r for n, r in enumerate(rows) if n == 0 or rows[n - 1][0] != r[0]]
+        rows = rows[: int(query.get("limit"))]
+        return httpx.Response(200, text="".join(" ".join(r) + "\n" for r in rows))
+
+    return httpx.MockTransport(answer)
+
+
+@pytest.fixture
+def real_lookup(monkeypatch):
+    monkeypatch.setattr(history, "is_allowed", lambda url: True)
+    return monkeypatch
+
+
+def test_a_page_whose_first_copy_was_a_redirect_still_counts_from_its_first_good_copy(real_lookup):
+    seen = []
+    real_lookup.setattr(history, "transport", fake_archive(seen=seen))
+    found = history.summarise(history.read_cdx("rival.example"))
+    assert found["archived_pages"] == 2
+    assert found["first_by_page"] == {"rival.example/": date(2024, 8, 10), "rival.example/guide": date(2023, 3, 1)}
+    assert found["first_capture"] == date(2023, 3, 1)
+    assert found["pages_by_year"] == {"2023": 1, "2024": 1}
+    assert len(seen) == 1 and seen[0].get_list("filter") == ["statuscode:200", "mimetype:text/html"]
+
+
+def test_an_archive_too_slow_to_filter_is_asked_for_every_copy_with_the_same_result(real_lookup):
+    seen = []
+    real_lookup.setattr(history, "transport", fake_archive(filtering_works=False, seen=seen))
+    found = history.summarise(history.read_cdx("rival.example"))
+    assert found["archived_pages"] == 2 and found["first_capture"] == date(2023, 3, 1)
+    assert not found["capped"]
+    assert len(seen) == 2 and not seen[1].get_list("filter") and seen[1].get("collapse") is None
+
+
+def test_only_the_limit_of_the_question_that_answered_marks_a_count_as_cut_off(real_lookup):
+    real_lookup.setattr(history, "transport", fake_archive())
+    real_lookup.setattr(history, "CDX_LIMIT", 2)
+    assert history.summarise(history.read_cdx("rival.example"))["capped"]
+    real_lookup.setattr(history, "transport", fake_archive(filtering_works=False))
+    assert not history.summarise(history.read_cdx("rival.example"))["capped"]  # 8 copies, far under the every-copy limit
+
+
+def test_an_offline_page_sent_as_200_is_a_failed_look_not_an_empty_archive(real_lookup):
+    import httpx
+
+    real_lookup.setattr(history, "transport", httpx.MockTransport(lambda request: httpx.Response(200, text="<html><title>Temporarily Offline</title></html>")))
+    with pytest.raises(history.HistoryFailed):
+        history.read_cdx("rival.example")
+
+
+def test_an_archive_that_is_down_is_not_asked_a_second_time(real_lookup):
+    import httpx
+
+    seen = []
+    real_lookup.setattr(history, "transport", httpx.MockTransport(lambda request: seen.append(1) or httpx.Response(503, text="<html>offline</html>")))
+    with pytest.raises(history.HistoryFailed, match="http_503"):
+        history.read_cdx("rival.example")
+    assert len(seen) == 1

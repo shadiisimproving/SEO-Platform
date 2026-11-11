@@ -84,13 +84,18 @@
     const entries = answers.flatMap((a) => a.jobs || []);
     const ids = [...new Set(entries.map((e) => e.job_id).filter(Boolean))];
     const clarityLater = entries.some((e) => e.skipped === "clarity_daily");
-    const laterNote = clarityLater ? ` ${t("Clarity was already read today. It reads again after midnight UTC.")}` : "";
+    // A full Refresh data also starts a read of my site's pages (owner, 2026-11-10); it runs on its own, so every message after it says so.
+    const pagesNote = answers.some((a) => a.pages) ? ` ${t(PAGES_NOTE)}` : "";
+    const laterNote = (clarityLater ? ` ${t("Clarity was already read today. It reads again after midnight UTC.")}` : "") + pagesNote;
     if (!ids.length) {
-      UI.toast(t("Nothing to read yet: connect a data source first, or it's already running.") + laterNote, { kind: "info" });
+      UI.toast(pagesNote ? laterNote.trim() : t("Nothing to read yet: connect a data source first, or it's already running.") + laterNote, { kind: pagesNote ? "good" : "info" });
       return;
     }
-    UI.toast(t("Reading the latest data. It appears here when it arrives."), { kind: "good" });
+    UI.toast(t("Reading the latest data. It appears here when it arrives.") + pagesNote, { kind: "good" });
     LV.reading = { done: 0, total: ids.length };
+    // Each read's own state, so a screen can show Queued → Reading… → ✓ beside its source (AI search's chips).
+    LV.readingJobs = entries.filter((e) => e.job_id).map((e) => ({ id: e.job_id, source: e.source, status: "queued" }));
+    document.dispatchEvent(new CustomEvent("seocc:reading"));
     showReading();
     const began = Date.now();
     let states = [];
@@ -99,12 +104,14 @@
       try { states = (await window.COMP.api("GET", `collect-jobs?ids=${ids.join(",")}`)).jobs; } catch { continue; }
       // A job missing from the answer was cleaned away, so it's over too.
       LV.reading.done = ids.length - states.filter((s) => !OVER.has(s.status)).length;
+      LV.readingJobs = states;
+      document.dispatchEvent(new CustomEvent("seocc:reading"));
       showReading();
       if (LV.reading.done >= ids.length) break;
     }
     const finished = LV.reading.done >= ids.length;
     const failed = states.filter((s) => s.error);
-    LV.reading = null;
+    LV.reading = null; LV.readingJobs = null;
     showReading();
     if (redraw) { forget(); if (!UI.$("#panel")) UI.render(); }
     if (!finished) { UI.toast(t("Still reading in the background. The numbers appear here when it finishes: press Refresh data again in a few minutes.") + laterNote, { kind: "info" }); return; }
@@ -115,8 +122,11 @@
       UI.toast(`${fillIn(t("{ok} of {total} read."), { ok: ids.length - failed.length, total: ids.length })} ${[...new Set(why)].join(" ")}${laterNote}`, { kind: "crit", stay: true, undo: () => UI.openConnection(google ? "google" : failed[0].source), undoLabel: t("Fix it") });
       return;
     }
-    UI.toast(t("Updated with the latest data.") + laterNote, { kind: "good" });
+    const read = [...new Set(entries.filter((e) => e.job_id).map((e) => t(SOURCE_NAMES[e.source] || e.source)))];
+    UI.toast((read.length ? fillIn(t("Updated: {names}."), { names: read.join(", ") }) : t("Updated with the latest data.")) + laterNote, { kind: "good" });
   }
+  const PAGES_NOTE = "Your site's pages are being read too. That takes a while: it waits 3 seconds between pages.";
+  LV.PAGES_NOTE = PAGES_NOTE;
   const SOURCE_NAMES = { gsc: "Search Console", ga4: "Google Analytics", bing: "Bing Webmaster", yandex: "Yandex Webmaster", clarity: "Microsoft Clarity", pagespeed: "PageSpeed Insights" };
   LV.watchReads = watchReads;
   /* Both periods in words, from the dates the server really used, then how far the data goes. */
@@ -141,7 +151,9 @@
 
   // ---- line chart: one axis, gaps stay gaps, hover and keyboard read-out, and a table view --------
   LV.lineChart = lineChart;
-  function lineChart(id, days, series, { invert = false, unit = "", legend = true } = {}) {
+  /* marks: { day: count } draws a dot on the first line for those days, such as a lead in that week; markName names it in the
+     read-out. dayLabel: how a day reads in the read-out and the table, such as "Week to 9 Nov". */
+  function lineChart(id, days, series, { invert = false, unit = "", legend = true, marks = null, markName = "Leads", dayLabel = null } = {}) {
     if (!days.length) return `<div class="empty"><p>${t("No data in this period.")}</p></div>`;
     const all = series.flatMap((s) => days.map((d) => s.values[d]).filter((v) => v !== null && v !== undefined));
     const top = Math.max(...all, 1), low = invert ? Math.min(...all, 1) : 0;
@@ -160,22 +172,29 @@
       return `<path class="lv-line" d="${d}" stroke="${s.color}"${s.dash ? ' stroke-dasharray="5 5"' : ""}/>${single}`;
     }).join("");
     const grid = [0, .5, 1].map((f) => `<line class="lv-grid" x1="0" x2="${W}" y1="${f * H}" y2="${f * H}"/>`).join("");
+    // Dots sit over the chart in HTML: inside the stretched SVG a circle would turn into an oval.
+    const dots = marks ? days.map((day, i) => (marks[day] && series[0]?.values[day] !== null && series[0]?.values[day] !== undefined ? `<span class="lv-mark" aria-hidden="true" style="left:calc(18px + ${(x(i) / W).toFixed(4)} * (100% - 36px));top:calc(14px + ${(y(series[0].values[day]) / H).toFixed(4)} * var(--lv-h, 220px))"></span>` : "")).join("") : "";
     const label = (v) => `${num(top >= 20 ? Math.round(v) : Math.round(v * 10) / 10)}${unit}`;
     const labels = invert ? [[0, low], [100, top]] : [[0, top], [50, top / 2], [100, 0]];
     const every = Math.max(1, Math.floor(days.length / 5));
-    const ticks = days.filter((_, i) => i === 0 || i === days.length - 1 || (i % every === 0 && i < days.length - every / 2)).slice(0, 6);
-    LV.chartData.set(id, { days, series, W, unit });
+    const picked = days.filter((_, i) => i === 0 || i === days.length - 1 || (i % every === 0 && i < days.length - every / 2));
+    const ticks = picked.length > 6 ? [...picked.slice(0, 5), days[days.length - 1]] : picked; // the last day always has its date
+    LV.chartData.set(id, { days, series, W, unit, marks, markName, dayLabel });
+    const dayName = (day) => (dayLabel ? dayLabel(day) : shortDay(day));
     const open = LV.tables.get(id);
-    const table = `<table class="data"><thead><tr><th>${t("Date")}</th>${series.map((s) => `<th class="c">${esc(t(s.name))}</th>`).join("")}</tr></thead><tbody>${days.map((day) => `<tr><td data-label="${t("Date")}">${esc(shortDay(day))}</td>${series.map((s) => `<td class="c" data-label="${esc(t(s.name))}">${s.values[day] === null || s.values[day] === undefined ? "—" : num(s.values[day])}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+    // The table view has pages like every long table (table-pages.js): a year of days is 365 rows.
+    const tableKey = `lv-chart-${id}`, tableView = open ? window.TP.view(tableKey, days) : null;
+    if (open) window.TP.on(tableKey, () => UI.render());
+    const table = !open ? "" : `<table class="data"><thead><tr><th>${t("Date")}</th>${series.map((s) => `<th class="c">${esc(t(s.name))}</th>`).join("")}${marks ? `<th class="c">${esc(t(markName))}</th>` : ""}</tr></thead><tbody>${tableView.rows.map((day) => `<tr><td data-label="${t("Date")}">${esc(dayName(day))}</td>${series.map((s) => `<td class="c" data-label="${esc(t(s.name))}">${s.values[day] === null || s.values[day] === undefined ? "—" : num(s.values[day])}</td>`).join("")}${marks ? `<td class="c" data-label="${esc(t(markName))}">${num(marks[day] || 0)}</td>` : ""}</tr>`).join("")}</tbody></table>`;
     return `<div class="lv-chart" data-lv-chart="${id}" tabindex="0" role="img" aria-label="${t("Chart")}: ${esc(series.map((s) => t(s.name)).join(", "))}. ${t("Use the arrow keys to read each day.")}">
-        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${grid}${paths}<line class="lv-cross" x1="0" x2="0" y1="0" y2="${H}" hidden/></svg>
+        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${grid}${paths}<line class="lv-cross" x1="0" x2="0" y1="0" y2="${H}" hidden/></svg>${dots}
         ${labels.map(([pos, v]) => `<span class="lv-ylab" style="top:calc(14px + ${pos / 100} * var(--lv-h, 220px))">${label(v)}</span>`).join("")}
         <div class="lv-tip" hidden></div>
         <div class="lv-axis" aria-hidden="true">${ticks.map((d) => `<span>${esc(shortDay(d))}</span>`).join("")}</div>
       </div>
       ${series.length > 1 && legend ? `<div class="lv-legend">${series.map((s) => `<span><i class="lv-key" style="background:${s.color}"></i>${esc(t(s.name))}</span>`).join("")}</div>` : ""}
       <div class="lv-foot"><button class="link-btn" data-lv-table="${id}" aria-expanded="${open ? "true" : "false"}">${t(open ? "Hide the table" : "Show as a table")}</button></div>
-      ${open ? `<div class="table-wrap" style="box-shadow:none;border-radius:0;max-height:320px;overflow:auto">${table}</div>` : ""}`;
+      ${open ? `<div class="table-wrap lv-chart-table">${table}</div>${window.TP.footer(tableKey, tableView)}` : ""}`;
   }
 
   function moveCross(box, index) {
@@ -187,7 +206,8 @@
     const xSvg = info.days.length === 1 ? info.W / 2 : (i / (info.days.length - 1)) * info.W;
     cross.removeAttribute("hidden"); cross.setAttribute("x1", xSvg); cross.setAttribute("x2", xSvg);
     const day = info.days[i];
-    UI.setHTML(tip, `<b>${esc(shortDay(day))}</b>${info.series.map((s) => `<div><span><i class="lv-key" style="background:${s.color}"></i>${esc(t(s.name))}</span><span>${s.values[day] === null || s.values[day] === undefined ? "—" : num(s.values[day])}${info.unit}</span></div>`).join("")}`);
+    const markLine = info.marks ? `<div><span><i class="lv-key lv-key-dot"></i>${esc(t(info.markName))}</span><span>${num(info.marks[day] || 0)}</span></div>` : "";
+    UI.setHTML(tip, `<b>${esc(info.dayLabel ? info.dayLabel(day) : shortDay(day))}</b>${info.series.map((s) => `<div><span><i class="lv-key" style="background:${s.color}"></i>${esc(t(s.name))}</span><span>${s.values[day] === null || s.values[day] === undefined ? "—" : num(s.values[day])}${info.unit}</span></div>`).join("")}${markLine}`);
     tip.hidden = false;
     const rect = svg.getBoundingClientRect(), left = (xSvg / info.W) * rect.width + 18;
     const room = box.clientWidth - tip.offsetWidth - 8;
@@ -200,16 +220,24 @@
     return `<div class="lv-bars">${rows.map((r) => `<div class="lv-bar"><span class="lab" dir="auto">${esc(label(r))}</span><span class="track"><i style="width:${Math.max(value(r) ? 2 : 0, (value(r) / max) * 100)}%"></i></span><span class="val">${fmt(value(r))}</span></div>`).join("")}</div>`;
   };
 
-  /* columns: { key, label, num, get, html }. Sort is kept per table, and blanks always sort last. */
-  const SORTS = new Map(), LIMITS = new Map();
-  function dataTable(id, columns, rows, { pageSize = 100, csv = false, empty = "Nothing in this period." } = {}) { // downloads are the Export button in the top bar (export.js)
+  /* columns: { key, label, num, get, html }. Sort is kept per table, and blanks always sort last.
+     Pages of 25, 50 or 100 rows and, past 25 rows, a search through the table's words (search: its placeholder), the same as
+     every long table in the app (table-pages.js). */
+  const SORTS = new Map();
+  const pagesKey = (id) => `lv-${id}`;
+  function dataTable(id, columns, rows, { csv = false, empty = "Nothing in this period.", search = "Search the table" } = {}) { // downloads are the Export button in the top bar (export.js)
     if (!rows.length) return `<div class="empty"><p>${t(empty)}</p></div>`;
+    const TP = window.TP, key = pagesKey(id);
+    TP.on(key, () => UI.render());
     const sort = SORTS.get(id);
     const value = (col, row) => (col.get ? col.get(row) : row[col.key]);
-    let shown = rows;
+    const words = columns.filter((c) => !c.num);
+    // The box stays while a search is typed in it, even if the period changed and fewer rows came back.
+    const box = rows.length > 10 || TP.state(key).q ? /* more than 10 rows, as on every table */ `<div class="lv-tools">${TP.search(key, t(search))}</div>` : "";
+    let shown = box ? rows.filter((row) => TP.matches(key, ...words.map((c) => value(c, row)))) : rows;
     if (sort) {
       const col = columns.find((c) => c.key === sort.key);
-      shown = [...rows].sort((a, b) => {
+      shown = [...shown].sort((a, b) => {
         const x = value(col, a), y = value(col, b);
         if (x === null || x === undefined) return 1;
         if (y === null || y === undefined) return -1;
@@ -217,18 +245,19 @@
         return sort.dir === "asc" ? order : -order;
       });
     }
-    const limit = LIMITS.get(id) || pageSize;
+    const view = TP.view(key, shown);
     const head = columns.map((c) => {
       const on = sort?.key === c.key;
       return `<th class="${c.num ? "c" : ""}" scope="col" aria-sort="${on ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}"><button class="th-btn" data-lv-sort="${id}" data-key="${c.key}" ${UI.def(c.label) ? `data-tip="${esc(UI.def(c.label))}"` : ""}>${esc(t(c.label))}${on ? icon(sort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
     }).join("");
     LV.chartData.set(`table-${id}`, { columns, rows: shown });
-    const body = shown.slice(0, limit).map((row) => `<tr style="cursor:default">${columns.map((c) => {
+    if (!shown.length) return `${box}<div class="empty"><p>${t("Nothing matches the search.")}</p></div>`;
+    const body = view.rows.map((row) => `<tr style="cursor:default">${columns.map((c) => {
       const v = value(c, row);
       return `<td class="${c.num ? "c" : ""}" data-label="${esc(t(c.label))}">${c.html ? c.html(row) : v === null || v === undefined ? `<span class="muted">—</span>` : c.num ? num(v) : esc(v)}</td>`;
     }).join("")}</tr>`).join("");
-    return `<div class="table-wrap" style="box-shadow:none"><table class="data"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>
-      <div class="lv-foot"><span>${num(Math.min(limit, shown.length))} ${t("of")} ${num(shown.length)}</span>${limit < shown.length ? `<button class="link-btn" data-lv-more="${id}" data-page="${pageSize}">${t("Show more")}</button>` : ""}${csv ? `<button class="link-btn end" data-lv-csv="${id}">${icon("download")}${t("Download CSV")}</button>` : ""}</div>`;
+    return `${box}<div class="table-wrap" style="box-shadow:none"><table class="data"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>${TP.footer(key, view)}
+      ${csv ? `<div class="lv-foot"><button class="link-btn end" data-lv-csv="${id}">${icon("download")}${t("Download CSV")}</button></div>` : ""}`;
   }
 
   function downloadCsv(id) {
@@ -277,7 +306,7 @@
       { key: "query", label: "Query", html: (r) => `<span class="mono" dir="auto">${esc(r.query)}</span>` },
       { key: "clicks", label: "Clicks", num: true },
       { key: "change", label: "Change", num: true, html: move },
-    ], rows, { csv: false, empty: word });
+    ], rows, { csv: false, empty: word, search: "Search queries" });
     const compareOff = UI.range.get().compare === "none";
     return page(head, `
       <p class="small muted" style="margin:0 0 12px">${throughNote(d.through, d.lag_note, d)}</p>
@@ -350,7 +379,7 @@
         { key: "domain", label: "Site", html: (r) => `<span class="mono" dir="auto">${esc(r.domain)}</span>` },
         { key: "sessions", label: "Visits", num: true },
         { key: "leads", label: "Leads", num: true },
-      ], d.referrers, { empty: "No referring sites in this period." })}</section>
+      ], d.referrers, { empty: "No referring sites in this period.", search: "Search sites" })}</section>
       ${rulesCard("channel", "Channel rules", "Rename where a visit counts. A change applies to past days too. Match source/medium, with * for anything.", "chatgpt.com/*", "Channel name", d.rules)}`);
   }
 
@@ -386,7 +415,7 @@
         <section class="card"><div class="card-head"><h2>${t("Pages that bring leads")}</h2></div>${dataTable("converting", [
           { key: "path", label: "Page", get: pageName, html: (r) => `${PageLink.html(r.path, { host: r.host, cls: "mono lv-url" })}${siteOfPage(r)}` },
           { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }, { key: "rate", label: "Lead rate", num: true, html: rateCell },
-        ], d.pages, { csv: false, empty: "No page brought a lead in this period." })}</section>
+        ], d.pages, { csv: false, empty: "No page brought a lead in this period.", search: "Search pages" })}</section>
       </div>`);
   }
 
@@ -417,13 +446,13 @@
         { key: "path", label: "Page", get: pageName, html: (r) => `<div class="mono lv-url">${PageLink.html(r.path, { host: r.host })}</div>${siteOfPage(r)}<div class="lv-cat" dir="auto">${esc(t(r.category))}</div>${UI.relatedTag?.({ host: r.host || UI.siteHostPicked() || "", page: r.path }) || ""}` },
         { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }, { key: "clicks", label: "Google clicks", num: true },
         { key: "position", label: "Position", num: true, html: (r) => decimal(r.position) }, { key: "ai", label: "AI visits", num: true },
-      ], d.pages)}</section>
+      ], d.pages, { search: "Search pages" })}</section>
       <section class="card" style="margin-top:14px"><div class="card-head"><h2>${t("Traffic from social networks")}</h2></div>${d.social.length ? bars(d.social, { value: (r) => r.sessions, label: (r) => r.source }) : `<div class="empty"><p>${t("No visits from social networks in this period.")}</p></div>`}</section>
       ${speedCard()}`); // Page speed moved here from Overview on 2026-11-09: it's about pages, not Google results
   }
 
   // ---- Clarity downloads: totals for the file's own period, shown apart from the period picked above ----
-  const crTabs = { dashboard: "pages", ai: "pages" };
+  const crTabs = { dashboard: "pages" };
   const pctOf = (v) => (v === null || v === undefined ? "—" : `${decimal(Math.round(v * 10) / 10)} %`);
   const realVisits = (d) => (d.sessions === null || d.sessions === undefined ? null : Math.max(0, d.sessions - (d.bot_sessions || 0)));
   const spanOf = (r) => `${esc(shortDay(r.period_start))} – ${esc(shortDay(r.period_end))}`;
@@ -458,7 +487,7 @@
       const answer = r.sessions ? `${num(real)} ${t("real visits")}: ${t("Clarity counted")} ${num(r.sessions)} ${t("and marked")} ${num(r.bot_sessions || 0)} ${t("as bots")} (${pctOf((100 * (r.bot_sessions || 0)) / r.sessions)}).` : t("Clarity counted no visits in this file.");
       const tab = crTabs.dashboard;
       const body = tab === "referrers"
-        ? `${dataTable("cr-referrers", [{ key: "source", label: "Referrer", html: (x) => `<span class="mono" dir="ltr">${esc(x.source)}</span>` }, { key: "sessions", label: "Visits", num: true }], r.referrers || [], { csv: false, empty: "No referrers in this file." })}${r.own_referrals ? `<p class="small muted" style="margin:0;padding:0 18px 14px">${num(r.own_referrals)} ${t("visits came from the site's own pages, so they're left out.")}</p>` : ""}`
+        ? `${dataTable("cr-referrers", [{ key: "source", label: "Referrer", html: (x) => `<span class="mono" dir="ltr">${esc(x.source)}</span>` }, { key: "sessions", label: "Visits", num: true }], r.referrers || [], { csv: false, empty: "No referrers in this file.", search: "Search sites" })}${r.own_referrals ? `<p class="small muted" style="margin:0;padding:0 18px 14px">${num(r.own_referrals)} ${t("visits came from the site's own pages, so they're left out.")}</p>` : ""}`
         : tab === "problems"
           ? `<div class="lv-two" style="padding:12px 18px 16px;gap:14px">
               <div><h3 class="small" style="margin:0 0 8px">${t("What visitors ran into")}</h3>${bars([["Dead clicks", ins.dead_clicks], ["Quick back clicks", ins.quick_back], ["Rage clicks", ins.rage_clicks], ["Excessive scrolling", ins.excessive_scrolling]].filter(([, v]) => v).map(([name, v]) => ({ name: t(name), sessions: v.sessions })), { value: (x) => x.sessions, label: (x) => x.name })}
@@ -477,7 +506,7 @@
                   <li><div class="what"><div class="t">${t("Pages per visit")}</div></div><div class="acts">${decimal(r.pages_per_session === null || r.pages_per_session === undefined ? null : Math.round(r.pages_per_session * 100) / 100)}</div></li>
                   <li><div class="what"><div class="t">${t("Active time per visit")}</div></div><div class="acts">${num(r.active_seconds)} s</div></li>
                   ${(r.smart_events || []).map((x) => `<li><div class="what"><div class="t" dir="auto">${esc(t(x.name))}</div><div class="s">${t("Smart event")}</div></div><div class="acts">${num(x.sessions)}</div></li>`).join("")}</ul></div></div>`
-            : dataTable("cr-pages", [{ key: "url", label: "Page", html: (x) => PageLink.html(x.url, { text: x.url.replace(/^https?:\/\/[^/]+/, "") || "/", cls: "mono lv-url", dir: "ltr" }) }, { key: "sessions", label: "Visits", num: true }], r.top_pages || [], { csv: false, empty: "No pages in this file." });
+            : dataTable("cr-pages", [{ key: "url", label: "Page", html: (x) => PageLink.html(x.url, { text: x.url.replace(/^https?:\/\/[^/]+/, "") || "/", cls: "mono lv-url", dir: "ltr" }) }, { key: "sessions", label: "Visits", num: true }], r.top_pages || [], { csv: false, empty: "No pages in this file.", search: "Search pages" });
       return `<section class="card" style="margin-bottom:14px">${headOf("Clarity report")}
         <p style="margin:0;padding:12px 18px 0">${answer}</p>
         <section class="tiles" style="padding:12px 18px 0;margin:0">
@@ -488,58 +517,10 @@
         </section>
         ${crTabRow("dashboard", [["pages", "Top pages"], ["referrers", "Referrers"], ["problems", "Problems"], ["visitors", "Visitors"]])}${body}</section>`;
     }
-    // AI: Copilot's citations of the site
-    if (!one) {
-      return `<section class="card" style="margin-bottom:14px">${headOf("Cited by Microsoft Copilot")}${dataTable("cr-ai-sites", [
-        { key: "host", label: "Site", html: (s) => pickSite(s, "ai") },
-        { key: "citations", label: "Citations", num: true, get: (s) => s.ai.citations },
-        { key: "share", label: "Share of authority", num: true, get: (s) => s.ai.share_of_authority, html: (s) => pctOf(s.ai.share_of_authority) },
-        { key: "visits", label: "AI visits", num: true, get: (s) => s.ai.ai_referral_sessions },
-      ], sites, { csv: false })}<p class="small muted" style="margin:0;padding:10px 18px 14px">${t("Press a site to see which pages and questions.")}</p></section>`;
-    }
-    const top = (r.pages || [])[0];
-    const answer = r.citations ? `${t("Copilot cited this site")} ${num(r.citations)} ${t(r.citations === 1 ? "time" : "times")}${top ? `, ${t("most often")} ${PageLink.html(top.url, { text: top.url.replace(/^https?:\/\/[^/]+/, "") || "/", cls: "mono", dir: "ltr" })} (${num(top.citations)})` : ""}.` : t("Copilot didn't cite this site in this file's period.");
-    const tab = crTabs.ai;
-    const body = tab === "questions"
-      ? (r.queries === undefined ? `<div class="empty"><p>${t("This download has no questions table. In Clarity, include the questions when you export, then upload it again.")}</p></div>`
-        : dataTable("cr-ai-questions", [{ key: "query", label: "Question", html: (x) => `<span dir="auto">${esc(x.query)}</span>` }, { key: "citations", label: "Citations", num: true }, { key: "share", label: "Share of authority", num: true, html: (x) => pctOf(x.share) }], r.queries, { csv: false, empty: "No questions in this file." }))
-      : dataTable("cr-ai-pages", [{ key: "url", label: "Page", html: (x) => PageLink.html(x.url, { text: x.url.replace(/^https?:\/\/[^/]+/, "") || "/", cls: "mono lv-url", dir: "ltr" }) }, { key: "citations", label: "Citations", num: true }], r.pages || [], { csv: false, empty: "No cited pages in this file." });
-    return `<section class="card" style="margin-bottom:14px">${headOf("Cited by Microsoft Copilot")}
-      <p style="margin:0;padding:12px 18px 0">${answer}</p>
-      <section class="tiles" style="padding:12px 18px 0;margin:0">
-        ${UI.tile(t("Citations"), UI.cnt(r.citations), "", { ic: "file-text" })}
-        ${UI.tile(t("Share of authority"), pctOf(r.share_of_authority), `<span class="ab">${t("of Copilot's answers on these questions")}</span>`, { ic: "percent" })}
-        ${UI.tile(t("AI visits"), UI.cnt(r.ai_referral_sessions), `<span class="ab">${t("counted by Clarity")}</span>`, { ic: "sparkles" })}
-      </section>
-      ${crTabRow("ai", [["pages", "Cited pages"], ["questions", "Questions"]])}${body}</section>`;
+    return ""; // the "ai" kind (Copilot's citations) is drawn by ai-search-view.js now
   }
 
-  // ---- AI search --------------------------------------------------------------------------------
-  function aiPage() {
-    const entry = load("metrics/ai");
-    const blocked = stateCard(entry, "ga4");
-    const head = topbarFor("AI search", "Visits from AI assistants, from Google Analytics", entry);
-    if (blocked) return page(head, clarityReportCard("ai") + (window.GoogleAIReport?.card() || "") + blocked);
-    const d = entry.data;
-    const list = d.domains.map((name) => `<span class="tag mono" dir="auto">${esc(name)}</span>`).join(" ");
-    const body = d.sessions ? `
-      <section class="card"><div class="card-head"><h2>${t("AI assistant visits")}</h2></div>${lineChart("ai", d.series.map((r) => r.day), [{ name: "Visits", color: "var(--ch-1)", values: Object.fromEntries(d.series.map((r) => [r.day, r.sessions])) }])}</section>
-      <div class="lv-two" style="margin-top:14px">
-        <section class="card"><div class="card-head"><h2>${t("By assistant")}</h2></div>${dataTable("ai-sources", [{ key: "source", label: "Assistant", html: (r) => `<span class="mono" dir="auto">${esc(r.source)}</span>` }, { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }], d.sources, { csv: false })}</section>
-        <section class="card"><div class="card-head"><h2>${t("Pages they land on")}</h2></div>${dataTable("ai-pages", [{ key: "path", label: "Page", get: pageName, html: (r) => `${PageLink.html(r.path, { host: r.host, cls: "mono lv-url" })}${siteOfPage(r)}` }, { key: "sessions", label: "Visits", num: true }], d.pages, { csv: false, empty: "No landing pages in this period." })}</section>
-      </div>` : emptyCard(t("No visits from AI assistants in this period."), t("That's a real zero: Google Analytics has data, and none of it came from the assistants listed below."));
-    return page(head, `
-      <p class="small muted" style="margin:0 0 12px">${throughNote(d.through, "", d)}</p>${hiddenNote(d.hid_rows)}${clarityReportCard("ai")}${window.GoogleAIReport?.card() || ""}
-      <section class="tiles">
-        ${UI.tile(t("AI visits"), UI.cnt(d.sessions), change(d.sessions, d.before), { ic: "sparkles" })}
-        ${UI.tile(t("Leads"), num(d.leads), "", { ic: "filter" })}
-        ${UI.tile(t("Share of all visits"), pct(d.share), "", { ic: "percent" })}
-      </section>
-      ${body}
-      <p class="note lv-note" style="margin-top:14px">${icon("info")}<span>${t("Whether your pages appear in Google's AI Overviews is in Competitors, under AI Overview watch.")} <button class="link-btn" data-go="competitors">${t("Open it")}</button></span></p>
-      <section class="card"><div class="card-head"><h2>${t("Which sites count as AI assistants")}</h2></div><p style="padding:12px 18px;margin:0;line-height:2">${list}</p>
-        <form class="lv-rule-form" data-lv-rule-form="ai_domain"><input class="input mono" name="f_pattern" placeholder="assistant.example" aria-label="${t("Add a site to this list")}" autocomplete="off"><button class="btn btn-small" type="submit">${t("Add to the list")}</button><span class="error" data-lv-rule-error hidden></span></form></section>`);
-  }
+  // ---- AI search: its own file since 2026-11-10 (ai-search-view.js), with what it needs from here on LV ----------------
 
   // ---- Google Ads -------------------------------------------------------------------------------
   function adsPage() {
@@ -562,7 +543,7 @@
         { key: "campaign", label: "Campaign", html: (r) => `<span dir="auto">${esc(r.campaign)}</span>` },
         { key: "cost", label: "Cost", num: true, html: (r) => esc(money(r.cost, r.currency)) },
         { key: "clicks", label: "Clicks", num: true }, { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true },
-      ], d.campaigns, { empty: "No campaigns in this period." })}</section>
+      ], d.campaigns, { empty: "No campaigns in this period.", search: "Search campaigns" })}</section>
       <p class="note lv-note" style="margin-top:14px">${icon("info")}<span>${t("Exact data through the Google Ads API isn't built: it needs an approved developer token first.")}</span></p>`);
   }
 
@@ -622,7 +603,7 @@
       { key: "tags", label: "Tags", get: (r) => (r.tags.length ? r.tags.join(", ") : null), html: (r) => (r.tags.length ? `<span class="rs-tags">${r.tags.map((tag) => `<span class="tag" dir="auto">${esc(tag)}</span>`).join("")}</span>` : `<span class="muted">—</span>`) },
       { key: "host", label: "Site", html: (r) => `<span class="mono" dir="auto">${esc(r.host || t("All sites"))}</span>` },
       { key: "url", label: "Link", html: (r) => (r.url ? `<a class="ext-link lv-url" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">${icon("external-link")}${t("Open")}</a>` : `<span class="muted">—</span>`) },
-    ], rows, { csv: false })}</section>`);
+    ], rows, { csv: false, search: "Search resources" })}</section>`);
   }
   function resourcePanel(id, opener) {
     const r = id === "new" ? {} : R.rows.find((x) => String(x.id) === String(id)) || {};
@@ -660,21 +641,24 @@
         document.querySelector(`[data-cr-tab="${kind}:${tab}"]`)?.focus({ preventScroll: true });
         return;
       }
-      if ((el = hit("[data-lv-table]"))) { LV.tables.set(el.dataset.lvTable, !LV.tables.get(el.dataset.lvTable)); UI.render(); return; }
+      if ((el = hit("[data-lv-table]"))) { const id = el.dataset.lvTable; LV.tables.set(id, !LV.tables.get(id)); UI.render(); document.querySelector(`[data-lv-table="${CSS.escape(id)}"]`)?.focus({ preventScroll: true }); return; }
       if ((el = hit("[data-lv-sort]"))) {
         const id = el.dataset.lvSort, key = el.dataset.key, now = SORTS.get(id);
         SORTS.set(id, { key, dir: now?.key === key && now.dir === "desc" ? "asc" : "desc" });
+        window.TP.reset(pagesKey(id));
         UI.render();
+        document.querySelector(`[data-lv-sort="${CSS.escape(id)}"][data-key="${CSS.escape(key)}"]`)?.focus({ preventScroll: true });
         return;
       }
-      if ((el = hit("[data-lv-more]"))) { LIMITS.set(el.dataset.lvMore, (LIMITS.get(el.dataset.lvMore) || +el.dataset.page) + +el.dataset.page); UI.render(); return; }
       if ((el = hit("[data-lv-csv]"))) { downloadCsv(el.dataset.lvCsv); return; }
       if ((el = hit("[data-lv-collect]"))) {
-        if (LV.reading) return;
+        if (LV.reading || el.disabled) return;
         const site = UI.siteIdPicked(), ids = site ? [site] : window.SITES.map((s) => s.realId).filter(Boolean);
+        const only = el.dataset.lvCollectSources ? { sources: el.dataset.lvCollectSources.split(",") } : {}; // "Refresh this one"
         el.disabled = true;
+        document.dispatchEvent(new CustomEvent("seocc:collect-start"));
         try {
-          const answers = await Promise.all(ids.map((id) => window.COMP.api("POST", `sites/${id}/collect`, {})));
+          const answers = await Promise.all(ids.map((id) => window.COMP.api("POST", `sites/${id}/collect`, only)));
           await watchReads(answers);
         } catch (err) { LV.reading = null; showReading(); UI.toast(err.message, { kind: "crit" }); }
         el.disabled = !!LV.reading;
@@ -774,12 +758,15 @@
   window.SCREENS.overview = { init(helpers) { UI = helpers; ({ t, esc, num, icon } = helpers); bind(); }, page: overviewPage };
   screen("channels", channelsPage); screen("conversions", conversionsPage); screen("content", contentPage);
   // Google Ads stays out of the menu for now (owner, 2026-11-05): it shows Soon. To bring it back, add screen("ads", adsPage). GA4 still stores its daily numbers, so nothing is lost meanwhile.
-  screen("ai", aiPage); screen("resources", resourcesPage);
+  screen("resources", resourcesPage); // AI search registers itself from ai-search-view.js
+  Object.assign(LV, { load, pct, change, hiddenNote, siteOfPage, pageName, shortDay, fillIn, emptyCard, refreshBtn, readingWord, SOURCE_NAMES }); // for screens in their own files
   LV.dataTable = (...args) => dataTable(...args);
   LV.ideasCard = () => ideasCard(); // Keyword ideas sit on Keywords since 2026-11-09
   LV.stateCard = (...args) => stateCard(...args); // Overview's own file shows the same not-connected, failing and waiting cards
 
   const fr = {
+    "Search the table": "Rechercher dans le tableau", "Nothing matches the search.": "Rien ne correspond à la recherche.", "Search pages": "Rechercher une page", "Search sites": "Rechercher un site",
+    "Search queries": "Rechercher une requête", "Search resources": "Rechercher une ressource", "Search campaigns": "Rechercher une campagne",
     "Loading…": "Chargement…", "Needs the running app": "Il faut lancer l'application", "Opened as a plain file there's no real data to show here.": "Ouverte comme simple fichier, l'application n'a pas de vraies données à afficher ici.",
     "That didn't load": "Le chargement a échoué", "No site yet": "Pas encore de site", "Add a site to see its data.": "Ajoutez un site pour voir ses données.",
     "not connected": "non connecté", "not used": "non utilisé", "stopped working": "ne fonctionne plus", "Google Analytics": "Google Analytics", "Search Console": "Search Console",
@@ -843,6 +830,7 @@
     "Clarity's own dashboard downloads can go in too: Settings → Microsoft Clarity → Clarity dashboard downloads.": "Les exports du tableau de bord Clarity peuvent aussi être ajoutés : Réglages → Microsoft Clarity → Exports du tableau de bord Clarity.",
     "Contact us": "Nous contacter", "Outbound click": "Clic sortant", "Submit form": "Envoi de formulaire", "Request quote": "Demande de devis", "Book": "Réservation", "Checkout": "Paiement", "See reviews": "Voir les avis",
     "Clarity sessions": "Sessions Clarity", "Scroll depth": "Profondeur de défilement", "Rage clicks": "Clics de rage", "Dead clicks": "Clics morts",
+    "Your site's pages are being read too. That takes a while: it waits 3 seconds between pages.": "Les pages de votre site sont lues aussi. Cela prend un moment : 3 secondes d'attente entre chaque page.",
     "Reading the latest data. It appears here when it arrives.": "Lecture des dernières données. Elles s'affichent ici dès leur arrivée.", "Nothing to read yet: connect a data source first, or it's already running.": "Rien à lire pour l'instant : connectez d'abord une source de données, ou la lecture est déjà en cours.",
   };
   Object.assign(fr, {
@@ -851,7 +839,7 @@
     "Still reading in the background. The numbers appear here when it finishes: press Refresh data again in a few minutes.": "La lecture continue en arrière-plan. Les chiffres apparaîtront ici à la fin : appuyez de nouveau sur Actualiser les données dans quelques minutes.",
     "{ok} of {total} read.": "{ok} sur {total} lus.",
     "{names} failed: the card on the page says why.": "{names} a échoué : la carte sur la page explique pourquoi.", "Fix it": "Corriger",
-    "Updated with the latest data.": "Mis à jour avec les dernières données.",
+    "Updated with the latest data.": "Mis à jour avec les dernières données.", "Updated: {names}.": "Mis à jour : {names}.",
   });
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 })();

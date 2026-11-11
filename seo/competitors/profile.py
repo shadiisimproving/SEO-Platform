@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 from sqlalchemy import Engine, text
 
-from seo.competitors import pairs, reading
+from seo.competitors import change_facts, pairs, reading
 from seo.competitors.keywords import _iso, require_own
 from seo.competitors.suggest import domain_of, tracked_competitors
 from seo.serp import store
@@ -92,7 +92,19 @@ def overview(engine: Engine, site_id: int) -> list[dict]:
     return sorted(out, key=lambda c: (-(c["shared"] + c["theirs_only"]), c["host"]))
 
 
-def _ranking_timeline(history: list[store.Check], host: str) -> list[dict]:
+def _check_facts(check: store.Check, row, mine_hosts) -> dict:
+    """Where and how the check was made, the title of their result, and my best place in that same check."""
+    facts = {"country": check.country, "language": check.language, "device": check.device, "location": check.real_location, "depth": check.depth, "results": len(check.results)}
+    if row is not None and getattr(row, "title", None):
+        facts["title"] = row.title
+    if mine_hosts:
+        places = [(hit.position, hit.url, host) for host in mine_hosts if (hit := check.best_on(host)) is not None]
+        best = min(places) if places else None
+        facts["mine"] = {"position": best[0], "url": best[1], "host": best[2]} if best else {"position": None, "host": mine_hosts[0]}
+    return facts
+
+
+def _ranking_timeline(history: list[store.Check], host: str, mine_hosts: list[str] | None = None) -> list[dict]:
     """Moves between two checks of the same keyword by the same tool, from the same place, at the same depth."""
     events: list[dict] = []
     previous: dict[tuple, store.Check] = {}
@@ -104,7 +116,7 @@ def _ranking_timeline(history: list[store.Check], host: str) -> list[dict]:
             continue
         was, now = before.best_on(host), check.best_on(host)
         at = _iso(check.checked_at)
-        common = {"at": at, "keyword": check.keyword, "tool": check.tool, "engine": check.engine}
+        common = {"at": at, "keyword": check.keyword, "tool": check.tool, "engine": check.engine, **_check_facts(check, now or was, mine_hosts)}
         if was is None and now is not None:
             events.append({**common, "kind": "rank_new", "to": now.position, "url": now.url, "depth": check.depth})
         elif was is not None and now is None:
@@ -158,11 +170,15 @@ def profile(engine: Engine, site_id: int, competitor_id: int) -> dict:
         host = competitor["host"]
         changes = conn.execute(
             text(
-                "SELECT e.id, e.kind, e.before_value, e.after_value, e.detected_at, e.summaries, p.url FROM change_events e JOIN pages p ON p.id = e.page_id "
+                "SELECT e.id, e.page_id, e.kind, e.before_value, e.after_value, e.changed_words, e.detected_at, e.summaries, p.url FROM change_events e JOIN pages p ON p.id = e.page_id "
                 "JOIN domains d ON d.id = e.domain_id WHERE d.host = :h ORDER BY e.id DESC LIMIT :n"
             ),
             {"h": host, "n": TIMELINE_LIMIT},
         ).mappings().all()
+        page_events = change_facts.attach(conn, [
+            {"id": row["id"], "page_id": row["page_id"], "kind": row["kind"], "at": _iso(row["detected_at"]), "url": row["url"], "before": row["before_value"], "after": row["after_value"], "changed_words": row["changed_words"], "summaries": json.loads(row["summaries"]) if isinstance(row["summaries"], str) else row["summaries"]}
+            for row in changes
+        ])
         page_stats = {}
         for name, value in (("mine", site["host"]), ("theirs", host)):
             row = conn.execute(
@@ -181,10 +197,7 @@ def profile(engine: Engine, site_id: int, competitor_id: int) -> dict:
     checks = store.latest_checks(engine, site_id)
     past_checks = store.history(engine, site_id)
     keywords, past = _keyword_tables(checks, past_checks, site["host"], host)
-    timeline = [
-        {"id": row["id"], "kind": row["kind"], "at": _iso(row["detected_at"]), "url": row["url"], "before": row["before_value"], "after": row["after_value"], "summaries": json.loads(row["summaries"]) if isinstance(row["summaries"], str) else row["summaries"]}
-        for row in changes
-    ] + _ranking_timeline(past_checks, host)
+    timeline = page_events + _ranking_timeline(past_checks, host, [site["host"]])
     timeline.sort(key=lambda e: e["at"], reverse=True)
 
     # The headline numbers count each keyword once, however many engines checked it.

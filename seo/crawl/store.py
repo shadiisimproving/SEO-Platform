@@ -1,9 +1,11 @@
 """Save crawl results. A new version and events are written only when a page changed."""
 from __future__ import annotations
 
+import difflib
 import gzip
 import hashlib
 import json
+import re
 
 from sqlalchemy import Engine, func, insert, select, text, update
 
@@ -25,6 +27,49 @@ WATCHED = {
     "robots_meta": "robots",
     "schema_types": "schema",
 }
+
+
+# What changes on a page without anyone editing it: dates, times, "3 hours ago", comment and view counters. A text
+# change that is only these is not an edit (2026-11-10: reading more often must not mean more fake edits).
+_MONTHS = (
+    "janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre|"
+    "january|february|march|april|may|june|july|august|september|october|november|december|"
+    "jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|janv|févr|avr|juil|déc"
+)
+_UNITS = "secondes?|minutes?|min|heures?|h|jours?|semaines?|mois|ans?|seconds?|hours?|days?|weeks?|months?|years?"
+_COUNTERS = "commentaires?|comments?|vues|views|partages|shares|likes|j'aime|réponses|replies|avis|reviews|lectures|reads"
+_VOLATILE = re.compile(
+    rf"\b\d{{1,4}}[./-]\d{{1,2}}[./-]\d{{1,4}}\b"  # 10/11/2026, 2026-11-10
+    rf"|\b\d{{1,2}}(?:er)?\s+(?:{_MONTHS})\.?(?:\s+\d{{4}})?\b"  # 10 novembre 2026, 1er mai
+    rf"|\b(?:{_MONTHS})\.?\s+\d{{1,2}}(?:st|nd|rd|th)?,?(?:\s+\d{{4}})?\b"  # November 10, 2026
+    rf"|\b\d{{1,2}}\s*[:h]\s*\d{{2}}(?::\d{{2}})?\b"  # 14:30, 14h30
+    rf"|\bil y a\s+\d+\s*(?:{_UNITS})\b|\b\d+\s*(?:{_UNITS})\s+ago\b"  # il y a 3 heures, 3 hours ago
+    rf"|\b\d[\d\s.,]*\s*(?:{_COUNTERS})\b",  # 12 commentaires, 1.2k views
+    re.IGNORECASE,
+)
+SMALL_EDIT_WORDS = 15  # a text edit touching fewer words than this is shown as a small edit
+_DIFF_MOST_WORDS = 30_000  # past this, counting changed words would take too long; the edit still counts
+
+
+def steady_words(value: str) -> list[str]:
+    """A page's words with the parts that change by themselves taken out."""
+    return _VOLATILE.sub(" ", value or "").split()
+
+
+def changed_words(before: str, after: str) -> int | None:
+    """About how many words an edit touched: 0 when only dates, times or counters moved."""
+    was, now = steady_words(before), steady_words(after)
+    if was == now:
+        return 0
+    if len(was) + len(now) > _DIFF_MOST_WORDS:
+        return None
+    matcher = difflib.SequenceMatcher(None, was, now, autojunk=False)
+    return sum(max(i2 - i1, j2 - j1) for tag, i1, i2, j1, j2 in matcher.get_opcodes() if tag != "equal")
+
+
+def _last_text(conn, page_id: int) -> str | None:
+    blob = conn.execute(text("SELECT text_gz FROM page_versions WHERE page_id = :p ORDER BY id DESC LIMIT 1"), {"p": page_id}).scalar()
+    return gzip.decompress(blob).decode("utf-8", "replace") if blob else None
 
 
 def _url_hash(url: str) -> str:
@@ -111,13 +156,17 @@ def save_fetch(engine: Engine, domain_id: int, url: str, result: FetchResult, fi
             if current.content_hash and before != after:
                 events.append(dict(kind=kind, before_value=_text_value(before), after_value=_text_value(after)))
         if current.content_hash and current.content_hash != fields.content_hash:
-            events.append(
-                dict(
-                    kind="content",
-                    before_value=f"{current.word_count} words",
-                    after_value=f"{fields.word_count} words",
+            before_text = _last_text(conn, current.id)
+            touched = changed_words(before_text, fields.text) if before_text is not None else None
+            if touched != 0:  # 0: only dates, times or counters moved, which nobody edited
+                events.append(
+                    dict(
+                        kind="content",
+                        before_value=f"{current.word_count} words",
+                        after_value=f"{fields.word_count} words",
+                        changed_words=touched,
+                    )
                 )
-            )
 
         first_real_read = current.content_hash is None
         if events or first_real_read:

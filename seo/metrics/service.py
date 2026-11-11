@@ -389,38 +389,10 @@ def content(scope: Scope, limit: int = 500) -> dict:
 
 
 def ai_search(scope: Scope) -> dict:
-    status = _sources_state(scope, "ga4")
-    period = _trim_to_data(scope)
-    domains = _ai_domains(scope.engine, scope.site_ids)
-    per_source: dict[str, dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0})
-    per_day: dict[str, int] = defaultdict(int)
-    everything = 0
-    for row in _ga4_rows(scope, scope.start, scope.end):
-        everything += int(row["sessions"] or 0)
-        if _is_ai(row["source"], domains):
-            per_source[row["source"]]["sessions"] += int(row["sessions"] or 0)
-            per_source[row["source"]]["leads"] += float(row["leads"] or 0)
-            per_day[row["day"].isoformat()] += int(row["sessions"] or 0)
-    pages: dict[tuple[str, str], int] = defaultdict(int)
-    hosts = _hosts(scope)
-    for row in scope.fetch("SELECT site_id, MAX(domain) domain, MAX(path) path, SUM(sessions) sessions FROM ga4_referral_daily WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY site_id, row_hash"):
-        if _is_ai(row["domain"], domains):
-            pages[(hosts.get(row["site_id"], ""), _path(row["path"]))] += int(row["sessions"] or 0)
-    before = None
-    if scope.has_compare:
-        before = sum(int(row["sessions"] or 0) for row in _ga4_rows(scope, scope.compare_start, scope.compare_end) if _is_ai(row["source"], domains))
-    sessions = sum(item["sessions"] for item in per_source.values())
-    return {
-        **status, "sessions": sessions, "leads": round(sum(item["leads"] for item in per_source.values()), 2), "share": _ratio(sessions, everything), "before": before,
-        "change": _pct_change(sessions, before) if before else None,
-        "sources": [{"source": name, "sessions": item["sessions"], "leads": round(item["leads"], 2)} for name, item in sorted(per_source.items(), key=lambda pair: -pair[1]["sessions"])],
-        "series": [{"day": day, "sessions": per_day[day]} for day in sorted(per_day)],
-        "pages": [{"host": host, "path": name, "sessions": count} for (host, name), count in sorted(pages.items(), key=lambda pair: -pair[1])[:25]],
-        "domains": sorted(domains), "hid_rows": _hidden(scope), "period": period,
-        # Google's own AI report (AI Overviews and AI Mode impressions), when one was uploaded: totals only; the pages,
-        # countries and days are at /api/search/ai-report. Its period is the file's, not the one picked on the screen.
-        "google_ai": _google_ai(scope),
-    }
+    """The AI search screen. Built in seo/metrics/ai_search.py: every block there says its source, period and freshness."""
+    from seo.metrics import ai_search as screen
+
+    return screen.build(scope)
 
 
 def _google_ai(scope: Scope) -> dict:

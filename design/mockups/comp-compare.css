@@ -344,3 +344,17 @@
   #cg-table td.cg-links-cell { display: block; min-width: 0; max-width: none; text-align: left; }
   #cg-table td.cg-links-cell::before { display: block; margin-bottom: 4px; }
 }
+
+/* Link gaps: the competitor choice, each with its logo, and the logo on each "Links to" tag. */
+.cg-pick { display: inline-flex; align-items: center; gap: 8px; min-width: 240px; max-width: 100%; text-align: start; cursor: pointer; }
+.cg-pick .cg-pick-word, .cg-pick-menu .cg-pick-word { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cg-pick .cg-pick-n, .cg-pick-menu .cg-pick-n { color: var(--muted); font-size: 12px; }
+.cg-pick .site-logo, .cg-pick-menu .site-logo { vertical-align: 0; border-radius: 4px; }
+.cg-pick-all { display: inline-flex; width: 16px; height: 16px; align-items: center; justify-content: center; color: var(--text-2); }
+.cg-pick-all svg { width: 15px; height: 15px; }
+.cg-pick-menu { max-width: min(420px, calc(100vw - 16px)); }
+.cg-pick-menu > button .tick { margin-left: 4px; }
+.cg-rivals .tag.cg-rival { display: inline-flex; align-items: center; gap: 5px; }
+.cg-rival .site-logo { vertical-align: 0; border-radius: 3px; }
+.cg-rival .site-logo.letter { font-size: 9px; }
+@media (max-width: 860px) { .cg-pick { min-width: 0; width: 100%; } }

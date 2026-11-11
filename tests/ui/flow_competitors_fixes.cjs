@@ -154,7 +154,9 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   for (const c of rivals) {
     await page.goto("about:blank"); await page.goto(BASE + `#competitors/summary?${q}`); await until(() => page.$(`[data-cs-open="${c.id}"]`));
     await page.click(`[data-cs-open="${c.id}"]`); await settle(1800);
-    const ask = await page.$("[data-rd-ask]:not([disabled])");
+    // Since 2026-11-10 the first reading note says how the site is followed; Firecrawl's offer folds under it.
+    await page.locator(".rd-fold").evaluateAll((folds) => folds.forEach((d) => { d.open = true; }));
+    const ask = await page.$('[data-rd-ask]:not([disabled]):not([data-rd-ask="weekly"])');
     if (!ask) continue;
     await ask.click(); await until(() => page.$("[data-rd-go]:not([disabled])"), 15000);
     const go = await page.$("[data-rd-go]:not([disabled])");

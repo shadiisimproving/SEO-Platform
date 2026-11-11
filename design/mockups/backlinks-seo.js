@@ -4,7 +4,25 @@
   "use strict";
   const COMP = window.COMP;
   let UI = null, H = {};
-  const S = { reclaim: new Map(), budgets: new Map(), effects: new Map(), sites: new Map(), gscBusy: false, view: "page", domain: "" };
+  const S = { reclaim: new Map(), budgets: new Map(), effects: new Map(), sites: new Map(), gscBusy: false, view: "page", domain: "", siteSort: null, rcSort: null };
+  /* The tables' pages and search (table-pages.js), like every long table in the app. "bl-links" is the By page table, drawn by mockup.js. */
+  const PAGES = { links: "bl-links", sites: "bl-sites", reclaim: "bl-reclaim" };
+  /* Sorting by a heading, as on Competitors → Link gaps: names A to Z, numbers biggest first, a third click goes back to the usual order. */
+  const nextSort = (sort, id, first) => (sort?.id !== id ? { id, dir: first } : sort.dir === first ? { id, dir: first === "asc" ? "desc" : "asc" } : null);
+  function sortRows(list, sort, getters) {
+    if (!sort || !getters[sort.id]) return list;
+    const get = getters[sort.id], dir = sort.dir === "asc" ? 1 : -1;
+    return [...list].sort((a, b) => {
+      const x = get(a), y = get(b);
+      if (x === null || x === undefined) return 1; // unknown goes last either way
+      if (y === null || y === undefined) return -1;
+      return (typeof x === "number" ? x - y : String(x).localeCompare(String(y))) * dir;
+    });
+  }
+  function sortHead(attr, sort, id, label, cls = "", tip = "") {
+    const on = sort?.id === id;
+    return `<th scope="col" class="${cls}" aria-sort="${on ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}" ${tip ? `data-tip="${esc(tip)}"` : ""}><button type="button" class="th-btn" ${attr}="${id}">${t(label)}${on ? UI.icon(sort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
+  }
   const MANY_OUTBOUND = 100, SPAM_SCORE = 30, CURRENCIES = ["USD", "EUR", "AED", "GBP"];
 
   const VERDICT = { counts: ["vd-counts", "Counts"], weak: ["vd-weak", "Weak"], none: ["vd-none", "Doesn't count"] };
@@ -195,14 +213,28 @@
       return { domain, links, best, auth, opr, visits, traffic: links.find((b) => b.siteTraffic !== null && b.siteTraffic !== undefined)?.siteTraffic ?? null, live: links.filter((b) => b.status === "live").length };
     }).sort((x, y) => (y.auth - x.auth) || (y.opr - x.opr) || (y.links.length - x.links.length) || x.domain.localeCompare(y.domain));
     if (!list.length) return COMP.empty(t("No links match"), t("Pick another filter."));
-    return `<div class="table-wrap"><table class="data" id="bl-sites"><thead><tr><th scope="col">${t("Site")}</th><th scope="col" class="r">${t("Links")}</th><th scope="col" data-tip="${esc(t("The best of this site's links, as the last check read it"))}">${t("Best link")}</th><th scope="col" class="r">${t("Authority")}</th>${trafficHead()}<th scope="col" class="r">${t("Visits")}</th></tr></thead><tbody>
-      ${list.map((g) => {
+    const found = list.filter((g) => TP.matches(PAGES.sites, g.domain));
+    if (!found.length) return COMP.empty(t("No site matches this search"), t("Change the search or pick another filter."));
+    const shown = sortRows(found, S.siteSort, { domain: (g) => g.domain, links: (g) => g.links.length, authority: (g) => g.auth || (g.opr >= 0 ? g.opr : null), traffic: (g) => g.traffic, visits: (g) => g.visits });
+    const page = TP.view(PAGES.sites, shown);
+    const head = (id, label, cls, tip) => sortHead("data-bls-sort", S.siteSort, id, label, cls, tip);
+    return `<div class="bl-list"><div class="table-wrap"><table class="data" id="bl-sites"><thead><tr>${head("domain", "Site")}${head("links", "Links", "r")}<th scope="col" data-tip="${esc(t("The best of this site's links, as the last check read it"))}">${t("Best link")}</th>${head("authority", "Authority", "r")}${ahrefsOn() ? head("traffic", "Site traffic", "r", t("Ahrefs' estimate of the linking site's monthly visits from Google")) : ""}${head("visits", "Visits", "r")}</tr></thead><tbody>
+      ${page.rows.map((g) => {
         const tag = g.best ? `<span class="tag vd-tag ${VERDICT[g.best.check.verdict][0]}">${t(VERDICT[g.best.check.verdict][1])}</span>` : '<span class="muted">—</span>';
         const authority = g.auth ? UI.dec(g.auth) : g.opr >= 0 ? `${UI.dec(g.opr)} <span class="tag">OPR</span>` : '<span class="muted">—</span>';
         return `<tr><td class="head-cell"><span class="with-logo">${UI.siteLogo ? UI.siteLogo(g.domain) : ""}<span class="logo-text"><button class="kw mono small" data-vd-domain="${esc(g.domain)}" style="text-align:start" data-tip="${esc(t("Show this site's links"))}"><span dir="auto">${esc(g.domain)}</span></button><span class="second">${g.live} ${t("live")}</span></span></span></td>
           <td class="r tabular" data-label="${t("Links")}">${UI.num(g.links.length)}</td><td data-label="${t("Best link")}">${tag}</td><td class="r" data-label="${t("Authority")}">${authority}</td>
           ${ahrefsOn() ? `<td class="r tabular" data-label="${t("Site traffic")}">${trafficValue(g.traffic)}</td>` : ""}<td class="r tabular" data-label="${t("Visits")}">${g.visits === null ? '<span class="muted">—</span>' : UI.num(g.visits)}</td></tr>`;
-      }).join("")}</tbody></table></div>`;
+      }).join("")}</tbody></table></div>
+      ${TP.footer(PAGES.sites, page, { noun: t("sites") })}</div>`;
+  }
+
+  /* The search box of the view on show, for the line above the table: links by page, or linking sites. */
+  const searchBox = () => (byWebsite() ? TP.search(PAGES.sites, t("Search sites")) : TP.search(PAGES.links, t("Search links")));
+  /* Back to the first page, the usual order and no search: another site was picked in the side menu. */
+  function resetPages() {
+    Object.values(PAGES).forEach((key) => { TP.state(key).q = ""; TP.reset(key); });
+    S.siteSort = null; S.rcSort = null;
   }
 
   // ---- is my page indexed: Search Console's URL Inspection, about my own target page ------------------------
@@ -364,13 +396,21 @@
   function reclaimBody() {
     const list = reclaimPages();
     if (!list.length) return COMP.empty(t("Nothing to reclaim"), t("Pages of yours that are gone but still have links show here."));
+    const found = list.filter((p) => TP.matches(PAGES.reclaim, p.path, p.page, p.site, ...(p.domains || [])));
+    const shown = sortRows(found, S.rcSort, { page: (p) => p.path || p.page, http: (p) => Number(p.http) || null, sites: (p) => p.sites || p.logged_links || 0 });
+    const page = TP.view(PAGES.reclaim, shown);
+    const head = (id, label, cls) => sortHead("data-rc-sort", S.rcSort, id, label, cls);
+    // The search shows once the list is long enough to need it, or while it holds something.
+    const search = list.length > 10 || TP.state(PAGES.reclaim).q ? `<div class="chips bl-search-line">${TP.search(PAGES.reclaim, t("Search pages or linking sites"))}</div>` : "";
     return `<p class="note">${UI.icon("info")}<span>${t("Other sites link to these pages of yours, but the pages are gone. Redirect each one to the closest live page and the links count again.")}</span></p>
-      <div class="table-wrap"><table class="data" id="rc-table"><thead><tr><th scope="col">${t("Your page")}</th><th scope="col">${t("Answers")}</th><th scope="col" class="r">${t("Sites linking")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead><tbody>
-      ${list.map((p) => `<tr style="cursor:default"><td class="head-cell mono small url-cell" data-tip="${esc(p.page)}">${PageLink.html(p.page || p.path, { text: p.path, host: p.site, title: "" })}${UI.state.site === "all" ? `<span class="second">${t("For")} ${esc(p.site)}</span>` : ""}${p.domains.length ? `<span class="second">${esc(p.domains.slice(0, 3).join(", "))}${p.domains.length > 3 ? "…" : ""}</span>` : ""}</td>
+      ${search}
+      ${found.length ? `<div class="bl-list"><div class="table-wrap"><table class="data" id="rc-table"><thead><tr>${head("page", "Your page")}${head("http", "Answers")}${head("sites", "Sites linking", "r")}<th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead><tbody>
+      ${page.rows.map((p) => `<tr style="cursor:default"><td class="head-cell mono small url-cell" data-tip="${esc(p.page)}">${PageLink.html(p.page || p.path, { text: p.path, host: p.site, title: "" })}${UI.state.site === "all" ? `<span class="second">${t("For")} ${esc(p.site)}</span>` : ""}${p.domains.length ? `<span class="second">${esc(p.domains.slice(0, 3).join(", "))}${p.domains.length > 3 ? "…" : ""}</span>` : ""}</td>
         <td data-label="${t("Answers")}">${UI.status("serious", String(p.http))}</td>
         <td class="r" data-label="${t("Sites linking")}">${UI.num(p.sites || p.logged_links)}${p.gsc_links ? `<span class="second">${UI.num(p.gsc_links)} ${t("links")}</span>` : ""}</td>
         <td class="r nowrap">${window.UI.taskButton({ title: `${t("Redirect")} ${p.path} ${t("to a live page")}`, host: p.site, source: { type: "backlink", label: p.path, host: p.site, facts: [`${p.http}`, `${p.sites || p.logged_links} ${t("sites linking")}`], link: "#backlinks", key: `reclaim|${p.site}|${p.path}` } }, { label: "Task" })}${p.gsc_id ? ` <button class="btn btn-small" data-rc-dismiss="${p.gsc_id}">${t("Dismiss")}</button>` : ""}</td></tr>`).join("")}
-      </tbody></table></div>`;
+      </tbody></table></div>
+      ${TP.footer(PAGES.reclaim, page, { noun: t("pages") })}</div>` : COMP.empty(t("No page matches this search"), t("Change the search to see more pages."))}`;
   }
 
   async function dismissReclaim(button) {
@@ -505,7 +545,9 @@
       if ((el = hit("[data-vd-budget]"))) { openBudget(el); return; }
       if ((el = hit("#vd-budget-save"))) { saveBudget(el); return; }
       if ((el = hit("[data-vd-view]"))) { S.view = el.dataset.vdView; UI.render(); UI.$(`[data-vd-view="${S.view}"]`)?.focus(); return; }
-      if ((el = hit("[data-vd-domain]"))) { e.stopPropagation(); S.domain = el.dataset.vdDomain; S.view = "page"; UI.render(); return; }
+      if ((el = hit("[data-vd-domain]"))) { e.stopPropagation(); S.domain = el.dataset.vdDomain; S.view = "page"; TP.reset(PAGES.links); UI.render(); return; }
+      if ((el = hit("[data-bls-sort]"))) { const id = el.dataset.blsSort; S.siteSort = nextSort(S.siteSort, id, id === "domain" ? "asc" : "desc"); TP.reset(PAGES.sites); UI.render(); UI.$(`[data-bls-sort="${id}"]`)?.focus(); return; }
+      if ((el = hit("[data-rc-sort]"))) { const id = el.dataset.rcSort; S.rcSort = nextSort(S.rcSort, id, id === "page" ? "asc" : "desc"); TP.reset(PAGES.reclaim); UI.render(); UI.$(`[data-rc-sort="${id}"]`)?.focus(); return; }
     }, true);
     document.addEventListener("input", (e) => { if (e.target.id === "bl-src") duplicateNote(); });
     document.addEventListener("change", (e) => { if (e.target.id === "bl-site") duplicateNote(); });
@@ -514,9 +556,9 @@
   }
 
   window.BacklinkSeo = {
-    init(ui, helpers) { UI = ui; H = helpers; bind(); sample(); },
+    init(ui, helpers) { UI = ui; H = helpers; bind(); sample(); TP.on(PAGES.sites, () => UI.render()); TP.on(PAGES.reclaim, () => UI.render()); },
     noteSite: (host, facts) => { if (host && facts) S.sites.set(host, facts); },
-    filterRows, filterChips, viewSwitch, trafficTotals, byWebsite, websiteTable, trafficHead, trafficCell, anchorTag, anchorWord, anchorOptions,
+    filterRows, filterChips, viewSwitch, trafficTotals, byWebsite, websiteTable, searchBox, resetPages, sortRows, sortHead, nextSort, PAGES, trafficHead, trafficCell, anchorTag, anchorWord, anchorOptions,
     badge, liveNote, authorityCell, panelBlocks, spamBlock, foundTools, foundButton, foundSeen, reclaimBody, reclaimCount, budgetBar, duplicateNote,
     forget: () => { S.reclaim.clear(); S.budgets.clear(); S.effects.clear(); },
   };
@@ -606,6 +648,9 @@
     "Paste it in the API key box above and press Save. Test uses ahrefs.com, which Ahrefs never charges units for.": "Collez-la dans le champ Clé API ci-dessus et cliquez sur Enregistrer. Le test utilise ahrefs.com, pour lequel Ahrefs ne facture jamais d'unités.",
     "Your Ahrefs plan's units, every month": "Les unités de votre forfait Ahrefs, chaque mois",
     "read on an earlier check of this site": "lu lors d'un contrôle précédent de ce site", "from {x} in the address": "d'après {x} dans l'adresse",
+    "Search sites": "Rechercher un site", "Search links": "Rechercher un lien", "Search pages or linking sites": "Rechercher une page ou un site", "sites": "sites", "pages": "pages",
+    "No site matches this search": "Aucun site ne correspond à cette recherche", "Change the search or pick another filter.": "Modifiez la recherche ou choisissez un autre filtre.",
+    "No page matches this search": "Aucune page ne correspond à cette recherche", "Change the search to see more pages.": "Modifiez la recherche pour voir plus de pages.",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 })();

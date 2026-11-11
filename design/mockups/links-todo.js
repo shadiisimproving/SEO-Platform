@@ -4,7 +4,9 @@
   "use strict";
   const COMP = window.COMP;
   let UI = null, H = {};
-  const T = { mediator: "", localSeq: 0 };
+  const T = { mediator: "", sent: "", localSeq: 0 };
+  const PAGES = "bl-todo"; // the table's pages and search (table-pages.js), like every long table in the app
+  const SENT = { tosend: (b) => !b.sentAt, sent: (b) => Boolean(b.sentAt) };
   const GUEST = /guest|invit/i;
 
   const planned = () => H.siteLinks().filter((b) => b.status === "planned");
@@ -30,25 +32,34 @@
     </tr>`;
   }
 
+  /* The mediator picked, then To send or Sent, then the search: what the table pages through, and what Export takes. */
+  const byMediator = () => (T.mediator ? planned().filter((b) => b.mediator === T.mediator) : planned());
+  const shownLinks = () => byMediator().filter((b) => (!SENT[T.sent] || SENT[T.sent](b)) && TP.matches(PAGES, b.src, b.domain, b.mediator, b.linkType, b.articleUrl, b.site));
+
   function body() {
     const { t, esc, num, icon } = UI;
     const all = planned();
     const names = mediatorNames();
     if (T.mediator && !names.includes(T.mediator)) T.mediator = "";
     if (!all.length) return `<div class="table-wrap"><div class="empty"><h3>${t("Nothing to do yet")}</h3><p>${t("Tick links in In consideration and move them here. Then add the articles and send the list to your mediator.")}</p></div></div>`;
-    const list = T.mediator ? all.filter((b) => b.mediator === T.mediator) : all;
-    const toSend = all.filter((b) => !b.sentAt).length;
+    const mine = byMediator(), list = shownLinks(), page = TP.view(PAGES, list);
+    const toSend = mine.filter((b) => !b.sentAt).length;
+    // To send or Sent, with how many each holds for the mediator picked: the counts the line used to give.
+    const chips = [["", "All", mine.length], ["tosend", "To send", toSend], ["sent", "Sent", mine.length - toSend]]
+      .map(([id, word, n]) => `<button type="button" class="chip" data-td-sent-filter="${id}" aria-pressed="${T.sent === id}">${t(word)}<b>${num(n)}</b></button>`).join("");
     return `<section class="tool-band pr-filters" aria-label="${t("To do")}">
         <button class="btn btn-main" id="td-export">${icon("download")}${t("Export for a mediator")}</button>
+        ${TP.search(PAGES, t("Search sites or mediators"))}
         <label class="field td-mediator-filter"><span>${t("Mediator")}</span><select class="select" id="td-filter"><option value="">${t("All mediators")}</option>${names.map((name) => `<option ${T.mediator === name ? "selected" : ""}>${esc(name)}</option>`).join("")}</select></label>
-        <span class="pr-end small sec tabular" role="status">${num(toSend)} ${t("to send")} · ${num(all.length - toSend)} ${t("sent")}</span>
+        <span class="pr-end chips td-sent-chips" role="group" aria-label="${t("Status")}">${chips}</span>
       </section>
       <datalist id="td-types">${H.LINK_TYPES.map((name) => `<option value="${esc(name)}"></option>`).join("")}</datalist>
       <datalist id="td-mediators">${names.map((name) => `<option value="${esc(name)}"></option>`).join("")}</datalist>
-      <div class="table-wrap"><table class="data" id="td-table">
+      <div class="bl-list"><div class="table-wrap"><table class="data" id="td-table">
         <thead><tr><th scope="col">${t("Site")}</th><th scope="col">${t("Link type")}</th><th scope="col">${t("Article")}</th><th scope="col">${t("Mediator")}</th><th scope="col">${t("Status")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
-        <tbody>${list.map(rowHtml).join("") || `<tr style="cursor:default"><td colspan="6"><div class="empty"><p>${t("Nothing here for this mediator.")}</p></div></td></tr>`}</tbody>
+        <tbody>${page.rows.map(rowHtml).join("") || `<tr style="cursor:default"><td colspan="6"><div class="empty"><p>${t(mine.length ? "Nothing here with this search or status." : "Nothing here for this mediator.")}</p></div></td></tr>`}</tbody>
       </table></div>
+      ${TP.footer(PAGES, page, { noun: t("links") })}</div>
       <p class="help" style="margin-top:10px">${t("Links in To do aren't counted in the cards above and aren't checked until they're placed.")}</p>`;
   }
 
@@ -282,6 +293,7 @@
       const target = e.target;
       let el;
       if ((el = target.closest?.("#td-export"))) { openExport(el); return; }
+      if ((el = target.closest?.("[data-td-sent-filter]"))) { T.sent = el.dataset.tdSentFilter; TP.reset(PAGES); UI.render(); UI.$(`[data-td-sent-filter="${T.sent}"]`)?.focus(); return; }
       if ((el = target.closest?.("[data-td-export]"))) { runExport(Number(el.dataset.tdExport), false, el); return; }
       if ((el = target.closest?.("[data-td-export-again]"))) { runExport(Number(el.dataset.tdExportAgain), true, el); return; }
       if ((el = target.closest?.("[data-td-placed]"))) { const b = findLink(el.dataset.tdPlaced); if (b) openPlaced(b, el); return; }
@@ -300,7 +312,7 @@
     });
     document.addEventListener("change", (e) => {
       const el = e.target;
-      if (el.id === "td-filter") { T.mediator = el.value; UI.render(); UI.$("#td-filter")?.focus(); return; }
+      if (el.id === "td-filter") { T.mediator = el.value; TP.reset(PAGES); UI.render(); UI.$("#td-filter")?.focus(); return; }
       const id = el.dataset?.tdArticle || el.dataset?.tdType || el.dataset?.tdMediator || el.dataset?.tdSent;
       if (!id) return;
       const b = findLink(id);
@@ -318,9 +330,9 @@
   }
 
   window.LinkTodo = {
-    init(helpers, extras) { UI = helpers; H = extras; bind(); },
+    init(helpers, extras) { UI = helpers; H = extras; bind(); TP.on(PAGES, () => UI.render()); },
     body, openMove, count: () => planned().length,
-    seen: () => ({ ids: planned().filter((b) => !T.mediator || b.mediator === T.mediator).map((b) => b.id), mediator: T.mediator || "" }), // export.js: the rows on screen
+    seen: () => ({ ids: shownLinks().map((b) => b.id), mediator: T.mediator || "" }), // export.js: the rows as filtered and searched, every page
   };
 
   const fr = {
@@ -335,6 +347,7 @@
     "link marked as Sent": "lien marqué comme envoyé", "links marked as Sent": "liens marqués comme envoyés", "File downloaded": "Fichier téléchargé", "The file downloaded, but the links weren't marked as Sent.": "Le fichier a été téléchargé, mais les liens n'ont pas été marqués comme envoyés.",
     "The article's real address": "L'adresse réelle de l'article", "The page where the article was published. The monthly check reads this page to see that your link is still there, so it must be the exact address.": "La page où l'article a été publié. Le contrôle mensuel lit cette page pour vérifier que votre lien est toujours là : l'adresse doit être exacte.", "Move to Done": "Déplacer vers Réalisés", "Paste the article's address.": "Collez l'adresse de l'article.", "moved to Done as Live": "déplacé vers Réalisés, actif", "The article's address must be a web address starting with https://.": "L'adresse de l'article doit commencer par https://.", "The article link must be a web address starting with https://.": "Le lien de l'article doit commencer par https://.",
     "selected": "sélectionnés", "Select": "Sélectionner", "Already in To do": "Déjà dans À faire",
+    "Search sites or mediators": "Rechercher un site ou un intermédiaire", "Nothing here with this search or status.": "Rien ici avec cette recherche ou ce statut.",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 })();

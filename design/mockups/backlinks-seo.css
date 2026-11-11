@@ -15,3 +15,7 @@
 .url-cell .vd-anchor { display: inline-block; }
 .vd-view { margin-inline-end: 6px; }
 .vd-view .tab { padding: 4px 10px; font-size: 12px; }
+/* The search line above a long table on Backlinks and Site health (table-pages.js, 2026-11-10). Inside a card it lines up
+   with the card's own text. */
+#ht-indexing > .ht-find, .ht-links > .ht-find { padding-inline: 18px; }
+.ht-links-all > .ht-find { margin-top: 4px; }

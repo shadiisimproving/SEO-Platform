@@ -384,20 +384,24 @@
     try { L.domains = await api("GET", "important-domains"); } catch (err) { L.domains = { error: err.message }; }
     if (UI.state.route === "settings" && L.tab === "domains" && !UI.$("#panel")) UI.render();
   }
+  const DOMAIN_PAGES = "imp-domains";
   function domainsTab() {
     if (!L.domains) { loadDomains(); return UI.skeleton("table", { rows: 4 }); }
     const d = L.domains;
     if (d.error) return `<section class="card"><div class="empty"><h3>${t("That didn't load")}</h3><p>${esc(d.error)}</p></div></section>`;
     const waiting = d.domains.filter((x) => !x.fetched_at).length;
+    // Nothing caps this list, so it pages and searches like every long table (table-pages.js); a short one shows no search box.
+    const found = d.domains.filter((x) => TP.matches(DOMAIN_PAGES, x.domain)), view = TP.view(DOMAIN_PAGES, found);
+    const finder = d.domains.length > 10 || TP.state(DOMAIN_PAGES).q ? `<div style="padding:10px 18px 0;display:flex">${TP.search(DOMAIN_PAGES, t("Search domains"))}</div>` : "";
     const blank = (v) => (v === null || v === undefined ? `<span class="muted">—</span>` : num(v));
     return `<section class="card"><div class="card-head"><h2>${t("Important domains")}</h2><span class="end small muted">${d.moz_connected ? `${num(d.rows_left)} ${t("of")} ${num(d.rows_free)} ${t("Moz rows left this month")}` : t("Moz isn't connected")}</span></div>
       <p class="help" style="padding:10px 18px 2px;margin:0">${t("Moz gives few free rows, so it only runs on domains you add here, and only when you press the button. Results are kept, so a row is never used twice in a month.")}</p>
       <form class="lv-rule-form" data-lv-domain-form style="border-top:0"><input class="input mono" name="f_domain" placeholder="example.com" aria-label="${t("Add a domain")}" autocomplete="off"><button class="btn btn-small" type="submit">${t("Add a domain")}</button>
         <button type="button" class="btn btn-small btn-main" data-lv-moz ${d.moz_connected && waiting && d.rows_left ? "" : "disabled"}>${t("Get Moz data")}${waiting ? ` (${num(waiting)})` : ""}</button>
         <button type="button" class="btn btn-small" data-lv-radar ${d.radar_connected && d.domains.length ? "" : "disabled"}>${t("Get popularity")}</button><span class="error" data-lv-rule-error hidden></span></form>
-      ${d.domains.length ? `<div class="table-wrap" style="box-shadow:none"><table class="data"><thead><tr><th>${t("Domain")}</th><th class="c">${t("Authority")}</th><th class="c">${t("Moz Domain Authority")}</th><th class="c">${t("Linking domains")}</th><th class="c">${t("Links")}</th><th class="c">${t("Popularity")}</th><th></th></tr></thead><tbody>
-        ${d.domains.map((x) => `<tr style="cursor:default"><td data-label="${t("Domain")}" class="mono" dir="auto">${esc(x.domain)}</td><td class="c" data-label="${t("Authority")}">${x.authority === null ? `<span class="muted">—</span>` : esc(String(x.authority))}</td><td class="c" data-label="${t("Moz Domain Authority")}">${blank(x.domain_authority)}</td><td class="c" data-label="${t("Linking domains")}">${blank(x.linking_domains)}</td><td class="c" data-label="${t("Links")}">${blank(x.external_links)}</td><td class="c" data-label="${t("Popularity")}" dir="auto">${x.popularity ? esc(t(x.popularity)) : `<span class="muted">—</span>`}</td><td class="r" data-label=""><button class="btn btn-small btn-ghost" data-lv-domain-off="${esc(x.domain)}" aria-label="${t("Remove")}: ${esc(x.domain)}">${t("Remove")}</button></td></tr>`).join("")}
-      </tbody></table></div>` : `<div class="empty" style="padding:28px"><p>${t("No domains yet. Add the ones worth a closer look.")}</p></div>`}</section>
+      ${finder}${found.length ? `<div class="table-wrap" style="box-shadow:none"><table class="data"><thead><tr><th>${t("Domain")}</th><th class="c">${t("Authority")}</th><th class="c">${t("Moz Domain Authority")}</th><th class="c">${t("Linking domains")}</th><th class="c">${t("Links")}</th><th class="c">${t("Popularity")}</th><th></th></tr></thead><tbody>
+        ${view.rows.map((x) => `<tr style="cursor:default"><td data-label="${t("Domain")}" class="mono" dir="auto">${esc(x.domain)}</td><td class="c" data-label="${t("Authority")}">${x.authority === null ? `<span class="muted">—</span>` : esc(String(x.authority))}</td><td class="c" data-label="${t("Moz Domain Authority")}">${blank(x.domain_authority)}</td><td class="c" data-label="${t("Linking domains")}">${blank(x.linking_domains)}</td><td class="c" data-label="${t("Links")}">${blank(x.external_links)}</td><td class="c" data-label="${t("Popularity")}" dir="auto">${x.popularity ? esc(t(x.popularity)) : `<span class="muted">—</span>`}</td><td class="r" data-label=""><button class="btn btn-small btn-ghost" data-lv-domain-off="${esc(x.domain)}" aria-label="${t("Remove")}: ${esc(x.domain)}">${t("Remove")}</button></td></tr>`).join("")}
+      </tbody></table></div>${TP.footer(DOMAIN_PAGES, view, { noun: t("domains") })}` : `<div class="empty" style="padding:28px"><p>${t(d.domains.length ? "No domain matches this search." : "No domains yet. Add the ones worth a closer look.")}</p></div>`}</section>
       ${indexNowCard()}`;
   }
   const indexNowCard = () => {
@@ -526,6 +530,7 @@
     init(helpers) {
       UI = helpers; ({ t, esc, num, icon, status } = helpers);
       bind();
+      TP.on(DOMAIN_PAGES, () => UI.render());
       firstLoad();
     },
     page() {
@@ -541,6 +546,7 @@
   };
 
   const fr = {
+    "No domain matches this search.": "Aucun domaine ne correspond à cette recherche.", "Search domains": "Chercher un domaine", "domains": "domaines",
     "The site that had stopped is being read again now. Its numbers come back within a few minutes.": "Le site arrêté est relu maintenant. Ses chiffres reviennent d'ici quelques minutes.",
     "The sites that had stopped are being read again now. Their numbers come back within a few minutes.": "Les sites arrêtés sont relus maintenant. Leurs chiffres reviennent d'ici quelques minutes.",
     "Try again": "Réessayer",

@@ -53,6 +53,7 @@
     "These keywords are already being refreshed.": "Ces mots-clés sont déjà en cours d'actualisation.", "These keywords were all checked just now. Tick Check them again to go ahead.": "Ces mots-clés viennent tous d'être contrôlés. Cochez Les contrôler quand même pour continuer.",
     "No search tool can run these engines. Connect one in Settings.": "Aucun outil de recherche ne couvre ces moteurs. Connectez-en un dans les réglages.",
     "This run lost its background job. Everything checked so far is saved.": "Cette actualisation a perdu sa tâche de fond. Tout ce qui a été contrôlé est enregistré.",
+    "Search queries": "Chercher une requête", "No query matches this search.": "Aucune requête ne correspond à cette recherche.", "queries": "requêtes", "query": "requête", "keyword": "mot-clé", "keywords": "mots-clés",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 
@@ -70,9 +71,11 @@
   const K = {
     data: null, error: "", loading: false, stale: true, tools: null, order: {}, settings: {}, selected: new Set(), queries: {},
     run: null, poll: null, orderEngine: "google", panel: null, refresh: null, browserMissing: false,
-    search: "", page: 0, per: 50, wantOpen: null, // the search box, the page of the table, and a keyword named in the address
+    wantOpen: null, qsort: null, // a keyword named in the address; the Queries table's sorted heading
   };
-  const PER = [25, 50, 100]; // the same choice as Overview's tables
+  /* Both tables page and search the way every long table does (table-pages.js): TP keeps the search, the page and the size. */
+  const KW_PAGES = "kw", Q_PAGES = "kwq";
+  const kwPages = () => TP.state(KW_PAGES);
   const api = (...args) => window.COMP.api(...args);
   const mine = (run) => Boolean(run) && (!run.by || run.by === window.BOOT.user?.name);
   const engineOf = () => (state.engine === "all" ? "google" : state.engine);
@@ -198,13 +201,8 @@
       default: return true;
     }
   }
-  /* The search box: part of the keyword, or of its site or page, ignoring case and accents. */
-  const fold = (text) => String(text || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  function searched(rows) {
-    const needle = fold(K.search.trim());
-    if (!needle) return rows;
-    return rows.filter((row) => fold(row.keyword).includes(needle) || fold(row.page).includes(needle) || (state.site === "all" && fold(row.site).includes(needle)));
-  }
+  /* The search box: words of the keyword, or of its site or page, ignoring case and accents. */
+  const searched = (rows) => rows.filter((row) => TP.matches(KW_PAGES, row.keyword, row.page, state.site === "all" ? row.site : ""));
   function filtered() {
     const e = engineOf();
     const value = (row) => { const v = row.engines[e]; return { k: row.keyword, own: v.own, pos: v.main?.status === "ok" ? v.main.p : null, chg: v.change, vol: impressionsOf(row) }[state.sort.key]; };
@@ -242,28 +240,13 @@
       ${cells}</tr>`;
   }
 
-  const pageNumbers = (pages, at) => {
-    const wanted = new Set([0, pages - 1, at - 1, at, at + 1].filter((p) => p >= 0 && p < pages));
-    const out = [];
-    [...wanted].sort((a, b) => a - b).forEach((p, i, list) => { if (i && p - list[i - 1] > 1) out.push(null); out.push(p); });
-    return out;
-  };
-  function pager(total) {
-    const pages = Math.max(1, Math.ceil(total / K.per)), at = Math.min(K.page, pages - 1), from = at * K.per;
-    const nav = pages > 1 ? `<nav class="ov-pager" aria-label="${t("Pages")}">
-        <button class="btn btn-small" data-kwr-page="${at - 1}" ${at === 0 ? "disabled" : ""}>${icon("chevron-left")}${t("Previous")}</button>
-        <span class="ov-pg-list">${pageNumbers(pages, at).map((p) => (p === null ? `<span class="ov-pg-gap" aria-hidden="true">…</span>` : `<button class="ov-pg" data-kwr-page="${p}" aria-label="${t("Page")} ${num(p + 1)}" ${p === at ? 'aria-current="page"' : ""}>${num(p + 1)}</button>`)).join("")}</span>
-        <span class="ov-pg-of">${t("Page")} ${num(at + 1)} ${t("of")} ${num(pages)}</span>
-        <button class="btn btn-small" data-kwr-page="${at + 1}" ${at === pages - 1 ? "disabled" : ""}>${t("Next")}${icon("chevron-right")}</button></nav>` : "";
-    const per = total > PER[0] ? `<label class="ov-per"><span class="sr">${t("Rows per page")}</span><select class="select" data-kwr-per>${PER.map((n) => `<option value="${n}" ${K.per === n ? "selected" : ""}>${num(n)} ${t("per page")}</option>`).join("")}</select></label>` : "";
-    return `<div class="lv-foot ov-foot kw-foot"><span class="ov-range" role="status">${num(total ? from + 1 : 0)}–${num(Math.min(total, from + K.per))} ${t("of")} ${num(total)}</span>${nav}${per}</div>`;
-  }
   function table(all) {
-    if (!all.length && K.search.trim()) return `<div class="table-wrap"><div class="empty"><h3>${t("No keyword matches this search.")}</h3><p>${esc(K.search.trim())}</p><button class="btn" data-kwr-search-clear>${t("Clear the search")}</button></div></div>`;
+    if (!all.length && kwPages().q.trim()) return `<div class="table-wrap"><div class="empty"><h3>${t("No keyword matches this search.")}</h3><p dir="auto">${esc(kwPages().q.trim())}</p><button class="btn" data-kwr-search-clear>${t("Clear the search")}</button></div></div>`;
     if (!all.length) return `<div class="table-wrap"><div class="empty"><h3>${t("No keywords match this filter")}</h3><p>${t("Try another filter, or show all keywords.")}</p><button class="btn" data-filter="all">${t("Show all keywords")}</button></div></div>`;
-    const pages = Math.max(1, Math.ceil(all.length / K.per));
-    if (K.page > pages - 1) K.page = pages - 1;
-    const rows = all.slice(K.page * K.per, K.page * K.per + K.per);
+    const view = TP.view(KW_PAGES, all), rows = view.rows;
+    // A pick only counts on the page it was made on: the bar under the table acts on what's in view.
+    const here = new Set(rows.map((row) => row.id));
+    [...K.selected].forEach((id) => { if (!here.has(id)) K.selected.delete(id); });
     const e = engineOf();
     const head = state.engine === "all"
       ? ENGINES.map(([id, label]) => `<th scope="col"><span class="th-engine">${logo(id, 16)}${label}</span></th>`).join("")
@@ -271,10 +254,10 @@
          ${sortHeader("pos", t("Scraped results"))}${sortHeader("chg", t("Change"), "c")}
          ${state.cols.vol ? sortHeader("vol", t("Impressions"), "c", t("28 days"), t("Search Console impressions, last 28 days. Exact volume isn't available for free.")) : ""}
          ${state.cols.trend ? `<th scope="col">${t("Trend")}</th>` : ""}${state.cols.page ? `<th scope="col">${t("Page")}</th>` : ""}${state.cols.ai ? `<th scope="col">${t("AI")}</th>` : ""}`;
-    const every = all.every((row) => K.selected.has(row.id));
+    const every = rows.length > 0 && rows.every((row) => K.selected.has(row.id));
     return `<div class="ov-list"><div class="table-wrap ${state.dense ? "dense" : ""}"><table class="data" id="kw-table" aria-label="${t("Keywords")}">
       <thead><tr><th scope="col" class="chk-cell"><input type="checkbox" class="chk" id="kwr-select-all" ${every ? "checked" : ""} aria-label="${t("All")}"></th>${sortHeader("k", t("Keyword"))}${head}</tr></thead>
-      <tbody>${rows.map(rowHtml).join("")}</tbody></table></div>${pager(all.length)}</div>`;
+      <tbody>${rows.map(rowHtml).join("")}</tbody></table></div>${TP.footer(KW_PAGES, view, { noun: t(view.total === 1 ? "keyword" : "keywords") })}</div>`;
   }
 
   function selectionBar() {
@@ -308,8 +291,33 @@
       return `<div class="table-wrap"><div class="empty"><h3>${t(words[0])}</h3><p>${t(words[1])}</p><button class="btn" data-go="settings">${t("Go to Settings")}</button></div></div>`;
     }
     const tracked = new Set(allRows().map((row) => `${row.site}|${row.keyword.toLowerCase()}`));
-    return `<div class="table-wrap"><table class="data"><thead><tr><th scope="col">${t("Keyword")}</th><th scope="col" class="c">${t("Clicks")}</th><th scope="col" class="c">Impressions</th><th scope="col" class="c">${t("Click rate")}</th><th scope="col" class="c">${t("Position")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
-      <tbody>${rows.map((row) => `<tr style="cursor:default"><td class="head-cell kw" dir="auto">${esc(row.query)}${state.site === "all" ? `<span class="second mono">${esc(row.site)}</span>` : ""}</td><td class="c" data-label="${t("Clicks")}">${num(row.clicks)}</td><td class="c" data-label="Impressions">${num(row.impressions)}</td><td class="c" data-label="${t("Click rate")}">${row.impressions ? `${dec(Math.round((row.clicks / row.impressions) * 1000) / 10)}%` : "—"}</td><td class="c" data-label="${t("Position")}">${row.position === null ? "—" : dec(Math.round(row.position * 10) / 10)}</td><td class="r">${tracked.has(`${row.site}|${row.query.toLowerCase()}`) ? "" : `<button class="btn btn-small" data-kwr-follow="${esc(row.query)}" data-site-host="${esc(row.site)}">${t("Track")}</button>`}</td></tr>`).join("")}</tbody></table></div>`;
+    const found = sortedQueries(rows.filter((row) => TP.matches(Q_PAGES, row.query, state.site === "all" ? row.site : "")));
+    const tools = `<div class="kw-find">${TP.search(Q_PAGES, t("Search queries"))}</div>`;
+    if (!found.length) return `${tools}<div class="table-wrap"><div class="empty"><h3>${t("No query matches this search.")}</h3><p dir="auto">${esc(TP.state(Q_PAGES).q.trim())}</p><button class="btn" data-kwq-search-clear>${t("Clear the search")}</button></div></div>`;
+    const view = TP.view(Q_PAGES, found);
+    const head = (id, label) => {
+      const on = K.qsort?.id === id;
+      return `<th scope="col" class="c" aria-sort="${on ? (K.qsort.dir === "asc" ? "ascending" : "descending") : "none"}"><button type="button" class="th-btn" data-kwq-sort="${id}">${label}${on ? icon(K.qsort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
+    };
+    return `${tools}<div class="ov-list"><div class="table-wrap"><table class="data" id="kwq-table"><thead><tr><th scope="col">${t("Keyword")}</th>${head("clicks", t("Clicks"))}${head("impressions", "Impressions")}${head("ctr", t("Click rate"))}${head("position", t("Position"))}<th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
+      <tbody>${view.rows.map((row) => `<tr style="cursor:default"><td class="head-cell kw" dir="auto">${esc(row.query)}${state.site === "all" ? `<span class="second mono">${esc(row.site)}</span>` : ""}</td><td class="c" data-label="${t("Clicks")}">${num(row.clicks)}</td><td class="c" data-label="Impressions">${num(row.impressions)}</td><td class="c" data-label="${t("Click rate")}">${row.impressions ? `${dec(Math.round((row.clicks / row.impressions) * 1000) / 10)}%` : "—"}</td><td class="c" data-label="${t("Position")}">${row.position === null ? "—" : dec(Math.round(row.position * 10) / 10)}</td><td class="r">${tracked.has(`${row.site}|${row.query.toLowerCase()}`) ? "" : `<button class="btn btn-small" data-kwr-follow="${esc(row.query)}" data-site-host="${esc(row.site)}">${t("Track")}</button>`}</td></tr>`).join("")}</tbody></table></div>
+      ${TP.footer(Q_PAGES, view, { noun: t(view.total === 1 ? "query" : "queries") })}</div>`;
+  }
+  /* The Queries table keeps the server's order (most clicks first) until a heading is pressed. Numbers go biggest first,
+     the position best first; a third press goes back to the usual order. */
+  const Q_SORTS = {
+    clicks: { get: (row) => row.clicks, first: "desc" }, impressions: { get: (row) => row.impressions, first: "desc" },
+    ctr: { get: (row) => (row.impressions ? row.clicks / row.impressions : null), first: "desc" }, position: { get: (row) => row.position, first: "asc" },
+  };
+  function sortedQueries(rows) {
+    if (!K.qsort || !Q_SORTS[K.qsort.id]) return rows;
+    const { get } = Q_SORTS[K.qsort.id], dir = K.qsort.dir === "asc" ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      const x = get(a), y = get(b);
+      if (x === null || x === undefined) return y === null || y === undefined ? 0 : 1; // unknowns go last, whichever way
+      if (y === null || y === undefined) return -1;
+      return (x - y) * dir;
+    });
   }
 
   /* When every connected tool for this engine has no free checks left, Keywords says so where the unchecked rows are. */
@@ -359,7 +367,7 @@
     const chips = [["all", "All"], ["top3", "Top 3"], ["top10", "Top 10"], ["up", "Up"], ["down", "Down"], ["none", "Not ranked"], ["cited", "Cited by AI"], ["two", "Same keyword on 2 pages"]];
     const shown = filtered();
     const body = state.view === "bucket" ? bucketView(all) : state.view === "queries" ? queriesView() : `
-      <div class="kw-find"><label class="kw-search"><span class="sr">${t("Search keywords")}</span>${icon("search")}<input class="input" type="search" id="kwr-search" placeholder="${t("Search keywords")}" value="${esc(K.search)}" autocomplete="off" spellcheck="false" dir="auto"></label></div>
+      <div class="kw-find">${TP.search(KW_PAGES, t("Search keywords"))}</div>
       <div class="chips" role="group" aria-label="${t("Keywords")}">
         ${chips.map(([id, label]) => `<button class="chip" data-filter="${id}" aria-pressed="${state.filter === id}">${t(label)}<b>${num(counts[id])}</b></button>`).join("")}
         <span style="margin-left:auto" class="table-tools">
@@ -890,16 +898,22 @@
       if ((el = hit("[data-tool-move]"))) { e.stopPropagation(); moveTool(el); return; }
       if ((el = hit("[data-kwr-order]"))) { e.stopPropagation(); K.orderEngine = el.dataset.kwrOrder; syncSettings(); UI.render(); $(`[data-kwr-order="${K.orderEngine}"]`)?.focus(); return; }
       if (hit("#tray-cancel")) return;
+      // A chip, a heading, an engine or a view changes the list, so its table starts again on page 1 (before it's drawn).
+      if (state.route === "keywords" && hit("[data-filter], [data-sort], [data-engine], [data-view]")) { TP.reset(KW_PAGES); if (hit("[data-engine]")) TP.reset(Q_PAGES); }
     }, true);
 
     document.addEventListener("click", (e) => {
       const hit = (sel) => e.target.closest?.(sel);
       let el;
       if (hit("#kwr-retry")) { K.stale = true; K.error = ""; load(); UI.render(); return; }
-      if ((el = hit("[data-kwr-page]")) && !el.disabled) { K.page = Number(el.dataset.kwrPage); UI.render({ keepScroll: true }); $("#kw-table")?.scrollIntoView({ block: "start", behavior: "instant" }); ($(`[data-kwr-page="${K.page}"][aria-current]`) || $("[data-kwr-page]"))?.focus({ preventScroll: true }); return; }
-      if (hit("[data-kwr-search-clear]")) { K.search = ""; K.page = 0; UI.render({ keepScroll: true }); $("#kwr-search")?.focus(); return; }
-      if (hit("[data-filter]") && state.route === "keywords") K.page = 0;
-      if (hit("[data-engine]") && state.route === "keywords") K.page = 0;
+      if (hit("[data-kwr-search-clear]")) { kwPages().q = ""; TP.reset(KW_PAGES); UI.render({ keepScroll: true }); $(`[data-tp-search][data-tp-key="${KW_PAGES}"]`)?.focus(); return; }
+      if (hit("[data-kwq-search-clear]")) { TP.state(Q_PAGES).q = ""; TP.reset(Q_PAGES); UI.render({ keepScroll: true }); $(`[data-tp-search][data-tp-key="${Q_PAGES}"]`)?.focus(); return; }
+      if ((el = hit("[data-kwq-sort]"))) {
+        const id = el.dataset.kwqSort, first = Q_SORTS[id].first;
+        K.qsort = K.qsort?.id !== id ? { id, dir: first } : K.qsort.dir === first ? { id, dir: first === "asc" ? "desc" : "asc" } : null;
+        TP.reset(Q_PAGES); UI.render({ keepScroll: true }); $(`[data-kwq-sort="${id}"]`)?.focus({ preventScroll: true });
+        return;
+      }
       if (hit("#kwr-refresh")) { openRefresh(K.selected.size ? idsOfSelected() : filtered().map((row) => row.keyword_id)); return; }
       if (hit("#kwr-sel-refresh")) { openRefresh(idsOfSelected()); return; }
       if (hit("#kwr-sel-clear")) { K.selected.clear(); UI.render({ keepScroll: true }); return; }
@@ -931,8 +945,7 @@
     document.addEventListener("change", (e) => {
       const el = e.target;
       if (el.matches?.("[data-kwr-select]")) { if (el.checked) K.selected.add(el.dataset.kwrSelect); else K.selected.delete(el.dataset.kwrSelect); const id = el.dataset.kwrSelect; UI.render({ keepScroll: true }); $$("[data-kwr-select]").find((x) => x.dataset.kwrSelect === id)?.focus(); return; }
-      if (el.matches?.("[data-kwr-per]")) { K.per = PER.includes(Number(el.value)) ? Number(el.value) : 50; K.page = 0; UI.render({ keepScroll: true }); $("[data-kwr-per]")?.focus({ preventScroll: true }); return; }
-      if (el.id === "kwr-select-all") { filtered().forEach((row) => { if (el.checked) K.selected.add(row.id); else K.selected.delete(row.id); }); UI.render({ keepScroll: true }); $("#kwr-select-all")?.focus(); return; }
+      if (el.id === "kwr-select-all") { TP.view(KW_PAGES, filtered()).rows.forEach((row) => { /* the rows on this page only */ if (el.checked) K.selected.add(row.id); else K.selected.delete(row.id); }); UI.render({ keepScroll: true }); $("#kwr-select-all")?.focus(); return; }
       if (el.matches?.("[data-kwr-engine]")) { if (el.checked) K.refresh.engines.add(el.dataset.kwrEngine); else K.refresh.engines.delete(el.dataset.kwrEngine); updatePreview(); return; }
       if (el.id === "kwr-depth") { K.refresh.depth = Number(el.value); updatePreview(); return; }
       if (el.matches?.("[data-kwr-tool]")) { if (el.checked) K.refresh.picked.add(el.dataset.kwrTool); else K.refresh.picked.delete(el.dataset.kwrTool); updatePreview(); return; }
@@ -946,19 +959,6 @@
       }
     });
     document.addEventListener("close", (e) => { if (e.target.id === "dlg") K.refresh = null; }, true);
-    // Typing filters as you go; the box keeps its cursor through the redraw.
-    let typing = null;
-    document.addEventListener("input", (e) => {
-      if (e.target.id !== "kwr-search") return;
-      K.search = e.target.value.slice(0, 200); K.page = 0;
-      clearTimeout(typing);
-      typing = setTimeout(() => {
-        const box = $("#kwr-search"), at = box?.selectionStart ?? null;
-        UI.render({ keepScroll: true });
-        const again = $("#kwr-search");
-        if (again) { again.focus({ preventScroll: true }); if (at !== null) again.setSelectionRange(at, at); }
-      }, 200);
-    });
   }
   const idsOfSelected = () => [...new Set([...K.selected].map((id) => rowById(id)?.keyword_id).filter(Boolean))];
 
@@ -969,6 +969,9 @@
       UI = helpers;
       ({ t, esc, icon, num, dec, status, logo, $, $$, state } = helpers);
       bind();
+      // Another page, another size or a search draws the screen again; the helper puts the focus back where it was.
+      TP.on(KW_PAGES, () => UI.render({ keepScroll: true }));
+      TP.on(Q_PAGES, () => UI.render({ keepScroll: true }));
       if (state.route === "keywords" || state.route === "settings") load(); // otherwise when Keywords, Settings or ⌘K first needs it (F17)
       // A Refresh started before a reload, or by a colleague, still shows.
       api("GET", "refresh/runs").then((answer) => { if (answer.runs[0] && !K.run) follow(answer.runs[0]); }).catch(() => {});
@@ -980,16 +983,18 @@
     },
     address() {
       const out = {};
-      if (K.search.trim()) out.q = K.search.trim();
-      if (K.page) out.page = K.page + 1;
-      if (K.per !== 50) out.per = K.per;
+      const p = kwPages();
+      if (p.q.trim()) out.q = p.q.trim();
+      if (p.page) out.page = p.page + 1;
+      if (p.per !== TP.PER[0]) out.per = p.per;
       if (K.panel && $("#panel") && !$("#panel.closing")) out.kw = K.panel.id;
       return out;
     },
     fromAddress(q) {
-      K.search = (q.get("q") || "").slice(0, 200);
-      K.per = PER.includes(Number(q.get("per"))) ? Number(q.get("per")) : 50;
-      K.page = Math.max(0, (Number(q.get("page")) || 1) - 1);
+      const p = kwPages();
+      p.q = (q.get("q") || "").slice(0, 200);
+      if (TP.PER.includes(Number(q.get("per")))) p.per = Number(q.get("per")); // otherwise the size this browser last chose
+      p.page = Math.max(0, (Number(q.get("page")) || 1) - 1);
       K.wantOpen = q.get("kw") || null;
     },
   };
@@ -1000,9 +1005,9 @@
       const found = K.data.rows.find((r) => (w.keywordId ? r.keyword_id === w.keywordId : r.keyword.toLowerCase() === w.keyword) && (!w.host || r.site === w.host));
       K.wantKeyword = null;
       if (found) {
-        K.wantOpen = found.id; K.search = "";
+        K.wantOpen = found.id; kwPages().q = "";
         if (!filtered().some((r) => r.id === found.id)) state.filter = "all"; // a chip that hides it is lifted
-        K.page = Math.max(0, Math.floor(filtered().findIndex((r) => r.id === found.id) / K.per));
+        kwPages().page = Math.max(0, Math.floor(filtered().findIndex((r) => r.id === found.id) / kwPages().per));
       }
     }
     if (!K.wantOpen || !K.data || state.route !== "keywords") return;

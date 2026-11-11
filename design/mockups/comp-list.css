@@ -121,8 +121,13 @@ button.cl-name:hover { color: var(--accent-text); }
 .cl-tl .t { font-weight: 500; font-size: 13px; }
 .cl-tl .t .kw { font-weight: 600; }
 .cl-tl .d { margin-top: 2px; }
-.cl-tl-ico { display: inline-grid; place-items: center; width: 24px; height: 24px; flex: none; border-radius: 8px; color: var(--accent-text); background: color-mix(in srgb, var(--accent-1) 12%, transparent); }
-.cl-tl-ico svg.i { width: 14px; height: 14px; }
+/* The kind of change: a bare coloured icon, no box, so it never looks clickable. */
+.cl-tl-ico { display: inline-grid; place-items: center; width: 18px; height: 20px; flex: none; color: var(--text-2, #667085); }
+.cl-tl-ico svg.i { width: 16px; height: 16px; stroke-width: 2.4; }
+.cl-tl-up { color: var(--good-t, #067647); }
+.cl-tl-down { color: var(--crit-t, #B42318); }
+[data-theme="dark"] .cl-tl-up { color: #4ADE80; }
+[data-theme="dark"] .cl-tl-down { color: #F87171; }
 .cl-change { display: grid; gap: 2px; margin-top: 4px; font-size: 12px; }
 .cl-change-line { display: grid; grid-template-columns: minmax(48px, max-content) minmax(0, 1fr); gap: 8px; }
 .cl-change-label { color: var(--muted); }
@@ -181,3 +186,27 @@ button.cl-name:hover { color: var(--accent-text); }
 @media (max-width: 640px) { .cl-kw-table td.c .cl-cell { text-align: right; } }
 /* Find competitors: the suggestion's icon beside its name. */
 .cl-sug-name > .site-logo { margin-right: 8px; vertical-align: -4px; }
+
+/* What's known behind a change (2026-11-10): one line of facts, the rest in "All the details". Shared by the profile timeline and Who is moving. */
+.cl-facts-title { margin-top: 3px; font-size: 13px; color: var(--text); overflow-wrap: anywhere; }
+.cl-facts { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 4px; }
+.cl-fact { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border-radius: var(--r-s); background: var(--hover); box-shadow: inset 0 0 0 1px var(--line); color: var(--text-2); font-size: 12px; line-height: 18px; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.cl-facts-you .cl-fact { color: var(--text); }
+details.cl-more-facts { margin-top: 4px; }
+details.cl-more-facts > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; color: var(--accent-text); }
+details.cl-more-facts > summary::-webkit-details-marker { display: none; }
+details.cl-more-facts > summary svg { width: 14px; height: 14px; transition: transform var(--t-base) var(--ease-out); }
+details.cl-more-facts[open] > summary svg { transform: rotate(90deg); }
+.cl-dl { display: grid; grid-template-columns: minmax(140px, 220px) 1fr; gap: 0; margin: 6px 0 2px; border-radius: var(--r-s); box-shadow: inset 0 0 0 1px var(--line); font-size: 12.5px; }
+.cl-dl-row { display: contents; }
+.cl-dl-row > dt, .cl-dl-row > dd { margin: 0; padding: 5px 10px; border-top: 1px solid var(--line); }
+.cl-dl-row:first-child > dt, .cl-dl-row:first-child > dd { border-top: 0; }
+.cl-dl-row > dt { color: var(--text-2); }
+.cl-dl-row > dd { overflow-wrap: anywhere; min-width: 0; }
+.cl-outline, .cl-questions { margin: 0; padding: 0; list-style: none; max-height: 320px; overflow: auto; }
+.cl-outline li { display: flex; gap: 6px; padding: 1px 0; }
+.cl-outline .cl-h-tag { flex: none; width: 26px; color: var(--muted); font-size: 12px; font-weight: 600; }
+.cl-outline .cl-h-h3 { padding-left: 14px; } .cl-outline .cl-h-h4, .cl-outline .cl-h-h5, .cl-outline .cl-h-h6 { padding-left: 28px; }
+.cl-questions li { padding: 1px 0; }
+@media (max-width: 640px) { .cl-dl { grid-template-columns: 1fr; } .cl-dl-row > dd { border-top: 0; padding-top: 0; } }
+.cl-fact .mono, .cl-fact .tabular, .cl-fact .muted { font-size: 12px; } /* the app keeps every word at 12px or more */

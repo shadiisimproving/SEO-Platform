@@ -103,13 +103,14 @@ def ai_search(engine, args) -> Report:
     report = _report(engine, args, scope, "ai", "AI search")
     report.tiles = [
         Tile("Visits from AI", data.get("sessions"), "int", data.get("change") if scope.has_compare else None),
-        Tile("Share of all visits", data.get("share"), "pct"), Tile("Leads", data.get("leads"), "float"),
+        Tile("Leads", data.get("leads"), "float"),
+        Tile("Lead rate", (data.get("rate") or {}).get("value"), "pct"),  # blank under 30 AI visits, as on the screen
     ]
     series = data.get("series") or []
     if series:
         report.charts.append(Chart("Visits from AI", [_day(p.get("day")) for p in series], [Series("Visits", [p.get("sessions") for p in series])]))
     report.tables.append(Table("sources", "AI tools", [C("source", "AI tool", "text"), C("sessions", "Visits", "int"), C("leads", "Leads", "float")], data.get("sources") or [], empty="No visits from AI tools in this period.", key="source"))
-    report.tables.append(Table("pages", "Pages they land on", [C("page", "Page", "url", get=page_address), C("sessions", "Visits", "int")], data.get("pages") or [], empty="No visits from AI tools in this period.", key=lambda r: f"{r.get('host') or ''}|{r.get('path') or ''}"))
+    report.tables.append(Table("pages", "Pages they land on", [C("page", "Page", "url", get=page_address), C("sessions", "Visits", "int"), C("leads", "Leads", "float")], data.get("pages") or [], empty="No visits from AI tools in this period.", key=lambda r: f"{r.get('host') or ''}|{r.get('path') or ''}"))
     _hidden(report, data)
     return report
 

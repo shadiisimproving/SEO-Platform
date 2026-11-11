@@ -260,7 +260,7 @@ window.CONNECTIONS = [
       { title: "Paste it here", text: "Paste it here, press Test, then Save. A Summarise with AI button appears on competitors' changes." },
     ] },
   { id: "firecrawl", group: "extra", name: "Firecrawl", logo: "firecrawl", desc: "Backup reader for competitor sites the app can't read itself", status: "off", price: "Free plan, then from $16 a month", limit: "1 credit a page read, 1 credit a page list", auth: "key", sites: "all", url: "https://www.firecrawl.dev/app/api-keys",
-    note: "Off until you paste a key. It never runs by itself: a competitor's page shows what it would cost, and it only runs when you press the button. At most 50 pages a click.",
+    note: "Off until you paste a key. It never runs without your yes: a competitor's page shows what it would cost, and it runs when you press the button, or once a week where you said yes to a weekly check. At most 50 pages a click.",
     risk: "It sends the competitor's page addresses to Firecrawl, which reads them for you. Nothing about your own sites or leads is sent.",
     steps: [
       { title: "Create an account", text: "Create a Firecrawl account. The free plan has credits each month, and no card is needed.", url: "https://www.firecrawl.dev/signin", link: "Open Firecrawl" },

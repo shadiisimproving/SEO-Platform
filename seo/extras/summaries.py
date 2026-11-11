@@ -26,6 +26,10 @@ KEY_URL = "https://openrouter.ai/api/v1/key"
 MODEL = "openrouter/free"
 MOST_SENT = 4000
 MOST_SHOWN = 700
+# A free model can stop after one letter (seen live 2026-11-10: the summary was just "A"), often because a thinking model
+# spent its tokens before answering. Anything shorter than a real sentence is refused and never kept.
+LEAST_WORDS = 2
+LEAST_CHARACTERS = 8
 LANGUAGES = {"en": "English", "fr": "French"}
 WORDS = {
     "title": "the page title", "meta": "the meta description", "h1": "the main heading", "headings": "the headings", "canonical": "the canonical address",
@@ -80,7 +84,7 @@ def _ask(key: str, event, change: str, language: str) -> tuple[str, str]:
     try:
         reply = http.request(
             "POST", CHAT_URL, "OpenRouter", timeout=60, headers={"Authorization": f"Bearer {key}", "X-Title": "SEO Command Center"},
-            json={"model": MODEL, "temperature": 0.2, "max_tokens": 200, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]},
+            json={"model": MODEL, "temperature": 0.2, "max_tokens": 600, "reasoning": {"exclude": True}, "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]},
         ).json()
     except SourceError as exc:
         if exc.kind == "quota":
@@ -96,7 +100,16 @@ def _ask(key: str, event, change: str, language: str) -> tuple[str, str]:
     if not isinstance(words, str) or not words.strip():
         # A model can reach OpenRouter and still fail, with status 200 and an error in the body.
         raise Refused("The free model gave no answer. Try again: it may pick another one.")
-    return " ".join(words.split())[:MOST_SHOWN], str(reply.get("model") or MODEL)[:120]
+    words = " ".join(words.split())
+    if not usable(words):
+        raise Refused("The free model gave no answer. Try again: it may pick another one.")
+    return words[:MOST_SHOWN], str(reply.get("model") or MODEL)[:120]
+
+
+def usable(words) -> bool:
+    """A real summary is at least a short sentence. "A" or "The" is a model that stopped early."""
+    words = " ".join(str(words or "").split())
+    return len(words) >= LEAST_CHARACTERS and len(words.split()) >= LEAST_WORDS
 
 
 def summarise(engine: Engine, event_id: int, language: str = "en") -> dict:
@@ -109,8 +122,9 @@ def summarise(engine: Engine, event_id: int, language: str = "en") -> dict:
         if event is None:
             raise NotFound("That change doesn't exist.")
         held = json.loads(event["summaries"]) if isinstance(event["summaries"], str) else event["summaries"] or {}
-        if held.get(lang):  # asked before: free and instant
+        if held.get(lang) and usable(held[lang].get("text")):  # asked before: free and instant
             return held[lang]
+        held.pop(lang, None)  # a broken answer kept by an older version is asked for again
         change = _what_changed(conn, event)
     key = sources.app_key(engine, "openrouter")
     if not key:

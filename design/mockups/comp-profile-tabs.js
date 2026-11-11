@@ -11,8 +11,10 @@
   const COMP = window.COMP;
   const TABS = [["keywords", "Keywords", "key-round"], ["pages", "Pages", "file-text"], ["activity", "Activity", "activity"], ["site", "Their site", "globe"]];
   const TAB_KEY = "competitor-tab";
-  const S = { tab: null, p: null, ins: null, parts: null, buildMore: false, questions: 10, strengthBusy: false, strengthError: "", shownId: null };
-  const QUESTION_STEP = 20;
+  const S = { tab: null, p: null, ins: null, parts: null, buildMore: false, strengthBusy: false, strengthError: "", shownId: null, bestSort: null };
+  /* Long lists here have pages and a search, like every long table in the app (table-pages.js, loaded after this file). */
+  const BEST = "pt-best", QS = "pt-q", QO = "pt-q-other";
+  const TP = () => window.TP;
   const UI = () => window.UI;
 
   const t = (text) => UI().t(text);
@@ -69,7 +71,7 @@
     if (first) first += ".";
     const r = ins?.rhythm;
     let second = "";
-    if (r?.new_30d) second = r.top_section ? many(r.new_30d, "They published {n} page in 30 days, mostly in {section}.", "They published {n} pages in 30 days, mostly in {section}.", { section: r.top_section }) : many(r.new_30d, "They published {n} page in 30 days.", "They published {n} pages in 30 days.");
+    if (r?.new_30d) second = r.top_section && r.top_section !== "/" ? many(r.new_30d, "They published {n} page in 30 days, mostly in {section}.", "They published {n} pages in 30 days, mostly in {section}.", { section: r.top_section }) : many(r.new_30d, "They published {n} page in 30 days.", "They published {n} pages in 30 days.");
     else if (r && r.months?.length && p.crawl?.baseline_done) second = t("They published nothing new in 30 days.");
     const off = p.tracking && p.tracking !== "on"; // keyword numbers are switched off for this competitor
     const missing = [];
@@ -170,22 +172,37 @@
     const best = ins.best_pages || [];
     const sections = ins.sections || [];
     const questions = ins.questions || [];
-    const bestTable = best.length
-      ? `<div class="cl-scroll"><table class="data cl-table pt-table"><thead><tr><th scope="col">${t("Their page")}</th><th scope="col" class="c">${t("Keywords")}</th><th scope="col" class="c">${t("Best position")}</th><th scope="col">${t("Your page")}</th></tr></thead><tbody>${best.map((b) => `<tr>
+    const bestTable = best.length ? bestPages(p, best) : `<p class="cl-none small sec">${t("None yet. Their strongest pages are the ones that rank for your keywords, so they appear after a ranking check.")}</p>`;
+    const showMine = mineRead(ins);
+    const sectionTable = sections.length ? sectionsBody(sections, showMine, p.host) : `<p class="cl-none small sec">${t("Sections appear once their pages are read.")}</p>`;
+    const qs = Array.isArray(questions) ? { groups: [], total: 0, related: 0, judged: false } : questions;
+    const questionList = qs.groups?.length ? questionsBody(p, qs, showMine) : `<p class="cl-none small sec">${t("No questions found in their pages' headings yet.")}</p>`;
+    return `<section class="card"><div class="card-head"><h2>${t("Their strongest pages")}</h2><span class="end small muted">${t("By how many of your keywords each page ranks for")}</span></div><div class="cl-section-body">${bestTable}</div></section>
+      <section class="card"><div class="card-head"><h2>${t("Where their pages are")}</h2><span class="end small muted">${t("Grouped by the first folder of each address")}</span></div><div class="cl-section-body">${sectionTable}</div></section>
+      <section class="card"><div class="card-head"><h2>${t("Questions they answer")}</h2>${COMP.info("Read from the headings of their pages that end in a question mark. Author, tag, category and home pages are left out: their headings are other posts' titles.")}</div><div class="cl-section-body">${questionList}</div></section>`;
+  }
+
+  /* Their pages that rank for my keywords, in pages of 25 with a search by title or address. Keywords and Best position
+     sort, like Link gaps: a first click puts the best first, a second turns it round, a third goes back to the usual order. */
+  const BEST_SORT = { keywords: [(b) => b.keywords, "desc"], position: [(b) => b.best_position, "asc"] };
+  function bestPages(p, best) {
+    const sort = S.bestSort;
+    let rows = best.filter((b) => TP().matches(BEST, b.title, b.url, b.my_title, b.my_url));
+    if (sort) { const [get] = BEST_SORT[sort.id]; rows = [...rows].sort((a, b) => (get(a) - get(b)) * (sort.dir === "asc" ? 1 : -1)); }
+    const page = TP().view(BEST, rows);
+    const head = (id, label) => {
+      const on = sort?.id === id;
+      return `<th scope="col" class="c" aria-sort="${on ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}"><button type="button" class="th-btn" data-pt-best-sort="${id}">${t(label)}${on ? icon(sort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
+    };
+    const tools = best.length > 10 ? `<div class="pt-tools">${TP().search(BEST, t("Search their pages"))}</div>` : "";
+    if (!rows.length) return `${tools}<p class="cl-none small sec">${t("No page matches the search.")}</p>`;
+    return `${tools}<div class="cl-scroll"><table class="data cl-table pt-table" id="pt-best"><thead><tr><th scope="col">${t("Their page")}</th>${head("keywords", "Keywords")}${head("position", "Best position")}<th scope="col">${t("Your page")}</th></tr></thead><tbody>${page.rows.map((b) => `<tr>
           <td class="head-cell"><span class="cl-cell"><span class="t" dir="auto">${esc(b.title || COMP.shortUrl(b.url))}</span><span class="second">${COMP.link(b.url)}</span></span></td>
           <td class="c tabular" data-label="${esc(t("Keywords"))}">${num(b.keywords)}</td>
           <td class="c" data-label="${esc(t("Best position"))}">${COMP.pos(b.best_position)}</td>
           <td data-label="${esc(t("Your page"))}">${b.my_url ? `<span class="cl-cell"><span class="t" dir="auto">${esc(b.my_title || COMP.shortUrl(b.my_url))}</span><span class="second">${b.pair_id ? `<button class="link-btn" data-cl-pair="${b.pair_id}">${t("Compare")}</button>` : COMP.link(b.my_url)}</span></span>` : `<span class="pt-none">${t("No page")}</span> ${UI().taskButton({ title: fill("Write a page against {url}", { url: COMP.shortUrl(b.url) }), host: p.site?.host, source: { type: "competitor", label: p.host, host: p.site?.host, facts: [b.url, many(b.keywords, "{n} keyword", "{n} keywords")], link: `#competitors/list/${p.id}`, key: `best|${p.id}|${b.url}` } }, { label: "Task" })}`}</td>
-        </tr>`).join("")}</tbody></table></div>`
-      : `<p class="cl-none small sec">${t("None yet. Their strongest pages are the ones that rank for your keywords, so they appear after a ranking check.")}</p>`;
-    const showMine = mineRead(ins);
-    const sectionTable = sections.length ? sectionsBody(sections, showMine, p.host) : `<p class="cl-none small sec">${t("Sections appear once their pages are read.")}</p>`;
-    const questionList = questions.length ? questionsBody(p, questions) : `<p class="cl-none small sec">${t("None found yet. Questions come from their page headings and from Google's People also ask.")}</p>`;
-    return `<section class="card"><div class="card-head"><h2>${t("Their strongest pages")}</h2><span class="end small muted">${t("By how many of your keywords each page ranks for")}</span></div><div class="cl-section-body">${bestTable}</div></section>
-      <section class="card"><div class="card-head"><h2>${t("Where their pages are")}</h2><span class="end small muted">${t("Grouped by the first folder of each address")}</span></div><div class="cl-section-body">${sectionTable}</div></section>
-      <section class="card"><div class="card-head"><h2>${t(showMine ? "Questions they answer that you don't" : "Questions in their headings")}</h2>${showMine ? "" : COMP.info("Your own pages aren't read yet, so the app can't tell which of these you already answer.")}${questions.length ? `<span class="end small sec tabular">${esc(many(questions.length, "{n} question", "{n} questions"))}</span>` : ""}</div><div class="cl-section-body">${questionList}</div></section>`;
+        </tr>`).join("")}</tbody></table></div>${TP().footer(BEST, page, { noun: t("pages") })}`;
   }
-
 
   /* One plain sentence first, then the folders. "You" only when my pages are read. "Last change" only when one is known. */
   function sectionsBody(sections, showMine, host) {
@@ -204,50 +221,82 @@
     return `${lead}<div class="cl-scroll"><table class="data cl-table pt-table pt-narrow"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>${showMine ? "" : notReadNote()}`;
   }
 
-  /* Each question: where they answer it, and a task to answer it on my site. The list grows by Show more. */
-  function questionsBody(p, questions) {
-    const shown = questions.slice(0, S.questions);
+  /* One row per page of theirs: the page, the questions it answers, one task for all of them.
+     Pages on my topics first; the others stay folded behind one button, so tourist questions don't bury the useful ones. */
+  const PAGE_QS = 3; // questions shown per page before "+n more"
+  function questionsBody(p, qs, showMine) {
     const host = COMP.site?.()?.host || p.site?.host;
-    const task = (q) => UI().taskButton({
-      title: fill("Answer \"{q}\" on your site", { q: q.text }),
-      host,
-      source: { type: "competitor", label: p.host, host, facts: [q.text, q.url].filter(Boolean), link: `#competitors/list/${p.id}`, key: `question|${p.id}|${q.text}` },
-    }, { label: "Task" });
-    const rows = shown.map((q) => `<tr>
-        <td class="head-cell"><span dir="auto" class="pt-q">${esc(q.text)}</span></td>
-        <td data-label="${esc(t("Where they answer it"))}"><span class="cl-cell"><span class="small sec">${esc(t(q.source === "people_also_ask" ? "People also ask" : "In their headings"))}</span>${q.url ? `<span class="second">${COMP.link(q.url)}</span>` : ""}</span></td>
-        <td class="pt-act" data-label="">${task(q)}</td>
-      </tr>`).join("");
-    const left = questions.length - shown.length;
-    const more = left > 0
-      ? `<div class="cs-more pt-more"><span class="small sec">${esc(fill("Showing {shown} of {total}", { shown: num(shown.length), total: num(questions.length) }))}</span><button class="btn btn-small" data-pt-q-more>${esc(fill("Show {n} more", { n: num(Math.min(QUESTION_STEP, left)) }))}</button><button class="btn btn-small btn-ghost" data-pt-q-all>${t("Show all")}</button></div>`
-      : questions.length > 10 ? `<div class="cs-more pt-more"><span class="small sec">${esc(fill("All {total} shown", { total: num(questions.length) }))}</span><button class="btn btn-small btn-ghost" data-pt-q-less>${t("Show fewer")}</button></div>` : "";
-    return `<div class="cl-scroll"><table class="data cl-table pt-table" id="pt-questions"><thead><tr><th scope="col">${t("Question")}</th><th scope="col">${t("Where they answer it")}</th><th scope="col"><span class="sr-only">${t("Task")}</span></th></tr></thead><tbody>${rows}</tbody></table></div>${more}`;
+    const related = qs.groups.filter((g) => g.related);
+    const others = qs.groups.filter((g) => !g.related);
+    const otherCount = others.reduce((n, g) => n + g.questions.length, 0);
+    const lead = !qs.judged
+      ? t("Grouped by the page that answers them. Once Search Console is connected or you add keywords, the ones on your topics come first and the rest are folded away.")
+      : related.length
+        ? fill("{n} of their questions are on your topics, on {pages}. Each row is one page of theirs: answer its questions on your site in one task.", { n: num(qs.related), pages: many(related.length, "{n} page", "{n} pages") })
+        : t("None of their questions are on your topics: they write about other subjects.");
+    const unread = showMine ? "" : ` ${t("Your own pages haven't been read yet, so some of these may already be on your site.")}`;
+    const row = (g) => {
+      const open = S.qOpen?.has(g.url);
+      const list = open ? g.questions : g.questions.slice(0, PAGE_QS);
+      const hidden = g.questions.length - list.length;
+      const task = UI().taskButton({
+        title: g.questions.length === 1 ? fill("Answer \"{q}\" on your site", { q: g.questions[0] }) : fill("Answer {n} questions from {page} on your site", { n: num(g.questions.length), page: COMP.shortUrl(g.url) }),
+        host,
+        source: { type: "competitor", label: p.host, host, facts: [...g.questions, g.url], link: `#competitors/list/${p.id}`, key: `questions|${p.id}|${g.url}` },
+      }, { label: "Task" });
+      return `<li class="pt-qpage">
+        <div class="pt-qpage-head"><span class="cl-cell"><span class="t" dir="auto">${esc(g.title || COMP.shortUrl(g.url))}</span><span class="second">${COMP.link(g.url)}</span></span><span class="pt-act">${task}</span></div>
+        <ul class="pt-qlist">${list.map((q) => `<li dir="auto">${esc(q)}</li>`).join("")}</ul>
+        ${hidden > 0 ? `<button class="link-btn small" data-pt-qpage="${esc(g.url)}">${esc(fill("+{n} more", { n: num(hidden) }))}</button>` : open && g.questions.length > PAGE_QS ? `<button class="link-btn small" data-pt-qpage="${esc(g.url)}">${t("Show fewer")}</button>` : ""}
+      </li>`;
+    };
+    // Pages of 25, like every long list, and one search through their pages and questions for both lists.
+    const found = (list) => list.filter((g) => TP().matches(QS, g.title, g.url, ...g.questions));
+    const first = qs.judged ? related : qs.groups;
+    const hits = found(first), page = TP().view(QS, hits);
+    const otherHits = found(others), otherPage = TP().view(QO, otherHits);
+    const tools = qs.groups.length > 10 ? `<div class="pt-tools">${TP().search(QS, t("Search their pages and questions"))}</div>` : "";
+    const noHit = `<p class="cl-none small sec">${t("No page matches the search.")}</p>`;
+    const main = hits.length ? `<div class="pt-qmain"><ul class="rows pt-qpages" id="pt-questions">${page.rows.map(row).join("")}</ul>${TP().footer(QS, page, { noun: t("pages") })}</div>` : first.length ? noHit : "";
+    const otherBlock = qs.judged && others.length
+      ? `<div class="pt-qother">${S.qOthers
+          ? `<p class="small sec">${esc(many(otherCount, "{n} question on other topics", "{n} questions on other topics"))} <button class="link-btn small" data-pt-q-others>${t("Hide them")}</button></p>${otherHits.length ? `<ul class="rows pt-qpages pt-qpages-other">${otherPage.rows.map(row).join("")}</ul>${TP().footer(QO, otherPage, { noun: t("pages") })}` : noHit}`
+          : `<button class="btn btn-small btn-ghost" data-pt-q-others>${esc(many(otherCount, "Show {n} question on other topics", "Show {n} questions on other topics"))}</button>`}</div>`
+      : "";
+    return `<p class="pt-lead">${esc(lead + unread)}</p>${tools}${main}${otherBlock}`;
   }
 
-  // Activity: how fast they publish, against you, then the timeline.
+  // Activity: one sentence on how fast they publish, the months as bars with their numbers on, then the timeline.
   function activityTab(p, ins, parts) {
     const r = ins?.rhythm;
     const showMine = mineRead(ins);
     S.showMine = showMine;
-    const facts = r ? `<div class="pt-facts-row">
-        ${fact(t("Pages updated in the last 12 months"), share(r.updated_12m?.theirs), showMine ? share(r.updated_12m?.mine) : null)}
-        ${fact(t("New pages in 30 days"), figure(r.new_30d), showMine ? figure(r.my_new_30d) : null)}
-        ${fact(t("Pages removed in 30 days"), figure(r.removed_30d), showMine ? figure(r.my_removed_30d) : null)}
-      </div>` : "";
-    const busyMonths = (r?.months || []).filter((m) => (m.theirs || 0) + (showMine ? m.mine || 0 : 0) > 0);
-    const asWords = (r?.months || []).filter((m) => (m.theirs || 0) || (showMine && m.mine)).map((m) => `${esc(longMonth(m.month))}: ${t("Them")} ${num(m.theirs || 0)}${showMine ? `, ${t("You")} ${num(m.mine || 0)}` : ""}`).join(" · ");
+    const months = r?.months || [];
+    const total = months.reduce((n, m) => n + (m.theirs || 0), 0);
+    const peak = months.reduce((best, m) => ((m.theirs || 0) > (best?.theirs || 0) ? m : best), null);
+    const myTotal = showMine ? months.reduce((n, m) => n + (m.mine || 0), 0) : null;
+    const said = [];
+    if (r && months.length) {
+      const year = total ? many(total, "They added {n} page in the last 12 months", "They added {n} pages in the last 12 months") + (peak && total > 1 ? ` ${fill("(most in {month}: {k})", { month: longMonth(peak.month), k: num(peak.theirs) })}` : "") : t("They added no pages in the last 12 months");
+      said.push(`${year}${showMine ? `; ${many(myTotal, "you added {n}", "you added {n}")}` : ""}.`);
+      const recent = r.new_30d ? many(r.new_30d, "{n} new", "{n} new") : t("nothing new");
+      const gone = r.removed_30d ? many(r.removed_30d, "{n} removed", "{n} removed") : t("nothing removed");
+      said.push(fill("In the last 30 days: {recent}, {gone}.", { recent, gone }));
+      if (known(r.updated_12m?.theirs)) said.push(fill("{share} of their pages were updated in the last year.", { share: share(r.updated_12m.theirs) }));
+    }
+    const lead = said.length ? `<p class="pt-lead">${esc(said.join(" "))}</p>` : "";
+    const busyMonths = months.filter((m) => (m.theirs || 0) + (showMine ? m.mine || 0 : 0) > 0);
+    const asWords = months.filter((m) => (m.theirs || 0) || (showMine && m.mine)).map((m) => `${esc(longMonth(m.month))}: ${num(m.theirs || 0)}${showMine ? ` (${t("you")} ${num(m.mine || 0)})` : ""}`).join(" · ");
     // A chart needs a shape: under three months with pages, the figures are said in a line instead of an empty 12-month axis.
-    const chart = !r?.months?.length ? `<p class="cl-none small sec">${t("The months fill in once pages are read. A page's date comes from the page itself, the Wayback Machine, or the day the app first saw it.")}</p>`
-      : busyMonths.length < 3 ? `<p class="small sec pt-few-months">${busyMonths.length ? `${t("Too few months to draw yet.")} ${asWords}.` : t("No new pages in the last 12 months.")}</p>${showMine ? "" : notReadNote()}`
-      : `${monthChart(r.months, showMine)}${showMine ? "" : notReadNote()}`;
+    const chart = !months.length ? `<p class="cl-none small sec">${t("The months fill in once pages are read. A page's date comes from the page itself, the Wayback Machine, or the day the app first saw it.")}</p>`
+      : busyMonths.length < 3 ? (busyMonths.length ? `<p class="small sec pt-few-months">${asWords}.</p>` : "")
+      : monthChart(months, showMine);
     const years = historyBlock(ins);
-    return `<section class="card"><div class="card-head"><h2>${t("New pages each month")}</h2><span class="end small muted">${t(showMine ? "Them against you, over 12 months" : "Over the last 12 months")}</span></div><div class="cl-section-body">${facts}${chart}</div></section>
+    return `<section class="card"><div class="card-head"><h2>${t("How fast they publish")}</h2><span class="end small muted">${t("New pages each month, from the dates on their pages")}</span></div><div class="cl-section-body">${lead}${chart}${showMine || !months.length ? "" : notReadNote()}</div></section>
       ${years}
       <section class="card" aria-label="${esc(t("Timeline"))}"><div class="card-head"><h2>${t("Timeline")}</h2>${COMP.info("Ranking moves only compare two checks by the same tool, from the same place, so a change of tool never reads as a move.")}</div>
         <div class="cl-section-body" id="cl-timeline">${parts.timelineBody(p)}</div></section>`;
   }
-  const fact = (label, theirs, mine) => `<div class="pt-fact"><span class="lab small sec">${esc(label)}</span><span class="pt-fact-figs"><span><i class="pt-key pt-key-them" aria-hidden="true"></i>${t("Them")} <b class="tabular">${theirs}</b></span>${mine === null ? "" : `<span><i class="pt-key pt-key-you" aria-hidden="true"></i>${t("You")} <b class="tabular">${mine}</b></span>`}</span></div>`;
 
   /* Bars drawn in HTML at a fixed height, so the numbers stay the same size on any screen. The key above the chart
      is the facts row, so there's no second legend. A hover label per month, and the same numbers as a short table. */
@@ -257,29 +306,43 @@
     const height = (v) => (v ? `max(3px, ${(v / ceil) * 100}%)` : "0");
     const ticks = [];
     for (let v = 0; v <= ceil; v += step) ticks.push(`<span class="pt-tick" style="bottom:${(v / ceil) * 100}%"><span class="tabular">${num(v)}</span></span>`);
-    const cols = months.map((m, i) => `<div class="pt-month" data-pt-month="${i}"><div class="pt-pair"><i class="pt-bar-them" style="height:${height(m.theirs)}"></i>${showMine ? `<i class="pt-bar-you" style="height:${height(m.mine)}"></i>` : ""}</div><span class="pt-mlabel">${esc(shortMonth(m.month))}</span></div>`).join("");
+    const cols = months.map((m, i) => `<div class="pt-month" data-pt-month="${i}"><div class="pt-pair"><i class="pt-bar-them" style="height:${height(m.theirs)}">${m.theirs ? `<b class="pt-bar-val tabular">${num(m.theirs)}</b>` : ""}</i>${showMine ? `<i class="pt-bar-you" style="height:${height(m.mine)}">${m.mine ? `<b class="pt-bar-val tabular">${num(m.mine)}</b>` : ""}</i>` : ""}</div><span class="pt-mlabel">${esc(shortMonth(m.month))}</span></div>`).join("");
     const label = showMine ? t("New pages each month, them against you") : t("Their new pages each month");
     const table = `<details class="pt-as-table"><summary class="small">${t("See these numbers as a table")}</summary><div class="cl-scroll"><table class="data cl-table pt-narrow"><thead><tr><th scope="col">${t("Month")}</th><th scope="col" class="c">${t("Them")}</th>${showMine ? `<th scope="col" class="c">${t("You")}</th>` : ""}</tr></thead><tbody>${months.map((m) => `<tr><td class="head-cell">${esc(longMonth(m.month))}</td><td class="c tabular">${num(m.theirs || 0)}</td>${showMine ? `<td class="c tabular">${num(m.mine || 0)}</td>` : ""}</tr>`).join("")}</tbody></table></div></details>`;
-    return `<div class="pt-chart-wrap"><div class="pt-chart${showMine ? " pt-two" : ""}" role="img" aria-label="${esc(label)}"><div class="pt-plot">${ticks.join("")}<div class="pt-cols">${cols}</div></div></div><div class="pt-tip" id="pt-tip" hidden></div></div>${table}`;
+    const key = showMine ? `<p class="pt-chart-key small sec"><span><i class="pt-key pt-key-them" aria-hidden="true"></i>${t("Them")}</span><span><i class="pt-key pt-key-you" aria-hidden="true"></i>${t("You")}</span></p>` : "";
+    return `${key}<div class="pt-chart-wrap"><div class="pt-chart${showMine ? " pt-two" : ""}" role="img" aria-label="${esc(label)}"><div class="pt-plot">${ticks.join("")}<div class="pt-cols">${cols}</div></div></div><div class="pt-tip" id="pt-tip" hidden></div></div>${table}`;
   }
   const niceStep = (max) => { const raw = max / 4; const mag = 10 ** Math.floor(Math.log10(raw)); const n = raw / mag; return Math.max(1, (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag); };
   const shortMonth = (ym) => { try { return new Date(`${ym}-01T00:00:00Z`).toLocaleDateString(UI().state.lang || undefined, { month: "short", timeZone: "UTC" }); } catch { return ym; } };
   const longMonth = (ym) => { try { return new Date(`${ym}-01T00:00:00Z`).toLocaleDateString(UI().state.lang || undefined, { month: "long", year: "numeric", timeZone: "UTC" }); } catch { return ym; } };
 
-  /* The Wayback Machine's memory of them: since when, and how many pages first appeared each year. */
+  /* Their site's age, in one sentence: online since, domain registered, how much the Wayback Machine kept.
+     The per-year bars count what the archive saved, not what they published, so they sit folded with that said. */
   function historyBlock(ins) {
     const f = ins?.facts || {}, h = f.history || {}, years = ins?.rhythm?.by_year || [];
+    const bits = [];
+    if (f.first_capture) bits.push(fill("Online since {date}", { date: monthYear(f.first_capture) }));
+    if (f.registered_on) bits.push(fill("domain registered {date}", { date: monthYear(f.registered_on) }));
+    let first = bits.join(", ");
+    if (first) first = `${first[0].toUpperCase()}${first.slice(1)}.`;
     let body;
     if (h.status === "ok" && years.length) {
       const max = Math.max(1, ...years.map((x) => x.pages));
-      body = `<p class="small sec">${esc(fill("First archived {date}. {n} of their pages are in the archive.", { date: UI().fmtDateOnly(`${f.first_capture}T00:00:00Z`), n: num(h.archived_pages || 0) }))}${h.capped ? ` ${esc(t("The archive holds more than the first 5,000 read here."))}` : ""}</p>
-        <ul class="pt-years">${years.map((x) => `<li><span class="tabular">${esc(String(x.year))}</span><span class="pt-year-bar" style="--w:${(x.pages / max) * 100}%"><i class="pt-key-them"></i></span><span class="tabular">${num(x.pages)}</span></li>`).join("")}</ul>`;
-    } else if (h.status === "failed") body = `<p class="cl-none small sec">${esc(t("The Wayback Machine didn't answer this time. It tries again tomorrow."))}</p>`;
-    else if (h.status === "ok") body = `<p class="cl-none small sec">${t("The Wayback Machine has no copy of this site.")}</p>`;
-    else if (h.message) body = `<p class="cl-none small sec">${t("The Wayback Machine is busy. The app asks again in a few minutes.")}</p>`;
-    else body = `<p class="cl-none small sec">${t("Looking them up in the Wayback Machine. It takes a minute or two after a competitor is added, then it's checked again each month.")}</p>`;
-    const dates = [f.registered_on ? fill("Domain registered {date}", { date: UI().fmtDateOnly(`${f.registered_on}T00:00:00Z`) }) : "", f.expires_on ? fill("renews by {date}", { date: UI().fmtDateOnly(`${f.expires_on}T00:00:00Z`) }) : ""].filter(Boolean).join(", ");
-    return `<section class="card"><div class="card-head"><h2>${t("How their site grew")}</h2><span class="end small muted">${t("New pages each year, from the Wayback Machine")}</span></div><div class="cl-section-body">${body}${dates ? `<p class="small muted pt-dates">${esc(dates)}.</p>` : ""}</div></section>`;
+      const busiest = years.reduce((b, x) => (x.pages > b.pages ? x : b), years[0]);
+      const said = `${first} ${fill("The Wayback Machine has saved {n} of their pages, most of them first in {year}.", { n: num(h.archived_pages || 0), year: String(busiest.year) })}${h.capped ? ` ${t("The archive holds more than the first 5,000 read here.")}` : ""}`;
+      body = `<p class="pt-lead">${esc(said.trim())}</p>
+        <details class="pt-as-table"><summary class="small">${t("Pages first saved by the archive, each year")}</summary>
+          <p class="small sec">${t("The archive doesn't save every page, so these counts are lower than the dates on their pages above.")}</p>
+          <ul class="pt-years">${years.map((x) => `<li><span class="tabular">${esc(String(x.year))}</span><span class="pt-year-bar" style="--w:${(x.pages / max) * 100}%"><i class="pt-key-them"></i></span><span class="tabular">${num(x.pages)}</span></li>`).join("")}</ul></details>`;
+    } else {
+      const why = h.status === "failed" ? t("The Wayback Machine didn't answer this time. It tries again tomorrow.")
+        : h.status === "ok" ? t("The Wayback Machine has no copy of this site.")
+        : h.message ? t("The Wayback Machine is busy. The app asks again in a few minutes.")
+        : t("Looking them up in the Wayback Machine. It takes a minute or two after a competitor is added, then it's checked again each month.");
+      body = `${first ? `<p class="pt-lead">${esc(first)}</p>` : ""}<p class="cl-none small sec">${esc(why)}</p>`;
+    }
+    const renew = f.expires_on ? `<p class="small muted pt-dates">${esc(fill("Their domain renews by {date}.", { date: UI().fmtDateOnly(`${f.expires_on}T00:00:00Z`) }))}</p>` : "";
+    return `<section class="card"><div class="card-head"><h2>${t("How old their site is")}</h2><span class="end small muted">${t("From the Wayback Machine and the domain registry")}</span></div><div class="cl-section-body">${body}${renew}</div></section>`;
   }
 
   // Their site: authority, who links to them, and how they build pages.
@@ -317,26 +380,42 @@
     const h = f.history?.status;
     const items = [
       { label: t("Moz Domain Authority"), mine: f.my_da, theirs: f.da, show: figure, why: "moz" },
-      { label: t("Sites linking to them"), sub: linkSource, mine: myLinks, theirs: theirLinks, show: figure, why: "links" },
+      { label: t("Websites linking to the site"), sub: linkSource, mine: myLinks, theirs: theirLinks, show: figure, why: "links", needTheirs: true },
       { label: t("Popularity (Cloudflare)"), mine: f.my_popularity, theirs: f.popularity, show: (v) => (v ? esc(v) : dash), why: "moz" },
       { label: t("Domain registered"), mine: f.my_registered_on, theirs: f.registered_on, show: (v) => (v ? esc(monthYear(v)) : dash), why: "registry" },
     ];
-    const has = items.filter((x) => known(x.mine) || known(x.theirs));
-    const missing = items.filter((x) => !(known(x.mine) || known(x.theirs)));
+    // A row is only a comparison when their side is known; mine alone (my Backlinks list against nothing) moves to "Not known yet".
+    const shows = (x) => (x.needTheirs ? known(x.theirs) : known(x.mine) || known(x.theirs));
+    const has = items.filter(shows);
+    const missing = items.filter((x) => !shows(x));
+    const said = [];
+    if (f.registered_on && f.my_registered_on) {
+      const them = monthYear(f.registered_on), you = monthYear(f.my_registered_on);
+      said.push(them === you ? fill("Both domains were registered in {month}.", { month: them })
+        : fill(f.registered_on < f.my_registered_on ? "Their domain is older than yours: {them} against {you}." : "Your domain is older than theirs: {you} against {them}.", { them, you }));
+    }
+    if (known(f.da) && known(f.my_da)) said.push(fill("Moz rates them {them} out of 100, you {you}.", { them: num(f.da), you: num(f.my_da) }));
+    if (known(theirLinks) && known(myLinks)) said.push(fill("{them} websites link to them, {you} to you.", { them: num(theirLinks), you: num(myLinks) }));
+    else if (known(theirLinks)) said.push(many(theirLinks, "{n} website links to them.", "{n} websites link to them."));
+    if (f.registered_on && !f.my_registered_on) said.push(fill("Their domain was registered in {month}.", { month: monthYear(f.registered_on) }));
+    const lead = said.length ? `<p class="pt-lead">${esc(said.join(" "))}</p>` : "";
+    // "You" only when at least one of my figures is known: a column of dashes says nothing.
+    const withMine = has.some((x) => known(x.mine));
+    const line = (x) => (withMine ? row(x.label, x.show(x.mine), x.show(x.theirs)) : `<tr><th scope="row" class="head-cell">${esc(x.label)}</th><td class="c tabular" data-label="${esc(t("Them"))}">${x.show(x.theirs)}</td></tr>`);
     const table = has.length
-      ? `<table class="data cl-table pt-table pt-vs pt-narrow"><thead><tr><th scope="col">${t("What")}</th><th scope="col" class="c">${t("You")}</th><th scope="col" class="c">${t("Them")}</th></tr></thead><tbody>
-          ${has.map((x) => row(x.label, x.show(x.mine), x.show(x.theirs)).replace(`${esc(x.label)}</th>`, `${esc(x.label)}${x.sub ? `<span class="second small muted">${esc(x.sub)}</span>` : ""}</th>`)).join("")}
+      ? `<table class="data cl-table pt-table pt-vs pt-narrow"><thead><tr><th scope="col">${t("What")}</th>${withMine ? `<th scope="col" class="c">${t("You")}</th>` : ""}<th scope="col" class="c">${t("Them")}</th></tr></thead><tbody>
+          ${has.map((x) => line(x).replace(`${esc(x.label)}</th>`, `${esc(x.label)}${x.sub ? `<span class="second small muted">${esc(x.sub)}</span>` : ""}</th>`)).join("")}
         </tbody></table>`
       : "";
     const why = {
-      moz: () => `<li><div class="what"><b>${esc(missing.filter((x) => x.why === "moz").map((x) => x.label).join(" · "))}</b><span class="small sec">${t("Looked up by itself for each website, once a month, while free Moz rows last. Not here yet: the button gets it now.")}</span>${S.strengthError ? `<span class="small crit" role="alert">${esc(t(S.strengthError))}</span>` : ""}</div><div class="acts"><button class="btn btn-small" data-pt-strength-fetch ${S.strengthBusy ? 'disabled aria-busy="true"' : ""}>${icon(S.strengthBusy ? "loader" : "download")}${t(S.strengthBusy ? "Fetching…" : "Get these numbers")}</button></div></li>`,
-      links: () => `<li><div class="what"><b>${t("Sites linking to them")}</b><span class="small sec">${t("No list of their links yet. Upload one in Link gaps (a CSV from any backlink tool), or get Moz's count with the button above.")}</span></div><div class="acts"><button class="btn btn-small" data-pt-gaps>${icon("link-2")}${t("Open Link gaps")}</button></div></li>`,
+      moz: () => `<li><div class="what"><b>${t("Authority and popularity")}</b><span class="small sec">${t("From Moz and Cloudflare, free, once a month. Not looked up yet.")}</span>${S.strengthError ? `<span class="small crit" role="alert">${esc(t(S.strengthError))}</span>` : ""}</div><div class="acts"><button class="btn btn-small" data-pt-strength-fetch ${S.strengthBusy ? 'disabled aria-busy="true"' : ""}>${icon(S.strengthBusy ? "loader" : "download")}${t(S.strengthBusy ? "Fetching…" : "Get these numbers")}</button></div></li>`,
+      links: () => `<li><div class="what"><b>${t("Websites linking to them")}</b><span class="small sec">${esc(known(myLinks) ? fill("You have {n} in your Backlinks list. Theirs aren't known: upload a list of their links (a CSV from any backlink tool).", { n: num(myLinks) }) : t("Not known: upload a list of their links (a CSV from any backlink tool)."))}</span></div><div class="acts"><button class="btn btn-small" data-pt-gaps>${icon("link-2")}${t("Open Link gaps")}</button></div></li>`,
       registry: () => `<li><div class="what"><b>${t("Domain registered")}</b><span class="small sec">${t(h === "failed" ? "The domain registry didn't answer. The app asks again tomorrow." : "Being looked up in the domain registry. It's ready a few minutes after a competitor is added.")}</span></div></li>`,
     };
     const kinds = [...new Set(missing.map((x) => x.why))];
     const list = kinds.length ? `<div class="pt-missing">${has.length ? `<h3 class="small sec">${t("Not known yet")}</h3>` : `<p class="pt-lead">${t("None of these are known yet. Here's what fills each one.")}</p>`}<ul class="rows">${kinds.map((k) => why[k]()).join("")}</ul></div>` : "";
     void mozWait; void myHost;
-    return `${table}${list}`;
+    return `${lead}${table}${list}`;
   }
   const linkButtons = (main) => `<button class="btn btn-small${main ? " btn-main" : ""}" data-pt-links-upload>${icon("upload")}${t("Upload their links")}</button><button class="btn btn-small" data-pt-links-add>${icon("plus")}${t("Add a linking site")}</button>`;
 
@@ -397,7 +476,11 @@
   /* comp-list.js calls this inside the profile. parts: { keywordsBody(p), timelineBody(p) }. */
   function body(p, ins, parts) {
     Object.assign(S, { p, ins, parts });
-    if (S.shownId !== p.id) { S.shownId = p.id; S.tab = "keywords"; S.buildMore = false; S.questions = 10; }
+    if (S.shownId !== p.id) {
+      S.shownId = p.id; S.tab = "keywords"; S.buildMore = false; S.qOpen = new Set(); S.qOthers = false; S.bestSort = null;
+      [BEST, QS, QO].forEach((key) => { TP().state(key).q = ""; TP().reset(key); }); // another competitor starts on page 1, unsearched
+    }
+    [BEST, QS, QO].forEach((key) => TP().on(key, () => repaint()));
     return `${tabBar()}<div class="pt-panel" id="pt-panel" role="tabpanel" aria-labelledby="pt-tab-${currentTab()}">${panel()}</div>`;
   }
   /* comp-list.js puts this inside the header card, under the name: the answer, then the figures. */
@@ -474,9 +557,15 @@
       if (hit("[data-pt-only-them]")) { S.parts?.showKeywords?.("theirs_only"); pickTab("keywords", { focus: false }); UI().$('[data-cl-kw="theirs_only"]')?.focus({ preventScroll: false }); return; }
       if ((el = hit("[data-pt-go]"))) { UI().go?.(el.dataset.ptGo); return; }
       if (hit("[data-pt-gaps]")) { COMP.open("gaps"); return; }
-      if (hit("[data-pt-q-more]")) { S.questions += QUESTION_STEP; repaint(() => UI().$("[data-pt-q-more], [data-pt-q-less]")?.focus({ preventScroll: true })); return; }
-      if (hit("[data-pt-q-all]")) { S.questions = Infinity; repaint(() => UI().$("[data-pt-q-less]")?.focus({ preventScroll: true })); return; }
-      if (hit("[data-pt-q-less]")) { S.questions = 10; repaint(() => UI().$("#pt-questions")?.scrollIntoView({ block: "nearest" })); return; }
+      if ((el = hit("[data-pt-best-sort]"))) {
+        const id = el.dataset.ptBestSort, first = BEST_SORT[id][1];
+        S.bestSort = S.bestSort?.id !== id ? { id, dir: first } : S.bestSort.dir === first ? { id, dir: first === "asc" ? "desc" : "asc" } : null;
+        TP().reset(BEST);
+        repaint(() => UI().$(`[data-pt-best-sort="${id}"]`)?.focus({ preventScroll: true }));
+        return;
+      }
+      if ((el = hit("[data-pt-qpage]"))) { const url = el.dataset.ptQpage; S.qOpen ||= new Set(); S.qOpen.has(url) ? S.qOpen.delete(url) : S.qOpen.add(url); repaint(() => UI().$(`[data-pt-qpage="${CSS.escape(url)}"]`)?.focus({ preventScroll: true })); return; }
+      if (hit("[data-pt-q-others]")) { S.qOthers = !S.qOthers; repaint(() => UI().$("[data-pt-q-others]")?.focus({ preventScroll: true })); return; }
       if (hit("[data-pt-strength-fetch]")) { fetchStrength(); return; }
       if ((el = hit("[data-pt-links-upload]"))) { openLinksUpload(el); return; }
       if ((el = hit("[data-pt-links-add]")) && S.p) { COMP.editGap?.(null, [{ id: S.p.id, host: S.p.host, display: S.p.display }], el, reloadInsights); return; }
@@ -523,7 +612,14 @@
     const by_year = Array.from({ length: now.getUTCFullYear() - start + 1 }, (_, i) => ({ year: start + i, pages: Math.round(3 + rand() * 20) }));
     const pages = p.crawl?.status === "blocked" ? null : p.compare?.pages?.theirs?.pages || sections.reduce((s, x) => s + x.pages, 0); // a site that says no has no pages read
     const myPages = p.compare?.pages?.mine?.pages || 0;
-    const questions = ["How long does it take to get started?", "What does it cost per month?", "Can I change plans later?", "Is there a free trial?"].map((text, i) => ({ text, source: i % 2 ? "people_also_ask" : "heading", url: i % 2 ? null : best[0]?.url || `https://${p.host}/` }));
+    const qPage = (path, title, list, related) => ({ url: `https://${p.host}${path}`, title, questions: list, other: [], related, score: related ? 2 : 0 });
+    const questions = { judged: true, dropped: 6, groups: [
+      qPage("/guides/getting-started/", "Getting started: the full guide", ["How long does it take to get started?", "What papers do I need?", "Can I do it from abroad?", "Who signs the forms?"], true),
+      qPage("/pricing/", "Prices and plans", ["What does it cost per month?", "Can I change plans later?"], true),
+      qPage("/blog/weekend-ideas/", "Ten weekend ideas", ["Where to eat on a Friday?", "What to wear in summer?"], false),
+    ] };
+    questions.related = questions.groups.filter((g) => g.related).reduce((n, g) => n + g.questions.length, 0);
+    questions.total = questions.groups.reduce((n, g) => n + g.questions.length, 0);
     const features = {};
     theirs.slice(0, 3).forEach((k, i) => { features[k.keyword] = { snippet: i === 0 ? "them" : null, rich: i === 1 ? ["rating"] : [], ai: i === 2 }; });
     const cannibal = theirs[3] ? { [theirs[3].keyword]: 2 } : {};
@@ -553,6 +649,65 @@
       keywords: { features, cannibal },
     };
   }
+
+  // Pages and searches on the long lists (10 Nov).
+  Object.assign(window.FR, {
+    "Search their pages": "Rechercher une de leurs pages", "Search their pages and questions": "Rechercher une page ou une question",
+    "No page matches the search.": "Aucune page ne correspond à la recherche.", "pages": "pages",
+  });
+
+  // The 10 Nov rework of Activity, questions and strength.
+  Object.assign(window.FR, {
+    "No questions found in their pages' headings yet.": "Aucune question trouvée dans les titres de leurs pages pour l'instant.",
+    "Questions they answer": "Questions auxquelles ils répondent",
+    "Read from the headings of their pages that end in a question mark. Author, tag, category and home pages are left out: their headings are other posts' titles.": "Lues dans les titres de leurs pages qui finissent par un point d'interrogation. Les pages d'auteur, d'étiquette, de catégorie et d'accueil sont exclues : leurs titres sont ceux d'autres articles.",
+    "Grouped by the page that answers them. Once Search Console is connected or you add keywords, the ones on your topics come first and the rest are folded away.": "Regroupées par la page qui y répond. Une fois Search Console connecté ou des mots-clés ajoutés, celles sur vos sujets passent en premier et les autres sont repliées.",
+    "{n} of their questions are on your topics, on {pages}. Each row is one page of theirs: answer its questions on your site in one task.": "{n} de leurs questions portent sur vos sujets, sur {pages}. Chaque ligne est une de leurs pages : répondez à ses questions sur votre site en une seule tâche.",
+    "None of their questions are on your topics: they write about other subjects.": "Aucune de leurs questions ne porte sur vos sujets : ils écrivent sur autre chose.",
+    "Your own pages haven't been read yet, so some of these may already be on your site.": "Vos pages n'ont pas encore été lues, certaines de ces questions sont peut-être déjà sur votre site.",
+    "Answer {n} questions from {page} on your site": "Répondre sur votre site aux {n} questions de {page}",
+    "+{n} more": "+{n} de plus",
+    "Show {n} more page": "Afficher {n} page de plus",
+    "Show {n} more pages": "Afficher {n} pages de plus",
+    "{n} question on other topics": "{n} question sur d'autres sujets",
+    "{n} questions on other topics": "{n} questions sur d'autres sujets",
+    "Show {n} question on other topics": "Afficher {n} question sur d'autres sujets",
+    "Show {n} questions on other topics": "Afficher {n} questions sur d'autres sujets",
+    "Hide them": "Les masquer",
+    "They added {n} page in the last 12 months": "Ils ont ajouté {n} page en 12 mois",
+    "They added {n} pages in the last 12 months": "Ils ont ajouté {n} pages en 12 mois",
+    "(most in {month}: {k})": "(surtout en {month} : {k})",
+    "They added no pages in the last 12 months": "Ils n'ont ajouté aucune page en 12 mois",
+    "you added {n}": "vous en avez ajouté {n}",
+    "{n} new": "{n} nouvelle(s)", "nothing new": "rien de nouveau",
+    "In the last 30 days: {recent}, {gone}.": "Sur les 30 derniers jours : {recent}, {gone}.",
+    "{n} removed": "{n} retirée(s)",
+    "nothing removed": "rien de retiré",
+    "{share} of their pages were updated in the last year.": "{share} de leurs pages ont été mises à jour dans l'année.",
+    "How fast they publish": "À quel rythme ils publient",
+    "New pages each month, from the dates on their pages": "Nouvelles pages par mois, d'après les dates de leurs pages",
+    "you": "vous",
+    "domain registered {date}": "domaine enregistré en {date}",
+    "The Wayback Machine has saved {n} of their pages, most of them first in {year}.": "La Wayback Machine a gardé {n} de leurs pages, la plupart vues pour la première fois en {year}.",
+    "Pages first saved by the archive, each year": "Pages gardées pour la première fois par l'archive, par an",
+    "The archive doesn't save every page, so these counts are lower than the dates on their pages above.": "L'archive ne garde pas toutes les pages, ces chiffres sont donc plus bas que les dates de leurs pages plus haut.",
+    "Their domain renews by {date}.": "Leur domaine est à renouveler avant le {date}.",
+    "How old their site is": "L'âge de leur site",
+    "From the Wayback Machine and the domain registry": "D'après la Wayback Machine et le registre des domaines",
+    "Both domains were registered in {month}.": "Les deux domaines ont été enregistrés en {month}.",
+    "{n} website links to them.": "{n} site fait un lien vers eux.", "{n} websites link to them.": "{n} sites font un lien vers eux.",
+    "Their domain was registered in {month}.": "Leur domaine a été enregistré en {month}.",
+    "Websites linking to the site": "Sites qui font un lien vers le site",
+    "Their domain is older than yours: {them} against {you}.": "Leur domaine est plus ancien que le vôtre : {them} contre {you}.",
+    "Your domain is older than theirs: {you} against {them}.": "Votre domaine est plus ancien que le leur : {you} contre {them}.",
+    "Moz rates them {them} out of 100, you {you}.": "Moz leur donne {them} sur 100, à vous {you}.",
+    "{them} websites link to them, {you} to you.": "{them} sites font un lien vers eux, {you} vers vous.",
+    "Authority and popularity": "Autorité et popularité",
+    "From Moz and Cloudflare, free, once a month. Not looked up yet.": "Par Moz et Cloudflare, gratuit, une fois par mois. Pas encore cherché.",
+    "Websites linking to them": "Sites qui font un lien vers eux",
+    "You have {n} in your Backlinks list. Theirs aren't known: upload a list of their links (a CSV from any backlink tool).": "Vous en avez {n} dans votre liste de backlinks. Les leurs ne sont pas connus : importez une liste de leurs liens (un CSV de n'importe quel outil de backlinks).",
+    "Not known: upload a list of their links (a CSV from any backlink tool).": "Inconnu : importez une liste de leurs liens (un CSV de n'importe quel outil de backlinks).",
+  });
 
   Object.assign(window.FR, {
     "There's no keyword list for this site yet.": "Ce site n'a pas encore de liste de mots-clés.",

@@ -10,8 +10,10 @@ saw, or its sitemap date when the sitemap's dates mean something (under half the
 from __future__ import annotations
 
 import json
+import re
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta, timezone
+from urllib.parse import urlsplit
 
 from sqlalchemy import Engine, text
 
@@ -19,12 +21,19 @@ from seo.competitors import history, pairs, quality, tracking
 from seo.competitors.keywords import _iso, require_own
 from seo.competitors.pages import fold
 from seo.competitors.suggest import domain_of, my_domains
+from seo.insights import words as topic_words
 from seo.serp import store
 
 MONTHS = 12
-BEST_PAGES = 20
+BEST_PAGES = 500  # the profile pages them 25 at a time (2026-11-10), so the list isn't cut at one screen
 SECTIONS = 12
-QUESTIONS = 100
+QUESTION_PAGES = 300  # pages with questions sent to the screen, the closest to my topics first; the profile pages them
+TOPIC_DAYS = 90  # my Search Console searches of this many days say what my site is about
+TOPIC_SEARCHES = 3000
+BIG_VOCABULARY = 1000  # words counted across my searches, keywords and titles
+EVERYWHERE = 0.3  # a word in more than this share of their questions is their whole site's subject, not a topic
+_LISTING_PATH = re.compile(r"/(author|auteur|autor|tag|tags|etiquette|category|categorie|categories|page|search|recherche|feed|amp|wp-json)(/|$)|/(19|20)\d{2}(/\d{1,2})?/?$", re.I)
+_LISTING_QUERY = re.compile(r"(^|&)(s|q|page|paged|p|cat|tag)=", re.I)
 TOP_LINKS = 10
 LANGUAGE_SHARE = 0.1  # a language on fewer pages than this is a stray page, not a version of the site
 SITEMAP_SAME_DATE = 0.5
@@ -206,19 +215,117 @@ def _sections(theirs: list[dict], mine: list[dict]) -> list[dict]:
     return out[:SECTIONS]
 
 
-def _questions(theirs: list[dict], mine: list[dict]) -> list[dict]:
-    """Questions in their headings that none of my read pages asks."""
+def _is_listing(url: str) -> bool:
+    """An author, tag, category, date or results page: its headings are other posts' titles, not questions it answers."""
+    parts = urlsplit(url or "")
+    if _LISTING_QUERY.search(parts.query or ""):
+        return True
+    return bool(_LISTING_PATH.search(parts.path or "/")) or topic_words.is_home(url)
+
+
+def _h1(page: dict) -> str:
+    for heading in page["headings"] or []:
+        if isinstance(heading, (list, tuple)) and len(heading) == 2 and str(heading[0]).lower() == "h1":
+            return str(heading[1])
+    return page["title"] or ""
+
+
+def _topic_counts(conn, site_id: int, mine: list[dict]) -> Counter:
+    """In how many of my searches, keywords and page titles each word appears: what my site is about, in its visitors' words."""
+    since = datetime.now(timezone.utc).date() - timedelta(days=TOPIC_DAYS)
+    texts = [row[0] for row in conn.execute(
+        text("SELECT query FROM gsc_query WHERE site_id = :s AND day >= :d GROUP BY query_hash, query ORDER BY SUM(impressions) DESC LIMIT :n"),
+        {"s": site_id, "d": since, "n": TOPIC_SEARCHES},
+    )]
+    texts += [row[0] for row in conn.execute(
+        text("SELECT k.keyword FROM site_keywords sk JOIN keywords k ON k.id = sk.keyword_id WHERE sk.site_id = :s"), {"s": site_id}
+    )]
+    texts += [_h1(p) for p in mine]
+    counts: Counter = Counter()
+    for item in texts:
+        counts.update(set(topic_words.tokens(item)))
+    return counts
+
+
+def _questions(conn, site_id: int, theirs: list[dict], mine: list[dict]) -> dict:
+    """Their questions, grouped by the page that answers them, those closest to my topics first.
+
+    A question on a listing page (author, tag, home…) is the title of another post: it's moved to that post when the
+    app read it, and dropped when it didn't. A question I already ask in a heading is left out. A word that's in most of
+    their questions ("dubai" on a Dubai blog) says nothing about the topic, so it doesn't count as a match."""
     asked = {fold(q) for p in mine for q in (p["extras"].get("questions") or []) if isinstance(q, str)}
-    out, seen = [], set()
-    for page in sorted(theirs, key=lambda p: p["url"]):
+    by_h1 = {}
+    for page in theirs:
+        if not _is_listing(page["url"]):
+            by_h1.setdefault(fold(_h1(page)).strip(" ?"), page)
+    found: dict[str, dict] = {}  # folded question → {text, page}
+    dropped = 0
+    for page in sorted(theirs, key=lambda p: (_is_listing(p["url"]), p["url"])):  # a real page claims a question before a listing does
+        listing = _is_listing(page["url"])
         for question in page["extras"].get("questions") or []:
             if not isinstance(question, str):
                 continue
-            key = fold(question)
-            if key and key not in seen and key not in asked:
-                seen.add(key)
-                out.append({"text": question, "source": "heading", "url": page["url"]})
-    return out[:QUESTIONS]
+            key = fold(question).strip()
+            if not key or key in asked or key in found:
+                continue
+            owner = by_h1.get(key.strip(" ?"))
+            if owner is None and listing:
+                dropped += 1
+                continue
+            found[key] = {"text": question, "page": owner or page}
+    if not found:
+        return {"groups": [], "total": 0, "related": 0, "judged": False, "dropped": dropped}
+
+    mine_counts = _topic_counts(conn, site_id, mine)
+    judged = bool(mine_counts)
+    their_counts: Counter = Counter()
+    for item in found.values():
+        item["words"] = topic_words.tokens(item["text"])
+        their_counts.update(set(item["words"]))
+    everywhere = {w for w, n in their_counts.items() if len(found) >= 10 and n > EVERYWHERE * len(found)}
+    # On a big list, a word in one search only is noise; a small site has few searches, so each one counts.
+    least = 2 if sum(mine_counts.values()) > BIG_VOCABULARY else 1
+    topics = {w for w, n in mine_counts.items() if n >= least and w not in everywhere}
+    stems = {w[: topic_words.PREFIX] for w in topics if len(w) >= topic_words.PREFIX}  # topic_words.same, as two set lookups
+
+    def score(words) -> int:
+        return sum(1 for w in words if w not in everywhere and (w in topics or (len(w) >= topic_words.PREFIX and w[: topic_words.PREFIX] in stems)))
+
+    groups: dict[str, dict] = {}
+    for item in found.values():
+        page = item["page"]
+        group = groups.setdefault(page["url"], {"url": page["url"], "title": _h1(page) or page["title"], "questions": [], "score": 0})
+        if fold(item["text"]).strip(" ?") == fold(group["title"] or "").strip(" ?"):
+            # The page's own title: shown once, as the row's name, never again as one of its questions.
+            group["score"] = max(group["score"], score(item["words"]) if judged else 0)
+            group["own"] = item["text"]
+            continue
+        points = score(item["words"]) if judged else 0
+        group["questions"].append({"text": item["text"], "score": points})
+        group["score"] = max(group["score"], points)
+    out = list(groups.values())
+    for group in out:
+        own = group.pop("own", None)
+        if own and not group["questions"]:  # a page that is the answer to one question: that question is its row
+            group["questions"].append({"text": own, "score": group["score"]})
+        group["questions"].sort(key=lambda q: -q["score"])
+        group["related"] = group["score"] > 0
+        # Only the related questions are offered on a related page: the rest of it is another topic.
+        if group["related"]:
+            group["other"] = [q["text"] for q in group["questions"] if q["score"] == 0]
+            group["questions"] = [q["text"] for q in group["questions"] if q["score"] > 0]
+        else:
+            group["other"] = []
+            group["questions"] = [q["text"] for q in group["questions"]]
+    out.sort(key=lambda g: (not g["related"], -g["score"], -len(g["questions"]), g["url"]))
+    out = out[:QUESTION_PAGES]
+    return {
+        "groups": out,
+        "total": sum(len(g["questions"]) + len(g["other"]) for g in out),
+        "related": sum(len(g["questions"]) for g in out if g["related"]),
+        "judged": judged,
+        "dropped": dropped,
+    }
 
 
 def _best_pages(conn, site_id: int, competitor_id: int, my_host: str, host: str, checks: list[store.Check], theirs: list[dict]) -> list[dict]:
@@ -274,7 +381,7 @@ def _links(conn, site_id: int, competitor_id: int, host: str) -> dict:
     decisions = dict(conn.execute(text("SELECT domain, decision FROM link_gap_overrides WHERE site_id = :s"), {"s": site_id}).all())
     rows = conn.execute(
         text(
-            "SELECT r.domain, r.authority, r.authority_label, d.quality FROM competitor_referrers r LEFT JOIN link_domains d ON d.domain = r.domain "
+            "SELECT r.domain, r.authority, r.authority_label, r.spam_score, d.quality, d.reason FROM competitor_referrers r LEFT JOIN link_domains d ON d.domain = r.domain "
             "WHERE r.competitor_id = :c AND r.removed_by_hand = 0"
         ),
         {"c": competitor_id},
@@ -284,8 +391,7 @@ def _links(conn, site_id: int, competitor_id: int, host: str) -> dict:
     linking_me = {domain for domain, status in logged if status in ("live", "found")}
 
     def spam(row) -> bool:
-        decision = decisions.get(row["domain"])
-        return decision == "spam" or (decision != "keep" and row["quality"] == quality.SPAM)
+        return quality.verdict(row["spam_score"], row["quality"], row["reason"], decisions.get(row["domain"]))[0] == quality.SPAM
 
     top = sorted(rows, key=lambda r: (spam(r), -(r["authority"] if r["authority"] is not None else -1), r["domain"]))[:TOP_LINKS]
     return {
@@ -366,6 +472,7 @@ def insights(engine: Engine, site_id: int, competitor_id: int) -> dict:
         facts["my_reading"] = None if mine_read is None else {"status": mine_read["status"], "read_once": mine_read["finished_at"] is not None}
         past = history.state(conn, host) or {}
         rhythm = _rhythm(conn, host, theirs, mine, past.get("pages_by_year"))
+        questions = _questions(conn, site_id, theirs, mine)
         links = _links(conn, site_id, competitor_id, host) if setting != tracking.OFF else {"linking_domains": None, "my_linking_domains": None, "not_to_me": 0, "top": []}
         best, cannibal = [], {}
         if setting == tracking.ON:  # keyword numbers only for a competitor that's followed
@@ -376,7 +483,7 @@ def insights(engine: Engine, site_id: int, competitor_id: int) -> dict:
         "facts": facts,
         "best_pages": best,
         "sections": _sections(theirs, mine),
-        "questions": _questions(theirs, mine),
+        "questions": questions,
         "rhythm": rhythm,
         "links": links,
         "build": _build(theirs, mine),

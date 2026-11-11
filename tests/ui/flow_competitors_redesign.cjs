@@ -40,6 +40,8 @@ const survey = () => {
 const widths = () => { const m = document.querySelector("#main"); return { page: document.documentElement.scrollWidth, window: window.innerWidth, main: m ? m.scrollWidth : 0, mainBox: m ? m.clientWidth : 0 }; };
 const fits = (w) => w.page <= w.window + 1 && w.main <= w.mainBox + 1;
 
+const fakeQuestions = (host, about) => { const groups = Array.from({ length: 25 }, (_, i) => ({ url: `https://${host}/guide/p-${i + 1}`, title: `Page ${i + 1} about ${i < 15 ? about : "the weather"}`, questions: Array.from({ length: i % 3 ? 2 : 5 }, (_, k) => `Question ${i + 1}.${k + 1} about ${i < 15 ? about : "the weather"}?`), other: [], related: i < 15, score: i < 15 ? 1 : 0 })); return { judged: true, dropped: 4, groups, related: groups.filter((g) => g.related).reduce((n, g) => n + g.questions.length, 0), total: groups.reduce((n, g) => n + g.questions.length, 0) }; };
+
 (async () => {
   const { browser, page, problems } = await open({ width: 1440, height: 900 });
   const settle = (ms = 1200) => page.waitForTimeout(ms);
@@ -255,22 +257,20 @@ const fits = (w) => w.page <= w.window + 1 && w.main <= w.mainBox + 1;
     }
   });
 
-  // ---- 8. questions: 10, Show more, a Task each -------------------------------------------------
+  // ---- 8. questions: in pages, a Task each -------------------------------------------------------
   await part("8 questions", async () => {
     // 79 made-up questions on the real answer, as flow_competitor_profile_ux.cjs does: the demo competitor has too few for Show more.
     await page.route("**/api/competitors/*/insights*", async (route) => {
       const reply = await route.fetch(), body = await reply.json();
-      body.questions = Array.from({ length: 79 }, (_, i) => ({ text: `Question ${i + 1} about coffee beans?`, source: "headings", url: `https://${open1.host}/guide/q-${i + 1}` }));
+      body.questions = fakeQuestions(open1.host, "coffee beans");
       await route.fulfill({ response: reply, json: body });
     });
     await openProfile(open1.id);
     await page.click('[data-pt-tab="pages"]'); await settle(700);
-    const q = await page.evaluate(() => { const rows = [...document.querySelectorAll("#pt-questions tbody tr")]; return { rows: rows.length, tasks: rows.filter((tr) => /Task|Tâche/.test(tr.querySelector("button")?.textContent || "")).length, more: document.querySelector("[data-pt-q-more]")?.textContent.trim() || "" }; });
-    check("8. questions: 10 first, with Show more", q.rows === 10 && /^Show \d+ more$/.test(q.more), q);
-    check("8. every question has a Task button", q.rows > 0 && q.tasks === q.rows, `${q.tasks}/${q.rows}`);
-    if (q.more) { await page.click("[data-pt-q-more]"); await settle(400); }
-    const after = await page.evaluate(() => { const rows = [...document.querySelectorAll("#pt-questions tbody tr")]; return { rows: rows.length, tasks: rows.filter((tr) => tr.querySelector("button")).length }; });
-    check("8. Show more adds questions, each with its Task", after.rows > 10 && after.tasks === after.rows, after);
+    // Since 2026-11-10 long lists come in pages of 25 (table-pages.js) instead of Show more: the 15 pages on my topics fit on one.
+    const q = await page.evaluate(() => { const rows = [...document.querySelectorAll("#pt-questions > li")]; return { rows: rows.length, tasks: rows.filter((li) => /Task|Tâche/.test(li.querySelector(".pt-act button")?.textContent || "")).length, more: Boolean(document.querySelector("[data-pt-q-more]")), foot: document.querySelector('[data-tp-foot="pt-q"] .tp-range')?.textContent.trim() || "" }; });
+    check("8. questions: the 15 pages on my topics, in pages with the total", q.rows === 15 && !q.more && q.foot === "1–15 of 15 pages", q);
+    check("8. every page of questions has a Task button", q.rows > 0 && q.tasks === q.rows, `${q.tasks}/${q.rows}`);
     await page.unroute("**/api/competitors/*/insights*");
   });
 

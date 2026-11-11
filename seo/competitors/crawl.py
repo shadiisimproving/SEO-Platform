@@ -12,8 +12,9 @@ lists has been tried.
 """
 from __future__ import annotations
 
+import json
 import time
-from datetime import date, datetime
+from datetime import UTC, date, datetime, timedelta
 from urllib.parse import urljoin
 
 from lxml import etree, html as lxml_html
@@ -142,6 +143,23 @@ def _discover(fetcher, start_url: str, host: str, charge) -> tuple[dict[str, str
     return urls, front.status, complete_list, source, bool(found.capped)
 
 
+# How each site is followed (2026-11-10, plan-seo-command-center-competitor-update-detection.md): the site's size and
+# signals decide, so an edit shows within a day where the site's dates can't be trusted too.
+FULL_DAILY_PAGES = 250  # a site this small has every page read every day, with no need for dates
+TOP_RANK = 20  # pages placed this high for my keywords are read every day on a site whose dates can't be trusted
+HUB_PAGES = 5  # with the start page, the pages with the most links (blog, categories), where new posts show first
+HUB_MIN_LINKS = 20  # fewer links than this and a page isn't a list of other pages
+EVERY_FEW_DAYS = 3  # other ranking pages, and pages edited lately
+RECENT_EDIT_DAYS = 30
+RANKING_DAYS = 60  # ranking checks this recent decide what ranks
+WP_RECHECK_DAYS = 7  # a site whose WordPress list was closed is asked again a week later
+WP_PER_LIST = 100
+TRUST_MIN_MISSES = 3  # edits the site's dates kept quiet about before they stop counting
+TRUST_MISS_SHARE = 0.3
+HAS_DATES_SHARE = 0.5  # at least half the listed pages carry a date, or the sitemap gives none worth following
+ALL, SITEMAP, WORDPRESS, TIERS = "all", "sitemap", "wordpress", "tiers"
+DATE, QUIET = "date", "quiet"  # why a page was read: its date said it changed, or its date said it didn't
+
 SAME_DATE_SHARE = 0.8  # when this share of a sitemap's dated pages carry one day, the dates say nothing (F62)
 SAME_DATE_MIN = 20
 OTHERS_SHARE = 3  # at least a third of the day's reads go to pages the sitemap's dates don't point at, when there are any
@@ -182,6 +200,87 @@ def _dates_say_nothing(urls: dict[str, str | None]) -> bool:
     return most >= SAME_DATE_SHARE * len(days)
 
 
+def _now() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)  # the database keeps UTC without a zone
+
+
+def _wordpress_dates(fetcher, start_url: str, host: str, charge) -> dict[str, tuple[str, datetime]] | None:
+    """WordPress's own list of its latest edits, by page: the posts and the pages most recently changed, with the time
+    of each change. Public and free, and honest where a sitemap plugin isn't. None when the site has no such list."""
+    origin = "/".join(start_url.split("/")[:3])
+    found: dict[str, tuple[str, datetime]] = {}
+    answered = False
+    for kind in ("posts", "pages"):
+        address = f"{origin}/wp-json/wp/v2/{kind}?per_page={WP_PER_LIST}&orderby=modified&order=desc&_fields=link,modified_gmt"
+        reply = fetcher.get(address, any_type=True, stay_on=lambda url: on_host(host_and_domain(url)[0], host))
+        charge()
+        if reply.status != "ok" or not reply.body:
+            continue
+        try:
+            items = json.loads(reply.body)
+        except ValueError:
+            continue
+        if not isinstance(items, list):
+            continue
+        answered = True
+        for item in items:
+            if not isinstance(item, dict) or not isinstance(item.get("link"), str):
+                continue
+            try:
+                when = datetime.fromisoformat(str(item.get("modified_gmt") or "")[:19])
+            except ValueError:
+                continue
+            normal = canonical_url(item["link"])
+            if normal and on_host(host_and_domain(normal)[0], host):
+                found[page_key(normal)] = (normal, when)
+    return found if answered else None
+
+
+def _dates_trusted(row) -> bool:
+    """The site's dates stop counting once they've kept quiet about enough of the edits the app found itself."""
+    agreed, missed = int(row.get("dates_agreed") or 0), int(row.get("dates_missed") or 0)
+    return not (missed >= TRUST_MIN_MISSES and missed > TRUST_MISS_SHARE * (agreed + missed))
+
+
+def _has_dates(urls: dict[str, str | None]) -> bool:
+    return bool(urls) and sum(1 for value in urls.values() if _lastmod(value) is not None) >= HAS_DATES_SHARE * len(urls)
+
+
+def _search_signals(conn, ascii_host: str) -> tuple[set[str], set[str], dict[str, tuple[datetime, str, str, str]]]:
+    """From my recent ranking checks: this site's pages placed in the top TOP_RANK, all its ranking pages, and the pages
+    whose title in the results changed between two checks of the same keyword, a sign of an edit: (when it was seen, the
+    page's address, the title before, the title now)."""
+    rows = conn.execute(
+        text(
+            "SELECT r.url, r.position, r.title, c.target_id, c.tool, c.checked_at FROM serp_results r JOIN serp_checks c ON c.id = r.check_id "
+            "WHERE (r.host = :h OR r.host LIKE :sub) AND c.status = 'ok' AND c.checked_at >= UTC_TIMESTAMP(3) - INTERVAL :d DAY "
+            "ORDER BY c.checked_at DESC, c.id DESC LIMIT 20000"
+        ),
+        {"h": ascii_host, "sub": f"%.{ascii_host}", "d": RANKING_DAYS},
+    ).mappings()
+    top, ranking, moved, latest = set(), set(), {}, {}
+    for row in rows:
+        url = canonical_url(row["url"])
+        if not url:
+            continue
+        key = page_key(url)
+        ranking.add(key)
+        if row["position"] is not None and row["position"] <= TOP_RANK:
+            top.add(key)
+        title = (row["title"] or "").strip()
+        if not title:
+            continue
+        seen = (key, row["target_id"], row["tool"])
+        if seen not in latest:
+            latest[seen] = (title, row["checked_at"])  # newest first
+        elif latest[seen] is not None:
+            newest, when = latest[seen]
+            if newest != title and key not in moved:
+                moved[key] = (when, url, title, newest)
+            latest[seen] = None  # only the two newest checks are compared
+    return top, ranking, moved
+
+
 def _read_today(engine: Engine, domain_id: int) -> int:
     with engine.connect() as conn:
         return conn.execute(text("SELECT COUNT(*) FROM pages WHERE domain_id = :i AND last_checked_at >= UTC_DATE()"), {"i": domain_id}).scalar()
@@ -214,17 +313,20 @@ def _plan(engine: Engine, competitor_id: int, site, baseline_done: bool, fetcher
             page_key(row["url"]): row  # by page, so a site moving from http to https or to www isn't a whole new site
             for row in conn.execute(
                 text(
-                    "SELECT url, last_status, content_hash, last_checked_at, last_checked_at >= UTC_DATE() AS today, "
-                    "last_checked_at < UTC_TIMESTAMP(3) - INTERVAL :d DAY AS stale, last_checked_at < UTC_TIMESTAMP(3) - INTERVAL :u DAY AS unlisted_due "
+                    "SELECT url, last_status, content_hash, read_with, internal_links, last_checked_at, last_checked_at >= UTC_DATE() AS today, "
+                    "last_checked_at < UTC_TIMESTAMP(3) - INTERVAL :d DAY AS stale, last_checked_at < UTC_TIMESTAMP(3) - INTERVAL :u DAY AS unlisted_due, "
+                    "last_checked_at < UTC_TIMESTAMP(3) - INTERVAL :f DAY AS few_days, last_changed_at >= UTC_TIMESTAMP(3) - INTERVAL :r DAY AS edited_lately "
                     "FROM pages WHERE domain_id = :i ORDER BY id"
                 ),
-                {"i": domain_id, "d": REREAD_DAYS, "u": UNLISTED_DAYS},
+                {"i": domain_id, "d": REREAD_DAYS, "u": UNLISTED_DAYS, "f": EVERY_FEW_DAYS, "r": RECENT_EDIT_DAYS},
             ).mappings()
         }
         ranking = [
             canonical_url(row[0])
             for row in conn.execute(text("SELECT DISTINCT r.url FROM serp_results r WHERE r.host = :h OR r.host LIKE :sub LIMIT 500"), {"h": ascii_host, "sub": f"%.{ascii_host}"})
         ]
+        top, _recent_ranking, serp_moved = _search_signals(conn, ascii_host)
+        state = dict(conn.execute(text("SELECT wp_api, wp_checked_at, dates_agreed, dates_missed FROM competitor_crawls WHERE competitor_id = :c"), {"c": competitor_id}).mappings().first() or {})
 
     listed = {page_key(url): (url, lastmod) for url, lastmod in urls.items()}
     site_lists = set(listed)  # what the site itself lists, before the pages only a Firecrawl list added (those aren't news)
@@ -232,36 +334,85 @@ def _plan(engine: Engine, competitor_id: int, site, baseline_done: bool, fetcher
         if row["last_status"] is None and not row["content_hash"]:
             listed.setdefault(key, (row["url"], None))
     ranking_by_key = {page_key(url): url for url in ranking if url}
-    trust_dates = not _dates_say_nothing(urls)
-    # Each holds (when it was last read, [url, can_be_new]): the longest unread go first, so no page waits for ever (F62).
-    new, due, unlisted, rest = [], [], [], []
+    live = {key for key, row in known.items() if row["content_hash"] and row["last_status"] != "gone"}
+    size = len(set(listed) | live | set(ranking_by_key))
+
+    # How this site is followed today: every page when it's small, else WordPress's list of edits, else honest sitemap
+    # dates, else tiers (ranking and hub pages daily, other ranking and lately edited pages every few days, the rest in turn).
+    wp_dates: dict[str, datetime] = {}
+    if size > FULL_DAILY_PAGES or size > PAGES_PER_DAY:
+        checked = state.get("wp_checked_at")
+        if state.get("wp_api") != "no" or not checked or checked < _now() - timedelta(days=WP_RECHECK_DAYS):
+            answer = _wordpress_dates(fetcher, start_url, host, charge)
+            _set(engine, competitor_id, wp_api="yes" if answer is not None else "no", wp_checked_at=_now())
+            for key, (address, when) in (answer or {}).items():
+                wp_dates[key] = when
+                if key not in listed and key not in known:  # WordPress may know pages the sitemap leaves out
+                    listed[key] = (address, None)
+                    site_lists.add(key)
+    dates_mean_something = not _dates_say_nothing(urls)
+    trust_dates = dates_mean_something and _dates_trusted(state)
+    if size <= FULL_DAILY_PAGES and size <= PAGES_PER_DAY:
+        mode = ALL
+    elif wp_dates:
+        mode = WORDPRESS
+    elif trust_dates and _has_dates(urls):
+        mode = SITEMAP
+    else:
+        mode = TIERS
+    _set(engine, competitor_id, follow_mode=mode)
+    start_key = page_key(canonical_url(start_url) or start_url)
+    hubs = {start_key} | {
+        key for key, row in sorted(known.items(), key=lambda item: -(item[1]["internal_links"] or 0))[:HUB_PAGES]
+        if row["content_hash"] and (row["internal_links"] or 0) >= HUB_MIN_LINKS
+    } if mode == TIERS else set()
+
+    # Each holds (when it was last read, [url, can_be_new, why]): the longest unread go first, so no page waits for ever (F62).
+    new, due, daily, few, unlisted, rest = [], [], [], [], [], []
     # Pages that rank for my keywords are always watched, and go first: a large site's first pass takes days.
     for key in dict.fromkeys([*ranking_by_key, *listed]):
         url, lastmod = listed.get(key) or (ranking_by_key[key], None)
         row = known.get(key)
         if row is None:
-            new.append([url, key in listed])  # a page only seen in search results isn't new, it's newly noticed
-        elif row["today"]:
+            new.append([url, key in listed, ""])  # a page only seen in search results isn't new, it's newly noticed
             continue
-        elif not row["content_hash"]:
+        if row["today"] or row["read_with"] == "firecrawl":
+            continue  # read already, or only Firecrawl can read it (its weekly check, when the owner said yes)
+        if not row["content_hash"]:
             # Never read well yet, so its first good read can still be news (F69), when the site lists it.
             if row["last_checked_at"] is None:  # known but never tried, such as a page a Firecrawl list added: first in line
-                due.append((None, [url, key in site_lists]))
+                due.append((None, [url, key in site_lists, ""]))
             elif row["last_status"] not in SETTLED_STATUSES or row["stale"]:
-                rest.append((row["last_checked_at"], [url, key in site_lists]))  # tried again, but not ahead of pages with news
-        elif trust_dates and _sitemap_date_is_newer(lastmod, row["last_checked_at"]):
-            due.append((row["last_checked_at"], [url, False]))
-        elif row["stale"]:
-            rest.append((row["last_checked_at"], [url, False]))
-    for key, row in known.items():  # the site no longer lists these: reading them is how a removed page gets noticed
-        if key in listed or key in ranking_by_key or not row["content_hash"] or row["last_status"] == "gone" or row["today"]:
+                rest.append((row["last_checked_at"], [url, key in site_lists, ""]))  # tried again, but not ahead of pages with news
             continue
-        if complete_list and row["unlisted_due"]:
-            unlisted.append((row["last_checked_at"], [row["url"], False]))
+        checked = row["last_checked_at"]
+        wp_when = wp_dates.get(key)
+        if wp_when is not None:
+            date_moved, why = wp_when >= checked, ""
+        else:
+            date_moved = dates_mean_something and _sitemap_date_is_newer(lastmod, checked)
+            why = (DATE if date_moved else QUIET) if dates_mean_something and _lastmod(lastmod) is not None else ""
+        moved_in_search = key in serp_moved and serp_moved[key][0] > checked
+        entry = (checked, [url, False, why])
+        if (date_moved and (trust_dates or wp_when is not None)) or moved_in_search:
+            due.append(entry)
+        elif mode == ALL or (mode == TIERS and (key in top or key in hubs)):
+            daily.append(entry)
+        elif mode == TIERS and (key in ranking_by_key or row["edited_lately"]) and row["few_days"]:
+            few.append(entry)
+        elif mode == TIERS and key not in ranking_by_key and not row["edited_lately"]:
+            rest.append(entry)  # in turn with what's left of the day, without waiting REREAD_DAYS
         elif row["stale"]:
-            rest.append((row["last_checked_at"], [row["url"], False]))
+            rest.append(entry)
+    for key, row in known.items():  # the site no longer lists these: reading them is how a removed page gets noticed
+        if key in listed or key in ranking_by_key or not row["content_hash"] or row["last_status"] == "gone" or row["today"] or row["read_with"] == "firecrawl":
+            continue
+        if mode == ALL or (complete_list and row["unlisted_due"]):
+            unlisted.append((row["last_checked_at"], [row["url"], False, ""]))
+        elif row["stale"] or mode == TIERS:
+            rest.append((row["last_checked_at"], [row["url"], False, ""]))
     oldest = lambda items: [entry for _when, entry in sorted(items, key=lambda x: x[0] or datetime.min)]  # noqa: E731
-    due, others = oldest(due), oldest(unlisted + rest)
+    due, others = oldest(due) + oldest(daily) + oldest(few), oldest(unlisted + rest)
     after_new = max(0, room - len(new))
     keep = min(len(others), after_new // OTHERS_SHARE) if len(due) + len(others) > after_new else len(others)
     todo = new + due[: after_new - keep] + others[:keep]
@@ -301,7 +452,8 @@ def _read_pages(engine: Engine, competitor_id: int, site, plan: dict, baseline_d
         if not budget.has_room(engine):
             stop = ("ok", BUDGET_TEXT)
             break
-        url, can_be_new = todo.pop(0)
+        entry = todo.pop(0)
+        url, can_be_new, why = entry[0], entry[1], entry[2] if len(entry) > 2 else ""
         with engine.connect() as conn:
             before = conn.execute(text("SELECT content_hash, last_status FROM pages WHERE url_hash = :h"), {"h": pages.url_hash(url)}).mappings().first()
         try:
@@ -316,6 +468,10 @@ def _read_pages(engine: Engine, competitor_id: int, site, plan: dict, baseline_d
             _report_event(engine, url, domain_id, "new_page")
         elif before is not None and before["content_hash"] and before["last_status"] != "gone" and outcome == "gone":
             _report_event(engine, url, domain_id, "page_gone")
+        if outcome == "changed" and why in (DATE, QUIET):  # an edit found: had the site's own date said so?
+            column = "dates_agreed" if why == DATE else "dates_missed"
+            with engine.begin() as conn:
+                conn.execute(text(f"UPDATE competitor_crawls SET {column} = {column} + 1 WHERE competitor_id = :c"), {"c": competitor_id})
         _set(engine, competitor_id, pages_read=plan["read"], pages_known=plan["known"])
 
         plan["robots"] += outcome == "robots"
@@ -419,6 +575,44 @@ def enqueue_due(engine: Engine) -> list[int]:
     for competitor_id in due:
         queue.enqueue(engine, LANE, JOB_KIND, payload={"competitor_id": competitor_id}, dedupe_key=f"competitor:{competitor_id}", max_attempts=2)
     return due
+
+
+SEARCH_TITLE = "search_title"  # a change event: the title in my ranking checks changed, on a site the app can't read
+
+
+def guess_blocked_edits(engine: Engine) -> int:
+    """A site that blocks the reader can't be read, so its edits are guessed from outside, for free: when two of my ranking
+    checks of the same keyword show its page with different titles, the timeline says the page was probably edited.
+    Each new title is reported once."""
+    with engine.connect() as conn:
+        hosts = [
+            (row[0], row[1])
+            for row in conn.execute(
+                text(f"SELECT DISTINCT s.id, s.host FROM competitor_crawls cc JOIN sites s ON s.id = cc.competitor_id JOIN site_competitors sc ON sc.competitor_id = s.id WHERE cc.status = 'blocked' AND {tracking.PAGES_SQL}")
+            )
+        ]
+    added = 0
+    for _competitor_id, host in hosts:
+        with engine.connect() as conn:
+            _top, _ranking, moved = _search_signals(conn, to_ascii_host(host))
+        if not moved:
+            continue
+        domain_id = crawl_store.get_or_create_domain(engine, host)
+        for _key, (_when, url, before, after) in moved.items():
+            with engine.begin() as conn:
+                conn.execute(text("INSERT IGNORE INTO pages (domain_id, url, url_hash) VALUES (:d, :u, :h)"), {"d": domain_id, "u": url, "h": pages.url_hash(url)})
+                page_id = conn.execute(text("SELECT id FROM pages WHERE url_hash = :h"), {"h": pages.url_hash(url)}).scalar()
+                seen = conn.execute(
+                    text("SELECT 1 FROM change_events WHERE page_id = :p AND kind = :k AND after_value = :a LIMIT 1"), {"p": page_id, "k": SEARCH_TITLE, "a": after}
+                ).first()
+                if seen:
+                    continue
+                conn.execute(
+                    text("INSERT INTO change_events (page_id, domain_id, kind, before_value, after_value) VALUES (:p, :d, :k, :b, :a)"),
+                    {"p": page_id, "d": domain_id, "k": SEARCH_TITLE, "b": before, "a": after},
+                )
+                added += 1
+    return added
 
 
 def queue_own_if_never_read(engine: Engine, site_id: int) -> bool:

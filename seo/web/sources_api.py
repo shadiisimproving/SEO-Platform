@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from flask import Blueprint, current_app, g, jsonify, request
+from sqlalchemy import text
 
 from seo.collectors import jobs
 from seo.collectors.http import SourceError
@@ -89,8 +90,26 @@ def save_source(site_id: int, source: str):
 
 @sources_api.post("/sites/<int:site_id>/collect")
 def collect(site_id: int):
-    entries = jobs.collect_now_jobs(_engine(), site_id)
-    return jsonify(started=[e["source"] for e in entries if e["new"]], jobs=entries), 202
+    only = (request.get_json(silent=True) or {}).get("sources")
+    if only is not None and (not isinstance(only, list) or not all(isinstance(x, str) and x in jobs.COLLECTORS for x in only)):
+        raise Refused("sources must be a list of data sources, such as ga4 or clarity.")
+    entries = jobs.collect_now_jobs(_engine(), site_id, only)
+    # A full Refresh data also reads the site's own pages now, instead of waiting for the nightly read (owner, 2026-11-10).
+    # "Refresh this one" names its sources, so it stays a data read only.
+    pages = only is None and _queue_own_read(site_id)
+    return jsonify(started=[e["source"] for e in entries if e["new"]], jobs=entries, pages=pages), 202
+
+
+def _queue_own_read(site_id: int) -> bool:
+    from seo.competitors import suggest
+    from seo.links import service as links_service
+
+    with _engine().connect() as conn:
+        kind = conn.execute(text("SELECT kind FROM sites WHERE id = :s"), {"s": site_id}).scalar()
+    if kind != links_service.OWN:
+        return False
+    suggest.queue_crawl(_engine(), site_id)
+    return True
 
 
 @sources_api.get("/collect-jobs")

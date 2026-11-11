@@ -3,7 +3,8 @@
 - How the site lists its pages: a sitemap, only a feed, or only the start page's links (no sitemap at all).
 - Whether the sitemap listed more than the app takes, and how many days the first read still needs.
 - How many pages only showed their text with JavaScript, which the app's reader can't run.
-- What Firecrawl, if connected, has read or is reading.
+- What Firecrawl, if connected, has read or is reading, and whether its weekly check for edits is on.
+- How the site is followed: every page daily, WordPress's list of edits, its sitemap's dates, or in tiers.
 """
 from __future__ import annotations
 
@@ -12,7 +13,7 @@ import math
 from sqlalchemy import text
 
 from seo.competitors import firecrawl
-from seo.competitors.crawl import MAX_DISCOVERED, PAGES_PER_DAY
+from seo.competitors.crawl import EVERY_FEW_DAYS, MAX_DISCOVERED, PAGES_PER_DAY, TIERS, TOP_RANK
 
 
 STOPPED_READ = "The last read stopped before the end. Pages read before it are saved, and it carries on at the next daily read."
@@ -72,9 +73,15 @@ def facts_many(conn, rows: dict[int, dict]) -> dict[int, dict]:
             "list_source": row["list_source"], "list_capped": bool(row["list_capped"]), "list_most": MAX_DISCOVERED, "per_day": PAGES_PER_DAY,
             "pages_tried": tried, "days_left": days_left, "js_only": int(page.get("js") or 0),
             "read_stopped": row["status"] == "running" and not _held(keys, f"competitor:{competitor_id}"),
+            "follow": {
+                "mode": row.get("follow_mode"), "top_rank": TOP_RANK, "every_few_days": EVERY_FEW_DAYS,
+                # In tiers, the pages left over come round about this often with what's left of each day's reads.
+                "rest_every_days": max(1, math.ceil(known / PAGES_PER_DAY)) if row.get("follow_mode") == TIERS and known else None,
+                "dates_missed": int(row.get("dates_missed") or 0),
+            },
             "firecrawl": {
                 "connected": connected, "pages": int(page.get("fc") or 0), "status": fc_status, "action": row["fc_action"], "message": fc_message,
-                "done": row["fc_done"] or 0, "asked": row["fc_asked"] or 0, "finished_at": fc_finished.isoformat() + "Z" if fc_finished else None,
+                "done": row["fc_done"] or 0, "asked": row["fc_asked"] or 0, "weekly": bool(row.get("fc_weekly")), "finished_at": fc_finished.isoformat() + "Z" if fc_finished else None,
             },
         }
     return out

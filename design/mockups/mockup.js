@@ -843,7 +843,7 @@
       counts.set(key, (counts.get(key) || 0) + 1);
       if (!elsewhere.has(p.site)) elsewhere.set(p.site, knownDomains(p.site, true));
     });
-    return list.slice(0, state.prospectLimit).map((p) => {
+    return list.map((p) => { // the rows of the page on show (table-pages.js)
       const where = elsewhere.get(p.site).get(p.domain) || (counts.get(`${p.site}|${p.domain}`) > 1 ? "consideration" : null);
       const notes = [p.file ? `<span class="second" data-tip="${esc(p.file)}" dir="auto">${esc(p.file)}</span>` : "", state.site === "all" ? `<span class="second">${t("for")} ${esc(p.site)}</span>` : "", where ? `<span class="second">${dupFlag(where)}</span>` : ""].join("");
       return `<tr id="prospect-${p.id}" style="cursor:default">
@@ -859,7 +859,7 @@
     }).join("") || `<tr style="cursor:default"><td colspan="8"><div class="empty"><h3>${t("No links match these filters")}</h3><p>${t("Change or clear them to see more.")}</p></div></td></tr>`;
   }
 
-  function paintProspectPicks(list = prospectsForSite().filter(prospectMatches)) {
+  function paintProspectPicks(list = window.TP.view(PR_PAGES, prospectList()).rows) {
     const n = prPicked.size, all = $("#pr-all"), bar = $("#pr-pick-bar");
     if (all) { all.checked = n > 0 && n === list.length; all.indeterminate = n > 0 && n < list.length; }
     if (!bar) return;
@@ -869,20 +869,25 @@
 
   /* Only the rows and the count change, so someone typing in a filter keeps their place. */
   function paintProspects() {
-    const all = prospectsForSite(), list = all.filter(prospectMatches);
-    const shown = new Set(list.map((p) => p.id));
+    const all = prospectsForSite(), list = prospectList(), page = window.TP.view(PR_PAGES, list);
+    const shown = new Set(page.rows.map((p) => p.id)); // only rows on this page stay ticked, so what moves is what's on show
     [...prPicked].forEach((id) => { if (!shown.has(id)) prPicked.delete(id); });
-    setRows($("#pr-table tbody"), prospectRows(list));
-    paintProspectPicks(list);
+    setRows($("#pr-table tbody"), prospectRows(page.rows));
+    paintProspectPicks(page.rows);
     setHTML($("#pr-count"), `${num(list.length)} ${t("of")} ${num(all.length)}`);
+    const foot = $(`[data-tp-foot="${PR_PAGES}"]`), footHtml = window.TP.footer(PR_PAGES, page, { noun: t("links") });
+    if (foot) foot.replaceWith(fragment(footHtml)); else if (footHtml) $("#pr-table")?.closest(".table-wrap")?.after(fragment(footHtml));
+    // The search box gains or loses its clear button; table-pages.js puts the cursor back in it.
+    const box = $(`[data-tp-search][data-tp-key="${PR_PAGES}"]`)?.closest(".tp-search");
+    if (box && Boolean(box.querySelector("[data-tp-clear]")) !== Boolean(window.TP.state(PR_PAGES).q)) box.replaceWith(fragment(window.TP.search(PR_PAGES, t("Search websites"))));
     const hiddenOn = ["pa", "owner", "file"].filter((key) => prFilter[key]).length;
     $("#pr-more-toggle").textContent = `${t("More filters")}${hiddenOn ? ` (${hiddenOn})` : ""}`;
-    $("#pr-clear").hidden = !Object.values(prFilter).some(Boolean);
-    setHTML($("#prospect-more-wrap"), list.length > state.prospectLimit ? `<button class="btn btn-small" id="prospect-more">${t("Show more")} (${num(list.length - state.prospectLimit)})</button>` : "");
+    $("#pr-clear").hidden = !Object.values(prFilter).some(Boolean) && !window.TP.state(PR_PAGES).q;
   }
 
   function considerationBody() {
-    const all = prospectsForSite(), list = all.filter(prospectMatches);
+    const all = prospectsForSite(), list = prospectList(), page = window.TP.view(PR_PAGES, list), filtered = Object.values(prFilter).some(Boolean) || window.TP.state(PR_PAGES).q;
+    const head = (id, label, tip) => window.BacklinkSeo.sortHead("data-pr-sort", prSort, id, label, id === "domain" ? "" : "r", tip);
     const distinct = (pick) => [...new Set(all.map(pick).filter(Boolean))].sort((x, y) => x.localeCompare(y));
     const owners = distinct((p) => p.owner), files = distinct((p) => p.file);
     const choose = (key, label, options) => `<label class="field"><span>${t(label)}</span><select class="select" data-pr-filter="${key}">${options.map(([value, word]) => `<option value="${esc(value)}" ${prFilter[key] === value ? "selected" : ""}>${esc(word)}</option>`).join("")}</select></label>`;
@@ -893,23 +898,24 @@
         <p>${t(PROSPECT_NOTE)}</p>
       </section>
       ${all.length ? `<section class="tool-band pr-filters" aria-label="${t("Filter the list")}">
+          ${window.TP.search(PR_PAGES, t("Search websites"))}
           ${choose("stage", "Status", [["", t("Any")], ...PROSPECT_STAGES.map(([id, word]) => [id, t(word)])])}
           ${choose("rating", "Rating", [["", t("Any")], ...[5, 4, 3, 2, 1].map((n) => [String(n), String(n)]), ["none", t("Not rated")]])}
           ${number("da", "DA at least")}
           ${number("spam", "Spam at most")}
           <button type="button" class="link-btn" id="pr-more-toggle" aria-expanded="${prMoreOpen}" aria-controls="pr-more">${t("More filters")}${hiddenOn ? ` (${hiddenOn})` : ""}</button>
-          <span class="pr-end"><span class="small sec tabular" id="pr-count" role="status">${num(list.length)} ${t("of")} ${num(all.length)}</span><button type="button" class="link-btn" id="pr-clear" ${Object.values(prFilter).some(Boolean) ? "" : "hidden"}>${t("Clear filters")}</button></span>
+          <span class="pr-end"><span class="small sec tabular" id="pr-count" role="status">${num(list.length)} ${t("of")} ${num(all.length)}</span><button type="button" class="link-btn" id="pr-clear" ${filtered ? "" : "hidden"}>${t("Clear filters")}</button></span>
           <div class="pr-more" id="pr-more" ${prMoreOpen ? "" : "hidden"}>
             ${number("pa", "PA at least")}
             ${choose("owner", "Owner", [["", t("Any")], ...owners.map((name) => [name, name]), ["none", t("No owner")]])}
             ${choose("file", "File", [["", t("Any")], ...files.map((name) => [name, name])])}
           </div>
         </section>
-        <div class="pr-pick-bar" id="pr-pick-bar" role="status" ${[...prPicked].some((id) => list.some((p) => p.id === id)) ? "" : "hidden"}><b id="pr-pick-count" class="tabular">${num(prPicked.size)} ${t("selected")}</b><button class="btn btn-main btn-small" id="pr-move">${icon("arrow-right")}${t("Move to To do")}</button><button type="button" class="link-btn" id="pr-pick-clear">${t("Clear")}</button></div>
-        <div class="table-wrap"><table class="data" id="pr-table">
-        <thead><tr><th scope="col" class="pr-tick"><input type="checkbox" class="chk" style="margin:0" id="pr-all" aria-label="${t("Select all")}" ${prPicked.size && prPicked.size === list.length ? "checked" : ""}></th><th scope="col">${t("Website")}</th><th scope="col" class="r" data-tip="${t("Domain authority: the site's score from the file, whichever tool it came from.")}">DA</th><th scope="col" class="r" data-tip="${t("Page authority: this page's score from the file.")}">PA</th><th scope="col" class="r">${t("Spam score")}</th><th scope="col">${t("Rating")}</th><th scope="col">${t("Status and owner")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
-        <tbody>${prospectRows(list)}</tbody></table></div>
-        <p id="prospect-more-wrap" style="margin-top:10px">${list.length > state.prospectLimit ? `<button class="btn btn-small" id="prospect-more">${t("Show more")} (${num(list.length - state.prospectLimit)})</button>` : ""}</p>
+        <div class="pr-pick-bar" id="pr-pick-bar" role="status" ${[...prPicked].some((id) => page.rows.some((p) => p.id === id)) ? "" : "hidden"}><b id="pr-pick-count" class="tabular">${num(prPicked.size)} ${t("selected")}</b><button class="btn btn-main btn-small" id="pr-move">${icon("arrow-right")}${t("Move to To do")}</button><button type="button" class="link-btn" id="pr-pick-clear">${t("Clear")}</button></div>
+        <div class="bl-list"><div class="table-wrap"><table class="data" id="pr-table">
+        <thead><tr><th scope="col" class="pr-tick"><input type="checkbox" class="chk" style="margin:0" id="pr-all" aria-label="${t("Select all shown")}" ${prPicked.size && prPicked.size === page.rows.length ? "checked" : ""}></th>${head("domain", "Website")}${head("da", "DA", t("Domain authority: the site's score from the file, whichever tool it came from."))}${head("pa", "PA", t("Page authority: this page's score from the file."))}${head("spam", "Spam score")}<th scope="col">${t("Rating")}</th><th scope="col">${t("Status and owner")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
+        <tbody>${prospectRows(page.rows)}</tbody></table></div>
+        ${window.TP.footer(PR_PAGES, page, { noun: t("links") })}</div>
         <p class="help" style="margin-top:10px">${t("Prospects aren't counted in the cards above.")}</p>`
       : `<div class="table-wrap"><div class="empty"><h3>${t("Nothing in consideration yet")}</h3><p>${t("Filter a backlink CSV, then choose the links you might pursue.")}</p></div></div>`}`;
   }
@@ -918,8 +924,34 @@
   const foundHere = () => window.FOUND_LINKS.filter((f) => state.site === "all" || !f.site || f.site === siteName());
   const lostThisWeek = (links) => links.filter((b) => b.status === "lost" && b.check?.lost_at && Date.now() - new Date(b.check.lost_at) < 7 * 864e5).length;
 
+  /* The Backlinks tables' pages, search and sorted headings (table-pages.js), like every long table in the app (2026-11-10).
+     By site and Reclaim keep theirs in backlinks-seo.js, To do in links-todo.js, Mediators in link-extras.js. */
+  const BL_PAGES = "bl-links", FOUND_PAGES = "bl-found", PR_PAGES = "bl-prospects";
+  let blSort = null, foundSort = null, prSort = null, blPagedFor;
+  const bareUrl = (url) => String(url || "").replace(/^https?:\/\/(www\.)?/, "");
+  const BL_SORTS = { src: (b) => bareUrl(b.src), authority: (b) => b.auth || b.opr, visits: (b) => b.visits, leads: (b) => b.leads };
+  const blSearched = (list) => list.filter((b) => window.TP.matches(BL_PAGES, b.src, b.anchor, b.check?.anchor, b.target, b.keyword, b.mediator, b.site));
+  const foundSearched = (list) => list.filter(([f]) => window.TP.matches(FOUND_PAGES, f.src, f.target, f.site));
+  const prSearched = (list) => list.filter((p) => window.TP.matches(PR_PAGES, p.url, p.domain, p.file, p.owner));
+  const PR_SORTS = { domain: (p) => bareUrl(p.url), da: (p) => p.authority, pa: (p) => p.pageAuthority, spam: (p) => p.spam };
+  /* In consideration as filtered, searched and sorted: what the table pages through, and what Export takes. */
+  const prospectList = () => window.BacklinkSeo.sortRows(prSearched(prospectsForSite().filter(prospectMatches)), prSort, PR_SORTS);
+  /* Another site picked in the side menu starts every Backlinks table again at page 1, unsorted, with no search. */
+  function resetBacklinkPages() {
+    [BL_PAGES, FOUND_PAGES, PR_PAGES, "bl-todo", "bl-mediators"].forEach((key) => { window.TP.state(key).q = ""; window.TP.reset(key); });
+    blSort = null; foundSort = null; prSort = null;
+    window.BacklinkSeo.resetPages();
+  }
+  [["Search websites", "Rechercher un site"], ["No link matches this search", "Aucun lien ne correspond à cette recherche"], ["Change the search to see more links.", "Modifiez la recherche pour voir plus de liens."],
+    ["Search the links found", "Rechercher dans les liens trouvés"], ["link checks", "contrôles de liens"], ["No link in this group matches the search.", "Aucun lien de ce groupe ne correspond à la recherche."]]
+    .forEach(([en, fr]) => { if (window.FR[en] === undefined) window.FR[en] = fr; });
+  window.TP.on(BL_PAGES, () => render());
+  window.TP.on(FOUND_PAGES, () => render());
+  window.TP.on(PR_PAGES, () => ($("#pr-table") ? paintProspects() : render())); // only the rows and the footer, so the filters keep their place
+
   function backlinksPage() {
     const section = state.blSection;
+    if (blPagedFor !== state.site) { if (blPagedFor !== undefined) resetBacklinkPages(); blPagedFor = state.site; }
     const main = section === "done" ? `<button class="btn btn-main" id="add-backlink">${icon("plus")}${t("Add backlink")}</button>` : "";
     const title = t("Backlinks"), sub = t("Links built for your sites, and what they brought");
     if (!bl.ready) return topbar(title, sub) + `<div class="content page-enter">${window.UI.skeleton("page", { tiles: 6, chart: false })}</div>`;
@@ -946,14 +978,16 @@
     if (state.blTab === "all") {
       const byPerson = state.blMediator ? all.filter((b) => b.mediator === state.blMediator) : all;
       const rows = window.BacklinkSeo.filterRows(byPerson, state.blFilter); // lost, useful, sends visits, not indexed, not useful, one website
-      body = !all.length ? `<div class="table-wrap"><div class="empty"><h3>${t("No backlinks yet")}</h3><p>${t("Log the links you build, or import a CSV. Your Google Sheet can be exported as CSV.")}</p><span class="bl-tools"><button class="btn" id="bulk-open">${icon("list-plus")}${t("Import CSV")}</button><button class="btn" id="gsc-open">${icon("search")}${t("Import from Search Console")}</button></span></div></div>` : `<div class="chips"><button class="chip" data-bl-filter="all" aria-pressed="${state.blFilter === "all"}">${t("All")}<b>${all.length}</b></button>
+      const page = window.TP.view(BL_PAGES, window.BacklinkSeo.sortRows(blSearched(rows), blSort, BL_SORTS));
+      const head = (id, label, cls) => window.BacklinkSeo.sortHead("data-bl-sort", blSort, id, label, cls);
+      body = !all.length ? `<div class="table-wrap"><div class="empty"><h3>${t("No backlinks yet")}</h3><p>${t("Log the links you build, or import a CSV. Your Google Sheet can be exported as CSV.")}</p><span class="bl-tools"><button class="btn" id="bulk-open">${icon("list-plus")}${t("Import CSV")}</button><button class="btn" id="gsc-open">${icon("search")}${t("Import from Search Console")}</button></span></div></div>` : `<div class="chips">${window.BacklinkSeo.searchBox()}<button class="chip" data-bl-filter="all" aria-pressed="${state.blFilter === "all"}">${t("All")}<b>${all.length}</b></button>
         ${state.blMediator ? `<button class="chip" data-bl-mediator="" aria-pressed="true">${t("Mediator")}: <span dir="auto">${esc(state.blMediator)}</span> ${icon("x")}</button>` : ""}
         <button class="chip" data-bl-filter="lost" aria-pressed="${state.blFilter === "lost"}">${bl.server ? countWords(lost, "1 lost", "lost") : `${lost} ${t("lost this week")}`}</button>
         ${window.BacklinkSeo.filterChips(byPerson, state.blFilter)}
         <span style="margin-left:auto" class="bl-tools">${window.BacklinkSeo.viewSwitch()}<button class="btn btn-small" id="gsc-open">${icon("search")}${t("Import from Search Console")}</button><button class="btn btn-small" id="bulk-open">${icon("list-plus")}${t("Import CSV")}</button></span></div>
-      ${window.BacklinkSeo.byWebsite() ? window.BacklinkSeo.websiteTable(rows) : `<div class="table-wrap"><table class="data" id="bl-table">
-        <thead><tr><th scope="col">${t("Source page")}</th><th scope="col">${t("Target")}</th><th scope="col">${t("Keyword")}</th><th scope="col">${t("Anchor type")}</th><th scope="col">${t("Status")}</th><th scope="col" class="r">${t("Authority")}</th>${window.BacklinkSeo.trafficHead()}<th scope="col" class="r">${t("Visits")}</th><th scope="col" class="r">${t("Leads")}</th><th scope="col" class="r">${t("Cost per visit")}</th><th scope="col">${t("Mediator")}</th></tr></thead>
-        <tbody>${rows.slice(0, state.blLimit).map((b) => `<tr data-bl="${b.id}" id="row-${b.id}">
+      ${window.BacklinkSeo.byWebsite() ? window.BacklinkSeo.websiteTable(rows) : `<div class="bl-list"><div class="table-wrap"><table class="data" id="bl-table">
+        <thead><tr>${head("src", "Source page")}<th scope="col">${t("Target")}</th><th scope="col">${t("Keyword")}</th><th scope="col">${t("Anchor type")}</th><th scope="col">${t("Status")}</th>${head("authority", "Authority", "r")}${window.BacklinkSeo.trafficHead()}${head("visits", "Visits", "r")}${head("leads", "Leads", "r")}<th scope="col" class="r">${t("Cost per visit")}</th><th scope="col">${t("Mediator")}</th></tr></thead>
+        <tbody>${page.rows.length ? "" : `<tr style="cursor:default"><td colspan="12"><div class="empty"><h3>${t("No link matches this search")}</h3><p>${t("Change the search or pick another filter.")}</p></div></td></tr>`}${page.rows.map((b) => `<tr data-bl="${b.id}" id="row-${b.id}">
           <td class="head-cell url-cell"><span class="with-logo">${siteLogo(linkDomain(b.src))}<span class="logo-text"><span class="nb-inline"><button class="kw mono small" data-open-bl="${b.id}" style="text-align:start" data-tip="${esc(b.src)}">${esc(b.src.replace(/^https?:\/\//, ""))}</button>${window.COMP?.notes?.badge ? window.COMP.notes.badge({ scope: "domain", domain: linkDomain(b.src), siteId: window.UI.siteIdPicked?.() ?? null }, linkDomain(b.src)) : ""}</span><span class="second" dir="auto">${esc(b.anchor || b.check?.anchor || "—")}</span>${state.site === "all" && b.site ? `<span class="second mono" dir="auto">${t("For")} ${esc(b.site)}</span>` : ""}</span></span></td>
           <td class="mono small url-cell" data-label="${t("Target")}">${b.target ? PageLink.html(b.target, { host: b.site }) : "—"}</td>
           <td data-label="${t("Keyword")}">${b.keyword ? `<span dir="auto">${esc(b.keyword)}</span>` : '<span class="muted">—</span>'}</td>
@@ -965,16 +999,21 @@
           <td class="r ${b.status === "lost" ? "muted" : ""}" data-label="${t("Cost per visit")}" ${b.status === "lost" ? `data-tip="${t("This link is lost, so the cost per visit is from when it was live.")}"` : ""}>${b.shared ? `<span class="muted" tabindex="0" data-tip="${t("Several links share these visits, so one link's cost per visit can't be told.")}">—</span>` : b.cost && b.visits ? inCurrency(currencyOfLink(b), dec((b.cost / b.visits).toFixed(2))) : '<span class="muted">—</span>'}</td>
           <td data-label="${t("Mediator")}">${b.mediator ? `<span dir="auto">${esc(b.mediator)}</span>` : '<span class="muted">—</span>'}</td>
         </tr>`).join("")}</tbody></table></div>
-      ${rows.length > state.blLimit ? `<p style="margin-top:10px"><button class="btn btn-small" id="bl-more">${t("Show more")} (${num(rows.length - state.blLimit)})</button></p>` : ""}`}`;
+      ${window.TP.footer(BL_PAGES, page, { noun: t("links") })}</div>`}`;
     } else if (state.blTab === "mediators") {
       body = window.LinkExtras.mediatorsBody(all, { spentWords, mediatorCost });
     } else if (state.blTab === "reclaim") {
       body = window.BacklinkSeo.reclaimBody();
     } else {
       const ignoredCount = foundHere().filter((f) => f.ignored).length;
-      body = `<div class="chips">${ignoredCount ? `<button class="chip" data-found-show-ignored aria-pressed="${Boolean(state.blShowIgnored)}">${t("Show ignored")}<b>${num(ignoredCount)}</b></button>` : ""}<span style="margin-left:auto" class="bl-tools">${window.BacklinkSeo.foundTools(state.site === "all" ? null : siteName())}</span></div><div class="table-wrap"><table class="data"><thead><tr><th scope="col">${t("Source page")}</th><th scope="col">${t("Target")}</th><th scope="col">${t("Seen by")}</th><th scope="col" class="r">${t("Authority")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead><tbody>
-        ${foundHere().filter((f) => state.blShowIgnored || !f.ignored).length ? "" : `<tr style="cursor:default"><td colspan="5"><div class="empty"><h3>${t("Nothing found yet")}</h3><p>${t("Links other tools find will show here, until you log them.")}</p></div></td></tr>`}
-        ${window.FOUND_LINKS.map((f, i) => [f, i]).filter(([f]) => (state.site === "all" || !f.site || f.site === siteName()) && (state.blShowIgnored || !f.ignored)).map(([f, i]) => `<tr style="cursor:default" class="${f.ignored ? "cg-off" : ""}"><td class="head-cell mono small url-cell" data-tip="${esc(f.src)}">${PageLink.html(f.src, { text: f.src.replace(/^https?:\/\//, ""), title: "" })}</td><td class="mono small" data-label="${t("Target")}">${f.target ? PageLink.html(f.target, { host: f.site }) : "—"}</td><td data-label="${t("Seen by")}">${window.BacklinkSeo.foundSeen(f)}</td><td class="r" data-label="${t("Authority")}">${f.auth === null ? "—" : dec(f.auth)}</td><td class="r nowrap"><button class="btn btn-small" data-log-found="${i}">${t("Log it")}</button> <button class="btn btn-small" data-found-ignore="${i}">${t(f.ignored ? "Bring back" : "Ignore")}</button>${window.BacklinkSeo.foundButton(f)} ${window.UI.taskButton({ title: `${t("Look into a link we didn't log")}: ${f.src.replace(/^https?:\/\//, "")}`, host: f.site || null, source: { type: "backlink", label: f.src.replace(/^https?:\/\//, ""), host: f.site || undefined, facts: [f.target, f.first].filter(Boolean), link: "#backlinks", key: `found|${f.src}` } }, { label: "Task" })}</td></tr>`).join("")}</tbody></table></div>`;
+      const foundAll = window.FOUND_LINKS.map((f, i) => [f, i]).filter(([f]) => (state.site === "all" || !f.site || f.site === siteName()) && (state.blShowIgnored || !f.ignored));
+      const foundPage = window.TP.view(FOUND_PAGES, window.BacklinkSeo.sortRows(foundSearched(foundAll), foundSort, { src: ([f]) => bareUrl(f.src), authority: ([f]) => f.auth }));
+      const foundHead = (id, label, cls) => window.BacklinkSeo.sortHead("data-found-sort", foundSort, id, label, cls);
+      body = `<div class="chips">${foundAll.length > 10 || window.TP.state(FOUND_PAGES).q ? window.TP.search(FOUND_PAGES, t("Search links")) : ""}${ignoredCount ? `<button class="chip" data-found-show-ignored aria-pressed="${Boolean(state.blShowIgnored)}">${t("Show ignored")}<b>${num(ignoredCount)}</b></button>` : ""}<span style="margin-left:auto" class="bl-tools">${window.BacklinkSeo.foundTools(state.site === "all" ? null : siteName())}</span></div><div class="bl-list"><div class="table-wrap"><table class="data" id="found-table"><thead><tr>${foundHead("src", "Source page")}<th scope="col">${t("Target")}</th><th scope="col">${t("Seen by")}</th>${foundHead("authority", "Authority", "r")}<th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead><tbody>
+        ${foundAll.length ? "" : `<tr style="cursor:default"><td colspan="5"><div class="empty"><h3>${t("Nothing found yet")}</h3><p>${t("Links other tools find will show here, until you log them.")}</p></div></td></tr>`}
+        ${foundAll.length && !foundPage.rows.length ? `<tr style="cursor:default"><td colspan="5"><div class="empty"><h3>${t("No link matches this search")}</h3><p>${t("Change the search to see more links.")}</p></div></td></tr>` : ""}
+        ${foundPage.rows.map(([f, i]) => `<tr style="cursor:default" class="${f.ignored ? "cg-off" : ""}"><td class="head-cell mono small url-cell" data-tip="${esc(f.src)}">${PageLink.html(f.src, { text: f.src.replace(/^https?:\/\//, ""), title: "" })}</td><td class="mono small" data-label="${t("Target")}">${f.target ? PageLink.html(f.target, { host: f.site }) : "—"}</td><td data-label="${t("Seen by")}">${window.BacklinkSeo.foundSeen(f)}</td><td class="r" data-label="${t("Authority")}">${f.auth === null ? "—" : dec(f.auth)}</td><td class="r nowrap"><button class="btn btn-small" data-log-found="${i}">${t("Log it")}</button> <button class="btn btn-small" data-found-ignore="${i}">${t(f.ignored ? "Bring back" : "Ignore")}</button>${window.BacklinkSeo.foundButton(f)} ${window.UI.taskButton({ title: `${t("Look into a link we didn't log")}: ${f.src.replace(/^https?:\/\//, "")}`, host: f.site || null, source: { type: "backlink", label: f.src.replace(/^https?:\/\//, ""), host: f.site || undefined, facts: [f.target, f.first].filter(Boolean), link: "#backlinks", key: `found|${f.src}` } }, { label: "Task" })}</td></tr>`).join("")}</tbody></table></div>
+        ${window.TP.footer(FOUND_PAGES, foundPage, { noun: t("links") })}</div>`;
     }
     return topbar(title, sub, main) + `<div class="content page-enter">
       <section class="tiles" id="bl-tiles">
@@ -1229,18 +1268,26 @@
     return { title: `${t(group)}: ${target}`, host, source: { type: "link", label: `${t(group)} · ${target}`, host, facts: [issue.status_code ? `${t("Status")} ${issue.status_code}` : "", lcReason(issue.reason), onPages].filter(Boolean), link: "#health/links", key: `link|${lcSite()?.id}|${issue.target_url}` } };
   }
 
-  function lcGroup([id, name], issues) {
-    const list = issues.filter((i) => i.category === id);
+  /* Each group's pages, and one search over every group (table-pages.js), like every long table in the app (2026-11-10). */
+  const LC_FIND = "lc-find", LC_HISTORY = "lc-history", lcKey = (id) => `lc-${id}`;
+  const lcFound = (issues) => issues.filter((i) => window.TP.matches(LC_FIND, i.target_url, i.final_url, lcReason(i.reason), ...(i.pages || [])));
+  LC_GROUPS.forEach(([id]) => window.TP.on(lcKey(id), () => render()));
+  window.TP.on(LC_FIND, () => { LC_GROUPS.forEach(([id]) => window.TP.reset(lcKey(id))); render(); });
+  window.TP.on(LC_HISTORY, () => render());
+
+  function lcGroup([id, name], issues, searching) {
+    const list = issues.filter((i) => i.category === id), page = window.TP.view(lcKey(id), list);
     return `<section class="card lc-group" data-group="${id}">
       <div class="card-head"><h2>${t(name)}</h2><span class="lc-count ${list.length && id === "broken" ? "crit" : "sec"}">${num(list.length)}</span></div>
-      ${list.length ? `<table class="data lc-table"><thead><tr><th scope="col">${t("Page with the link")}</th><th scope="col">${t("Target URL")}</th><th scope="col">${t("Status")}</th><th scope="col">${t("Reason")}</th><th scope="col"><span class="sr-only">${t("Task")}</span></th></tr></thead><tbody>
-        ${list.map((i) => `<tr style="cursor:default">
+      ${list.length ? `<table class="data lc-table" id="lc-table-${id}"><thead><tr><th scope="col">${t("Page with the link")}</th><th scope="col">${t("Target URL")}</th><th scope="col">${t("Status")}</th><th scope="col">${t("Reason")}</th><th scope="col"><span class="sr-only">${t("Task")}</span></th></tr></thead><tbody>
+        ${page.rows.map((i) => `<tr style="cursor:default">
           <td class="head-cell" data-label="${t("Page with the link")}">${lcPagesCell(i.pages)}</td>
           <td data-label="${t("Target URL")}"><a class="mono small lc-url" href="${esc(i.target_url)}" target="_blank" rel="noopener noreferrer nofollow">${esc(i.target_url.replace(/^https?:\/\//, ""))}</a></td>
           <td data-label="${t("Status")}">${i.status_code === null || i.status_code === undefined ? '<span class="muted">—</span>' : `<span class="tag tabular">${i.status_code}</span>`}</td>
           <td class="small" data-label="${t("Reason")}">${esc(lcReason(i.reason))}${i.final_url && !i.reason.includes(i.final_url) ? `<span class="second lc-url mono">→ ${esc(i.final_url.replace(/^https?:\/\//, ""))}</span>` : ""}</td>
           <td class="r nowrap" data-label="">${window.UI.taskButton(linkFind(i, name), { label: "Task" })}</td>
-        </tr>`).join("")}</tbody></table>` : `<p class="lc-none small muted">${t("None found.")}</p>`}
+        </tr>`).join("")}</tbody></table>
+        ${window.TP.footer(lcKey(id), page, { noun: t("links") })}` : `<p class="lc-none small muted">${t(searching ? "No link in this group matches the search." : "None found.")}</p>`}
     </section>`;
   }
 
@@ -1249,13 +1296,17 @@
     const { scan, issues, counts } = lc.open;
     const notes = lcNotices(scan);
     const how = scan.trigger === "weekly" ? t("Weekly check") : t("Run by hand");
+    if (lc.pagedFor !== scan.id) { lc.pagedFor = scan.id; LC_GROUPS.forEach(([id]) => window.TP.reset(lcKey(id))); } // another check opens at page 1
+    const q = window.TP.state(LC_FIND).q.trim(), found = lcFound(issues);
+    // One search over every group, once there are enough links to need it.
     return `<section class="lc-result" aria-label="${t("Result")}">
       <div class="lc-result-head">
         <div><h2>${esc(scan.host || lcSite()?.host || "")}</h2><p class="small sec">${esc(fmtStamp(scan.created_at))} · ${how} · ${num(scan.pages_read)} ${t(scan.pages_read === 1 ? "page read" : "pages read")} · ${num(scan.links_checked)} ${t("links checked")}</p></div>
       </div>
       ${notes.length ? `<div class="lc-notes">${notes.map(([kind, text]) => `<p class="note ${kind === "info" ? "" : kind}" style="margin:0">${icon(kind === "crit" ? "octagon-alert" : kind === "warn" ? "triangle-alert" : "info")}<span>${esc(text)}</span></p>`).join("")}</div>` : ""}
       <div class="tiles lc-tiles">${LC_GROUPS.map(([id, name]) => `<a class="tile lc-jump" href="#lc-${id}" data-lc-jump="${id}"><div class="lab">${t(name)}</div><div class="fig tabular ${id === "broken" && counts[id] ? "crit" : ""}">${num(counts[id] || 0)}</div></a>`).join("")}</div>
-      ${LC_GROUPS.map((g) => lcGroup(g, issues)).join("")}
+      ${issues.length > 10 || q ? `<div class="chips lc-find">${window.TP.search(LC_FIND, t("Search the links found"))}</div>` : ""}
+      ${LC_GROUPS.map((g) => lcGroup(g, found, Boolean(q))).join("")}
     </section>`;
   }
 
@@ -1284,6 +1335,8 @@
     }
     const site = lcSite();
     const busy = Boolean(lc.activeId);
+    if (lc.historyFor !== lc.siteId) { lc.historyFor = lc.siteId; window.TP.reset(LC_HISTORY); window.TP.state(LC_FIND).q = ""; } // another website starts at page 1
+    const history = window.TP.view(LC_HISTORY, lc.scans);
     const weekly = site.weekly
       ? (site.next_check_at ? `${t("Next check")}: ${esc(fmtDateOnly(site.next_check_at))}` : t("First check at the next weekly run"))
       : t("Only when you press Run");
@@ -1307,14 +1360,15 @@
       ${lcResult()}
       <section class="card" aria-label="${t("History")}"><div class="card-head"><h2>${t("History")}</h2><span class="end small muted">${esc(site.host)}</span></div>
         ${lc.scans.length ? `<table class="data lc-table" id="lc-history"><thead><tr><th scope="col">${t("Date")}</th><th scope="col">${t("How")}</th><th scope="col" class="r">${t("Pages")}</th>${LC_GROUPS.map(([, n]) => `<th scope="col" class="r">${t(n)}</th>`).join("")}<th scope="col">${t("Result")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead><tbody>
-          ${lc.scans.map((s) => `<tr style="cursor:default" class="${lc.open && lc.open.scan.id === s.id ? "open" : ""}">
+          ${history.rows.map((s) => `<tr style="cursor:default" class="${lc.open && lc.open.scan.id === s.id ? "open" : ""}">
             <td class="head-cell" data-label="${t("Date")}">${esc(fmtStamp(s.created_at))}</td>
             <td data-label="${t("How")}">${s.trigger === "weekly" ? t("Weekly check") : t("Run by hand")}</td>
             <td class="r" data-label="${t("Pages")}" ${isActiveScan(s) ? "data-lc-live-pages" : ""}>${num(s.pages_read)}</td>
             ${LC_GROUPS.map(([g, n]) => `<td class="r" data-label="${t(n)}">${num((s.counts || {})[g] || 0)}</td>`).join("")}
             <td data-label="${t("Result")}"><span class="small sec" ${isActiveScan(s) ? "data-lc-live-word" : ""}>${t({ queued: "Waiting", running: "Running", complete: "Complete", stopped: "Stopped", failed: "Failed" }[s.status])}</span></td>
             <td class="r nowrap" data-label=""><button class="btn btn-small" data-lc-open="${s.id}" ${isActiveScan(s) ? "disabled" : ""}>${t("Open")}</button> <button class="icon-btn" style="width:28px;height:28px;vertical-align:middle" data-lc-delete="${s.id}" aria-label="${t("Delete")}: ${esc(fmtStamp(s.created_at))}" data-tip="${t("Delete")}" ${isActiveScan(s) ? "disabled" : ""}>${icon("trash-2")}</button></td>
-          </tr>`).join("")}</tbody></table>` : `<p class="lc-none small muted">${t("No checks yet for this website.")}</p>`}
+          </tr>`).join("")}</tbody></table>
+        ${window.TP.footer(LC_HISTORY, history, { noun: t("link checks") })}` : `<p class="lc-none small muted">${t("No checks yet for this website.")}</p>`}
       </section>
     </div>`;
   }
@@ -2197,7 +2251,7 @@
     if ($("#dlg").open) $("#dlg").close();
     ignoreClicksUntil = performance.now() + 400; // the second half of a double click must not press what's underneath
     cleaner = null;
-    prFilter = noProspectFilter(); // what was just added must be on show
+    prFilter = noProspectFilter(); prSort = null; window.TP.state(PR_PAGES).q = ""; window.TP.reset(PR_PAGES); // what was just added must be on show
     state.blSection = "consideration";
     render();
     answer.items.forEach((p) => $(`#prospect-${p.id}`)?.classList.add("flash"));
@@ -2219,7 +2273,7 @@
       prospectSeq += 1;
       return { id: `p${prospectSeq}`, url: row.url, domain: row.domain, authority: row.authority, pageAuthority: row.page_authority, authorityLabel: result.authority_label, spam: row.spam_score, file, site, ...start };
     });
-    prFilter = noProspectFilter(); // what was just added must be on show
+    prFilter = noProspectFilter(); prSort = null; window.TP.state(PR_PAGES).q = ""; window.TP.reset(PR_PAGES); // what was just added must be on show
     window.PROSPECTS = added.concat(window.PROSPECTS);
     $("#dlg").close();
     ignoreClicksUntil = performance.now() + 400; // the second half of a double click must not press what's underneath
@@ -2366,6 +2420,7 @@
     forgetPanelForm();
     closePanel();
     state.blSection = added.length && added.every((b) => b.status === "planned") ? "todo" : "done"; state.blTab = "all"; state.blFilter = "all";
+    blSort = null; window.TP.state(BL_PAGES).q = ""; window.TP.reset(BL_PAGES); // what was just added is on the first page
     // Each row has its own site now, so a filter on one site could hide what was just added.
     if (state.site !== "all" && added.some((b) => b.site !== siteName())) state.site = "all";
     render();
@@ -2466,6 +2521,7 @@
     forgetPanelForm();
     closePanel();
     state.blSection = b?.status === "planned" ? "todo" : "done"; state.blTab = "all"; state.blFilter = "all";
+    blSort = null; window.TP.state(BL_PAGES).q = ""; window.TP.reset(BL_PAGES); // what was just saved is on the first page
     if (!b) { render(); toast(t("Already logged. Removed from In consideration."), { kind: "info" }); return; } // its address is already in Done, so it was done already
     window.BACKLINKS.unshift(b);
     backlinksChanged();
@@ -3124,7 +3180,7 @@
     if (performance.now() < ignoreClicksUntil) return;
 
     // Clicking away only closes the menu. It must not also press whatever is underneath.
-    if ($("#popover") && !hit("#popover") && !hit("#site-switch") && !hit("#acct-btn") && !hit("#columns") && !hit("#period") && !hit("#compare")) { closePopover(); return; }
+    if ($("#popover") && !hit("#popover") && !hit("#site-switch") && !hit("#acct-btn") && !hit("#columns") && !hit("#period") && !hit("#compare") && !hit("[data-pop-toggle]")) { closePopover(); return; }
     if ($("#app").classList.contains("nav-open") && !hit("#sidebar") && !hit("#menu-btn")) closeNav();
 
     if ((el = hit("[data-mock]"))) {
@@ -3526,11 +3582,11 @@
     if (hit("#cleaner-new-only")) { cleaner.picked = new Set(cleaner.result.rows.flatMap((row, i) => (row.duplicate_of || !cleanerSelectable(row) ? [] : [i]))); updateCleanerSelection(); return; }
     if (hit("#cleaner-clear")) { cleaner.picked = new Set(); updateCleanerSelection(); return; }
     if (hit("#cleaner-add")) { addPickedProspects(); return; }
-    if (hit("#prospect-more")) { state.prospectLimit += 100; paintProspects(); return; }
     if (hit("#pr-move")) { window.LinkTodo.openMove(window.PROSPECTS.filter((p) => prPicked.has(p.id)), hit("#pr-move")); return; }
     if (hit("#pr-pick-clear")) { prPicked.clear(); $$("[data-prospect-pick]").forEach((b) => { b.checked = false; }); paintProspectPicks(); return; }
     if (hit("#pr-more-toggle")) { prMoreOpen = !prMoreOpen; $("#pr-more").hidden = !prMoreOpen; $("#pr-more-toggle").setAttribute("aria-expanded", String(prMoreOpen)); return; }
-    if (hit("#pr-clear")) { prFilter = noProspectFilter(); state.prospectLimit = 100; render(); $("[data-pr-filter=\"stage\"]")?.focus(); return; }
+    if (hit("#pr-clear")) { prFilter = noProspectFilter(); window.TP.state(PR_PAGES).q = ""; window.TP.reset(PR_PAGES); render(); $("[data-pr-filter=\"stage\"]")?.focus(); return; }
+    if ((el = hit("[data-pr-sort]"))) { const id = el.dataset.prSort; prSort = window.BacklinkSeo.nextSort(prSort, id, id === "domain" || id === "spam" ? "asc" : "desc"); window.TP.reset(PR_PAGES); render(); $(`[data-pr-sort="${id}"]`)?.focus(); return; }
     if ((el = hit("[data-prospect-done]"))) {
       const p = window.PROSPECTS.find((x) => x.id === el.dataset.prospectDone);
       addBacklinkPanel({ src: p.url, site: p.site, prospect: p.id }, el);
@@ -3544,7 +3600,7 @@
       toast(`${t("Removed from In consideration")}: ${gone.domain}`, { kind: "info", undo: () => { window.PROSPECTS.splice(at, 0, gone); window.dispatchEvent(new CustomEvent("seocc:prospect-restored", { detail: gone })); render(); } });
       return;
     }
-    if ((el = hit("[data-bl-mediator]"))) { state.blMediator = el.dataset.blMediator; state.blTab = "all"; state.blFilter = "all"; render(); $("#main").scrollTop = 0; return; }
+    if ((el = hit("[data-bl-mediator]"))) { state.blMediator = el.dataset.blMediator; state.blTab = "all"; state.blFilter = "all"; window.TP.reset(BL_PAGES); render(); $("#main").scrollTop = 0; return; }
     if ((el = hit("[data-found-ignore]"))) {
       const f = window.FOUND_LINKS[Number(el.dataset.foundIgnore)];
       const set = async (ignored) => {
@@ -3555,9 +3611,11 @@
       set(!f.ignored).then(() => toast(t(f.ignored ? "Ignored. It's kept under Show ignored." : "Back in the list"), f.ignored ? { undo: () => set(false).catch((err) => toast(t(err.message), { kind: "crit" })) } : { kind: "info" })).catch((err) => toast(t(err.message), { kind: "crit" }));
       return;
     }
-    if (hit("[data-found-show-ignored]")) { state.blShowIgnored = !state.blShowIgnored; render(); return; }
+    if (hit("[data-found-show-ignored]")) { state.blShowIgnored = !state.blShowIgnored; window.TP.reset(FOUND_PAGES); render(); $("[data-found-show-ignored]")?.focus(); return; }
+    if ((el = hit("[data-found-sort]"))) { const id = el.dataset.foundSort; foundSort = window.BacklinkSeo.nextSort(foundSort, id, id === "src" ? "asc" : "desc"); window.TP.reset(FOUND_PAGES); render(); $(`[data-found-sort="${id}"]`)?.focus(); return; }
+    if ((el = hit("[data-bl-sort]"))) { const id = el.dataset.blSort; blSort = window.BacklinkSeo.nextSort(blSort, id, id === "src" ? "asc" : "desc"); window.TP.reset(BL_PAGES); render(); $(`[data-bl-sort="${id}"]`)?.focus(); return; }
     if ((el = hit("[data-bl-tab]"))) { state.blTab = el.dataset.blTab; render(); $(`[data-bl-tab="${state.blTab}"]`)?.focus(); return; }
-    if ((el = hit("[data-bl-filter]"))) { state.blFilter = el.dataset.blFilter; render(); $(`[data-bl-filter="${state.blFilter}"]`)?.focus(); return; }
+    if ((el = hit("[data-bl-filter]"))) { state.blFilter = el.dataset.blFilter; window.TP.reset(BL_PAGES); window.TP.reset(window.BacklinkSeo.PAGES.sites); render(); $(`[data-bl-filter="${state.blFilter}"]`)?.focus(); return; }
     if (hit("#add-backlink")) { addBacklinkPanel({}, hit("#add-backlink")); return; }
     if ((el = hit("[data-log-found]"))) { const f = window.FOUND_LINKS[Number(el.dataset.logFound)]; addBacklinkPanel({ src: f.src, target: f.target, site: f.site }, el); return; }
     if ((el = hit("[data-open-bl]"))) { backlinkPanel(window.BACKLINKS.find((b) => b.id === el.dataset.openBl), el); return; }
@@ -3604,7 +3662,6 @@
       removeLinks([b]).then((stuck) => { render(); toast(t(stuck.length ? "Some links could not be removed" : "Backlink deleted"), { kind: stuck.length ? "crit" : "info" }); });
       return;
     }
-    if (hit("#bl-more")) { state.blLimit += 100; render(); return; }
 
     // Row click opens detail, unless the click was on a control inside it.
     if (!hit("input, button, a, select, label")) {
@@ -3692,7 +3749,7 @@
     if (el.id === "cleaner-site") { cleaner.site = el.value; return; }
     if (el.id === "cleaner-file") { loadCleanerFile(el.files[0]); el.value = ""; return; }
     if (el.id === "pr-all") {
-      prospectsForSite().filter(prospectMatches).forEach((p) => { if (el.checked) prPicked.add(p.id); else prPicked.delete(p.id); });
+      window.TP.view(PR_PAGES, prospectList()).rows.forEach((p) => { if (el.checked) prPicked.add(p.id); else prPicked.delete(p.id); }); // only the rows on this page
       $$("[data-prospect-pick]").forEach((b) => { b.checked = prPicked.has(b.dataset.prospectPick); });
       paintProspectPicks();
       return;
@@ -3747,7 +3804,7 @@
     if (e.target.id === "conn-json") syncRobotEmail();
     const el = e.target;
     if (el.id === "cmd-input") { cmdIndex = 0; renderCmdList(el.value); return; }
-    if (el.dataset.prFilter) { prFilter[el.dataset.prFilter] = el.value; state.prospectLimit = 100; paintProspects(); return; }
+    if (el.dataset.prFilter) { prFilter[el.dataset.prFilter] = el.value; window.TP.reset(PR_PAGES); paintProspects(); return; }
     if (el.dataset.cleanerFilter) { cleaner.filter[el.dataset.cleanerFilter] = el.value; paintCleanerRows(); return; }
     if (el.id === "bulk-text") { readBulk(el.value); updateBulk(); return; }
     if (el.id === "site-address") {
@@ -3938,10 +3995,12 @@
     countryName, countryOptions, COUNTRY_CODES, fmtStamp, fmtDateOnly, ENGINES, WHOLE_SITE_WORDS, BUDGET_PAUSE_WORDS, readingWords,
     siteHostPicked: () => (state.site === "all" ? null : window.SITES.find((x) => x.id === state.site)?.host || null),
     ignoreClicks: (ms = 400) => { ignoreClicksUntil = performance.now() + ms; },
+    popover, closePopover, // a screen's own menu, such as a competitor choice with each logo: a native list can't show pictures
     openConnection, pickSite, showingNote, preferredSite, syncUrl, periodWindow, settingsPage, setupCard, range: UIRange, fmtRange, fmtDay,
     /* export.js: the rows on screen, in their order, and the links scan that is open. */
-    exportSeen: () => ({ done: window.BacklinkSeo.filterRows(siteLinks().filter((b) => b.status !== "planned" && (!state.blMediator || b.mediator === state.blMediator)), state.blFilter).map((b) => b.id), consideration: prospectsForSite().filter(prospectMatches).map((p) => p.id), scan: lc.open?.scan?.id ?? null }),
+    exportSeen: () => ({ done: ((rows) => (window.BacklinkSeo.byWebsite() ? rows : blSearched(rows)))(window.BacklinkSeo.filterRows(siteLinks().filter((b) => b.status !== "planned" && (!state.blMediator || b.mediator === state.blMediator)), state.blFilter)).map((b) => b.id), consideration: prospectList().map((p) => p.id), scan: lc.open?.scan?.id ?? null }),
     siteIdPicked: () => (state.site === "all" ? null : window.SITES.find((x) => x.id === state.site)?.realId || null), toBacklink,
+    reloadBacklinks: loadRealBacklinks, // another screen moved links into Backlinks (Link gaps → To do), so its lists read again
     siteComing: () => Boolean(wantedSite), // an address named a site that hasn't joined the list yet
     replaceNextUrl: () => { replaceNext = true; }, // the next address replaces this one, so Back doesn't land on a step nobody chose
   };

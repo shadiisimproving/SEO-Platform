@@ -16,7 +16,7 @@ import time
 import httpx
 from sqlalchemy import Engine, text
 
-from seo.competitors import pages
+from seo.competitors import pages, tracking
 from seo.competitors.crawl import MAX_DISCOVERED
 from seo.core.errors import NotFound, Refused
 from seo.crawl import store as crawl_store
@@ -154,6 +154,68 @@ def pages_to_read(conn, competitor: dict, blocked: bool) -> tuple[list[str], lis
     return first, again
 
 
+WEEKLY_DAYS = 7
+
+
+def weekly_pages(conn, competitor: dict) -> list[str]:
+    """What the weekly check reads: pages only Firecrawl can read that rank for my keywords, at most a run's worth."""
+    _first, again = pages_to_read(conn, competitor, False)
+    ranking = set(_ranking_urls(conn, competitor["host"]))
+    return [url for url in again if url in ranking][:MOST_PER_RUN]
+
+
+def set_weekly(engine: Engine, competitor_id: int, on) -> dict:
+    """The owner's yes (or no) to a weekly Firecrawl check for edits, after the screen showed what it costs a week."""
+    if type(on) is not bool:
+        raise Refused("on must be true or false.")
+    with engine.connect() as conn:
+        competitor = _competitor(conn, competitor_id)
+        pages = weekly_pages(conn, competitor)
+    if on and not sources.app_key(engine, SOURCE):
+        raise Refused("Connect Firecrawl in Settings first.")
+    if on and not pages:
+        raise Refused("None of the pages Firecrawl read ranks for your keywords, so there's nothing to check each week.")
+    with engine.begin() as conn:
+        conn.execute(
+            text("INSERT INTO competitor_crawls (competitor_id, status, fc_weekly) VALUES (:c, 'ok', :w) ON DUPLICATE KEY UPDATE fc_weekly = :w"),
+            {"c": competitor_id, "w": on},
+        )
+    return {"on": on, "pages": len(pages), "credits_per_week": len(pages)}
+
+
+def enqueue_weekly(engine: Engine) -> list[int]:
+    """Once a week, for each competitor the owner said yes for: the same run as the Check for edits button, on its ranking pages."""
+    if not sources.app_key(engine, SOURCE):
+        return []
+    with engine.connect() as conn:
+        ids = [
+            row[0]
+            for row in conn.execute(
+                text(
+                    "SELECT competitor_id FROM competitor_crawls WHERE fc_weekly = 1 AND (fc_status IS NULL OR fc_status NOT IN ('queued', 'running')) "
+                    "AND (fc_finished_at IS NULL OR fc_finished_at < UTC_TIMESTAMP(3) - INTERVAL :d DAY) ORDER BY competitor_id"
+                ),
+                {"d": WEEKLY_DAYS},
+            )
+        ]
+        ids = [i for i in ids if tracking.reads_pages(conn, i)]
+    started = []
+    for competitor_id in ids:
+        with engine.connect() as conn:
+            try:
+                pages = weekly_pages(conn, _competitor(conn, competitor_id))
+            except NotFound:
+                continue
+        if not pages:
+            continue
+        try:
+            start(engine, competitor_id, "reread", len(pages))
+        except Refused:
+            continue
+        started.append(competitor_id)
+    return started
+
+
 def _has_job(conn, competitor_id: int) -> bool:
     return bool(conn.execute(
         text("SELECT 1 FROM jobs WHERE kind = :k AND (active_key = :one OR active_key LIKE :parts) LIMIT 1"),
@@ -174,6 +236,7 @@ def offer(engine: Engine, competitor_id: int) -> dict:
         blocked = crawl.get("status") == "blocked"
         first, again = pages_to_read(conn, competitor, blocked)
         found = counts(conn, competitor["host"])
+        weekly = weekly_pages(conn, competitor) if not blocked else []
     key = sources.app_key(engine, SOURCE)
     out = {
         "connected": bool(key), "blocked": blocked, "list_source": crawl.get("list_source"), "most_per_run": MOST_PER_RUN,
@@ -181,6 +244,7 @@ def offer(engine: Engine, competitor_id: int) -> dict:
         "reread": {"pages": len(again), "credits": min(len(again), MOST_PER_RUN)} if again else None,
         "map": {"credits": MAP_CREDITS} if crawl.get("list_source") in ("links", "feed") and not blocked else None,
         "firecrawl_pages": found["firecrawl"], "credits": None, "error": None,
+        "weekly": {"on": bool(crawl.get("fc_weekly")), "pages": len(weekly), "credits_per_week": len(weekly)} if weekly or crawl.get("fc_weekly") else None,
     }
     if key:
         try:

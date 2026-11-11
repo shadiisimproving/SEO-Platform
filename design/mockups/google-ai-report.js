@@ -13,12 +13,16 @@
   const fill = (s, values) => Object.entries(values).reduce((out, [k, v]) => out.split(`{${k}}`).join(v), t(s));
   const day = (iso) => (iso ? new Intl.DateTimeFormat(UI().locale(), { day: "numeric", month: "short", year: "numeric" }).format(new Date(`${iso}T00:00:00`)) : "");
   const pathOf = (url) => { try { return new URL(url).pathname || "/"; } catch { return url || "/"; } };
+  /* Up to 500 pages come with an upload, so they page and search like every long table (table-pages.js). */
+  const PAGES = "gai";
+  TP.on(PAGES, () => UI().render({ keepScroll: true }));
   const HOW = "In Search Console: Performance → Generative AI → Export → Download CSV. Then upload the zip here.";
 
   function load() {
     const site = UI().siteIdPicked() || null;
     if (G.site === site && (G.data || G.loading || G.error)) return;
     if (!window.COMP?.server) return;
+    if (G.site !== undefined && G.site !== site) { TP.state(PAGES).q = ""; TP.reset(PAGES); } // another site's pages start afresh
     G.site = site; G.loading = true; G.error = "";
     window.COMP.api("GET", `search/ai-report${site ? `?site_id=${site}` : ""}`)
       .then((d) => { G.data = d; }).catch((err) => { G.error = err.message; G.data = null; })
@@ -49,12 +53,17 @@
     const period = `${day(r.period_start)} – ${day(r.period_end)}${r.period_known ? "" : ` (${t("about: the file had no dates")})`}`;
     const change = r.before && r.before.impressions ? Math.round(((r.impressions - r.before.impressions) / r.before.impressions) * 100) : null;
     const answer = fill("Google showed this site's pages {n} times in AI Overviews and AI Mode, {p}.", { n: num(r.impressions), p: period });
-    const pages = (r.pages || []).slice(0, 10).map((p) => `<tr><td data-label="${t("Page")}">${window.PageLink ? PageLink.html(p.key, { text: pathOf(p.key), cls: "mono lv-url", dir: "ltr" }) : esc(pathOf(p.key))}</td><td class="c" data-label="${t("Impressions")}">${num(p.impressions)}</td></tr>`).join("");
+    const all = r.pages || [];
+    const found = all.filter((p) => TP.matches(PAGES, p.key, pathOf(p.key)));
+    const view = TP.view(PAGES, found);
+    const pages = view.rows.map((p) => `<tr><td data-label="${t("Page")}">${window.PageLink ? PageLink.html(p.key, { text: pathOf(p.key), cls: "mono lv-url", dir: "ltr" }) : esc(pathOf(p.key))}</td><td class="c" data-label="${t("Impressions")}">${num(p.impressions)}</td></tr>`).join("");
     const countries = (r.countries || []).slice(0, 3).map((c) => `${c.key} ${num(c.impressions)}`).join(" · ");
     return `<section class="card" style="margin-bottom:14px">${head(`${t("from Search Console, uploaded")} ${esc(day(r.uploaded_at?.slice(0, 10)))}`)}
       <p style="margin:0;padding:12px 18px 0">${esc(answer)}${change !== null ? ` ${esc(fill(change >= 0 ? "Up {p}% on the upload before." : "Down {p}% on the upload before.", { p: num(Math.abs(change)) }))}` : ""}</p>
       ${countries ? `<p class="small muted" style="margin:4px 0 0;padding:0 18px">${esc(fill("Most from: {list}", { list: countries }))}</p>` : ""}
-      ${pages ? `<div class="table-wrap" style="box-shadow:none;margin-top:10px"><table class="data"><thead><tr><th>${t("Page")}</th><th class="c">${t("Impressions")}</th></tr></thead><tbody>${pages}</tbody></table></div>` : ""}
+      ${all.length > 10 || TP.state(PAGES).q ? `<div class="gai-find" style="padding:10px 18px 0;display:flex">${TP.search(PAGES, t("Search pages"))}</div>` : ""}
+      ${pages ? `<div class="gai-list"><div class="table-wrap" style="box-shadow:none;margin-top:10px"><table class="data"><thead><tr><th>${t("Page")}</th><th class="c">${t("Impressions")}</th></tr></thead><tbody>${pages}</tbody></table></div>${TP.footer(PAGES, view, { noun: t(view.total === 1 ? "page" : "pages") })}</div>`
+        : all.length ? `<p class="small muted" style="margin:10px 0 0;padding:0 18px">${t("No page matches this search.")}</p>` : ""}
       <div style="padding:10px 18px 14px">${uploadForm(true)}<p class="small muted" style="margin:6px 0 0">${t(HOW)}</p></div></section>`;
   }
   G.card = card;
@@ -89,6 +98,7 @@
     "Most from: {list}": "Surtout de : {list}", "Replaced the upload for {p}.": "Import remplacé pour {p}.", "Saved: {p}.": "Enregistré : {p}.", "Google's AI report is in.": "Le rapport IA de Google est importé.",
     "This isn't Search Console's generative AI report. In Search Console, open Performance → Generative AI, press Export and download the CSV.": "Ce n'est pas le rapport IA générative de la Search Console. Dans la Search Console, ouvrez Performances → IA générative, cliquez sur Exporter et téléchargez le CSV.",
     "Download the report as CSV (Export → Download CSV), not as a spreadsheet.": "Téléchargez le rapport en CSV (Exporter → Télécharger CSV), pas en tableur.",
+    "Search pages": "Rechercher une page", "No page matches this search.": "Aucune page ne correspond à cette recherche.", "page": "page", "pages": "pages",
     "Pick the site this report is about.": "Choisissez le site concerné par ce rapport.", "Choose the export file first.": "Choisissez d'abord le fichier exporté.",
   };
   Object.keys(fr).forEach((w) => { if (window.FR && window.FR[w] === undefined) window.FR[w] = fr[w]; });

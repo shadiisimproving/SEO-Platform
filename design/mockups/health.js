@@ -28,8 +28,10 @@
 
   const ht = {
     started: false, ready: false, failed: "", server: null, firstRun: null, sites: [], siteId: null, added: [], alerts: [], audits: [], open: null, activeId: null, active: null,
-    timer: null, stopping: false, openChecks: new Set(), lastPicked: null,
+    timer: null, stopping: false, openChecks: new Set(), lastPicked: null, sorts: {},
   };
+  /* The tables' pages and search (table-pages.js), like every long table in the app (2026-11-10). */
+  const PAGES = { index: "ht-not-indexed", few: "ht-few-links", linksIn: "ht-links-in", history: "ht-history" };
   const isActive = (a) => a.status === "queued" || a.status === "running";
   const isPartial = (a) => a.status === "stopped";
   const site = () => ht.sites.find((s) => String(s.id) === String(ht.siteId)) || null;
@@ -433,7 +435,26 @@
 
   // ---- on Google, and internal links: one answer, a short table, the rest behind one button ------------------
   const pathOnly = (url) => { try { const u = new URL(url); return decodeURI(u.pathname + u.search) || "/"; } catch { return url || ""; } };
-  const SHORT = 5;
+  const MANY = 10; // a search box shows once a table holds more rows than this, or while it holds something
+  const wantsSearch = (key, n) => n > MANY || Boolean(TP.state(key).q);
+
+  /* A heading that sorts, as on Competitors → Link gaps: numbers biggest first, then smallest, then the usual order again. */
+  function sortHead(table, id, label) {
+    const sort = ht.sorts[table], on = sort?.id === id;
+    return `<th scope="col" class="r" aria-sort="${on ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}"><button type="button" class="th-btn" data-ht-sort="${table}" data-ht-sort-by="${id}">${UI.t(label)}${on ? UI.icon(sort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
+  }
+  function sorted(table, list) {
+    const sort = ht.sorts[table];
+    if (!sort) return list;
+    const dir = sort.dir === "asc" ? 1 : -1;
+    return [...list].sort((a, b) => ((a[sort.id] ?? -1) - (b[sort.id] ?? -1)) * dir);
+  }
+  /* Another site, or another test, starts every table again at page 1, in the usual order, with no search. */
+  function resetPages(keys = Object.values(PAGES)) {
+    keys.forEach((key) => { TP.state(key).q = ""; TP.reset(key); });
+    if (keys.includes(PAGES.few)) delete ht.sorts.few;
+    if (keys.includes(PAGES.linksIn)) delete ht.sorts.linksIn;
+  }
 
   function indexingInner() {
     const { t, num, esc } = UI, ix = ht.indexing;
@@ -444,10 +465,11 @@
     const parts = [ix.checked ? `${num(ix.indexed)} ${t("of")} ${num(ix.checked)} ${t(ix.checked === 1 ? "page checked is on Google." : "pages checked are on Google.")}` : t("No page has been checked yet.")];
     if (ix.not_indexed_count) parts.push(`${num(ix.not_indexed_count)} ${t(ix.not_indexed_count === 1 ? "isn't, and Google says why below." : "aren't, and Google says why below.")}`);
     if (ix.unchecked) parts.push(`${num(ix.unchecked)} ${t("still to check")} (${t("about")} ${num(ix.days_left)} ${t(ix.days_left === 1 ? "day" : "days")}, ${num(ix.per_day)} ${t("a day")}).`);
-    const rows = ix.not_indexed || [], shown = ht.indexAll ? rows : rows.slice(0, SHORT);
-    const table = rows.length ? `<div class="table-wrap"><table class="data lc-table" id="ht-not-indexed"><thead><tr><th scope="col">${t("Page")}</th><th scope="col">${t("Google says")}</th><th scope="col">${t("Asked on")}</th></tr></thead><tbody>
-      ${shown.map((a) => `<tr style="cursor:default"><td class="head-cell">${COMP.link(a.url, pathOnly(a.url))}</td><td data-label="${t("Google says")}" dir="auto">${esc(a.coverage || t(a.state === "unknown" ? "Unknown to Google" : "Not indexed"))}${a.google_canonical ? `<span class="second">${t("Google prefers")} ${COMP.link(a.google_canonical, pathOnly(a.google_canonical))}</span>` : ""}</td><td data-label="${t("Asked on")}" class="nowrap small muted">${esc(a.checked || "—")}</td></tr>`).join("")}</tbody></table></div>
-      ${rows.length > SHORT ? `<div style="padding:10px 18px 14px"><button type="button" class="btn btn-small" data-ht-index-all aria-expanded="${Boolean(ht.indexAll)}">${t(ht.indexAll ? "Show less" : "Show all")} (${num(rows.length)})</button></div>` : ""}` : "";
+    const rows = ix.not_indexed || [], found = rows.filter((a) => TP.matches(PAGES.index, pathOnly(a.url), a.coverage, a.google_canonical)), page = TP.view(PAGES.index, found);
+    const search = wantsSearch(PAGES.index, rows.length) ? `<div class="chips ht-find">${TP.search(PAGES.index, t("Search pages or what Google says"))}</div>` : "";
+    const table = !rows.length ? "" : !found.length ? `${search}<p class="lc-none small sec">${t("No page matches this search.")}</p>` : `${search}<div class="ht-list"><div class="table-wrap"><table class="data lc-table" id="ht-not-indexed"><thead><tr><th scope="col">${t("Page")}</th><th scope="col">${t("Google says")}</th><th scope="col">${t("Asked on")}</th></tr></thead><tbody>
+      ${page.rows.map((a) => `<tr style="cursor:default"><td class="head-cell">${COMP.link(a.url, pathOnly(a.url))}</td><td data-label="${t("Google says")}" dir="auto">${esc(a.coverage || t(a.state === "unknown" ? "Unknown to Google" : "Not indexed"))}${a.google_canonical ? `<span class="second">${t("Google prefers")} ${COMP.link(a.google_canonical, pathOnly(a.google_canonical))}</span>` : ""}</td><td data-label="${t("Asked on")}" class="nowrap small muted">${esc(a.checked || "—")}</td></tr>`).join("")}</tbody></table></div>
+      ${TP.footer(PAGES.index, page, { noun: t("pages") })}</div>`;
     return `<p class="ht-answer lc-none">${parts.join(" ")}</p>${table}`;
   }
 
@@ -462,13 +484,20 @@
     if (r.sitemap_read && r.sitemap_pages) parts.push(r.orphan_count ? `${num(r.orphan_count)} ${t(r.orphan_count === 1 ? "page in your sitemap has no link from another page of the site." : "pages in your sitemap have no link from another page of the site.")}` : t("Every page in your sitemap has a link from another page."));
     else parts.push(t("No sitemap was found, so pages linked from nowhere can't be listed."));
     if (r.has_search_data) parts.push(r.few_links_count ? `${num(r.few_links_count)} ${t(r.few_links_count === 1 ? "page that gets visits from Google has" : "pages that get visits from Google have")} ${num(r.few_links_line)} ${t("links in or fewer: link to them from related pages.")}` : t("Your pages that get visits from Google all have links in."));
-    const few = r.few_links || [];
-    const table = few.length ? `<div class="table-wrap"><table class="data lc-table" id="ht-few-links"><thead><tr><th scope="col">${t("Page")}</th><th scope="col" class="r">${t("Links in")}</th><th scope="col" class="r">${t("Clicks")}</th></tr></thead><tbody>
-      ${few.slice(0, SHORT).map((p) => `<tr style="cursor:default"><td class="head-cell">${COMP.link(p.url, pathOnly(p.url))}</td><td class="r tabular" data-label="${t("Links in")}">${num(p.links_in)}</td><td class="r tabular" data-label="${t("Clicks")}">${num(p.clicks)}</td></tr>`).join("")}</tbody></table></div>` : "";
+    const few = r.few_links || [], fewFound = few.filter((p) => TP.matches(PAGES.few, pathOnly(p.url))), fewPage = TP.view(PAGES.few, sorted("few", fewFound));
+    const fewSearch = wantsSearch(PAGES.few, few.length) ? `<div class="chips ht-find">${TP.search(PAGES.few, t("Search pages"))}</div>` : "";
+    const fewCut = r.few_links_count > few.length ? `${t("The {sent} with the most clicks are listed, of {total}.").replace("{sent}", num(few.length)).replace("{total}", num(r.few_links_count))}` : null;
+    const table = !few.length ? "" : !fewFound.length ? `${fewSearch}<p class="lc-none small sec">${t("No page matches this search.")}</p>` : `${fewSearch}<div class="ht-list"><div class="table-wrap"><table class="data lc-table" id="ht-few-links"><thead><tr><th scope="col">${t("Page")}</th>${sortHead("few", "links_in", "Links in")}${sortHead("few", "clicks", "Clicks")}</tr></thead><tbody>
+      ${fewPage.rows.map((p) => `<tr style="cursor:default"><td class="head-cell">${COMP.link(p.url, pathOnly(p.url))}</td><td class="r tabular" data-label="${t("Links in")}">${num(p.links_in)}</td><td class="r tabular" data-label="${t("Clicks")}">${num(p.clicks)}</td></tr>`).join("")}</tbody></table></div>
+      ${TP.footer(PAGES.few, fewPage, { noun: t("pages"), capped: fewCut })}</div>`;
+    const every = r.pages || [], everyFound = every.filter((p) => TP.matches(PAGES.linksIn, pathOnly(p.url))), everyPage = TP.view(PAGES.linksIn, sorted("linksIn", everyFound));
     const all = ht.linksAll ? `<div class="ht-links-all" style="padding:0 18px 14px">
         ${r.orphans?.length ? `<h3>${t("In the sitemap, linked from nowhere")}</h3><ul class="ht-pages">${r.orphans.map((u) => `<li>${COMP.link(u, pathOnly(u))}</li>`).join("")}${r.orphan_count > r.orphans.length ? `<li class="small muted">${t("and")} ${num(r.orphan_count - r.orphans.length)} ${t("more")}</li>` : ""}</ul>` : ""}
-        <h3>${t("Links in, every page read")}</h3><div class="table-wrap"><table class="data lc-table" id="ht-links-in"><thead><tr><th scope="col">${t("Page")}</th><th scope="col" class="r">${t("Links in")}</th></tr></thead><tbody>
-        ${(r.pages || []).map((p) => `<tr style="cursor:default"><td class="head-cell">${COMP.link(p.url, pathOnly(p.url))}</td><td class="r tabular" data-label="${t("Links in")}">${num(p.links_in)}</td></tr>`).join("")}</tbody></table></div>
+        <h3>${t("Links in, every page read")}</h3>
+        ${wantsSearch(PAGES.linksIn, every.length) ? `<div class="chips ht-find">${TP.search(PAGES.linksIn, t("Search pages"))}</div>` : ""}
+        ${everyFound.length ? `<div class="ht-list"><div class="table-wrap"><table class="data lc-table" id="ht-links-in"><thead><tr><th scope="col">${t("Page")}</th>${sortHead("linksIn", "links_in", "Links in")}</tr></thead><tbody>
+        ${everyPage.rows.map((p) => `<tr style="cursor:default"><td class="head-cell">${COMP.link(p.url, pathOnly(p.url))}</td><td class="r tabular" data-label="${t("Links in")}">${num(p.links_in)}</td></tr>`).join("")}</tbody></table></div>
+        ${TP.footer(PAGES.linksIn, everyPage, { noun: t("pages"), capped: r.pages_read > every.length ? t("The {sent} with the fewest links in are listed, of {total}.").replace("{sent}", num(every.length)).replace("{total}", num(r.pages_read)) : null })}</div>` : every.length ? `<p class="small sec">${t("No page matches this search.")}</p>` : ""}
         ${r.sitemap_cut ? `<p class="small muted">${t("The sitemap couldn't be read in full, so this list may be short.")}</p>` : ""}</div>` : "";
     return `<section class="card ht-links"><div class="card-head"><h2>${t("Internal links")}</h2><span class="end small muted">${num(r.pages_read)} ${t(r.pages_read === 1 ? "page read" : "pages read")}</span></div>
       <p class="ht-answer lc-none">${parts.join(" ")}</p>${table}
@@ -484,17 +513,19 @@
 
   function historyCard() {
     const { t, esc, num } = UI;
+    const page = TP.view(PAGES.history, ht.audits);
     return `<section class="card ht-history" aria-label="${t("History")}">
       <div class="card-head"><h2>${t("History")}</h2><span class="end small muted">${esc(site()?.host || "")}</span></div>
       ${ht.audits.length ? `<table class="data lc-table" id="ht-history"><thead><tr><th scope="col">${t("Date")}</th><th scope="col">${t("How it ran")}</th><th scope="col" class="r">${t("Score")}</th><th scope="col" class="r">${t("Pages")}</th><th scope="col">${t("Result")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead><tbody>
-        ${ht.audits.map((a) => `<tr ${isActive(a) ? 'style="cursor:default"' : `data-ht-row="${a.id}"`} class="${ht.open?.audit.id === a.id ? "open" : ""}">
+        ${page.rows.map((a) => `<tr ${isActive(a) ? 'style="cursor:default"' : `data-ht-row="${a.id}"`} class="${ht.open?.audit.id === a.id ? "open" : ""}">
           <td class="head-cell" data-label="${t("Date")}">${esc(UI.fmtStamp(a.created_at))}</td>
           <td data-label="${t("How it ran")}">${t(a.trigger === "monthly" ? "Monthly" : "By hand")}</td>
           <td class="r" data-label="${t("Score")}">${a.score === null || a.score === undefined ? '<span class="muted">—</span>' : `${num(a.score)}${isPartial(a) ? ` <span class="tag">${t("partial")}</span>` : ""}`}</td>
           <td class="r" data-label="${t("Pages")}" ${isActive(a) ? "data-ht-live-pages" : ""}>${num(a.pages_read)}</td>
           <td data-label="${t("Result")}"><span class="small sec" ${isActive(a) ? "data-ht-live-word" : ""}>${esc(resultWord(a))}</span></td>
           <td class="r nowrap" data-label=""><button class="btn btn-small" data-ht-open="${a.id}" aria-label="${t("Open")}: ${esc(UI.fmtStamp(a.created_at))}" ${isActive(a) ? "disabled" : ""}>${t("Open")}</button></td>
-        </tr>`).join("")}</tbody></table>` : `<p class="lc-none small muted">${t("No tests yet for this site.")}</p>`}
+        </tr>`).join("")}</tbody></table>
+        ${TP.footer(PAGES.history, page, { noun: t("tests") })}` : `<p class="lc-none small muted">${t("No tests yet for this site.")}</p>`}
     </section>`;
   }
 
@@ -507,6 +538,8 @@
     }
     const s = site();
     const a = ht.open?.audit;
+    if (ht.pagedSite !== ht.siteId) { ht.pagedSite = ht.siteId; ht.pagedTest = a?.id; resetPages(); } // another site: every table at page 1
+    else if (a && ht.pagedTest !== a.id) { ht.pagedTest = a.id; resetPages([PAGES.few, PAGES.linksIn]); } // another test: its tables at page 1
     const latest = ht.audits.find((x) => !isActive(x));
     const past = a && latest && a.id !== latest.id;
     const alerts = openAlerts().filter((x) => isTestAlert(x) && sameId(x.site_id, s.id) && !UI.state.seen.has(`alert-${x.id}`));
@@ -595,7 +628,13 @@
       const target = e.target;
       let el;
       if ((el = target.closest?.("[data-ht-seen]"))) { markSeen(Number(el.dataset.htSeen)); return; }
-      if (target.closest?.("[data-ht-index-all]")) { ht.indexAll = !ht.indexAll; const box = UI.$("#ht-indexing"); if (box) UI.setHTML(box, indexingInner()); UI.$("[data-ht-index-all]")?.focus(); return; }
+      if ((el = target.closest?.("[data-ht-sort]"))) {
+        const table = el.dataset.htSort, id = el.dataset.htSortBy, sort = ht.sorts[table];
+        ht.sorts[table] = sort?.id !== id ? { id, dir: "desc" } : sort.dir === "desc" ? { id, dir: "asc" } : null; // a third click goes back to the usual order
+        TP.reset(table === "few" ? PAGES.few : PAGES.linksIn);
+        paint(); UI.$(`[data-ht-sort="${table}"][data-ht-sort-by="${id}"]`)?.focus();
+        return;
+      }
       if (target.closest?.("[data-ht-links-all]")) { ht.linksAll = !ht.linksAll; paint(); UI.$("[data-ht-links-all]")?.focus(); return; }
       if (target.closest?.("#ht-run")) { runTest(); return; }
       if ((el = target.closest?.("#ht-stop"))) { stopTest(el); return; }
@@ -650,6 +689,8 @@
     init(helpers) {
       UI = helpers;
       bindEvents();
+      TP.on(PAGES.index, () => { const box = UI.$("#ht-indexing"); if (box) UI.setHTML(box, indexingInner()); }); // only its card, as it loads on its own
+      [PAGES.few, PAGES.linksIn, PAGES.history].forEach((key) => TP.on(key, paint));
       COMP.isServer().then((server) => {
         ht.server = server;
         ht.firstRun = UI.state.firstRun;
@@ -771,6 +812,9 @@
   })();
 
   Object.assign(window.FR, {
+    "Search pages or what Google says": "Rechercher une page ou ce que dit Google", "Search pages": "Rechercher une page", "No page matches this search.": "Aucune page ne correspond à cette recherche.",
+    "The {sent} with the most clicks are listed, of {total}.": "Les {sent} avec le plus de clics sont listées, sur {total}.", "The {sent} with the fewest links in are listed, of {total}.": "Les {sent} avec le moins de liens entrants sont listées, sur {total}.",
+    "tests": "tests",
     "Restore these pages, or redirect them to the closest page that exists.": "Rétablissez ces pages, ou redirigez-les vers la page existante la plus proche.",
     "Change each link to a page that exists, or remove it.": "Faites pointer chaque lien vers une page existante, ou retirez-le.",
     "Ask whoever runs the server to check its error log. These pages can vanish from search while it lasts.": "Demandez à la personne qui gère le serveur de vérifier son journal d'erreurs. Ces pages peuvent disparaître des recherches tant que ça dure.",

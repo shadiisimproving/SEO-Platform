@@ -15,8 +15,9 @@
   const T = {
     ready: false, loading: null, failed: "", tasks: [], sites: [],
     view: "kanban", query: "", status: "", kind: "", owner: "", period: "all", month: "", from: "", to: "",
-    saving: false, dragId: null,
+    saving: false, dragId: null, sort: null, // sort: a heading pressed in the table, or null for status then due date
   };
+  const PAGES = "tk"; // the table's pages (table-pages.js), like every long table in the app; its search is the Filter box
   const UNASSIGNED = "__unassigned";
   const finds = new Map(); // what each Create task button on the page would make, by the finding's key
 
@@ -604,13 +605,36 @@
     }).join("")}</div>`;
   }
 
+  /* A heading sorts the table: titles A to Z, the most urgent first, the soonest first. A third press goes back to the usual order. */
+  const SORTS = {
+    title: { get: (task) => task.title || "", first: "asc" },
+    priority: { get: (task) => PRIORITIES.findIndex(([k]) => k === task.priority), first: "desc" },
+    due: { get: (task) => task.due || null, first: "asc" },
+  };
+  const byStatus = (a, b) => STATUSES.findIndex(([k]) => k === a.status) - STATUSES.findIndex(([k]) => k === b.status) || byDue(a, b);
+  function sortedRows(rows) {
+    if (!T.sort || !SORTS[T.sort.id]) return [...rows].sort(byStatus);
+    const { get } = SORTS[T.sort.id], dir = T.sort.dir === "asc" ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      const x = get(a), y = get(b);
+      if (x === null || x === undefined) return y === null || y === undefined ? byStatus(a, b) : 1; // no date goes last, whichever way
+      if (y === null || y === undefined) return -1;
+      return ((typeof x === "number" ? x - y : String(x).localeCompare(String(y), UI.locale())) * dir) || byStatus(a, b);
+    });
+  }
+  const sortHead = (id, label) => {
+    const on = T.sort?.id === id;
+    return `<th scope="col" aria-sort="${on ? (T.sort.dir === "asc" ? "ascending" : "descending") : "none"}"><button type="button" class="th-btn" data-tk-sort="${id}">${t(label)}${on ? icon(T.sort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
+  };
+
   function table(list) {
-    const rows = [...list].filter((task) => !T.status || task.status === T.status).sort((a, b) => STATUSES.findIndex(([k]) => k === a.status) - STATUSES.findIndex(([k]) => k === b.status) || byDue(a, b));
+    const rows = sortedRows(list.filter((task) => !T.status || task.status === T.status));
     if (!rows.length) return COMP.empty(t("Nothing to show with these filters"), t("Change the filters above to see more tasks."));
     const showSite = !hostHere();
-    return `<div class="table-wrap"><table class="data tk-table" id="tk-table">
-      <thead><tr><th scope="col">${t("Title")}</th><th scope="col">${t("Status")}</th><th scope="col">${t("Priority")}</th>${showSite ? `<th scope="col">${t("Site")}</th>` : ""}<th scope="col">${t("Owner")}</th><th scope="col">${t("Due date")}</th><th scope="col">${t("Type")}</th></tr></thead>
-      <tbody>${rows.map((task) => `<tr data-task-row="${task.id}">
+    const view = TP.view(PAGES, rows);
+    return `<div class="tk-list"><div class="table-wrap"><table class="data tk-table" id="tk-table">
+      <thead><tr>${sortHead("title", "Title")}<th scope="col">${t("Status")}</th>${sortHead("priority", "Priority")}${showSite ? `<th scope="col">${t("Site")}</th>` : ""}<th scope="col">${t("Owner")}</th>${sortHead("due", "Due date")}<th scope="col">${t("Type")}</th></tr></thead>
+      <tbody>${view.rows.map((task) => `<tr data-task-row="${task.id}">
         <td class="head-cell"><button type="button" class="kw tk-row-title" data-task-open="${task.id}" dir="auto" style="text-align:start">${esc(task.title)}</button>${task.source?.label ? `<span class="second" dir="auto">${esc(task.source.label)}</span>` : ""}${findingTag(task)}</td>
         <td data-label="${t("Status")}">${moveSelect(task)}</td>
         <td data-label="${t("Priority")}">${task.priority === "high" ? status("serious", t("High")) : `<span class="small sec">${priorityWord(task.priority)}</span>`}</td>
@@ -618,7 +642,8 @@
         <td data-label="${t("Owner")}" dir="auto">${task.owner_label ? esc(task.owner_label) : `<span class="muted">—</span>`}</td>
         <td data-label="${t("Due date")}">${dueBit(task, carriedFrom(task)) || `<span class="muted">—</span>`}</td>
         <td data-label="${t("Type")}" dir="auto">${task.kind ? esc(t(task.kind)) : `<span class="muted">—</span>`}</td>
-      </tr>`).join("")}</tbody></table></div>`;
+      </tr>`).join("")}</tbody></table></div>
+      ${TP.footer(PAGES, view, { noun: t(view.total === 1 ? "task" : "tasks") })}</div>`;
   }
 
   function bodyHtml() {
@@ -745,16 +770,22 @@
         return;
       }
       if ((el = hit("#tk-retry"))) { T.ready = false; paint(); load().then(() => UI.render()); return; }
+      if ((el = hit("[data-tk-sort]"))) {
+        const id = el.dataset.tkSort, first = SORTS[id].first;
+        T.sort = T.sort?.id !== id ? { id, dir: first } : T.sort.dir === first ? { id, dir: first === "asc" ? "desc" : "asc" } : null;
+        TP.reset(PAGES); paint(); UI.$(`[data-tk-sort="${id}"]`)?.focus({ preventScroll: true });
+        return;
+      }
       if ((el = hit("[data-task-period]"))) {
-        T.period = el.dataset.taskPeriod;
+        T.period = el.dataset.taskPeriod; TP.reset(PAGES);
         if (T.period === "month" && !T.month) T.month = monthOf(new Date());
         UI.render();
         UI.$(`[data-task-period="${T.period}"]`)?.focus({ preventScroll: true });
         return;
       }
-      if ((el = hit("[data-task-month]"))) { moveMonth(Number(el.dataset.taskMonth)); const again = el.dataset.taskMonth; UI.render(); UI.$(`[data-task-month="${again}"]`)?.focus({ preventScroll: true }); return; }
+      if ((el = hit("[data-task-month]"))) { moveMonth(Number(el.dataset.taskMonth)); TP.reset(PAGES); const again = el.dataset.taskMonth; UI.render(); UI.$(`[data-task-month="${again}"]`)?.focus({ preventScroll: true }); return; }
       if ((el = hit("[data-task-view]"))) {
-        T.view = el.dataset.taskView;
+        T.view = el.dataset.taskView; TP.reset(PAGES);
         UI.store.set("taskView", T.view);
         if (T.view === "kanban") T.status = "";
         UI.render();
@@ -777,17 +808,17 @@
       if (e.target.matches?.(".tk-links-add") && (!e.inputType || e.inputType === "insertReplacementText")) commitLink(e.target.closest("[data-links]").dataset.links);
     });
     document.addEventListener("input", (e) => {
-      if (e.target.id === "tk-query") { T.query = e.target.value; paint(); }
+      if (e.target.id === "tk-query") { T.query = e.target.value; TP.reset(PAGES); paint(); }
     });
     document.addEventListener("change", (e) => {
       const id = e.target.id;
       if (id === "task-site") { fillSuggestions(); return; }
       if (e.target.matches?.("[data-task-move]")) { moveTask(Number(e.target.dataset.taskMove), e.target.value, `#${id}`); return; }
-      if (id === "tk-status") { T.status = e.target.value; paint(); return; }
-      if (id === "tk-kind") { T.kind = e.target.value; paint(); return; }
-      if (id === "tk-owner") { T.owner = e.target.value; paint(); return; }
-      if (id === "tk-from") { T.from = e.target.value; paint(); return; }
-      if (id === "tk-to") { T.to = e.target.value; paint(); }
+      if (id === "tk-status") { T.status = e.target.value; TP.reset(PAGES); paint(); return; }
+      if (id === "tk-kind") { T.kind = e.target.value; TP.reset(PAGES); paint(); return; }
+      if (id === "tk-owner") { T.owner = e.target.value; TP.reset(PAGES); paint(); return; }
+      if (id === "tk-from") { T.from = e.target.value; TP.reset(PAGES); paint(); return; }
+      if (id === "tk-to") { T.to = e.target.value; TP.reset(PAGES); paint(); }
     });
     // Dragging is the quick way. Each card's status list does the same from a keyboard or a phone.
     document.addEventListener("dragstart", (e) => {
@@ -820,6 +851,7 @@
       moveTask(id, col.dataset.taskCol);
     });
     window.addEventListener("seocc:site-added", () => { T.sites = []; load().then(changed); });
+    TP.on(PAGES, paint); // another page, another size: only the list is drawn again, so the Filter box keeps its focus
     // A board left open catches up when someone comes back to it. An open panel keeps what's being typed.
     const catchUp = async () => {
       if (document.visibilityState !== "visible" || !T.ready || T.dragId !== null || UI.state.route !== "tasks") return;

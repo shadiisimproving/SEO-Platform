@@ -6,6 +6,10 @@ Three steps, cheapest first:
    first real run (38 domains, 2026-11-04), small real sites in the same market sat at 70-90%, so rank is shown, not judged.
 3. Its home page, read once: gone, down, parked, spam words, almost empty, or hidden from search engines.
 
+When the uploaded file gives a domain a spam score, the file decides, not these steps: above 30 is spam, the rest is good
+(the owner asked for this on 2026-11-10, after betmatecasino.com was flagged by its name with a score of 3). The steps
+only judge domains the file has no score for, and the screen says the system flagged those.
+
 A site that doesn't let the app read its home page isn't spam, so it stays good, with a note. A rule can be wrong, so a
 flagged domain is never removed: it stays in the list with its reason, and a person's decision always wins. The numbers
 were set against that first real run, which is a small sample, so keep checking them.
@@ -17,7 +21,7 @@ import time
 from sqlalchemy import Engine, text
 
 from seo.backlinks import logos
-from seo.backlinks.cleaner import root_domain
+from seo.backlinks.cleaner import SPAM_THRESHOLD, root_domain
 from seo.competitors import pages
 from seo.core import budget
 from seo.crawl.extract import extract
@@ -44,7 +48,7 @@ ALMOST_EMPTY_CHARACTERS = 200
 
 # Plain words for why a domain was filtered out. The screen shows these.
 REASONS = {
-    "spam_score": "Its spam score is above 30",
+    "spam_score": "Spam score above 30 in the uploaded file",
     "name_words": "Spam words in its name",
     "free_tld": "A free domain ending that spammers favour",
     "abused_tld": "A domain ending known for abuse",
@@ -82,6 +86,25 @@ PARKED_WORDS = (
     "domaine est à vendre", "domaine à vendre", "dominio en venta", "dominio está en venta", "domain steht zum verkauf", "domain kaufen",
     "этот домен продается", "هذا النطاق للبيع", "域名出售", "このドメインは販売中",
 )
+
+
+# Who flagged it. The screen only adds words for the system: the file's and the person's reasons already say who.
+BY_FILE, BY_SYSTEM, BY_YOU = "file", "system", "you"
+
+
+def verdict(spam_score: float | None, system_quality: str | None, system_reason: str | None, decision: str | None = None) -> tuple[str, str | None, str | None]:
+    """The quality, the reason and who flagged it. A person first, then the uploaded file's spam score, then the app's own checks."""
+    if decision == "keep":
+        return GOOD, None, None
+    if decision == "spam":
+        return SPAM, "my_choice", BY_YOU
+    if spam_score is not None:
+        return (SPAM, "spam_score", BY_FILE) if spam_score > SPAM_THRESHOLD else (GOOD, None, None)
+    if system_reason == "spam_score":  # set by an older version from some other file's score: the checks haven't judged it yet
+        return PENDING, None, None
+    if system_quality == SPAM:
+        return SPAM, system_reason, BY_SYSTEM
+    return system_quality or PENDING, None, None
 
 
 def judge_name(domain: str) -> str | None:
@@ -160,7 +183,10 @@ def note_domains(engine: Engine, rows: list[dict]) -> None:
 
 
 def queue_checks(engine: Engine, part: int = 0) -> None:
-    with engine.connect() as conn:
+    with engine.begin() as conn:
+        # An older version stored a file's spam score here as the system's verdict, so the checks never read the page. A file's
+        # score now stays with the file (verdict), and these go back to be checked like any other.
+        conn.execute(text("UPDATE link_domains SET quality = 'pending', reason = NULL, check_attempts = 0 WHERE reason = 'spam_score'"))
         waiting = conn.execute(text("SELECT 1 FROM link_domains WHERE quality = 'pending' LIMIT 1")).first()
     if waiting:
         queue.enqueue(engine, LANE, JOB_KIND, payload={"part": part}, dedupe_key=f"linkgaps:{part}", max_attempts=2)
@@ -222,7 +248,7 @@ def run_checks(job, engine: Engine) -> None:
                             text("UPDATE link_domains SET quality = :q, reason = :r, page_note = :n, page_title = :t, checked_at = UTC_TIMESTAMP(3) WHERE domain = :d"),
                             {"q": quality, "r": reason, "n": note, "t": title, "d": domain},
                         )
-                if quality == GOOD:
+                if quality != "retry":  # flagged ones too: a row is easier to tell apart with its icon, good or not
                     logos.queue_for(engine, [domain])
     finally:
         fetcher.close()

@@ -164,7 +164,7 @@ def test_with_always_fresh_dates_the_longest_unread_pages_go_first(world, monkey
     site = rows(world.engine, "SELECT id, host, start_url, kind FROM sites WHERE id = :i", i=rival)[0]
     plan = crawl._plan(world.engine, rival, site, True, links.fetcher_factory(), lambda: None)
     # Before: the first pages in the sitemap, p0 to p3, every day, and p4 onwards never again (F62).
-    assert [u for u, _new in plan["todo"]] == ["https://rival.example/", "https://rival.example/p29", "https://rival.example/p28", "https://rival.example/p27"]
+    assert [u for u, *_ in plan["todo"]] == ["https://rival.example/", "https://rival.example/p29", "https://rival.example/p28", "https://rival.example/p27"]
 
 
 def test_a_page_the_reader_chokes_on_is_saved_and_the_next_one_still_read(world, monkeypatch):

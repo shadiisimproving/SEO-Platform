@@ -1,7 +1,8 @@
 /* How well the app can read a competitor's site, under the profile's header. Shown only when there's something to say:
    no sitemap, a sitemap cut at the app's limit, a first read that still needs days, pages that need JavaScript, a site that
-   blocks the app. Firecrawl, when connected, is the backup: its button first shows what it costs and the credits left,
-   and nothing is spent until the person confirms. */
+   blocks the app. How the site is followed (every page daily, WordPress, its sitemap, or in tiers) is on the profile's
+   "Last read" line instead (COMP.reading.follow), so it takes no room. Firecrawl, when connected, is the backup: its button first shows what it costs and the credits left, and nothing is
+   spent until the person confirms. Its weekly check runs by itself only after that yes, and stops with one click. */
 (() => {
   "use strict";
   const COMP = (window.COMP = window.COMP || {});
@@ -13,6 +14,16 @@
   const many = (n, one, other, values = {}) => fill((U().state.lang === "fr" ? n < 2 : n === 1) ? one : other, { n: U().num(n), ...values });
   const busy = (f) => f?.status === "queued" || f?.status === "running";
 
+  /* How the app follows this site, in one line: the answer to "would I see their edits?" (2026-11-10). */
+  function followLine(c) {
+    const w = c.follow || {};
+    if (w.mode === "all") return { kind: "good", short: t("every page read daily"), text: many(c.pages_known || 0, "Its {n} page is read every day, so an edit shows the next morning.", "All its {n} pages are read every day, so an edit shows the next morning.") };
+    if (w.mode === "wordpress") return { kind: "good", short: t("WordPress lists its edits"), text: t("WordPress lists each edit on this site, so an edited page is read the same night.") };
+    if (w.mode === "sitemap") return { kind: "good", short: t("its sitemap dates each edit"), text: t("Its sitemap dates each edit, so an edited page is read the same night.") };
+    if (w.mode === "tiers") return { kind: "info", short: fill("ranking pages daily, the rest every {rest}", { rest: many(w.rest_every_days || 1, "{n} day", "{n} days") }), text: fill("Its sitemap doesn't say what changed, so pages in your top {top} and its main pages are read every day, its other ranking pages and recently edited pages every {few} days, and the rest about every {rest}.", { top: U().num(w.top_rank || 20), few: U().num(w.every_few_days || 3), rest: many(w.rest_every_days || 1, "{n} day", "{n} days") }) };
+    return null;
+  }
+
   function lines(p) {
     const c = p.crawl || {}, f = c.firecrawl || {}, out = [];
     if (!c.status || c.status === "none" || p.tracking === "off") return out;
@@ -21,9 +32,10 @@
       : "");
     const connectHint = `<span class="small sec">${t("Firecrawl can do it, once it's connected in Settings.")} <button type="button" class="link-btn" data-go="settings">${t("Go to Settings")}</button></span>`;
 
+    // How the site is followed rides on the profile's "Last read" line (COMP.reading.follow), so this box only holds problems.
     if (c.status === "blocked") {
       // The header's Blocked chip and this one line say it all: the site refuses bots, rankings still work, Firecrawl is the only way in.
-      out.push({ kind: "warn", text: `${t("This site doesn't allow automated visitors, so its edits can't be tracked. Rankings, AI Overviews and shared keywords still work.")}${f.connected ? ` ${t("Firecrawl can read it for you. Only a click does it.")}` : ""}`, act: f.connected ? fcButton("read", t("Read with Firecrawl"), Math.min(c.pages_known || 1, 50)) : connectHint });
+      out.push({ kind: "warn", text: `${t("This site doesn't allow automated visitors, so its edits can't be tracked. Rankings, AI Overviews and shared keywords still work.")} ${t("When its title changes in your ranking checks, the timeline shows the page as probably edited.")}${f.connected ? ` ${t("Firecrawl can read it for you. Only a click does it.")}` : ""}`, act: f.connected ? fcButton("read", t("Read with Firecrawl"), Math.min(c.pages_known || 1, 50)) : connectHint });
     } else {
       const listedByFirecrawl = f.action === "map" && f.status === "ok" && f.finished_at;
       if ((c.list_source === "links" || c.list_source === "feed") && listedByFirecrawl) {
@@ -43,8 +55,10 @@
         out.push({ kind: "warn", text: many(c.js_only, "{n} page only shows its text with JavaScript, which the app can't run, so its words and edits aren't seen.", "{n} pages only show their text with JavaScript, which the app can't run, so their words and edits aren't seen."), act: f.connected ? fcButton("read", t("Read with Firecrawl"), Math.min(c.js_only, 50)) : connectHint });
       }
     }
-    if (f.pages) {
-      out.push({ kind: "info", text: many(f.pages, "{n} page was read with Firecrawl. The daily read leaves it alone, so check it for edits now and then.", "{n} pages were read with Firecrawl. The daily read leaves them alone, so check them for edits now and then."), act: f.connected ? fcButton("reread", t("Check for edits"), Math.min(f.pages, 50)) : "" });
+    if (f.pages && f.weekly) {
+      out.push({ kind: "info", text: many(f.pages, "{n} page was read with Firecrawl. Its ranking pages are checked for edits every week, as you asked.", "{n} pages were read with Firecrawl. Those that rank for your keywords are checked for edits every week, as you asked."), act: f.connected ? `${fcButton("reread", t("Check for edits"), Math.min(f.pages, 50))}<button type="button" class="link-btn" data-rd-weekly-off>${esc(t("Stop the weekly check"))}</button>` : "" });
+    } else if (f.pages) {
+      out.push({ kind: "info", text: many(f.pages, "{n} page was read with Firecrawl. The daily read leaves it alone, so check it for edits now and then.", "{n} pages were read with Firecrawl. The daily read leaves them alone, so check them for edits now and then."), act: f.connected ? `${fcButton("reread", t("Check for edits"), Math.min(f.pages, 50))}<button type="button" class="btn btn-small btn-ghost" data-rd-ask="weekly" ${busy(f) ? "disabled" : ""}>${esc(t("Check every week"))}</button>` : "" });
     }
     if (busy(f)) {
       out.push({ kind: "info", spin: true, text: f.status === "queued" ? t("Firecrawl is about to start.") : f.action === "map" ? t("Firecrawl is listing the pages.") : fill("Firecrawl is reading: {done} of {asked} pages.", { done: U().num(f.done || 0), asked: U().num(f.asked || 0) }) });
@@ -81,6 +95,8 @@
     const holder = document.createElement("div");
     U().setHTML(holder, html);
     const fresh = holder.firstElementChild;
+    // A click inside the folded notes repaints the box: the fold stays as the person left it, not snapped shut.
+    if (fresh && node.querySelector(".rd-fold")?.open) { const fold = fresh.querySelector(".rd-fold"); if (fold) fold.open = true; }
     if (fresh) node.replaceWith(fresh); else node.remove();
   }
 
@@ -107,6 +123,7 @@
     map: ["List all its pages with Firecrawl?", "This uses 1 credit. The pages it finds are added, and the daily read reads them for free, up to 300 a day."],
     read: ["Read these pages with Firecrawl?", "Each page uses 1 credit. Pages that rank for your keywords go first."],
     reread: ["Check these pages for edits with Firecrawl?", "Each page uses 1 credit. The oldest copies go first, and any change shows as an edit."],
+    weekly: ["Check them for edits every week with Firecrawl?", "Only the pages that rank for your keywords, 1 credit each, once a week. You can stop it here at any time."],
   };
 
   async function ask(button) {
@@ -129,10 +146,11 @@
       : t(offer.error || "Firecrawl didn't say how many credits are left.");
     const most = Math.min(what.pages || 1, offer.most_per_run || 50);
     const tooFew = credits && typeof credits.left === "number" && credits.left < 1;
-    const count = action === "map" ? "" : `<label class="rd-count">${esc(many(what.pages, "Pages to read, of {n}:", "Pages to read, of {n}:"))} <input type="number" class="input" min="1" max="${most}" value="${Math.min(most, credits && typeof credits.left === "number" ? Math.max(1, credits.left) : most)}" data-rd-pages></label>`;
+    const perWeek = action === "weekly" ? ` ${many(what.pages, "{n} page, about {n} credit a week.", "{n} pages, about {n} credits a week.")}` : ""; // a page costs a credit
+    const count = action === "map" || action === "weekly" ? "" : `<label class="rd-count">${esc(many(what.pages, "Pages to read, of {n}:", "Pages to read, of {n}:"))} <input type="number" class="input" min="1" max="${most}" value="${Math.min(most, credits && typeof credits.left === "number" ? Math.max(1, credits.left) : most)}" data-rd-pages></label>`;
     U().setHTML(panel, `<p class="rd-q"><b>${esc(t(WORDS[action][0]))}</b> ${esc(t(WORDS[action][1]))}</p>
-      <p class="small sec">${esc(left)}${action === "map" ? "" : ` ${esc(fill("At most {n} pages a click.", { n: num(offer.most_per_run || 50) }))}`}</p>
-      <div class="rd-go">${count}<button type="button" class="btn btn-small btn-main" data-rd-go="${action}" ${tooFew ? "disabled" : ""}>${U().logo("firecrawl", 14)}${t(action === "map" ? "List the pages" : action === "reread" ? "Check them" : "Read them")}</button><button type="button" class="btn btn-small btn-ghost" data-rd-cancel>${t("Cancel")}</button></div>
+      <p class="small sec">${esc(left)}${esc(perWeek)}${action === "map" || action === "weekly" ? "" : ` ${esc(fill("At most {n} pages a click.", { n: num(offer.most_per_run || 50) }))}`}</p>
+      <div class="rd-go">${count}<button type="button" class="btn btn-small btn-main" data-rd-go="${action}" ${tooFew ? "disabled" : ""}>${U().logo("firecrawl", 14)}${t(action === "map" ? "List the pages" : action === "reread" ? "Check them" : action === "weekly" ? "Yes, every week" : "Read them")}</button><button type="button" class="btn btn-small btn-ghost" data-rd-cancel>${t("Cancel")}</button></div>
       <p class="error" role="alert" hidden></p>`);
   }
 
@@ -143,13 +161,30 @@
     if (input) body.pages = Number(input.value);
     button.disabled = true;
     try {
-      await COMP.api("POST", `competitors/${id}/firecrawl`, body);
+      if (action === "weekly") await COMP.api("POST", `competitors/${id}/firecrawl/weekly`, { site_id: siteId, on: true });
+      else await COMP.api("POST", `competitors/${id}/firecrawl`, body);
     } catch (err) {
       button.disabled = false;
       problem.textContent = t(err.message); problem.hidden = false;
       return;
     }
-    U().toast(t(action === "map" ? "Firecrawl is listing the pages." : "Firecrawl is reading the pages. You can leave this screen."), { kind: "info" });
+    U().toast(t(action === "map" ? "Firecrawl is listing the pages." : action === "weekly" ? "Done. Firecrawl checks them every week from tonight." : "Firecrawl is reading the pages. You can leave this screen."), { kind: "info" });
+    const p = { id, crawl: null };
+    try { Object.assign(p, await COMP.api("GET", `competitors/${id}/reading?site_id=${siteId}`)); } catch { return; }
+    repaint(p, siteId);
+  }
+
+  async function weeklyOff(button) {
+    const node = button.closest("[data-rd-box]"), id = Number(node.dataset.rdBox), siteId = Number(node.dataset.rdSite);
+    button.disabled = true;
+    try {
+      await COMP.api("POST", `competitors/${id}/firecrawl/weekly`, { site_id: siteId, on: false });
+    } catch (err) {
+      button.disabled = false;
+      U().toast(t(err.message), { kind: "error" });
+      return;
+    }
+    U().toast(t("The weekly check is stopped. Nothing more is spent."), { kind: "info" });
     const p = { id, crawl: null };
     try { Object.assign(p, await COMP.api("GET", `competitors/${id}/reading?site_id=${siteId}`)); } catch { return; }
     repaint(p, siteId);
@@ -160,17 +195,20 @@
     if (askBtn) { event.stopPropagation(); ask(askBtn); return; }
     const goBtn = event.target.closest?.("[data-rd-go]");
     if (goBtn) { event.stopPropagation(); go(goBtn); return; }
+    const off = event.target.closest?.("[data-rd-weekly-off]");
+    if (off) { event.stopPropagation(); weeklyOff(off); return; }
     const cancel = event.target.closest?.("[data-rd-cancel]");
     if (cancel) { const panel = cancel.closest(".rd-confirm"); panel.hidden = true; U().setHTML(panel, ""); }
   }, true);
 
-  COMP.reading = { box };
+  COMP.reading = { box, follow: (c) => (c && c.status !== "blocked" ? followLine(c) : null) };
 
   Object.assign(window.FR = window.FR || {}, {
     "How well the app reads this site": "Ce que l'appli arrive à lire sur ce site",
     "Firecrawl can do it, once it's connected in Settings.": "Firecrawl peut le faire, une fois connecté dans les réglages.",
     "Go to Settings": "Aller aux réglages",
     "This site doesn't allow automated visitors, so its edits can't be tracked. Rankings, AI Overviews and shared keywords still work.": "Ce site n'autorise pas les visiteurs automatisés : ses modifications ne peuvent donc pas être suivies. Les positions, les AI Overviews et les mots-clés partagés fonctionnent toujours.",
+    "When its title changes in your ranking checks, the timeline shows the page as probably edited.": "Quand son titre change dans vos suivis de positions, la chronologie indique la page comme sans doute modifiée.",
     "Firecrawl can read it for you. Only a click does it.": "Firecrawl peut le lire pour vous. Seul un clic le lance.",
     "{n} more note on how the app reads this site": "{n} autre remarque sur la lecture de ce site par l'appli",
     "{n} more notes on how the app reads this site": "{n} autres remarques sur la lecture de ce site par l'appli",
@@ -210,7 +248,7 @@
     "Backup reader for competitor sites the app can't read itself": "Lecteur de secours pour les sites concurrents que l'appli ne peut pas lire elle-même",
     "Free plan, then from $16 a month": "Offre gratuite, puis à partir de 16 $ par mois",
     "1 credit a page read, 1 credit a page list": "1 crédit par page lue, 1 crédit par liste de pages",
-    "Off until you paste a key. It never runs by itself: a competitor's page shows what it would cost, and it only runs when you press the button. At most 50 pages a click.": "Désactivé tant qu'aucune clé n'est collée. Il ne tourne jamais seul : la page d'un concurrent indique le coût, et il ne se lance que lorsque vous appuyez sur le bouton. Au plus 50 pages par clic.",
+    "Off until you paste a key. It never runs without your yes: a competitor's page shows what it would cost, and it runs when you press the button, or once a week where you said yes to a weekly check. At most 50 pages a click.": "Désactivé tant qu'aucune clé n'est collée. Il ne tourne jamais sans votre accord : la page d'un concurrent indique le coût, et il se lance lorsque vous appuyez sur le bouton, ou une fois par semaine là où vous avez accepté une vérification hebdomadaire. Au plus 50 pages par clic.",
     "It sends the competitor's page addresses to Firecrawl, which reads them for you. Nothing about your own sites or leads is sent.": "Les adresses des pages du concurrent sont envoyées à Firecrawl, qui les lit pour vous. Rien sur vos propres sites ou vos prospects n'est envoyé.",
     "Create a Firecrawl account. The free plan has credits each month, and no card is needed.": "Créez un compte Firecrawl. L'offre gratuite donne des crédits chaque mois, sans carte bancaire.",
     "Open Firecrawl": "Ouvrir Firecrawl",
@@ -224,5 +262,24 @@
     "Firecrawl's run stopped before the end. Pages read before it are saved. Try again.": "Le passage de Firecrawl s'est arrêté avant la fin. Les pages lues avant sont enregistrées. Réessayez.",
     "The last read stopped before the end. Pages read before it are saved, and it carries on at the next daily read.": "La dernière lecture s'est arrêtée avant la fin. Les pages lues avant sont enregistrées, et elle reprend à la prochaine lecture quotidienne.",
     "There's no page here that needs Firecrawl.": "Aucune page ici n'a besoin de Firecrawl.",
+    "Its {n} page is read every day, so an edit shows the next morning.": "Sa page est lue chaque jour : une modification apparaît le lendemain matin.",
+    "All its {n} pages are read every day, so an edit shows the next morning.": "Ses {n} pages sont lues chaque jour : une modification apparaît le lendemain matin.",
+    "WordPress lists each edit on this site, so an edited page is read the same night.": "WordPress liste chaque modification de ce site : une page modifiée est lue la nuit même.",
+    "Its sitemap dates each edit, so an edited page is read the same night.": "Son sitemap date chaque modification : une page modifiée est lue la nuit même.",
+    "Its sitemap doesn't say what changed, so pages in your top {top} and its main pages are read every day, its other ranking pages and recently edited pages every {few} days, and the rest about every {rest}.": "Son sitemap n'indique pas ce qui change : les pages de votre top {top} et ses pages principales sont lues chaque jour, ses autres pages positionnées et celles modifiées récemment tous les {few} jours, et le reste environ tous les {rest}.",
+    "Check every week": "Vérifier chaque semaine",
+    "every page read daily": "chaque page lue chaque jour", "WordPress lists its edits": "WordPress liste ses modifications",
+    "its sitemap dates each edit": "son sitemap date chaque modification", "ranking pages daily, the rest every {rest}": "pages positionnées chaque jour, le reste tous les {rest}",
+    "Stop the weekly check": "Arrêter la vérification hebdomadaire",
+    "{n} page was read with Firecrawl. Its ranking pages are checked for edits every week, as you asked.": "{n} page a été lue avec Firecrawl. Elle est vérifiée chaque semaine si elle se positionne sur vos mots-clés, comme demandé.",
+    "{n} pages were read with Firecrawl. Those that rank for your keywords are checked for edits every week, as you asked.": "{n} pages ont été lues avec Firecrawl. Celles qui se positionnent sur vos mots-clés sont vérifiées chaque semaine, comme demandé.",
+    "Check them for edits every week with Firecrawl?": "Vérifier leurs modifications chaque semaine avec Firecrawl ?",
+    "Only the pages that rank for your keywords, 1 credit each, once a week. You can stop it here at any time.": "Seulement les pages qui se positionnent sur vos mots-clés, 1 crédit chacune, une fois par semaine. Vous pouvez l'arrêter ici à tout moment.",
+    "{n} page, about {n} credit a week.": "{n} page, environ {n} crédit par semaine.",
+    "{n} pages, about {n} credits a week.": "{n} pages, environ {n} crédits par semaine.",
+    "Yes, every week": "Oui, chaque semaine",
+    "Done. Firecrawl checks them every week from tonight.": "C'est fait. Firecrawl les vérifie chaque semaine à partir de cette nuit.",
+    "The weekly check is stopped. Nothing more is spent.": "La vérification hebdomadaire est arrêtée. Plus rien n'est dépensé.",
+    "None of the pages Firecrawl read ranks for your keywords, so there's nothing to check each week.": "Aucune des pages lues par Firecrawl ne se positionne sur vos mots-clés : il n'y a rien à vérifier chaque semaine.",
   });
 })();

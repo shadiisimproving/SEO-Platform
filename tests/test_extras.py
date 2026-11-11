@@ -407,3 +407,25 @@ def test_a_cloudflare_token_is_tested_on_radar_itself_and_its_refusal_reads_plai
     assert answer["ok"] is False
     assert answer["note"].startswith("Cloudflare Radar refused the request: Invalid API Token (code 1000).")
     assert "Account, Radar, Read" in answer["note"] and "{" not in answer["note"]
+
+
+def test_a_one_letter_answer_is_refused_and_never_kept(engine, key, web):
+    """Seen live on 2026-11-10: a free model stopped after "A", and that was kept and shown as the summary."""
+    event, _ = _rival_change(engine)
+    sources.save_app_key(engine, "openrouter", "or-key-1234")
+    web.answers["chat/completions"] = httpx.Response(200, json={"choices": [{"message": {"content": "A"}}]})
+    with pytest.raises(Refused) as err:
+        summaries.summarise(engine, event)
+    assert "gave no answer" in str(err.value)
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT summaries FROM change_events WHERE id = :i"), {"i": event}).scalar() is None
+
+
+def test_a_broken_answer_kept_before_is_asked_for_again(engine, key, web):
+    event, _ = _rival_change(engine)
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE change_events SET summaries = :s WHERE id = :i"), {"s": json.dumps({"en": {"text": "A", "model": "x", "language": "en"}}), "i": event})
+    sources.save_app_key(engine, "openrouter", "or-key-1234")
+    web.answers["chat/completions"] = AI
+    assert summaries.summarise(engine, event)["text"] == "The title changed."
+    assert len(web.calls) == 1

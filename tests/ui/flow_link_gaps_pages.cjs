@@ -22,8 +22,15 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await page.goto(BASE + "#competitors/gaps"); await page.waitForSelector("#cg-table", { timeout: 20000 }); await page.waitForTimeout(800);
   const rows = () => page.locator("#cg-table tbody tr").count();
   const range = async () => (await page.locator(".tp-range").textContent()).trim();
-  const options = await page.locator("#cg-filter option").allTextContents();
+  // The competitor choice is a menu, so each competitor shows its logo (a native list can't show pictures).
+  await page.click("#cg-filter"); await page.waitForTimeout(300);
+  const options = await page.locator(".cg-pick-menu [data-cg-choose]").evaluateAll((bs) => bs.map((b) => `${b.querySelector(".cg-pick-word").textContent.trim()} (${b.querySelector(".cg-pick-n").textContent.trim()})`));
+  const logos = await page.locator(".cg-pick-menu [data-cg-choose]").evaluateAll((bs) => bs.slice(1).every((b) => b.querySelector(".site-logo")));
   check("the competitor choice offers all together and each one, with counts", /^All competitors, together \(\d+\)$/.test(options[0]) && options.length >= 3 && options.slice(1).every((o) => /\(\d+\)$/.test(o)), options.join(" | "));
+  check("each competitor in the choice has its logo", logos);
+  await page.screenshot({ path: OUT + "0-competitor-menu.png" });
+  await page.keyboard.press("Escape"); await page.waitForTimeout(200);
+  check("Escape closes the menu and focus goes back to the button", !(await page.locator("#popover").count()) && (await page.evaluate(() => document.activeElement?.id)) === "cg-filter");
   check("25 rows on the first page", (await rows()) === 25);
   check("the footer gives the real total", /^1–25 of \d+ domains$/.test(await range()), await range());
   await page.screenshot({ path: OUT + "1-first-page.png" });
@@ -37,11 +44,12 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   check("search filters as you type, and the cursor stays in the box", /of 111 domains/.test(await range()) && (await page.evaluate(() => document.activeElement?.hasAttribute("data-tp-search"))), await range());
   await page.click("[data-tp-clear]"); await page.waitForTimeout(500);
   const all = Number((await range()).match(/of (\d+)/)[1]);
-  await page.selectOption("#cg-filter", { index: 1 }); await page.waitForTimeout(500);
+  await page.click("#cg-filter"); await page.waitForTimeout(300);
+  const said = Number((await page.locator(".cg-pick-menu [data-cg-choose] .cg-pick-n").nth(1).textContent()).replace(/\D/g, ""));
+  await page.locator(".cg-pick-menu [data-cg-choose]").nth(1).click(); await page.waitForTimeout(500);
   const one = Number((await range()).match(/of (\d+)/)[1]);
-  const said = Number((await page.locator("#cg-filter option").nth(1).textContent()).match(/\((\d+)\)/)[1]);
   check("one competitor shows its own domains, as many as its option said", one < all && one === said, `${one} of ${all}, option said ${said}`);
-  await page.selectOption("#cg-filter", ""); await page.waitForTimeout(400);
+  await page.click("#cg-filter"); await page.click('[data-cg-choose=""]'); await page.waitForTimeout(400);
   await page.click('[data-cg-reach="several"]'); await page.waitForTimeout(500);
   const several = await page.locator("#cg-table tbody tr td:nth-child(3) b").allTextContents();
   check("2 or more of them keeps only domains linking to several", several.length > 0 && several.every((n) => Number(n) >= 2));

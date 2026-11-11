@@ -6,10 +6,11 @@
   const COMP = window.COMP;
   let UI = null, t = null, esc = null;
   const SECTIONS = ["rivals", "keywords", "moves", "links"];
-  /* Each section opens on a few rows: the page reads in seconds, and "Show more" brings the rest. */
-  const FIRST_ROWS = { rivals: 25, keywords: 8, moves: 5, links: 5, flagged: 25 }, MORE_ROWS = 50;
-  const S = { site: null, token: 0, data: {}, errors: {}, limit: {}, list: null, order: null, orderSite: null, find: "", sort: null };
-  const FIND_FROM = 6; // the search box shows from this many competitors, or while a search is on
+  /* Every table, Who is moving too since 2026-11-10, has pages (table-pages.js), as every long table in the app. */
+  const FIRST_ROWS = { moves: 5 }, MORE_ROWS = 50;
+  const PAGES = { rivals: "cs-rivals", keywords: "cs-keywords", links: "cs-links", flagged: "cs-flagged", moves: "cs-moves" };
+  const S = { site: null, token: 0, data: {}, errors: {}, limit: {}, list: null, order: null, orderSite: null, find: "", sort: null, kwRival: "", kwSort: null, lnSort: null, flaggedOpen: false, linkQ: "", mvKind: "all", mvRival: "", mvDays: 30 };
+  const FIND_FROM = 11; // more than 10 rows, as on every table: a search box shows from this many rows, or while a search is on
 
   const fill = (words, values) => t(words).replace(/\{(\w+)\}/g, (all, name) => (name in values ? values[name] : all));
   const attr = (words) => esc(t(words));
@@ -17,7 +18,12 @@
   const engineName = (id) => UI.ENGINES.find(([key]) => key === id)?.[1] || id || "";
   const blank = `<span class="muted">—</span>`;
   const count = (n) => (n === null || n === undefined ? blank : UI.num(n));
-  const pathFor = (part, site) => `collective/${part}${site === COMP.ALL ? "" : `?site_id=${site}`}`;
+  const pathFor = (part, site) => {
+    const q = new URLSearchParams();
+    if (site !== COMP.ALL) q.set("site_id", site);
+    if (part === "moves" && S.mvDays !== 30) q.set("days", S.mvDays);
+    return `collective/${part}${q.size ? `?${q}` : ""}`;
+  };
 
   // ---- loading: each section on its own, and a late answer for another site is dropped --------------
   async function fetchSection(part, token, site) {
@@ -154,7 +160,7 @@
     return [
       one("rivals", "Competitors", d.rivals ? allRivals().length : null, siteCount ? plural(siteCount, "across {n} site", "across {n} sites") : "", "crosshair"),
       one("keywords", "Keywords they beat you on", known(d.keywords, d.keywords?.coverage.checked > 0 && !noneOn(), d.keywords?.total), d.keywords && noneOn() ? t("No competitor is tracked for keywords") : "", "trending-up"),
-      one("moves", "Changes in 30 days", known(d.moves, d.moves?.total > 0 || (!allOff() && !nothingRead && !allFirstRead()), d.moves?.total), d.moves && !d.moves.total ? (allOff() ? t("Every competitor is paused") : nothingRead ? (allRivals().length ? t("None of their pages could be read yet") : "") : allFirstRead() ? t("First reads only set the starting point") : "") : "", "activity", movesLine(d.moves)),
+      one("moves", S.data.moves?.days === 365 ? "Changes in the last year" : fill("Changes in {n} days", { n: UI.num(S.data.moves?.days || 30) }), known(d.moves, d.moves?.total > 0 || (!allOff() && !nothingRead && !allFirstRead()), d.moves?.total), d.moves && !d.moves.total ? (allOff() ? t("Every competitor is paused") : nothingRead ? (allRivals().length ? t("None of their pages could be read yet") : "") : allFirstRead() ? t("First reads only set the starting point") : "") : "", "activity", movesLine(d.moves)),
       one("links", "Domains linking to 2 or more", known(d.links, hasLinks, d.links?.funnel.shared), hasLinks ? plural(d.links.funnel.good, "{n} good domain in all", "{n} good domains in all") : d.links && allOff() ? t("Every competitor is paused") : "", "link-2"),
     ].join("");
   }
@@ -167,12 +173,33 @@
   const loadingCard = (title) => `${sectionHead(title)}${COMP.loading()}`;
   const failedCard = (part, title) => `${sectionHead(title)}<div class="table-wrap"><div class="empty"><h3>${t("That didn't load")}</h3><p>${esc(t(S.errors[part]))}</p><button class="btn" data-cs-retry="${part}">${UI.icon("refresh-cw")}${t("Try again")}</button></div></div>`;
   const limitOf = (part) => S.limit[part] || FIRST_ROWS[part] || 25;
+  /* A header that sorts, in the screen's own look: data names the button's attribute, so each table keeps its own order. */
+  function sortButtonHead(data, key, label, current, cls = "", tip = "") {
+    const on = current?.key === key, dir = on ? current.dir : null;
+    const arrow = on ? UI.icon(dir === "up" ? "arrow-up" : "arrow-down") : "";
+    return `<th scope="col" class="${cls}" aria-sort="${on ? (dir === "up" ? "ascending" : "descending") : "none"}"${tip ? ` data-tip="${attr(tip)}"` : ""}><button type="button" class="cs-sort${on ? " on" : ""}" ${data}="${key}">${t(label)}${arrow}</button></th>`;
+  }
+  /* First press: names A to Z, numbers the way that matters first. The second press turns it round, the third goes back to the usual order. */
+  function nextSort(current, key, first) {
+    if (current?.key !== key) return { key, dir: first };
+    return current.dir === first ? { key, dir: first === "up" ? "down" : "up" } : null;
+  }
+  /* Unknown (null) always goes last, whichever way: it isn't a small number. */
+  function sortList(list, value, sort) {
+    if (!sort) return list;
+    const up = sort.dir === "up" ? 1 : -1;
+    return [...list].sort((a, b) => {
+      const x = value(a), y = value(b);
+      if (x === null || x === undefined || y === null || y === undefined) return (x === null || x === undefined) - (y === null || y === undefined);
+      return (typeof x === "number" ? x - y : String(x).localeCompare(String(y), UI.state.lang)) * up;
+    });
+  }
+  /* A search that finds nothing says so, with the way back. */
+  const noneFound = (words, key) => `<div class="table-wrap"><div class="empty cs-find-none"><p>${esc(words)}</p><button type="button" class="btn btn-small" data-tp-clear data-tp-key="${esc(key)}">${t("Clear the search")}</button></div></div>`;
   function moreButton(part, shown, total, word = "Show more") {
     if (shown >= total) return "";
     return `<div class="cs-more"><span class="small sec">${esc(fill("Showing {shown} of {total}", { shown: UI.num(shown), total: UI.num(total) }))}</span><button class="btn btn-small" data-cs-more="${part}">${t(word)} (${UI.num(total - shown)})</button></div>`;
   }
-  /* The server keeps its lists short. Say so when there's more than it sent. */
-  const sentNote = (sent, total) => (total > sent ? `<p class="help">${esc(fill("The {sent} with the most competitors are listed, of {total}.", { sent: UI.num(sent), total: UI.num(total) }))}</p>` : "");
   /* All my sites: each of my sites as its icon, with the name on hover and for screen readers, so the row stays one line. */
   const siteChip = (rival, site) => `<button type="button" class="cs-site" data-cs-open="${rival.id}" data-cs-site="${site.id}" data-tip="${esc(site.host)}" aria-label="${esc(fill("Open {rival} for {site}", { rival: rival.display || rival.host, site: site.host }))}">${UI.siteLogo(site.host, 18)}<span class="sr">${esc(site.host)}</span></button>`;
 
@@ -233,19 +260,19 @@
   /* A header that sorts: first press most first (A to Z for names), the next one the other way. */
   function sortHead(key, label, cls = "", tip = "") {
     const on = S.sort?.key === key, dir = on ? S.sort.dir : null;
-    const aria = on ? ` aria-sort="${dir === "up" ? "ascending" : "descending"}"` : "";
+    const aria = ` aria-sort="${on ? (dir === "up" ? "ascending" : "descending") : "none"}"`;
     const arrow = on ? UI.icon(dir === "up" ? "arrow-up" : "arrow-down") : "";
     return `<th scope="col" class="${cls}"${aria}${tip ? ` data-tip="${attr(tip)}"` : ""}><button type="button" class="cs-sort${on ? " on" : ""}" data-cs-sort="${key}">${t(label)}${arrow}</button></th>`;
   }
-  /* The table and its Show more, redrawn alone while someone types in the search box, so the box keeps its focus. */
+  /* The table and its pages, redrawn alone while someone types in the search box, so the box keeps its focus. */
   function rivalsList() {
     const all = S.site === COMP.ALL;
-    const every = orderedRivals().filter(matches), rows = every.slice(0, limitOf("rivals"));
+    const every = orderedRivals().filter(matches), page = TP.view(PAGES.rivals, every), rows = page.rows;
     if (S.find && !every.length) return `<div class="table-wrap"><div class="empty cs-find-none"><p>${esc(fill("No competitor matches “{text}”.", { text: S.find }))}</p><button type="button" class="btn btn-small" data-cs-find-clear>${t("Show all")}</button></div></div>`;
-    return `<div class="table-wrap"><table class="data cs-merged" id="cs-rivals-table">
+    return `<div class="cs-pages"><div class="table-wrap"><table class="data cs-merged" id="cs-rivals-table">
         <thead><tr>${sortHead("name", "Competitor")}${all ? `<th scope="col">${t("Your sites")}</th>` : ""}${sortHead("ranks", "Ranks on your keywords", "c")}${sortHead("leads", "Who leads", "c", "Who is ahead on the keywords you share, and how many keywords you weren't found on")}${sortHead("edits", "Edits in 30 days", "c")}<th scope="col">${t("Watching")}</th>${all ? "" : `<th scope="col">${t("Tracking")}</th><th scope="col"><span class="sr">${t("Action")}</span></th>`}</tr></thead>
         <tbody>${rows.map(rivalRow).join("")}</tbody>
-      </table></div>${moreButton("rivals", rows.length, every.length)}${S.find ? `<p class="small sec cs-find-count">${esc(fill("{n} of {total} competitors match.", { n: UI.num(every.length), total: UI.num(allRivals().length) }))}</p>` : ""}`;
+      </table></div>${TP.footer(PAGES.rivals, page, { noun: t("competitors") })}</div>${S.find ? `<p class="small sec cs-find-count">${esc(fill("{n} of {total} competitors match.", { n: UI.num(every.length), total: UI.num(allRivals().length) }))}</p>` : ""}`;
   }
   function paintRivalsList() {
     const box = UI.$("#cs-rivals-list");
@@ -317,14 +344,34 @@
       const words = noChecks ? t("Positions appear here after the first check of your keywords. Viewing this page never spends a check.") : t("No competitor beats you on any keyword checked.");
       return `${sectionHead(title)}${COMP.empty(t(noChecks ? "No ranking check yet" : "Nothing here"), words)}`;
     }
-    const rows = d.keywords.slice(0, limitOf("keywords")), once = sameCheck(rows);
+    // A search, and one competitor or all of them together, each choice saying how many keywords it holds.
+    const searched = d.keywords.filter((k) => TP.matches(PAGES.keywords, k.keyword));
+    const rivals = [...new Map(d.keywords.flatMap((k) => k.rivals_ahead).map((a) => [a.host, a])).values()].sort((a, b) => String(a.display || a.host).localeCompare(String(b.display || b.host)));
+    if (S.kwRival && !rivals.some((a) => a.host === S.kwRival)) S.kwRival = "";
+    const countFor = (host) => searched.filter((k) => k.rivals_ahead.some((a) => a.host === host)).length;
+    const picked = S.kwRival ? searched.filter((k) => k.rivals_ahead.some((a) => a.host === S.kwRival)) : searched;
+    const shown = sortList(picked, KW_SORTS[S.kwSort?.key] || (() => 0), S.kwSort), page = TP.view(PAGES.keywords, shown), rows = page.rows;
+    const search = d.keywords.length >= FIND_FROM || TP.state(PAGES.keywords).q ? TP.search(PAGES.keywords, t("Search keywords")) : "";
+    const choose = rivals.length > 1 ? `<label class="field"><span>${t("Competitor")}</span><select class="select" id="cs-kw-rival">
+        <option value="">${t("All competitors, together")} (${UI.num(searched.length)})</option>
+        ${rivals.map((a) => `<option value="${esc(a.host)}" ${a.host === S.kwRival ? "selected" : ""}>${esc(a.display || a.host)} (${UI.num(countFor(a.host))})</option>`).join("")}
+      </select></label>` : "";
+    const tools = search || choose ? `<div class="cp-tools cs-tools">${search}${choose}</div>` : "";
+    const head = `${sectionHead(title, t("Most competitors ahead first."), "A keyword counts once, however many of your sites track it. Where and when it was checked is under each keyword, or once under the table when it's the same for all.")}${tools}`;
+    if (!shown.length) return `${head}${TP.state(PAGES.keywords).q ? noneFound(t("No keyword matches this search."), PAGES.keywords) : COMP.empty(t("Nothing to show with these filters"), t("Pick another competitor to see more keywords."))}`;
+    const once = sameCheck(rows);
     const checkedOnce = once ? `<p class="small sec cs-kw-foot">${esc(fill("All checked with {tool}, {when}.", { tool: whereChecked(rows[0]), when: COMP.ago(rows[0].checked_at) }))}</p>` : "";
-    return `${sectionHead(title, t("Most competitors ahead first."), "A keyword counts once, however many of your sites track it. Where and when it was checked is under each keyword, or once under the table when it's the same for all.")}
-      <div class="table-wrap"><table class="data" id="cs-keywords-table">
-        <thead><tr><th scope="col">${t("Keyword")}</th><th scope="col" class="c">${t("Your position")}</th><th scope="col">${t("Ahead of you")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
+    const capped = d.total > d.keywords.length ? fill("The {sent} with the most competitors ahead are listed, of {total}.", { sent: UI.num(d.keywords.length), total: UI.num(d.total) }) : null;
+    const kwHead = (key, label, cls = "") => sortButtonHead("data-cs-kw-sort", key, label, S.kwSort, cls);
+    return `${head}
+      <div class="cs-pages"><div class="table-wrap"><table class="data" id="cs-keywords-table">
+        <thead><tr>${kwHead("keyword", "Keyword")}${kwHead("position", "Your position", "c")}${kwHead("ahead", "Ahead of you")}<th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
         <tbody>${rows.map((k) => keywordRow(k, once)).join("")}</tbody>
-      </table></div>${checkedOnce}${moreButton("keywords", rows.length, d.keywords.length)}${d.total > d.keywords.length ? `<p class="help">${esc(fill("The {sent} with the most competitors ahead are listed, of {total}.", { sent: UI.num(d.keywords.length), total: UI.num(d.total) }))}</p>` : ""}`;
+      </table></div>${TP.footer(PAGES.keywords, page, { noun: t("keywords"), capped })}</div>${checkedOnce}`;
   }
+  /* Your position: the best first. Ahead of you: the most competitors first. Not in the results always goes last. */
+  const KW_SORTS = { keyword: (k) => k.keyword, position: (k) => k.my_best?.position ?? null, ahead: (k) => k.rivals_ahead.length };
+  const KW_FIRST = { keyword: "up", position: "up", ahead: "down" };
 
   // ---- 3. Who is moving right now? ------------------------------------------------------------------
   function movesNote(d) {
@@ -335,17 +382,43 @@
     ].join("");
   }
 
+  /* Every competitor's moves together, or one competitor's, one kind of change, a period and a search (2026-11-10: "for each
+     website and collective, as much data as possible"). Each row carries all that's known about its page or check (comp-list.js). */
+  const PERIODS = [7, 30, 90, 365];
+  const moveText = (e) => [e.keyword, e.url, e.title, e.page?.title, e.page?.description, ...(e.page?.h1 || []), e.rival.host, e.rival.display, e.before, e.after].filter(Boolean).join(" ");
+  function movesTools(d, inKind) {
+    const filters = COMP.TIMELINE_FILTERS || [["all", "All", null]];
+    const ofKind = (f, list) => (f[2] ? list.filter((e) => f[2].includes(e.kind)) : list);
+    const forRival = (list) => (S.mvRival ? list.filter((e) => String(e.rival.id) === S.mvRival) : list);
+    const searched = d.moves.filter((e) => TP.matches(PAGES.moves, moveText(e)));
+    const chips = `<div class="chips" role="group" aria-label="${attr("Filter the changes")}">${filters.filter((f) => f[0] === "all" || f[0] === S.mvKind || ofKind(f, forRival(searched)).length).map((f) => `<button type="button" class="chip" data-cs-mv-kind="${f[0]}" aria-pressed="${S.mvKind === f[0]}">${esc(t(f[1]).split("|")[0])}<b>${UI.num(ofKind(f, forRival(searched)).length)}</b></button>`).join("")}</div>`;
+    const rivals = [...new Map(d.moves.map((e) => [String(e.rival.id), e.rival])).values()].sort((a, b) => String(a.display || a.host).localeCompare(String(b.display || b.host)));
+    if (S.mvRival && !rivals.some((r) => String(r.id) === S.mvRival)) S.mvRival = "";
+    const choose = rivals.length > 1 ? `<label class="field"><span>${t("Competitor")}</span><select class="select" id="cs-mv-rival">
+        <option value="">${t("All competitors, together")} (${UI.num(inKind(searched).length)})</option>
+        ${rivals.map((r) => `<option value="${esc(r.id)}" ${String(r.id) === S.mvRival ? "selected" : ""}>${esc(r.display || r.host)} (${UI.num(inKind(searched).filter((e) => e.rival.id === r.id).length)})</option>`).join("")}
+      </select></label>` : "";
+    const period = `<label class="field"><span>${t("Period")}</span><select class="select" id="cs-mv-days">${PERIODS.map((n) => `<option value="${n}" ${n === S.mvDays ? "selected" : ""}>${esc(fill(n === 365 ? "The last year" : "The last {n} days", { n: UI.num(n) }))}</option>`).join("")}</select></label>`;
+    return `<div class="cp-tools cs-tools">${TP.search(PAGES.moves, t("Search pages, keywords, titles"))}${choose}${period}</div>${chips}`;
+  }
+
   function movesHtml() {
     const title = "Who is moving";
     if (S.errors.moves) return failedCard("moves", title);
     const d = S.data.moves;
     if (!d) return loadingCard(title);
-    const sub = t("The last 30 days, newest first.");
-    if (!d.moves.length) return `${sectionHead(title, sub)}${movesNote(d)}${COMP.empty(t("Nothing in the last 30 days"), t("Page changes and ranking moves appear here as they're found."))}`;
-    const rows = d.moves.slice(0, limitOf("moves"));
-    return `${sectionHead(title, sub)}${movesNote(d)}
-      <section class="card cs-compact"><ul class="rows cl-tl" id="cs-moves-list">${rows.map((e) => COMP.timelineRow(e, { id: e.rival.id, rival: e.rival.host, display: e.rival.display, own: e.rival.sites[0]?.host })).join("")}</ul></section>
-      ${moreButton("moves", rows.length, d.moves.length, "See all")}${d.total > d.moves.length ? `<p class="help">${esc(fill("The newest {sent} are listed, of {total}.", { sent: UI.num(d.moves.length), total: UI.num(d.total) }))}</p>` : ""}`;
+    const days = d.days || S.mvDays;
+    const sub = fill(days === 365 ? "The last year, newest first. Open All the details on a row for everything known about that page or check." : "The last {n} days, newest first. Open All the details on a row for everything known about that page or check.", { n: UI.num(days) });
+    if (!d.moves.length) return `${sectionHead(title, sub)}${movesTools(d, (x) => x)}${movesNote(d)}${COMP.empty(t(days === 365 ? "Nothing in the last year" : "Nothing in this period"), t("Page changes and ranking moves appear here as they're found."))}`;
+    const kind = (COMP.TIMELINE_FILTERS || []).find((f) => f[0] === S.mvKind);
+    const inKind = (list) => (kind?.[2] ? list.filter((e) => kind[2].includes(e.kind)) : list);
+    const shown = inKind(d.moves.filter((e) => TP.matches(PAGES.moves, moveText(e)))).filter((e) => !S.mvRival || String(e.rival.id) === S.mvRival);
+    const page = TP.view(PAGES.moves, shown);
+    const capped = d.total > d.moves.length ? fill("The newest {sent} are listed, of {total}.", { sent: UI.num(d.moves.length), total: UI.num(d.total) }) : null;
+    const list = shown.length
+      ? `<section class="card cs-compact"><ul class="rows cl-tl" id="cs-moves-list">${page.rows.map((e) => COMP.timelineRow(e, { id: e.rival.id, rival: e.rival.host, display: e.rival.display, own: e.rival.sites[0]?.host })).join("")}</ul></section>${TP.footer(PAGES.moves, page, { noun: t("changes"), capped })}`
+      : noneFound(t("No change matches these filters."), PAGES.moves);
+    return `${sectionHead(title, sub)}${movesTools(d, inKind)}${movesNote(d)}<div class="cs-pages">${list}</div>`;
   }
 
   // ---- 4. Which links do many rivals share? ---------------------------------------------------------
@@ -356,7 +429,7 @@
     let state;
     if (s.in_consideration || COMP.gapConsidered(g.domain, s.host)) state = `<span class="tag cp-yours">${t("In consideration")}</span>`;
     else if (s.quality === "good") state = `<button class="btn btn-small" data-cs-add="${esc(g.domain)}" data-cs-add-site="${s.id}" data-cs-add-host="${esc(s.host)}" aria-label="${esc(fill("Add {domain} for {site}", { domain: g.display || g.domain, site: s.host }))}">${UI.icon("plus")}${t("Add")}</button>`;
-    else if (s.quality === "spam") state = `<span class="tag cg-flag">${UI.icon("ban")}${t("Spam")}</span><span class="second cg-why">${esc(t(s.reason_words || "Flagged as spam"))}</span><button class="link-btn small" data-cs-review="${s.id}">${t("Open Link gaps")}</button>`;
+    else if (s.quality === "spam") state = `<span class="tag cg-flag">${UI.icon("ban")}${t("Spam")}</span><span class="second cg-why">${esc(COMP.spamWhy(s))}</span><button class="link-btn small" data-cs-review="${s.id}">${t("Open Link gaps")}</button>`;
     else state = `<span class="tag">${t("Still being checked")}</span>`;
     return `<li>${label}<span class="cs-state">${lost}${state}</span></li>`;
   }
@@ -370,10 +443,14 @@
       <td class="r nowrap" data-label=""><button class="btn btn-small" data-cs-edit="${esc(g.domain)}" aria-label="${attr("Edit")}: ${esc(g.display || g.domain)}">${UI.icon("pencil")}${t("Edit")}</button></td>
     </tr>`;
 
-  const linkTable = (id, rows) => `<div class="table-wrap"><table class="data" id="${id}">
-      <thead><tr><th scope="col">${t("Domain")}</th><th scope="col">${t("Links to")}</th><th scope="col" class="c">${t("How many")}</th><th scope="col" class="c">${t("Authority")}</th><th scope="col">${t("Your sites")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
-      <tbody>${rows.map(linkRow).join("")}</tbody>
-    </table></div>`;
+  /* Both tables (good and flagged) share one search and one order, and each has its own pages. */
+  const linkHead = (key, label, cls = "") => sortButtonHead("data-cs-ln-sort", key, label, S.lnSort, cls);
+  const linkTable = (id, key, page, noun, capped = null) => `<div class="cs-pages"><div class="table-wrap"><table class="data" id="${id}">
+      <thead><tr>${linkHead("domain", "Domain")}<th scope="col">${t("Links to")}</th>${linkHead("count", "How many", "c")}${linkHead("authority", "Authority", "c")}<th scope="col">${t("Your sites")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
+      <tbody>${page.rows.map(linkRow).join("")}</tbody>
+    </table></div>${TP.footer(key, page, { noun, capped })}</div>`;
+  const LN_SORTS = { domain: (g) => g.display || g.domain, count: (g) => g.rival_count, authority: (g) => g.authority ?? null };
+  const LN_FIRST = { domain: "up", count: "down", authority: "down" };
 
   function linksHtml() {
     const title = "Links many competitors share";
@@ -382,14 +459,25 @@
     if (!d) return loadingCard(title);
     const f = d.funnel;
     if (!f.found) return `${linksHead(title, "", d)}${COMP.empty(t("No link data yet"), t("Upload a file for a competitor in Link gaps, and domains appear here."), `<button class="btn" data-cs-review="${COMP.siteId === COMP.ALL ? (UI.preferredSite(COMP.sites)?.id ?? "") : COMP.siteId}">${UI.icon("link-2-off")}${t("Open Link gaps")}</button>`)}`;
-    const rows = d.gaps.slice(0, limitOf("links"));
+    // One search for both lists. A new search starts the flagged list on its first page too.
+    const q = TP.state(PAGES.links).q;
+    if (q !== S.linkQ) { S.linkQ = q; TP.reset(PAGES.flagged); }
+    const find = (g) => TP.matches(PAGES.links, g.domain, g.display, g.title);
+    const value = LN_SORTS[S.lnSort?.key] || (() => 0);
+    const goodRows = sortList(d.gaps.filter(find), value, S.lnSort), flaggedRows = sortList(d.flagged.filter(find), value, S.lnSort);
+    const page = TP.view(PAGES.links, goodRows), flaggedPage = TP.view(PAGES.flagged, flaggedRows);
+    const search = d.gaps.length + d.flagged.length >= FIND_FROM || q ? `<div class="cp-tools cs-tools">${TP.search(PAGES.links, t("Search domains"))}</div>` : "";
     const facts = [
       fill("{with} of {total} competitors have link data", { with: UI.num(d.rivals_with_data), total: UI.num(d.rivals_total) }),
       f.checking ? plural(f.checking, "{n} domain still being checked", "{n} domains still being checked") : "",
     ].filter(Boolean).join(" · ");
-    const flagged = d.flagged.length ? `<details class="fold cs-flagged"><summary>${UI.icon("chevron-right")}${esc(plural(f.flagged, "{n} flagged as spam", "{n} flagged as spam"))}</summary>${linkTable("cs-flagged-table", d.flagged.slice(0, limitOf("flagged")))}${moreButton("flagged", Math.min(limitOf("flagged"), d.flagged.length), d.flagged.length)}${sentNote(d.flagged.length, f.flagged)}</details>` : "";
-    const good = rows.length ? linkTable("cs-links-table", rows) : COMP.empty(t("No good domains yet"), t("None of the domains found has passed the spam check yet."));
-    return `${linksHead(title, `${t("Most competitors first.")} ${facts}.`, d)}${good}${moreButton("links", rows.length, d.gaps.length)}${sentNote(d.gaps.length, f.good)}${flagged}`;
+    const capped = (sent, total) => (total > sent ? fill("The {sent} with the most competitors are listed, of {total}.", { sent: UI.num(sent), total: UI.num(total) }) : null);
+    const flaggedBody = flaggedRows.length ? linkTable("cs-flagged-table", PAGES.flagged, flaggedPage, t("domains"), capped(d.flagged.length, f.flagged)) : `<p class="small sec cs-find-count">${esc(fill("No domain matches “{text}”.", { text: q }))}</p>`;
+    const flagged = d.flagged.length ? `<details class="fold cs-flagged" ${S.flaggedOpen ? "open" : ""}><summary>${UI.icon("chevron-right")}${esc(plural(f.flagged, "{n} flagged as spam", "{n} flagged as spam"))}</summary>${flaggedBody}</details>` : "";
+    const good = goodRows.length ? linkTable("cs-links-table", PAGES.links, page, t("domains"), capped(d.gaps.length, f.good))
+      : q && d.gaps.length ? noneFound(fill("No domain matches “{text}”.", { text: q }), PAGES.links)
+        : COMP.empty(t("No good domains yet"), t("None of the domains found has passed the spam check yet."));
+    return `${linksHead(title, `${t("Most competitors first.")} ${facts}.`, d)}${search}${good}${flagged}`;
   }
 
   const SECTION = { rivals: rivalsHtml, keywords: keywordsHtml, moves: movesHtml, links: linksHtml };
@@ -407,15 +495,31 @@
       const [key, dir] = (q.get("sort") || "").split("-");
       S.sort = SORTS[key] && SORT_DIRS.has(dir) ? { key, dir } : null;
       S.order = null;
+      TP.reset(PAGES.rivals);
     },
-    init(helpers) { UI = helpers; t = helpers.t; esc = helpers.esc; bindEvents(); },
+    init(helpers) {
+      UI = helpers; t = helpers.t; esc = helpers.esc; bindEvents();
+      // Another page, another size or a search: only that section is drawn again.
+      TP.on(PAGES.rivals, paintRivalsList);
+      TP.on(PAGES.keywords, () => paintSection("keywords"));
+      TP.on(PAGES.links, () => paintSection("links"));
+      TP.on(PAGES.moves, () => paintSection("moves"));
+      TP.on(PAGES.flagged, () => paintSection("links"));
+    },
     load() {
       /* The same site again (a tracking change, an added competitor): what's on screen stays until the new answer is in,
          and the caller can wait for the table, so focus can go back to the button that was pressed. */
       const again = S.site === COMP.siteId && Boolean(S.data.rivals) && !S.errors.rivals;
       S.token += 1;
       S.site = COMP.siteId;
-      if (!again) { S.data = {}; S.list = null; S.limit = {}; }
+      if (!again) {
+        S.data = {}; S.list = null; S.limit = {};
+        // Another site: every table starts on its first page, and the searches and choices made for the last site go.
+        S.kwRival = ""; S.flaggedOpen = false;
+        S.mvKind = "all"; S.mvRival = "";
+        [PAGES.keywords, PAGES.links, PAGES.moves].forEach((key) => { TP.state(key).q = ""; });
+        Object.values(PAGES).forEach((key) => TP.reset(key));
+      }
       S.errors = {};
       const asked = SECTIONS.map((part) => fetchSection(part, S.token, S.site));
       const list = fetchList(S.token, S.site);
@@ -442,8 +546,28 @@
     document.addEventListener("input", (e) => {
       if (e.target.id !== "cs-find" || UI.state.route !== "competitors" || COMP.currentTab() !== tab) return;
       S.find = e.target.value.slice(0, 100);
+      TP.reset(PAGES.rivals);
       paintRivalsList();
     });
+    document.addEventListener("change", (e) => {
+      if (UI.state.route !== "competitors" || COMP.currentTab() !== tab) return;
+      if (e.target.id === "cs-mv-rival") { S.mvRival = e.target.value; TP.reset(PAGES.moves); paintSection("moves"); UI.$("#cs-mv-rival")?.focus({ preventScroll: true }); return; }
+      if (e.target.id === "cs-mv-days") {
+        S.mvDays = Number(e.target.value) || 30; TP.reset(PAGES.moves);
+        delete S.data.moves; paintSection("moves");
+        fetchSection("moves", S.token, S.site).then(() => UI.$("#cs-mv-days")?.focus({ preventScroll: true }));
+        return;
+      }
+    });
+    document.addEventListener("change", (e) => {
+      if (e.target.id !== "cs-kw-rival" || UI.state.route !== "competitors" || COMP.currentTab() !== tab) return;
+      S.kwRival = e.target.value;
+      TP.reset(PAGES.keywords);
+      paintSection("keywords");
+      UI.$("#cs-kw-rival")?.focus({ preventScroll: true });
+    });
+    // The spam fold stays open or shut as it was left when its section is drawn again.
+    document.addEventListener("toggle", (e) => { if (e.target.classList?.contains("cs-flagged")) S.flaggedOpen = e.target.open; }, true);
     // Try again on a failed read (comp-list.js) changes a rival's state: keep this copy in step for the next redraw.
     window.addEventListener("comp:crawl", (e) => {
       const rival = S.data?.rivals?.rivals?.find((r) => r.id === e.detail.id);
@@ -455,6 +579,11 @@
       if (UI.state.route !== "competitors" || COMP.currentTab() !== tab) return;
       const hit = (selector) => e.target.closest?.(selector);
       let el;
+      if ((el = hit("[data-cs-mv-kind]"))) {
+        S.mvKind = el.dataset.csMvKind; TP.reset(PAGES.moves); paintSection("moves");
+        UI.$(`[data-cs-mv-kind="${S.mvKind}"]`)?.focus({ preventScroll: true });
+        return;
+      }
       if ((el = hit("[data-cs-jump]"))) {
         const section = UI.$(`#cs-${el.dataset.csJump}`);
         section?.scrollIntoView({ block: "start" });
@@ -475,11 +604,28 @@
         const key = el.dataset.csSort, first = key === "name" ? "up" : "down";
         S.sort = S.sort?.key === key ? { key, dir: S.sort.dir === "up" ? "down" : "up" } : { key, dir: first };
         S.order = null; // worked out once, now
+        TP.reset(PAGES.rivals);
         paintRivalsList();
         UI.$(`[data-cs-sort="${key}"]`)?.focus({ preventScroll: true });
         return;
       }
-      if (hit("[data-cs-find-clear]")) { S.find = ""; const input = UI.$("#cs-find"); if (input) input.value = ""; paintRivalsList(); input?.focus(); return; }
+      if (hit("[data-cs-find-clear]")) { S.find = ""; TP.reset(PAGES.rivals); const input = UI.$("#cs-find"); if (input) input.value = ""; paintRivalsList(); input?.focus(); return; }
+      if ((el = hit("[data-cs-kw-sort]"))) {
+        const key = el.dataset.csKwSort;
+        S.kwSort = nextSort(S.kwSort, key, KW_FIRST[key]);
+        TP.reset(PAGES.keywords);
+        paintSection("keywords");
+        UI.$(`[data-cs-kw-sort="${key}"]`)?.focus({ preventScroll: true });
+        return;
+      }
+      if ((el = hit("[data-cs-ln-sort]"))) {
+        const key = el.dataset.csLnSort, inFlagged = Boolean(el.closest("#cs-flagged-table"));
+        S.lnSort = nextSort(S.lnSort, key, LN_FIRST[key]);
+        TP.reset(PAGES.links); TP.reset(PAGES.flagged);
+        paintSection("links");
+        UI.$(`${inFlagged ? "#cs-flagged-table" : "#cs-links-table"} [data-cs-ln-sort="${key}"]`)?.focus({ preventScroll: true });
+        return;
+      }
       if ((el = hit("[data-cs-more]"))) {
         const part = el.dataset.csMore;
         S.limit[part] = limitOf(part) + MORE_ROWS;
@@ -513,7 +659,22 @@
   }
 
   Object.assign(window.FR, {
+    "Filter the changes": "Filtrer les changements", "Period": "Période", "The last year": "La dernière année", "The last {n} days": "Les {n} derniers jours",
+    "Search pages, keywords, titles": "Chercher une page, un mot-clé, un titre", "changes": "changements", "No change matches these filters.": "Aucun changement ne correspond à ces filtres.",
+    "The last {n} days, newest first. Open All the details on a row for everything known about that page or check.": "Les {n} derniers jours, du plus récent au plus ancien. Ouvrez Tous les détails sur une ligne pour tout ce qu'on sait de cette page ou de cette vérification.",
+    "The last year, newest first. Open All the details on a row for everything known about that page or check.": "La dernière année, du plus récent au plus ancien. Ouvrez Tous les détails sur une ligne pour tout ce qu'on sait de cette page ou de cette vérification.",
+    "Nothing in the last year": "Rien sur la dernière année", "Nothing in this period": "Rien sur cette période",
+    "Changes in {n} days": "Changements sur {n} jours", "Changes in the last year": "Changements sur la dernière année",
     "Know one already?": "Vous en connaissez déjà un ?",
+    "competitors": "concurrents", "keywords": "mots-clés", "domains": "domaines",
+    "Search keywords": "Chercher un mot-clé", "Search domains": "Chercher un domaine",
+    "Competitor": "Concurrent", "All competitors, together": "Tous les concurrents, ensemble",
+    "No keyword matches this search.": "Aucun mot-clé ne correspond à cette recherche.",
+    "No domain matches “{text}”.": "Aucun domaine ne correspond à « {text} ».",
+    "Nothing to show with these filters": "Rien à afficher avec ces filtres",
+    "Pick another competitor to see more keywords.": "Choisissez un autre concurrent pour voir d'autres mots-clés.",
+    "Clear the search": "Effacer la recherche",
+    "Keyword": "Mot-clé", "Domain": "Domaine", "How many": "Combien", "Authority": "Autorité",
     "Find a competitor": "Chercher un concurrent",
     "No competitor matches “{text}”.": "Aucun concurrent ne correspond à « {text} ».",
     "{n} of {total} competitors match.": "{n} concurrents sur {total} correspondent.",

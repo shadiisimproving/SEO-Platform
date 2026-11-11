@@ -5,7 +5,9 @@
   "use strict";
   let UI = null;
   const COMP = window.COMP;
-  const S = { site: null, data: null, error: null, confirm: null, adding: false, following: false };
+  const S = { site: null, data: null, error: null, confirm: null, adding: false, following: false, sort: null };
+  const PAGES = "kc"; // the table has pages and a search (table-pages.js), like every long table in the app
+  const FIND_FROM = 11; // more than 10 rows, as on every table: the search box shows from this many keywords, or while a search is on
 
   const t = (s) => UI.t(s);
   const esc = (v) => UI.esc(v);
@@ -67,12 +69,33 @@
     return `<ul class="kc-ranks">${k.competitors.map((c) => `<li><button type="button" class="kc-rival" data-kc-rival="${Number(c.id)}" title="${esc(c.url)}">${UI.siteLogo(c.host, 16)}<span class="kc-host" dir="auto">${esc(c.display || c.host)}</span><span class="kc-pos tabular">#${UI.num(c.position)}</span></button></li>`).join("")}</ul>`;
   }
 
+  /* Keyword: A to Z. You: the best position first. Competitors: the most that rank first. Not checked, or not found, always goes last. */
+  const SORTS = { keyword: (k) => k.keyword, me: (k) => k.me?.position ?? null, rivals: (k) => (k.checked ? k.competitors.length : null) };
+  const FIRST = { keyword: "asc", me: "asc", rivals: "desc" };
+  function sorted(list) {
+    if (!S.sort || !SORTS[S.sort.key]) return list; // the order they were added in
+    const value = SORTS[S.sort.key], dir = S.sort.dir === "asc" ? 1 : -1;
+    return [...list].sort((a, b) => {
+      const x = value(a), y = value(b);
+      if (x === null || y === null) return (x === null) - (y === null);
+      return (typeof x === "number" ? x - y : String(x).localeCompare(String(y), UI.state.lang)) * dir;
+    });
+  }
+
   function table(d) {
     if (!d.keywords.length) return ""; // the line above says there are none yet, and the form is right under it: no empty box between them
-    const running = busy(d.run);
-    return `<div class="table-wrap"><table class="data kc-table">
-      <thead><tr><th>${t("Keyword")}</th><th class="c">${t("You")}</th><th>${t("Competitors that rank")}</th><th>${t("Checked")}</th><th><span class="sr-only">${t("Actions")}</span></th></tr></thead>
-      <tbody>${d.keywords.map((k) => `<tr>
+    const running = busy(d.run), q = TP.state(PAGES).q;
+    const search = d.keywords.length >= FIND_FROM || q ? `<div class="cp-tools kc-tools">${TP.search(PAGES, t("Search keywords"))}</div>` : "";
+    const found = sorted(d.keywords.filter((k) => TP.matches(PAGES, k.keyword)));
+    if (!found.length) return `${search}<div class="table-wrap"><div class="empty"><p>${esc(t("No keyword matches this search."))}</p><button type="button" class="btn btn-small" data-tp-clear data-tp-key="${PAGES}">${t("Clear the search")}</button></div></div>`;
+    const page = TP.view(PAGES, found);
+    const head = (key, label, cls = "") => {
+      const on = S.sort?.key === key;
+      return `<th scope="col" class="${cls}" aria-sort="${on ? (S.sort.dir === "asc" ? "ascending" : "descending") : "none"}"><button type="button" class="th-btn" data-kc-sort="${key}">${t(label)}${on ? UI.icon(S.sort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
+    };
+    return `${search}<div class="kc-pages"><div class="table-wrap"><table class="data kc-table" id="kc-table">
+      <thead><tr>${head("keyword", "Keyword")}${head("me", "You", "c")}${head("rivals", "Competitors that rank")}<th scope="col">${t("Checked")}</th><th scope="col"><span class="sr-only">${t("Actions")}</span></th></tr></thead>
+      <tbody>${page.rows.map((k) => `<tr>
         <td class="head-cell" data-label="${esc(t("Keyword"))}"><span class="kw" dir="auto">${esc(k.keyword)}</span><span class="second">${esc([k.country, k.language].filter(Boolean).join(" · ") || t("Any country"))}</span></td>
         <td class="c" data-label="${esc(t("You"))}">${k.me ? `<span class="kc-pos tabular">#${UI.num(k.me.position)}</span>` : `<span class="muted">${k.checked ? "—" : ""}</span>`}</td>
         <td data-label="${esc(t("Competitors that rank"))}">${cell(k)}</td>
@@ -80,7 +103,7 @@
         <td class="acts nowrap">${k.tracked
           ? `<span class="kc-tracked small" title="${esc(t("It's in your tracked keywords, so Refresh checks it too."))}">${UI.icon("circle-check")}${t("Tracked")}</span>`
           : `<button type="button" class="btn btn-small btn-ghost" data-kc-track="${Number(k.id)}" title="${esc(t("Adds it to your tracked keywords. No search runs, and it stays here too."))}">${UI.icon("list-plus")}${t("Track")}</button>`}<button type="button" class="btn btn-small" data-kc-one="${Number(k.id)}" ${running ? "disabled" : ""}>${UI.icon("search")}${t("Refresh")}</button><button type="button" class="icon-btn" data-kc-remove="${Number(k.id)}" aria-label="${esc(fill("Remove {k}", { k: k.keyword }))}">${UI.icon("x")}</button></td>
-      </tr>`).join("")}</tbody></table></div>`;
+      </tr>`).join("")}</tbody></table></div>${TP.footer(PAGES, page, { noun: t("keywords") })}</div>`;
   }
 
   function body() {
@@ -103,7 +126,7 @@
 
   async function load({ quiet = false } = {}) {
     const siteId = COMP.siteId;
-    if (S.site !== siteId) { S.site = siteId; S.confirm = null; }
+    if (S.site !== siteId) { S.site = siteId; S.confirm = null; S.sort = null; TP.state(PAGES).q = ""; TP.reset(PAGES); }
     try {
       const answer = await COMP.api("GET", `keyword-check?site_id=${siteId}`);
       if (siteId !== COMP.siteId) return;
@@ -133,11 +156,11 @@
 
   /* Redraw the tab, keeping what's half-typed in the form and where the caret was. */
   function paintKeeping() {
-    const fields = ["[data-kc-words]", "[data-kc-country]", "[data-kc-language]"].map((sel) => [sel, UI.$(sel)?.value]);
+    const fields = ["[data-kc-words]", "[data-kc-country]", "[data-kc-language]", `[data-tp-search][data-tp-key="${PAGES}"]`].map((sel) => [sel, UI.$(sel)?.value]); // the search too: a check's progress can redraw while someone types
     const active = document.activeElement, focusSel = fields.find(([sel]) => active?.matches?.(sel))?.[0];
     const caret = focusSel ? [active.selectionStart, active.selectionEnd] : null;
     COMP.paint();
-    fields.forEach(([sel, value]) => { const el = UI.$(sel); if (el && value !== undefined) el.value = value; });
+    fields.forEach(([sel, value]) => { const el = UI.$(sel); if (el && value !== undefined && (!sel.includes("data-tp-search") || sel === focusSel)) el.value = value; }); // the search box only while it's being typed in: Clear the search must clear it
     if (focusSel) { const el = UI.$(focusSel); el?.focus({ preventScroll: true }); try { el?.setSelectionRange(...caret); } catch { /* not a text field */ } }
   }
 
@@ -237,9 +260,18 @@
     id: "check", order: 25, label: "Keyword check", icon: "list-ordered",
     init(helpers) {
       UI = helpers;
+      TP.on(PAGES, paintKeeping); // another page, another size or a search: what's half-typed in the form stays
       document.addEventListener("click", (e) => {
         const hit = (sel) => e.target.closest?.(sel);
         let el;
+        if ((el = hit("[data-kc-sort]"))) {
+          const key = el.dataset.kcSort, first = FIRST[key];
+          S.sort = S.sort?.key !== key ? { key, dir: first } : S.sort.dir === first ? { key, dir: first === "asc" ? "desc" : "asc" } : null; // a third press goes back to the order they were added in
+          TP.reset(PAGES);
+          paintKeeping();
+          UI.$(`[data-kc-sort="${key}"]`)?.focus({ preventScroll: true });
+          return;
+        }
         if (hit("[data-kc-all]")) { askToCheck(null); return; }
         if ((el = hit("[data-kc-one]"))) { askToCheck([Number(el.dataset.kcOne)]); return; }
         if ((el = hit("[data-kc-go]"))) { go(el); return; }
@@ -256,6 +288,7 @@
 
   Object.assign(window.FR = window.FR || {}, {
     "Keyword check": "Vérifier des mots-clés",
+    "Search keywords": "Chercher un mot-clé", "keywords": "mots-clés", "No keyword matches this search.": "Aucun mot-clé ne correspond à cette recherche.", "Clear the search": "Effacer la recherche",
     "Add keywords": "Ajouter des mots-clés",
     "One per line. They stay here, apart from your own keyword list.": "Un par ligne. Ils restent ici, à part de votre propre liste de mots-clés.",
     "running shoes\ntrail running shoes": "chaussures de running\nchaussures de trail",

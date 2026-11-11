@@ -74,33 +74,35 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
 
   await step("Keywords: search, pages, an open keyword", async () => {
     await page.click('[data-go="keywords"]'); await page.waitForTimeout(2000);
+    // Keywords pages like every long table since 2026-11-10 (table-pages.js): 25 a page to start, its foot and search are TP's.
+    const KW_FOOT = '[data-tp-foot="kw"]', KW_SEARCH = '[data-tp-search][data-tp-key="kw"]';
     const rows = await page.locator("#kw-table tbody tr").count();
-    const total = Number((await text(".kw-foot .ov-range")).replace(/\D+$/, "").split(/\D+/).pop());
+    const total = Number((await text(`${KW_FOOT} .tp-range`)).replace(/\D+$/, "").split(/\D+/).pop());
     check(total > 100, `the world has over 100 keywords (${total})`);
-    check(rows === 50, `one page of 50 rows (saw ${rows})`);
-    check((await text(".kw-foot .ov-range")).includes(String(total)), "the foot says how many in all");
-    await page.click('[data-kwr-page="1"]'); await page.waitForTimeout(500);
+    check(rows === 25, `one page of 25 rows (saw ${rows})`);
+    check((await text(`${KW_FOOT} .tp-range`)).includes(String(total)), "the foot says how many in all");
+    await page.click(`${KW_FOOT} .tp-num[data-tp-page="1"]`); await page.waitForTimeout(500);
     check(page.url().includes("page=2"), "page 2 is in the address");
-    await page.selectOption("[data-kwr-per]", "25"); await page.waitForTimeout(500);
-    check((await page.locator("#kw-table tbody tr").count()) === 25, "25 per page");
-    await page.fill("#kwr-search", "lyon"); await page.waitForTimeout(700);
+    await page.selectOption(`${KW_FOOT} [data-tp-per]`, "50"); await page.waitForTimeout(500);
+    check((await page.locator("#kw-table tbody tr").count()) === 50, "50 per page");
+    await page.fill(KW_SEARCH, "lyon"); await page.waitForTimeout(700);
     const found = await page.locator("#kw-table tbody tr").count();
-    check(found > 0 && found < 25 && (await page.locator("#kw-table tbody tr").allInnerTexts()).every((r) => /lyon/i.test(r)), `the search keeps only "lyon" (${found})`);
+    check(found > 0 && found < 50 && (await page.locator("#kw-table tbody tr").allInnerTexts()).every((r) => /lyon/i.test(r)), `the search keeps only "lyon" (${found})`);
     check(page.url().includes("q=lyon"), "the search is in the address");
-    check((await page.evaluate(() => document.activeElement?.id)) === "kwr-search", "the search box keeps the focus while typing");
+    check(await page.evaluate(() => document.activeElement?.matches?.('[data-tp-search][data-tp-key="kw"]')), "the search box keeps the focus while typing");
     await page.click("#kw-table [data-kwr-open]"); await page.waitForTimeout(1200);
     check(page.url().includes("kw="), "the open keyword is in the address");
     check((await page.getAttribute("#panel", "aria-labelledby")) === "panel-title", "the side panel is named after its title");
     await shot("03-keyword-open");
     await page.reload(); await page.waitForTimeout(3000);
     check(Boolean(await page.$("#panel")), "a reload opens the same keyword");
-    check((await page.inputValue("#kwr-search")) === "lyon", "a reload keeps the search");
+    check((await page.inputValue(KW_SEARCH)) === "lyon", "a reload keeps the search");
     await page.keyboard.press("Escape"); await page.waitForTimeout(400);
     check(!page.url().includes("kw="), "closing the panel takes it out of the address");
-    await page.fill("#kwr-search", "zzzz"); await page.waitForTimeout(700);
+    await page.fill(KW_SEARCH, "zzzz"); await page.waitForTimeout(700);
     check((await text("#page .empty h3")).length > 0 && Boolean(await page.$("[data-kwr-search-clear]")), "a search with nothing says so and offers to clear it");
     await page.click("[data-kwr-search-clear]"); await page.waitForTimeout(500);
-    check((await page.locator("#kw-table tbody tr").count()) === 25, "clearing the search brings the rows back");
+    check((await page.locator("#kw-table tbody tr").count()) === 50, "clearing the search brings the rows back");
     await page.click('[data-filter="none"]'); await page.waitForTimeout(500);
     check(page.url().includes("chip=none"), "the chip is in the address");
     await page.click('[data-go="overview"]'); await page.waitForTimeout(1200);

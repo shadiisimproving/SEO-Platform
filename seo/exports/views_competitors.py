@@ -129,12 +129,16 @@ def keyword_check(engine, args) -> Report:
     return report
 
 
+FLAGGED_BY = {"file": "The uploaded file", "system": "The system", "you": "You"}
+
+
 def _gap_columns() -> list:
     return [
         C("display", "Site", "text", width=3), C("title", "Name", "text", width=2.6), C("authority", "Authority", "int"), C("spam_score", "Spam score", "float"),
         C("competitor_count", "Competitors it links to", "int"),
         C("competitors", "Which ones", "text", width=4, get=lambda r: ", ".join(str(x.get("host")) for x in r.get("competitors") or [])),
         C("sample_url", "A page with a link", "url"), C("reason_words", "Why filtered out", "text", width=3, translate=True),
+        C("flagged_by", "Flagged by", "text", width=1.6, get=lambda r: FLAGGED_BY.get(r.get("flagged_by") or "", ""), translate=True),
         C("in_consideration", "In consideration", "bool"),
     ]
 
@@ -152,7 +156,7 @@ def link_gaps(engine, args) -> Report:
         Tile("Filtered out", funnel.get("filtered"), "int"), Tile("Already link to me", data.get("already_linking"), "int"),
     ]
     columns = _gap_columns()
-    report.tables.append(Table("gaps", "Sites that link to competitors, not to me", [c for c in columns if c.key != "reason_words"], data.get("gaps") or [], total=funnel.get("good"), empty="No link gaps found yet."))
+    report.tables.append(Table("gaps", "Sites that link to competitors, not to me", [c for c in columns if c.key not in ("reason_words", "flagged_by")], data.get("gaps") or [], total=funnel.get("good"), empty="No link gaps found yet."))
     report.tables.append(Table("filtered", "Filtered out", [c for c in columns if c.key != "in_consideration"], data.get("filtered") or [], total=funnel.get("filtered"), empty="Nothing was filtered out."))
     return report
 

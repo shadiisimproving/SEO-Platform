@@ -5,7 +5,8 @@
   const COMP = window.COMP;
   let UI = null;
   const POLL_MS = 1500, POLL_LIMIT_MS = 90000;
-  const L = { list: [], busy: new Set(), histories: new Map(), helpers: {} };
+  const L = { list: [], busy: new Set(), histories: new Map(), helpers: {}, sort: null };
+  const PAGES = "bl-mediators"; // the table's pages and search (table-pages.js), like every long table in the app
   const key = (name) => String(name || "").toLowerCase().split(/\s+/).filter(Boolean).join(" ");
 
   // ---- mediators ----------------------------------------------------------------------------------
@@ -31,13 +32,24 @@
     if (!rows.length) return `<div class="table-wrap"><div class="empty"><h3>${t("No mediators yet")}</h3><p>${t("Add the people and agencies who place your links. A name typed on a backlink is added here too.")}</p>${add}</div></div>`;
     const cell = (label, inner, cls = "") => `<td class="${cls}" data-label="${t(label)}">${inner}</td>`;
     const none = '<span class="muted">—</span>';
-    return `<div class="md-bar"><span class="small sec">${t("Spent is only added up within one currency.")}</span><span class="end bl-tools">${window.BacklinkSeo?.budgetBar?.(all) || ""}${add}</span></div>
-      <div class="table-wrap"><table class="data" id="md-table"><thead><tr>
-        <th scope="col">${t("Mediator")}</th><th scope="col">${t("Platform")}</th><th scope="col">${t("Price")}</th><th scope="col" class="r">${t("Links")}</th><th scope="col" class="r">${t("Live")}</th><th scope="col" class="r">${t("Lost")}</th><th scope="col" class="r">${t("Spent")}</th><th scope="col" class="r">${t("Visits")}</th><th scope="col" class="r">${t("Cost per visit")}</th><th scope="col" aria-label="${t("Edit")}"></th>
-      </tr></thead><tbody>${rows.map((m) => {
-        const list = all.filter((b) => key(b.mediator) === key(m.name));
-        const live = list.filter((b) => b.status !== "lost" && b.status !== "planned").length, lost = list.filter((b) => b.status === "lost").length;
-        const sum = window.BacklinkSeo?.trafficTotals?.(list), visits = sum ? (sum.known ? num(sum.visits) : none) : list.some((b) => b.visits !== null && b.visits !== undefined) ? num(list.reduce((s, b) => s + (b.visits || 0), 0)) : none; // a shared number counts once (F10)
+    // Each mediator's links and numbers, worked out once, so the headings can sort by them.
+    const facts = rows.map((m) => {
+      const list = all.filter((b) => key(b.mediator) === key(m.name));
+      const sum = window.BacklinkSeo?.trafficTotals?.(list);
+      const visits = sum ? (sum.known ? sum.visits : null) : list.some((b) => b.visits !== null && b.visits !== undefined) ? list.reduce((s, b) => s + (b.visits || 0), 0) : null; // a shared number counts once (F10)
+      return { m, list, live: list.filter((b) => b.status !== "lost" && b.status !== "planned").length, lost: list.filter((b) => b.status === "lost").length, visits };
+    });
+    const sortRows = window.BacklinkSeo?.sortRows || ((x) => x), sortHead = window.BacklinkSeo?.sortHead;
+    const found = facts.filter((f) => TP.matches(PAGES, f.m.name, f.m.contact, f.m.platform));
+    const page = TP.view(PAGES, sortRows(found, L.sort, { name: (f) => f.m.name, links: (f) => f.list.length, live: (f) => f.live, lost: (f) => f.lost, visits: (f) => f.visits }));
+    const head = (id, label, cls = "") => (sortHead ? sortHead("data-md-sort", L.sort, id, label, cls) : `<th scope="col" class="${cls}">${t(label)}</th>`);
+    // A short list needs no search: it shows once there are more than ten mediators, or while it holds something.
+    const search = rows.length > 10 || TP.state(PAGES).q ? TP.search(PAGES, t("Search mediators")) : "";
+    return `<div class="md-bar">${search}<span class="small sec">${t("Spent is only added up within one currency.")}</span><span class="end bl-tools">${window.BacklinkSeo?.budgetBar?.(all) || ""}${add}</span></div>
+      ${found.length ? `<div class="bl-list"><div class="table-wrap"><table class="data" id="md-table"><thead><tr>
+        ${head("name", "Mediator")}<th scope="col">${t("Platform")}</th><th scope="col">${t("Price")}</th>${head("links", "Links", "r")}${head("live", "Live", "r")}${head("lost", "Lost", "r")}<th scope="col" class="r">${t("Spent")}</th>${head("visits", "Visits", "r")}<th scope="col" class="r">${t("Cost per visit")}</th><th scope="col" aria-label="${t("Edit")}"></th>
+      </tr></thead><tbody>${page.rows.map(({ m, list, live, lost, visits: seen }) => {
+        const visits = seen === null ? none : num(seen);
         return `<tr style="cursor:default">
           <td class="head-cell"><button class="kw" data-bl-mediator="${esc(m.name)}" dir="auto" style="text-align:start" aria-label="${t("See the links from")} ${esc(m.name)}">${esc(m.name)}</button>${m.contact ? `<span class="second" dir="auto" style="overflow-wrap:anywhere">${esc(m.contact)}</span>` : ""}</td>
           ${cell("Platform", m.platform ? `<span dir="auto">${esc(m.platform)}</span>` : none)}
@@ -45,7 +57,8 @@
           ${cell("Links", num(list.length), "r")}${cell("Live", num(live), "r")}${cell("Lost", num(lost), "r")}
           ${cell("Spent", helpers.spentWords(list), "r")}${cell("Visits", visits, "r")}${cell("Cost per visit", helpers.mediatorCost(list), "r")}
           <td class="r"><button class="btn btn-small" data-md-edit="${esc(m.name)}" aria-label="${t("Edit")}: ${esc(m.name)}">${icon("pencil")}${t("Edit")}</button></td></tr>`;
-      }).join("")}</tbody></table></div>`;
+      }).join("")}</tbody></table></div>
+      ${TP.footer(PAGES, page, { noun: t("mediators") })}</div>` : COMP.empty(t("No mediator matches this search"), t("Change the search to see more mediators."))}`;
   }
 
   function openPanel(name, opener) {
@@ -208,6 +221,7 @@
       let el;
       if ((el = target.closest?.("#link-check-now"))) { checkNow(Number(el.dataset.id)); return; }
       if ((el = target.closest?.("#md-add"))) { openPanel(null, el); return; }
+      if ((el = target.closest?.("[data-md-sort]"))) { const id = el.dataset.mdSort; L.sort = window.BacklinkSeo.nextSort(L.sort, id, id === "name" ? "asc" : "desc"); TP.reset(PAGES); UI.render(); UI.$(`[data-md-sort="${id}"]`)?.focus(); return; }
       if ((el = target.closest?.("[data-md-edit]"))) { openPanel(el.dataset.mdEdit, el); return; }
       if ((el = target.closest?.("#md-save"))) { save(el); return; }
       if ((el = target.closest?.('[data-bl-tab="mediators"]'))) load().then(() => { if (UI.state.route === "backlinks" && UI.state.blTab === "mediators" && !UI.$("#panel")) UI.render(); });
@@ -230,14 +244,15 @@
   }
 
   window.LinkExtras = {
-    init(helpers) { UI = helpers; bind(); sampleWrites(); load(); },
+    init(helpers) { UI = helpers; bind(); sampleWrites(); load(); TP.on(PAGES, () => UI.render()); },
     load, names, count: (links) => merged(links).length, mediatorsBody, checkBlock, rowNote,
   };
 
   const fr = {
     "Add mediator": "Ajouter un intermédiaire", "Edit mediator": "Modifier l'intermédiaire", "No mediators yet": "Pas encore d'intermédiaires", "Only the name is required": "Seul le nom est obligatoire", "Usual price": "Prix habituel", "Name": "Nom",
     "Add the people and agencies who place your links. A name typed on a backlink is added here too.": "Ajoutez les personnes et agences qui placent vos liens. Un nom saisi sur un backlink est aussi ajouté ici.",
-    "Spent is only added up within one currency.": "Les dépenses ne s'additionnent que dans une même devise.", "Mediator saved": "Intermédiaire enregistré", "A mediator needs a name.": "Un intermédiaire a besoin d'un nom.",
+    "Spent is only added up within one currency.": "Les dépenses ne s'additionnent que dans une même devise.",
+    "Search mediators": "Rechercher un intermédiaire", "mediators": "intermédiaires", "No mediator matches this search": "Aucun intermédiaire ne correspond à cette recherche", "Change the search to see more mediators.": "Modifiez la recherche pour voir plus d'intermédiaires.", "Mediator saved": "Intermédiaire enregistré", "A mediator needs a name.": "Un intermédiaire a besoin d'un nom.",
     "There is already a mediator with that name.": "Il existe déjà un intermédiaire avec ce nom.", "That mediator doesn't exist.": "Cet intermédiaire n'existe pas.",
     "Known mediator: their details are filled in where empty.": "Intermédiaire connu : ses coordonnées sont remplies là où c'est vide.", "New mediator: {name}. Added when you save.": "Nouvel intermédiaire : {name}. Ajouté à l'enregistrement.", 
     "Run": "Lancer", "Run again": "Relancer", "Checking…": "Contrôle en cours…", "Reading the page…": "Lecture de la page…", "Checked on": "Contrôlé le", "Link checked": "Lien contrôlé", "Couldn't check on": "Contrôle impossible le", "This link is lost": "Ce lien est perdu",

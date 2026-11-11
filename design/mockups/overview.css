@@ -46,7 +46,8 @@
 .ov-marks li { display: flex; align-items: center; gap: 6px; }
 .ov-marks svg { width: 14px; height: 14px; flex: none; color: var(--muted); }
 .ov-mark-del { width: 24px; height: 24px; margin-left: 2px; }
-.ov-chart-table { box-shadow: none; border-radius: 0; max-height: 320px; overflow: auto; border-top: 1px solid var(--line); }
+.ov-chart-table { box-shadow: none; border-radius: 0; border-top: 1px solid var(--line); } /* in pages (table-pages.js), not a scroll box */
+.ov-chart-card:has(> .tp-foot) { overflow: clip; } /* clips instead of hiding, so the pages footer can stick */
 
 .ov-tabs-head { padding-bottom: 0; }
 .ov-tabs-head .tabs { margin-bottom: 0; }

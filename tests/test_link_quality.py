@@ -65,7 +65,8 @@ def world(engine, monkeypatch, tmp_path):
 
 
 def csv_of(domains, spam=None):
-    lines = ["Source url,Toxic score"] + [f"https://{d}/post,{(spam or {}).get(d, 1)}" for d in domains]
+    """A blank score means the file doesn't know, so the app's own checks judge that domain."""
+    lines = ["Source url,Toxic score"] + [f"https://{d}/post,{(spam or {}).get(d, '')}" for d in domains]
     return "\n".join(lines).encode()
 
 
@@ -362,3 +363,38 @@ def test_a_site_that_is_down_isnt_tried_again_straight_away(world):
     quality.queue_checks(world.engine, part=100)
     world.check()
     assert filtered(world) == {"down.example": "site_down"}
+
+
+# ---- the file's spam score decides --------------------------------------------------------------------
+
+def test_the_files_spam_score_decides_over_the_apps_own_checks(world):
+    # betmatecasino.com had a score of 3 in an Ubersuggest file and was flagged by its name (2026-11-10).
+    scores = {"bet-casino.example": 3, "parked.example": 3, "toxic.example": 52}
+    report = gaps.import_referrers(world.engine, world.own, world.rival, csv_of(["bet-casino.example", "parked.example", "toxic.example", "gamble-casino.example"], scores), "links.csv")
+    assert report["flagged"] == 2  # the file's 52, and a spam name the file has no score for
+    world.check()
+    answer = world.gaps()
+    assert sorted(good(world)) == ["bet-casino.example", "parked.example"]  # a low score wins over a spam name and a parked page
+    flagged = {g["domain"]: g for g in answer["filtered"]}
+    assert (flagged["toxic.example"]["reason"], flagged["toxic.example"]["flagged_by"]) == ("spam_score", "file")
+    assert flagged["toxic.example"]["reason_words"] == "Spam score above 30 in the uploaded file"
+    assert (flagged["gamble-casino.example"]["reason"], flagged["gamble-casino.example"]["flagged_by"]) == ("name_words", "system")
+
+
+def test_a_file_score_is_not_kept_as_the_systems_verdict(world):
+    gaps.import_referrers(world.engine, world.own, world.rival, csv_of(["toxic.example"], {"toxic.example": 88}), "links.csv")
+    with world.engine.connect() as conn:
+        assert conn.execute(text("SELECT reason FROM link_domains WHERE domain = 'toxic.example'")).scalar() != "spam_score"
+    # One stored that way by an older version goes back to be checked.
+    with world.engine.begin() as conn:
+        conn.execute(text("UPDATE link_domains SET quality = 'spam', reason = 'spam_score' WHERE domain = 'toxic.example'"))
+    quality.queue_checks(world.engine)
+    with world.engine.connect() as conn:
+        assert conn.execute(text("SELECT quality FROM link_domains WHERE domain = 'toxic.example'")).scalar() == "pending"
+
+
+def test_a_persons_decision_beats_the_file():
+    assert quality.verdict(88, None, None, "keep") == ("good", None, None)
+    assert quality.verdict(3, "good", None, "spam") == ("spam", "my_choice", "you")
+    assert quality.verdict(None, "spam", "parked") == ("spam", "parked", "system")
+    assert quality.verdict(30, "spam", "name_words") == ("good", None, None)  # 30 itself isn't above 30

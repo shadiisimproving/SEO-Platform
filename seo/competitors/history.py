@@ -5,8 +5,11 @@ Free, with no key and no credit, so it runs for any competitor that's followed. 
 competitor is added, then once a month. Never on page load: the Wayback Machine is slow (15 s or more for a
 mid-size site) and often busy, so a busy answer is tried again a few times within the hour, then the next day.
 
-The Wayback Machine times out when asked to filter, so it's asked for every address it holds, one row per address,
-and the pages are picked out here: HTML that answered 200. An address with ?something is the same page.
+A page counts from its first good copy: HTML that answered 200. The archive is asked for exactly that, one row per
+address. Asking for only the first copy of each address, whatever it was, lost every page whose first copy was a
+redirect (an old http:// address, a missing slash) and gave a "first archived" date years too late (2026-11-10).
+When the archive is too slow to filter, it's asked for every copy instead, and the good ones are picked out here.
+An address with ?something is the same page.
 """
 from __future__ import annotations
 
@@ -29,8 +32,10 @@ from seo.worker.runner import Retry, handler
 JOB_KIND = "competitors.history"
 LANE = "collectors"  # its own lane: page reads in the crawl lane can take every tick of a busy day
 CDX_URL = "https://web.archive.org/cdx/search/cdx"
-CDX_LIMIT = 5000
-CDX_TIMEOUT = 90.0  # a job's lease is 180 s
+CDX_LIMIT = 20000  # pages when the archive filters; images and scripts no longer use up the rows
+CDX_ALL_LIMIT = 60000  # every copy of every address, when it can't filter
+CDX_TIMEOUT = 90.0  # a job's lease is 180 s, and both questions together stay under it
+CDX_FILTER_TIMEOUT = 50.0
 CDX_MAX_BYTES = 8_000_000
 REFRESH_DAYS = 30
 RETRY_HOURS = 20  # the next daily run, whatever time the last try was
@@ -43,15 +48,14 @@ class HistoryFailed(Exception):
     """The Wayback Machine didn't give a usable answer this time."""
 
 
-def read_cdx(host: str) -> list[tuple[str, str, str, str]]:
-    """(address key, first capture, type, status) for each address the archive holds on this domain, at most CDX_LIMIT."""
-    params = {"url": host, "matchType": "domain", "fl": "urlkey,timestamp,mimetype,statuscode", "collapse": "urlkey", "limit": str(CDX_LIMIT)}
+def _ask(params: list[tuple[str, str]], timeout: float = CDX_TIMEOUT) -> bytes:
+    """One question to the archive's index. Raises HistoryFailed on anything but a plain-text answer."""
     url = str(httpx.URL(CDX_URL, params=params))
     if not is_allowed(url):
         raise HistoryFailed("refused")
     body = b""
     try:
-        with httpx.Client(timeout=CDX_TIMEOUT, follow_redirects=False, trust_env=False, headers={"User-Agent": USER_AGENT}) as client:
+        with httpx.Client(timeout=timeout, transport=transport, follow_redirects=False, trust_env=False, headers={"User-Agent": USER_AGENT}) as client:
             with client.stream("GET", url) as reply:
                 if reply.status_code != 200:
                     raise HistoryFailed(f"http_{reply.status_code}")
@@ -63,16 +67,42 @@ def read_cdx(host: str) -> list[tuple[str, str, str, str]]:
         raise HistoryFailed("timeout") from exc
     except httpx.HTTPError as exc:
         raise HistoryFailed("network") from exc
-    rows = []
+    if body.lstrip()[:1] == b"<":  # an "offline" or error page sent as 200 isn't an empty archive
+        raise HistoryFailed("not_an_index")
+    return body
+
+
+class Rows(list):
+    """The archive's rows, and whether they stopped at the limit asked for."""
+    capped = False
+
+
+def _rows(body: bytes, limit: int) -> Rows:
+    rows = Rows()
     for line in body.decode("utf-8", "replace").splitlines():
         parts = line.split(" ")
         if len(parts) == 4:
             rows.append((parts[0], parts[1], parts[2], parts[3]))
+    rows.capped = len(rows) >= limit
     return rows
+
+
+def read_cdx(host: str) -> Rows:
+    """(address key, capture, type, status) rows for this domain: the first good copy of each address, or when the
+    archive can't filter in time, every copy it holds (summarise() picks the first good one either way)."""
+    fields = {"url": host, "matchType": "domain", "fl": "urlkey,timestamp,mimetype,statuscode"}
+    try:
+        good = [("filter", "statuscode:200"), ("filter", "mimetype:text/html"), ("collapse", "urlkey"), ("limit", str(CDX_LIMIT))]
+        return _rows(_ask([*fields.items(), *good], CDX_FILTER_TIMEOUT), CDX_LIMIT)
+    except HistoryFailed as exc:
+        if str(exc) in ("refused", "http_503"):  # refused here, or the archive is down: asking again at once won't help
+            raise
+    return _rows(_ask([*fields.items(), ("limit", str(CDX_ALL_LIMIT))]), CDX_ALL_LIMIT)
 
 
 # Tests and the local harness replace these to run on a fake internet.
 is_allowed: Callable[[str], bool] = is_public_url
+transport: httpx.BaseTransport | None = None
 cdx_lookup: Callable[[str], list[tuple[str, str, str, str]]] = read_cdx
 
 
@@ -115,7 +145,7 @@ def summarise(rows: list[tuple[str, str, str, str]]) -> dict:
     return {
         "first_capture": min(first.values()) if first else None,
         "archived_pages": len(first),
-        "capped": len(rows) >= CDX_LIMIT,
+        "capped": getattr(rows, "capped", len(rows) >= CDX_LIMIT),
         "pages_by_year": dict(sorted(years.items())),
         "first_by_page": first,
     }

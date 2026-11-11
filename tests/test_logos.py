@@ -235,7 +235,8 @@ def test_adding_a_prospect_asks_for_its_icon(world):
     assert pending(world) == ["good-site.example"]
 
 
-def test_a_domain_that_passes_the_spam_check_gets_its_icon_but_spam_does_not(world):
+def test_every_link_gap_domain_gets_its_icon_flagged_or_not(world):
+    # The owner asked for each link's logo (2026-11-10): a flagged row is still easier to tell apart with its icon.
     own = links.add_site(world.engine, "https://me.example/", "own", is_allowed=ALLOW)["id"]
     rival = suggest.add_competitor(world.engine, own, "rival.example", "manual", ALLOW)["id"]
     world.sites["fine.example/"] = "<html><head><title>Fine</title><link rel='icon' href='/i.png'></head><body><main><p>" + "A real site about coffee. " * 20 + "</p></main></body></html>"
@@ -245,7 +246,22 @@ def test_a_domain_that_passes_the_spam_check_gets_its_icon_but_spam_does_not(wor
     gaps.import_referrers(world.engine, own, rival, b"Source url,Toxic score\nhttps://fine.example/a,1\nhttps://gamble.example/b,1\n", "x.csv")
     world.run()
     world.run()
-    assert logos.known(world.engine) == ["fine.example"]
+    assert logos.known(world.engine) == ["fine.example", "gamble.example"]
+
+
+def test_opening_the_link_gaps_asks_for_icons_never_asked_before(world):
+    """Domains listed before every row got an icon catch up when the list is opened, and asking twice writes nothing new."""
+    own = links.add_site(world.engine, "https://me.example/", "own", is_allowed=ALLOW)["id"]
+    rival = suggest.add_competitor(world.engine, own, "rival.example", "manual", ALLOW)["id"]
+    world.sites["old.example/"] = home("")
+    gaps.import_referrers(world.engine, own, rival, b"Source url,Toxic score\nhttps://old.example/a,1\n", "x.csv")
+    world.run()
+    with world.engine.begin() as conn:
+        conn.execute(text("DELETE FROM site_logos"))
+    gaps.link_gaps(world.engine, own)
+    with world.engine.connect() as conn:
+        asked = {row[0] for row in conn.execute(text("SELECT domain FROM site_logos"))}
+    assert {"old.example", "rival.example"} <= asked
 
 
 def test_an_accented_domain_gets_its_icon_under_either_spelling(world):

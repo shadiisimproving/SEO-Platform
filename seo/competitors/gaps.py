@@ -62,16 +62,13 @@ def import_referrers(engine: Engine, site_id: int, competitor_id: int, data: byt
             )
     _save_links(engine, competitor_id, data, file_name, result.source_label)
     quality.note_domains(engine, [{"domain": domain} for domain in domains])
-    over = [domain for domain, row in domains.items() if row.spam_score is not None and row.spam_score > cleaner.SPAM_THRESHOLD]
-    if over:
-        with engine.begin() as conn:
-            for domain in over:
-                conn.execute(text("UPDATE link_domains SET quality = 'spam', reason = 'spam_score' WHERE domain = :d"), {"d": domain[:190]})
+    # The file's score stays with the file (competitor_referrers): link_domains holds only what the app's own checks found.
     with engine.connect() as conn:
-        flagged = sum(
-            1 for domain in domains
-            if conn.execute(text("SELECT 1 FROM link_domains WHERE domain = :d AND quality = 'spam'"), {"d": domain[:190]}).first()
-        )
+        system = {domain: conn.execute(text("SELECT quality, reason FROM link_domains WHERE domain = :d"), {"d": domain[:190]}).first() for domain in domains}
+    flagged = sum(
+        1 for domain, row in domains.items()
+        if quality.verdict(row.spam_score, *(system[domain] or (None, None)))[0] == SPAM
+    )
     quality.queue_checks(engine)
     return {
         "total": result.total, "kept": result.kept - result.removed_spam, "removed": result.removed, "removed_spam": result.removed_spam, "removed_no_url": result.removed_no_url,
@@ -231,6 +228,7 @@ def _all_gaps(engine: Engine, site_id: int) -> dict:
     linking = {domain for domain, status in logged if status in ("live", "found")}
     typed_in = {row["domain"] for row in rows if row["source_label"] == BY_HAND}
     lost = {domain for domain, status in logged if status == "lost"} - linking
+    planned = {domain for domain, status in logged if status == "planned"} - linking  # in Backlinks → To do, on its way to a mediator
     own_rivals = {domain_of(c["host"]) for c in competitors}
     by_domain: dict[str, dict] = {}
     already = set()  # domains, not rows: a domain can link to several competitors
@@ -245,17 +243,11 @@ def _all_gaps(engine: Engine, site_id: int) -> dict:
         if domain in linking:
             already.add(domain)
             continue
-        # A person's decision beats every rule.
         decision = decisions.get(domain)
-        state = GOOD if decision == "keep" else SPAM if decision == "spam" else (row["quality"] or quality.PENDING)
-        # Someone found this one in a tool, so it shows while its home page waits. The check still runs and can still flag it.
-        if state == quality.PENDING and domain in typed_in:
-            state = GOOD
-        reason = "my_choice" if decision == "spam" else row["reason"]
         entry = by_domain.setdefault(domain, {
             "domain": domain, "display": store.to_display_host(domain), "competitors": [], "authority": None, "authority_label": None, "spam_score": None, "sample_url": row["sample_url"],
-            "sources": set(), "first_seen": row["first_seen_at"], "in_consideration": domain in prospects, "lost_link": domain in lost, "is_competitor": domain in own_rivals,
-            "quality": state, "reason": reason, "reason_words": quality.reason_words(reason) if state == SPAM else None, "kept": decision == "keep",
+            "sources": set(), "first_seen": row["first_seen_at"], "in_consideration": domain in prospects, "in_todo": domain in planned, "lost_link": domain in lost, "is_competitor": domain in own_rivals,
+            "system_quality": row["quality"], "system_reason": row["reason"], "kept": decision == "keep",
             "page_note": row["page_note"], "title": row["page_title"], "top_percent": _top_percent(row["cc_rank"], row["cc_total"]), "cc_rank": row["cc_rank"], "outlinks": row["cc_outlinks"],
             "added_by_hand": [],
         })
@@ -272,6 +264,13 @@ def _all_gaps(engine: Engine, site_id: int) -> dict:
         if row["in_common_crawl"]:
             entry["sources"].add("Common Crawl")
         entry["first_seen"] = min(entry["first_seen"], row["first_seen_at"])
+    for domain, entry in by_domain.items():
+        # A person's decision beats every rule, then the uploaded file's spam score, then the app's own checks (quality.verdict).
+        state, reason, flagged_by = quality.verdict(entry["spam_score"], entry.pop("system_quality"), entry.pop("system_reason"), decisions.get(domain))
+        # Someone found this one in a tool, so it shows while its home page waits. The check still runs and can still flag it.
+        if state == quality.PENDING and domain in typed_in:
+            state = GOOD
+        entry.update(quality=state, reason=reason, flagged_by=flagged_by, reason_words=quality.reason_words(reason) if state == SPAM else None)
     everything = [
         _with_edit({**entry, "sources": sorted(entry["sources"]), "first_seen": _iso(entry["first_seen"]), "competitor_count": len(entry["competitors"]), **_link_fields(links.get(entry["domain"], []))}, edits.get(entry["domain"]), removed.get(entry["domain"], []))
         for entry in by_domain.values()
@@ -305,6 +304,8 @@ def link_gaps(engine: Engine, site_id: int) -> dict:
     everything = report.pop("everything")
     good = [g for g in everything if g["quality"] == GOOD]
     spam = [g for g in everything if g["quality"] == SPAM]
+    # Every domain on the list, and every competitor it links to, gets its icon, flagged or not. Ones listed before this was added catch up here.
+    logos.queue_missing(engine, [g["domain"] for g in good[:MAX_LISTED] + spam[:MAX_FILTERED_LISTED]] + [c["host"] for c in report["competitors"]])
     return {
         **report,
         "gaps": good[:MAX_LISTED],
@@ -472,7 +473,7 @@ def add_to_prospects(engine: Engine, site_id: int, domains: list) -> dict:
     with engine.begin() as conn:
         for domain in dict.fromkeys(domains):
             gap = report.get(store.to_ascii_host(domain))
-            if gap is None or gap["in_consideration"]:  # only what the gap list really offers
+            if gap is None or gap["in_consideration"] or gap.get("in_todo"):  # only what the gap list really offers
                 skipped.append(domain)
                 continue
             rivals = ", ".join(c["host"] for c in gap["competitors"])

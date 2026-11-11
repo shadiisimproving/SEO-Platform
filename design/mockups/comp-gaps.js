@@ -114,10 +114,10 @@
     } catch (err) { window.PROSPECTS = before; throw err; }
   };
 
-  function seeThem(host) {
+  function seeThem(host, section = "consideration") {
     const own = window.SITES.find((s) => s.host === host);
     if (UI.state.site !== "all" && UI.state.site !== own?.id) UI.state.site = own?.id || "all";
-    UI.state.blSection = "consideration";
+    UI.state.blSection = section;
     UI.go("backlinks");
   }
 
@@ -127,7 +127,7 @@
   const isFlagged = (gap) => gap.quality === "spam";
   /* One competitor, or all of them together; "2 or more" keeps the domains that link to several, the strongest gaps. */
   /* The search finds a domain by its name, its title, or the anchor text and pages of its links. */
-  const searched = () => allRows().filter((g) => TP.matches(PAGES, g.domain, g.display, g.title, ...(g.links || []).flatMap((l) => [l.anchor, l.source_title, l.source_url, l.target_url])) && !(S.hide && inConsideration(g)));
+  const searched = () => allRows().filter((g) => TP.matches(PAGES, g.domain, g.display, g.title, ...(g.links || []).flatMap((l) => [l.anchor, l.source_title, l.source_url, l.target_url])) && !(S.hide && (inConsideration(g) || g.in_todo)));
   const reaches = (g) => S.reach === "any" || g.competitor_count >= 2;
   /* A domain's links, only those to the chosen competitor when one is chosen. The server sends them strongest page first. */
   const linksOf = (g) => (g.links || []).filter((l) => !S.filter || String(l.competitor_id) === S.filter);
@@ -149,7 +149,7 @@
     });
   }
   const shownGaps = () => sorted(byRival().filter((g) => S.quality === "all" || (S.quality === "spam") === isFlagged(g)));
-  const canPick = (gap) => !isFlagged(gap) && !inConsideration(gap);
+  const canPick = (gap) => !isFlagged(gap) && !inConsideration(gap) && !gap.in_todo;
   const pickable = () => TP.view(PAGES, shownGaps()).rows.filter(canPick); // only rows on this page: "Select all shown" means shown
 
   // The rules of the list sit behind an (i) on the Sources line, not in a box over the table.
@@ -195,6 +195,20 @@
     </section>`;
   }
 
+  /* The competitor choice. A native list can't show pictures, so it's a button and a menu, each competitor with its logo and its count. */
+  function competitorPick(base, rivals, countFor) {
+    S.choices = [{ id: "", host: null, word: t("All competitors, together"), n: base.length }, ...rivals.map((c) => ({ id: String(c.id), host: c.host, word: c.host, n: countFor(c.id) }))];
+    const on = S.choices.find((c) => c.id === (S.filter || "")) || S.choices[0];
+    return `<div class="field"><span id="cg-filter-label">${t("Competitor")}</span><button type="button" class="select cg-pick" id="cg-filter" data-pop-toggle aria-haspopup="true" aria-expanded="false" aria-labelledby="cg-filter-label cg-filter">${choiceFace(on)}</button></div>`;
+  }
+  const choiceFace = (c) => `${c.host ? UI.siteLogo(c.host, 16) : `<span class="cg-pick-all" aria-hidden="true">${UI.icon("users")}</span>`}<span class="cg-pick-word" dir="auto">${esc(c.word)}</span><span class="cg-pick-n tabular">${UI.num(c.n)}</span>`;
+  function openCompetitorPick(anchor) {
+    if (anchor.getAttribute("aria-expanded") === "true") { UI.closePopover({ focus: true }); return; }
+    const now = S.filter || "";
+    const menu = UI.popover(anchor, S.choices.map((c, i) => `${i === 1 ? "<hr>" : ""}<button type="button" data-cg-choose="${esc(c.id)}" aria-pressed="${c.id === now}" ${c.id === now ? "data-autofocus" : ""}>${choiceFace(c)}${c.id === now ? `<span class="tick">${UI.icon("check")}</span>` : ""}</button>`).join(""), "cg-pick-menu");
+    menu.style.minWidth = `${Math.max(240, anchor.offsetWidth)}px`;
+  }
+
   const authorityCell = (gap) => {
     // One line per row: the value and whose scale it is. The full name stays on the tag.
     const label = gap.authority_label || "";
@@ -229,16 +243,16 @@
   const spamCell = (gap) => (gap.spam_score === null || gap.spam_score === undefined ? `<span class="muted" title="${esc(t("No spam score for this domain yet."))}">—</span>` : `<span class="tabular">${UI.dec(gap.spam_score)}</span>`);
 
   function rowHtml(gap) {
-    const flagged = isFlagged(gap), considered = inConsideration(gap), picked = S.picked.has(gap.domain);
+    const flagged = isFlagged(gap), considered = inConsideration(gap) || Boolean(gap.in_todo), picked = S.picked.has(gap.domain);
     const tags = [
       flagged ? `<span class="tag cg-flag">${UI.icon("ban")}${t("Spam")}</span>` : "",
       gap.lost_link ? `<span class="tag cg-lost">${UI.icon("link-2-off")}${t("You lost this link")}</span>` : "",
-      considered ? `<span class="tag cp-yours">${t("In consideration")}</span>` : "",
+      gap.in_todo ? `<span class="tag cp-yours cg-todo-tag">${UI.icon("clock")}${t("In To do")}</span>` : considered ? `<span class="tag cp-yours">${t("In consideration")}</span>` : "",
       gap.is_competitor ? `<span class="tag">${t("One of your competitors")}</span>` : "",
       gap.kept ? `<span class="tag">${t("You said it isn't spam")}</span>` : "",
       gap.page_note === "unread" ? `<span class="tag" data-tip="${t("The site turned the app away, so its home page wasn't checked. That doesn't make it spam.")}">${t("Home page not read")}</span>` : "",
     ].filter(Boolean).join(" ");
-    const why = flagged ? `<span class="second cg-why">${esc(t(gap.reason_words || "Flagged as spam"))}</span>` : "";
+    const why = flagged ? `<span class="second cg-why">${esc(COMP.spamWhy(gap))}</span>` : "";
     const word = gap.reason === "my_choice" ? "Undo" : "Not spam";
     const action = flagged
       ? `<button class="btn btn-small" data-cg-decide="${gap.reason === "my_choice" ? "auto" : "keep"}" data-domain="${esc(gap.domain)}" aria-label="${t(word)}: ${esc(gap.display || gap.domain)}">${t(word)}</button>`
@@ -246,7 +260,7 @@
     return `<tr data-cg-row="${esc(gap.domain)}" class="${picked ? "sel" : ""} ${considered || flagged ? "cg-off" : ""} ${flagged ? "cg-flagged" : ""}">
       <td class="chk-cell"><input type="checkbox" class="chk" data-cg-pick="${esc(gap.domain)}" aria-label="${esc(gap.display || gap.domain)}" ${picked ? "checked" : ""} ${considered || flagged ? "disabled" : ""}></td>
       <td class="head-cell"><span class="with-logo">${UI.siteLogo(gap.domain)}<span class="logo-text"><span class="nb-inline"><span class="kw mono" dir="auto">${esc(gap.display || gap.domain)}</span>${gap.sample_url ? `<a class="icon-btn cg-example-link" href="${esc(gap.sample_url)}" target="_blank" rel="noopener noreferrer nofollow" data-tip="${esc(t("Example link"))}: ${esc(COMP.shortUrl(gap.sample_url))}" aria-label="${esc(t("Example link"))}: ${esc(COMP.shortUrl(gap.sample_url))}">${UI.icon("external-link")}</a>` : ""}${COMP.notes?.badge ? COMP.notes.badge({ scope: "domain", domain: gap.domain, siteId: COMP.siteId ?? null }, gap.display || gap.domain) : ""}</span>${gap.title ? `<span class="second cg-title" dir="auto">${esc(gap.title)}</span>` : ""}</span></span></td>
-      <td data-label="${t("Links to")}"><span class="cp-tags cg-rivals">${gap.competitor_count > 1 ? `<b class="tabular cg-count" data-tip="${t("How many of your competitors it links to")}">${UI.num(gap.competitor_count)}</b>` : ""}${gap.competitors.map((c) => `<span class="tag" dir="auto">${esc(c.host)}</span>`).join(" ")}</span></td>
+      <td data-label="${t("Links to")}"><span class="cp-tags cg-rivals">${gap.competitor_count > 1 ? `<b class="tabular cg-count" data-tip="${t("How many of your competitors it links to")}">${UI.num(gap.competitor_count)}</b>` : ""}${gap.competitors.map((c) => `<span class="tag cg-rival">${UI.siteLogo(c.host, 14)}<span dir="auto">${esc(c.host)}</span></span>`).join(" ")}</span></td>
       <td class="c" data-label="${t("Authority")}">${authorityCell(gap)}</td>
       <td class="c" data-label="${t("Spam score")}">${spamCell(gap)}</td>
       <td class="cg-links-cell" data-label="${t("Links: anchor text and Page Authority")}">${linksCell(gap)}</td>
@@ -258,9 +272,17 @@
   function selectionBar() {
     const n = S.picked.size;
     if (!n) return "";
-    return `<div class="selbar" role="region" aria-label="${t("selected")}">
-      <b id="cg-sel-count">${UI.num(n)} ${t("selected")}</b>
-      <button class="btn btn-main btn-small" id="cg-add" data-cg-add ${S.adding ? "disabled" : ""}>${UI.icon("plus")}<span id="cg-add-words">${t("Add")} ${UI.num(n)} ${t("to In consideration")}</span></button>
+    // A small pill in the middle, so the floating Notes button on the right never sits on top of it.
+    const off = S.adding ? "disabled" : "";
+    return `<div class="selbar cg-selbar" role="region" aria-label="${t("selected")}">
+      <b id="cg-sel-count" class="cg-sel-count">${UI.num(n)} ${t("selected")}</b>
+      <span class="cg-sel-group" role="group" aria-labelledby="cg-sel-to"><span class="cg-sel-to" id="cg-sel-to">${t("Add to")}</span>
+        <button class="btn btn-main btn-small" id="cg-add" data-cg-add ${off}>${UI.icon("plus")}${t("In consideration")}</button>
+        <button class="btn btn-small" id="cg-todo" data-cg-todo ${off}>${UI.icon("clock")}${t("To do")}</button>
+      </span>
+      <span class="cg-sel-sep" aria-hidden="true"></span>
+      <button class="btn btn-small" id="cg-task" data-cg-task ${off}>${UI.icon("square-check")}${t("Create task")}</button>
+      <button class="btn btn-small" id="cg-spam-picked" data-cg-spam-picked ${off}>${UI.icon("ban")}${t("Mark as spam")}</button>
       <button class="icon-btn" data-cg-clear aria-label="${t("Clear selection")}" data-tip="${t("Clear selection")}">${UI.icon("x")}</button>
     </div>`;
   }
@@ -294,10 +316,7 @@
     return `${strip}
       <div class="cp-tools cg-tools">
         ${TP.search(PAGES, t("Search domains"))}
-        <label class="field"><span>${t("Competitor")}</span><select class="select" id="cg-filter">
-          <option value="">${t("All competitors, together")} (${UI.num(base.length)})</option>
-          ${rivals.map((c) => `<option value="${c.id}" ${String(c.id) === S.filter ? "selected" : ""}>${esc(c.host)} (${UI.num(countFor(c.id))})</option>`).join("")}
-        </select></label>
+        ${competitorPick(base, rivals, countFor)}
         <div class="field cg-reach"><span>${t("Links to")}</span><div class="chips cp-chips" role="group" aria-label="${t("Links to")}">
           ${[["any", "Any number of them"], ["several", "2 or more of them"]].map(([id, word]) => `<button class="chip" data-cg-reach="${id}" aria-pressed="${S.reach === id}">${t(word)}</button>`).join("")}
         </div></div>
@@ -341,11 +360,10 @@
     const bar = UI.$("#cg-selbar");
     if (!bar) return;
     // Only redraw when the bar appears or goes: a new one replays its entrance on every tick.
-    const count = UI.$("#cg-sel-count"), words = UI.$("#cg-add-words"), add = UI.$("#cg-add");
-    if (!S.picked.size || !count || !words || !add) { UI.setHTML(bar, selectionBar()); return; }
+    const count = UI.$("#cg-sel-count");
+    if (!S.picked.size || !count) { UI.setHTML(bar, selectionBar()); return; }
     count.textContent = `${UI.num(S.picked.size)} ${t("selected")}`;
-    words.textContent = `${t("Add")} ${UI.num(S.picked.size)} ${t("to In consideration")}`;
-    add.disabled = !!S.adding;
+    UI.$$(".cg-selbar .btn").forEach((b) => { b.disabled = !!S.adding; });
   }
 
   /* Keep only what can still be seen and added: "Add 3" must never add something off screen. */
@@ -517,6 +535,116 @@
     await refresh();
   }
 
+  // ---- the picked domains straight to To do, to a task, or to spam ---------------------------------
+  const LINK_TYPES = ["Guest post", "Directory", "Press", "Sponsored", "Forum", "Other"]; // the same list as Backlinks → To do
+  const pickedNames = () => [...S.picked].map((domain) => allRows().find((g) => g.domain === domain)?.display || domain);
+
+  /* To do is a link on its way to a mediator, so it asks for one, as Backlinks → Move to To do does. */
+  function openTodo(opener) {
+    const n = S.picked.size;
+    if (!n) return;
+    const names = window.LinkExtras?.names?.() || [];
+    UI.openPanel(`${UI.panelHead(t("Add to To do"), `${UI.num(n)} ${t(n === 1 ? "domain" : "domains")}`)}
+      <form class="panel-body" id="cg-todo-form" novalidate>
+        <label class="field"><span>${t("Mediator")} <span class="req">*</span></span><input class="input" id="cg-todo-mediator" list="cg-todo-mediators" dir="auto" data-autofocus aria-describedby="cg-todo-error" maxlength="180"><datalist id="cg-todo-mediators">${names.map((name) => `<option value="${esc(name)}"></option>`).join("")}</datalist><div id="cg-todo-error"></div></label>
+        <label class="field"><span>${t("Link type")}</span><input class="input" id="cg-todo-type" list="cg-todo-types" dir="auto" value="Guest post" maxlength="100"><datalist id="cg-todo-types">${LINK_TYPES.map((name) => `<option value="${esc(name)}"></option>`).join("")}</datalist></label>
+        <p class="help">${t("They skip In consideration and go straight to Backlinks → To do. You add each article's Google Docs link there.")}</p>
+      </form>
+      <div class="panel-foot"><button class="btn btn-main" id="cg-todo-save">${t("Add to To do")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button></div>`, opener);
+  }
+
+  async function saveTodo(button) {
+    const mediator = UI.$("#cg-todo-mediator").value.trim(), linkType = UI.$("#cg-todo-type").value.trim();
+    const say = (words) => { UI.$("#cg-todo-mediator").classList.add("invalid"); UI.setHTML(UI.$("#cg-todo-error"), `<div class="error" role="alert">${UI.icon("octagon-alert")}<span>${esc(t(words))}</span></div>`); UI.$("#cg-todo-mediator").focus(); };
+    if (!mediator) { say("Choose a mediator."); return; }
+    const domains = [...S.picked], siteId = COMP.siteId, host = COMP.site()?.host || "";
+    if (!domains.length || S.adding) return;
+    button.disabled = true;
+    S.adding = true;
+    updateSelection();
+    let made = [], skipped = [], ids = [], logged = 0;
+    try {
+      // The server only moves what is in consideration, so they pass through it on the way.
+      const answer = await COMP.api("POST", "link-gaps/add", { site_id: siteId, domains });
+      skipped = answer.skipped;
+      const known = new Set(answer.added);
+      ids = (await COMP.api("GET", `prospects?site_id=${siteId}`)).prospects.filter((row) => known.has(row.domain)).map((row) => row.id);
+      if (ids.length) {
+        const moved = await COMP.api("POST", "backlinks/todo/move", { prospect_ids: ids, mediator, link_type: linkType });
+        made = moved.saved; logged = (moved.skipped || []).length;
+        const gone = new Set(moved.prospects_removed || []);
+        window.PROSPECTS = window.PROSPECTS.filter((p) => !gone.has(p.serverId));
+      }
+    } catch (err) {
+      S.adding = false;
+      button.disabled = false;
+      updateSelection();
+      // Added but not moved: they are in consideration, and the words say so.
+      say(ids.length ? `${t("They're in In consideration, but couldn't go to To do")}: ${err.message}` : err.message);
+      await COMP.reload({ quiet: true });
+      return;
+    }
+    S.adding = false;
+    S.picked.clear();
+    UI.forgetPanelForm();
+    UI.closePanel();
+    UI.ignoreClicks();
+    window.UI.reloadBacklinks?.();
+    COMP.refreshLogos({ watch: true });
+    await COMP.reload({ quiet: true });
+    UI.$("#cg-select-all")?.focus({ preventScroll: true });
+    const n = made.length;
+    // A domain already in Backlinks (a lost link, say) can't be logged twice: it stays in In consideration, and the words say so.
+    const words = `${UI.num(n)} ${t(n === 1 ? "domain added to To do" : "domains added to To do")}${logged ? `. ${UI.num(logged)} ${t(logged === 1 ? "is already in your Backlinks, so it stays in In consideration" : "are already in your Backlinks, so they stay in In consideration")}` : ""}${skipped.length ? `. ${UI.num(skipped.length)} ${t("skipped")}` : ""}`;
+    const toast = UI.toast(words, n ? { undo: () => undoTodo(made), stay: Boolean(logged) } : { kind: "info", stay: Boolean(logged) });
+    if (!n && !logged) return;
+    const see = document.createElement("button");
+    see.className = "link-btn";
+    see.textContent = t("See them");
+    see.addEventListener("click", () => { toast.remove(); seeThem(host, n ? "todo" : "consideration"); });
+    toast.querySelector(".acts")?.prepend(see);
+  }
+
+  /* Undo takes them out of To do and out of In consideration, so the gap list is as it was. */
+  async function undoTodo(made) {
+    try {
+      const back = await COMP.api("POST", "backlinks/todo/move-back", { ids: made.map((row) => row.id) });
+      await Promise.all((back.prospects || []).map((row) => COMP.api("DELETE", `prospects/${row.id}`).catch(quietly404)));
+    } catch (err) { COMP.fail(err); }
+    window.UI.reloadBacklinks?.();
+    tab.loadedFor = undefined;
+    await reloadHere();
+  }
+
+  function taskPicked(opener) {
+    const names = pickedNames(), host = COMP.site()?.host || null;
+    if (!names.length) return;
+    UI.openTask({
+      title: `${t("Get a link from")} ${names.slice(0, 3).join(", ")}${names.length > 3 ? ` +${names.length - 3}` : ""}`,
+      host, opener,
+      source: { type: "competitor", label: `${t("Link gaps")}: ${UI.num(names.length)} ${t(names.length === 1 ? "domain" : "domains")}`, facts: names.slice(0, 20), link: "#competitors/gaps" },
+    });
+  }
+
+  async function spamPicked() {
+    const domains = [...S.picked];
+    if (!domains.length || S.adding) return;
+    S.adding = true;
+    updateSelection();
+    const done = [];
+    try {
+      for (const domain of domains) { await COMP.api("POST", "link-gaps/decide", { site_id: COMP.siteId, domain, decision: "spam" }); done.push(domain); }
+    } catch (err) { COMP.fail(err); }
+    S.adding = false;
+    done.forEach((domain) => S.picked.delete(domain));
+    await COMP.reload({ quiet: true });
+    if (!done.length) return;
+    UI.toast(`${UI.num(done.length)} ${t(done.length === 1 ? "domain marked as spam" : "domains marked as spam")}`, { kind: "info", undo: async () => {
+      await Promise.all(done.map((domain) => COMP.api("POST", "link-gaps/decide", { site_id: COMP.siteId, domain, decision: "auto" }).catch(COMP.fail)));
+      await reloadHere();
+    } });
+  }
+
   // ---- a person's decision beats the filter -----------------------------------------------------
   const deciding = new Set();
   async function decide(domain, decision) {
@@ -619,10 +747,14 @@
 
   // ---- events -----------------------------------------------------------------------------------
   function bind() {
+    // Two fields and no button inside the form, so a browser won't send it on Enter by itself.
+    document.addEventListener("keydown", (e) => { if (e.key === "Enter" && !e.isComposing && e.target.closest?.("#cg-todo-form")) { e.preventDefault(); UI.$("#cg-todo-save")?.click(); } });
     document.addEventListener("click", (e) => {
       const hit = (sel) => e.target.closest?.(sel);
       let el;
       if (hit("[data-cg-find]")) { COMP.open("find"); return; }
+      if ((el = hit("#cg-filter"))) { openCompetitorPick(el); return; }
+      if ((el = hit("[data-cg-choose]"))) { UI.closePopover(); S.filter = el.dataset.cgChoose; TP.reset(PAGES); trimPicked(); COMP.paint(); UI.$("#cg-filter")?.focus(); return; }
       if (hit("[data-cg-show-sources]")) {
         const fold = UI.$("#cg-sources-fold");
         if (fold) { S.sourcesOpen = true; fold.open = true; fold.querySelector("summary")?.focus({ preventScroll: true }); fold.scrollIntoView({ block: "nearest" }); }
@@ -638,6 +770,10 @@
         return;
       }
       if (hit("[data-cg-add]")) { addPicked(); return; }
+      if ((el = hit("[data-cg-todo]"))) { openTodo(el); return; }
+      if ((el = hit("#cg-todo-save"))) { saveTodo(el); return; }
+      if ((el = hit("[data-cg-task]"))) { taskPicked(el); return; }
+      if (hit("[data-cg-spam-picked]")) { spamPicked(); return; }
       if (hit("[data-cg-add-all]")) { allRows().filter(canPick).forEach((g) => S.picked.add(g.domain)); addPicked(); return; }
       if ((el = hit("[data-cg-decide]"))) { decide(el.dataset.domain, el.dataset.cgDecide); return; }
       if ((el = hit("[data-cg-edit]"))) {
@@ -687,7 +823,6 @@
         updateSelection();
         return;
       }
-      if (id === "cg-filter") { S.filter = e.target.value; TP.reset(PAGES); trimPicked(); COMP.paint(); UI.$("#cg-filter")?.focus(); return; }
       if (id === "cg-pa") { S.pa = e.target.value; TP.reset(PAGES); trimPicked(); COMP.paint(); UI.$("#cg-pa")?.focus(); return; }
       if (id === "cg-hide") { S.hide = e.target.checked; TP.reset(PAGES); trimPicked(); COMP.paint(); UI.$("#cg-hide")?.focus(); return; }
       if (id === "cg-up-file") {
@@ -759,10 +894,10 @@
   };
   /* Plain-file mode can't read home pages, so it applies the name rules only. */
   const sampleNameReason = (domain) => {
-    if (/casino|poker|betting|porn|xxx|viagra|cialis|escort|backlink|linkfarm/.test(domain)) return ["name_words", "Spam words in its name"];
+    if (/casino|poker|betting|porn|xxx|viagra|cialis|escort|backlink|linkfarm/.test(domain)) return ["name_words", "Spam words in its name", "system"];
     const tld = domain.split(".").pop();
-    if (["tk", "ml", "ga", "cf", "gq"].includes(tld)) return ["free_tld", "A free domain ending that spammers favour"];
-    if (["top", "click", "loan", "work", "bid", "win", "icu", "buzz"].includes(tld)) return ["abused_tld", "A domain ending known for abuse"];
+    if (["tk", "ml", "ga", "cf", "gq"].includes(tld)) return ["free_tld", "A free domain ending that spammers favour", "system"];
+    if (["top", "click", "loan", "work", "bid", "win", "icu", "buzz"].includes(tld)) return ["abused_tld", "A domain ending known for abuse", "system"];
     return null;
   };
   COMP.sampleWrite("POST link-gaps/decide", (match, body) => {
@@ -771,16 +906,16 @@
     const inGood = report.gaps.findIndex((g) => g.domain === body.domain), inSpam = report.filtered.findIndex((g) => g.domain === body.domain);
     if (body.decision === "keep" && inSpam >= 0) {
       const [row] = report.filtered.splice(inSpam, 1);
-      row.quality = "good"; row.kept = true; row.was = { reason: row.reason, words: row.reason_words }; row.reason = null; row.reason_words = null;
+      row.quality = "good"; row.kept = true; row.was = { reason: row.reason, words: row.reason_words, by: row.flagged_by }; row.reason = null; row.reason_words = null;
       report.gaps.unshift(row);
     } else if (body.decision === "spam" && inGood >= 0) {
       const [row] = report.gaps.splice(inGood, 1);
-      row.quality = "spam"; row.reason = "my_choice"; row.reason_words = "You marked it as spam"; row.manual = true;
+      row.quality = "spam"; row.reason = "my_choice"; row.reason_words = "You marked it as spam"; row.flagged_by = "you"; row.manual = true;
       report.filtered.unshift(row);
     } else if (body.decision === "auto") {
       if (inGood >= 0 && report.gaps[inGood].kept) {
         const [row] = report.gaps.splice(inGood, 1);
-        row.quality = "spam"; row.kept = false; row.reason = row.was?.reason; row.reason_words = row.was?.words;
+        row.quality = "spam"; row.kept = false; row.reason = row.was?.reason; row.reason_words = row.was?.words; row.flagged_by = row.was?.by;
         report.filtered.unshift(row);
       } else if (inSpam >= 0 && report.filtered[inSpam].manual) {
         const [row] = report.filtered.splice(inSpam, 1);
@@ -861,7 +996,7 @@
       } else if (wanted.length) {
         const list = wanted.map((id) => ({ id, host: hosts.get(id) }));
         const common = { domain, display: domain, title: null, sample_url: url || null, authority: score, authority_label: score === null ? null : tool, top_percent: null, cc_rank: null, sources: ["By hand"], is_competitor: false, auto_authority: null, auto_authority_label: null, authority_by_hand: score !== null, orig: { authority: null, authority_label: null, sample_url: null, list: [] }, edit: { authority: score, authority_label: tool || null, sample_url: url || null, by: window.TEAM?.[0] || "", at: new Date().toISOString(), added: wanted, removed: [], hand_only: true } };
-        const state = { quality: spam ? "spam" : "good", reason: spam?.[0] || null, reason_words: spam?.[1] || null, kept: false };
+        const state = { quality: spam ? "spam" : "good", reason: spam?.[0] || null, reason_words: spam?.[1] || null, flagged_by: spam?.[2] || null, kept: false };
         const row = report.competitors
           ? { ...common, ...state, competitors: list, competitor_count: list.length, spam_score: null, first_seen: new Date().toISOString(), in_consideration: false, lost_link: false, page_note: null, outlinks: null }
           : { ...common, rivals: list, rival_count: list.length, sites: [...new Set(wanted.flatMap(sampleTrackers))].filter((id) => !report.sites || report.sites.some((s) => s.id === id)).map((id) => ({ id, host: sites.find((s) => s.id === id)?.host, ...state, reason: undefined, in_consideration: false, lost_link: false })) };
@@ -961,10 +1096,12 @@
       let gap = report.gaps.find((g) => g.domain === domain);
       if (!gap) {
         gap = { authority: null, authority_label: null, competitor_count: 0, competitors: [], display: domain, domain, first_seen: new Date().toISOString(), in_consideration: false, is_competitor: false, lost_link: false, sample_url: row.url, sources: [], spam_score: null };
-        const spam = row.spam_score !== null && row.spam_score > window.BacklinkCleaner.SPAM_THRESHOLD ? ["spam_score", "Its spam score is above 30"] : sampleNameReason(domain);
+        // As on the server: the file's spam score decides when it has one, the name rules only when it doesn't.
+        const fromFile = row.spam_score !== null && row.spam_score !== undefined;
+        const spam = fromFile ? (row.spam_score > window.BacklinkCleaner.SPAM_THRESHOLD ? ["spam_score", "Spam score above 30 in the uploaded file", "file"] : null) : sampleNameReason(domain);
         if (spam) {
           report.filtered = report.filtered || [];
-          if (!report.filtered.some((g) => g.domain === domain)) report.filtered.push({ ...gap, quality: "spam", reason: spam[0], reason_words: spam[1], authority: row.authority, authority_label: result.authority_label, spam_score: row.spam_score, sample_url: row.url, competitor_count: 1, competitors: [{ id: competitorId, host: rival.host }] });
+          if (!report.filtered.some((g) => g.domain === domain)) report.filtered.push({ ...gap, quality: "spam", reason: spam[0], reason_words: spam[1], flagged_by: spam[2], authority: row.authority, authority_label: result.authority_label, spam_score: row.spam_score, sample_url: row.url, competitor_count: 1, competitors: [{ id: competitorId, host: rival.host }] });
           return;
         }
         report.gaps.push(gap);
@@ -1003,7 +1140,7 @@
     "Top": "Top", "Common Crawl rank": "Classement Common Crawl", "You kept this": "Vous l'avez gardé", "Home page not read": "Page d'accueil non lue", "The site turned the app away, so its home page wasn't checked. That doesn't make it spam.": "Le site a refusé l'application : sa page d'accueil n'a pas été vérifiée. Cela n'en fait pas du spam.", "Mark as spam": "Marquer comme spam", "Why": "Pourquoi", "Keep it": "Le garder", "Undo": "Annuler", "See why each one went. A rule can be wrong.": "Voyez pourquoi chacun a été retiré. Une règle peut se tromper.", "Showing the first": "Affichage des", "of": "sur", "Action": "Action", "Show more": "Afficher plus",
     "No links yet": "Aucun lien pour l'instant", "Upload a CSV of links to one of your competitors, from a free SEMrush or Ubersuggest account, or add a domain by hand. The domains that don't link to you appear here, with spam flagged.": "Importez un CSV de liens vers un de vos concurrents, depuis un compte SEMrush ou Ubersuggest gratuit, ou ajoutez un domaine à la main. Les domaines qui ne pointent pas vers vous apparaissent ici, avec le spam signalé.", "Filtering out spam": "Retrait du spam en cours", "The good domains appear here as their home pages are read.": "Les bons domaines apparaissent ici à mesure que leurs pages d'accueil sont lues.", "No good domains left": "Plus aucun bon domaine", "Every domain is filtered out as spam, already links to you, or is one of your own.": "Chaque domaine est retiré comme spam, pointe déjà vers vous, ou vous appartient.",
     "kept. You can add it now.": "gardé. Vous pouvez l'ajouter.", "marked as spam. It can't be added.": "marqué comme spam. Il ne peut pas être ajouté.", "Spam is filtered next: each domain's home page is read once. Only the good ones can be added.": "Le spam est retiré ensuite : la page d'accueil de chaque domaine est lue une fois. Seuls les bons domaines peuvent être ajoutés.",
-    "Its spam score is above 30": "Son score de spam dépasse 30", "Spam words in its name": "Mots de spam dans son nom", "A free domain ending that spammers favour": "Une extension gratuite prisée des spammeurs", "A domain ending known for abuse": "Une extension connue pour les abus", "A name no real site would pick": "Un nom qu'aucun vrai site ne choisirait", "Too far down Common Crawl's ranking": "Trop bas dans le classement Common Crawl", "Links out to thousands of sites, like a link farm": "Pointe vers des milliers de sites, comme une ferme de liens", "Thousands of subdomains, like a link farm": "Des milliers de sous-domaines, comme une ferme de liens", "Its home page doesn't exist": "Sa page d'accueil n'existe pas", "The site is down": "Le site est hors ligne", "Its home page leads to another website": "Sa page d'accueil mène à un autre site", "Parked or for sale": "Parqué ou à vendre", "Spam words on its home page": "Mots de spam sur sa page d'accueil", "Its home page is mostly links to other sites": "Sa page d'accueil n'est presque que des liens vers d'autres sites", "Almost nothing on its home page": "Presque rien sur sa page d'accueil", "Its home page is hidden from search engines": "Sa page d'accueil est cachée aux moteurs de recherche", "Its home page couldn't be read": "Sa page d'accueil n'a pas pu être lue", "You marked it as spam": "Vous l'avez marqué comme spam", "Filtered out": "Retiré",
+    "Spam score above 30 in the uploaded file": "Score de spam supérieur à 30 dans le fichier importé", "Flagged by the system": "Signalé par le système", "Spam words in its name": "Mots de spam dans son nom", "A free domain ending that spammers favour": "Une extension gratuite prisée des spammeurs", "A domain ending known for abuse": "Une extension connue pour les abus", "A name no real site would pick": "Un nom qu'aucun vrai site ne choisirait", "Too far down Common Crawl's ranking": "Trop bas dans le classement Common Crawl", "Links out to thousands of sites, like a link farm": "Pointe vers des milliers de sites, comme une ferme de liens", "Thousands of subdomains, like a link farm": "Des milliers de sous-domaines, comme une ferme de liens", "Its home page doesn't exist": "Sa page d'accueil n'existe pas", "The site is down": "Le site est hors ligne", "Its home page leads to another website": "Sa page d'accueil mène à un autre site", "Parked or for sale": "Parqué ou à vendre", "Spam words on its home page": "Mots de spam sur sa page d'accueil", "Its home page is mostly links to other sites": "Sa page d'accueil n'est presque que des liens vers d'autres sites", "Almost nothing on its home page": "Presque rien sur sa page d'accueil", "Its home page is hidden from search engines": "Sa page d'accueil est cachée aux moteurs de recherche", "Its home page couldn't be read": "Sa page d'accueil n'a pas pu être lue", "You marked it as spam": "Vous l'avez marqué comme spam", "Filtered out": "Retiré",
     "From files you upload. Nothing here calls a paid tool. Adding a domain doesn't create a backlink, and doesn't change the Backlinks top cards.": "À partir des fichiers que vous importez. Rien ici n'appelle un outil payant. Ajouter un domaine ne crée pas de backlink et ne change pas les cartes en haut de la page Backlinks.",
     "Where the links come from": "D'où viennent les liens",
     "Sources": "Sources", "No links yet for": "Pas encore de liens pour", "Add links": "Ajouter des liens",
@@ -1032,6 +1169,15 @@
     "Authority": "Autorité",
     "Domain": "Domaine",
     "to In consideration": "à l'étude",
+    "Add to": "Ajouter à", "In consideration": "À l'étude", "To do": "À faire", "Create task": "Créer une tâche",
+    "Add to To do": "Ajouter à À faire", "Mediator": "Intermédiaire", "Link type": "Type de lien", "Choose a mediator.": "Choisissez un intermédiaire.",
+    "They skip In consideration and go straight to Backlinks → To do. You add each article's Google Docs link there.": "Ils passent directement dans Backlinks → À faire, sans passer par À l'étude. Vous y ajoutez le lien Google Docs de chaque article.",
+    "They're in In consideration, but couldn't go to To do": "Ils sont dans À l'étude, mais n'ont pas pu aller dans À faire",
+    "domain added to To do": "domaine ajouté à À faire", "domains added to To do": "domaines ajoutés à À faire",
+    "is already in your Backlinks, so it stays in In consideration": "est déjà dans vos Backlinks : il reste dans À l'étude",
+    "are already in your Backlinks, so they stay in In consideration": "sont déjà dans vos Backlinks : ils restent dans À l'étude",
+    "domain marked as spam": "domaine marqué comme spam", "domains marked as spam": "domaines marqués comme spam",
+    "Get a link from": "Obtenir un lien de", "In To do": "Dans À faire",
     "Link gaps show who links to your competitors but not to you. Add a competitor first.": "Les liens manquants montrent qui pointe vers vos concurrents mais pas vers vous. Ajoutez d'abord un concurrent.",
     "No files yet": "Aucun fichier pour l'instant",
     "Upload a CSV of links to one of your competitors, and the domains that don't link to you appear here.": "Importez un CSV des liens vers un de vos concurrents : les domaines qui ne pointent pas vers vous apparaîtront ici.",

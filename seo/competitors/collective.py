@@ -11,15 +11,16 @@ from __future__ import annotations
 import json
 from sqlalchemy import Engine, text
 
-from seo.competitors import gaps, profile, quality
+from seo.competitors import change_facts, gaps, profile, quality
 from seo.competitors.keywords import _iso, require_own
 from seo.links.service import OWN
 from seo.serp import store
 
 KEYWORD_ROWS = 200
-MOVE_ROWS = 100
+MOVE_ROWS = 2000  # "as much data as possible" (2026-11-10): the screen pages through them, so far more than fit at once
 LINK_ROWS = 500
 MOVE_DAYS = 30
+MOVE_PERIODS = (7, 30, 90, 365)
 
 
 def _sites(conn, site_id: int | None) -> list[dict]:
@@ -173,8 +174,9 @@ def keywords(engine: Engine, site_id: int | None = None) -> dict:
     return {"sites": sites, "coverage": _coverage(checks, tracked), "total": len(out), "keywords": out[:KEYWORD_ROWS]}
 
 
-def moves(engine: Engine, site_id: int | None = None) -> dict:
+def moves(engine: Engine, site_id: int | None = None, days: int = MOVE_DAYS) -> dict:
     """What rivals did lately, newest first: their pages, then ranking moves, each counted once whichever sites watch them."""
+    days = days if days in MOVE_PERIODS else MOVE_DAYS
     with engine.connect() as conn:
         sites = _sites(conn, site_id)
         tracked = _tracked_by(conn, sites)
@@ -186,27 +188,28 @@ def moves(engine: Engine, site_id: int | None = None) -> dict:
         if by_host:
             # Every rival at once (F85): only the newest MOVE_ROWS can be shown, so those are all that is read.
             names = {f"h{n}": host for n, host in enumerate(by_host)}
-            recent = {**names, "days": MOVE_DAYS}
+            recent = {**names, "days": days}
             where = (
                 "FROM change_events e JOIN pages p ON p.id = e.page_id JOIN domains d ON d.id = e.domain_id "
                 f"WHERE d.host IN ({','.join(':' + k for k in names)}) AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL :days DAY"
             )
             page_changes = conn.execute(text(f"SELECT COUNT(*) {where}"), recent).scalar_one()
-            changes = conn.execute(text(f"SELECT e.id, e.kind, e.before_value, e.after_value, e.detected_at, e.summaries, p.url, d.host {where} ORDER BY e.detected_at DESC, e.id DESC LIMIT :n"), {**recent, "n": MOVE_ROWS}).mappings().all()
-            events += [{"rival": by_host[r["host"].lower()], "id": r["id"], "kind": r["kind"], "at": _iso(r["detected_at"]), "url": r["url"], "before": r["before_value"], "after": r["after_value"], "summaries": json.loads(r["summaries"]) if isinstance(r["summaries"], str) else r["summaries"]} for r in changes if r["host"].lower() in by_host]
-        cutoff = conn.execute(text("SELECT UTC_TIMESTAMP(3) - INTERVAL :days DAY"), {"days": MOVE_DAYS}).scalar_one()
+            changes = conn.execute(text(f"SELECT e.id, e.page_id, e.kind, e.before_value, e.after_value, e.changed_words, e.detected_at, e.summaries, p.url, d.host {where} ORDER BY e.detected_at DESC, e.id DESC LIMIT :n"), {**recent, "n": MOVE_ROWS}).mappings().all()
+            events += [{"rival": by_host[r["host"].lower()], "id": r["id"], "page_id": r["page_id"], "kind": r["kind"], "at": _iso(r["detected_at"]), "url": r["url"], "before": r["before_value"], "after": r["after_value"], "changed_words": r["changed_words"], "summaries": json.loads(r["summaries"]) if isinstance(r["summaries"], str) else r["summaries"]} for r in changes if r["host"].lower() in by_host]
+            change_facts.attach(conn, events)
+        cutoff = conn.execute(text("SELECT UTC_TIMESTAMP(3) - INTERVAL :days DAY"), {"days": days}).scalar_one()
     history = store.history_many(engine, [s["id"] for s in sites])
     start = _iso(cutoff)
     ranking_moves = 0
     for rival in found:
         linked = _site_ids(rival)
         theirs = [check for check in history if tracked.get(check.keyword_id, set()) & linked]
-        recent = [{"rival": rival, **event} for event in profile._ranking_timeline(theirs, rival["host"]) if event["at"] >= start]
+        recent = [{"rival": rival, **event} for event in profile._ranking_timeline(theirs, rival["host"], [s["host"] for s in rival["sites"]]) if event["at"] >= start]
         ranking_moves += len(recent)
         events += recent
     events.sort(key=lambda e: e["at"], reverse=True)
     return {
-        "sites": sites, "days": MOVE_DAYS, "total": page_changes + ranking_moves, "moves": events[:MOVE_ROWS],
+        "sites": sites, "days": days, "periods": list(MOVE_PERIODS), "total": page_changes + ranking_moves, "moves": events[:MOVE_ROWS],
         "blocked": sorted(r["host"] for r in found if crawls[r["id"]]["status"] == "blocked"),
         "not_started": sorted(r["host"] for r in found if crawls[r["id"]]["status"] != "blocked" and not crawls[r["id"]].get("baseline_done")),
     }
@@ -239,7 +242,7 @@ def links(engine: Engine, site_id: int | None = None) -> dict:
             entry["sources"].update(gap["sources"])
             entry["is_competitor"] = entry["is_competitor"] or gap["is_competitor"]
             entry["sites"].append({
-                "id": site["id"], "host": site["host"], "quality": gap["quality"], "reason_words": gap["reason_words"],
+                "id": site["id"], "host": site["host"], "quality": gap["quality"], "reason_words": gap["reason_words"], "flagged_by": gap["flagged_by"],
                 "in_consideration": gap["in_consideration"], "lost_link": gap["lost_link"], "kept": gap["kept"],
             })
     everything = [

@@ -66,7 +66,7 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
     await shot("05-topic-panel");
     check((await text("#panel")).includes("Its biggest searches"), "the topic lists its biggest searches");
     await closePanel();
-    await page.click(".lv-foot [data-in-more]").catch(() => {});
+    await page.selectOption('[data-tp-foot="in"] [data-tp-per]', "100").catch(() => {}); // pages since 2026-11-10 (table-pages.js), was Show more
     await page.waitForTimeout(500);
     const all = await rowsText();
     check(all.includes("Question searches") && all.includes("Worth tracking"), "questions and worth tracking are there (information rows)");

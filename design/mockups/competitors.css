@@ -5,6 +5,20 @@
 .comp-tabs { flex-wrap: wrap; }
 /* The wrapper is only as tall as the bar, so the bar couldn't stick. Without a box of its own, it sticks to the page. */
 #cg-selbar { display: contents; }
+/* Link gaps' picked bar: a solid pill in the middle, as wide as its buttons, so the floating Notes button at the right never covers it. */
+.cg-selbar { width: fit-content; max-width: calc(100% - 280px); margin-inline: auto; gap: 6px 8px; padding: 7px 8px 7px 14px; border-radius: 999px; background: var(--panel-solid); justify-content: center; }
+.cg-selbar .cg-sel-count { white-space: nowrap; margin-right: 4px; }
+.cg-selbar .cg-sel-group { display: inline-flex; align-items: center; gap: 6px; }
+.cg-selbar .cg-sel-to { font-size: 12.5px; color: var(--text-2, var(--muted)); white-space: nowrap; }
+.cg-selbar .cg-sel-sep { width: 1px; align-self: stretch; margin: 3px 2px; background: var(--line); }
+.cg-selbar .btn { white-space: nowrap; }
+.cg-selbar .icon-btn { margin-left: 0; }
+/* Narrow: the bar can wrap, and it floats above the Notes button instead of beside it. */
+/* With a side panel open, the panel is doing the work and the Notes button moves beside it, onto the bar: the bar steps aside until it closes. */
+body.nb-beside-panel .cg-selbar { visibility: hidden; }
+.tag.cg-todo-tag { display: inline-flex; align-items: center; gap: 3px; }
+.tag.cg-todo-tag svg.i { width: 11px; height: 11px; }
+@media (max-width: 1100px) { .cg-selbar { max-width: 100%; border-radius: 16px; bottom: 64px; } .cg-selbar .cg-sel-sep { display: none; } }
 .comp-url { color: inherit; overflow-wrap: anywhere; }
 a.comp-url:hover { color: var(--accent-text); }
 

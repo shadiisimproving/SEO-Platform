@@ -39,8 +39,8 @@
     demand: ["More searches", "Fewer searches"], ranking: ["Ranking higher", "Ranking lower"], appeal: ["Clicked more at the same place", "Clicked less at the same place"],
     new: ["New queries", "New queries"], lost: ["Queries that went away", "Queries that went away"], hidden: ["Rare searches Google hides", "Rare searches Google hides"],
   };
-  const PAGE = 15;
-  const IN = { tab: "first", status: "open", cache: new Map(), limit: PAGE, opened: null };
+  const PAGES = "in"; // the table's pages and search (table-pages.js), like every long table in the app
+  const IN = { tab: "first", status: "open", cache: new Map(), sortDir: "desc", opened: null }; // sortDir: clicks a month, biggest first
   window.INSIGHTS = IN;
 
   const fr = () => UI.state.lang === "fr";
@@ -295,7 +295,7 @@
       const n = id === "first" ? null : counts[id]?.open;
       return `<button class="tab" role="tab" data-in-tab="${id}" aria-selected="${IN.tab === id}">${t(name)}${n ? ` <span class="in-count">${num(n)}</span>` : ""}</button>`;
     }).join("")}</div>`;
-    const controls = `<div class="ov-controls"><label class="ov-show"><span>${t("Show")}</span><select class="select" data-in-status>${STATUSES.map(([id, name]) => `<option value="${id}" ${IN.status === id ? "selected" : ""}>${t(name)}</option>`).join("")}</select></label></div>`;
+    const controls = `<div class="ov-controls">${d.rows.length ? TP.search(PAGES, t("Search findings")) : ""}<label class="ov-show"><span>${t("Show")}</span><select class="select" data-in-status>${STATUSES.map(([id, name]) => `<option value="${id}" ${IN.status === id ? "selected" : ""}>${t(name)}</option>`).join("")}</select></label></div>`;
     const notes = [];
     if (IN.tab === "wins" && needs.low_ctr === "brand_words") notes.push(`${t("Low click rates need your brand words: brand searches are clicked far more and would make every other query look weak.")} <a href="#overview">${t("Add them on Overview")}</a>`);
     if ((IN.tab === "decline" && needs.decay) || (IN.tab === "changed" && needs.page_down)) notes.push(t("Needs more saved history: slow decline looks at 16 weeks, changes at 8."));
@@ -311,17 +311,23 @@
       <p class="small muted ov-hint">${t(hint)}</p>${notes.map((n) => `<p class="small ov-hint in-need">${n}</p>`).join("")}${table(d.rows)}</section>`;
   }
 
-  function table(rows) {
-    if (!rows.length) return `<div class="empty"><p>${t(IN.status === "open" ? "Nothing here right now. That's good news." : "Nothing here.")}</p></div>`;
+  function table(all) {
+    if (!all.length) return `<div class="empty"><p>${t(IN.status === "open" ? "Nothing here right now. That's good news." : "Nothing here.")}</p></div>`;
     const many = !UI.siteIdPicked();
-    const body = rows.slice(0, IN.limit).map((f) => `<tr class="ov-row" data-in-open="${f.id}" tabindex="0">
+    // The server ranks by clicks a month at stake, biggest first; the heading turns it round.
+    const found = all.filter((f) => TP.matches(PAGES, titleOf(f), reasonOf(f), kindName(f), many ? f.host : ""));
+    if (!found.length) return `<div class="empty"><p>${t("No finding matches this search.")}</p><button class="btn" data-in-search-clear>${t("Clear the search")}</button></div>`;
+    const rows = IN.sortDir === "asc" ? [...found].sort((a, b) => (a.at_stake || 0) - (b.at_stake || 0)) : found;
+    const view = TP.view(PAGES, rows);
+    const body = view.rows.map((f) => `<tr class="ov-row" data-in-open="${f.id}" tabindex="0">
       <td class="head-cell" data-label="${t("What")}"><div class="in-what"><span class="in-kind ${f.group}">${esc(kindName(f))}</span>${f.evidence?.seasonal ? `<span class="in-season">${t("Seasonal")}</span>` : ""}${f.task ? `<span class="in-task">${icon("square-check")}${t(f.task === "done" ? "Task done" : "Task open")}</span>` : ""}${many ? `<span class="muted small">${esc(f.host)}</span>` : ""}</div>
         <div class="t" dir="auto">${esc(titleOf(f))}</div><div class="s muted small" dir="auto">${esc(reasonOf(f))}</div></td>
       <td class="c" data-label="${t("Clicks a month")}">${f.at_stake >= 1 ? num(Math.round(f.at_stake)) : "—"}</td>
       <td class="c" data-label="${t("Key number")}">${esc(keyNumber(f))}</td>
       <td class="c in-act-col"><button class="btn btn-small btn-ghost" data-in-open="${f.id}">${t("Open")}</button></td></tr>`).join("");
-    return `<div class="table-wrap ov-table in-table"><table class="data"><thead><tr><th scope="col">${t("What")}</th><th class="c" scope="col">${t("Clicks a month")}</th><th class="c" scope="col">${t("Key number")}</th><th class="c" scope="col"><span class="sr">${t("Open")}</span></th></tr></thead><tbody>${body}</tbody></table></div>
-      <div class="lv-foot"><span>${num(Math.min(IN.limit, rows.length))} ${t("of")} ${num(rows.length)}</span>${IN.limit < rows.length ? `<button class="link-btn" data-in-more>${t("Show more")}</button>` : ""}</div>`;
+    const sortHead = `<th class="c" scope="col" aria-sort="${IN.sortDir === "asc" ? "ascending" : "descending"}"><button type="button" class="th-btn" data-in-sort>${t("Clicks a month")}${icon(IN.sortDir === "asc" ? "arrow-up" : "arrow-down")}</button></th>`;
+    return `<div class="table-wrap ov-table in-table"><table class="data"><thead><tr><th scope="col">${t("What")}</th>${sortHead}<th class="c" scope="col">${t("Key number")}</th><th class="c" scope="col"><span class="sr">${t("Open")}</span></th></tr></thead><tbody>${body}</tbody></table></div>
+      ${TP.footer(PAGES, view, { noun: t(view.total === 1 ? "finding" : "findings") })}`;
   }
 
   // ---- AI, on a click only ------------------------------------------------------------------------
@@ -508,8 +514,9 @@
       if (UI.state.route !== "insights" && !UI.$("#panel")) return;
       const hit = (sel) => e.target.closest?.(sel);
       let el;
-      if ((el = hit("[data-in-tab]"))) { IN.tab = el.dataset.inTab; IN.limit = PAGE; UI.render({ keepScroll: true }); UI.$(`[data-in-tab="${IN.tab}"]`)?.focus({ preventScroll: true }); return; }
-      if (hit("[data-in-more]")) { IN.limit += 25; UI.render({ keepScroll: true }); return; }
+      if ((el = hit("[data-in-tab]"))) { IN.tab = el.dataset.inTab; TP.reset(PAGES); UI.render({ keepScroll: true }); UI.$(`[data-in-tab="${IN.tab}"]`)?.focus({ preventScroll: true }); return; }
+      if (hit("[data-in-sort]")) { IN.sortDir = IN.sortDir === "asc" ? "desc" : "asc"; TP.reset(PAGES); UI.render({ keepScroll: true }); UI.$("[data-in-sort]")?.focus({ preventScroll: true }); return; }
+      if (hit("[data-in-search-clear]")) { TP.state(PAGES).q = ""; TP.reset(PAGES); UI.render({ keepScroll: true }); UI.$(`[data-tp-search][data-tp-key="${PAGES}"]`)?.focus({ preventScroll: true }); return; }
       if (hit("[data-in-retry]")) { forget(); UI.render(); return; }
       if ((el = hit("[data-in-run]"))) {
         el.disabled = true;
@@ -561,7 +568,7 @@
       } catch (err) { error.hidden = false; error.textContent = t(err.message); }
     });
     document.addEventListener("change", (e) => {
-      if (e.target.matches?.("[data-in-status]")) { IN.status = e.target.value; IN.limit = PAGE; UI.render({ keepScroll: true }); UI.$("[data-in-status]")?.focus({ preventScroll: true }); }
+      if (e.target.matches?.("[data-in-status]")) { IN.status = e.target.value; TP.reset(PAGES); UI.render({ keepScroll: true }); UI.$("[data-in-status]")?.focus({ preventScroll: true }); }
     });
     // A task made here, or a finding opened from Today (#insights/12), lands on the finding.
     const fromAddress = () => { const m = location.hash.match(/^#insights\/(\d+)/); if (m && UI.state.route === "insights") setTimeout(() => openFinding(Number(m[1]), null), 50); };
@@ -571,7 +578,7 @@
   }
 
   window.SCREENS = window.SCREENS || {};
-  window.SCREENS.insights = { init(helpers) { UI = helpers; ({ t, esc, num, icon } = helpers); bind(); }, page };
+  window.SCREENS.insights = { init(helpers) { UI = helpers; ({ t, esc, num, icon } = helpers); bind(); TP.on(PAGES, redraw); }, page };
 
   const words = {
     "No site yet": "Pas encore de site", "Add a site and connect Search Console: insights are worked out from its data.": "Ajoutez un site et connectez la Search Console : les analyses sont calculées à partir de ses données.",
@@ -718,6 +725,7 @@
     "Search clicks joined with GA4's key events over 90 days.": "Les clics de recherche joints aux événements clés de GA4 sur 90 jours.",
     "What the Search Console data says about addresses, broken pages and missing days.": "Ce que disent les données de la Search Console sur les adresses, les pages cassées et les jours manquants.",
     "Done tasks and dated notes: 28 days before against 28 days from a week after.": "Tâches faites et notes datées : 28 jours avant contre 28 jours à partir d'une semaine après.",
+    "Search findings": "Chercher un constat", "No finding matches this search.": "Aucun constat ne correspond à cette recherche.", "finding": "constat", "findings": "constats",
   };
   Object.keys(words).forEach((w) => { if (window.FR[w] === undefined) window.FR[w] = words[w]; });
 })();

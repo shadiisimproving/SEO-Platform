@@ -3,8 +3,10 @@
 (() => {
   "use strict";
   let UI = null;
-  const S = { site: null, data: null, filter: "all", allChanges: false };
+  const S = { site: null, data: null, filter: "all", rival: "", allChanges: false };
   const CHANGES_SHOWN = 40;
+  const PAGES = "ca-kw"; // the keyword table has pages and a search (table-pages.js), like every long table in the app
+  const FIND_FROM = 11; // more than 10 rows, as on every table: the search box shows from this many keywords, or while a search is on
 
   const t = (s) => UI.t(s);
   const esc = (v) => UI.esc(v);
@@ -46,27 +48,41 @@
   const rivalChips = (list) => (list.length ? `<span class="ca-chips">${list.map((c) => `<button class="chip" data-ca-rival="${c.id}" dir="auto" aria-label="${t("Open competitor")}: ${esc(c.host)}">${window.UI.siteLogo(c.host, 16)}${esc(c.host)}</button>`).join("")}</span>` : `<span class="muted">—</span>`);
   const otherSites = (list) => (list.length ? `<span class="ca-others">${list.map((d) => `<span class="mono small" dir="auto">${esc(d)}</span>`).join("")}</span>` : `<span class="muted">—</span>`);
 
-  function keywordTable(rows) {
+  function keywordTable(all) {
     const [, , test] = FILTERS.find(([id]) => id === S.filter) || FILTERS[0];
+    // A search, and one competitor cited or all of them together; each choice says how many keywords it holds.
+    const searched = all.filter((r) => TP.matches(PAGES, r.keyword));
+    const rivals = [...new Map(all.flatMap((r) => r.competitors_cited).map((c) => [String(c.id), c])).values()].sort((a, b) => a.host.localeCompare(b.host));
+    if (S.rival && !rivals.some((c) => String(c.id) === S.rival)) S.rival = "";
+    const cites = (r, id) => r.competitors_cited.some((c) => String(c.id) === id);
+    const rows = S.rival ? searched.filter((r) => cites(r, S.rival)) : searched;
     const shown = rows.filter(test);
-    const chips = `<div class="chips" role="group" aria-label="${t("Filter keywords")}">${FILTERS.map(([id, label, match]) => `<button class="chip" data-ca-filter="${id}" aria-pressed="${S.filter === id}">${t(label)}<b>${UI.num(rows.filter(match).length)}</b></button>`).join("")}</div>`;
+    const q = TP.state(PAGES).q;
+    const search = all.length >= FIND_FROM || q ? TP.search(PAGES, t("Search keywords")) : "";
+    const choose = rivals.length > 1 ? `<label class="field"><span>${t("Competitor cited")}</span><select class="select" id="ca-rival">
+        <option value="">${t("All competitors, together")} (${UI.num(searched.length)})</option>
+        ${rivals.map((c) => `<option value="${esc(String(c.id))}" ${String(c.id) === S.rival ? "selected" : ""}>${esc(c.host)} (${UI.num(searched.filter((r) => cites(r, String(c.id))).length)})</option>`).join("")}
+      </select></label>` : "";
+    const chips = `${search || choose ? `<div class="cp-tools ca-tools">${search}${choose}</div>` : ""}<div class="chips" role="group" aria-label="${t("Filter keywords")}">${FILTERS.map(([id, label, match]) => `<button class="chip" data-ca-filter="${id}" aria-pressed="${S.filter === id}">${t(label)}<b>${UI.num(rows.filter(match).length)}</b></button>`).join("")}</div>`;
+    if (!shown.length && q) return `${chips}${COMP.empty(t("No keywords here"), t("No keyword matches this search."), `<button type="button" class="btn btn-small" data-tp-clear data-tp-key="${PAGES}">${t("Clear the search")}</button>`)}`;
     if (!shown.length) return `${chips}${COMP.empty(t("No keywords here"), t("No keyword matches this filter right now."))}`;
+    const page = TP.view(PAGES, shown);
     // On phones each row is a card, so a tool shared by every row is said once, above them.
     const tools = new Set(shown.map((r) => r.tool));
     // Every row checked with the same tool at the same age: said once under the table, and the column goes (as on a competitor's Keywords tab).
     const once = shown.length > 1 && tools.size === 1 && new Set(shown.map((r) => COMP.ago(r.checked_at))).size === 1;
     const onceLine = once ? `<p class="small sec ca-once">${esc(t("All checked with {tool}, {when}.").replace("{tool}", shown[0].tool).replace("{when}", COMP.ago(shown[0].checked_at)))}</p>` : "";
     const oneTool = !once && tools.size === 1 ? shown[0].tool : "";
-    return `${chips}${oneTool ? `<p class="help ca-tool-line">${t("Tool")}: ${esc(oneTool)}</p>` : ""}<div class="table-wrap ${oneTool ? "ca-one-tool" : ""}"><table class="data ca-table" id="ca-table">
+    return `${chips}${oneTool ? `<p class="help ca-tool-line">${t("Tool")}: ${esc(oneTool)}</p>` : ""}<div class="ca-pages"><div class="table-wrap ${oneTool ? "ca-one-tool" : ""}"><table class="data ca-table" id="ca-table">
       <thead><tr><th scope="col">${t("Keyword")}</th><th scope="col">${t("AI Overview")}</th><th scope="col">${t("You cited")}</th><th scope="col">${t("Competitors cited")}</th><th scope="col">${t("Other sites cited")}</th>${once ? "" : `<th scope="col">${t("Tool and age")}</th>`}</tr></thead>
-      <tbody>${shown.map((r) => `<tr>
+      <tbody>${page.rows.map((r) => `<tr>
         <td class="head-cell"><span class="kw" dir="auto">${esc(r.keyword)}</span></td>
         <td data-label="${t("AI Overview")}">${overviewCell(r.state)}</td>
         <td data-label="${t("You cited")}"><div class="cp-val">${citedCell(r)}</div></td>
         <td data-label="${t("Competitors cited")}"><div class="cp-val">${rivalChips(r.competitors_cited)}</div></td>
         <td data-label="${t("Other sites cited")}"><div class="cp-val">${otherSites(r.others_cited)}</div></td>
         ${once ? "" : `<td data-label="${t("Tool and age")}"><div class="cp-val"><span class="ca-tool-name">${esc(r.tool)}</span><span class="second">${esc(COMP.ago(r.checked_at))}</span></div></td>`}
-      </tr>`).join("")}</tbody></table></div>${onceLine}`;
+      </tr>`).join("")}</tbody></table></div>${TP.footer(PAGES, page, { noun: t("keywords") })}</div>${onceLine}`;
   }
 
   // ---- what changed -----------------------------------------------------------------------------
@@ -189,6 +205,7 @@
         let el;
         if ((el = hit("[data-ca-filter]"))) {
           S.filter = el.dataset.caFilter;
+          TP.reset(PAGES);
           COMP.paint();
           UI.$(`[data-ca-filter="${S.filter}"]`)?.focus();
           return;
@@ -198,6 +215,14 @@
         if (hit("[data-ca-find]")) { COMP.open("find"); return; }
         if (hit("[data-ca-all-changes]")) { S.allChanges = true; COMP.paint(); }
       });
+      document.addEventListener("change", (e) => {
+        if (e.target.id !== "ca-rival") return;
+        S.rival = e.target.value;
+        TP.reset(PAGES);
+        COMP.paint();
+        UI.$("#ca-rival")?.focus();
+      });
+      TP.on(PAGES, () => COMP.paint()); // another page, another size or a search; the helper keeps the focus
       window.addEventListener("resize", () => {
         cancelAnimationFrame(resizeFrame);
         resizeFrame = requestAnimationFrame(drawChart);
@@ -205,7 +230,7 @@
     },
     async load() {
       const siteId = COMP.siteId;
-      if (S.site !== siteId) { S.site = siteId; S.filter = "all"; S.allChanges = false; }
+      if (S.site !== siteId) { S.site = siteId; S.filter = "all"; S.rival = ""; S.allChanges = false; TP.state(PAGES).q = ""; TP.reset(PAGES); }
       const answer = await COMP.api("GET", `ai-watch?site_id=${siteId}`);
       if (siteId !== COMP.siteId) return; // another site was picked while this was on its way
       S.data = answer;
@@ -217,6 +242,8 @@
 
   Object.assign(window.FR, {
     "AI Overview watch": "Suivi des AI Overviews",
+    "Search keywords": "Chercher un mot-clé", "Competitor cited": "Concurrent cité", "All competitors, together": "Tous les concurrents, ensemble",
+    "No keyword matches this search.": "Aucun mot-clé ne correspond à cette recherche.", "Clear the search": "Effacer la recherche",
     "Keywords with an AI Overview": "Mots-clés avec un AI Overview",
     "of": "sur",
     "captured": "captés",

@@ -150,3 +150,37 @@
   .pt-panel .pt-vs td.c, .pt-panel .pt-vs.pt-narrow td.c, .pt-vs td.c { width: 100%; }
   .pt-vs tbody th[scope="row"] { display: block; width: 100%; padding: 6px 0 2px; }
 }
+
+/* Each bar carries its number, so the chart reads without hovering or a y-axis. */
+.pt-pair i { position: relative; }
+.pt-bar-val { font-style: normal; position: absolute; bottom: calc(100% + 3px); left: 50%; transform: translateX(-50%); font-size: 11px; font-weight: 600; color: var(--text-2); white-space: nowrap; }
+.pt-two .pt-bar-val { font-size: 10px; }
+.pt-chart { padding-top: 18px; }
+.pt-chart-key { display: flex; gap: 16px; margin: 0 0 4px; }
+.pt-chart-key span { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Questions: one row per page of theirs, its questions as a short list, one task. */
+.pt-qpages { list-style: none; margin: 0; padding: 0; }
+.pt-qpage { display: block !important; padding: 12px 0; border-top: 1px solid var(--line); }
+.pt-qpage:first-child { border-top: 0; padding-top: 4px; }
+.pt-qpage-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.pt-qpage-head .cl-cell { min-width: 0; flex: 1 1 auto; text-align: start; align-items: flex-start; }
+.pt-qpage-head .t { font-weight: 500; }
+.pt-qlist { margin: 8px 0 0; padding-inline-start: 18px; display: grid; gap: 3px; font-size: 13px; color: var(--text); }
+.pt-qpage > .link-btn { margin: 4px 0 0 18px; }
+.pt-qother { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+.pt-qpages-other .pt-qlist { color: var(--text-2); }
+
+/* Long lists in the profile (their strongest pages, their questions): a search above, the pages under, as on every long table.
+   The footer runs the card's full width, flush with its bottom, like Search → Overview's query table. */
+.pt-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 10px; }
+.pt-panel .cl-section-body > .tp-foot, .pt-qmain > .tp-foot, .pt-qother > .tp-foot { margin: 6px -18px 0; }
+.pt-panel .cl-section-body > .tp-foot:last-child, .pt-panel .cl-section-body > .pt-qmain:last-child > .tp-foot { margin-bottom: -16px; }
+.pt-qmain + .pt-qother { margin-top: 0; border-top: 0; } /* the pages footer above already draws the line */
+@media (max-width: 640px) {
+  .pt-panel .cl-section-body > .tp-foot, .pt-qmain > .tp-foot, .pt-qother > .tp-foot { margin-inline: -12px; padding-inline: 12px; }
+  .pt-panel .cl-section-body > .tp-foot:last-child, .pt-panel .cl-section-body > .pt-qmain:last-child > .tp-foot { margin-bottom: -12px; }
+  .pt-panel .tp-foot { padding-bottom: 10px; } /* the floating Notes button is hidden on a profile on a phone, so no room is kept for it */
+}
+/* A card clips instead of hiding its overflow, so the pages footer can stick: "hidden" would make the card its scroll box. */
+.pt-panel > .card:has(.tp-foot) { overflow: clip; }

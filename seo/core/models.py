@@ -201,6 +201,7 @@ class ChangeEvent(Base):
     after_value: Mapped[str | None] = mapped_column(Text, nullable=True)
     detected_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
     summaries: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # optional AI summaries per language, kept so a request is never used twice
+    changed_words: Mapped[int | None] = mapped_column(Integer, nullable=True)  # a text edit: about how many words changed, so a small one says so
 
 
 class Keyword(Base):
@@ -403,6 +404,12 @@ class CompetitorCrawl(Base):
     fc_done: Mapped[int] = mapped_column(Integer, server_default="0")
     fc_asked: Mapped[int] = mapped_column(Integer, server_default="0")
     fc_finished_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+    follow_mode: Mapped[str | None] = mapped_column(String(12), nullable=True)  # all, sitemap, wordpress or tiers: how today's read chose its pages
+    dates_agreed: Mapped[int] = mapped_column(Integer, server_default="0")  # edits the site's own dates announced
+    dates_missed: Mapped[int] = mapped_column(Integer, server_default="0")  # edits they didn't: enough of these and its dates aren't trusted
+    wp_api: Mapped[str | None] = mapped_column(String(4), nullable=True)  # yes or no: WordPress lists its edits, asked again weekly
+    wp_checked_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+    fc_weekly: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))  # the owner said yes to a weekly Firecrawl check of ranking pages
 
 
 class PagePair(Base):

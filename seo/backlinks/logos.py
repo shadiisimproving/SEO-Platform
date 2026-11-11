@@ -133,6 +133,19 @@ def queue_for(engine: Engine, domains) -> None:
     _queue_job(engine)
 
 
+def queue_missing(engine: Engine, domains) -> None:
+    """Like queue_for, for a long list shown on screen: only the sites never asked about are written, so opening a list costs one read."""
+    wanted = {to_ascii_host(d.strip()) for d in domains if isinstance(d, str) and d.strip()}
+    wanted = {d for d in wanted if _DOMAIN.match(d)}
+    if not wanted:
+        return
+    with engine.connect() as conn:
+        asked = {row[0] for row in conn.execute(text("SELECT domain FROM site_logos"))}
+    fresh = wanted - asked
+    if fresh:
+        queue_for(engine, fresh)
+
+
 def _queue_job(engine: Engine, part: int = 0) -> None:
     with engine.connect() as conn:
         if conn.execute(text("SELECT 1 FROM site_logos WHERE status = 'pending' LIMIT 1")).first():

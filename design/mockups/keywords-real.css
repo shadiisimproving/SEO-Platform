@@ -10,3 +10,5 @@
 @media (max-width: 860px) { /* the panel fills the screen here, so the tray goes on top of it, above its buttons */
   #panel-root:has(#panel) ~ #tray-root .tray { right: 16px; bottom: 76px; z-index: 35; }
 }
+/* With rows picked, the selection bar takes the bottom of the screen, so the table's pages stick just above it instead of under it. */
+@media (min-width: 641px) { .ov-list:has(+ .selbar) > .tp-foot { bottom: 72px; } }

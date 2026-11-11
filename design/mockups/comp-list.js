@@ -48,7 +48,10 @@
 
   // ---- what the tabs hold -----------------------------------------------------------------
   const list = { rows: null, site: null, scroll: 0, flash: null, follow: null };
-  const view = { data: null, filter: "all", limit: 50, kw: "shared", sort: { key: "keyword", dir: 1 }, kwLimit: 100 };
+  const view = { data: null, filter: "all", limit: 50, kw: "shared", sort: { key: "keyword", dir: 1 } };
+  /* The long tables have pages and a search (table-pages.js), like every long table in the app. The timeline is a list of days, with Show more. */
+  const PAGES = { list: "cl-list", keywords: "cl-kw" }, EVIDENCE = (domain) => `cl-ev:${domain}`;
+  const FIND_FROM = 11; // more than 10 rows, as on every table: a search box shows from this many rows, or while a search is on
   const find = { data: null, site: null, open: new Set(), groups: new Set(), polling: null, lastBadge: null };
   const upload = { file: null, bytes: null, text: "", unicode: true, reencode: false, encoding: "" };
 
@@ -101,10 +104,14 @@
   const crawling = (crawl) => crawl?.status === "queued" || crawl?.status === "running";
 
   /* retry is { id, site }: with it, a failed read gets a Try again button that asks for a read at once. */
-  function watching(crawl, retry) {
+  /* follow: on a profile, how the site is followed rides on the same line ("Last read 3 h ago · every page read daily"),
+     with the full sentence on hover, so it costs no room. */
+  function watching(crawl, retry, { follow = false } = {}) {
     const c = crawl || { status: "none" };
     let inner;
-    if (c.status === "ok") inner = `${UI.status("good", t("Watching"))}<span class="second">${esc(fill("Last read {when}", { when: COMP.ago(c.finished_at) }))}</span>`;
+    const how = follow && COMP.reading?.follow ? COMP.reading.follow(c) : null;
+    const howWords = how ? ` · <span class="cl-follow" data-tip="${esc(how.text)}" tabindex="0">${esc(how.short)}</span>` : "";
+    if (c.status === "ok") inner = `${UI.status("good", t("Watching"))}<span class="second">${esc(fill("Last read {when}", { when: COMP.ago(c.finished_at) }))}${howWords}</span>`;
     else if (c.status === "running") inner = `<span class="status sec">${icon("refresh-cw", "spin")}${esc(t("Reading now"))}</span>${c.pages_read ? `<span class="second">${esc(many(c.pages_read, "{n} page read so far", "{n} pages read so far"))}</span>` : ""}`;
     else if (c.status === "queued") inner = `<span class="status sec">${icon("clock")}${esc(t("Waiting to read"))}</span>`;
     else if (c.status === "blocked") inner = `${UI.status("warn", t("Blocked"))}<span class="second cl-wrap">${esc(say(c.message || BLOCKED_TEXT))}</span>`;
@@ -128,14 +135,16 @@
       );
     }
     const site = COMP.site()?.host || "";
+    const q = TP.state(PAGES.list).q, found = rows.filter((c) => TP.matches(PAGES.list, c.display, c.host)), page = TP.view(PAGES.list, found);
+    const search = rows.length >= FIND_FROM || q ? `<div class="cp-tools cl-tools">${TP.search(PAGES.list, t("Find a competitor"))}</div>` : "";
     return `<section class="tool-band cl-band" aria-label="${attr("My competitors")}">
         <p>${many(rows.length, "You're watching {n} competitor for {site}. Open it to see everything about it.", "You're watching {n} competitors for {site}. Open one to see everything about it.", { site: `<span class="mono">${esc(site)}</span>` })}</p>
         <button class="btn btn-main" id="cl-add-open">${icon("plus")}${t("Add a competitor")}</button>
       </section>
-      <div class="table-wrap"><table class="data" id="cl-table">
+      ${search}${found.length ? `<div class="cl-pages"><div class="table-wrap"><table class="data" id="cl-table">
         <thead><tr><th scope="col">${t("Competitor")}</th><th scope="col" class="c">${t("Shared keywords")}</th><th scope="col" class="c">${t("They're ahead on")}</th><th scope="col" class="c">${t("You're ahead on")}</th><th scope="col" class="c">${t("Only they rank on")}</th><th scope="col" class="c">${t("Edits in 30 days")}</th><th scope="col">${t("Watching")}</th><th scope="col">${t("Tracking")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
-        <tbody>${rows.map(listRow).join("")}</tbody>
-      </table></div>`;
+        <tbody>${page.rows.map(listRow).join("")}</tbody>
+      </table></div>${TP.footer(PAGES.list, page, { noun: t("competitors") })}</div>` : `<div class="table-wrap"><div class="empty"><p>${esc(fill("No competitor matches “{text}”.", { text: q }))}</p><button type="button" class="btn btn-small" data-tp-clear data-tp-key="${PAGES.list}">${t("Clear the search")}</button></div></div>`}`;
   }
 
   const kwCell = (c, n) => (COMP.trackingOf?.(c) ?? "on") === "on" ? UI.num(n) : `<span class="muted" title="${attr("Keyword tracking isn't on for this competitor.")}">—</span>`;
@@ -361,7 +370,7 @@
   }
 
   // ---- The profile ---------------------------------------------------------------------------------
-  const EDIT_KINDS = ["title", "meta", "h1", "headings", "canonical", "robots", "schema", "content"];
+  const EDIT_KINDS = ["title", "meta", "h1", "headings", "canonical", "robots", "schema", "content", "search_title"];
   const TIMELINE_FILTERS = [
     ["all", "All", null], ["edits", "Page edits", EDIT_KINDS], ["new", "New pages", ["new_page"]], ["gone", "Removed|pages", ["page_gone"]],
     ["rank", "Ranking moves", ["rank_new", "rank_lost", "rank_up", "rank_down"]], ["ai", "AI Overview", ["ai_cited", "ai_dropped"]],
@@ -369,6 +378,7 @@
   const KINDS = {
     title: ["pencil", "Title changed"], meta: ["pencil", "Meta description changed"], h1: ["pencil", "Main heading changed"], headings: ["pencil", "Subheadings changed"],
     canonical: ["pencil", "Preferred address changed"], robots: ["pencil", "Instructions to search engines changed"], schema: ["pencil", "Structured data changed"], content: ["file-text", "Page text changed"],
+    search_title: ["search", "Probably edited: its title changed in search results"],
     new_page: ["plus", "New page found"], page_gone: ["minus", "Page removed"],
     rank_new: ["trending-up", "Started ranking for"], rank_lost: ["arrow-down", "Dropped out of the results for"], rank_up: ["arrow-up", "Moved up on"], rank_down: ["arrow-down", "Moved down on"],
     ai_cited: ["sparkles", "Cited in the AI Overview for"], ai_dropped: ["sparkles", "No longer cited in the AI Overview for"],
@@ -417,7 +427,11 @@
     if (e.kind === "content") {
       const from = String(e.before ?? "").match(/^(\d+) words$/), to = String(e.after ?? "").match(/^(\d+) words$/);
       if (from && to) {
-        return `<div class="d tabular">${esc(fill("{from} words, now {to}", { from: UI.num(Number(from[1])), to: UI.num(Number(to[1])) }))}</div>`;
+        // How many words the edit touched, when known: a small one says so, so a changed price isn't read as a rewrite.
+        const touched = Number.isFinite(e.changed_words) && e.changed_words > 0
+          ? ` · ${e.changed_words < 15 ? fill(e.changed_words === 1 ? "small edit, {n} word changed" : "small edit, {n} words changed", { n: UI.num(e.changed_words) }) : fill("about {n} words changed", { n: UI.num(e.changed_words) })}`
+          : "";
+        return `<div class="d tabular">${esc(fill("{from} words, now {to}", { from: UI.num(Number(from[1])), to: UI.num(Number(to[1])) }) + touched)}</div>`;
       }
     }
     const was = asList(e.before), now = asList(e.after);
@@ -436,6 +450,114 @@
     return `<div class="d cl-move"><span class="cl-move-places">${from}${icon("arrow-right")}<span class="sr">${t("now")}</span>${to}</span><span>${esc(engineName(e.engine))} · ${esc(e.tool || "")}</span></div>`;
   }
 
+  /* Everything known behind a change, asked for on 2026-11-10 ("as much data as possible"). One line of the facts that matter most
+     stays in view; the rest sits behind "All the details", so the list still reads in seconds. Unknown is left out, never shown as 0. */
+  const known = (v) => v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && !v.length);
+  const aDate = (v) => {
+    if (!known(v)) return "";
+    const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(v) ? `${v}T00:00:00Z` : v);
+    return Number.isNaN(d.getTime()) ? String(v) : UI.fmtDateOnly(/^\d{4}-\d{2}-\d{2}$/.test(v) ? `${v}T00:00:00Z` : d.toISOString());
+  };
+  const factChip = (text, tip = "") => `<span class="cl-fact"${tip ? ` data-tip="${attr(tip)}"` : ""}>${text}</span>`;
+  const factRow = (label, value) => (value ? `<div class="cl-dl-row"><dt>${esc(t(label))}</dt><dd dir="auto">${value}</dd></div>` : "");
+  const plain = (v) => (known(v) ? esc(String(v)) : "");
+  const count = (v) => (known(v) ? `<span class="tabular">${UI.num(Number(v))}</span>` : "");
+  const tags = (list) => (known(list) ? `<span class="cp-tags">${list.map((x) => `<span class="tag" dir="auto">${esc(x)}</span>`).join(" ")}</span>` : "");
+
+  function pageFactsLine(p) {
+    const bits = [
+      known(p.words) ? factChip(esc(many(p.words, "{n} word", "{n} words"))) : "",
+      known(p.headings_total) && p.headings_total ? factChip(esc(many(p.headings_total, "{n} heading", "{n} headings"))) : "",
+      known(p.images) && p.images ? factChip(esc(many(p.images, "{n} image", "{n} images"))) : "",
+      p.videos ? factChip(esc(many(p.videos, "{n} video", "{n} videos"))) : "",
+      known(p.internal_links) ? factChip(esc(fill("{a} internal · {b} external links", { a: UI.num(p.internal_links), b: UI.num(p.external_links ?? 0) }))) : "",
+      known(p.schema) ? factChip(esc(p.schema.slice(0, 3).join(", ") + (p.schema.length > 3 ? ` +${p.schema.length - 3}` : "")), "Structured data") : "",
+      known(p.published) ? factChip(esc(fill("published {date}", { date: aDate(p.published) })), "The date the page itself gives") : known(p.sitemap_date) ? factChip(esc(fill("{date} in their sitemap", { date: aDate(p.sitemap_date) }))) : "",
+      p.edits > 1 ? factChip(esc(many(p.edits, "changed {n} time", "changed {n} times"))) : "",
+    ].filter(Boolean);
+    return `${known(p.title) ? `<div class="cl-facts-title" dir="auto">${esc(p.title)}</div>` : ""}${bits.length ? `<div class="cl-facts">${bits.join("")}</div>` : ""}`;
+  }
+
+  function pageDetails(p) {
+    const outline = known(p.headings)
+      ? `<ol class="cl-outline">${p.headings.map(([level, text]) => `<li class="cl-h-${esc(String(level).toLowerCase())}"><span class="cl-h-tag">${esc(String(level).toUpperCase())}</span><span dir="auto">${esc(text)}</span></li>`).join("")}</ol>${p.headings_total > p.headings.length ? `<p class="small sec">${esc(fill("The first {n} of {total}.", { n: UI.num(p.headings.length), total: UI.num(p.headings_total) }))}</p>` : ""}`
+      : "";
+    const images = known(p.images) ? `${count(p.images)}${p.images_no_alt ? ` <span class="sec">${esc(fill("({n} without alt text)", { n: UI.num(p.images_no_alt) }))}</span>` : ""}` : "";
+    const reader = p.read_with === "firecrawl" ? t("Firecrawl") : p.js_only ? t("A real browser (the page needs JavaScript)") : "";
+    return [
+      factRow("Title", plain(p.title) + (known(p.title) ? ` <span class="sec small">· ${esc(many(String(p.title).length, "{n} character", "{n} characters"))}</span>` : "")),
+      factRow("Meta description", plain(p.description) + (known(p.description) ? ` <span class="sec small">· ${esc(many(String(p.description).length, "{n} character", "{n} characters"))}</span>` : "")),
+      factRow("Main heading (H1)", known(p.h1) ? p.h1.map(esc).join("<br>") : ""),
+      factRow("Headings", outline),
+      factRow("Questions in headings", known(p.questions) ? `<ul class="cl-questions">${p.questions.map((q) => `<li dir="auto">${esc(q)}</li>`).join("")}</ul>` : ""),
+      factRow("Words", count(p.words)),
+      factRow("Characters", count(p.characters)),
+      factRow("Images", images),
+      factRow("Videos", count(p.videos)),
+      factRow("Tables", count(p.tables)),
+      factRow("Lists", count(p.lists)),
+      factRow("Forms", count(p.forms)),
+      factRow("Internal links", count(p.internal_links)),
+      factRow("External links", count(p.external_links)),
+      factRow("Structured data", tags(p.schema)),
+      factRow("Language", plain(p.lang)),
+      factRow("Language versions (hreflang)", tags(p.hreflang)),
+      factRow("Preferred address (canonical)", known(p.canonical) ? COMP.link(p.canonical) : ""),
+      factRow("Instructions to search engines", plain(p.robots)),
+      factRow("Answer code", count(p.status)),
+      factRow("Published (the page says)", plain(aDate(p.published))),
+      factRow("Updated (the page says)", plain(aDate(p.modified))),
+      factRow("Date in their sitemap", plain(aDate(p.sitemap_date))),
+      factRow("First saved by the archive", plain(aDate(p.first_archived))),
+      factRow("First found by this app", plain(aDate(p.first_seen))),
+      factRow("Last changed", plain(aDate(p.last_changed))),
+      factRow("Last read", plain(aDate(p.last_read))),
+      factRow("Changes seen on this page", known(p.edits) ? count(p.edits) : ""),
+      factRow("Read with", plain(reader)),
+    ].join("");
+  }
+
+  function moveFactsLine(e) {
+    const bits = [
+      known(e.country) ? factChip(esc(UI.countryName(String(e.country).toUpperCase()))) : "",
+      known(e.device) ? factChip(esc(t(e.device === "mobile" ? "Mobile" : e.device === "desktop" ? "Desktop" : e.device))) : "",
+      known(e.location) && String(e.location).toUpperCase() !== String(e.country || "").toUpperCase() ? factChip(esc(e.location)) : "", // "FR" again after France says nothing
+      known(e.depth) ? factChip(esc(fill("top {n} checked", { n: UI.num(e.depth) }))) : "",
+    ].filter(Boolean);
+    const mine = e.mine ? `<div class="cl-facts cl-facts-you">${factChip(`${esc(t("You"))} ${COMP.pos(e.mine.position, e.depth ?? 100)}${e.mine.host ? ` <span class="mono">${esc(e.mine.host)}</span>` : ""}`, "Your best place in this same check")}</div>` : "";
+    return `${known(e.title) ? `<div class="cl-facts-title" dir="auto">${esc(e.title)}</div>` : ""}${bits.length ? `<div class="cl-facts">${bits.join("")}</div>` : ""}${mine}`;
+  }
+
+  function moveDetails(e) {
+    const place = (n) => (known(n) ? `#${UI.num(n)}` : "");
+    return [
+      factRow("Keyword", plain(e.keyword)),
+      factRow("Their page", known(e.url) ? COMP.link(e.url) : ""),
+      factRow("Their title in the results", plain(e.title)),
+      factRow("Was", e.kind === "rank_new" ? esc(t("Not in the results checked")) : plain(place(e.from))),
+      factRow("Now", e.kind === "rank_lost" ? esc(t("Not in the results checked")) : plain(place(e.to))),
+      factRow("Your position", e.mine ? `${COMP.pos(e.mine.position, e.depth ?? 100)}${e.mine.url ? ` ${COMP.link(e.mine.url)}` : ""}` : ""),
+      factRow("Search engine", plain(engineName(e.engine))),
+      factRow("Tool", plain(e.tool)),
+      factRow("Country", known(e.country) ? esc(UI.countryName(String(e.country).toUpperCase())) : ""),
+      factRow("Language", plain(e.language)),
+      factRow("Device", known(e.device) ? esc(t(e.device === "mobile" ? "Mobile" : e.device === "desktop" ? "Desktop" : e.device)) : ""),
+      factRow("Location", plain(e.location)),
+      factRow("Results checked", count(e.depth)),
+      factRow("Checked", plain(aDate(e.at))),
+    ].join("");
+  }
+
+  function factsOf(e) {
+    const isMove = e.kind.startsWith("rank_") || e.kind.startsWith("ai_");
+    if (!isMove && !e.page) return "";
+    const line = isMove ? moveFactsLine(e) : pageFactsLine(e.page);
+    const rows = isMove ? moveDetails(e) : pageDetails(e.page);
+    return `${line}${rows ? `<details class="cl-more-facts"><summary>${icon("chevron-right")}${t("All the details")}</summary><dl class="cl-dl">${rows}</dl></details>` : ""}`;
+  }
+  COMP.changeFacts = factsOf;
+  COMP.TIMELINE_FILTERS = TIMELINE_FILTERS; // Who is moving (comp-summary.js) filters the same way
+
   /* `who` says whose timeline it is when the row isn't on that competitor's profile: { id, rival, own }. */
   function timelineFind(e, word, who = null) {
     const rival = who?.rival ?? view.data?.host ?? "", about = e.keyword || e.url || "", own = who ? who.own : view.data?.site?.host;
@@ -449,7 +571,9 @@
     const isAi = e.kind.startsWith("ai_");
     const about = isMove || isAi ? ` <span class="kw" dir="auto">${esc(e.keyword)}</span>` : "";
     const detail = isMove ? moveDetail(e) : isAi ? `<div class="d">${esc(engineName(e.engine))} · ${esc(e.tool || "")}</div>` : e.kind === "new_page" || e.kind === "page_gone" ? "" : changeDetail(e);
-    return `<li ${focusable ? 'tabindex="-1" data-cl-first-new' : ""}><span class="ico cl-tl-ico">${icon(ic)}</span><div class="what">${who ? `<div class="d cs-who"><span class="with-logo">${UI.siteLogo(who.rival, 16)}<span class="logo-text mono" dir="auto">${esc(who.display || who.rival)}</span></span> · ${esc(COMP.ago(e.at))}</div>` : ""}<div class="t">${esc(t(word))}${about}</div>${detail}${window.ChangeSummary?.slot(e) || ""}${e.url ? `<div class="d">${COMP.link(e.url)}</div>` : ""}</div><div class="acts">${UI.taskButton(timelineFind(e, word, who), { label: "Task" })}</div></li>`;
+    /* Only a marker of the kind of change, never a button: no box, just a coloured icon. */
+    const tone = ["new_page", "rank_new", "rank_up", "ai_cited"].includes(e.kind) ? "up" : ["page_gone", "rank_lost", "rank_down", "ai_dropped"].includes(e.kind) ? "down" : "edit";
+    return `<li ${focusable ? 'tabindex="-1" data-cl-first-new' : ""}><span class="cl-tl-ico cl-tl-${tone}" aria-hidden="true">${icon(ic)}</span><div class="what">${who ? `<div class="d cs-who"><span class="with-logo">${UI.siteLogo(who.rival, 16)}<span class="logo-text mono" dir="auto">${esc(who.display || who.rival)}</span></span> · ${esc(COMP.ago(e.at))}</div>` : ""}<div class="t">${esc(t(word))}${about}</div>${detail}${factsOf(e)}${window.ChangeSummary?.slot(e) || ""}${e.url ? `<div class="d">${COMP.link(e.url)}</div>` : ""}</div><div class="acts">${UI.taskButton(timelineFind(e, word, who), { label: "Task" })}</div></li>`;
   }
   COMP.timelineRow = (e, who) => timelineRow(e, false, who);
 
@@ -498,19 +622,24 @@
 
   /* `unknown` is the reason this site's keyword numbers aren't known (no list, or never checked): then no counts, and one line that says why. */
   function keywordsBody(p, unknown = COMP.profileTabs?.keywordsWhy?.() ?? "") {
-    const groups = { shared: p.keywords.filter((k) => k.status === "shared"), theirs_only: p.keywords.filter((k) => k.status === "theirs_only"), mine_only: p.keywords.filter((k) => k.status === "mine_only"), past: p.past_keywords || [] };
+    // The search narrows every group, so each count says what that choice holds.
+    const q = TP.state(PAGES.keywords).q, found = (k) => TP.matches(PAGES.keywords, k.keyword);
+    const everyKeyword = p.keywords.length + (p.past_keywords || []).length;
+    const listed = p.keywords.filter(found);
+    const groups = { shared: listed.filter((k) => k.status === "shared"), theirs_only: listed.filter((k) => k.status === "theirs_only"), mine_only: listed.filter((k) => k.status === "mine_only"), past: (p.past_keywords || []).filter(found) };
     const seg = `<div class="seg cl-seg" role="group" aria-label="${attr("Which keywords")}">${[["shared", "Shared"], ["theirs_only", "Only them"], ["mine_only", "Only you"], ["past", "Past"]].map(([id, word]) => `<button data-cl-kw="${id}" aria-pressed="${view.kw === id}">${t(word)}${unknown ? "" : ` <span class="tabular muted">${UI.num(groups[id].length)}</span>`}</button>`).join("")}</div>`;
-    if (unknown && !p.keywords.length && !groups.past.length) return `${seg}<p class="cl-none small sec" data-cl-kw-unknown>${esc(unknown)}</p>`;
+    if (unknown && !p.keywords.length && !(p.past_keywords || []).length) return `${seg}<p class="cl-none small sec" data-cl-kw-unknown>${esc(unknown)}</p>`;
+    const search = everyKeyword >= FIND_FROM || q ? `<div class="cp-tools cl-tools">${TP.search(PAGES.keywords, t("Search keywords"))}</div>` : "";
     const rows = groups[view.kw] || [];
-    const sorted = sortRows(rows, view.sort.key, view.sort.dir).slice(0, view.kwLimit);
+    const page = TP.view(PAGES.keywords, sortRows(rows, view.sort.key, view.sort.dir)), sorted = page.rows;
     const head = (key, label, cls = "") => {
       const on = view.sort.key === key;
-      return `<th scope="col" class="${cls}" ${on ? `aria-sort="${view.sort.dir > 0 ? "ascending" : "descending"}"` : ""}><button data-cl-sort="${key}">${t(label)}${icon(on && view.sort.dir < 0 ? "arrow-down" : "arrow-up")}</button></th>`;
+      return `<th scope="col" class="${cls}" aria-sort="${on ? (view.sort.dir > 0 ? "ascending" : "descending") : "none"}"><button type="button" class="th-btn" data-cl-sort="${key}">${t(label)}${icon(on && view.sort.dir < 0 ? "arrow-down" : "arrow-up")}</button></th>`;
     };
     const emptyWords = { shared: "You don't rank together on any keyword yet.", theirs_only: "They don't rank on any keyword without you.", mine_only: "You don't rank on any keyword without them.", past: "Nothing yet. A keyword lands here when they used to rank for it and the latest check no longer shows them." };
-    if (!rows.length) return `${seg}<p class="cl-none small sec">${t(emptyWords[view.kw])}</p>`;
+    if (!rows.length && q) return `${seg}${search}<p class="cl-none small sec">${esc(t("No keyword matches this search."))} <button type="button" class="link-btn" data-tp-clear data-tp-key="${PAGES.keywords}">${t("Clear the search")}</button></p>`;
+    if (!rows.length) return `${seg}${search}<p class="cl-none small sec">${t(emptyWords[view.kw])}</p>`;
     const place = (n, url, depth) => `<span class="cl-cell">${COMP.pos(n, depth)}${url ? `<span class="cl-url">${COMP.link(url)}</span>` : ""}</span>`;
-    const left = rows.length - sorted.length;
     const table = view.kw === "past"
       ? `<table class="data cl-table"><thead><tr>${head("keyword", "Keyword")}${head("last_position", "Their last position")}${head("last_seen", "Last seen")}<th scope="col">${t("Tool")}</th></tr></thead><tbody>${sorted.map((k) => `<tr>
           <td class="head-cell"><span class="kw" dir="auto">${esc(k.keyword)}</span></td>
@@ -518,7 +647,7 @@
           <td data-label="${attr("Last seen")}"><span class="nowrap">${esc(COMP.ago(k.last_seen))}</span></td>
           <td data-label="${attr("Tool")}"><span class="cl-cell">${esc(k.tool || "")}<span class="second">${esc(engineName(k.engine))}</span></span></td></tr>`).join("")}</tbody></table>`
       : keywordTable(sorted, head, place);
-    return `${seg}<div class="cl-scroll">${table}</div>${left ? `<p class="cl-more"><button class="btn btn-small" data-cl-kw-more>${t("Show more")} (${UI.num(left)})</button></p>` : ""}`;
+    return `${seg}${search}<div class="cl-pages"><div class="cl-scroll">${table}</div>${TP.footer(PAGES.keywords, page, { noun: t("keywords") })}</div>`;
   }
 
   /* Positions centred under centred headings. When every row was checked by the same tool at the same age, that's said once under the table. */
@@ -559,7 +688,7 @@
     return "";
   }
   const paused = (p) => p.tracking === "off"; // tracking off: nothing is read, so no "Watching" and no Read now
-  const watchArea = (p) => (paused(p) ? `<span class="cl-watch"><span class="status sec">${icon("pause")}${esc(t("Paused"))}</span></span>` : `${watching(p.crawl)}`);
+  const watchArea = (p) => (paused(p) ? `<span class="cl-watch"><span class="status sec">${icon("pause")}${esc(t("Paused"))}</span></span>` : `${watching(p.crawl, null, { follow: true })}`);
   function paintWatch() {
     const p = view.data, box = UI.$("#cl-watch-state");
     if (!p || !box) return;
@@ -592,7 +721,7 @@
   const profileParts = {
     keywordsBody: (p) => keywordsBody(p),
     timelineBody: (p) => timelineBody(p),
-    showKeywords: (kind) => { view.kw = kind; view.kwLimit = 100; view.sort = { key: "keyword", dir: 1 }; },
+    showKeywords: (kind) => { view.kw = kind; view.sort = { key: "keyword", dir: 1 }; TP.reset(PAGES.keywords); },
   };
 
   async function readNow(id, button) {
@@ -647,9 +776,14 @@
   const listTab = {
     id: "list", order: 10, label: "My competitors", icon: "crosshair", hidden: true, // merged into Competitors (comp-summary.js) on 2026-11-09; this tab only draws the profile
     competitorId: null,
-    init(helpers) { UI = helpers; bindEvents(); },
+    init(helpers) {
+      UI = helpers; bindEvents();
+      TP.on(PAGES.list, () => COMP.paint()); // another page, another size or a search; the helper keeps the focus
+      TP.on(PAGES.keywords, () => paintKeywords());
+    },
     async load() {
       const site = COMP.siteId;
+      if (list.site !== null && list.site !== site) { TP.state(PAGES.list).q = ""; TP.reset(PAGES.list); }
       const [answer, found] = await Promise.all([
         COMP.api("GET", `competitors?site_id=${site}`),
         COMP.api("GET", `competitors/suggestions?site_id=${site}`).catch(() => null), // only for the empty state and the count on the tab
@@ -668,7 +802,8 @@
       if (!detail) listTab.competitorId = null;
       else if (view.shownId !== id) {
         // A different competitor starts at the top, with the keyboard on its name.
-        Object.assign(view, { filter: "all", limit: 50, kw: "shared", sort: { key: "keyword", dir: 1 }, kwLimit: 100, shownId: id });
+        Object.assign(view, { filter: "all", limit: 50, kw: "shared", sort: { key: "keyword", dir: 1 }, shownId: id });
+        TP.state(PAGES.keywords).q = ""; TP.reset(PAGES.keywords);
         pending = () => {
           const main = UI.$("#main");
           if (main) main.scrollTop = 0;
@@ -774,16 +909,22 @@
   }
 
   // ---- Find competitors: the suggestions --------------------------------------------------------------
+  /* Up to 100 keywords a suggestion ranks on, in pages. Each fold has its own pages, and draws only itself again. */
   function evidenceTable(item) {
-    const rows = item.evidence || [];
+    const key = EVIDENCE(item.domain), page = TP.view(key, item.evidence || []), rows = page.rows;
+    TP.on(key, () => {
+      const inner = UI.$$("[data-cl-evidence]").find((fold) => fold.dataset.clEvidence === item.domain)?.querySelector(".cl-evidence-body");
+      if (inner) UI.setHTML(inner, evidenceTable(item));
+    });
     const place = (e) => `<span class="cl-cell">${COMP.pos(e.position, e.my_depth)}${e.url ? `<span class="cl-url">${COMP.link(e.url)}</span>` : ""}</span>`;
-    return `<div class="cl-scroll"><table class="data cl-table"><thead><tr><th scope="col">${t("Keyword")}</th><th scope="col">${t("Their position")}</th><th scope="col">${t("Your position")}</th><th scope="col">${t("Checked with")}</th></tr></thead><tbody>
+    const capped = (item.keywords || 0) > page.total ? fill("Showing the first {n}.", { n: UI.num(page.total) }) : null;
+    return `<div class="cl-pages"><div class="cl-scroll"><table class="data cl-table"><thead><tr><th scope="col">${t("Keyword")}</th><th scope="col">${t("Their position")}</th><th scope="col">${t("Your position")}</th><th scope="col">${t("Checked with")}</th></tr></thead><tbody>
       ${rows.map((e) => `<tr>
         <td class="head-cell"><span class="kw" dir="auto">${esc(e.keyword)}</span></td>
         <td data-label="${attr("Their position")}">${place(e)}</td>
         <td data-label="${attr("Your position")}">${COMP.pos(e.my_position, e.my_depth)}</td>
         <td data-label="${attr("Checked with")}"><span class="cl-cell">${esc(engineName(e.engine))} · ${esc(e.tool || "")}<span class="second">${esc(COMP.ago(e.checked_at))}</span></span></td>
-      </tr>`).join("")}</tbody></table></div>${(item.keywords || 0) > rows.length ? `<p class="help">${esc(fill("Showing the first {n}.", { n: UI.num(rows.length) }))}</p>` : ""}`;
+      </tr>`).join("")}</tbody></table></div>${TP.footer(key, page, { noun: t("keywords"), capped })}</div>`;
   }
 
   function evidenceFold(item) {
@@ -1244,20 +1385,16 @@
       if ((el = hit("[data-cl-kw]"))) {
         const id = el.dataset.clKw;
         view.kw = id;
-        view.kwLimit = 100;
         view.sort = { key: "keyword", dir: 1 };
+        TP.reset(PAGES.keywords);
         paintKeywords(() => focusAttr("data-cl-kw", id)?.focus({ preventScroll: true }));
         return;
       }
       if ((el = hit("[data-cl-sort]"))) {
         const key = el.dataset.clSort;
         view.sort = view.sort.key === key ? { key, dir: -view.sort.dir } : { key, dir: key === "checked_at" || key === "last_seen" ? -1 : 1 };
+        TP.reset(PAGES.keywords);
         paintKeywords(() => focusAttr("data-cl-sort", key)?.focus({ preventScroll: true }));
-        return;
-      }
-      if (hit("[data-cl-kw-more]")) {
-        view.kwLimit += 100;
-        paintKeywords(() => UI.$("[data-cl-kw-more]")?.focus({ preventScroll: true }));
         return;
       }
       if ((el = hit("[data-cl-pair]"))) { COMP.open("pairs", { openPairId: Number(el.dataset.clPair) }); return; }
@@ -1607,7 +1744,26 @@
 
   // ---- French ------------------------------------------------------------------------------------------------------
   Object.assign(window.FR, {
+    "All the details": "Tous les détails", "{n} word": "{n} mot", "{n} words": "{n} mots", "{n} heading": "{n} titre", "{n} headings": "{n} titres",
+    "{n} image": "{n} image", "{n} images": "{n} images", "{n} video": "{n} vidéo", "{n} videos": "{n} vidéos",
+    "{a} internal · {b} external links": "{a} liens internes · {b} externes", "published {date}": "publiée le {date}", "{date} in their sitemap": "{date} dans leur sitemap",
+    "The date the page itself gives": "La date donnée par la page elle-même", "changed {n} time": "modifiée {n} fois", "changed {n} times": "modifiée {n} fois",
+    "The first {n} of {total}.": "Les {n} premiers sur {total}.", "({n} without alt text)": "({n} sans texte alternatif)",
+    "Firecrawl": "Firecrawl", "A real browser (the page needs JavaScript)": "Un vrai navigateur (la page a besoin de JavaScript)",
+    "{n} character": "{n} caractère", "{n} characters": "{n} caractères",
+    "Title": "Titre", "Meta description": "Méta-description", "Main heading (H1)": "Titre principal (H1)", "Headings": "Titres", "Questions in headings": "Questions dans les titres",
+    "Words": "Mots", "Characters": "Caractères", "Images": "Images", "Videos": "Vidéos", "Tables": "Tableaux", "Lists": "Listes", "Forms": "Formulaires",
+    "Internal links": "Liens internes", "External links": "Liens externes", "Structured data": "Données structurées", "Language": "Langue",
+    "Language versions (hreflang)": "Versions linguistiques (hreflang)", "Preferred address (canonical)": "Adresse préférée (canonique)", "Instructions to search engines": "Instructions aux moteurs de recherche",
+    "Answer code": "Code de réponse", "Published (the page says)": "Publiée (selon la page)", "Updated (the page says)": "Mise à jour (selon la page)", "Date in their sitemap": "Date dans leur sitemap",
+    "First saved by the archive": "Première copie dans l'archive", "First found by this app": "Trouvée par l'app le", "Last changed": "Dernière modification", "Last read": "Dernière lecture",
+    "Changes seen on this page": "Changements vus sur cette page", "Read with": "Lue avec",
+    "Mobile": "Mobile", "Desktop": "Ordinateur", "top {n} checked": "top {n} vérifié", "Your best place in this same check": "Votre meilleure place dans cette même vérification",
+    "Keyword": "Mot-clé", "Their page": "Leur page", "Their title in the results": "Leur titre dans les résultats", "Was": "Avant", "Now": "Maintenant", "Your position": "Votre position",
+    "Search engine": "Moteur de recherche", "Tool": "Outil", "Country": "Pays", "Device": "Appareil", "Location": "Lieu", "Results checked": "Résultats vérifiés", "Checked": "Vérifié le",
     "All checked with {tool}, {when}.": "Tous vérifiés avec {tool}, {when}.",
+    "Search keywords": "Chercher un mot-clé", "Find a competitor": "Chercher un concurrent", "competitors": "concurrents", "keywords": "mots-clés",
+    "No competitor matches “{text}”.": "Aucun concurrent ne correspond à « {text} ».", "No keyword matches this search.": "Aucun mot-clé ne correspond à cette recherche.", "Clear the search": "Effacer la recherche",
     // Words that change with where they sit
     "New|tag": "Nouveau",
     "Removed|pages": "Retirées",
@@ -1718,6 +1874,7 @@
     "Ranking moves": "Mouvements de classement",
     "AI Overview": "AI Overview",
     "Title changed": "Titre modifié",
+    "Probably edited: its title changed in search results": "Sans doute modifiée : son titre a changé dans les résultats de recherche",
     "Meta description changed": "Meta description modifiée",
     "Main heading changed": "Titre principal modifié",
     "Subheadings changed": "Sous-titres modifiés",
@@ -1734,6 +1891,8 @@
     "Cited in the AI Overview for": "Cité dans l'AI Overview sur",
     "No longer cited in the AI Overview for": "N'est plus cité dans l'AI Overview sur",
     "{from} words, now {to}": "{from} mots, maintenant {to}",
+    "small edit, {n} word changed": "petite modification, {n} mot changé", "small edit, {n} words changed": "petite modification, {n} mots changés",
+    "about {n} words changed": "environ {n} mots changés",
     "The same items, in a different order.": "Les mêmes éléments, dans un autre ordre.",
     "Empty": "Vide",
     "Taken out": "Enlevé",

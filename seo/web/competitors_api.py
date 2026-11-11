@@ -135,7 +135,7 @@ def collective_keywords():
 
 @competitors_api.get("/collective/moves")
 def collective_moves():
-    return jsonify(collective.moves(_engine(), _optional_site_arg()))
+    return jsonify(collective.moves(_engine(), _optional_site_arg(), request.args.get("days", collective.MOVE_DAYS, type=int)))
 
 
 @competitors_api.get("/collective/links")
@@ -205,6 +205,17 @@ def firecrawl_start(competitor_id: int):
         if tracking.of_site(conn, body["site_id"]).get(competitor_id) == tracking.OFF:
             raise Refused("Tracking is off for this competitor, so its pages aren't read. Turn it on, or to Pages only, first.")
     return jsonify(firecrawl.start(_engine(), competitor_id, body["action"], body.get("pages"))), 202
+
+
+@competitors_api.post("/competitors/<int:competitor_id>/firecrawl/weekly")
+def firecrawl_weekly(competitor_id: int):
+    """The owner's yes to a weekly Firecrawl check of this competitor's ranking pages, after seeing its weekly cost."""
+    body = _body({"site_id", "on"}, ("site_id", "on"))
+    with _engine().connect() as conn:
+        pairs._competitor(conn, body["site_id"], competitor_id)
+        if body["on"] is True and tracking.of_site(conn, body["site_id"]).get(competitor_id) == tracking.OFF:
+            raise Refused("Tracking is off for this competitor, so its pages aren't read. Turn it on, or to Pages only, first.")
+    return jsonify(firecrawl.set_weekly(_engine(), competitor_id, body["on"]))
 
 
 # ---- keyword check: typed keywords, searched only when asked -----------------------------------------

@@ -8,6 +8,7 @@ const BASE = process.argv[2] || "http://127.0.0.1:8263/";
 const OUT = path.resolve("var/ui-competitor-profile-ux") + "/";
 fs.mkdirSync(OUT, { recursive: true });
 let bad = 0;
+const fakeQuestions = (host, about) => { const groups = Array.from({ length: 25 }, (_, i) => ({ url: `https://${host}/guide/p-${i + 1}`, title: `Page ${i + 1} about ${i < 15 ? about : "the weather"}`, questions: Array.from({ length: i % 3 ? 2 : 5 }, (_, k) => `Question ${i + 1}.${k + 1} about ${i < 15 ? about : "the weather"}?`), other: [], related: i < 15, score: i < 15 ? 1 : 0 })); return { judged: true, dropped: 4, groups, related: groups.filter((g) => g.related).reduce((n, g) => n + g.questions.length, 0), total: groups.reduce((n, g) => n + g.questions.length, 0) }; };
 const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ? "PASS" : "FAIL"}  ${name}${extra !== "" ? `  [${extra}]` : ""}`); };
 (async () => {
   const { browser, page, problems } = await open({ width: 1600, height: 1000 });
@@ -45,7 +46,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   // Since 2026-11-10 the chart only draws with pages in 3 or more months (F14 of the Fable review); fewer months are said in one sentence.
   const fewMonths = await page.evaluate(() => document.querySelector(".pt-few-months")?.textContent || "");
   if (fewMonths) {
-    check("too few months: the figures are said in a sentence, no empty 12-month axis", /Too few months|No new pages/.test(fewMonths) && !chart, fewMonths.slice(0, 80));
+    check("too few months: the figures are said in a sentence, no empty 12-month axis", /\d{4}: \d/.test(fewMonths) && !chart, fewMonths.slice(0, 80));
     // The chart's own rules still have to hold when it is drawn: made-up months on the real answer (the demo competitor has too few), then the same checks.
     const INSIGHTS = "**/api/competitors/*/insights**";
     await page.route(INSIGHTS, async (r) => { const a = await (await r.fetch()).json(); (a.rhythm?.months || []).forEach((m, i) => { m.theirs = (i % 4) + 1; }); await r.fulfill({ json: a }).catch(() => {}); });
@@ -90,19 +91,16 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   const pages = await page.evaluate(() => ({
     lead: document.querySelector(".pt-lead")?.textContent || "",
     oldDot: [...document.querySelectorAll(".pt-panel td")].some((td) => /\d+\s·\s\d+/.test(td.textContent)),
-    qRows: document.querySelectorAll("#pt-questions tbody tr").length,
-    qTasks: document.querySelectorAll("#pt-questions tbody tr button").length,
+    qRows: document.querySelectorAll("#pt-questions > li").length,
+    qTasks: document.querySelectorAll("#pt-questions > li .pt-act button").length,
     more: Boolean(document.querySelector("[data-pt-q-more]")),
+    foot: document.querySelector('[data-tp-foot="pt-q"] .tp-range')?.textContent || "",
   }));
   check("sections start with a sentence", /Most of their pages are in/.test(pages.lead), pages.lead);
   check("no more '157 · 0' cells", !pages.oldDot);
-  check("each question has a Task button", pages.qRows > 0 && pages.qTasks === pages.qRows, `${pages.qTasks}/${pages.qRows}`);
-  if (pages.more) {
-    await page.click("[data-pt-q-more]");
-    await settle(300);
-    const after = await count("#pt-questions tbody tr");
-    check("Show more shows more questions", after > pages.qRows, `${pages.qRows} -> ${after}`);
-  } else console.log("note  10 questions or fewer for this demo competitor, so no Show more");
+  check("each page of questions has one Task button", pages.qRows > 0 && pages.qTasks === pages.qRows, `${pages.qTasks}/${pages.qRows}`);
+  // Since 2026-11-10 long lists have pages (table-pages.js) instead of Show more: the footer gives the real total.
+  check("questions come in pages with the total, no Show more", !pages.more && new RegExp(`^1–${pages.qRows} of \\d+ pages?$`).test(pages.foot.trim()), pages.foot);
   await page.screenshot({ path: OUT + "3-pages-tab.png", fullPage: true });
 
   // Their site: no wall of dashes; links can be added from here.
@@ -130,7 +128,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
     body.facts = { ...body.facts, my_pages: 0, my_reading: null, da: null, my_da: null, popularity: null, my_popularity: null, moz_links: null, my_moz_links: null };
     body.rhythm = { ...body.rhythm, months: (body.rhythm?.months || []).map((m, i) => ({ ...m, theirs: [1, 0, 0, 15, 45, 5, 33, 28, 20, 20, 20, 1][i] ?? 0, mine: 0 })) };
     body.sections = [["/new-article/", 157, 53], ["/fr/", 48, 0], ["/", 26, 0], ["/services/", 17, 0]].map(([path, pages, n]) => ({ path, pages, my_pages: 0, new_90d: n, last_change: null }));
-    body.questions = Array.from({ length: 79 }, (_, i) => ({ text: `Question ${i + 1} about accounting in Dubai?`, source: "headings", url: `https://rival-one.example/new-article/q-${i + 1}` }));
+    body.questions = fakeQuestions("rival-one.example", "accounting in Dubai");
     await route.fulfill({ response: reply, json: body });
   });
   await page.goto(BASE + "#competitors/summary");
@@ -144,26 +142,25 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   check("not read: no 'You' bars or figures, and the note says why", lone.you === 0 && !lone.youWord && /Your own site's pages are read tonight for the first time/.test(lone.note), JSON.stringify(lone));
   await page.locator(".pt-panel section.card").first().screenshot({ path: OUT + "6-activity-not-read.png" });
   await tab("pages");
-  const q = { rows: await count("#pt-questions tbody tr"), tasks: await count("#pt-questions tbody tr button") };
-  check("79 questions: 10 first, each with a Task", q.rows === 10 && q.tasks === 10, JSON.stringify(q));
-  await page.click("[data-pt-q-more]");
+  // 25 pages of questions, 15 on my topics: all 15 on the first page (pages of 25), one Task each, the 10 off-topic pages folded.
+  const q = { rows: await count("#pt-questions > li"), tasks: await count("#pt-questions > li .pt-act button"), lead: await page.locator(".pt-panel section.card").nth(2).locator(".pt-lead").innerText() };
+  check("questions: the 15 pages on my topics first, one Task each", q.rows === 15 && q.tasks === 15, JSON.stringify(q));
+  check("questions: the lead counts the ones on my topics and says my pages aren't read", /on your topics, on 15 pages/.test(q.lead) && /haven't been read yet/.test(q.lead), q.lead);
+  check("questions: a page shows 3 questions, then +n more", (await page.locator("#pt-questions > li").first().locator(".pt-qlist li").count()) === 3 && /\+2 more/.test(await page.locator("#pt-questions > li").first().innerText()));
+  check("the pages footer counts the 15 pages on my topics", /1–15 of 15 pages/.test(await page.locator('[data-tp-foot="pt-q"] .tp-range').innerText()));
+  check("off-topic pages are folded behind one button", (await count(".pt-qpages-other > li")) === 0 && /Show \d+ questions on other topics/.test(await page.locator("[data-pt-q-others]").innerText()));
+  await page.click("[data-pt-q-others]");
   await settle(300);
-  check("Show more adds 20", (await count("#pt-questions tbody tr")) === 30);
-  await page.click("[data-pt-q-all]");
-  await settle(300);
-  check("Show all shows all 79", (await count("#pt-questions tbody tr")) === 79);
-  await page.click("[data-pt-q-less]");
-  await settle(300);
-  check("Show fewer goes back to 10", (await count("#pt-questions tbody tr")) === 10);
+  check("that button shows the 10 off-topic pages", (await count(".pt-qpages-other > li")) === 10);
   const sec = await page.evaluate(() => ({ lead: document.querySelector(".pt-lead")?.textContent, heads: [...document.querySelectorAll(".pt-panel section:nth-of-type(2) thead th")].map((th) => th.textContent) }));
   check("sections: answer first, no 'Your pages' or empty 'Last change' column", /157 of 248/.test(sec.lead) && !sec.heads.includes("Your pages") && !sec.heads.includes("Last change"), JSON.stringify(sec));
   await page.locator(".pt-panel section.card").nth(1).screenshot({ path: OUT + "7-sections-not-read.png" });
   await page.locator(".pt-panel section.card").nth(2).screenshot({ path: OUT + "8-questions.png" });
-  const firstTask = page.locator("#pt-questions tbody tr button").first();
+  const firstTask = page.locator("#pt-questions > li .pt-act button").first();
   await firstTask.click();
   await settle(700);
   const taskTitle = await page.evaluate(() => document.querySelector("#panel input, .panel input")?.value || "");
-  check("a question's Task opens a task already named", /Answer "Question 1/.test(taskTitle), taskTitle);
+  check("a page's Task opens a task already named", /Answer 5 questions from .*p-1 on your site/.test(taskTitle), taskTitle);
   await page.keyboard.press("Escape");
   await settle(400);
   await tab("site");
