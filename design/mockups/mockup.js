@@ -86,6 +86,17 @@
   const COUNTRY_CODES = "AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG US UY UZ VA VC VE VG VI VN VU WF WS XK YE YT ZA ZM ZW".split(" ");
   const countryName = (code) => { try { return new Intl.DisplayNames([state.lang === "fr" ? "fr" : "en"], { type: "region" }).of(code) || code; } catch { return code; } };
   const countryOptions = (selected) => COUNTRY_CODES.map((c) => [c, countryName(c)]).sort((a, b) => a[1].localeCompare(b[1], state.lang)).map(([c, n]) => `<option value="${c}" ${c === selected ? "selected" : ""}>${esc(n)}</option>`).join("");
+  // The languages a keyword list or an idea search can pick, named the same way.
+  const LANGUAGE_CODES = "af ar az bg bn ca cs da de el en es et fa fi fil fr he hi hr hu hy id it ja ka kk ko lt lv ms nb nl pa pl pt ro ru si sk sl sq sr sv sw ta te th tr uk ur uz vi zh".split(" ");
+  const languageOptions = (selected) => {
+    const lang = state.lang === "fr" ? "fr" : "en";
+    let names;
+    try { names = new Intl.DisplayNames([lang], { type: "language" }); } catch { names = null; }
+    return LANGUAGE_CODES
+      .map((code) => { const name = names?.of(code) || code; return [code, name.charAt(0).toLocaleUpperCase(lang) + name.slice(1)]; })
+      .sort((a, b) => a[1].localeCompare(b[1], lang))
+      .map(([code, name]) => `<option value="${code}" ${code === selected ? "selected" : ""}>${esc(name)}</option>`).join("");
+  };
 
   // ---- dates ------------------------------------------------------------------
   const TODAY = window.BOOT?.today || "2026-11-04", FIRST_DAY = window.BOOT ? "2020-01-01" : "2025-07-01";
@@ -113,7 +124,7 @@
        UI.range.days({ end }) → "from=…&to=…&compare_from=…&compare_to=…"
        UI.range.end(route, day)  the last day with data a screen learnt from its answer, so the picker's dates match it */
   const RANGE_PRESETS = [["24h", "Last 24 hours"], ["7d", "Last 7 days"], ["28d", "Last 28 days"], ["3m", "Last 3 months"], ["6m", "Last 6 months"], ["12m", "Last 12 months"], ["16m", "Last 16 months"], ["tm", "This month"], ["lm", "Last month"]];
-  const RANGE_COMPARES = [["prev", "vs previous period"], ["yoy", "vs same period last year"], ["none", "No comparison"]];
+  const RANGE_COMPARES = [["prev", "vs previous period"], ["yoy", "vs last year"], ["none", "No comparison"]];
   const RANGE_DEFAULT = { preset: "28d", from: null, to: null, compare: "prev" };
   const HOURLY_SCREENS = new Set(["overview"]); // only these can show the last 24 hours hour by hour
   const DATED_SCREENS = new Set(["today", "overview", "insights", "channels", "conversions", "content", "ai", "backlinks"]);
@@ -440,7 +451,7 @@
     // A move is only stated when both checks can be compared. After a tool change there's no number here, so only today's position is.
     const title = typeof change === "number" && change !== 0 && p
       ? `${row.k} ${t(change < 0 ? "fell" : "rose")} #${p + change} → #${p} ${t("on")} ${engine}`
-      : p ? `${row.k} ${t("is at")} #${p} ${t("on")} ${engine}` : `${row.k}: ${t("not in the results checked on")} ${engine}`;
+      : p ? `${row.k} ${t("is at")} #${p} ${t("on")} ${engine}` : `${row.k}: ${t("not found on")} ${engine}`;
     const facts = [p ? `#${p} · ${res.tool || ""}${res.age !== undefined ? ` · ${res.age} ${t("d")}` : ""}` : "", row.page || ""].filter(Boolean);
     return { title, host: row.site || null, keywords: [row.k], pages: row.page ? [row.page] : [], source: { type: "keyword", label: `${row.k} · ${engine}`, host: row.site || undefined, facts, link: `#keywords/${encodeURIComponent(row.k)}`, key: `keyword|${row.k}|${e}` } };
   }
@@ -511,7 +522,7 @@
   function changeCell(row, e) {
     const c = row.chg[e];
     if (c === null || c === undefined) {
-      if ((row.tools.some((x) => x.flag === "tool-changed") && e === "google") || row.res[e].toolChanged) return `<span class="cellval"><span class="muted">—</span><span class="second" data-tip="${t("The last two checks used different tools, so the change can't be compared.")}" tabindex="0">${t("tool changed")}</span></span>`;
+      if ((row.tools.some((x) => x.flag === "tool-changed") && e === "google") || row.res[e].toolChanged) return `<span class="cellval"><span class="muted">—</span><span class="second" data-tip="${t("Different tools: can't compare.")}" tabindex="0">${t("tool changed")}</span></span>`;
       return `<span class="muted dash">—</span>`;
     }
     if (c === 0) return `<span class="muted">0</span>`;
@@ -520,7 +531,7 @@
 
   const aiCell = (row) => ({
     cited: `<span class="nowrap">${icon("sparkles")} ${t("Cited")}</span>`,
-    overview: `<span class="sec small">${t("Overview, not cited")}</span>`,
+    overview: `<span class="sec small">${t("Not cited")}</span>`,
     none: `<span class="muted small">${t("No overview")}</span>`,
     "not-captured": `<span class="muted small" tabindex="0" data-tip="${t("Not captured")}">${t("Not captured")}</span>`,
   }[row.ai]);
@@ -529,7 +540,7 @@
     const e = engineOf();
     const selected = state.selected.has(row.k);
     const own = row.own[e];
-    const trend = row.trend.length >= 2 ? spark(row.trend, { invert: true }) : `<span class="muted dash" data-tip="${t("Needs 2 checks with the same tool")}" tabindex="0">—</span>`;
+    const trend = row.trend.length >= 2 ? spark(row.trend, { invert: true }) : `<span class="muted dash" data-tip="${t("Needs 2 checks, same tool")}" tabindex="0">—</span>`;
     const allEngines = state.engine === "all";
     const cells = allEngines
       ? ENGINES.map(([id, name]) => `<td data-label="${name}">${scrapedCell(row, id)}</td>`).join("")
@@ -554,7 +565,7 @@
   function keywordsTable() {
     const e = engineOf();
     const rows = filtered();
-    if (!rows.length) return `<div class="table-wrap"><div class="empty"><h3>${t("No keywords match this filter")}</h3><p>${t("Try another filter, or show all keywords.")}</p><button class="btn" data-filter="all">${t("Show all keywords")}</button></div></div>`;
+    if (!rows.length) return `<div class="table-wrap"><div class="empty"><h3>${t("No keyword matches")}</h3><p>${t("Try another filter.")}</p><button class="btn" data-filter="all">${t("Show all")}</button></div></div>`;
     const allEngines = state.engine === "all";
     const head = allEngines
       ? ENGINES.map(([id, name]) => `<th scope="col"><span class="th-engine">${logo(id, 16)}${name}</span></th>`).join("")
@@ -601,21 +612,21 @@
   function keywordsPage() {
     const e = engineOf();
     const main = `<button class="btn ${state.selected.size ? "" : "btn-main"}" id="open-refresh">${icon("refresh-cw")}${t("Refresh")}</button>`;
-    const sub = `${t("Data through")} 1 Nov · ${t("Last Refresh")} ${days(state.lastRefresh)}`;
+    const sub = `${t("Data through")} 1 Nov · ${t("Refreshed")} ${days(state.lastRefresh)}`;
     if (state.firstRun) {
-      return topbar(t("Keywords"), t("Rankings from each engine's own tool and from scraped results"), "") + `<div class="content page-enter"><div class="table-wrap"><div class="empty">
-        <h3>${t("No keywords yet")}</h3><p>${t("Add the keywords you want to follow, or import them from Search Console.")}</p>
+      return topbar(t("Keywords"), t("Rankings from engines' own tools and scraped results"), "") + `<div class="content page-enter"><div class="table-wrap"><div class="empty">
+        <h3>${t("No keywords yet")}</h3><p>${t("Add keywords to follow, or import them from Search Console.")}</p>
         <button class="btn btn-main" data-toast="Not built yet">${t("Add keywords")}</button> <button class="btn" data-toast="Not built yet">${t("Import from Search Console")}</button></div></div></div>`;
     }
     const all = siteKeywords();
     if (!all.length) {
-      return topbar(t("Keywords"), t("Rankings from each engine's own tool and from scraped results"), "") + `<div class="content page-enter"><div class="table-wrap"><div class="empty">
-        <h3>${t("No keywords yet")}</h3><p>${t("Add the keywords you want to follow for this site.")}</p>
+      return topbar(t("Keywords"), t("Rankings from engines' own tools and scraped results"), "") + `<div class="content page-enter"><div class="table-wrap"><div class="empty">
+        <h3>${t("No keywords yet")}</h3><p>${t("Add the keywords to follow.")}</p>
         <button class="btn btn-main" data-setup="keywords">${t("Add keywords")}</button></div></div></div>`;
     }
     const ranked = all.filter((k) => k.res[e].p).length, top10 = all.filter((k) => k.res[e].p && k.res[e].p <= 10).length, cited = all.filter((k) => k.ai === "cited").length;
     const count = (f) => all.filter((k) => f(k)).length;
-    const chips = [["all", "All", all.length], ["top3", "Top 3", count((k) => k.res[e].p && k.res[e].p <= 3)], ["top10", "Top 10", top10], ["up", "Up", count((k) => k.chg[e] > 0)], ["down", "Down", count((k) => k.chg[e] < 0)], ["none", "Not ranked", count((k) => !k.res[e].p)], ["cited", "Cited by AI", cited], ["two", "Same keyword on 2 pages", SAME_ON_2.size]];
+    const chips = [["all", "All", all.length], ["top3", "Top 3", count((k) => k.res[e].p && k.res[e].p <= 3)], ["top10", "Top 10", top10], ["up", "Up", count((k) => k.chg[e] > 0)], ["down", "Down", count((k) => k.chg[e] < 0)], ["none", "Not ranked", count((k) => !k.res[e].p)], ["cited", "Cited by AI", cited], ["two", "Two pages compete", SAME_ON_2.size]];
     const views = [["positions", "Positions"], ["bucket", "By bucket"], ["queries", "Queries"]];
     const body = state.view === "bucket" ? bucketView() : state.view === "queries" ? queriesView() : `
       <div class="chips" role="group" aria-label="${t("Keywords")}">
@@ -626,7 +637,7 @@
           <button class="icon-btn" data-toast="Sample export ready" aria-label="${t("Export CSV")}" data-tip="${t("Export CSV")}">${icon("download")}</button>
         </span>
       </div>
-      ${e === "duckduckgo" ? `<p class="note">${icon("info")}<span>${t("DuckDuckGo has no tool for site owners, so the app checks its positions by itself every day, oldest first, on free searches only. Refresh and Refresh data check them now.")}</span></p>` : ""}
+      ${e === "duckduckgo" ? `<p class="note">${UI.tip("DuckDuckGo has no tool for site owners, so the app checks its positions by itself every day, oldest first, on free searches only. Refresh and Refresh data check them now.").trim()}<span>${t("Checked daily by itself, on free searches.")}</span></p>` : ""}
       ${keywordsTable()}${selectionBar()}`;
     return topbar(t("Keywords"), sub, main) + `
       <div class="content page-enter">
@@ -682,7 +693,7 @@
   /* Saves one link or many, where this mode keeps them. `items` are { record, site, status }. A refusal rejects with the server's sentence. */
   async function keepLinks(items) {
     if (!bl.server) {
-      if (items.length > window.BulkLinks.MAX_ROWS) throw new Error("One upload can hold at most 5,000 rows. Split the file and try again.");
+      if (items.length > window.BulkLinks.MAX_ROWS) throw new Error("At most 5,000 rows per upload. Split the file and try again.");
       return { added: items.map((x, i) => localLink(`bulk${Date.now()}${i}`, x.record, x.site, x.status)), skipped: [], prospects: [] };
     }
     const answer = await COMP.api("POST", "backlinks/bulk", { rows: items.map((x) => serverRow(x.record, x.site, x.status)) });
@@ -802,15 +813,15 @@
   }
 
   function trafficCell(b) {
-    if (b.label === "no-ga4") return `<span class="muted small" data-tip="${t("GA4 not connected for this site")}" tabindex="0">—</span>`;
-    if (b.label === "none") return `<span class="tabular muted" data-tip="${t("No visits counted yet. Links that hide their source show as Direct.")}" tabindex="0">0</span>`;
+    if (b.label === "no-ga4") return `<span class="muted small" data-tip="${t("GA4 not connected")}" tabindex="0">—</span>`;
+    if (b.label === "none") return `<span class="tabular muted" data-tip="${t("No visits yet. Links hiding their source count as Direct.")}" tabindex="0">0</span>`;
     const [name, why] = LABELS[b.label];
     const shown = b.label === "shared" ? `${name} · ${b.shared}` : name;
     return `<span class="cellval"><span class="tabular">${num(b.visits)}</span> <span class="tag" data-tip="${esc(t(why))}" tabindex="0">${shown}</span></span>`;
   }
 
   // ---- In consideration: links we might pursue. Not built yet, so no status, visits, leads or cost ----
-  const PROSPECT_NOTE = "Prospect list only. This filters a CSV and adds the links you keep to In consideration. It does not check rankings or track these links.";
+  const PROSPECT_NOTE = "Prospects only: filters a CSV and adds the links you keep to In consideration. No rankings or link tracking.";
   const DUP_WORDS = { todo: "Already in To do", done: "Already in Done", consideration: "Already in consideration", found: "In Found but never logged", file: "Twice in this file" };
   const prospectsForSite = () => window.PROSPECTS.filter((p) => state.site === "all" || p.site === siteName());
   const dupFlag = (where) => (where ? `<span class="dup-flag">${icon("copy")}${esc(t(DUP_WORDS[where]))}</span>` : `<span class="muted">—</span>`);
@@ -920,11 +931,11 @@
         </section>
         <div class="pr-pick-bar" id="pr-pick-bar" role="status" ${[...prPicked].some((id) => page.rows.some((p) => p.id === id)) ? "" : "hidden"}><b id="pr-pick-count" class="tabular">${num(prPicked.size)} ${t("selected")}</b><button class="btn btn-main btn-small" id="pr-move">${icon("arrow-right")}${t("Move to To do")}</button><button type="button" class="link-btn" id="pr-pick-clear">${t("Clear")}</button></div>
         <div class="bl-list"><div class="table-wrap"><table class="data" id="pr-table">
-        <thead><tr><th scope="col" class="pr-tick"><input type="checkbox" class="chk" style="margin:0" id="pr-all" aria-label="${t("Select all shown")}" ${prPicked.size && prPicked.size === page.rows.length ? "checked" : ""}></th>${head("domain", "Website")}${head("da", "DA", t("Domain authority: the site's score from the file, whichever tool it came from."))}${head("pa", "PA", t("Page authority: this page's score from the file."))}${head("spam", "Spam score")}<th scope="col">${t("Rating")}</th><th scope="col">${t("Status and owner")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
+        <thead><tr><th scope="col" class="pr-tick"><input type="checkbox" class="chk" style="margin:0" id="pr-all" aria-label="${t("Select all shown")}" ${prPicked.size && prPicked.size === page.rows.length ? "checked" : ""}></th>${head("domain", "Website")}${head("da", "DA", t("Domain authority: the site's score in the file, from any tool."))}${head("pa", "PA", t("Page authority: this page's score from the file."))}${head("spam", "Spam score")}<th scope="col">${t("Rating")}</th><th scope="col">${t("Status and owner")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
         <tbody>${prospectRows(page.rows)}</tbody></table></div>
         ${window.TP.footer(PR_PAGES, page, { noun: t("links") })}</div>
         <p class="help" style="margin-top:10px">${t("Prospects aren't counted in the cards above.")}</p>`
-      : `<div class="table-wrap"><div class="empty"><h3>${t("Nothing in consideration yet")}</h3><p>${t("Filter a backlink CSV, then choose the links you might pursue.")}</p></div></div>`}`;
+      : `<div class="table-wrap"><div class="empty"><h3>${t("Nothing in consideration yet")}</h3><p>${t("Filter a backlink CSV, then pick links to pursue.")}</p></div></div>`}`;
   }
 
   // Found links of the site picked in the menu (all of them at All sites: F114).
@@ -949,8 +960,8 @@
     blSort = null; foundSort = null; prSort = null;
     window.BacklinkSeo.resetPages();
   }
-  [["Search websites", "Rechercher un site"], ["No link matches this search", "Aucun lien ne correspond à cette recherche"], ["Change the search to see more links.", "Modifiez la recherche pour voir plus de liens."],
-    ["Search the links found", "Rechercher dans les liens trouvés"], ["link checks", "contrôles de liens"], ["No link in this group matches the search.", "Aucun lien de ce groupe ne correspond à la recherche."]]
+  [["Search websites", "Rechercher un site"], ["No link matches", "Aucun lien ne correspond"], ["Change the search.", "Modifiez la recherche."],
+    ["Search links", "Rechercher un lien"], ["link checks", "contrôles de liens"], ["No link matches.", "Aucun lien ne correspond."]]
     .forEach(([en, fr]) => { if (window.FR[en] === undefined) window.FR[en] = fr; });
   window.TP.on(BL_PAGES, () => render());
   window.TP.on(FOUND_PAGES, () => render());
@@ -960,7 +971,7 @@
     const section = state.blSection;
     if (blPagedFor !== state.site) { if (blPagedFor !== undefined) resetBacklinkPages(); blPagedFor = state.site; }
     const main = section === "done" ? `<button class="btn btn-main" id="add-backlink">${icon("plus")}${t("Add backlink")}</button>` : "";
-    const title = t("Backlinks"), sub = t("Links built for your sites, and what they brought");
+    const title = t("Backlinks"), sub = t("Links built and what they brought");
     if (!bl.ready) return topbar(title, sub) + `<div class="content page-enter">${window.UI.skeleton("page", { tiles: 6, chart: false })}</div>`;
     if (bl.error) return topbar(title, sub) + `<div class="content page-enter">${window.UI.failCard(bl.error, { onRetry: () => { bl.error = ""; bl.ready = false; bl.asked = false; render(); } })}</div>`;
     const sections = `<div class="tabs sections" role="tablist" aria-label="${t("Backlink sections")}">
@@ -969,7 +980,7 @@
       <button class="tab" role="tab" data-bl-section="done" aria-selected="${section === "done"}">${icon("circle-check")}${t("Done")} <span class="muted">${state.firstRun ? 0 : siteLinks().filter((b) => b.status !== "planned").length}</span></button>
     </div>`;
     if (state.firstRun) {
-      return topbar(title, sub, main) + `<div class="content page-enter">${sections}${section === "consideration" ? considerationBody() : section === "todo" ? window.LinkTodo.body() : `<div class="table-wrap"><div class="empty"><h3>${t("No backlinks yet")}</h3><p>${t("Log the links you build, or import a CSV. Your Google Sheet can be exported as CSV.")}</p><span class="bl-tools"><button class="btn" id="bulk-open">${icon("list-plus")}${t("Import CSV")}</button><button class="btn" id="gsc-open">${icon("search")}${t("Import from Search Console")}</button></span></div></div>`}</div>`;
+      return topbar(title, sub, main) + `<div class="content page-enter">${sections}${section === "consideration" ? considerationBody() : section === "todo" ? window.LinkTodo.body() : `<div class="table-wrap"><div class="empty"><h3>${t("No backlinks yet")}</h3><p>${t("Log your links, or import a CSV.")}${window.UI.tip("A Google Sheet can be exported as CSV.")}</p><span class="bl-tools"><button class="btn" id="bulk-open">${icon("list-plus")}${t("Import CSV")}</button><button class="btn" id="gsc-open">${icon("search")}${t("Import from Search Console")}</button></span></div></div>`}</div>`;
     }
     const all = siteLinks().filter((b) => b.status !== "planned"); // not built yet, so it's in To do and never counts in the cards
     const real = all;
@@ -987,14 +998,14 @@
       const rows = window.BacklinkSeo.filterRows(byPerson, state.blFilter); // lost, useful, sends visits, not indexed, not useful, one website
       const page = window.TP.view(BL_PAGES, window.BacklinkSeo.sortRows(blSearched(rows), blSort, BL_SORTS));
       const head = (id, label, cls) => window.BacklinkSeo.sortHead("data-bl-sort", blSort, id, label, cls);
-      body = !all.length ? `<div class="table-wrap"><div class="empty"><h3>${t("No backlinks yet")}</h3><p>${t("Log the links you build, or import a CSV. Your Google Sheet can be exported as CSV.")}</p><span class="bl-tools"><button class="btn" id="bulk-open">${icon("list-plus")}${t("Import CSV")}</button><button class="btn" id="gsc-open">${icon("search")}${t("Import from Search Console")}</button></span></div></div>` : `<div class="chips">${window.BacklinkSeo.searchBox()}<button class="chip" data-bl-filter="all" aria-pressed="${state.blFilter === "all"}">${t("All")}<b>${all.length}</b></button>
+      body = !all.length ? `<div class="table-wrap"><div class="empty"><h3>${t("No backlinks yet")}</h3><p>${t("Log your links, or import a CSV.")}${window.UI.tip("A Google Sheet can be exported as CSV.")}</p><span class="bl-tools"><button class="btn" id="bulk-open">${icon("list-plus")}${t("Import CSV")}</button><button class="btn" id="gsc-open">${icon("search")}${t("Import from Search Console")}</button></span></div></div>` : `<div class="chips">${window.BacklinkSeo.searchBox()}<button class="chip" data-bl-filter="all" aria-pressed="${state.blFilter === "all"}">${t("All")}<b>${all.length}</b></button>
         ${state.blMediator ? `<button class="chip" data-bl-mediator="" aria-pressed="true">${t("Mediator")}: <span dir="auto">${esc(state.blMediator)}</span> ${icon("x")}</button>` : ""}
         <button class="chip" data-bl-filter="lost" aria-pressed="${state.blFilter === "lost"}">${bl.server ? countWords(lost, "1 lost", "lost") : `${lost} ${t("lost this week")}`}</button>
         ${window.BacklinkSeo.filterChips(byPerson, state.blFilter)}
         <span style="margin-left:auto" class="bl-tools">${window.BacklinkSeo.viewSwitch()}<button class="btn btn-small" id="gsc-open">${icon("search")}${t("Import from Search Console")}</button><button class="btn btn-small" id="bulk-open">${icon("list-plus")}${t("Import CSV")}</button></span></div>
       ${window.BacklinkSeo.byWebsite() ? window.BacklinkSeo.websiteTable(rows) : `<div class="bl-list"><div class="table-wrap"><table class="data" id="bl-table">
         <thead><tr>${head("src", "Source page")}<th scope="col">${t("Target")}</th><th scope="col">${t("Keyword")}</th><th scope="col">${t("Anchor type")}</th><th scope="col">${t("Status")}</th>${head("authority", "Authority", "r")}${window.BacklinkSeo.trafficHead()}${head("visits", "Visits", "r")}${head("leads", "Leads", "r")}<th scope="col" class="r">${t("Cost per visit")}</th><th scope="col">${t("Mediator")}</th></tr></thead>
-        <tbody>${page.rows.length ? "" : `<tr style="cursor:default"><td colspan="12"><div class="empty"><h3>${t("No link matches this search")}</h3><p>${t("Change the search or pick another filter.")}</p></div></td></tr>`}${page.rows.map((b) => `<tr data-bl="${b.id}" id="row-${b.id}">
+        <tbody>${page.rows.length ? "" : `<tr style="cursor:default"><td colspan="12"><div class="empty"><h3>${t("No link matches")}</h3><p>${t("Change the search or filter.")}</p></div></td></tr>`}${page.rows.map((b) => `<tr data-bl="${b.id}" id="row-${b.id}">
           <td class="head-cell url-cell"><span class="with-logo">${siteLogo(linkDomain(b.src))}<span class="logo-text"><span class="nb-inline">${PageLink.html(b.src, { text: b.src.replace(/^https?:\/\//, ""), cls: "kw mono small" })}<button class="sr" data-open-bl="${b.id}">${t("Open details")}</button>${window.COMP?.notes?.badge ? window.COMP.notes.badge({ scope: "domain", domain: linkDomain(b.src), siteId: window.UI.siteIdPicked?.() ?? null }, linkDomain(b.src)) : ""}</span><span class="second" dir="auto">${esc(b.anchor || b.check?.anchor || "—")}</span>${state.site === "all" && b.site ? `<span class="second mono" dir="auto">${t("For")} ${esc(b.site)}</span>` : ""}</span></span></td>
           <td class="mono small url-cell" data-label="${t("Target")}">${b.target ? PageLink.html(b.target, { host: b.site }) : "—"}</td>
           <td data-label="${t("Keyword")}">${b.keyword ? `<span dir="auto">${esc(b.keyword)}</span>` : '<span class="muted">—</span>'}</td>
@@ -1003,7 +1014,7 @@
           <td class="r" data-label="${t("Authority")}">${window.BacklinkSeo.authorityCell(b)}</td>${window.BacklinkSeo.trafficCell(b)}
           <td class="r nowrap" data-label="${t("Visits")}">${trafficCell(b)}</td>
           <td class="r" data-label="${t("Leads")}">${b.leads === null ? '<span class="muted">—</span>' : num(b.leads)}</td>
-          <td class="r ${b.status === "lost" ? "muted" : ""}" data-label="${t("Cost per visit")}" ${b.status === "lost" ? `data-tip="${t("This link is lost, so the cost per visit is from when it was live.")}"` : ""}>${b.shared ? `<span class="muted" tabindex="0" data-tip="${t("Several links share these visits, so one link's cost per visit can't be told.")}">—</span>` : b.cost && b.visits ? inCurrency(currencyOfLink(b), dec((b.cost / b.visits).toFixed(2))) : '<span class="muted">—</span>'}</td>
+          <td class="r ${b.status === "lost" ? "muted" : ""}" data-label="${t("Cost per visit")}" ${b.status === "lost" ? `data-tip="${t("Lost link: cost per visit from when it was live.")}"` : ""}>${b.shared ? `<span class="muted" tabindex="0" data-tip="${t("Several links share these visits, so no single cost per visit.")}">—</span>` : b.cost && b.visits ? inCurrency(currencyOfLink(b), dec((b.cost / b.visits).toFixed(2))) : '<span class="muted">—</span>'}</td>
           <td data-label="${t("Mediator")}">${b.mediator ? `<span dir="auto">${esc(b.mediator)}</span>` : '<span class="muted">—</span>'}</td>
         </tr>`).join("")}</tbody></table></div>
       ${window.TP.footer(BL_PAGES, page, { noun: t("links") })}</div>`}`;
@@ -1017,8 +1028,8 @@
       const foundPage = window.TP.view(FOUND_PAGES, window.BacklinkSeo.sortRows(foundSearched(foundAll), foundSort, { src: ([f]) => bareUrl(f.src), authority: ([f]) => f.auth }));
       const foundHead = (id, label, cls) => window.BacklinkSeo.sortHead("data-found-sort", foundSort, id, label, cls);
       body = `<div class="chips">${foundAll.length > 10 || window.TP.state(FOUND_PAGES).q ? window.TP.search(FOUND_PAGES, t("Search links")) : ""}${ignoredCount ? `<button class="chip" data-found-show-ignored aria-pressed="${Boolean(state.blShowIgnored)}">${t("Show ignored")}<b>${num(ignoredCount)}</b></button>` : ""}<span style="margin-left:auto" class="bl-tools">${window.BacklinkSeo.foundTools(state.site === "all" ? null : siteName())}</span></div><div class="bl-list"><div class="table-wrap"><table class="data" id="found-table"><thead><tr>${foundHead("src", "Source page")}<th scope="col">${t("Target")}</th><th scope="col">${t("Seen by")}</th>${foundHead("authority", "Authority", "r")}<th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead><tbody>
-        ${foundAll.length ? "" : `<tr style="cursor:default"><td colspan="5"><div class="empty"><h3>${t("Nothing found yet")}</h3><p>${t("Links other tools find will show here, until you log them.")}</p></div></td></tr>`}
-        ${foundAll.length && !foundPage.rows.length ? `<tr style="cursor:default"><td colspan="5"><div class="empty"><h3>${t("No link matches this search")}</h3><p>${t("Change the search to see more links.")}</p></div></td></tr>` : ""}
+        ${foundAll.length ? "" : `<tr style="cursor:default"><td colspan="5"><div class="empty"><h3>${t("Nothing found yet")}</h3><p>${t("Links found by other tools show here until logged.")}</p></div></td></tr>`}
+        ${foundAll.length && !foundPage.rows.length ? `<tr style="cursor:default"><td colspan="5"><div class="empty"><h3>${t("No link matches")}</h3><p>${t("Change the search.")}</p></div></td></tr>` : ""}
         ${foundPage.rows.map(([f, i]) => `<tr style="cursor:default" class="${f.ignored ? "cg-off" : ""}"><td class="head-cell mono small url-cell" data-tip="${esc(f.src)}">${PageLink.html(f.src, { text: f.src.replace(/^https?:\/\//, ""), title: "" })}</td><td class="mono small" data-label="${t("Target")}">${f.target ? PageLink.html(f.target, { host: f.site }) : "—"}</td><td data-label="${t("Seen by")}">${window.BacklinkSeo.foundSeen(f)}</td><td class="r" data-label="${t("Authority")}">${f.auth === null ? "—" : dec(f.auth)}</td><td class="r nowrap"><button class="btn btn-small" data-log-found="${i}">${t("Log it")}</button> <button class="btn btn-small" data-found-ignore="${i}">${t(f.ignored ? "Bring back" : "Ignore")}</button>${window.BacklinkSeo.foundButton(f)} ${window.UI.taskButton({ title: `${t("Look into a link we didn't log")}: ${f.src.replace(/^https?:\/\//, "")}`, host: f.site || null, source: { type: "backlink", label: f.src.replace(/^https?:\/\//, ""), host: f.site || undefined, facts: [f.target, f.first].filter(Boolean), link: "#backlinks", key: `found|${f.src}` } }, { label: "Task" })}</td></tr>`).join("")}</tbody></table></div>
         ${window.TP.footer(FOUND_PAGES, foundPage, { noun: t("links") })}</div>`;
     }
@@ -1039,12 +1050,12 @@
   // ---- Site health: links checker ---------------------------------------------------
   // Talks to the real server when there is one (scans run in the worker). Opened as a plain
   // file there is no server, so sample data stands in, with the same rules.
-  const LC_RULE = "Checks links on your own websites only. It does not check rankings or track backlinks.";
-  const LC_LIMITS = "It reads normal <a> links only, so images and links added by JavaScript aren't checked.";
-  const LC_GROUPS = [["broken", "Broken"], ["unverified", "Could not verify"], ["redirect", "Redirect chains"], ["slow", "Slow"]];
-  const WHOLE_SITE_WORDS = "It reads your whole website, however many pages it has. About 3 seconds per page, so 1,000 pages take about an hour.";
-  const BUDGET_PAUSE_WORDS = "Paused: today's request budget is used up. It carries on tomorrow.";
-  const readingWords = (read, left) => t("Reading pages: {read} read, {left} still to read").replace("{read}", num(read)).replace("{left}", num(left));
+  const LC_RULE = "Checks links on your own sites only, not rankings or backlinks.";
+  const LC_LIMITS = "Reads plain <a> links only.";
+  const LC_GROUPS = [["broken", "Broken"], ["unverified", "Couldn't verify"], ["redirect", "Redirect chains"], ["slow", "Slow"]];
+  const WHOLE_SITE_WORDS = "Reads every page, about 3 seconds each: 1,000 pages take about an hour.";
+  const BUDGET_PAUSE_WORDS = "Paused: today's request budget is used up. Resumes tomorrow.";
+  const readingWords = (read, left) => t("Pages read: {read}, {left} to go").replace("{read}", num(read)).replace("{left}", num(left));
   const lc = { started: false, ready: false, api: null, sites: [], siteId: null, scans: [], open: null, activeId: null, active: null, timer: null, stopping: false, loadError: "" };
   const lcSite = () => lc.sites.find((s) => String(s.id) === String(lc.siteId)) || null;
   const isActiveScan = (s) => s.status === "queued" || s.status === "running";
@@ -1094,8 +1105,8 @@
       return [
         { category: "broken", target_url: pg("/anciens-tarifs/"), status_code: 404, reason: "Page not found", pages: [home, pg("/services/"), pg("/contact/")] },
         { category: "broken", target_url: "https://partenaire.example/guide", status_code: 410, reason: "Page gone", external: true, pages: [pg("/blog/guide/")] },
-        { category: "unverified", target_url: "https://reseau-pro.example/company/x", status_code: 999, reason: "This site refuses automated checks", external: true, pages: [home] },
-        { category: "unverified", target_url: "https://annuaire.example/fiche", status_code: 403, reason: "The site blocked the check", external: true, pages: [pg("/presse/")] },
+        { category: "unverified", target_url: "https://reseau-pro.example/company/x", status_code: 999, reason: "Refuses automated checks", external: true, pages: [home] },
+        { category: "unverified", target_url: "https://annuaire.example/fiche", status_code: 403, reason: "Blocked by site", external: true, pages: [pg("/presse/")] },
         { category: "unverified", target_url: "https://ancien-partenaire.example/", status_code: null, reason: "The request failed: timed out", external: true, pages: [pg("/blog/guide/")] },
         { category: "redirect", target_url: pg("/offre"), status_code: 200, reason: "3 redirects before the final page", hops: 3, final_url: pg("/offres/2026/"), pages: [home] },
         { category: "redirect", target_url: pg("/promo"), status_code: 302, reason: "Redirects to another website: https://autre-site.example/promo", hops: 1, final_url: "https://autre-site.example/promo", pages: [pg("/services/")] },
@@ -1108,7 +1119,7 @@
       addSite(address, kind) {
         const host = window.BacklinkCleaner.rootDomain(address) ? (address.includes("://") ? address.split("://")[1] : address).split("/")[0].toLowerCase().replace(/^www\./, "") : "";
         if (!kind) return fail("Say whether this is your own website or a competitor.");
-        if (!host) return fail("That doesn't look like a website address.");
+        if (!host) return fail("Not a website address.");
         const inOwn = window.SITES.some((s) => s.host === host), inRival = window.COMPETITOR_SITES.some((s) => s.host === host);
         if (inOwn || inRival) return fail(`${host} is already added as ${inOwn ? "your own website" : "a competitor"}.`);
         const site = { id: `site-${Date.now()}`, host, visits: 0, vd: 0, clicks: 0, cd: 0, alerts: 0, thru: "—", added: true };
@@ -1157,7 +1168,7 @@
       exportScan(id) {
         const s = scans.get(id);
         const cell = (v) => { const text = v === null || v === undefined ? "" : String(v); return `"${(/^[=+\-@]/.test(text) ? `'${text}` : text).replace(/"/g, '""')}"`; };
-        const rows = [["Group", "Page with the link", "Target URL", "Status code", "Reason", "Hops", "Seconds", "Final URL"]];
+        const rows = [["Group", "Linking page", "Target URL", "Status code", "Reason", "Hops", "Seconds", "Final URL"]];
         s.issues.forEach((i) => (i.pages.length ? i.pages : [""]).forEach((page) => rows.push([LC_GROUPS.find(([g]) => g === i.category)[1], page, i.target_url, i.status_code, i.reason, i.hops, i.seconds, i.final_url])));
         const url = URL.createObjectURL(new Blob(["﻿", rows.map((r) => r.map(cell).join(",")).join("\r\n")], { type: "text/csv;charset=utf-8" }));
         const a = document.createElement("a");
@@ -1219,10 +1230,10 @@
     const checkingOutside = s.external_left > 0, outsideDone = (s.links_checked || 0) - read;
     text.textContent = lc.stopping ? t("Stopping after this request…")
       : paused ? t(BUDGET_PAUSE_WORDS)
-      : waiting ? t("Waiting for the worker to start…")
-      : checkingOutside ? `${t("Checking links to other websites")}: ${num(s.external_left)} ${t("left")}`
+      : waiting ? t("Waiting to start…")
+      : checkingOutside ? `${t("Checking outgoing links")}: ${num(s.external_left)} ${t("left")}`
       : readingWords(read, left);
-    $("#lc-progress-sub").textContent = paused ? readingWords(read, left) : `${num(s.links_checked)} ${t("links checked")}. ${t("You can leave this page: the check keeps going.")}`;
+    $("#lc-progress-sub").textContent = paused ? readingWords(read, left) : `${num(s.links_checked)} ${t("links checked")}. ${t("Keeps going if you leave.")}`;
     $("#lc-bar").style.setProperty("--p", checkingOutside ? outsideDone / Math.max(1, outsideDone + s.external_left) : read / Math.max(1, read + left));
     $("#lc-spin svg")?.classList.toggle("spin", !paused);
     const historyPages = $("[data-lc-live-pages]"), historyWord = $("[data-lc-live-word]");
@@ -1252,16 +1263,16 @@
 
   function lcNotices(scan) {
     const notes = [];
-    if (scan.status === "failed") notes.push(["crit", scan.error ? t(scan.error) : t("This scan failed.")]);
-    if (scan.stop_reason === "user") notes.push(["warn", `${t("Stopped by you after")} ${num(scan.pages_read)} ${t(scan.pages_read === 1 ? "page" : "pages")}. ${t("This scan is not complete.")}`]);
+    if (scan.status === "failed") notes.push(["crit", scan.error ? t(scan.error) : t("Scan failed.")]);
+    if (scan.stop_reason === "user") notes.push(["warn", `${t("Stopped by you after")} ${num(scan.pages_read)} ${t(scan.pages_read === 1 ? "page" : "pages")}. ${t("Scan incomplete.")}`]);
     if (scan.skipped_robots) notes.push(["info", `${t("skipped by robots.txt")}: ${num(scan.skipped_robots)}`]);
     if (scan.too_large) notes.push(["info", `${t("too large to read")}: ${num(scan.too_large)}`]);
-    if (scan.external_not_checked) notes.push(["info", `${t("links to other websites not checked")}: ${num(scan.external_not_checked)}`]);
+    if (scan.external_not_checked) notes.push(["info", `${t("outgoing links not checked")}: ${num(scan.external_not_checked)}`]);
     return notes;
   }
 
   function lcPagesCell(pages) {
-    if (!pages.length) return `<span class="sec small">${t("The start page itself")}</span>`;
+    if (!pages.length) return `<span class="sec small">${t("The start page")}</span>`;
     const link = (p) => `<a class="mono small lc-url" href="${esc(p)}" target="_blank" rel="noopener noreferrer nofollow">${esc(p.replace(/^https?:\/\//, ""))}</a>`;
     if (pages.length === 1) return link(pages[0]);
     return `${link(pages[0])}<details class="lc-more"><summary>${t("and")} ${num(pages.length - 1)} ${t(pages.length === 2 ? "more page" : "more pages")}</summary>${pages.slice(1).map((p) => `<div>${link(p)}</div>`).join("")}</details>`;
@@ -1271,7 +1282,7 @@
   const lcReason = (reason) => t(reason === "Server error" ? "Server error: the page failed to answer" : reason);
   function linkFind(issue, group) {
     const host = lcSite()?.host, target = issue.target_url.replace(/^https?:\/\//, "");
-    const onPages = issue.pages.length ? `${t("Found on")}: ${issue.pages.slice(0, 10).map((p) => p.replace(/^https?:\/\//, "")).join(", ")}${issue.pages.length > 10 ? ` +${issue.pages.length - 10}` : ""}` : t("The start page itself");
+    const onPages = issue.pages.length ? `${t("Found on")}: ${issue.pages.slice(0, 10).map((p) => p.replace(/^https?:\/\//, "")).join(", ")}${issue.pages.length > 10 ? ` +${issue.pages.length - 10}` : ""}` : t("The start page");
     return { title: `${t(group)}: ${target}`, host, source: { type: "link", label: `${t(group)} · ${target}`, host, facts: [issue.status_code ? `${t("Status")} ${issue.status_code}` : "", lcReason(issue.reason), onPages].filter(Boolean), link: "#health/links", key: `link|${lcSite()?.id}|${issue.target_url}` } };
   }
 
@@ -1282,19 +1293,50 @@
   window.TP.on(LC_FIND, () => { LC_GROUPS.forEach(([id]) => window.TP.reset(lcKey(id))); render(); });
   window.TP.on(LC_HISTORY, () => render());
 
+  /* Broken and Could not verify: the same reason and status on many rows is said once, as a heading with its count,
+     biggest first, and the rows keep only the linking page and the target. Redirect chains and Slow keep their own
+     columns: each row's reason carries its own numbers (hops, seconds). */
+  const LC_BY_REASON = new Set(["broken", "unverified"]);
+  const lcReasonKey = (i) => `${lcReason(i.reason)}\u0001${i.status_code ?? ""}`;
+  const LC_REASON_TIPS = { 404: "Every link below points to a page that answers 404 (not found).", 410: "Every link below points to a page that answers 410 (gone): it was removed for good." };
+  [["Every link below points to a page that answers 410 (gone): it was removed for good.", "Chaque lien ci-dessous pointe vers une page qui répond 410 (disparue) : elle a été supprimée pour de bon."]]
+    .forEach(([en, fr]) => { if (window.FR[en] === undefined) window.FR[en] = fr; });
+  function lcReasonHead(i, n) {
+    const status = i.status_code === null || i.status_code === undefined ? "" : ` · <span class="tabular">${i.status_code}</span>`;
+    const tip = i.category === "broken" ? window.UI.tip(LC_REASON_TIPS[i.status_code]) : "";
+    return `<tr class="lc-sub" style="cursor:default"><th scope="colgroup" colspan="3">${esc(lcReason(i.reason))}${status}${n > 1 ? ` <span class="muted tabular">×${num(n)}</span>` : ""}${tip}</th></tr>`;
+  }
   function lcGroup([id, name], issues, searching) {
-    const list = issues.filter((i) => i.category === id), page = window.TP.view(lcKey(id), list);
+    const byReason = LC_BY_REASON.has(id);
+    let list = issues.filter((i) => i.category === id);
+    const counts = new Map();
+    if (byReason) {
+      list.forEach((i) => counts.set(lcReasonKey(i), (counts.get(lcReasonKey(i)) || 0) + 1));
+      const rank = [...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a));
+      list = [...list].sort((a, b) => rank.indexOf(lcReasonKey(a)) - rank.indexOf(lcReasonKey(b)));
+    }
+    const page = window.TP.view(lcKey(id), list);
+    const target = (i) => `<td data-label="${t("Target URL")}"><a class="mono small lc-url" href="${esc(i.target_url)}" target="_blank" rel="noopener noreferrer nofollow">${esc(i.target_url.replace(/^https?:\/\//, ""))}</a>${byReason && i.final_url && !i.reason.includes(i.final_url) ? `<span class="second lc-url mono">→ ${esc(i.final_url.replace(/^https?:\/\//, ""))}</span>` : ""}</td>`;
+    const drawn = page.rows.map((i) => `<tr style="cursor:default">
+          <td class="head-cell" data-label="${t("Linking page")}">${lcPagesCell(i.pages)}</td>
+          ${target(i)}${byReason ? "" : `
+          <td data-label="${t("Status")}">${i.status_code === null || i.status_code === undefined ? '<span class="muted">—</span>' : `<span class="tag tabular">${i.status_code}</span>`}</td>
+          <td class="small" data-label="${t("Reason")}">${esc(lcReason(i.reason))}${i.final_url && !i.reason.includes(i.final_url) ? `<span class="second lc-url mono">→ ${esc(i.final_url.replace(/^https?:\/\//, ""))}</span>` : ""}</td>`}
+          <td class="r nowrap" data-label="">${window.UI.taskButton(linkFind(i, name), { label: "Task" })}</td>
+        </tr>`);
+    // A heading wherever the reason changes: once per reason here, or on each row while a column sort mixes them.
+    let body = "", last = null;
+    page.rows.forEach((i, at) => {
+      if (byReason && lcReasonKey(i) !== last) body += lcReasonHead(i, counts.get(lcReasonKey(i)) || 0);
+      last = lcReasonKey(i);
+      body += drawn[at];
+    });
+    const heads = byReason ? "" : `<th scope="col">${t("Status")}</th><th scope="col">${t("Reason")}</th>`;
     return `<section class="card lc-group" data-group="${id}">
       <div class="card-head"><h2>${t(name)}</h2><span class="lc-count ${list.length && id === "broken" ? "crit" : "sec"}">${num(list.length)}</span></div>
-      ${list.length ? `<table class="data lc-table" id="lc-table-${id}"><thead><tr><th scope="col">${t("Page with the link")}</th><th scope="col">${t("Target URL")}</th><th scope="col">${t("Status")}</th><th scope="col">${t("Reason")}</th><th scope="col"><span class="sr-only">${t("Task")}</span></th></tr></thead><tbody>
-        ${page.rows.map((i) => `<tr style="cursor:default">
-          <td class="head-cell" data-label="${t("Page with the link")}">${lcPagesCell(i.pages)}</td>
-          <td data-label="${t("Target URL")}"><a class="mono small lc-url" href="${esc(i.target_url)}" target="_blank" rel="noopener noreferrer nofollow">${esc(i.target_url.replace(/^https?:\/\//, ""))}</a></td>
-          <td data-label="${t("Status")}">${i.status_code === null || i.status_code === undefined ? '<span class="muted">—</span>' : `<span class="tag tabular">${i.status_code}</span>`}</td>
-          <td class="small" data-label="${t("Reason")}">${esc(lcReason(i.reason))}${i.final_url && !i.reason.includes(i.final_url) ? `<span class="second lc-url mono">→ ${esc(i.final_url.replace(/^https?:\/\//, ""))}</span>` : ""}</td>
-          <td class="r nowrap" data-label="">${window.UI.taskButton(linkFind(i, name), { label: "Task" })}</td>
-        </tr>`).join("")}</tbody></table>
-        ${window.TP.footer(lcKey(id), page, { noun: t("links") })}` : `<p class="lc-none small muted">${t(searching ? "No link in this group matches the search." : "None found.")}</p>`}
+      ${list.length ? `<table class="data lc-table" id="lc-table-${id}"><thead><tr><th scope="col">${t("Linking page")}</th><th scope="col">${t("Target URL")}</th>${heads}<th scope="col"><span class="sr-only">${t("Task")}</span></th></tr></thead><tbody>
+        ${body}</tbody></table>
+        ${window.TP.footer(lcKey(id), page, { noun: t("links") })}` : `<p class="lc-none small muted">${t(searching ? "No link matches." : "None found.")}</p>`}
     </section>`;
   }
 
@@ -1312,13 +1354,13 @@
       </div>
       ${notes.length ? `<div class="lc-notes">${notes.map(([kind, text]) => `<p class="note ${kind === "info" ? "" : kind}" style="margin:0">${icon(kind === "crit" ? "octagon-alert" : kind === "warn" ? "triangle-alert" : "info")}<span>${esc(text)}</span></p>`).join("")}</div>` : ""}
       <div class="tiles lc-tiles">${LC_GROUPS.map(([id, name]) => `<a class="tile lc-jump" href="#lc-${id}" data-lc-jump="${id}"><div class="lab">${t(name)}</div><div class="fig tabular ${id === "broken" && counts[id] ? "crit" : ""}">${num(counts[id] || 0)}</div></a>`).join("")}</div>
-      ${issues.length > 10 || q ? `<div class="chips lc-find">${window.TP.search(LC_FIND, t("Search the links found"))}</div>` : ""}
+      ${issues.length > 10 || q ? `<div class="chips lc-find">${window.TP.search(LC_FIND, t("Search links"))}</div>` : ""}
       ${LC_GROUPS.map((g) => lcGroup(g, found, Boolean(q))).join("")}
     </section>`;
   }
 
   function healthPage() {
-    const head = topbar(t("Site health"), t("Problems on your own websites"), "", false);
+    const head = topbar(t("Site health"), t("Problems on your sites"), "", false);
     const tabs = `<div class="tabs health-tabs" role="tablist" aria-label="${t("Site health")}"><button class="tab" role="tab" data-health-tab="test" aria-selected="${state.healthTab === "test"}">${icon("heart-pulse")}${t("Monthly health test")}</button><button class="tab" role="tab" data-health-tab="links" aria-selected="${state.healthTab === "links"}">${icon("link-2")}${t("Links checker")}</button><button class="tab" role="tab" data-health-tab="uptime" aria-selected="${state.healthTab === "uptime"}">${icon("activity")}${t("Uptime")}</button></div>`;
     if (state.healthTab === "test" && window.HealthTest) return `${head}<div class="content page-enter">${tabs}${window.HealthTest.body()}</div>`;
     if (state.healthTab === "uptime") return `${head}<div class="content page-enter">${tabs}${window.UptimeWatch.body()}</div>`;
@@ -1330,7 +1372,7 @@
     }
     if (!lc.sites.length) {
       return `${head}<div class="content page-enter">${tabs}<div class="table-wrap"><div class="empty" id="lc-empty">
-        <h3>${t("No websites added yet")}</h3><p>${t("Add your own website, then check its links.")}</p>
+        <h3>${t("No sites yet")}</h3><p>${t("Add your site, then check its links.")}</p>
         <button class="btn btn-main" id="site-add">${icon("plus")}${t("Add a site")}</button></div></div></div>`;
     }
     // The side menu leads here too, unless a check is running: its list is locked until then.
@@ -1345,7 +1387,7 @@
     if (lc.historyFor !== lc.siteId) { lc.historyFor = lc.siteId; window.TP.reset(LC_HISTORY); window.TP.state(LC_FIND).q = ""; } // another website starts at page 1
     const history = window.TP.view(LC_HISTORY, lc.scans);
     const weekly = site.weekly
-      ? (site.next_check_at ? `${t("Next check")}: ${esc(fmtDateOnly(site.next_check_at))}` : t("First check at the next weekly run"))
+      ? (site.next_check_at ? `${t("Next check")}: ${esc(fmtDateOnly(site.next_check_at))}` : t("First check: next weekly run"))
       : t("Only when you press Run");
     return `${head}<div class="content page-enter">${tabs}
       <section class="card lc-tool">
@@ -1357,10 +1399,10 @@
         ${showingNote(site.host)}
         <p class="help" id="lc-whole-site">${t(WHOLE_SITE_WORDS)}</p>
         <div class="lc-options">
-          <label class="opt"><input type="checkbox" class="chk" style="margin:0" id="lc-external" ${site.check_external ? "checked" : ""} ${busy ? "disabled" : ""}>${t("Check links to other websites")}<span class="small muted">(${t("one request each, their pages are never read")})</span></label>
-          <label class="opt"><input type="checkbox" class="chk" style="margin:0" id="lc-weekly" ${site.weekly ? "checked" : ""}>${t("Check this website once a week")}<span class="small muted" id="lc-weekly-note">(${weekly})</span></label>
+          <label class="opt"><input type="checkbox" class="chk" style="margin:0" id="lc-external" ${site.check_external ? "checked" : ""} ${busy ? "disabled" : ""}>${t("Check outgoing links")}<span class="small muted">(${t("one request each, pages never read")})</span></label>
+          <label class="opt"><input type="checkbox" class="chk" style="margin:0" id="lc-weekly" ${site.weekly ? "checked" : ""}>${t("Check weekly")}<span class="small muted" id="lc-weekly-note">(${weekly})</span></label>
         </div>
-        <p class="help">${esc(t(LC_LIMITS))}</p>
+        <p class="help">${esc(t(LC_LIMITS))}${UI.tip("Images and links added by JavaScript aren't checked.")}</p>
         <p class="help"><button class="link-btn" id="site-add">${t("Add a site")}</button></p>
       </section>
       ${busy ? `<section class="card lc-progress" role="status"><div class="top"><span class="spin-wrap" id="lc-spin">${icon("refresh-cw", "spin")}</span><div class="lc-progress-words"><b id="lc-progress-text"></b><span class="small sec" id="lc-progress-sub"></span></div><button class="btn" id="lc-stop" ${lc.stopping ? "disabled" : ""}>${t(lc.stopping ? "Stopping…" : "Stop")}</button></div><div class="tray-bar"><i id="lc-bar"></i></div></section>` : ""}
@@ -1375,7 +1417,7 @@
             <td data-label="${t("Result")}"><span class="small sec" ${isActiveScan(s) ? "data-lc-live-word" : ""}>${t({ queued: "Waiting", running: "Running", complete: "Complete", stopped: "Stopped", failed: "Failed" }[s.status])}</span></td>
             <td class="r nowrap" data-label=""><button class="btn btn-small" data-lc-open="${s.id}" ${isActiveScan(s) ? "disabled" : ""}>${t("Open")}</button> <button class="icon-btn" style="width:28px;height:28px;vertical-align:middle" data-lc-delete="${s.id}" aria-label="${t("Delete")}: ${esc(fmtStamp(s.created_at))}" data-tip="${t("Delete")}" ${isActiveScan(s) ? "disabled" : ""}>${icon("trash-2")}</button></td>
           </tr>`).join("")}</tbody></table>
-        ${window.TP.footer(LC_HISTORY, history, { noun: t("link checks") })}` : `<p class="lc-none small muted">${t("No checks yet for this website.")}</p>`}
+        ${window.TP.footer(LC_HISTORY, history, { noun: t("link checks") })}` : `<p class="lc-none small muted">${t("No checks yet.")}</p>`}
       </section>
     </div>`;
   }
@@ -1383,17 +1425,17 @@
   function addSitePanel(opener, kind = "own") {
     const current = window.SITES.find((s) => s.id === state.site)?.host;
     const rivalOf = window.SITES.length
-      ? `<label class="field"><span>${t("A competitor of which of your websites?")}</span><select class="select" id="site-rival-site" style="width:100%">${window.SITES.map((s) => `<option ${s.host === current ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></label>`
+      ? `<label class="field"><span>${t("Competitor of which site?")}</span><select class="select" id="site-rival-site" style="width:100%">${window.SITES.map((s) => `<option ${s.host === current ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></label>`
       : `<p class="help">${t("Add your own website first, then its competitors.")}</p>`;
-    openPanel(`${panelHead(t("Add a site"), t("Your own site, or a competitor to watch"))}
+    openPanel(`${panelHead(t("Add a site"), t("Yours, or a competitor to watch"))}
       <form class="panel-body" id="site-form" novalidate>
-        <label class="field"><span>${t("Website address")} <span class="req">*</span></span><input class="input mono" id="site-address" placeholder="https://" data-autofocus aria-describedby="site-error"><div id="site-error"></div><div class="help" id="site-preview" role="status"></div></label>
-        <fieldset class="scope"><legend>${t("Whose website is it?")}</legend>
-          <label class="opt"><input type="radio" name="site-kind" value="own" ${kind === "own" ? "checked" : ""}>${t("My own website")}</label>
+        <label class="field"><span>${t("Address")} <span class="req">*</span></span><input class="input mono" id="site-address" placeholder="https://" data-autofocus aria-describedby="site-error"><div id="site-error"></div><div class="help" id="site-preview" role="status"></div></label>
+        <fieldset class="scope"><legend>${t("Whose site?")}</legend>
+          <label class="opt"><input type="radio" name="site-kind" value="own" ${kind === "own" ? "checked" : ""}>${t("My site")}</label>
           <label class="opt"><input type="radio" name="site-kind" value="competitor" ${kind === "competitor" ? "checked" : ""}>${t("A competitor")}</label>
         </fieldset>
         <div id="site-rival-of" ${kind === "competitor" ? "" : "hidden"}>${rivalOf}</div>
-        <p class="help">${t("Only your own websites can be used in the links checker.")}</p>
+        <p class="help">${t("Only your own sites go in the links checker.")}</p>
       </form>
       <div class="panel-foot"><button class="btn btn-main" id="site-save">${t("Add")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button></div>`, opener, { key: `site|${kind}`, reopen: () => addSitePanel(opener, kind) });
   }
@@ -1500,7 +1542,7 @@
       { id: "keywords", word: "Add keywords", hint: "The list to follow", done: Boolean(facts.keywords), action: "Add" },
       { id: "competitors", word: "Add competitors", hint: "Who to compare with", done: Boolean(facts.competitors), action: "Find" },
       { id: "clarity", word: "Connect Clarity", hint: "Sessions and scroll depth", done: connected("clarity"), action: "Connect" },
-      { id: "checks", word: "Run the first health test", hint: "A new site has no score until one has run", done: Boolean(facts.checks), action: "Open" },
+      { id: "checks", word: "Run the first health test", hint: "No score until the first test", done: Boolean(facts.checks), action: "Open" },
     ];
     return steps.map((step) => ({ ...step, skipped: step.id !== "site" && host ? SETUP_NOT_USED(host, step.id) : false }));
   }
@@ -1560,7 +1602,7 @@
     if (host && state.served && !setupFacts[host]?.loaded) return ""; // not loaded yet: unknown, so no card that may be wrong
     const steps = siteSteps(host), finished = steps.filter((s) => s.done || s.skipped).length;
     // The same six steps before and after the site is added, so the count never changes under the person's eyes.
-    const heading = host ? `${t("Set up")} ${host} · ${finished} ${t("of")} ${steps.length} ${t("done")}` : `${t("Welcome.")} ${steps.length} ${t("steps to your first data. Only the first is needed to start.")}`;
+    const heading = host ? `${t("Set up")} ${host} · ${finished} ${t("of")} ${steps.length} ${t("done")}` : `${t("Welcome.")} ${steps.length} ${t("steps to your first data. Only step 1 is required.")}`;
     const shown = steps;
     return `<section class="setup" aria-label="${esc(heading)}">
         <h2 dir="auto">${esc(heading)}</h2>
@@ -1569,7 +1611,7 @@
       </section>`;
   }
   function setupPanelHtml(host) {
-    return `${panelHead(`${t("Set up")} ${host}`, t("Do these in any order, or leave them for later. A site that doesn't have one of these is fine: choose Not used, and no alert is raised."))}
+    return `${panelHead(`${t("Set up")} ${host}`, t("Any order, any time. Missing one? Choose Not used: no alert."))}
       <div class="panel-body"><ul class="rows setup-list" aria-label="${t("Set up")}">${siteSteps(host).map((step) => `<li>
         <span class="step ${step.done || step.skipped ? "done" : ""}"><span class="n">${step.done || step.skipped ? icon("check") : ""}</span></span>
         <div class="what"><div class="t">${t(step.word)}</div>${step.hint ? `<div class="d">${t(step.hint)}</div>` : ""}</div>
@@ -1924,7 +1966,7 @@
 
   function rankChart(row, engine) {
     const values = row.trend.slice(-window.DATES.length);
-    if (values.length < 2) return `<p class="note">${icon("info")}<span>${t("Needs 2 checks with the same tool")}</span></p>`;
+    if (values.length < 2) return `<p class="note">${icon("info")}<span>${t("Needs 2 checks, same tool")}</span></p>`;
     const w = 440, h = 160, left = 26, right = 8, top = 10, bottom = 28;
     const labels = window.DATES.slice(-values.length);
     const hi = Math.max(...values) + 1;
@@ -1934,7 +1976,7 @@
     const path = smooth(values.map((v, i) => [x(i), y(v)]));
     const tool = row.res[engine].tool;
     const dots = values.map((v, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="4" fill="var(--series-1)" stroke="var(--panel-solid)" stroke-width="2" data-tip="${labels[i]}: #${v} · ${esc(tool)}"/>`).join("");
-    return `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${t("Position over time")}: ${values.map((v, i) => `${labels[i]} #${v}`).join(", ")}">
+    return `<svg class="chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${t("Position history")}: ${values.map((v, i) => `${labels[i]} #${v}`).join(", ")}">
       ${ticks.map((v) => `<line x1="${left}" x2="${w - right}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${left - 6}" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join("")}
       ${labels.map((d, i) => `<text x="${x(i)}" y="${h - 6}" text-anchor="${i === 0 ? "start" : i === labels.length - 1 ? "end" : "middle"}">${d}</text>`).join("")}
       <path class="chart-line" d="${path}"/>${dots}</svg>
@@ -1968,8 +2010,8 @@
         <table class="mini" id="tool-table"><thead><tr><th>${t("Tool")}</th><th>${t("Position")}</th><th>${t("Checked")}</th><th>${t("Status")}</th><th><span class="sr">${t("Action")}</span></th></tr></thead><tbody>${toolRows}</tbody></table>
         <h3>${t("Other locations")}</h3>
         <table class="mini"><tbody><tr><td>Browser (Mac, UAE)</td><td class="pos">#${Math.max(1, (r.p || 11) - 3)}</td><td class="sec small">${days(5)}</td><td class="sec small">${t("Not compared with France")}</td></tr></tbody></table>
-        <h3>${t("Position over time")} ${values.length >= 2 ? `<button class="link-btn end" id="chart-toggle">${t(showTable ? "Chart view" : "Table view")}</button>` : ""}</h3>
-        <p class="small muted" style="margin-bottom:6px">${t("1 at the top; each dot is one real check")}</p>
+        <h3>${t("Position history")} ${values.length >= 2 ? `<button class="link-btn end" id="chart-toggle">${t(showTable ? "Chart" : "Table")}</button>` : ""}</h3>
+        <p class="small muted" style="margin-bottom:6px">${t("1 = top. One dot per check.")}</p>
         ${chart}
         <h3>${t("Competitors on this page")}</h3>
         <table class="mini"><thead><tr><th scope="col">${t("Position")}</th><th scope="col">${t("Website")}</th><th scope="col" class="r">${t("Change")}</th></tr></thead><tbody>${window.COMPETITORS_ON_PAGE.map(([host, pos, c]) => `<tr><td class="pos" style="width:40px">#${pos}</td><td class="mono small">${esc(host)}</td><td class="r">${c ? `<span class="chg ${c > 0 ? "good" : "crit"}">${icon(c > 0 ? "arrow-up" : "arrow-down")}${Math.abs(c)}</span>` : '<span class="muted">0</span>'}</td></tr>`).join("")}</tbody></table>
@@ -2016,12 +2058,12 @@
     const label = LABELS[b.label];
     const unit = state.lang === "fr" ? "j" : "d";
     const traffic = b.label === "no-ga4"
-      ? `<p class="note">${icon("info")}<span>${t("GA4 not connected for this site")}</span></p>`
-      : label ? `<p class="small sec"><span class="tag">${label[0]}</span> ${t(label[1])}</p>` : `<p class="small sec">${t("No visits counted yet. Links that hide their source show as Direct.")}</p>`;
+      ? `<p class="note">${icon("info")}<span>${t("GA4 not connected")}</span></p>`
+      : label ? `<p class="small sec"><span class="tag">${label[0]}</span> ${t(label[1])}</p>` : `<p class="small sec">${t("No visits yet. Links hiding their source count as Direct.")}</p>`;
     const trafficValue = b.label === "no-ga4" ? '<span class="muted">—</span>' : `<span class="tabular">${num(b.visits)}</span> ${t(b.visits === 1 ? "visit" : "visits")} · <span class="tabular">${num(b.leads)}</span> ${t(b.leads === 1 ? "lead" : "leads")}`;
     const sampleEffect = b.before === null || b.before === undefined ? null : {
       value: `<span class="tabular">${num(b.before)} → ${num(b.after)}</span> ${t("clicks")}`,
-      body: `<p class="small sec">${t("Clicks to the target page")} · 30 ${unit} ${t("before")} / ${t("after")}</p><p class="small muted vd-from">${t("Timing only: this does not prove the link caused the change.")}</p>`,
+      body: `<p class="small sec">${t("Target page clicks")} · 30 ${unit} ${t("before")} / ${t("after")}</p><p class="small muted vd-from">${t("Timing only, not proof the link caused it.")}</p>`,
     };
     // Only what has a value, so a link with one field isn't a page of dashes. Any language keeps its direction.
     const fact = (label, value, { cls = "", style = "" } = {}) => (value ? `<tr><td class="sec">${t(label)}</td><td class="${cls}" dir="auto" style="overflow-wrap:anywhere;${style}">${esc(value)}</td></tr>` : "");
@@ -2062,7 +2104,7 @@
     const dateBox = (id, value) => `<input class="input" id="${id}" type="${!value || /^\d{4}-\d{2}-\d{2}$/.test(value) ? "date" : "text"}" value="${had(value)}">`;
     const price = edit ? edit.priceText || (edit.cost ? String(edit.cost) : "") : "";
     const owners = [...new Set([...window.TEAM, ...(edit?.owner ? [edit.owner] : [])])];
-    openPanel(`${panelHead(t(edit ? "Edit backlink" : "Add backlink"), edit ? "" : t(fromProspect ? "From In consideration. It only moves to Done when you save." : "Everything else is optional"))}
+    openPanel(`${panelHead(t(edit ? "Edit backlink" : "Add backlink"), edit ? "" : t(fromProspect ? "From In consideration; moves to Done when you save." : "Everything else is optional"))}
       ${fromProspect || edit ? "" : addModeSwitch("one")}
       <form class="panel-body" id="bl-form" data-prospect="${esc(fromProspect)}" data-edit="${edit ? esc(edit.id) : ""}" novalidate>
         <label class="field"><span>${t("Our site")} <span class="req">*</span></span>
@@ -2082,7 +2124,7 @@
             <label class="field"><span>${t("Link type")}</span><input class="input" id="bl-type" dir="auto" list="link-types" value="${had(edit?.linkType)}"><datalist id="link-types">${LINK_TYPES.map((name) => `<option value="${esc(t(name))}"></option>`).join("")}</datalist></label>
           </div>`, Boolean(edit))}
         ${fold("UTM in this link?", "optional", `
-          <label class="field"><span>${t("Paste the link as placed")}</span><input class="input mono" id="bl-paste" placeholder="https://site/page/?utm_source=…"><div id="bl-paste-note" class="help" role="status"></div></label>
+          <label class="field"><span>${t("Link as placed")}</span><input class="input mono" id="bl-paste" placeholder="https://site/page/?utm_source=…"><div id="bl-paste-note" class="help" role="status"></div></label>
           <div class="field-row">
             <label class="field"><span>${t("Source")}</span><input class="input mono" id="bl-utm-source" value="${had(edit?.utm?.source)}"></label>
             <label class="field"><span>${t("Medium")}</span><input class="input mono" id="bl-utm-medium" value="${had(edit?.utm?.medium)}"></label>
@@ -2091,7 +2133,7 @@
           <button type="button" class="btn btn-small" id="bl-generate">${t("Generate tagged link")}</button>
           <div id="bl-generated" class="help" style="overflow-wrap:anywhere" role="status"></div>`, Boolean(edit?.utm))}
         ${fold("Mediator", "optional", `
-          <label class="field"><span>${t("Mediator")}</span><input class="input" id="bl-mediator" dir="auto" list="mediators" aria-describedby="bl-med-help" value="${had(edit?.mediator)}"><datalist id="mediators">${window.LinkExtras.names().map((m) => `<option value="${esc(m)}"></option>`).join("")}</datalist><div class="help" id="bl-med-help">${t("Type a name, or create a new one")}</div></label>
+          <label class="field"><span>${t("Mediator")}</span><input class="input" id="bl-mediator" dir="auto" list="mediators" aria-describedby="bl-med-help" value="${had(edit?.mediator)}"><datalist id="mediators">${window.LinkExtras.names().map((m) => `<option value="${esc(m)}"></option>`).join("")}</datalist><div class="help" id="bl-med-help">${t("Pick a name or type a new one")}</div></label>
           <div class="field-row"><label class="field"><span>${t("Contact")}</span><input class="input" id="bl-contact" dir="auto" value="${had(edit?.contact)}"></label><label class="field"><span>${t("Platform")}</span><input class="input" id="bl-platform" dir="auto" value="${had(edit?.platform)}"></label></div>`, Boolean(edit?.mediator || edit?.contact || edit?.platform))}
         ${fold("Cost", "optional", `
           <div class="field-row"><label class="field"><span>${t("Price")}</span><input class="input" id="bl-cost" placeholder="150 €, AED 500" value="${esc(price)}"></label><label class="field"><span>${t("Owner")}</span><select class="select" id="bl-owner" style="width:100%"><option value="">—</option>${owners.map((n) => `<option ${n === edit?.owner ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label></div>
@@ -2123,12 +2165,12 @@
       <div class="dlg-body">
         ${cleanerNote()}
         <label class="field"><span>${t("Prospects for")}</span><select class="select" id="cleaner-site" style="width:100%">${window.SITES.map((s) => `<option ${s.host === cleaner.site ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></label>
-        <div class="drop" id="cleaner-drop">${icon("filter")}<b>${t("Drop a CSV file here")}</b><span>${t("or")} <button type="button" class="link-btn" id="cleaner-browse" style="font-size:inherit">${t("choose a file")}</button></span><span class="small">${t("SEMrush or Ubersuggest export, up to 10 MB.")}</span><input type="file" id="cleaner-file" accept=".csv,.tsv,.txt,text/csv" hidden></div>
+        <div class="drop" id="cleaner-drop">${icon("filter")}<b>${t("Drop a CSV here")}</b><span>${t("or")} <button type="button" class="link-btn" id="cleaner-browse" style="font-size:inherit">${t("choose a file")}</button></span><span class="small">${t("SEMrush or Ubersuggest export, up to 10 MB.")}</span><input type="file" id="cleaner-file" accept=".csv,.tsv,.txt,text/csv" hidden></div>
         <div id="cleaner-error"></div>
         <ul class="clean-rules">
-          <li>${t("Flags rows with a spam score above 30, which can't be added but stay on show. Rows with no usable URL are left out.")}</li>
+          <li>${t("Flags rows with spam score above 30 (shown, can't be added). Drops rows with no usable URL.")}</li>
           <li>${t("Flags domains already in In consideration, Done or Found but never logged.")}</li>
-          <li>${t("Nothing is added until you choose the links and confirm.")}</li>
+          <li>${t("Nothing is added until you pick and confirm.")}</li>
         </ul>
         ${window.BOOT?.served ? "" : `<button type="button" class="link-btn" id="cleaner-sample">${t("Try a sample file")}</button>`}
       </div>
@@ -2200,19 +2242,19 @@
         ${cleanerNote()}
         <div id="cleaner-save-error"></div>
         <div class="clean-sum">${stat("Total", r.total)}${stat("Kept", r.kept)}${stat("Flagged as spam", r.removed_spam || 0)}${stat("Left out", r.removed_no_url || 0, removedNote)}${stat("Duplicates", r.duplicates)}</div>
-        <p class="small sec" style="margin-bottom:10px"><span class="mono">${esc(cleaner.file)}</span> · ${esc(r.source_label)} · ${t("for")} <span class="mono">${esc(cleaner.site)}</span>${r.unknown_spam ? ` · ${num(r.unknown_spam)} ${t("with no spam score: kept, shown as unknown")}` : ""}</p>
+        <p class="small sec" style="margin-bottom:10px"><span class="mono">${esc(cleaner.file)}</span> · ${esc(r.source_label)} · ${t("for")} <span class="mono">${esc(cleaner.site)}</span>${r.unknown_spam ? ` · ${num(r.unknown_spam)} ${t("without spam score, kept as unknown")}` : ""}</p>
         ${r.kept ? `<div class="pr-filters clean-filters">${number("da", "DA at least")}${number("pa", "PA at least")}${number("spam", "Spam at most")}<span class="pr-end small sec tabular" id="cleaner-count" role="status"></span></div>
         <div class="clean-tools"><button type="button" class="link-btn" id="cleaner-select-all"></button><button type="button" class="link-btn" id="cleaner-new-only"></button><button type="button" class="link-btn" id="cleaner-clear">${t("Clear")}</button></div>
         <div class="clean-table-wrap"><table class="bulk-table clean-table">
           <thead><tr><th style="width:34px"><input type="checkbox" class="chk" id="cleaner-all" style="margin:0" aria-label="${t("Select all")}"></th><th>${t("Source URL")}</th><th>${t("Domain")}</th><th class="r" ${r.authority_label ? `title="${esc(r.authority_label)}"` : ""}>DA</th><th class="r">PA</th><th class="r">${t("Spam score")}</th><th>${t("Duplicate")}</th></tr></thead>
           <tbody id="cleaner-rows"></tbody>
-        </table><div class="bulk-more" id="cleaner-more" hidden>${t("Showing the first 200. Select all and Select new links only include every kept row.")}</div></div>
-        <fieldset class="scope clean-start"><legend>${t("For the links you add")}</legend>
+        </table><div class="bulk-more" id="cleaner-more" hidden>${t("First 200 shown; the Select buttons cover every kept row.")}</div></div>
+        <fieldset class="scope clean-start"><legend>${t("For added links")}</legend>
           <label class="field"><span>${t("Status")}</span><select class="select" id="cleaner-start-stage">${PROSPECT_STAGES.map(([id, word]) => `<option value="${id}" ${cleaner.start.stage === id ? "selected" : ""}>${t(word)}</option>`).join("")}</select></label>
           <label class="field"><span>${t("Rating")}</span><select class="select" id="cleaner-start-rating">${ratingOptions(cleaner.start.rating, t("Not rated"))}</select></label>
           <label class="field"><span>${t("Owner")}</span><input class="input" id="cleaner-start-owner" value="${esc(cleaner.start.owner)}" dir="auto" maxlength="120"></label>
         </fieldset>`
-        : `<p class="note">${icon("info")}<span>${t("No links are left after filtering, so there is nothing to add.")}</span></p>`}
+        : `<p class="note">${icon("info")}<span>${t("No links left after filtering.")}</span></p>`}
       </div>
       <div class="dlg-foot"><button class="btn btn-ghost" id="cleaner-again" style="margin-right:auto">${t("Choose another file")}</button><button class="btn" data-close-dlg>${t("Cancel")}</button><button class="btn btn-main" id="cleaner-add" disabled>${t("Add to In consideration")}</button></div>`);
     if (r.kept) paintCleanerRows(); else updateCleanerSelection();
@@ -2260,8 +2302,8 @@
     answer.items.forEach((p) => $(`#prospect-${p.id}`)?.classList.add("flash"));
     if (answer.failed) { toast(`${num(answer.items.length)} ${t("saved")}. ${t("The rest wasn't saved. Add them again.")}`, { kind: "crit" }); return; }
     const n = answer.items.length, skipped = answer.skipped.length;
-    const words = n ? `${num(n)} ${t(n === 1 ? "link added to In consideration" : "links added to In consideration")}` : t("Nothing new to add");
-    toast(`${words}${skipped ? `. ${num(skipped)} ${t("skipped: only one link per domain, and never spam")}` : ""}`, n ? { undo: async () => {
+    const words = n ? `${num(n)} ${t(n === 1 ? "link added to In consideration" : "links added to In consideration")}` : t("Nothing new");
+    toast(`${words}${skipped ? `. ${num(skipped)} ${t("skipped (one link per domain, no spam)")}` : ""}`, n ? { undo: async () => {
       try { await COMP.removeCsvProspects(answer.items); } catch (err) { toast(t(err.message), { kind: "crit" }); }
       render();
     } } : { kind: "info" });
@@ -2322,7 +2364,7 @@
     const box = $("#bulk-preview"), button = $("#bulk-import");
     if (!box) return;
     if (!bulk.rows.length) {
-      setHTML(box, `<p class="help">${t("Paste or drop your list to see a preview. Nothing is saved until you press Import.")}</p>`);
+      setHTML(box, `<p class="help">${t("Paste or drop your list to preview it. Nothing is saved before Import.")}</p>`);
       button.disabled = true;
       setHTML(button, `${t("Import")}`);
       return;
@@ -2333,7 +2375,7 @@
     const statusNote = () => {
       if (bulk.map.includes("status")) return "";
       const likely = bulk.headers.find((h, i) => !bulk.map[i] && /state|status|statut|[eé]tat/i.test(h));
-      return `<p class="note warn" style="margin:10px 0 0">${icon("triangle-alert")}<span>${likely ? `${t("This column may be the status:")} <b dir="auto">${esc(likely)}</b>. ${t("It's ignored for now, so every link would import as Live. Choose Status for it above.")}` : t("No column is set as Status, so every link will import as Live.")}</span></p>`;
+      return `<p class="note warn" style="margin:10px 0 0">${icon("triangle-alert")}<span>${likely ? `${t("This column may be the status:")} <b dir="auto">${esc(likely)}</b>. ${t("Ignored for now, so every link would import as Live. Set it to Status above.")}` : t("No Status column: every link imports as Live.")}</span></p>`;
     };
     // Fix a row here, rather than having to change the sheet and upload it all again.
     const fixFor = (r, n) => {
@@ -2368,9 +2410,9 @@
     openPanel(`${panelHead(t("Add backlink"), t("Only the source page is needed."))}
       ${addModeSwitch("bulk")}
       <form class="panel-body" id="bulk-form" novalidate>
-        <label class="field"><span>${t("Default site, for rows with no site")}</span><select class="select" id="bulk-site" style="width:100%">${siteOptions(pickedSite())}</select></label>
-        <div class="drop" id="bulk-drop">${icon("list-plus")}<b>${t("Drop a CSV file here")}</b><span>${t("or")} <button type="button" class="link-btn" id="bulk-browse" style="font-size:inherit">${t("choose a file")}</button></span><span class="small">${t("Excel and Google Sheets can both save as CSV.")}</span><input type="file" id="bulk-file" accept=".csv,.tsv,.txt,text/csv" hidden></div>
-        <div class="bulk-links"><button type="button" class="link-btn" id="bulk-template">${t("Download the template")}</button>${bl.server ? "" : `<button type="button" class="link-btn" id="bulk-sample">${t("Try sample rows")}</button>`}</div>
+        <label class="field"><span>${t("Site for rows without one")}</span><select class="select" id="bulk-site" style="width:100%">${siteOptions(pickedSite())}</select></label>
+        <div class="drop" id="bulk-drop">${icon("list-plus")}<b>${t("Drop a CSV here")}</b><span>${t("or")} <button type="button" class="link-btn" id="bulk-browse" style="font-size:inherit">${t("choose a file")}</button></span><span class="small">${t("Excel and Google Sheets save as CSV.")}</span><input type="file" id="bulk-file" accept=".csv,.tsv,.txt,text/csv" hidden></div>
+        <div class="bulk-links"><button type="button" class="link-btn" id="bulk-template">${t("Download template")}</button>${bl.server ? "" : `<button type="button" class="link-btn" id="bulk-sample">${t("Try sample rows")}</button>`}</div>
         <div id="bulk-file-note"></div>
         <label class="field"><span>${t("Or paste from your sheet")}</span><textarea class="input mono" id="bulk-text" rows="5" spellcheck="false" placeholder="https://site.example/page;/our-page/;anchor" data-autofocus></textarea></label>
         <div id="bulk-preview"></div>
@@ -2382,7 +2424,7 @@
     const note = $("#bulk-file-note");
     if (!file) return;
     const refuse = (words) => setHTML(note, `<p class="note warn">${icon("info")}<span>${esc(words)}</span></p>`);
-    if (/\.xlsx?$/i.test(file.name)) { refuse(t("Excel files aren't read yet. In Excel, choose Save as, then CSV UTF-8.")); return; }
+    if (/\.xlsx?$/i.test(file.name)) { refuse(t("Excel files aren't read. In Excel, Save as CSV UTF-8.")); return; }
     try { window.BacklinkCleaner.checkUpload(file.name, file.size); } catch (err) { refuse(t(err.message)); return; }
     setHTML(note, "");
     // By its bytes: Excel can save in an older encoding, and reading that as UTF-8 would break every accent.
@@ -2436,7 +2478,7 @@
         render();
         toast(t(stuck.length ? "Some links could not be removed" : "Backlinks removed"), { kind: stuck.length ? "crit" : "info" });
       } });
-    } else toast(t("Nothing new to add"), { kind: "info" });
+    } else toast(t("Nothing new"), { kind: "info" });
     showSkipped([...checked.filter((r) => r.state === "dup").map((r) => r.record.src), ...result.skipped.map((x) => x.source_url)]);
     // A toast says what went in. What didn't has to stay on screen until someone has seen it.
     const notAdded = checked.map((r, n) => ({ r, n })).filter(({ r }) => r.state === "bad");
@@ -2449,8 +2491,8 @@
     const line = ({ r, n }, words) => `<li><span class="muted">${t("Row")} ${num(n + 1)}</span> <span class="mono small" dir="auto">${esc(r.record.src || r.cells[0] || "—")}</span><div class="small sec" dir="auto">${esc(words)}</div></li>`;
     openPanel(`${panelHead(t("Import result"), `${num(addedCount)} ${t("added")} · ${num(notAdded.length)} ${t("not added")}`)}
       <div class="panel-body">
-        ${notAdded.length ? `<h3>${t("Not added")} <span class="muted">${num(notAdded.length)}</span></h3><p class="help">${t("These rows are still only in your file. Fix them, then import them again.")}</p><ul class="bulk-result">${notAdded.map((x) => line(x, rowWords(x.r))).join("")}</ul><button class="btn btn-small" id="bulk-download">${icon("download")}${t("Download rows not added")}</button>` : ""}
-        ${oddDates.length ? `<h3 style="margin-top:16px">${t("Added, with a date to check")} <span class="muted">${num(oddDates.length)}</span></h3><p class="help">${t("These dates couldn't be read, so they were kept as typed. A renewal reminder can't use them.")}</p><ul class="bulk-result">${oddDates.map((x) => line(x, x.r.oddDate)).join("")}</ul>` : ""}
+        ${notAdded.length ? `<h3>${t("Not added")} <span class="muted">${num(notAdded.length)}</span></h3><p class="help">${t("These rows stayed in your file. Fix them and import again.")}</p><ul class="bulk-result">${notAdded.map((x) => line(x, rowWords(x.r))).join("")}</ul><button class="btn btn-small" id="bulk-download">${icon("download")}${t("Download rows not added")}</button>` : ""}
+        ${oddDates.length ? `<h3 style="margin-top:16px">${t("Added, with a date to check")} <span class="muted">${num(oddDates.length)}</span></h3><p class="help">${t("Unreadable dates, kept as typed: no renewal reminder for them.")}</p><ul class="bulk-result">${oddDates.map((x) => line(x, x.r.oddDate)).join("")}</ul>` : ""}
       </div>
       <div class="panel-foot"><button class="btn btn-main" data-close-panel>${t("Done")}</button></div>`, $("#bulk-open"));
   }
@@ -2552,7 +2594,7 @@
   function validateSource() {
     const input = $("#bl-src"), box = $("#bl-src-err");
     const value = input.value.trim();
-    const message = !value ? t("Enter the page that links to you") : !/^https?:\/\/[^\s.]+\.[^\s]+/.test(value) ? t("Enter a full address starting with https://") : "";
+    const message = !value ? t("Enter the linking page") : !/^https?:\/\/[^\s.]+\.[^\s]+/.test(value) ? t("Enter a full https:// address") : "";
     input.classList.toggle("invalid", Boolean(message));
     input.setAttribute("aria-invalid", message ? "true" : "false");
     setHTML(box, message ? `<div class="error" role="alert">${icon("octagon-alert")}${esc(message)}</div>` : "");
@@ -2604,13 +2646,13 @@
     const noCredit = pools.reduce((s, p) => s + p.noCredit, 0);
     const toolsEach = refresh.mode === "pick" ? ` × ${plural(refresh.picked.size, "tool per keyword", "tools per keyword")}` : "";
     const sum = refresh.keys.length && refresh.engines.size ? `<span class="muted"> (${plural(refresh.keys.length, "keyword", "keywords")} × ${plural(refresh.engines.size, "engine", "engines")} × ${plural(pages, "result page", "result pages")}${toolsEach})</span>` : "";
-    return `<p class="small sec" style="margin:0">${t("This will use")} <b>${num(credits)}</b> ${t(credits === 1 ? "check" : "checks")}${noCredit ? ` + ${noCredit} ${t("no credits")}` : ""}.${sum}${cost ? ` <b>${t("Estimated cost")}: $${dec(cost.toFixed(2))}</b>` : ""}</p>
+    return `<p class="small sec" style="margin:0">${t("Will use")} <b>${num(credits)}</b> ${t(credits === 1 ? "check" : "checks")}${noCredit ? ` + ${noCredit} ${t("no credits")}` : ""}.${sum}${cost ? ` <b>${t("Estimated cost")}: $${dec(cost.toFixed(2))}</b>` : ""}</p>
       ${lowAfterRun(pools)}
       ${unassigned ? `<p class="note warn" style="margin-top:10px;margin-bottom:0">${icon("triangle-alert")}<span>${t("Runs out after")} ${num(total)} ${t("checks")}.</span></p>` : ""}
-      ${!refresh.engines.size ? `<p class="note" style="margin-top:10px;margin-bottom:0">${icon("info")}<span>${t("Choose at least one engine.")}</span></p>` : refresh.mode === "pick" && !refresh.picked.size ? `<p class="note" style="margin-top:10px;margin-bottom:0">${icon("info")}<span>${t("Pick at least one tool.")}</span></p>` : ""}`;
+      ${!refresh.engines.size ? `<p class="note" style="margin-top:10px;margin-bottom:0">${icon("info")}<span>${t("Pick an engine.")}</span></p>` : refresh.mode === "pick" && !refresh.picked.size ? `<p class="note" style="margin-top:10px;margin-bottom:0">${icon("info")}<span>${t("Pick a tool.")}</span></p>` : ""}`;
   }
 
-  const refreshFootText = () => (refresh.paid ? `${t("Free tools first, then paid, up to")} $${refresh.cap}` : t("Free tools first. Paid use is off."));
+  const refreshFootText = () => (refresh.paid ? `${t("Free tools first, then paid, up to")} $${refresh.cap}` : t("Free tools only"));
 
   // Changing an option only updates what changed in place, so focus stays where the user is.
   function updateRefreshSummary() {
@@ -2628,7 +2670,7 @@
       const checks = p.used + p.paidUsed + p.noCredit;
       const why = !p.connected ? `<button type="button" class="link-btn" data-conn-tool="${esc(p.name)}">${t("Connect")}</button>`
         : !fits ? `<span class="quiet">${t("Not for these engines")}</span>`
-        : !pick && p.manualOnly ? `<span class="quiet">${t("Only when you pick it")}</span>`
+        : !pick && p.manualOnly ? `<span class="quiet">${t("Only if picked")}</span>`
         : checks ? `${num(checks)} ${t(checks === 1 ? "check" : "checks")}${p.paidUsed ? ` · ${num(p.paidUsed)} ${t("paid")}` : ""}` : "";
       setHTML($(".tool-checks", row), why);
     });
@@ -2659,8 +2701,8 @@
             <span class="tool-checks"></span></label>`).join("")}
         </div>
         <div class="paid-row">
-          <label class="opt"><input type="checkbox" class="chk" style="margin:0" id="ref-paid" ${refresh.paid ? "checked" : ""}>${t("Use paid credits if free ones run out")}</label>
-          <label class="paid-cap" id="ref-paid-cap" ${refresh.paid ? "" : "hidden"}>${t("Limit this run to")} $<input class="input" id="ref-cap" type="number" min="1" step="1" value="${refresh.cap}"></label>
+          <label class="opt"><input type="checkbox" class="chk" style="margin:0" id="ref-paid" ${refresh.paid ? "checked" : ""}>${t("Use paid credits after free ones")}</label>
+          <label class="paid-cap" id="ref-paid-cap" ${refresh.paid ? "" : "hidden"}>${t("Limit to")} $<input class="input" id="ref-cap" type="number" min="1" step="1" value="${refresh.cap}"></label>
         </div>
         <div id="ref-summary" aria-live="polite"></div>
       </div>
@@ -2671,7 +2713,7 @@
 
   function openRefresh(keys, engines, depth = 10) {
     if (window.KW_REAL) { window.KW_REAL.openRefresh(window.KW_REAL.filteredIds()); return; }
-    if (state.refreshBusy) { toast(t("A refresh is already running."), { kind: "info" }); return; }
+    if (state.refreshBusy) { toast(t("Already refreshing."), { kind: "info" }); return; }
     refresh.keys = keys;
     refresh.engines = new Set(engines || [state.engine === "all" ? "google" : state.engine]);
     refresh.depth = depth;
@@ -2699,7 +2741,7 @@
       const item = run.plan[run.i];
       const previous = run.plan[run.i - 1];
       if (refresh.mode === "auto" && previous && item.tool !== run.lastTool && item.engine === previous.engine) {
-        run.msg = `${t(run.lastTool)} ${t("out of credits, continuing with")} ${t(item.tool)}`;
+        run.msg = `${t(run.lastTool)} ${t("out of credits, using")} ${t(item.tool)}`;
       }
       run.lastTool = item.tool;
       const row = window.KEYWORDS.find((k) => k.k === item.key);
@@ -2945,25 +2987,28 @@
   };
 
   // What each limit does when it runs out. Asked for: what refills, and what is one-time.
-  const RESETS = { google: "Every day", clarity: "Every day", bing: "Not published", yandex: "Not published", pagespeed: "Every day", openpagerank: "Every month", brightdata: "Every month, on the 1st", serpapi: "Every month", hasdata: "Every month", searlo: "One-time, never refills", ddg: "No credits to refill", searxng: "No credits to refill", browser: "No credits to refill", moz: "Every month", googleads: "Every day", cloudflare: "Every 5 minutes", indexnow: "No fixed limit", openrouter: "Every day", commoncrawl: "New release about monthly", ahrefs: "Your Ahrefs plan's units, every month" };
+  const RESETS = { google: "Daily", clarity: "Daily", bing: "Not published", yandex: "Not published", pagespeed: "Daily", openpagerank: "Monthly", brightdata: "Monthly, on the 1st", serpapi: "Monthly", hasdata: "Monthly", searlo: "Once only", ddg: "Nothing to refill", searxng: "Nothing to refill", browser: "Nothing to refill", moz: "Monthly", googleads: "Daily", cloudflare: "Every 5 minutes", indexnow: "No fixed limit", openrouter: "Daily", commoncrawl: "New release about monthly", ahrefs: "Monthly, per your plan" };
 
+  // The paid price shows once, under Price: a Limit that ends in ", then $1.50 per 1,000" leaves that part out.
+  const reEsc = (text) => String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const withoutPrice = (text, tool) => (tool?.price ? text.replace(new RegExp(`,\\s*(?:then|puis)\\s+${reEsc(t(tool.price))}\\s*$`), "") : text);
   function connFacts(c, tool) {
     const fact = (label, value) => `<div><dt>${t(label)}</dt><dd>${value}</dd></div>`;
-    const runs = { site: "Every day by itself", serp: tool?.manualOnly ? "Only when you pick it in Refresh" : "Only when you press Refresh", extra: "Only when you use it" }[c.group];
+    const runs = { site: "Daily, automatically", serp: tool?.manualOnly ? "Only if picked in Refresh" : "On Refresh only", extra: "Only when used" }[c.group];
     const engines = tool ? tool.engines.map((e) => `<span class="fact-engine">${logo(e, 14)}${esc(ENGINES.find(([id]) => id === e)?.[1] || e)}</span>`).join("") : "";
     return `<dl class="conn-facts">
       ${fact("Status", connStatus(c))}
       ${fact("Price", `<span class="tag">${esc(t(c.price))}</span>${tool?.price ? ` <span class="small sec">${t("after that")} ${esc(t(tool.price))}</span>` : ""}`)}
-      ${fact("Limit", esc(t(c.limit)))}
+      ${fact("Limit", esc(withoutPrice(t(c.limit), tool)))}
       ${fact("Refills", esc(t(RESETS[c.id] || "Not published")))}
       ${fact("Runs", esc(t(runs)))}
-      ${engines ? fact("Search engines", `<span class="fact-engines">${engines}</span>`) : ""}
+      ${engines ? fact("Engines", `<span class="fact-engines">${engines}</span>`) : ""}
       ${fact("Used by", esc(sitesWord(c)))}
     </dl>
     ${window.KW_REAL?.connExtras?.(c) || ""}
     ${c.status === "failing" ? (window.FIX && c.error ? window.FIX.html(c.error, { tool: t(c.name).split(":")[0], id: c.id, keyUrl: window.FIX.keyUrl(c), refills: RESETS[c.id] ? t(RESETS[c.id]) : "", retry: "test", robot: c.robot }, { id: "conn-fix", summary: true, said: true })
-      : `<p class="note crit" style="margin:0 0 12px">${icon("octagon-alert")}<span>${t("It stopped working. Paste a new key, or check it still has access, then press Test.")}</span></p>`) : ""}
-    ${c.note ? `<p class="note" style="margin:0 0 12px">${icon("info")}<span>${esc(t(c.note))}</span></p>` : ""}`;
+      : `<p class="note crit" style="margin:0 0 12px">${icon("octagon-alert")}<span>${t("Stopped working. Paste a new key or check its access, then press Test.")}</span></p>`) : ""}
+    ${c.note ? `<p class="note" style="margin:0 0 12px">${icon("info")}<span>${esc(t(c.note))}${c.noteTip ? UI.tip(c.noteTip) : ""}</span></p>` : ""}`;
   }
 
   // Which property each site uses. Empty means the site doesn't use it, and that's fine.
@@ -2979,7 +3024,7 @@
     return `<label class="prop-field"><span class="small sec">${label}</span>
       <select class="select" data-prop="${kind}" data-site="${site.id}" aria-label="${esc(site.host)}: ${label}">
         ${list.map((o) => `<option value="${esc(o)}" ${o === value ? "selected" : ""}>${esc(o)}</option>`).join("")}
-        <option value="" ${value ? "" : "selected"}>${t("Not used on this site")}</option>
+        <option value="" ${value ? "" : "selected"}>${t("Not used")}</option>
         <option value="__other">${t("Type another…")}</option>
       </select>
       <input class="input mono" data-prop-other="${kind}" data-site="${site.id}" hidden placeholder="${kind === "sc" ? "sc-domain:example.com" : "123456789"}" aria-label="${esc(site.host)}: ${label}"></label>`;
@@ -2994,14 +3039,14 @@
     state.connHost = null;
     const shownSites = focus.length ? focus : window.SITES;
     return `<h3>${t("Which site uses what")}</h3>
-      <p class="help" style="margin:0 0 8px">${t("A site that doesn't have one can say Not used. That's fine: it just won't show that data, and no alert is raised.")}</p>
+      <p class="help" style="margin:0 0 8px">${t("Not used is fine: no alert is raised.")}${window.UI.tip("A site that doesn't have one can choose Not used. It just won't show that data, and no alert is raised.")}</p>
       <div class="prop-list">${shownSites.map((s) => `<div class="prop-row"><div class="mono small prop-site">${esc(s.host)}</div><div class="prop-pair">${propSelect("sc", "Search Console", s, props[s.id].sc, scOptions)}${propSelect("ga4", "GA4", s, props[s.id].ga4, gaOptions)}</div>${window.LIVE?.connectionSelect?.(s) || ""}</div>`).join("")}</div>`;
   }
 
   function perSiteBlock(c, keyInput) {
     return `<h3>${t("Which site uses what")}</h3>
-      <p class="help" style="margin:0 0 8px">${t("Each site has its own token. A site that doesn't have it is fine: it just won't show that data, and no alert is raised.")}</p>
-      ${window.SITES.map((s) => { const unused = c.sites !== "all" && !c.sites.includes(s.id); return `<div class="token-row">${keyInput(`conn-token-${s.id}`, s.host, c.last4?.[s.id])}<label class="opt small"><input type="checkbox" class="chk" style="margin:0" data-site-none="${s.id}" ${unused ? "checked" : ""}>${t("This site doesn't use it")}</label></div>`; }).join("")}`;
+      <p class="help" style="margin:0 0 8px">${t("One token per site. A site without one raises no alert.")}${window.UI.tip("A site that doesn't have a token is fine: it just won't show that data, and no alert is raised.")}</p>
+      ${window.SITES.map((s) => { const unused = c.sites !== "all" && !c.sites.includes(s.id); return `<div class="token-row">${keyInput(`conn-token-${s.id}`, s.host, c.last4?.[s.id])}<label class="opt small"><input type="checkbox" class="chk" style="margin:0" data-site-none="${s.id}" ${unused ? "checked" : ""}>${t("Not used")}</label></div>`; }).join("")}`;
   }
 
   function syncSiteNone() {
@@ -3011,15 +3056,25 @@
 
   function connRow(c, index, count) {
     const tool = c.tool ? window.TOOLS.find((x) => x.name === c.tool) : null;
-    const st = connStatus(c);
+    // A working row shows a tick, its word on hover. Not connected says nothing: the Connect button beside it says it.
+    // Failing keeps its red words and time. The panel's facts keep every word.
+    const okWord = c.status === "ok" ? t("Connected") : c.status === "nokey" ? t("No key needed") : "";
+    const st = okWord ? `<span class="status good conn-ok" role="img" tabindex="0" title="${esc(okWord)}" data-tip="${esc(okWord)}" aria-label="${esc(okWord)}">${icon("circle-check")}</span>` : c.status === "off" ? "" : connStatus(c);
+    // A search tool shows its engines as logos, the names on hover; the sentence stays on hover and in the panel head.
+    const engines = c.group === "serp" && tool?.engines?.length ? tool.engines.map((e) => ENGINES.find(([id]) => id === e)?.[1]).filter(Boolean) : [];
+    const desc = engines.length
+      ? `<div class="d conn-engines" title="${esc(t(c.desc))}">${engines.map((name) => window.UI.logoOnly(name, name)).join("")}</div>`
+      : `<div class="d">${esc(t(c.desc))}</div>`;
+    // Sites only where a tool isn't on every site.
+    const sitesCell = c.sites === "all" ? "" : `${icon("globe", "muted")} ${esc(c.sites.length ? `${c.sites.length} ${t("of")} ${window.SITES.length} ${t("Sites").toLowerCase()}` : t("No sites"))}`;
     const left = tool && tool.left !== null && c.status === "ok"
       ? `<div class="meter" role="img" aria-label="${num(tool.left)} ${t("of")} ${num(tool.of)} ${t("left")}"><i style="width:${Math.max(2, (tool.left / tool.of) * 100)}%"></i></div><div class="small muted" style="margin-top:3px">${num(tool.left)} ${t("of")} ${num(tool.of)} ${t("left")} · ${t(tool.refills)}</div>` : "";
     const order = c.group === "serp" ? `<div class="order"><button class="icon-btn" data-tool-move="-1" data-tool="${esc(c.tool)}" aria-label="${t("Move up")}: ${esc(t(c.name))}" ${index === 0 ? "disabled" : ""}>${icon("arrow-up")}</button><button class="icon-btn" data-tool-move="1" data-tool="${esc(c.tool)}" aria-label="${t("Move down")}: ${esc(t(c.name))}" ${index === count - 1 ? "disabled" : ""}>${icon("arrow-down")}</button></div>` : "";
     return `<li class="conn-row ${order ? "ordered" : ""}" id="conn-${c.id}" data-conn-open="${c.id}">
       ${order}${logo(c.logo || c.name, 34, "conn-logo")}
-      <div class="what"><div class="t" dir="auto">${esc(t(c.name))}</div><div class="d">${esc(t(c.desc))}</div></div>
+      <div class="what"><div class="t" dir="auto">${esc(t(c.name))}</div>${desc}</div>
       <div class="conn-limit"><span class="tag">${esc(t(c.price))}</span> ${esc(t(c.limit))}${left}</div>
-      <div class="conn-sites" title="${esc(sitesWord(c))}">${icon("globe", "muted")} ${esc(c.sites === "all" ? t("All sites") : c.sites.length ? `${c.sites.length} ${t("of")} ${window.SITES.length} ${t("Sites").toLowerCase()}` : t("No sites"))}</div>
+      <div class="conn-sites" ${sitesCell ? `title="${esc(sitesWord(c))}"` : ""}>${sitesCell}</div>
       <div class="conn-status">${st}</div>
       <div class="acts"><button class="btn btn-small ${c.status === "off" ? "btn-main" : ""}" data-conn="${c.id}">${t(c.status === "off" ? "Connect" : c.status === "nokey" ? "Details" : "Manage")}</button></div>
     </li>`;
@@ -3048,7 +3103,7 @@
     const lowest = window.TOOLS.filter((x) => x.connected && x.left !== null && x.left !== undefined && x.of).sort((a, b) => a.left / a.of - b.left / b.of)[0];
     const group = (key) => (key === "serp" ? window.TOOLS.map((x) => connFor(x.name)) : list.filter((c) => c.group === key));
     const card = (key, title, hint) => { const items = group(key); return `<section class="card"><div class="card-head"><h2>${t(title)}</h2><div class="hint-text">${t(hint)}</div>${key === "serp" ? window.KW_REAL?.orderPicker?.() || "" : ""}</div><ul class="rows">${items.map((c, i) => connRow(c, i, items.length)).join("")}</ul></section>`; };
-    return topbar(t("Settings"), t("Connect your tools and choose which sites use them"), "", false) + `
+    return topbar(t("Settings"), t("Connect tools and choose their sites"), "", false) + `
       <div class="content page-enter">
         <section class="tiles" id="set-tiles">
           ${tile(t("Connected"), cnt(on), `<span class="ab">${t("of")} ${list.length}</span>`, { ic: "link-2" })}
@@ -3056,9 +3111,9 @@
           ${tile(t("Needs a fix"), failing ? `<span class="crit">${cnt(failing)}</span>` : "0", "", { ic: "triangle-alert", tone: failing ? "serious" : "" })}
         </section>
         <div class="tabs" role="tablist" aria-label="${t("Settings")}">${window.LIVE?.tabs?.() || `<button class="tab" role="tab" aria-selected="true">${t("Connections")}</button><span class="tab tab-soon" role="tab" aria-selected="false" aria-disabled="true">${t("Sites")}<span class="soon-tag">${t("Soon")}</span></span><span class="tab tab-soon" role="tab" aria-selected="false" aria-disabled="true">${t("Team")}<span class="soon-tag">${t("Soon")}</span></span>`}</div>
-        ${card("site", "Your site data", "Runs by itself every day once connected.")}
-        ${card("serp", "Rankings: Refresh button tools", "Refresh goes down this list, free tools first. Change the order with the arrows.")}
-        ${card("extra", "Extras", "Optional. Each one is off until you connect it.")}
+        ${card("site", "Your site data", "Runs daily once connected.")}
+        ${card("serp", "Rankings: Refresh tools", "Refresh tries these in order, free first. Reorder with the arrows.")}
+        ${card("extra", "Extras", "Optional, off until connected.")}
         ${window.AI_SETTINGS?.card?.() || ""}
       </div>`;
   }
@@ -3066,18 +3121,18 @@
   function connectionPanel(id, opener) {
     const c = window.CONNECTIONS.find((x) => x.id === id);
     const tool = c.tool ? window.TOOLS.find((x) => x.name === c.tool) : null;
-    const keyInput = (fieldId, label, last4 = "") => `<label class="field"><span>${t(label)}</span><span class="key-field"><input class="input mono" id="${fieldId}" data-key-input type="password" autocomplete="off" spellcheck="false" placeholder="${last4 ? `•••• •••• ${esc(last4)}` : t("Paste the key here")}"><button type="button" class="icon-btn" data-key-show aria-label="${t("Show key")}">${icon("eye")}</button></span></label>`;
+    const keyInput = (fieldId, label, last4 = "") => `<label class="field"><span>${t(label)}</span><span class="key-field"><input class="input mono" id="${fieldId}" data-key-input type="password" autocomplete="off" spellcheck="false" placeholder="${last4 ? `•••• •••• ${esc(last4)}` : t("Paste the key")}"><button type="button" class="icon-btn" data-key-show aria-label="${t("Show key")}">${icon("eye")}</button></span></label>`;
     // A step is a plain sentence, or { title, text, code, url, link } when it has more to show.
     const stepList = (list) => `<ol class="steps guide-steps">${list.map((item) => {
       const s = typeof item === "string" ? { text: item } : item;
-      return `<li>${s.title ? `<b class="step-title">${esc(t(s.title))}</b>` : ""}${esc(t(s.text))}${s.code ? `<span class="copy-row"><code class="mono" dir="ltr">${esc(s.code)}</code><button type="button" class="btn btn-small" data-copy="${esc(s.code)}">${t("Copy")}</button></span>` : ""}${s.url ? `<a class="ext-link" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${icon("external-link")}${t(s.link)}</a>` : ""}</li>`;
+      return `<li>${s.title ? `<b class="step-title">${esc(t(s.title))}</b>` : ""}${esc(t(s.text))}${s.code ? `<span class="copy-row"><code class="mono" dir="ltr">${esc(s.code)}</code><button type="button" class="btn btn-small" data-copy="${esc(s.code)}">${t("Copy")}</button></span>` : ""}${UI.stepLink(s)}</li>`;
     }).join("")}</ol>`;
     let fields = "";
     if (c.auth === "key" || c.auth === "key+zone") fields = keyInput("conn-key", "API key", c.last4) + (c.auth === "key+zone" ? `<label class="field"><span>${t("Zone name")}</span><input class="input mono" id="conn-zone" aria-describedby="conn-zone-help" value="${esc(c.zone ?? (c.status === "ok" ? "serp_api1" : ""))}"></label>
-      <p class="help" id="conn-zone-help" style="margin:-6px 0 12px">${t("The name you gave your SERP API, such as serp_api1. In Bright Data's control panel, open that SERP API: the zone name and the API key are on its Overview tab.")} <a class="ext-link" href="https://brightdata.com/cp/zones" target="_blank" rel="noopener noreferrer">${icon("external-link")}${t("Open my zones")}</a></p>` : "");
+      <p class="help" id="conn-zone-help" style="margin:-6px 0 12px">${t("Your SERP API's name, such as serp_api1.")}${UI.tip("In the control panel, open that SERP API: the zone name and the API key are on its Overview tab.")} <a class="ext-link" href="https://brightdata.com/cp/zones" target="_blank" rel="noopener noreferrer">${icon("external-link")}${t("My zones")}</a></p>` : "");
     else if (c.auth === "url") fields = `<label class="field"><span>${t("Address")}</span><input class="input mono" id="conn-url" data-key-input placeholder="https://"></label>`;
     else if (c.auth === "per-site") fields = perSiteBlock(c, keyInput);
-    else if (c.auth === "browser") fields = `<label class="field"><span>${t("Country this Mac is in")}</span><select class="select" id="conn-country" style="width:100%">${countryOptions(c.country || "AE")}</select></label><p class="help" style="margin:-4px 0 12px">${t("Results only count for this country. For any other country they stay on a separate line and are never mixed in.")}</p>`;
+    else if (c.auth === "browser") fields = `<label class="field"><span>${t("This Mac's country")}</span><select class="select" id="conn-country" style="width:100%">${countryOptions(c.country || "AE")}</select></label><p class="help" style="margin:-4px 0 12px">${t("Results count for this country only.")}${window.UI.tip("For any other country they stay on a separate line and are never mixed in.")}</p>`;
     else if (c.auth === "google") {
       // Pick the kind first, then only that path: the steps sit above the boxes they fill. A connection already made stays on its own kind.
       // Adding another on the real app starts clean, on the suggested kind: the boxes aren't the saved connection's.
@@ -3086,38 +3141,38 @@
         <p class="note">${icon("info")}<span>${t(path.note)}</span></p>`;
       const notBuilt = window.LIVE?.googleExtras?.() || "";
       // With a connection already made, adding another is the rare case: it waits behind one button, so the panel opens on what's there.
-      const addForm = `<p class="note">${icon("info")}<span>${t("Usually done once, by whoever looks after Google for the team. It takes about 20 minutes.")}</span></p><fieldset class="scope key-kinds"><legend>${t("Which kind of key?")}</legend>
-          <label class="opt"><input type="radio" name="google-type" value="robot" ${robot ? "checked" : ""}><span><b>${t("Robot key")}</b> <span class="tag">${t("Suggested")}</span><span class="second">${t("Google calls this a service account. There's no token to get, and it doesn't expire.")}</span></span></label>
-          <label class="opt"><input type="radio" name="google-type" value="oauth" ${robot ? "" : "checked"}><span><b>${t("OAuth keys")}</b><span class="second">${t("Client ID, client secret and refresh token, from your own Google account. More steps.")}</span></span></label></fieldset>
+      const addForm = `<p class="note">${icon("info")}<span>${t("Done once, by whoever runs Google for the team. About 20 minutes.")}</span></p><fieldset class="scope key-kinds"><legend>${t("Which kind of key?")}</legend>
+          <label class="opt"><input type="radio" name="google-type" value="robot" ${robot ? "checked" : ""}><span><b>${t("Robot key")}</b> <span class="tag">${t("Suggested")}</span><span class="second">${t("A Google service account. No token, never expires.")}</span></span></label>
+          <label class="opt"><input type="radio" name="google-type" value="oauth" ${robot ? "" : "checked"}><span><b>${t("OAuth keys")}</b><span class="second">${t("Client ID, secret and refresh token from your Google account. More steps.")}</span></span></label></fieldset>
         <div id="google-robot" ${robot ? "" : "hidden"}>${c.status === "off" ? guide(window.GOOGLE_GUIDE.robot) : `<details class="fold how"><summary>${icon("chevron-right")}${t("How to get these keys")}</summary>${guide(window.GOOGLE_GUIDE.robot)}</details>`}
-          <label class="field"><span>${t("Robot key file (JSON)")}</span><textarea class="input mono" id="conn-json" data-key-input rows="4" spellcheck="false" autocomplete="off" placeholder="${esc(window.LIVE?.savedGoogleNote?.() || t("Paste the JSON key here"))}"></textarea></label><div id="conn-json-result" role="status"></div></div>
+          <label class="field"><span>${t("Robot key file (JSON)")}</span><textarea class="input mono" id="conn-json" data-key-input rows="4" spellcheck="false" autocomplete="off" placeholder="${esc(window.LIVE?.savedGoogleNote?.() || t("Paste the JSON key"))}"></textarea></label><div id="conn-json-result" role="status"></div></div>
         <div id="google-oauth" ${robot ? "hidden" : ""}>${c.status === "off" ? guide(window.GOOGLE_GUIDE.oauth) : `<details class="fold how"><summary>${icon("chevron-right")}${t("How to get these keys")}</summary>${guide(window.GOOGLE_GUIDE.oauth)}</details>`}${keyInput("conn-client", "Client ID", keep("a81f"))}${keyInput("conn-secret", "Client secret", keep("77c0"))}${keyInput("conn-refresh", "Refresh token", keep("e219"))}</div>`;
       fields = `${notBuilt}${c.status === "off" ? addForm : `<details class="fold add-google"><summary>${icon("plus")}${t("Add another Google connection")}</summary>${addForm}</details>`}
         ${googleSitesBlock(c)}`;
-    } else fields = `<p class="note">${icon("info")}<span>${t("Nothing to paste: this one works without a key.")}</span></p>`;
+    } else fields = `<p class="note">${icon("info")}<span>${t("Nothing to paste.")}</span></p>`;
     const canTest = c.auth !== "none" && c.auth !== "browser";
     const perSite = c.auth === "google" || c.auth === "per-site" || Boolean(window.KW_REAL && c.group === "serp") || Boolean(window.LIVE?.appWide?.(c)); // their list above says which site uses it. A real search tool, or a key for the whole app, serves every site.
     const on = c.sites === "all" ? [] : c.sites;
     const howWord = c.auth === "browser" ? "How to use it" : c.auth === "none" ? "How it works" : "How to connect";
-    const credits = tool && tool.left !== null ? `<h3>${t("Credits")}</h3><div class="meter" style="max-width:none"><i style="width:${Math.max(2, (tool.left / tool.of) * 100)}%"></i></div><p class="small sec" style="margin-top:5px">${num(tool.left)} ${t("of")} ${num(tool.of)} ${t("left")} · ${t(tool.refills)}${tool.price ? ` · ${t("after that")} ${esc(t(tool.price))}` : ""}</p>` : "";
+    const credits = tool && tool.left !== null ? `<h3>${t("Credits")}</h3><div class="meter" style="max-width:none"><i style="width:${Math.max(2, (tool.left / tool.of) * 100)}%"></i></div><p class="small sec" style="margin-top:5px">${num(tool.left)} ${t("of")} ${num(tool.of)} ${t("left")} · ${t(tool.refills)}</p>` : ""; // the price after that is said once, under Price
     const steps = c.steps.length;
     const lead = logo(c.logo || c.name, 34, "panel-lead");
     openPanel(`${panelHead(t(c.name), esc(t(c.desc)), lead)}
       <form class="panel-body" id="conn-form" novalidate>
         ${connFacts(c, tool)}
         ${fields}
-        ${canTest ? `<p class="help" style="margin:-4px 0 10px">${t("Keys are stored encrypted. Only the last 4 characters are ever shown.")}</p><div class="test-row"><button type="button" class="btn btn-small" id="conn-test">${t("Test")}</button><span id="conn-test-result" role="status"></span></div>` : ""}
+        ${canTest ? `<p class="help" style="margin:-4px 0 10px">${t("Stored encrypted; only the last 4 characters show.")}</p><div class="test-row"><button type="button" class="btn btn-small" id="conn-test">${t("Test")}</button><span id="conn-test-result" role="status"></span></div>` : ""}
         ${credits}
-        ${perSite ? "" : `<fieldset class="scope" style="margin-top:16px"><legend>${t("Use it for which sites?")}</legend>
+        ${perSite ? "" : `<fieldset class="scope" style="margin-top:16px"><legend>${t("Which sites?")}</legend>
           <label class="opt"><input type="radio" name="conn-scope" value="all" ${c.sites === "all" ? "checked" : ""}>${t("All sites, also new ones")}</label>
           <label class="opt"><input type="radio" name="conn-scope" value="some" ${c.sites === "all" ? "" : "checked"}>${t("Only these sites")}</label>
           <div class="site-checks" id="conn-site-checks" ${c.sites === "all" ? "hidden" : ""}>${window.SITES.map((s) => `<label class="opt"><input type="checkbox" class="chk" style="margin:0" data-conn-site="${s.id}" ${on.includes(s.id) ? "checked" : ""}>${esc(s.host)}</label>`).join("")}</div>
-          <p class="help" style="margin:6px 0 0">${t("Sites you leave out simply won't use it. That's fine.")}</p>
+          <p class="help" style="margin:6px 0 0">${t("Sites left out won't use it.")}</p>
         </fieldset>`}
         ${!steps ? "" : `<details class="fold how" ${canTest && c.status !== "off" ? "" : "open"}><summary>${icon("chevron-right")}${t(howWord)}<span class="hint">${steps} ${t(steps === 1 ? "step" : "steps")}</span></summary>
           ${stepList(c.steps)}
           ${c.risk ? `<p class="note warn" style="margin:0 0 10px">${icon("triangle-alert")}<span>${esc(t(c.risk))}</span></p>` : ""}
-          ${c.url && !c.steps.some((s) => s.url) ? `<p style="margin:0 0 10px"><a class="ext-link" href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">${icon("external-link")}${t("Open the official page")}</a></p>` : ""}
+          ${c.url && !c.steps.some((s) => s.url) ? `<p style="margin:0 0 10px"><a class="ext-link" href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">${icon("external-link")}${t("Official page")}</a></p>` : ""}
         </details>`}
         ${window.LIVE?.oldClarityData?.(c) || ""}
       </form>
@@ -3203,7 +3258,7 @@
 
     // Links checker
     if ((el = hit("[data-setup-panel]"))) { openSiteSetup(el.dataset.setupPanel, el); return; }
-    if ((el = hit("[data-setup-hide]"))) { store.set("setupHidden", JSON.stringify([...setupHidden(), el.dataset.setupHide])); render(); toast(t("Hidden. Its steps stay on the site's own Today."), { kind: "info" }); return; }
+    if ((el = hit("[data-setup-hide]"))) { store.set("setupHidden", JSON.stringify([...setupHidden(), el.dataset.setupHide])); render(); toast(t("Hidden. Still on the site's own Today."), { kind: "info" }); return; }
     if ((el = hit("[data-setup]")) && el.dataset.setup !== "site") { runSetupStep(el.dataset.setup, el.dataset.setupHost || setupHost()); return; }
     if (hit("#lc-retry")) { lc.ready = false; render(); reloadLinkSites().then(() => render()); return; }
     if (hit("#site-add") || hit("[data-add-site]")) { closePopover(); addSitePanel(hit("#site-add") || $("#site-switch")); return; }
@@ -3227,7 +3282,7 @@
             if (listed) state.site = listed.id;
           }
           render();
-          toast(kind === "own" ? `${site.host}: ${t("added as your own website")}` : site.rivalOf ? `${site.host}: ${t("added as a competitor of")} ${site.rivalOf}` : `${site.host}: ${t("added as a competitor. It will not appear in the links checker.")}`);
+          toast(kind === "own" ? `${site.host}: ${t("added as your site")}` : site.rivalOf ? `${site.host}: ${t("added as a competitor of")} ${site.rivalOf}` : `${site.host}: ${t("added as a competitor (not in the links checker).")}`);
           if (listed) openSiteSetup(listed.host);
         }).catch((err) => {
           el.disabled = false;
@@ -3257,7 +3312,7 @@
     }
     if ((el = hit("[data-lc-delete]"))) {
       $("#dlg").classList.remove("wide");
-      setHTML($("#dlg"), `<div class="dlg-head"><h2 id="dlg-title">${t("Delete this scan?")}</h2><button class="icon-btn" data-close-dlg aria-label="${t("Close")}">${icon("x")}</button></div><div class="dlg-body"><p>${t("Its results will be gone. This can't be undone.")}</p></div><div class="dlg-foot"><button class="btn" data-close-dlg>${t("Cancel")}</button><button class="btn btn-main" id="lc-delete-confirm" data-id="${esc(el.dataset.lcDelete)}">${t("Delete")}</button></div>`);
+      setHTML($("#dlg"), `<div class="dlg-head"><h2 id="dlg-title">${t("Delete this scan?")}</h2><button class="icon-btn" data-close-dlg aria-label="${t("Close")}">${icon("x")}</button></div><div class="dlg-body"><p>${t("Its results are deleted for good.")}</p></div><div class="dlg-foot"><button class="btn" data-close-dlg>${t("Cancel")}</button><button class="btn btn-main" id="lc-delete-confirm" data-id="${esc(el.dataset.lcDelete)}">${t("Delete")}</button></div>`);
       $("#dlg").showModal();
       return;
     }
@@ -3322,7 +3377,7 @@
     if ((el = hit("[data-key-show]"))) { const input = el.parentElement.querySelector("input"); input.type = input.type === "password" ? "text" : "password"; return; }
     if ((el = hit("[data-copy]"))) {
       const text = el.dataset.copy;
-      (navigator.clipboard?.writeText(text) ?? Promise.reject()).then(() => toast(t("Copied")), () => toast(t("Couldn't copy. Select the text and copy it."), { kind: "info" }));
+      (navigator.clipboard?.writeText(text) ?? Promise.reject()).then(() => toast(t("Copied")), () => toast(t("Couldn't copy. Copy it by hand."), { kind: "info" }));
       return;
     }
     if (hit("#conn-test")) {
@@ -3332,7 +3387,7 @@
       if (!typed && c.status === "off") { setHTML(box, `<span class="error" style="margin:0">${icon("octagon-alert")}${t("Paste the key first.")}</span>`); return; }
       // Served by the real app, nothing here reaches the tool yet, so it mustn't say the key works. Sample mode keeps its demo answer.
       if (state.served) {
-        setHTML(box, `<span class="note warn inline-note">${icon("triangle-alert")}<span>${t(id === "serpapi" ? "This key wasn't checked. Save it, and the first search shows whether it works." : "Connecting this tool isn't built yet, so this key wasn't checked.")}</span></span>`);
+        setHTML(box, `<span class="note warn inline-note">${icon("triangle-alert")}<span>${t(id === "serpapi" ? "Not checked. Save it; the first search shows if it works." : "This tool can't be connected yet. Key not checked.")}</span></span>`);
         return;
       }
       setHTML(btn, icon("refresh-cw", "spin"));
@@ -3391,7 +3446,7 @@
       forgetPanelForm();
       closePanel();
       render();
-      if (typed.length && unbuilt) { toast(t("Connecting this tool isn't built yet, so the key wasn't kept."), { kind: "info" }); return; }
+      if (typed.length && unbuilt) { toast(t("This tool can't be connected yet. Key not kept."), { kind: "info" }); return; }
       toast(t("Connection saved"));
       $(`#conn-${c.id}`)?.classList.add("saved");
       return;
@@ -3639,7 +3694,7 @@
       const made = window.BulkLinks.taggedLink({ site: $("#bl-site").value, target: $("#bl-target").value, source, medium, campaign });
       if (made.error) { setHTML($("#bl-generated"), `<div class="error" role="alert">${icon("octagon-alert")}<span>${esc(t(made.error))}</span></div>`); return; }
       $("#bl-utm-source").value = source; $("#bl-utm-medium").value = medium; $("#bl-utm-campaign").value = campaign;
-      setHTML($("#bl-generated"), `${esc(t("Link generated. Give this to the mediator."))}<span class="tag-link"><code class="mono" dir="ltr">${esc(made.url)}</code><button type="button" class="btn btn-small" data-copy="${esc(made.url)}">${t("Copy")}</button></span>${esc(t("UTM values are case sensitive, so give the mediator this exact link."))}`);
+      setHTML($("#bl-generated"), `${esc(t("Give this link to the mediator."))}<span class="tag-link"><code class="mono" dir="ltr">${esc(made.url)}</code><button type="button" class="btn btn-small" data-copy="${esc(made.url)}">${t("Copy")}</button></span>${esc(t("UTM values are case sensitive: don't retype it."))}`);
       return;
     }
     if (hit("#bl-save")) { saveOneLink(); return; }
@@ -3652,7 +3707,7 @@
       const b = window.BACKLINKS.find((x) => x.id === el.dataset.id);
       if (!b) return;
       $("#dlg").classList.remove("wide");
-      setHTML($("#dlg"), `<div class="dlg-head"><h2 id="dlg-title">${t("Delete this backlink?")}</h2><button class="icon-btn" data-close-dlg aria-label="${t("Close")}">${icon("x")}</button></div><div class="dlg-body"><p class="mono small" dir="auto" style="overflow-wrap:anywhere">${esc(b.src)}</p><p class="small sec" style="margin-top:8px">${t("This can't be undone. Its traffic and history leave this list too.")}</p></div><div class="dlg-foot"><button class="btn" data-close-dlg>${t("Cancel")}</button><button class="btn btn-main" id="bl-delete-yes" data-id="${esc(b.id)}">${t("Delete")}</button></div>`);
+      setHTML($("#dlg"), `<div class="dlg-head"><h2 id="dlg-title">${t("Delete this backlink?")}</h2><button class="icon-btn" data-close-dlg aria-label="${t("Close")}">${icon("x")}</button></div><div class="dlg-body"><p class="mono small" dir="auto" style="overflow-wrap:anywhere">${esc(b.src)}</p><p class="small sec" style="margin-top:8px">${t("Can't be undone. Its traffic and history go too.")}</p></div><div class="dlg-foot"><button class="btn" data-close-dlg>${t("Cancel")}</button><button class="btn btn-main" id="bl-delete-yes" data-id="${esc(b.id)}">${t("Delete")}</button></div>`);
       $("#dlg").showModal();
       return;
     }
@@ -3717,8 +3772,8 @@
       lc.api.saveSite(lc.siteId, patch).then((site) => {
         Object.assign(lcSite(), site);
         if (el.id === "lc-weekly") {
-          $("#lc-weekly-note").textContent = `(${site.weekly ? (site.next_check_at ? `${t("Next check")}: ${fmtDateOnly(site.next_check_at)}` : t("First check at the next weekly run")) : t("Only when you press Run")})`;
-          toast(t(site.weekly ? "This website will be checked once a week" : "Weekly check turned off"), { kind: "info" });
+          $("#lc-weekly-note").textContent = `(${site.weekly ? (site.next_check_at ? `${t("Next check")}: ${fmtDateOnly(site.next_check_at)}` : t("First check: next weekly run")) : t("Only when you press Run")})`;
+          toast(t(site.weekly ? "Weekly check on" : "Weekly check off"), { kind: "info" });
         }
       }).catch((err) => { el.checked = !el.checked; toast(t(err.message), { kind: "crit" }); });
       return;
@@ -3932,7 +3987,7 @@
     });
     if (locked && !scope.querySelector(".member-note")) {
       const where = scope.querySelector(".panel-body") || scope.querySelector(".content");
-      where?.prepend(fragment(`<p class="note member-note" role="note">${icon("lock")}<span>${esc(why)} ${t("You can see everything here; ask an admin to make a change.")}</span></p>`));
+      where?.prepend(fragment(`<p class="note member-note" role="note">${icon("lock")}<span>${esc(why)} ${t("View only: ask an admin for changes.")}</span></p>`));
     }
   }
   if (window.BOOT?.user && window.BOOT.user.role !== "admin") {
@@ -3958,8 +4013,8 @@
     box.id = "resign"; box.className = "resign";
     box.setAttribute("aria-labelledby", "resign-title");
     setHTML(box, `<form id="resign-form" class="resign-form" novalidate>
-      <h2 id="resign-title">${t("Your session ended")}</h2>
-      <p class="small sec">${t("Sign in again to carry on. What you were doing is still on the page.")}</p>
+      <h2 id="resign-title">${t("Session ended")}</h2>
+      <p class="small sec">${t("Sign in again to carry on. Your work is still here.")}</p>
       <div class="error" id="resign-err" role="alert" hidden></div>
       <label class="field"><span>${t("Username or email")}</span><input class="input" id="resign-email" autocomplete="username" autocapitalize="none" spellcheck="false" value="${esc(window.BOOT?.user?.email || "")}"></label>
       <label class="field"><span>${t("Password")}</span><input class="input" id="resign-password" type="password" autocomplete="current-password"></label>
@@ -3986,7 +4041,7 @@
         if (data.user?.must_change_password) { location.replace("login?change=1"); return; }
         await window.whoAmI?.again?.(); // the new session's token, so the next Save is accepted
         done();
-        toast(t("Signed in again. Press Save to send what you were doing."), { kind: "info", stay: true });
+        toast(t("Signed in again. Press Save to send your change."), { kind: "info", stay: true });
       } catch { fail(t("Can't reach the app. Check it's running, then try again.")); } finally { go.disabled = false; }
     });
   }
@@ -3995,7 +4050,7 @@
   window.UI = {
     $, $$, state, store, t, num, dec, esc, icon, status, logo, siteLogo, setHTML, fragment, locale, reduceMotion,
     topbar, tile, cnt, spark, delta, toast, render, renderSidebar, go, openPanel, closePanel, panelHead, forgetPanelForm,
-    countryName, countryOptions, COUNTRY_CODES, fmtStamp, fmtDateOnly, ENGINES, WHOLE_SITE_WORDS, BUDGET_PAUSE_WORDS, readingWords,
+    countryName, countryOptions, COUNTRY_CODES, languageOptions, fmtStamp, fmtDateOnly, ENGINES, WHOLE_SITE_WORDS, BUDGET_PAUSE_WORDS, readingWords,
     siteHostPicked: () => (state.site === "all" ? null : window.SITES.find((x) => x.id === state.site)?.host || null),
     ignoreClicks: (ms = 400) => { ignoreClicksUntil = performance.now() + ms; },
     popover, closePopover, // a screen's own menu, such as a competitor choice with each logo: a native list can't show pictures

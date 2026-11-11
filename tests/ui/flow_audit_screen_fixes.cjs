@@ -91,7 +91,8 @@ const slowAnswer = async (page, pattern, change, ms = 1200) => {
       await page.selectOption("#ht-site", String(A.real));
       await wait(page, 700);
       const text = await page.textContent("#main");
-      check("Health: the card compares with the same test the alert used", text.includes("since the last test") && !text.includes("can't be compared"), text.slice(0, 200));
+      const changeTip = async () => (await page.$$eval("#main .ht-change [data-tip]", (els) => els.map((e) => e.getAttribute("data-tip")).join(" "))) || "";
+      check("Health: the card compares with the same test the alert used", text.includes("since last test") && !(await changeTip()).includes("can't be compared"), text.slice(0, 200));
 
       // The same list, but the server found nothing similar to compare with.
       await page.unroute(/\/api\/health\/audits\/\d+$/);
@@ -100,7 +101,7 @@ const slowAnswer = async (page, pattern, change, ms = 1200) => {
       await wait(page, 300);
       await page.selectOption("#ht-site", String(A.real));
       await wait(page, 700);
-      check("Health: no similar test says so, rather than calling it the first", (await page.textContent("#main")).includes("can't be compared"));
+      check("Health: no similar test says so, rather than calling it the first", (await page.textContent("#main")).includes("Not compared") && (await changeTip()).includes("can't be compared"));
       await page.unrouteAll();
     }
   } else check("Health: the site picker is on screen", false);

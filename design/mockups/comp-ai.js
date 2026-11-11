@@ -11,28 +11,30 @@
   const t = (s) => UI.t(s);
   const esc = (v) => UI.esc(v);
   const fill = (text, values) => text.replace(/\{(\w+)\}/g, (_, key) => values[key]);
+  // A check tool by its logo alone, its name on hover and for screen readers. A tool with no logo keeps its name.
+  const toolMark = (tool) => (window.BRANDS?.FILES?.[tool] ? UI.logoOnly(tool) : `<span>${esc(tool)}</span> `);
 
   // ---- tiles ------------------------------------------------------------------------------------
   function tiles(s) {
     const top = s.rivals[0];
     return `<section class="tiles ca-tiles">
-      ${UI.tile(t("Keywords with an AI Overview"), UI.cnt(s.with_overview), `<span class="ab">${t("of")} ${UI.num(s.captured)} ${t("captured")}</span>`, { ic: "sparkles" })}
-      ${UI.tile(t("Where you're cited"), UI.cnt(s.cited_me), `<span class="ab">${t("of")} ${UI.num(s.with_overview)} ${t(s.with_overview === 1 ? "overview" : "overviews")}</span>`, { ic: "circle-check" })}
+      ${UI.tile(t("With AI Overview"), UI.cnt(s.with_overview), `<span class="ab">${t("of")} ${UI.num(s.captured)} ${t("captured")}</span>`, { ic: "sparkles" })}
+      ${UI.tile(t("You're cited"), UI.cnt(s.cited_me), `<span class="ab">${t("of")} ${UI.num(s.with_overview)} ${t(s.with_overview === 1 ? "overview" : "overviews")}</span>`, { ic: "circle-check" })}
       ${UI.tile(t("Not captured"), UI.cnt(s.not_captured), `<span class="ab">${t("of")} ${UI.num(s.tracked)} ${t(s.tracked === 1 ? "keyword" : "keywords")}</span>`, { ic: "shield-question" })}
-      ${UI.tile(t("Competitor cited most"), top ? `<span class="ca-host" dir="auto">${esc(top.host)}</span>` : `<span class="muted">—</span>`, top ? `<span class="ab">${UI.num(top.keywords)} ${t(top.keywords === 1 ? "keyword" : "keywords")}</span>` : `<span class="ab">${t("No competitor cited yet")}</span>`, { ic: "crosshair" })}
+      ${UI.tile(t("Competitor cited most"), top ? `<span class="ca-host" dir="auto">${esc(top.host)}</span>` : `<span class="muted">—</span>`, top ? `<span class="ab">${UI.num(top.keywords)} ${t(top.keywords === 1 ? "keyword" : "keywords")}</span>` : `<span class="ab">${t("None cited yet")}</span>`, { ic: "crosshair" })}
     </section>`;
   }
 
   /* The caveats sit behind an (i) beside the filters. Only the one action stays in view, and only while something isn't captured. */
   function plainNote(s) {
-    const words = `${t("Updates when a check runs. It never spends credits by itself. Google only.")} ${t("Not captured means the tool used can't see AI Overviews. It doesn't mean there isn't one.")}`;
+    const words = `${t("Updates with each check; never spends credits itself. Google only.")} ${t("Not captured: the tool can't see AI Overviews. One may still exist.")}`;
     return `<div class="ca-note-line">${COMP.info(words)}${s.not_captured ? `<button class="btn btn-small" data-ca-connect>${t("Connect a tool that sees AI Overviews")}</button>` : ""}</div>`;
   }
 
   // ---- the table --------------------------------------------------------------------------------
   const FILTERS = [
     ["all", "All", () => true],
-    ["overview", "Has an AI Overview", (r) => r.state === "present"],
+    ["overview", "AI Overview", (r) => r.state === "present"],
     ["cited", "You're cited", (r) => r.cited_me === true],
     ["notcited", "You're not cited", (r) => r.state === "present" && r.cited_me === false],
     ["notcaptured", "Not captured", (r) => r.state === "not_captured"],
@@ -60,12 +62,12 @@
     const q = TP.state(PAGES).q;
     const search = all.length >= FIND_FROM || q ? TP.search(PAGES, t("Search keywords")) : "";
     const choose = rivals.length > 1 ? `<label class="field"><span>${t("Competitor cited")}</span><select class="select" id="ca-rival">
-        <option value="">${t("All competitors, together")} (${UI.num(searched.length)})</option>
+        <option value="">${t("All competitors")} (${UI.num(searched.length)})</option>
         ${rivals.map((c) => `<option value="${esc(String(c.id))}" ${String(c.id) === S.rival ? "selected" : ""}>${esc(c.host)} (${UI.num(searched.filter((r) => cites(r, String(c.id))).length)})</option>`).join("")}
       </select></label>` : "";
     const chips = `${search || choose ? `<div class="cp-tools ca-tools">${search}${choose}</div>` : ""}<div class="chips" role="group" aria-label="${t("Filter keywords")}">${FILTERS.map(([id, label, match]) => `<button class="chip" data-ca-filter="${id}" aria-pressed="${S.filter === id}">${t(label)}<b>${UI.num(rows.filter(match).length)}</b></button>`).join("")}</div>`;
-    if (!shown.length && q) return `${chips}${COMP.empty(t("No keywords here"), t("No keyword matches this search."), `<button type="button" class="btn btn-small" data-tp-clear data-tp-key="${PAGES}">${t("Clear the search")}</button>`)}`;
-    if (!shown.length) return `${chips}${COMP.empty(t("No keywords here"), t("No keyword matches this filter right now."))}`;
+    if (!shown.length && q) return `${chips}${COMP.empty(t("No keywords here"), t("No keyword matches."), `<button type="button" class="btn btn-small" data-tp-clear data-tp-key="${PAGES}">${t("Clear search")}</button>`)}`;
+    if (!shown.length) return `${chips}${COMP.empty(t("No keywords here"), t("No keyword matches."))}`;
     const page = TP.view(PAGES, shown);
     // On phones each row is a card, so a tool shared by every row is said once, above them.
     const tools = new Set(shown.map((r) => r.tool));
@@ -74,21 +76,21 @@
     const onceLine = once ? `<p class="small sec ca-once">${esc(t("All checked with {tool}, {when}.").replace("{tool}", shown[0].tool).replace("{when}", COMP.ago(shown[0].checked_at)))}</p>` : "";
     const oneTool = !once && tools.size === 1 ? shown[0].tool : "";
     return `${chips}${oneTool ? `<p class="help ca-tool-line">${t("Tool")}: ${esc(oneTool)}</p>` : ""}<div class="ca-pages"><div class="table-wrap ${oneTool ? "ca-one-tool" : ""}"><table class="data ca-table" id="ca-table">
-      <thead><tr><th scope="col">${t("Keyword")}</th><th scope="col">${t("AI Overview")}</th><th scope="col" class="pt-col-you">${COMP.who("you", null, t("You cited"))}</th><th scope="col" class="pt-col-them">${COMP.who("them", null, t("Competitors cited"))}</th><th scope="col">${t("Other sites cited")}</th>${once ? "" : `<th scope="col">${t("Tool and age")}</th>`}</tr></thead>
+      <thead><tr><th scope="col">${t("Keyword")}</th><th scope="col">${t("AI Overview")}</th><th scope="col" class="pt-col-you">${COMP.who("you", null, t("You cited"))}</th><th scope="col" class="pt-col-them">${COMP.who("them", null, t("Competitors cited"))}</th><th scope="col">${t("Other sites cited")}</th>${once ? "" : `<th scope="col">${t("Checked")}</th>`}</tr></thead>
       <tbody>${page.rows.map((r) => `<tr>
         <td class="head-cell"><span class="kw" dir="auto">${esc(r.keyword)}</span></td>
         <td data-label="${t("AI Overview")}">${overviewCell(r.state)}</td>
         <td data-label="${t("You cited")}"><div class="cp-val">${citedCell(r)}</div></td>
         <td data-label="${t("Competitors cited")}"><div class="cp-val">${rivalChips(r.competitors_cited)}</div></td>
         <td data-label="${t("Other sites cited")}"><div class="cp-val">${otherSites(r.others_cited)}</div></td>
-        ${once ? "" : `<td data-label="${t("Tool and age")}"><div class="cp-val"><span class="ca-tool-name">${esc(r.tool)}</span><span class="second">${esc(COMP.ago(r.checked_at))}</span></div></td>`}
+        ${once ? "" : `<td data-label="${t("Checked")}"><div class="cp-val"><span class="nowrap"><span class="ca-tool-name">${toolMark(r.tool)}</span>${esc(COMP.ago(r.checked_at))}</span></div></td>`}
       </tr>`).join("")}</tbody></table></div>${TP.footer(PAGES, page, { noun: t("keywords") })}</div>${onceLine}`;
   }
 
   // ---- what changed -----------------------------------------------------------------------------
   const CHANGE_WORDS = {
-    overview_appeared: ["sparkles", "An AI Overview appeared for {keyword}"],
-    overview_gone: ["minus", "The AI Overview went away for {keyword}"],
+    overview_appeared: ["sparkles", "New AI Overview for {keyword}"],
+    overview_gone: ["minus", "AI Overview gone for {keyword}"],
     me_cited: ["circle-check", "You're now cited for {keyword}"],
     me_dropped: ["link-2-off", "You're no longer cited for {keyword}"],
     rival_cited: ["crosshair", "{competitor} is now cited for {keyword}"],
@@ -100,19 +102,21 @@
     return { title: text, host, source: { type: "competitor", label: text, host, facts: [c.keyword, c.competitor].filter(Boolean), link: "#competitors/ai", key: `ai|${COMP.siteId}|${c.kind}|${c.keyword}|${c.competitor || ""}` } };
   }
 
-  function changeLine(c) {
+  /* Every change found by the same tool: its logo is said once, in the card's title, instead of on each line. */
+  const sharedTool = (changes) => (changes.length && new Set(changes.map((c) => c.tool)).size === 1 ? changes[0].tool : "");
+  function changeLine(c, oneTool) {
     const [iconName, words] = CHANGE_WORDS[c.kind] || ["info", "Something changed for {keyword}"];
     const competitor = c.competitor_id ? `<button class="link-btn ca-rival-link" data-ca-rival="${c.competitor_id}" dir="auto">${esc(c.competitor)}</button>` : `<span dir="auto">${esc(c.competitor || "")}</span>`;
-    return `<li><span class="ca-change-ico" aria-hidden="true">${UI.icon(iconName)}</span><div class="what"><div class="t">${fill(esc(t(words)), { keyword: `<b dir="auto">${esc(c.keyword)}</b>`, competitor })}</div></div><span class="small muted">${esc(c.tool)}</span><div class="acts">${UI.taskButton(aiFind(c, words), { label: "Task" })}</div></li>`;
+    return `<li><span class="ca-change-ico" aria-hidden="true">${UI.icon(iconName)}</span><div class="what"><div class="t">${fill(esc(t(words)), { keyword: `<b dir="auto">${esc(c.keyword)}</b>`, competitor })}</div></div>${oneTool ? "" : `<span class="small muted ca-change-tool">${UI.logoOnly(c.tool)}</span>`}<div class="acts">${UI.taskButton(aiFind(c, words), { label: "Task" })}</div></li>`;
   }
   function changesBlock(changes) {
     if (!changes.length) {
-      return `<p class="small muted ca-pad">${t("Nothing yet. Changes appear once the same tool has checked a keyword twice.")}</p>`;
+      return `<p class="small muted ca-pad">${t("Nothing yet: needs two checks of a keyword by the same tool.")}</p>`;
     }
-    const shown = S.allChanges ? changes : changes.slice(0, CHANGES_SHOWN);
+    const shown = S.allChanges ? changes : changes.slice(0, CHANGES_SHOWN), oneTool = sharedTool(changes);
     const days = new Map();
     shown.forEach((c) => { const day = c.at.slice(0, 10); if (!days.has(day)) days.set(day, []); days.get(day).push(c); });
-    return `${[...days].map(([day, list]) => `<h3 class="ca-day">${esc(UI.fmtDateOnly(`${day}T00:00:00Z`))}</h3><ul class="rows ca-changes">${list.map(changeLine).join("")}</ul>`).join("")}
+    return `${[...days].map(([day, list]) => `<h3 class="ca-day">${esc(UI.fmtDateOnly(`${day}T00:00:00Z`))}</h3><ul class="rows ca-changes">${list.map((c) => changeLine(c, oneTool)).join("")}</ul>`).join("")}
       ${changes.length > shown.length ? `<p class="ca-pad"><button class="btn btn-small" data-ca-all-changes>${t("Show all")} (${UI.num(changes.length)})</button></p>` : ""}`;
   }
 
@@ -151,7 +155,7 @@
     }).join("");
     const end = points[points.length - 1], endOver = y(share(end.overviews, end.checked)), endMine = y(share(end.cited_me, end.checked));
     const endLabels = `<text class="ca-end" x="${(x(end) + 8).toFixed(1)}" y="${(endOver + 4).toFixed(1)}">${percent(end.overviews, end.checked)}</text>${Math.abs(endOver - endMine) >= 14 ? `<text class="ca-end" x="${(x(end) + 8).toFixed(1)}" y="${(endMine + 4).toFixed(1)}">${percent(end.cited_me, end.checked)}</text>` : ""}`;
-    const summary = `${t("Share of the keywords checked each day.")} ${points.map(chartWords).join(" ")}`;
+    const summary = `${t("Share of keywords checked each day.")} ${points.map(chartWords).join(" ")}`;
     return `<svg class="chart ca-svg" viewBox="0 0 ${width} ${h}" width="${width}" height="${h}" role="img" aria-label="${esc(summary)}">
       ${ticks}${dates}
       <path class="ca-line ca-one" d="${line("overviews")}"/><path class="ca-line ca-two" d="${line("cited_me")}"/>
@@ -167,13 +171,13 @@
 
   function trendBlock(trend) {
     if (trend.length < 2) {
-      return `<p class="small muted ca-pad">${t("Needs checks on at least 2 different days to show a trend.")}</p>`;
+      return `<p class="small muted ca-pad">${t("A trend needs checks on 2 different days.")}</p>`;
     }
     return `<div class="ca-chart-wrap">
-        <div class="legend"><span><i style="border-color:var(--series-1)"></i>${t("Keywords with an AI Overview")}</span><span><i class="dash" style="border-color:var(--series-1)"></i>${t("Keywords where you're cited")}</span></div>
+        <div class="legend"><span><i style="border-color:var(--series-1)"></i>${t("With AI Overview")}</span><span><i class="dash" style="border-color:var(--series-1)"></i>${t("You're cited")}</span></div>
         <div id="ca-chart" class="ca-chart"></div>
         <details class="fold ca-numbers"><summary>${UI.icon("chevron-right")}${t("See the numbers")}</summary>
-          <table class="mini"><thead><tr><th scope="col">${t("Day")}</th><th scope="col" class="r">${t("Checked")}</th><th scope="col" class="r">${t("With an AI Overview")}</th><th scope="col" class="r">${t("Citing you")}</th></tr></thead>
+          <table class="mini"><thead><tr><th scope="col">${t("Day")}</th><th scope="col" class="r">${t("Checked")}</th><th scope="col" class="r">${t("With AI Overview")}</th><th scope="col" class="r">${t("Citing you")}</th></tr></thead>
           <tbody>${trend.map((p) => `<tr><td>${esc(dayLabel(p.day, true))}</td><td class="r tabular">${UI.num(p.checked)}</td><td class="r tabular">${UI.num(p.overviews)} (${percent(p.overviews, p.checked)})</td><td class="r tabular">${UI.num(p.cited_me)} (${percent(p.cited_me, p.checked)})</td></tr>`).join("")}</tbody></table>
         </details>
       </div>`;
@@ -184,14 +188,16 @@
     const d = S.data;
     if (!d) return COMP.loading();
     if (!d.summary.tracked) {
-      return COMP.empty(t("No keyword checked yet"), t("This fills in once your keywords have been checked. Start by adding your keyword list."), `<button class="btn btn-main" data-ca-find>${UI.icon("search")}${t("Find competitors")}</button>`);
+      return COMP.empty(t("No keyword checked yet"), t("Add your keywords, then check them."), `<button class="btn btn-main" data-ca-find>${UI.icon("search")}${t("Find competitors")}</button>`);
     }
+    // The shared tool's logo goes in the title, before the words, so it never sits beside the (i).
+    const oneTool = sharedTool(d.changes);
     return `${tiles(d.summary)}
       ${plainNote(d.summary)}
       ${keywordTable(d.keywords)}
       <div class="ca-lower">
-        <section class="card"><div class="card-head"><h2>${t("Over time")}</h2><div class="hint-text">${t("Share of the keywords checked each day, because the number checked can change.")}</div></div>${trendBlock(d.trend)}</section>
-        <section class="card"><div class="card-head"><h2>${t("What changed")}</h2><div class="hint-text">${t("Changes only compare checks by the same tool.")}</div></div>${changesBlock(d.changes)}</section>
+        <section class="card"><div class="card-head"><h2>${t("Over time")}</h2><div class="hint-text">${t("Share of keywords checked each day.")}${UI.tip("A share, because the number of keywords checked changes from day to day.")}</div></div>${trendBlock(d.trend)}</section>
+        <section class="card"><div class="card-head"><h2>${t("What changed")}${oneTool ? ` · ${UI.logoOnly(oneTool)}` : ""}</h2><div class="hint-text">${t("Same tool only")}${UI.tip("Changes only compare two checks by the same tool, so a change of tool never shows as a change.")}</div></div>${changesBlock(d.changes)}</section>
       </div>`;
   }
 
@@ -242,22 +248,22 @@
 
   Object.assign(window.FR, {
     "AI Overview watch": "Suivi des AI Overviews",
-    "Search keywords": "Chercher un mot-clé", "Competitor cited": "Concurrent cité", "All competitors, together": "Tous les concurrents, ensemble",
-    "No keyword matches this search.": "Aucun mot-clé ne correspond à cette recherche.", "Clear the search": "Effacer la recherche",
-    "Keywords with an AI Overview": "Mots-clés avec un AI Overview",
+    "Search keywords": "Chercher un mot-clé", "Competitor cited": "Concurrent cité", "All competitors": "Tous les concurrents",
+    "Clear search": "Effacer la recherche",
+    "With AI Overview": "Avec AI Overview",
     "of": "sur",
     "captured": "captés",
-    "Where you're cited": "Où vous êtes cité",
+    
     "overview": "AI Overview",
     "overviews": "AI Overviews",
     "keyword": "mot-clé",
     "keywords": "mots-clés",
     "Competitor cited most": "Concurrent le plus cité",
-    "No competitor cited yet": "Aucun concurrent cité pour l'instant",
-    "Updates when a check runs. It never spends credits by itself. Google only.": "Se met à jour quand un relevé a lieu. Ne dépense jamais de crédits tout seul. Google uniquement.",
-    "Not captured means the tool used can't see AI Overviews. It doesn't mean there isn't one.": "Non capté veut dire que l'outil utilisé ne voit pas les AI Overviews. Cela ne veut pas dire qu'il n'y en a pas.",
+    "None cited yet": "Aucun cité pour l'instant",
+    "Updates with each check; never spends credits itself. Google only.": "Se met à jour à chaque relevé ; ne dépense jamais de crédits seul. Google uniquement.",
+    "Not captured: the tool can't see AI Overviews. One may still exist.": "Non capté : l'outil ne voit pas les AI Overviews. Il peut y en avoir un.",
     "Connect a tool that can": "Connecter un outil qui les voit", "Connect a tool that sees AI Overviews": "Connecter un outil qui voit les AI Overviews",
-    "Has an AI Overview": "Avec un AI Overview",
+    "AI Overview": "AI Overview",
     "You're cited": "Vous êtes cité",
     "You're not cited": "Vous n'êtes pas cité",
     "Yes": "Oui",
@@ -265,34 +271,34 @@
     "Open competitor": "Ouvrir le concurrent",
     "Filter keywords": "Filtrer les mots-clés",
     "No keywords here": "Aucun mot-clé ici",
-    "No keyword matches this filter right now.": "Aucun mot-clé ne correspond à ce filtre pour l'instant.",
+    "No keyword matches.": "Aucun mot-clé ne correspond.",
     "You cited": "Vous cité",
     "Competitors cited": "Concurrents cités",
     "Other sites cited": "Autres sites cités",
-    "An AI Overview appeared for {keyword}": "Un AI Overview est apparu pour {keyword}",
-    "The AI Overview went away for {keyword}": "L'AI Overview a disparu pour {keyword}",
+    "New AI Overview for {keyword}": "Nouvel AI Overview pour {keyword}",
+    "AI Overview gone for {keyword}": "Plus d'AI Overview pour {keyword}",
     "You're now cited for {keyword}": "Vous êtes désormais cité pour {keyword}",
     "You're no longer cited for {keyword}": "Vous n'êtes plus cité pour {keyword}",
     "{competitor} is now cited for {keyword}": "{competitor} est désormais cité pour {keyword}",
     "{competitor} is no longer cited for {keyword}": "{competitor} n'est plus cité pour {keyword}",
     "Something changed for {keyword}": "Quelque chose a changé pour {keyword}",
-    "Nothing yet. Changes appear once the same tool has checked a keyword twice.": "Rien pour l'instant. Les changements apparaissent dès qu'un même outil a relevé un mot-clé deux fois.",
+    "Nothing yet: needs two checks of a keyword by the same tool.": "Rien pour l'instant : il faut deux relevés d'un mot-clé par le même outil.",
     "Show all": "Tout afficher",
     "{a} of {b} keywords had an AI Overview": "{a} mots-clés sur {b} avaient un AI Overview",
     "{a} cited you": "{a} vous citaient",
-    "Share of the keywords checked each day.": "Part des mots-clés relevés chaque jour.",
-    "Needs checks on at least 2 different days to show a trend.": "Il faut des relevés sur au moins 2 jours différents pour montrer une tendance.",
-    "Keywords where you're cited": "Mots-clés où vous êtes cité",
+    
+    "A trend needs checks on 2 different days.": "Une tendance demande des relevés sur 2 jours différents.",
+    
     "See the numbers": "Voir les chiffres",
     "Day": "Jour",
     "Checked": "Relevés",
-    "With an AI Overview": "Avec un AI Overview",
+    
     "Citing you": "Vous citant",
     "No keyword checked yet": "Aucun mot-clé relevé pour l'instant",
-    "This fills in once your keywords have been checked. Start by adding your keyword list.": "Cette page se remplit quand vos mots-clés ont été relevés. Commencez par ajouter votre liste de mots-clés.",
+    "Add your keywords, then check them.": "Ajoutez vos mots-clés, puis lancez un relevé.",
     "Over time": "Dans le temps",
-    "Share of the keywords checked each day, because the number checked can change.": "Part des mots-clés relevés chaque jour, car le nombre de mots-clés relevés peut changer.",
+    "Share of keywords checked each day.": "Part des mots-clés relevés chaque jour.",
     "What changed": "Ce qui a changé",
-    "Changes only compare checks by the same tool.": "Les changements ne comparent que les relevés d'un même outil.",
+    "Same tool only": "Même outil uniquement",
   });
 })();

@@ -28,7 +28,8 @@ const check = (ok, word) => { console.log(`${ok ? "ok  " : "FAIL"} ${word}`); if
   await menu(page, "settings"); await page.waitForTimeout(700);
   check(!(await page.$("#conn-googleads")), "Google Ads has left Settings");
   check(Boolean(await page.$("#conn-openrouter")), "OpenRouter is in Settings");
-  check((await page.$eval("#conn-openrouter .conn-status", (e) => e.textContent.trim())) === "Not connected", "OpenRouter starts off");
+  // Since 2026-11-11 a tool that isn't connected has no "Not connected" word: its button says Connect.
+  check((await page.$eval("#conn-openrouter .conn-status", (e) => e.textContent.trim())) === "" && (await page.$eval('#conn-openrouter [data-conn="openrouter"]', (e) => e.textContent.trim())) === "Connect", "OpenRouter starts off");
   await page.click('button[data-go="competitors"]'); await toTimeline(page);
   check(Boolean(await page.$("#cl-timeline")), "a competitor's timeline is open");
   check(!(await page.$("[data-change-summary]")), "off means no button anywhere");
@@ -51,7 +52,7 @@ const check = (ok, word) => { console.log(`${ok ? "ok  " : "FAIL"} ${word}`); if
     await page.waitForTimeout(300);
     await (await page.$(".cs-summary")).scrollIntoViewIfNeeded();
     await page.screenshot({ path: `${OUT}/s3-summary.png` });
-    check(/can be wrong/.test(await page.textContent(".cs-summary")), "it says AI wrote it and that it can be wrong");
+    check(/Written by AI, may be wrong/.test(await page.textContent(".cs-summary")), "it says AI wrote it and that it can be wrong");
     await page.reload(); await page.waitForTimeout(1500);
     await page.waitForTimeout(800); // a reload goes back to the list of competitors, so open the same one again
     const back = await page.$(`[data-cs-open="${opened}"]`);

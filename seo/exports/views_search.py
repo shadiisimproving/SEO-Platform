@@ -9,7 +9,7 @@ from seo.exports.registry import view
 NO_MATCH = "Nothing matches these filters."
 DIM_TITLES = {"query": "Queries", "page": "Pages", "country": "Countries", "device": "Devices"}
 DIM_FIRST = {"query": ("Query", "text"), "page": ("Page", "url"), "country": ("Country", "text"), "device": ("Device", "text")}
-SHOW_WORDS = {"gaining": "Gaining", "losing": "Losing", "new": "New", "lost": "Lost", "top3": "Top 3", "4-10": "Positions 4 to 10", "11-20": "Positions 11 to 20", "21+": "Position 21 and beyond"}
+SHOW_WORDS = {"gaining": "Gaining", "losing": "Losing", "new": "New", "lost": "Lost", "top3": "Top 3", "4-10": "Positions 4–10", "11-20": "Positions 11–20", "21+": "Positions 21+"}
 MODE_WORDS = {"contains": "contains", "not": "doesn't contain", "exact": "is exactly", "regex": "matches"}
 
 
@@ -74,7 +74,7 @@ def overview(engine, args) -> Report:
         if picked in ("query", "page"):
             if filters.get("q"):
                 report.filters.append((DIM_FIRST[picked][0], f"{MODE_WORDS.get(filters['q_mode'], filters['q_mode'])} “{filters['q']}”"))
-            for key, label in (("min_clicks", "Clicks at least"), ("min_impressions", "Impressions at least"), ("pos_from", "Position from"), ("pos_to", "Position to")):
+            for key, label in (("min_clicks", "Min clicks"), ("min_impressions", "Min impressions"), ("pos_from", "Position from"), ("pos_to", "Position to")):
                 if filters.get(key) is not None:
                     report.filters.append((label, f"{filters[key]:g}"))
     return report
@@ -83,8 +83,8 @@ def overview(engine, args) -> Report:
 OPP_TITLES = {"almost": "Almost on page 1", "low_ctr": "Low click rate", "compete": "Two pages compete", "lost": "Lost queries"}
 _OPP_COLUMNS = {
     "almost": [C("position", "Position", "position"), C("impressions", "Impressions", "int"), C("clicks", "Clicks", "int")],
-    "low_ctr": [C("click_rate", "Click rate", "pct100"), C("expected_rate", "Usual at this position", "pct100"), C("position", "Position", "position"), C("impressions", "Impressions", "int")],
-    "compete": [C("impressions", "Impressions", "int"), C("pages", "Pages that share it", "text", width=6, get=lambda r: " | ".join(f"{p.get('page')} ({p.get('share')}%)" for p in r.get("pages") or []))],
+    "low_ctr": [C("click_rate", "Click rate", "pct100"), C("expected_rate", "Usual rate", "pct100"), C("position", "Position", "position"), C("impressions", "Impressions", "int")],
+    "compete": [C("impressions", "Impressions", "int"), C("pages", "Pages sharing it", "text", width=6, get=lambda r: " | ".join(f"{p.get('page')} ({p.get('share')}%)" for p in r.get("pages") or []))],
     "lost": [C("clicks_before", "Clicks before", "int"), C("impressions_before", "Impressions before", "int"), C("position_before", "Position before", "position")],
 }
 
@@ -128,8 +128,8 @@ def insights(engine, args) -> Report:
 
 
 # As Insights names them on screen (insights-view.js KIND).
-FINDING_NAMES = {'page_down': 'Page losing clicks', 'page_up': 'Page gaining clicks', 'dropped_out': 'Dropped out of Google', 'odd_day': 'Odd day', 'decay': 'Slowly losing clicks', 'almost': 'Almost on page 1', 'top3': 'Close to the top 3', 'low_ctr': 'Low click rate', 'no_click': 'Seen but never clicked', 'compete': 'Two pages compete', 'query_down': 'Query losing places', 'segment': 'One device or country', 'unstable': 'Unstable ranking', 'brand_split': 'Brand hides a loss', 'slide': 'Slowly losing places', 'page_near': 'Near page 1 on many searches', 'no_page': 'No page of its own', 'questions': 'Question searches', 'topic': 'Topic without a strong page', 'track': 'Worth tracking', 'lead_page': 'Page that brings leads', 'no_leads': 'Clicks but no leads', 'duplicate': 'One page, several addresses', 'shown_broken': 'Shown but broken', 'data_gaps': 'Data gaps', 'task_result': 'Task result', 'note_result': 'Note result', 'rank_drop': 'Just dropped', 'rank_rise': 'Just climbed', 'rival_passed': 'A rival passed you', 'rival_gap': 'Rivals lead, people search it', 'striking': 'Almost there, both agree', 'rank_no_click': 'Ranked but not clicked', 'page_switch': 'Another page shown', 'no_demand': 'Tracked, no searches seen'}
-GROUP_WORDS = {"first": "To do first", "changed": "What changed", "decline": "Declines", "wins": "Easy wins", "leads": "Leads", "technical": "Technical", "impact": "Impact", "mix": "Rank and clicks"}
+FINDING_NAMES = {'page_down': 'Losing clicks', 'page_up': 'Gaining clicks', 'dropped_out': 'Dropped out of Google', 'odd_day': 'Odd day', 'decay': 'Slowly losing clicks', 'almost': 'Almost on page 1', 'top3': 'Close to the top 3', 'low_ctr': 'Low click rate', 'no_click': 'Seen, never clicked', 'compete': 'Two pages compete', 'query_down': 'Query losing places', 'segment': 'One device or country', 'unstable': 'Unstable ranking', 'brand_split': 'Brand hides a loss', 'slide': 'Slowly losing places', 'page_near': 'Near page 1 on many searches', 'no_page': 'No page of its own', 'questions': 'Question searches', 'topic': 'Topic without a strong page', 'track': 'Worth tracking', 'lead_page': 'Page that brings leads', 'no_leads': 'Clicks but no leads', 'duplicate': 'One page, several addresses', 'shown_broken': 'Shown but broken', 'data_gaps': 'Data gaps', 'task_result': 'Task result', 'note_result': 'Note result', 'rank_drop': 'Just dropped', 'rank_rise': 'Just climbed', 'rival_passed': 'Rival passed you', 'rival_gap': 'Rivals lead, people search it', 'striking': 'Almost there, both agree', 'rank_no_click': 'Ranked, not clicked', 'page_switch': 'Another page shown', 'no_demand': 'Tracked, no searches'}
+GROUP_WORDS = {"first": "To do first", "changed": "What changed", "decline": "Slow decline", "wins": "Quick wins", "leads": "Leads", "technical": "Technical", "impact": "Impact", "mix": "Rank and clicks"}
 STATUS_WORDS = {"open": "Open", "dismissed": "Dismissed", "gone": "Gone", "done": "Done"}
 ENGINE_NAMES = {"google": "Google", "bing": "Bing", "yandex": "Yandex", "duckduckgo": "DuckDuckGo"}
 
@@ -180,7 +180,7 @@ def keywords(engine, args) -> Report:
 
     def note(report: Report) -> None:  # once the table holds only the rows on screen
         if any(main(r) and position(r) is None for r in report.tables[0].rows):
-            report.tables[0].note = "An empty position means the site wasn't found in the results that were read."
+            report.tables[0].note = "Empty position: not found in the results read."
 
     report.recount = note
     return report

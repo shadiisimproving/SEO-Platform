@@ -289,7 +289,7 @@ def test_a_page_google_never_saw_and_one_outside_the_property(google):
     backlink = google.add()
     google.press(backlink)
     google.collect()
-    assert google.asked == [] and "isn't in the site's Search Console property" in google.link(backlink)["target_index"]["error"]
+    assert google.asked == [] and "Not in the site's Search Console property" in google.link(backlink)["target_index"]["error"]
     google.connect()
     from seo.backlinks import indexed
     with google.engine.begin() as conn:

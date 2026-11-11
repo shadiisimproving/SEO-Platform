@@ -80,9 +80,9 @@
   const RETRIES_429 = 2;
   COMP.coolUntil = 0;
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
-  const BUSY = "The server is busy. Wait a minute, then try again.";
-  const OFFLINE = "The server can't be reached. Check the connection, then try again.";
-  const BROKEN = "Something went wrong on the server. Try again in a moment.";
+  const BUSY = "Server busy. Try again in a minute.";
+  const OFFLINE = "Server unreachable. Check the connection, then try again.";
+  const BROKEN = "Something went wrong on the server. Try again.";
   function retryAfter(reply) {
     const said = reply.headers.get("Retry-After");
     let ms = said === null ? 5000 : /^\d+$/.test(said.trim()) ? Number(said) * 1000 : new Date(said).getTime() - Date.now();
@@ -191,7 +191,8 @@
   // ---- small shared pieces ------------------------------------------------------------------
   /* Loading: a few grey lines where the rows will be, so the page doesn't flash a sentence. The words stay for screen readers. */
   COMP.loading = () => `<div class="card comp-skel" role="status" aria-label="${UI.esc(UI.t("Loading…"))}"><span class="sr">${UI.t("Loading…")}</span><i></i><i></i><i></i></div>`;
-  COMP.empty = (title, text, action = "") => `<div class="table-wrap"><div class="empty"><h3>${UI.esc(title)}</h3><p>${UI.esc(text)}</p>${action}</div></div>`;
+  /* `tip` is HTML from UI.tip: the full sentence behind (i), right after the short text. */
+  COMP.empty = (title, text, action = "", tip = "") => `<div class="table-wrap"><div class="empty"><h3>${UI.esc(title)}</h3><p>${UI.esc(text)}${tip}</p>${action}</div></div>`;
   COMP.fail = (err) => UI.toast(UI.t(err.message), { kind: "crit" });
   /* Try again on a screen or tab that didn't load. It loads the same thing again, from the list of sites if that failed. */
   COMP.retryButton = () => `<button type="button" class="btn btn-main" data-comp-retry>${UI.icon("refresh-cw")}${UI.t("Try again")}</button>`;
@@ -206,13 +207,31 @@
   COMP.who = (who, host, label) => `<span class="who who-${who}">${host ? UI.siteLogo(host, 16) : `<i class="pt-key pt-key-${who}" aria-hidden="true"></i>`}<span>${label || UI.t(who === "you" ? "You" : "Them")}</span></span>`;
 
   /* How long ago, in the language on screen. */
+  const minutesSince = (iso) => Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
+  const ageWord = (minutes) => {
+    const fr = UI.state.lang === "fr";
+    return minutes < 1 ? (fr ? "à l'instant" : "just now") : minutes < 60 ? `${minutes} min` : minutes < 2880 ? `${Math.round(minutes / 60)} h` : minutes < 86400 ? `${Math.round(minutes / 1440)} ${fr ? "j" : "d"}` : `${Math.round(minutes / 43200)} ${fr ? "mois" : "mo"}`;
+  };
   COMP.ago = (iso) => {
     if (!iso) return "—";
-    const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60000));
-    const fr = UI.state.lang === "fr";
-    const word = minutes < 1 ? (fr ? "à l'instant" : "just now") : minutes < 60 ? `${minutes} min` : minutes < 2880 ? `${Math.round(minutes / 60)} h` : minutes < 86400 ? `${Math.round(minutes / 1440)} ${fr ? "j" : "d"}` : `${Math.round(minutes / 43200)} ${fr ? "mois" : "mo"}`;
-    return minutes < 1 ? word : fr ? `il y a ${word}` : `${word} ago`;
+    const minutes = minutesSince(iso), word = ageWord(minutes);
+    return minutes < 1 ? word : UI.state.lang === "fr" ? `il y a ${word}` : `${word} ago`;
   };
+  /* The same age in a table cell, where the column already says it's past: "3 h", not "3 h ago" (2026-11-11).
+     Sentences ("Read 3 h ago", "All checked with …, 3 h ago.") and toasts keep COMP.ago. */
+  COMP.age = (iso) => (iso ? ageWord(minutesSince(iso)) : "—");
+  /* …as the cell shows it: the exact date and time on hover. */
+  COMP.ageCell = (iso) => (iso ? `<span class="nowrap tabular" title="${UI.esc(UI.fmtStamp ? UI.fmtStamp(iso) : iso)}">${UI.esc(COMP.age(iso))}</span>` : `<span class="muted">—</span>`);
+
+  /* Where a position came from, as logos instead of names repeated on every row: the search engine, then the tool, each name in
+     its tooltip and for screen readers (2026-11-11). A brand with no logo keeps its name. */
+  COMP.engineName = (id) => UI.ENGINES?.find(([key]) => key === id)?.[1] || id || "";
+  COMP.toolLogos = (engine, tool) => {
+    const names = [COMP.engineName(engine), tool].filter(Boolean);
+    return names.length ? `<span class="comp-src">${names.map((name) => UI.logoOnly(name)).join("")}</span>` : "";
+  };
+  /* An icon that stands for words (Added by hand, Watching, Flagged by the system): the words are its tooltip and its name for screen readers. */
+  COMP.iconTip = (name, words, cls = "") => `<span class="comp-ic${cls ? ` ${cls}` : ""}" role="img" title="${UI.esc(words)}" data-tip="${UI.esc(words)}" aria-label="${UI.esc(words)}">${UI.icon(name)}</span>`;
 
   /* A position beside its tool. Beyond the depth checked it says so: it never reads as a number. */
   COMP.pos = (n, depth = 10) => (n === null || n === undefined ? `<span class="muted" title="${UI.t("Not in the results checked")}">&gt;${depth}</span>` : `<span class="tabular">#${n}</span>`);
@@ -220,6 +239,12 @@
   COMP.spamWhy = (gap) => {
     const words = UI.t(gap.reason_words || "Flagged as spam");
     return gap.flagged_by === "system" ? `${UI.t("Flagged by the system")}: ${words}` : words;
+  };
+  /* The same, drawn in a cell: the system's own flag is a cog with "Flagged by the system" as its tooltip, then the reason (2026-11-11).
+     COMP.spamWhy stays the plain sentence, for text-only places. */
+  COMP.spamWhyHtml = (gap) => {
+    const words = UI.esc(UI.t(gap.reason_words || "Flagged as spam"));
+    return gap.flagged_by === "system" ? `${COMP.iconTip("settings", UI.t("Flagged by the system"), "comp-ic-system")}${words}` : words;
   };
   COMP.shortUrl = (url) => String(url || "").replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "") || "/";
   /* Text from other websites can be any language or direction, so it always carries dir="auto" and goes through esc. */
@@ -338,7 +363,7 @@
     if (!COMP.ready && COMP.loadError) return `${head}<div class="content page-enter" id="comp-load-failed">${COMP.failed(COMP.loadError, "The list of sites didn't load.")}</div>`;
     if (!COMP.ready) return `${head}<div class="content page-enter">${COMP.loading()}</div>`;
     if (!COMP.sites.length) {
-      return `${head}<div class="content page-enter"><div class="table-wrap"><div class="empty" id="comp-no-sites"><h3>${t("No sites added yet")}</h3><p>${t("Add your own site, then upload its keyword list.")}</p><button class="btn btn-main" id="site-add">${icon("plus")}${t("Add a site")}</button></div></div></div>`;
+      return `${head}<div class="content page-enter"><div class="table-wrap"><div class="empty" id="comp-no-sites"><h3>${t("No sites added yet")}</h3><p>${t("Add your site, then its keyword list.")}</p><button class="btn btn-main" id="site-add">${icon("plus")}${t("Add a site")}</button></div></div></div>`;
     }
     const picked = UI.siteHostPicked();
     const match = picked && COMP.sites.find((s) => s.host === picked);
@@ -421,13 +446,13 @@
     "Who ranks against you, and what they do": "Qui se classe face à vous, et ce qu'ils font",
     "Competitors of": "Concurrents de",
     "All my sites": "Tous mes sites",
-    "Add your own site, then upload its keyword list.": "Ajoutez votre site, puis importez sa liste de mots-clés.",
+    "Add your site, then its keyword list.": "Ajoutez votre site, puis sa liste de mots-clés.",
     "No sites added yet": "Aucun site ajouté", "Add a site": "Ajouter un site",
     "That didn't load": "Le chargement a échoué",
     "The list of sites didn't load.": "La liste des sites ne s'est pas chargée.",
-    "The server is busy. Wait a minute, then try again.": "Le serveur est occupé. Attendez une minute, puis réessayez.",
-    "The server can't be reached. Check the connection, then try again.": "Le serveur est injoignable. Vérifiez la connexion, puis réessayez.",
-    "Something went wrong on the server. Try again in a moment.": "Un problème est survenu sur le serveur. Réessayez dans un instant.",
+    "Server busy. Try again in a minute.": "Serveur occupé. Réessayez dans une minute.",
+    "Server unreachable. Check the connection, then try again.": "Serveur injoignable. Vérifiez la connexion, puis réessayez.",
+    "Something went wrong on the server. Try again.": "Un problème est survenu sur le serveur. Réessayez.",
     "Not in the results checked": "Absent des résultats vérifiés",
   });
 })();

@@ -63,7 +63,7 @@
 
   function search(key, placeholder) {
     const { icon } = U(), s = state(key), k = esc(key);
-    return `<label class="tp-search">${icon("search")}<span class="sr">${esc(placeholder)}</span><input type="search" class="input" data-tp-key="${k}" data-tp-search placeholder="${esc(placeholder)}" value="${esc(s.q)}" autocomplete="off" spellcheck="false">${s.q ? `<button type="button" class="icon-btn tp-clear" data-tp-key="${k}" data-tp-clear aria-label="${t("Clear the search")}" data-tip="${t("Clear the search")}">${icon("x")}</button>` : ""}</label>`;
+    return `<label class="tp-search">${icon("search")}<span class="sr">${esc(placeholder)}</span><input type="search" class="input" data-tp-key="${k}" data-tp-search placeholder="${esc(placeholder)}" value="${esc(s.q)}" autocomplete="off" spellcheck="false">${s.q ? `<button type="button" class="icon-btn tp-clear" data-tp-key="${k}" data-tp-clear aria-label="${t("Clear search")}" data-tip="${t("Clear search")}">${icon("x")}</button>` : ""}</label>`;
   }
 
   /* Whether a row's words hold the search, wherever they are in it. An empty search matches everything. */
@@ -134,6 +134,6 @@
 
   Object.assign(window.FR = window.FR || {}, {
     "Pages": "Pages", "Previous": "Précédent", "Next": "Suivant", "Page": "Page", "of": "sur", "Rows per page": "Lignes par page", "per page": "par page",
-    "Clear the search": "Effacer la recherche",
+    "Clear search": "Effacer la recherche",
   });
 })();

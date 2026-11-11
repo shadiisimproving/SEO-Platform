@@ -14,6 +14,9 @@
 .cp-chips { margin: 0; }
 .cp-help { margin: 0 0 10px; }
 .cp-rival-note { margin: 0 0 10px; }
+/* Pages being read: counted once above the list, a small spinner on each row (11 Nov). */
+.cp-reading { display: inline-flex; align-items: center; margin-top: 2px; color: var(--muted); cursor: help; }
+.cp-reading .i { width: 14px; height: 14px; }
 #cp-table th { position: static; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; }
 #cp-table tr[data-cp-row] { cursor: pointer; }
 #cp-table tr[data-cp-row] td { vertical-align: top; padding-top: 10px; padding-bottom: 10px; }
@@ -98,10 +101,12 @@
   .data.cp-kw .cp-kw-group:last-child td[rowspan] { border-bottom: 0; }
   .data.cp-kw .cp-kw-group:last-child .cp-kw-name { border-bottom-left-radius: var(--r); }
   .data.cp-kw .cp-kw-group:last-child .cp-kw-ai-none { border-bottom-right-radius: var(--r); }
-  .data.cp-kw tbody}
+}
 .cp-kw-name { min-width: 150px; }
 .cp-kw-name .kw { display: block; font-weight: 600; overflow-wrap: anywhere; }
 .cp-kw-name .second { white-space: normal; }
+/* The check tool's logo, on a keyword's row or said once under the table: no gap before the comma or the age (11 Nov). */
+.cp-kw-checked .logo-only .brand-logo, .cp-foot-note .logo-only .brand-logo { margin-inline-end: 0; }
 .cp-kw-result { min-width: 130px; }
 .cp-kw-who { white-space: nowrap; }
 .cp-pos { font-size: 15px; white-space: nowrap; color: var(--text-2); }

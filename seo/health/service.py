@@ -299,7 +299,7 @@ def _end_with_results(engine: Engine, audit_id: int, row, found: audit.Findings,
 
 def _why_nothing_was_read(scan: ScanResult) -> str:
     if scan.skipped_robots:
-        return "robots.txt does not allow this check"
+        return "Blocked by robots.txt"
     if scan.issues:
         reason = scan.issues[0].reason
         return reason[0].lower() + reason[1:]

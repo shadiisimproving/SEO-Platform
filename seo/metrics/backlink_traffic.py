@@ -102,7 +102,7 @@ def before_after(engine: Engine, backlink_id: int, days: int = 28) -> dict:
     try:
         placed = date.fromisoformat(str(link["placed"])[:10])
     except ValueError:
-        return {"state": "no_date", "note": "The date placed isn't written as YYYY-MM-DD, so it can't be compared."}
+        return {"state": "no_date", "note": "Date placed must be YYYY-MM-DD."}
     windows = {"before": (placed - timedelta(days=days), placed - timedelta(days=1)), "after": (placed, placed + timedelta(days=days - 1))}
     # The "after" days must all be final in Search Console, or a link placed 10 days ago compares 28 days with 8 (F11).
     with engine.connect() as conn:

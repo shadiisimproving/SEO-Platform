@@ -39,7 +39,7 @@ def _name(value) -> str:
     if not name:
         raise Refused("Enter a name.")
     if len(name) > 120:
-        raise Refused("That name is too long.")
+        raise Refused("Name too long.")
     return name
 
 
@@ -53,7 +53,7 @@ def _check_new_password(password) -> str:
     if not isinstance(password, str) or len(password) < MIN_PASSWORD:
         raise Refused(f"Use at least {MIN_PASSWORD} characters.")
     if len(password) > 200:
-        raise Refused("That password is too long.")
+        raise Refused("Password too long.")
     return password
 
 
@@ -177,9 +177,9 @@ def change_password(engine: Engine, user_id: int, current, new) -> int:
     with engine.begin() as conn:
         row = conn.execute(text("SELECT password_hash FROM users WHERE id = :i FOR UPDATE"), {"i": user_id}).mappings().first()
         if row is None or not check_password_hash(row["password_hash"], current if isinstance(current, str) else ""):
-            raise Refused("Your current password isn't right.")
+            raise Refused("Wrong current password.")
         if check_password_hash(row["password_hash"], new):
-            raise Refused("Choose a password different from the current one.")
+            raise Refused("Choose a different password.")
         conn.execute(
             text("UPDATE users SET password_hash = :p, must_change_password = 0, session_version = session_version + 1 WHERE id = :i"),
             {"p": generate_password_hash(new), "i": user_id},

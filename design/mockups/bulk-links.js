@@ -258,7 +258,7 @@
       else if (siteKey(typed.split("/")[0]) === siteKey(host)) url = new URL(`https://${typed}`);
       else url = new URL(typed.startsWith("/") ? typed : `/${typed}`, `https://${host}`);
     } catch { return { error: "That target page isn't a web address" }; }
-    if (siteKey(url.hostname) !== siteKey(host)) return { error: "The target page is on another website. A tagged link must point at your own site." };
+    if (siteKey(url.hostname) !== siteKey(host)) return { error: "A tagged link must point at your own site." };
     [...url.searchParams.keys()].filter((name) => name.toLowerCase().startsWith("utm_")).forEach((name) => url.searchParams.delete(name));
     url.searchParams.set("utm_source", source);
     url.searchParams.set("utm_medium", medium);
@@ -271,17 +271,17 @@
       "Link type": "Type de lien", "Planned": "Prévu", "planned": "prévus", "lost": "perdus", "Row check": "Vérification", "Status and type": "Statut et type",
       "1 planned": "1 prévu", "1 lost": "1 perdu", "1 ready": "1 prêt", "1 backlink added": "1 backlink ajouté", "Import 1 backlink": "Importer 1 backlink",
       "Guest post": "Article invité", "Directory": "Annuaire", "Press": "Presse", "Sponsored": "Sponsorisé", "Forum": "Forum", "Other": "Autre",
-      "Default site, for rows with no site": "Site par défaut, pour les lignes sans site",
+      "Site for rows without one": "Site des lignes qui n'en ont pas",
       "Example row: delete it": "Ligne d'exemple : supprimez-la", "Not one of your sites": "Pas un de vos sites", "Add your own website first": "Ajoutez d'abord votre site",
       "Unknown status": "Statut inconnu", "Unknown anchor type": "Type d'ancre inconnu",
       "Use Brand, Bare URL, Exact keyword, Partial keyword, Generic or Other.": "Utilisez Marque, URL nue, Mot-clé exact, Mot-clé partiel, Générique ou Autre.",
       "Keyword": "Mot-clé", "Anchor type": "Type d'ancre", "Use Live, Lost or Planned.": "Utilisez Actif, Perdu ou Prévu.", "Too long": "Trop long",
-      "Skipped, already there": "Ignorés, déjà présents", "and": "et", "more": "de plus", "Nothing new to add": "Rien de nouveau à ajouter", "Already logged. Removed from In consideration.": "Déjà enregistré. Retiré de « À l'étude ».",
-      "Nothing found yet": "Rien de trouvé pour l'instant", "Links other tools find will show here, until you log them.": "Les liens trouvés par d'autres outils s'afficheront ici, jusqu'à ce que vous les enregistriez.",
-      "Excel files aren't read yet. In Excel, choose Save as, then CSV UTF-8.": "Les fichiers Excel ne sont pas encore lus. Dans Excel, choisissez Enregistrer sous, puis CSV UTF-8.",
-      "One upload can hold at most 5,000 rows. Split the file and try again.": "Un import peut contenir 5 000 lignes au maximum. Découpez le fichier et réessayez.",
+      "Skipped, already there": "Ignorés, déjà présents", "and": "et", "more": "de plus", "Nothing new": "Rien de nouveau", "Already logged. Removed from In consideration.": "Déjà enregistré. Retiré de « À l'étude ».",
+      "Nothing found yet": "Rien de trouvé pour l'instant", "Links found by other tools show here until logged.": "Les liens trouvés par d'autres outils s'affichent ici jusqu'à leur saisie.",
+      "Excel files aren't read. In Excel, Save as CSV UTF-8.": "Les fichiers Excel ne sont pas lus. Dans Excel, Enregistrer sous, CSV UTF-8.",
+      "At most 5,000 rows per upload. Split the file and try again.": "5 000 lignes au maximum par import. Découpez le fichier et réessayez.",
       "This works from your own websites, not a competitor.": "Cela fonctionne depuis vos propres sites, pas depuis un concurrent.", "That website doesn't exist.": "Ce site n'existe pas.",
-      "That doesn't look like a web address.": "Cela ne ressemble pas à une adresse web.", "That web address is too long.": "Cette adresse web est trop longue.",
+      "Not a web address.": "Ce n'est pas une adresse web.", "That web address is too long.": "Cette adresse web est trop longue.",
       "Send at least one row.": "Envoyez au moins une ligne.", "Every row needs a source page.": "Chaque ligne doit avoir une page source.", "That backlink doesn't exist.": "Ce backlink n'existe pas.",
       "Some links could not be removed": "Certains liens n'ont pas pu être retirés",
     });

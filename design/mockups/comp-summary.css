@@ -121,3 +121,12 @@
 .cs-find-none p { margin: 0 0 8px; }
 .cs-find-count { margin: 8px 2px 0; }
 @media (max-width: 640px) { .cs-find-box { max-width: none; } }
+
+/* 2026-11-11: the flagged fold says Open Link gaps once, on its own line, instead of on every row. */
+.cs-flagged-wrap { position: relative; margin-top: 12px; }
+.cs-flagged-wrap > .cs-flagged { margin-top: 0; }
+.cs-flagged-wrap > .cs-flagged > summary { padding-inline-end: 160px; }
+.cs-flagged-open { position: absolute; top: 7px; right: 0; }
+/* Under each keyword: the country, the engine and tool logos, the age. */
+.cs-where { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 5px; }
+.cs-kw-foot .comp-src { margin-inline: 2px; }

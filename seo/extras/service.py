@@ -221,7 +221,7 @@ def keyword_ideas(query, language: str = "", country: str = "") -> list[str]:
     try:
         body = http.request("GET", SUGGEST_URL, "Google Autocomplete", timeout=15, params=params).json()
     except (SourceError, ValueError) as exc:
-        raise Refused("Google Autocomplete didn't answer. It's free and unofficial, so it can stop working. Try again later.") from exc
+        raise Refused("Google Autocomplete didn't answer. Try again later.") from exc
     if not isinstance(body, list) or len(body) < 2 or not isinstance(body[1], list):
-        raise Refused("Google Autocomplete changed its answer, so ideas can't be read for now.")
+        raise Refused("Google Autocomplete changed; no ideas for now.")
     return [str(item) for item in body[1]][:20]

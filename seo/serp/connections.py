@@ -50,7 +50,7 @@ DEFAULT_ORDER = {
 SETTINGS = {"disagree_gap": "3", "just_checked_hours": "12", "mac_country": "", "ai_first": "1"}
 # Only SerpApi reads Google's AI Overview. With "ai_first" on, a Refresh on Google tries it first while it has free searches,
 # then follows the saved order. The owner's order stays as saved; this only goes in front of it.
-AI_FIRST_WHY = "SerpApi goes first for Google while it has free searches: it is the only tool that reads AI Overviews. Then the order below."
+AI_FIRST_WHY = "SerpApi first while it has free searches, then the order below."
 
 # Tests and the local harness replace this to run on a fake search tool.
 tool_factory: Callable[[Engine, str], list] | None = None
@@ -106,7 +106,7 @@ def _save_bright(engine: Engine, secret: str, zone, key_path) -> dict:
     """A new zone alone keeps the key already saved."""
     name = zone.strip() if isinstance(zone, str) else ""
     if not name:
-        raise Refused("Add the zone name too. Bright Data needs both.")
+        raise Refused("Add the zone name too.")
     if not secret:
         with engine.connect() as conn:
             sealed = conn.execute(text("SELECT secret FROM connections WHERE tool = :t"), {"t": BRIGHT}).scalar()
@@ -446,7 +446,7 @@ def test_tool(engine: Engine, name: str) -> dict:
         return {"ok": False, "checked": False, "message": "Save the key first."}
     tester = getattr(tool, "test", None)
     if tester is None:
-        return {"ok": None, "checked": False, "message": "This key wasn't checked, because a check would use a credit. Save it, and the first search shows whether it works."}
+        return {"ok": None, "checked": False, "message": "Not checked, to save a credit. Save it; the first search shows if it works."}
     try:
         left = tester()
     except (ToolStopped, SearchFailed) as exc:

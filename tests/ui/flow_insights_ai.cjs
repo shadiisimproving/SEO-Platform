@@ -34,7 +34,7 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
     await page.locator("#ai-settings").scrollIntoViewIfNeeded();
     await shot("01-settings-ai");
     check((await text("#ai-settings")).includes("AI on Search insights"), "the AI card is in Settings");
-    check((await text("#ai-settings")).includes("OpenRouter isn't connected yet"), "it says the free models need OpenRouter");
+    check((await text("#ai-settings")).includes("OpenRouter isn't connected"), "it says the free models need OpenRouter");
     check((await count("#ai-settings [data-ai-site]")) >= 1, "each site has its own choice");
     const anth = await text('[data-conn="anthropic"], #set-extra, main');
     check(/Anthropic/.test(anth), "Anthropic is listed under Extras");
@@ -68,7 +68,7 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
     await page.waitForSelector("#panel [data-in-ai]", { timeout: 5000 });
     await page.locator("#panel [data-in-ai-wrap]").scrollIntoViewIfNeeded();
     await shot("03-panel-before");
-    check((await text("#panel [data-in-ai-wrap]")).includes("Claude, from your Anthropic key"), "the panel says which AI writes");
+    check((await text("#panel [data-in-ai-wrap]")).includes("Claude (Anthropic key)"), "the panel says which AI writes");
     await page.click('#panel [data-in-ai="explain"]');
     await page.waitForSelector("#panel .in-ai-answer", { timeout: 5000 });
     await page.waitForTimeout(300);

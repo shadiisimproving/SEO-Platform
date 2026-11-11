@@ -106,7 +106,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   else check("3d. Add to my keywords is offered", false);
   await (await (await row()).$("[data-kc-remove]")).click(); await settle(600);
   const toastText = await text("#toasts");
-  check("3e. Remove says so and offers Undo", /removed from Keyword check/.test(toastText) && Boolean(await page.$("#toasts [data-undo]")), toastText.trim().slice(0, 120));
+  check("3e. Remove says so and offers Undo", toastText.includes(`“${word}” removed.`) && Boolean(await page.$("#toasts [data-undo]")), toastText.trim().slice(0, 120));
   check("3f. the row is gone", !(await row()));
   await page.click("#toasts [data-undo]"); await settle(1800);
   check("3g. Undo puts it back", Boolean(await row()));
@@ -122,7 +122,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
     await call("PATCH", `notes/${note.id}`, { body: "A teammate rewrote it." }); // someone else saves first
     await mine.click(); await mine.press("End"); await mine.type(" And mine."); await settle(2500);
     const status = (await texts("[data-note-status]")).join(" | ");
-    check("4b. two people on one note: nothing is overwritten, Keep mine / Use theirs offered", /changed this note while you were writing/.test(status) && Boolean(await page.$("[data-note-keep-mine]")) && Boolean(await page.$("[data-note-use-theirs]")), status.slice(0, 200));
+    check("4b. two people on one note: nothing is overwritten, Keep mine / Use theirs offered", /Someone else changed this note/.test(status) && Boolean(await page.$("[data-note-keep-mine]")) && Boolean(await page.$("[data-note-use-theirs]")), status.slice(0, 200));
     check("4c. the server still has the teammate's words", (await call("GET", "notes?scope=all")).notes.find((n) => n.id === note.id)?.body === "A teammate rewrote it.");
     await page.screenshot({ path: OUT + "4-clash.png" });
     await page.click("[data-note-keep-mine]"); await settle(2500);
@@ -133,7 +133,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
     if (mine) {
       await mine.click(); await mine.press("End"); await mine.type(" Still typing."); await settle(2500);
       const said = await text("#toasts");
-      check("4e. a note deleted meanwhile says so", /deleted this note while you were writing/.test(said), said.trim().slice(0, 140));
+      check("4e. a note deleted meanwhile says so", /Someone deleted this note/.test(said), said.trim().slice(0, 140));
       const kept = (await call("GET", "notes?scope=all")).notes.find((n) => n.body === "Shared note, first words. And mine. Still typing.");
       check("4f. and the words are kept in a new note", Boolean(kept) && kept.id !== note.id);
       if (kept) await call("DELETE", `notes/${kept.id}`);
@@ -164,7 +164,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
     const opened = asked.length;
     await go.click(); pressed = true;
     await settle(3000);
-    await until(async () => !/Firecrawl is (about to start|reading|listing)/.test(await text("[data-rd-box]")), 90000);
+    await until(async () => !/Firecrawl (starting|is reading|listing)/.test(await text("[data-rd-box]")), 90000);
     await settle(1000);
     const during = asked.slice(opened);
     check("5a. after Confirm, the box follows the run on the reading route, never the whole profile", during.length > 0 && during.every((u) => u.includes("/reading")), during.slice(0, 6));

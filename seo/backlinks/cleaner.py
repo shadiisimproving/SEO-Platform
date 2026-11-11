@@ -350,7 +350,7 @@ def clean_csv(data: bytes, known: Mapping[str, str] | None = None, *, need_spam:
     known = known or {}
     rows, _ = parse_table(decode_csv(data))
     if not rows:
-        raise CleanerError("empty", "The file is empty.")
+        raise CleanerError("empty", "Empty file.")
     headers = [h.strip() for h in rows[0]]
     if need_spam:
         mapping = _detect_columns(headers)
@@ -374,7 +374,7 @@ def clean_csv(data: bytes, known: Mapping[str, str] | None = None, *, need_spam:
     removed_spam = removed_no_url = duplicates = unknown_spam = 0
     data_rows = rows[1:]
     if not data_rows:
-        raise CleanerError("no_rows", "This CSV has headers but no data rows.")
+        raise CleanerError("no_rows", "Only headers, no data rows.")
 
     for r in data_rows:
         spam = parse_spam(cell(r, spam_at)) if spam_at is not None else None

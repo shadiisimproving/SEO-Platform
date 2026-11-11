@@ -27,7 +27,7 @@ def _day(value) -> str:
 
 def _hidden(report: Report, data: dict) -> None:
     if data.get("hid_rows"):
-        report.notes.append("Google Analytics left out some small rows on these days, so the totals can be a little higher than the rows add up to.")
+        report.notes.append("Google Analytics left out some small rows, so totals can exceed the rows' sum.")
 
 
 @view("channels", "Channels")
@@ -50,7 +50,7 @@ def channels(engine, args) -> Report:
         C("channel", "Channel", "text", translate=True), C("sessions", "Visits", "int"), C("share", "Share of visits", "pct"),
         C("change", "Change", "change"), C("leads", "Leads", "float"), C("rate", "Lead rate", "pct"),
     ], data.get("channels") or [], key="channel"))
-    report.tables.append(Table("referrers", "Sites that send visits", [C("domain", "Site", "text"), C("sessions", "Visits", "int"), C("leads", "Leads", "float")], data.get("referrers") or [], empty="No visits from other sites in this period.", key="domain"))
+    report.tables.append(Table("referrers", "Referring sites", [C("domain", "Site", "text"), C("sessions", "Visits", "int"), C("leads", "Leads", "float")], data.get("referrers") or [], empty="No visits from other sites in this period.", key="domain"))
     _hidden(report, data)
     return report
 
@@ -87,7 +87,7 @@ def content(engine, args) -> Report:
     ]
     report.tables.append(Table("pages", "Pages", [
         C("page", "Page", "url", get=page_address), C("category", "Kind of page", "text", translate=True, width=1.8), C("clicks", "Google clicks", "int"), C("impressions", "Impressions", "int"),
-        C("position", "Position", "position"), C("sessions", "Visits", "int"), C("leads", "Leads", "float"), C("ai", "Visits from AI", "int"),
+        C("position", "Position", "position"), C("sessions", "Visits", "int"), C("leads", "Leads", "float"), C("ai", "AI visits", "int"),
     ], pages, total=data.get("total_pages"), key=lambda r: f"{r.get('host') or ''}|{r.get('path') or ''}"))
     report.tables.append(Table("social", "Social networks", [C("source", "Network", "text"), C("sessions", "Visits", "int")], data.get("social") or [], empty="No visits from social networks in this period."))
     _hidden(report, data)
@@ -102,15 +102,15 @@ def ai_search(engine, args) -> Report:
     data = service.ai_search(scope)
     report = _report(engine, args, scope, "ai", "AI search")
     report.tiles = [
-        Tile("Visits from AI", data.get("sessions"), "int", data.get("change") if scope.has_compare else None),
+        Tile("AI visits", data.get("sessions"), "int", data.get("change") if scope.has_compare else None),
         Tile("Leads", data.get("leads"), "float"),
         Tile("Lead rate", (data.get("rate") or {}).get("value"), "pct"),  # blank under 30 AI visits, as on the screen
     ]
     series = data.get("series") or []
     if series:
-        report.charts.append(Chart("Visits from AI", [_day(p.get("day")) for p in series], [Series("Visits", [p.get("sessions") for p in series])]))
-    report.tables.append(Table("sources", "AI tools", [C("source", "AI tool", "text"), C("sessions", "Visits", "int"), C("leads", "Leads", "float")], data.get("sources") or [], empty="No visits from AI tools in this period.", key="source"))
-    report.tables.append(Table("pages", "Pages they land on", [C("page", "Page", "url", get=page_address), C("sessions", "Visits", "int"), C("leads", "Leads", "float")], data.get("pages") or [], empty="No visits from AI tools in this period.", key=lambda r: f"{r.get('host') or ''}|{r.get('path') or ''}"))
+        report.charts.append(Chart("AI visits", [_day(p.get("day")) for p in series], [Series("Visits", [p.get("sessions") for p in series])]))
+    report.tables.append(Table("sources", "Assistants", [C("source", "Assistant", "text"), C("sessions", "Visits", "int"), C("leads", "Leads", "float")], data.get("sources") or [], empty="No AI visits in this period.", key="source"))
+    report.tables.append(Table("pages", "Landing pages", [C("page", "Page", "url", get=page_address), C("sessions", "Visits", "int"), C("leads", "Leads", "float")], data.get("pages") or [], empty="No AI visits in this period.", key=lambda r: f"{r.get('host') or ''}|{r.get('path') or ''}"))
     _hidden(report, data)
     return report
 
@@ -138,7 +138,7 @@ def ads(engine, args) -> Report:
 # As Today names them on screen (today-live.js KINDS).
 CHANGE_KINDS = {"new_page": "New page", "page_gone": "Page removed", "title": "Title changed", "meta": "Meta description changed", "h1": "Main heading changed", "headings": "Headings changed",
                 "content": "Content changed", "canonical": "Canonical changed", "schema": "Structured data changed", "links": "Links changed", "redirect": "Redirect changed",
-                "status": "Page status changed", "robots": "Indexing changed"}
+                "status": "Status changed", "robots": "Indexing changed"}
 
 
 @view("today", "Today")

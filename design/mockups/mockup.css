@@ -596,6 +596,11 @@ span.logo svg.i { width: 70%; height: 70%; }
 span.conn-logo { font-size: 15px; }
 .conn-limit { font-size: 12px; color: var(--text-2); min-width: 0; }
 .conn-sites { font-size: 12px; color: var(--text-2); min-width: 0; }
+/* A working connection: a tick alone, its word on hover. A search tool: its engines as logos (2026-11-11). */
+.conn-ok { padding: 2px; }
+.conn-ok .i { width: 15px; height: 15px; }
+.conn-engines { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin-top: 3px; }
+.conn-engines .brand-logo { margin-inline-end: 4px; }
 .order { display: flex; flex-direction: column; gap: 2px; }
 .order .icon-btn { width: 26px; height: 20px; border-radius: 6px; }
 .order .icon-btn:disabled { opacity: .25; cursor: not-allowed; }
@@ -695,6 +700,9 @@ ol.steps li::marker { color: var(--accent-text); font-weight: 600; }
 .lc-url { overflow-wrap: anywhere; color: inherit; }
 a.lc-url:hover { color: var(--accent-text); }
 .lc-table td .second.lc-url { white-space: normal; }
+/* A reason shared by many rows, said once above them with its count (Links checker, Health → On Google; 2026-11-11). */
+.lc-table tr:is(.lc-sub, .ht-group) > th { font-size: 13px; font-weight: 600; color: var(--text); white-space: normal; padding-top: 14px; background: var(--hover) !important; }
+.lc-table tr:is(.lc-sub, .ht-group) > th .def-i { vertical-align: -2px; }
 .lc-more { margin-top: 3px; font-size: 12px; }
 .lc-more summary { cursor: pointer; color: var(--accent-text); }
 .lc-more div { margin-top: 3px; }
@@ -794,6 +802,7 @@ a.lc-url:hover { color: var(--accent-text); }
   .rows > .conn-row.ordered { grid-template-columns: 28px auto minmax(0, 1fr) auto; }
   .conn-row .conn-limit, .conn-row .conn-sites, .conn-row .conn-status { grid-column: 2 / -2; }
   .conn-row.ordered .conn-limit, .conn-row.ordered .conn-sites, .conn-row.ordered .conn-status { grid-column: 3 / -2; }
+  .conn-row .conn-sites:empty, .conn-row .conn-status:empty { display: none; }
   .conn-row .acts { grid-row: 1; grid-column: -2 / -1; }
 }
 @media (max-width: 860px) {
@@ -856,6 +865,8 @@ a.lc-url:hover { color: var(--accent-text); }
   .prop-pair { grid-template-columns: minmax(0, 1fr); }
   .lc-form .btn-main { width: 100%; justify-content: center; }
   .data td.lc-url, .lc-table td { text-align: left; }
+  .lc-table tbody tr:is(.lc-sub, .ht-group) { background: none; box-shadow: none; -webkit-backdrop-filter: none; backdrop-filter: none; padding: 10px 2px 2px; margin: 0 0 6px; }
+  .lc-table tr:is(.lc-sub, .ht-group) > th { display: block; background: none !important; padding: 0; }
   .sections { width: 100%; }
   .sections .tab { flex: 1 1 0; justify-content: center; padding-left: 8px; padding-right: 8px; }
   #set-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -1079,3 +1090,7 @@ dialog.resign::backdrop { background: var(--scrim, rgb(0 0 0 / .35)); }
 .member-note { margin: 0 0 12px; }
 .ov-live-error { margin: 0 0 12px; align-items: flex-start; }
 .ov-live-error p { margin: 0 0 6px; }
+
+/* Settings → AI: the "What is sent" line reads like the app's other notes, not a full-width run of text. */
+.ai-sends { display: flex; gap: 6px; align-items: flex-start; max-width: 72ch; margin: 8px 0 0; color: var(--text-2); }
+.ai-sends .i { flex: none; width: 14px; height: 14px; margin-top: 2px; }

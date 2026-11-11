@@ -29,7 +29,7 @@
     L.helpers = helpers;
     const rows = merged(all);
     const add = `<button class="btn btn-small" id="md-add">${icon("plus")}${t("Add mediator")}</button>`;
-    if (!rows.length) return `<div class="table-wrap"><div class="empty"><h3>${t("No mediators yet")}</h3><p>${t("Add the people and agencies who place your links. A name typed on a backlink is added here too.")}</p>${add}</div></div>`;
+    if (!rows.length) return `<div class="table-wrap"><div class="empty"><h3>${t("No mediators yet")}</h3><p>${t("Add the people and agencies who place your links.")}${UI.tip("A name typed on a backlink is added here too.")}</p>${add}</div></div>`;
     const cell = (label, inner, cls = "") => `<td class="${cls}" data-label="${t(label)}">${inner}</td>`;
     const none = '<span class="muted">—</span>';
     // Each mediator's links and numbers, worked out once, so the headings can sort by them.
@@ -45,7 +45,7 @@
     const head = (id, label, cls = "") => (sortHead ? sortHead("data-md-sort", L.sort, id, label, cls) : `<th scope="col" class="${cls}">${t(label)}</th>`);
     // A short list needs no search: it shows once there are more than ten mediators, or while it holds something.
     const search = rows.length > 10 || TP.state(PAGES).q ? TP.search(PAGES, t("Search mediators")) : "";
-    return `<div class="md-bar">${search}<span class="small sec">${t("Spent is only added up within one currency.")}</span><span class="end bl-tools">${window.BacklinkSeo?.budgetBar?.(all) || ""}${add}</span></div>
+    return `<div class="md-bar">${search}<span class="small sec">${t("Spent adds up per currency.")}</span><span class="end bl-tools">${window.BacklinkSeo?.budgetBar?.(all) || ""}${add}</span></div>
       ${found.length ? `<div class="bl-list"><div class="table-wrap"><table class="data" id="md-table"><thead><tr>
         ${head("name", "Mediator")}<th scope="col">${t("Platform")}</th><th scope="col">${t("Price")}</th>${head("links", "Links", "r")}${head("live", "Live", "r")}${head("lost", "Lost", "r")}<th scope="col" class="r">${t("Spent")}</th>${head("visits", "Visits", "r")}<th scope="col" class="r">${t("Cost per visit")}</th><th scope="col" aria-label="${t("Edit")}"></th>
       </tr></thead><tbody>${page.rows.map(({ m, list, live, lost, visits: seen }) => {
@@ -58,7 +58,7 @@
           ${cell("Spent", helpers.spentWords(list), "r")}${cell("Visits", visits, "r")}${cell("Cost per visit", helpers.mediatorCost(list), "r")}
           <td class="r"><button class="btn btn-small" data-md-edit="${esc(m.name)}" aria-label="${t("Edit")}: ${esc(m.name)}">${icon("pencil")}${t("Edit")}</button></td></tr>`;
       }).join("")}</tbody></table></div>
-      ${TP.footer(PAGES, page, { noun: t("mediators") })}</div>` : COMP.empty(t("No mediator matches this search"), t("Change the search to see more mediators."))}`;
+      ${TP.footer(PAGES, page, { noun: t("mediators") })}</div>` : COMP.empty(t("No mediator matches"), t("Change the search."))}`;
   }
 
   function openPanel(name, opener) {
@@ -101,24 +101,24 @@
     if (known) {
       const fill = (id, value) => { const box = $(id); if (box && value && !box.value.trim()) box.value = value; };
       fill("#bl-contact", known.contact); fill("#bl-platform", known.platform); fill("#bl-cost", known.price_text);
-      if (help) help.textContent = t("Known mediator: their details are filled in where empty.");
-    } else if (help) help.textContent = typed ? t("New mediator: {name}. Added when you save.").replace("{name}", typed) : t("Type a name, or create a new one");
+      if (help) help.textContent = t("Known mediator: empty fields filled in.");
+    } else if (help) help.textContent = typed ? t("New mediator: {name}, added on save.").replace("{name}", typed) : t("Pick a name or type a new one");
   }
 
   // ---- checking a link ------------------------------------------------------------------------------
   const REASONS = {
-    robots: "Its robots.txt doesn't allow the app to read that page.", turned_away: "The site turned the app away.", rate_limited: "The site asked the app to slow down.", network: "The site didn't answer.", server: "The server answered with an error.",
-    refused: "That address isn't a public website.", not_html: "That address isn't a web page.", too_large: "That page is too large to read.", redirects: "That page redirects too many times.", http_error: "The page answered with an error.",
+    robots: "Its robots.txt blocks the app.", turned_away: "The site blocked the app.", rate_limited: "The site asked the app to slow down.", network: "The site didn't answer.", server: "The server answered with an error.",
+    refused: "Not a public website.", not_html: "That address isn't a web page.", too_large: "Page too large to read.", redirects: "Too many redirects.", http_error: "The page answered with an error.",
   };
 
   function sentence(b) {
     const { t, esc, fmtStamp } = UI, c = b.check;
-    if (!c || !c.checked_at) return t(b.status === "planned" ? "Not checked yet. A planned link is only read when you ask, and that never changes its status." : "Not checked yet. It's read once a month on the live site, or when you press Run.");
+    if (!c || !c.checked_at) return b.status === "planned" ? `${t("Not checked. Planned links are read only on request.")}${UI.tip("Reading a planned link never changes its status.")}` : t("Not checked. Read monthly, or when you press Run.");
     const when = esc(fmtStamp(c.checked_at));
-    if (c.outcome === "found") return `${t("Checked on")} ${when}: ${t(c.is_nofollow ? "the link is there, marked nofollow." : "the link is there and passes value.")}`;
-    if (c.outcome === "unknown") return `${t("Couldn't check on")} ${when}. ${t(REASONS[c.reason] || "That page couldn't be read.")} ${t("A page that can't be read never counts as a lost link.")}`;
-    const what = t(c.outcome === "page_gone" ? "the page no longer exists." : "the link is no longer on the page.");
-    if (b.status === "live" && c.misses > 0) return `${t("Checked on")} ${when}: ${what} ${t("It's read once more tomorrow before it counts as lost.")}`;
+    if (c.outcome === "found") return `${t("Checked on")} ${when}: ${t(c.is_nofollow ? "link there, nofollow." : "link there, passes value.")}`;
+    if (c.outcome === "unknown") return `${t("Couldn't check on")} ${when}. ${t(REASONS[c.reason] || "That page couldn't be read.")} ${t("An unreadable page never counts as a lost link.")}`;
+    const what = t(c.outcome === "page_gone" ? "page gone." : "link gone from the page.");
+    if (b.status === "live" && c.misses > 0) return `${t("Checked on")} ${when}: ${what} ${t("Rechecked tomorrow before it counts as lost.")}`;
     return `${t("Checked on")} ${when}: ${what}`;
   }
 
@@ -137,23 +137,29 @@
     return `<table class="mini"><tbody>
       ${row("Anchor on the page", c.anchor)}
       ${row("Link attributes", c.rel, "mono small")}
-      ${row("It points to", c.href, "mono small")}
-      ${moved(b.src, c.final_url) ? row("The page moved to", c.final_url, "mono small") : ""}
-      ${moved(c.href, c.target_final_url) ? row("Your page ends up at", c.target_final_url, "mono small") : ""}
-    </tbody></table>${differsFromTarget(b) ? `<p class="note warn" style="margin:8px 0 0">${UI.icon("triangle-alert")}<span>${t("It links to your site, but not to the target page you logged.")}</span></p>` : ""}`;
+      ${row("Points to", c.href, "mono small")}
+      ${moved(b.src, c.final_url) ? row("Page moved to", c.final_url, "mono small") : ""}
+      ${moved(c.href, c.target_final_url) ? row("Your page redirects to", c.target_final_url, "mono small") : ""}
+    </tbody></table>${differsFromTarget(b) ? `<p class="note warn" style="margin:8px 0 0">${UI.icon("triangle-alert")}<span>${t("Links to your site, not to the logged target page.")}</span></p>` : ""}`;
   }
 
   function changeWords(change) {
     const { t, esc } = UI;
-    if (change.what === "nofollow") return t(change.after ? "It became nofollow." : "It's no longer nofollow.");
-    return `${t("The anchor changed:")} <span dir="auto">${esc(change.before)}</span> → <span dir="auto">${esc(change.after)}</span>`;
+    if (change.what === "nofollow") return t(change.after ? "Now nofollow." : "No longer nofollow.");
+    return `${t("Anchor changed:")} <span dir="auto">${esc(change.before)}</span> → <span dir="auto">${esc(change.after)}</span>`;
   }
 
   function historyHtml(id) {
     const { t, esc, fmtStamp } = UI, list = L.histories.get(id);
     if (!list || !list.length) return "";
     const word = { found: "Link found", missing: "Link not found", page_gone: "Page gone", unknown: "Couldn't check" };
-    return `<details class="fold"><summary>${UI.icon("chevron-right")}${t("Past checks")}<span class="hint">${list.length}</span></summary><ul class="lk-history">${list.slice(0, 10).map((c) => `<li>${esc(fmtStamp(c.checked_at))} · ${t(word[c.outcome] || c.outcome)}${c.trigger === "button" ? ` · ${t("by hand")}` : ""}${c.changes.length ? `<div>${c.changes.map(changeWords).join(" ")}</div>` : ""}</li>`).join("")}</ul></details>`;
+    // Each line leads with its outcome as an icon, the words its tooltip, so the rare outcome stands out from the many Link found.
+    const mark = { found: ["circle-check", "good"], missing: ["x", "crit"], page_gone: ["link-2-off", "crit"], unknown: ["triangle-alert", "warn"] };
+    const outcome = (o) => {
+      const words = t(word[o] || o), [name, cls] = mark[o] || [];
+      return name ? `<span class="${cls}" role="img" title="${esc(words)}" aria-label="${esc(words)}">${UI.icon(name)}</span> ` : `${esc(words)} · `;
+    };
+    return `<details class="fold"><summary>${UI.icon("chevron-right")}${t("Past checks")}<span class="hint">${list.length}</span></summary><ul class="lk-history">${list.slice(0, 10).map((c) => `<li>${outcome(c.outcome)}${esc(fmtStamp(c.checked_at))}${c.trigger === "button" ? ` · ${t("by hand")}` : ""}${c.changes.length ? `<div>${c.changes.map(changeWords).join(" ")}</div>` : ""}</li>`).join("")}</ul></details>`;
   }
 
   function blockInner(b) {
@@ -195,12 +201,12 @@
           window.BacklinkSeo?.repaint?.(b);
           await loadHistory(b);
           window.HealthTest?.reloadAlerts?.();
-          stop(UI.t(b.status === "lost" ? "This link is lost" : "Link checked"), b.status === "lost" ? "crit" : "info");
+          stop(UI.t(b.status === "lost" ? "Link lost" : "Link checked"), b.status === "lost" ? "crit" : "info");
           if (UI.state.route === "backlinks") UI.render();
           return;
         }
       } catch { /* the next try may work */ }
-      if (Date.now() - started > POLL_LIMIT_MS) { stop(UI.t("The check is still waiting its turn. Come back in a moment.")); return; }
+      if (Date.now() - started > POLL_LIMIT_MS) { stop(UI.t("Still waiting. Come back soon.")); return; }
       setTimeout(poll, POLL_MS);
     };
     setTimeout(poll, POLL_MS);
@@ -210,8 +216,8 @@
   function rowNote(b) {
     const { t } = UI, c = b.check;
     if (!c) return "";
-    if (b.status === "live" && c.misses > 0) return ` <span class="tag" data-tip="${UI.esc(t("It's read once more tomorrow before it counts as lost."))}" tabindex="0">${t("Not found once")}</span>`;
-    if (b.status === "live" && c.is_nofollow && !c.verdict) return ` <span class="tag" data-tip="${UI.esc(t("The link is there, marked nofollow."))}" tabindex="0">${t("Nofollow")}</span>`;
+    if (b.status === "live" && c.misses > 0) return ` <span class="tag" data-tip="${UI.esc(t("Rechecked tomorrow before it counts as lost."))}" tabindex="0">${t("Missed once")}</span>`;
+    if (b.status === "live" && c.is_nofollow && !c.verdict) return ` <span class="tag" data-tip="${UI.esc(t("Link there, nofollow."))}" tabindex="0">${t("Nofollow")}</span>`;
     return "";
   }
 
@@ -237,7 +243,7 @@
   function sampleWrites() {
     const list = () => { const get = window.COMP_SAMPLE?.get; if (get && !get.mediators) get.mediators = { mediators: [] }; return get?.mediators?.mediators || []; };
     const taken = (name, except) => list().some((m) => key(m.name) === key(name) && m.id !== except);
-    const refuse = () => Object.assign(new Error("There is already a mediator with that name."), { status: 409 });
+    const refuse = () => Object.assign(new Error("A mediator with that name exists."), { status: 409 });
     let next = 9000;
     COMP.sampleWrite("POST mediators", (match, body) => { if (taken(body.name)) throw refuse(); const made = { id: next++, links: 0, live: 0, lost: 0, planned: 0, ...body }; list().push(made); return { ...made }; });
     COMP.sampleWrite("PATCH mediators/(\\d+)", (match, body) => { const m = list().find((x) => x.id === Number(match[1])); if (!m) throw Object.assign(new Error("That mediator doesn't exist."), { status: 404 }); if (body.name && taken(body.name, m.id)) throw refuse(); Object.assign(m, body); return { ...m }; });
@@ -250,23 +256,23 @@
 
   const fr = {
     "Add mediator": "Ajouter un intermédiaire", "Edit mediator": "Modifier l'intermédiaire", "No mediators yet": "Pas encore d'intermédiaires", "Only the name is required": "Seul le nom est obligatoire", "Usual price": "Prix habituel", "Name": "Nom",
-    "Add the people and agencies who place your links. A name typed on a backlink is added here too.": "Ajoutez les personnes et agences qui placent vos liens. Un nom saisi sur un backlink est aussi ajouté ici.",
-    "Spent is only added up within one currency.": "Les dépenses ne s'additionnent que dans une même devise.",
-    "Search mediators": "Rechercher un intermédiaire", "mediators": "intermédiaires", "No mediator matches this search": "Aucun intermédiaire ne correspond à cette recherche", "Change the search to see more mediators.": "Modifiez la recherche pour voir plus d'intermédiaires.", "Mediator saved": "Intermédiaire enregistré", "A mediator needs a name.": "Un intermédiaire a besoin d'un nom.",
-    "There is already a mediator with that name.": "Il existe déjà un intermédiaire avec ce nom.", "That mediator doesn't exist.": "Cet intermédiaire n'existe pas.",
-    "Known mediator: their details are filled in where empty.": "Intermédiaire connu : ses coordonnées sont remplies là où c'est vide.", "New mediator: {name}. Added when you save.": "Nouvel intermédiaire : {name}. Ajouté à l'enregistrement.", 
-    "Run": "Lancer", "Run again": "Relancer", "Checking…": "Contrôle en cours…", "Reading the page…": "Lecture de la page…", "Checked on": "Contrôlé le", "Link checked": "Lien contrôlé", "Couldn't check on": "Contrôle impossible le", "This link is lost": "Ce lien est perdu",
-    "Not checked yet. A planned link is only read when you ask, and that never changes its status.": "Pas encore contrôlé. Un lien prévu n'est lu que sur demande, et cela ne change jamais son statut.", "Not checked yet. It's read once a month on the live site, or when you press Run.": "Pas encore contrôlé. Il est lu une fois par mois sur le site en ligne, ou quand vous appuyez sur Lancer.",
-    "the link is there, marked nofollow.": "le lien est là, marqué nofollow.", "the link is there and passes value.": "le lien est là et transmet de la valeur.", "the page no longer exists.": "la page n'existe plus.", "the link is no longer on the page.": "le lien n'est plus sur la page.",
-    "A page that can't be read never counts as a lost link.": "Une page illisible ne compte jamais comme un lien perdu.", "That page couldn't be read.": "Cette page n'a pas pu être lue.", "It's read once more tomorrow before it counts as lost.": "Il est relu demain avant de compter comme perdu.",
-    "Its robots.txt doesn't allow the app to read that page.": "Son robots.txt n'autorise pas l'application à lire cette page.", "The site turned the app away.": "Le site a refusé l'application.", "The site asked the app to slow down.": "Le site a demandé à l'application de ralentir.", "The site didn't answer.": "Le site n'a pas répondu.",
-    "That address isn't a public website.": "Cette adresse n'est pas un site public.", "That address isn't a web page.": "Cette adresse n'est pas une page web.", "That page is too large to read.": "Cette page est trop volumineuse pour être lue.", "That page redirects too many times.": "Cette page redirige trop de fois.", "The page answered with an error.": "La page a répondu par une erreur.",
-    "Anchor on the page": "Ancre sur la page", "Link attributes": "Attributs du lien", "It points to": "Il pointe vers", "The page moved to": "La page a déménagé vers", "Your page ends up at": "Votre page aboutit à",
-    "It links to your site, but not to the target page you logged.": "Il pointe vers votre site, mais pas vers la page cible enregistrée.", "It became nofollow.": "Il est passé en nofollow.", "It's no longer nofollow.": "Il n'est plus en nofollow.", "The anchor changed:": "L'ancre a changé :",
-    "Past checks": "Contrôles passés", "Link found": "Lien trouvé", "Link not found": "Lien introuvable", "Couldn't check": "Contrôle impossible", "by hand": "à la main", "Not found once": "Introuvable une fois", "The link is there, marked nofollow.": "Le lien est là, marqué nofollow.",
-    "Log this link first, then it can be checked.": "Enregistrez d'abord ce lien, il pourra ensuite être contrôlé.", "That backlink doesn't exist.": "Ce backlink n'existe pas.", "The check is still waiting its turn. Come back in a moment.": "Le contrôle attend son tour. Revenez dans un instant.",
-    "lost this week": "perdus cette semaine", "1 lost this week": "1 perdu cette semaine", "Choose your site first": "Choisissez d'abord votre site", "That target page isn't a web address": "Cette page cible n'est pas une adresse web", "The target page is on another website. A tagged link must point at your own site.": "La page cible est sur un autre site. Un lien balisé doit pointer vers votre propre site.",
-    "UTM values are case sensitive, so give the mediator this exact link.": "Les valeurs UTM sont sensibles à la casse : donnez exactement ce lien à l'intermédiaire.",
+    "Add the people and agencies who place your links.": "Ajoutez les personnes et agences qui placent vos liens.",
+    "Spent adds up per currency.": "Les dépenses s'additionnent par devise.",
+    "Search mediators": "Rechercher un intermédiaire", "mediators": "intermédiaires", "No mediator matches": "Aucun intermédiaire ne correspond", "Change the search.": "Modifiez la recherche.", "Mediator saved": "Intermédiaire enregistré", "A mediator needs a name.": "Un intermédiaire a besoin d'un nom.",
+    "A mediator with that name exists.": "Un intermédiaire porte déjà ce nom.", "That mediator doesn't exist.": "Cet intermédiaire n'existe pas.",
+    "Known mediator: empty fields filled in.": "Intermédiaire connu : champs vides remplis.", "New mediator: {name}, added on save.": "Nouvel intermédiaire : {name}, ajouté à l'enregistrement.", 
+    "Run": "Lancer", "Run again": "Relancer", "Checking…": "Contrôle en cours…", "Reading the page…": "Lecture de la page…", "Checked on": "Contrôlé le", "Link checked": "Lien contrôlé", "Couldn't check on": "Contrôle impossible le", "Link lost": "Lien perdu",
+    "Not checked. Planned links are read only on request.": "Non contrôlé. Un lien prévu n'est lu que sur demande.", "Not checked. Read monthly, or when you press Run.": "Non contrôlé. Lu chaque mois, ou quand vous cliquez sur Lancer.",
+    "link there, nofollow.": "lien présent, nofollow.", "link there, passes value.": "lien présent, transmet de la valeur.", "page gone.": "page disparue.", "link gone from the page.": "lien absent de la page.",
+    "An unreadable page never counts as a lost link.": "Une page illisible ne compte jamais comme un lien perdu.", "That page couldn't be read.": "Cette page n'a pas pu être lue.", "Rechecked tomorrow before it counts as lost.": "Relu demain avant d'être compté comme perdu.",
+    "Its robots.txt blocks the app.": "Son robots.txt bloque l'application.", "The site blocked the app.": "Le site a bloqué l'application.", "The site asked the app to slow down.": "Le site a demandé à l'application de ralentir.", "The site didn't answer.": "Le site n'a pas répondu.",
+    "Not a public website.": "Ce n'est pas un site public.", "That address isn't a web page.": "Cette adresse n'est pas une page web.", "Page too large to read.": "Page trop volumineuse pour être lue.", "Too many redirects.": "Trop de redirections.", "The page answered with an error.": "La page a répondu par une erreur.",
+    "Anchor on the page": "Ancre sur la page", "Link attributes": "Attributs du lien", "Points to": "Pointe vers", "Page moved to": "Page déplacée vers", "Your page redirects to": "Votre page redirige vers",
+    "Links to your site, not to the logged target page.": "Pointe vers votre site, mais pas vers la page cible enregistrée.", "Now nofollow.": "Passé en nofollow.", "No longer nofollow.": "Plus en nofollow.", "Anchor changed:": "Ancre changée :",
+    "Past checks": "Contrôles passés", "Link found": "Lien trouvé", "Link not found": "Lien introuvable", "Couldn't check": "Contrôle impossible", "by hand": "à la main", "Missed once": "Absent une fois", "Link there, nofollow.": "Lien présent, nofollow.",
+    "Log this link before checking it.": "Enregistrez ce lien avant de le contrôler.", "That backlink doesn't exist.": "Ce backlink n'existe pas.", "Still waiting. Come back soon.": "Toujours en attente. Revenez bientôt.",
+    "lost this week": "perdus cette semaine", "1 lost this week": "1 perdu cette semaine", "Choose your site first": "Choisissez d'abord votre site", "That target page isn't a web address": "Cette page cible n'est pas une adresse web", "A tagged link must point at your own site.": "Un lien balisé doit pointer vers votre propre site.",
+    "UTM values are case sensitive: don't retype it.": "Les valeurs UTM sont sensibles à la casse : ne le retapez pas.",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 })();

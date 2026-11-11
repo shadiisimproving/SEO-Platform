@@ -34,7 +34,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await page.screenshot({ path: OUT + "1-open.png" });
   check("the day's searches are one unread row with a dot", (await page.locator("#bell-pop .bell-row.unread").count()) === 1);
   const title = await page.textContent("#bell-pop .bell-row .bell-title");
-  check("it says how many", /2 new searches on Google/.test(title), title.trim());
+  check("it says how many", /2 new Google searches/.test(title), title.trim());
   const firstSearch = await page.textContent("#bell-pop .bell-group li");
   check("the most shown search comes first, with its place and impressions", /trade licence.*Position 5\.4.*23 impressions/s.test(firstSearch), firstSearch.replace(/\s+/g, " ").trim());
 

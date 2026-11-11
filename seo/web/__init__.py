@@ -79,7 +79,7 @@ def create_app(engine: Engine | None = None, url_allowed: Callable[[str], bool] 
 
         if isinstance(error, HTTPException):
             if request.path.startswith("/api/"):
-                words = API_ERROR_WORDS.get(error.code or 500, "That request didn't work. Try again.")
+                words = API_ERROR_WORDS.get(error.code or 500, "That didn't work. Try again.")
                 return jsonify(error=words), error.code
             if error.code == 404 and screens_dir:
                 return not_found_page(), 404
@@ -155,17 +155,17 @@ def create_app(engine: Engine | None = None, url_allowed: Callable[[str], bool] 
 
 
 API_ERROR_WORDS = {
-    400: "The app couldn't read that request. Reload the page and try again.",
+    400: "Couldn't read that request. Reload and try again.",
     401: "Please sign in.",
     403: "You can't do that with this account.",
     404: "That address isn't part of the app.",
     405: "That address doesn't take this kind of request.",
-    409: "Someone else changed this at the same time. Reload and try again.",
+    409: "Someone else changed this meanwhile. Reload and try again.",
     413: f"That upload is too large. The limit is {MAX_REQUEST_BYTES // (1024 * 1024)} MB.",
-    429: "Too many requests at once. Wait a minute, then try again.",
-    500: "Something went wrong on the server. Try again; if it keeps happening, tell your admin.",
+    429: "Too many requests. Try again in a minute.",
+    500: "Something went wrong on the server. Try again, or tell your admin.",
     502: "The server didn't answer. Try again in a minute.",
-    503: "The server is busy. Try again in a minute.",
+    503: "Server busy. Try again in a minute.",
 }
 
 _PAGE = """<!doctype html>

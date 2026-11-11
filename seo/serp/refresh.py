@@ -32,7 +32,7 @@ STALE_SECONDS = 60  # a run with no job after this long lost its job, and must n
 ACTIVE = ("queued", "running")
 ENGINE_NAMES = {"google": "Google", "duckduckgo": "DuckDuckGo", "bing": "Bing", "yandex": "Yandex"}
 INTERRUPTED = "The app stopped during this search. It isn't tried again, because it may already have been charged."
-RECENT_ONE = "Checked recently with this tool, so not checked again. Press again to spend a credit anyway."
+RECENT_ONE = "Checked recently with this tool. Press again to spend a credit anyway."
 
 
 def _iso(value) -> str | None:
@@ -50,7 +50,7 @@ def _clean_request(engine: Engine, body: dict) -> dict:
         raise Refused(f"That's {len(ids)} keywords. The limit for one Refresh is {MAX_KEYWORDS}.")
     engines = body.get("engines")
     if not isinstance(engines, list) or not engines or any(name not in connections.ENGINE_ORDER for name in engines):
-        raise Refused("Choose at least one engine.")
+        raise Refused("Pick an engine.")
     depth = body.get("depth", 10)
     if depth not in DEPTHS:
         raise Refused("The depth is 10, 20, 30 or 50.")
@@ -59,7 +59,7 @@ def _clean_request(engine: Engine, body: dict) -> dict:
         raise Refused("Tools are automatic or chosen.")
     picked = body.get("picked") or []
     if mode == "pick" and (not isinstance(picked, list) or not picked or any(not isinstance(name, str) for name in picked)):
-        raise Refused("Pick at least one tool.")
+        raise Refused("Pick a tool.")
     allow_paid = body.get("allow_paid", False) is True
     cap = None
     if allow_paid:
@@ -240,15 +240,15 @@ def start(engine: Engine, body: dict, by: str | None = None) -> dict:
     if not any(lines.values()):
         raise Refused("No search tool can run these engines. Connect one in Settings.")
     if connections.BROWSER in ask["picked"] and not connections.get_setting(engine, "mac_country"):
-        raise Refused("Set the country this Mac is in first, in Settings.")  # without it, its results couldn't be kept apart honestly
+        raise Refused("Set this Mac's country in Settings first.")  # without it, its results couldn't be kept apart honestly
     names = ask["keywords"]
     excluded = [{"keyword": names[k], "engine": name, "by": who} for (k, name), who in parts["running"].items()]
     if not parts["todo"]:
         if excluded:
-            raise Conflict("These keywords are already being refreshed.")
+            raise Conflict("Already refreshing.")
         if len(names) == 1 and ask["mode"] == "pick":  # the keyword panel's Recheck: the same rule as the Refresh dialog
             raise Refused(RECENT_ONE)
-        raise Refused("These keywords were all checked just now. Tick Check them again to go ahead.")
+        raise Refused("All checked just now. Tick Check them again to go ahead.")
     tools_each = ask["picked"] if ask["mode"] == "pick" else [None]
     try:
         with engine.begin() as conn:
@@ -279,7 +279,7 @@ def start(engine: Engine, body: dict, by: str | None = None) -> dict:
                     total += 1
             if not total:
                 conn.rollback()
-                raise Conflict("These keywords are already being refreshed.")
+                raise Conflict("Already refreshing.")
             conn.execute(text("UPDATE rank_runs SET total = :t, excluded = :x WHERE id = :i"), {"t": total, "x": json.dumps(excluded) if excluded else None, "i": run_id})
     except IntegrityError:
         found = _by_token(engine, token) if token else None

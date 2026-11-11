@@ -38,7 +38,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await page.screenshot({ path: OUT + "3-partly-added.png" });
   const left = await page.inputValue("#cl-add-address");
   check("only the refused addresses are left in the box", left === `acme-store-${RUN}.example\nnot-an-address`, JSON.stringify(left));
-  check("each says why", /part of your own websites/.test(await page.textContent("#cl-add-result")) && /doesn't look like a website/.test(await page.textContent("#cl-add-result")));
+  check("each says why", /part of your own websites/.test(await page.textContent("#cl-add-result")) && /Not a website (address|domain)/.test(await page.textContent("#cl-add-result")));
   const saved = (await call("GET", `competitors?site_id=${two.id}`)).competitors.map((c) => c.host).sort();
   check("three saved on the site picked", saved.join() === [`rival-a-${RUN}.example`, `rival-b-${RUN}.example`, `rival-c-${RUN}.example`].join(), saved.join());
   check("none saved on the other site", (await call("GET", `competitors?site_id=${one.id}`)).competitors.length === 0);
@@ -68,7 +68,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await page.fill("#cl-add-address", `solo-${RUN}.example, https://solo-${RUN}.example/about`);
   check("same site twice counts once", (await page.textContent("#cl-add-save")).trim() === "Add");
   await page.click("#cl-add-save"); await page.waitForSelector("#cl-add-result .note", { timeout: 15000 });
-  check("already there is said, not an error", /already your competitors/.test(await page.textContent("#cl-add-result")));
+  check("already there is said, not an error", /Already your competitors/.test(await page.textContent("#cl-add-result")));
 
   // French and a narrow screen.
   await page.setViewportSize({ width: 390, height: 844 }); await settle();

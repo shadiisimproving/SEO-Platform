@@ -102,7 +102,7 @@ def _clean_source(source) -> tuple[str | None, str | None]:
         raise Refused("source facts must be a list of text.")
     stored = json.dumps(source, ensure_ascii=False)
     if len(stored.encode("utf-8")) > _MAX_SOURCE_BYTES:
-        raise Refused("That finding is too long to keep with the task.")
+        raise Refused("Finding too long to keep with the task.")
     return stored, _hash(source["key"]) if source.get("key") else None
 
 
@@ -161,7 +161,7 @@ def _clean(conn, body: dict) -> dict:
             try:
                 values["due_date"] = date.fromisoformat(raw)
             except (TypeError, ValueError):
-                raise Refused("The due date needs to be a real date, written YYYY-MM-DD.") from None
+                raise Refused("Write the due date as YYYY-MM-DD.") from None
     if "impact" in body:
         impact = body["impact"]
         if impact not in (None, "") and (type(impact) is not int or not 1 <= impact <= 5):
@@ -348,7 +348,7 @@ def add_comment(engine: Engine, task_id: int, comment, name=None) -> dict:
         row = _one(conn, task_id, lock=True)  # two people commenting at once must not lose either
         comments = _load(row["comments"], [])
         if len(comments) >= _MAX_COMMENTS:
-            raise Refused("This task has too many comments. Start a new task.")
+            raise Refused("Too many comments. Start a new task.")
         moment = conn.execute(text("SELECT UTC_TIMESTAMP(3)")).scalar()
         # The name is kept as written, so a thread stays readable after someone leaves the team.
         comments.append({"name": (name or "").strip()[:100], "text": comment.strip(), "at": _iso(moment)})

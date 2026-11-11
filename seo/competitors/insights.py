@@ -485,18 +485,18 @@ def _missing_alt(pages) -> float | None:
 def _build(theirs: list[dict], mine: list[dict]) -> list[dict]:
     """How each side builds its pages. Each row is measured on the pages read, mine only once some are."""
     rows = [
-        ("words", "Average words per page", "number", lambda ps: _average(p["word_count"] for p in ps), False),
-        ("title", "Average title length", "number", lambda ps: _average(len(p["title"]) for p in ps if p["title"]), False),
-        ("meta", "Pages with a meta description", "share", lambda ps: _share(ps, lambda p: bool((p["meta_description"] or "").strip())), False),
+        ("words", "Words per page", "number", lambda ps: _average(p["word_count"] for p in ps), False),
+        ("title", "Title length", "number", lambda ps: _average(len(p["title"]) for p in ps if p["title"]), False),
+        ("meta", "With a meta description", "share", lambda ps: _share(ps, lambda p: bool((p["meta_description"] or "").strip())), False),
         ("schema", "Structured data", "list", _schema_shares, False),
-        ("questions", "Pages with questions in headings", "share", lambda ps: _share(ps, lambda p: bool(p["extras"].get("questions"))), False),
-        ("videos", "Pages with a video", "share", lambda ps: _share(ps, lambda p: int(p["extras"].get("videos") or 0) > 0), False),
-        ("dupes", "Pages sharing a title with another", "number", _shared_titles, False),
-        ("noindex", "Pages hidden from search (noindex)", "number", lambda ps: sum(1 for p in ps if "noindex" in (p["robots_meta"] or "").lower()) if ps else None, False),
+        ("questions", "With questions in headings", "share", lambda ps: _share(ps, lambda p: bool(p["extras"].get("questions"))), False),
+        ("videos", "With a video", "share", lambda ps: _share(ps, lambda p: int(p["extras"].get("videos") or 0) > 0), False),
+        ("dupes", "Duplicate titles", "number", _shared_titles, False),
+        ("noindex", "Hidden (noindex)", "number", lambda ps: sum(1 for p in ps if "noindex" in (p["robots_meta"] or "").lower()) if ps else None, False),
         ("alt", "Images without alt text", "share", _missing_alt, True),
-        ("internal", "Average links to their own pages", "number", lambda ps: _average(p["internal_links"] for p in ps), True),
-        ("hreflang", "Language versions (hreflang)", "list", lambda ps: sorted({code for p in ps for code in (p["extras"].get("hreflang") or [])})[:8] if ps else None, True),
-        ("tables", "Pages with a table", "share", lambda ps: _share(ps, lambda p: int(p["extras"].get("tables") or 0) > 0), True),
+        ("internal", "Internal links per page", "number", lambda ps: _average(p["internal_links"] for p in ps), True),
+        ("hreflang", "Languages (hreflang)", "list", lambda ps: sorted({code for p in ps for code in (p["extras"].get("hreflang") or [])})[:8] if ps else None, True),
+        ("tables", "With a table", "share", lambda ps: _share(ps, lambda p: int(p["extras"].get("tables") or 0) > 0), True),
     ]
     if not theirs:
         return []

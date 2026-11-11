@@ -222,3 +222,21 @@ details.cl-more-facts[open] > summary svg { transform: rotate(90deg); }
 .pt-fig-val .who { font-size: 12px; font-weight: 500; margin-inline-end: 5px; vertical-align: 1px; }
 .pt-fig-val .who:not(:first-child) { margin-inline-start: 16px; }
 .pt-fig-sub .who { font-size: 12px; font-weight: 500; }
+
+/* 2026-11-11: shorter rows. A read that worked is a check mark ("Watching" in its tooltip) and when; Blocked and Read failed keep
+   their sentence in the tooltip, said once under the table (watchNotes). Added by hand is an icon beside the name. */
+.cl-read-ok { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--text-2); white-space: nowrap; }
+.cl-ok-ic { color: var(--good-t); }
+.cl-state-tip { display: inline-flex; cursor: help; border-radius: 999px; }
+.cl-state-tip:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.cl-state-tip + .cl-retry { margin: 0 0 0 6px; }
+.cl-hand { margin-inline-start: 4px; }
+.cl-watch-note { display: flex; gap: 6px; align-items: flex-start; margin: 8px 0 0; }
+.cl-watch-note > svg.i { flex: none; width: 14px; height: 14px; margin-top: 2px; color: var(--warn-t); }
+/* The engine and tool logos, then the age, on one line. */
+.cl-checked { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+/* What every move in view shares, said once over the list (moveCommonLine). */
+.cl-moves-common { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; margin: 0 0 8px; }
+@media (max-width: 640px) { .cl-state-tip + .cl-retry { margin: 6px 0 0; } }
+/* Find competitors' evidence: the once-line sits under the pager, in line with it. */
+.cl-evidence-body > .cl-kw-foot { margin: 0; padding: 0 18px 12px; }

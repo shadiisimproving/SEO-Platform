@@ -22,7 +22,7 @@ const TABS_FR = ["Concurrents", "Trouver des concurrents", "Vérifier des mots-c
 const HEADS_EN = ["Competitor", "Ranks on your keywords", "Who leads", "Edits in 30 days", "Watching"];
 const HEADS_FR = ["Concurrent", "Se classe sur vos mots-clés", "Qui est devant", "Modifications en 30 jours", "Suivi", "Niveau de suivi"];
 // English words that must not be left in the French tabs, table and banner. Site names (rival-one.example) hold none of them.
-const EN_LEFT = /\b(Competitors?|Watching|Tracking|Pages only|Last read|Blocked|Paused|Them|You|Remove|Who leads|Edits in|Ranks on|Click one|Find competitors|Keyword check|Add keywords|Add one by hand|Page vs page|Link gaps|No competitors|keyword list)\b/;
+const EN_LEFT = /\b(Competitors?|Watching|Tracking|Pages only|Last read|Blocked|Paused|Them|You|Remove|Who leads|Edits in|Ranks on|Click to open|Find competitors|Keyword check|Add keywords|Add by hand|Page vs page|Link gaps|No competitors|keyword list)\b/;
 
 // What a screen shows, the way flow_page_links.cjs looks at it: its page links, any lone /path/ left as plain text,
 // and any other link whose words are a bare path (so it didn't go through PageLink).
@@ -332,14 +332,14 @@ const fakeQuestions = (host, about) => { const groups = Array.from({ length: 25 
     const banner = async () => { await page.waitForSelector("#comp-setup .comp-setup", { timeout: 10000 }).catch(() => {}); return page.evaluate(() => { const b = document.querySelector("#comp-setup .comp-setup"); return b && { state: b.dataset.setupState, words: b.querySelector(".comp-setup-words")?.textContent.trim(), buttons: [...b.querySelectorAll(".comp-setup-acts button")].map((x) => x.textContent.trim()), main: b.querySelector(".comp-setup-acts .btn-main")?.textContent.trim(), aboveBody: Boolean(b.compareDocumentPosition(document.querySelector("#comp-body")) & Node.DOCUMENT_POSITION_FOLLOWING) }; }); };
     const en = await banner();
     check("9. the setup banner shows on the empty app, above the tab's body", Boolean(en) && en.aboveBody, en || "no #comp-setup .comp-setup");
-    check("9. it says what's missing for this site", Boolean(en) && en.state === "nothing" && en.words === `No competitors and no keyword list for ${BANNER_SITE} yet.`, en?.words);
+    check("9. it says what's missing for this site", Boolean(en) && en.state === "nothing" && en.words === `No competitors or keywords for ${BANNER_SITE} yet.`, en?.words);
     check("9. its buttons say what to do next: Find competitors (main), Add keywords", Boolean(en) && en.buttons.join("|") === "Find competitors|Add keywords" && en.main === "Find competitors", en?.buttons);
     const w = await page.evaluate(widths);
     check("9. no sideways scroll with the banner at 1440", fits(w), w);
 
     await lang("fr");
     const fr = await banner();
-    check("12. French: the setup banner and its buttons", Boolean(fr) && fr.words === `Pas encore de concurrents ni de liste de mots-clés pour ${BANNER_SITE}.` && fr.buttons.join("|") === "Trouver des concurrents|Ajouter des mots-clés", fr);
+    check("12. French: the setup banner and its buttons", Boolean(fr) && fr.words === `Pas encore de concurrents ni de mots-clés pour ${BANNER_SITE}.` && fr.buttons.join("|") === "Trouver des concurrents|Ajouter des mots-clés", fr);
     check("12. French: no English left in the banner", Boolean(fr) && !EN_LEFT.test(`${fr.words} ${fr.buttons.join(" ")}`), fr && `${fr.words} ${fr.buttons.join(" ")}`.match(EN_LEFT)?.[0]);
     await lang("en");
 

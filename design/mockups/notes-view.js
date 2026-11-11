@@ -35,7 +35,7 @@
     if (!empty) return;
     if (V.loading && !total) UI.setHTML(empty, UI.skeleton("rows", { rows: 4 }));
     else if (!total && !V.failed) {
-      UI.setHTML(empty, `<div class="empty"><h3>${t("No notes yet")}</h3><p>${t("Press N on any screen, or use Write a note. Notes on a page, a keyword, a competitor or a day all show here.")}</p></div>`);
+      UI.setHTML(empty, `<div class="empty"><h3>${t("No notes yet")}</h3><p>${t("Press N on any screen, or Write a note.")}${UI.tip("Notes on a page, a keyword, a competitor or a day all show here.")}</p></div>`);
     } else if (total && !shown) UI.setHTML(empty, `<p class="lc-none small muted nv-none">${t("No notes match this search.")}</p>`);
     else UI.setHTML(empty, "");
   }
@@ -55,14 +55,14 @@
 
   function page() {
     const { t, esc, icon, topbar } = UI;
-    const head = topbar(t("Notes"), t("Every note you wrote, on every website"), `<button class="btn btn-main" id="nv-write" aria-label="${t("Write a note")}">${icon("plus")}${t("Write a note")}</button>`, false);
+    const head = topbar(t("Notes"), t("Every note, on every site"), `<button class="btn btn-main" id="nv-write" aria-label="${t("Write a note")}">${icon("plus")}${t("Write a note")}</button>`, false);
     if (!every()) return `${head}<div class="content page-enter">${UI.skeleton("table", { rows: 4 })}</div>`;
     return `${head}<div class="content page-enter">
       <section class="card nb-all nv-card">
         <div class="card-head"><h2>${t("All notes")}</h2><span class="small muted tabular" id="nv-count"></span>
           <label class="nb-search end"><span class="sr">${t("Search notes")}</span>${icon("search")}<input class="input" id="nv-search" type="search" placeholder="${t("Search notes")}" value="${esc(every().search())}"></label></div>
         <div class="nb-ways nv-kinds" id="nv-kinds" role="group" aria-label="${t("What the notes are about")}" hidden></div>
-        <p class="note warn nb-load-error" id="nv-error" ${V.failed ? "" : "hidden"}>${icon("triangle-alert")}<span>${t("The saved notes didn't load. What you write here is still kept.")}</span></p>
+        <p class="note warn nb-load-error" id="nv-error" ${V.failed ? "" : "hidden"}>${icon("triangle-alert")}<span>${t("Notes didn't load. What you write is still kept.")}</span></p>
         <ul class="nb-list" id="nv-list" data-note-list="*" data-note-kind="${esc(V.kind)}" data-note-every-site></ul>
         <div id="nv-empty"></div>
       </section>
@@ -106,11 +106,11 @@
   window.SCREENS.notes = { init(helpers) { UI = helpers; bind(); }, page, after };
 
   const words = {
-    "Notes": "Notes", "Every note you wrote, on every website": "Toutes vos notes, sur tous vos sites", "Write a note": "Écrire une note",
+    "Notes": "Notes", "Every note, on every site": "Toutes les notes, sur tous les sites", "Write a note": "Écrire une note",
     "All": "Toutes", "Pages": "Pages", "Keywords": "Mots-clés", "Competitors": "Concurrents", "Linking websites": "Sites qui font des liens",
     "Tasks": "Tâches", "Days": "Jours", "Screens": "Écrans", "Websites": "Sites", "Sites": "Sites", "What the notes are about": "Sur quoi portent les notes",
-    "Press N on any screen, or use Write a note. Notes on a page, a keyword, a competitor or a day all show here.":
-      "Appuyez sur N sur n'importe quel écran, ou utilisez Écrire une note. Les notes sur une page, un mot-clé, un concurrent ou un jour s'affichent toutes ici.",
+    "Press N on any screen, or Write a note.":
+      "Appuyez sur N sur n'importe quel écran, ou sur Écrire une note.",
   };
   Object.keys(words).forEach((w) => { if (window.FR[w] === undefined) window.FR[w] = words[w]; });
 })();

@@ -12,7 +12,7 @@ const BASE = process.argv[2] || "http://127.0.0.1:8283/";
 const OUT = process.argv[3] || "var/ui-prospects";
 const CSV = path.resolve(__dirname, "../../var/ui-test-csv") + "/";
 fs.mkdirSync(OUT, { recursive: true });
-const NOTE = "Prospect list only. This filters a CSV and adds the links you keep to In consideration. It does not check rankings or track these links.";
+const NOTE = "Prospects only: filters a CSV and adds the links you keep to In consideration. No rankings or link tracking.";
 const fails = [];
 let passed = 0;
 const check = (name, ok, extra) => { console.log(`${ok ? "ok  " : "FAIL"} ${name}${extra !== undefined && !ok ? `  [${String(extra).slice(0, 170)}]` : ""}`); if (ok) passed += 1; else fails.push(name); };
@@ -161,7 +161,7 @@ const check = (name, ok, extra) => { console.log(`${ok ? "ok  " : "FAIL"} ${name
     await openTool();
     await upload("no_spam_column.csv");
     // Since the CSV filter learnt to keep rows with no spam score (2026-11), a file without that column is read, marked unknown.
-    check("no spam column: read, and every spam score says unknown", (await stat("Total")) >= 1 && /no spam score: kept/.test(await page.locator("#dlg .dlg-body p.small").first().innerText()), await page.locator("#dlg .dlg-body p.small").first().innerText());
+    check("no spam column: read, and every spam score says unknown", (await stat("Total")) >= 1 && /without spam score, kept as unknown/.test(await page.locator("#dlg .dlg-body p.small").first().innerText()), await page.locator("#dlg .dlg-body p.small").first().innerText());
     await page.locator("#cleaner-again").click(); await wait(200);
     // Each bad file in a fresh window, as a person trying again would.
     const again = async (name) => { if (await page.locator("#dlg[open]").count()) { await page.locator("#dlg [data-close-dlg]").first().click(); await wait(250); } await openTool(); await upload(name); };
@@ -202,7 +202,7 @@ const check = (name, ok, extra) => { console.log(`${ok ? "ok  " : "FAIL"} ${name
     await page.screenshot({ path: `${OUT}/p-phone.png` });
     await page.evaluate(() => localStorage.setItem("seocc2-lang", "fr"));
     await go("backlinks/consideration?site=site-one.example");
-    check("the note in French", (await page.locator(".tool-band p").innerText()).startsWith("Liste de prospects uniquement"));
+    check("the note in French", (await page.locator(".tool-band p").innerText()).startsWith("Prospects uniquement"));
     await page.evaluate(() => localStorage.setItem("seocc2-lang", "en"));
   } catch (e) { check(`the flow ran to the end (${e.message.split("\n")[0].slice(0, 200)})`, false); }
   const real = problems.filter((p) => !/status of 40[0-9]|Failed to load resource/.test(p));

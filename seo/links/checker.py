@@ -225,17 +225,17 @@ def extract_links(body: bytes, page_url: str, charset: str | None = None) -> lis
 
 def _status_reason(code: int | None, status: str, error: str | None) -> str:
     if status == "robots":
-        return "robots.txt does not allow this check"
+        return "Blocked by robots.txt"
     if status == "refused":
-        return "Not a public web address, so it was not requested"
+        return "Not a public address, skipped"
     if status == "network_error":
-        return f"The request failed: {error}" if error else "The request failed"
+        return f"The request failed: {error}" if error else "Request failed"
     if status == "rate_limited":
-        return "The site asked us to slow down"
+        return "Asked to slow down"
     if code == 999:
-        return "This site refuses automated checks"
+        return "Refuses automated checks"
     if code in (401, 403) or status == "blocked":
-        return "The site blocked the check"
+        return "Blocked by site"
     if code is not None and code >= 500:
         return "Server error"
     if code is not None:

@@ -7,9 +7,9 @@
   "use strict";
   const FR = {
     "Export": "Exporter", "Export this screen": "Exporter cet écran", "PDF report": "Rapport PDF", "Excel workbook": "Classeur Excel", "CSV file": "Fichier CSV",
-    "To send or print": "À envoyer ou imprimer", "Every table, one sheet each": "Chaque tableau sur sa feuille", "The rows on screen. A .zip if there are several tables": "Les lignes à l'écran. Un .zip s'il y a plusieurs tableaux",
-    "Preparing the file…": "Préparation du fichier…", "Downloaded": "Téléchargé", "The export didn't work. Try again.": "L'export n'a pas fonctionné. Réessayez.",
-    "The file holds the first rows only: the list is longer than an export can carry.": "Le fichier ne contient que les premières lignes : la liste est plus longue que ce qu'un export peut contenir.",
+    "To send or print": "À envoyer ou imprimer", "One sheet per table": "Une feuille par tableau", "Rows on screen; a .zip for several tables": "Lignes à l'écran ; un .zip pour plusieurs tableaux",
+    "Preparing the file…": "Préparation du fichier…", "Downloaded": "Téléchargé", "Export failed. Try again.": "Échec de l'export. Réessayez.",
+    "First rows only: the list is too long for one export.": "Premières lignes seulement : la liste est trop longue pour un export.",
     "Pick one site to export its links.": "Choisissez un site pour exporter ses liens.", "Pick one site to export its competitors.": "Choisissez un site pour exporter ses concurrents.",
     "ascending order": "ordre croissant", "descending order": "ordre décroissant",
     "Needs the running app": "Nécessite l'application en marche", "Please sign in.": "Veuillez vous connecter.",
@@ -181,7 +181,7 @@
   }
 
   // ---- the menu -----------------------------------------------------------------------------------
-  const FORMATS = [["pdf", "file-text", "PDF report", "To send or print"], ["xlsx", "columns-3", "Excel workbook", "Every table, one sheet each"], ["csv", "rows-3", "CSV file", "The rows on screen. A .zip if there are several tables"]];
+  const FORMATS = [["pdf", "file-text", "PDF report", "To send or print"], ["xlsx", "columns-3", "Excel workbook", "One sheet per table"], ["csv", "rows-3", "CSV file", "Rows on screen; a .zip for several tables"]];
   let anchor = null, busy = false;
   /* The formats this server can make: a host without the PDF library still offers Excel and CSV. */
   const can = new Set(["pdf", "xlsx", "csv"]);
@@ -224,7 +224,7 @@
     try {
       const reply = await ask(fmt, target);
       if (!reply.ok) {
-        let message = "The export didn't work. Try again.";
+        let message = "Export failed. Try again.";
         try { message = (await reply.json()).error || message; } catch { /* not JSON: keep the plain message */ }
         throw new Error(message);
       }
@@ -235,11 +235,11 @@
       link.href = URL.createObjectURL(blob); link.download = name;
       document.body.append(link); link.click(); link.remove();
       setTimeout(() => URL.revokeObjectURL(link.href), 4000);
-      if (reply.headers.get("X-Export-Capped") === "1") U.toast(t("The file holds the first rows only: the list is longer than an export can carry."), { kind: "warn", stay: true });
+      if (reply.headers.get("X-Export-Capped") === "1") U.toast(t("First rows only: the list is too long for one export."), { kind: "warn", stay: true });
       else U.toast(`${t("Downloaded")}: ${name}`);
     } catch (err) {
       done();
-      U.toast(t(err.message === "Failed to fetch" ? "The export didn't work. Try again." : err.message), { kind: "crit" });
+      U.toast(t(err.message === "Failed to fetch" ? "Export failed. Try again." : err.message), { kind: "crit" });
     } finally {
       busy = false;
       document.querySelectorAll("[data-export-open]").forEach((b) => { b.removeAttribute("aria-busy"); b.disabled = false; });

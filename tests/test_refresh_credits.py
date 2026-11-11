@@ -139,7 +139,7 @@ def test_the_preview_counts_the_ai_overview_tool_first(world):
 
 def test_the_tool_list_says_which_tool_goes_first_for_google_and_why(world):
     listed = connections.tool_list(world.engine)
-    assert listed["first_for_ai"] == {"google": ["SerpApi"]} and "AI Overviews" in listed["first_for_ai_why"]
+    assert listed["first_for_ai"] == {"google": ["SerpApi"]} and "SerpApi first" in listed["first_for_ai_why"]
     assert listed["order"]["google"][0] == "Bright Data"  # the saved order itself is untouched
     connections.save_setting(world.engine, "ai_first", "0")
     assert connections.tool_list(world.engine)["first_for_ai"] == {}

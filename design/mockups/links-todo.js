@@ -41,7 +41,7 @@
     const all = planned();
     const names = mediatorNames();
     if (T.mediator && !names.includes(T.mediator)) T.mediator = "";
-    if (!all.length) return `<div class="table-wrap"><div class="empty"><h3>${t("Nothing to do yet")}</h3><p>${t("Tick links in In consideration and move them here. Then add the articles and send the list to your mediator.")}</p></div></div>`;
+    if (!all.length) return `<div class="table-wrap"><div class="empty"><h3>${t("Nothing to do yet")}</h3><p>${t("Move links here from In consideration, add articles, then send them to your mediator.")}</p></div></div>`;
     const mine = byMediator(), list = shownLinks(), page = TP.view(PAGES, list);
     const toSend = mine.filter((b) => !b.sentAt).length;
     // To send or Sent, with how many each holds for the mediator picked: the counts the line used to give.
@@ -60,7 +60,7 @@
         <tbody>${page.rows.map(rowHtml).join("") || `<tr style="cursor:default"><td colspan="6"><div class="empty"><p>${t(mine.length ? "Nothing here with this search or status." : "Nothing here for this mediator.")}</p></div></td></tr>`}</tbody>
       </table></div>
       ${TP.footer(PAGES, page, { noun: t("links") })}</div>
-      <p class="help" style="margin-top:10px">${t("Links in To do aren't counted in the cards above and aren't checked until they're placed.")}</p>`;
+      <p class="help" style="margin-top:10px">${t("Not counted in the cards above or checked until placed.")}</p>`;
   }
 
   // ---- changing a row -----------------------------------------------------------------------------
@@ -152,7 +152,7 @@
       T.mediator = "";
       UI.state.blSection = "todo";
       UI.render();
-      const words = `${num(done.count)} ${t(done.count === 1 ? "link moved to To do" : "links moved to To do")}${done.skipped ? `. ${num(done.skipped)} ${t("already logged, so left where they are")}` : ""}`;
+      const words = `${num(done.count)} ${t(done.count === 1 ? "link moved to To do" : "links moved to To do")}${done.skipped ? `. ${num(done.skipped)} ${t("already logged, left in place")}` : ""}`;
       UI.toast(words, done.count ? { undo: async () => { try { await done.undo(); } catch (err) { fail(err); } UI.render(); } } : { kind: "info" });
     } catch (err) {
       button.disabled = false;
@@ -196,9 +196,9 @@
       return `<div class="td-group"><div><b dir="auto">${esc(name)}</b><div class="small sec">${num(toSend.length)} ${t("to send")}${sent ? ` · ${num(sent)} ${t("sent")}` : ""}</div>${missing ? `<div class="small warn td-missing">${icon("triangle-alert")}${num(missing)} ${t(missing === 1 ? "guest post has no article link" : "guest posts have no article link")}</div>` : ""}</div>
         <span class="td-group-acts">${toSend.length ? `<button class="btn btn-main btn-small" data-td-export="${at}">${icon("download")}${t("Export")} ${num(toSend.length)}</button>` : ""}${sent ? `<button class="link-btn" data-td-export-again="${at}">${t(toSend.length ? "Include sent" : "Download again")}</button>` : ""}</span></div>`;
     }).join("");
-    UI.openPanel(`${UI.panelHead(t("Export for a mediator"), t("One file per mediator, with the site, link type and article."))}
+    UI.openPanel(`${UI.panelHead(t("Export for a mediator"), t("One file each: site, link type, article."))}
       <div class="panel-body">
-        <p class="note">${icon("info")}<span>${t("Before you send it, set each Google Doc to \"Anyone with the link can view\", or the mediator won't be able to open it.")}</span></p>
+        <p class="note">${icon("info")}<span>${t("Set each Google Doc to \"Anyone with the link can view\" first, or the mediator can't open it.")}</span></p>
         ${rows}
       </div>
       <div class="panel-foot"><button class="btn" data-discard-panel>${t("Close")}</button></div>`, opener);
@@ -237,14 +237,14 @@
       UI.ignoreClicks();
       UI.render();
       if (toSend.length) {
-        UI.toast(`${num(toSend.length)} ${t(toSend.length === 1 ? "link marked as Sent" : "links marked as Sent")}`, { undo: async () => {
+        UI.toast(`${num(toSend.length)} ${t(toSend.length === 1 ? "link marked Sent" : "links marked Sent")}`, { undo: async () => {
           try { await setSent(toSend, false); } catch (err) { fail(err); }
           UI.render();
         } });
       } else UI.toast(t("File downloaded"), { kind: "info" });
     } catch (err) {
       button.disabled = false;
-      UI.toast(`${t("The file downloaded, but the links weren't marked as Sent.")} ${t(err.message)}`, { kind: "crit" });
+      UI.toast(`${t("Downloaded, but not marked as Sent.")} ${t(err.message)}`, { kind: "crit" });
     }
   }
 
@@ -252,10 +252,10 @@
   function openPlaced(b, opener) {
     const { t, esc } = UI;
     T.placing = b;
-    UI.openPanel(`${UI.panelHead(t("Mark as placed"), b.domain)}
+    UI.openPanel(`${UI.panelHead(t("Mark placed"), b.domain)}
       <form class="panel-body" id="td-placed-form" novalidate>
-        <label class="field"><span>${t("The article's real address")} <span class="req">*</span></span><input class="input mono" id="td-live-url" type="url" inputmode="url" placeholder="https://" data-autofocus aria-describedby="td-live-error" value="${esc(b.src)}"><div id="td-live-error"></div></label>
-        <p class="help">${t("The page where the article was published. The monthly check reads this page to see that your link is still there, so it must be the exact address.")}</p>
+        <label class="field"><span>${t("Published address")} <span class="req">*</span></span><input class="input mono" id="td-live-url" type="url" inputmode="url" placeholder="https://" data-autofocus aria-describedby="td-live-error" value="${esc(b.src)}"><div id="td-live-error"></div></label>
+        <p class="help">${t("The exact page it's published on; the monthly check reads it.")}${UI.tip("The page where the article was published. The monthly check reads this page to see that your link is still there, so it must be the exact address.")}</p>
       </form>
       <div class="panel-foot"><button class="btn btn-main" id="td-placed-save">${t("Move to Done")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button></div>`, opener);
     const input = UI.$("#td-live-url");
@@ -273,14 +273,14 @@
         await COMP.api("POST", `backlinks/${b.serverId}/placed`, { live_url: address });
         await H.reload();
       } else {
-        if (!/^https?:\/\/\S+\.\S+/i.test(address)) throw new Error("The article's address must be a web address starting with https://.");
+        if (!/^https?:\/\/\S+\.\S+/i.test(address)) throw new Error("The article's address must start with https://.");
         Object.assign(b, { src: address, status: "live", placed: new Date().toISOString().slice(0, 10) });
       }
       UI.forgetPanelForm();
       UI.closePanel();
       UI.ignoreClicks();
       UI.render();
-      UI.toast(`${b.domain}: ${t("moved to Done as Live")}`);
+      UI.toast(`${b.domain}: ${t("Live in Done")}`);
     } catch (err) {
       button.disabled = false;
       say(err.message);
@@ -337,15 +337,15 @@
 
   const fr = {
     "To do": "À faire", "Article": "Article", "Open the article": "Ouvrir l'article", "Needs an article": "Article manquant", "To send": "À envoyer", "Sent": "Envoyé", "to send": "à envoyer", "sent": "envoyés",
-    "Mark placed": "Marquer placé", "Mark as placed": "Marquer comme placé", "Back to In consideration": "Remettre à l'étude", "back in In consideration": "de nouveau à l'étude",
-    "Nothing to do yet": "Rien à faire pour l'instant", "Tick links in In consideration and move them here. Then add the articles and send the list to your mediator.": "Cochez des liens à l'étude et déplacez-les ici. Ajoutez ensuite les articles et envoyez la liste à votre intermédiaire.",
-    "Export for a mediator": "Exporter pour un intermédiaire", "All mediators": "Tous les intermédiaires", "Nothing here for this mediator.": "Rien pour cet intermédiaire.", "Links in To do aren't counted in the cards above and aren't checked until they're placed.": "Les liens à faire ne comptent pas dans les cartes ci-dessus et ne sont contrôlés qu'une fois placés.",
+    "Mark placed": "Marquer placé", "Back to In consideration": "Remettre à l'étude", "back in In consideration": "de nouveau à l'étude",
+    "Nothing to do yet": "Rien à faire pour l'instant", "Move links here from In consideration, add articles, then send them to your mediator.": "Déplacez ici des liens à l'étude, ajoutez les articles, puis envoyez-les à votre intermédiaire.",
+    "Export for a mediator": "Exporter pour un intermédiaire", "All mediators": "Tous les intermédiaires", "Nothing here for this mediator.": "Rien pour cet intermédiaire.", "Not counted in the cards above or checked until placed.": "Ni comptés dans les cartes ci-dessus, ni contrôlés avant d'être placés.",
     "Move to To do": "Déplacer vers À faire", "Move": "Déplacer", "link": "lien", "links": "liens", "You add each article's Google Docs link in To do.": "Vous ajoutez le lien Google Docs de chaque article dans À faire.", "Choose a mediator.": "Choisissez un intermédiaire.",
-    "link moved to To do": "lien déplacé vers À faire", "links moved to To do": "liens déplacés vers À faire", "already logged, so left where they are": "déjà enregistrés, laissés à leur place",
+    "link moved to To do": "lien déplacé vers À faire", "links moved to To do": "liens déplacés vers À faire", "already logged, left in place": "déjà enregistrés, laissés en place",
     "No mediator": "Sans intermédiaire", "Give them a mediator first.": "Attribuez-leur d'abord un intermédiaire.", "guest post has no article link": "article invité sans lien", "guest posts have no article link": "articles invités sans lien", "Export": "Exporter", "Include sent": "Inclure les envoyés", "Download again": "Télécharger de nouveau",
-    "One file per mediator, with the site, link type and article.": "Un fichier par intermédiaire, avec le site, le type de lien et l'article.", "Before you send it, set each Google Doc to \"Anyone with the link can view\", or the mediator won't be able to open it.": "Avant l'envoi, réglez chaque Google Doc sur « Tous les utilisateurs disposant du lien peuvent consulter », sinon l'intermédiaire ne pourra pas l'ouvrir.",
-    "link marked as Sent": "lien marqué comme envoyé", "links marked as Sent": "liens marqués comme envoyés", "File downloaded": "Fichier téléchargé", "The file downloaded, but the links weren't marked as Sent.": "Le fichier a été téléchargé, mais les liens n'ont pas été marqués comme envoyés.",
-    "The article's real address": "L'adresse réelle de l'article", "The page where the article was published. The monthly check reads this page to see that your link is still there, so it must be the exact address.": "La page où l'article a été publié. Le contrôle mensuel lit cette page pour vérifier que votre lien est toujours là : l'adresse doit être exacte.", "Move to Done": "Déplacer vers Réalisés", "Paste the article's address.": "Collez l'adresse de l'article.", "moved to Done as Live": "déplacé vers Réalisés, actif", "The article's address must be a web address starting with https://.": "L'adresse de l'article doit commencer par https://.", "The article link must be a web address starting with https://.": "Le lien de l'article doit commencer par https://.",
+    "One file each: site, link type, article.": "Un fichier chacun : site, type de lien, article.", "Set each Google Doc to \"Anyone with the link can view\" first, or the mediator can't open it.": "Réglez d'abord chaque Google Doc sur « Tous les utilisateurs disposant du lien peuvent consulter », sinon l'intermédiaire ne pourra pas l'ouvrir.",
+    "link marked Sent": "lien marqué envoyé", "links marked Sent": "liens marqués envoyés", "File downloaded": "Fichier téléchargé", "Downloaded, but not marked as Sent.": "Téléchargé, mais pas marqué comme envoyé.",
+    "Published address": "Adresse publiée", "The exact page it's published on; the monthly check reads it.": "La page exacte où il est publié ; le contrôle mensuel la lit.", "Move to Done": "Déplacer vers Réalisés", "Paste the article's address.": "Collez l'adresse de l'article.", "Live in Done": "actif dans Réalisés", "The article's address must start with https://.": "L'adresse de l'article doit commencer par https://.", "The article link must start with https://.": "Le lien de l'article doit commencer par https://.",
     "selected": "sélectionnés", "Select": "Sélectionner", "Already in To do": "Déjà dans À faire",
     "Search sites or mediators": "Rechercher un site ou un intermédiaire", "Nothing here with this search or status.": "Rien ici avec cette recherche ou ce statut.",
   };

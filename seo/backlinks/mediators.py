@@ -63,7 +63,7 @@ def create(engine: Engine, body: dict) -> dict:
     name = _text(body, "name", required=True)
     with engine.begin() as conn:
         if conn.execute(text("SELECT 1 FROM mediators WHERE name_key = :k"), {"k": name_key(name)}).first():
-            raise Conflict("There is already a mediator with that name.")
+            raise Conflict("A mediator with that name exists.")
         new_id = conn.execute(
             text("INSERT INTO mediators (name, name_key, contact, platform, price_text, notes) VALUES (:n, :k, :c, :p, :t, :o)"),
             {"n": name, "k": name_key(name), "c": _text(body, "contact"), "p": _text(body, "platform"), "t": _text(body, "price_text"), "o": _text(body, "notes")},
@@ -82,7 +82,7 @@ def update(engine: Engine, mediator_id: int, body: dict) -> dict:
         values = {field: _text(body, field, required=field == "name") if field in body else row[field] for field in LIMITS}
         key = name_key(values["name"])
         if key != row["name_key"] and conn.execute(text("SELECT 1 FROM mediators WHERE name_key = :k AND id <> :i"), {"k": key, "i": mediator_id}).first():
-            raise Conflict("There is already a mediator with that name.")
+            raise Conflict("A mediator with that name exists.")
         conn.execute(
             text("UPDATE mediators SET name = :name, name_key = :key, contact = :contact, platform = :platform, price_text = :price_text, notes = :notes WHERE id = :id"),
             {**values, "key": key, "id": mediator_id},

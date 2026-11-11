@@ -49,7 +49,7 @@ def import_clarity_reports():
     """Clarity's dashboard downloads, several CSVs at once. Send preview=1 first to see which site and period each one is."""
     require_admin()
     if (request.content_length or 0) > clarity_reports.MAX_FILES * clarity_reports.MAX_BYTES + 65536:
-        raise Refused("These files are too large together. Upload fewer at once.")
+        raise Refused("Too large together. Upload fewer at once.")
     files = [(upload.filename or "", upload.read(clarity_reports.MAX_BYTES + 1)) for upload in request.files.getlist("file")]
     site = request.form.get("site_id") or None
     try:

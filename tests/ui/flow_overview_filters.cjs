@@ -92,7 +92,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   check("its row is the one shown", shown.length === 1 && shown[0] === query, shown.join(" | "));
   // A new search is often only in days Google hasn't made final; the table then says so (since 2026-11-10).
   const freshNote = await page.locator(".ov-fresh-note").count() ? await page.textContent(".ov-fresh-note") : "";
-  check("the table says when it includes days not final yet", /Includes days not final yet \(/.test(freshNote) || !(await inPage(() => /fresh=1/.test(location.hash))), freshNote);
+  check("the table says when it includes days not final yet", /Includes not-final days \(/.test(freshNote) || !(await inPage(() => /fresh=1/.test(location.hash))), freshNote);
   check("the address keeps that exact search with its fresh days", await inPage(() => /qm=exact/.test(location.hash) && /fresh=1/.test(location.hash)));
   check("the table is in view", await inPage(() => { const r = document.querySelector(".ov-tabs-card").getBoundingClientRect(); return r.top >= -2 && (r.top < innerHeight / 2 || r.bottom <= innerHeight); }));
   check("the bell closed", !(await page.$("#bell-pop")));

@@ -19,7 +19,7 @@ def _clean(body: dict) -> dict:
     if not title:
         raise Refused("A resource needs a title.")
     if len(title) > 255:
-        raise Refused("That title is too long.")
+        raise Refused("Title too long.")
     url = body.get("url")
     url = url.strip() if isinstance(url, str) else ""
     if url:

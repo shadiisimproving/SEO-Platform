@@ -26,7 +26,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await page.click("#cg-filter"); await page.waitForTimeout(300);
   const options = await page.locator(".cg-pick-menu [data-cg-choose]").evaluateAll((bs) => bs.map((b) => `${b.querySelector(".cg-pick-word").textContent.trim()} (${b.querySelector(".cg-pick-n").textContent.trim()})`));
   const logos = await page.locator(".cg-pick-menu [data-cg-choose]").evaluateAll((bs) => bs.slice(1).every((b) => b.querySelector(".site-logo")));
-  check("the competitor choice offers all together and each one, with counts", /^All competitors, together \(\d+\)$/.test(options[0]) && options.length >= 3 && options.slice(1).every((o) => /\(\d+\)$/.test(o)), options.join(" | "));
+  check("the competitor choice offers all together and each one, with counts", /^All competitors \(\d+\)$/.test(options[0]) && options.length >= 3 && options.slice(1).every((o) => /\(\d+\)$/.test(o)), options.join(" | "));
   check("each competitor in the choice has its logo", logos);
   await page.screenshot({ path: OUT + "0-competitor-menu.png" });
   await page.keyboard.press("Escape"); await page.waitForTimeout(200);
@@ -51,7 +51,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   check("one competitor shows its own domains, as many as its option said", one < all && one === said, `${one} of ${all}, option said ${said}`);
   await page.click("#cg-filter"); await page.click('[data-cg-choose=""]'); await page.waitForTimeout(400);
   const reachOptions = (await page.locator("#cg-reach option").allTextContents()).map((o) => o.trim());
-  check("Links to offers any, only 1, and each number up to the most reached, with counts", /^Any number of them \(\d+\)$/.test(reachOptions[0]) && /^Only 1 of them \(\d+\)$/.test(reachOptions[1]) && reachOptions.slice(2).every((o, i) => new RegExp(`^${i + 2} or more of them \\(\\d+\\)$`).test(o)) && reachOptions.length >= 3, reachOptions.join(" | "));
+  check("Links to offers any, only 1, and each number up to the most reached, with counts", /^Any number \(\d+\)$/.test(reachOptions[0]) && /^Only 1 \(\d+\)$/.test(reachOptions[1]) && reachOptions.slice(2).every((o, i) => new RegExp(`^${i + 2} or more \\(\\d+\\)$`).test(o)) && reachOptions.length >= 3, reachOptions.join(" | "));
   const counted = async () => (await page.locator("#cg-table > tbody > tr > td:nth-child(3) b").allTextContents()).map(Number);
   await page.selectOption("#cg-reach", "1"); await page.waitForTimeout(500);
   const onlyOne = await counted();
@@ -74,7 +74,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   check("clearing the picks puts focus on the top tick box", (await page.evaluate(() => document.activeElement?.id)) === "cg-all");
   await page.screenshot({ path: OUT + "2-sorted.png" });
   await page.evaluate(() => { window.UI.state.lang = "fr"; window.UI.render?.(); }); await page.waitForTimeout(800);
-  check("French words", /Tous les concurrents, ensemble/.test(await page.textContent("body")) && /par page/.test(await page.textContent(".tp-foot")));
+  check("French words", /Tous les concurrents/.test(await page.textContent("body")) && /par page/.test(await page.textContent(".tp-foot")));
   await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(600);
   check("no sideways scroll at phone width", !(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
   await page.screenshot({ path: OUT + "3-phone-fr.png", fullPage: true });

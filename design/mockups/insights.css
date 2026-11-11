@@ -68,6 +68,12 @@
 .in-spark { margin: 2px 0 10px; color: var(--c-blue); }
 .in-how { display: flex; gap: 6px; align-items: flex-start; margin-top: 12px; }
 .in-how svg { width: 14px; height: 14px; flex: none; margin-top: 2px; }
+.in-stake + .in-how { margin: -2px 0 10px; } /* what lowered the figure sits right under it */
+/* Rank and clicks: an all-country Search Console position is a globe on the row, counted once above the table. */
+.in-world { display: inline-flex; align-items: center; color: var(--text-2); cursor: help; }
+.in-world svg { width: 13px; height: 13px; }
+.in-world-line { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+.in-world-line svg { width: 14px; height: 14px; flex: none; }
 .in-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 
 @media (max-width: 640px) {

@@ -27,7 +27,7 @@ def _words(table: dict):
 
 
 BACKLINK_COLUMNS = [
-    C("source_url", "Page with the link", "url", width=4.4),
+    C("source_url", "Linking page", "url", width=4.4),
     C("domain", "Site", "text", width=2.2, pdf=False),
     C("target_url", "My page", "text", width=2.6),
     C("anchor", "Link text", "text", width=2.2, get=lambda r: r.get("anchor") or (r.get("check") or {}).get("anchor") or r.get("anchor_auto")),
@@ -57,7 +57,7 @@ RECLAIM_COLUMNS = [
 
 
 FOUND_COLUMNS = [
-    C("source_url", "Page with the link", "url", width=4.4), C("domain", "Site", "text", width=2.2, pdf=False), C("target_url", "My page", "text", width=2.6),
+    C("source_url", "Linking page", "url", width=4.4), C("domain", "Site", "text", width=2.2, pdf=False), C("target_url", "My page", "text", width=2.6),
     C("found_by", "Found by", "text", width=1.8), C("created_at", "First seen", "date"), C("status", "Ignored", "bool", get=lambda r: r.get("status") == "ignored"),
 ]
 MEDIATOR_COLUMNS = [
@@ -66,7 +66,7 @@ MEDIATOR_COLUMNS = [
 ]
 OUTCOMES = {"found": "Link found", "missing": "Link gone", "page_gone": "Page gone", "unknown": "Could not read"}
 CHECK_COLUMNS = [
-    C("checked_at", "Checked", "datetime"), C("source_url", "Page with the link", "url", width=4.4),
+    C("checked_at", "Checked", "datetime"), C("source_url", "Linking page", "url", width=4.4),
     C("outcome", "Result", "text", width=1.8, get=lambda r: _words(OUTCOMES)(r.get("outcome")), translate=True), C("http_status", "Answer", "int"),
     C("is_nofollow", "Nofollow", "bool"), C("anchor", "Link text", "text", width=2.2), C("final_url", "Ends at", "url", width=3),
 ]
@@ -119,7 +119,7 @@ def backlinks(engine, args) -> Report:
         Table("reclaim", "Links to win back", RECLAIM_COLUMNS, reclaim.list_for_site(engine, site_id), empty="No page that is gone still has links."),
         Table("found", "Found but never logged", FOUND_COLUMNS, found, empty="No link was found that isn't logged.", key="id"),
         Table("mediators", "Mediators", MEDIATOR_COLUMNS, _mediators_here(mediators.list_all(engine), done + todo), empty="No mediators yet.", key="name"),
-        Table("checks", "Check history", CHECK_COLUMNS, _checks(engine, live, done), note="The last checks of each link, newest first.", empty="No link has been checked yet."),
+        Table("checks", "Check history", CHECK_COLUMNS, _checks(engine, live, done), note="Each link's last checks, newest first.", empty="No link has been checked yet."),
     ]
     section = args.get("table")
     if section in [t.id for t in report.tables]:
@@ -141,7 +141,7 @@ def links(engine, args) -> Report:
     report = Report("links", "Links checker", site=registry.site_host(engine, site_id))
     scan = _latest(service.list_scans(engine, site_id), args.get("scan_id"))
     columns = [
-        C("group", "Group", "text", width=1.8, translate=True), C("page", "Page with the link", "url", width=4), C("target_url", "Link", "url", width=4),
+        C("group", "Group", "text", width=1.8, translate=True), C("page", "Linking page", "url", width=4), C("target_url", "Link", "url", width=4),
         C("status_code", "Answer", "int"), C("reason", "Reason", "text", width=2, translate=True), C("hops", "Hops", "int"), C("final_url", "Ends at", "url", width=3),
     ]
     if scan is None:
@@ -159,7 +159,7 @@ def links(engine, args) -> Report:
     return report
 
 
-SEVERITY = {"crit": "Critical", "warn": "Warning", "info": "For information"}
+SEVERITY = {"crit": "Critical", "warn": "Warning", "info": "Info"}
 
 
 @view("health", "Site health")
@@ -170,7 +170,7 @@ def health(engine, args) -> Report:
     report = Report("health", "Site health", site=registry.site_host(engine, site_id))
     history = service.history(engine, site_id)
     audit = _latest(history, args.get("audit_id"))
-    checks = [C("meaning", "Check", "text", width=4.4, translate=True), C("severity", "How serious", "text", width=1.5, get=lambda r: SEVERITY.get(r.get("severity"), r.get("severity")), translate=True),
+    checks = [C("meaning", "Check", "text", width=4.4, translate=True), C("severity", "Severity", "text", width=1.5, get=lambda r: SEVERITY.get(r.get("severity"), r.get("severity")), translate=True),
               C("count", "Pages", "int"), C("previous", "Last time", "int"), C("change", "Change", "delta_low", get=lambda r: (r.get("count") or 0) - (r.get("previous") or 0) if r.get("previous") is not None else None)]
     if audit is None:
         report.tables.append(Table("checks", "Checks", checks, [], empty="This site hasn't been tested yet."))
@@ -180,7 +180,7 @@ def health(engine, args) -> Report:
     report.filters.append(("Tested on", fmt.as_day(found.get("finished_at") or found.get("created_at")) or ""))
     score, was = found.get("score"), before.get("score")
     report.tiles = [
-        Tile("Health score", score, "int", hint="out of 100"), Tile("Last time", was, "int"),
+        Tile("Health score", score, "int", hint="/100"), Tile("Last time", was, "int"),
         Tile("Pages read", found.get("pages_read"), "int"), Tile("Checks with problems", sum(1 for c in data.get("checks") or [] if c.get("count")), "int"),
     ]
     scored = [h for h in reversed(history) if h.get("score") is not None][-12:]
@@ -190,11 +190,11 @@ def health(engine, args) -> Report:
     report.tables.append(Table("checks", "Checks", checks, [c for c in all_checks if c.get("count")] or all_checks, empty="No problems found."))
     pages = [{"meaning": c.get("meaning"), "severity": c.get("severity"), "page": page} for c in all_checks for page in (c.get("pages") or [])]
     report.tables.append(Table("pages", "Pages to fix", [C("page", "Page", "url", width=4.4), C("meaning", "Problem", "text", width=4, translate=True),
-                                                         C("severity", "How serious", "text", width=1.5, get=lambda r: SEVERITY.get(r.get("severity"), r.get("severity")), translate=True)], pages, empty="No pages to fix."))
+                                                         C("severity", "Severity", "text", width=1.5, get=lambda r: SEVERITY.get(r.get("severity"), r.get("severity")), translate=True)], pages, empty="No pages to fix."))
     return report
 
 
-STATES = {"up": "Up", "down": "Down", "unknown": "Not known", "paused": "Not watched", "ok": "Fine", "expiring": "Expires soon", "expired": "Expired"}
+STATES = {"up": "Up", "down": "Down", "unknown": "Unknown", "paused": "Not watched", "ok": "Fine", "expiring": "Expires soon", "expired": "Expired"}
 OUTAGES = {"server_error": "Server error", "page_error": "Page error", "no_answer": "No answer", "redirect_loop": "Too many redirects"}  # as uptime.js names them
 
 

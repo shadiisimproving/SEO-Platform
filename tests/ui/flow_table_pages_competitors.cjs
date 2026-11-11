@@ -100,9 +100,9 @@ async function longer(page, pattern, change) {
     // Keywords they beat me on
     await page.locator("#cs-keywords").scrollIntoViewIfNeeded();
     check("S2. keywords: 25 a page, with the real total", (await rows("#cs-keywords-table")) === 25 && /^1–25 of 140 keywords/.test(await range("cs-keywords")), await range("cs-keywords"));
-    check("S2. keywords: says the server sent 140 of 200", /listed, of 200/.test(await text(`${foot("cs-keywords")} .tp-capped`)), await text(`${foot("cs-keywords")} .tp-capped`));
+    check("S2. keywords: says the server sent 140 of 200", / of 200, most competitors ahead first/.test(await text(`${foot("cs-keywords")} .tp-capped`)), await text(`${foot("cs-keywords")} .tp-capped`));
     const kwOptions = await page.locator("#cs-kw-rival option").allTextContents();
-    check("S2. keywords: a competitor choice, each with its count", kwOptions.length >= 3 && /All competitors, together \(140\)/.test(kwOptions[0]), JSON.stringify(kwOptions));
+    check("S2. keywords: a competitor choice, each with its count", kwOptions.length >= 3 && /All competitors \(140\)/.test(kwOptions[0]), JSON.stringify(kwOptions));
     await next("cs-keywords");
     await page.selectOption("#cs-kw-rival", { index: 2 }); await settle();
     const oneRival = await range("cs-keywords");
@@ -142,7 +142,7 @@ async function longer(page, pattern, change) {
     await page.screenshot({ path: OUT + "s4-summary-sticky.png" });
 
     await french();
-    check("S4. French: the footer and filters", /sur 300 domaines/.test(await range("cs-links")) && /Tous les concurrents, ensemble/.test(await text("#cs-kw-rival")) && /Suivant/.test(await text(foot("cs-keywords"))), await range("cs-links"));
+    check("S4. French: the footer and filters", /sur 300 domaines/.test(await range("cs-links")) && /Tous les concurrents/.test(await text("#cs-kw-rival")) && /Suivant/.test(await text(foot("cs-keywords"))), await range("cs-links"));
     await shot("#cs-keywords", "s5-keywords-fr.png");
     await english();
     await phone(true);
@@ -224,7 +224,7 @@ async function longer(page, pattern, change) {
     check("A1. a chip goes back to page 1", /^1–/.test(await range("ca-kw")) && (await focusIs(() => document.activeElement?.dataset?.caFilter === "overview")), await range("ca-kw"));
     await page.click('[data-ca-filter="all"]'); await settle();
     const opts = await page.locator("#ca-rival option").allTextContents();
-    check("A1. a competitor choice, each with its count", opts.length >= 3 && /All competitors, together \(120\)/.test(opts[0]), JSON.stringify(opts));
+    check("A1. a competitor choice, each with its count", opts.length >= 3 && /All competitors \(120\)/.test(opts[0]), JSON.stringify(opts));
     if (opts.length >= 2) {
       await page.selectOption("#ca-rival", { index: 1 }); await settle();
       const n = Number(opts[1].match(/\((\d+)\)/)?.[1] || -1);
@@ -331,7 +331,7 @@ async function longer(page, pattern, change) {
     await page.locator("details.cl-group").evaluateAll((folds) => folds.forEach((d) => { d.open = true; }));
     await page.locator(`[data-cl-evidence="${item}"] > summary`).click(); await settle();
     const key = `cl-ev:${item}`;
-    check("F1. evidence: 25 a page, says it's the first 100 of 140", /^1–25 of 100 keywords/.test(await range(key)) && /Showing the first 100/.test(await text(`${foot(key)} .tp-capped`)), await range(key));
+    check("F1. evidence: 25 a page, says it's the first 100 of 140", /^1–25 of 100 keywords/.test(await range(key)) && /First 100 shown/.test(await text(`${foot(key)} .tp-capped`)), await range(key));
     await next(key);
     check("F1. evidence: Next keeps the fold open", /^26–50/.test(await range(key)) && (await one(`[data-cl-evidence="${item}"]`, (d) => d.open)));
     await shot(`[data-cl-evidence="${item}"]`, "f1-evidence.png");

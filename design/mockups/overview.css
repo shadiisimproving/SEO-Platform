@@ -137,6 +137,11 @@
 .ov-split .what { min-width: 0; }
 .ov-split .t { overflow-wrap: anywhere; }
 .ov-share { font-variant-numeric: tabular-nums; font-weight: 600; }
+/* Side panel lists: the words once in the heading row, numbers lined up on the right under them. */
+table.ov-split .ov-sname { overflow-wrap: anywhere; font-weight: 500; min-width: 6.5em; padding-left: 4px; } /* a short address stays on one line */
+@media (max-width: 640px) { table.ov-split th.ov-sn, table.ov-split td.ov-sn { padding-left: 6px; } }
+table.ov-split th.ov-sn, table.ov-split td.ov-sn { text-align: right; padding-left: 10px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.ov-split td.ov-sn:not(.ov-share) { color: var(--text-2); }
 .ov-brand-form { margin-top: 14px; display: grid; gap: 8px; }
 
 /* No hover on touch screens: the row actions stay visible. */

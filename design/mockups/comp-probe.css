@@ -21,3 +21,7 @@
 .kc-code { width: 64px; text-transform: none; }
 .kc-tracked { display: inline-flex; align-items: center; gap: 4px; color: var(--good-t); margin-right: 8px; vertical-align: middle; }
 .kc-tracked .i { width: 14px; height: 14px; }
+/* 2026-11-11: the Checked cell is the age then the tool's logo, on one line; what every row shares is said once under the table. */
+.kc-checked { display: inline-flex; align-items: center; gap: 6px; }
+.kc-checked .brand-logo, .kc-all-rows .brand-logo { margin-inline-end: 0; }
+.kc-all-rows { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 5px; margin: 8px 0 0; }

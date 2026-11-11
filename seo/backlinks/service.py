@@ -28,7 +28,7 @@ log = logging.getLogger(__name__)
 
 MAX_ROWS = 5000
 NOT_LISTED_DAYS = 60  # Search Console's links lag weeks and are a sample, so a link newer than this isn't missing from them yet
-TOO_MANY = "One upload can hold at most 5,000 rows. Split the file and try again."
+TOO_MANY = "At most 5,000 rows per upload. Split the file and try again."
 MAX_ADDRESS = 2048
 MAX_DOMAIN = 190
 MAX_COST = Decimal("9999999999.99")
@@ -166,7 +166,7 @@ def _clean_row(row) -> dict:
     domain = store.host_and_domain(address)[1] if _WEB_ADDRESS.match(address) and not re.search(r"\s", address) else ""
     key = source_key(address) if domain else ""
     if not key or not cleaner.root_domain(domain) or len(domain) > MAX_DOMAIN:
-        raise Refused(f"{name}: That doesn't look like a web address.")
+        raise Refused(f"{name}: Not a web address.")
     if len(address) > MAX_ADDRESS:
         raise Refused(f"{name}: That web address is too long.")
     if key in _EXAMPLE_KEYS:
@@ -467,7 +467,7 @@ def ignore_found(engine: Engine, backlink_id: int, ignored) -> dict:
         if row is None:
             raise NotFound("That backlink doesn't exist.")
         if row["status"] not in NOT_LOGGED:
-            raise Refused("Only a link found by a tool can be ignored. This one is logged.")
+            raise Refused("Only tool-found links can be ignored; this one is logged.")
         conn.execute(text("UPDATE backlinks SET status = :s WHERE id = :i"), {"s": IGNORED if ignored else FOUND, "i": backlink_id})
         return _rows_by_id(conn, [backlink_id])[0]
 

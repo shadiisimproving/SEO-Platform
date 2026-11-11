@@ -7,7 +7,7 @@
   const fr = document.documentElement.lang === "fr";
   const FR = {
     "Sign in": "Connexion", "Username or email": "Nom d'utilisateur ou e-mail", "Password": "Mot de passe",
-    "Forgot your password? Ask your admin to reset it. After 5 wrong tries, sign-in waits 15 minutes.": "Mot de passe oublié ? Demandez à votre admin de le réinitialiser. Après 5 essais erronés, la connexion attend 15 minutes.",
+    "Forgot your password? Ask your admin. After 5 wrong tries, wait 15 minutes.": "Mot de passe oublié ? Demandez à votre admin. Après 5 essais erronés, attendez 15 minutes.",
     "Temporary password": "Mot de passe temporaire", "New password": "Nouveau mot de passe", "At least 10 characters.": "Au moins 10 caractères.", "Save and continue": "Enregistrer et continuer",
     "Choose your password": "Choisissez votre mot de passe", "Your temporary password only works once.": "Votre mot de passe temporaire ne sert qu'une fois.",
     "Enter your username and password.": "Saisissez votre nom d'utilisateur et votre mot de passe.", "That didn't work. Try again.": "Cela n'a pas marché. Réessayez.",
@@ -17,7 +17,7 @@
   const t = (text) => (fr && FR[text]) || text;
   if (fr) {
     document.title = `${t("Sign in")} · SEO Command Center`;
-    [["title", "Sign in"], ["go", "Sign in"], ["l-email", "Username or email"], ["l-password", "Password"], ["forgot", "Forgot your password? Ask your admin to reset it. After 5 wrong tries, sign-in waits 15 minutes."], ["current-label", "Temporary password"], ["l-next", "New password"], ["l-help", "At least 10 characters."], ["l-save", "Save and continue"]]
+    [["title", "Sign in"], ["go", "Sign in"], ["l-email", "Username or email"], ["l-password", "Password"], ["forgot", "Forgot your password? Ask your admin. After 5 wrong tries, wait 15 minutes."], ["current-label", "Temporary password"], ["l-next", "New password"], ["l-help", "At least 10 characters."], ["l-save", "Save and continue"]]
       .forEach(([id, words]) => { if ($(id)) $(id).textContent = t(words); });
   }
   const fail = (text) => { $("err").textContent = t(text); $("err").hidden = !text; };

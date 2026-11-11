@@ -52,19 +52,19 @@
 
   function stateCard(entry, source) {
     if (entry.loading) return loadingCard();
-    if (entry.noServer) return emptyCard(t("Needs the running app"), t("Opened as a plain file there's no real data to show here."));
+    if (entry.noServer) return emptyCard(t("Needs the running app"), t("Opened as a file: no real data."));
     if (entry.error) return UI.failCard(entry.error, { retry: "data-lv-retry" });
     const name = t(NAMES[source]);
     const d = entry.data;
     if (d.state === "no_sites") return emptyCard(t("No site yet"), t("Add a site to see its data."), `<button class="btn btn-main" id="site-switch-hint" data-lv-add-site>${t("Add a site")}</button>`);
-    if (d.state === "not_connected") return emptyCard(`${name}: ${t("not connected")}`, t("Connect it in Settings, and pick which property this site uses."), connectBtn("google"));
-    if (d.state === "not_used") return emptyCard(`${name}: ${t("not used")}`, t("You said this site doesn't use it, so there's nothing to show. That's fine. You can change this in Settings."), connectBtn("google", "Open Settings"));
+    if (d.state === "not_connected") return emptyCard(`${name}: ${t("not connected")}`, t("Connect it in Settings and pick this site's property."), connectBtn("google"));
+    if (d.state === "not_used") return emptyCard(`${name}: ${t("not used")}`, t("This site doesn't use it, as you said. Change that in Settings."), connectBtn("google", "Open Settings"));
     if (d.state === "failing") {
       // The plain sentence and what to do first; Google's own long message folds away below.
       const fix = window.FIX?.html(d.error || "", { tool: name, retry: "refresh" }, { summary: true, said: true }) || esc(d.error || "");
       return `<section class="card"><div class="empty"><h3>${esc(`${name}: ${t("stopped working")}`)}</h3>${fix}<div style="margin-top:12px">${connectBtn("google", "Fix")}</div></div></section>`;
     }
-    if (d.state === "waiting") return emptyCard(t("Connected. Waiting for its first data"), t("It arrives after the next run. Press Refresh data to start one now."), refreshBtn(true));
+    if (d.state === "waiting") return emptyCard(t("Connected. Waiting for data"), t("Arrives after the next run. Refresh data starts one now."), refreshBtn(true));
     return "";
   }
 
@@ -87,12 +87,12 @@
     // A full Refresh data also starts a read of my site's pages (owner, 2026-11-10); it runs on its own, so every message after it says so.
     // DuckDuckGo positions too (owner, 2026-11-11): they have no site-owner tool, so Refresh data starts a free check of them.
     const pagesNote = (answers.some((a) => a.pages) ? ` ${t(PAGES_NOTE)}` : "") + (answers.some((a) => a.rankings) ? ` ${t(DDG_NOTE)}` : "");
-    const laterNote = (clarityLater ? ` ${t("Clarity was already read today. It reads again after midnight UTC.")}` : "") + pagesNote;
+    const laterNote = (clarityLater ? ` ${t("Clarity already read today. Next read after midnight UTC.")}` : "") + pagesNote;
     if (!ids.length) {
-      UI.toast(pagesNote ? laterNote.trim() : t("Nothing to read yet: connect a data source first, or it's already running.") + laterNote, { kind: pagesNote ? "good" : "info" });
+      UI.toast(pagesNote ? laterNote.trim() : t("Nothing to read: connect a data source, or it's already running.") + laterNote, { kind: pagesNote ? "good" : "info" });
       return;
     }
-    UI.toast(t("Reading the latest data. It appears here when it arrives.") + pagesNote, { kind: "good" });
+    UI.toast(t("Reading the latest data…") + pagesNote, { kind: "good" });
     LV.reading = { done: 0, total: ids.length };
     // Each read's own state, so a screen can show Queued → Reading… → ✓ beside its source (AI search's chips).
     LV.readingJobs = entries.filter((e) => e.job_id).map((e) => ({ id: e.job_id, source: e.source, status: "queued" }));
@@ -115,7 +115,7 @@
     LV.reading = null; LV.readingJobs = null;
     showReading();
     if (redraw) { forget(); if (!UI.$("#panel")) UI.render(); }
-    if (!finished) { UI.toast(t("Still reading in the background. The numbers appear here when it finishes: press Refresh data again in a few minutes.") + laterNote, { kind: "info" }); return; }
+    if (!finished) { UI.toast(t("Still reading in the background. Press Refresh data again in a few minutes.") + laterNote, { kind: "info" }); return; }
     if (failed.length) {
       // Which source failed and why, in the message itself, with the button that opens its connection.
       const why = failed.map((s) => { const name = t(SOURCE_NAMES[s.source] || s.source), plain = window.FIX?.explain?.(s.error, { tool: name, retry: "refresh" })?.summary; return `${name}: ${t(plain || UI.errorWords(s.error))}`; });
@@ -124,23 +124,25 @@
       return;
     }
     const read = [...new Set(entries.filter((e) => e.job_id).map((e) => t(SOURCE_NAMES[e.source] || e.source)))];
-    UI.toast((read.length ? fillIn(t("Updated: {names}."), { names: read.join(", ") }) : t("Updated with the latest data.")) + laterNote, { kind: "good" });
+    UI.toast((read.length ? fillIn(t("Updated: {names}."), { names: read.join(", ") }) : t("Up to date.")) + laterNote, { kind: "good" });
   }
-  const PAGES_NOTE = "Your site's pages are being read too. That takes a while: it waits 3 seconds between pages.";
+  const PAGES_NOTE = "Your pages are being read too, 3 seconds apart.";
   LV.PAGES_NOTE = PAGES_NOTE;
   const DDG_NOTE = "DuckDuckGo positions are being checked too, on free searches. They show on Keywords when it finishes.";
   LV.DDG_NOTE = DDG_NOTE;
   const SOURCE_NAMES = { gsc: "Search Console", ga4: "Google Analytics", bing: "Bing Webmaster", yandex: "Yandex Webmaster", clarity: "Microsoft Clarity", pagespeed: "PageSpeed Insights" };
   LV.watchReads = watchReads;
+  /* A short note the server sends after the dates, and the full sentence behind its (i). */
+  const EXTRA_TIPS = { "Lags 2–3 days": "Search Console lags 2 to 3 days and counts days in Pacific time." };
   /* Both periods in words, from the dates the server really used, then how far the data goes. */
   const throughNote = (through, extra = "", d = null) => {
     const p = d?.period, bits = [];
     if (p?.from && p?.to) bits.push(`${esc(UI.fmtRange(p.from, p.to))}${p.compare_from && p.compare_to ? ` ${t("vs")} ${esc(UI.fmtRange(p.compare_from, p.compare_to))}` : ""}`);
     if (through) { bits.push(`${t("Data through")} ${esc(shortDay(through))}`); UI.range.end(UI.state.route, through); }
-    if (extra) bits.push(esc(t(extra)));
+    if (extra) bits.push(`${esc(t(extra))}${UI.tip(EXTRA_TIPS[extra] || "")}`);
     return bits.length ? `<span class="small muted">${bits.join(" · ")}</span>` : "";
   };
-  const hiddenNote = (hid) => (hid ? `<p class="note lv-note">${icon("info")}<span>${t("Google Analytics hid some rows with few visits, so small numbers may be missing. A longer period may show them.")}</span></p>` : "");
+  const hiddenNote = (hid) => (hid ? `<p class="note lv-note">${icon("info")}<span>${t("Google Analytics hid rows with few visits.")}${UI.tip("Google Analytics hid some rows with few visits, so small numbers may be missing. A longer period may show them.")}</span></p>` : "");
 
   const change = (now, before, opts = {}) => {
     if (before === null || before === undefined || now === null || now === undefined) return "";
@@ -199,7 +201,7 @@
         <div class="lv-axis" aria-hidden="true">${ticks.map((d) => `<span>${esc(shortDay(d))}</span>`).join("")}</div>
       </div>
       ${series.length > 1 && legend ? `<div class="lv-legend">${series.map((s) => `<span><i class="lv-key" style="background:${s.color}"></i>${esc(t(s.name))}</span>`).join("")}</div>` : ""}
-      <div class="lv-foot"><button class="link-btn" data-lv-table="${id}" aria-expanded="${open ? "true" : "false"}">${t(open ? "Hide the table" : "Show as a table")}</button></div>
+      <div class="lv-foot"><button class="link-btn" data-lv-table="${id}" aria-expanded="${open ? "true" : "false"}">${t(open ? "Hide table" : "Show table")}</button></div>
       ${open ? `<div class="table-wrap lv-chart-table">${table}</div>${window.TP.footer(tableKey, tableView)}` : ""}`;
   }
 
@@ -231,7 +233,7 @@
      every long table in the app (table-pages.js). */
   const SORTS = new Map();
   const pagesKey = (id) => `lv-${id}`;
-  function dataTable(id, columns, rows, { csv = false, empty = "Nothing in this period.", search = "Search the table" } = {}) { // downloads are the Export button in the top bar (export.js)
+  function dataTable(id, columns, rows, { csv = false, empty = "Nothing in this period.", search = "Search table" } = {}) { // downloads are the Export button in the top bar (export.js)
     if (!rows.length) return `<div class="empty"><p>${t(empty)}</p></div>`;
     const TP = window.TP, key = pagesKey(id);
     TP.on(key, () => UI.render());
@@ -257,7 +259,7 @@
       return `<th class="${c.num ? "c" : ""}" scope="col" aria-sort="${on ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}"><button class="th-btn" data-lv-sort="${id}" data-key="${c.key}" ${UI.def(c.label) ? `data-tip="${esc(UI.def(c.label))}"` : ""}>${esc(t(c.label))}${on ? icon(sort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
     }).join("");
     LV.chartData.set(`table-${id}`, { columns, rows: shown });
-    if (!shown.length) return `${box}<div class="empty"><p>${t("Nothing matches the search.")}</p></div>`;
+    if (!shown.length) return `${box}<div class="empty"><p>${t("Nothing matches.")}</p></div>`;
     const body = view.rows.map((row) => `<tr style="cursor:default">${columns.map((c) => {
       const v = value(c, row);
       return `<td class="${c.num ? "c" : ""}" data-label="${esc(t(c.label))}">${c.html ? c.html(row) : v === null || v === undefined ? `<span class="muted">—</span>` : c.num ? num(v) : esc(v)}</td>`;
@@ -291,7 +293,7 @@
   function overviewPage() {
     const entry = load("metrics/overview");
     const blocked = stateCard(entry, "gsc");
-    const head = topbarFor("Overview", "How the site does on Google, from Search Console", entry);
+    const head = topbarFor("Overview", "Your Google results, from Search Console", entry);
     if (blocked) return page(head, blocked);
     const d = entry.data, now = d.totals, before = d.before;
     if (!now) return page(head, emptyCard(t("No data in this period."), `${t("Search Console has data through")} ${esc(d.through ? shortDay(d.through) : "—")}. ${t("Pick a longer or earlier period.")}`));
@@ -318,8 +320,8 @@
       <p class="small muted" style="margin:0 0 12px">${throughNote(d.through, d.lag_note, d)}</p>
       ${tileRow}${chart}
       <div class="lv-two">
-        <section class="card"><div class="card-head"><h2>${t("Queries gaining clicks")}</h2></div>${compareOff ? `<div class="empty"><p>${t("Pick a comparison above to see this.")}</p></div>` : moves("gaining", d.gaining, "No query gained clicks.")}</section>
-        <section class="card"><div class="card-head"><h2>${t("Queries losing clicks")}</h2></div>${compareOff ? `<div class="empty"><p>${t("Pick a comparison above to see this.")}</p></div>` : moves("losing", d.losing, "No query lost clicks.")}</section>
+        <section class="card"><div class="card-head"><h2>${t("Queries gaining clicks")}</h2></div>${compareOff ? `<div class="empty"><p>${t("Pick a comparison above.")}</p></div>` : moves("gaining", d.gaining, "No query gained clicks.")}</section>
+        <section class="card"><div class="card-head"><h2>${t("Queries losing clicks")}</h2></div>${compareOff ? `<div class="empty"><p>${t("Pick a comparison above.")}</p></div>` : moves("losing", d.losing, "No query lost clicks.")}</section>
       </div>
       <section class="card" style="margin-top:14px"><div class="card-head"><h2>${t("Queries by position")}</h2></div>${bars(d.distribution, { value: (r) => r.queries, label: (r) => r.bucket })}</section>
       ${speedCard()}${ideasCard()}`);
@@ -336,15 +338,42 @@
       { key: "lcp_ms", label: "Largest content (s)", num: true, get: (r) => ms(r.lcp_ms), html: (r) => (r.lcp_ms === null ? `<span class="muted">—</span>` : decimal(ms(r.lcp_ms))) },
       { key: "inp_ms", label: "Response (ms)", num: true },
       { key: "cls", label: "Layout shift", num: true, html: (r) => (r.cls === null ? `<span class="muted">—</span>` : decimal(Math.round(r.cls * 100) / 100)) },
-      { key: "field_data", label: "Measured on", get: (r) => t(r.field_data ? "Real visitors" : "A test run") },
+      { key: "field_data", label: "Measured on", get: (r) => t(r.field_data ? "Real visitors" : "Test run") },
     ], entry.data.runs, { csv: false })}</section>`;
   }
 
-  const ideas = { query: "", rows: null, error: "" };
-  const ideasCard = () => `<section class="card" style="margin-top:14px"><div class="card-head"><h2>${t("Keyword ideas")}</h2><span class="end small muted">${t("From Google's suggestions. Free and unofficial, so it can stop working.")}</span></div>
-      <form class="lv-rule-form" data-lv-ideas style="border-top:0"><input class="input" name="f_q" dir="auto" value="${esc(ideas.query)}" placeholder="${t("A word or two")}" aria-label="${t("A word or two")}" autocomplete="off"><button class="btn btn-small" type="submit">${t("Find ideas")}</button></form>
+  /* Keyword ideas. Keywords passes ctx: the site's keywords, to mark ideas already tracked, and the country and language
+     they use most, picked until someone picks another on that site. Google answers for the country asked, else for where the app runs. */
+  const ideas = { query: "", rows: null, error: "", picks: {}, asked: {} };
+  const ideasCard = (ctx = {}) => {
+    const market = ctx.market || {}, tracked = ctx.tracked || new Set();
+    const pick = ideas.picks[UI.siteHostPicked() || "all"];
+    const country = pick ? pick.country : market.country || "", language = pick ? pick.language : market.language || "";
+    const isTracked = (word) => tracked.has(word.toLowerCase());
+    const fresh = (ideas.rows || []).filter((word) => !isTracked(word));
+    ideas.fresh = fresh; // what Add all adds
+    const langName = (code) => {
+      const lang = UI.state.lang === "fr" ? "fr" : "en";
+      let name = code;
+      try { name = new Intl.DisplayNames([lang], { type: "language" }).of(code) || code; } catch { /* the code itself */ }
+      return name.charAt(0).toLocaleUpperCase(lang) + name.slice(1); // as the Language list writes it
+    };
+    const where = [ideas.asked.country ? UI.countryName(ideas.asked.country) : t("Any country"), ideas.asked.language ? langName(ideas.asked.language) : ""].filter(Boolean).join(" · ");
+    const row = (word, i) => `<li><div class="what"><div class="t mono" dir="auto">${esc(word)}</div></div><div class="acts">${isTracked(word)
+      ? `<span class="small muted lv-idea-tracked">${icon("check")}${t("Already tracked")}</span>`
+      : `<button class="btn btn-small" data-lv-idea="${i}" aria-label="${esc(`${t("Add to my keywords")}: ${word}`)}">${icon("plus")}${t("Add")}</button>`}</div></li>`;
+    return `<section class="card" style="margin-top:14px"><div class="card-head"><h2>${t("Keyword ideas")}</h2><span class="end small muted">${t("From Google's suggestions")}${UI.tip("Free and unofficial, so it can stop working.")}</span></div>
+      <form class="lv-rule-form" data-lv-ideas style="border-top:0"><input class="input" name="f_q" dir="auto" value="${esc(ideas.query)}" placeholder="${t("A word or two")}" aria-label="${t("A word or two")}" autocomplete="off">
+        <select class="select" name="f_country" aria-label="${t("Country")}"><option value="">${t("Any country")}</option>${UI.countryOptions(country)}</select>
+        <select class="select" name="f_language" aria-label="${t("Language")}"><option value="">${t("Any language")}</option>${UI.languageOptions(language)}</select>
+        <button class="btn btn-small" type="submit">${t("Find ideas")}</button></form>
+      ${market.country || market.language ? `<p class="small muted" style="padding:0 18px 10px;margin:-4px 0 0">${t("Country and language start on the ones this site's keywords use most.")}</p>` : ""}
       ${ideas.error ? `<p class="error" style="padding:0 18px 12px;margin:0" role="alert">${esc(t(ideas.error))}</p>` : ""}
-      ${ideas.rows ? (ideas.rows.length ? `<ul class="rows">${ideas.rows.map((word) => `<li><div class="what"><div class="t mono" dir="auto">${esc(word)}</div></div></li>`).join("")}</ul>` : `<div class="empty" style="padding:20px"><p>${t("No suggestions for that.")}</p></div>`) : ""}</section>`;
+      ${ideas.rows ? (ideas.rows.length ? `<div class="lv-ideas-bar small muted"><span>${num(ideas.rows.length)} ${t("ideas")} · ${esc(where)}</span>${fresh.length > 1 ? `<button class="btn btn-small" data-lv-idea-all>${icon("plus")}${t("Add all")} (${num(fresh.length)})</button>` : ""}</div>
+        <ul class="rows">${ideas.rows.map(row).join("")}</ul>` : `<div class="empty" style="padding:20px"><p>${t("No suggestions.")}</p></div>`) : ""}</section>`;
+  };
+  // Adding opens the usual Add keywords panel, with the country and language the ideas came from.
+  const trackIdeas = (words, opener) => window.KW?.track(words, UI.siteHostPicked(), opener, { ...ideas.asked, why: "The country and language of these ideas." });
 
   // ---- Channels ---------------------------------------------------------------------------------
   function rulesCard(kind, title, hint, patternHint, valueHint, rules) {
@@ -357,7 +386,7 @@
   function channelsPage() {
     const entry = load("metrics/channels");
     const blocked = stateCard(entry, "ga4");
-    const head = topbarFor("Channels", "Where visits and leads come from, from Google Analytics", entry);
+    const head = topbarFor("Channels", "Visit and lead sources, from Google Analytics", entry);
     if (blocked) return page(head, blocked);
     const d = entry.data;
     if (!d.channels.length) return page(head, emptyCard(t("No data in this period."), `${t("Google Analytics has data through")} ${esc(d.through ? shortDay(d.through) : "—")}.`));
@@ -389,32 +418,34 @@
         { key: "sessions", label: "Visits", num: true },
         { key: "leads", label: "Leads", num: true },
       ], d.referrers, { empty: "No referring sites in this period.", search: "Search sites" })}</section>
-      ${rulesCard("channel", "Channel rules", "Rename where a visit counts. A change applies to past days too. Match source/medium, with * for anything.", "chatgpt.com/*", "Channel name", d.rules)}`);
+      ${rulesCard("channel", "Channel rules", "Rename channels by source/medium (* = anything). Past days change too.", "chatgpt.com/*", "Channel name", d.rules)}`);
   }
 
   // ---- Conversions ------------------------------------------------------------------------------
   function conversionsPage() {
     const entry = load("metrics/conversions");
     const blocked = stateCard(entry, "ga4");
-    const head = topbarFor("Conversions", "From visit to lead. Counts only: no personal data comes into this app", entry);
+    const head = topbarFor("Conversions", "From visit to lead. Counts only, no personal data.", entry);
     if (blocked) return page(head, blocked);
     const d = entry.data;
     if (!d.sessions) return page(head, emptyCard(t("No data in this period."), `${t("Google Analytics has data through")} ${esc(d.through ? shortDay(d.through) : "—")}.`));
-    const setUp = d.key_events_set_up ? "" : `<p class="note warn lv-note">${icon("triangle-alert")}<span>${t("No key events found. Set up your forms as key events in Google Analytics, and leads appear here.")}</span></p>`;
+    const setUp = d.key_events_set_up ? "" : `<p class="note warn lv-note">${icon("triangle-alert")}<span>${t("No key events. Mark your forms as key events in GA4.")}</span></p>`;
     const funnel = d.funnel.map((r) => {
       const max = Math.max(...d.funnel.map((x) => x.sessions), 1);
-      return `<div><div class="small" style="display:flex;justify-content:space-between;gap:8px"><b dir="auto">${esc(t(r.channel))}</b><span>${num(r.sessions)} ${t("visits")} → ${num(r.leads)} ${t("leads")} · ${pct(r.rate)}</span></div>
-        <div class="lv-bar" style="grid-template-columns:1fr"><span class="track"><i style="width:${Math.max(r.sessions ? 2 : 0, (r.sessions / max) * 100)}%"></i></span></div>
-        <div class="small muted">${num(r.lost)} ${t("visits didn't become a lead")}</div></div>`;
+      // The words are said once, in the card head; a row holds its numbers, with the full words kept for screen readers.
+      const words = `${num(r.sessions)} ${t("visits")} → ${num(r.leads)} ${t("leads")} · ${pct(r.rate)} · ${num(r.lost)} ${t("without a lead")}`;
+      return `<div><div class="small" style="display:flex;justify-content:space-between;gap:8px"><b dir="auto">${esc(t(r.channel))}</b><span class="lv-funnel-nums"><span aria-hidden="true">${num(r.sessions)} → ${num(r.leads)} · ${pct(r.rate)} · <span class="muted">${num(r.lost)}</span></span><span class="sr">${words}</span></span></div>
+        <div class="lv-bar" style="grid-template-columns:1fr"><span class="track"><i style="width:${Math.max(r.sessions ? 2 : 0, (r.sessions / max) * 100)}%"></i></span></div></div>`;
     }).join("");
+    const funnelKey = `<span class="end small muted" aria-hidden="true">${t("Visits")} → ${t("Leads")} · ${t("Rate")} · ${t("Without a lead")}</span>`;
     return page(head, `
       <p class="small muted" style="margin:0 0 12px">${throughNote(d.through, "", d)}</p>${hiddenNote(d.hid_rows)}${setUp}
       <section class="tiles">
         ${UI.tile(t("Visits"), UI.cnt(d.sessions), "", { ic: "activity" })}
-        ${UI.tile(t("Leads"), d.key_events_set_up ? num(d.leads) : "—", d.key_events_set_up ? "" : `<span class="ab">${t("Key events not set up")}</span>`, { ic: "filter" })}
+        ${UI.tile(t("Leads"), d.key_events_set_up ? num(d.leads) : "—", d.key_events_set_up ? "" : `<span class="ab">${t("Not set up")}</span>`, { ic: "filter" })}
         ${UI.tile(t("Lead rate"), d.key_events_set_up ? pct(d.rate) : "—", "", { ic: "percent" })}
       </section>
-      <section class="card"><div class="card-head"><h2>${t("From visit to lead, by channel")}</h2></div><div class="lv-funnel">${funnel}</div></section>
+      <section class="card"><div class="card-head"><h2>${t("From visit to lead, by channel")}</h2>${funnelKey}</div><div class="lv-funnel">${funnel}</div></section>
       <div class="lv-two" style="margin-top:14px">
         <section class="card"><div class="card-head"><h2>${t("Page types")}</h2></div>${dataTable("types", [
           { key: "type", label: "Type", get: (r) => t(r.type), html: (r) => `<span dir="auto">${esc(t(r.type))}</span>` },
@@ -431,7 +462,7 @@
   // ---- Content ----------------------------------------------------------------------------------
   function contentPage() {
     const entry = load("metrics/content");
-    const head = topbarFor("Content", "Every page: visits, leads, Google clicks, position and AI visits", entry);
+    const head = topbarFor("Content", "Every page and its results", entry);
     if (entry.loading || entry.error) return page(head, stateCard(entry, "ga4"));
     const d = entry.data;
     // Read before the "no pages" answer: Clarity has its own days, such as old imported ones with no Google data beside them.
@@ -443,12 +474,12 @@
         ${UI.tile(t("Scroll depth"), heat.data.scroll_depth === null ? "—" : `${decimal(heat.data.scroll_depth)} %`, "", { ic: "layers" })}
         ${UI.tile(t("Rage clicks"), known(heat.data.rage_clicks), "", { ic: "mouse-pointer-click" })}
         ${UI.tile(t("Dead clicks"), known(heat.data.dead_clicks), "", { ic: "mouse-pointer-click" })}
-      </section>${sessionsOnly ? `<p class="note lv-note">${icon("info")}<span>${num(sessionsOnly)} ${t(sessionsOnly === 1 ? "day here has Clarity sessions only: scroll depth and clicks weren't recorded for it." : "days here have Clarity sessions only: scroll depth and clicks weren't recorded for them.")}</span></p>` : ""}` : "";
+      </section>${sessionsOnly ? `<p class="note lv-note">${icon("info")}<span>${num(sessionsOnly)} ${t(sessionsOnly === 1 ? "day has Clarity sessions only: no scroll depth or clicks." : "days have Clarity sessions only: no scroll depth or clicks.")}</span></p>` : ""}` : "";
     if (!d.pages.length) {
       const blocked = stateCard({ data: { ...d, state: d.ga4.state === "ok" ? d.gsc.state : d.ga4.state, through: d.ga4.through, error: d.ga4.error || d.gsc.error } }, d.ga4.state === "ok" ? "gsc" : "ga4");
       return page(head, clarityReportCard("dashboard") + clarityCard + (blocked || emptyCard(t("No data in this period."), t("Pick a longer or earlier period."))));
     }
-    const missing = d.ga4.state !== "ok" ? "Visits and leads need Google Analytics. Until it's connected, they stay blank." : d.gsc.state !== "ok" ? "Google clicks and position need Search Console. Until it's connected, they stay blank." : "";
+    const missing = d.ga4.state !== "ok" ? "Visits and leads stay blank until Google Analytics is connected." : d.gsc.state !== "ok" ? "Google clicks and position stay blank until Search Console is connected." : "";
     return page(head, `
       ${missing ? `<p class="note lv-note">${icon("info")}<span>${t(missing)}</span></p>` : ""}${hiddenNote(d.hid_rows)}${clarityReportCard("dashboard")}${clarityCard}
       <section class="card"><div class="card-head"><h2>${t("All pages")}</h2><span class="end small muted">${num(d.total_pages)} ${t(d.total_pages === 1 ? "page" : "pages")}</span></div>${dataTable("content", [
@@ -456,7 +487,7 @@
         { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }, { key: "clicks", label: "Google clicks", num: true },
         { key: "position", label: "Position", num: true, html: (r) => decimal(r.position) }, { key: "ai", label: "AI visits", num: true },
       ], d.pages, { search: "Search pages" })}</section>
-      <section class="card" style="margin-top:14px"><div class="card-head"><h2>${t("Traffic from social networks")}</h2></div>${d.social.length ? bars(d.social, { value: (r) => r.sessions, label: (r) => r.source }) : `<div class="empty"><p>${t("No visits from social networks in this period.")}</p></div>`}</section>
+      <section class="card" style="margin-top:14px"><div class="card-head"><h2>${t("Social networks")}</h2></div>${d.social.length ? bars(d.social, { value: (r) => r.sessions, label: (r) => r.source }) : `<div class="empty"><p>${t("No visits from social networks in this period.")}</p></div>`}</section>
       ${speedCard()}`); // Page speed moved here from Overview on 2026-11-09: it's about pages, not Google results
   }
 
@@ -467,11 +498,18 @@
   const spanOf = (r) => `${esc(shortDay(r.period_start))} – ${esc(shortDay(r.period_end))}`;
   const grade = (value, good, poor, text) => (value === null || value === undefined ? "—" : `<span class="${value <= good ? "good" : value <= poor ? "warn" : "crit"}">${text}</span> <span class="small muted">${t(value <= good ? "good" : value <= poor ? "needs work" : "slow")}</span>`);
   const crTabRow = (kind, tabs) => `<div class="tabs" role="tablist" aria-label="${t("Clarity report")}" style="margin:6px 18px 0">${tabs.map(([id, word]) => `<button class="tab" role="tab" data-cr-tab="${kind}:${id}" aria-selected="${crTabs[kind] === id}">${t(word)}</button>`).join("")}</div>`;
-  const pickSite = (s, kind) => {
-    const ui = window.SITES.find((x) => x.realId === s.site_id)?.id;
-    return `${ui ? `<button class="link-btn mono" data-pick-site="${esc(ui)}" dir="ltr">${esc(s.host)}</button>` : `<span class="mono" dir="ltr">${esc(s.host)}</span>`}<div class="lv-cat">${spanOf(s[kind])}</div>`;
+  // A row names its file's period only when it differs from the one the card head shows for every site.
+  const pickSite = (s, kind, shared = "") => {
+    const ui = window.SITES.find((x) => x.realId === s.site_id)?.id, span = spanOf(s[kind]);
+    return `${ui ? `<button class="link-btn mono" data-pick-site="${esc(ui)}" dir="ltr">${esc(s.host)}</button>` : `<span class="mono" dir="ltr">${esc(s.host)}</span>`}${span === shared ? "" : `<div class="lv-cat">${span}</div>`}`;
   };
-  const uploadHint = () => `<p class="note lv-note">${icon("info")}<span>${t("Clarity's own dashboard downloads can go in too: Settings → Microsoft Clarity → Clarity dashboard downloads.")} <button class="link-btn" data-lv-connect="clarity">${t("Open it")}</button></span></p>`;
+  // The period most of these sites' files cover, said once in the card head.
+  const sharedSpan = (sites, kind) => {
+    const counts = new Map();
+    sites.forEach((s) => { const span = spanOf(s[kind]); counts.set(span, (counts.get(span) || 0) + 1); });
+    return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || "";
+  };
+  const uploadHint = () => `<p class="note lv-note">${icon("info")}<span>${t("Clarity dashboard downloads can go in too.")}${UI.tip("Upload them in Settings → Microsoft Clarity → Clarity dashboard downloads.")} <button class="link-btn" data-lv-connect="clarity">${t("Open it")}</button></span></p>`;
 
   function clarityReportCard(kind) {
     const entry = load("metrics/clarity-reports");
@@ -481,11 +519,12 @@
     const one = sites.length === 1 && UI.siteIdPicked();
     const r = sites[0][kind];
     const older = sites.some((s) => s[kind].older) ? ` · ${t("older downloads are kept")}` : "";
-    const headOf = (title) => `<div class="card-head"><h2>${t(title)}</h2><span class="end small muted">${one ? `${spanOf(r)} · ` : ""}${t("from a Clarity download")}${older}</span></div>`;
+    const shared = one ? "" : sharedSpan(sites, kind);
+    const headOf = (title) => `<div class="card-head"><h2>${t(title)}</h2><span class="end small muted">${one ? `${spanOf(r)} · ` : shared ? `${shared} · ` : ""}${t("from a Clarity download")}${older}</span></div>`;
     if (kind === "dashboard") {
       if (!one) {
         return `<section class="card" style="margin-bottom:14px">${headOf("Clarity report")}${dataTable("cr-sites", [
-          { key: "host", label: "Site", html: (s) => pickSite(s, "dashboard") },
+          { key: "host", label: "Site", html: (s) => pickSite(s, "dashboard", shared) },
           { key: "real", label: "Real visits", num: true, get: (s) => realVisits(s.dashboard) },
           { key: "bots", label: "Bots", num: true, get: (s) => s.dashboard.bot_sessions },
           { key: "scroll", label: "Scroll depth", num: true, get: (s) => s.dashboard.scroll_depth, html: (s) => pctOf(s.dashboard.scroll_depth) },
@@ -493,10 +532,10 @@
         ], sites, { csv: false })}<p class="small muted" style="margin:0;padding:10px 18px 14px">${t("Press a site to see its pages, referrers and problems.")}</p></section>`;
       }
       const real = realVisits(r), ins = r.insights || {}, perf = r.performance || {};
-      const answer = r.sessions ? `${num(real)} ${t("real visits")}: ${t("Clarity counted")} ${num(r.sessions)} ${t("and marked")} ${num(r.bot_sessions || 0)} ${t("as bots")} (${pctOf((100 * (r.bot_sessions || 0)) / r.sessions)}).` : t("Clarity counted no visits in this file.");
+      const answer = r.sessions ? `${num(real)} ${t("real visits")}: ${t("Clarity counted")} ${num(r.sessions)} ${t("and marked")} ${num(r.bot_sessions || 0)} ${t("as bots")} (${pctOf((100 * (r.bot_sessions || 0)) / r.sessions)}).` : t("No visits in this file.");
       const tab = crTabs.dashboard;
       const body = tab === "referrers"
-        ? `${dataTable("cr-referrers", [{ key: "source", label: "Referrer", html: (x) => `<span class="mono" dir="ltr">${esc(x.source)}</span>` }, { key: "sessions", label: "Visits", num: true }], r.referrers || [], { csv: false, empty: "No referrers in this file.", search: "Search sites" })}${r.own_referrals ? `<p class="small muted" style="margin:0;padding:0 18px 14px">${num(r.own_referrals)} ${t("visits came from the site's own pages, so they're left out.")}</p>` : ""}`
+        ? `${dataTable("cr-referrers", [{ key: "source", label: "Referrer", html: (x) => `<span class="mono" dir="ltr">${esc(x.source)}</span>` }, { key: "sessions", label: "Visits", num: true }], r.referrers || [], { csv: false, empty: "No referrers in this file.", search: "Search sites" })}${r.own_referrals ? `<p class="small muted" style="margin:0;padding:0 18px 14px">${num(r.own_referrals)} ${t("visits from the site's own pages left out.")}</p>` : ""}`
         : tab === "problems"
           ? `<div class="lv-two" style="padding:12px 18px 16px;gap:14px">
               <div><h3 class="small" style="margin:0 0 8px">${t("What visitors ran into")}</h3>${bars([["Dead clicks", ins.dead_clicks], ["Quick back clicks", ins.quick_back], ["Rage clicks", ins.rage_clicks], ["Excessive scrolling", ins.excessive_scrolling]].filter(([, v]) => v).map(([name, v]) => ({ name: t(name), sessions: v.sessions })), { value: (x) => x.sessions, label: (x) => x.name })}
@@ -504,7 +543,7 @@
               <div><h3 class="small" style="margin:0 0 8px">${t("Page speed, real visitors")}</h3><ul class="rows" style="margin:0">
                 <li><div class="what"><div class="t">${t("Score")}</div></div><div class="acts">${perf.score === undefined || perf.score === null ? "—" : num(Math.round(perf.score))} / 100</div></li>
                 <li><div class="what"><div class="t">${t("Largest content")} (LCP)</div></div><div class="acts">${grade(perf.lcp_ms, 2500, 4000, perf.lcp_ms === null || perf.lcp_ms === undefined ? "" : `${decimal(Math.round(perf.lcp_ms / 100) / 10)} s`)}</div></li>
-                <li><div class="what"><div class="t">${t("Response to a click")} (INP)</div></div><div class="acts">${grade(perf.inp_ms, 200, 500, `${num(perf.inp_ms)} ms`)}</div></li>
+                <li><div class="what"><div class="t">${t("Click response")} (INP)</div></div><div class="acts">${grade(perf.inp_ms, 200, 500, `${num(perf.inp_ms)} ms`)}</div></li>
                 <li><div class="what"><div class="t">${t("Layout shift")} (CLS)</div></div><div class="acts">${grade(perf.cls, 0.1, 0.25, decimal(perf.cls))}</div></li></ul></div></div>`
           : tab === "visitors"
             ? `<div class="lv-two" style="padding:12px 18px 16px;gap:14px">
@@ -535,10 +574,10 @@
   function adsPage() {
     const entry = load("metrics/ads");
     const blocked = stateCard(entry, "ga4");
-    const head = topbarFor("Google Ads", "Cost, clicks and leads, from Google Analytics when it's linked to Google Ads", entry);
+    const head = topbarFor("Google Ads", "Cost, clicks and leads from Google Ads, via Google Analytics", entry);
     if (blocked) return page(head, blocked);
     const d = entry.data;
-    if (!d.linked) return page(head, emptyCard(t("No Google Ads data yet"), t("In Google Analytics, link the property to your Google Ads account. Cost and clicks appear here the day after.")));
+    if (!d.linked) return page(head, emptyCard(t("No Google Ads data yet"), t("Link the Google Analytics property to Google Ads; data shows the next day.")));
     const money = (value, currency) => new Intl.NumberFormat(UI.locale(), currency ? { style: "currency", currency } : { maximumFractionDigits: 2 }).format(value);
     return page(head, `
       <p class="small muted" style="margin:0 0 12px">${throughNote(d.through, "", d)}</p>
@@ -553,7 +592,7 @@
         { key: "cost", label: "Cost", num: true, html: (r) => esc(money(r.cost, r.currency)) },
         { key: "clicks", label: "Clicks", num: true }, { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true },
       ], d.campaigns, { empty: "No campaigns in this period.", search: "Search campaigns" })}</section>
-      <p class="note lv-note" style="margin-top:14px">${icon("info")}<span>${t("Exact data through the Google Ads API isn't built: it needs an approved developer token first.")}</span></p>`);
+      <p class="note lv-note" style="margin-top:14px">${icon("info")}<span>${t("Exact Google Ads API data needs an approved developer token: not built.")}</span></p>`);
   }
 
   // ---- Resources --------------------------------------------------------------------------------
@@ -598,11 +637,11 @@
     if (R.rows === null) loadResources();
     const head = UI.topbar(t("Resources"), t("Links and documents, per site"), `<button class="btn btn-main" data-lv-resource="new">${icon("plus")}${t("Add a resource")}</button>`, false);
     if (R.rows === null) return page(head, loadingCard());
-    if (R.error === "noServer") return page(head, emptyCard(t("Needs the running app"), t("Opened as a plain file there's no real data to show here.")));
+    if (R.error === "noServer") return page(head, emptyCard(t("Needs the running app"), t("Opened as a file: no real data.")));
     if (R.error) return page(head, emptyCard(t("That didn't load"), esc(R.error)));
     const host = UI.siteHostPicked();
     const onSite = R.rows.filter((r) => !host || !r.host || r.host === host);
-    if (!onSite.length) return page(head, emptyCard(t("No resources yet"), t("Keep briefs, logins pages, reports and useful links here, so the team finds them.")));
+    if (!onSite.length) return page(head, emptyCard(t("No resources yet"), t("Keep briefs, login pages, reports and links here for the team.")));
     const used = knownTags().filter((tag) => onSite.some((r) => r.tags.some((x) => sameTag(x, tag))));
     if (R.tag && !used.some((tag) => sameTag(tag, R.tag))) R.tag = "";
     const rows = onSite.filter((r) => !R.tag || r.tags.some((x) => sameTag(x, R.tag)));
@@ -611,14 +650,14 @@
       { key: "title", label: "Title", html: (r) => `<button class="link-btn" data-lv-resource="${r.id}" dir="auto">${esc(r.title)}</button>${r.notes ? `<div class="lv-cat" dir="auto">${esc(r.notes)}</div>` : ""}` },
       { key: "tags", label: "Tags", get: (r) => (r.tags.length ? r.tags.join(", ") : null), html: (r) => (r.tags.length ? `<span class="rs-tags">${r.tags.map((tag) => `<span class="tag" dir="auto">${esc(tag)}</span>`).join("")}</span>` : `<span class="muted">—</span>`) },
       { key: "host", label: "Site", html: (r) => `<span class="mono" dir="auto">${esc(r.host || t("All sites"))}</span>` },
-      { key: "url", label: "Link", html: (r) => (r.url ? `<a class="ext-link lv-url" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer">${icon("external-link")}${t("Open")}</a>` : `<span class="muted">—</span>`) },
+      { key: "url", label: "Link", html: (r) => (r.url ? `<a class="ext-link lv-url" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" title="${esc(t("Open"))}" aria-label="${esc(`${t("Open")} ${r.title || r.url}`)}">${icon("external-link")}</a>` : `<span class="muted">—</span>`) },
     ], rows, { csv: false, search: "Search resources" })}</section>`);
   }
   function resourcePanel(id, opener) {
     const r = id === "new" ? {} : R.rows.find((x) => String(x.id) === String(id)) || {};
     const editing = Boolean(r.id);
     const picked = UI.siteHostPicked();
-    UI.openPanel(`${UI.panelHead(t(editing ? "Edit the resource" : "Add a resource"), "")}
+    UI.openPanel(`${UI.panelHead(t(editing ? "Edit resource" : "Add a resource"), "")}
       <form class="panel-body" id="lv-resource-form" data-id="${r.id || ""}" novalidate>
         <label class="field"><span>${t("Title")}</span><input class="input" name="f_title" dir="auto" value="${esc(r.title || "")}" autocomplete="off"></label>
         <label class="field"><span>${t("Link")}</span><input class="input mono" name="f_url" dir="ltr" value="${esc(r.url || "")}" placeholder="https://" autocomplete="off"></label>
@@ -643,6 +682,8 @@
       if (hit("[data-lv-retry]")) { forget(); UI.render(); return; }
       if (hit("[data-lv-add-site]")) { document.getElementById("site-switch")?.click(); return; }
       if ((el = hit("[data-lv-metric]"))) { overviewMetric = el.dataset.lvMetric; UI.render(); return; }
+      if ((el = hit("[data-lv-idea]"))) { trackIdeas([ideas.rows[Number(el.dataset.lvIdea)]], el); return; }
+      if ((el = hit("[data-lv-idea-all]"))) { trackIdeas(ideas.fresh || [], el); return; }
       if ((el = hit("[data-cr-tab]"))) {
         const [kind, tab] = el.dataset.crTab.split(":");
         crTabs[kind] = tab;
@@ -713,8 +754,11 @@
       if (e.target.id === "lv-resource-form") { e.preventDefault(); saveResource(); return; }
       if (e.target.matches?.("[data-lv-ideas]")) {
         e.preventDefault();
-        ideas.query = e.target.elements.f_q.value;
-        try { ideas.rows = (await window.COMP.api("GET", `keyword-ideas?q=${encodeURIComponent(ideas.query)}`)).ideas; ideas.error = ""; }
+        const f = e.target.elements;
+        const picked = { country: f.f_country.value, language: f.f_language.value };
+        ideas.query = f.f_q.value; ideas.picks[UI.siteHostPicked() || "all"] = picked;
+        const ask = new URLSearchParams({ q: ideas.query, ...picked });
+        try { ideas.rows = (await window.COMP.api("GET", `keyword-ideas?${ask}`)).ideas; ideas.error = ""; ideas.asked = picked; }
         catch (err) { ideas.rows = null; ideas.error = err.message; }
         UI.render();
       }
@@ -770,86 +814,87 @@
   screen("resources", resourcesPage); // AI search registers itself from ai-search-view.js
   Object.assign(LV, { load, pct, change, hiddenNote, siteOfPage, pageName, shortDay, fillIn, emptyCard, refreshBtn, readingWord, SOURCE_NAMES }); // for screens in their own files
   LV.dataTable = (...args) => dataTable(...args);
-  LV.ideasCard = () => ideasCard(); // Keyword ideas sit on Keywords since 2026-11-09
+  LV.ideasCard = (ctx) => ideasCard(ctx); // Keyword ideas sit on Keywords since 2026-11-09
   LV.stateCard = (...args) => stateCard(...args); // Overview's own file shows the same not-connected, failing and waiting cards
 
   const fr = {
-    "Search the table": "Rechercher dans le tableau", "Nothing matches the search.": "Rien ne correspond à la recherche.", "Search pages": "Rechercher une page", "Search sites": "Rechercher un site",
+    "Search table": "Rechercher dans le tableau", "Nothing matches.": "Rien ne correspond.", "Search pages": "Rechercher une page", "Search sites": "Rechercher un site",
     "Search queries": "Rechercher une requête", "Search resources": "Rechercher une ressource", "Search campaigns": "Rechercher une campagne",
-    "Loading…": "Chargement…", "Needs the running app": "Il faut lancer l'application", "Opened as a plain file there's no real data to show here.": "Ouverte comme simple fichier, l'application n'a pas de vraies données à afficher ici.",
+    "Loading…": "Chargement…", "Needs the running app": "Il faut lancer l'application", "Opened as a file: no real data.": "Ouverte comme fichier : pas de vraies données.",
     "That didn't load": "Le chargement a échoué", "No site yet": "Pas encore de site", "Add a site to see its data.": "Ajoutez un site pour voir ses données.",
     "not connected": "non connecté", "not used": "non utilisé", "stopped working": "ne fonctionne plus", "Google Analytics": "Google Analytics", "Search Console": "Search Console",
-    "Connect it in Settings, and pick which property this site uses.": "Connectez-le dans les réglages, puis choisissez la propriété de ce site.",
-    "You said this site doesn't use it, so there's nothing to show. That's fine. You can change this in Settings.": "Vous avez indiqué que ce site ne l'utilise pas : il n'y a donc rien à afficher, et c'est normal. Vous pouvez changer cela dans les réglages.",
-    "Open Settings": "Ouvrir les réglages", "Fix": "Corriger", "Connected. Waiting for its first data": "Connecté. En attente des premières données",
-    "It arrives after the next run. Press Refresh data to start one now.": "Elles arrivent après le prochain passage. Appuyez sur Actualiser les données pour en lancer un.",
+    "Connect it in Settings and pick this site's property.": "Connectez-le dans les réglages et choisissez la propriété du site.",
+    "This site doesn't use it, as you said. Change that in Settings.": "Ce site ne l'utilise pas, comme indiqué. Modifiable dans les réglages.",
+    "Open Settings": "Ouvrir les réglages", "Fix": "Corriger", "Connected. Waiting for data": "Connecté. En attente de données",
+    "Arrives after the next run. Refresh data starts one now.": "Arrive après le prochain passage. Actualiser les données en lance un tout de suite.",
     "Refresh data": "Actualiser les données", "No change": "Sans changement", "No data in this period.": "Aucune donnée sur cette période.", "Chart": "Graphique", "Date": "Date",
-    "Use the arrow keys to read each day.": "Utilisez les flèches pour lire chaque jour.", "Hide the table": "Masquer le tableau", "Show as a table": "Afficher en tableau", "Download CSV": "Télécharger le CSV", "Show more": "Afficher plus",
-    "Nothing in this period.": "Rien sur cette période.", "How the site does on Google, from Search Console": "Les résultats du site sur Google, d'après la Search Console",
+    "Use the arrow keys to read each day.": "Utilisez les flèches pour lire chaque jour.", "Hide table": "Masquer le tableau", "Show table": "Afficher le tableau", "Download CSV": "Télécharger le CSV", "Show more": "Afficher plus",
+    "Nothing in this period.": "Rien sur cette période.", "Your Google results, from Search Console": "Vos résultats Google, d'après la Search Console",
     "Search Console has data through": "La Search Console a des données jusqu'au", "Google Analytics has data through": "Google Analytics a des données jusqu'au", "Pick a longer or earlier period.": "Choisissez une période plus longue ou plus ancienne.",
     "Clicks": "Clics", "Impressions": "Impressions", "Click rate": "Taux de clic", "Average position": "Position moyenne", "Ranking queries": "Requêtes positionnées", "in this period": "sur cette période",
     "Last 12 months": "12 derniers mois", "Query": "Requête", "Change": "Évolution", "Queries gaining clicks": "Requêtes qui gagnent des clics", "Queries losing clicks": "Requêtes qui perdent des clics",
-    "Pick a comparison above to see this.": "Choisissez une comparaison en haut pour voir ceci.", "No query gained clicks.": "Aucune requête n'a gagné de clics.", "No query lost clicks.": "Aucune requête n'a perdu de clics.", "Queries by position": "Requêtes par position",
-    "Search Console lags 2 to 3 days and counts days in Pacific time.": "La Search Console a 2 à 3 jours de retard et compte les jours en heure du Pacifique.",
-    "Where visits and leads come from, from Google Analytics": "D'où viennent les visites et les leads, d'après Google Analytics", "Visits": "Visites", "Leads": "Leads", "Lead rate": "Taux de lead", "Channels": "Canaux",
+    "Pick a comparison above.": "Choisissez une comparaison en haut.", "No query gained clicks.": "Aucune requête n'a gagné de clics.", "No query lost clicks.": "Aucune requête n'a perdu de clics.", "Queries by position": "Requêtes par position",
+    "Lags 2–3 days": "2 à 3 jours de retard",
+    "Visit and lead sources, from Google Analytics": "Sources des visites et des leads, d'après Google Analytics", "Visits": "Visites", "Leads": "Leads", "Lead rate": "Taux de lead", "Channels": "Canaux",
     "Visits by channel": "Visites par canal", "Every channel": "Tous les canaux", "Channel": "Canal", "Share": "Part", "Referring sites": "Sites référents", "Site": "Site", "No referring sites in this period.": "Aucun site référent sur cette période.",
-    "Channel rules": "Règles de canaux", "Rename where a visit counts. A change applies to past days too. Match source/medium, with * for anything.": "Renommez le canal d'une visite. Le changement s'applique aussi aux jours passés. Indiquez source/support, avec * pour n'importe quoi.",
-    "Channel name": "Nom du canal", "Matches": "Correspond à", "Add rule": "Ajouter la règle", "Remove": "Retirer", "Rule removed": "Règle retirée", "Rule added": "Règle ajoutée", "Type what the rule should match.": "Indiquez ce que la règle doit reconnaître.", "Type the name it should get.": "Indiquez le nom à lui donner.",
+    "Channel rules": "Règles de canaux", "Rename channels by source/medium (* = anything). Past days change too.": "Renommez les canaux par source/support (* = n'importe quoi). Les jours passés changent aussi.",
+    "Channel name": "Nom du canal", "Matches": "Correspond à", "Add rule": "Ajouter la règle", "Remove": "Retirer", "Rule removed": "Règle retirée", "Rule added": "Règle ajoutée", "Type what the rule should match.": "Indiquez ce que la règle doit reconnaître.", "Type the channel name.": "Indiquez le nom du canal.",
     "Organic Search": "Recherche organique", "Direct": "Direct", "Referral": "Sites référents", "Organic Social": "Réseaux sociaux", "Paid Search": "Recherche payante", "Other": "Autre",
-    "From visit to lead. Counts only: no personal data comes into this app": "De la visite au lead. Des chiffres uniquement : aucune donnée personnelle n'entre dans l'application",
-    "No key events found. Set up your forms as key events in Google Analytics, and leads appear here.": "Aucun événement clé trouvé. Configurez vos formulaires comme événements clés dans Google Analytics, et les leads apparaîtront ici.",
-    "Key events not set up": "Événements clés non configurés", "visits": "visites", "leads": "leads", "visits didn't become a lead": "visites sans lead", "From visit to lead, by channel": "De la visite au lead, par canal",
+    "From visit to lead. Counts only, no personal data.": "De la visite au lead. Des chiffres, aucune donnée personnelle.",
+    "No key events. Mark your forms as key events in GA4.": "Aucun événement clé. Marquez vos formulaires comme événements clés dans GA4.",
+    "Not set up": "Non configuré", "visits": "visites", "leads": "leads", "without a lead": "sans lead", "From visit to lead, by channel": "De la visite au lead, par canal", "Rate": "Taux", "Without a lead": "Sans lead", "Open": "Ouvrir",
     "Page types": "Types de pages", "Pages": "Pages", "Home page": "Page d'accueil", "Other pages": "Autres pages", "Pages that bring leads": "Pages qui apportent des leads", "No page brought a lead in this period.": "Aucune page n'a apporté de lead sur cette période.", "Page": "Page",
-    "Every page: visits, leads, Google clicks, position and AI visits": "Chaque page : visites, leads, clics Google, position et visites IA", "All pages": "Toutes les pages", "page": "page", "pages": "pages", "Google clicks": "Clics Google", "Position": "Position", "AI visits": "Visites IA",
-    "Visits and leads need Google Analytics. Until it's connected, they stay blank.": "Les visites et les leads nécessitent Google Analytics. Tant qu'il n'est pas connecté, ils restent vides.",
-    "Google clicks and position need Search Console. Until it's connected, they stay blank.": "Les clics Google et la position nécessitent la Search Console. Tant qu'elle n'est pas connectée, ils restent vides.",
-    "Traffic from social networks": "Trafic des réseaux sociaux", "No visits from social networks in this period.": "Aucune visite des réseaux sociaux sur cette période.",
-    "Google Analytics hid some rows with few visits, so small numbers may be missing. A longer period may show them.": "Google Analytics a masqué des lignes à faibles visites : de petits chiffres peuvent manquer. Une période plus longue peut les révéler.",
-    "Visits from AI assistants, from Google Analytics": "Les visites des assistants IA, d'après Google Analytics", "AI assistant visits": "Visites des assistants IA", "By assistant": "Par assistant", "Assistant": "Assistant", "Pages they land on": "Pages d'arrivée", "No landing pages in this period.": "Aucune page d'arrivée sur cette période.",
-    "No visits from AI assistants in this period.": "Aucune visite d'assistant IA sur cette période.", "That's a real zero: Google Analytics has data, and none of it came from the assistants listed below.": "C'est un vrai zéro : Google Analytics a des données, et aucune ne vient des assistants listés ci-dessous.",
+    "Every page and its results": "Chaque page et ses résultats", "All pages": "Toutes les pages", "page": "page", "pages": "pages", "Google clicks": "Clics Google", "Position": "Position", "AI visits": "Visites IA",
+    "Visits and leads stay blank until Google Analytics is connected.": "Les visites et les leads restent vides tant que Google Analytics n'est pas connecté.",
+    "Google clicks and position stay blank until Search Console is connected.": "Les clics Google et la position restent vides tant que la Search Console n'est pas connectée.",
+    "Social networks": "Réseaux sociaux", "No visits from social networks in this period.": "Aucune visite des réseaux sociaux sur cette période.",
+    "Google Analytics hid rows with few visits.": "Google Analytics a masqué des lignes à faibles visites.",
+    "Visits from AI assistants, from Google Analytics": "Les visites des assistants IA, d'après Google Analytics", "AI assistant visits": "Visites des assistants IA", "By assistant": "Par assistant", "Assistant": "Assistant", "Landing pages": "Pages d'arrivée", "No landing pages in this period.": "Aucune page d'arrivée sur cette période.",
+    "No AI visits in this period.": "Aucune visite IA sur cette période.", "That's a real zero: Google Analytics has data, and none of it came from the assistants listed below.": "C'est un vrai zéro : Google Analytics a des données, et aucune ne vient des assistants listés ci-dessous.",
     "Share of all visits": "Part des visites", "Whether your pages appear in Google's AI Overviews is in Competitors, under AI Overview watch.": "La présence de vos pages dans les AI Overviews de Google se trouve dans Concurrents, sous Suivi des AI Overviews.", "Open it": "L'ouvrir",
-    "Which sites count as AI assistants": "Quels sites comptent comme assistants IA", "Add a site to this list": "Ajouter un site à cette liste", "Add to the list": "Ajouter à la liste",
-    "Cost, clicks and leads, from Google Analytics when it's linked to Google Ads": "Coût, clics et leads, d'après Google Analytics quand il est lié à Google Ads", "No Google Ads data yet": "Pas encore de données Google Ads",
-    "In Google Analytics, link the property to your Google Ads account. Cost and clicks appear here the day after.": "Dans Google Analytics, liez la propriété à votre compte Google Ads. Le coût et les clics apparaissent ici le lendemain.",
+    "The AI list": "La liste IA", "Add a site to this list": "Ajouter un site à cette liste", "Add": "Ajouter",
+    "Cost, clicks and leads from Google Ads, via Google Analytics": "Coût, clics et leads de Google Ads, via Google Analytics", "No Google Ads data yet": "Pas encore de données Google Ads",
+    "Link the Google Analytics property to Google Ads; data shows the next day.": "Liez la propriété Google Analytics à Google Ads ; les données arrivent le lendemain.",
     "Cost": "Coût", "Currencies aren't added together": "Les devises ne sont pas additionnées", "Campaigns": "Campagnes", "Campaign": "Campagne", "No campaigns in this period.": "Aucune campagne sur cette période.",
-    "Exact data through the Google Ads API isn't built: it needs an approved developer token first.": "Les données exactes via l'API Google Ads ne sont pas construites : il faut d'abord un jeton développeur approuvé.",
-    "Links and documents, per site": "Liens et documents, par site", "Add a resource": "Ajouter une ressource", "Edit the resource": "Modifier la ressource", "No resources yet": "Pas encore de ressources",
-    "Keep briefs, logins pages, reports and useful links here, so the team finds them.": "Gardez ici les briefs, pages de connexion, rapports et liens utiles, pour que l'équipe les retrouve.",
+    "Exact Google Ads API data needs an approved developer token: not built.": "Données exactes via l'API Google Ads : il faut un jeton développeur approuvé. Pas encore développé.",
+    "Links and documents, per site": "Liens et documents, par site", "Add a resource": "Ajouter une ressource", "Edit resource": "Modifier la ressource", "No resources yet": "Pas encore de ressources",
+    "Keep briefs, login pages, reports and links here for the team.": "Gardez ici les briefs, pages de connexion, rapports et liens pour l'équipe.",
     "Title": "Titre", "Link": "Lien", "Notes": "Notes", "Tags": "Étiquettes", "Type a tag, then Enter": "Tapez une étiquette, puis Entrée", "Your tags": "Vos étiquettes", "Remove {tag}": "Retirer {tag}", "Add “{tag}”": "Ajouter « {tag} »", "Filter by tag": "Filtrer par étiquette",
     "Tags are a list of words.": "Les étiquettes sont une liste de mots.", "A tag is 40 characters at most.": "Une étiquette fait 40 caractères au plus.", "A resource takes 20 tags at most.": "Une ressource prend 20 étiquettes au plus.", "Resource saved": "Ressource enregistrée", "Resource deleted": "Ressource supprimée",
     "A resource needs a title.": "Une ressource a besoin d'un titre.", "A link starts with https://.": "Un lien commence par https://.",
-    "Page speed": "Vitesse des pages", "Device": "Appareil", "Phone": "Téléphone", "Computer": "Ordinateur", "Score": "Score", "Largest content (s)": "Plus grand contenu (s)", "Response (ms)": "Réactivité (ms)", "Layout shift": "Décalage visuel", "Measured on": "Mesuré sur", "Real visitors": "Vrais visiteurs", "A test run": "Un test",
-    "Keyword ideas": "Idées de mots-clés", "From Google's suggestions. Free and unofficial, so it can stop working.": "D'après les suggestions de Google. Gratuit et non officiel : cela peut cesser de fonctionner.", "A word or two": "Un ou deux mots", "Find ideas": "Trouver des idées", "No suggestions for that.": "Aucune suggestion pour cela.", "Type a word or two first.": "Saisissez d'abord un ou deux mots.",
-    "The name you gave your SERP API, such as serp_api1. In Bright Data's control panel, open that SERP API: the zone name and the API key are on its Overview tab.": "Le nom donné à votre SERP API, par exemple serp_api1. Dans le panneau de contrôle de Bright Data, ouvrez cette SERP API : le nom de la zone et la clé API sont dans son onglet Overview.", "Open my zones": "Ouvrir mes zones",
-    "A robot key is saved": "Une clé robot est enregistrée", "Paste a new one only to replace it.": "Collez-en une nouvelle seulement pour la remplacer.",
+    "Page speed": "Vitesse des pages", "Device": "Appareil", "Phone": "Téléphone", "Computer": "Ordinateur", "Score": "Score", "Largest content (s)": "Plus grand contenu (s)", "Response (ms)": "Réactivité (ms)", "Layout shift": "Décalage visuel", "Measured on": "Mesuré sur", "Real visitors": "Vrais visiteurs", "Test run": "Test",
+    "Keyword ideas": "Idées de mots-clés", "From Google's suggestions": "D'après les suggestions de Google", "A word or two": "Un ou deux mots", "Find ideas": "Trouver des idées", "Any language": "Toutes les langues", "Already tracked": "Déjà suivi", "Add": "Ajouter", "Add all": "Tout ajouter", "ideas": "idées", "Add to my keywords": "Ajouter à mes mots-clés",
+    "Country and language start on the ones this site's keywords use most.": "Pays et langue partent de ceux que les mots-clés du site utilisent le plus.", "The country and language of these ideas.": "Le pays et la langue de ces idées.","No suggestions.": "Aucune suggestion.", "Type a word or two first.": "Saisissez d'abord un ou deux mots.",
+    "Your SERP API's name, such as serp_api1.": "Le nom de votre SERP API, par exemple serp_api1.", "My zones": "Mes zones",
+    "Robot key saved": "Clé robot enregistrée", "Paste a new one to replace it.": "Collez-en une nouvelle pour la remplacer.",
     "Settings and display": "Réglages et affichage", "Settings, display and sign out": "Réglages, affichage et déconnexion",
     "Clarity report": "Rapport Clarity", "from a Clarity download": "d'après un export Clarity", "older downloads are kept": "les exports plus anciens sont conservés",
     "Real visits": "Vraies visites", "Bots": "Robots", "Press a site to see its pages, referrers and problems.": "Appuyez sur un site pour voir ses pages, ses sites référents et ses problèmes.",
-    "real visits": "vraies visites", "Clarity counted": "Clarity a compté", "and marked": "et en a marqué", "as bots": "comme robots", "Clarity counted no visits in this file.": "Clarity n'a compté aucune visite dans ce fichier.",
-    "Referrer": "Site référent", "No referrers in this file.": "Aucun site référent dans ce fichier.", "visits came from the site's own pages, so they're left out.": "visites venaient des pages du site lui-même : elles sont écartées.",
+    "real visits": "vraies visites", "Clarity counted": "Clarity a compté", "and marked": "et en a marqué", "as bots": "comme robots", "No visits in this file.": "Aucune visite dans ce fichier.",
+    "Referrer": "Site référent", "No referrers in this file.": "Aucun site référent dans ce fichier.", "visits from the site's own pages left out.": "visites venues des pages du site, écartées.",
     "What visitors ran into": "Ce qui a gêné les visiteurs", "Quick back clicks": "Retours rapides", "Excessive scrolling": "Défilement excessif", "JavaScript errors": "Erreurs JavaScript", "None.": "Aucune.",
-    "Page speed, real visitors": "Vitesse des pages, vrais visiteurs", "Largest content": "Plus grand contenu", "Response to a click": "Réaction à un clic", "good": "bon", "needs work": "à améliorer", "slow": "lent",
+    "Page speed, real visitors": "Vitesse des pages, vrais visiteurs", "Largest content": "Plus grand contenu", "Click response": "Réaction au clic", "good": "bon", "needs work": "à améliorer", "slow": "lent",
     "Browsers": "Navigateurs", "Unique visitors": "Visiteurs uniques", "Returning visitors' visits": "Visites de visiteurs revenus", "Pages per visit": "Pages par visite", "Active time per visit": "Temps actif par visite", "Smart event": "Événement intelligent",
     "No pages in this file.": "Aucune page dans ce fichier.", "Speed score": "Score de vitesse", "Top pages": "Pages les plus vues", "Referrers": "Sites référents", "Problems": "Problèmes", "Visitors": "Visiteurs",
     "Cited by Microsoft Copilot": "Cité par Microsoft Copilot", "Citations": "Citations", "Share of authority": "Part d'autorité", "Press a site to see which pages and questions.": "Appuyez sur un site pour voir quelles pages et quelles questions.",
     "Copilot cited this site": "Copilot a cité ce site", "time": "fois", "times": "fois", "most often": "le plus souvent", "Copilot didn't cite this site in this file's period.": "Copilot n'a pas cité ce site sur la période de ce fichier.",
-    "This download has no questions table. In Clarity, include the questions when you export, then upload it again.": "Cet export n'a pas le tableau des questions. Dans Clarity, incluez les questions lors de l'export, puis importez-le à nouveau.",
+    "No questions in this download. Include them in Clarity's export, then upload again.": "Pas de questions dans cet export. Incluez-les dans l'export Clarity, puis importez-le à nouveau.",
     "Question": "Question", "No questions in this file.": "Aucune question dans ce fichier.", "No cited pages in this file.": "Aucune page citée dans ce fichier.",
     "of Copilot's answers on these questions": "des réponses de Copilot sur ces questions", "counted by Clarity": "comptées par Clarity", "Cited pages": "Pages citées", "Questions": "Questions",
-    "Clarity's own dashboard downloads can go in too: Settings → Microsoft Clarity → Clarity dashboard downloads.": "Les exports du tableau de bord Clarity peuvent aussi être ajoutés : Réglages → Microsoft Clarity → Exports du tableau de bord Clarity.",
+    "Clarity dashboard downloads can go in too.": "Les exports du tableau de bord Clarity peuvent aussi être ajoutés.",
     "Contact us": "Nous contacter", "Outbound click": "Clic sortant", "Submit form": "Envoi de formulaire", "Request quote": "Demande de devis", "Book": "Réservation", "Checkout": "Paiement", "See reviews": "Voir les avis",
     "Clarity sessions": "Sessions Clarity", "Scroll depth": "Profondeur de défilement", "Rage clicks": "Clics de rage", "Dead clicks": "Clics morts",
     "DuckDuckGo positions are being checked too, on free searches. They show on Keywords when it finishes.": "Les positions DuckDuckGo sont vérifiées aussi, avec des recherches gratuites. Elles s'affichent dans Mots-clés une fois terminé.",
-    "Your site's pages are being read too. That takes a while: it waits 3 seconds between pages.": "Les pages de votre site sont lues aussi. Cela prend un moment : 3 secondes d'attente entre chaque page.",
-    "Reading the latest data. It appears here when it arrives.": "Lecture des dernières données. Elles s'affichent ici dès leur arrivée.", "Nothing to read yet: connect a data source first, or it's already running.": "Rien à lire pour l'instant : connectez d'abord une source de données, ou la lecture est déjà en cours.",
+    "Your pages are being read too, 3 seconds apart.": "Vos pages sont lues aussi, à 3 secondes d'intervalle.",
+    "Reading the latest data…": "Lecture des dernières données…", "Nothing to read: connect a data source, or it's already running.": "Rien à lire : connectez une source de données, ou la lecture est en cours.",
   };
   Object.assign(fr, {
     "Reading {done} of {total}…": "Lecture {done} sur {total}…",
-    "Clarity was already read today. It reads again after midnight UTC.": "Clarity a déjà été lu aujourd'hui. Il sera relu après minuit UTC.",
-    "Still reading in the background. The numbers appear here when it finishes: press Refresh data again in a few minutes.": "La lecture continue en arrière-plan. Les chiffres apparaîtront ici à la fin : appuyez de nouveau sur Actualiser les données dans quelques minutes.",
+    "Clarity already read today. Next read after midnight UTC.": "Clarity déjà lu aujourd'hui. Prochaine lecture après minuit UTC.",
+    "Still reading in the background. Press Refresh data again in a few minutes.": "Lecture en cours en arrière-plan. Appuyez de nouveau sur Actualiser les données dans quelques minutes.",
     "{ok} of {total} read.": "{ok} sur {total} lus.",
     "{names} failed: the card on the page says why.": "{names} a échoué : la carte sur la page explique pourquoi.", "Fix it": "Corriger",
-    "Updated with the latest data.": "Mis à jour avec les dernières données.", "Updated: {names}.": "Mis à jour : {names}.",
+    "Up to date.": "À jour.", "Updated: {names}.": "Mis à jour : {names}.",
   });
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 })();

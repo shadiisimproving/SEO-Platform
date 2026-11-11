@@ -240,7 +240,7 @@
   // With needSpam false a file of links to a competitor is accepted without a spam score, and a domain column can stand in for the URL, as on the server.
   function cleanCsv(bytes, known = new Map(), { needSpam = true, keepSpam = false, urlColumn = null } = {}) {
     const rows = parseTable(decodeCsv(bytes));
-    if (!rows.length) throw new CleanerError("empty", "The file is empty.");
+    if (!rows.length) throw new CleanerError("empty", "Empty file.");
     const headers = rows[0].map((h) => h.trim());
     const mapping = detectColumns(headers, needSpam ? REQUIRED : []);
     if (urlColumn !== null) mapping.backlink_url = urlColumn; // the person said which one it is
@@ -256,7 +256,7 @@
     const cell = (r, i) => (i < r.length ? r[i] : "");
 
     const dataRows = rows.slice(1);
-    if (!dataRows.length) throw new CleanerError("no_rows", "This CSV has headers but no data rows.");
+    if (!dataRows.length) throw new CleanerError("no_rows", "Only headers, no data rows.");
 
     const seenInFile = new Set();
     const kept = [];

@@ -40,17 +40,19 @@ fs.writeFileSync(FILE, "﻿" + [
     if (await search.count()) { await search.fill(domain); await page.waitForTimeout(500); }
     const r = page.locator(`[data-cg-row="${domain}"]`);
     if (!(await r.count())) return null;
-    return { text: (await r.innerText()).replace(/\s+/g, " "), disabled: await r.locator("[data-cg-pick]").isDisabled() };
+    // Since 2026-11-11 "Flagged by the system" is a cog whose words are its tip (data-tip), before the reason.
+    const tips = (await r.locator("[data-tip]").evaluateAll((els) => els.map((e) => e.getAttribute("data-tip")))).join(" | ");
+    return { text: (await r.innerText()).replace(/\s+/g, " "), tips, disabled: await r.locator("[data-cg-pick]").isDisabled() };
   };
   // The quality chips start on "All", so flagged rows show too.
   const low = await row("betmate-casino.example");
   check("a casino name with score 3 in the file is good, and can be ticked", low && !low.disabled && !/Spam words/.test(low.text), low?.text);
   await page.screenshot({ path: OUT + "2-low-score.png" });
   const high = await row("free-directory-site.example");
-  check("score 52 in the file is spam, and says the file flagged it", high && high.disabled && /Spam score above 30 in the uploaded file/.test(high.text), high?.text);
+  check("score 52 in the file is spam, and says the file flagged it", high && high.disabled && /File spam score above 30/.test(high.text), high?.text);
   await page.screenshot({ path: OUT + "3-high-score.png" });
   const none = await row("lucky-casino.example");
-  check("no score in the file: the system flags it and says so", none && none.disabled && /Flagged by the system: Spam words in its name/.test(none.text), none?.text);
+  check("no score in the file: the system flags it and says so", none && none.disabled && none.tips.includes("Flagged by the system") && /Spam words in name/.test(none.text), none && `${none.text} | tips: ${none.tips}`);
   await page.screenshot({ path: OUT + "4-system.png" });
   check("no errors in the page", problems.length === 0, problems.join(" | "));
   await browser.close();

@@ -21,6 +21,8 @@
   const tag = (key) => t(key).split("|")[0];
   /* Fills {names} in a sentence, so French can put them in its own order. The result is plain text, unless the values are HTML. */
   const fill = (key, values = {}) => t(key).replace(/\{(\w+)\}/g, (all, name) => (name in values ? values[name] : all));
+  /* The same, for a sentence that holds HTML (logos): the words are escaped, the values must already be. */
+  const fillHtml = (key, values = {}) => esc(t(key)).replace(/\{(\w+)\}/g, (all, name) => (name in values ? values[name] : all));
   const many = (n, one, other, values = {}) => fill((UI.state.lang === "fr" ? n < 2 : n === 1) ? one : other, { n: UI.num(n), ...values });
   const dash = '<span class="muted">—</span>';
   const engineName = (id) => UI.ENGINES.find(([key]) => key === id)?.[1] || id || "";
@@ -106,19 +108,42 @@
   /* retry is { id, site }: with it, a failed read gets a Try again button that asks for a read at once. */
   /* follow: on a profile, how the site is followed rides on the same line ("Last read 3 h ago · every page read daily"),
      with the full sentence on hover, so it costs no room. */
+  /* In a table row (every call without follow), the row says only its state (2026-11-11): a read that worked is a check mark
+     ("Watching" in its tooltip) and when; Blocked and Read failed carry their sentence in the tooltip, and watchNotes() says it
+     once under the table with a count. The profile header (follow) keeps the sentence: one competitor, said once. */
   function watching(crawl, retry, { follow = false } = {}) {
     const c = crawl || { status: "none" };
+    const row = !follow;
     let inner;
     const how = follow && COMP.reading?.follow ? COMP.reading.follow(c) : null;
     const howWords = how ? ` · <span class="cl-follow" data-tip="${esc(how.text)}" tabindex="0">${esc(how.short)}</span>` : "";
-    if (c.status === "ok") inner = `${follow ? "" : UI.status("good", t("Watching"))}<span class="second">${esc(fill("Last read {when}", { when: COMP.ago(c.finished_at) }))}${howWords}</span>`;
-    else if (c.status === "running") inner = `<span class="status sec">${icon("refresh-cw", "spin")}${esc(t("Reading now"))}</span>${c.pages_read ? `<span class="second">${esc(many(c.pages_read, "{n} page read so far", "{n} pages read so far"))}</span>` : ""}`;
-    else if (c.status === "queued") inner = `<span class="status sec">${icon("clock")}${esc(t("Waiting to read"))}</span>`;
+    const retryButton = retry ? `<button type="button" class="btn btn-small cl-retry" data-cl-retry="${retry.id}" data-cl-retry-site="${retry.site}">${icon("refresh-cw")}${t("Try again")}</button>` : "";
+    const withTip = (html, words) => `<span class="cl-state-tip" tabindex="0" data-tip="${esc(words)}" aria-label="${esc(words)}">${html}</span>`;
+    if (c.status === "ok" && row) inner = `<span class="cl-read-ok">${COMP.iconTip("circle-check", t("Watching"), "cl-ok-ic")}<span>${esc(fill("Read {when}", { when: COMP.ago(c.finished_at) }))}</span></span>`;
+    else if (c.status === "ok") inner = `<span class="second">${esc(fill("Read {when}", { when: COMP.ago(c.finished_at) }))}${howWords}</span>`;
+    else if (c.status === "running") inner = `<span class="status sec">${icon("refresh-cw", "spin")}${esc(t("Reading…"))}</span>${c.pages_read ? `<span class="second">${esc(many(c.pages_read, "{n} page read", "{n} pages read"))}</span>` : ""}`;
+    else if (c.status === "queued") inner = `<span class="status sec">${icon("clock")}${esc(t("Waiting"))}</span>`;
+    else if (c.status === "blocked" && row) inner = withTip(UI.status("warn", t("Blocked")), say(c.message || BLOCKED_TEXT));
     else if (c.status === "blocked") inner = `${UI.status("warn", t("Blocked"))}<span class="second cl-wrap">${esc(say(c.message || BLOCKED_TEXT))}</span>`;
-    else if (c.status === "failed") inner = `${UI.status("crit", t("Last read failed"))}<span class="second cl-wrap">${esc(t("It tries again at the next daily read."))}</span>${retry ? `<button type="button" class="btn btn-small cl-retry" data-cl-retry="${retry.id}" data-cl-retry-site="${retry.site}">${icon("refresh-cw")}${t("Try again")}</button>` : ""}`;
+    else if (c.status === "failed" && row) inner = `${withTip(UI.status("crit", t("Read failed")), t("Retries at the next daily read."))}${retryButton}`;
+    else if (c.status === "failed") inner = `${UI.status("crit", t("Read failed"))}<span class="second cl-wrap">${esc(t("Trying again at the next daily read."))}</span>${retryButton}`;
     else inner = `<span class="status sec">${icon("clock")}${esc(t("Not read yet"))}</span>`;
     return `<span class="cl-watch">${inner}</span>`;
   }
+  /* Under a table of competitors, once per kind: how many block bots or failed their last read, and which. Paused rows aren't read, so they don't count.
+     rows: [{ host, crawl, tracking }]. */
+  const BLOCKED_MANY = "These sites don't allow automated visitors, so their edits can't be tracked. The app doesn't try to get past that.";
+  function watchNotes(rows) {
+    const live = (rows || []).filter((r) => r && r.tracking !== "off");
+    const hostsWith = (state) => live.filter((r) => r.crawl?.status === state).map((r) => r.display || r.host);
+    const names = (hosts) => esc(hosts.slice(0, 3).join(", ") + (hosts.length > 3 ? ` ${fill("and {n} more", { n: UI.num(hosts.length - 3) })}` : ""));
+    const blocked = hostsWith("blocked"), failed = hostsWith("failed");
+    return [
+      blocked.length ? `<p class="help cl-watch-note">${icon("triangle-alert")}<span>${many(blocked.length, "{n} blocks bots: {hosts} — edits can't be tracked.", "{n} block bots: {hosts} — edits can't be tracked.", { hosts: names(blocked) })}${UI.tip(blocked.length === 1 ? BLOCKED_TEXT : BLOCKED_MANY)}</span></p>` : "",
+      failed.length ? `<p class="help cl-watch-note"><span>${fill("Read failed ×{n}: {hosts} — retries at the next daily read.", { n: UI.num(failed.length), hosts: names(failed) })}</span></p>` : "",
+    ].join("");
+  }
+  COMP.watchNotes = watchNotes;
   const howAdded = (source) => t(source === "suggested" ? "From a suggestion" : "Added by hand");
 
   // ---- My competitors: the list ---------------------------------------------------------------
@@ -130,30 +155,30 @@
       const waiting = findData()?.suggestions?.length || 0;
       return COMP.empty(
         t("No competitors yet"),
-        waiting ? many(waiting, "{n} suggestion is waiting in Find competitors. Accept it, or add a competitor by hand.", "{n} suggestions are waiting in Find competitors. Accept one, or add a competitor by hand.") : t("Upload your keyword list in Find competitors to see who really ranks against you, or add a competitor by hand."),
-        `<div class="cl-empty-acts"><button class="btn btn-main" data-cl-go-find>${icon("target")}${t("Find competitors")}</button><button class="btn" id="cl-add-open">${icon("plus")}${t("Add one by hand")}</button></div>`
+        waiting ? many(waiting, "{n} suggestion is waiting in Find competitors.", "{n} suggestions are waiting in Find competitors.") : t("Upload keywords in Find competitors to see who ranks against you."),
+        `<div class="cl-empty-acts"><button class="btn btn-main" data-cl-go-find>${icon("target")}${t("Find competitors")}</button><button class="btn" id="cl-add-open">${icon("plus")}${t("Add by hand")}</button></div>`
       );
     }
     const site = COMP.site()?.host || "";
     const q = TP.state(PAGES.list).q, found = rows.filter((c) => TP.matches(PAGES.list, c.display, c.host)), page = TP.view(PAGES.list, found);
     const search = rows.length >= FIND_FROM || q ? `<div class="cp-tools cl-tools">${TP.search(PAGES.list, t("Find a competitor"))}</div>` : "";
     return `<section class="tool-band cl-band" aria-label="${attr("My competitors")}">
-        <p>${many(rows.length, "You're watching {n} competitor for {site}. Open it to see everything about it.", "You're watching {n} competitors for {site}. Open one to see everything about it.", { site: `<span class="mono">${esc(site)}</span>` })}</p>
+        <p>${many(rows.length, "Watching {n} competitor for {site}.", "Watching {n} competitors for {site}.", { site: `<span class="mono">${esc(site)}</span>` })}</p>
         <button class="btn btn-main" id="cl-add-open">${icon("plus")}${t("Add a competitor")}</button>
       </section>
       ${search}${found.length ? `<div class="cl-pages"><div class="table-wrap"><table class="data" id="cl-table">
-        <thead><tr><th scope="col">${t("Competitor")}</th><th scope="col" class="c">${t("Shared keywords")}</th><th scope="col" class="c">${t("They're ahead on")}</th><th scope="col" class="c">${t("You're ahead on")}</th><th scope="col" class="c">${t("Only they rank on")}</th><th scope="col" class="c">${t("Edits in 30 days")}</th><th scope="col">${t("Watching")}</th><th scope="col">${t("Tracking")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
+        <thead><tr><th scope="col">${t("Competitor")}</th><th scope="col" class="c">${t("Shared keywords")}</th><th scope="col" class="c">${t("They lead")}</th><th scope="col" class="c">${t("You lead")}</th><th scope="col" class="c">${t("Only them")}</th><th scope="col" class="c">${t("Edits in 30 days")}</th><th scope="col">${t("Watching")}</th><th scope="col">${t("Tracking")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
         <tbody>${page.rows.map(listRow).join("")}</tbody>
-      </table></div>${TP.footer(PAGES.list, page, { noun: t("competitors") })}</div>` : `<div class="table-wrap"><div class="empty"><p>${esc(fill("No competitor matches “{text}”.", { text: q }))}</p><button type="button" class="btn btn-small" data-tp-clear data-tp-key="${PAGES.list}">${t("Clear the search")}</button></div></div>`}`;
+      </table></div>${TP.footer(PAGES.list, page, { noun: t("competitors") })}${watchNotes(found)}</div>` : `<div class="table-wrap"><div class="empty"><p>${esc(fill("No competitor matches “{text}”.", { text: q }))}</p><button type="button" class="btn btn-small" data-tp-clear data-tp-key="${PAGES.list}">${t("Clear search")}</button></div></div>`}`;
   }
 
-  const kwCell = (c, n) => (COMP.trackingOf?.(c) ?? "on") === "on" ? UI.num(n) : `<span class="muted" title="${attr("Keyword tracking isn't on for this competitor.")}">—</span>`;
+  const kwCell = (c, n) => (COMP.trackingOf?.(c) ?? "on") === "on" ? UI.num(n) : `<span class="muted" title="${attr("Not tracked for keywords.")}">—</span>`;
   const listRow = (c) => `<tr data-cl-row="${c.id}" class="${list.flash === c.id ? "flash" : ""}${c.tracking && c.tracking !== "on" ? ` ct-row-${c.tracking}` : ""}">
-      <td class="head-cell"><span class="with-logo">${UI.siteLogo(c.host)}<span class="logo-text"><button class="kw cl-name" data-cl-open="${c.id}" dir="auto">${esc(c.display || c.host)}</button>${c.source === "suggested" ? "" : `<span class="second">${esc(howAdded(c.source))}</span>`}</span></span></td>
+      <td class="head-cell"><span class="with-logo">${UI.siteLogo(c.host)}<span class="logo-text"><button class="kw cl-name" data-cl-open="${c.id}" dir="auto">${esc(c.display || c.host)}</button>${c.source === "suggested" ? "" : ` ${COMP.iconTip("user", howAdded(c.source), "cl-hand")}`}</span></span></td>
       <td class="c" data-label="${attr("Shared keywords")}">${kwCell(c, c.shared)}</td>
-      <td class="c" data-label="${attr("They're ahead on")}">${kwCell(c, c.they_ahead)}</td>
-      <td class="c" data-label="${attr("You're ahead on")}">${kwCell(c, c.i_ahead)}</td>
-      <td class="c" data-label="${attr("Only they rank on")}">${kwCell(c, c.theirs_only)}</td>
+      <td class="c" data-label="${attr("They lead")}">${kwCell(c, c.they_ahead)}</td>
+      <td class="c" data-label="${attr("You lead")}">${kwCell(c, c.i_ahead)}</td>
+      <td class="c" data-label="${attr("Only them")}">${kwCell(c, c.theirs_only)}</td>
       <td class="c" data-label="${attr("Edits in 30 days")}">${c.crawl?.status === "blocked" ? `<span class="muted" title="${attr("Edits can't be tracked on this site.")}">—</span>` : UI.num(c.edits_30d)}</td>
       <td data-label="${attr("Watching")}" data-cl-watch="${c.id}">${c.tracking === "off" ? `<span class="status sec">${icon("pause")}${esc(t("Paused"))}</span>` : watching(c.crawl, { id: c.id, site: COMP.siteId })}</td>
       <td data-label="${attr("Tracking")}">${COMP.trackingSwitch?.(c) ?? ""}</td>
@@ -236,13 +261,13 @@
     const all = COMP.siteId === COMP.ALL;
     const site = all ? (UI.preferredSite(COMP.sites)?.id ?? null) : COMP.siteId;
     const sub = all ? t("Paste one or many") : `${t("For")} <span class="mono">${esc(COMP.site()?.host || "")}</span>`;
-    const picker = all ? `<label class="field"><span>${t("A competitor of which of your websites?")}</span><select class="select" id="cl-add-site" style="width:100%">${COMP.sites.map((s) => `<option value="${s.id}" ${s.id === site ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></label>` : "";
+    const picker = all ? `<label class="field"><span>${t("Competitor of which site?")}</span><select class="select" id="cl-add-site" style="width:100%">${COMP.sites.map((s) => `<option value="${s.id}" ${s.id === site ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></label>` : "";
     UI.openPanel(`${UI.panelHead(t("Add competitors"), sub)}
       <form class="panel-body" id="cl-add-form" novalidate>
         ${picker}
-        <label class="field"><span>${t("Website addresses")} <span class="req">*</span></span><textarea class="input mono cl-paste-box" id="cl-add-address" rows="6" dir="ltr" autocomplete="off" spellcheck="false" placeholder="https://rival-one.example\nrival-two.example" data-autofocus aria-describedby="cl-add-help cl-add-error cl-add-result"></textarea><div class="help" id="cl-add-help">${esc(fill("One per line, or paste a column from a spreadsheet. Up to {n} at a time.", { n: ADD_AT_MOST }))} <strong id="cl-add-count" aria-live="polite"></strong></div><div id="cl-add-error"></div></label>
+        <label class="field"><span>${t("Website addresses")} <span class="req">*</span></span><textarea class="input mono cl-paste-box" id="cl-add-address" rows="6" dir="ltr" autocomplete="off" spellcheck="false" placeholder="https://rival-one.example\nrival-two.example" data-autofocus aria-describedby="cl-add-help cl-add-error cl-add-result"></textarea><div class="help" id="cl-add-help">${esc(fill("One per line, or a spreadsheet column. Up to {n}.", { n: ADD_AT_MOST }))} <strong id="cl-add-count" aria-live="polite"></strong></div><div id="cl-add-error"></div></label>
         <div id="cl-add-result"></div>
-        <p class="help">${t("The app reads its public pages slowly and follows its rules for automated visitors. If the site says no, it says so here and doesn't try to get past it.")}</p>
+        <p class="help">${t("Respects each site's rules for bots.")}${UI.tip("The app reads public pages slowly and follows each site's rules for automated visitors. If a site says no, it says so here and doesn't try to get past it.")}</p>
       </form>
       <div class="panel-foot"><button class="btn btn-main" id="cl-add-save">${t("Add")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button></div>`, opener, { key: `cl-add|${COMP.siteId}`, reopen: () => openAdd(opener), after: paintAddCount });
   }
@@ -261,11 +286,11 @@
     const undo = async () => {
       try {
         await COMP.api("DELETE", `competitors/${made.id}?site_id=${sourceSite}`);
-        UI.toast(fill("{host} is no longer one of your competitors.", { host: name }), { kind: "info" });
+        UI.toast(fill("{host} removed.", { host: name }), { kind: "info" });
         refreshHere();
       } catch (err) { fail(err); }
     };
-    const el = UI.toast(fill("{host} is now one of your competitors.", { host: name }), { undo });
+    const el = UI.toast(fill("{host} added.", { host: name }), { undo });
     const button = document.createElement("button");
     button.className = "link-btn";
     button.textContent = t("Open");
@@ -278,7 +303,7 @@
     const undo = async () => {
       try {
         for (const made of added) await COMP.api("DELETE", `competitors/${made.id}?site_id=${sourceSite}`);
-        UI.toast(many(added.length, "{n} competitor removed again.", "{n} competitors removed again."), { kind: "info" });
+        UI.toast(many(added.length, "{n} competitor removed.", "{n} competitors removed."), { kind: "info" });
         refreshHere();
       } catch (err) { fail(err); refreshHere(); }
     };
@@ -298,7 +323,7 @@
     save.disabled = true;
     try {
       const { added, already, refused } = await COMP.api("POST", "competitors/many", { site_id: site, addresses: addresses.join("\n") });
-      const alreadyNote = already.length ? many(already.length, "{n} was already one of your competitors.", "{n} were already your competitors.") : "";
+      const alreadyNote = already.length ? many(already.length, "{n} was already there.", "{n} were already there.") : "";
       if (added.length) {
         list.flash = added[0].id;
         if (!refused.length) {
@@ -316,8 +341,8 @@
         input.value = left.map((r) => r.address).join("\n");
         paintAddCount();
         const head = refused.length
-          ? (added.length ? many(added.length, "{n} added. These weren't:", "{n} added. These weren't:") : t("None of these were added:"))
-          : t("These are already your competitors:");
+          ? (added.length ? many(added.length, "{n} added. These weren't:", "{n} added. These weren't:") : t("None added:"))
+          : t("Already your competitors:");
         input.classList.toggle("invalid", Boolean(refused.length));
         UI.setHTML(result, `<div class="note cl-add-note ${refused.length ? "crit" : ""}" role="alert">${icon(refused.length ? "octagon-alert" : "info")}<div><span>${esc(head)}</span><ul class="cl-add-why">${left.map((r) => { const host = r.address.toLowerCase().split("://").pop().split("/")[0].replace(/^www\./, ""); return `<li>${r.reason.toLowerCase().includes(host) ? "" : `<span class="mono" dir="ltr">${esc(r.address)}</span> `}${esc(say(r.reason))}</li>`; }).join("")}</ul>${refused.length && already.length ? `<span class="small">${esc(alreadyNote)}</span>` : ""}</div></div>`);
         input.focus();
@@ -335,7 +360,7 @@
     const dlg = UI.$("#dlg");
     dlg.classList.remove("wide");
     UI.setHTML(dlg, `<div class="dlg-head"><h2 id="dlg-title" dir="auto">${esc(fill("Remove {host}?", { host: row.display || row.host }))}</h2><button class="icon-btn" data-close-dlg aria-label="${attr("Close")}">${icon("x")}</button></div>
-      <div class="dlg-body"><p>${esc(fill("It stops being compared with {site}. Its data is kept, so nothing is lost if you add it back.", { site: COMP.site()?.host || "" }))}</p><p class="small sec" style="margin-top:8px">${t("Its page pairs on this website are removed. Automatic ones come back if you add it again.")}</p></div>
+      <div class="dlg-body"><p>${esc(fill("No longer compared with {site}. Its data is kept.", { site: COMP.site()?.host || "" }))}</p><p class="small sec" style="margin-top:8px">${t("Its page pairs here are removed; automatic ones return if re-added.")}</p></div>
       <div class="dlg-foot"><button class="btn" data-close-dlg>${t("Cancel")}</button><button class="btn btn-main" data-cl-remove-yes="${id}">${t("Remove")}</button></div>`);
     dlg.showModal();
     UI.$("[data-cl-remove-yes]", dlg)?.focus();
@@ -354,7 +379,7 @@
     view.data = null;
     pending = () => (focusAttr("data-cl-open", next) || UI.$("#cl-add-open"))?.focus({ preventScroll: true });
     await refreshHere();
-    UI.toast(t("Removed. Its data is kept."), {
+    UI.toast(t("Removed. Data kept."), {
       kind: "info",
       undo: async () => {
         try {
@@ -377,11 +402,11 @@
   ];
   const KINDS = {
     title: ["pencil", "Title changed"], meta: ["pencil", "Meta description changed"], h1: ["pencil", "Main heading changed"], headings: ["pencil", "Subheadings changed"],
-    canonical: ["pencil", "Preferred address changed"], robots: ["pencil", "Instructions to search engines changed"], schema: ["pencil", "Structured data changed"], content: ["file-text", "Page text changed"],
-    search_title: ["search", "Probably edited: its title changed in search results"],
-    new_page: ["plus", "New page found"], page_gone: ["minus", "Page removed"],
-    rank_new: ["trending-up", "Started ranking for"], rank_lost: ["arrow-down", "Dropped out of the results for"], rank_up: ["arrow-up", "Moved up on"], rank_down: ["arrow-down", "Moved down on"],
-    ai_cited: ["sparkles", "Cited in the AI Overview for"], ai_dropped: ["sparkles", "No longer cited in the AI Overview for"],
+    canonical: ["pencil", "Preferred address changed"], robots: ["pencil", "Indexing changed"], schema: ["pencil", "Structured data changed"], content: ["file-text", "Content changed"],
+    search_title: ["search", "Probably edited: new title in results"],
+    new_page: ["plus", "New page"], page_gone: ["minus", "Page removed"],
+    rank_new: ["trending-up", "Started ranking for"], rank_lost: ["arrow-down", "Stopped ranking for"], rank_up: ["arrow-up", "Moved up on"], rank_down: ["arrow-down", "Moved down on"],
+    ai_cited: ["sparkles", "Cited in AI Overview for"], ai_dropped: ["sparkles", "Dropped from AI Overview for"],
   };
 
   function compareTile(label, mine, theirs, { note = "", verdict = "" } = {}) {
@@ -402,12 +427,12 @@
     const blocked = p.crawl?.status === "blocked";
     const theirPages = ""; // a blocked site's warning sits at the top of the profile, once; these tiles just show a dash
     return `<section class="tiles cl-tiles" aria-label="${attr("How you compare")}">
-      <div class="tile cl-cmp"><div class="lab">${t("Keywords you both rank on")}</div><div class="cl-sides"><div class="cl-side"><span class="cl-who">${t("You and them")}</span><span class="cl-fig tabular">${UI.num(c.shared)}</span></div></div><div class="delta">${c.level ? `<span class="ab">${esc(many(c.level, "Level on {n}", "Level on {n}"))}</span>` : ""}</div></div>
-      ${compareTile(t("Average position on shared keywords"), place(c.my_average), place(c.their_average), { verdict: verdict(c.my_average, c.their_average, true), note: c.my_average === null ? t("Nothing shared yet.") : t("Lower is better.") })}
-      ${compareTile(t("Ahead on shared keywords"), figure(c.i_ahead), figure(c.they_ahead), { verdict: c.shared ? verdict(c.i_ahead, c.they_ahead) : "" })}
-      ${compareTile(t("Keywords only one of you ranks on"), figure(c.mine_only), figure(c.theirs_only), { note: t("The other isn't in the results checked.") })}
+      <div class="tile cl-cmp"><div class="lab">${t("Shared keywords")}</div><div class="cl-sides"><div class="cl-side"><span class="cl-who">${t("You and them")}</span><span class="cl-fig tabular">${UI.num(c.shared)}</span></div></div><div class="delta">${c.level ? `<span class="ab">${esc(many(c.level, "Level on {n}", "Level on {n}"))}</span>` : ""}</div></div>
+      ${compareTile(t("Average position (shared)"), place(c.my_average), place(c.their_average), { verdict: verdict(c.my_average, c.their_average, true), note: c.my_average === null ? t("Nothing shared yet.") : t("Lower is better.") })}
+      ${compareTile(t("Who leads"), figure(c.i_ahead), figure(c.they_ahead), { verdict: c.shared ? verdict(c.i_ahead, c.they_ahead) : "" })}
+      ${compareTile(t("Only one ranks"), figure(c.mine_only), figure(c.theirs_only), { note: t("The other isn't in the results checked.") })}
       ${compareTile(t("Pages known"), figure(c.pages?.mine?.pages), blocked ? dash : figure(c.pages?.theirs?.pages), { note: theirPages })}
-      ${compareTile(t("Average words per page"), figure(c.pages?.mine?.average_words), blocked ? dash : figure(c.pages?.theirs?.average_words), { note: theirPages })}
+      ${compareTile(t("Words per page"), figure(c.pages?.mine?.average_words), blocked ? dash : figure(c.pages?.theirs?.average_words), { note: theirPages })}
       ${compareTile(t("New pages in 30 days"), figure(c.pages?.mine?.new_pages_30d), blocked ? dash : figure(c.pages?.theirs?.new_pages_30d), { note: theirPages })}
       ${compareTile(t("AI Overview citations"), figure(c.ai_cited_me), figure(c.ai_cited_them), { verdict: c.ai_overviews ? verdict(c.ai_cited_me, c.ai_cited_them) : "", note: c.ai_overviews ? many(c.ai_overviews, "Of {n} AI Overview seen.", "Of {n} AI Overviews seen.") : t("No AI Overview seen yet.") })}
     </section>`;
@@ -429,29 +454,66 @@
       if (from && to) {
         // How many words the edit touched, when known: a small one says so, so a changed price isn't read as a rewrite.
         const touched = Number.isFinite(e.changed_words) && e.changed_words > 0
-          ? ` · ${e.changed_words < 15 ? fill(e.changed_words === 1 ? "small edit, {n} word changed" : "small edit, {n} words changed", { n: UI.num(e.changed_words) }) : fill("about {n} words changed", { n: UI.num(e.changed_words) })}`
+          ? ` · ${e.changed_words < 15 ? fill(e.changed_words === 1 ? "small edit, {n} word" : "small edit, {n} words", { n: UI.num(e.changed_words) }) : fill("~{n} words changed", { n: UI.num(e.changed_words) })}`
           : "";
-        return `<div class="d tabular">${esc(fill("{from} words, now {to}", { from: UI.num(Number(from[1])), to: UI.num(Number(to[1])) }) + touched)}</div>`;
+        return `<div class="d tabular">${esc(fill("{from} → {to} words", { from: UI.num(Number(from[1])), to: UI.num(Number(to[1])) }) + touched)}</div>`;
       }
     }
     const was = asList(e.before), now = asList(e.after);
     if (was || now) {
       const before = listItems(was), after = listItems(now);
       const added = after.filter((x) => !before.includes(x)), gone = before.filter((x) => !after.includes(x));
-      if (!added.length && !gone.length) return `<div class="d">${t("The same items, in a different order.")}</div>`;
+      if (!added.length && !gone.length) return `<div class="d">${t("Same items, new order.")}</div>`;
       return `<div class="cl-change">${gone.length ? changeLine(t("Taken out"), gone.join(" · "), "was") : ""}${added.length ? changeLine(t("Added"), added.join(" · ")) : ""}</div>`;
     }
     return `<div class="cl-change">${changeLine(t("Before"), e.before, "was")}${changeLine(t("After"), e.after)}</div>`;
   }
 
-  function moveDetail(e) {
+  /* The engine and tool are logos (2026-11-11). `common` (moveCommon) is what every move in view shares: said once over the list, left out here. */
+  function moveDetail(e, common = null) {
     const from = e.kind === "rank_new" ? COMP.pos(null, e.depth) : COMP.pos(e.from, e.depth);
     const to = e.kind === "rank_lost" ? COMP.pos(null, e.depth) : COMP.pos(e.to, e.depth);
-    return `<div class="d cl-move"><span class="cl-move-places">${from}${icon("arrow-right")}<span class="sr">${t("now")}</span>${to}</span><span>${esc(engineName(e.engine))} · ${esc(e.tool || "")}</span></div>`;
+    return `<div class="d cl-move"><span class="cl-move-places">${from}${icon("arrow-right")}<span class="sr">${t("now")}</span>${to}</span>${common?.source ? "" : COMP.toolLogos(e.engine, e.tool)}</div>`;
   }
 
+  /* Ranking moves and AI Overview rows: what every one in view shares (country, device, location, results checked, engine and tool)
+     goes on one line over the list, and each row keeps only what differs (2026-11-11). A fact that any row lacks or has otherwise
+     stays on every row. Details keeps every fact on each row. */
+  const isMoveKind = (e) => e.kind.startsWith("rank_") || e.kind.startsWith("ai_");
+  const MOVE_FACTS = {
+    country: (e) => (known(e.country) ? String(e.country).toUpperCase() : ""),
+    device: (e) => (known(e.device) ? e.device : ""),
+    location: (e) => (known(e.location) && String(e.location).toUpperCase() !== String(e.country || "").toUpperCase() ? e.location : ""),
+    depth: (e) => (known(e.depth) ? String(e.depth) : ""),
+    source: (e) => (e.engine || e.tool ? `${e.engine || ""}|${e.tool || ""}` : ""),
+  };
+  function moveCommon(rows) {
+    const moves = (rows || []).filter(isMoveKind);
+    if (moves.length < 2) return null;
+    const common = { first: moves[0] };
+    Object.entries(MOVE_FACTS).forEach(([key, of]) => {
+      const values = new Set(moves.map(of));
+      if (values.size === 1 && !values.has("")) common[key] = true;
+    });
+    return Object.keys(common).length > 1 ? common : null;
+  }
+  function moveCommonLine(common) {
+    if (!common) return "";
+    const e = common.first;
+    const bits = [
+      common.country ? esc(UI.countryName(String(e.country).toUpperCase())) : "",
+      common.device ? esc(t(e.device === "mobile" ? "Mobile" : e.device === "desktop" ? "Desktop" : e.device)) : "",
+      common.location ? esc(e.location) : "",
+      common.depth ? esc(fill("top {n} checked", { n: UI.num(e.depth) })) : "",
+      common.source ? COMP.toolLogos(e.engine, e.tool) : "",
+    ].filter(Boolean);
+    return `<p class="small sec cl-moves-common">${esc(t("All moves:"))} ${bits.join(" · ")}</p>`;
+  }
+  COMP.moveCommon = moveCommon;
+  COMP.moveCommonLine = moveCommonLine;
+
   /* Everything known behind a change, asked for on 2026-11-10 ("as much data as possible"). One line of the facts that matter most
-     stays in view; the rest sits behind "All the details", so the list still reads in seconds. Unknown is left out, never shown as 0. */
+     stays in view; the rest sits behind "Details", so the list still reads in seconds. Unknown is left out, never shown as 0. */
   const known = (v) => v !== null && v !== undefined && v !== "" && !(Array.isArray(v) && !v.length);
   const aDate = (v) => {
     if (!known(v)) return "";
@@ -472,7 +534,7 @@
       p.videos ? factChip(esc(many(p.videos, "{n} video", "{n} videos"))) : "",
       known(p.internal_links) ? factChip(esc(fill("{a} internal · {b} external links", { a: UI.num(p.internal_links), b: UI.num(p.external_links ?? 0) }))) : "",
       known(p.schema) ? factChip(esc(p.schema.slice(0, 3).join(", ") + (p.schema.length > 3 ? ` +${p.schema.length - 3}` : "")), "Structured data") : "",
-      known(p.published) ? factChip(esc(fill("published {date}", { date: aDate(p.published) })), "The date the page itself gives") : known(p.sitemap_date) ? factChip(esc(fill("{date} in their sitemap", { date: aDate(p.sitemap_date) }))) : "",
+      known(p.published) ? factChip(esc(fill("published {date}", { date: aDate(p.published) })), "Date the page gives") : known(p.sitemap_date) ? factChip(esc(fill("sitemap {date}", { date: aDate(p.sitemap_date) }))) : "",
       p.edits > 1 ? factChip(esc(many(p.edits, "changed {n} time", "changed {n} times"))) : "",
     ].filter(Boolean);
     return `${known(p.title) ? `<div class="cl-facts-title" dir="auto">${esc(p.title)}</div>` : ""}${bits.length ? `<div class="cl-facts">${bits.join("")}</div>` : ""}`;
@@ -480,10 +542,10 @@
 
   function pageDetails(p) {
     const outline = known(p.headings)
-      ? `<ol class="cl-outline">${p.headings.map(([level, text]) => `<li class="cl-h-${esc(String(level).toLowerCase())}"><span class="cl-h-tag">${esc(String(level).toUpperCase())}</span><span dir="auto">${esc(text)}</span></li>`).join("")}</ol>${p.headings_total > p.headings.length ? `<p class="small sec">${esc(fill("The first {n} of {total}.", { n: UI.num(p.headings.length), total: UI.num(p.headings_total) }))}</p>` : ""}`
+      ? `<ol class="cl-outline">${p.headings.map(([level, text]) => `<li class="cl-h-${esc(String(level).toLowerCase())}"><span class="cl-h-tag">${esc(String(level).toUpperCase())}</span><span dir="auto">${esc(text)}</span></li>`).join("")}</ol>${p.headings_total > p.headings.length ? `<p class="small sec">${esc(fill("First {n} of {total}.", { n: UI.num(p.headings.length), total: UI.num(p.headings_total) }))}</p>` : ""}`
       : "";
     const images = known(p.images) ? `${count(p.images)}${p.images_no_alt ? ` <span class="sec">${esc(fill("({n} without alt text)", { n: UI.num(p.images_no_alt) }))}</span>` : ""}` : "";
-    const reader = p.read_with === "firecrawl" ? t("Firecrawl") : p.js_only ? t("A real browser (the page needs JavaScript)") : "";
+    const reader = p.read_with === "firecrawl" ? t("Firecrawl") : p.js_only ? t("Browser (needs JavaScript)") : "";
     return [
       factRow("Title", plain(p.title) + (known(p.title) ? ` <span class="sec small">· ${esc(many(String(p.title).length, "{n} character", "{n} characters"))}</span>` : "")),
       factRow("Meta description", plain(p.description) + (known(p.description) ? ` <span class="sec small">· ${esc(many(String(p.description).length, "{n} character", "{n} characters"))}</span>` : "")),
@@ -501,30 +563,30 @@
       factRow("External links", count(p.external_links)),
       factRow("Structured data", tags(p.schema)),
       factRow("Language", plain(p.lang)),
-      factRow("Language versions (hreflang)", tags(p.hreflang)),
+      factRow("Languages (hreflang)", tags(p.hreflang)),
       factRow("Preferred address (canonical)", known(p.canonical) ? COMP.link(p.canonical) : ""),
       factRow("Instructions to search engines", plain(p.robots)),
       factRow("Answer code", count(p.status)),
-      factRow("Published (the page says)", plain(aDate(p.published))),
-      factRow("Updated (the page says)", plain(aDate(p.modified))),
-      factRow("Date in their sitemap", plain(aDate(p.sitemap_date))),
-      factRow("First saved by the archive", plain(aDate(p.first_archived))),
-      factRow("First found by this app", plain(aDate(p.first_seen))),
+      factRow("Published (page says)", plain(aDate(p.published))),
+      factRow("Updated (page says)", plain(aDate(p.modified))),
+      factRow("Sitemap date", plain(aDate(p.sitemap_date))),
+      factRow("First archived", plain(aDate(p.first_archived))),
+      factRow("First found", plain(aDate(p.first_seen))),
       factRow("Last changed", plain(aDate(p.last_changed))),
       factRow("Last read", plain(aDate(p.last_read))),
-      factRow("Changes seen on this page", known(p.edits) ? count(p.edits) : ""),
+      factRow("Changes seen", known(p.edits) ? count(p.edits) : ""),
       factRow("Read with", plain(reader)),
     ].join("");
   }
 
-  function moveFactsLine(e) {
+  function moveFactsLine(e, common = null) {
     const bits = [
-      known(e.country) ? factChip(esc(UI.countryName(String(e.country).toUpperCase()))) : "",
-      known(e.device) ? factChip(esc(t(e.device === "mobile" ? "Mobile" : e.device === "desktop" ? "Desktop" : e.device))) : "",
-      known(e.location) && String(e.location).toUpperCase() !== String(e.country || "").toUpperCase() ? factChip(esc(e.location)) : "", // "FR" again after France says nothing
-      known(e.depth) ? factChip(esc(fill("top {n} checked", { n: UI.num(e.depth) }))) : "",
+      known(e.country) && !common?.country ? factChip(esc(UI.countryName(String(e.country).toUpperCase()))) : "",
+      known(e.device) && !common?.device ? factChip(esc(t(e.device === "mobile" ? "Mobile" : e.device === "desktop" ? "Desktop" : e.device))) : "",
+      known(e.location) && !common?.location && String(e.location).toUpperCase() !== String(e.country || "").toUpperCase() ? factChip(esc(e.location)) : "", // "FR" again after France says nothing
+      known(e.depth) && !common?.depth ? factChip(esc(fill("top {n} checked", { n: UI.num(e.depth) }))) : "",
     ].filter(Boolean);
-    const mine = e.mine ? `<div class="cl-facts cl-facts-you">${factChip(`${COMP.who("you")} ${COMP.pos(e.mine.position, e.depth ?? 100)}${e.mine.host ? ` <span class="mono">${esc(e.mine.host)}</span>` : ""}`, "Your best place in this same check")}</div>` : "";
+    const mine = e.mine ? `<div class="cl-facts cl-facts-you">${factChip(`${COMP.who("you")} ${COMP.pos(e.mine.position, e.depth ?? 100)}${e.mine.host ? ` <span class="mono">${esc(e.mine.host)}</span>` : ""}`, "Your best position, same check")}</div>` : "";
     return `${known(e.title) ? `<div class="cl-facts-title" dir="auto">${esc(e.title)}</div>` : ""}${bits.length ? `<div class="cl-facts">${bits.join("")}</div>` : ""}${mine}`;
   }
 
@@ -533,7 +595,7 @@
     return [
       factRow("Keyword", plain(e.keyword)),
       factRow("Their page", known(e.url) ? COMP.link(e.url) : ""),
-      factRow("Their title in the results", plain(e.title)),
+      factRow("Title in results", plain(e.title)),
       factRow("Was", e.kind === "rank_new" ? esc(t("Not in the results checked")) : plain(place(e.from))),
       factRow("Now", e.kind === "rank_lost" ? esc(t("Not in the results checked")) : plain(place(e.to))),
       factRow("Your position", e.mine ? `${COMP.pos(e.mine.position, e.depth ?? 100)}${e.mine.url ? ` ${COMP.link(e.mine.url)}` : ""}` : ""),
@@ -548,12 +610,12 @@
     ].join("");
   }
 
-  function factsOf(e) {
+  function factsOf(e, common = null) {
     const isMove = e.kind.startsWith("rank_") || e.kind.startsWith("ai_");
     if (!isMove && !e.page) return "";
-    const line = isMove ? moveFactsLine(e) : pageFactsLine(e.page);
+    const line = isMove ? moveFactsLine(e, common) : pageFactsLine(e.page);
     const rows = isMove ? moveDetails(e) : pageDetails(e.page);
-    return `${line}${rows ? `<details class="cl-more-facts"><summary>${icon("chevron-right")}${t("All the details")}</summary><dl class="cl-dl">${rows}</dl></details>` : ""}`;
+    return `${line}${rows ? `<details class="cl-more-facts"><summary>${icon("chevron-right")}${t("Details")}</summary><dl class="cl-dl">${rows}</dl></details>` : ""}`;
   }
   COMP.changeFacts = factsOf;
   COMP.TIMELINE_FILTERS = TIMELINE_FILTERS; // Who is moving (comp-summary.js) filters the same way
@@ -565,17 +627,18 @@
     return { title: `${rival}: ${t(word)}${about ? ` · ${e.keyword || COMP.shortUrl(e.url)}` : ""}`, host: own, source: { type: "competitor", label: `${rival}: ${t(word)}`, host: own, facts: [e.keyword, e.url, e.at ? UI.fmtDateOnly(e.at) : ""].filter(Boolean), link: `#competitors/list/${who?.id ?? view.data?.id}`, key } };
   }
 
-  function timelineRow(e, focusable, who = null) {
+  function timelineRow(e, focusable, who = null, common = null) {
     const [ic, word] = KINDS[e.kind] || ["circle-dot", e.kind];
     const isMove = e.kind.startsWith("rank_");
     const isAi = e.kind.startsWith("ai_");
     const about = isMove || isAi ? ` <span class="kw" dir="auto">${esc(e.keyword)}</span>` : "";
-    const detail = isMove ? moveDetail(e) : isAi ? `<div class="d">${esc(engineName(e.engine))} · ${esc(e.tool || "")}</div>` : e.kind === "new_page" || e.kind === "page_gone" ? "" : changeDetail(e);
+    const aiSource = isAi && !common?.source ? COMP.toolLogos(e.engine, e.tool) : "";
+    const detail = isMove ? moveDetail(e, common) : isAi ? (aiSource ? `<div class="d">${aiSource}</div>` : "") : e.kind === "new_page" || e.kind === "page_gone" ? "" : changeDetail(e);
     /* Only a marker of the kind of change, never a button: no box, just a coloured icon. */
     const tone = ["new_page", "rank_new", "rank_up", "ai_cited"].includes(e.kind) ? "up" : ["page_gone", "rank_lost", "rank_down", "ai_dropped"].includes(e.kind) ? "down" : "edit";
-    return `<li ${focusable ? 'tabindex="-1" data-cl-first-new' : ""}><span class="cl-tl-ico cl-tl-${tone}" aria-hidden="true">${icon(ic)}</span><div class="what">${who ? `<div class="d cs-who"><span class="with-logo">${UI.siteLogo(who.rival, 16)}<span class="logo-text mono" dir="auto">${esc(who.display || who.rival)}</span></span> · ${esc(COMP.ago(e.at))}</div>` : ""}<div class="t">${esc(t(word))}${about}</div>${detail}${factsOf(e)}${window.ChangeSummary?.slot(e) || ""}${e.url ? `<div class="d">${COMP.link(e.url)}</div>` : ""}</div><div class="acts">${UI.taskButton(timelineFind(e, word, who), { label: "Task" })}</div></li>`;
+    return `<li ${focusable ? 'tabindex="-1" data-cl-first-new' : ""}><span class="cl-tl-ico cl-tl-${tone}" aria-hidden="true">${icon(ic)}</span><div class="what">${who ? `<div class="d cs-who"><span class="with-logo">${UI.siteLogo(who.rival, 16)}<span class="logo-text mono" dir="auto">${esc(who.display || who.rival)}</span></span> · ${esc(COMP.ago(e.at))}</div>` : ""}<div class="t">${esc(t(word))}${about}</div>${detail}${factsOf(e, common)}${window.ChangeSummary?.slot(e) || ""}${e.url ? `<div class="d">${COMP.link(e.url)}</div>` : ""}</div><div class="acts">${UI.taskButton(timelineFind(e, word, who), { label: "Task" })}</div></li>`;
   }
-  COMP.timelineRow = (e, who) => timelineRow(e, false, who);
+  COMP.timelineRow = (e, who, common = null) => timelineRow(e, false, who, common);
 
   function timelineBody(p) {
     const all = p.timeline || [];
@@ -586,7 +649,7 @@
     if (!shown.length) {
       const blocked = p.crawl?.status === "blocked" && ["edits", "new", "gone"].includes(filter[0]);
       const early = !p.crawl?.baseline_done && !blocked;
-      return `${chips}<p class="cl-none small sec">${esc(blocked ? t("Page changes can't be tracked, because this site doesn't allow automated visitors.") : early ? t("Nothing yet. The first read only sets a starting point, so changes appear from the next read on.") : filter[0] === "rank" ? t("No ranking moves yet. A move needs two checks by the same tool.") : t("Nothing here yet."))}</p>`;
+      return `${chips}<p class="cl-none small sec">${esc(blocked ? t("Site blocks bots: page changes can't be tracked.") : early ? t("Nothing yet: changes show from the second read.") : filter[0] === "rank" ? t("No moves yet: a move needs two checks by one tool.") : t("Nothing here yet."))}</p>`;
     }
     const part = shown.slice(0, view.limit);
     const days = new Map();
@@ -597,8 +660,9 @@
     });
     const firstNew = view.limit > 50 ? view.limit - 50 : -1;
     const left = shown.length - part.length;
-    return `${chips}
-      <div class="cl-days">${[...days.entries()].map(([day, entries]) => `<section class="cl-day"><h3 class="cl-day-name">${esc(UI.fmtDateOnly(`${day}T00:00:00Z`))}</h3><ul class="rows cl-tl">${entries.map(([e, i]) => timelineRow(e, i === firstNew)).join("")}</ul></section>`).join("")}</div>
+    const common = moveCommon(part); // what every move shown shares, said once over the days
+    return `${chips}${moveCommonLine(common)}
+      <div class="cl-days">${[...days.entries()].map(([day, entries]) => `<section class="cl-day"><h3 class="cl-day-name">${esc(UI.fmtDateOnly(`${day}T00:00:00Z`))}</h3><ul class="rows cl-tl">${entries.map(([e, i]) => timelineRow(e, i === firstNew, null, common)).join("")}</ul></section>`).join("")}</div>
       ${left ? `<p class="cl-more"><button class="btn btn-small" data-cl-tl-more>${t("Show more")} (${UI.num(left)})</button></p>` : ""}`;
   }
 
@@ -636,16 +700,16 @@
       const on = view.sort.key === key;
       return `<th scope="col" class="${cls}" aria-sort="${on ? (view.sort.dir > 0 ? "ascending" : "descending") : "none"}"><button type="button" class="th-btn" data-cl-sort="${key}">${logo}${t(label)}${icon(on && view.sort.dir < 0 ? "arrow-down" : "arrow-up")}</button></th>`;
     };
-    const emptyWords = { shared: "You don't rank together on any keyword yet.", theirs_only: "They don't rank on any keyword without you.", mine_only: "You don't rank on any keyword without them.", past: "Nothing yet. A keyword lands here when they used to rank for it and the latest check no longer shows them." };
-    if (!rows.length && q) return `${seg}${search}<p class="cl-none small sec">${esc(t("No keyword matches this search."))} <button type="button" class="link-btn" data-tp-clear data-tp-key="${PAGES.keywords}">${t("Clear the search")}</button></p>`;
-    if (!rows.length) return `${seg}${search}<p class="cl-none small sec">${t(emptyWords[view.kw])}</p>`;
+    const emptyWords = { shared: "No shared keywords yet.", theirs_only: "No keyword only they rank on.", mine_only: "No keyword only you rank on.", past: "None yet: keywords they've lost show here." };
+    if (!rows.length && q) return `${seg}${search}<p class="cl-none small sec">${esc(t("No keyword matches."))} <button type="button" class="link-btn" data-tp-clear data-tp-key="${PAGES.keywords}">${t("Clear search")}</button></p>`;
+    if (!rows.length) return `${seg}${search}<p class="cl-none small sec">${t(emptyWords[view.kw])}${view.kw === "past" ? UI.tip("A keyword lands here when they used to rank for it and the latest check no longer shows them.") : ""}</p>`;
     const place = (n, url, depth) => `<span class="cl-cell">${COMP.pos(n, depth)}${url ? `<span class="cl-url">${COMP.link(url)}</span>` : ""}</span>`;
     const table = view.kw === "past"
-      ? `<table class="data cl-table"><thead><tr>${head("keyword", "Keyword")}${head("last_position", "Their last position", "pt-col-them", UI.siteLogo(p.host, 16))}${head("last_seen", "Last seen")}<th scope="col">${t("Tool")}</th></tr></thead><tbody>${sorted.map((k) => `<tr>
+      ? `<table class="data cl-table"><thead><tr>${head("keyword", "Keyword")}${head("last_position", "Last position", "pt-col-them", UI.siteLogo(p.host, 16))}${head("last_seen", "Last seen")}<th scope="col">${t("Tool")}</th></tr></thead><tbody>${sorted.map((k) => `<tr>
           <td class="head-cell"><span class="kw" dir="auto">${esc(k.keyword)}</span></td>
-          <td data-label="${attr("Their last position")}">${place(k.last_position, k.last_url)}</td>
-          <td data-label="${attr("Last seen")}"><span class="nowrap">${esc(COMP.ago(k.last_seen))}</span></td>
-          <td data-label="${attr("Tool")}"><span class="cl-cell">${esc(k.tool || "")}<span class="second">${esc(engineName(k.engine))}</span></span></td></tr>`).join("")}</tbody></table>`
+          <td data-label="${attr("Last position")}">${place(k.last_position, k.last_url)}</td>
+          <td data-label="${attr("Last seen")}">${COMP.ageCell(k.last_seen)}</td>
+          <td data-label="${attr("Tool")}">${COMP.toolLogos(k.engine, k.tool)}</td></tr>`).join("")}</tbody></table>`
       : keywordTable(sorted, head, place);
     return `${seg}${search}<div class="cl-pages"><div class="cl-scroll">${table}</div>${TP.footer(PAGES.keywords, page, { noun: t("keywords") })}</div>`;
   }
@@ -655,13 +719,13 @@
     const toolOf = (k) => `${k.tool || ""} · ${engineName(k.engine)}`;
     const ages = new Set(sorted.map((k) => COMP.ago(k.checked_at))), tools = new Set(sorted.map(toolOf));
     const once = sorted.length > 1 && tools.size === 1 && ages.size === 1;
-    const toolCell = (k) => `<td data-label="${attr("Tool and age")}"><span class="cl-cell">${esc(toolOf(k))}<span class="second">${esc(COMP.ago(k.checked_at))}</span></span></td>`;
+    const toolCell = (k) => `<td data-label="${attr("Checked")}"><span class="cl-checked">${COMP.toolLogos(k.engine, k.tool)} ${COMP.ageCell(k.checked_at)}</span></td>`; // engine and tool as logos, then the age
     const logo = (host) => (host ? UI.siteLogo(host, 16) : ""); // You and Them carry their site's logo and colour, as on every table of the profile
-    return `<table class="data cl-table cl-kw-table"><thead><tr>${head("keyword", "Keyword")}${head("my_position", "You", "c pt-col-you", logo(COMP.site?.()?.host || view.data?.site?.host))}${head("their_position", "Them", "c pt-col-them", logo(view.data?.host))}${once ? "" : head("checked_at", "Tool and age")}</tr></thead><tbody>${sorted.map((k) => `<tr>
+    return `<table class="data cl-table cl-kw-table"><thead><tr>${head("keyword", "Keyword")}${head("my_position", "You", "c pt-col-you", logo(COMP.site?.()?.host || view.data?.site?.host))}${head("their_position", "Them", "c pt-col-them", logo(view.data?.host))}${once ? "" : head("checked_at", "Checked")}</tr></thead><tbody>${sorted.map((k) => `<tr>
           <td class="head-cell"><span class="kw" dir="auto">${esc(k.keyword)}</span>${COMP.profileTabs?.keywordMarks?.(k) ?? ""}</td>
           <td class="c" data-label="${attr("You")}">${place(k.my_position, k.my_url, k.depth)}</td>
           <td class="c" data-label="${attr("Them")}">${place(k.their_position, k.their_url, k.depth)}</td>
-          ${once ? "" : toolCell(k)}</tr>`).join("")}</tbody></table>${once ? `<p class="small sec cl-kw-foot">${esc(fill("All checked with {tool}, {when}.", { tool: toolOf(sorted[0]), when: COMP.ago(sorted[0].checked_at) }))}</p>` : ""}`;
+          ${once ? "" : toolCell(k)}</tr>`).join("")}</tbody></table>${once ? `<p class="small sec cl-kw-foot">${fillHtml("All checked with {tool}, {when}.", { tool: COMP.toolLogos(sorted[0].engine, sorted[0].tool), when: esc(COMP.ago(sorted[0].checked_at)) })}</p>` : ""}`;
   }
 
   function paintKeywords(focus) {
@@ -674,18 +738,18 @@
   function pairsCard(p) {
     const rows = (p.pairs || []).filter((x) => !x.hidden);
     const page = (who, title, url) => `<div class="cl-pair-side"><span class="cl-who">${who}</span><span class="t" dir="auto">${esc(title || COMP.shortUrl(url))}</span>${COMP.link(url)}</div>`;
-    return `<section class="card" aria-label="${attr("Their pages against mine")}"><div class="card-head"><h2>${t("Their pages against mine")}</h2>${rows.length ? `<span class="tag tabular">${UI.num(rows.length)}</span>` : ""}</div>
+    return `<section class="card" aria-label="${attr("Page vs page")}"><div class="card-head"><h2>${t("Page vs page")}</h2>${rows.length ? `<span class="tag tabular">${UI.num(rows.length)}</span>` : ""}</div>
       ${rows.length ? `<ul class="rows cl-pairs">${rows.map((x) => `<li>
         <div class="what cl-pair">${page(COMP.who("them"), x.their_title, x.their_url)}${page(COMP.who("you"), x.my_title, x.my_url)}</div>
         <div class="acts"><span class="small muted nowrap">${esc(many(x.shared_keywords || 0, "{n} shared keyword", "{n} shared keywords"))}</span><button class="btn btn-small" data-cl-pair="${x.id}">${icon("columns-3")}${t("Compare")}</button></div>
-      </li>`).join("")}</ul>` : `<p class="cl-none small sec">${t("No pages to compare yet. A pair appears when you both rank for the same keyword.")}</p>`}</section>`;
+      </li>`).join("")}</ul>` : `<p class="cl-none small sec">${t("No pairs yet: one appears when you both rank for a keyword.")}</p>`}</section>`;
   }
 
   const headNote = (p) => baseNote(p) + (COMP.reading ? COMP.reading.box(p, COMP.siteId) : ""); // comp-reading.js: sitemap, big site, JavaScript, Firecrawl
   function baseNote(p) {
     const c = p.crawl || {};
-    if (c.status === "blocked") return COMP.reading ? "" : `<p class="note warn cl-head-note">${icon("triangle-alert")}<span>${esc(say(c.message || BLOCKED_TEXT))} ${esc(t("Everything from search results still works: rankings, AI Overviews and shared keywords."))}</span></p>`;
-    if (c.status === "failed") return `<p class="note crit cl-head-note">${icon("octagon-alert")}<span>${esc(t("The last read failed. It tries again at the next daily read, and everything from search results still works."))}${c.message ? ` <span class="small mono cl-wrap" dir="auto">${esc(c.message)}</span>` : ""}</span></p>`;
+    if (c.status === "blocked") return COMP.reading ? "" : `<p class="note warn cl-head-note">${icon("triangle-alert")}<span>${esc(say(c.message || BLOCKED_TEXT))} ${esc(t("Rankings, AI Overviews and shared keywords still work."))}</span></p>`;
+    if (c.status === "failed") return `<p class="note crit cl-head-note">${icon("octagon-alert")}<span>${esc(t("Last read failed. Trying again at the next daily read; rankings still work."))}${c.message ? ` <span class="small mono cl-wrap" dir="auto">${esc(c.message)}</span>` : ""}</span></p>`;
     return "";
   }
   const paused = (p) => p.tracking === "off"; // tracking off: nothing is read, so no "Watching" and no Read now
@@ -733,7 +797,7 @@
       if (view.data?.id === id) { view.data.crawl = set(view.data.crawl); paintWatch(); }
       const row = (list.rows || []).find((c) => c.id === id);
       if (row) row.crawl = set(row.crawl);
-      UI.toast(t("Reading its pages now. It waits 3 seconds between pages, so this can take a while."), { kind: "info" });
+      UI.toast(t("Reading its pages, 3 seconds apart. It can take a while."), { kind: "info" });
       watchCrawls();
     } catch (err) {
       if (button?.isConnected) button.disabled = false;
@@ -768,7 +832,7 @@
     const crawl = { ...(row?.crawl || {}), status: "queued" };
     if (row) row.crawl = crawl;
     paintCrawl(id, site, crawl);
-    UI.toast(t("Reading its pages now. It waits 3 seconds between pages, so this can take a while."), { kind: "info" });
+    UI.toast(t("Reading its pages, 3 seconds apart. It can take a while."), { kind: "info" });
     if (row && here("list", site) && !listTab.competitorId) watchCrawls();
     else followRead(id, site);
   }
@@ -835,7 +899,7 @@
   function runWords(run) {
     const total = run.new_keywords || run.total || 0;
     const done = (run.checked || 0) + (run.failed || 0);
-    const stay = t("You can leave this page: it carries on.");
+    const stay = t("Keeps going if you leave.");
     return {
       text: run.status === "queued" && !done ? t("Waiting to start…") : fill("Checking your keywords: {done} of {total}", { done: UI.num(done), total: UI.num(total) }),
       sub: `${run.tool ? `${fill("Using {tool}.", { tool: run.tool })} ` : ""}${run.failed ? `${many(run.failed, "{n} check failed.", "{n} checks failed.")} ` : ""}${stay}`,
@@ -861,14 +925,14 @@
   function waitingNote(run, d) {
     const left = Math.max(0, d.keywords_total - d.keywords_checked);
     const saved = many(d.keywords_total, "{n} keyword saved.", "{n} keywords saved.");
-    const state = !d.keywords_checked ? t("None checked yet.") : left ? many(left, "{n} is still to check.", "{n} are still to check.") : "";
+    const state = !d.keywords_checked ? t("None checked yet.") : left ? many(left, "{n} left to check.", "{n} left to check.") : "";
     return `<section class="card cl-waiting" id="cl-waiting" aria-label="${attr("Waiting for a search tool")}">
       <div class="cl-waiting-main">
         <span class="ico">${icon("clock")}</span>
         <div class="cl-waiting-words">
           <h2>${esc(saved)} ${esc(state)} ${t("Nothing is lost.")}</h2>
           <p class="sec">${esc(say(run.stop_reason || "No search tool is connected yet. The keywords are saved, and they'll be checked once a tool's key is added in Settings."))}</p>
-          <p class="small muted">${t("Free tools only. It carries on by itself when a tool is ready or free checks refill.")}</p>
+          <p class="small muted">${t("Free tools only. Resumes by itself when a tool is ready or checks refill.")}</p>
         </div>
       </div>
       <div class="cl-waiting-act"><button class="btn btn-main" data-cl-settings>${icon("settings")}${t("Open Settings")}</button></div>
@@ -899,7 +963,7 @@
       await COMP.reload({ quiet: true });
       if (now.status === "complete" && here("find", site)) {
         const n = findData()?.suggestions?.length || 0;
-        UI.toast(`${many(now.checked || 0, "{n} keyword checked.", "{n} keywords checked.")} ${many(n, "{n} suggestion to look at.", "{n} suggestions to look at.")}`);
+        UI.toast(`${many(now.checked || 0, "{n} keyword checked.", "{n} keywords checked.")} ${many(n, "{n} suggestion to review.", "{n} suggestions to review.")}`);
       }
       return false;
     }, {
@@ -918,20 +982,23 @@
       if (inner) UI.setHTML(inner, evidenceTable(item));
     });
     const place = (e) => `<span class="cl-cell">${COMP.pos(e.position, e.my_depth)}${e.url ? `<span class="cl-url">${COMP.link(e.url)}</span>` : ""}</span>`;
-    const capped = (item.keywords || 0) > page.total ? fill("Showing the first {n}.", { n: UI.num(page.total) }) : null;
-    return `<div class="cl-pages"><div class="cl-scroll"><table class="data cl-table"><thead><tr><th scope="col">${t("Keyword")}</th><th scope="col" class="pt-col-them">${COMP.who("them", null, t("Their position"))}</th><th scope="col" class="pt-col-you">${COMP.who("you", null, t("Your position"))}</th><th scope="col">${t("Checked with")}</th></tr></thead><tbody>
+    const capped = (item.keywords || 0) > page.total ? fill("First {n} shown.", { n: UI.num(page.total) }) : null;
+    // Engine and tool as logos, then the age. When every row says the same, the column goes and it's said once under the table (2026-11-11).
+    const once = rows.length > 1 && new Set(rows.map((e) => `${e.engine || ""}|${e.tool || ""}|${COMP.ago(e.checked_at)}`)).size === 1;
+    const onceLine = once ? `<p class="small sec cl-kw-foot">${fillHtml("All checked with {tool}, {when}.", { tool: COMP.toolLogos(rows[0].engine, rows[0].tool), when: esc(COMP.ago(rows[0].checked_at)) })}</p>` : "";
+    return `<div class="cl-pages"><div class="cl-scroll"><table class="data cl-table"><thead><tr><th scope="col">${t("Keyword")}</th><th scope="col" class="pt-col-them">${COMP.who("them", null, t("Their position"))}</th><th scope="col" class="pt-col-you">${COMP.who("you", null, t("Your position"))}</th>${once ? "" : `<th scope="col">${t("Checked")}</th>`}</tr></thead><tbody>
       ${rows.map((e) => `<tr>
         <td class="head-cell"><span class="kw" dir="auto">${esc(e.keyword)}</span></td>
         <td data-label="${attr("Their position")}">${place(e)}</td>
         <td data-label="${attr("Your position")}">${COMP.pos(e.my_position, e.my_depth)}</td>
-        <td data-label="${attr("Checked with")}"><span class="cl-cell">${esc(engineName(e.engine))} · ${esc(e.tool || "")}<span class="second">${esc(COMP.ago(e.checked_at))}</span></span></td>
-      </tr>`).join("")}</tbody></table></div>${TP.footer(key, page, { noun: t("keywords"), capped })}</div>`;
+        ${once ? "" : `<td data-label="${attr("Checked")}"><span class="cl-checked">${COMP.toolLogos(e.engine, e.tool)} ${COMP.ageCell(e.checked_at)}</span></td>`}
+      </tr>`).join("")}</tbody></table></div>${TP.footer(key, page, { noun: t("keywords"), capped })}</div>${onceLine}`;
   }
 
   function evidenceFold(item) {
     if (!item.evidence?.length) return "";
     const open = find.open.has(item.domain);
-    return `<details class="cl-evidence" data-cl-evidence="${esc(item.domain)}" ${open ? "open" : ""}><summary>${icon("chevron-right")}${t("See the evidence")}</summary><div class="cl-evidence-body">${open ? evidenceTable(item) : ""}</div></details>`;
+    return `<details class="cl-evidence" data-cl-evidence="${esc(item.domain)}" ${open ? "open" : ""}><summary>${icon("chevron-right")}${t("Evidence")}</summary><div class="cl-evidence-body">${open ? evidenceTable(item) : ""}</div></details>`;
   }
 
   function sharePart(item, d) {
@@ -945,8 +1012,8 @@
     return `<div class="cl-facts small sec">
       ${fact(t("Average position"), `#${esc(UI.dec(item.average_position))}`)}
       ${fact(t("Best position"), `#${UI.num(item.best_position)}`)}
-      ${fact(t("In the top 3 on"), UI.num(item.top3))}
-      ${fact(t("You both rank on"), UI.num(item.both_rank))}
+      ${fact(t("Top 3 on"), UI.num(item.top3))}
+      ${fact(t("Shared keywords"), UI.num(item.both_rank))}
     </div>`;
   }
 
@@ -976,23 +1043,23 @@
     </li>`;
   }
 
-  function groupCard(id, title, n, intro, rows) {
+  function groupCard(id, title, n, intro, rows, tip = "") {
     if (!n) return "";
     return `<details class="card cl-group" data-cl-group="${id}" ${find.groups.has(id) ? "open" : ""}><summary class="card-head">${icon("chevron-right")}<h2>${t(title)}</h2><span class="tag tabular">${UI.num(n)}</span></summary>
-      <p class="help cl-group-intro">${t(intro)}</p>
+      <p class="help cl-group-intro">${t(intro)}${tip ? UI.tip(tip) : ""}</p>
       <ul class="rows">${rows}</ul></details>`;
   }
 
   function checkedBand(d, run) {
-    const bits = [d.last_check ? fill("Last checked {when}", { when: COMP.ago(d.last_check) }) : t("Not checked yet")];
+    const bits = [d.last_check ? fill("Checked {when}", { when: COMP.ago(d.last_check) }) : t("Not checked")];
     if (d.tools?.length) bits.push(d.tools.join(", "));
     bits.push(many(d.keywords_total, "{done} of {n} keyword", "{done} of {n} keywords", { done: UI.num(d.keywords_checked) }));
-    const failed = run?.status === "complete" && run.failed ? many(run.failed, "{n} check failed in the last run.", "{n} checks failed in the last run.") : "";
-    const rule = d.min_appearances > 1 ? fill("A domain is suggested once it appears on at least {n} keywords.", { n: UI.num(d.min_appearances) }) : "";
+    const failed = run?.status === "complete" && run.failed ? many(run.failed, "{n} check failed last run.", "{n} checks failed last run.") : "";
+    const rule = d.min_appearances > 1 ? fill("A domain needs {n}+ keywords to be suggested.", { n: UI.num(d.min_appearances) }) : "";
     const canCheck = d.keywords_checked > 0 && run?.status !== "waiting";
     return `<section class="tool-band cl-band" aria-label="${attr("Your keyword list")}">
       <p><span class="cl-band-main">${icon("clock")}<span id="cl-checked-line">${esc(bits.join(" · "))}</span></span>${failed || rule ? `<span class="small muted cl-band-sub">${esc([failed, rule].filter(Boolean).join(" "))}</span>` : ""}</p>
-      <div class="cl-band-acts"><button class="btn" data-cl-upload>${icon("upload")}${t("Upload keyword list")}</button>${canCheck ? `<button class="btn" id="cl-check-again" ${runActive(run) ? "disabled" : ""}>${icon("refresh-cw")}${t("Check again")}</button>` : ""}</div>
+      <div class="cl-band-acts"><button class="btn" data-cl-upload>${icon("upload")}${t("Upload keywords")}</button>${canCheck ? `<button class="btn" id="cl-check-again" ${runActive(run) ? "disabled" : ""}>${icon("refresh-cw")}${t("Check again")}</button>` : ""}</div>
     </section>`;
   }
 
@@ -1001,20 +1068,20 @@
     const d = findData();
     if (!d) return COMP.loading();
     const run = d.run;
-    const rule = `<p class="prospect-note">${icon("info")}<span>${t("Suggestions only. Nothing is added until you accept. Counted from search results, no AI.")}</span></p>`;
+    const rule = `<p class="prospect-note">${icon("info")}<span>${t("Suggestions from search results, no AI. Nothing is added until you accept.")}</span></p>`;
     if (!d.keywords_total && !runActive(run) && run?.status !== "waiting") {
-      return `${rule}${COMP.empty(t("No keywords yet"), t("Upload your keyword list. We check who ranks for each keyword once, using free tools only, then suggest the domains that appear most often."), `<button class="btn btn-main" data-cl-upload>${icon("upload")}${t("Upload your keyword list")}</button>`)}`;
+      return `${rule}${COMP.empty(t("No keywords yet"), t("See who ranks most on your keywords, using free tools only."), `<button class="btn btn-main" data-cl-upload>${icon("upload")}${t("Upload keywords")}</button>`, UI.tip("Each keyword is checked once, with free tools only, then the domains that appear most often are suggested."))}`;
     }
     const suggestions = d.suggestions?.length
       ? `<section class="card" aria-label="${attr("Suggestions")}"><div class="card-head"><h2>${t("Suggestions")}</h2><span class="tag tabular">${UI.num(d.suggestions.length)}</span></div><ul class="rows">${d.suggestions.map((x) => suggestionRow(x, d)).join("")}</ul></section>`
-      : `<section class="card"><div class="empty cl-none-big"><h3>${t(d.keywords_checked ? "No suggestions right now" : "No suggestions yet")}</h3><p>${t(d.keywords_checked ? "No other domain appears often enough on your keywords. New checks can change that." : "They appear here as soon as your keywords have been checked.")}</p></div></section>`;
+      : `<section class="card"><div class="empty cl-none-big"><h3>${t(d.keywords_checked ? "No suggestions" : "No suggestions yet")}</h3><p>${t(d.keywords_checked ? "No domain appears often enough on your keywords yet." : "They appear once your keywords are checked.")}</p></div></section>`;
     return `${rule}
       ${runActive(run) ? runBanner(run) : ""}
       ${run?.status === "waiting" ? waitingNote(run, d) : ""}
       ${checkedBand(d, run)}
       ${suggestions}
-      ${groupCard("platforms", "Big sites and public bodies", d.platforms?.length || 0, "These rank for almost everything, so they're rarely real competitors. You can still accept one if you want to watch it.", (d.platforms || []).map((x) => suggestionRow(x, d)).join(""))}
-      ${groupCard("dismissed", "Dismissed", d.dismissed?.length || 0, "These stay dismissed whatever new checks show, until you restore them.", (d.dismissed || []).map((x) => dismissedRow(x, d)).join(""))}`;
+      ${groupCard("platforms", "Big sites and public bodies", d.platforms?.length || 0, "They rank for almost everything, so rarely real competitors.", (d.platforms || []).map((x) => suggestionRow(x, d)).join(""), "These rank for almost everything, so they're rarely real competitors. You can still accept one if you want to watch it.")}
+      ${groupCard("dismissed", "Dismissed", d.dismissed?.length || 0, "They stay dismissed until you restore them.", (d.dismissed || []).map((x) => dismissedRow(x, d)).join(""))}`;
   }
 
   /* After a row leaves, the keyboard moves to the next suggestion, or the one before. */
@@ -1052,7 +1119,7 @@
       find.open.delete(domain);
       pending = after;
       await refreshHere();
-      UI.toast(fill("{host} dismissed. It won't be suggested again unless you restore it.", { host: domain }), {
+      UI.toast(fill("{host} dismissed until you restore it.", { host: domain }), {
         kind: "info",
         undo: async () => {
           try {
@@ -1077,7 +1144,7 @@
       await refreshHere();
       const d = findData();
       const shown = [...(d?.suggestions || []), ...(d?.platforms || [])].some((x) => x.domain === domain);
-      UI.toast(shown ? fill("{host} is back in the suggestions.", { host: domain }) : fill("{host} is no longer dismissed. It's suggested again if it shows up often enough in your results.", { host: domain }), { kind: "info" });
+      UI.toast(shown ? fill("{host} restored.", { host: domain }) : fill("{host} restored; it returns if seen often enough.", { host: domain }), { kind: "info" });
     } catch (err) {
       if (button?.isConnected) button.disabled = false;
       fail(err);
@@ -1090,7 +1157,7 @@
     const dlg = UI.$("#dlg");
     dlg.classList.remove("wide");
     UI.setHTML(dlg, `<div class="dlg-head"><h2 id="dlg-title">${t("Check your keywords again?")}</h2><button class="icon-btn" data-close-dlg aria-label="${attr("Close")}">${icon("x")}</button></div>
-      <div class="dlg-body"><p>${esc(many(d.keywords_total, "This uses {n} check from your free tools.", "This uses {n} checks from your free tools."))}</p><p class="small sec" style="margin-top:8px">${t("It never spends paid credits. If free checks run out it stops and says so, and the rest carry on when credits refill.")}</p></div>
+      <div class="dlg-body"><p>${esc(many(d.keywords_total, "Uses {n} free check.", "Uses {n} free checks."))}</p><p class="small sec" style="margin-top:8px">${t("Never spends paid credits. If free checks run out, it pauses and resumes when they refill.")}</p></div>
       <div class="dlg-foot"><button class="btn" data-close-dlg>${t("Cancel")}</button><button class="btn btn-main" data-cl-check-yes>${t("Check again")}</button></div>`);
     dlg.showModal();
     UI.$("[data-cl-check-yes]", dlg)?.focus();
@@ -1131,19 +1198,10 @@
   // ---- The upload panel ----------------------------------------------------------------------------------
   const MAX_BYTES = 10 * 1024 * 1024;
   const HEADER_NAMES = new Set(["keyword", "keywords", "query", "queries", "search term", "term", "mot-clé", "mot clé", "mots-clés", "mot-cle", "requête", "requete"]);
-  const LANGUAGES = "af ar az bg bn ca cs da de el en es et fa fi fil fr he hi hr hu hy id it ja ka kk ko lt lv ms nb nl pa pl pt ro ru si sk sl sq sr sv sw ta te th tr uk ur uz vi zh".split(" ");
   const ENCODINGS = [["windows-1252", "Western European"], ["windows-1256", "Arabic"], ["shift_jis", "Japanese"], ["euc-kr", "Korean"], ["gbk", "Chinese, simplified"], ["big5", "Chinese, traditional"], ["windows-1251", "Cyrillic"], ["windows-1250", "Central European"], ["windows-1253", "Greek"], ["windows-1254", "Turkish"], ["windows-1255", "Hebrew"], ["windows-874", "Thai"], ["windows-1258", "Vietnamese"]];
   const LIKELY_ENCODING = { ar: "windows-1256", fa: "windows-1256", ur: "windows-1256", ja: "shift_jis", ko: "euc-kr", zh: "gbk", ru: "windows-1251", uk: "windows-1251", bg: "windows-1251", sr: "windows-1251", kk: "windows-1251", cs: "windows-1250", sk: "windows-1250", pl: "windows-1250", hu: "windows-1250", ro: "windows-1250", hr: "windows-1250", sl: "windows-1250", sq: "windows-1250", el: "windows-1253", tr: "windows-1254", he: "windows-1255", th: "windows-874", vi: "windows-1258" };
 
-  function languageOptions() {
-    const lang = UI.state.lang === "fr" ? "fr" : "en";
-    let names;
-    try { names = new Intl.DisplayNames([lang], { type: "language" }); } catch { names = null; }
-    return LANGUAGES
-      .map((code) => { const name = names?.of(code) || code; return [code, name.charAt(0).toLocaleUpperCase(lang) + name.slice(1)]; })
-      .sort((a, b) => a[1].localeCompare(b[1], lang))
-      .map(([code, name]) => `<option value="${code}">${esc(name)}</option>`).join("");
-  }
+  const languageOptions = () => UI.languageOptions("");
 
   /* The same reading of a list as the server: one keyword per line, or a table with a keyword column. */
   function readRows(source) {
@@ -1219,7 +1277,7 @@
     if (hasFile) {
       const { keywords, repeated } = readKeywords(upload.text);
       const sample = keywords.slice(0, 3).map((k) => `<span class="tag cl-preview" dir="auto">${esc(k)}</span>`).join(" ");
-      UI.setHTML(info, `<div class="cl-file-row">${icon("file-text")}<span class="mono small cl-file-name" dir="auto">${esc(upload.file.name)}</span><button type="button" class="link-btn" id="cl-file-remove">${t("Remove the file")}</button></div>
+      UI.setHTML(info, `<div class="cl-file-row">${icon("file-text")}<span class="mono small cl-file-name" dir="auto">${esc(upload.file.name)}</span><button type="button" class="link-btn" id="cl-file-remove">${t("Remove file")}</button></div>
         <p class="small sec">${esc(many(keywords.length, "{n} keyword found", "{n} keywords found"))}${repeated ? ` · ${esc(many(repeated, "{n} repeat counted once", "{n} repeats counted once"))}` : ""}</p>
         ${sample ? `<p class="cl-previews">${sample}${keywords.length > 3 ? ` <span class="small muted">${t("and more")}</span>` : ""}</p>` : ""}`);
       return;
@@ -1231,19 +1289,19 @@
   function openUpload(opener) {
     Object.assign(upload, { file: null, bytes: null, text: "", unicode: true, reencode: false, encoding: "" });
     const site = COMP.siteId;
-    UI.openPanel(`${UI.panelHead(t("Upload your keyword list"), `${t("For")} <span class="mono">${esc(COMP.site()?.host || "")}</span>`)}
+    UI.openPanel(`${UI.panelHead(t("Upload keywords"), `${t("For")} <span class="mono">${esc(COMP.site()?.host || "")}</span>`)}
       <form class="panel-body" id="cl-upload-form" novalidate>
-        <div class="cl-drop" id="cl-drop">${icon("upload")}<b>${t("Drop a file here")}</b><span>${t("or")} <button type="button" class="link-btn" id="cl-file-pick" style="font-size:inherit" data-autofocus>${t("choose a file")}</button></span><span class="small muted">${t(".csv or .txt, in any encoding, up to 10 MB.")}</span><input type="file" id="cl-file" accept=".csv,.tsv,.txt,text/csv,text/plain" hidden></div>
+        <div class="cl-drop" id="cl-drop">${icon("upload")}<b>${t("Drop a file here")}</b><span>${t("or")} <button type="button" class="link-btn" id="cl-file-pick" style="font-size:inherit" data-autofocus>${t("choose a file")}</button></span><span class="small muted">${t(".csv or .txt, any encoding, 10 MB max.")}</span><input type="file" id="cl-file" accept=".csv,.tsv,.txt,text/csv,text/plain" hidden></div>
         <div id="cl-file-info" class="cl-file-info cl-hide"></div>
         <div id="cl-file-error"></div>
-        <label class="field cl-hide" id="cl-encoding"><span>${t("This file isn't saved as Unicode. If the words above look wrong, choose its encoding.")}</span><select class="select" id="cl-up-encoding" style="width:100%">${ENCODINGS.map(([id, name]) => `<option value="${id}">${t(name)}</option>`).join("")}</select></label>
+        <label class="field cl-hide" id="cl-encoding"><span>${t("Not Unicode. If the words above look wrong, pick its encoding.")}</span><select class="select" id="cl-up-encoding" style="width:100%">${ENCODINGS.map(([id, name]) => `<option value="${id}">${t(name)}</option>`).join("")}</select></label>
         <label class="field" id="cl-paste"><span>${t("Or paste your keywords, one per line")}</span><textarea class="input cl-paste-box" id="cl-up-text" rows="7" dir="auto" spellcheck="false" aria-describedby="cl-up-count cl-up-error"></textarea><div class="help" id="cl-up-count" aria-live="polite"></div><div id="cl-up-error"></div></label>
         <div class="field-row">
           <label class="field"><span>${t("Country")}</span><select class="select" id="cl-up-country" style="width:100%"><option value="">${t("Any country")}</option>${UI.countryOptions("")}</select></label>
           <label class="field"><span>${t("Language")}</span><select class="select" id="cl-up-language" style="width:100%"><option value="">${t("Any language")}</option>${languageOptions()}</select></label>
         </div>
         <div id="cl-up-market-error"></div>
-        <p class="note">${icon("info")}<span>${t("Free tools only. It never spends paid credits. If free checks run out it stops and says so, and the rest carry on when credits refill.")}</span></p>
+        <p class="note">${icon("info")}<span>${t("Free tools only, never paid credits. If free checks run out, it pauses and resumes when they refill.")}</span></p>
       </form>
       <div class="panel-foot"><button class="btn btn-main" id="cl-up-save">${t("Save and check")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button></div>`, opener, { key: `cl-upload|${site}`, reopen: () => openUpload(opener), after: paintUpload });
   }
@@ -1253,7 +1311,7 @@
     const box = UI.$("#cl-file-error");
     if (box) box.replaceChildren();
     if (!/\.(csv|tsv|txt)$/i.test(file.name)) { fieldError(null, box, t("Choose a .csv or .txt file.")); return; }
-    if (file.size > MAX_BYTES) { fieldError(null, box, t("That file is too big. The limit is 10 MB.")); return; }
+    if (file.size > MAX_BYTES) { fieldError(null, box, t("File too large: 10 MB at most.")); return; }
     upload.file = file;
     upload.bytes = new Uint8Array(await file.arrayBuffer());
     upload.encoding = LIKELY_ENCODING[UI.$("#cl-up-language")?.value] || "windows-1252";
@@ -1308,7 +1366,7 @@
       Object.assign(upload, { file: null, bytes: null, text: "" });
       pending = () => UI.$("[data-cl-upload]")?.focus({ preventScroll: true });
       if (COMP.tab !== "find") COMP.open("find"); else await refreshHere();
-      if (run.status === "complete" && !run.new_keywords) UI.toast(many(run.total, "This keyword was already checked, so nothing new was searched.", "These {n} keywords were already checked, so nothing new was searched."), { kind: "info" });
+      if (run.status === "complete" && !run.new_keywords) UI.toast(many(run.total, "Already checked: nothing searched.", "{n} keywords already checked: nothing searched."), { kind: "info" });
       else UI.toast(many(run.total, "{n} keyword saved.", "{n} keywords saved."));
     } catch (err) {
       const message = say(err.message);
@@ -1539,7 +1597,7 @@
     const raw = String(address ?? "").trim();
     if (!raw) refuse("Enter the competitor's address.");
     const host = sampleHost(raw);
-    if (!host) refuse("That doesn't look like a website address.");
+    if (!host) refuse("Not a website address.");
     if (SAMPLE()["links/sites"].sites.some((s) => s.host === host)) refuse(`${host} is part of your own websites, so it can't be a competitor.`);
     const rows = sampleList(site).competitors;
     if (rows.some((c) => c.host === host)) refuse(`${host} is already one of this website's competitors.`, 409);
@@ -1589,7 +1647,7 @@
   function sampleRemove(site, id) {
     const rows = sampleList(site).competitors;
     const at = rows.findIndex((c) => c.id === id);
-    if (at < 0) refuse("That competitor isn't on this website.", 404);
+    if (at < 0) refuse("Competitor not found.", 404);
     const [row] = rows.splice(at, 1);
     const pairsAnswer = SAMPLE()[`page-pairs?site_id=${site}`];
     const pairs = pairsAnswer?.pairs?.filter((x) => x.competitor_id === id) || [];
@@ -1610,7 +1668,7 @@
 
   function sampleDecide(action, site, domain) {
     const clean = String(domain ?? "").trim().toLowerCase();
-    if (!sampleHost(clean)) refuse("That doesn't look like a website's domain.");
+    if (!sampleHost(clean)) refuse("Not a website domain.");
     const answer = sampleFind(site);
     if (action === "accept") return sampleAdd(site, clean, "suggested");
     if (action === "dismiss") {
@@ -1736,7 +1794,7 @@
   COMP.sampleWrite("POST competitors/suggestions/(accept|dismiss|restore)", (match, body) => sampleDecide(match[1], Number(body?.site_id), body?.domain));
   COMP.sampleWrite("POST competitors/(\\d+)/crawl\\?site_id=(\\d+)", (match) => {
     const row = sampleList(Number(match[2])).competitors.find((c) => c.id === Number(match[1]));
-    if (!row) refuse("That competitor isn't on this website.", 404);
+    if (!row) refuse("Competitor not found.", 404);
     simulateRead(row.host);
     return { ok: true };
   });
@@ -1745,26 +1803,26 @@
 
   // ---- French ------------------------------------------------------------------------------------------------------
   Object.assign(window.FR, {
-    "All the details": "Tous les détails", "{n} word": "{n} mot", "{n} words": "{n} mots", "{n} heading": "{n} titre", "{n} headings": "{n} titres",
+    "Details": "Détails", "{n} word": "{n} mot", "{n} words": "{n} mots", "{n} heading": "{n} titre", "{n} headings": "{n} titres",
     "{n} image": "{n} image", "{n} images": "{n} images", "{n} video": "{n} vidéo", "{n} videos": "{n} vidéos",
-    "{a} internal · {b} external links": "{a} liens internes · {b} externes", "published {date}": "publiée le {date}", "{date} in their sitemap": "{date} dans leur sitemap",
-    "The date the page itself gives": "La date donnée par la page elle-même", "changed {n} time": "modifiée {n} fois", "changed {n} times": "modifiée {n} fois",
-    "The first {n} of {total}.": "Les {n} premiers sur {total}.", "({n} without alt text)": "({n} sans texte alternatif)",
-    "Firecrawl": "Firecrawl", "A real browser (the page needs JavaScript)": "Un vrai navigateur (la page a besoin de JavaScript)",
+    "{a} internal · {b} external links": "{a} liens internes · {b} externes", "published {date}": "publiée le {date}", "sitemap {date}": "sitemap {date}",
+    "Date the page gives": "Date donnée par la page", "changed {n} time": "modifiée {n} fois", "changed {n} times": "modifiée {n} fois",
+    "First {n} of {total}.": "{n} premiers sur {total}.", "({n} without alt text)": "({n} sans texte alternatif)",
+    "Firecrawl": "Firecrawl", "Browser (needs JavaScript)": "Navigateur (JavaScript requis)",
     "{n} character": "{n} caractère", "{n} characters": "{n} caractères",
     "Title": "Titre", "Meta description": "Méta-description", "Main heading (H1)": "Titre principal (H1)", "Headings": "Titres", "Questions in headings": "Questions dans les titres",
     "Words": "Mots", "Characters": "Caractères", "Images": "Images", "Videos": "Vidéos", "Tables": "Tableaux", "Lists": "Listes", "Forms": "Formulaires",
     "Internal links": "Liens internes", "External links": "Liens externes", "Structured data": "Données structurées", "Language": "Langue",
-    "Language versions (hreflang)": "Versions linguistiques (hreflang)", "Preferred address (canonical)": "Adresse préférée (canonique)", "Instructions to search engines": "Instructions aux moteurs de recherche",
-    "Answer code": "Code de réponse", "Published (the page says)": "Publiée (selon la page)", "Updated (the page says)": "Mise à jour (selon la page)", "Date in their sitemap": "Date dans leur sitemap",
-    "First saved by the archive": "Première copie dans l'archive", "First found by this app": "Trouvée par l'app le", "Last changed": "Dernière modification", "Last read": "Dernière lecture",
-    "Changes seen on this page": "Changements vus sur cette page", "Read with": "Lue avec",
-    "Mobile": "Mobile", "Desktop": "Ordinateur", "top {n} checked": "top {n} vérifié", "Your best place in this same check": "Votre meilleure place dans cette même vérification",
-    "Keyword": "Mot-clé", "Their page": "Leur page", "Their title in the results": "Leur titre dans les résultats", "Was": "Avant", "Now": "Maintenant", "Your position": "Votre position",
+    "Languages (hreflang)": "Langues (hreflang)", "Preferred address (canonical)": "Adresse préférée (canonique)", "Instructions to search engines": "Instructions aux moteurs de recherche",
+    "Answer code": "Code de réponse", "Published (page says)": "Publiée (selon la page)", "Updated (page says)": "Mise à jour (selon la page)", "Sitemap date": "Date du sitemap",
+    "First archived": "Première archive", "First found": "Première détection", "Last changed": "Dernière modification", "Last read": "Dernière lecture",
+    "Changes seen": "Changements vus", "Read with": "Lue avec",
+    "Mobile": "Mobile", "Desktop": "Ordinateur", "top {n} checked": "top {n} vérifié", "Your best position, same check": "Votre meilleure position, même vérification",
+    "Keyword": "Mot-clé", "Their page": "Leur page", "Title in results": "Titre dans les résultats", "Was": "Avant", "Now": "Maintenant", "Your position": "Votre position",
     "Search engine": "Moteur de recherche", "Tool": "Outil", "Country": "Pays", "Device": "Appareil", "Location": "Lieu", "Results checked": "Résultats vérifiés", "Checked": "Vérifié le",
     "All checked with {tool}, {when}.": "Tous vérifiés avec {tool}, {when}.",
     "Search keywords": "Chercher un mot-clé", "Find a competitor": "Chercher un concurrent", "competitors": "concurrents", "keywords": "mots-clés",
-    "No competitor matches “{text}”.": "Aucun concurrent ne correspond à « {text} ».", "No keyword matches this search.": "Aucun mot-clé ne correspond à cette recherche.", "Clear the search": "Effacer la recherche",
+    "No competitor matches “{text}”.": "Aucun concurrent ne correspond à « {text} ».", "No keyword matches.": "Aucun mot-clé ne correspond.", "Clear search": "Effacer la recherche",
     // Words that change with where they sit
     "New|tag": "Nouveau",
     "Removed|pages": "Retirées",
@@ -1773,28 +1831,28 @@
     "My competitors": "Mes concurrents",
     "Find competitors": "Trouver des concurrents",
     "No competitors yet": "Aucun concurrent pour l'instant",
-    "{n} suggestion is waiting in Find competitors. Accept it, or add a competitor by hand.": "{n} suggestion attend dans Trouver des concurrents. Acceptez-la, ou ajoutez un concurrent à la main.",
-    "{n} suggestions are waiting in Find competitors. Accept one, or add a competitor by hand.": "{n} suggestions attendent dans Trouver des concurrents. Acceptez-en une, ou ajoutez un concurrent à la main.",
-    "Upload your keyword list in Find competitors to see who really ranks against you, or add a competitor by hand.": "Importez votre liste de mots-clés dans Trouver des concurrents pour voir qui se classe vraiment face à vous, ou ajoutez un concurrent à la main.",
-    "Add one by hand": "En ajouter un à la main",
+    "{n} suggestion is waiting in Find competitors.": "{n} suggestion attend dans Trouver des concurrents.",
+    "{n} suggestions are waiting in Find competitors.": "{n} suggestions attendent dans Trouver des concurrents.",
+    "Upload keywords in Find competitors to see who ranks against you.": "Importez vos mots-clés dans Trouver des concurrents pour voir qui se classe face à vous.",
+    "Add by hand": "Ajouter à la main",
     "Add a competitor": "Ajouter un concurrent",
-    "You're watching {n} competitor for {site}. Open it to see everything about it.": "Vous suivez {n} concurrent pour {site}. Ouvrez-le pour tout voir à son sujet.",
-    "You're watching {n} competitors for {site}. Open one to see everything about it.": "Vous suivez {n} concurrents pour {site}. Ouvrez-en un pour tout voir à son sujet.",
+    "Watching {n} competitor for {site}.": "{n} concurrent suivi pour {site}.",
+    "Watching {n} competitors for {site}.": "{n} concurrents suivis pour {site}.",
     "Competitor": "Concurrent",
     "Shared keywords": "Mots-clés partagés",
-    "They're ahead on": "Ils sont devant sur",
-    "You're ahead on": "Vous êtes devant sur",
-    "Only they rank on": "Eux seuls se classent sur",
+    "They lead": "Ils mènent",
+    "You lead": "Vous menez",
+    
     "Edits in 30 days": "Modifications en 30 jours",
     "Watching": "Suivi",
-    "Last read {when}": "Dernière lecture {when}",
-    "Reading now": "Lecture en cours",
-    "{n} page read so far": "{n} page lue pour l'instant",
-    "{n} pages read so far": "{n} pages lues pour l'instant",
-    "Waiting to read": "En attente de lecture",
+    "Read {when}": "Lu {when}",
+    "Reading…": "Lecture…",
+    "{n} page read": "{n} page lue",
+    "{n} pages read": "{n} pages lues",
+    "Waiting": "En attente",
     "Blocked": "Bloqué",
-    "Last read failed": "Dernière lecture échouée",
-    "It tries again at the next daily read.": "Nouvel essai à la prochaine lecture quotidienne.",
+    "Read failed": "Lecture échouée",
+    "Trying again at the next daily read.": "Nouvel essai à la prochaine lecture quotidienne.",
     "Not read yet": "Pas encore lu",
     "From a suggestion": "Depuis une suggestion",
     "Added by hand": "Ajouté à la main",
@@ -1807,43 +1865,43 @@
     "Add competitors": "Ajouter des concurrents",
     "Paste one or many": "Collez-en un ou plusieurs",
     "Website addresses": "Adresses des sites",
-    "One per line, or paste a column from a spreadsheet. Up to {n} at a time.": "Une par ligne, ou collez une colonne d'un tableur. Jusqu'à {n} à la fois.",
+    "One per line, or a spreadsheet column. Up to {n}.": "Une par ligne, ou une colonne de tableur. Jusqu'à {n}.",
     "{n} website": "{n} site",
     "{n} websites": "{n} sites",
     "Add {n} competitor": "Ajouter {n} concurrent",
     "Add {n} competitors": "Ajouter {n} concurrents",
     "{n} competitor added.": "{n} concurrent ajouté.",
     "{n} competitors added.": "{n} concurrents ajoutés.",
-    "{n} competitor removed again.": "{n} concurrent retiré.",
-    "{n} competitors removed again.": "{n} concurrents retirés.",
-    "{n} was already one of your competitors.": "{n} était déjà l'un de vos concurrents.",
-    "{n} were already your competitors.": "{n} étaient déjà vos concurrents.",
+    "{n} competitor removed.": "{n} concurrent retiré.",
+    "{n} competitors removed.": "{n} concurrents retirés.",
+    "{n} was already there.": "{n} figurait déjà dans la liste.",
+    "{n} were already there.": "{n} figuraient déjà dans la liste.",
     "{n} added. These weren't:": "{n} ajoutés. Ceux-ci non :",
-    "None of these were added:": "Aucun n'a été ajouté :",
-    "These are already your competitors:": "Ce sont déjà vos concurrents :",
+    "None added:": "Aucun ajouté :",
+    "Already your competitors:": "Déjà vos concurrents :",
     "Add up to {max} at a time. This list has {n}.": "Ajoutez-en jusqu'à {max} à la fois. Cette liste en compte {n}.",
-    "The app reads its public pages slowly and follows its rules for automated visitors. If the site says no, it says so here and doesn't try to get past it.": "L'application lit ses pages publiques lentement et respecte ses règles pour les visiteurs automatisés. Si le site refuse, elle l'indique ici et n'essaie pas de contourner ce choix.",
+    "Respects each site's rules for bots.": "Respecte les règles de chaque site pour les robots.",
     "Enter the competitor's address.": "Saisissez l'adresse du concurrent.",
-    "{host} is now one of your competitors.": "{host} fait maintenant partie de vos concurrents.",
-    "{host} is no longer one of your competitors.": "{host} ne fait plus partie de vos concurrents.",
+    "{host} added.": "{host} ajouté.",
+    "{host} removed.": "{host} retiré.",
     "Remove {host}?": "Retirer {host} ?",
-    "It stops being compared with {site}. Its data is kept, so nothing is lost if you add it back.": "Il n'est plus comparé à {site}. Ses données sont conservées : rien n'est perdu si vous le rajoutez.",
-    "Its page pairs on this website are removed. Automatic ones come back if you add it again.": "Ses paires de pages sur ce site sont retirées. Les paires automatiques reviennent si vous le rajoutez.",
-    "Removed. Its data is kept.": "Retiré. Ses données sont conservées.",
-    "That doesn't look like a website address.": "Cela ne ressemble pas à une adresse de site.",
-    "That doesn't look like a website's domain.": "Cela ne ressemble pas au domaine d'un site.",
-    "That address isn't a public website.": "Cette adresse n'est pas un site public.",
-    "That competitor isn't on this website.": "Ce concurrent n'est pas rattaché à ce site.",
-    "Enter the website's address.": "Saisissez l'adresse du site.",
+    "No longer compared with {site}. Its data is kept.": "Il n'est plus comparé à {site}. Ses données sont conservées.",
+    "Its page pairs here are removed; automatic ones return if re-added.": "Ses paires de pages ici sont retirées ; les automatiques reviennent s'il est rajouté.",
+    "Removed. Data kept.": "Retiré. Données conservées.",
+    "Not a website address.": "Ce n'est pas une adresse de site.",
+    "Not a website domain.": "Ce n'est pas un domaine de site.",
+    "Not a public website.": "Ce n'est pas un site public.",
+    "Competitor not found.": "Ce concurrent n'est pas rattaché à ce site.",
+    "Enter the address.": "Saisissez l'adresse.",
 
     // The profile
     "Back to competitors": "Retour aux concurrents",
     "added {when}": "ajouté {when}",
     "compared with {site}": "comparé à {site}",
     "Refresh data": "Actualiser les données",
-    "Reading its pages now. It waits 3 seconds between pages, so this can take a while.": "Lecture de ses pages en cours. Elle attend 3 secondes entre chaque page, cela peut donc prendre un moment.",
-    "Everything from search results still works: rankings, AI Overviews and shared keywords.": "Tout ce qui vient des résultats de recherche fonctionne toujours : classements, AI Overviews et mots-clés partagés.",
-    "The last read failed. It tries again at the next daily read, and everything from search results still works.": "La dernière lecture a échoué. Nouvel essai à la prochaine lecture quotidienne, et tout ce qui vient des résultats de recherche fonctionne toujours.",
+    "Reading its pages, 3 seconds apart. It can take a while.": "Lecture de ses pages, à 3 secondes d'intervalle. Cela peut prendre un moment.",
+    "Rankings, AI Overviews and shared keywords still work.": "Classements, AI Overviews et mots-clés communs fonctionnent toujours.",
+    "Last read failed. Trying again at the next daily read; rankings still work.": "Dernière lecture échouée. Nouvel essai à la prochaine lecture quotidienne ; les classements fonctionnent toujours.",
     "How you compare": "Votre comparaison",
     "You": "Vous",
     "Them": "Eux",
@@ -1851,16 +1909,16 @@
     "Level": "À égalité",
     "You're ahead": "Vous êtes devant",
     "They're ahead": "Ils sont devant",
-    "Keywords you both rank on": "Mots-clés où vous vous classez tous les deux",
+    
     "Level on {n}": "À égalité sur {n}",
-    "Average position on shared keywords": "Position moyenne sur les mots-clés partagés",
+    "Average position (shared)": "Position moyenne (mots-clés communs)",
     "Nothing shared yet.": "Rien en commun pour l'instant.",
     "Lower is better.": "Plus c'est bas, mieux c'est.",
-    "Ahead on shared keywords": "Devant sur les mots-clés partagés",
-    "Keywords only one of you ranks on": "Mots-clés où un seul de vous se classe",
+    "Who leads": "Qui est devant",
+    "Only one ranks": "Un seul se classe",
     "The other isn't in the results checked.": "L'autre est absent des résultats vérifiés.",
     "Pages known": "Pages connues",
-    "Average words per page": "Mots par page en moyenne",
+    "Words per page": "Mots par page",
     "New pages in 30 days": "Nouvelles pages en 30 jours",
     "Their pages can't be read.": "Leurs pages ne peuvent pas être lues.",
     "AI Overview citations": "Citations dans les AI Overviews",
@@ -1868,116 +1926,116 @@
     "Of {n} AI Overviews seen.": "Sur {n} AI Overviews vus.",
     "No AI Overview seen yet.": "Aucun AI Overview vu pour l'instant.",
     "Timeline": "Chronologie",
-    "Ranking moves only compare two checks by the same tool, from the same place, so a change of tool never reads as a move.": "Les mouvements de classement ne comparent que deux vérifications du même outil, depuis le même endroit : un changement d'outil ne compte jamais comme un mouvement.",
+    "Moves only compare two checks by the same tool and place, so a tool change never shows as a move.": "Les mouvements ne comparent que deux vérifications du même outil et du même endroit : un changement d'outil ne compte jamais comme un mouvement.",
     "Filter the timeline": "Filtrer la chronologie",
     "Page edits": "Modifications de pages",
     "New pages": "Nouvelles pages",
     "Ranking moves": "Mouvements de classement",
     "AI Overview": "AI Overview",
     "Title changed": "Titre modifié",
-    "Probably edited: its title changed in search results": "Sans doute modifiée : son titre a changé dans les résultats de recherche",
+    "Probably edited: new title in results": "Sans doute modifiée : nouveau titre dans les résultats",
     "Meta description changed": "Meta description modifiée",
     "Main heading changed": "Titre principal modifié",
     "Subheadings changed": "Sous-titres modifiés",
     "Preferred address changed": "Adresse préférée modifiée",
-    "Instructions to search engines changed": "Instructions aux moteurs de recherche modifiées",
+    "Indexing changed": "Indexation modifiée",
     "Structured data changed": "Données structurées modifiées",
-    "Page text changed": "Texte de la page modifié",
-    "New page found": "Nouvelle page trouvée",
+    "Content changed": "Contenu modifié",
+    "New page": "Nouvelle page",
     "Page removed": "Page retirée",
     "Started ranking for": "A commencé à se classer sur",
-    "Dropped out of the results for": "A quitté les résultats sur",
+    "Stopped ranking for": "Ne se classe plus sur",
     "Moved up on": "A gagné des places sur",
     "Moved down on": "A perdu des places sur",
-    "Cited in the AI Overview for": "Cité dans l'AI Overview sur",
-    "No longer cited in the AI Overview for": "N'est plus cité dans l'AI Overview sur",
-    "{from} words, now {to}": "{from} mots, maintenant {to}",
-    "small edit, {n} word changed": "petite modification, {n} mot changé", "small edit, {n} words changed": "petite modification, {n} mots changés",
-    "about {n} words changed": "environ {n} mots changés",
-    "The same items, in a different order.": "Les mêmes éléments, dans un autre ordre.",
+    "Cited in AI Overview for": "Cité dans l'AI Overview sur",
+    "Dropped from AI Overview for": "Retiré de l'AI Overview sur",
+    "{from} → {to} words": "{from} → {to} mots",
+    "small edit, {n} word": "petite modification, {n} mot", "small edit, {n} words": "petite modification, {n} mots",
+    "~{n} words changed": "~{n} mots changés",
+    "Same items, new order.": "Mêmes éléments, autre ordre.",
     "Empty": "Vide",
     "Taken out": "Enlevé",
     "Added": "Ajouté",
     "Before": "Avant",
     "After": "Après",
     "now": "maintenant",
-    "Page changes can't be tracked, because this site doesn't allow automated visitors.": "Les changements de pages ne peuvent pas être suivis, car ce site n'autorise pas les visiteurs automatisés.",
-    "Nothing yet. The first read only sets a starting point, so changes appear from the next read on.": "Rien pour l'instant. La première lecture ne fixe qu'un point de départ : les changements apparaissent à partir de la suivante.",
-    "No ranking moves yet. A move needs two checks by the same tool.": "Aucun mouvement de classement pour l'instant. Il faut deux vérifications du même outil.",
+    "Site blocks bots: page changes can't be tracked.": "Le site bloque les robots : changements de pages non suivis.",
+    "Nothing yet: changes show from the second read.": "Rien pour l'instant : les changements s'affichent dès la deuxième lecture.",
+    "No moves yet: a move needs two checks by one tool.": "Aucun mouvement : il faut deux vérifications du même outil.",
     "Nothing here yet.": "Rien ici pour l'instant.",
     "Which keywords": "Quels mots-clés",
     "Shared": "Partagés",
     "Only them": "Eux seuls",
     "Only you": "Vous seul",
     "Past": "Passés",
-    "Their last position": "Leur dernière position",
+    "Last position": "Dernière position",
     "Last seen": "Vu pour la dernière fois",
-    "Tool and age": "Outil et ancienneté",
-    "You don't rank together on any keyword yet.": "Vous ne vous classez ensemble sur aucun mot-clé pour l'instant.",
-    "They don't rank on any keyword without you.": "Ils ne se classent sur aucun mot-clé sans vous.",
-    "You don't rank on any keyword without them.": "Vous ne vous classez sur aucun mot-clé sans eux.",
-    "Nothing yet. A keyword lands here when they used to rank for it and the latest check no longer shows them.": "Rien pour l'instant. Un mot-clé arrive ici quand ils se classaient dessus et que la dernière vérification ne les montre plus.",
-    "Their pages against mine": "Leurs pages face aux miennes",
+    
+    "No shared keywords yet.": "Aucun mot-clé commun pour l'instant.",
+    "No keyword only they rank on.": "Aucun mot-clé où eux seuls se classent.",
+    "No keyword only you rank on.": "Aucun mot-clé où vous seul vous classez.",
+    "None yet: keywords they've lost show here.": "Aucun pour l'instant : les mots-clés qu'ils ont perdus s'affichent ici.",
+    "Page vs page": "Page contre page",
     "{n} shared keyword": "{n} mot-clé partagé",
     "{n} shared keywords": "{n} mots-clés partagés",
     "Compare": "Comparer",
-    "No pages to compare yet. A pair appears when you both rank for the same keyword.": "Aucune page à comparer pour l'instant. Une paire apparaît quand vous vous classez tous les deux sur le même mot-clé.",
+    "No pairs yet: one appears when you both rank for a keyword.": "Aucune paire : elle apparaît quand vous vous classez tous deux sur un mot-clé.",
 
     // Find competitors
-    "Suggestions only. Nothing is added until you accept. Counted from search results, no AI.": "Des suggestions seulement. Rien n'est ajouté tant que vous n'acceptez pas. Compté à partir des résultats de recherche, sans IA.",
+    "Suggestions from search results, no AI. Nothing is added until you accept.": "Des suggestions seulement. Rien n'est ajouté tant que vous n'acceptez pas. Compté à partir des résultats de recherche, sans IA.",
     "No keywords yet": "Aucun mot-clé pour l'instant",
-    "Upload your keyword list. We check who ranks for each keyword once, using free tools only, then suggest the domains that appear most often.": "Importez votre liste de mots-clés. Nous vérifions une fois qui se classe sur chaque mot-clé, avec des outils gratuits uniquement, puis nous suggérons les domaines qui reviennent le plus souvent.",
-    "Upload your keyword list": "Importer votre liste de mots-clés",
+    "See who ranks most on your keywords, using free tools only.": "Voyez qui se classe le plus sur vos mots-clés, avec des outils gratuits uniquement.",
+    "Upload keywords": "Importer des mots-clés",
     "Add keywords": "Ajouter des mots-clés",
-    "Upload keyword list": "Importer une liste de mots-clés",
+    
     "Check again": "Vérifier à nouveau",
-    "Last checked {when}": "Dernière vérification {when}",
-    "Not checked yet": "Pas encore vérifié",
+    "Checked {when}": "Vérifié {when}",
+    "Not checked": "Non contrôlé",
     "{done} of {n} keyword": "{done} mot-clé sur {n}",
     "{done} of {n} keywords": "{done} mots-clés sur {n}",
-    "{n} check failed in the last run.": "{n} vérification a échoué lors du dernier passage.",
-    "{n} checks failed in the last run.": "{n} vérifications ont échoué lors du dernier passage.",
-    "A domain is suggested once it appears on at least {n} keywords.": "Un domaine est suggéré dès qu'il apparaît sur au moins {n} mots-clés.",
+    "{n} check failed last run.": "{n} vérification échouée au dernier passage.",
+    "{n} checks failed last run.": "{n} vérifications échouées au dernier passage.",
+    "A domain needs {n}+ keywords to be suggested.": "Un domaine doit apparaître sur {n} mots-clés ou plus pour être suggéré.",
     "Your keyword list": "Votre liste de mots-clés",
     "Suggestions": "Suggestions",
-    "No suggestions right now": "Aucune suggestion pour l'instant",
+    "No suggestions": "Aucune suggestion",
     "No suggestions yet": "Pas encore de suggestions",
-    "No other domain appears often enough on your keywords. New checks can change that.": "Aucun autre domaine n'apparaît assez souvent sur vos mots-clés. De nouvelles vérifications peuvent changer cela.",
-    "They appear here as soon as your keywords have been checked.": "Elles apparaissent ici dès que vos mots-clés ont été vérifiés.",
+    "No domain appears often enough on your keywords yet.": "Aucun domaine n'apparaît encore assez souvent sur vos mots-clés.",
+    "They appear once your keywords are checked.": "Elles apparaissent une fois vos mots-clés vérifiés.",
     "Ranks for {k} of {n} keyword": "Se classe sur {k} mot-clé sur {n}",
     "Ranks for {k} of {n} keywords": "Se classe sur {k} mots-clés sur {n}",
     "Average position": "Position moyenne",
     "Best position": "Meilleure position",
-    "In the top 3 on": "Dans le top 3 sur",
-    "You both rank on": "Vous vous classez tous les deux sur",
+    "Top 3 on": "Top 3 sur",
+    
     "Public body": "Organisme public",
     "Big site": "Grand site",
     "Accept": "Accepter",
     "Dismiss": "Écarter",
     "Restore": "Rétablir",
-    "See the evidence": "Voir les preuves",
+    "Evidence": "Preuves",
     "Their position": "Leur position",
     "Your position": "Votre position",
     "Checked with": "Vérifié avec",
-    "Showing the first {n}.": "Affichage des {n} premiers.",
+    "First {n} shown.": "{n} premiers affichés.",
     "Big sites and public bodies": "Grands sites et organismes publics",
-    "These rank for almost everything, so they're rarely real competitors. You can still accept one if you want to watch it.": "Ils se classent sur presque tout, ce sont donc rarement de vrais concurrents. Vous pouvez quand même en accepter un si vous voulez le suivre.",
+    "They rank for almost everything, so rarely real competitors.": "Ils se classent sur presque tout : rarement de vrais concurrents.",
     "Dismissed": "Écartés",
-    "These stay dismissed whatever new checks show, until you restore them.": "Ils restent écartés quoi que montrent les nouvelles vérifications, jusqu'à ce que vous les rétablissiez.",
+    "They stay dismissed until you restore them.": "Ils restent écartés jusqu'à ce que vous les rétablissiez.",
     "Dismissed {when}": "Écarté {when}",
     "Not in your latest results": "Absent de vos derniers résultats",
-    "{host} dismissed. It won't be suggested again unless you restore it.": "{host} écarté. Il ne sera plus suggéré, sauf si vous le rétablissez.",
-    "{host} is back in the suggestions.": "{host} est de retour dans les suggestions.",
-    "{host} is no longer dismissed. It's suggested again if it shows up often enough in your results.": "{host} n'est plus écarté. Il sera de nouveau suggéré s'il apparaît assez souvent dans vos résultats.",
+    "{host} dismissed until you restore it.": "{host} écarté jusqu'à ce que vous le rétablissiez.",
+    "{host} restored.": "{host} rétabli.",
+    "{host} restored; it returns if seen often enough.": "{host} rétabli ; il revient s'il apparaît assez souvent.",
     "Check your keywords again?": "Vérifier à nouveau vos mots-clés ?",
-    "This uses {n} check from your free tools.": "Cela utilise {n} vérification de vos outils gratuits.",
-    "This uses {n} checks from your free tools.": "Cela utilise {n} vérifications de vos outils gratuits.",
-    "It never spends paid credits. If free checks run out it stops and says so, and the rest carry on when credits refill.": "Aucun crédit payant n'est jamais dépensé. Si les vérifications gratuites s'épuisent, tout s'arrête et l'application le dit, et le reste reprend quand les crédits reviennent.",
+    "Uses {n} free check.": "Utilise {n} vérification gratuite.",
+    "Uses {n} free checks.": "Utilise {n} vérifications gratuites.",
+    "Never spends paid credits. If free checks run out, it pauses and resumes when they refill.": "Aucun crédit payant. Si les vérifications gratuites s'épuisent, tout s'arrête puis reprend quand elles reviennent.",
     "A check of this website's keywords is already running.": "Une vérification des mots-clés de ce site est déjà en cours.",
     "Upload your keyword list first.": "Importez d'abord votre liste de mots-clés.",
 
     // The run
-    "You can leave this page: it carries on.": "Vous pouvez quitter cette page : la vérification continue.",
+    "Keeps going if you leave.": "Vous pouvez quitter cette page : la vérification continue.",
     "Waiting to start…": "En attente de démarrage…",
     "Checking your keywords: {done} of {total}": "Vérification de vos mots-clés : {done} sur {total}",
     "Using {tool}.": "Avec {tool}.",
@@ -1985,20 +2043,20 @@
     "{n} checks failed.": "{n} vérifications ont échoué.",
     "{n} keyword saved.": "{n} mot-clé enregistré.",
     "{n} keywords saved.": "{n} mots-clés enregistrés.",
-    "{n} is still to check.": "{n} reste à vérifier.",
-    "{n} are still to check.": "{n} restent à vérifier.",
+    
+    "{n} left to check.": "Encore {n} à vérifier.",
     "None checked yet.": "Aucun vérifié pour l'instant.",
     "Nothing is lost.": "Rien n'est perdu.",
-    "Free tools only. It carries on by itself when a tool is ready or free checks refill.": "Outils gratuits uniquement. La vérification reprend d'elle-même quand un outil est prêt ou que les vérifications gratuites reviennent.",
+    "Free tools only. Resumes by itself when a tool is ready or checks refill.": "Outils gratuits uniquement. Reprend seule quand un outil est prêt ou que les vérifications reviennent.",
     "Open Settings": "Ouvrir les réglages",
     "Waiting for a search tool": "En attente d'un outil de recherche",
     "{n} keyword checked.": "{n} mot-clé vérifié.",
     "{n} keywords checked.": "{n} mots-clés vérifiés.",
-    "{n} suggestion to look at.": "{n} suggestion à regarder.",
-    "{n} suggestions to look at.": "{n} suggestions à regarder.",
+    "{n} suggestion to review.": "{n} suggestion à examiner.",
+    "{n} suggestions to review.": "{n} suggestions à examiner.",
     "No search tool is connected yet. The keywords are saved, and they'll be checked once a tool's key is added in Settings.": "Aucun outil de recherche n'est encore connecté. Les mots-clés sont enregistrés, et ils seront vérifiés dès qu'une clé d'outil sera ajoutée dans les réglages.",
-    "DuckDuckGo asked for a bot check, so this tool stopped.": "DuckDuckGo a demandé une vérification anti-robot, cet outil s'est donc arrêté.",
-    "The app does not try to get past it.": "L'application n'essaie pas de la contourner.",
+    "DuckDuckGo stopped at a bot check.": "DuckDuckGo s'est arrêté sur une vérification anti-robot.",
+    "The app won't bypass it.": "L'application ne la contourne pas.",
     "DuckDuckGo asked us to slow down, so this tool stopped.": "DuckDuckGo a demandé de ralentir, cet outil s'est donc arrêté.",
     "SerpApi refused the key.": "SerpApi a refusé la clé.",
     "SerpApi has no free searches left for now.": "SerpApi n'a plus de recherches gratuites pour l'instant.",
@@ -2006,8 +2064,8 @@
 
     // The upload panel
     "Drop a file here": "Déposez un fichier ici",
-    ".csv or .txt, in any encoding, up to 10 MB.": ".csv ou .txt, dans n'importe quel encodage, jusqu'à 10 Mo.",
-    "This file isn't saved as Unicode. If the words above look wrong, choose its encoding.": "Ce fichier n'est pas enregistré en Unicode. Si les mots ci-dessus semblent incorrects, choisissez son encodage.",
+    ".csv or .txt, any encoding, 10 MB max.": ".csv ou .txt, tout encodage, 10 Mo max.",
+    "Not Unicode. If the words above look wrong, pick its encoding.": "Pas en Unicode. Si les mots ci-dessus semblent faux, choisissez son encodage.",
     "Western European": "Europe de l'Ouest",
     "Arabic": "Arabe",
     "Japanese": "Japonais",
@@ -2025,9 +2083,9 @@
     "Country": "Pays",
     "Any country": "Tous les pays",
     "Any language": "Toutes les langues",
-    "Free tools only. It never spends paid credits. If free checks run out it stops and says so, and the rest carry on when credits refill.": "Outils gratuits uniquement. Aucun crédit payant n'est jamais dépensé. Si les vérifications gratuites s'épuisent, tout s'arrête et l'application le dit, et le reste reprend quand les crédits reviennent.",
+    "Free tools only, never paid credits. If free checks run out, it pauses and resumes when they refill.": "Outils gratuits uniquement, aucun crédit payant. Si les vérifications gratuites s'épuisent, tout s'arrête puis reprend quand elles reviennent.",
     "Save and check": "Enregistrer et vérifier",
-    "Remove the file": "Retirer le fichier",
+    "Remove file": "Retirer le fichier",
     "{n} keyword found": "{n} mot-clé trouvé",
     "{n} keywords found": "{n} mots-clés trouvés",
     "{n} repeat counted once": "{n} doublon compté une fois",
@@ -2036,12 +2094,21 @@
     "{n} keyword": "{n} mot-clé",
     "{n} keywords": "{n} mots-clés",
     "Choose a .csv or .txt file.": "Choisissez un fichier .csv ou .txt.",
-    "That file is too big. The limit is 10 MB.": "Ce fichier est trop volumineux. La limite est de 10 Mo.",
+    "File too large: 10 MB at most.": "Fichier trop volumineux : 10 Mo maximum.",
     "Choose a file, or paste your keywords.": "Choisissez un fichier, ou collez vos mots-clés.",
     "No keywords found. Put one keyword on each line, or use a column named keyword.": "Aucun mot-clé trouvé. Mettez un mot-clé par ligne, ou utilisez une colonne nommée keyword.",
-    "This keyword was already checked, so nothing new was searched.": "Ce mot-clé avait déjà été vérifié : aucune nouvelle recherche.",
-    "These {n} keywords were already checked, so nothing new was searched.": "Ces {n} mots-clés avaient déjà été vérifiés : aucune nouvelle recherche.",
+    "Already checked: nothing searched.": "Déjà vérifié : aucune recherche.",
+    "{n} keywords already checked: nothing searched.": "{n} mots-clés déjà vérifiés : aucune recherche.",
     "The country must be a two-letter code, such as FR.": "Le pays doit être un code à deux lettres, comme FR.",
     "The language must be a code, such as fr.": "La langue doit être un code, comme fr.",
+    // 2026-11-11: table rows say only their state; the sentence is said once under the table, with a count
+    "{n} blocks bots: {hosts} — edits can't be tracked.": "{n} bloque les robots : {hosts} — modifications non suivies.",
+    "{n} block bots: {hosts} — edits can't be tracked.": "{n} bloquent les robots : {hosts} — modifications non suivies.",
+    "These sites don't allow automated visitors, so their edits can't be tracked. The app doesn't try to get past that.": "Ces sites n'autorisent pas les visiteurs automatisés, donc leurs modifications ne peuvent pas être suivies. L'application n'essaie pas de contourner ce choix.",
+    "Read failed ×{n}: {hosts} — retries at the next daily read.": "Lecture échouée ×{n} : {hosts} — nouvel essai à la prochaine lecture quotidienne.",
+    "Retries at the next daily read.": "Nouvel essai à la prochaine lecture quotidienne.",
+    "and {n} more": "et {n} de plus",
+    "Checked": "Vérifié",
+    "All moves:": "Tous les mouvements :",
   });
 })();

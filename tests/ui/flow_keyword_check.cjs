@@ -30,7 +30,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   const used0 = await searches();
   await page.fill("[data-kc-words]", "dubai company setup cost\nfree zone visa price\nmainland licence");
   await page.click("[data-kc-add]"); await settle();
-  check("three keywords are listed, not checked", (await page.locator(".kc-table tbody tr").count()) === 3 && /Not checked yet/.test(await page.textContent(".kc-table")));
+  check("three keywords are listed, not checked", (await page.locator(".kc-table tbody tr").count()) === 3 && /Not checked/.test(await page.textContent(".kc-table")));
   check("adding spent no search", (await searches()) === used0, `${used0} → ${await searches()}`);
   const own = (await call("GET", `rankings?site_id=${site.id}`).catch(() => ({})));
   check("they don't join my own keyword list", !JSON.stringify(own).includes("free zone visa price"));
@@ -45,7 +45,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
 
   await page.click("[data-kc-all]"); await settle();
   await page.click("[data-kc-go]");
-  const done = await until(async () => !/Not checked yet|Checking:/.test(await page.textContent(".kc-table, .content").catch(() => "")));
+  const done = await until(async () => !/Not checked|Checking:/.test(await page.textContent(".kc-table, .content").catch(() => "")));
   check("after the check every row has its result", done);
   const ranks = await page.locator(".kc-rival").count();
   check("competitors that rank are listed with their position", ranks >= 3 && /#1/.test(await page.textContent(".kc-ranks")), ranks);
@@ -85,9 +85,9 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   if ((await page.locator(".kc-table").count()) === 0) { await page.click('[data-comp-tab="check"]'); await settle(); }
   await page.locator("[data-kc-remove]").first().click(); await settle();
   check("remove takes a keyword out", (await page.locator(".kc-table tbody tr").count()) === 3);
-  check("and says so, with Undo", /removed from Keyword check/.test(await page.textContent("#toasts")) && (await page.locator("#toasts [data-undo]").count()) === 1);
+  check("and says so, with Undo", /” removed\./.test(await page.textContent("#toasts")) && (await page.locator("#toasts [data-undo]").count()) === 1);
   await page.evaluate(() => { window.UI.state.lang = "fr"; window.UI.render?.(); }); await settle();
-  check("French words", /Vérifier des mots-clés/.test(await page.textContent("body")) && /Concurrents positionnés/.test(await page.textContent("body")));
+  check("French words", /Vérifier des mots-clés/.test(await page.textContent("body")) && /Concurrents classés/.test(await page.textContent("body")));
   await page.setViewportSize({ width: 390, height: 844 }); await settle();
   await page.screenshot({ path: OUT + "4-narrow-fr.png", fullPage: true });
   check("no sideways scroll at phone width", !(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));

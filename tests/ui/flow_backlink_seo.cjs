@@ -40,13 +40,13 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   check("panel keeps the proof folded", (await page.locator("#panel details.vd-q[data-vd-row='google'][open]").count()) === 0);
   await openRows();
   const panel = await page.locator("#panel").innerText();
-  check("panel asks: does Google count it", /Does\s+Google\s+count it\?/.test(panel));
+  check("panel asks: does Google count it", /Counted by\s+Google\s*\?/.test(panel));
   check("panel gives the sponsored reason", panel.includes("Marked sponsored"));
   check("panel shows Before and after from Search Console", panel.includes("Before and after"));
   const siteId = await page.evaluate(async () => (await (await fetch("api/links/sites")).json()).sites.find((s) => s.host === "site-one.example").id);
   const indexOn = await page.evaluate(async (id) => (await (await fetch(`api/backlinks?site_id=${id}`)).json()).site.index_check, siteId);
-  check("panel asks: is your page in Google", /Is your page in\s+Google\s*\?/.test(panel));
-  if (!indexOn) check("and says how to turn the index check on", panel.includes("Connect Search Console for this site"));
+  check("panel asks: is your page in Google", /Your page in\s+Google\s*\?/.test(panel));
+  if (!indexOn) check("and says how to turn the index check on", panel.includes("Connect Search Console to check if your page is indexed"));
   await page.screenshot({ path: OUT + "2-panel.png" });
   if (!(await page.getAttribute("#panel [data-vd-disavow]", "data-on"))) { await page.click("#panel [data-vd-disavow]"); await settle(1000); } else { await page.click("#panel [data-close-panel], #panel .icon-btn[aria-label]").catch(() => {}); await settle(300); }
   check("marked as spam shows in the row", (await page.locator("#bl-table tbody tr", { hasText: "barista-mag.example" }).locator(".tag", { hasText: "Spam" }).count()) === 1);
@@ -62,11 +62,13 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   const result = await page.locator("#gsc-result").innerText();
   check("upload says what it did", /1 new links in Found but never logged/.test(result) && /1 logged links Google sees/.test(result), result.replace(/\s+/g, " "));
   await page.setInputFiles("#gsc-file", pages);
-  await page.click("#gsc-send"); await page.waitForFunction(() => /of your pages with links/.test(document.querySelector("#gsc-result")?.innerText || ""), null, { timeout: 15000 });
+  await page.click("#gsc-send"); await page.waitForFunction(() => /of your pages have links/.test(document.querySelector("#gsc-result")?.innerText || ""), null, { timeout: 15000 });
   await page.click("#dlg [data-close-dlg]"); await settle();
   const found = page.locator("tbody tr", { hasText: `best-of-${RUN}` });
-  check("the new link is in Found, seen by Search Console", (await found.count()) === 1 && (await found.innerText()).includes("Search Console"));
-  check("and Google's crawl date", (await found.innerText()).includes("2026-10-22"));
+  // Since 2026-11-11 Search Console shows as its logo (its name in data-tip and alt) and the date reads "crawled 22 Oct".
+  const seenBy = async () => `${await found.innerText()} ${(await found.locator("[data-tip], img[alt]").evaluateAll((els) => els.map((e) => e.getAttribute("data-tip") || e.getAttribute("alt")))).join(" ")}`;
+  check("the new link is in Found, seen by Search Console", (await found.count()) === 1 && (await seenBy()).includes("Search Console"));
+  check("and Google's crawl date", /crawled 22 Oct\b/.test(await found.innerText()));
 
   // Reclaim: the worker reads /old-offer/, which is gone on the fake internet
   let reclaimShown = false;
@@ -139,7 +141,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await page.keyboard.press("Escape"); await settle(400);
   await page.locator("#bl-table tbody tr", { hasText: "foodblog.example" }).locator("[data-open-bl]").dispatchEvent("click"); await settle(1000);
   await openRows();
-  check("panel: the linking page is on Google", (await page.locator("#panel").innerText()).includes("The linking page is on"));
+  check("panel: the linking page is on Google", (await page.locator("#panel").innerText()).includes("Linking page on Google"));
   await page.keyboard.press("Escape"); await settle(400);
 
   // the four filters, anchor types, By website
@@ -183,7 +185,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await page.fill("#bl-src", "https://foodblog.example/another-post");
   await settle(200);
   const dup = await page.locator("#bl-dup").innerText();
-  check("Add backlink warns about the same website", dup.includes("already links to site-one.example"), dup);
+  check("Add backlink warns about the same website", dup.includes("Already links to site-one.example"), dup);
   await page.fill("#bl-src", "https://brand-new.example/post"); await settle(200);
   check("and not for a new website", (await page.locator("#bl-dup").innerText()).trim() === "");
   check("no language note for an address that says nothing", (await page.locator("#bl-lang").innerText()).trim() === "");

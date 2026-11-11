@@ -183,11 +183,11 @@
 
   // ---- saving ----------------------------------------------------------------------------------
   function needs(w) {
-    if (w.scope === "page" && blank(w.pageUrl)) return "Enter the page's address to save this note. It's kept on this computer.";
-    if (w.scope === "competitor" && w.competitorId === null) return "Choose a competitor to save this note. It's kept on this computer.";
-    if (w.scope === "keyword" && blank(w.keyword)) return "Enter the keyword to save this note. It's kept on this computer.";
-    if ((w.scope === "date" && blank(w.day)) || (w.scope === "domain" && blank(w.domain)) || (w.scope === "section" && blank(w.pageUrl)) || (w.scope === "task" && w.taskId == null)) return "Choose what the note is about to save it. It's kept on this computer.";
-    if (w.scope === "screen" && !w.screen) return "Choose what the note is about to save it. It's kept on this computer.";
+    if (w.scope === "page" && blank(w.pageUrl)) return "Enter the page address to save. Kept on this computer.";
+    if (w.scope === "competitor" && w.competitorId === null) return "Choose a competitor to save. Kept on this computer.";
+    if (w.scope === "keyword" && blank(w.keyword)) return "Enter the keyword to save. Kept on this computer.";
+    if ((w.scope === "date" && blank(w.day)) || (w.scope === "domain" && blank(w.domain)) || (w.scope === "section" && blank(w.pageUrl)) || (w.scope === "task" && w.taskId == null)) return "Choose a subject to save. Kept on this computer.";
+    if (w.scope === "screen" && !w.screen) return "Choose a subject to save. Kept on this computer.";
     return "";
   }
 
@@ -248,7 +248,7 @@
     } catch (err) {
       if (err.status === 404 && !isNew) { // deleted by someone else while this person typed (F121): say so, and keep the words as a new note
         e.id = null; e.saved = ""; e.again = true; e.base = null; e.updatedAt = null;
-        UI.toast(UI.t("Someone deleted this note while you were writing. Your words are kept: they're saved as a new note."), { kind: "info" });
+        UI.toast(UI.t("Someone deleted this note. Your text is saved as a new note."), { kind: "info" });
       } else if (err.status === 409 && err.data?.note) { // a teammate saved this note since this person started: they choose
         e.clash = err.data.note;
         e.status = "clash";
@@ -351,7 +351,7 @@
     if (!e.id && needs(e)) { e.status = "waiting"; e.message = needs(e); paintStatus(e); return; }
     const fits = files.filter((file) => {
       if (file.size <= MAX_FILE_BYTES) return true;
-      UI.toast(UI.t("{name} is too large. The limit is 25 MB.").replace("{name}", file.name), { kind: "crit" });
+      UI.toast(UI.t("{name} is over 25 MB.").replace("{name}", file.name), { kind: "crit" });
       return false;
     });
     if (!fits.length) return;
@@ -364,7 +364,7 @@
     if (!e.id) { e.inflight = write(e); await e.inflight; }
     for (const file of fits) {
       try {
-        if (!e.id) throw new Error(UI.t("Couldn't save the note."));
+        if (!e.id) throw new Error(UI.t("Note not saved."));
         const note = await uploadOne(e, file);
         if (note.files) e.files = note.files;
         if (note.updated_at) e.updatedAt = note.updated_at;
@@ -400,7 +400,7 @@
         const note = await send("POST", `note-files/${file.id}/restore`);
         if (note.files) e.files = note.files;
         paintFiles(e);
-      } catch { UI.toast(UI.t("Couldn't bring this file back."), { kind: "crit" }); }
+      } catch { UI.toast(UI.t("Couldn't restore the file."), { kind: "crit" }); }
     } });
   }
   /* Built as elements, not markup: a file's name can hold anything, and it's only ever text here. */
@@ -457,7 +457,7 @@
     if (!UI) return;
     UI.$$(`[data-note-files="${e.uid}"]`).forEach((box) => fillFiles(box, e));
   }
-  const attachButton = (e) => `<button type="button" class="btn btn-ghost btn-small nb-attach" data-note-attach="${e.uid}">${UI.icon("paperclip")}${UI.t("Add image or file")}</button>`;
+  const attachButton = (e) => `<button type="button" class="btn btn-ghost btn-small nb-attach" data-note-attach="${e.uid}">${UI.icon("paperclip")}${UI.t("Add file")}</button>`;
   let picker = null;
   function choosePicker() {
     if (picker) return picker;
@@ -543,9 +543,9 @@
     if (e.status === "saving") return `${icon("refresh-cw", "spin")}<span>${t("Saving…")}</span>`;
     if (e.status === "saved" && e.savedAt) {
       // While it's still in the writing box, it isn't in the list yet, so say so, and offer the way to the next one.
-      return `${icon("check")}<span>${t("Saved {time}").replace("{time}", esc(clock(e.savedAt)))}${e.composer ? `. ${t("It joins the list when you leave this box.")}` : ""}</span>${e.composer ? ` <button type="button" class="link-btn" data-note-next="${e.uid}">${t("New note")}</button>` : ""}`;
+      return `${icon("check")}<span>${t("Saved {time}").replace("{time}", esc(clock(e.savedAt)))}${e.composer ? `. ${t("Joins the list when you leave.")}` : ""}</span>${e.composer ? ` <button type="button" class="link-btn" data-note-next="${e.uid}">${t("New note")}</button>` : ""}`;
     }
-    if (e.status === "failed") return `${icon("triangle-alert")}<span>${t("Couldn't save. It's kept on this computer and will try again.")}</span>`;
+    if (e.status === "failed") return `${icon("triangle-alert")}<span>${t("Couldn't save. Kept on this computer; trying again.")}</span>`;
     if (e.status === "refused") return `${icon("octagon-alert")}<span>${esc(t(e.message))}</span>`;
     if (e.status === "waiting") return `${icon("info")}<span>${esc(t(e.message))}</span>`;
     if (e.status === "emptied") return `${icon("info")}<span>${t("An empty note isn't kept.")}</span>`;
@@ -553,7 +553,7 @@
       // As Tasks do: nothing is overwritten until this person has seen the other text and chosen.
       const by = e.clash.updated_by ? ` ${t("by {name}").replace("{name}", esc(e.clash.updated_by))}` : "";
       const theirs = String(e.clash.body || "").trim();
-      return `${icon("octagon-alert")}<span>${t("Someone else changed this note while you were writing, so yours isn't saved yet.")}${by ? ` (${t("changed")}${by})` : ""} ${t("It now says")}: <q dir="auto">${esc(theirs.length > 140 ? `${theirs.slice(0, 140)}…` : theirs || "—")}</q></span>
+      return `${icon("octagon-alert")}<span>${t("Someone else changed this note. Yours isn't saved yet.")}${by ? ` (${t("changed")}${by})` : ""} ${t("It now says")}: <q dir="auto">${esc(theirs.length > 140 ? `${theirs.slice(0, 140)}…` : theirs || "—")}</q></span>
         <span class="nb-clash-acts"><button type="button" class="btn btn-small" data-note-keep-mine="${e.uid}">${t("Keep mine")}</button><button type="button" class="btn btn-small" data-note-use-theirs="${e.uid}">${t("Use theirs")}</button></span>`;
     }
     if (e.updatedAt && !e.composer) {
@@ -576,10 +576,11 @@
   function whereHtml(e, everySite = false) {
     const { t, esc, icon } = UI;
     const site = e.siteId !== null && e.siteId !== undefined && (everySite || e.siteId !== COMP.siteId) ? hostOf(e.siteId) : null;
-    const forSite = site ? `<span class="muted">${t("for")} ${esc(site)}</span>` : "";
+    // Which website, by its logo: the address is its tooltip and what a screen reader says.
+    const forSite = site ? `<span class="nb-site" role="img" title="${esc(site)}" data-tip="${esc(site)}" aria-label="${esc(`${t("for")} ${site}`)}">${UI.siteLogo(site, 16)}</span>` : "";
     if (e.scope === "competitor") return `${icon("crosshair")}<button class="link-btn nb-link" data-note-competitor="${esc(e.competitorId)}" dir="auto">${esc(e.competitor || t("A competitor"))}</button>${forSite}`;
     if (e.scope === "page") return `${icon("file-text")}${e.pageUrl ? COMP.link(e.pageUrl) : `<span>${t("A page")}</span>`}${forSite}`;
-    if (e.scope === "site") return `${icon("globe")}<span>${t(siteOf(e.siteId) === null ? "All my sites" : "The whole website")}</span>${forSite}`;
+    if (e.scope === "site") return `${icon("globe")}<span>${t(siteOf(e.siteId) === null ? "All my sites" : "Whole site")}</span>${forSite}`;
     if (e.scope === "screen") return `${icon("layout-dashboard")}<span>${esc(screenName(e.screen))}</span>${forSite}`;
     if (e.scope === "keyword") return `${icon("key-round")}<span dir="auto">${esc(e.keyword || t("A keyword"))}</span>${forSite}`;
     if (e.scope === "section") return `${icon("folder-open")}<span class="mono" dir="ltr">${esc(e.pageUrl ? `${COMP.shortUrl(e.pageUrl)}/…` : t("A group of pages"))}</span>${forSite}`;
@@ -592,7 +593,7 @@
   const dayName = (iso) => { try { return new Date(`${iso}T12:00:00`).toLocaleDateString(UI.state.lang === "fr" ? "fr-FR" : "en-GB", { day: "numeric", month: "short", year: "numeric" }); } catch { return iso; } };
   /* The screen's name as the side menu shows it. */
   const screenName = (id) => UI.t(SCREEN_NAMES[id] || id || "A screen");
-  const whereText = (e) => (e.scope === "competitor" ? e.competitor || "" : e.scope === "page" ? e.pageUrl || "" : e.scope === "keyword" ? e.keyword || "" : e.scope === "section" ? e.pageUrl || "" : e.scope === "date" ? (e.day ? `${dayName(e.day)} ${e.day}` : "") : e.scope === "domain" ? e.domain || "" : e.scope === "task" ? e.task || "" : e.scope === "screen" ? screenName(e.screen) : e.scope === "site" ? UI.t("The whole website") : UI.t("All competitors"));
+  const whereText = (e) => (e.scope === "competitor" ? e.competitor || "" : e.scope === "page" ? e.pageUrl || "" : e.scope === "keyword" ? e.keyword || "" : e.scope === "section" ? e.pageUrl || "" : e.scope === "date" ? (e.day ? `${dayName(e.day)} ${e.day}` : "") : e.scope === "domain" ? e.domain || "" : e.scope === "task" ? e.task || "" : e.scope === "screen" ? screenName(e.screen) : e.scope === "site" ? UI.t("Whole site") : UI.t("All competitors"));
   function paintWhere(e) {
     UI.$$(`[data-note-where="${e.uid}"]`).forEach((el) => UI.setHTML(el, whereHtml(e, Boolean(el.closest("[data-note-every-site]")))));
   }
@@ -729,7 +730,7 @@
 
   // ---- the reusable block ----------------------------------------------------------------------
   const composeField = (e, key, label) => `<div class="nb-compose" data-note-compose>
-      <textarea class="input nb-text" dir="auto" rows="2" data-note-field="${e.uid}" data-note-composer="${UI.esc(key)}" placeholder="${UI.t("Write a note, paste an image or drop a file. It saves by itself.")}" aria-label="${UI.esc(label)}"></textarea>
+      <textarea class="input nb-text" dir="auto" rows="2" data-note-field="${e.uid}" data-note-composer="${UI.esc(key)}" placeholder="${UI.t("Write, paste or drop a file")}" aria-label="${UI.esc(label)}"></textarea>
       <div class="nb-files" data-note-files="${e.uid}" hidden></div>
       <div class="nb-foot">${statusLine(e)}${attachButton(e)}</div>
     </div>`;
@@ -745,7 +746,7 @@
     return `<section class="${bare ? "nb-bare" : "card"} nb-block" data-note-block="${esc(key)}" data-note-scope="${esc(scope)}" data-note-competitor="${esc(competitorId ?? "")}" data-note-page="${esc(pageUrl ?? "")}" data-note-screen="${esc(screen ?? "")}" data-note-keyword="${esc(keyword ?? "")}" data-note-day="${esc(day ?? "")}" data-note-domain="${esc(domain ?? "")}" data-note-task="${esc(taskId ?? "")}" data-note-task-title="${esc(task ?? "")}" data-note-site="${esc(siteOf(site) ?? "")}">
       ${bare ? "" : `<div class="card-head"><h2 dir="auto">${esc(heading)}</h2><span class="end small muted">${t("Saves by itself")}</span></div>`}
       ${composeField(e, key, heading)}
-      <p class="note warn nb-load-error" data-note-error hidden>${UI.icon("triangle-alert")}<span>${t("The saved notes didn't load. What you write here is still kept.")}</span></p>
+      <p class="note warn nb-load-error" data-note-error hidden>${UI.icon("triangle-alert")}<span>${t("Notes didn't load. What you write is still kept.")}</span></p>
       <ul class="nb-list" data-note-list="${esc(key)}"></ul>
     </section>`;
   }
@@ -791,7 +792,7 @@
     const choice = panelState.choices[panelState.pick];
     if (!choice || choice.id === PANEL_ALL) {
       return `<label class="nb-search nb-panel-search"><span class="sr">${t("Search notes")}</span>${icon("search")}<input class="input" id="nb-panel-search" type="search" placeholder="${t("Search notes")}" value="${esc(tabState.search)}"></label>
-        ${panelState.failed ? `<p class="note warn nb-load-error">${icon("triangle-alert")}<span>${t("The saved notes didn't load. What you write here is still kept.")}</span></p>` : ""}
+        ${panelState.failed ? `<p class="note warn nb-load-error">${icon("triangle-alert")}<span>${t("Notes didn't load. What you write is still kept.")}</span></p>` : ""}
         <ul class="nb-list" data-note-list="${ALL_NOTES}"></ul><p class="small muted nb-panel-empty" id="nb-panel-empty" hidden></p>`;
     }
     if (choice.pick) return pickerHtml(choice);
@@ -802,25 +803,25 @@
      or type one. The note field shows once something is picked, so a note can never be written about half an address. */
   const pickerState = { options: new Map(), loading: new Map() };
   const PICKS = {
-    page: { field: "pageUrl", ltr: true, mono: true, label: "Page address", hint: "Search your pages or type an address", empty: "Choose a page, or type any address, then write the note.",
+    page: { field: "pageUrl", ltr: true, mono: true, label: "Page address", hint: "Search or type an address", empty: "Choose a page, then write.",
       list: (f) => f.pages.map((p) => [p.url, p.title]) },
-    section: { field: "pageUrl", ltr: true, mono: true, label: "Pages whose address starts with", hint: "Such as /blog/ or example.com/services/", empty: "Choose a folder, or type how the addresses start, then write the note. It shows on every page in it.",
+    section: { field: "pageUrl", ltr: true, mono: true, label: "Address starts with", hint: "/blog/ or example.com/services/", empty: "Choose a folder, then write.", tip: "Or type how the addresses start. The note shows on every page in that folder.",
       list: (f) => f.sections.map((x) => [x.url, `${UI.num(x.pages)} ${UI.t(x.pages === 1 ? "page" : "pages")}`]) },
-    keyword: { field: "keyword", label: "Keyword", hint: "Search your keywords or type one", empty: "Choose a keyword, or type any, then write the note.",
+    keyword: { field: "keyword", label: "Keyword", hint: "Search or type a keyword", empty: "Choose a keyword, then write.",
       list: (f) => f.keywords.map((k) => [k, ""]) },
-    date: { field: "day", type: "date", label: "Day", hint: "", empty: "Choose the day, then write what happened. It shows on the Overview chart." },
-    domain: { field: "domain", ltr: true, mono: true, label: "Linking website", hint: "Search the websites that link, or could link, to you", empty: "Choose a website, or type any, then write the note: a price, a contact, an answer.",
+    date: { field: "day", type: "date", label: "Day", hint: "", empty: "Choose a day, then write what happened.", tip: "The note shows on the Overview chart." },
+    domain: { field: "domain", ltr: true, mono: true, label: "Linking website", hint: "Search or type a website", empty: "Choose a site, then write: price, contact, answer.",
       list: (f) => f.domains.map((d) => [d, ""]) },
-    task: { field: "task", label: "Task", hint: "Search your tasks", empty: "Choose one of your tasks, then write the note.",
+    task: { field: "task", label: "Task", hint: "Search tasks", empty: "Choose a task, then write.",
       list: (f) => f.tasks.map((x) => [x.title, x.status === "done" ? UI.t("Done") : ""]) },
-    competitor: { field: "competitor", ltr: true, label: "Competitor", hint: "Search your competitors", empty: "Choose one of your competitors, then write the note.",
+    competitor: { field: "competitor", ltr: true, label: "Competitor", hint: "Search competitors", empty: "Choose a competitor, then write.",
       list: (f) => f.competitors.map((c) => [c.host, c.display !== c.host ? c.display : ""]) },
   };
   const pickedValue = (choice) => choice.where[PICKS[choice.pick].field] || "";
   function pickerTarget(choice) {
     const { t } = UI;
     if (choice.unknown) return `<p class="note warn nb-pick-hint">${UI.icon("triangle-alert")}<span>${t(choice.unknown)}</span></p>`;
-    if (!pickedValue(choice)) return `<p class="small muted nb-pick-hint">${t(PICKS[choice.pick].empty)}</p>`;
+    if (!pickedValue(choice)) return `<p class="small muted nb-pick-hint">${t(PICKS[choice.pick].empty)}${UI.tip(PICKS[choice.pick].tip)}</p>`;
     return block({ ...choice.where, bare: true });
   }
   function pickerHtml(choice) {
@@ -915,13 +916,13 @@
       case "task": {
         const found = await pickerOptions(choice.where.siteId).catch(() => ({ tasks: [] }));
         const task = (found.tasks || []).find((x) => x.title.trim().toLowerCase() === value.toLowerCase());
-        return task ? [task.title, { taskId: task.id, task: task.title }] : [value, null, "That isn't one of your tasks. Pick one from the list."];
+        return task ? [task.title, { taskId: task.id, task: task.title }] : [value, null, "No such task. Pick one from the list."];
       }
       case "competitor": {
         const wanted = cleanDomain(value);
         const found = await pickerOptions(choice.where.siteId).catch(() => ({ competitors: [] }));
         const rival = (found.competitors || []).find((c) => c.host.toLowerCase().replace(/^www\./, "") === wanted);
-        return rival ? [rival.host, { competitorId: rival.id, competitor: rival.host }] : [value, null, "That isn't one of your competitors. Add it under Competitors first, or pick one from the list."];
+        return rival ? [rival.host, { competitorId: rival.id, competitor: rival.host }] : [value, null, "No such competitor. Pick one, or add it under Competitors."];
       }
       default: return [value, null, ""];
     }
@@ -1110,10 +1111,10 @@
     if (tabState.way === "competitor") {
       return tabState.competitors.length
         ? `<label class="field nb-field"><span>${t("Competitor")}</span><select class="select" id="nb-competitor"><option value="" ${tabState.competitorId === null ? "selected" : ""}>${t("Choose a competitor")}</option>${tabState.competitors.map((c) => `<option value="${c.id}" ${c.id === tabState.competitorId ? "selected" : ""}>${esc(c.display || c.host)}</option>`).join("")}</select></label>`
-        : `<p class="note nb-field">${UI.icon("info")}<span>${t("This website has no competitors yet. Add one under My competitors, or write on all competitors for now.")}</span></p>`;
+        : `<p class="note nb-field">${UI.icon("info")}<span>${t("No competitors yet. Add one under My competitors, or write on All competitors.")}</span></p>`;
     }
     if (tabState.way === "page") {
-      return `<label class="field nb-field"><span>${t("Page address")}</span><input class="input mono" id="nb-page" dir="ltr" placeholder="https://example.com/page" value="${esc(tabState.pageTyped)}" autocomplete="off" spellcheck="false"></label><p class="help nb-help">${t("Any page of any website, yours or theirs.")}</p>`;
+      return `<label class="field nb-field"><span>${t("Page address")}</span><input class="input mono" id="nb-page" dir="ltr" placeholder="https://example.com/page" value="${esc(tabState.pageTyped)}" autocomplete="off" spellcheck="false"></label><p class="help nb-help">${t("Any page, yours or theirs.")}</p>`;
     }
     return "";
   }
@@ -1141,8 +1142,8 @@
     if (!box) return;
     const { t } = UI;
     if (total === 0 && !tabState.listFailed) {
-      UI.setHTML(box, `<div class="empty"><h3>${t("No notes yet")}</h3><p>${t("Write one above. It saves by itself while you type.")}</p>
-        <ul class="nb-kinds small sec"><li>${UI.icon("users")}<span><b>${t("All competitors")}.</b> ${t("A rule for how you look at all of them.")}</span></li><li>${UI.icon("crosshair")}<span><b>${t("One competitor")}.</b> ${t("What you've noticed about them.")}</span></li><li>${UI.icon("file-text")}<span><b>${t("A page")}.</b> ${t("Any page of any website, yours or theirs.")}</span></li></ul></div>`);
+      UI.setHTML(box, `<div class="empty"><h3>${t("No notes yet")}</h3><p>${t("Write one above.")}</p>
+        <ul class="nb-kinds small sec"><li>${UI.icon("users")}<span><b>${t("All competitors")}.</b> ${t("A rule for all of them.")}</span></li><li>${UI.icon("crosshair")}<span><b>${t("One competitor")}.</b> ${t("What you've noticed about them.")}</span></li><li>${UI.icon("file-text")}<span><b>${t("A page")}.</b> ${t("Any page, yours or theirs.")}</span></li></ul></div>`);
     } else if (total > 0 && shown === 0) UI.setHTML(box, `<p class="lc-none small muted">${t("No notes match this search.")}</p>`);
     else UI.setHTML(box, "");
   }
@@ -1188,7 +1189,7 @@
         <section class="card nb-all">
           <div class="card-head"><h2>${t("All notes")}</h2><span class="small muted tabular" id="nb-count"></span>
             <label class="nb-search end"><span class="sr">${t("Search notes")}</span>${icon("search")}<input class="input" id="nb-search" type="search" placeholder="${t("Search notes")}" value="${esc(tabState.search)}"></label></div>
-          ${tabState.listFailed ? `<p class="note warn nb-load-error">${icon("triangle-alert")}<span>${t("The saved notes didn't load. What you write here is still kept.")}</span></p>` : ""}
+          ${tabState.listFailed ? `<p class="note warn nb-load-error">${icon("triangle-alert")}<span>${t("Notes didn't load. What you write is still kept.")}</span></p>` : ""}
           <ul class="nb-list" data-note-list="${ALL_NOTES}"></ul>
           <div id="nb-all-empty"></div>
         </section>`;
@@ -1473,60 +1474,60 @@
     "Notes": "Notes",
     "Note": "Note",
     "Write a note": "Écrire une note",
-    "Write a note, paste an image or drop a file. It saves by itself.": "Écrivez une note, collez une image ou déposez un fichier. Elle s'enregistre toute seule.",
-    "Add text": "Ajouter du texte", "Add image or file": "Ajouter une image ou un fichier", "Adding {name}…": "Ajout de {name}…", "Remove {name}": "Retirer {name}", "File deleted": "Fichier supprimé",
-    "{name} is too large. The limit is 25 MB.": "{name} est trop lourd. La limite est de 25 Mo.", "Couldn't add {name}: {why}": "Impossible d'ajouter {name} : {why}", "Couldn't save the note.": "La note n'a pas pu être enregistrée.",
-    "Couldn't delete this file. Try again.": "Impossible de supprimer ce fichier. Réessayez.", "Couldn't bring this file back.": "Impossible de récupérer ce fichier.",
+    "Write, paste or drop a file": "Écrivez, collez ou déposez un fichier",
+    "Add text": "Ajouter du texte", "Add file": "Ajouter un fichier", "Adding {name}…": "Ajout de {name}…", "Remove {name}": "Retirer {name}", "File deleted": "Fichier supprimé",
+    "{name} is over 25 MB.": "{name} dépasse 25 Mo.", "Couldn't add {name}: {why}": "Impossible d'ajouter {name} : {why}", "Note not saved.": "Note non enregistrée.",
+    "Couldn't delete this file. Try again.": "Impossible de supprimer ce fichier. Réessayez.", "Couldn't restore the file.": "Impossible de restaurer le fichier.",
     "This file is too large. The limit is 25 MB.": "Ce fichier est trop lourd. La limite est de 25 Mo.", "That file is empty.": "Ce fichier est vide.", "Choose a file to add.": "Choisissez un fichier à ajouter.", "That file doesn't exist.": "Ce fichier n'existe pas.", "That file couldn't be read.": "Ce fichier n'a pas pu être lu.",
     "Saves by itself": "S'enregistre tout seul",
     "Saving…": "Enregistrement…",
-    "Saved {time}": "Enregistré à {time}", "It joins the list when you leave this box.": "Elle rejoint la liste quand vous quittez ce champ.", "New note": "Nouvelle note", "Choose a competitor": "Choisissez un concurrent",
+    "Saved {time}": "Enregistré à {time}", "Joins the list when you leave.": "Rejoint la liste quand vous quittez le champ.", "New note": "Nouvelle note", "Choose a competitor": "Choisissez un concurrent",
     "Last changed": "Modifié",
-    "Couldn't save. It's kept on this computer and will try again.": "Enregistrement impossible. La note est gardée sur cet ordinateur et sera renvoyée.",
+    "Couldn't save. Kept on this computer; trying again.": "Enregistrement impossible. Gardée sur cet ordinateur, nouvel essai en cours.",
     "An empty note isn't kept.": "Une note vide n'est pas gardée.",
     "Empty note removed": "Note vide retirée",
     "Note deleted": "Note supprimée",
-    "Someone deleted this note while you were writing. Your words are kept: they're saved as a new note.": "Quelqu'un a supprimé cette note pendant que vous écriviez. Vos mots sont gardés : ils sont enregistrés dans une nouvelle note.",
-    "Someone else changed this note while you were writing, so yours isn't saved yet.": "Quelqu'un d'autre a modifié cette note pendant que vous écriviez : la vôtre n'est pas encore enregistrée.",
+    "Someone deleted this note. Your text is saved as a new note.": "Quelqu'un a supprimé cette note. Votre texte est enregistré dans une nouvelle note.",
+    "Someone else changed this note. Yours isn't saved yet.": "Quelqu'un d'autre a modifié cette note. La vôtre n'est pas encore enregistrée.",
     "It now says": "Elle indique maintenant", "changed": "modifiée",
     "Keep mine": "Garder la mienne", "Use theirs": "Reprendre la leur",
     "by {name}": "par {name}", "Written by {name}": "Écrite par {name}",
     "Couldn't delete this note. Try again.": "Impossible de supprimer cette note. Réessayez.",
     "Delete this note": "Supprimer cette note",
-    "Enter the page's address to save this note. It's kept on this computer.": "Saisissez l'adresse de la page pour enregistrer cette note. Elle est gardée sur cet ordinateur.",
-    "Choose a competitor to save this note. It's kept on this computer.": "Choisissez un concurrent pour enregistrer cette note. Elle est gardée sur cet ordinateur.",
+    "Enter the page address to save. Kept on this computer.": "Saisissez l'adresse de la page pour enregistrer. Gardée sur cet ordinateur.",
+    "Choose a competitor to save. Kept on this computer.": "Choisissez un concurrent pour enregistrer. Gardée sur cet ordinateur.",
     "Notes on this competitor": "Notes sur ce concurrent",
     "Notes on this page": "Notes sur cette page",
     "Notes on all competitors": "Notes sur tous les concurrents",
     "A group of pages": "Un groupe de pages", "A date": "Une date", "A linking website": "Un site qui fait un lien", "A task": "Une tâche", "Day": "Jour", "Task": "Tâche",
     "Notes on this group of pages": "Notes sur ce groupe de pages", "Notes on this day": "Notes sur ce jour", "Notes on this linking website": "Notes sur ce site", "Notes on this task": "Notes sur cette tâche",
-    "Linking website": "Site qui fait un lien", "Pages whose address starts with": "Pages dont l'adresse commence par", "Such as /blog/ or example.com/services/": "Par exemple /blog/ ou example.com/services/",
-    "Search the websites that link, or could link, to you": "Cherchez parmi les sites qui font, ou pourraient faire, un lien vers vous", "Search your tasks": "Cherchez parmi vos tâches",
-    "Choose a folder, or type how the addresses start, then write the note. It shows on every page in it.": "Choisissez un dossier, ou saisissez le début des adresses, puis écrivez la note. Elle s'affiche sur chaque page du dossier.",
-    "Choose the day, then write what happened. It shows on the Overview chart.": "Choisissez le jour, puis écrivez ce qui s'est passé. La note s'affiche sur le graphique de Vue d'ensemble.",
-    "Choose a website, or type any, then write the note: a price, a contact, an answer.": "Choisissez un site, ou saisissez-en un, puis écrivez la note : un prix, un contact, une réponse.",
-    "Choose one of your tasks, then write the note.": "Choisissez une de vos tâches, puis écrivez la note.",
+    "Linking website": "Site qui fait un lien", "Address starts with": "L'adresse commence par", "/blog/ or example.com/services/": "/blog/ ou example.com/services/",
+    "Search or type a website": "Chercher ou saisir un site", "Search tasks": "Chercher une tâche",
+    "Choose a folder, then write.": "Choisissez un dossier, puis écrivez.",
+    "Choose a day, then write what happened.": "Choisissez un jour, puis écrivez ce qui s'est passé.",
+    "Choose a site, then write: price, contact, answer.": "Choisissez un site, puis écrivez : prix, contact, réponse.",
+    "Choose a task, then write.": "Choisissez une tâche, puis écrivez.",
     "That's the whole website. Write the note on the website instead, or add a folder such as /blog/.": "C'est le site entier. Écrivez la note sur le site, ou ajoutez un dossier comme /blog/.",
     "Choose the day this note is about.": "Choisissez le jour concerné par cette note.", "Enter the linking website, such as example.com.": "Saisissez le site qui fait le lien, par exemple example.com.",
-    "That isn't one of your tasks. Pick one from the list.": "Ce n'est pas une de vos tâches. Choisissez-en une dans la liste.", "Say which task this note is about.": "Indiquez la tâche concernée par cette note.", "That task doesn't exist.": "Cette tâche n'existe pas.",
+    "No such task. Pick one from the list.": "Tâche inconnue. Choisissez-en une dans la liste.", "Say which task this note is about.": "Indiquez la tâche concernée par cette note.", "That task doesn't exist.": "Cette tâche n'existe pas.",
     "Choose a day between 2000 and next year.": "Choisissez un jour entre 2000 et l'an prochain.", "Enter the address the pages start with, such as example.com/blog/.": "Saisissez le début des adresses des pages, par exemple example.com/blog/.",
     "A note goes on all competitors, one competitor, a page or group of pages, a keyword, a day, a linking website, a task, a screen or a website.": "Une note porte sur tous les concurrents, un concurrent, une page ou un groupe de pages, un mot-clé, un jour, un site qui fait un lien, une tâche, un écran ou un site.",
     "Notes on this keyword": "Notes sur ce mot-clé", "Or about": "Ou sur", "Or about something else": "Ou sur autre chose", "A keyword": "Un mot-clé", "Keyword": "Mot-clé",
-    "Enter the keyword to save this note. It's kept on this computer.": "Saisissez le mot-clé pour enregistrer cette note. Elle est gardée sur cet ordinateur.",
+    "Enter the keyword to save. Kept on this computer.": "Saisissez le mot-clé pour enregistrer. Gardée sur cet ordinateur.",
     "Enter the keyword.": "Saisissez le mot-clé.", "This keyword is too long. The limit is 400 characters.": "Ce mot-clé est trop long. La limite est de 400 caractères.",
-    "Choose a page, or type any address, then write the note.": "Choisissez une page, ou saisissez n'importe quelle adresse, puis écrivez la note.",
-    "Choose a keyword, or type any, then write the note.": "Choisissez un mot-clé, ou saisissez-en un, puis écrivez la note.",
-    "Choose one of your competitors, then write the note.": "Choisissez un de vos concurrents, puis écrivez la note.", "Search your competitors": "Cherchez parmi vos concurrents",
-    "That isn't one of your competitors. Add it under Competitors first, or pick one from the list.": "Ce n'est pas un de vos concurrents. Ajoutez-le d'abord dans Concurrents, ou choisissez-en un dans la liste.",
-    "Search your pages or type an address": "Cherchez parmi vos pages ou saisissez une adresse", "Search your keywords or type one": "Cherchez parmi vos mots-clés ou saisissez-en un",
+    "Choose a page, then write.": "Choisissez une page, puis écrivez.",
+    "Choose a keyword, then write.": "Choisissez un mot-clé, puis écrivez.",
+    "Choose a competitor, then write.": "Choisissez un concurrent, puis écrivez.", "Search competitors": "Chercher un concurrent",
+    "No such competitor. Pick one, or add it under Competitors.": "Concurrent inconnu. Choisissez-en un, ou ajoutez-le dans Concurrents.",
+    "Search or type an address": "Chercher ou saisir une adresse", "Search or type a keyword": "Chercher ou saisir un mot-clé",
     "A note goes on all competitors, one competitor, a page, a keyword, a screen or a website.": "Une note porte sur tous les concurrents, un concurrent, une page, un mot-clé, un écran ou un site.",
-    "Notes on this screen": "Notes sur cet écran", "Notes on this website": "Notes sur ce site", "The whole website": "Tout le site", "All my sites": "Tous mes sites", "A screen": "Un écran",
-    "This competitor": "Ce concurrent", "This page": "Cette page", "Their page": "Leur page", "My page": "Ma page", "This screen: {name}": "Cet écran : {name}",
-    "Choose what the note is about to save it. It's kept on this computer.": "Choisissez sur quoi porte la note pour l'enregistrer. Elle est gardée sur cet ordinateur.",
+    "Notes on this screen": "Notes sur cet écran", "Notes on this website": "Notes sur ce site", "Whole site": "Tout le site", "All my sites": "Tous mes sites", "A screen": "Un écran",
+    "This competitor": "Ce concurrent", "This page": "Cette page", "Their page": "Leur page", "My page": "Ma page", "{name} screen": "Écran {name}",
+    "Choose a subject to save. Kept on this computer.": "Choisissez un sujet pour enregistrer. Gardée sur cet ordinateur.",
     "A note goes on all competitors, one competitor, a page, a screen or a website.": "Une note porte sur tous les concurrents, un concurrent, une page, un écran ou un site.",
     "Say which screen this note is about.": "Indiquez l'écran concerné par cette note.",
-    "Close the open panel first, so nothing in it is lost.": "Fermez d'abord le panneau ouvert, pour ne rien y perdre.", "Your note is saved.": "Votre note est enregistrée.", "Notes (N key)": "Notes (touche N)",
-    "The saved notes didn't load. What you write here is still kept.": "Les notes enregistrées n'ont pas chargé. Ce que vous écrivez ici reste gardé.",
+    "Close the open panel first.": "Fermez d'abord le panneau ouvert.", "Note saved": "Note enregistrée", "Notes (N key)": "Notes (touche N)",
+    "Notes didn't load. What you write is still kept.": "Les notes n'ont pas chargé. Ce que vous écrivez reste gardé.",
     "All competitors": "Tous les concurrents",
     "One competitor": "Un concurrent",
     "A competitor": "Un concurrent",
@@ -1534,14 +1535,14 @@
     "for": "pour",
     "Competitor": "Concurrent",
     "Page address": "Adresse de la page",
-    "Any page of any website, yours or theirs.": "N'importe quelle page de n'importe quel site, le vôtre ou le leur.",
-    "This website has no competitors yet. Add one under My competitors, or write on all competitors for now.": "Ce site n'a pas encore de concurrent. Ajoutez-en un dans Mes concurrents, ou écrivez sur tous les concurrents pour l'instant.",
+    "Any page, yours or theirs.": "N'importe quelle page, la vôtre ou la leur.",
+    "No competitors yet. Add one under My competitors, or write on All competitors.": "Pas encore de concurrent. Ajoutez-en un dans Mes concurrents, ou écrivez sur Tous les concurrents.",
     "What the note is about": "Sur quoi porte la note",
     "All notes": "Toutes les notes",
     "Search notes": "Rechercher dans les notes",
     "No notes yet": "Pas encore de note",
-    "Write one above. It saves by itself while you type.": "Écrivez-en une ci-dessus. Elle s'enregistre toute seule pendant que vous tapez.",
-    "A rule for how you look at all of them.": "Une règle pour les regarder tous.",
+    "Write one above.": "Écrivez-en une ci-dessus.",
+    "A rule for all of them.": "Une règle pour tous.",
     "What you've noticed about them.": "Ce que vous avez remarqué chez lui.",
     "No notes match this search.": "Aucune note ne correspond à cette recherche.",
     "A note needs some text.": "Une note a besoin de texte.",

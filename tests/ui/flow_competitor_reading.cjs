@@ -16,6 +16,8 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   const call = (method, p, body) => page.evaluate(([m, u, b]) => fetch(u, { method: m, headers: { "content-type": "application/json" }, body: b ? JSON.stringify(b) : undefined }).then((r) => r.json()), [method, BASE + "api/" + p, body]);
   const settle = () => page.waitForTimeout(1200);
   const until = async (test, ms = 60000) => { const end = Date.now() + ms; while (Date.now() < end) { if (await test()) return true; await page.waitForTimeout(800); } return false; };
+  // What a box says: its short lines and the full sentences behind their (i) tips (data-tip), since 2026-11-11.
+  const said = (loc) => loc.evaluate((n) => `${n.textContent} ${[...n.querySelectorAll("[data-tip]")].map((e) => e.getAttribute("data-tip")).join(" ")}`).catch(() => "");
   await page.goto(BASE + "#today");
   const site = (await call("GET", "links/sites")).sites.find((s) => s.kind === "own" || s.kind === undefined) || {};
   const have = (await call("GET", `competitors?site_id=${site.id}`)).competitors;
@@ -37,13 +39,13 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   const box = page.locator(`[data-rd-box="${spa.id}"]`);
   check("a JavaScript-only site gets the box", (await box.count()) === 1);
   check("the confirm step stays hidden until a click", await box.locator(".rd-confirm").isHidden());
-  check("it says how many pages need JavaScript", /4 pages only show their text with JavaScript/.test(await box.textContent()));
+  check("it says how many pages need JavaScript", /4 pages only show their text with JavaScript/.test(await said(box)));
   check("without a key it points to Settings and offers no paid button", (await box.locator('[data-go="settings"]').count()) >= 1 && (await box.locator("[data-rd-ask]").count()) === 0);
   await page.screenshot({ path: OUT + "1-spa-no-key.png", fullPage: true });
 
   await openProfile(nomap.id);
   const nbox = page.locator(`[data-rd-box="${nomap.id}"]`);
-  check("a site with no sitemap is flagged", /has no sitemap/.test(await nbox.textContent()));
+  check("a site with no sitemap is flagged", /has no sitemap/.test(await said(nbox)));
 
   // Settings has the Firecrawl card.
   await page.goto("about:blank"); await page.goto(BASE + "#settings"); await settle();
@@ -57,7 +59,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   // With a key: nothing runs until the person confirms, and the cost is shown first.
   await openProfile(spa.id);
   const ask = box.locator('[data-rd-ask="read"]');
-  check("the paid button shows its cost", (await ask.count()) === 1 && /about 4 credits/.test(await ask.textContent()));
+  check("the paid button shows its cost", (await ask.count()) === 1 && /~4 credits/.test(await ask.textContent()));
   const before = (await call("POST", "app-keys/firecrawl/test")).left;
   await ask.click(); await settle();
   const confirm = box.locator(".rd-confirm");
@@ -69,7 +71,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
 
   await ask.click(); await settle();
   await confirm.locator("[data-rd-go]").click();
-  const finished = await until(async () => /pages were read with Firecrawl/.test((await page.locator(`[data-rd-box="${spa.id}"]`).textContent().catch(() => "")) || ""));
+  const finished = await until(async () => /pages were read with Firecrawl/.test(await said(page.locator(`[data-rd-box="${spa.id}"]`))));
   check("after the run the box says the pages were read with Firecrawl", finished);
   const after = (await profileOf(spa.id)).crawl;
   check("no JavaScript-only page is left unread", after.js_only === 0 && after.firecrawl.pages === 4, JSON.stringify(after.firecrawl));
@@ -82,7 +84,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await page.locator(`[data-rd-box="${nomap.id}"] [data-rd-ask="map"]`).click(); await settle();
   await page.locator(`[data-rd-box="${nomap.id}"] [data-rd-go="map"]`).click();
   // The box swaps "only finds the 3 pages its home page links to" for the list Firecrawl made, with how many pages are now watched.
-  const listed = await until(async () => /Firecrawl listed its pages .*watches all 6\b/.test((await page.locator(`[data-rd-box="${nomap.id}"]`).textContent().catch(() => "")) || ""));
+  const listed = await until(async () => /Firecrawl listed its pages .*watches all 6\b/.test(await said(page.locator(`[data-rd-box="${nomap.id}"]`))));
   check("after the list run the box says Firecrawl listed the pages, and how many are watched now", listed, ((await page.locator(`[data-rd-box="${nomap.id}"]`).textContent().catch(() => "")) || "").trim().slice(0, 160));
   const deep = await until(async () => ((await profileOf(nomap.id)).crawl?.pages_tried || 0) >= 6); // 3 linked from home, 3 only Firecrawl found
   check("the daily reader then read the deeper pages", deep, (await profileOf(nomap.id)).crawl?.pages_tried);

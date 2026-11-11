@@ -27,7 +27,7 @@
   const known = (v) => v !== null && v !== undefined;
   const figure = (v) => (known(v) ? num(v) : dash);
   /* A site with no keyword list, or a list never checked: its keyword figures aren't 0, they're unknown. comp-setup.js knows which. */
-  const KW_WHY = { "no-keywords": "There's no keyword list for this site yet.", unchecked: "This site's keywords haven't been checked yet." };
+  const KW_WHY = { "no-keywords": "No keyword list yet.", unchecked: "Keywords not checked." };
   const kwUnknown = () => COMP.setup?.keywordsUnknown?.() || "";
   const share = (v) => (known(v) ? `${Math.round(v * 100)}%` : dash);
   /* The app doesn't read my own site's pages yet, so a "You" there would be a false 0. Leave "You" out and say why once. */
@@ -37,10 +37,10 @@
   /* Why "You" is missing: my site is being read for the first time, couldn't be read, or waits for tonight's run. */
   const notReadNote = () => {
     const r = S.ins?.facts?.my_reading;
-    const words = !r ? "Only their pages are shown. Your own site's pages are read tonight for the first time, then your figures appear here."
-      : ["queued", "running"].includes(r.status) && !r.read_once ? "Only their pages are shown. Your own site's pages are being read for the first time. Your figures appear here when that's done."
-      : r.status === "blocked" || r.status === "failed" ? "Only their pages are shown. Your own site couldn't be read. The app tries again tonight."
-      : "Only their pages are shown. No pages of your site were found to compare.";
+    const words = !r ? "Only their pages: yours are read tonight for the first time."
+      : ["queued", "running"].includes(r.status) && !r.read_once ? "Only their pages: yours are being read for the first time."
+      : r.status === "blocked" || r.status === "failed" ? "Only their pages: your site couldn't be read. Trying again tonight."
+      : "Only their pages: none of yours found to compare.";
     return `<p class="pt-note small">${icon("info")}<span>${esc(t(words))}</span></p>`;
   };
 
@@ -83,7 +83,7 @@
     const off = p.tracking && p.tracking !== "on"; // keyword numbers are switched off for this competitor
     const missing = [];
     if (!off && !c.shared && !c.theirs_only && !kwUnknown()) missing.push(t("No ranking check has seen you both yet.")); // with no keyword list at all, the line above the tabs and the Keywords tab already say so
-    if (!ins?.facts?.my_pages) missing.push(t("Your own site hasn't been read yet, so its pages can't be compared."));
+    if (!ins?.facts?.my_pages) missing.push(t("Your site isn't read yet: no page comparison."));
     const acts = [];
     if (!off && c.theirs_only) acts.push(`<button class="btn btn-small" data-pt-only-them>${icon("key-round")}${esc(many(c.theirs_only, "See the {n} keyword", "See the {n} keywords"))}</button>`);
     // With no check yet, the banner above the tabs says what to do: no second button here that only switches tabs.
@@ -125,9 +125,9 @@
     const out = [];
     // With no keyword list or no check yet there are no keyword figures to show, and the Keywords tab says why: no row of dashes.
     if (!off && !kwUnknown()) {
-      out.push(fig(t("Shared keywords"), figure(c.shared), c.shared ? fill("{them} lead {they} · {you} lead {mine}", { them: COMP.who("them"), they: num(c.they_ahead), you: COMP.who("you"), mine: num(c.i_ahead) }) : "", t("Keywords you both rank on in the results checked.")));
-      out.push(fig(t("Only them"), figure(c.theirs_only), "", t("Keywords they rank on and you weren't found on."), "them"));
-      out.push(fig(t("Only you"), figure(c.mine_only), "", t("Keywords you rank on and they weren't found on."), "you"));
+      out.push(fig(t("Shared keywords"), figure(c.shared), c.shared ? fill("{them} lead {they} · {you} lead {mine}", { them: COMP.who("them"), they: num(c.they_ahead), you: COMP.who("you"), mine: num(c.i_ahead) }) : "", t("Keywords you both rank on.")));
+      out.push(fig(t("Only them"), figure(c.theirs_only), "", t("They rank, you weren't found."), "them"));
+      out.push(fig(t("Only you"), figure(c.mine_only), "", t("You rank, they weren't found."), "you"));
     }
     // Each number once, with its owner's logo and name beside it. Yours is left out until your site is read.
     const myHost = COMP.site?.()?.host || p.site?.host;
@@ -161,9 +161,9 @@
     if (f?.snippet === "them") out.push(`<span class="tag pt-mark" data-tip="${esc(t("They hold the featured snippet"))}">${icon("sparkles")}${t("Snippet")}</span>`);
     if (f?.snippet === "me") out.push(`<span class="tag pt-mark pt-mark-you" data-tip="${esc(t("You hold the featured snippet"))}">${icon("sparkles")}${t("Your snippet")}</span>`);
     if (f?.rich?.length) out.push(`<span class="tag pt-mark" data-tip="${esc(f.rich.map((r) => t(RICH[r] || r)).join(", "))}">${icon("circle-dot")}${t("Rich result")}</span>`);
-    if (f?.ai) out.push(`<span class="tag pt-mark" data-tip="${esc(t("An AI Overview shows for this keyword"))}">${icon("sparkles")}AI</span>`);
+    if (f?.ai) out.push(`<span class="tag pt-mark" data-tip="${esc(t("AI Overview shown"))}">${icon("sparkles")}AI</span>`);
     const pages = ins.cannibal?.[k.keyword];
-    if (pages > 1) out.push(`<span class="tag pt-mark" data-tip="${esc(t("Their results for this keyword landed on different pages across checks."))}">${esc(many(pages, "{n} page", "{n} pages"))}</span>`);
+    if (pages > 1) out.push(`<span class="tag pt-mark" data-tip="${esc(t("Different pages of theirs ranked across checks."))}">${esc(many(pages, "{n} page", "{n} pages"))}</span>`);
     return out.length ? `<span class="pt-marks">${out.join("")}</span>` : "";
   }
   const RICH = { rating: "Star rating", faq: "FAQ", sitelinks: "Sitelinks", video: "Video" };
@@ -174,14 +174,14 @@
     const best = ins.best_pages || [];
     const sections = ins.sections || [];
     const questions = ins.questions || [];
-    const bestTable = best.length ? bestPages(p, best) : `<p class="cl-none small sec">${t("None yet. Their strongest pages are the ones that rank for your keywords, so they appear after a ranking check.")}</p>`;
+    const bestTable = best.length ? bestPages(p, best) : `<p class="cl-none small sec">${t("None yet: they appear after a ranking check.")}</p>`;
     const showMine = mineRead(ins);
     const sectionTable = sections.length ? sectionsBody(sections, showMine, p.host) : `<p class="cl-none small sec">${t("Sections appear once their pages are read.")}</p>`;
     const qs = Array.isArray(questions) ? { groups: [], total: 0, related: 0, judged: false } : questions;
-    const questionList = qs.groups?.length ? questionsBody(p, qs, showMine) : `<p class="cl-none small sec">${t("No questions found in their pages' headings yet.")}</p>`;
-    return `<section class="card"><div class="card-head"><h2>${t("Their strongest pages")}</h2><span class="end small muted">${t("By how many of your keywords each page ranks for")}</span></div><div class="cl-section-body">${bestTable}</div></section>
-      <section class="card"><div class="card-head"><h2>${t("Where their pages are")}</h2><span class="end small muted">${t("Grouped by the first folder of each address")}</span></div><div class="cl-section-body">${sectionTable}</div></section>
-      <section class="card"><div class="card-head"><h2>${t("Questions they answer")}</h2>${COMP.info("Read from the headings of their pages that end in a question mark. Author, tag, category and home pages are left out: their headings are other posts' titles.")}</div><div class="cl-section-body">${questionList}</div></section>`;
+    const questionList = qs.groups?.length ? questionsBody(p, qs, showMine) : `<p class="cl-none small sec">${t("No questions in their headings yet.")}</p>`;
+    return `<section class="card"><div class="card-head"><h2>${t("Their strongest pages")}</h2><span class="end small muted">${t("By your keywords they rank for")}</span></div><div class="cl-section-body">${bestTable}</div></section>
+      <section class="card"><div class="card-head"><h2>${t("Where their pages are")}</h2><span class="end small muted">${t("By first folder")}</span></div><div class="cl-section-body">${sectionTable}</div></section>
+      <section class="card"><div class="card-head"><h2>${t("Questions they answer")}</h2>${COMP.info("From their headings that end in a question mark. Author, tag, category and home pages are left out: their headings are other posts' titles.")}</div><div class="cl-section-body">${questionList}</div></section>`;
   }
 
   /* Their pages that rank for my keywords, in pages of 25 with a search by title or address. Keywords and Best position
@@ -196,7 +196,7 @@
       const on = sort?.id === id;
       return `<th scope="col" class="c" aria-sort="${on ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}"><button type="button" class="th-btn" data-pt-best-sort="${id}">${t(label)}${on ? icon(sort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
     };
-    const tools = best.length > 10 ? `<div class="pt-tools">${TP().search(BEST, t("Search their pages"))}</div>` : "";
+    const tools = best.length > 10 ? `<div class="pt-tools">${TP().search(BEST, t("Search pages"))}</div>` : "";
     if (!rows.length) return `${tools}<p class="cl-none small sec">${t("No page matches the search.")}</p>`;
     return `${tools}<div class="cl-scroll"><table class="data cl-table pt-table" id="pt-best"><thead><tr><th scope="col" class="pt-col-them">${COMP.who("them", p.host, t("Their page"))}</th>${head("keywords", "Keywords")}${head("position", "Best position")}<th scope="col" class="pt-col-you">${COMP.who("you", COMP.site?.()?.host || p.site?.host, t("Your page"))}</th></tr></thead><tbody>${page.rows.map((b) => `<tr>
           <td class="head-cell"><span class="cl-cell"><span class="t" dir="auto">${esc(b.title || COMP.shortUrl(b.url))}</span><span class="second">${COMP.link(b.url)}</span></span></td>
@@ -210,7 +210,7 @@
   function sectionsBody(sections, showMine, host) {
     const total = sections.reduce((n, x) => n + (x.pages || 0), 0);
     const top = sections[0];
-    const lead = top ? `<p class="pt-lead">${esc(fill("Most of their pages are in {path}: {n} of {total}.", { path: top.path, n: num(top.pages), total: num(total) }))}${top.new_90d ? ` ${esc(many(top.new_90d, "{n} of them is new in the last 90 days.", "{n} of them are new in the last 90 days."))}` : ""}</p>` : "";
+    const lead = top ? `<p class="pt-lead">${esc(fill("Most of their pages are in {path}: {n} of {total}.", { path: top.path, n: num(top.pages), total: num(total) }))}${top.new_90d ? ` ${esc(many(top.new_90d, "{n} is new in the last 90 days.", "{n} are new in the last 90 days."))}` : ""}</p>` : "";
     const changes = sections.some((x) => x.last_change);
     // You first, as on every table here. Their page count, New and Last change are all about them, so all three carry their colour.
     const head = `<th scope="col">${t("Folder")}</th>${showMine ? vsHead("you", COMP.site?.()?.host || S.p?.site?.host, t("Your pages")) : ""}${vsHead("them", host, t("Their pages"))}<th scope="col" class="c pt-col-them">${t("New in 90 days")}</th>${changes ? `<th scope="col" class="pt-col-them">${t("Last change")}</th>` : ""}`;
@@ -219,7 +219,7 @@
         ${showMine ? `<td class="c tabular" data-label="${esc(t("Your pages"))}">${num(x.my_pages || 0)}</td>` : ""}
         <td class="c tabular" data-label="${esc(t("Their pages"))}">${num(x.pages)}</td>
         <td class="c tabular" data-label="${esc(t("New in 90 days"))}">${x.new_90d ? `<b>${num(x.new_90d)}</b>` : `<span class="muted">0</span>`}</td>
-        ${changes ? `<td data-label="${esc(t("Last change"))}"><span class="nowrap">${x.last_change ? esc(COMP.ago(x.last_change)) : dash}</span></td>` : ""}
+        ${changes ? `<td data-label="${esc(t("Last change"))}"><span class="nowrap">${x.last_change ? COMP.ageCell(x.last_change) : dash}</span></td>` : ""}
       </tr>`).join("");
     return `${lead}<div class="cl-scroll"><table class="data cl-table pt-table pt-narrow"><thead><tr>${head}</tr></thead><tbody>${rows}</tbody></table></div>${showMine ? "" : notReadNote()}`;
   }
@@ -232,12 +232,13 @@
     const related = qs.groups.filter((g) => g.related);
     const others = qs.groups.filter((g) => !g.related);
     const otherCount = others.reduce((n, g) => n + g.questions.length, 0);
+    // The answer on screen; when the order changes, or how to use the rows, behind the (i) after it.
     const lead = !qs.judged
-      ? t("Grouped by the page that answers them. Once Search Console is connected or you add keywords, the ones on your topics come first and the rest are folded away.")
+      ? `${esc(t("Grouped by the page that answers them."))}${UI().tip("Once Search Console is connected or you add keywords, the ones on your topics come first and the rest are folded away.")}`
       : related.length
-        ? fill("{n} of their questions are on your topics, on {pages}. Each row is one page of theirs: answer its questions on your site in one task.", { n: num(qs.related), pages: many(related.length, "{n} page", "{n} pages") })
-        : t("None of their questions are on your topics: they write about other subjects.");
-    const unread = showMine ? "" : ` ${t("Your own pages haven't been read yet, so some of these may already be on your site.")}`;
+        ? `${esc(fill("{n} of their questions are on your topics, on {pages}.", { n: num(qs.related), pages: many(related.length, "{n} page", "{n} pages") }))}${UI().tip("Each row is one page of theirs: answer its questions on your site in one task.")}`
+        : esc(t("None are on your topics."));
+    const unread = showMine ? "" : ` ${esc(t("Your pages aren't read yet: some may already be answered."))}`;
     const row = (g) => {
       const open = S.qOpen?.has(g.url);
       const list = open ? g.questions : g.questions.slice(0, PAGE_QS);
@@ -265,24 +266,24 @@
     const first = qs.judged ? related : qs.groups;
     const hits = found(first), page = TP().view(QS, hits);
     const otherHits = found(others), otherPage = TP().view(QO, otherHits);
-    const tools = qs.groups.length > 10 ? `<div class="pt-tools">${TP().search(QS, t("Search their pages and questions"))}</div>` : "";
+    const tools = qs.groups.length > 10 ? `<div class="pt-tools">${TP().search(QS, t("Search pages and questions"))}</div>` : "";
     const noHit = `<p class="cl-none small sec">${t("No page matches the search.")}</p>`;
     const main = hits.length ? `<div class="pt-qmain"><ul class="rows pt-qpages" id="pt-questions">${page.rows.map(row).join("")}</ul>${TP().footer(QS, page, { noun: t("pages") })}</div>` : first.length ? noHit : "";
     const otherBlock = qs.judged && others.length
       ? `<div class="pt-qother">${S.qOthers
-          ? `<p class="small sec">${esc(many(otherCount, "{n} question on other topics", "{n} questions on other topics"))} <button class="link-btn small" data-pt-q-others>${t("Hide them")}</button></p>${otherHits.length ? `<ul class="rows pt-qpages pt-qpages-other">${otherPage.rows.map(row).join("")}</ul>${TP().footer(QO, otherPage, { noun: t("pages") })}` : noHit}`
+          ? `<p class="small sec">${esc(many(otherCount, "{n} question on other topics", "{n} questions on other topics"))} <button class="link-btn small" data-pt-q-others>${t("Hide")}</button></p>${otherHits.length ? `<ul class="rows pt-qpages pt-qpages-other">${otherPage.rows.map(row).join("")}</ul>${TP().footer(QO, otherPage, { noun: t("pages") })}` : noHit}`
           : `<button class="btn btn-small btn-ghost" data-pt-q-others>${esc(many(otherCount, "Show {n} question on other topics", "Show {n} questions on other topics"))}</button>`}</div>`
       : "";
-    return `<p class="pt-lead">${esc(lead + unread)}</p>${tools}${main}${otherBlock}<div id="pt-q-selbar">${questionBar()}</div>`;
+    return `<p class="pt-lead">${lead}${unread}</p>${tools}${main}${otherBlock}<div id="pt-q-selbar">${questionBar()}</div>`;
   }
 
   /* The right half of a row: my page it's compared with, how it was matched, and the questions it asks. */
-  const MATCH = { paired: ["Paired", "You paired these two in Page vs page."], keyword: ["Same keyword", "Both pages rank for the same keyword."], topic: ["Closest topic", "A best guess: their main headings share the most words."] };
+  const MATCH = { paired: ["Paired", "You paired these two in Page vs page."], keyword: ["Same keyword", "Both pages rank for the same keyword."], topic: ["Closest topic", "Best guess: main headings share the most words."] };
   function mySide(m, list, showMine) {
     const yours = COMP.who("you", COMP.site?.()?.host || S.p?.site?.host, t("Your page"));
-    if (!m) return `<p class="pt-qside-lab">${yours}</p><p class="small sec">${t(showMine ? "No page of yours on this yet." : "Your pages haven't been read yet.")}</p>`;
+    if (!m) return `<p class="pt-qside-lab">${yours}</p><p class="small sec">${t(showMine ? "None yet." : "Not read yet")}</p>`;
     const [word, tip] = MATCH[m.how] || MATCH.topic;
-    const asks = !m.read ? t("This page hasn't been read yet.") : list.length ? "" : t("No questions in its headings.");
+    const asks = !m.read ? t("Not read yet") : list.length ? "" : t("No questions.");
     return `<p class="pt-qside-lab">${yours} <span class="tag pt-mark" data-tip="${esc(t(tip))}">${t(word)}</span></p>
       <span class="cl-cell"><span class="t" dir="auto">${esc(m.title || COMP.shortUrl(m.url))}</span><span class="second">${COMP.link(m.url)}</span></span>
       ${asks ? `<p class="small sec">${asks}</p>` : `<ul class="pt-qlist pt-qlist-mine">${list.map((q) => `<li dir="auto">${esc(q)}</li>`).join("")}</ul>`}`;
@@ -315,7 +316,7 @@
   function openQuestionNote(opener) {
     const picked = pickedGroups();
     if (!picked.length) return;
-    UI().openPanel(`${UI().panelHead(t("Add a note"), esc(many(picked.length, "One note on this page", "One note on each of these {n} pages")))}
+    UI().openPanel(`${UI().panelHead(t("Add a note"), esc(many(picked.length, "One note on this page", "One note per page, {n} pages")))}
       <form class="panel-body" id="pt-qn-form" novalidate>
         <label class="field"><span>${t("Your note")}</span><textarea class="input" id="pt-qn-text" rows="5" dir="auto" data-autofocus></textarea></label>
         <div class="field"><span>${t("Saved with it")}</span><pre class="pt-qn-context" dir="auto" tabindex="0">${esc(picked.map(noteContext).join("\n\n———\n\n"))}</pre></div>
@@ -353,24 +354,24 @@
     const myTotal = showMine ? months.reduce((n, m) => n + (m.mine || 0), 0) : null;
     const said = [];
     if (r && months.length) {
-      const year = total ? many(total, "They added {n} page in the last 12 months", "They added {n} pages in the last 12 months") + (peak && total > 1 ? ` ${fill("(most in {month}: {k})", { month: longMonth(peak.month), k: num(peak.theirs) })}` : "") : t("They added no pages in the last 12 months");
+      const year = total ? many(total, "They added {n} page in 12 months", "They added {n} pages in 12 months") + (peak && total > 1 ? ` ${fill("(most in {month}: {k})", { month: longMonth(peak.month), k: num(peak.theirs) })}` : "") : t("They added no pages in 12 months");
       said.push(`${year}${showMine ? `; ${many(myTotal, "you added {n}", "you added {n}")}` : ""}.`);
       const recent = r.new_30d ? many(r.new_30d, "{n} new", "{n} new") : t("nothing new");
       const gone = r.removed_30d ? many(r.removed_30d, "{n} removed", "{n} removed") : t("nothing removed");
-      said.push(fill("In the last 30 days: {recent}, {gone}.", { recent, gone }));
-      if (known(r.updated_12m?.theirs)) said.push(fill("{share} of their pages were updated in the last year.", { share: share(r.updated_12m.theirs) }));
+      said.push(fill("Last 30 days: {recent}, {gone}.", { recent, gone }));
+      if (known(r.updated_12m?.theirs)) said.push(fill("{share} of their pages were updated in 12 months.", { share: share(r.updated_12m.theirs) }));
     }
     const lead = said.length ? `<p class="pt-lead">${esc(said.join(" "))}</p>` : "";
     const busyMonths = months.filter((m) => (m.theirs || 0) + (showMine ? m.mine || 0 : 0) > 0);
     const asWords = months.filter((m) => (m.theirs || 0) || (showMine && m.mine)).map((m) => `${esc(longMonth(m.month))}: ${num(m.theirs || 0)}${showMine ? ` (${t("you")} ${num(m.mine || 0)})` : ""}`).join(" · ");
     // A chart needs a shape: under three months with pages, the figures are said in a line instead of an empty 12-month axis.
-    const chart = !months.length ? `<p class="cl-none small sec">${t("The months fill in once pages are read. A page's date comes from the page itself, the Wayback Machine, or the day the app first saw it.")}</p>`
+    const chart = !months.length ? `<p class="cl-none small sec">${t("Fills in once their pages are read.")}${UI().tip("A page's date comes from the page itself, the Wayback Machine, or the day the app first saw it.")}</p>`
       : busyMonths.length < 3 ? (busyMonths.length ? `<p class="small sec pt-few-months">${asWords}.</p>` : "")
       : monthChart(months, showMine);
     const years = historyBlock(ins);
-    return `<section class="card"><div class="card-head"><h2>${t("How fast they publish")}</h2><span class="end small muted">${t("New pages each month, from the dates on their pages")}</span></div><div class="cl-section-body">${lead}${chart}${showMine || !months.length ? "" : notReadNote()}</div></section>
+    return `<section class="card"><div class="card-head"><h2>${t("How fast they publish")}</h2><span class="end small muted">${t("New pages each month")}${UI().tip("Counted from the dates on their pages.")}</span></div><div class="cl-section-body">${lead}${chart}${showMine || !months.length ? "" : notReadNote()}</div></section>
       ${years}
-      <section class="card" aria-label="${esc(t("Timeline"))}"><div class="card-head"><h2>${t("Timeline")}</h2>${COMP.info("Ranking moves only compare two checks by the same tool, from the same place, so a change of tool never reads as a move.")}</div>
+      <section class="card" aria-label="${esc(t("Timeline"))}"><div class="card-head"><h2>${t("Timeline")}</h2>${COMP.info("Moves only compare two checks by the same tool and place, so a tool change never shows as a move.")}</div>
         <div class="cl-section-body" id="cl-timeline">${parts.timelineBody(p)}</div></section>`;
   }
 
@@ -384,7 +385,7 @@
     for (let v = 0; v <= ceil; v += step) ticks.push(`<span class="pt-tick" style="bottom:${(v / ceil) * 100}%"><span class="tabular">${num(v)}</span></span>`);
     const cols = months.map((m, i) => `<div class="pt-month" data-pt-month="${i}"><div class="pt-pair"><i class="pt-bar-them" style="height:${height(m.theirs)}">${m.theirs ? `<b class="pt-bar-val tabular">${num(m.theirs)}</b>` : ""}</i>${showMine ? `<i class="pt-bar-you" style="height:${height(m.mine)}">${m.mine ? `<b class="pt-bar-val tabular">${num(m.mine)}</b>` : ""}</i>` : ""}</div><span class="pt-mlabel">${esc(shortMonth(m.month))}</span></div>`).join("");
     const label = showMine ? t("New pages each month, them against you") : t("Their new pages each month");
-    const table = `<details class="pt-as-table"><summary class="small">${t("See these numbers as a table")}</summary><div class="cl-scroll"><table class="data cl-table pt-narrow"><thead><tr><th scope="col">${t("Month")}</th>${vsHead("them", S.p?.host)}${showMine ? vsHead("you", COMP.site?.()?.host || S.p?.site?.host) : ""}</tr></thead><tbody>${months.map((m) => `<tr><td class="head-cell">${esc(longMonth(m.month))}</td><td class="c tabular">${num(m.theirs || 0)}</td>${showMine ? `<td class="c tabular">${num(m.mine || 0)}</td>` : ""}</tr>`).join("")}</tbody></table></div></details>`;
+    const table = `<details class="pt-as-table"><summary class="small">${t("Show table")}</summary><div class="cl-scroll"><table class="data cl-table pt-narrow"><thead><tr><th scope="col">${t("Month")}</th>${vsHead("them", S.p?.host)}${showMine ? vsHead("you", COMP.site?.()?.host || S.p?.site?.host) : ""}</tr></thead><tbody>${months.map((m) => `<tr><td class="head-cell">${esc(longMonth(m.month))}</td><td class="c tabular">${num(m.theirs || 0)}</td>${showMine ? `<td class="c tabular">${num(m.mine || 0)}</td>` : ""}</tr>`).join("")}</tbody></table></div></details>`;
     const key = showMine ? `<p class="pt-chart-key small sec">${COMP.who("them", S.p?.host)}${COMP.who("you", COMP.site?.()?.host || S.p?.site?.host)}</p>` : "";
     return `${key}<div class="pt-chart-wrap"><div class="pt-chart${showMine ? " pt-two" : ""}" role="img" aria-label="${esc(label)}"><div class="pt-plot">${ticks.join("")}<div class="pt-cols">${cols}</div></div></div><div class="pt-tip" id="pt-tip" hidden></div></div>${table}`;
   }
@@ -399,10 +400,10 @@
     const fig = (label, value) => `<div class="pt-fig"><span class="pt-fig-lab">${t(label)}</span><span class="pt-fig-val"><b class="tabular">${esc(value)}</b></span></div>`;
     const ok = h.status === "ok" && years.length;
     const figs = [
-      f.registered_on ? fig("Domain registered", monthYear(f.registered_on)) : "",
+      f.registered_on ? fig("Registered", monthYear(f.registered_on)) : "",
       f.first_capture ? fig("Online since", monthYear(f.first_capture)) : "",
-      ok ? fig("Pages in the archive", `${num(h.archived_pages || 0)}${h.capped ? "+" : ""}`) : "",
-      f.expires_on ? fig("Domain renews", monthYear(f.expires_on)) : "",
+      ok ? fig("Archived pages", `${num(h.archived_pages || 0)}${h.capped ? "+" : ""}`) : "",
+      f.expires_on ? fig("Renews", monthYear(f.expires_on)) : "",
     ].join("");
     const facts = figs ? `<div class="pt-age-figs">${figs}</div>` : "";
     let chart = "";
@@ -411,13 +412,14 @@
       chart = `<p class="pt-age-title">${t("Pages first archived, by year")}</p>
         <ol class="pt-years">${years.map((x) => `<li style="--h:${x.pages / max}"><b class="tabular">${num(x.pages)}</b><i class="pt-key-them" aria-hidden="true"></i><span class="tabular">${esc(String(x.year))}</span></li>`).join("")}</ol>`;
     } else {
-      const why = h.status === "failed" ? t("The Wayback Machine didn't answer this time. It tries again tomorrow.")
+      const why = h.status === "failed" ? t("The Wayback Machine didn't answer. Trying again tomorrow.")
         : h.status === "ok" ? t("The Wayback Machine has no copy of this site.")
-        : h.message ? t("The Wayback Machine is busy. The app asks again in a few minutes.")
-        : t("Looking them up in the Wayback Machine. It takes a minute or two after a competitor is added, then it's checked again each month.");
-      chart = `<p class="cl-none small sec">${esc(why)}</p>`;
+        : h.message ? t("The Wayback Machine is busy. Trying again in a few minutes.")
+        : t("Looking them up in the Wayback Machine…");
+      const lookingUp = h.status !== "failed" && h.status !== "ok" && !h.message;
+      chart = `<p class="cl-none small sec">${esc(why)}${lookingUp ? UI().tip("It takes a minute or two after a competitor is added, then it's checked again each month.") : ""}</p>`;
     }
-    return `<section class="card"><div class="card-head"><h2>${t("How old their site is")}</h2>${COMP.info("From the Wayback Machine and the domain registry. The archive doesn't save every page, so these counts are lower than the monthly chart above.")}</div><div class="cl-section-body">${facts}${chart}</div></section>`;
+    return `<section class="card"><div class="card-head"><h2>${t("How old their site is")}</h2>${COMP.info("From the Wayback Machine and the domain registry. The archive misses pages, so counts are lower than the monthly chart.")}</div><div class="cl-section-body">${facts}${chart}</div></section>`;
   }
 
   // Their site: authority, who links to them, and how they build pages.
@@ -427,10 +429,12 @@
     const row = (label, mine, theirs) => `<tr><th scope="row" class="head-cell">${esc(label)}</th><td class="c tabular pt-col-you" data-label="${esc(t("You"))}">${mine}</td><td class="c tabular pt-col-them" data-label="${esc(t("Them"))}">${theirs}</td></tr>`;
     const authority = strengthBody(p, f, l, row);
     const top = l.top || [];
+    // How many link to them and how many of those skip you, said once in a sentence above the list, with the way to act on it.
+    const linkCount = [known(l.linking_domains) ? many(l.linking_domains, "{n} website links to them.", "{n} websites link to them.") : "", l.not_to_me ? many(l.not_to_me, "{n} of these doesn't link to you.", "{n} of these don't link to you.") : ""].filter(Boolean).join(" ");
+    const linkLine = linkCount ? `<p class="pt-gap-line pt-link-count"><span>${esc(linkCount)}</span>${l.not_to_me ? `<button class="btn btn-small" data-pt-gaps>${icon("link-2")}${t("Open Link gaps")}</button>` : ""}</p>` : "";
     const links = top.length
-      ? `<ul class="rows pt-links">${top.slice(0, 10).map((d) => `<li><div class="what"><span class="with-logo">${UI().siteLogo(d.domain, 16)}<span class="logo-text mono" dir="ltr">${esc(d.domain)}</span></span>${d.spam ? ` ${UI().status("warn", t("Looks like spam"))}` : ""}</div><div class="acts small muted tabular">${known(d.authority) ? `<span class="pt-link-score" tabindex="0" data-tip="${esc(d.authority_label || t("Authority"))}"><b>${num(d.authority)}</b> ${esc((d.authority_label || t("Authority")).replace(/^(?:Authority score|Domain Authority)\s*\(([^)]+)\)$/i, "$1"))}</span>` : ""}</div></li>`).join("")}</ul>
-        ${l.not_to_me ? `<p class="pt-gap-line">${esc(many(l.not_to_me, "{n} of these doesn't link to you.", "{n} of these don't link to you."))} <button class="btn btn-small" data-pt-gaps>${icon("link-2")}${t("Open Link gaps")}</button></p>` : ""}`
-      : `<div class="pt-empty-links"><p class="small sec">${esc(fill("No linking sites known yet. Upload a CSV of links to {host} from any backlink tool (Semrush, Ubersuggest, Ahrefs…), or add the ones you know one by one.", { host: p.host }))}</p><div class="pt-btns">${linkButtons(true)}</div></div>`;
+      ? `${linkLine}<ul class="rows pt-links">${top.slice(0, 10).map((d) => `<li><div class="what"><span class="with-logo">${UI().siteLogo(d.domain, 16)}<span class="logo-text mono" dir="ltr">${esc(d.domain)}</span></span>${d.spam ? ` ${UI().status("warn", t("Likely spam"))}` : ""}</div><div class="acts small muted tabular">${known(d.authority) ? linkScore(d) : ""}</div></li>`).join("")}</ul>`
+      : `<div class="pt-empty-links"><p class="small sec">${esc(t("No linking sites known yet."))}${UI().tip("Upload a CSV of links to {host} from any backlink tool (SEMrush, Ubersuggest, Ahrefs…), or add the ones you know one by one.", { host: p.host })}</p><div class="pt-btns">${linkButtons(true)}</div></div>`;
     const build = (ins.build || []);
     const main = build.filter((b) => !b.more), more = build.filter((b) => b.more);
     const showMine = mineRead(ins);
@@ -438,9 +442,9 @@
     const buildTable = build.length
       ? `<table class="data cl-table pt-table pt-vs pt-narrow"><thead><tr><th scope="col">${t("What")}</th>${showMine ? vsHead("you", COMP.site?.()?.host || p.site?.host) : ""}${vsHead("them", p.host)}</tr></thead><tbody>${main.map(buildRow).join("")}${S.buildMore ? more.map(buildRow).join("") : ""}</tbody></table>${showMine ? "" : notReadNote()}
          ${more.length ? `<p class="cl-more"><button class="btn btn-small" data-pt-build-more aria-expanded="${S.buildMore}">${t(S.buildMore ? "Fewer details" : "More details")}</button></p>` : ""}`
-      : `<p class="cl-none small sec">${t("These facts appear once their pages are read.")}</p>`;
+      : `<p class="cl-none small sec">${t("Facts appear once their pages are read.")}</p>`;
     return `<div class="pt-grid"><section class="card"><div class="card-head"><h2>${t("How strong they are")}</h2></div><div class="cl-section-body"><div class="cl-scroll">${authority}</div></div></section>
-      <section class="card"><div class="card-head"><h2>${t("Who links to them")}</h2>${known(l.linking_domains) ? `<span class="tag tabular">${num(l.linking_domains)}</span>` : ""}${top.length ? `<span class="end pt-btns">${linkButtons(false)}</span>` : ""}</div><div class="cl-section-body">${links}</div></section></div>
+      <section class="card"><div class="card-head"><h2>${t("Who links to them")}</h2>${top.length ? `<span class="end pt-btns">${linkButtons(false)}</span>` : ""}</div><div class="cl-section-body">${links}</div></section></div>
       <section class="card"><div class="card-head"><h2>${t("How they build pages")}</h2>${COMP.info("Facts read from the pages, not advice")}</div><div class="cl-section-body"><div class="cl-scroll">${buildTable}</div></div></section>`;
   }
 
@@ -461,13 +465,13 @@
     const mozWait = !known(f.da) && !known(f.my_da);
     const theirLinks = known(l.linking_domains) ? l.linking_domains : f.moz_links;
     const myLinks = known(l.my_linking_domains) ? l.my_linking_domains : f.my_moz_links;
-    const linkSource = known(l.linking_domains) ? t("from Link gaps uploads") : known(f.moz_links) ? t("from Moz") : "";
+    const linkSource = known(l.linking_domains) ? t("from Link gaps") : known(f.moz_links) ? t("from Moz") : "";
     const h = f.history?.status;
     const items = [
       { label: t("Moz Domain Authority"), mine: f.my_da, theirs: f.da, show: figure, why: "moz", bar: true, better: (a, b) => a - b },
-      { label: t("Websites linking to the site"), sub: linkSource, mine: myLinks, theirs: theirLinks, show: figure, why: "links", needTheirs: true, bar: true, better: (a, b) => a - b },
+      { label: t("Linking sites"), sub: linkSource, mine: myLinks, theirs: theirLinks, show: figure, why: "links", needTheirs: true, bar: true, better: (a, b) => a - b },
       { label: t("Popularity"), sub: t("from Cloudflare"), mine: f.my_popularity, theirs: f.popularity, show: (v) => (v ? esc(popularityWords(v)) : dash), why: "moz", better: (a, b) => popularityRank(b) - popularityRank(a) },
-      { label: t("Domain registered"), mine: f.my_registered_on, theirs: f.registered_on, show: (v) => (v ? esc(monthYear(v)) : dash), note: ageWords, why: "registry", better: (a, b) => (a < b ? 1 : a > b ? -1 : 0) },
+      { label: t("Registered"), mine: f.my_registered_on, theirs: f.registered_on, show: (v) => (v ? esc(monthYear(v)) : dash), note: ageWords, why: "registry", better: (a, b) => (a < b ? 1 : a > b ? -1 : 0) },
     ];
     // A row is only a comparison when their side is known; mine alone (my Backlinks list against nothing) moves to "Not known yet".
     const shows = (x) => (x.needTheirs ? known(x.theirs) : known(x.mine) || known(x.theirs));
@@ -478,7 +482,7 @@
     /* Who is ahead on a figure: 1 you, -1 them, 0 level or not comparable. */
     const lead = (x) => { if (!known(x.mine) || !known(x.theirs)) return null; const n = x.better(x.mine, x.theirs); return n > 0 ? 1 : n < 0 ? -1 : 0; };
     const compared = has.map(lead).filter((n) => n !== null), mineWon = compared.filter((n) => n > 0).length, theirsWon = compared.filter((n) => n < 0).length;
-    const verdict = !compared.length ? "" : `<p class="pt-verdict">${esc(mineWon === theirsWon ? (mineWon ? fill("You're level: each ahead on {n} of {total}.", { n: num(mineWon), total: num(compared.length) }) : t("You're level on everything known so far.")) : fill(theirsWon > mineWon ? "They're ahead on {n} of {total}." : "You're ahead on {n} of {total}.", { n: num(Math.max(mineWon, theirsWon)), total: num(compared.length) }))}</p>`;
+    const verdict = !compared.length ? "" : `<p class="pt-verdict">${esc(mineWon === theirsWon ? (mineWon ? fill("You're level: each ahead on {n} of {total}.", { n: num(mineWon), total: num(compared.length) }) : t("Level on everything known.")) : fill(theirsWon > mineWon ? "They're ahead on {n} of {total}." : "You're ahead on {n} of {total}.", { n: num(Math.max(mineWon, theirsWon)), total: num(compared.length) }))}</p>`;
     const side = (x, who, host, won) => {
       const v = who === "you" ? x.mine : x.theirs, most = x.bar ? Math.max(x.mine ?? 0, x.theirs ?? 0) : 0;
       const bar = most > 0 && known(x.mine) && known(x.theirs) ? `<span class="pt-side-bar" aria-hidden="true"><i style="width:${Math.max(2, Math.round(((v ?? 0) / most) * 100))}%"></i></span>` : "";
@@ -487,14 +491,21 @@
     const duel = (x) => { const n = lead(x); return `<li class="pt-duel"><div class="pt-duel-head"><b>${esc(x.label)}</b>${x.sub ? `<span class="small muted">${esc(x.sub)}</span>` : ""}</div><div class="pt-sides${withMine ? "" : " pt-sides-one"}">${withMine ? side(x, "you", myHost, n === 1) : ""}${side(x, "them", p.host, n === -1)}</div></li>`; };
     const table = has.length ? `<ul class="pt-duels">${has.map(duel).join("")}</ul>` : "";
     const why = {
-      moz: () => `<li><div class="what"><b>${t(known(f.popularity) ? "Authority" : "Authority and popularity")}</b><span class="small sec">${t(known(f.popularity) ? "From Moz, free, once a month. Not looked up yet." : "From Moz and Cloudflare, free, once a month. Not looked up yet.")}</span>${S.strengthError ? `<span class="small crit" role="alert">${esc(t(S.strengthError))}</span>` : ""}</div><div class="acts"><button class="btn btn-small" data-pt-strength-fetch ${S.strengthBusy ? 'disabled aria-busy="true"' : ""}>${icon(S.strengthBusy ? "loader" : "download")}${t(S.strengthBusy ? "Fetching…" : "Get these numbers")}</button></div></li>`,
-      links: () => `<li><div class="what"><b>${t("Websites linking to them")}</b><span class="small sec">${esc(known(myLinks) ? fill("You have {n} in your Backlinks list. Theirs aren't known: upload a list of their links (a CSV from any backlink tool).", { n: num(myLinks) }) : t("Not known: upload a list of their links (a CSV from any backlink tool)."))}</span></div><div class="acts"><button class="btn btn-small" data-pt-gaps>${icon("link-2")}${t("Open Link gaps")}</button></div></li>`,
-      registry: () => `<li><div class="what"><b>${t("Domain registered")}</b><span class="small sec">${t(h === "failed" ? "The domain registry didn't answer. The app asks again tomorrow." : "Being looked up in the domain registry. It's ready a few minutes after a competitor is added.")}</span></div></li>`,
+      moz: () => `<li><div class="what"><b>${t(known(f.popularity) ? "Authority" : "Authority and popularity")}</b><span class="small sec">${t("Not looked up yet.")}${UI().tip(known(f.popularity) ? "From Moz, free, once a month." : "From Moz and Cloudflare, free, once a month.")}</span>${S.strengthError ? `<span class="small crit" role="alert">${esc(t(S.strengthError))}</span>` : ""}</div><div class="acts"><button class="btn btn-small" data-pt-strength-fetch ${S.strengthBusy ? 'disabled aria-busy="true"' : ""}>${icon(S.strengthBusy ? "loader" : "download")}${t(S.strengthBusy ? "Fetching…" : "Get these numbers")}</button></div></li>`,
+      links: () => `<li><div class="what"><b>${t("Linking sites")}</b><span class="small sec">${esc(known(myLinks) ? fill("Theirs aren't known: upload a CSV of their links from any backlink tool. You have {n} in Backlinks.", { n: num(myLinks) }) : t("Not known: upload a CSV of their links from any backlink tool."))}</span></div><div class="acts"><button class="btn btn-small" data-pt-gaps>${icon("link-2")}${t("Open Link gaps")}</button></div></li>`,
+      registry: () => `<li><div class="what"><b>${t("Registered")}</b><span class="small sec">${t(h === "failed" ? "The domain registry didn't answer. Trying again tomorrow." : "Looking it up in the domain registry…")}${h === "failed" ? "" : UI().tip("Ready a few minutes after a competitor is added.")}</span></div></li>`,
     };
     const kinds = [...new Set(missing.map((x) => x.why))];
-    const list = kinds.length ? `<div class="pt-missing">${has.length ? `<h3 class="small sec">${t("Not known yet")}</h3>` : `<p class="pt-lead">${t("None of these are known yet. Here's what fills each one.")}</p>`}<ul class="rows">${kinds.map((k) => why[k]()).join("")}</ul></div>` : "";
+    const list = kinds.length ? `<div class="pt-missing">${has.length ? `<h3 class="small sec">${t("Not known yet")}</h3>` : `<p class="pt-lead">${t("None known yet. What fills each one:")}</p>`}<ul class="rows">${kinds.map((k) => why[k]()).join("")}</ul></div>` : "";
     void mozWait;
     return `${verdict}${table}${list}`;
+  }
+  /* A linking site's score and whose scale it is: the tool's logo alone when it has one, the full label on hover. */
+  function linkScore(d) {
+    const label = d.authority_label || t("Authority");
+    const brand = label.match(/\(([^)]+)\)/)?.[1] || label;
+    const source = window.BRANDS?.FILES?.[brand] ? UI().logoOnly(brand, label) : esc(label.replace(/^(?:Authority score|Domain Authority)\s*\(([^)]+)\)$/i, "$1"));
+    return `<span class="pt-link-score" tabindex="0" data-tip="${esc(label)}"><b>${num(d.authority)}</b> ${source}</span>`;
   }
   const linkButtons = (main) => `<button class="btn btn-small${main ? " btn-main" : ""}" data-pt-links-upload>${icon("upload")}${t("Upload their links")}</button><button class="btn btn-small" data-pt-links-add>${icon("plus")}${t("Add a linking site")}</button>`;
 
@@ -506,7 +517,7 @@
     dlg.classList.remove("wide");
     UI().setHTML(dlg, `<div class="dlg-head"><h2 id="dlg-title">${esc(fill("Upload links to {host}", { host: S.p.host }))}</h2><button class="icon-btn" data-close-dlg aria-label="${t("Close")}">${icon("x")}</button></div>
       <div class="dlg-body">
-        <p class="small sec" style="margin-bottom:12px">${t("A CSV of the sites that link to them, exported from any backlink tool. It needs a column with a link or a domain. Spam is flagged, never removed.")}</p>
+        <p class="small sec" style="margin-bottom:12px">${t("A CSV from any backlink tool, with a link or domain column. Spam is flagged, never removed.")}</p>
         <label class="field"><span>${t("File")}</span><input class="input" id="pt-up-file" type="file" accept=".csv,.tsv,.txt,text/csv"></label>
         <div id="pt-up-error"></div>
       </div>
@@ -549,7 +560,7 @@
     if (b.kind === "text") return esc(v);
     return num(v);
   }
-  const unavailable = () => `<section class="card"><p class="cl-none small sec">${t("This part didn't load. Everything else on the page still works.")}</p></section>`;
+  const unavailable = () => `<section class="card"><p class="cl-none small sec">${t("This part didn't load. The rest still works.")}</p></section>`;
 
   // ---- drawing and events -------------------------------------------------------------------------
   /* comp-list.js calls this inside the profile. parts: { keywordsBody(p), timelineBody(p) }. */
@@ -722,20 +733,20 @@
       rhythm: { months, new_30d: months[11].theirs, my_new_30d: months[11].mine, top_section: months[11].theirs ? "/blog/" : null, updated_12m: { theirs: 0.62, mine: 0.31 }, removed_30d: 1, my_removed_30d: 0, by_year },
       links: { linking_domains: 21, my_linking_domains: 9, not_to_me: 14, top: [{ domain: "city-guide.example", authority: 41, authority_label: "DA", spam: false }, { domain: "business-news.example", authority: 35, authority_label: "DA", spam: false }, { domain: "free-links-directory.example", authority: 4, authority_label: "DA", spam: true }] },
       build: [
-        { key: "words", label: "Average words per page", kind: "number", mine: p.compare?.pages?.mine?.average_words ?? 640, theirs: 1279 },
-        { key: "title", label: "Average title length", kind: "number", mine: 52, theirs: 61 },
-        { key: "meta", label: "Pages with a meta description", kind: "share", mine: 0.9, theirs: 1 },
+        { key: "words", label: "Words per page", kind: "number", mine: p.compare?.pages?.mine?.average_words ?? 640, theirs: 1279 },
+        { key: "title", label: "Title length", kind: "number", mine: 52, theirs: 61 },
+        { key: "meta", label: "With a meta description", kind: "share", mine: 0.9, theirs: 1 },
         { key: "schema", label: "Structured data", kind: "list", mine: [["Organization", 1]], theirs: [["FAQPage", 0.45], ["Article", 0.8], ["BreadcrumbList", 1]] },
-        { key: "questions", label: "Pages with questions in headings", kind: "share", mine: 0.2, theirs: 0.55 },
-        { key: "videos", label: "Pages with a video", kind: "share", mine: 0, theirs: 0.12 },
-        { key: "dupes", label: "Pages sharing a title with another", kind: "number", mine: 0, theirs: 3 },
-        { key: "noindex", label: "Pages hidden from search (noindex)", kind: "number", mine: 1, theirs: 0 },
-        { key: "sitemap", label: "Pages in the sitemap, of pages found", kind: "share", mine: 1, theirs: 0.86 },
+        { key: "questions", label: "With questions in headings", kind: "share", mine: 0.2, theirs: 0.55 },
+        { key: "videos", label: "With a video", kind: "share", mine: 0, theirs: 0.12 },
+        { key: "dupes", label: "Duplicate titles", kind: "number", mine: 0, theirs: 3 },
+        { key: "noindex", label: "Hidden (noindex)", kind: "number", mine: 1, theirs: 0 },
+        { key: "sitemap", label: "In the sitemap", kind: "share", mine: 1, theirs: 0.86 },
         { key: "cms", label: "Built with", kind: "text", mine: "Astro", theirs: "WordPress" },
         { key: "alt", label: "Images without alt text", kind: "share", mine: 0.05, theirs: 0.3, more: true },
-        { key: "internal", label: "Average links to their own pages", kind: "number", mine: 24, theirs: 41, more: true },
-        { key: "hreflang", label: "Language versions (hreflang)", kind: "list", mine: [], theirs: ["fr", "en"], more: true },
-        { key: "tables", label: "Pages with a table", kind: "share", mine: 0.1, theirs: 0.35, more: true },
+        { key: "internal", label: "Internal links per page", kind: "number", mine: 24, theirs: 41, more: true },
+        { key: "hreflang", label: "Languages (hreflang)", kind: "list", mine: [], theirs: ["fr", "en"], more: true },
+        { key: "tables", label: "With a table", kind: "share", mine: 0.1, theirs: 0.35, more: true },
       ],
       keywords: { features, cannibal },
     };
@@ -743,31 +754,31 @@
 
   // Pages and searches on the long lists (10 Nov).
   Object.assign(window.FR, {
-    "Search their pages": "Rechercher une de leurs pages", "Search their pages and questions": "Rechercher une page ou une question",
+    "Search pages": "Rechercher une page", "Search pages and questions": "Rechercher une page ou une question",
     "No page matches the search.": "Aucune page ne correspond à la recherche.", "pages": "pages",
   });
 
   // Ticking question rows, my page beside theirs, and the age card (11 Nov).
   Object.assign(window.FR, {
     "Their questions": "Leurs questions", "Your page": "Votre page", "Paired": "Associée", "Same keyword": "Même mot-clé", "Closest topic": "Sujet le plus proche",
-    "You paired these two in Page vs page.": "Vous avez associé ces deux pages dans Page contre page.", "Both pages rank for the same keyword.": "Les deux pages se positionnent sur le même mot-clé.", "A best guess: their main headings share the most words.": "Une estimation : leurs titres principaux ont le plus de mots en commun.",
-    "No page of yours on this yet.": "Vous n'avez pas encore de page sur ce sujet.", "Your pages haven't been read yet.": "Vos pages n'ont pas encore été lues.", "This page hasn't been read yet.": "Cette page n'a pas encore été lue.", "No questions in its headings.": "Aucune question dans ses titres.",
+    "You paired these two in Page vs page.": "Vous avez associé ces deux pages dans Page contre page.", "Both pages rank for the same keyword.": "Les deux pages se positionnent sur le même mot-clé.", "Best guess: main headings share the most words.": "Estimation : leurs titres principaux ont le plus de mots en commun.",
+    "None yet.": "Aucune pour l'instant.", "Not read yet": "Pas encore lue", "No questions.": "Aucune question.",
     "Select {page}": "Sélectionner {page}", "Add a note": "Ajouter une note", "Your note": "Votre note", "Saved with it": "Enregistré avec", "Save note": "Enregistrer la note",
-    "One note on this page": "Une note sur cette page", "One note on each of these {n} pages": "Une note sur chacune de ces {n} pages", "Note saved on {n} page.": "Note enregistrée sur {n} page.", "Note saved on {n} pages.": "Note enregistrée sur {n} pages.",
+    "One note on this page": "Une note sur cette page", "One note per page, {n} pages": "Une note par page, {n} pages", "Note saved on {n} page.": "Note enregistrée sur {n} page.", "Note saved on {n} pages.": "Note enregistrée sur {n} pages.",
     "Their page: {title}": "Leur page : {title}", "Your page: {title}": "Votre page : {title}", "Your page: none yet": "Votre page : aucune pour l'instant", "The note didn't save. Your text is still here.": "La note n'a pas été enregistrée. Votre texte est toujours là.",
-    "Domain registered": "Domaine enregistré", "Online since": "En ligne depuis", "Pages in the archive": "Pages dans l'archive", "Domain renews": "Renouvellement du domaine", "Pages first archived, by year": "Pages archivées pour la première fois, par an",
-    "From the Wayback Machine and the domain registry. The archive doesn't save every page, so these counts are lower than the monthly chart above.": "D'après la Wayback Machine et le registre du domaine. L'archive ne garde pas toutes les pages : ces chiffres sont donc plus bas que ceux du graphique mensuel ci-dessus.",
+    "Registered": "Enregistré", "Online since": "En ligne depuis", "Archived pages": "Pages archivées", "Renews": "Renouvellement", "Pages first archived, by year": "Pages archivées pour la première fois, par an",
+    "From the Wayback Machine and the domain registry. The archive misses pages, so counts are lower than the monthly chart.": "D'après la Wayback Machine et le registre du domaine. L'archive ne garde pas toutes les pages : ces chiffres sont plus bas que ceux du graphique mensuel.",
   });
 
   // The 10 Nov rework of Activity, questions and strength.
   Object.assign(window.FR, {
-    "No questions found in their pages' headings yet.": "Aucune question trouvée dans les titres de leurs pages pour l'instant.",
+    "No questions in their headings yet.": "Aucune question dans leurs titres pour l'instant.",
     "Questions they answer": "Questions auxquelles ils répondent",
-    "Read from the headings of their pages that end in a question mark. Author, tag, category and home pages are left out: their headings are other posts' titles.": "Lues dans les titres de leurs pages qui finissent par un point d'interrogation. Les pages d'auteur, d'étiquette, de catégorie et d'accueil sont exclues : leurs titres sont ceux d'autres articles.",
-    "Grouped by the page that answers them. Once Search Console is connected or you add keywords, the ones on your topics come first and the rest are folded away.": "Regroupées par la page qui y répond. Une fois Search Console connecté ou des mots-clés ajoutés, celles sur vos sujets passent en premier et les autres sont repliées.",
-    "{n} of their questions are on your topics, on {pages}. Each row is one page of theirs: answer its questions on your site in one task.": "{n} de leurs questions portent sur vos sujets, sur {pages}. Chaque ligne est une de leurs pages : répondez à ses questions sur votre site en une seule tâche.",
-    "None of their questions are on your topics: they write about other subjects.": "Aucune de leurs questions ne porte sur vos sujets : ils écrivent sur autre chose.",
-    "Your own pages haven't been read yet, so some of these may already be on your site.": "Vos pages n'ont pas encore été lues, certaines de ces questions sont peut-être déjà sur votre site.",
+    "From their headings that end in a question mark. Author, tag, category and home pages are left out: their headings are other posts' titles.": "D'après leurs titres qui finissent par un point d'interrogation. Les pages d'auteur, d'étiquette, de catégorie et d'accueil sont exclues : leurs titres sont ceux d'autres articles.",
+    "Grouped by the page that answers them.": "Regroupées par la page qui y répond.",
+    "{n} of their questions are on your topics, on {pages}.": "{n} de leurs questions portent sur vos sujets, sur {pages}.",
+    "None are on your topics.": "Aucune ne porte sur vos sujets.",
+    "Your pages aren't read yet: some may already be answered.": "Vos pages ne sont pas encore lues : certaines y répondent peut-être déjà.",
     "Answer {n} questions from {page} on your site": "Répondre sur votre site aux {n} questions de {page}",
     "+{n} more": "+{n} de plus",
     "Show {n} more page": "Afficher {n} page de plus",
@@ -776,19 +787,19 @@
     "{n} questions on other topics": "{n} questions sur d'autres sujets",
     "Show {n} question on other topics": "Afficher {n} question sur d'autres sujets",
     "Show {n} questions on other topics": "Afficher {n} questions sur d'autres sujets",
-    "Hide them": "Les masquer",
-    "They added {n} page in the last 12 months": "Ils ont ajouté {n} page en 12 mois",
-    "They added {n} pages in the last 12 months": "Ils ont ajouté {n} pages en 12 mois",
+    "Hide": "Masquer",
+    "They added {n} page in 12 months": "Ils ont ajouté {n} page en 12 mois",
+    "They added {n} pages in 12 months": "Ils ont ajouté {n} pages en 12 mois",
     "(most in {month}: {k})": "(surtout en {month} : {k})",
-    "They added no pages in the last 12 months": "Ils n'ont ajouté aucune page en 12 mois",
+    "They added no pages in 12 months": "Ils n'ont ajouté aucune page en 12 mois",
     "you added {n}": "vous en avez ajouté {n}",
     "{n} new": "{n} nouvelle(s)", "nothing new": "rien de nouveau",
-    "In the last 30 days: {recent}, {gone}.": "Sur les 30 derniers jours : {recent}, {gone}.",
+    "Last 30 days: {recent}, {gone}.": "30 derniers jours : {recent}, {gone}.",
     "{n} removed": "{n} retirée(s)",
     "nothing removed": "rien de retiré",
-    "{share} of their pages were updated in the last year.": "{share} de leurs pages ont été mises à jour dans l'année.",
+    "{share} of their pages were updated in 12 months.": "{share} de leurs pages ont été mises à jour en 12 mois.",
     "How fast they publish": "À quel rythme ils publient",
-    "New pages each month, from the dates on their pages": "Nouvelles pages par mois, d'après les dates de leurs pages",
+    
     "you": "vous",
     "domain registered {date}": "domaine enregistré en {date}",
     "The Wayback Machine has saved {n} of their pages, most of them first in {year}.": "La Wayback Machine a gardé {n} de leurs pages, la plupart vues pour la première fois en {year}.",
@@ -798,25 +809,25 @@
     "Both domains were registered in {month}.": "Les deux domaines ont été enregistrés en {month}.",
     "{n} website links to them.": "{n} site fait un lien vers eux.", "{n} websites link to them.": "{n} sites font un lien vers eux.",
     "Their domain was registered in {month}.": "Leur domaine a été enregistré en {month}.",
-    "Websites linking to the site": "Sites qui font un lien vers le site",
+    "Linking sites": "Sites qui font un lien",
     "Their domain is older than yours: {them} against {you}.": "Leur domaine est plus ancien que le vôtre : {them} contre {you}.",
     "Your domain is older than theirs: {you} against {them}.": "Votre domaine est plus ancien que le leur : {you} contre {them}.",
-    "Moz rates them {them} out of 100, you {you}.": "Moz leur donne {them} sur 100, à vous {you}.",
+    "Moz rates them {them}/100, you {you}.": "Moz leur donne {them}/100, à vous {you}.",
     "{them} websites link to them, {you} to you.": "{them} sites font un lien vers eux, {you} vers vous.",
     "Authority and popularity": "Autorité et popularité",
-    "From Moz and Cloudflare, free, once a month. Not looked up yet.": "Par Moz et Cloudflare, gratuit, une fois par mois. Pas encore cherché.",
-    "Websites linking to them": "Sites qui font un lien vers eux",
-    "You have {n} in your Backlinks list. Theirs aren't known: upload a list of their links (a CSV from any backlink tool).": "Vous en avez {n} dans votre liste de backlinks. Les leurs ne sont pas connus : importez une liste de leurs liens (un CSV de n'importe quel outil de backlinks).",
-    "Not known: upload a list of their links (a CSV from any backlink tool).": "Inconnu : importez une liste de leurs liens (un CSV de n'importe quel outil de backlinks).",
+    "Not looked up yet.": "Pas encore cherché.",
+    
+    "Theirs aren't known: upload a CSV of their links from any backlink tool. You have {n} in Backlinks.": "Les leurs ne sont pas connus : importez un CSV de leurs liens depuis n'importe quel outil de backlinks. Vous en avez {n} dans Backlinks.",
+    "Not known: upload a CSV of their links from any backlink tool.": "Inconnu : importez un CSV de leurs liens depuis n'importe quel outil de backlinks.",
   });
 
   Object.assign(window.FR, {
-    "There's no keyword list for this site yet.": "Ce site n'a pas encore de liste de mots-clés.",
-    "This site's keywords haven't been checked yet.": "Les mots-clés de ce site n'ont pas encore été vérifiés.",
+    "No keyword list yet.": "Pas encore de liste de mots-clés.",
+    "Keywords not checked.": "Mots-clés non contrôlés.",
     "{them} lead {they} · {you} lead {mine}": "{them} devant sur {they} · {you} devant sur {mine}",
-    "Keywords you both rank on in the results checked.": "Mots-clés sur lesquels vous vous classez tous les deux dans les résultats vérifiés.",
-    "Keywords they rank on and you weren't found on.": "Mots-clés où ils se classent et où vous êtes introuvable.",
-    "Keywords you rank on and they weren't found on.": "Mots-clés où vous vous classez et où ils sont introuvables.",
+    "Keywords you both rank on.": "Mots-clés où vous vous classez tous les deux.",
+    "They rank, you weren't found.": "Ils se classent, vous êtes introuvable.",
+    "You rank, they weren't found.": "Vous vous classez, eux sont introuvables.",
     "Pages found on each site.": "Pages trouvées sur chaque site.",
     "Questions in their headings": "Questions dans leurs titres",
     "Your own pages aren't read yet, so the app can't tell which of these you already answer.": "Vos propres pages ne sont pas encore lues : l'application ne peut pas dire lesquelles vous traitez déjà.",
@@ -828,57 +839,57 @@
     "They rank on {n} keyword you don't": "Ils se classent sur {n} mot-clé où vous n'êtes pas", "They rank on {n} keywords you don't": "Ils se classent sur {n} mots-clés où vous n'êtes pas",
     "They published {n} page in 30 days, mostly in {section}.": "Ils ont publié {n} page en 30 jours, surtout dans {section}.", "They published {n} pages in 30 days, mostly in {section}.": "Ils ont publié {n} pages en 30 jours, surtout dans {section}.",
     "They published {n} page in 30 days.": "Ils ont publié {n} page en 30 jours.", "They published {n} pages in 30 days.": "Ils ont publié {n} pages en 30 jours.", "They published nothing new in 30 days.": "Ils n'ont rien publié de nouveau en 30 jours.",
-    "No ranking check has seen you both yet.": "Aucune vérification de classement ne vous a encore vus tous les deux.", "Your own site hasn't been read yet, so its pages can't be compared.": "Votre site n'a pas encore été lu, donc ses pages ne peuvent pas être comparées.",
+    "No ranking check has seen you both yet.": "Aucune vérification de classement ne vous a encore vus tous les deux.", "Your site isn't read yet: no page comparison.": "Votre site n'est pas encore lu : pas de comparaison des pages.",
     "See the {n} keyword": "Voir le mot-clé", "See the {n} keywords": "Voir les {n} mots-clés", "Check your keywords": "Vérifier vos mots-clés",
     "Online since {date}": "En ligne depuis {date}", "DA {n}": "DA {n}", "{n} page": "{n} page", "{n} pages": "{n} pages",
     "Shared keywords": "Mots-clés communs", "You're ahead on {mine}, they're ahead on {they}.": "Vous êtes devant sur {mine}, eux sur {they}.", "Authority": "Autorité", "Moz Domain Authority.": "Domain Authority de Moz.",
     "Mark the domain important under Backlinks to get its Moz score.": "Marquez le domaine comme important dans Backlinks pour obtenir son score Moz.", "Yours are counted once your site is read.": "Les vôtres sont comptées une fois votre site lu.",
     "They hold the featured snippet": "Ils ont l'extrait optimisé", "You hold the featured snippet": "Vous avez l'extrait optimisé", "Snippet": "Extrait", "Your snippet": "Votre extrait", "Rich result": "Résultat enrichi",
-    "An AI Overview shows for this keyword": "Un aperçu IA s'affiche pour ce mot-clé", "Their results for this keyword landed on different pages across checks.": "Pour ce mot-clé, leurs résultats sont tombés sur des pages différentes selon les vérifications.",
+    "AI Overview shown": "AI Overview affiché", "Different pages of theirs ranked across checks.": "Plusieurs de leurs pages se sont classées selon les vérifications.",
     "Star rating": "Note en étoiles", "FAQ": "FAQ", "Sitelinks": "Liens de site", "Video": "Vidéo",
     "Their page": "Leur page", "Best position": "Meilleure position", "Your page": "Votre page", "No page": "Pas de page", "Write a page against {url}": "Écrire une page face à {url}",
-    "None yet. Their strongest pages are the ones that rank for your keywords, so they appear after a ranking check.": "Rien pour l'instant. Leurs pages les plus fortes sont celles qui se classent sur vos mots-clés : elles apparaissent après une vérification.",
+    "None yet: they appear after a ranking check.": "Rien pour l'instant : elles apparaissent après une vérification des classements.",
     "Section": "Rubrique", "Pages, them and you": "Pages, eux et vous", "New in 90 days": "Nouvelles en 90 jours", "Last change": "Dernier changement", "Sections appear once their pages are read.": "Les rubriques apparaissent une fois leurs pages lues.",
     "People also ask": "Autres questions posées", "In their headings": "Dans leurs titres", "Showing 30 of {n}.": "30 sur {n} affichées.",
     "None found yet. Questions come from their page headings and from Google's People also ask.": "Aucune pour l'instant. Les questions viennent de leurs titres de page et des « Autres questions posées » de Google.",
-    "Their strongest pages": "Leurs pages les plus fortes", "By how many of your keywords each page ranks for": "Selon le nombre de vos mots-clés où chaque page se classe", "Their sections": "Leurs rubriques", "By the first folder of each address": "Selon le premier dossier de chaque adresse",
+    "Their strongest pages": "Leurs pages les plus fortes", "By your keywords they rank for": "Selon vos mots-clés où elles se classent", "Their sections": "Leurs rubriques", "By the first folder of each address": "Selon le premier dossier de chaque adresse",
     "Questions they answer that you don't": "Questions auxquelles ils répondent et pas vous",
     "Pages updated in the last 12 months": "Pages mises à jour en 12 mois", "New pages in 30 days": "Nouvelles pages en 30 jours", "Pages removed in 30 days": "Pages retirées en 30 jours",
-    "The months fill in once pages are read. A page's date comes from the page itself, the Wayback Machine, or the day the app first saw it.": "Les mois se remplissent une fois les pages lues. La date d'une page vient de la page elle-même, de la Wayback Machine, ou du jour où l'application l'a vue.",
-    "New pages each month": "Nouvelles pages par mois", "Them against you, over 12 months": "Eux face à vous, sur 12 mois", "See these numbers as a table": "Voir ces chiffres en tableau", "Month": "Mois", "New pages each month, them against you": "Nouvelles pages par mois, eux face à vous",
+    "Fills in once their pages are read.": "Se remplit une fois leurs pages lues.",
+    "New pages each month": "Nouvelles pages par mois", "Them against you, over 12 months": "Eux face à vous, sur 12 mois", "Show table": "Afficher le tableau", "Month": "Mois", "New pages each month, them against you": "Nouvelles pages par mois, eux face à vous",
     "First archived {date}. {n} of their pages are in the archive.": "Archivé pour la première fois le {date}. {n} de leurs pages sont dans l'archive.", "The archive holds more than the first 5,000 read here.": "L'archive en contient plus que les 5 000 premières lues ici.",
-    "The Wayback Machine didn't answer this time. It tries again tomorrow.": "La Wayback Machine n'a pas répondu cette fois. Nouvel essai demain.", "The Wayback Machine has no copy of this site.": "La Wayback Machine n'a aucune copie de ce site.",
-    "Looking them up in the Wayback Machine. It takes a minute or two after a competitor is added, then it's checked again each month.": "Recherche dans la Wayback Machine. Cela prend une à deux minutes après l'ajout d'un concurrent, puis c'est revérifié chaque mois.",
-    "The Wayback Machine is busy. The app asks again in a few minutes.": "La Wayback Machine est occupée. L'application redemande dans quelques minutes.",
+    "The Wayback Machine didn't answer. Trying again tomorrow.": "La Wayback Machine n'a pas répondu. Nouvel essai demain.", "The Wayback Machine has no copy of this site.": "La Wayback Machine n'a aucune copie de ce site.",
+    "Looking them up in the Wayback Machine…": "Recherche dans la Wayback Machine…",
+    "The Wayback Machine is busy. Trying again in a few minutes.": "La Wayback Machine est occupée. Nouvel essai dans quelques minutes.",
     "Domain registered {date}": "Domaine enregistré le {date}", "renews by {date}": "à renouveler avant le {date}", "How their site grew": "Comment leur site a grandi", "New pages each year, from the Wayback Machine": "Nouvelles pages par an, d'après la Wayback Machine",
-    "What": "Quoi", "Moz Domain Authority": "Domain Authority de Moz", "Sites linking to them": "Sites qui font un lien vers eux", "Popularity (Cloudflare)": "Popularité (Cloudflare)", "Domain registered": "Domaine enregistré",
-    "Looks like spam": "Ressemble à du spam", "{n} of these doesn't link to you.": "{n} d'entre eux ne fait pas de lien vers vous.", "{n} of these don't link to you.": "{n} d'entre eux ne font pas de lien vers vous.", "Open Link gaps": "Ouvrir les liens manquants",
+    "What": "Quoi", "Moz Domain Authority": "Domain Authority de Moz", "Sites linking to them": "Sites qui font un lien vers eux", "Popularity (Cloudflare)": "Popularité (Cloudflare)", "Registered": "Enregistré",
+    "Likely spam": "Spam probable", "{n} of these doesn't link to you.": "{n} d'entre eux ne fait pas de lien vers vous.", "{n} of these don't link to you.": "{n} d'entre eux ne font pas de lien vers vous.", "Open Link gaps": "Ouvrir les liens manquants",
     "No linking sites known yet. They come from a CSV uploaded in Link gaps.": "Aucun site liant connu pour l'instant. Ils viennent d'un CSV importé dans les liens manquants.",
-    "More details": "Plus de détails", "Fewer details": "Moins de détails", "These facts appear once their pages are read.": "Ces faits apparaissent une fois leurs pages lues.",
+    "More details": "Plus de détails", "Fewer details": "Moins de détails", "Facts appear once their pages are read.": "Les faits apparaissent une fois leurs pages lues.",
     "How strong they are": "Leur force", "Upload their links": "Importer leurs liens", "Add a linking site": "Ajouter un site qui fait un lien", "Upload links to {host}": "Importer les liens vers {host}", "File": "Fichier", "Upload": "Importer", "Uploading…": "Import…",
-    "No linking sites known yet. Upload a CSV of links to {host} from any backlink tool (Semrush, Ubersuggest, Ahrefs…), or add the ones you know one by one.": "Aucun site qui fait un lien n'est encore connu. Importez un CSV des liens vers {host} depuis n'importe quel outil de backlinks (Semrush, Ubersuggest, Ahrefs…), ou ajoutez un par un ceux que vous connaissez.",
-    "A CSV of the sites that link to them, exported from any backlink tool. It needs a column with a link or a domain. Spam is flagged, never removed.": "Un CSV des sites qui font un lien vers eux, exporté de n'importe quel outil de backlinks. Il lui faut une colonne avec un lien ou un domaine. Le spam est signalé, jamais retiré.",
-    "{n} linking sites added. Spam is checked next.": "{n} sites ajoutés. Le spam est vérifié ensuite.", "Where their pages are": "Où sont leurs pages", "Grouped by the first folder of each address": "Regroupées par le premier dossier de chaque adresse", "Folder": "Dossier", "Their pages": "Leurs pages", "Your pages": "Vos pages",
-    "Most of their pages are in {path}: {n} of {total}.": "La plupart de leurs pages sont dans {path} : {n} sur {total}.", "{n} of them is new in the last 90 days.": "{n} est nouvelle sur les 90 derniers jours.", "{n} of them are new in the last 90 days.": "{n} sont nouvelles sur les 90 derniers jours.",
-    "Only their pages are shown. Your own site's pages are read tonight for the first time, then your figures appear here.": "Seules leurs pages sont affichées. Les pages de votre site sont lues cette nuit pour la première fois, puis vos chiffres apparaissent ici.",
-    "Only their pages are shown. Your own site's pages are being read for the first time. Your figures appear here when that's done.": "Seules leurs pages sont affichées. Les pages de votre site sont en cours de première lecture. Vos chiffres apparaissent ici une fois terminé.",
-    "Only their pages are shown. Your own site couldn't be read. The app tries again tonight.": "Seules leurs pages sont affichées. Votre site n'a pas pu être lu. L'application réessaie cette nuit.",
-    "Only their pages are shown. No pages of your site were found to compare.": "Seules leurs pages sont affichées. Aucune page de votre site n'a été trouvée pour comparer.",
+    "No linking sites known yet.": "Aucun site qui fait un lien n'est encore connu.",
+    "A CSV from any backlink tool, with a link or domain column. Spam is flagged, never removed.": "Un CSV de n'importe quel outil de backlinks, avec une colonne lien ou domaine. Le spam est signalé, jamais retiré.",
+    "{n} linking sites added. Spam is checked next.": "{n} sites ajoutés. Le spam est vérifié ensuite.", "Where their pages are": "Où sont leurs pages", "By first folder": "Par premier dossier", "Folder": "Dossier", "Their pages": "Leurs pages", "Your pages": "Vos pages",
+    "Most of their pages are in {path}: {n} of {total}.": "La plupart de leurs pages sont dans {path} : {n} sur {total}.", "{n} is new in the last 90 days.": "{n} est nouvelle sur les 90 derniers jours.", "{n} are new in the last 90 days.": "{n} sont nouvelles sur les 90 derniers jours.",
+    "Only their pages: yours are read tonight for the first time.": "Seulement leurs pages : les vôtres sont lues cette nuit pour la première fois.",
+    "Only their pages: yours are being read for the first time.": "Seulement leurs pages : les vôtres sont en cours de première lecture.",
+    "Only their pages: your site couldn't be read. Trying again tonight.": "Seulement leurs pages : votre site n'a pas pu être lu. Nouvel essai cette nuit.",
+    "Only their pages: none of yours found to compare.": "Seulement leurs pages : aucune des vôtres trouvée pour comparer.",
     "Over the last 12 months": "Sur les 12 derniers mois", "Their new pages each month": "Leurs nouvelles pages par mois",
     "{n} question": "{n} question", "{n} questions": "{n} questions", "Question": "Question", "Where they answer it": "Où ils y répondent", "Answer \"{q}\" on your site": "Répondre à « {q} » sur votre site",
-    "Showing {shown} of {total}": "{shown} sur {total} affichées", "Show {n} more": "En voir {n} de plus", "Show all": "Tout afficher", "All {total} shown": "Les {total} sont affichées", "Show fewer": "En voir moins",
-    "From Moz, free, once a month. Not looked up yet.": "De Moz, gratuit, une fois par mois. Pas encore consulté.", "Popularity": "Popularité", "from Cloudflare": "d'après Cloudflare", "Ahead": "Devant", "They're ahead on {n} of {total}.": "Ils sont devant sur {n} critères sur {total}.", "You're ahead on {n} of {total}.": "Vous êtes devant sur {n} critères sur {total}.", "You're level: each ahead on {n} of {total}.": "À égalité : chacun devant sur {n} critères sur {total}.", "You're level on everything known so far.": "À égalité sur tout ce qui est connu pour l'instant.", "Outside the top {n}": "Hors du top {n}", "Top {n}": "Top {n}", "Under a year old": "Moins d'un an", "{n} year old": "{n} an", "{n} years old": "{n} ans",
-    "from Link gaps uploads": "d'après les fichiers de Liens manquants", "from Moz": "d'après Moz", "Not known yet": "Pas encore connu", "None of these are known yet. Here's what fills each one.": "Rien de tout cela n'est encore connu. Voici ce qui remplit chaque ligne.",
+    "{shown} of {total}": "{shown} sur {total} affichées", "Show {n} more": "En voir {n} de plus", "Show all": "Tout afficher", "All {total} shown": "Les {total} sont affichées", "Show fewer": "En voir moins",
+    "Popularity": "Popularité", "from Cloudflare": "d'après Cloudflare", "Ahead": "Devant", "They're ahead on {n} of {total}.": "Ils sont devant sur {n} critères sur {total}.", "You're ahead on {n} of {total}.": "Vous êtes devant sur {n} critères sur {total}.", "You're level: each ahead on {n} of {total}.": "À égalité : chacun devant sur {n} critères sur {total}.", "Level on everything known.": "À égalité sur tout ce qui est connu.", "Outside the top {n}": "Hors du top {n}", "Top {n}": "Top {n}", "Under a year old": "Moins d'un an", "{n} year old": "{n} an", "{n} years old": "{n} ans",
+    "from Link gaps": "d'après Liens manquants", "from Moz": "d'après Moz", "Not known yet": "Pas encore connu", "None known yet. What fills each one:": "Rien de connu pour l'instant. Ce qui remplit chaque ligne :",
     "Looked up by itself for each website, once a month, while free Moz rows last. Not here yet: the button gets it now.": "Consulté tout seul pour chaque site, une fois par mois, tant qu'il reste des lignes Moz gratuites. Pas encore là : le bouton le récupère tout de suite.",
     "Get these numbers": "Obtenir ces chiffres", "Fetching…": "Récupération…",
     "No list of their links yet. Upload one in Link gaps (a CSV from any backlink tool), or get Moz's count with the button above.": "Pas encore de liste de leurs liens. Importez-en une dans Link gaps (un CSV de n'importe quel outil de backlinks), ou obtenez le total de Moz avec le bouton ci-dessus.",
-    "The domain registry didn't answer. The app asks again tomorrow.": "Le registre des domaines n'a pas répondu. L'application redemande demain.",
-    "Being looked up in the domain registry. It's ready a few minutes after a competitor is added.": "Recherche en cours dans le registre des domaines. C'est prêt quelques minutes après l'ajout d'un concurrent.", "Who links to them": "Qui fait un lien vers eux", "How they build pages": "Comment ils construisent leurs pages", "Facts read from the pages, not advice": "Des faits lus sur les pages, pas des conseils",
-    "This part didn't load. Everything else on the page still works.": "Cette partie n'a pas chargé. Le reste de la page fonctionne.",
-    "Average words per page": "Mots par page en moyenne", "Average title length": "Longueur moyenne du titre", "Pages with a meta description": "Pages avec une méta-description", "Structured data": "Données structurées",
-    "Pages with questions in headings": "Pages avec des questions dans les titres", "Pages with a video": "Pages avec une vidéo", "Pages sharing a title with another": "Pages qui partagent un titre avec une autre", "Pages hidden from search (noindex)": "Pages masquées aux moteurs (noindex)",
-    "Pages in the sitemap, of pages found": "Pages dans le sitemap, sur les pages trouvées", "Built with": "Construit avec", "Images without alt text": "Images sans texte alternatif", "Average links to their own pages": "Liens internes par page en moyenne",
-    "Language versions (hreflang)": "Versions linguistiques (hreflang)", "Pages with a table": "Pages avec un tableau",
+    "The domain registry didn't answer. Trying again tomorrow.": "Le registre des domaines n'a pas répondu. Nouvel essai demain.",
+    "Looking it up in the domain registry…": "Recherche dans le registre des domaines…", "Who links to them": "Qui fait un lien vers eux", "How they build pages": "Comment ils construisent leurs pages", "Facts read from the pages, not advice": "Des faits lus sur les pages, pas des conseils",
+    "This part didn't load. The rest still works.": "Cette partie n'a pas chargé. Le reste fonctionne.",
+    "Words per page": "Mots par page", "Title length": "Longueur du titre", "With a meta description": "Avec une méta-description", "Structured data": "Données structurées",
+    "With questions in headings": "Avec des questions dans les titres", "With a video": "Avec une vidéo", "Duplicate titles": "Titres en double", "Hidden (noindex)": "Masquées (noindex)",
+    "In the sitemap": "Dans le sitemap", "Built with": "Construit avec", "Images without alt text": "Images sans texte alternatif", "Internal links per page": "Liens internes par page",
+    "Languages (hreflang)": "Langues (hreflang)", "With a table": "Avec un tableau",
   });
 
   bind();

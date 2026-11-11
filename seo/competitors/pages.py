@@ -64,10 +64,10 @@ def contains_phrase(haystack: str, phrase: str) -> bool:
 
 def clean_page_url(url: str, site_host: str) -> str:
     if not isinstance(url, str):
-        raise Refused("That doesn't look like a web address.")
+        raise Refused("Not a web address.")
     normal = canonical_url(url if "://" in url else f"https://{url}")
     if not normal:
-        raise Refused("That doesn't look like a web address.")
+        raise Refused("Not a web address.")
     if not on_host(host_and_domain(normal)[0], site_host):
         raise Refused(f"That page isn't on {site_host}.")
     return normal

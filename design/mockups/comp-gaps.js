@@ -11,6 +11,8 @@
   const t = (s) => UI.t(s);
   const esc = (v) => UI.esc(v);
   const onScreen = () => UI.state.route === "competitors" && COMP.tab === "gaps";
+  // An empty state with the short line on screen and the reason behind an (i) right after it.
+  const emptyTip = (title, text, tip, action = "") => COMP.empty(title, text, action).replace("</p>", () => `${UI.tip(tip)}</p>`);
 
   /* The server's own sentences, in the language on screen. Headers and limits inside them change. */
   const serverWords = (message) => {
@@ -168,7 +170,7 @@
   const pickable = () => TP.view(PAGES, shownGaps()).rows.filter(canPick); // only rows on this page: "Select all shown" means shown
 
   // The rules of the list sit behind an (i) beside its buttons, not in a box over the table.
-  const INTRO = "Spam is flagged first, and only the good ones can be added. Nothing is removed. It comes from files you upload and domains you add by hand: no paid tool, no AI. Adding a domain doesn't create a backlink, and doesn't change the Backlinks top cards.";
+  const INTRO = "Spam is flagged, never removed, and only good ones can be added. From your uploads and domains added by hand: no paid tool, no AI. Adding a domain creates no backlink and leaves the Backlinks top cards alone.";
 
 
   /* A site shown by its logo alone; its name comes on hover or focus and is read out by a screen reader. */
@@ -181,8 +183,8 @@
     const stat = (n, label) => `<span class="cg-stat"><b class="tabular">${UI.num(n)}</b> ${t(label)}</span>`;
     const stats = f && f.found ? `${stat(f.found, "Domains found")}${stat(f.filtered, "Flagged as spam")}${stat(f.good, "Good ones")}` : "";
     const goodSent = allRows().filter((g) => !isFlagged(g)).length;
-    const capped = f && f.good > goodSent ? `<span class="cg-stat sec">${esc(t("The {sent} with the most competitors are listed, of {total}.").replace("{sent}", UI.num(goodSent)).replace("{total}", UI.num(f.good)))}</span>` : "";
-    const checking = f?.checking ? `<span class="cg-stat sec">${UI.icon("refresh-cw", "spin")}<b class="tabular">${UI.num(f.checking)}</b> ${t("Still being checked")}</span>` : "";
+    const capped = f && f.good > goodSent ? `<span class="cg-stat sec">${esc(t("{sent} of {total}, most competitors first").replace("{sent}", UI.num(goodSent)).replace("{total}", UI.num(f.good)))}</span>` : "";
+    const checking = f?.checking ? `<span class="cg-stat sec">${UI.icon("refresh-cw", "spin")}<b class="tabular">${UI.num(f.checking)}</b> ${t("Being checked")}</span>` : "";
     // A competitor with nothing yet is named here, with the way to feed it.
     const empty = d.competitors.some((c) => c.has_data) ? d.competitors.filter((c) => !c.has_data) : [];
     const rest = empty.slice(LOGOS_SHOWN);
@@ -200,7 +202,7 @@
 
   /* The competitor choice. A native list can't show pictures, so it's a button and a menu, each competitor with its logo and its count. */
   function competitorPick(base, rivals, countFor) {
-    S.choices = [{ id: "", host: null, word: t("All competitors, together"), n: base.length }, ...rivals.map((c) => ({ id: String(c.id), host: c.host, word: c.host, n: countFor(c.id) }))];
+    S.choices = [{ id: "", host: null, word: t("All competitors"), n: base.length }, ...rivals.map((c) => ({ id: String(c.id), host: c.host, word: c.host, n: countFor(c.id) }))];
     const on = S.choices.find((c) => c.id === (S.filter || "")) || S.choices[0];
     return `<div class="field"><span id="cg-filter-label">${t("Competitor")}</span><button type="button" class="select cg-pick" id="cg-filter" data-pop-toggle aria-haspopup="true" aria-expanded="false" aria-labelledby="cg-filter-label cg-filter">${choiceFace(on)}</button></div>`;
   }
@@ -212,20 +214,27 @@
     menu.style.minWidth = `${Math.max(240, anchor.offsetWidth)}px`;
   }
 
+  /* Whose scale a score is on: the tool's logo alone, the full label ("Authority Score (SEMrush)") on hover.
+     A source with no logo (a plain CSV, a tool typed by hand) keeps its name in a small tag. */
+  const scaleOf = (label) => label.match(/\(([^)]+)\)/)?.[1] || label;
+  const scaleMark = (label) => {
+    const brand = scaleOf(label);
+    return window.BRANDS?.FILES?.[brand] ? UI.logoOnly(brand, label) : `<span class="tag" data-tip="${esc(label)}" tabindex="0">${esc(brand)}</span>`;
+  };
   const authorityCell = (gap) => {
-    // One line per row: the value and whose scale it is. The full name stays on the tag.
+    // One line per row: the value and whose scale it is. The full name stays on hover.
     const label = gap.authority_label || "";
-    if (gap.authority !== null && gap.authority !== undefined) return `<span class="cg-auth"><span class="tabular">${UI.num(gap.authority)}</span>${label ? `<span class="tag" data-tip="${esc(label)}" tabindex="0">${esc(label.match(/\(([^)]+)\)/)?.[1] || label)}</span>` : ""}${gap.authority_by_hand ? `<span class="cg-by-hand" data-tip="${t("Typed by hand")}" tabindex="0" role="img" aria-label="${t("Typed by hand")}">${UI.icon("pencil")}</span>` : ""}</span>`;
+    if (gap.authority !== null && gap.authority !== undefined) return `<span class="cg-auth"><span class="tabular">${UI.num(gap.authority)}</span>${label ? scaleMark(label) : ""}${gap.authority_by_hand ? `<span class="cg-by-hand" data-tip="${t("Typed by hand")}" tabindex="0" role="img" aria-label="${t("Typed by hand")}">${UI.icon("pencil")}</span>` : ""}</span>`;
     // Common Crawl's rank is a different scale, so it's never shown as if it were a score.
-    return `<span class="muted" title="${esc(t("No authority score for this domain yet."))}">—</span>`; // unknown is —, with the reason on hover, as everywhere in Competitors. An old Common Crawl rank isn't a score: left out since that source was removed.
+    return `<span class="muted" title="${esc(t("No authority score yet."))}">—</span>`; // unknown is —, with the reason on hover, as everywhere in Competitors. An old Common Crawl rank isn't a score: left out since that source was removed.
   };
   const dash = (why) => `<span class="muted" title="${esc(t(why))}">—</span>`;
   const linkTotal = (gap, links) => (S.filter ? links.length : Math.max(gap.link_count || 0, links.length));
-  const paCell = (gap) => { const pa = bestPa(gap); return isSet(pa) ? `<span class="tabular" tabindex="0" data-tip="${t("Page Authority of the linking page")}">${UI.num(pa)}</span>` : dash("The file for this domain had no link details."); };
+  const paCell = (gap) => { const pa = bestPa(gap); return isSet(pa) ? `<span class="tabular" tabindex="0" data-tip="${t("Page Authority of the linking page")}">${UI.num(pa)}</span>` : dash("No link details in the file."); };
   /* The row shows one anchor on one line, whole on hover. The button opens all the domain's links under the row. */
   function anchorCell(gap) {
     const links = linksOf(gap);
-    if (!links.length) return dash("The file for this domain had no link details.");
+    if (!links.length) return dash("No link details in the file.");
     const top = topLink(gap), total = linkTotal(gap, links), open = S.openLink === gap.domain;
     const anchor = top.anchor ? `<span class="cg-anchor" dir="auto" tabindex="0" data-tip="${esc(top.anchor)}">${esc(top.anchor)}</span>` : `<span class="cg-anchor muted">${t("No anchor text")}</span>`;
     const word = total === 1 ? t("1 link") : t("{n} links").replace("{n}", UI.num(total));
@@ -250,7 +259,7 @@
     if (S.linkSort) links = sortBy(links, LINK_SORTS[S.linkSort.id], S.linkSort.dir);
     const page = TP.view(LINK_PAGES, links), total = linkTotal(gap, links);
     const head = (id, label, cls) => sortHead("data-cg-link-sort", S.linkSort, id, label, cls);
-    const capped = total > links.length ? `<p class="small sec cg-links-capped">${esc(t("The {shown} strongest of {total} are listed.").replace("{shown}", UI.num(links.length)).replace("{total}", UI.num(total)))}</p>` : "";
+    const capped = total > links.length ? `<p class="small sec cg-links-capped">${esc(t("{shown} of {total}, strongest first").replace("{shown}", UI.num(links.length)).replace("{total}", UI.num(total)))}</p>` : "";
     return `<tr class="cg-links-row"><td colspan="9"><div class="cg-links-panel">
       <table class="data cg-links-table" aria-label="${esc(t("Links from {domain}").replace("{domain}", gap.display || gap.domain))}">
         <thead><tr>${head("anchor", "Anchor text")}${head("pa", "Page Authority", "c")}${head("from", "Linking page")}${head("to", "Points to")}</tr></thead>
@@ -259,19 +268,19 @@
       ${links.length > TP.PER[0] ? TP.footer(LINK_PAGES, page, { noun: t("links") }) : ""}${capped}
     </div></td></tr>`;
   }
-  const spamCell = (gap) => (gap.spam_score === null || gap.spam_score === undefined ? `<span class="muted" title="${esc(t("No spam score for this domain yet."))}">—</span>` : `<span class="tabular">${UI.dec(gap.spam_score)}</span>`);
+  const spamCell = (gap) => (gap.spam_score === null || gap.spam_score === undefined ? `<span class="muted" title="${esc(t("No spam score yet."))}">—</span>` : `<span class="tabular">${UI.dec(gap.spam_score)}</span>`);
 
   function rowHtml(gap) {
     const flagged = isFlagged(gap), considered = inConsideration(gap) || Boolean(gap.in_todo), picked = S.picked.has(gap.domain);
     const tags = [
       flagged ? `<span class="tag cg-flag">${UI.icon("ban")}${t("Spam")}</span>` : "",
-      gap.lost_link ? `<span class="tag cg-lost">${UI.icon("link-2-off")}${t("You lost this link")}</span>` : "",
+      gap.lost_link ? `<span class="tag cg-lost">${UI.icon("link-2-off")}${t("Lost link")}</span>` : "",
       gap.in_todo ? `<span class="tag cp-yours cg-todo-tag">${UI.icon("clock")}${t("In To do")}</span>` : considered ? `<span class="tag cp-yours">${t("In consideration")}</span>` : "",
-      gap.is_competitor ? `<span class="tag">${t("One of your competitors")}</span>` : "",
-      gap.kept ? `<span class="tag">${t("You said it isn't spam")}</span>` : "",
-      gap.page_note === "unread" ? `<span class="tag" data-tip="${t("The site turned the app away, so its home page wasn't checked. That doesn't make it spam.")}">${t("Home page not read")}</span>` : "",
+      gap.is_competitor ? `<span class="tag">${t("Competitor")}</span>` : "",
+      gap.kept ? `<span class="tag">${t("Kept by you")}</span>` : "",
+      gap.page_note === "unread" ? `<span class="tag" data-tip="${t("The site blocked the app; that doesn't make it spam.")}">${t("Home page not read")}</span>` : "",
     ].filter(Boolean).join(" ");
-    const why = flagged ? `<span class="second cg-why">${esc(COMP.spamWhy(gap))}</span>` : "";
+    const why = flagged ? `<span class="second cg-why">${COMP.spamWhyHtml(gap)}</span>` : "";
     const word = gap.reason === "my_choice" ? "Undo" : "Not spam";
     const action = flagged
       ? `<button class="btn btn-small" data-cg-decide="${gap.reason === "my_choice" ? "auto" : "keep"}" data-domain="${esc(gap.domain)}" aria-label="${t(word)}: ${esc(gap.display || gap.domain)}">${t(word)}</button>`
@@ -280,7 +289,7 @@
     return `<tr data-cg-row="${esc(gap.domain)}" class="${picked ? "sel" : ""} ${open ? "open" : ""} ${considered || flagged ? "cg-off" : ""} ${flagged ? "cg-flagged" : ""}">
       <td class="chk-cell"><input type="checkbox" class="chk" data-cg-pick="${esc(gap.domain)}" aria-label="${esc(gap.display || gap.domain)}" ${picked ? "checked" : ""} ${considered || flagged ? "disabled" : ""}></td>
       <td class="head-cell"><span class="with-logo">${UI.siteLogo(gap.domain)}<span class="logo-text"><span class="nb-inline"><span class="kw mono" dir="auto">${esc(gap.display || gap.domain)}</span>${gap.sample_url ? `<a class="icon-btn cg-example-link" href="${esc(gap.sample_url)}" target="_blank" rel="noopener noreferrer nofollow" data-tip="${esc(t("Example link"))}: ${esc(COMP.shortUrl(gap.sample_url))}" aria-label="${esc(t("Example link"))}: ${esc(COMP.shortUrl(gap.sample_url))}">${UI.icon("external-link")}</a>` : ""}${COMP.notes?.badge ? COMP.notes.badge({ scope: "domain", domain: gap.domain, siteId: COMP.siteId ?? null }, gap.display || gap.domain) : ""}</span>${gap.title ? `<span class="second cg-title" dir="auto">${esc(gap.title)}</span>` : ""}</span></span></td>
-      <td data-label="${t("Links to")}"><span class="cg-rivals"><b class="tabular cg-count" tabindex="0" data-tip="${t("How many of your competitors it links to")}">${UI.num(gap.competitor_count)}</b><span class="cg-logos">${gap.competitors.map((c) => logoOnly(c.host, 20)).join("")}</span></span></td>
+      <td data-label="${t("Links to")}"><span class="cg-rivals"><b class="tabular cg-count" tabindex="0" data-tip="${t("Competitors it links to")}">${UI.num(gap.competitor_count)}</b><span class="cg-logos">${gap.competitors.map((c) => logoOnly(c.host, 20)).join("")}</span></span></td>
       <td class="c" data-label="${t("Authority")}">${authorityCell(gap)}</td>
       <td class="c" data-label="${t("Spam score")}">${spamCell(gap)}</td>
       <td class="c" data-label="${t("Page Authority")}">${paCell(gap)}</td>
@@ -318,8 +327,8 @@
   function reachField() {
     const rows = searched().filter((g) => ofRival(g) && strongEnough(g));
     const most = allRows().reduce((top, g) => Math.max(top, g.competitor_count), Number(S.reach) || 0);
-    const choices = [["any", t("Any number of them")], ["1", t("Only 1 of them")]];
-    for (let n = 2; n <= most; n += 1) choices.push([String(n), t("{n} or more of them").replace("{n}", UI.num(n))]);
+    const choices = [["any", t("Any number")], ["1", t("Only 1")]];
+    for (let n = 2; n <= most; n += 1) choices.push([String(n), t("{n} or more").replace("{n}", UI.num(n))]);
     return `<label class="field cg-reach"><span>${t("Links to")}</span><select class="select" id="cg-reach">${choices.map(([id, word]) => `<option value="${id}" ${id === S.reach ? "selected" : ""}>${esc(word)} (${UI.num(rows.filter((g) => reachOk(g, id)).length)})</option>`).join("")}</select></label>`;
   }
 
@@ -327,16 +336,16 @@
     const d = S.data;
     if (!d) return COMP.loading();
     if (!d.competitors.length) {
-      return COMP.empty(t("No competitors yet"), t("Link gaps show who links to your competitors but not to you. Add a competitor first."), `<button class="btn btn-main" data-cg-find>${UI.icon("search")}${t("Find competitors")}</button>`);
+      return emptyTip(t("No competitors yet"), t("Add a competitor first."), "Link gaps show who links to your competitors but not to you.", `<button class="btn btn-main" data-cg-find>${UI.icon("search")}${t("Find competitors")}</button>`);
     }
     const strip = summaryLine(d);
     const left = d.already_linking ? `<p class="help cg-left">${esc(leftOutWords(d.already_linking))}</p>` : "";
     if (!d.competitors.some((c) => c.has_data)) {
-      return `${strip}${COMP.empty(t("No links yet"), t("Upload a CSV of links to one of your competitors, from a free SEMrush or Ubersuggest account, or add a domain by hand. The domains that don't link to you appear here, with spam flagged."), `<button class="btn btn-main" id="cg-up-empty" data-cg-upload="${d.competitors[0].id}">${UI.icon("list-plus")}${t("Upload a CSV")}</button><button class="btn" data-cg-add-domain>${UI.icon("plus")}${t("Add a domain")}</button>`)}`;
+      return `${strip}${emptyTip(t("No links yet"), t("Upload a CSV of a competitor's links, or add a domain."), "Export the CSV from a free SEMrush or Ubersuggest account. Domains that don't link to you appear here, with spam flagged.", `<button class="btn btn-main" id="cg-up-empty" data-cg-upload="${d.competitors[0].id}">${UI.icon("list-plus")}${t("Upload a CSV")}</button><button class="btn" data-cg-add-domain>${UI.icon("plus")}${t("Add a domain")}</button>`)}`;
     }
     if (!allRows().length) {
       const checking = d.funnel?.checking;
-      return `${strip}${checking ? COMP.empty(t("Checking for spam"), t("Domains appear here as their home pages are read."), uploadButton(d, "btn")) : COMP.empty(t("No domains left"), t("Every domain already links to you, or is one of your own."), uploadButton(d, "btn"))}${left}`;
+      return `${strip}${checking ? COMP.empty(t("Checking for spam"), t("Domains appear as their home pages are read."), uploadButton(d, "btn")) : COMP.empty(t("No domains left"), t("All already link to you or are yours."), uploadButton(d, "btn"))}${left}`;
     }
     const shown = shownGaps(), open = pickable(), page = TP.view(PAGES, shown);
     const all = open.length > 0 && open.every((g) => S.picked.has(g.domain));
@@ -352,7 +361,7 @@
         ${competitorPick(base, rivals, countFor)}
         ${reachField()}
         <label class="field"><span>${t("Page Authority")}</span><select class="select" id="cg-pa">
-          <option value="">${t("Any Page Authority")}</option>
+          <option value="">${t("Any")}</option>
           ${PA_STEPS.map((n) => `<option value="${n}" ${String(n) === S.pa ? "selected" : ""}>${esc(t("{n} or more").replace("{n}", UI.num(n)))}</option>`).join("")}
         </select></label>
         <div class="chips cp-chips" role="group" aria-label="${t("Flagged as spam")}">
@@ -373,7 +382,7 @@
         <tbody>${page.rows.map(rowHtml).join("")}</tbody>
       </table></div>
       ${TP.footer(PAGES, page, { noun: t("domains") })}
-      </div>` : COMP.empty(t("Nothing to show with these filters"), t("Change the filters above to see more domains."))}
+      </div>` : COMP.empty(t("Nothing matches these filters"), t("Change the filters to see more."))}
       ${left}
       <div id="cg-selbar">${selectionBar()}</div>`;
   }
@@ -454,7 +463,11 @@
   let editing = null; // { gap, rivals, refresh } while the panel is open
   const rivalsOf = (gap) => gap.rivals || gap.competitors || [];
   const autoWords = (gap) => {
-    if (gap.auto_authority !== null && gap.auto_authority !== undefined) return `${t("From your files")}: ${UI.num(gap.auto_authority)}${gap.auto_authority_label ? ` · ${esc(gap.auto_authority_label.match(/\(([^)]+)\)/)?.[1] || gap.auto_authority_label)}` : ""}`;
+    if (gap.auto_authority !== null && gap.auto_authority !== undefined) {
+      const label = gap.auto_authority_label || "", brand = label && scaleOf(label);
+      const source = !label ? "" : window.BRANDS?.FILES?.[brand] ? ` ${UI.logoOnly(brand, label)}` : ` · ${esc(brand)}`;
+      return `${t("From your files")}: ${UI.num(gap.auto_authority)}${source}`;
+    }
     if (gap.top_percent) return `${t("From Common Crawl")}: ${t("Top")} ${UI.dec(gap.top_percent)}%`;
     return t("No score from a file yet");
   };
@@ -462,24 +475,24 @@
     editing = { gap, rivals, refresh };
     const typed = gap?.edit || {}, name = gap ? gap.display || gap.domain : "", ticked = new Set(gap ? rivalsOf(gap).map((r) => r.id) : rivals.length === 1 ? [rivals[0].id] : []);
     const shownRivals = gap ? [...rivals, ...rivalsOf(gap).filter((r) => !rivals.some((x) => x.id === r.id))] : rivals;
-    const head = gap ? UI.panelHead(t("Edit this domain"), `<span class="mono" dir="auto">${esc(name)}</span>`, UI.siteLogo(gap.domain, 34)) : UI.panelHead(t("Add a domain"), t("One you found in a tool that isn't connected here."));
+    const head = gap ? UI.panelHead(t("Edit domain"), `<span class="mono" dir="auto">${esc(name)}</span>`, UI.siteLogo(gap.domain, 34)) : UI.panelHead(t("Add a domain"), t("Found in a tool not connected here"));
     UI.openPanel(`${head}
       <div class="panel-body"><form id="cg-edit-form" novalidate>
-        ${gap ? `<p class="small sec cg-edit-intro">${t("Type what you read in a tool that isn't connected here. Later uploads never change it.")}</p>` : ""}
+        ${gap ? `<p class="small sec cg-edit-intro">${t("From a tool not connected here. Uploads never overwrite it.")}</p>` : ""}
         <div id="cg-edit-error"></div>
         ${gap ? "" : `<label class="field"><span>${t("Domain or link")} <span class="req">*</span></span><input class="input mono" id="cg-edit-domain" placeholder="example.com" maxlength="2048" autocomplete="off" dir="auto" data-autofocus></label>`}
         <div class="field-row">
           <label class="field"><span>${t("Authority score, 0 to 100")}</span><input class="input tabular" type="number" id="cg-edit-score" min="0" max="100" step="1" value="${typed.authority ?? ""}" ${gap ? "data-autofocus" : ""}></label>
-          <label class="field"><span>${t("Which tool")}</span><input class="input" id="cg-edit-tool" value="${esc(typed.authority_label || "")}" list="cg-edit-tools" maxlength="120" autocomplete="off"><datalist id="cg-edit-tools">${TOOL_NAMES.map((tool) => `<option value="${esc(tool)}"></option>`).join("")}</datalist></label>
+          <label class="field"><span>${t("Tool")}</span><input class="input" id="cg-edit-tool" value="${esc(typed.authority_label || "")}" list="cg-edit-tools" maxlength="120" autocomplete="off"><datalist id="cg-edit-tools">${TOOL_NAMES.map((tool) => `<option value="${esc(tool)}"></option>`).join("")}</datalist></label>
         </div>
         ${gap ? `<p class="help cg-edit-auto">${autoWords(gap)}</p>` : ""}
         <fieldset class="cg-edit-rivals"><legend>${t("Links to")}</legend>
           ${shownRivals.map((r) => `<label class="opt"><input type="checkbox" class="chk" data-cg-edit-rival="${r.id}" style="margin:0" ${ticked.has(r.id) ? "checked" : ""}><span class="mono small" dir="auto">${esc(r.host)}</span></label>`).join("")}
         </fieldset>
         <label class="field"><span>${t("Example link")}</span><input class="input mono" type="url" id="cg-edit-url" value="${esc(typed.sample_url || "")}" placeholder="${esc(gap ? gap.sample_url || `https://${gap.domain}/` : "https://example.com/page")}" maxlength="2048" autocomplete="off" dir="auto"></label>
-        ${typed.at ? `<p class="help">${t("Last edited")} ${esc(UI.fmtDateOnly(typed.at))}${typed.by ? ` · <span dir="auto">${esc(typed.by)}</span>` : ""}</p>` : ""}
+        ${typed.at ? `<p class="help">${t("Edited")} ${esc(UI.fmtDateOnly(typed.at))}${typed.by ? ` · <span dir="auto">${esc(typed.by)}</span>` : ""}</p>` : ""}
       </form></div>
-      <div class="panel-foot"><button class="btn btn-main" id="cg-edit-save">${t(gap ? "Save" : "Add")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button>${gap?.edit ? `<button class="btn btn-ghost ${gap.edit.hand_only ? "danger" : ""}" id="cg-edit-reset">${t(gap.edit.hand_only ? "Remove this domain" : "Back to automatic data")}</button>` : ""}</div>`,
+      <div class="panel-foot"><button class="btn btn-main" id="cg-edit-save">${t(gap ? "Save" : "Add")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button>${gap?.edit ? `<button class="btn btn-ghost ${gap.edit.hand_only ? "danger" : ""}" id="cg-edit-reset">${t(gap.edit.hand_only ? "Remove domain" : "Back to automatic")}</button>` : ""}</div>`,
     opener, { key: `gap-edit|${gap ? gap.domain : "new"}`, reopen: () => COMP.editGap(gap, rivals, opener, refresh) });
   };
   const editError = (words) => {
@@ -495,7 +508,7 @@
     const before = new Set(gap ? rivalsOf(gap).map((r) => r.id) : []);
     const boxes = UI.$$("[data-cg-edit-rival]"), chosen = boxes.filter((box) => box.checked).map((box) => Number(box.dataset.cgEditRival));
     if (!gap && !UI.$("#cg-edit-domain").value.trim()) { editError("Say which domain."); UI.$("#cg-edit-domain").focus(); return; }
-    if (!chosen.length) { editError(gap ? "A domain needs at least one competitor. To hide it, mark it as spam." : "Tick at least one competitor this domain links to."); return; }
+    if (!chosen.length) { editError(gap ? "A domain needs at least one competitor. To hide it, mark it as spam." : "Pick a competitor."); return; }
     button.disabled = true;
     let added = null;
     try {
@@ -517,8 +530,8 @@
   }
   /* A domain can be added and still not show in the list, so the message says why. */
   function sayDomainAdded(answer) {
-    const words = [`${answer.domain}: ${t(answer.existing ? "already on the list, so this was added to it" : "added")}.`];
-    if (answer.flagged) words.push(t("Its name looks like spam, so it's with the flagged ones."));
+    const words = [`${answer.domain}: ${t(answer.existing ? "already listed, so it was updated" : "added")}.`];
+    if (answer.flagged) words.push(t("Its name looks like spam, so it's flagged."));
     if (answer.links_to.length) words.push(`${t("It already links to")} ${answer.links_to.join(", ")}, ${t("so it's left out there.")}`);
     UI.toast(words.join(" "), { kind: answer.flagged || answer.links_to.length ? "info" : undefined });
   }
@@ -535,7 +548,7 @@
     UI.forgetPanelForm();
     UI.closePanel();
     await afterEdit(refresh);
-    UI.toast(`${gap.display || gap.domain}: ${t(was.hand_only ? "removed" : "back to automatic data")}`, { undo: async () => {
+    UI.toast(`${gap.display || gap.domain}: ${t(was.hand_only ? "removed" : "back to automatic")}`, { undo: async () => {
       const again = { domain: gap.domain, authority: was.authority, authority_label: was.authority_label || "", sample_url: was.sample_url || "" };
       await (was.hand_only
         ? COMP.api("POST", "link-gaps/add-domain", { ...again, competitors: was.added })
@@ -580,7 +593,7 @@
       <form class="panel-body" id="cg-todo-form" novalidate>
         <label class="field"><span>${t("Mediator")} <span class="req">*</span></span><input class="input" id="cg-todo-mediator" list="cg-todo-mediators" dir="auto" data-autofocus aria-describedby="cg-todo-error" maxlength="180"><datalist id="cg-todo-mediators">${names.map((name) => `<option value="${esc(name)}"></option>`).join("")}</datalist><div id="cg-todo-error"></div></label>
         <label class="field"><span>${t("Link type")}</span><input class="input" id="cg-todo-type" list="cg-todo-types" dir="auto" value="Guest post" maxlength="100"><datalist id="cg-todo-types">${LINK_TYPES.map((name) => `<option value="${esc(name)}"></option>`).join("")}</datalist></label>
-        <p class="help">${t("They skip In consideration and go straight to Backlinks → To do. You add each article's Google Docs link there.")}</p>
+        <p class="help">${t("Straight to Backlinks → To do, skipping In consideration. Add each article's Google Docs link there.")}</p>
       </form>
       <div class="panel-foot"><button class="btn btn-main" id="cg-todo-save">${t("Add to To do")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button></div>`, opener);
   }
@@ -612,7 +625,7 @@
       button.disabled = false;
       updateSelection();
       // Added but not moved: they are in consideration, and the words say so.
-      say(ids.length ? `${t("They're in In consideration, but couldn't go to To do")}: ${err.message}` : err.message);
+      say(ids.length ? `${t("Added to In consideration, not To do")}: ${err.message}` : err.message);
       await COMP.reload({ quiet: true });
       return;
     }
@@ -627,7 +640,7 @@
     UI.$("#cg-all")?.focus({ preventScroll: true });
     const n = made.length;
     // A domain already in Backlinks (a lost link, say) can't be logged twice: it stays in In consideration, and the words say so.
-    const words = `${UI.num(n)} ${t(n === 1 ? "domain added to To do" : "domains added to To do")}${logged ? `. ${UI.num(logged)} ${t(logged === 1 ? "is already in your Backlinks, so it stays in In consideration" : "are already in your Backlinks, so they stay in In consideration")}` : ""}${skipped.length ? `. ${UI.num(skipped.length)} ${t("skipped")}` : ""}`;
+    const words = `${UI.num(n)} ${t(n === 1 ? "domain added to To do" : "domains added to To do")}${logged ? `. ${UI.num(logged)} ${t(logged === 1 ? "is already in Backlinks: kept in In consideration" : "are already in Backlinks: kept in In consideration")}` : ""}${skipped.length ? `. ${UI.num(skipped.length)} ${t("skipped")}` : ""}`;
     const toast = UI.toast(words, n ? { undo: () => undoTodo(made), stay: Boolean(logged) } : { kind: "info", stay: Boolean(logged) });
     if (!n && !logged) return;
     const see = document.createElement("button");
@@ -688,7 +701,7 @@
     S.picked.delete(domain);
     await COMP.reload({ quiet: true });
     if (decision === "auto") return;
-    UI.toast(decision === "keep" ? `${domain}: ${t("not spam. You can add it now.")}` : `${domain}: ${t("marked as spam. It can't be added.")}`, { kind: "info", undo: async () => {
+    UI.toast(decision === "keep" ? `${domain}: ${t("not spam: ready to add")}` : `${domain}: ${t("marked as spam, can't be added")}`, { kind: "info", undo: async () => {
       await COMP.api("POST", "link-gaps/decide", { site_id: COMP.siteId, domain, decision: "auto" }).catch(COMP.fail);
       await reloadHere();
     } });
@@ -718,14 +731,14 @@
 
   // ---- the upload dialog ------------------------------------------------------------------------
   let uploadOpener = null;
-  const dialogHead = () => `<div class="dlg-head"><h2 id="dlg-title">${t("Upload links for a competitor")}</h2><button class="icon-btn" data-close-dlg aria-label="${t("Close")}">${UI.icon("x")}</button></div>`;
+  const dialogHead = () => `<div class="dlg-head"><h2 id="dlg-title">${t("Upload a competitor's links")}</h2><button class="icon-btn" data-close-dlg aria-label="${t("Close")}">${UI.icon("x")}</button></div>`;
 
   function uploadForm(competitorId, error = null) {
     const d = S.data;
     return `${dialogHead()}
       <div class="dlg-body">
-        <p class="small sec" style="margin-bottom:12px">${t("A CSV of links to this competitor, exported from a free SEMrush or Ubersuggest account. Needs a URL or domain column.")}</p>
-        <label class="field"><span>${t("Competitor")}</span><select class="select" id="cg-up-who" style="width:100%">${d.competitors.map((c) => `<option value="${c.id}" ${c.id === competitorId ? "selected" : ""}>${esc(c.host)} · ${t(c.has_file ? "A file uploaded" : c.has_data ? "Links already found" : "No file uploaded yet")}</option>`).join("")}</select></label>
+        <p class="small sec" style="margin-bottom:12px">${t("A CSV of this competitor's links from a free SEMrush or Ubersuggest account, with a URL or domain column.")}</p>
+        <label class="field"><span>${t("Competitor")}</span><select class="select" id="cg-up-who" style="width:100%">${d.competitors.map((c) => `<option value="${c.id}" ${c.id === competitorId ? "selected" : ""}>${esc(c.host)} · ${t(c.has_file ? "File uploaded" : c.has_data ? "Links found" : "No file yet")}</option>`).join("")}</select></label>
         <label class="field"><span>${t("File")}</span><input class="input" id="cg-up-file" type="file" accept=".csv,.tsv,.txt,text/csv"></label>
         <div id="cg-up-error">${error ? errorBox(error) : ""}</div>
       </div>
@@ -748,10 +761,10 @@
     UI.setHTML(UI.$("#dlg"), `${dialogHead()}
       <div class="dlg-body">
         <p class="small sec" style="margin-bottom:10px">${esc(t("Links to"))} <span class="mono" dir="auto">${esc(host)}</span>${answer.source_label ? ` · ${esc(answer.source_label)}` : ""}</p>
-        <div class="clean-sum">${stat("Rows in the file", answer.total)}${stat("Domains", answer.domains)}${stat("Flagged as spam", answer.flagged ?? answer.removed_spam ?? 0)}${stat("Rows with no address", answer.removed_no_url ?? 0)}</div>
-        <p class="note" style="margin:12px 0 0">${UI.icon("info")}<span>${t("Each domain's home page is read once next, and spam gets flagged. Nothing is removed, and only the good ones can be added.")}</span></p>
+        <div class="clean-sum">${stat("Rows", answer.total)}${stat("Domains", answer.domains)}${stat("Flagged as spam", answer.flagged ?? answer.removed_spam ?? 0)}${stat("No address", answer.removed_no_url ?? 0)}</div>
+        <p class="note" style="margin:12px 0 0">${UI.icon("info")}<span>${t("Next, each home page is read once to flag spam. Nothing is removed; only good ones can be added.")}</span></p>
       </div>
-      <div class="dlg-foot"><button class="btn btn-ghost" data-cg-another="${competitorId}" style="margin-right:auto">${t("Upload another file")}</button><button class="btn btn-main" id="cg-up-done" data-close-dlg>${t("Done")}</button></div>`);
+      <div class="dlg-foot"><button class="btn btn-ghost" data-cg-another="${competitorId}" style="margin-right:auto">${t("Upload another")}</button><button class="btn btn-main" id="cg-up-done" data-close-dlg>${t("Done")}</button></div>`);
     UI.$("#cg-up-done")?.focus();
   }
 
@@ -925,10 +938,10 @@
   };
   /* Plain-file mode can't read home pages, so it applies the name rules only. */
   const sampleNameReason = (domain) => {
-    if (/casino|poker|betting|porn|xxx|viagra|cialis|escort|backlink|linkfarm/.test(domain)) return ["name_words", "Spam words in its name", "system"];
+    if (/casino|poker|betting|porn|xxx|viagra|cialis|escort|backlink|linkfarm/.test(domain)) return ["name_words", "Spam words in name", "system"];
     const tld = domain.split(".").pop();
-    if (["tk", "ml", "ga", "cf", "gq"].includes(tld)) return ["free_tld", "A free domain ending that spammers favour", "system"];
-    if (["top", "click", "loan", "work", "bid", "win", "icu", "buzz"].includes(tld)) return ["abused_tld", "A domain ending known for abuse", "system"];
+    if (["tk", "ml", "ga", "cf", "gq"].includes(tld)) return ["free_tld", "Free domain ending spammers favour", "system"];
+    if (["top", "click", "loan", "work", "bid", "win", "icu", "buzz"].includes(tld)) return ["abused_tld", "Domain ending known for abuse", "system"];
     return null;
   };
   COMP.sampleWrite("POST link-gaps/decide", (match, body) => {
@@ -941,7 +954,7 @@
       report.gaps.unshift(row);
     } else if (body.decision === "spam" && inGood >= 0) {
       const [row] = report.gaps.splice(inGood, 1);
-      row.quality = "spam"; row.reason = "my_choice"; row.reason_words = "You marked it as spam"; row.flagged_by = "you"; row.manual = true;
+      row.quality = "spam"; row.reason = "my_choice"; row.reason_words = "Marked by you"; row.flagged_by = "you"; row.manual = true;
       report.filtered.unshift(row);
     } else if (body.decision === "auto") {
       if (inGood >= 0 && report.gaps[inGood].kept) {
@@ -996,11 +1009,11 @@
   const sampleTrackers = (id) => Object.keys(sample()).filter((key) => key.startsWith("link-gaps?") && sample()[key].competitors?.some((c) => c.id === id)).map((key) => Number(key.split("=")[1]));
   COMP.sampleWrite("POST link-gaps/add-domain", (match, body) => {
     const domain = window.BacklinkCleaner.rootDomain(body.domain || "");
-    if (!domain) throw new Error("That doesn't look like a web address.");
-    if (!body.competitors?.length) throw new Error("Tick at least one competitor this domain links to.");
+    if (!domain) throw new Error("Not a web address.");
+    if (!body.competitors?.length) throw new Error("Pick a competitor.");
     if (sampleOwnDomains().has(domain)) throw new Error("That's one of your own websites.");
     const score = body.authority, tool = (body.authority_label || "").trim();
-    if (score !== null && (!Number.isInteger(score) || score < 0 || score > 100)) throw new Error("The authority score goes from 0 to 100.");
+    if (score !== null && (!Number.isInteger(score) || score < 0 || score > 100)) throw new Error("Score must be 0 to 100.");
     if (score !== null && !tool) throw new Error("Say which tool this score comes from.");
     if (tool && score === null) throw new Error("Type the score from that tool too.");
     const reports = sampleReports(), rows = reports.flatMap((report) => sampleRows(report, domain));
@@ -1042,10 +1055,10 @@
   });
   COMP.sampleWrite("POST link-gaps/edit", (match, body) => {
     const score = body.authority, tool = (body.authority_label || "").trim(), url = body.sample_url || "";
-    if (score !== null && (!Number.isInteger(score) || score < 0 || score > 100)) throw new Error("The authority score goes from 0 to 100.");
+    if (score !== null && (!Number.isInteger(score) || score < 0 || score > 100)) throw new Error("Score must be 0 to 100.");
     if (score !== null && !tool) throw new Error("Say which tool this score comes from.");
     if (tool && score === null) throw new Error("Type the score from that tool too.");
-    if (url && !/^https?:\/\/\S+$/i.test(url)) throw new Error("That doesn't look like a web address.");
+    if (url && !/^https?:\/\/\S+$/i.test(url)) throw new Error("Not a web address.");
     if (url && window.BacklinkCleaner.rootDomain(url) !== body.domain) throw new Error(`That link isn't on ${body.domain}.`);
     sampleRewrite(body.domain, (row, hosts, report) => {
       const inScope = (id) => !report.competitors || report.competitors.some((c) => c.id === id);
@@ -1063,7 +1076,7 @@
   });
 
   COMP.sampleWrite("POST link-gaps/add", (match, body) => {
-    if (!Array.isArray(body.domains) || !body.domains.length) throw new Error("Pick at least one domain.");
+    if (!Array.isArray(body.domains) || !body.domains.length) throw new Error("Pick a domain.");
     const report = sampleGaps(body.site_id), added = [], skipped = [];
     [...new Set(body.domains)].forEach((domain) => {
       const gap = report.gaps.find((g) => g.domain === domain);
@@ -1096,7 +1109,7 @@
 
   COMP.sampleWrite("POST backlinks", (match, body) => {
     const domain = window.BacklinkCleaner.rootDomain(body.source_url);
-    if (!domain) throw new Error("That doesn't look like a web address.");
+    if (!domain) throw new Error("Not a web address.");
     const status = body.status || "live";
     const report = sampleGaps(body.site_id), at = report.gaps.findIndex((g) => g.domain === domain);
     if (at >= 0 && (status === "live" || status === "found")) { report.gaps.splice(at, 1); report.already_linking += 1; } // lost and planned don't link to me
@@ -1113,7 +1126,7 @@
     let rival = report.competitors.find((c) => c.id === competitorId);
     if (!rival) {
       const known = sample()[`competitors?site_id=${siteId}`]?.competitors.find((c) => c.id === competitorId);
-      if (!known) throw new Error("That competitor isn't on this website.");
+      if (!known) throw new Error("Competitor not found.");
       rival = { id: competitorId, host: known.host, has_data: false };
       report.competitors.push(rival);
     }
@@ -1129,7 +1142,7 @@
         gap = { authority: null, authority_label: null, competitor_count: 0, competitors: [], display: domain, domain, first_seen: new Date().toISOString(), in_consideration: false, is_competitor: false, lost_link: false, sample_url: row.url, sources: [], spam_score: null };
         // As on the server: the file's spam score decides when it has one, the name rules only when it doesn't.
         const fromFile = row.spam_score !== null && row.spam_score !== undefined;
-        const spam = fromFile ? (row.spam_score > window.BacklinkCleaner.SPAM_THRESHOLD ? ["spam_score", "Spam score above 30 in the uploaded file", "file"] : null) : sampleNameReason(domain);
+        const spam = fromFile ? (row.spam_score > window.BacklinkCleaner.SPAM_THRESHOLD ? ["spam_score", "File spam score above 30", "file"] : null) : sampleNameReason(domain);
         if (spam) {
           report.filtered = report.filtered || [];
           if (!report.filtered.some((g) => g.domain === domain)) report.filtered.push({ ...gap, quality: "spam", reason: spam[0], reason_words: spam[1], flagged_by: spam[2], authority: row.authority, authority_label: result.authority_label, spam_score: row.spam_score, sample_url: row.url, competitor_count: 1, competitors: [{ id: competitorId, host: rival.host }] });
@@ -1155,32 +1168,32 @@
 
   Object.assign(window.FR, {
     "Link gaps": "Liens manquants",
-    "Add a domain": "Ajouter un domaine", "One you found in a tool that isn't connected here.": "Un domaine trouvé dans un outil non connecté ici.", "Domain or link": "Domaine ou lien", "Remove this domain": "Retirer ce domaine", "removed": "retiré", "added": "ajouté",
-    "Say which domain.": "Indiquez quel domaine.", "Tick at least one competitor this domain links to.": "Cochez au moins un concurrent vers lequel ce domaine pointe.", "That's one of your own websites.": "C'est l'un de vos propres sites.", "That's the competitor itself.": "C'est le concurrent lui-même.",
-    "already on the list, so this was added to it": "déjà dans la liste : ces informations y ont été ajoutées", "Its name looks like spam, so it's with the flagged ones.": "Son nom ressemble à du spam : il est avec les domaines signalés.", "It already links to": "Il pointe déjà vers", "so it's left out there.": "il n'apparaît donc pas pour ce site.",
-    "How many of your competitors it links to": "Vers combien de vos concurrents il pointe",
-    "Edit this domain": "Modifier ce domaine", "Typed by hand": "Saisi à la main", "From your files": "D'après vos fichiers", "From Common Crawl": "D'après Common Crawl", "No score from a file yet": "Aucun score issu d'un fichier pour l'instant",
-    "Type what you read in a tool that isn't connected here. Later uploads never change it.": "Saisissez ce que vous lisez dans un outil non connecté ici. Les imports suivants ne le modifient jamais.",
-    "Authority score, 0 to 100": "Score d'autorité, de 0 à 100", "Which tool": "Quel outil", "Last edited": "Dernière modification", "Back to automatic data": "Revenir aux données automatiques", "back to automatic data": "retour aux données automatiques", "saved": "enregistré",
-    "A domain needs at least one competitor. To hide it, mark it as spam.": "Un domaine a besoin d'au moins un concurrent. Pour le masquer, marquez-le comme spam.", "The authority score goes from 0 to 100.": "Le score d'autorité va de 0 à 100.", "Say which tool this score comes from.": "Indiquez de quel outil vient ce score.", "Type the score from that tool too.": "Saisissez aussi le score de cet outil.",
-    "Spam is flagged first, and only the good ones can be added. Nothing is removed. It comes from files you upload and domains you add by hand: no paid tool, no AI. Adding a domain doesn't create a backlink, and doesn't change the Backlinks top cards.": "Le spam est signalé d'abord, et seuls les bons domaines peuvent être ajoutés. Rien n'est retiré. Les données viennent des fichiers que vous importez et des domaines ajoutés à la main : aucun outil payant, aucune IA. Ajouter un domaine ne crée pas de backlink et ne change pas les cartes du haut de la page Backlinks.",
-    "Flagged as spam": "Signalés comme spam", "Add all good ones": "Ajouter tous les bons", "Spam": "Spam", "Not spam": "Pas du spam", "You said it isn't spam": "Vous avez dit que ce n'est pas du spam", "not spam. You can add it now.": "pas du spam. Vous pouvez l'ajouter.", "Checking for spam": "Recherche de spam en cours", "Domains appear here as their home pages are read.": "Les domaines apparaissent ici à mesure que leurs pages d'accueil sont lues.", "No domains left": "Plus aucun domaine", "Every domain already links to you, or is one of your own.": "Chaque domaine pointe déjà vers vous, ou vous appartient.", "Rows with no address": "Lignes sans adresse", "Each domain's home page is read once next, and spam gets flagged. Nothing is removed, and only the good ones can be added.": "La page d'accueil de chaque domaine est ensuite lue une fois, et le spam est signalé. Rien n'est retiré, et seuls les bons domaines peuvent être ajoutés.",
-    "Spam filter": "Filtre anti-spam", "Domains found": "Domaines trouvés", "Filtered out as spam": "Retirés comme spam", "Still being checked": "Encore en vérification", "Reading home pages": "Lecture des pages d'accueil", "Good ones": "Bons domaines", "Add all": "Tout ajouter",
-    "Common Crawl": "Common Crawl", "No file uploaded yet": "Aucun fichier importé", "Links already found": "Liens déjà trouvés", "A file uploaded": "Un fichier importé", "domain": "domaine", "domains": "domaines", "Upload a CSV": "Importer un CSV",
+    "Add a domain": "Ajouter un domaine", "Found in a tool not connected here": "Trouvé dans un outil non connecté ici", "Domain or link": "Domaine ou lien", "Remove domain": "Retirer le domaine", "removed": "retiré", "added": "ajouté",
+    "Say which domain.": "Indiquez quel domaine.", "Pick a competitor.": "Choisissez un concurrent.", "That's one of your own websites.": "C'est l'un de vos propres sites.", "That's the competitor itself.": "C'est le concurrent lui-même.",
+    "already listed, so it was updated": "déjà dans la liste : mis à jour", "Its name looks like spam, so it's flagged.": "Son nom ressemble à du spam : il est signalé.", "It already links to": "Il pointe déjà vers", "so it's left out there.": "il n'apparaît donc pas pour ce site.",
+    "Competitors it links to": "Concurrents vers lesquels il pointe",
+    "Edit domain": "Modifier le domaine", "Typed by hand": "Saisi à la main", "From your files": "D'après vos fichiers", "From Common Crawl": "D'après Common Crawl", "No score from a file yet": "Aucun score issu d'un fichier pour l'instant",
+    "From a tool not connected here. Uploads never overwrite it.": "Depuis un outil non connecté ici. Les imports ne l'écrasent jamais.",
+    "Authority score, 0 to 100": "Score d'autorité, de 0 à 100", "Tool": "Outil", "Edited": "Modifié le", "Back to automatic": "Revenir à l'automatique", "back to automatic": "retour à l'automatique", "saved": "enregistré",
+    "A domain needs at least one competitor. To hide it, mark it as spam.": "Un domaine a besoin d'au moins un concurrent. Pour le masquer, marquez-le comme spam.", "Score must be 0 to 100.": "Le score doit être entre 0 et 100.", "Say which tool this score comes from.": "Indiquez de quel outil vient ce score.", "Type the score from that tool too.": "Saisissez aussi le score de cet outil.",
+    "Spam is flagged, never removed, and only good ones can be added. From your uploads and domains added by hand: no paid tool, no AI. Adding a domain creates no backlink and leaves the Backlinks top cards alone.": "Le spam est signalé, jamais retiré, et seuls les bons domaines peuvent être ajoutés. D'après vos imports et les domaines ajoutés à la main : aucun outil payant, aucune IA. Ajouter un domaine ne crée pas de backlink et ne touche pas aux cartes du haut de Backlinks.",
+    "Flagged as spam": "Signalés comme spam", "Add all good ones": "Ajouter tous les bons", "Spam": "Spam", "Not spam": "Pas du spam", "Kept by you": "Gardé par vous", "not spam: ready to add": "pas du spam : prêt à être ajouté", "Checking for spam": "Recherche de spam en cours", "Domains appear as their home pages are read.": "Les domaines apparaissent à mesure que leurs pages d'accueil sont lues.", "No domains left": "Plus aucun domaine", "All already link to you or are yours.": "Tous pointent déjà vers vous ou sont à vous.", "No address": "Sans adresse", "Next, each home page is read once to flag spam. Nothing is removed; only good ones can be added.": "Ensuite, chaque page d'accueil est lue une fois pour signaler le spam. Rien n'est retiré ; seuls les bons domaines peuvent être ajoutés.",
+    "Spam filter": "Filtre anti-spam", "Domains found": "Domaines trouvés", "Filtered out as spam": "Retirés comme spam", "Being checked": "En vérification", "Reading home pages": "Lecture des pages d'accueil", "Good ones": "Bons domaines", "Add all": "Tout ajouter",
+    "Common Crawl": "Common Crawl", "Links found": "Liens trouvés", "File uploaded": "Fichier importé", "domain": "domaine", "domains": "domaines", "Upload a CSV": "Importer un CSV",
     "It's free and needs no key. It finds domains only: no page or anchor text. It only sees the part of the web it crawled, so it finds fewer links than a paid tool. It runs on the Mac: about 11 GB passes through, about 7 minutes on your connection, and nothing big is kept.": "C'est gratuit et sans clé. Il ne trouve que des domaines : ni page ni texte d'ancre. Il ne voit que la partie du web qu'il a explorée : il trouve donc moins de liens qu'un outil payant. Il tourne sur le Mac : environ 11 Go transitent, environ 7 minutes avec votre connexion, et rien de lourd n'est conservé.",
-    "Top": "Top", "Common Crawl rank": "Classement Common Crawl", "You kept this": "Vous l'avez gardé", "Home page not read": "Page d'accueil non lue", "The site turned the app away, so its home page wasn't checked. That doesn't make it spam.": "Le site a refusé l'application : sa page d'accueil n'a pas été vérifiée. Cela n'en fait pas du spam.", "Mark as spam": "Marquer comme spam", "Why": "Pourquoi", "Keep it": "Le garder", "Undo": "Annuler", "See why each one went. A rule can be wrong.": "Voyez pourquoi chacun a été retiré. Une règle peut se tromper.", "Showing the first": "Affichage des", "of": "sur", "Action": "Action", "Show more": "Afficher plus",
-    "No links yet": "Aucun lien pour l'instant", "Upload a CSV of links to one of your competitors, from a free SEMrush or Ubersuggest account, or add a domain by hand. The domains that don't link to you appear here, with spam flagged.": "Importez un CSV de liens vers un de vos concurrents, depuis un compte SEMrush ou Ubersuggest gratuit, ou ajoutez un domaine à la main. Les domaines qui ne pointent pas vers vous apparaissent ici, avec le spam signalé.", "Filtering out spam": "Retrait du spam en cours", "The good domains appear here as their home pages are read.": "Les bons domaines apparaissent ici à mesure que leurs pages d'accueil sont lues.", "No good domains left": "Plus aucun bon domaine", "Every domain is filtered out as spam, already links to you, or is one of your own.": "Chaque domaine est retiré comme spam, pointe déjà vers vous, ou vous appartient.",
-    "kept. You can add it now.": "gardé. Vous pouvez l'ajouter.", "marked as spam. It can't be added.": "marqué comme spam. Il ne peut pas être ajouté.", "Spam is filtered next: each domain's home page is read once. Only the good ones can be added.": "Le spam est retiré ensuite : la page d'accueil de chaque domaine est lue une fois. Seuls les bons domaines peuvent être ajoutés.",
-    "Spam score above 30 in the uploaded file": "Score de spam supérieur à 30 dans le fichier importé", "Flagged by the system": "Signalé par le système", "Spam words in its name": "Mots de spam dans son nom", "A free domain ending that spammers favour": "Une extension gratuite prisée des spammeurs", "A domain ending known for abuse": "Une extension connue pour les abus", "A name no real site would pick": "Un nom qu'aucun vrai site ne choisirait", "Too far down Common Crawl's ranking": "Trop bas dans le classement Common Crawl", "Links out to thousands of sites, like a link farm": "Pointe vers des milliers de sites, comme une ferme de liens", "Thousands of subdomains, like a link farm": "Des milliers de sous-domaines, comme une ferme de liens", "Its home page doesn't exist": "Sa page d'accueil n'existe pas", "The site is down": "Le site est hors ligne", "Its home page leads to another website": "Sa page d'accueil mène à un autre site", "Parked or for sale": "Parqué ou à vendre", "Spam words on its home page": "Mots de spam sur sa page d'accueil", "Its home page is mostly links to other sites": "Sa page d'accueil n'est presque que des liens vers d'autres sites", "Almost nothing on its home page": "Presque rien sur sa page d'accueil", "Its home page is hidden from search engines": "Sa page d'accueil est cachée aux moteurs de recherche", "Its home page couldn't be read": "Sa page d'accueil n'a pas pu être lue", "You marked it as spam": "Vous l'avez marqué comme spam", "Filtered out": "Retiré",
+    "Top": "Top", "Common Crawl rank": "Classement Common Crawl", "You kept this": "Vous l'avez gardé", "Home page not read": "Page d'accueil non lue", "The site blocked the app; that doesn't make it spam.": "Le site a bloqué l'application ; cela n'en fait pas du spam.", "Mark as spam": "Marquer comme spam", "Why": "Pourquoi", "Keep it": "Le garder", "Undo": "Annuler", "See why each one went. A rule can be wrong.": "Voyez pourquoi chacun a été retiré. Une règle peut se tromper.", "Showing the first": "Affichage des", "of": "sur", "Action": "Action", "Show more": "Afficher plus",
+    "No links yet": "Aucun lien pour l'instant", "Upload a CSV of a competitor's links, or add a domain.": "Importez un CSV des liens d'un concurrent, ou ajoutez un domaine.", "Filtering out spam": "Retrait du spam en cours", "The good domains appear here as their home pages are read.": "Les bons domaines apparaissent ici à mesure que leurs pages d'accueil sont lues.", "No good domains left": "Plus aucun bon domaine", "Every domain is filtered out as spam, already links to you, or is one of your own.": "Chaque domaine est retiré comme spam, pointe déjà vers vous, ou vous appartient.",
+    "kept. You can add it now.": "gardé. Vous pouvez l'ajouter.", "marked as spam, can't be added": "marqué comme spam, impossible à ajouter", "Spam is filtered next: each domain's home page is read once. Only the good ones can be added.": "Le spam est retiré ensuite : la page d'accueil de chaque domaine est lue une fois. Seuls les bons domaines peuvent être ajoutés.",
+    "File spam score above 30": "Score de spam du fichier supérieur à 30", "Flagged by the system": "Signalé par le système", "Spam words in name": "Mots de spam dans le nom", "Free domain ending spammers favour": "Extension gratuite prisée des spammeurs", "Domain ending known for abuse": "Extension connue pour les abus", "Odd name": "Nom inhabituel", "Too far down Common Crawl's ranking": "Trop bas dans le classement Common Crawl", "Link farm: links to thousands of sites": "Ferme de liens : pointe vers des milliers de sites", "Link farm: thousands of subdomains": "Ferme de liens : des milliers de sous-domaines", "No home page": "Pas de page d'accueil", "Site down": "Site hors ligne", "Redirects to another site": "Redirige vers un autre site", "Parked or for sale": "Parqué ou à vendre", "Spam words on home page": "Mots de spam sur la page d'accueil", "Home page mostly outside links": "Page d'accueil surtout faite de liens sortants", "Near-empty home page": "Page d'accueil presque vide", "Home page hidden from search engines": "Page d'accueil cachée aux moteurs de recherche", "Couldn't read home page": "Page d'accueil impossible à lire", "Marked by you": "Marqué par vous", "Filtered out": "Retiré",
     "From files you upload. Nothing here calls a paid tool. Adding a domain doesn't create a backlink, and doesn't change the Backlinks top cards.": "À partir des fichiers que vous importez. Rien ici n'appelle un outil payant. Ajouter un domaine ne crée pas de backlink et ne change pas les cartes en haut de la page Backlinks.",
     "Where the links come from": "D'où viennent les liens",
     "Sources": "Sources", "No links yet for": "Pas encore de liens pour", "Add links": "Ajouter des liens",
     "Has a file": "Fichier importé",
     "No file yet": "Pas encore de fichier",
     "Upload links for this competitor": "Importer les liens de ce concurrent",
-    "Upload links for a competitor": "Importer les liens d'un concurrent",
-    "You lost this link": "Vous avez perdu ce lien",
-    "One of your competitors": "Un de vos concurrents",
+    "Upload a competitor's links": "Importer les liens d'un concurrent",
+    "Lost link": "Lien perdu",
+    
     "Links to": "Pointe vers",
     "Upload links": "Importer des liens", "Anchor text": "Texte d'ancre", "Linking page": "Page qui fait le lien", "1 link": "1 lien", "{n} links": "{n} liens", "links": "liens", "Links from {domain}": "Liens de {domain}",
     "Page Authority": "Page Authority",
@@ -1188,54 +1201,54 @@
     "No anchor text": "Pas de texte d'ancre",
     "Points to": "Pointe vers",
     "{n} or more": "{n} ou plus",
-    "Any Page Authority": "Toutes",
-    "The {shown} strongest of {total} are listed.": "Les {shown} plus fortes sur {total} sont affichées.",
-    "The file for this domain had no link details.": "Le fichier de ce domaine ne donnait pas le détail des liens.",
+    
+    "{shown} of {total}, strongest first": "{shown} sur {total}, les plus forts d'abord",
+    "No link details in the file.": "Pas de détail des liens dans le fichier.",
     "How many": "Combien",
     "Example link": "Exemple de lien",
     "Status": "Statut",
-    "unknown": "inconnu", "No authority score for this domain yet.": "Pas encore de score d'autorité pour ce domaine.", "No spam score for this domain yet.": "Pas encore de score de spam pour ce domaine.",
+    "unknown": "inconnu", "No authority score yet.": "Pas encore de score d'autorité.", "No spam score yet.": "Pas encore de score de spam.",
     "Spam score": "Score de spam",
     "Authority": "Autorité",
     "Domain": "Domaine",
     "to In consideration": "à l'étude",
     "Add to": "Ajouter à", "In consideration": "À l'étude", "To do": "À faire", "Create task": "Créer une tâche",
     "Add to To do": "Ajouter à À faire", "Mediator": "Intermédiaire", "Link type": "Type de lien", "Choose a mediator.": "Choisissez un intermédiaire.",
-    "They skip In consideration and go straight to Backlinks → To do. You add each article's Google Docs link there.": "Ils passent directement dans Backlinks → À faire, sans passer par À l'étude. Vous y ajoutez le lien Google Docs de chaque article.",
-    "They're in In consideration, but couldn't go to To do": "Ils sont dans À l'étude, mais n'ont pas pu aller dans À faire",
+    "Straight to Backlinks → To do, skipping In consideration. Add each article's Google Docs link there.": "Directement dans Backlinks → À faire, sans passer par À l'étude. Ajoutez-y le lien Google Docs de chaque article.",
+    "Added to In consideration, not To do": "Ajoutés à À l'étude, pas à À faire",
     "domain added to To do": "domaine ajouté à À faire", "domains added to To do": "domaines ajoutés à À faire",
-    "is already in your Backlinks, so it stays in In consideration": "est déjà dans vos Backlinks : il reste dans À l'étude",
-    "are already in your Backlinks, so they stay in In consideration": "sont déjà dans vos Backlinks : ils restent dans À l'étude",
+    "is already in Backlinks: kept in In consideration": "est déjà dans Backlinks : gardé dans À l'étude",
+    "are already in Backlinks: kept in In consideration": "sont déjà dans Backlinks : gardés dans À l'étude",
     "domain marked as spam": "domaine marqué comme spam", "domains marked as spam": "domaines marqués comme spam",
     "Get a link from": "Obtenir un lien de", "In To do": "Dans À faire",
-    "Link gaps show who links to your competitors but not to you. Add a competitor first.": "Les liens manquants montrent qui pointe vers vos concurrents mais pas vers vous. Ajoutez d'abord un concurrent.",
+    "Add a competitor first.": "Ajoutez d'abord un concurrent.",
     "No files yet": "Aucun fichier pour l'instant",
     "Upload a CSV of links to one of your competitors, and the domains that don't link to you appear here.": "Importez un CSV des liens vers un de vos concurrents : les domaines qui ne pointent pas vers vous apparaîtront ici.",
     "No gaps in your files": "Aucun lien manquant dans vos fichiers",
     "Every domain in your files already links to you, or is one of your own.": "Tous les domaines de vos fichiers pointent déjà vers vous, ou sont les vôtres.",
     "Hide those already in consideration": "Masquer ceux déjà à l'étude",
-    "Search domains": "Chercher un domaine", "Competitor": "Concurrent", "All competitors, together": "Tous les concurrents, ensemble",
-    "Any number of them": "Un ou plusieurs", "Only 1 of them": "Un seul d'entre eux", "{n} or more of them": "Au moins {n} d'entre eux", "domains": "domaines",
+    "Search domains": "Chercher un domaine", "Competitor": "Concurrent", "All competitors": "Tous les concurrents",
+    "Any number": "Un ou plusieurs", "Only 1": "Un seul", "domains": "domaines",
     "Select all shown": "Tout sélectionner à l'écran",
-    "Nothing to show with these filters": "Rien à afficher avec ces filtres",
-    "Change the filters above to see more domains.": "Modifiez les filtres ci-dessus pour voir plus de domaines.",
+    "Nothing matches these filters": "Rien ne correspond à ces filtres",
+    "Change the filters to see more.": "Modifiez les filtres pour en voir plus.",
     "1 domain already links to you, so it's left out.": "1 domaine pointe déjà vers vous : il est laissé de côté.",
     "domains already link to you, so they're left out.": "domaines pointent déjà vers vous : ils sont laissés de côté.",
     "domain added to In consideration": "domaine ajouté à l'étude",
     "domains added to In consideration": "domaines ajoutés à l'étude",
     "skipped": "ignorés",
-    "Couldn't bring it back": "Impossible de le rétablir", "saved": "enregistrés", "The rest wasn't saved. Add them again.": "Le reste n'a pas été enregistré. Ajoutez-les de nouveau.", "Nothing new to add": "Rien de nouveau à ajouter", "Nothing was saved.": "Rien n'a été enregistré.", "Rating": "Note", "Status and owner": "Statut et responsable", "Website": "Site", "Filter the list": "Filtrer la liste", "Any": "Tous", "Not rated": "Sans note", "DA at least": "DA minimum", "PA at least": "PA minimum", "Spam at most": "Spam maximum", "More filters": "Plus de filtres", "Clear filters": "Effacer les filtres", "No owner": "Sans responsable", "File": "Fichier", "of": "sur", "No links match these filters": "Aucun lien ne correspond à ces filtres", "Change or clear them to see more.": "Modifiez-les ou effacez-les pour en voir plus.", "For the links you add": "Pour les liens que vous ajoutez", "Domain authority: the site's score from the file, whichever tool it came from.": "Autorité du domaine : le score du site dans le fichier, quel que soit l'outil.", "Page authority: this page's score from the file.": "Autorité de la page : le score de cette page dans le fichier.", "A competitor of which of your websites?": "Concurrent de quel site ?", "Add your own website first, then its competitors.": "Ajoutez d'abord votre site, puis ses concurrents.", "That website isn't saved yet.": "Ce site n'est pas encore enregistré.", "Type the website's address.": "Saisissez l'adresse du site.", "added as a competitor of": "ajouté comme concurrent de", "skipped: only one link per domain, and never spam": "ignorés : un seul lien par domaine, et jamais de spam",
+    "Couldn't bring it back": "Impossible de le rétablir", "saved": "enregistrés", "The rest wasn't saved. Add them again.": "Le reste n'a pas été enregistré. Ajoutez-les de nouveau.", "Nothing new": "Rien de nouveau", "Nothing was saved.": "Rien n'a été enregistré.", "Rating": "Note", "Status and owner": "Statut et responsable", "Website": "Site", "Filter the list": "Filtrer la liste", "Any": "Tous", "Not rated": "Sans note", "DA at least": "DA minimum", "PA at least": "PA minimum", "Spam at most": "Spam maximum", "More filters": "Plus de filtres", "Clear filters": "Effacer les filtres", "No owner": "Sans responsable", "File": "Fichier", "of": "sur", "No links match these filters": "Aucun lien ne correspond à ces filtres", "Change or clear them to see more.": "Modifiez-les ou effacez-les pour en voir plus.", "For added links": "Pour les liens ajoutés", "Domain authority: the site's score in the file, from any tool.": "Autorité du domaine : le score du site dans le fichier, quel que soit l'outil.", "Page authority: this page's score from the file.": "Autorité de la page : le score de cette page dans le fichier.", "Competitor of which site?": "Concurrent de quel site ?", "Add your own website first, then its competitors.": "Ajoutez d'abord votre site, puis ses concurrents.", "That website isn't saved yet.": "Ce site n'est pas encore enregistré.", "Type the website's address.": "Saisissez l'adresse du site.", "added as a competitor of": "ajouté comme concurrent de", "skipped (one link per domain, no spam)": "ignorés (un lien par domaine, pas de spam)",
     "See them": "Les voir",
-    "A CSV of links to this competitor, exported from a free SEMrush or Ubersuggest account. Needs a URL or domain column.": "Un CSV des liens vers ce concurrent, exporté depuis un compte gratuit SEMrush ou Ubersuggest. Il faut une colonne URL ou domaine.",
+    "A CSV of this competitor's links from a free SEMrush or Ubersuggest account, with a URL or domain column.": "Un CSV des liens de ce concurrent, depuis un compte gratuit SEMrush ou Ubersuggest, avec une colonne URL ou domaine.",
     "File": "Fichier",
     "Upload": "Importer",
     "Uploading…": "Import en cours…",
-    "Rows in the file": "Lignes du fichier",
+    "Rows": "Lignes",
     "Domains": "Domaines",
-    "Upload another file": "Importer un autre fichier",
-    "Pick at least one domain.": "Choisissez au moins un domaine.",
-    "The file is empty.": "Le fichier est vide.",
-    "This CSV has headers but no data rows.": "Ce CSV a des en-têtes mais aucune ligne de données.",
+    "Upload another": "Importer un autre",
+    "Pick a domain.": "Choisissez un domaine.",
+    "Empty file.": "Fichier vide.",
+    "Only headers, no data rows.": "Seulement des en-têtes, aucune ligne de données.",
     "Choose a CSV file.": "Choisissez un fichier CSV.",
   });
 })();

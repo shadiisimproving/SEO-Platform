@@ -58,6 +58,7 @@
 .nb-row .nb-text:focus { background: var(--field); border-color: var(--accent-1); }
 .nb-where { display: flex; align-items: center; flex-wrap: wrap; gap: 3px 6px; margin-bottom: 4px; color: var(--text-2); min-width: 0; }
 .nb-where svg.i { width: 14px; height: 14px; color: var(--muted); }
+.nb-where .nb-site { display: inline-flex; align-items: center; margin-inline-start: 2px; } /* the note's website, by its logo (2026-11-11) */
 .nb-link { font-size: inherit; text-align: start; overflow-wrap: anywhere; }
 .nb-foot { display: flex; align-items: center; gap: 8px; }
 .nb-foot .nb-status { flex: 1; margin: 0; align-items: center; }
@@ -144,6 +145,7 @@ details[open] > summary .ht-chev { transform: rotate(90deg); }
 @media (max-width: 900px) {
   .ht-top { grid-template-columns: minmax(0, 1fr); }
 }
+.ht-count-word { display: none; } /* the Pages heading says it (2026-11-11) */
 @media (max-width: 640px) {
   .nb-search { flex: 1 1 100%; margin-left: 0; }
   .ht-check-heads { display: none; }
@@ -152,6 +154,8 @@ details[open] > summary .ht-chev { transform: rotate(90deg); }
   .ht-check-what { grid-column: 1 / -1; }
   .ht-check-change { justify-self: end; }
   .ht-pages, .ht-clean-list { padding-left: 18px; }
+  .ht-count-word { display: inline; } /* no Pages heading on a phone, so the count keeps its word */
+  .ht-whole .rows .acts { padding-left: 0; }
 }
 .ht-check-act { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; padding: 0 18px 14px 40px; }
 .ht-check-act p { flex: 1 1 240px; margin: 0; }

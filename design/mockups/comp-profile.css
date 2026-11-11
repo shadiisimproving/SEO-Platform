@@ -74,6 +74,8 @@
 .pt-vs td.c, .pt-vs th.c { width: 22%; }
 .pt-links .what { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .pt-gap-line { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; }
+/* Who links to them: the counts in one sentence above the list, Open Link gaps beside it (11 Nov). */
+.pt-gap-line.pt-link-count { margin: 0 0 10px; }
 
 @media (forced-colors: active) { .pt-bar-them, .pt-bar-you, .pt-key { forced-color-adjust: none; } }
 

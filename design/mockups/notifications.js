@@ -21,19 +21,19 @@
     "Mark as read": "Marquer comme lu",
     "Mark as unread": "Marquer comme non lu",
     "{n} more new searches": "{n} autres nouvelles recherches",
-    "Show them": "Les afficher",
-    "Hide them": "Les masquer",
+    "Show": "Afficher",
+    "Hide": "Masquer",
     "No notifications yet": "Aucune notification pour l'instant",
-    "When Google shows one of your sites for a search it never showed it for before, it appears here.": "Quand Google affiche l'un de vos sites pour une recherche jamais vue jusque-là, elle apparaît ici.",
+    "First-time Google searches for your sites appear here.": "Les recherches Google où vos sites apparaissent pour la première fois s'affichent ici.",
     "Notifications, {n} unread": "Notifications, {n} non lues",
-    "The notifications didn't load. They'll be tried again in a few minutes.": "Les notifications ne se sont pas chargées. Nouvel essai dans quelques minutes.",
-    "1 new search on Google": "1 nouvelle recherche sur Google",
-    "{n} new searches on Google": "{n} nouvelles recherches sur Google",
-    "Open Keywords to add it.": "Ouvrez Mots-clés pour l'ajouter.",
+    "Notifications didn't load. Trying again in a few minutes.": "Les notifications ne se sont pas chargées. Nouvel essai dans quelques minutes.",
+    "1 new Google search": "1 nouvelle recherche Google",
+    "{n} new Google searches": "{n} nouvelles recherches Google",
+    "Add it in Keywords.": "Ajoutez-le dans Mots-clés.",
     "Sample": "Exemple",
-    "See it in the Search Console queries": "La voir dans les requêtes de la Search Console",
+    "Open in Overview → Queries": "Ouvrir dans Vue d'ensemble → Requêtes",
     "Show all {n}": "Les afficher toutes ({n})", "Up to {d}": "Jusqu'au {d}",
-    "Searches with {n} impressions or more since they first showed.": "Recherches avec {n} impressions ou plus depuis leur première apparition.",
+    "{n}+ impressions since first shown": "{n}+ impressions depuis la première apparition",
   };
   Object.keys(WORDS).forEach((w) => { if (window.FR && window.FR[w] === undefined) window.FR[w] = WORDS[w]; });
 
@@ -85,7 +85,7 @@
       B.failed = false;
       if (!B.firstLoad && fresh.length && window.UI) {
         const count = fresh.reduce((n, i) => n + (i.kind === "new_query_more" || i.kind === "new_queries" ? i.detail?.count || 0 : 1), 0);
-        UI.toast(plural(count, "1 new search on Google", "{n} new searches on Google"), { kind: "info" });
+        UI.toast(plural(count, "1 new Google search", "{n} new Google searches"), { kind: "info" });
       }
       B.items.forEach((i) => B.shown.add(i.id));
       B.firstLoad = false;
@@ -114,20 +114,24 @@
 
   // ---- the list ----------------------------------------------------------------------------------
   const GROUP_SHOWN = 3;
+  // Which searches a day's row counts: the same floor for every row, so it's said once, under the list. Only if the
+  // rows ever had different floors would each row say its own.
+  const floorOf = (item) => item.detail?.min_impressions || 10;
+  const floorHtml = (n, cls = "") => `<p class="bell-meta bell-floor ${cls}">${esc(fill("{n}+ impressions since first shown", { n: num(n) }))}</p>`;
+  let floorOnRows = false;
   /* The day's new searches for one site, in one row: the three most shown, the rest behind Show them. */
   function groupHtml(item, readBtn, logo) {
     const d = item.detail || {}, queries = d.queries || [], open = B.opened === item.id;
-    const list = (open ? queries : queries.slice(0, GROUP_SHOWN)).map((q, i) => `<li><button type="button" class="bell-go" data-bell-go="${item.id}" data-q="${i}" title="${esc(t("See it in the Search Console queries"))}"><span dir="auto">${esc(q.query)}</span></button>
+    const list = (open ? queries : queries.slice(0, GROUP_SHOWN)).map((q, i) => `<li><button type="button" class="bell-go" data-bell-go="${item.id}" data-q="${i}" title="${esc(t("Open in Overview → Queries"))}"><span dir="auto">${esc(q.query)}</span></button>
         <span class="bell-num">${esc([place(q.position), plural(q.impressions, "1 impression", "{n} impressions")].filter(Boolean).join(" · "))}</span>
         <button type="button" class="icon-btn bell-track-one" data-bell-track="${item.id}" data-q="${i}" aria-label="${esc(`${t("Track")}: ${q.query}`)}" title="${esc(t("Track"))}">${UI.icon("plus")}</button></li>`).join("");
-    const more = queries.length > GROUP_SHOWN ? `<button type="button" class="link-btn" data-bell-more="${item.id}" aria-expanded="${open}">${esc(open ? t("Hide them") : fill("Show all {n}", { n: num(queries.length) }))}</button>` : "";
+    const more = queries.length > GROUP_SHOWN ? `<button type="button" class="link-btn" data-bell-more="${item.id}" aria-expanded="${open}">${esc(open ? t("Hide") : fill("Show all {n}", { n: num(queries.length) }))}</button>` : "";
     return `<li class="bell-row ${item.read ? "" : "unread"}" data-bell-row="${item.id}">
       <span class="bell-dot" aria-hidden="true"></span>
       <div class="bell-body">
-        <p class="bell-title">${esc(plural(d.count || queries.length, "1 new search on Google", "{n} new searches on Google"))}</p>
+        <p class="bell-title">${esc(plural(d.count || queries.length, "1 new Google search", "{n} new Google searches"))}</p>
         <p class="bell-meta">${logo}<span>${esc(item.host)}</span><span>·</span><span>${esc(fill("Up to {d}", { d: dayLabel(d.day) }))}</span></p>
-        <ul class="bell-more bell-group">${list}</ul>${more}
-        <p class="bell-meta bell-floor">${esc(fill("Searches with {n} impressions or more since they first showed.", { n: num(d.min_impressions || 10) }))}</p>
+        <ul class="bell-more bell-group">${list}</ul>${more}${floorOnRows ? floorHtml(floorOf(item)) : ""}
       </div>
       <div class="bell-acts">${readBtn}</div>
     </li>`;
@@ -139,13 +143,13 @@
     if (item.kind === "new_queries") return groupHtml(item, readBtn, logo);
     if (item.kind === "new_query_more") {
       const open = B.opened === item.id;
-      const list = open ? `<ul class="bell-more">${(d.queries || []).map((q, i) => `<li><button type="button" class="bell-go" data-bell-go="${item.id}" data-q="${i}" title="${esc(t("See it in the Search Console queries"))}"><span dir="auto">${esc(q.query)}</span></button><span class="bell-num">${esc(place(q.position))}</span></li>`).join("")}</ul>` : "";
+      const list = open ? `<ul class="bell-more">${(d.queries || []).map((q, i) => `<li><button type="button" class="bell-go" data-bell-go="${item.id}" data-q="${i}" title="${esc(t("Open in Overview → Queries"))}"><span dir="auto">${esc(q.query)}</span></button><span class="bell-num">${esc(place(q.position))}</span></li>`).join("")}</ul>` : "";
       return `<li class="bell-row ${item.read ? "" : "unread"}" data-bell-row="${item.id}">
         <span class="bell-dot" aria-hidden="true"></span>
         <div class="bell-body">
           <p class="bell-title">${esc(fill("{n} more new searches", { n: num(d.count || 0) }))}</p>
           <p class="bell-meta">${logo}<span>${esc(item.host)}</span><span>·</span><span>${esc(dayLabel(d.day))}</span></p>
-          <button type="button" class="link-btn" data-bell-more="${item.id}" aria-expanded="${open}">${esc(t(open ? "Hide them" : "Show them"))}</button>
+          <button type="button" class="link-btn" data-bell-more="${item.id}" aria-expanded="${open}">${esc(t(open ? "Hide" : "Show"))}</button>
           ${list}
         </div>
         <div class="bell-acts">${readBtn}</div>
@@ -155,7 +159,7 @@
     return `<li class="bell-row bell-row-go ${item.read ? "" : "unread"}" data-bell-row="${item.id}">
       <span class="bell-dot" aria-hidden="true"></span>
       <div class="bell-body">
-        <p class="bell-title"><button type="button" class="bell-go" data-bell-go="${item.id}" title="${esc(t("See it in the Search Console queries"))}"><span class="bell-kind">${esc(t("New search"))}</span> <b dir="auto">“${esc(d.query || "")}”</b></button></p>
+        <p class="bell-title"><button type="button" class="bell-go" data-bell-go="${item.id}" title="${esc(t("Open in Overview → Queries"))}"><span class="bell-kind">${esc(t("New search"))}</span> <b dir="auto">“${esc(d.query || "")}”</b></button></p>
         <p class="bell-meta">${logo}<span>${esc(item.host)}</span>${d.page ? `<span>·</span>${PageLink.html(d.page, { text: pathOf(d.page), host: item.host, cls: "bell-path" })}` : ""}<span>·</span><span>${esc(dayLabel(d.day))}</span></p>
         <p class="bell-meta">${facts.map((f) => `<span>${esc(f)}</span>`).join("<span>·</span>")}</p>
       </div>
@@ -169,9 +173,11 @@
   function panelHtml() {
     const sampleTag = window.BOOT ? "" : ` <span class="tag">${esc(t("Sample"))}</span>`;
     const head = `<div class="bell-head"><h2 id="bell-title">${esc(t("Notifications"))}${sampleTag}</h2>${B.unread ? `<button type="button" class="link-btn" id="bell-read-all">${esc(t("Mark all read"))}</button>` : ""}</div>`;
-    if (B.failed && !B.loaded) return `${head}<p class="bell-empty">${esc(t("The notifications didn't load. They'll be tried again in a few minutes."))}</p>`;
-    if (!B.items.length) return `${head}<div class="bell-empty"><p><b>${esc(t("No notifications yet"))}</b></p><p>${esc(t("When Google shows one of your sites for a search it never showed it for before, it appears here."))}</p></div>`;
-    return `${head}<ul class="bell-list">${B.items.map(rowHtml).join("")}</ul>`;
+    if (B.failed && !B.loaded) return `${head}<p class="bell-empty">${esc(t("Notifications didn't load. Trying again in a few minutes."))}</p>`;
+    if (!B.items.length) return `${head}<div class="bell-empty"><p><b>${esc(t("No notifications yet"))}</b></p><p>${esc(t("First-time Google searches for your sites appear here."))}</p></div>`;
+    const floors = [...new Set(B.items.filter((i) => i.kind === "new_queries").map(floorOf))];
+    floorOnRows = floors.length > 1;
+    return `${head}<ul class="bell-list">${B.items.map(rowHtml).join("")}</ul>${floors.length === 1 ? floorHtml(floors[0], "bell-foot") : ""}`;
   }
 
   function place_(el, anchor) {
@@ -257,7 +263,7 @@
       setRead(item.id, true);
       const opener = document.getElementById("bell-open");
       closePanel();
-      if (!window.KW) { UI.toast(t("Open Keywords to add it."), { kind: "info" }); return; }
+      if (!window.KW) { UI.toast(t("Add it in Keywords."), { kind: "info" }); return; }
       window.KW.track([query], item.host, opener, {});
       return;
     }

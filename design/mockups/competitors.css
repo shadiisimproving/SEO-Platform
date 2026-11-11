@@ -43,6 +43,13 @@ a.comp-url:hover { color: var(--accent-text); }
 .comp-info { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; color: var(--muted); vertical-align: middle; margin-left: 2px; }
 .comp-info:hover, .comp-info:focus-visible { color: var(--text); background: var(--hover); }
 .comp-info svg.i { width: 14px; height: 14px; }
+/* 2026-11-11: the engine and tool a position came from, as two logos side by side (COMP.toolLogos), names in the tooltip. */
+.comp-src { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; vertical-align: middle; }
+.comp-src .brand-logo { margin-inline-end: 0; vertical-align: 0; }
+/* An icon that stands for words (COMP.iconTip): Added by hand, Watching, Flagged by the system. */
+.comp-ic { display: inline-flex; align-items: center; vertical-align: -2px; color: var(--muted); cursor: help; }
+.comp-ic svg.i { width: 14px; height: 14px; }
+.comp-ic-system { margin-inline-end: 4px; }
 /* 2026-11-10: "Competitors of" sits beside its menu on one row (review §4.1), which gives every tab a line of height back. */
 @media (min-width: 641px) {
   .comp-site { display: flex; flex-direction: row; align-items: center; gap: 10px; flex: 0 1 440px; }

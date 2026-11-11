@@ -12,3 +12,17 @@
 }
 /* With rows picked, the selection bar takes the bottom of the screen, so the table's pages stick just above it instead of under it. */
 @media (min-width: 641px) { .ov-list:has(+ .selbar) > .tp-foot { bottom: 72px; } }
+/* A tool or engine by its logo alone (keywords-real.js logoMark); the name is its tooltip. The OK tick is a round pill, not a word. */
+.kw-logo { display: inline-flex; flex: none; vertical-align: -3px; }
+.kw-logo > .logo { vertical-align: 0; }
+.status.kw-ok { padding: 2px 4px; }
+#panel table.mini td.small > .kw-logo { margin-bottom: 2px; }
+/* The Refresh tray's failed searches: one line per tool and error, its keywords under it, each with its engine's logo. */
+.tray-fails.kwr-fails { max-height: min(240px, 40vh); gap: 3px; }
+.tray-fails.kwr-fails li.kwr-fg { display: flex; align-items: flex-start; gap: 6px; font-weight: 500; color: var(--text); }
+.tray-fails.kwr-fails li.kwr-fg > .kw-logo { margin-top: 1px; }
+.tray-fails.kwr-fails li.kwr-fg > span:last-child { min-width: 0; }
+.tray-fails.kwr-fails li.kwr-fg:not(:first-child) { margin-top: 4px; }
+.tray-fails.kwr-fails li.kwr-plain { font-weight: 400; color: var(--text-2); }
+.tray-fails.kwr-fails li.kwr-fk { display: flex; align-items: center; gap: 6px; padding-inline-start: 22px; color: var(--text-2); min-width: 0; }
+.tray-fails.kwr-fails li.kwr-fk .k { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }

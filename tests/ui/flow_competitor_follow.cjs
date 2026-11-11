@@ -39,7 +39,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   // It rides on the profile's "Last read" line, with the full sentence on hover, so it takes no room.
   const how = page.locator(".cl-follow").first();
   const short = ((await how.textContent().catch(() => "")) || "").trim(), tip = (await how.getAttribute("data-tip").catch(() => "")) || "";
-  check("the Last read line says every page is read daily", short === "every page read daily" && /All its \d+ pages are read every day/.test(tip), `${short} | ${tip}`);
+  check("the Last read line says every page is read daily", short === "all pages daily" && /All \d+ pages read daily/.test(tip), `${short} | ${tip}`);
 
   // Firecrawl reads the JavaScript pages (its own flow tests the confirm step), then the weekly check is offered.
   await call("PUT", "app-keys/firecrawl", { key: "fc-demo-key-1234" });
@@ -53,14 +53,14 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await weekly.click(); await settle();
   const confirm = box.locator(".rd-confirm");
   const asked = (await confirm.textContent()) || "";
-  check("the confirm step says what it costs a week", /every week with Firecrawl/.test(asked) && /1 page, about 1 credit a week/.test(asked), asked.trim().slice(0, 200));
+  check("the confirm step says what it costs a week", /weekly with Firecrawl/.test(asked) && /1 page, ~1 credit a week/.test(asked), asked.trim().slice(0, 200));
   await page.screenshot({ path: OUT + "1-weekly-confirm.png", fullPage: true });
   await confirm.locator("[data-rd-cancel]").click(); await settle();
   check("Cancel leaves it off", (await profileOf(spa.id)).crawl?.firecrawl?.weekly === false);
   await weekly.click(); await settle();
   await confirm.locator('[data-rd-go="weekly"]').click(); await settle();
   check("Yes turns it on", (await profileOf(spa.id)).crawl?.firecrawl?.weekly === true);
-  check("the box says it's checked every week", await until(async () => /checked for edits every week, as you asked/.test((await page.locator(`[data-rd-box="${spa.id}"]`).textContent().catch(() => "")) || ""), 8000));
+  check("the box says it's checked every week", await until(async () => /checked weekly/.test((await page.locator(`[data-rd-box="${spa.id}"]`).textContent().catch(() => "")) || ""), 8000));
   check("saying yes spent nothing", (await call("POST", "app-keys/firecrawl/test")).left === before);
   check("the notes stay open after the click", await page.locator(`[data-rd-box="${spa.id}"] .rd-fold`).evaluateAll((folds) => folds.every((d) => d.open)));
   await page.screenshot({ path: OUT + "2-weekly-on.png", fullPage: true });
@@ -74,7 +74,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
     await page.click('[data-pt-tab="activity"]');
     await page.waitForSelector("#cl-timeline", { timeout: 8000 }); await settle();
     const timeline = (await page.textContent("#cl-timeline")) || "";
-    check("a small edit says how many words changed", /small edit, 2 words changed/.test(timeline));
+    check("a small edit says how many words changed", /small edit, 2 words/.test(timeline));
     await page.screenshot({ path: OUT + "3-small-edit.png", fullPage: true });
   } else {
     check("the demo rival rival-one.example exists", false);
@@ -83,7 +83,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   // French and a phone.
   await openProfile(spa.id);
   await page.evaluate(() => { window.UI.state.lang = "fr"; window.UI.render?.(); }); await settle();
-  check("French words", /chaque page lue chaque jour/.test(await page.textContent("body")));
+  check("French words", /toutes les pages chaque jour/.test(await page.textContent("body")));
   await page.setViewportSize({ width: 390, height: 844 }); await settle();
   await page.screenshot({ path: OUT + "4-narrow-fr.png", fullPage: true });
   check("no sideways scroll at phone width", !(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));

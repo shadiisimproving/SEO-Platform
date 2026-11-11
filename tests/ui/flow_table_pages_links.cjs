@@ -59,7 +59,7 @@ const day = (n) => new Date(Date.UTC(2026, 10, 10) - n * 864e5).toISOString().re
   await page.route(/\/api\/links\/sites\/1\/scans$/, (route) => route.fulfill({ json: { scans: SCANS } }));
   await page.route(/\/api\/links\/scans\/\d+$/, (route) => {
     const id = Number(route.request().url().match(/(\d+)$/)[1]), scan = SCANS.find((s) => s.id === id) || SCANS[0];
-    const groups = [["broken", 120, 404, "Page not found"], ["unverified", 30, 403, "The site blocked the check"], ["redirect", 8, 301, "3 redirects before the final page"], ["slow", 2, 200, "Took 6.2 s to answer"]];
+    const groups = [["broken", 120, 404, "Page not found"], ["unverified", 30, 403, "Blocked by site"], ["redirect", 8, 301, "3 redirects before the final page"], ["slow", 2, 200, "Took 6.2 s to answer"]];
     const issues = groups.flatMap(([category, n, code, reason]) => [...Array(n).keys()].map((i) => ({ category, target_url: `https://site-one.example/${category}-${i}`, status_code: code, reason, pages: [`https://site-one.example/from-${i}`] })));
     route.fulfill({ json: { scan, counts: scan.counts, issues } });
   });
@@ -207,15 +207,16 @@ const day = (n) => new Date(Date.UTC(2026, 10, 10) - n * 864e5).toISOString().re
   // ---- Site health → Monthly health test ----
   await go("health/test?site=site-one.example");
   await wait(1500);
-  await drive("Not on Google", "ht-not-indexed", "#ht-not-indexed tbody tr", 120, "pages", "discovered", 40);
+  // Since 2026-11-11 Google's reason is said once, as a heading row (tr.ht-group) over its pages: count the pages only.
+  await drive("Not on Google", "ht-not-indexed", "#ht-not-indexed tbody tr:not(.ht-group)", 120, "pages", "discovered", 40);
   check("Not on Google: no Show all button any more", (await page.locator("[data-ht-index-all]").count()) === 0);
-  check("Few links in: the 10 the server sends, and how many there are", (await range("ht-few-links")) === "1–10 of 10 pages" && /The 10 with the most clicks are listed, of 37/.test(await foot("ht-few-links").innerText()), await foot("ht-few-links").innerText());
+  check("Few links in: the 10 the server sends, and how many there are", (await range("ht-few-links")) === "1–10 of 10 pages" && /10 of 37, most clicks first/.test(await foot("ht-few-links").innerText()), await foot("ht-few-links").innerText());
   await page.click('[data-ht-sort="few"][data-ht-sort-by="links_in"]'); await wait(400);
   const fewIn = await page.locator("#ht-few-links tbody tr td:nth-child(3)").evaluateAll((c) => c.map((x) => Number(x.textContent)));
   check("Few links in: Links in sorts", fewIn.every((n, i) => !i || fewIn[i - 1] >= n), fewIn.join(","));
   await page.click("[data-ht-links-all]"); await wait(500);
   await drive("Every page's links in", "ht-links-in", "#ht-links-in tbody tr", 400, "pages", "page-39", 11);
-  check("Every page's links in: the footer says the list is cut", /The 400 with the fewest links in are listed, of 1,200/.test(await foot("ht-links-in").innerText()), await foot("ht-links-in").innerText());
+  check("Every page's links in: the footer says the list is cut", /400 of 1,200, fewest links in first/.test(await foot("ht-links-in").innerText()), await foot("ht-links-in").innerText());
   await drive("Health history", "ht-history", "#ht-history tbody tr", 47, "tests");
   await shot("8-health-test");
   await page.locator("#ht-history tbody tr [data-ht-open]").nth(3).click(); await wait(800);
@@ -231,7 +232,7 @@ const day = (n) => new Date(Date.UTC(2026, 10, 10) - n * 864e5).toISOString().re
   await find.click(); await find.pressSequentially("from-1", { delay: 30 }); await wait(600);
   check("Links checker: one search finds across groups, back to page 1, cursor kept", (await range("lc-broken")) === "1–25 of 31 links" && (await range("lc-unverified")) === "1–11 of 11 links" && /search/.test(await focused()), `${await range("lc-broken")} / ${await range("lc-unverified")}`);
   await find.fill("nothing-like-this"); await wait(600);
-  check("Links checker: an empty group says nothing matches", (await page.locator(".lc-group .lc-none").first().innerText()).includes("matches the search"));
+  check("Links checker: an empty group says nothing matches", (await page.locator(".lc-group .lc-none").first().innerText()).includes("No link matches"));
   await find.fill(""); await wait(500);
   await drive("Links history", "lc-history", "#lc-history tbody tr", 40, "link checks");
   await shot("9-links-checker");
@@ -246,7 +247,7 @@ const day = (n) => new Date(Date.UTC(2026, 10, 10) - n * 864e5).toISOString().re
   check("French: To do's search and chips", (await page.locator('[data-tp-search][data-tp-key="bl-todo"]').getAttribute("placeholder")) === "Rechercher un site ou un intermédiaire" && /À envoyer/.test(await page.locator(".td-sent-chips").innerText()));
   await go("health/links?site=site-one.example");
   await page.evaluate(() => { window.UI.state.lang = "fr"; window.UI.render(); }); await wait(600);
-  check("French: the links checker's search", (await page.locator('[data-tp-search][data-tp-key="lc-find"]').getAttribute("placeholder")) === "Rechercher dans les liens trouvés" && /sur 40 contrôles de liens/.test(await range("lc-history")), await range("lc-history"));
+  check("French: the links checker's search", (await page.locator('[data-tp-search][data-tp-key="lc-find"]').getAttribute("placeholder")) === "Rechercher un lien" && /sur 40 contrôles de liens/.test(await range("lc-history")), await range("lc-history"));
   await page.evaluate(() => { window.UI.state.lang = "en"; window.UI.render(); }); await wait(300);
 
   // ---- A phone ----

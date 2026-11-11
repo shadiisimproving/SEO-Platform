@@ -382,7 +382,7 @@ def filter_from(args) -> dict:
         raise Refused("That isn't a way to match text.")
     text_ = (args.get("q") or "").strip()
     if len(text_) > 200:
-        raise Refused("That filter is too long.")
+        raise Refused("Filter too long.")
     return {"q": text_, "q_mode": mode, "min_clicks": number("min_clicks"), "min_impressions": number("min_impressions"),
             "pos_from": number("pos_from"), "pos_to": number("pos_to")}
 
@@ -633,7 +633,7 @@ def add_brand_word(engine: Engine, site_id, word) -> dict:
     scope = Scope(engine, site_id if site_id else "all", "2000-01-01", "2000-01-01")
     clean = word.strip() if isinstance(word, str) else ""
     if clean and _fold(clean) in brand_words(scope):
-        raise Refused("That brand word is already there.")
+        raise Refused("Already a brand word.")
     return service.add_rule(engine, "brand", clean, None, scope.site_ids[0] if site_id else None)
 
 

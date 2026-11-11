@@ -28,7 +28,7 @@ def _competitor(conn, site_id: int, competitor_id) -> dict:
         {"s": site_id, "c": competitor_id},
     ).mappings().first()
     if row is None:
-        raise NotFound("That competitor isn't on this website.")
+        raise NotFound("Competitor not found.")
     return dict(row)
 
 

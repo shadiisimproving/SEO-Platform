@@ -776,11 +776,11 @@ def test_both_sides_see_the_same_spellings_of_one_page():
 def test_everything_this_screen_can_say_has_french():
     words = [
         *COLUMNS, "Link type", "Planned", "1 planned", "planned", "1 lost", "lost", "1 ready", "ready", "1 backlink added", "backlinks added", "Import 1 backlink", "Row check", "Status and type", "Details",
-        "Guest post", "Directory", "Press", "Sponsored", "Forum", "Other", "Default site, for rows with no site",
+        "Guest post", "Directory", "Press", "Sponsored", "Forum", "Other", "Site for rows without one",
         "Example row: delete it", "Not one of your sites", "Add your own website first", "Unknown status", "Use Live, Lost or Planned.", "Too long", "Not a full address", "Already logged", "Twice in this file", "https:// added", "Ready",
-        "Skipped, already there", "Nothing new to add", "Already logged. Removed from In consideration.", "Nothing found yet", "Links other tools find will show here, until you log them.",
-        "Excel files aren't read yet. In Excel, choose Save as, then CSV UTF-8.", "Some links could not be removed", "Backlinks removed", "Backlink saved",
-        service.TOO_MANY, "This works from your own websites, not a competitor.", "That website doesn't exist.", "That doesn't look like a web address.", "That web address is too long.", "Send at least one row.", "Every row needs a source page.", "That backlink doesn't exist.",
+        "Skipped, already there", "Nothing new", "Already logged. Removed from In consideration.", "Nothing found yet", "Links found by other tools show here until logged.",
+        "Excel files aren't read. In Excel, Save as CSV UTF-8.", "Some links could not be removed", "Backlinks removed", "Backlink saved",
+        service.TOO_MANY, "This works from your own websites, not a competitor.", "That website doesn't exist.", "Not a web address.", "That web address is too long.", "Send at least one row.", "Every row needs a source page.", "That backlink doesn't exist.",
     ]
     assert browser("french", words=words) == []
 
@@ -965,7 +965,7 @@ def test_tagged_links_are_real_addresses():
     assert answers[3]["url"] == f"https://www.shop.example/page/?a=1&{tail}#top"
     assert answers[4]["url"] == f"https://shop.example/page?{tail}"
     assert answers[5]["url"] == "https://shop.example/page/?utm_source=Le+Blog&utm_medium=backlink&utm_campaign=a%26b%3Dc"
-    assert "another website" in answers[6]["error"]
+    assert "your own site" in answers[6]["error"]
     assert "isn't a web address" in answers[7]["error"]
     assert answers[8]["error"] == "Choose your site first"
 

@@ -19,6 +19,11 @@
   const isWaiting = (state) => state === "not_read" || state === "not_modified";
   const site = () => COMP.site();
   const onScreen = () => UI.state.route === "competitors" && COMP.tab === "pairs";
+  // An empty state with the short line on screen and the reason behind an (i) right after it.
+  const emptyTip = (title, text, tip, action = "") => COMP.empty(title, text, action).replace("</p>", () => `${UI.tip(tip)}</p>`);
+  const PAIRS_WHY = "Pairs appear once a competitor ranks for the same keywords as you.";
+  // A check tool by its logo alone, its name on hover and for screen readers. A tool with no logo keeps its name.
+  const toolMark = (tool) => (window.BRANDS?.FILES?.[tool] ? UI.logoOnly(tool) : `<span>${esc(tool)}</span>`);
 
   /* The server's own sentences, in the language on screen. The host inside this one changes, so it can't be a plain lookup. */
   const serverWords = (message) => {
@@ -28,23 +33,23 @@
   };
 
   // ---- reading states ---------------------------------------------------------------------------
-  const LEADS_ELSEWHERE = ["Leads elsewhere", "This address redirects to another website, so the app didn't follow it."];
+  const LEADS_ELSEWHERE = ["Leads elsewhere", "Redirects to another website, so it wasn't followed."];
   const READ_WORDS = {
-    robots: ["Not allowed", "robots.txt doesn't allow reading this page. The app doesn't try to get past that."],
-    blocked: ["Blocked", "The site turned the app away, for example with a bot check. The app doesn't try to get past that."],
-    gone: ["Page gone", "This page no longer exists. The site says it isn't there."],
-    network_error: ["Couldn't reach it", "The site couldn't be reached when the app tried. Try Read again later."],
-    server_error: ["Site error", "The site had a problem of its own when the app tried. Try Read again later."],
-    http_error: ["Site error", "The site answered with an error, so there was nothing to read."],
-    rate_limited: ["Too many requests", "The site asked the app to slow down. Try Read again later."],
-    not_html: ["Not a web page", "This address isn't a normal web page, so there's no text to read."],
-    too_large: ["Too large", "This page is too large for the app to read."],
-    too_many_redirects: ["Too many redirects", "This address redirects too many times, so the app stopped following it."],
+    robots: ["Not allowed", "robots.txt forbids reading this page. The app respects that."],
+    blocked: ["Blocked", "The site blocked the app, e.g. with a bot check. The app won't bypass it."],
+    gone: ["Page gone", "The site says this page no longer exists."],
+    network_error: ["Couldn't reach it", "The site couldn't be reached. Try Read again later."],
+    server_error: ["Site error", "The site had its own error. Try Read again later."],
+    http_error: ["Site error", "The site answered with an error: nothing to read."],
+    rate_limited: ["Too many requests", "The site asked to slow down. Try Read again later."],
+    not_html: ["Not a web page", "Not a normal web page: no text to read."],
+    too_large: ["Too large", "This page is too large to read."],
+    too_many_redirects: ["Too many redirects", "This address redirects too many times, so the app stopped."],
     left_scope: LEADS_ELSEWHERE,
     redirect: LEADS_ELSEWHERE,
     refused: ["Not opened", "The app doesn't open this kind of address."],
   };
-  const OTHER_WORDS = ["Couldn't read it", "The app couldn't read this page. Try Read again later."];
+  const OTHER_WORDS = ["Couldn't read it", "Couldn't read this page. Try Read again later."];
   const wordsFor = (state) => READ_WORDS[state] || OTHER_WORDS;
   const plainStatus = (iconName, word, cls = "") => `<span class="status sec">${UI.icon(iconName, cls)}${esc(t(word))}</span>`;
 
@@ -64,8 +69,8 @@
     if (!r.shared) {
       if (r.only_theirs && !r.only_mine) return { kind: "behind", text: t("Only they rank") };
       if (r.only_mine && !r.only_theirs) return { kind: "ahead", text: t("Only you rank") };
-      if (r.only_mine && r.only_theirs) return { kind: "level", text: t("Each ranks for different keywords") };
-      return { kind: "none", text: t("No shared keyword in the latest check") };
+      if (r.only_mine && r.only_theirs) return { kind: "level", text: t("Different keywords") };
+      return { kind: "none", text: t("No shared keyword") };
     }
     const ofAll = (word, n) => fill(t(word), { a: UI.num(n), b: UI.num(r.shared) });
     if (r.they_ahead > r.i_ahead) return { kind: "behind", text: r.shared === 1 ? fill(t("They're {n} ahead"), { n: places(Math.abs(r.gap)) }) : ofAll("They're ahead on {a} of {b} keywords", r.they_ahead) };
@@ -114,8 +119,10 @@
     list.forEach((p) => { const entry = rivals.get(p.competitor_id) || { host: p.competitor, read: 0, state: "" }; if (p.their_facts) entry.read += 1; else if (!isWaiting(p.their_state)) entry.state = p.their_state; rivals.set(p.competitor_id, entry); });
     return [...rivals.values()].filter((r) => !r.read && r.state).map((r) => {
       const refused = r.state === "robots" || r.state === "blocked";
-      const words = fill(t(refused ? "{host} doesn't allow automated reading, so its pages can't be compared. The app doesn't try to get past that. Rankings can still be compared." : "{host}'s pages couldn't be read this time. Rankings can still be compared."), { host: r.host });
-      return `<p class="note cp-rival-note">${UI.icon("info")}<span>${esc(words)}</span></p>`;
+      const words = fill(t(refused ? "{host} blocks reading: rankings only." : "{host} couldn't be read this time: rankings only."), { host: r.host });
+      // A refusal's full reason sits on the note's own info mark.
+      const mark = refused ? UI.tip("{host} doesn't allow automated reading, so its pages can't be compared. The app doesn't try to get past that.", { host: r.host }).trim() : UI.icon("info");
+      return `<p class="note cp-rival-note">${mark}<span>${esc(words)}</span></p>`;
     }).join("");
   }
 
@@ -127,14 +134,24 @@
     return { title, host, pages: [p.my_url], priority: verdict.kind === "behind" ? "high" : "medium", source: { type: "competitor", label: `${mine} / ${theirs}`, host, facts: [verdict.text].filter(Boolean), link: `#competitors/pairs/${p.id}`, key: `pair|${p.id}` } };
   };
 
+  /* Pages being read are counted once above the table; each row keeps only a small spinner, its words on hover. */
+  const readingMark = () => `<span class="cp-reading" role="img" title="${esc(t("Reading…"))}" data-tip="${esc(t("Reading…"))}" aria-label="${esc(t("Reading…"))}">${UI.icon("refresh-cw", "spin")}</span>`;
+  function readingLine(list) {
+    if (W.expired) return "";
+    const urls = new Set();
+    list.forEach((p) => { if (isWaiting(p.my_state)) urls.add(p.my_url); if (isWaiting(p.their_state)) urls.add(p.their_url); });
+    if (!urls.size) return "";
+    return `<p class="note cp-rival-note cp-reading-line" role="status">${UI.icon("refresh-cw", "spin")}<span>${esc(fill(t(urls.size === 1 ? "Reading {n} page…" : "Reading {n} pages…"), { n: UI.num(urls.size) }))}</span></p>`;
+  }
+
   function pairRow(p) {
     const lead = leadKeyword(p);
     const reading = isWaiting(p.my_state) || isWaiting(p.their_state);
     const position = (word, value) => `<td class="c cp-simple-pos" data-label="${t(word)}">${lead ? COMP.pos(value, lead.keyword.depth) : dash()}</td>`;
     return `<tr data-cp-row="${p.id}">
       <td class="head-cell cp-page">${p.my_title ? `<span class="cp-page-title" dir="auto">${esc(p.my_title)}</span>${PageLink.html(p.my_url, { text: pathOf(p.my_url), cls: "second mono", dir: "ltr" })}` : PageLink.html(p.my_url, { text: pathOf(p.my_url), cls: "cp-page-title mono", dir: "ltr" })}</td>
-      <td data-label="${t("Competitor")}"><div class="cp-val"><span class="with-logo cp-rival-name">${window.UI.siteLogo(p.competitor || COMP.shortUrl(p.their_url).split("/")[0], 16)}<span class="logo-text" dir="auto">${esc(p.competitor || COMP.shortUrl(p.their_url).split("/")[0])}</span></span>${p.source === "manual" ? ` <span class="tag cp-yours">${t("Your choice")}</span>` : ""}${reading ? `<span class="second">${W.expired ? plainStatus("clock", "Waiting") : plainStatus("refresh-cw", "Reading…", "spin")}</span>` : ""}</div></td>
-      <td data-label="${t("Keyword")}"><div class="cp-val">${lead ? `<span dir="auto">${esc(lead.keyword.keyword)}</span>${lead.rest > 0 ? `<span class="second">+ ${UI.num(lead.rest)} ${t(lead.rest === 1 ? "more keyword" : "more keywords")}</span>` : ""}` : `<span class="muted small">${t("No keyword in the latest check")}</span>`}</div></td>
+      <td data-label="${t("Competitor")}"><div class="cp-val"><span class="with-logo cp-rival-name">${window.UI.siteLogo(p.competitor || COMP.shortUrl(p.their_url).split("/")[0], 16)}<span class="logo-text" dir="auto">${esc(p.competitor || COMP.shortUrl(p.their_url).split("/")[0])}</span></span>${p.source === "manual" ? ` <span class="tag cp-yours">${t("Your choice")}</span>` : ""}${reading ? `<span class="second">${W.expired ? plainStatus("clock", "Waiting") : readingMark()}</span>` : ""}</div></td>
+      <td data-label="${t("Keyword")}"><div class="cp-val">${lead ? `<span dir="auto">${esc(lead.keyword.keyword)}</span>${lead.rest > 0 ? `<span class="second">+ ${UI.num(lead.rest)} ${t(lead.rest === 1 ? "more" : "more")}</span>` : ""}` : `<span class="muted small">${t("None")}</span>`}</div></td>
       ${position("You", lead?.keyword.my_position)}
       ${position("Them", lead?.keyword.their_position)}
       <td data-label="${t("Who's ahead")}"><div class="cp-val">${verdictBadge(verdictOf(p))}</div></td>
@@ -145,10 +162,10 @@
   function listBody() {
     const addButton = (cls = "") => `<button class="btn ${cls}" id="cp-add" data-cp-add>${UI.icon("plus")}${t("Add a pair")}</button>`;
     if (!S.competitors.length) {
-      return COMP.empty(t("No competitors yet"), t("Pairs appear once a competitor ranks for the same keywords as you. Add a competitor first."), `<button class="btn btn-main" data-cp-find>${UI.icon("search")}${t("Find competitors")}</button>`);
+      return emptyTip(t("No competitors yet"), t("Add a competitor first."), PAIRS_WHY, `<button class="btn btn-main" data-cp-find>${UI.icon("search")}${t("Find competitors")}</button>`);
     }
     if (!S.pairs.length) {
-      return COMP.empty(t("No pairs yet"), t("Pairs appear once a competitor ranks for the same keywords as you. You can also add one by hand."), addButton("btn-main"));
+      return emptyTip(t("No pairs yet"), t("Add one by hand."), PAIRS_WHY, addButton("btn-main"));
     }
     const base = byCompetitor();
     const counts = { behind: 0, ahead: 0, level: 0, none: 0 };
@@ -165,14 +182,14 @@
       <div class="chips cp-chips" role="group" aria-label="${t("Who's ahead")}">
         ${chip("all", "All", base.length)}${chip("behind", "They're ahead", counts.behind)}${chip("ahead", "You're ahead", counts.ahead)}${counts.level ? chip("level", "Even", counts.level) : ""}
       </div>
-      <span class="cp-how" tabindex="0" role="note" aria-label="${t("Each of your pages beside the page that ranks with it most, furthest behind first. Change a pair and your choice stays.")}" data-tip="${t("Each of your pages beside the page that ranks with it most, furthest behind first. Change a pair and your choice stays.")}">${UI.icon("info")}</span>
+      <span class="cp-how" tabindex="0" role="note" aria-label="${t("Your pages beside the competitor page ranking with them most, furthest behind first. Pairs you change stay.")}" data-tip="${t("Your pages beside the competitor page ranking with them most, furthest behind first. Pairs you change stay.")}">${UI.icon("info")}</span>
       ${addButton()}
     </div>
     ${unreadableNotes(base)}`;
     const shown = shownPairs();
     if (!shown.length) {
-      if (TP.state(PAGES).q) return tools + COMP.empty(t("Nothing here"), t("No pair matches this search."), `<button type="button" class="btn btn-small" data-tp-clear data-tp-key="${PAGES}">${t("Clear the search")}</button>`);
-      return tools + COMP.empty(t("Nothing here"), S.filter && !base.length ? t("Pairs appear once a competitor ranks for the same keywords as you. You can also add one by hand.") : t("No pair matches this filter."));
+      if (TP.state(PAGES).q) return tools + COMP.empty(t("Nothing here"), t("No pair matches this search."), `<button type="button" class="btn btn-small" data-tp-clear data-tp-key="${PAGES}">${t("Clear search")}</button>`);
+      return tools + (S.filter && !base.length ? emptyTip(t("Nothing here"), t("Add one by hand."), PAIRS_WHY) : COMP.empty(t("Nothing here"), t("No pair matches this filter.")));
     }
     // One list, the furthest behind on top, so the first row is always the first thing to look at. A heading can sort it another way.
     const page = TP.view(PAGES, sortedPairs(shown));
@@ -180,7 +197,7 @@
       const on = S.sort?.key === key;
       return `<th scope="col" class="${cls}" aria-sort="${on ? (S.sort.dir === "asc" ? "ascending" : "descending") : "none"}"><button type="button" class="th-btn" data-cp-sort="${key}">${label}${on ? UI.icon(S.sort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
     };
-    return `${tools}
+    return `${tools}${readingLine(shown)}
       <div class="cp-pages"><div class="table-wrap"><table class="data" id="cp-table">
         <thead><tr>${head("page", COMP.who("you", null, t("My page")))}<th scope="col">${COMP.who("them", null, t("Competitor"))}</th><th scope="col">${t("Keyword")}</th>${head("mine", youThemHead("mine"), "c")}${head("theirs", youThemHead("theirs"), "c")}<th scope="col">${t("Who's ahead")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
         <tbody>${page.rows.map(pairRow).join("")}</tbody>
@@ -202,7 +219,7 @@
   // ---- the detail: facts, row by row ------------------------------------------------------------
   /* A difference says who has more, so a dot in that page's colour can show it. The app still doesn't say which is better. */
   const more = (mine, theirs, one, many) => {
-    if (mine === theirs) return mine ? t("The same") : "";
+    if (mine === theirs) return mine ? t("Same") : "";
     const n = Math.abs(mine - theirs);
     return { who: theirs > mine ? "theirs" : "mine", text: fill(t(theirs > mine ? "They have {n} more {what}" : "You have {n} more {what}"), { n: UI.num(n), what: t(n === 1 ? one : many) }) };
   };
@@ -241,12 +258,12 @@
 
   function canonicalCell(side) {
     if (!side.canonical) return none("Not set");
-    if (!side.canonical_elsewhere) return `<span class="sec">${t("Points to this page")}</span>`;
+    if (!side.canonical_elsewhere) return `<span class="sec">${t("This page")}</span>`;
     return `${UI.status("warn", t("Points elsewhere"))}<span class="second">${COMP.link(side.canonical)}</span>`;
   }
   function indexingCell(side) {
     const raw = side.robots_meta ? `<span class="second mono" dir="ltr">${esc(side.robots_meta)}</span>` : "";
-    return `${side.noindex ? `${UI.status("warn", t("noindex"))}<span class="second">${t("Asks search engines to leave it out")}</span>` : `<span class="sec">${t("Can be indexed")}</span>`}${raw}`;
+    return `${side.noindex ? `${UI.status("warn", t("noindex"))}<span class="second">${t("Kept out of search")}</span>` : `<span class="sec">${t("Indexable")}</span>`}${raw}`;
   }
 
   /* Every fact we show, grouped. A row is the same on both pages when both sides draw the same thing.
@@ -274,7 +291,7 @@
         { label: "Title", show: (s) => `${textOr(s.title, "No title")}${s.title ? lengthNote(s.title_length) : ""}`, diff: () => longer(m.title_length, o.title_length, "Their title is {n} {what} longer", "Your title is {n} {what} longer") },
         { label: "Meta description", show: (s) => `${textOr(s.meta_description, "No description")}${s.meta_description ? lengthNote(s.meta_length) : ""}`, diff: () => longer(m.meta_length, o.meta_length, "Their description is {n} {what} longer", "Your description is {n} {what} longer") },
         { label: "H1", show: (s) => (s.h1?.length ? `${lineList(s.h1)}${s.h1.length > 1 ? `<span class="second">${UI.num(s.h1.length)} ${t("H1 headings")}</span>` : ""}` : none("No H1")) },
-        { label: "Questions in its headings", show: (s) => lineList(s.questions, "None"), diff: () => more((m.questions || []).length, (o.questions || []).length, "question", "questions") },
+        { label: "Questions in headings", show: (s) => lineList(s.questions, "None"), diff: () => more((m.questions || []).length, (o.questions || []).length, "question", "questions") },
       ]],
       ["Setup", [
         { label: "Structured data", show: (s) => tagList(s.schema_types, "None found"), diff: () => onlyOneHas(m.schema_types, o.schema_types) },
@@ -295,7 +312,7 @@
   function unreadNote(d) {
     const line = (side, who) => {
       if (isRead(side)) return "";
-      if (isWaiting(side.state)) return t("The facts appear here once both pages are read.");
+      if (isWaiting(side.state)) return t("Facts appear once both pages are read.");
       const code = side.state === "http_error" && side.http_status ? ` (${side.http_status})` : "";
       return `${t(who)}: ${t(wordsFor(side.state)[1])}${code}`;
     };
@@ -328,7 +345,7 @@
       }).join("");
       return rows ? `<tr class="cp-fact-group"><th colspan="4" scope="colgroup">${t(group)}</th></tr>${rows}` : "";
     }).join("");
-    const toggle = same ? `<div class="cp-same-toggle"><button class="link-btn" id="cp-same" data-cp-same>${esc(S.showSame ? t("Hide what's the same") : fill(t(same === 1 ? "{n} fact is the same on both pages. Show it" : "{n} facts are the same on both pages. Show them"), { n: UI.num(same) }))}</button></div>` : "";
+    const toggle = same ? `<div class="cp-same-toggle"><button class="link-btn" id="cp-same" data-cp-same>${esc(S.showSame ? t("Hide what's the same") : fill(t(same === 1 ? "Show {n} identical fact" : "Show {n} identical facts"), { n: UI.num(same) }))}</button></div>` : "";
     return `<div class="table-wrap"><table class="data cp-facts" id="cp-facts">
         <thead><tr><th scope="col"><span class="sr">${t("Fact")}</span></th><th scope="col">${youThemHead("mine")}</th><th scope="col">${youThemHead("theirs")}</th><th scope="col">${t("Difference")}</th></tr></thead>
         <tbody>${groups}${extraRow}</tbody></table>${toggle}</div>`;
@@ -342,8 +359,8 @@
       return "";
     }
     const notes = [];
-    if (side.js_only) notes.push(t("This page needs JavaScript to show its text, so word counts aren't reliable."));
-    if (side.last_status && !["ok", "not_modified"].includes(side.last_status)) notes.push(`${t(wordsFor(side.last_status)[1])} ${t("These facts come from the last good read.")}`);
+    if (side.js_only) notes.push(t("Needs JavaScript to show its text, so word counts aren't reliable."));
+    if (side.last_status && !["ok", "not_modified"].includes(side.last_status)) notes.push(`${t(wordsFor(side.last_status)[1])} ${t("Facts from the last good read.")}`);
     return notes.map((text) => `<p class="note cp-note">${UI.icon("triangle-alert")}<span>${esc(text)}</span></p>`).join("");
   }
 
@@ -371,7 +388,7 @@
   }
   const citedCell = (cited) => (cited ? plainStatus("sparkles", "Cited") : `<span class="muted">${t("Not cited")}</span>`);
   const noAiWords = (row) => (row.ai_state === "not_captured"
-    ? `<span class="muted" data-tip="${t("The tool used can't see AI Overviews. It doesn't mean there isn't one.")}">${t("Not captured")}</span>`
+    ? `<span class="muted" data-tip="${t("The tool can't see AI Overviews. One may still exist.")}">${t("Not captured")}</span>`
     : none("No AI Overview"));
   const otherPage = (other, word) => (other ? `<span class="second cp-other">${fill(esc(t(word)), { path: PageLink.html(other.url, { text: pathOf(other.url), cls: "mono", dir: "ltr" }), n: UI.num(other.position) })}</span>` : "");
 
@@ -397,11 +414,13 @@
     const leads = position !== null && (other === null || position < other);
     return `<td class="r cp-pos${leads ? " cp-pos-lead" : ""}" data-label="${esc(label)}">${COMP.pos(position, depth)}</td>`;
   }
-  function keywordRows(r) {
+  function keywordRows(r, once) {
     const hasAi = r.ai_state === "present";
+    // Checked with the same tool at the same age as every other row: said once under the table instead.
+    const checked = once ? "" : `<span class="second cp-kw-checked">${toolMark(r.tool)}${window.BRANDS?.FILES?.[r.tool] ? "" : " ·"} ${esc(COMP.ago(r.checked_at))}</span>`;
     return `<tbody class="cp-kw-group">
       <tr class="cp-kw-mine">
-        <td class="head-cell cp-kw-name" rowspan="2"><span class="kw" dir="auto">${esc(r.keyword)}</span><span class="second">${esc(r.tool)} · ${esc(COMP.ago(r.checked_at))}</span></td>
+        <td class="head-cell cp-kw-name" rowspan="2"><span class="kw" dir="auto">${esc(r.keyword)}</span>${checked}</td>
         <td class="cp-kw-result" rowspan="2" data-label="${t("Who's ahead")}">${verdictBadge(keywordResult(r))}${otherPage(r.my_other, "Your {path} is #{n}")}${otherPage(r.their_other, "Their {path} is #{n}")}</td>
         <td class="cp-kw-who">${youThemHead("mine")}</td>
         ${positionCell(r.my_position, r.their_position, r.depth, t("Position"))}
@@ -417,18 +436,21 @@
     </tbody>`;
   }
   function keywordsPanel(d) {
-    if (!d.keywords.length) return `<div class="table-wrap"><div class="empty"><p>${t("Neither page shows up for your keywords in the latest checks.")}</p></div></div>`;
+    if (!d.keywords.length) return `<div class="table-wrap"><div class="empty"><p>${t("Neither page ranks for your keywords.")}</p></div></div>`;
     // The furthest behind first, in pages, with a search for one keyword when there are enough to look through.
     const q = TP.state(KW_PAGES).q;
     const search = d.keywords.length >= FIND_FROM || q ? `<div class="cp-tools cp-kw-tools">${TP.search(KW_PAGES, t("Search keywords"))}</div>` : "";
     const list = [...d.keywords].filter((r) => TP.matches(KW_PAGES, r.keyword)).sort((a, b) => keywordOrder(b) - keywordOrder(a));
-    if (!list.length) return `${search}<div class="table-wrap"><div class="empty"><p>${t("No keyword matches this search.")}</p><button type="button" class="btn btn-small" data-tp-clear data-tp-key="${KW_PAGES}">${t("Clear the search")}</button></div></div>`;
+    if (!list.length) return `${search}<div class="table-wrap"><div class="empty"><p>${t("No keyword matches.")}</p><button type="button" class="btn btn-small" data-tp-clear data-tp-key="${KW_PAGES}">${t("Clear search")}</button></div></div>`;
     const page = TP.view(KW_PAGES, list);
     const missing = d.keywords.find((r) => r.my_position === null || r.their_position === null);
-    const notes = [t("A tick shows where the keyword appears on the page."), missing ? fill(t(">{n} means it isn't in the first {n} results."), { n: UI.num(missing.depth) }) : ""].filter(Boolean).join(" ");
-    return `${search}<div class="cp-pages"><div class="table-wrap"><table class="data cp-kw" id="cp-kw">
+    // Every keyword checked with the same tool at the same age: said once under the table, not on each row (as on AI Overview watch).
+    const once = list.length > 1 && new Set(list.map((r) => `${r.tool}|${COMP.ago(r.checked_at)}`)).size === 1;
+    const checkedOnce = once ? fill(esc(t("All checked with {tool}, {when}.")), { tool: toolMark(list[0].tool), when: esc(COMP.ago(list[0].checked_at)) }) : "";
+    const notes = [checkedOnce, esc(t("A tick: the keyword appears there.")), missing ? esc(fill(t(">{n}: not in the top {n}."), { n: UI.num(missing.depth) })) : ""].filter(Boolean).join(" ");
+    return `${search}<div class="cp-pages"><div class="table-wrap"><table class="data cp-kw" id="cp-kw" data-tt-off>
       <thead><tr><th scope="col">${t("Keyword")}</th><th scope="col">${t("Who's ahead")}</th><th scope="col"><span class="sr">${t("Page")}</span></th><th scope="col" class="c">${t("Position")}</th>${MARKS.map(([, label]) => `<th scope="col" class="c">${t(label)}</th>`).join("")}<th scope="col">${t("AI Overview")}</th></tr></thead>
-      ${page.rows.map(keywordRows).join("")}</table><p class="cp-foot-note">${esc(notes)}</p></div>${TP.footer(KW_PAGES, page, { noun: t("keywords") })}</div>`;
+      ${page.rows.map((r) => keywordRows(r, once)).join("")}</table><p class="cp-foot-note">${notes}</p></div>${TP.footer(KW_PAGES, page, { noun: t("keywords") })}</div>`;
   }
 
   // ---- the detail: headings and words -----------------------------------------------------------
@@ -445,13 +467,13 @@
     const list = outlineOf(side);
     const elsewhere = new Set(outlineOf(other).map(([, text]) => fold(text).trim()));
     const items = list.map(([level, text]) => `<li class="cp-line cp-line-${Math.min(level, 6)}"><span class="cp-level">H${level}</span><span class="cp-line-text" dir="auto">${esc(text)}</span>${elsewhere.has(fold(text).trim()) ? `<span class="tag cp-both">${t("Both pages")}</span>` : ""}</li>`).join("");
-    return `<div class="cp-col"><h3>${label} <span class="muted tabular cp-count">${UI.num(list.length)} ${t(list.length === 1 ? "heading" : "headings")}</span></h3>${items ? `<ol class="cp-outline">${items}</ol>` : `<p class="small muted">${t("No headings found on this page.")}</p>`}</div>`;
+    return `<div class="cp-col"><h3>${label} <span class="muted tabular cp-count">${UI.num(list.length)} ${t(list.length === 1 ? "heading" : "headings")}</span></h3>${items ? `<ol class="cp-outline">${items}</ol>` : `<p class="small muted">${t("No headings found.")}</p>`}</div>`;
   }
   function structureBlock(d) {
-    const terms = (who, words, help, list) => `<div class="cp-col"><h3><i class="cp-dot cp-dot-${who}" aria-hidden="true"></i>${esc(t(words))} <span class="muted tabular">${UI.num(list.length)}</span></h3><p class="help">${esc(t(help))}</p>${list.length ? `<div class="cp-tags cp-terms">${list.map((x) => `<span class="tag" dir="auto">${esc(x.term)}</span>`).join(" ")}</div>` : `<p class="small muted">${t("None")}</p>`}</div>`;
+    const terms = (who, words, help, list) => `<div class="cp-col"><h3><i class="cp-dot cp-dot-${who}" aria-hidden="true"></i>${esc(t(words))} <span class="muted tabular">${UI.num(list.length)}</span></h3><p class="help">${esc(t(help))}${UI.tip("Plain word matching, no AI.")}</p>${list.length ? `<div class="cp-tags cp-terms">${list.map((x) => `<span class="tag" dir="auto">${esc(x.term)}</span>`).join(" ")}</div>` : `<p class="small muted">${t("None")}</p>`}</div>`;
     const bothRead = isRead(d.mine) && isRead(d.theirs);
     return `<section class="card"><div class="cp-pairbox">${outlineColumn("mine", d.mine, d.theirs)}${outlineColumn("theirs", d.theirs, d.mine)}</div></section>
-      ${bothRead && d.same_language ? `<section class="card"><div class="cp-pairbox">${terms("mine", "Words only you use", "Words in your headings that appear nowhere on their page. Plain word matching, no AI.", d.terms_i_use)}${terms("theirs", "Words only they use", "Words in their headings that appear nowhere on your page. Plain word matching, no AI.", d.terms_they_use)}</div></section>` : ""}`;
+      ${bothRead && d.same_language ? `<section class="card"><div class="cp-pairbox">${terms("mine", "Words only you use", "In your headings, nowhere on their page.", d.terms_i_use)}${terms("theirs", "Words only they use", "In their headings, nowhere on your page.", d.terms_they_use)}</div></section>` : ""}`;
   }
 
   /* Notes on either page open in the Notes panel, beside the comparison, instead of sitting at its end. */
@@ -468,17 +490,17 @@
 
   function sectionPanel(d) {
     if (S.section === "structure") return structureBlock(d);
-    if (S.section === "content") return `${factsTable(d, ["Numbers", "Text"])}<p class="cp-foot-note cp-foot-plain">${t("Only facts read from each page. The app doesn't say which is better.")}</p>`;
+    if (S.section === "content") return `${factsTable(d, ["Numbers", "Text"])}<p class="cp-foot-note cp-foot-plain">${t("Facts only: no verdict on which is better.")}</p>`;
     if (S.section === "technical") {
-      const speed = `<tr><td class="head-cell cp-fact"><span class="kw">${t("Speed")}</span></td><td colspan="3" data-label=""><div class="cp-speed"><span>${t("Connect PageSpeed Insights to compare speed")}</span><button class="btn btn-small" data-cp-speed>${t("Connect")}</button></div></td></tr>`;
+      const speed = `<tr><td class="head-cell cp-fact"><span class="kw">${t("Speed")}</span></td><td colspan="3" data-label=""><div class="cp-speed"><span>${t("Needs PageSpeed Insights")}</span><button class="btn btn-small" data-cp-speed>${t("Connect")}</button></div></td></tr>`;
       return factsTable(d, ["Setup", "Dates"], speed);
     }
     return keywordsPanel(d);
   }
   function answerNote(d) {
     if (isRead(d.mine) && isRead(d.theirs)) return "";
-    if (isWaiting(d.mine.state) || isWaiting(d.theirs.state)) return `<p class="cp-answer-note">${t("The facts appear here once both pages are read.")}</p>`;
-    const words = !isRead(d.theirs) && isRead(d.mine) ? "Their page can't be read, so only rankings can be compared." : !isRead(d.mine) && isRead(d.theirs) ? "Your page can't be read, so only rankings can be compared." : "Neither page could be read, so only rankings can be compared.";
+    if (isWaiting(d.mine.state) || isWaiting(d.theirs.state)) return `<p class="cp-answer-note">${t("Facts appear once both pages are read.")}</p>`;
+    const words = !isRead(d.theirs) && isRead(d.mine) ? "Their page can't be read: rankings only." : !isRead(d.mine) && isRead(d.theirs) ? "Your page can't be read: rankings only." : "Neither page could be read: rankings only.";
     return `<p class="cp-answer-note">${t(words)}</p>`;
   }
 
@@ -491,18 +513,18 @@
         <div class="card-head">
           <button class="btn btn-ghost btn-small cp-back" id="cp-back">${UI.icon("chevron-left")}${t("All pairs")}</button>
           <h2>${fill(esc(t("My page against {competitor}")), { competitor: `<span dir="auto">${esc(d.competitor)}</span>` })}</h2>
-          ${d.source === "manual" ? `<span class="tag cp-yours" data-tip="${esc(t("You chose this pair. Later rankings won't replace it."))}">${t("Your choice")}</span>` : ""}
+          ${d.source === "manual" ? `<span class="tag cp-yours" data-tip="${esc(t("Rankings won't replace it."))}">${t("Your choice")}</span>` : ""}
           <span class="end cp-actions">
             <button class="btn btn-small" id="cp-read" data-cp-read ${busy ? "disabled" : ""}>${UI.icon("refresh-cw", busy ? "spin" : "")}${t("Read again")}</button>
-            <button class="btn btn-small" id="cp-change" data-cp-change="${d.id}">${UI.icon("pencil")}${t("Change this pair")}</button>
+            <button class="btn btn-small" id="cp-change" data-cp-change="${d.id}">${UI.icon("pencil")}${t("Change pair")}</button>
             ${notesButton(d)}
             ${UI.taskButton(pairFind(d))}
           </span>
         </div>
         <div class="cp-answer">${verdict.text ? verdictBadge(verdict) : ""}${answerNote(d)}</div>
         ${UI.relatedTasks({ host: COMP.site()?.host || "", page: d.my_url })}
-        ${d.same_language === false ? `<p class="note cp-choice">${UI.icon("languages")}<span>${t("These pages are in different languages, so comparing their words means little.")}</span></p>` : ""}
-        ${S.readWaiting ? `<p class="note cp-choice" role="status">${UI.icon("clock")}<span>${t("The new read is waiting for the next worker run.")}</span></p>` : ""}
+        ${d.same_language === false ? `<p class="note cp-choice">${UI.icon("languages")}<span>${t("Different languages: comparing words means little.")}</span></p>` : ""}
+        ${S.readWaiting ? `<p class="note cp-choice" role="status">${UI.icon("clock")}<span>${t("Waiting to start…")}</span></p>` : ""}
         <div class="cp-versus">${sideHead("mine", d.mine)}${sideHead("theirs", d.theirs)}</div>
       </section>
       <div class="cp-tabs" role="tablist" aria-label="${t("Page vs page")}">
@@ -551,7 +573,7 @@
         if (S.rereading && next.mine.last_checked_at !== S.rereading.mine && next.theirs.last_checked_at !== S.rereading.theirs) {
           S.rereading = null;
           S.dirty = changed = true;
-          UI.toast(t("Both pages were read again."));
+          UI.toast(t("Both pages reread."));
         }
       } else {
         const next = (await COMP.api("GET", `page-pairs?site_id=${S.site}`)).pairs;
@@ -616,21 +638,21 @@
   }
 
   const panelFoot = (pair) => `<div class="panel-foot cp-foot">
-      <button class="btn btn-main" id="cp-save">${t(pair ? "Save" : "Add this pair")}</button>
+      <button class="btn btn-main" id="cp-save">${t(pair ? "Save" : "Add")}</button>
       <button class="btn" data-discard-panel>${t("Cancel")}</button>
       ${pair?.source === "manual" ? `<button class="btn btn-ghost" id="cp-auto">${UI.icon("refresh-cw")}${t("Back to automatic")}</button>` : ""}
-      ${pair ? `<button class="btn btn-ghost" id="cp-hide">${UI.icon("eye")}${t("Hide this pair")}</button>` : ""}
+      ${pair ? `<button class="btn btn-ghost" id="cp-hide">${UI.icon("eye")}${t("Hide pair")}</button>` : ""}
     </div>`;
 
   async function openChange(id, opener) {
     const pair = S.detail?.id === id ? S.detail : S.pairs.find((p) => p.id === id);
     if (!pair) return;
     const [mine, theirs] = await Promise.all([pagesOf(S.site), pagesOf(pair.competitor_id)]);
-    UI.openPanel(`${UI.panelHead(t("Change this pair"), `<span dir="auto">${esc(pair.competitor)}</span>`)}
+    UI.openPanel(`${UI.panelHead(t("Change pair"), `<span dir="auto">${esc(pair.competitor)}</span>`)}
       <form class="panel-body" id="cp-form" data-cp-id="${pair.id}" novalidate>
         ${picker("my", COMP.who("you", null, t("My page")), mine, pair.my_url, site()?.host || "")}
         ${picker("their", COMP.who("them", null, t("Their page")), theirs, pair.their_url, pair.competitor)}
-        <p class="note">${UI.icon("info")}<span>${t("Saving makes this your choice. Later rankings won't replace it.")}</span></p>
+        <p class="note">${UI.icon("info")}<span>${t("Once saved, rankings won't replace it.")}</span></p>
       </form>
       ${panelFoot(pair)}`, opener, { key: `cp-change|${pair.id}`, reopen: () => openChange(id, opener), after: syncPickers });
     UI.$("#cp-my")?.focus({ preventScroll: true });
@@ -643,12 +665,12 @@
     const competitor = S.competitors.find((c) => String(c.id) === preset);
     if (!competitor) return;
     const [mine, theirs] = await Promise.all([pagesOf(S.site), pagesOf(competitor.id)]);
-    UI.openPanel(`${UI.panelHead(t("Add a pair"), t("One of your pages, and one of theirs."))}
+    UI.openPanel(`${UI.panelHead(t("Add a pair"), t("Your page and theirs."))}
       <form class="panel-body" id="cp-form" novalidate>
         <label class="field"><span>${t("Competitor")}</span><select class="select" id="cp-comp" style="width:100%">${S.competitors.map((c) => `<option value="${c.id}" ${c.id === competitor.id ? "selected" : ""}>${esc(c.display || c.host)}</option>`).join("")}</select></label>
         ${picker("my", COMP.who("you", null, t("My page")), mine, "", site()?.host || "")}
         ${picker("their", COMP.who("them", null, t("Their page")), theirs, "", competitor.host)}
-        <p class="note">${UI.icon("info")}<span>${t("A pair you add is your choice. Later rankings won't replace it.")}</span></p>
+        <p class="note">${UI.icon("info")}<span>${t("Rankings won't replace a pair you add.")}</span></p>
       </form>
       ${panelFoot(null)}`, opener, { key: "cp-add", reopen: () => openAdd(opener), after: () => {
         // A picker with known pages starts on the first of them, so the form opens ready to save.
@@ -674,7 +696,7 @@
       UI.forgetPanelForm();
       UI.closePanel();
       if (!id || S.view === "detail") { S.detail = answer; S.view = "detail"; S.rereading = null; S.readWaiting = false; }
-      UI.toast(t(id ? "Saved as your choice. Later rankings won't replace it." : "Pair added. Later rankings won't replace it."));
+      UI.toast(t(id ? "Saved. Rankings won't replace it." : "Pair added. Rankings won't replace it."));
       await COMP.reload({ quiet: true });
       if (S.view === "detail") { if (!id) UI.$("#main").scrollTop = 0; UI.$("#cp-change")?.focus({ preventScroll: true }); } else UI.$(`#cp-open-${id}`)?.focus({ preventScroll: true });
     } catch (err) {
@@ -718,10 +740,10 @@
     UI.closePanel();
     if (answer.removed) {
       S.view = "list"; S.detail = null;
-      UI.toast(t("Back to automatic. These pages share no keyword now, so this pair is gone."), { kind: "info" });
+      UI.toast(t("Back to automatic. No shared keyword now, so the pair is gone."), { kind: "info" });
     } else {
       if (S.view === "detail") S.detail = answer;
-      UI.toast(t("Back to automatic. Rankings pick this pair again."));
+      UI.toast(t("Back to automatic: rankings pick it again."));
     }
     await refreshTab();
   }
@@ -1005,7 +1027,7 @@
     const raw = String(address || "").trim();
     let parsed = null;
     try { parsed = new URL(raw.includes("://") ? raw : `https://${raw}`); } catch { /* said below */ }
-    if (!parsed || !/^https?:$/.test(parsed.protocol) || !parsed.hostname.includes(".")) throw new Error("That doesn't look like a web address.");
+    if (!parsed || !/^https?:$/.test(parsed.protocol) || !parsed.hostname.includes(".")) throw new Error("Not a web address.");
     const name = parsed.hostname.toLowerCase().replace(/^www\./, "");
     if (name !== host && !name.endsWith(`.${host}`)) throw new Error(`That page isn't on ${host}.`);
     parsed.hash = "";
@@ -1022,7 +1044,7 @@
   COMP.sampleWrite("POST page-pairs", (match, body) => {
     ranks();
     const competitor = sample()[`competitors?site_id=${body.site_id}`]?.competitors.find((c) => c.id === body.competitor_id);
-    if (!competitor) throw new Error("That competitor isn't on this website.");
+    if (!competitor) throw new Error("Competitor not found.");
     const mine = cleanAddress(body.my_url, sampleHost(body.site_id)), theirs = cleanAddress(body.their_url, competitor.host);
     let d = sampleDetails().find((x) => x.site_id === body.site_id && x.competitor_id === body.competitor_id && x.my_url === mine);
     if (d) {
@@ -1077,35 +1099,35 @@
     "Page vs page": "Page contre page",
     "Search pages and keywords": "Chercher une page ou un mot-clé", "Search keywords": "Chercher un mot-clé",
     "pairs": "paires", "keywords": "mots-clés", "No pair matches this search.": "Aucune paire ne correspond à cette recherche.",
-    "No keyword matches this search.": "Aucun mot-clé ne correspond à cette recherche.", "Clear the search": "Effacer la recherche",
+    "No keyword matches.": "Aucun mot-clé ne correspond.", "Clear search": "Effacer la recherche",
     "place": "place", "places": "places",
-    "Only they rank": "Eux seuls se classent", "Only you rank": "Vous seul vous classez", "Each ranks for different keywords": "Chacun se classe sur des mots-clés différents",
-    "No shared keyword in the latest check": "Aucun mot-clé commun dans la dernière vérification", "No keyword in the latest check": "Aucun mot-clé dans la dernière vérification",
+    "Only they rank": "Eux seuls se classent", "Only you rank": "Vous seul vous classez", "Different keywords": "Mots-clés différents",
+    "No shared keyword": "Aucun mot-clé commun", 
     "They're {n} ahead": "Ils ont {n} d'avance", "You're {n} ahead": "Vous avez {n} d'avance",
     "They're ahead on {a} of {b} keywords": "Ils sont devant sur {a} mots-clés sur {b}", "You're ahead on {a} of {b} keywords": "Vous êtes devant sur {a} mots-clés sur {b}",
     "Same position": "Même position", "Even across {b} keywords": "À égalité sur {b} mots-clés", "You": "Vous", "Them": "Eux",
-    "more keyword": "autre mot-clé", "more keywords": "autres mots-clés", "Words": "Mots", "Headings": "Titres", "Rankings": "Positions",
+    "more": "de plus", "Words": "Mots", "Headings": "Titres", "Rankings": "Positions",
     "Who's ahead": "Qui est devant", "Compare": "Comparer", "All": "Toutes", "They're ahead": "Ils sont devant", "You're ahead": "Vous êtes devant", "Even": "À égalité",
-    "Each of your pages beside the page that ranks with it most, furthest behind first. Change a pair and your choice stays.": "Chacune de vos pages à côté de celle qui se classe le plus souvent avec elle, les plus en retard d'abord. Modifiez une paire et votre choix reste.",
-    "{host} doesn't allow automated reading, so its pages can't be compared. The app doesn't try to get past that. Rankings can still be compared.": "{host} n'autorise pas la lecture automatisée : ses pages ne peuvent pas être comparées. L'application n'essaie pas de passer outre. Les positions restent comparables.",
-    "{host}'s pages couldn't be read this time. Rankings can still be compared.": "Les pages de {host} n'ont pas pu être lues cette fois. Les positions restent comparables.",
+    "Your pages beside the competitor page ranking with them most, furthest behind first. Pairs you change stay.": "Vos pages à côté de la page concurrente qui se classe le plus avec elles, les plus en retard d'abord. Les paires modifiées restent.",
+    "{host} blocks reading: rankings only.": "{host} bloque la lecture : positions seulement.",
+    "{host} couldn't be read this time: rankings only.": "{host} n'a pas pu être lu cette fois : positions seulement.",
     "Nothing here": "Rien ici", "No pair matches this filter.": "Aucune paire ne correspond à ce filtre.", "No title": "Pas de titre",
     "Dates": "Dates",
-    "The facts appear here once both pages are read.": "Les faits apparaîtront ici une fois les deux pages lues.",
+    "Facts appear once both pages are read.": "Les faits apparaissent une fois les deux pages lues.",
     "What the app read on your page": "Ce que l'application a lu sur votre page", "What the app read on their page": "Ce que l'application a lu sur leur page",
     "Hide what's the same": "Masquer ce qui est identique",
-    "{n} fact is the same on both pages. Show it": "{n} fait est identique sur les deux pages. L'afficher", "{n} facts are the same on both pages. Show them": "{n} faits sont identiques sur les deux pages. Les afficher",
+    "Show {n} identical fact": "Afficher {n} fait identique", "Show {n} identical facts": "Afficher {n} faits identiques",
     "{n} behind": "{n} de retard", "{n} ahead": "{n} d'avance", "Only their page ranks": "Seule leur page se classe", "Only your page ranks": "Seule votre page se classe",
-    "Headings ": "Sous-titres", "Page structure": "Structure de la page", "Both pages": "Les deux pages", "No headings found on this page.": "Aucun titre trouvé sur cette page.", "A tick shows where the keyword appears on the page.": "Une coche indique où le mot-clé apparaît sur la page.", ">{n} means it isn't in the first {n} results.": ">{n} signifie qu'elle n'est pas dans les {n} premiers résultats.", 
-    "Their page can't be read, so only rankings can be compared.": "Leur page ne peut pas être lue : seules les positions sont comparables.", "Your page can't be read, so only rankings can be compared.": "Votre page ne peut pas être lue : seules les positions sont comparables.", "Neither page could be read, so only rankings can be compared.": "Aucune des deux pages n'a pu être lue : seules les positions sont comparables.", "Position": "Position", "Difference": "Différence", "Numbers": "Chiffres", "Text": "Textes", "Setup": "Configuration",
+    "Headings ": "Sous-titres", "Page structure": "Structure de la page", "Both pages": "Les deux pages", "No headings found.": "Aucun titre trouvé.", "A tick: the keyword appears there.": "Une coche : le mot-clé y apparaît.", ">{n}: not in the top {n}.": ">{n} : hors des {n} premiers.", 
+    "Their page can't be read: rankings only.": "Leur page ne peut pas être lue : positions seulement.", "Your page can't be read: rankings only.": "Votre page ne peut pas être lue : positions seulement.", "Neither page could be read: rankings only.": "Aucune des deux pages n'a pu être lue : positions seulement.", "Position": "Position", "Difference": "Différence", "Numbers": "Chiffres", "Text": "Textes", "Setup": "Configuration",
     "Your {path} is #{n}": "Votre page {path} est n°{n}", "Their {path} is #{n}": "Leur page {path} est n°{n}",
     "Add a pair": "Ajouter une paire",
-    "Add this pair": "Ajouter cette paire",
+    "Add": "Ajouter",
     "No competitors yet": "Aucun concurrent pour l'instant",
-    "Pairs appear once a competitor ranks for the same keywords as you. Add a competitor first.": "Les paires apparaissent dès qu'un concurrent se classe sur les mêmes mots-clés que vous. Ajoutez d'abord un concurrent.",
+    "Add a competitor first.": "Ajoutez d'abord un concurrent.",
     "Find competitors": "Trouver des concurrents",
     "No pairs yet": "Aucune paire pour l'instant",
-    "Pairs appear once a competitor ranks for the same keywords as you. You can also add one by hand.": "Les paires apparaissent dès qu'un concurrent se classe sur les mêmes mots-clés que vous. Vous pouvez aussi en ajouter une à la main.",
+    "Add one by hand.": "Ajoutez-en une à la main.",
     "No pairs with this competitor": "Aucune paire avec ce concurrent",
     "Competitor": "Concurrent",
     "All competitors": "Tous les concurrents",
@@ -1116,80 +1138,82 @@
     "Shared keywords": "Mots-clés communs",
     "Picked by": "Choisie par",
     "Reading": "Lecture",
+    "Reading {n} page…": "Lecture de {n} page…", "Reading {n} pages…": "Lecture de {n} pages…",
+    "All checked with {tool}, {when}.": "Tous vérifiés avec {tool}, {when}.",
     "Action": "Action",
     "Your choice": "Votre choix",
     "Picked automatically": "Choisie automatiquement",
-    "Change this pair": "Modifier cette paire",
+    "Change pair": "Modifier la paire",
     "Read": "Lue",
     "Reading…": "Lecture…",
     "Waiting": "En attente",
     "Not allowed": "Non autorisée",
-    "robots.txt doesn't allow reading this page. The app doesn't try to get past that.": "Le fichier robots.txt n'autorise pas la lecture de cette page. L'application n'essaie pas de passer outre.",
+    "robots.txt forbids reading this page. The app respects that.": "robots.txt interdit la lecture de cette page. L'application le respecte.",
     "Blocked": "Bloquée",
-    "The site turned the app away, for example with a bot check. The app doesn't try to get past that.": "Le site a refusé l'application, par exemple avec un contrôle anti-robots. L'application n'essaie pas de passer outre.",
+    "The site blocked the app, e.g. with a bot check. The app won't bypass it.": "Le site a bloqué l'application, par exemple avec une vérification anti-robot. L'application ne la contourne pas.",
     "Page gone": "Page disparue",
-    "This page no longer exists. The site says it isn't there.": "Cette page n'existe plus. Le site indique qu'elle n'y est pas.",
+    "The site says this page no longer exists.": "Le site indique que cette page n'existe plus.",
     "Couldn't reach it": "Site injoignable",
-    "The site couldn't be reached when the app tried. Try Read again later.": "Le site était injoignable quand l'application a essayé. Réessayez Relire plus tard.",
+    "The site couldn't be reached. Try Read again later.": "Le site était injoignable. Réessayez plus tard avec Relire.",
     "Site error": "Erreur du site",
-    "The site had a problem of its own when the app tried. Try Read again later.": "Le site avait un problème quand l'application a essayé. Réessayez Relire plus tard.",
-    "The site answered with an error, so there was nothing to read.": "Le site a répondu par une erreur : il n'y avait rien à lire.",
+    "The site had its own error. Try Read again later.": "Le site a eu sa propre erreur. Réessayez plus tard avec Relire.",
+    "The site answered with an error: nothing to read.": "Le site a répondu par une erreur : rien à lire.",
     "Too many requests": "Trop de requêtes",
-    "The site asked the app to slow down. Try Read again later.": "Le site a demandé à l'application de ralentir. Réessayez Relire plus tard.",
+    "The site asked to slow down. Try Read again later.": "Le site a demandé de ralentir. Réessayez plus tard avec Relire.",
     "Not a web page": "Pas une page web",
-    "This address isn't a normal web page, so there's no text to read.": "Cette adresse n'est pas une page web normale : il n'y a pas de texte à lire.",
+    "Not a normal web page: no text to read.": "Pas une page web normale : aucun texte à lire.",
     "Too large": "Trop volumineuse",
-    "This page is too large for the app to read.": "Cette page est trop volumineuse pour que l'application la lise.",
+    "This page is too large to read.": "Cette page est trop volumineuse pour être lue.",
     "Too many redirects": "Trop de redirections",
-    "This address redirects too many times, so the app stopped following it.": "Cette adresse redirige trop de fois : l'application a arrêté de la suivre.",
+    "This address redirects too many times, so the app stopped.": "Cette adresse redirige trop de fois : l'application s'est arrêtée.",
     "Leads elsewhere": "Mène ailleurs",
-    "This address redirects to another website, so the app didn't follow it.": "Cette adresse redirige vers un autre site : l'application ne l'a pas suivie.",
+    "Redirects to another website, so it wasn't followed.": "Redirige vers un autre site : elle n'a pas été suivie.",
     "Not opened": "Non ouverte",
     "The app doesn't open this kind of address.": "L'application n'ouvre pas ce type d'adresse.",
     "Couldn't read it": "Lecture impossible",
-    "The app couldn't read this page. Try Read again later.": "L'application n'a pas pu lire cette page. Réessayez Relire plus tard.",
+    "Couldn't read this page. Try Read again later.": "Lecture de cette page impossible. Réessayez plus tard avec Relire.",
     "Not read yet. It's waiting for the next worker run.": "Pas encore lue. Elle attend le prochain passage du programme de lecture.",
     "Reading this page…": "Lecture de cette page…",
-    "This page needs JavaScript to show its text, so word counts aren't reliable.": "Cette page a besoin de JavaScript pour afficher son texte : le nombre de mots n'est pas fiable.",
-    "These facts come from the last good read.": "Ces informations viennent de la dernière lecture réussie.",
+    "Needs JavaScript to show its text, so word counts aren't reliable.": "Il faut JavaScript pour afficher son texte : le nombre de mots n'est pas fiable.",
+    "Facts from the last good read.": "Faits issus de la dernière lecture réussie.",
     "They have {n} more {what}": "Ils ont {n} {what} de plus",
     "You have {n} more {what}": "Vous avez {n} {what} de plus",
-    "The same": "Identique",
+    "Same": "Identique",
     "Same length": "Même longueur",
     "Their title is {n} {what} longer": "Leur titre a {n} {what} de plus",
     "Your title is {n} {what} longer": "Votre titre a {n} {what} de plus",
     "Their description is {n} {what} longer": "Leur description a {n} {what} de plus",
     "Your description is {n} {what} longer": "Votre description a {n} {what} de plus",
     "character": "caractère", "characters": "caractères", "word": "mot", "words": "mots", "image": "image", "images": "images", "table": "tableau", "tables": "tableaux", "list": "liste", "lists": "listes", "video": "vidéo", "videos": "vidéos", "form": "formulaire", "forms": "formulaires", "internal link": "lien interne", "internal links": "liens internes", "outside link": "lien externe", "outside links": "liens externes", "question": "question", "questions": "questions", "heading": "titre", "headings": "titres",
-    "Title": "Titre", "Meta description": "Meta description", "H1": "H1", "Words": "Mots", "Characters": "Caractères", "Language": "Langue", "Images": "Images", "Tables": "Tableaux", "Lists": "Listes", "Videos": "Vidéos", "Forms": "Formulaires", "Internal links": "Liens internes", "Outside links": "Liens externes", "Structured data": "Données structurées", "Canonical": "Canonique", "Indexing": "Indexation", "Published": "Publiée le", "Modified": "Modifiée le", "Last read": "Dernière lecture", "Last changed": "Dernier changement", "Questions in its headings": "Questions dans ses titres", "Hreflang": "Hreflang", "Speed": "Vitesse", "Fact": "Information",
+    "Title": "Titre", "Meta description": "Meta description", "H1": "H1", "Words": "Mots", "Characters": "Caractères", "Language": "Langue", "Images": "Images", "Tables": "Tableaux", "Lists": "Listes", "Videos": "Vidéos", "Forms": "Formulaires", "Internal links": "Liens internes", "Outside links": "Liens externes", "Structured data": "Données structurées", "Canonical": "Canonique", "Indexing": "Indexation", "Published": "Publiée le", "Modified": "Modifiée le", "Last read": "Dernière lecture", "Last changed": "Dernier changement", "Questions in headings": "Questions dans les titres", "Hreflang": "Hreflang", "Speed": "Vitesse", "Fact": "Information",
     "No title": "Pas de titre", "No description": "Pas de description", "No H1": "Pas de H1", "H1 headings": "titres H1", "Not reliable": "Pas fiable", "Not stated": "Non indiquée", "Different languages": "Langues différentes", "with no alt text": "sans texte alternatif", "All have alt text": "Toutes ont un texte alternatif", "None found": "Aucune trouvée", "None": "Aucun", "Not set": "Non défini",
     "Only they have: {list}": "Eux seuls ont : {list}",
     "Only you have: {list}": "Vous seul avez : {list}",
-    "Points to this page": "Pointe vers cette page",
+    "This page": "Cette page",
     "Points elsewhere": "Pointe ailleurs",
     "noindex": "noindex",
-    "Asks search engines to leave it out": "Demande aux moteurs de ne pas l'indexer",
-    "Can be indexed": "Peut être indexée",
+    "Kept out of search": "Exclue des moteurs",
+    "Indexable": "Indexable",
     "Not read yet": "Pas encore lue",
     "No change seen": "Aucun changement vu",
-    "Connect PageSpeed Insights to compare speed": "Connectez PageSpeed Insights pour comparer la vitesse",
+    "Needs PageSpeed Insights": "Nécessite PageSpeed Insights",
     "Connect": "Connecter",
     "Not read": "Non lue",
     "Meta": "Meta", "Body": "Texte",
-    "The tool used can't see AI Overviews. It doesn't mean there isn't one.": "L'outil utilisé ne voit pas les AI Overviews. Cela ne veut pas dire qu'il n'y en a pas.",
+    "The tool can't see AI Overviews. One may still exist.": "L'outil ne voit pas les AI Overviews. Il peut y en avoir un.",
     "Not captured": "Non capté",
     "No AI Overview": "Pas d'AI Overview",
     "Cited": "Citée",
     "Not cited": "Non citée",
     "Keywords in this pair": "Mots-clés de cette paire",
-    "Neither page shows up for your keywords in the latest checks.": "Aucune de ces pages n'apparaît sur vos mots-clés dans les derniers relevés.",
+    "Neither page ranks for your keywords.": "Aucune des deux pages ne se classe sur vos mots-clés.",
     "AI Overview": "AI Overview",
     "Keyword": "Mot-clé",
     "Words only they use": "Mots qu'eux seuls utilisent",
     "Words only you use": "Mots que vous seul utilisez",
-    "Words in their headings that appear nowhere on your page. Plain word matching, no AI.": "Mots de leurs titres absents de toute votre page. Simple comparaison de mots, sans IA.",
-    "Words in your headings that appear nowhere on their page. Plain word matching, no AI.": "Mots de vos titres absents de toute leur page. Simple comparaison de mots, sans IA.",
-    "These pages are in different languages, so comparing their words means little.": "Ces pages sont dans des langues différentes : comparer leurs mots n'a guère de sens.",
+    "In their headings, nowhere on your page.": "Dans leurs titres, nulle part sur votre page.",
+    "In your headings, nowhere on their page.": "Dans vos titres, nulle part sur leur page.",
+    "Different languages: comparing words means little.": "Langues différentes : comparer les mots a peu de sens.",
     "Against": "Face à",
     "Notes on my page": "Notes sur ma page",
     "Notes on their page": "Notes sur leur page",
@@ -1198,25 +1222,25 @@
     "All pairs": "Toutes les paires", "Catch up with": "Rattraper", "with": "avec",
     "My page against {competitor}": "Ma page face à {competitor}",
     "Read again": "Relire",
-    "You chose this pair. Later rankings won't replace it.": "Vous avez choisi cette paire. Les prochains classements ne la remplaceront pas.",
-    "The new read is waiting for the next worker run.": "La nouvelle lecture attend le prochain passage du programme de lecture.",
-    "Only facts read from each page. The app doesn't say which is better.": "Uniquement des faits lus sur chaque page. L'application ne dit pas laquelle est la meilleure.",
-    "Both pages were read again.": "Les deux pages ont été relues.",
+    "Rankings won't replace it.": "Les classements ne la remplaceront pas.",
+    "Waiting to start…": "En attente de démarrage…",
+    "Facts only: no verdict on which is better.": "Des faits seulement : aucun avis sur la meilleure.",
+    "Both pages reread.": "Les deux pages ont été relues.",
     "Type another address…": "Saisir une autre adresse…",
     "Address": "Adresse",
     "Type an address.": "Saisissez une adresse.",
     "Back to automatic": "Revenir à l'automatique",
-    "Hide this pair": "Masquer cette paire",
-    "Saving makes this your choice. Later rankings won't replace it.": "Enregistrer en fait votre choix. Les prochains classements ne le remplaceront pas.",
-    "One of your pages, and one of theirs.": "Une de vos pages, et une des leurs.",
-    "A pair you add is your choice. Later rankings won't replace it.": "Une paire ajoutée est votre choix. Les prochains classements ne la remplaceront pas.",
-    "Saved as your choice. Later rankings won't replace it.": "Enregistré comme votre choix. Les prochains classements ne le remplaceront pas.",
-    "Pair added. Later rankings won't replace it.": "Paire ajoutée. Les prochains classements ne la remplaceront pas.",
+    "Hide pair": "Masquer la paire",
+    "Once saved, rankings won't replace it.": "Une fois enregistrée, les classements ne la remplaceront pas.",
+    "Your page and theirs.": "Votre page et la leur.",
+    "Rankings won't replace a pair you add.": "Les classements ne remplaceront pas une paire ajoutée.",
+    "Saved. Rankings won't replace it.": "Enregistrée. Les classements ne la remplaceront pas.",
+    "Pair added. Rankings won't replace it.": "Paire ajoutée. Les classements ne la remplaceront pas.",
     "Pair hidden": "Paire masquée",
-    "Back to automatic. These pages share no keyword now, so this pair is gone.": "Retour à l'automatique. Ces pages n'ont plus de mot-clé commun : cette paire disparaît.",
-    "Back to automatic. Rankings pick this pair again.": "Retour à l'automatique. Les classements choisissent à nouveau cette paire.",
-    "That doesn't look like a web address.": "Cela ne ressemble pas à une adresse web.",
-    "That competitor isn't on this website.": "Ce concurrent n'est pas sur ce site.",
+    "Back to automatic. No shared keyword now, so the pair is gone.": "Retour à l'automatique. Plus de mot-clé commun : la paire disparaît.",
+    "Back to automatic: rankings pick it again.": "Retour à l'automatique : les classements la choisissent à nouveau.",
+    "Not a web address.": "Ce n'est pas une adresse web.",
+    "Competitor not found.": "Concurrent introuvable.",
     "That pair doesn't exist.": "Cette paire n'existe pas.",
     "You already compare that page with this competitor. Change that pair instead.": "Vous comparez déjà cette page avec ce concurrent. Modifiez plutôt cette paire.",
   });

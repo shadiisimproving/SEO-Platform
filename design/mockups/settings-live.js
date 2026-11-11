@@ -65,7 +65,7 @@
         c.sites = off.length ? window.SITES.map((s) => s.id).filter((id) => !off.includes(id)) : "all";
       } else c.sites = "all"; // one key for the whole app: it has no per-site choice to make
     });
-    if (conn("pagespeed")) conn("pagespeed").note = "It works with no key, within a smaller limit. A free key gives it more room.";
+    if (conn("pagespeed")) conn("pagespeed").note = "Works without a key, with a lower limit; a free key raises it.";
     window.BOOT.summaries_on = Boolean(data.keys.find((k) => k.id === "openrouter")?.connected);
   }
   async function reload() {
@@ -82,13 +82,13 @@
   const LIVE = (window.LIVE = {
     // The old archive goes in here, once. Admin only, and only on the real app: a plain file has no server to send it to.
     oldClarityData: (c) => (c.id !== "clarity" || !window.BOOT?.served || !isAdmin() ? "" : `<details class="fold how" id="ca-fold"><summary>${icon("chevron-right")}${t("Old Clarity data")}</summary>
-      <p class="help" style="margin:0 0 10px">${t("Upload the file made on your Mac by scripts/clarity_archive_export.py. It only adds days this app doesn't have yet, so uploading twice changes nothing.")}</p>
+      <p class="help" style="margin:0 0 10px">${t("Upload the file scripts/clarity_archive_export.py made on your Mac. It only adds missing days, so uploading twice is safe.")}</p>
       <label class="field"><span>${t("File")}</span><input class="input" id="ca-file" type="file" accept=".json,application/json"></label>
       <div id="ca-result" aria-live="polite"></div>
     </details>
     <details class="fold how" id="cr-fold"><summary>${icon("chevron-right")}${t("Clarity dashboard downloads")}</summary>
-      <p class="help" style="margin:0 0 10px">${t("In Clarity, open Dashboard and press Export, for each site. Upload the .csv files here, several at once. Each one is kept for its own period: they show on Content and AI search.")}</p>
-      <label class="field"><span>${t("Site")}</span><select class="select" id="cr-site"><option value="">${t("Find it from the file")}</option>${window.SITES.filter((s) => s.realId).map((s) => `<option value="${s.realId}">${esc(s.host)}</option>`).join("")}</select></label>
+      <p class="help" style="margin:0 0 10px">${t("In Clarity, Dashboard → Export, for each site. Upload the .csv files here, several at once; each keeps its own period. They show on Content and AI search.")}</p>
+      <label class="field"><span>${t("Site")}</span><select class="select" id="cr-site"><option value="">${t("From the file")}</option>${window.SITES.filter((s) => s.realId).map((s) => `<option value="${s.realId}">${esc(s.host)}</option>`).join("")}</select></label>
       <label class="field"><span>${t("Files")}</span><input class="input" id="cr-file" type="file" accept=".csv,text/csv" multiple></label>
       <div id="cr-result" aria-live="polite"></div>
     </details>`),
@@ -101,7 +101,7 @@
       return tab("connections", "Connections") + tab("sites", "Sites") + tab("team", "Team") + tab("domains", "Important domains");
     },
     // The key box is emptied once a key is stored, so it says a key is there, or it looks as if nothing saved.
-    savedGoogleNote: () => (L.data?.google?.length ? `${t("A robot key is saved")} (${L.data.google[0].last4}). ${t("Paste a new one only to replace it.")}` : ""),
+    savedGoogleNote: () => (L.data?.google?.length ? `${t("Robot key saved")} (${L.data.google[0].last4}). ${t("Paste a new one to replace it.")}` : ""),
     googleExtras() {
       const list = L.data?.google || [];
       if (!list.length) return "";
@@ -132,7 +132,7 @@
   function archiveRows(answer) {
     const span = (s) => (s.first_day ? ` · ${esc(longDay(s.first_day))} – ${esc(longDay(s.last_day))}` : "");
     const rows = answer.sites.map((s) => `<li><div class="what"><div class="t" dir="ltr">${esc(s.host)}</div><div class="s">${daysWord(s.added)} ${t(answer.preview ? "to add" : "added")}${s.kept ? `, ${daysWord(s.kept)} ${t("already here")}` : ""}${span(s)}</div></div></li>`).join("");
-    const missing = answer.missing_sites.length ? `<p class="note warn" style="margin:10px 0 0">${icon("triangle-alert")}<span>${t("These sites aren't in the app, so their days are left out. Add them as your own sites, then upload the file again:")} ${answer.missing_sites.map((s) => `<span dir="ltr">${esc(s.host)}</span> (${daysWord(s.days)})`).join(", ")}</span></p>` : "";
+    const missing = answer.missing_sites.length ? `<p class="note warn" style="margin:10px 0 0">${icon("triangle-alert")}<span>${t("These sites aren't in the app, so their days are skipped. Add them as your sites, then upload again:")} ${answer.missing_sites.map((s) => `<span dir="ltr">${esc(s.host)}</span> (${daysWord(s.days)})`).join(", ")}</span></p>` : "";
     return `${rows ? `<ul class="rows" style="margin:0">${rows}</ul>` : ""}${missing}`;
   }
   async function sendArchive(preview) {
@@ -152,7 +152,7 @@
       window.LV?.cache.clear(); // the screens read these days next time they open
       UI.toast(`${daysWord(toAdd)} ${t("added")}`);
     }
-    const next = !preview ? `<p class="small sec" style="margin:10px 0 0">${t("You'll find them on Content, when the period includes those dates.")}</p>`
+    const next = !preview ? `<p class="small sec" style="margin:10px 0 0">${t("Now on Content, for periods that include those dates.")}</p>`
       : toAdd ? `<div class="test-row" style="margin-top:10px"><button type="button" class="btn btn-main btn-small" id="ca-import">${t("Add")} ${daysWord(toAdd)}</button></div>`
         : `<p class="small sec" style="margin:10px 0 0">${t("Nothing new to add.")}</p>`;
     UI.setHTML(box, archiveRows(answer) + next);
@@ -164,7 +164,7 @@
   function reportRows(answer) {
     return `<ul class="rows" style="margin:0">${answer.files.map((f) => f.error
       ? `<li><div class="what"><div class="t" dir="auto">${esc(f.file)}</div><div class="s crit">${esc(t(f.error))}</div></div></li>`
-      : `<li><div class="what"><div class="t" dir="ltr">${esc(f.host)}</div><div class="s">${f.kinds.map((k) => `${t(KIND_WORD[k.kind] || k.kind)}${k.replaces ? ` (${t(answer.preview ? "replaces the one already here" : "replaced")})` : ""}`).join(", ")} · ${esc(longDay(f.period_start))} – ${esc(longDay(f.period_end))}</div></div></li>`).join("")}</ul>`;
+      : `<li><div class="what"><div class="t" dir="ltr">${esc(f.host)}</div><div class="s">${f.kinds.map((k) => `${t(KIND_WORD[k.kind] || k.kind)}${k.replaces ? ` (${t(answer.preview ? "replaces the current one" : "replaced")})` : ""}`).join(", ")} · ${esc(longDay(f.period_start))} – ${esc(longDay(f.period_end))}</div></div></li>`).join("")}</ul>`;
   }
   async function sendReports(preview) {
     const box = UI.$("#cr-result"), files = [...(UI.$("#cr-file")?.files || [])];
@@ -184,7 +184,7 @@
       window.LV?.cache.clear();
       UI.toast(`${num(good)} ${t(good === 1 ? "file added" : "files added")}`);
     }
-    const next = !preview ? `<p class="small sec" style="margin:10px 0 0">${t("You'll find them on Content and AI search.")}</p>`
+    const next = !preview ? `<p class="small sec" style="margin:10px 0 0">${t("Now on Content and AI search.")}</p>`
       : good ? `<div class="test-row" style="margin-top:10px"><button type="button" class="btn btn-main btn-small" id="cr-import">${t("Add")} ${num(good)} ${t(good === 1 ? "file" : "files")}</button></div>`
         : "";
     UI.setHTML(box, reportRows(answer) + next);
@@ -286,7 +286,7 @@
   function showGoogleResult(answer) {
     if (answer.search_console.ok && answer.ga4.ok) UI.$("#conn-fix")?.remove();
     const line = (name, part) => (part.ok ? status("good", `${name}: ${t("works")} · ${num(part.properties.length)} ${t(part.properties.length === 1 ? "property" : "properties")}`) : `<div class="error" style="margin:0 0 4px">${icon("octagon-alert")}${esc(name)}: ${esc(t(part.error || "It didn't work."))}</div>${fixFor(part.error, conn("google"))}`);
-    say(`<div style="display:grid;gap:6px;margin-top:6px">${line("Search Console", answer.search_console)}${line("GA4", answer.ga4)}${answer.search_console.ok && !answer.search_console.properties.length ? `<p class="small sec" style="margin:0">${t("It can't see any Search Console property yet. Add its email in Search Console, then test again.")}</p>` : ""}${answer.reading ? `<p class="small muted" style="margin:0">${esc(t(answer.reading === 1 ? "The site that had stopped is being read again now. Its numbers come back within a few minutes." : "The sites that had stopped are being read again now. Their numbers come back within a few minutes."))}</p>` : ""}</div>`);
+    say(`<div style="display:grid;gap:6px;margin-top:6px">${line("Search Console", answer.search_console)}${line("GA4", answer.ga4)}${answer.search_console.ok && !answer.search_console.properties.length ? `<p class="small sec" style="margin:0">${t("It sees no Search Console property yet: add its email there, then test again.")}</p>` : ""}${answer.reading ? `<p class="small muted" style="margin:0">${esc(t(answer.reading === 1 ? "The stopped site is being read again; its numbers return in a few minutes." : "The stopped sites are being read again; their numbers return in a few minutes."))}</p>` : ""}</div>`);
     L.sc = answer.search_console.properties || [];
     L.ga = answer.ga4.properties || [];
     // What Google says this key can see now fills the lists, and the obvious match is picked.
@@ -314,7 +314,7 @@
         if (!id) { sayError("Paste the key first."); return; }
         showGoogleResult(await api("POST", `google-connections/${id}/test`, {}));
       } else if (c.id === "clarity") {
-        say(`<span class="note inline-note">${icon("info")}<span>${t("Clarity allows 10 requests a day per project, so testing would use one up. The first pull shows whether the token works.")}</span></span>`);
+        say(`<span class="note inline-note">${icon("info")}<span>${t("No test: it would spend 1 of Clarity's 10 daily requests. The first pull shows if the token works.")}</span></span>`);
       } else {
         const key = UI.$("#conn-key")?.value.trim();
         if (key) { await api("PUT", `app-keys/${c.id}`, { key }); UI.$("#conn-key").value = ""; }
@@ -332,9 +332,14 @@
     const r = L.data?.site_sources.find((x) => x.site_id === site.realId && x.source === source);
     if (r?.not_used) return `<span class="status sec">${t("Not used")}</span>`;
     if (r?.last_error) return status("crit", t("Failing"));
-    if (r?.last_ok_at) return status("good", r.data_through ? `${t("Data through")} ${new Intl.DateTimeFormat(UI.locale(), { day: "numeric", month: "short" }).format(new Date(`${r.data_through}T00:00:00`))}` : t("Connected"));
+    // The column names the source, so the cell is just the day its data reaches; "Data through …" is the tooltip.
+    if (r?.last_ok_at && r.data_through) {
+      const day = new Intl.DateTimeFormat(UI.locale(), { day: "numeric", month: "short" }).format(new Date(`${r.data_through}T00:00:00`)), full = `${t("Data through")} ${day}`;
+      return `<span data-tip="${esc(full)}" aria-label="${esc(full)}" role="img">${status("good", day)}</span>`;
+    }
+    if (r?.last_ok_at) return status("good", t("Connected"));
     const set = source === "clarity" ? r?.has_secret : source === "gsc" || source === "ga4" ? r?.connection_id && r?.property : (L.data?.keys.find((k) => k.id === source)?.connected);
-    return set ? `<span class="status sec">${t("Waiting for first data")}</span>` : `<span class="status sec">${t("Not set up")}</span>`;
+    return set ? `<span class="status sec">${t("Waiting for data")}</span>` : `<span class="status sec">${t("Not set up")}</span>`;
   }
   const sitesTab = () => {
     if (!window.SITES.length) return `<section class="card"><div class="empty"><h3>${t("No site yet")}</h3><p>${t("Add a site to see its data.")}</p><div style="margin-top:12px"><button class="btn btn-main" data-lv-add-site>${t("Add a site")}</button></div></div></section>`;
@@ -373,7 +378,7 @@
   }
   function showPassword(name, password) {
     UI.openPanel(`${UI.panelHead(t("Temporary password"), esc(name))}
-      <div class="panel-body"><p class="note warn">${icon("triangle-alert")}<span>${t("Shown once. Copy it now and give it to them in person or by a private message. They change it at first login.")}</span></p>
+      <div class="panel-body"><p class="note warn">${icon("triangle-alert")}<span>${t("Shown once. Copy it and hand it over in person or privately. They change it at first login.")}</span></p>
       <div class="lv-secret"><code class="mono" dir="ltr">${esc(password)}</code><button type="button" class="btn btn-small" data-copy="${esc(password)}">${t("Copy")}</button></div></div>
       <div class="panel-foot"><button class="btn btn-main" data-close-panel>${t("Done")}</button></div>`);
   }
@@ -395,13 +400,13 @@
     const finder = d.domains.length > 10 || TP.state(DOMAIN_PAGES).q ? `<div style="padding:10px 18px 0;display:flex">${TP.search(DOMAIN_PAGES, t("Search domains"))}</div>` : "";
     const blank = (v) => (v === null || v === undefined ? `<span class="muted">—</span>` : num(v));
     return `<section class="card"><div class="card-head"><h2>${t("Important domains")}</h2><span class="end small muted">${d.moz_connected ? `${num(d.rows_left)} ${t("of")} ${num(d.rows_free)} ${t("Moz rows left this month")}` : t("Moz isn't connected")}</span></div>
-      <p class="help" style="padding:10px 18px 2px;margin:0">${t("Moz gives few free rows, so it only runs on domains you add here, and only when you press the button. Results are kept, so a row is never used twice in a month.")}</p>
+      <p class="help" style="padding:10px 18px 2px;margin:0">${t("Moz runs only on these domains, and only when you press the button.")}${UI.tip("Moz gives few free rows. Results are kept, so a row is never used twice in a month.")}</p>
       <form class="lv-rule-form" data-lv-domain-form style="border-top:0"><input class="input mono" name="f_domain" placeholder="example.com" aria-label="${t("Add a domain")}" autocomplete="off"><button class="btn btn-small" type="submit">${t("Add a domain")}</button>
         <button type="button" class="btn btn-small btn-main" data-lv-moz ${d.moz_connected && waiting && d.rows_left ? "" : "disabled"}>${t("Get Moz data")}${waiting ? ` (${num(waiting)})` : ""}</button>
         <button type="button" class="btn btn-small" data-lv-radar ${d.radar_connected && d.domains.length ? "" : "disabled"}>${t("Get popularity")}</button><span class="error" data-lv-rule-error hidden></span></form>
       ${finder}${found.length ? `<div class="table-wrap" style="box-shadow:none"><table class="data"><thead><tr><th>${t("Domain")}</th><th class="c">${t("Authority")}</th><th class="c">${t("Moz Domain Authority")}</th><th class="c">${t("Linking domains")}</th><th class="c">${t("Links")}</th><th class="c">${t("Popularity")}</th><th></th></tr></thead><tbody>
         ${view.rows.map((x) => `<tr style="cursor:default"><td data-label="${t("Domain")}" class="mono" dir="auto">${esc(x.domain)}</td><td class="c" data-label="${t("Authority")}">${x.authority === null ? `<span class="muted">—</span>` : esc(String(x.authority))}</td><td class="c" data-label="${t("Moz Domain Authority")}">${blank(x.domain_authority)}</td><td class="c" data-label="${t("Linking domains")}">${blank(x.linking_domains)}</td><td class="c" data-label="${t("Links")}">${blank(x.external_links)}</td><td class="c" data-label="${t("Popularity")}" dir="auto">${x.popularity ? esc(t(x.popularity)) : `<span class="muted">—</span>`}</td><td class="r" data-label=""><button class="btn btn-small btn-ghost" data-lv-domain-off="${esc(x.domain)}" aria-label="${t("Remove")}: ${esc(x.domain)}">${t("Remove")}</button></td></tr>`).join("")}
-      </tbody></table></div>${TP.footer(DOMAIN_PAGES, view, { noun: t("domains") })}` : `<div class="empty" style="padding:28px"><p>${t(d.domains.length ? "No domain matches this search." : "No domains yet. Add the ones worth a closer look.")}</p></div>`}</section>
+      </tbody></table></div>${TP.footer(DOMAIN_PAGES, view, { noun: t("domains") })}` : `<div class="empty" style="padding:28px"><p>${t(d.domains.length ? "No domain matches." : "No domains yet. Add the ones worth a closer look.")}</p></div>`}</section>
       ${indexNowCard()}`;
   }
   const indexNowCard = () => {
@@ -452,7 +457,7 @@
         try {
           const a = await api("POST", `sites/${el.dataset.lvSiteCollect}/collect`, {});
           if (window.LV?.watchReads) { await window.LV.watchReads([a], { redraw: false }); window.LV.forget?.(); await reload(); }
-          else UI.toast(t(a.started.length ? "Reading the latest data. It appears here when it arrives." : "Nothing to read yet: connect a data source first, or it's already running."), { kind: a.started.length ? "good" : "info" });
+          else UI.toast(t(a.started.length ? "Reading the latest data…" : "Nothing to read: connect a data source, or it's already running."), { kind: a.started.length ? "good" : "info" });
         } catch (err) { showError(err); }
         el.disabled = false;
         return;
@@ -517,7 +522,7 @@
         try {
           const answer = await api("POST", "indexnow", { site_id: +form.elements.f_site.value, urls: form.elements.f_urls.value });
           form.elements.f_urls.value = "";
-          UI.toast(`${num(answer.sent)} ${t("addresses sent")}${answer.pending_key_check ? ` · ${t("The key is still being checked.")}` : ""}`);
+          UI.toast(`${num(answer.sent)} ${t("addresses sent")}${answer.pending_key_check ? ` · ${t("Key still being checked.")}` : ""}`);
         } catch (err) { box.textContent = t(err.message); box.hidden = false; }
       }
     });
@@ -538,52 +543,52 @@
       if (L.tab === "connections") {
         if (L.data) return UI.settingsPage();
         const waiting = L.failed ? UI.failCard(L.failed, { retry: "data-lv-sources-retry" }) : UI.skeleton("page", { chart: false, rows: 5 });
-        return UI.topbar(t("Settings"), t("Connect your tools and choose which sites use them"), "", false) + `<div class="content page-enter">${tabs}${waiting}</div>`;
+        return UI.topbar(t("Settings"), t("Connect tools and choose their sites"), "", false) + `<div class="content page-enter">${tabs}${waiting}</div>`;
       }
-      const sub = { sites: "Your sites and where their data comes from", team: "Who can sign in", domains: "Domains worth a closer look" }[L.tab];
+      const sub = { sites: "Where each site's data comes from", team: "Who can sign in", domains: "Domains worth a closer look" }[L.tab];
       return UI.topbar(t("Settings"), t(sub), "", false) + `<div class="content page-enter">${tabs}${L.tab === "sites" ? sitesTab() : L.tab === "domains" ? domainsTab() : teamTab()}</div>`;
     },
   };
 
   const fr = {
-    "No domain matches this search.": "Aucun domaine ne correspond à cette recherche.", "Search domains": "Chercher un domaine", "domains": "domaines",
-    "The site that had stopped is being read again now. Its numbers come back within a few minutes.": "Le site arrêté est relu maintenant. Ses chiffres reviennent d'ici quelques minutes.",
-    "The sites that had stopped are being read again now. Their numbers come back within a few minutes.": "Les sites arrêtés sont relus maintenant. Leurs chiffres reviennent d'ici quelques minutes.",
+    "No domain matches.": "Aucun domaine ne correspond.", "Search domains": "Chercher un domaine", "domains": "domaines",
+    "The stopped site is being read again; its numbers return in a few minutes.": "Le site arrêté est relu ; ses chiffres reviennent d'ici quelques minutes.",
+    "The stopped sites are being read again; their numbers return in a few minutes.": "Les sites arrêtés sont relus ; leurs chiffres reviennent d'ici quelques minutes.",
     "Try again": "Réessayer",
     "Old Clarity data": "Anciennes données Clarity",
-    "Clarity dashboard downloads": "Exports du tableau de bord Clarity", "Find it from the file": "Le trouver dans le fichier", "Files": "Fichiers",
-    "In Clarity, open Dashboard and press Export, for each site. Upload the .csv files here, several at once. Each one is kept for its own period: they show on Content and AI search.": "Dans Clarity, ouvrez Tableau de bord et appuyez sur Exporter, pour chaque site. Importez ici les fichiers .csv, plusieurs à la fois. Chacun est gardé pour sa propre période : ils s'affichent dans Contenu et Recherche IA.",
-    "Dashboard": "Tableau de bord", "AI visibility": "Visibilité IA", "replaces the one already here": "remplace celui déjà présent", "replaced": "remplacé",
+    "Clarity dashboard downloads": "Exports du tableau de bord Clarity", "From the file": "D'après le fichier", "Files": "Fichiers",
+    "In Clarity, Dashboard → Export, for each site. Upload the .csv files here, several at once; each keeps its own period. They show on Content and AI search.": "Dans Clarity, Tableau de bord → Exporter, pour chaque site. Importez ici les fichiers .csv, plusieurs à la fois ; chacun garde sa période. Ils s'affichent dans Contenu et Recherche IA.",
+    "Dashboard": "Tableau de bord", "AI visibility": "Visibilité IA", "replaces the current one": "remplace l'actuel", "replaced": "remplacé",
     "Reading the files…": "Lecture des fichiers…", "Adding them…": "Ajout en cours…", "file added": "fichier ajouté", "files added": "fichiers ajoutés", "file": "fichier", "files": "fichiers",
-    "You'll find them on Content and AI search.": "Vous les retrouverez dans Contenu et Recherche IA.",
+    "Now on Content and AI search.": "Désormais dans Contenu et Recherche IA.",
     "This isn't a Clarity dashboard download. In Clarity, open Dashboard and press Export.": "Ce n'est pas un export du tableau de bord Clarity. Dans Clarity, ouvrez Tableau de bord et appuyez sur Exporter.",
     "Upload the .csv files Clarity downloads.": "Importez les fichiers .csv téléchargés depuis Clarity.", "This file has no page addresses, so its site can't be found. Pick the site, then upload it again.": "Ce fichier n'a pas d'adresses de pages : son site est introuvable. Choisissez le site, puis importez-le à nouveau.",
     "Choose the Clarity files first.": "Choisissez d'abord les fichiers Clarity.", "This Clarity file has no date range that can be read.": "Ce fichier Clarity n'a pas de période lisible.",
-    "Upload the file made on your Mac by scripts/clarity_archive_export.py. It only adds days this app doesn't have yet, so uploading twice changes nothing.": "Importez le fichier créé sur votre Mac par scripts/clarity_archive_export.py. Il n'ajoute que les jours absents de l'application : l'importer deux fois ne change rien.",
+    "Upload the file scripts/clarity_archive_export.py made on your Mac. It only adds missing days, so uploading twice is safe.": "Importez le fichier créé sur votre Mac par scripts/clarity_archive_export.py. Il n'ajoute que les jours manquants : l'importer deux fois est sans risque.",
     "to add": "à ajouter", "added": "ajoutés", "already here": "déjà présents", "Nothing new to add.": "Rien de nouveau à ajouter.", "Reading the file…": "Lecture du fichier…", "Adding the days…": "Ajout des jours…",
-    "These sites aren't in the app, so their days are left out. Add them as your own sites, then upload the file again:": "Ces sites ne sont pas dans l'application : leurs jours sont ignorés. Ajoutez-les comme vos propres sites, puis importez à nouveau le fichier :",
-    "You'll find them on Content, when the period includes those dates.": "Vous les trouverez dans Contenu, si la période inclut ces dates.",
-    "day here has Clarity sessions only: scroll depth and clicks weren't recorded for it.": "jour ici n'a que des sessions Clarity : le défilement et les clics n'ont pas été enregistrés.",
-    "days here have Clarity sessions only: scroll depth and clicks weren't recorded for them.": "jours ici n'ont que des sessions Clarity : le défilement et les clics n'ont pas été enregistrés.",
+    "These sites aren't in the app, so their days are skipped. Add them as your sites, then upload again:": "Ces sites ne sont pas dans l'application : leurs jours sont ignorés. Ajoutez-les comme vos sites, puis importez à nouveau :",
+    "Now on Content, for periods that include those dates.": "Désormais dans Contenu, pour les périodes qui incluent ces dates.",
+    "day has Clarity sessions only: no scroll depth or clicks.": "jour n'a que des sessions Clarity : ni défilement ni clics.",
+    "days have Clarity sessions only: no scroll depth or clicks.": "jours n'ont que des sessions Clarity : ni défilement ni clics.",
     "This isn't a Clarity archive file. Make it with scripts/clarity_archive_export.py.": "Ce n'est pas un fichier d'archive Clarity. Créez-le avec scripts/clarity_archive_export.py.",
     "Upload the .json file made by scripts/clarity_archive_export.py.": "Importez le fichier .json créé par scripts/clarity_archive_export.py.",
-    "Important domains": "Domaines importants", "Domains worth a closer look": "Les domaines qui méritent un examen", "Moz rows left this month": "lignes Moz restantes ce mois-ci", "Moz isn't connected": "Moz n'est pas connecté", "Moz gives few free rows, so it only runs on domains you add here, and only when you press the button. Results are kept, so a row is never used twice in a month.": "Moz offre peu de lignes gratuites : il ne s'exécute que sur les domaines ajoutés ici, et seulement quand vous appuyez sur le bouton. Les résultats sont conservés : une ligne n'est jamais utilisée deux fois dans le mois.",
+    "Important domains": "Domaines importants", "Domains worth a closer look": "Les domaines qui méritent un examen", "Moz rows left this month": "lignes Moz restantes ce mois-ci", "Moz isn't connected": "Moz n'est pas connecté", "Moz runs only on these domains, and only when you press the button.": "Moz ne tourne que sur ces domaines, et seulement quand vous appuyez sur le bouton.",
     "Add a domain": "Ajouter un domaine", "Get Moz data": "Obtenir les données Moz", "Get popularity": "Obtenir la popularité", "Domain": "Domaine", "Authority": "Autorité", "Moz Domain Authority": "Domain Authority Moz", "Linking domains": "Domaines référents", "Links": "Liens", "Popularity": "Popularité", "No domains yet. Add the ones worth a closer look.": "Pas encore de domaines. Ajoutez ceux qui méritent un examen.", "domains updated": "domaines mis à jour", "held back: no free rows left": "en attente : plus de lignes gratuites", "Popularity updated": "Popularité mise à jour", "Not ranked": "Non classé",
-    "Tell Bing and Yandex about new pages": "Signaler les nouvelles pages à Bing et Yandex", "IndexNow. Google doesn't take part.": "IndexNow. Google n'y participe pas.", "Addresses, one per line": "Adresses, une par ligne", "Send": "Envoyer", "Connect IndexNow first: paste its key, and put the key file on your site.": "Connectez d'abord IndexNow : collez sa clé et placez le fichier de clé sur votre site.", "addresses sent": "adresses envoyées", "The key is still being checked.": "La clé est encore en cours de vérification.", "Enter a domain, such as example.com.": "Saisissez un domaine, par exemple example.com.",
+    "Tell Bing and Yandex about new pages": "Signaler les nouvelles pages à Bing et Yandex", "IndexNow. Google doesn't take part.": "IndexNow. Google n'y participe pas.", "Addresses, one per line": "Adresses, une par ligne", "Send": "Envoyer", "Connect IndexNow first: paste its key, and put the key file on your site.": "Connectez d'abord IndexNow : collez sa clé et placez le fichier de clé sur votre site.", "addresses sent": "adresses envoyées", "Key still being checked.": "Clé en cours de vérification.", "Enter a domain, such as example.com.": "Saisissez un domaine, par exemple example.com.",
     "free requests left today": "requêtes gratuites restantes aujourd'hui",
     "credits left this month": "crédits restants ce mois-ci",
     "Sign out": "Se déconnecter", "Google connections": "Connexions Google", "To add another, press Add another Google connection below. Each site then picks which one it uses.": "Pour en ajouter une autre, cliquez sur Ajouter une autre connexion Google ci-dessous. Chaque site choisit ensuite laquelle il utilise.", "Add another Google connection": "Ajouter une autre connexion Google",
     "Google connection": "Connexion Google", "works": "fonctionne", "property": "propriété", "properties": "propriétés", "It didn't work.": "Ça n'a pas fonctionné.", "Testing…": "Test…", "Works.": "Fonctionne.",
-    "It can't see any Search Console property yet. Add its email in Search Console, then test again.": "Elle ne voit encore aucune propriété Search Console. Ajoutez son e-mail dans la Search Console, puis testez à nouveau.",
-    "Clarity allows 10 requests a day per project, so testing would use one up. The first pull shows whether the token works.": "Clarity autorise 10 requêtes par jour et par projet : un test en consommerait une. La première lecture montrera si le jeton fonctionne.",
+    "It sees no Search Console property yet: add its email there, then test again.": "Elle ne voit encore aucune propriété Search Console : ajoutez-y son e-mail, puis testez à nouveau.",
+    "No test: it would spend 1 of Clarity's 10 daily requests. The first pull shows if the token works.": "Pas de test : il consommerait 1 des 10 requêtes quotidiennes de Clarity. La première lecture montre si le jeton fonctionne.",
     "Remove this key? You'd have to paste it again.": "Retirer cette clé ? Il faudra la coller à nouveau.", "Remove this Google connection? Sites keep their data, and stop updating until they use another one.": "Retirer cette connexion Google ? Les sites gardent leurs données et ne se mettent plus à jour tant qu'ils n'en utilisent pas une autre.",
     "Clarity has a token per site. Tick This site doesn't use it next to the site, then press Save.": "Clarity a un jeton par site. Cochez Ce site ne l'utilise pas à côté du site, puis appuyez sur Enregistrer.", "Press Remove next to the Google connection above.": "Appuyez sur Retirer à côté de la connexion Google ci-dessus.",
-    "It works with no key, within a smaller limit. A free key gives it more room.": "Il fonctionne sans clé, avec une limite plus basse. Une clé gratuite lui donne plus de marge.",
+    "Works without a key, with a lower limit; a free key raises it.": "Marche sans clé, avec une limite plus basse ; une clé gratuite l'augmente.",
     "This key can't be checked until it's first used.": "Cette clé ne peut être vérifiée qu'à sa première utilisation.",
-    "Your sites and where their data comes from": "Vos sites et l'origine de leurs données", "Who can sign in": "Qui peut se connecter", "Your sites": "Vos sites", "Not used": "Non utilisé", "Failing": "En échec", "Waiting for first data": "En attente de données", "Not set up": "Non configuré", "Set up": "Configurer",
+    "Where each site's data comes from": "D'où viennent les données de chaque site", "Who can sign in": "Qui peut se connecter", "Your sites": "Vos sites", "Not used": "Non utilisé", "Failing": "En échec", "Waiting for data": "En attente de données", "Not set up": "Non configuré", "Set up": "Configurer",
     "Only an admin can add or change accounts.": "Seul un admin peut ajouter ou modifier des comptes.", "Add a person": "Ajouter une personne", "Name": "Nom", "Email": "E-mail", "Role": "Rôle", "You": "Vous", "Member": "Membre", "Admin": "Admin", "Disabled": "Désactivé", "Locked for now": "Verrouillé pour l'instant", "Waiting for first login": "Attend sa première connexion", "Active": "Actif",
     "Reset password": "Réinitialiser le mot de passe", "Enable": "Activer", "Disable": "Désactiver", "They get a temporary password, and choose their own at first login.": "La personne reçoit un mot de passe temporaire et choisit le sien à la première connexion.", "Add": "Ajouter", "Temporary password": "Mot de passe temporaire",
-    "Shown once. Copy it now and give it to them in person or by a private message. They change it at first login.": "Affiché une seule fois. Copiez-le et transmettez-le en personne ou par message privé. La personne le change à sa première connexion.", "Done": "Terminé", "Reset this person's password? They'll be signed out.": "Réinitialiser le mot de passe de cette personne ? Elle sera déconnectée.", "Saved": "Enregistré",
+    "Shown once. Copy it and hand it over in person or privately. They change it at first login.": "Affiché une seule fois. Copiez-le et transmettez-le en personne ou en privé. La personne le change à sa première connexion.", "Done": "Terminé", "Reset this person's password? They'll be signed out.": "Réinitialiser le mot de passe de cette personne ? Elle sera déconnectée.", "Saved": "Enregistré",
     "Only an admin can do that.": "Seul un admin peut faire cela.", "Enter a username of at least 3 letters or numbers, or an email address.": "Saisissez un nom d'utilisateur d'au moins 3 lettres ou chiffres, ou une adresse e-mail.", "Username or email": "Nom d'utilisateur ou e-mail", "Enter a name.": "Saisissez un nom.", "There is already an account with that username or email.": "Il existe déjà un compte avec cet identifiant ou cet e-mail.", "This is the only admin. Make someone else admin first.": "C'est le seul admin. Nommez d'abord quelqu'un d'autre admin.",
     "A GA4 property is its number, such as 123456789. It isn't the G-XXXX measurement ID.": "Une propriété GA4 est son numéro, par exemple 123456789. Ce n'est pas l'ID de mesure G-XXXX.", "A Search Console property looks like sc-domain:example.com or https://example.com/.": "Une propriété Search Console ressemble à sc-domain:example.com ou https://example.com/.",
     "That isn't the whole key file. Paste everything in the file, from the first { to the last }.": "Ce n'est pas le fichier de clé complet. Collez tout le fichier, du premier { au dernier }.",

@@ -26,7 +26,7 @@
     const { t, esc, icon } = U();
     if (!window.COMP?.server) return "";
     load();
-    const head = `<div class="card-head"><h2>${t("AI on Search insights")}</h2><div class="hint-text">${t("Only a click asks AI, and each answer is kept. AI never changes what's found or how it's ranked.")}</div></div>
+    const head = `<div class="card-head"><h2>${t("AI on Search insights")}</h2><div class="hint-text">${t("AI runs only on a click.")}${U().tip ? U().tip("Each answer is kept. AI never changes what's found or how it's ranked.") : ""}</div></div>
       <p class="small ai-sends">${icon("info")}<span>${t("What is sent: for the insight you click, this site's queries, page addresses and click numbers, plus the page's title and headings. Nothing about your leads. OpenRouter's free models may keep what they're sent. With No AI, nothing leaves the app.")}</span></p>`;
     if (!A.data) return `<section class="card" id="ai-settings">${head}${A.error ? (U().failCard ? U().failCard(A.error, { retry: "data-ai-retry" }) : `<div class="empty"><p class="muted">${esc(t(A.error))}</p><button class="btn" data-ai-retry>${t("Try again")}</button></div>`) : (U().skeleton ? U().skeleton("rows", { rows: 3 }) : `<div class="empty"><p class="muted">${t("Loading…")}</p></div>`)}</section>`;
     const d = A.data;
@@ -38,9 +38,9 @@
     const usesClaude = d.sites.some((s) => s.provider === "claude");
     const keyNote = (id, name) => (d.keys[id] ? "" : `<p class="small ai-need">${icon("info")}${t(`${name} isn't connected yet.`)} <button class="link-btn" data-ai-key="${id === "claude" ? "anthropic" : id}">${t("Connect it")}</button></p>`);
     const spend = `<div class="ai-spend"><div><div class="lab">${t("Claude this month")}</div><div class="fig">${money(d.spent)} <span class="muted small">${t("of")} ${money(d.cap)}</span></div><div class="muted small">${d.requests} ${t(d.requests === 1 ? "answer" : "answers")}</div></div>
-      <label class="field ai-cap"><span>${t("Monthly cap, in dollars")}</span><input class="input" type="number" min="0" max="1000" step="0.5" value="${esc(String(d.cap))}" data-ai-cap></label>
-      <button class="btn" data-ai-save-cap>${t("Save the cap")}</button></div>`;
-    const models = `<p class="small muted">${t("Claude Haiku 5.5 explains, suggests titles and writes the weekly summary. Claude Sonnet 5.5 writes content briefs and FAQs. A request that could pass the cap isn't sent.")}</p>`;
+      <label class="field ai-cap"><span>${t("Monthly cap ($)")}</span><input class="input" type="number" min="0" max="1000" step="0.5" value="${esc(String(d.cap))}" data-ai-cap></label>
+      <button class="btn" data-ai-save-cap>${t("Save")}</button></div>`;
+    const models = `<p class="small muted">${t("Claude Haiku 5.5: explanations, titles, weekly summary. Claude Sonnet 5.5: briefs and FAQs. Nothing that could pass the cap is sent.")}</p>`;
     return `<section class="card" id="ai-settings">${head}<ul class="rows">${rows}</ul>
       <div class="ai-foot">${d.sites.some((s) => s.provider === "openrouter") ? keyNote("openrouter", "OpenRouter") : ""}${usesClaude ? keyNote("claude", "Anthropic") : ""}${spend}${models}</div></section>`;
   };
@@ -67,11 +67,11 @@
   });
 
   const words = {
-    "AI on Search insights": "IA sur les analyses de recherche", "Only a click asks AI, and each answer is kept. AI never changes what's found or how it's ranked.": "L'IA n'est sollicitée que sur un clic, et chaque réponse est conservée. L'IA ne change jamais ce qui est trouvé ni son classement.",
+    "AI on Search insights": "IA sur les analyses de recherche", "AI runs only on a click.": "L'IA ne tourne que sur un clic.",
     "AI for": "IA pour", "Free models (OpenRouter)": "Modèles gratuits (OpenRouter)", "Claude (Anthropic key)": "Claude (clé Anthropic)",
-    "OpenRouter isn't connected yet.": "OpenRouter n'est pas encore connecté.", "Anthropic isn't connected yet.": "Anthropic n'est pas encore connecté.", "Connect it": "Le connecter",
-    "Claude this month": "Claude ce mois-ci", "answer": "réponse", "answers": "réponses", "Monthly cap, in dollars": "Plafond mensuel, en dollars", "Save the cap": "Enregistrer le plafond",
-    "Claude Haiku 5.5 explains, suggests titles and writes the weekly summary. Claude Sonnet 5.5 writes content briefs and FAQs. A request that could pass the cap isn't sent.": "Claude Haiku 5.5 explique, propose des titres et écrit le résumé de la semaine. Claude Sonnet 5.5 écrit les briefs et les FAQ. Une requête qui pourrait dépasser le plafond n'est pas envoyée.",
+    "OpenRouter isn't connected.": "OpenRouter n'est pas connecté.", "Anthropic isn't connected.": "Anthropic n'est pas connecté.", "Connect it": "Le connecter",
+    "Claude this month": "Claude ce mois-ci", "answer": "réponse", "answers": "réponses", "Monthly cap ($)": "Plafond mensuel ($)", "Save": "Enregistrer",
+    "Claude Haiku 5.5: explanations, titles, weekly summary. Claude Sonnet 5.5: briefs and FAQs. Nothing that could pass the cap is sent.": "Claude Haiku 5.5 : explications, titres, résumé de la semaine. Claude Sonnet 5.5 : briefs et FAQ. Rien qui pourrait dépasser le plafond n'est envoyé.",
     "AI choice saved": "Choix de l'IA enregistré", "No AI (nothing is sent)": "Pas d'IA (rien n'est envoyé)", "Only an admin can change this.": "Seul un admin peut modifier ceci.",
     "What is sent: for the insight you click, this site's queries, page addresses and click numbers, plus the page's title and headings. Nothing about your leads. OpenRouter's free models may keep what they're sent. With No AI, nothing leaves the app.": "Ce qui est envoyé : pour l'analyse sur laquelle vous cliquez, les requêtes de ce site, les adresses de pages et les nombres de clics, ainsi que le titre et les intertitres de la page. Rien sur vos leads. Les modèles gratuits d'OpenRouter peuvent garder ce qu'ils reçoivent. Avec Pas d'IA, rien ne sort de l'application.",
     "No AI is chosen for this site yet. Pick one in Settings → AI. Nothing about the site is sent until you do.": "Aucune IA n'est choisie pour ce site. Choisissez-en une dans Réglages → IA. Rien sur le site n'est envoyé avant.",

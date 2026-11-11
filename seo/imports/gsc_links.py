@@ -50,12 +50,12 @@ def _text_of(data: bytes) -> str:
 def _tables(name: str, data: bytes) -> list[list[list[str]]]:
     """Every table in the upload: one for a .csv, each .csv inside a .zip."""
     if len(data) > MAX_BYTES:
-        raise Refused("That file is too large. A Search Console export is well under 10 MB.")
+        raise Refused("File too large: a Search Console export is well under 10 MB.")
     if data[:4] == b"PK\x03\x04":
         try:
             box = zipfile.ZipFile(io.BytesIO(data))
         except zipfile.BadZipFile:
-            raise Refused("That .zip file can't be opened.") from None
+            raise Refused("Can't open that .zip.") from None
         found = []
         total = 0
         for info in box.infolist():
@@ -66,10 +66,10 @@ def _tables(name: str, data: bytes) -> list[list[list[str]]]:
                 raise Refused("That .zip file holds too much.")
             found.append(_rows_of(box.read(info)))
         if not found:
-            raise Refused("That .zip file has no .csv inside.")
+            raise Refused("No .csv inside that .zip.")
         return found
     if name.lower().endswith((".xlsx", ".xls")):
-        raise Refused("Download it from Search Console as CSV, not Excel.")
+        raise Refused("Download it as CSV, not Excel.")
     return [_rows_of(data)]
 
 
@@ -165,7 +165,7 @@ def read(name: str, data: bytes, site_host: str) -> list[dict]:
             rows = [{"domain": r[domain_col].lower(), "pages": _number(r[numbers[0]]) if numbers and numbers[0] < len(r) else None, "targets": _number(r[numbers[1]]) if len(numbers) > 1 and numbers[1] < len(r) else None} for r in body if domain_col < len(r) and _DOMAIN.match(r[domain_col])]
             answer.append({"kind": SITES, "rows": rows})
     if not answer:
-        raise Refused("That doesn't look like a Search Console Links export. In Search Console open Links, then Export external links, and choose Latest links.")
+        raise Refused("Not a Search Console Links export. Open Links, then Export external links, and choose Latest links.")
     return answer
 
 

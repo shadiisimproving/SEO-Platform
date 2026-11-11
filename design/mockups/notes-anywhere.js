@@ -25,7 +25,7 @@
     const site = ui.siteIdPicked();
     const route = ui.state.route;
     const name = COMP.notes.screenName(route);
-    if (name && name !== route) list.push({ id: "screen", label: t("This screen: {name}").replace("{name}", name), icon: "layout-dashboard", where: { scope: "screen", screen: route, siteId: site } });
+    if (name && name !== route) list.push({ id: "screen", label: t("{name} screen").replace("{name}", name), icon: "layout-dashboard", where: { scope: "screen", screen: route, siteId: site } });
     const host = ui.siteHostPicked();
     list.push({ id: "site", label: host || t("All my sites"), icon: "globe", where: { scope: "site", siteId: site } });
     if (host) list.push({ id: "everywhere", label: t("All my sites"), icon: "layers", where: { scope: "site", siteId: null } });
@@ -47,7 +47,7 @@
     if (!ui || !COMP.notes?.panel) return;
     const current = ui.$("#panel");
     if (current?.classList.contains("nb-panel-wrap")) { ui.closePanel(); return; } // the button and N also close it
-    if (current?.querySelector("form")) { ui.toast(ui.t("Close the open panel first, so nothing in it is lost."), { kind: "info" }); return; }
+    if (current?.querySelector("form")) { ui.toast(ui.t("Close the open panel first."), { kind: "info" }); return; }
     typedInPanel = false;
     COMP.notes.panel(choices(opener), opener || button(), pick);
   }
@@ -96,7 +96,7 @@
         const now = root.querySelector("#panel");
         const isNotes = Boolean(now?.classList.contains("nb-panel-wrap"));
         document.body.classList.toggle("nb-beside-panel", Boolean(now)); // the button moves beside an open panel, so it stays in reach
-        if (wasNotes && now && !isNotes && typedInPanel) ui.toast(ui.t("Your note is saved."), { kind: "info" });
+        if (wasNotes && now && !isNotes && typedInPanel) ui.toast(ui.t("Note saved"), { kind: "info" });
         if (now) wasNotes = isNotes || (wasNotes && !now);
         if (!now) wasNotes = false;
         if (!isNotes && now) typedInPanel = false;

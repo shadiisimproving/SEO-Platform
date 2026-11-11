@@ -22,10 +22,10 @@
     // Counted as the Competitors table counts them (comp-summary.js allRivals): the summary's rows, which are only those with tracking On,
     // plus the ones the list answer adds, on Pages only or Off. So this line can't say "no competitors" over a table that lists some.
     const rivals = new Set([...(d.rivals || []), ...(S.list || [])].map((r) => r.id)).size;
-    if (!rivals && !c.keywords) return { key: "nothing", words: fill("No competitors and no keyword list for {host} yet.", { host }), main: ["find", "Find competitors"], other: ["keywords", "Add keywords"] };
-    if (!rivals) return { key: "no-rivals", words: fill("No competitors yet for {host}.", { host }), main: ["find", "Find competitors"], other: ["add", "Add one by hand"] };
-    if (!c.keywords) return { key: "no-keywords", words: fill("No keyword list for {host}, so there's nothing to compare positions on.", { host }), main: ["keywords", "Add keywords"], other: ["check", "Keyword check"] };
-    if (!c.checked) return { key: "unchecked", words: fill("{n} keywords saved, never checked, so positions show — for now.", { n: UI().num(c.keywords) }), main: ["keywords", "Open Keywords"], other: ["check", "Keyword check"] };
+    if (!rivals && !c.keywords) return { key: "nothing", words: fill("No competitors or keywords for {host} yet.", { host }), main: ["find", "Find competitors"], other: ["keywords", "Add keywords"] };
+    if (!rivals) return { key: "no-rivals", words: fill("No competitors yet for {host}.", { host }), main: ["find", "Find competitors"], other: ["add", "Add by hand"] };
+    if (!c.keywords) return { key: "no-keywords", words: fill("No keyword list for {host}, so no positions to compare.", { host }), main: ["keywords", "Add keywords"], other: ["check", "Keyword check"] };
+    if (!c.checked) return { key: "unchecked", words: fill("{n} keywords saved, not checked yet: positions show —.", { n: UI().num(c.keywords) }), main: ["keywords", "Open Keywords"], other: ["check", "Keyword check"] };
     return null;
   }
 
@@ -88,13 +88,13 @@
   window.addEventListener("comp:setup-changed", () => refresh({ force: true }));
 
   Object.assign(window.FR, {
-    "No competitors and no keyword list for {host} yet.": "Pas encore de concurrents ni de liste de mots-clés pour {host}.",
+    "No competitors or keywords for {host} yet.": "Pas encore de concurrents ni de mots-clés pour {host}.",
     "No competitors yet for {host}.": "Pas encore de concurrents pour {host}.",
-    "No keyword list for {host}, so there's nothing to compare positions on.": "Aucune liste de mots-clés pour {host} : il n'y a pas de positions à comparer.",
-    "{n} keywords saved, never checked, so positions show — for now.": "{n} mots-clés enregistrés, jamais vérifiés : les positions affichent — pour l'instant.",
+    "No keyword list for {host}, so no positions to compare.": "Pas de liste de mots-clés pour {host} : aucune position à comparer.",
+    "{n} keywords saved, not checked yet: positions show —.": "{n} mots-clés enregistrés, pas encore vérifiés : les positions affichent —.",
     "Add keywords": "Ajouter des mots-clés",
     "Open Keywords": "Ouvrir Mots-clés",
     "Keyword check": "Vérifier des mots-clés",
-    "Add one by hand": "En ajouter un à la main",
+    "Add by hand": "Ajouter à la main",
   });
 })();

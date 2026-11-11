@@ -6,6 +6,9 @@
      UI.failCard(err, opts)           a card that says what failed in plain words, with Try again where it shows.
                                       opts: { title, onRetry: () => …, retry: "data-attr-name", action: "<extra button html>" }
      UI.errorWords(errOrMessage)      a sentence for a person, never "Internal Server Error", "Failed to fetch" or "Error 429".
+                                      A search tool's own error becomes a few words ("Key refused"); UI.errorParts(err) also
+                                      gives the whole sentence, and UI.errorHtml(err) puts it behind (i).
+     UI.stepLink(step)                a How to connect step's link; with step.logo, the brand's logo and ↗, words as tooltip.
      UI.def(name)                     the definition of a metric (English name as the key), in the screen's language, or "".
      UI.defIcon(name)                 a small (i) after a label: hover or focus shows the definition, Esc closes it.
      UI.canAdmin()                    whether the signed-in account may change admin settings (true when there's no login).
@@ -64,55 +67,59 @@
   /* ---- words this file and the shared helpers use -------------------------------------------------------------- */
   const FR = {
     "Loading…": "Chargement…", "That didn't load": "Le chargement a échoué", "Try again": "Réessayer", "What it means": "Ce que ça veut dire",
-    "The server can't be reached. Check the connection, then try again.": "Le serveur est injoignable. Vérifiez la connexion, puis réessayez.",
-    "Something went wrong on the server. Try again in a moment.": "Un problème est survenu sur le serveur. Réessayez dans un instant.",
-    "The server is busy. Wait a minute, then try again.": "Le serveur est occupé. Attendez une minute, puis réessayez.",
-    "That isn't there any more. Reload the page.": "Ce n'est plus là. Rechargez la page.",
-    "Your session ended. Sign in again.": "Votre session a pris fin. Reconnectez-vous.",
-    "The server took too long to answer. Try again.": "Le serveur a mis trop de temps à répondre. Réessayez.",
+    "Server unreachable. Check the connection, then try again.": "Serveur injoignable. Vérifiez la connexion, puis réessayez.",
+    "Something went wrong on the server. Try again.": "Un problème est survenu sur le serveur. Réessayez.",
+    "Server busy. Try again in a minute.": "Serveur occupé. Réessayez dans une minute.",
+    "No longer there. Reload the page.": "N'existe plus. Rechargez la page.",
+    "Session ended. Sign in again.": "Session terminée. Reconnectez-vous.",
+    "The server took too long. Try again.": "Le serveur a mis trop de temps. Réessayez.",
     "Only an admin can do this.": "Seul un admin peut faire ceci.", "Only an admin can change connections.": "Seul un admin peut modifier les connexions.",
-    "Welcome.": "Bienvenue.", "steps to your first data. Only the first is needed to start.": "étapes vers vos premières données. Seule la première est nécessaire pour commencer.",
+    "Welcome.": "Bienvenue.", "steps to your first data. Only step 1 is required.": "étapes vers vos premières données. Seule la 1re est requise.",
     // signing in again in place, and what a Member can't change
-    "Your session ended": "Votre session a pris fin", "Sign in again to carry on. What you were doing is still on the page.": "Reconnectez-vous pour continuer. Ce que vous faisiez est toujours sur la page.",
+    "Session ended": "Votre session a pris fin", "Sign in again to carry on. Your work is still here.": "Reconnectez-vous pour continuer. Votre travail est toujours là.",
     "Username or email": "Nom d'utilisateur ou e-mail", "Password": "Mot de passe", "Go to the sign-in page": "Aller à la page de connexion", "Sign in": "Connexion",
     "Enter your username and password.": "Saisissez votre nom d'utilisateur et votre mot de passe.", "That didn't work. Try again.": "Cela n'a pas marché. Réessayez.",
-    "Signed in again. Press Save to send what you were doing.": "Reconnecté. Appuyez sur Enregistrer pour envoyer ce que vous faisiez.",
+    "Signed in again. Press Save to send your change.": "Reconnecté. Appuyez sur Enregistrer pour envoyer votre modification.",
     "Can't reach the app. Check it's running, then try again.": "L'application est injoignable. Vérifiez qu'elle tourne, puis réessayez.",
-    "You can see everything here; ask an admin to make a change.": "Vous voyez tout ici ; demandez à un admin pour faire un changement.", "Detail": "Détail",
+    "View only: ask an admin for changes.": "Lecture seule : demandez les changements à un admin.", "Detail": "Détail",
     // Refresh and free checks on Keywords
-    "Retry these": "Relancer ceux-ci", "Only the searches that worked were charged.": "Seules les recherches qui ont marché ont été facturées.",
+    "Retry": "Relancer ceux-ci", "Only successful searches were charged.": "Seules les recherches réussies ont été facturées.",
     "The keyword's own panel shows each failed check.": "Le panneau de chaque mot-clé montre ses contrôles en échec.", "No free checks left for": "Plus de contrôles gratuits pour",
-    "keyword waits as Not checked yet.": "mot-clé attend comme Pas encore contrôlé.", "keywords wait as Not checked yet.": "mots-clés attendent comme Pas encore contrôlés.",
-    "They don't refill: connect another tool in Settings.": "Ils ne se rechargent pas : connectez un autre outil dans les réglages.",
-    "They refill each month, or connect another tool in Settings.": "Ils se rechargent chaque mois, ou connectez un autre outil dans les réglages.", "Open Settings": "Ouvrir les réglages",
-    "Several links share these visits, so one link's cost per visit can't be told.": "Plusieurs liens partagent ces visites : le coût par visite d'un seul lien ne peut pas être calculé.",
-    "SerpApi goes first for Google while it has free searches: it is the only tool that reads AI Overviews. Then the order below.": "SerpApi passe en premier pour Google tant qu'il a des recherches gratuites : c'est le seul outil qui lit les AI Overviews. Ensuite, l'ordre ci-dessous.",
-    "Checked recently with this tool, so not checked again. Press again to spend a credit anyway.": "Contrôlé récemment avec cet outil, donc pas contrôlé à nouveau. Appuyez encore pour dépenser un crédit quand même.",
+    "keyword stays Not checked.": "mot-clé reste Non contrôlé.", "keywords stay Not checked.": "mots-clés restent Non contrôlés.",
+    "They don't refill; connect another tool in Settings.": "Ils ne se rechargent pas ; connectez un autre outil dans les réglages.",
+    "They refill monthly, or connect another tool in Settings.": "Ils se rechargent chaque mois, ou connectez un autre outil dans les réglages.", "Open Settings": "Ouvrir les réglages",
+    "Several links share these visits, so no single cost per visit.": "Plusieurs liens partagent ces visites : pas de coût par visite pour un seul lien.",
+    "SerpApi first while it has free searches, then the order below.": "SerpApi d'abord tant qu'il a des recherches gratuites, puis l'ordre ci-dessous.",
+    "Checked recently with this tool. Press again to spend a credit anyway.": "Contrôlé récemment avec cet outil. Appuyez encore pour dépenser un crédit quand même.",
     "Check again? 1 credit": "Contrôler encore ? 1 crédit",
     // Settings → the Claude (Anthropic) row and its panel
     "Claude for Search insights: explanations, new titles, content briefs and FAQs": "Claude pour les analyses de recherche : explications, nouveaux titres, briefs et FAQ",
-    "Pay as you go, a few cents an answer": "À l'usage, quelques centimes par réponse", "Your monthly cap in Settings → AI": "Votre plafond mensuel dans Réglages → IA",
-    "Off until you paste a key, and used only by sites set to Claude under AI. Only a click asks, each answer is kept, and nothing is sent once the month's cap is reached.": "Désactivé tant que vous ne collez pas de clé, et utilisé seulement par les sites réglés sur Claude dans IA. Seul un clic l'interroge, chaque réponse est gardée, et rien n'est envoyé une fois le plafond du mois atteint.",
-    "Create an account": "Créer un compte", "Create an account in the Claude Console and add a little credit.": "Créez un compte dans la Claude Console et ajoutez un peu de crédit.", "Open the Claude Console": "Ouvrir la Claude Console",
-    "Create the key": "Créer la clé", "Open API keys and create a key. You can give its workspace a spending limit too.": "Ouvrez API keys et créez une clé. Vous pouvez aussi fixer une limite de dépense à son espace de travail.", "Open API keys": "Ouvrir API keys",
-    "Paste it here": "Collez-la ici", "Paste it here, press Test, then Save. Test lists Claude's models, which costs nothing. Then pick Claude for a site under AI.": "Collez-la ici, appuyez sur Tester, puis Enregistrer. Le test liste les modèles de Claude, ce qui ne coûte rien. Choisissez ensuite Claude pour un site dans IA.",
-    "Your own site, or a competitor to watch": "Votre propre site, ou un concurrent à surveiller",
+    "A few cents per answer": "Quelques centimes par réponse", "Monthly cap: Settings → AI": "Plafond mensuel : Réglages → IA",
+    "Off without a key. Only sites set to Claude under AI use it.": "Désactivé sans clé. Seuls les sites réglés sur Claude dans IA l'utilisent.",
+    "Create an account": "Créer un compte", "Create an account and add a little credit.": "Créez un compte et ajoutez un peu de crédit.", "Open the Claude Console": "Ouvrir la Claude Console",
+    "Create the key": "Créer la clé", "In API keys, create a key. Optional: a spending limit on its workspace.": "Dans API keys, créez une clé. En option : une limite de dépense pour son espace de travail.", "API keys": "Clés API",
+    "Paste it here": "Collez-la ici", "Paste it, press Test (free), then Save. Then pick Claude for a site under AI.": "Collez-la, cliquez sur Tester (gratuit), puis Enregistrer. Choisissez ensuite Claude pour un site dans IA.",
+    "Yours, or a competitor to watch": "Le vôtre, ou un concurrent à surveiller",
     // the server's own sentences for a failed request (seo/web/__init__.py API_ERROR_WORDS)
-    "The app couldn't read that request. Reload the page and try again.": "L'application n'a pas pu lire cette demande. Rechargez la page et réessayez.",
+    "Couldn't read that request. Reload and try again.": "L'application n'a pas pu lire cette demande. Rechargez la page et réessayez.",
     "Please sign in.": "Veuillez vous connecter.", "You can't do that with this account.": "Ce compte ne permet pas de faire cela.", "That address isn't part of the app.": "Cette adresse ne fait pas partie de l'application.",
-    "That address doesn't take this kind of request.": "Cette adresse n'accepte pas ce type de demande.", "Someone else changed this at the same time. Reload and try again.": "Quelqu'un d'autre a modifié ceci en même temps. Rechargez et réessayez.",
-    "Too many requests at once. Wait a minute, then try again.": "Trop de demandes à la fois. Attendez une minute, puis réessayez.",
-    "Something went wrong on the server. Try again; if it keeps happening, tell your admin.": "Un problème est survenu sur le serveur. Réessayez ; si cela continue, prévenez votre admin.",
-    "The server didn't answer. Try again in a minute.": "Le serveur n'a pas répondu. Réessayez dans une minute.", "The server is busy. Try again in a minute.": "Le serveur est occupé. Réessayez dans une minute.",
-    "All countries": "Tous pays", "It may have been charged, so a Retry spends again.": "Elle a peut-être été facturée : relancer dépense à nouveau.",
+    "That address doesn't take this kind of request.": "Cette adresse n'accepte pas ce type de demande.", "Someone else changed this meanwhile. Reload and try again.": "Quelqu'un d'autre l'a modifié entre-temps. Rechargez et réessayez.",
+    "Too many requests. Try again in a minute.": "Trop de demandes. Réessayez dans une minute.",
+    "Something went wrong on the server. Try again, or tell your admin.": "Un problème est survenu sur le serveur. Réessayez, ou prévenez votre admin.",
+    "The server didn't answer. Try again in a minute.": "Le serveur n'a pas répondu. Réessayez dans une minute.", 
+    "All countries": "Tous pays", "May have been charged: a Retry spends again.": "Peut-être facturée : relancer dépense à nouveau.",
+    // a search tool's error in a few words (UI.errorParts)
+    "Empty answer ({code})": "Réponse vide ({code})", "Server error ({code})": "Erreur serveur ({code})", "Refused ({code})": "Refusé ({code})",
+    "Timed out": "Délai dépassé", "Request failed": "Requête échouée", "Key refused": "Clé refusée", "Out of credits": "Plus de crédits",
+    "Stopped: asked to slow down": "Arrêté : demande de ralentir",
     // the shared date range
     "vs": "vs", "Dates": "Dates", "This month": "Ce mois-ci", "Last month": "Mois dernier", "Last 24 hours": "Dernières 24 heures", "Last 7 days": "7 derniers jours", "Last 28 days": "28 derniers jours",
-    "Last 3 months": "3 derniers mois", "Last 6 months": "6 derniers mois", "Last 12 months": "12 derniers mois", "Last 16 months": "16 derniers mois", "vs same period last year": "vs même période l'an dernier",
+    "Last 3 months": "3 derniers mois", "Last 6 months": "6 derniers mois", "Last 12 months": "12 derniers mois", "Last 16 months": "16 derniers mois", "vs last year": "vs l'an dernier",
     "No comparison: Search Console doesn't keep that far back.": "Sans comparaison : la Search Console ne remonte pas aussi loin.",
     // Keywords
     "28 days": "28 jours", "Impressions (28 days)": "Impressions (28 jours)", "Last check": "Dernier contrôle", "No check yet": "Aucun contrôle pour l'instant",
-    "Lost track of this Refresh": "Le suivi de cette actualisation s'est arrêté", "Whatever was checked is saved. Reload the page to see it.": "Tout ce qui a été contrôlé est enregistré. Rechargez la page pour le voir.",
-    "Search keywords": "Chercher un mot-clé", "No keyword matches this search.": "Aucun mot-clé ne correspond à cette recherche.", "Clear the search": "Effacer la recherche",
+    "Lost track of this Refresh": "Le suivi de cette actualisation s'est arrêté", "Progress is saved. Reload to see it.": "La progression est enregistrée. Rechargez pour la voir.",
+    "Search keywords": "Chercher un mot-clé", "No keyword matches.": "Aucun mot-clé ne correspond.", "Clear search": "Effacer la recherche",
     "Showing": "Affichés", "Rows per page": "Lignes par page", "Previous": "Précédent", "Next": "Suivant", "Page": "Page", "of": "sur",
   };
   window.FR = window.FR || {};
@@ -139,17 +146,77 @@
       if (!text) return "";
       return `<span class="def-i" role="img" tabindex="0" data-tip="${esc(text)}" aria-label="${esc(`${t(key)}: ${text}`)}">${icon("info")}</span>`;
     };
+    // A short line on screen, the full sentence one hover or tap away: `${t("Short.")}${UI.tip("The long sentence.")}`.
+    // The sentence goes through t(), so its French comes from the dictionaries (fr-short.js holds the tip sentences).
+    UI.tip = (sentence, vars = null) => {
+      if (!sentence) return "";
+      let text = t(sentence);
+      if (vars) for (const [k, v] of Object.entries(vars)) text = text.split(`{${k}}`).join(String(v));
+      return ` <span class="def-i" role="img" tabindex="0" data-tip="${esc(text)}" aria-label="${esc(text)}">${icon("info")}</span>`;
+    };
+    // A brand shown by its logo alone, where its name would repeat on every row: the name stays in the tooltip and for
+    // screen readers. Falls back to the plain name when the brand has no logo (brands.js FILES).
+    UI.logoOnly = (brand, tip = "") => {
+      const file = window.BRANDS?.FILES?.[brand];
+      const label = tip || brand;
+      if (!file) return `<span>${esc(brand)}</span>`;
+      return `<span class="brand-mention logo-only" title="${esc(label)}" data-tip="${esc(label)}"><img class="logo brand-logo" src="logos/${file}" alt="${esc(label)}"></span>`;
+    };
+    // A How to connect step's link ({ url, link, logo }). With `logo`, the link only names that brand, so it shows the
+    // brand's logo and ↗, and its words ("Open Search Console") are the tooltip and what a screen reader says.
+    // When the step's own sentence already names the brand (it gets its logo there), the link is ↗ alone: one logo, not two.
+    UI.stepLink = (s, fallback = "Open") => {
+      if (!s?.url) return "";
+      const words = t(s.link || fallback), attrs = `href="${esc(s.url)}" target="_blank" rel="noopener noreferrer"`;
+      if (s.logo && window.BRANDS?.FILES?.[s.logo]) {
+        const named = s.text && t(s.text).includes(s.logo);
+        return `<a class="ext-link logo-link" ${attrs} aria-label="${esc(words)}" data-tip="${esc(words)}"${named ? ' style="min-width:24px;min-height:24px;justify-content:center"' : ""}>${named ? "" : UI.logoOnly(s.logo, words)}<span aria-hidden="true">↗</span></a>`;
+      }
+      return `<a class="ext-link" ${attrs}>${icon("external-link")}${esc(words)}</a>`;
+    };
 
-    UI.errorWords = (err) => {
+    /* A search tool's own error in a few words: "Bright Data answered 200 without data." → "Empty answer (200)". The row
+       already says which tool, so the name goes; the whole sentence stays for a tooltip (UI.errorParts, UI.errorHtml).
+       [pattern, short words, the whole sentence in French built from the pattern's parts] */
+    const TOOL_ERRORS = [
+      [/^(.*?) ?\banswered (\d{3}) without data\.?$/, (m) => fill("Empty answer ({code})", m[2]), (m) => `${m[1]} a répondu ${m[2]} sans données.`],
+      [/^(.*?) ?\banswered (5\d\d)(?: \(([^)]*)\))?\.?$/, (m) => fill("Server error ({code})", m[2]), (m) => `${m[1]} a répondu ${m[2]}${m[3] ? ` (${m[3]})` : ""}.`],
+      [/^(.*?) ?\banswered (4\d\d)(?: \(([^)]*)\))?\.?$/, (m) => fill("Refused ({code})", m[2]), (m) => `${m[1]} a répondu ${m[2]}${m[3] ? ` (${m[3]})` : ""}.`],
+      [/^The request failed: (\w*Timeout\w*)$/, () => t("Timed out"), (m) => `La requête a échoué : ${m[1]}`],
+      [/^The request failed: (\w+)$/, () => t("Request failed"), (m) => `La requête a échoué : ${m[1]}`],
+      [/^(.*?) ?\brefused the key( or the zone name)?\.$/, () => t("Key refused"), (m) => `${m[1]} a refusé la clé${m[2] ? " ou le nom de la zone" : ""}.`],
+      [/^(.*?) ?\bhas no (free searches|credits) left(?: for now)?\.$/, () => t("Out of credits"), (m) => (m[2] === "credits" ? `${m[1]} n'a plus de crédits.` : `${m[1]} n'a plus de recherches gratuites pour l'instant.`)],
+      [/^(.*?) ?\basked us to slow down, so this tool stopped\.$/, () => t("Stopped: asked to slow down"), (m) => `${m[1]} a demandé de ralentir : cet outil s'est arrêté.`],
+    ];
+    const fill = (words, code) => t(words).split("{code}").join(code);
+    // A caller may hand over the sentence already in French: its English is what the patterns read.
+    const englishOf = (text) => (fr() && !TOOL_ERRORS.some(([re]) => re.test(text)) ? Object.keys(window.FR).find((k) => window.FR[k] === text) || text : text);
+    const toolError = (message) => {
+      const english = englishOf(message.trim());
+      for (const [re, words, frFull] of TOOL_ERRORS) {
+        const m = english.match(re);
+        if (!m) continue;
+        const full = !fr() ? english : window.FR[english] !== undefined ? window.FR[english] : frFull(m).trim();
+        return { words: words(m), full };
+      }
+      return null;
+    };
+
+    // { words, full }: the plain words to show, and the tool's whole sentence when the words shortened it ("" otherwise).
+    UI.errorParts = (err) => {
       const message = typeof err === "string" ? err : err?.message || "";
       const code = typeof err === "object" && err ? err.status : undefined;
-      if (code === 0 || /failed to fetch|networkerror|load failed|network request failed/i.test(message)) return t("The server can't be reached. Check the connection, then try again.");
-      if (code === 429 || /too many requests|^error 429$/i.test(message)) return t("The server is busy. Wait a minute, then try again.");
-      if (/^(internal server error|error 50\d|bad gateway|service unavailable|gateway time-?out)$/i.test(message.trim()) || (code >= 500 && !message)) return t("Something went wrong on the server. Try again in a moment.");
-      if (/^error 404$|^not found$/i.test(message.trim())) return t("That isn't there any more. Reload the page.");
-      if (/^(timeout|timed out|request timed out|the read operation timed out)\.?$/i.test(message.trim())) return t("The server took too long to answer. Try again.");
-      return t(message || "Something went wrong on the server. Try again in a moment.");
+      const plain = (key) => ({ words: t(key), full: "" });
+      if (code === 0 || /failed to fetch|networkerror|load failed|network request failed/i.test(message)) return plain("Server unreachable. Check the connection, then try again.");
+      if (code === 429 || /too many requests|^error 429$/i.test(message)) return plain("Server busy. Try again in a minute.");
+      if (/^(internal server error|error 50\d|bad gateway|service unavailable|gateway time-?out)$/i.test(message.trim()) || (code >= 500 && !message)) return plain("Something went wrong on the server. Try again.");
+      if (/^error 404$|^not found$/i.test(message.trim())) return plain("No longer there. Reload the page.");
+      if (/^(timeout|timed out|request timed out|the read operation timed out)\.?$/i.test(message.trim())) return plain("The server took too long. Try again.");
+      return (message && toolError(message)) || plain(message || "Something went wrong on the server. Try again.");
     };
+    UI.errorWords = (err) => UI.errorParts(err).words;
+    // The same as HTML: the words, and the whole sentence behind (i) when they shortened it.
+    UI.errorHtml = (err) => { const { words, full } = UI.errorParts(err); return `${esc(words)}${full ? UI.tip(full) : ""}`; };
 
     UI.failCard = (err, { title = "That didn't load", onRetry = null, retry = "", action = "" } = {}) => {
       let attr = retry;

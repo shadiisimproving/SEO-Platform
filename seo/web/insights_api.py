@@ -36,7 +36,7 @@ def run():
     body = request.get_json(silent=True) or {}
     sites = service._sites(_engine(), body.get("site_id"))
     if not sites:
-        raise Refused("Add a site first.")
+        raise Refused("Add a site first")
     return jsonify([insights_engine.run(_engine(), site_id) for site_id in sites])
 
 

@@ -32,7 +32,7 @@ const one = (page, sel, fn) => page.$eval(sel, fn);
     await fold.scrollIntoViewIfNeeded();
     await page.screenshot({ path: `${OUT}/w2-details.png` });
   }
-  const pageFold = await page.$('#cs-moves-list li:has-text("New page found") details.cl-more-facts');
+  const pageFold = await page.$('#cs-moves-list li:has-text("New page") details.cl-more-facts');
   check(Boolean(pageFold), "a new page has All the details");
   if (pageFold) {
     await (await pageFold.$("summary")).click(); await page.waitForTimeout(300);
@@ -68,7 +68,7 @@ const one = (page, sel, fn) => page.$eval(sel, fn);
     await page.fill('#cs-moves input[type="search"]', ""); await page.waitForTimeout(600);
   }
   await page.selectOption("#cs-mv-days", "365"); await page.waitForTimeout(1500);
-  check(/last year/i.test(await page.textContent("#cs-moves .cs-head")), "a year can be asked for");
+  check(/past year/i.test(await page.textContent("#cs-moves .cs-head")), "a year can be asked for");
   check((await one(page, "#cs-mv-days", (s) => s.value)) === "365", "the period stays picked");
   await one(page, "#cs-rivals", (el) => el.scrollIntoView());
   await page.click("[data-cs-open]"); await page.waitForSelector('[data-pt-tab="activity"]', { timeout: 8000 });

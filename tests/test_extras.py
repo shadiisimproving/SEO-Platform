@@ -346,15 +346,15 @@ def test_nothing_saved_means_no_request_is_used(engine, key, web):
     sources.save_app_key(engine, "openrouter", "or-key-1234")
     with pytest.raises(Refused) as err:
         summaries.summarise(engine, event)
-    assert "nothing to summarise" in str(err.value) and web.calls == []
+    assert "No saved text to summarise" in str(err.value) and web.calls == []
 
 
 @pytest.mark.parametrize("reply, word", [
     (httpx.Response(429, json={"error": {"message": "limit"}}), "midnight UTC"),
     (httpx.Response(401, json={"error": {"message": "bad"}}), "refused this key"),
     (httpx.Response(503, text="down"), "didn't answer"),
-    (httpx.Response(200, json={"choices": [{"message": {"content": ""}}]}), "gave no answer"),
-    (httpx.Response(200, json={"error": {"message": "provider failed"}}), "gave no answer"),
+    (httpx.Response(200, json={"choices": [{"message": {"content": ""}}]}), "didn't answer"),
+    (httpx.Response(200, json={"error": {"message": "provider failed"}}), "didn't answer"),
 ])
 def test_a_failed_summary_says_what_to_do_and_keeps_nothing(engine, key, web, reply, word):
     event, _ = _rival_change(engine)
@@ -416,7 +416,7 @@ def test_a_one_letter_answer_is_refused_and_never_kept(engine, key, web):
     web.answers["chat/completions"] = httpx.Response(200, json={"choices": [{"message": {"content": "A"}}]})
     with pytest.raises(Refused) as err:
         summaries.summarise(engine, event)
-    assert "gave no answer" in str(err.value)
+    assert "didn't answer" in str(err.value)
     with engine.connect() as conn:
         assert conn.execute(text("SELECT summaries FROM change_events WHERE id = :i"), {"i": event}).scalar() is None
 

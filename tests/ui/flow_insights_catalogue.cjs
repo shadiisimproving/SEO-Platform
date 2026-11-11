@@ -100,7 +100,7 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
     await shot("10-impact", true);
     const body = await rowsText();
     check(body.includes("Rewrote the ski page title"), "the done task is listed by its title");
-    check(/result is ready on/.test(body), "a recent task says when its result is ready");
+    check(/Result on /.test(body), "a recent task says when its result is ready");
     check(body.includes("Moved to a faster host"), "the dated note is listed");
     await openRow("Rewrote the ski page title");
     await shot("11-task-panel");

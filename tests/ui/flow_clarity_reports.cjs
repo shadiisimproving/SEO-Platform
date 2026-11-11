@@ -160,7 +160,7 @@ const settle = (page, ms = 700) => page.waitForTimeout(ms);
   await page.setInputFiles("#cr-file", files);
   await page.waitForSelector("#cr-import");
   said = await page.locator("#cr-result").innerText();
-  check("a second upload says it replaces", said.includes("replaces the one already here"), said);
+  check("a second upload says it replaces", said.includes("replaces the current one"), said);
   await page.keyboard.press("Escape"); await settle(page, 300);
 
   // Content, all sites: one row per site.

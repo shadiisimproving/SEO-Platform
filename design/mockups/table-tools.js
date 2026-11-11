@@ -234,7 +234,7 @@
     if (!source.size) return;
     noteFrom = source;
     const n = source.size, shown = [...source.values()].map((r) => r.context).join("\n\n———\n\n");
-    U().openPanel(`${U().panelHead(t("Add a note"), esc(n === 1 ? t("One note on this row") : fill("One note on each of these {n} rows", { n: num(n) })))}
+    U().openPanel(`${U().panelHead(t("Add a note"), esc(n === 1 ? t("One note on this row") : fill("One note per row, {n} rows", { n: num(n) })))}
       <form class="panel-body" id="tt-note-form" novalidate>
         <label class="field"><span>${t("Your note")}</span><textarea class="input" id="tt-note-text" rows="5" dir="auto" data-autofocus></textarea></label>
         <div class="field"><span>${t("Saved with it")}</span><pre class="pt-qn-context" dir="auto" tabindex="0">${esc(shown)}</pre></div>
@@ -572,7 +572,7 @@
     "Filter": "Filtrer", "Column": "Colonne", "From": "De", "To": "À", "Contains": "Contient", "Empty": "Vide", "Sort": "Trier", "Ascending": "Croissant", "Descending": "Décroissant",
     "Clear this filter": "Retirer ce filtre", "Clear all": "Tout retirer", "Done": "Terminé", "{n} values": "{n} valeurs", "Remove the filter on {column}": "Retirer le filtre sur {column}",
     "No row matches these filters.": "Aucune ligne ne correspond à ces filtres.",
-    "One note on this row": "Une note sur cette ligne", "One note on each of these {n} rows": "Une note sur chacune de ces {n} lignes",
+    "One note on this row": "Une note sur cette ligne", "One note per row, {n} rows": "Une note par ligne, {n} lignes",
     "Note saved.": "Note enregistrée.", "{n} notes saved.": "{n} notes enregistrées.",
   });
 })();

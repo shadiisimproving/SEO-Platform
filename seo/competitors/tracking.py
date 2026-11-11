@@ -46,7 +46,7 @@ def set_tracking(engine: Engine, site_id, competitor_id, tracking) -> dict:
             text("SELECT tracking FROM site_competitors WHERE site_id = :s AND competitor_id = :c FOR UPDATE"), {"s": site_id, "c": competitor_id}
         ).scalar()
         if before is None:
-            raise NotFound("That competitor isn't on this website.")
+            raise NotFound("Competitor not found.")
         conn.execute(text("UPDATE site_competitors SET tracking = :t WHERE site_id = :s AND competitor_id = :c"), {"t": tracking, "s": site_id, "c": competitor_id})
     if tracking in READS_PAGES and before not in READS_PAGES:
         _read_if_never_read(engine, competitor_id)

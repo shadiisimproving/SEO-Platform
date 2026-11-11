@@ -13,7 +13,7 @@ TRACKING = {"on": "On", "pages": "Pages only", "off": "Off"}
 
 
 # As the competitor screens name them (comp-list.js KINDS). The ranking and AI ones are followed by the keyword, in its own column.
-MOVE_KINDS = {'title': 'Title changed', 'meta': 'Meta description changed', 'h1': 'Main heading changed', 'headings': 'Subheadings changed', 'canonical': 'Preferred address changed', 'robots': 'Instructions to search engines changed', 'schema': 'Structured data changed', 'content': 'Page text changed', 'new_page': 'New page found', 'page_gone': 'Page removed', 'rank_new': 'Started ranking for', 'rank_lost': 'Dropped out of the results for', 'rank_up': 'Moved up on', 'rank_down': 'Moved down on', 'ai_cited': 'Cited in the AI Overview for', 'ai_dropped': 'No longer cited in the AI Overview for'}
+MOVE_KINDS = {'title': 'Title changed', 'meta': 'Meta description changed', 'h1': 'Main heading changed', 'headings': 'Subheadings changed', 'canonical': 'Preferred address changed', 'robots': 'Indexing changed', 'schema': 'Structured data changed', 'content': 'Content changed', 'new_page': 'New page', 'page_gone': 'Page removed', 'rank_new': 'Started ranking for', 'rank_lost': 'Stopped ranking for', 'rank_up': 'Moved up on', 'rank_down': 'Moved down on', 'ai_cited': 'Cited in AI Overview for', 'ai_dropped': 'Dropped from AI Overview for'}
 
 
 def _site(args) -> int:
@@ -78,7 +78,7 @@ def competitor(engine, args) -> Report:
         C("keyword", "Keyword", "text", width=3.6), C("country", "Country", "text", width=1), C("my_position", "My position", "int"), C("their_position", "Their position", "int"),
         C("my_url", "My page", "url"), C("their_url", "Their page", "url"), C("checked_at", "Checked", "date"),
     ], data.get("keywords") or [], empty="No keyword compared yet."))
-    report.tables.append(Table("pairs", "Page against page", PAIR_COLUMNS, data.get("pairs") or [], empty="No pages matched yet."))
+    report.tables.append(Table("pairs", "Page vs page", PAIR_COLUMNS, data.get("pairs") or [], empty="No pages matched yet."))
     report.tables.append(Table("timeline", "What they did", [
         C("at", "When", "datetime"), C("kind", "What", "text", width=2.4, get=lambda r: MOVE_KINDS.get(r.get("kind"), _humanise(r.get("kind"))), translate=True), C("keyword", "Keyword", "text", width=3.4), C("url", "Page", "url"),
     ], data.get("timeline") or [], empty="Nothing new from this competitor."))
@@ -97,7 +97,7 @@ PAIR_COLUMNS = [
 ]
 
 
-@view("page-pairs", "Page against page")
+@view("page-pairs", "Page vs page")
 def page_pairs(engine, args) -> Report:
     from seo.competitors import pairs
 
@@ -105,9 +105,9 @@ def page_pairs(engine, args) -> Report:
     raw = args.get("competitor_id")
     competitor_id = int(raw) if isinstance(raw, str) and re.fullmatch(r"[0-9]{1,18}", raw) else None
     rows = pairs.list_pairs(engine, site_id, competitor_id, args.get("include_hidden") == "1")
-    report = Report("page-pairs", "Page against page", site=registry.site_host(engine, site_id))
-    report.tiles = [Tile("Pairs of pages", len(rows), "int"), Tile("Where they are ahead", sum(1 for r in rows if ((r.get("ranking") or {}).get("they_ahead") or 0) > ((r.get("ranking") or {}).get("i_ahead") or 0)), "int")]
-    report.tables.append(Table("pairs", "Page against page", PAIR_COLUMNS, rows, empty="No pages matched yet."))
+    report = Report("page-pairs", "Page vs page", site=registry.site_host(engine, site_id))
+    report.tiles = [Tile("Page pairs", len(rows), "int"), Tile("Where they are ahead", sum(1 for r in rows if ((r.get("ranking") or {}).get("they_ahead") or 0) > ((r.get("ranking") or {}).get("i_ahead") or 0)), "int")]
+    report.tables.append(Table("pairs", "Page vs page", PAIR_COLUMNS, rows, empty="No pages matched yet."))
     return report
 
 
@@ -123,13 +123,13 @@ def keyword_check(engine, args) -> Report:
     report.tables.append(Table("keywords", "Keywords", [
         C("keyword", "Keyword", "text", width=3.6), C("country", "Country", "text", width=1), C("me", "My position", "int", get=lambda r: (r.get("me") or {}).get("position")),
         C("my_url", "My page", "url", get=lambda r: (r.get("me") or {}).get("url")),
-        C("competitors", "Competitors that rank", "text", width=5, get=lambda r: ", ".join(f"{x.get('display')} ({x.get('position')})" for x in r.get("competitors") or [])),
+        C("competitors", "Competitors ranking", "text", width=5, get=lambda r: ", ".join(f"{x.get('display')} ({x.get('position')})" for x in r.get("competitors") or [])),
         C("tracked", "Followed", "bool"), C("checked_at", "Checked", "date"),
     ], rows, empty="No keywords typed yet."))
     return report
 
 
-FLAGGED_BY = {"file": "The uploaded file", "system": "The system", "you": "You"}
+FLAGGED_BY = {"file": "Uploaded file", "system": "System", "you": "You"}
 
 
 def _gap_columns() -> list:
@@ -156,7 +156,7 @@ def link_gaps(engine, args) -> Report:
         Tile("Filtered out", funnel.get("filtered"), "int"), Tile("Already link to me", data.get("already_linking"), "int"),
     ]
     columns = _gap_columns()
-    report.tables.append(Table("gaps", "Sites that link to competitors, not to me", [c for c in columns if c.key not in ("reason_words", "flagged_by")], data.get("gaps") or [], total=funnel.get("good"), empty="No link gaps found yet."))
+    report.tables.append(Table("gaps", "Linking to competitors, not me", [c for c in columns if c.key not in ("reason_words", "flagged_by")], data.get("gaps") or [], total=funnel.get("good"), empty="No link gaps found yet."))
     report.tables.append(Table("filtered", "Filtered out", [c for c in columns if c.key != "in_consideration"], data.get("filtered") or [], total=funnel.get("filtered"), empty="Nothing was filtered out."))
     return report
 
@@ -175,7 +175,7 @@ def ai_overview_watch(engine, args) -> Report:
     summary = data.get("summary") or {}
     report = Report("ai-watch", "AI Overview watch", site=registry.site_host(engine, site_id))
     report.tiles = [
-        Tile("Keywords followed", summary.get("tracked"), "int"), Tile("With an AI Overview", summary.get("with_overview"), "int"),
+        Tile("Keywords followed", summary.get("tracked"), "int"), Tile("With AI Overview", summary.get("with_overview"), "int"),
         Tile("Where I am cited", summary.get("cited_me"), "int"), Tile("Not captured", summary.get("not_captured"), "int"),
     ]
     trend = data.get("trend") or []
@@ -183,13 +183,13 @@ def ai_overview_watch(engine, args) -> Report:
         from seo.exports.model import Chart, Series
 
         report.charts.append(Chart("AI Overviews", [str(p.get("day"))[:10] for p in trend],
-                                   [Series("With an AI Overview", [p.get("overviews") for p in trend]), Series("Where I am cited", [p.get("cited_me") for p in trend])]))
+                                   [Series("With AI Overview", [p.get("overviews") for p in trend]), Series("Where I am cited", [p.get("cited_me") for p in trend])]))
     report.tables.append(Table("keywords", "Keywords", [
         C("keyword", "Keyword", "text", width=3.6), C("country", "Country", "text", width=1),
         C("state", "AI Overview", "text", width=1.6, get=lambda r: AI_STATES.get(r.get("state"), _humanise(r.get("state"))), translate=True), C("cited_me", "Cites me", "bool"),
         C("competitors_cited", "Competitors cited", "text", width=3.4, get=lambda r: ", ".join(str(x.get("host")) for x in r.get("competitors_cited") or [])),
         C("others_cited", "Other sites cited", "text", width=3.4), C("my_cited_urls", "My pages cited", "text", width=3.4), C("checked_at", "Checked", "date"),
-    ], data.get("keywords") or [], empty="No keyword has been checked for an AI Overview yet.", key="keyword"))
+    ], data.get("keywords") or [], empty="No AI Overview checks yet.", key="keyword"))
     report.tables.append(Table("rivals", "Competitors cited most", [C("host", "Competitor", "text"), C("keywords", "Keywords", "int")], summary.get("rivals") or [], empty="No competitor is cited."))
     report.tables.append(Table("changes", "What changed", [
         C("at", "When", "datetime"), C("kind", "What", "text", width=3, get=lambda r: AI_KINDS.get(r.get("kind"), _humanise(r.get("kind"))), translate=True),

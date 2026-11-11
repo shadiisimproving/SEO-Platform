@@ -14,16 +14,16 @@
 
   const CHOICES = [
     ["on", "On", "Keywords, pages and links: everything."],
-    ["pages", "Pages only", "No keyword numbers. Its pages are still read for edits, and its links still count."],
-    ["off", "Off", "Paused: no keyword numbers and its pages aren't read. It stays in your list."],
+    ["pages", "Pages only", "No keyword numbers; pages still read and links still count."],
+    ["off", "Off", "Paused: no keyword numbers, no page reads. Stays in your list."],
   ];
   const NOTES = {
-    pages: "Keyword tracking is set to Pages only for this competitor, so its keyword numbers are hidden. Its pages are still read. Switch to On to see them again: nothing is lost.",
-    off: "Tracking is off for this competitor: its keyword numbers are hidden and its pages aren't read. Switch it back on at any time: nothing is lost.",
+    pages: "Pages only: keyword numbers hidden, pages still read. Set to On to see them; nothing is lost.",
+    off: "Tracking is off: keyword numbers hidden, pages not read. Turn it back on any time; nothing is lost.",
   };
   const SHORT = {
-    pages: "Keyword numbers are hidden: tracking is set to Pages only.",
-    off: "Tracking is off: keyword numbers are hidden and pages aren't read.",
+    pages: "Pages only: keyword numbers hidden.",
+    off: "Tracking is off: no keyword numbers, no page reads.",
   };
   const busy = new Set();
   window.ICONS.pause = window.ICONS.pause || '<rect x="14" y="3" width="5" height="18" rx="1"/><rect x="5" y="3" width="5" height="18" rx="1"/>';
@@ -91,7 +91,7 @@
     if (!["on", "pages", "off"].includes(to)) { const err = new Error("Tracking is on, pages or off."); err.status = 400; throw err; }
     const get = window.COMP_SAMPLE.get;
     const row = get[`competitors?site_id=${site}`]?.competitors?.find((c) => c.id === id);
-    if (!row) { const err = new Error("That competitor isn't on this website."); err.status = 404; throw err; }
+    if (!row) { const err = new Error("Competitor not found."); err.status = 404; throw err; }
     const key = `${site}|${id}`;
     const profile = get[`competitors/${id}/profile?site_id=${site}`];
     if (!kept.has(key)) kept.set(key, JSON.parse(JSON.stringify({ row, profile: profile || null })));
@@ -112,14 +112,14 @@
   Object.assign(window.FR, {
     "On": "Activé", "Pages only": "Pages seulement", "Off": "Désactivé", "Tracking": "Niveau de suivi", "Tracking for {name}": "Niveau de suivi de {name}",
     "Keywords, pages and links: everything.": "Mots-clés, pages et liens : tout.",
-    "No keyword numbers. Its pages are still read for edits, and its links still count.": "Aucun chiffre de mots-clés. Ses pages sont toujours lues pour repérer les modifications, et ses liens comptent toujours.",
-    "Paused: no keyword numbers and its pages aren't read. It stays in your list.": "En pause : aucun chiffre de mots-clés et ses pages ne sont pas lues. Il reste dans votre liste.",
+    "No keyword numbers; pages still read and links still count.": "Aucun chiffre de mots-clés ; pages toujours lues, liens toujours comptés.",
+    "Paused: no keyword numbers, no page reads. Stays in your list.": "En pause : aucun chiffre de mots-clés, aucune lecture de pages. Reste dans votre liste.",
     [NOTES.pages]: "Le suivi de ce concurrent est réglé sur Pages seulement : ses chiffres de mots-clés sont masqués. Ses pages sont toujours lues. Passez sur Activé pour les revoir : rien n'est perdu.",
     [NOTES.off]: "Le suivi de ce concurrent est désactivé : ses chiffres de mots-clés sont masqués et ses pages ne sont pas lues. Réactivez-le quand vous voulez : rien n'est perdu.",
     "Tracking is on.": "Le suivi est activé.", "Pages only: keyword numbers are hidden.": "Pages seulement : les chiffres de mots-clés sont masqués.", "Tracking is off.": "Le suivi est désactivé.",
     [SHORT.pages]: "Les chiffres de mots-clés sont masqués : le suivi est réglé sur Pages seulement.",
     [SHORT.off]: "Le suivi est désactivé : les chiffres de mots-clés sont masqués et les pages ne sont pas lues.",
-    "Paused": "En pause", "Keyword tracking isn't on for this competitor.": "Le suivi des mots-clés n'est pas activé pour ce concurrent.",
+    "Paused": "En pause", "Not tracked for keywords.": "Pas suivi pour les mots-clés.",
     "Tracking is on, pages or off.": "Le suivi est activé, pages seulement ou désactivé.",
     "Tracking is off for this competitor, so its pages aren't read. Turn it on, or to Pages only, first.": "Le suivi de ce concurrent est désactivé, ses pages ne sont donc pas lues. Activez-le, ou passez-le sur Pages seulement, d'abord.",
   });

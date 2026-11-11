@@ -377,7 +377,7 @@ def test_the_files_spam_score_decides_over_the_apps_own_checks(world):
     assert sorted(good(world)) == ["bet-casino.example", "parked.example"]  # a low score wins over a spam name and a parked page
     flagged = {g["domain"]: g for g in answer["filtered"]}
     assert (flagged["toxic.example"]["reason"], flagged["toxic.example"]["flagged_by"]) == ("spam_score", "file")
-    assert flagged["toxic.example"]["reason_words"] == "Spam score above 30 in the uploaded file"
+    assert flagged["toxic.example"]["reason_words"] == "File spam score above 30"
     assert (flagged["gamble-casino.example"]["reason"], flagged["gamble-casino.example"]["flagged_by"]) == ("name_words", "system")
 
 

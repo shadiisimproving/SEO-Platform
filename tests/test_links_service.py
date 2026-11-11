@@ -256,7 +256,7 @@ def test_bug6_reasons_hops_and_timings_are_stored(world):
     assert chain["hops"] == 3
     assert chain["final_url"] == "https://shop.co.ae/a"
     assert "3" in chain["reason"]
-    assert by_target["https://far.example/403"]["reason"] == "The site blocked the check"
+    assert by_target["https://far.example/403"]["reason"] == "Blocked by site"
     assert by_target["https://far.example/403"]["status_code"] == 403
     assert "other.co.ae/landing" in by_target["https://shop.co.ae/away"]["reason"]
     # It survives a fresh read from the database.
@@ -391,7 +391,7 @@ def test_csv_export_has_one_row_per_page(world):
     assert "attachment" in reply.headers["Content-Disposition"]
     rows = list(csv.DictReader(io.StringIO(reply.get_data(as_text=True).lstrip("﻿"))))
     gone = [r for r in rows if r["Target URL"].endswith("/gone")]
-    assert [r["Page with the link"] for r in gone] == ["https://shop.co.ae/", "https://shop.co.ae/a"]
+    assert [r["Linking page"] for r in gone] == ["https://shop.co.ae/", "https://shop.co.ae/a"]
     assert gone[0]["Group"] == "Broken"
     assert gone[0]["Status code"] == "404"
     assert gone[0]["Reason"] == "Page not found"

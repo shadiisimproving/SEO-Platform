@@ -77,7 +77,7 @@
     found.forEach(markText);
   }
 
-  window.BRANDS = { mark, hasName, LEAVE };
+  window.BRANDS = { mark, hasName, LEAVE, FILES };
 
   // Most screens get here earlier, through fragment() in mockup.js. This catches text set any other way.
   new MutationObserver((changes) => {

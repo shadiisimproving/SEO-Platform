@@ -69,7 +69,7 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
   await step("open a query", async () => {
     await page.locator(".ov-row .ov-name").first().click(); await page.waitForTimeout(1800);
     const panel = await text("#panel");
-    check(panel.includes("Pages that show for it") && panel.includes("Countries"), "the panel shows its pages and countries");
+    check(panel.includes("Pages") && panel.includes("Countries"), "the panel shows its pages and countries");
     await shot("04-query-panel");
     await page.keyboard.press("Escape"); await page.waitForTimeout(500);
   });

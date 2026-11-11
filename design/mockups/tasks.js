@@ -229,7 +229,7 @@
     if (!route) return;
     // The way back. Getting to the finding is only half of the job.
     const task = taskId ? T.tasks.find((x) => x.id === taskId) : null;
-    if (task) setTimeout(() => UI.toast(t("Here's the finding"), { kind: "info", undo: () => openTask({ task: T.tasks.find((x) => x.id === taskId) || task }), undoLabel: t("Back to the task") }), 500);
+    if (task) setTimeout(() => UI.toast(t("Here's the finding"), { kind: "info", undo: () => openTask({ task: T.tasks.find((x) => x.id === taskId) || task }), undoLabel: t("Back to task") }), 500);
     if (route === "settings") { UI.go("settings"); if (parts[0]) UI.openConnection(parts[0]); return; }
     if (route === "competitors" && parts[0]) {
       COMP.open(parts[0], parts[0] === "pairs" && parts[1] ? { openPairId: Number(parts[1]) } : parts[0] === "list" && parts[1] ? { competitorId: Number(parts[1]) } : {});
@@ -364,22 +364,22 @@
 
   // ---- the panel --------------------------------------------------------------------------------
   /* What a later check says about the finding. A suggestion only: a task never closes itself, because a person decides. */
-  const findingWords = (f) => `${t(f.by === "health" ? "The health test of" : "The links check of")} ${UI.fmtDateOnly(f.at)}`;
+  const findingWords = (f) => `${t(f.by === "health" ? "Health test of" : "Links check of")} ${UI.fmtDateOnly(f.at)}`;
   const findingNote = (task) => {
     const f = task?.finding;
     if (!f) return "";
-    if (f.state === "gone") return `<div class="note tk-finding" role="status">${icon("circle-check", "good")}<span>${findingWords(f)} ${t("no longer finds this, so it looks fixed.")}</span>${task.status === "done" ? "" : `<button type="button" class="btn btn-small" data-task-finish>${t("Mark as done")}</button>`}</div>`;
+    if (f.state === "gone") return `<div class="note tk-finding" role="status">${icon("circle-check", "good")}<span>${findingWords(f)} ${t("no longer finds this: looks fixed.")}</span>${task.status === "done" ? "" : `<button type="button" class="btn btn-small" data-task-finish>${t("Mark as done")}</button>`}</div>`;
     return `<div class="note warn tk-finding" role="status">${icon("triangle-alert")}<span>${findingWords(f)} ${t("found this again after it was finished.")}</span><button type="button" class="btn btn-small" data-task-reopen>${t("Reopen")}</button></div>`;
   };
   const findingTag = (task) => (task.finding?.state === "gone" ? status("good", t("Looks fixed")) : task.finding?.state === "back" ? status("warn", t("Found again")) : "");
   const sourceBlock = (source) => {
     if (!source) return "";
     const facts = (source.facts || []).filter(Boolean);
-    return `<section class="tk-source" aria-label="${t("Where this came from")}">
-      <div class="small muted">${t("Where this came from")}</div>
+    return `<section class="tk-source" aria-label="${t("Source")}">
+      <div class="small muted">${t("Source")}</div>
       <div class="tk-source-label" dir="auto">${esc(source.label || "")}</div>
       ${facts.length ? `<ul class="tk-facts">${facts.map((fact) => `<li dir="auto">${esc(fact)}</li>`).join("")}</ul>` : ""}
-      ${source.link ? `<button type="button" class="link-btn" data-task-go="${esc(source.link)}">${t("Go to the finding")}</button>` : ""}
+      ${source.link ? `<button type="button" class="link-btn" data-task-go="${esc(source.link)}">${t("Open finding")}</button>` : ""}
     </section>`;
   };
   const whenWord = (iso) => (iso ? new Intl.DateTimeFormat(UI.locale(), { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(iso)) : "");
@@ -391,7 +391,7 @@
       ${myName() ? "" : `<div class="field-row tk-comment-form">
         <label class="field"><span>${t("Your name")}</span><input class="input" id="tk-comment-name" value="${esc(UI.store.get("taskName") || "")}" maxlength="100"></label>
       </div>`}
-      <label class="field"><span>${myName() ? `${t("Add a comment as")} <b dir="auto">${esc(myName())}</b>` : t("Add a comment")}</span><textarea class="input" id="tk-comment" rows="2" maxlength="2000" dir="auto"></textarea></label>
+      <label class="field"><span>${myName() ? `${t("Comment as")} <b dir="auto">${esc(myName())}</b>` : t("Comment")}</span><textarea class="input" id="tk-comment" rows="2" maxlength="2000" dir="auto"></textarea></label>
       <div id="tk-comment-error"></div>
       <button type="button" class="btn btn-small" id="tk-comment-send" data-id="${task.id}">${t("Add comment")}</button>
     </section>`;
@@ -403,7 +403,7 @@
     const given = task || {};
     const siteId = task ? task.site_id : (T.sites.find((s) => s.host === (host ?? hostHere()))?.id ?? "");
     const siteOptions = `<option value="">${t("All sites")}</option>${T.sites.map((s) => `<option value="${esc(String(s.id))}" ${String(s.id) === String(siteId ?? "") ? "selected" : ""}>${esc(s.host)}</option>`).join("")}`;
-    const removedSite = task && !task.site_id && task.site_host ? `<p class="help" style="margin-top:-6px">${t("Its website was removed:")} <span class="mono" dir="auto">${esc(task.site_host)}</span></p>` : "";
+    const removedSite = task && !task.site_id && task.site_host ? `<p class="help" style="margin-top:-6px">${t("Site removed:")} <span class="mono" dir="auto">${esc(task.site_host)}</span></p>` : "";
     const select = (id, options, chosen) => `<select class="select" id="${id}" style="width:100%">${options.map(([value, word]) => `<option value="${value}" ${value === chosen ? "selected" : ""}>${columnWord(word)}</option>`).join("")}</select>`;
     const owners = [...new Set([...T.tasks.map((x) => x.owner_label), ...(UI.state.served ? [] : window.TEAM)].filter(Boolean))];
     const theSource = task ? task.source : source;
@@ -427,8 +427,8 @@
         </div>
         ${removedSite}
         <label class="field"><span>${t("Description")}</span><textarea class="input" id="task-description" rows="3" maxlength="20000" dir="auto">${esc(task ? given.description || "" : description)}</textarea></label>
-        ${linksField("task-pages", "Related pages", "Add a page", task ? given.pages : pages)}
-        ${linksField("task-keywords", "Related keywords", "Add a keyword", task ? given.keywords : keywords)}
+        ${linksField("task-pages", "Pages", "Add a page", task ? given.pages : pages)}
+        ${linksField("task-keywords", "Keywords", "Add a keyword", task ? given.keywords : keywords)}
       </form>
       ${task ? commentsBlock(task) : ""}${task && window.COMP?.notes ? `<div class="task-notes">${window.COMP.notes.block({ scope: "task", taskId: task.id, task: task.title, siteId: task.site_id ?? null, title: t("Notes on this task") })}</div>` : ""}</div>
       <div class="panel-foot"><button class="btn btn-main" id="task-save" ${task ? `data-id="${task.id}"` : ""}>${t("Save")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button>${task ? `<button class="btn btn-ghost danger" id="task-delete" data-id="${task.id}">${t("Delete")}</button>` : ""}</div>`,
@@ -489,7 +489,7 @@
 
   const EDITABLE = ["title", "status", "priority", "due", "owner_label", "kind", "description", "pages", "keywords", "site_id"];
   const sameValue = (a, b) => String(a ?? "").trim() === String(b ?? "").trim();
-  const FIELD_WORDS = { title: "Title", status: "Status", priority: "Priority", due: "Due date", owner_label: "Owner", kind: "Type", description: "Description", pages: "Related pages", keywords: "Related keywords", site_id: "Site" };
+  const FIELD_WORDS = { title: "Title", status: "Status", priority: "Priority", due: "Due date", owner_label: "Owner", kind: "Type", description: "Description", pages: "Pages", keywords: "Keywords", site_id: "Site" };
 
   /* Only what this person changed is sent, so two people can edit different things. If someone else changed the same
      thing while the panel was open, nothing is overwritten until this person has seen it and chosen. */
@@ -510,13 +510,13 @@
       const clashes = Object.keys(mine).filter((name) => !sameValue(fresh[name], base[name]) && !sameValue(fresh[name], mine[name]));
       if (!clashes.length) {
         const saved = await COMP.api("PATCH", `tasks/${id}`, { ...mine, expected_version: fresh.version });
-        finishSave(saved, () => UI.toast(t("Task saved. Someone else's changes to it were kept too.")));
+        finishSave(saved, () => UI.toast(t("Task saved, with someone else's changes too.")));
         return;
       }
       T.clash = { id, mine, fresh };
       const shown = (name) => esc(String(name === "status" ? columnWord(STATUSES.find(([k]) => k === fresh.status)?.[1] || "") : name === "site_id" ? fresh.site_host || t("All sites") : fresh[name] ?? "") || "—");
-      UI.setHTML(UI.$("#task-error"), `<div class="error tk-clash" role="alert">${icon("octagon-alert")}<div><p>${t("Someone else changed this task while you had it open, so nothing was saved yet.")}</p>
-        <ul>${clashes.map((name) => `<li><b>${t(FIELD_WORDS[name])}</b>: ${t("it now says")} <span dir="auto">${shown(name)}</span></li>`).join("")}</ul>
+      UI.setHTML(UI.$("#task-error"), `<div class="error tk-clash" role="alert">${icon("octagon-alert")}<div><p>${t("Someone else changed this task. Nothing is saved yet.")}</p>
+        <ul>${clashes.map((name) => `<li><b>${t(FIELD_WORDS[name])}</b>: ${t("now")} <span dir="auto">${shown(name)}</span></li>`).join("")}</ul>
         <div class="tk-clash-acts"><button type="button" class="btn btn-small" data-task-keep-mine>${t("Keep mine")}</button><button type="button" class="btn btn-small" data-task-use-theirs>${t("Use theirs")}</button></div></div></div>`);
       UI.$("#task-error").scrollIntoView({ block: "nearest" });
     }
@@ -629,7 +629,7 @@
 
   function table(list) {
     const rows = sortedRows(list.filter((task) => !T.status || task.status === T.status));
-    if (!rows.length) return COMP.empty(t("Nothing to show with these filters"), t("Change the filters above to see more tasks."));
+    if (!rows.length) return COMP.empty(t("Nothing matches these filters"), t("Change the filters above."));
     const showSite = !hostHere();
     const view = TP.view(PAGES, rows);
     return `<div class="tk-list"><div class="table-wrap"><table class="data tk-table" id="tk-table">
@@ -649,11 +649,11 @@
   function bodyHtml() {
     if (!T.ready) return UI.skeleton ? UI.skeleton("table", { rows: 6 }) : COMP.loading();
     if (T.failed) return UI.failCard ? UI.failCard(T.failed, { retry: 'id="tk-retry"' }) : COMP.empty(t("That didn't load"), t(T.failed), `<button class="btn" id="tk-retry">${t("Try again")}</button>`);
-    if (!T.tasks.length) return COMP.empty(t("No tasks yet"), t("Create one here, or press Create task on a finding: a ranking drop, a broken link, a failed health check."), `<button class="btn btn-main" data-task-new>${icon("plus")}${t("New task")}</button>`);
+    if (!T.tasks.length) return COMP.empty(t("No tasks yet"), t("Create one, or press Create task on a finding."), `<button class="btn btn-main" data-task-new>${icon("plus")}${t("New task")}</button>`, UI.tip("A finding is a ranking drop, a broken link, a failed health check…"));
     const list = visible();
     const hidden = undatedHidden();
-    const note = hidden ? `<p class="help tk-hidden">${num(hidden)} ${t(hidden === 1 ? "task with no due date is hidden in this period." : "tasks with no due date are hidden in this period.")} <button class="link-btn" data-task-period="all">${t("Show all")}</button></p>` : "";
-    const content = !list.length ? COMP.empty(t("Nothing to show with these filters"), t("Change the filters above to see more tasks.")) : T.view === "table" ? table(list) : board(list);
+    const note = hidden ? `<p class="help tk-hidden">${num(hidden)} ${t(hidden === 1 ? "undated task hidden." : "undated tasks hidden.")} <button class="link-btn" data-task-period="all">${t("Show all")}</button></p>` : "";
+    const content = !list.length ? COMP.empty(t("Nothing matches these filters"), t("Change the filters above.")) : T.view === "table" ? table(list) : board(list);
     return `${note}${content}`;
   }
 
@@ -698,7 +698,7 @@
       T.tasks = UI.state.firstRun ? [] : JSON.parse(JSON.stringify(window.COMP_SAMPLE.get.tasks.tasks));
     }
     const main = `<button class="btn btn-main" data-task-new>${icon("plus")}${t("New task")}</button>`;
-    return `${UI.topbar(t("Tasks"), `${t("What the team is doing, for which site, and by when")} · <span id="tk-total"></span>`, main, false)}
+    return `${UI.topbar(t("Tasks"), `${t("Who does what, where, by when")} · <span id="tk-total"></span>`, main, false)}
       <div class="content page-enter">
         ${T.ready && !T.tasks.length ? "" : periodBar()}
         <div id="tk-body">${bodyHtml()}</div>
@@ -922,28 +922,28 @@
 
   // Words shared with other screens keep the translation they already have.
   const fr = {
-    "Related tasks": "Tâches liées", "Related pages": "Pages liées", "Related keywords": "Mots-clés liés", "Add a page": "Ajouter une page", "Add a keyword": "Ajouter un mot-clé",
-    "Search tasks": "Chercher une tâche", "Add a comment as": "Ajouter un commentaire en tant que",
+    "Related tasks": "Tâches liées", "Pages": "Pages", "Keywords": "Mots-clés", "Add a page": "Ajouter une page", "Add a keyword": "Ajouter un mot-clé",
+    "Search tasks": "Chercher une tâche", "Comment as": "Commenter en tant que",
     "A task can list 50 pages at most.": "Une tâche peut lister 50 pages au maximum.", "A task can list 50 keywords at most.": "Une tâche peut lister 50 mots-clés au maximum.",
-    "What the team is doing, for which site, and by when": "Ce que fait l'équipe, pour quel site, et pour quand",
+    "Who does what, where, by when": "Qui fait quoi, où, et pour quand",
     "To do": "À faire", "In progress": "En cours", "Low": "Basse", "Normal": "Normale", "High": "Haute",
     "Task": "Tâche", "New task": "Nouvelle tâche", "Create task": "Créer une tâche", "Open task": "Ouvrir la tâche", "Task created": "Tâche créée", "Task saved": "Tâche enregistrée", "Task deleted": "Tâche supprimée",
     "Priority": "Priorité", "Status": "Statut", "Owner": "Responsable", "Type": "Type", "Description": "Description", "More details": "Plus de détails", "Hypothesis": "Hypothèse",
     "Business impact, 1 to 5": "Impact business, de 1 à 5", "Hours estimated": "Heures estimées", "Hours spent": "Heures passées", "Note": "Note", "Impact": "Impact",
-    "Where this came from": "D'où ça vient", "Go to the finding": "Aller au constat", "Created": "Créée", "Open": "Ouvrir", "Delete": "Supprimer",
-    "Its website was removed:": "Son site a été retiré :", "A task needs a title.": "Une tâche a besoin d'un titre.", "This finding already has an open task.": "Ce constat a déjà une tâche ouverte.",
+    "Source": "Source", "Open finding": "Ouvrir le constat", "Created": "Créée", "Open": "Ouvrir", "Delete": "Supprimer",
+    "Site removed:": "Site retiré :", "A task needs a title.": "Une tâche a besoin d'un titre.", "This finding already has an open task.": "Ce constat a déjà une tâche ouverte.",
     "A new task was made for this finding, so this one can't come back.": "Une nouvelle tâche a été créée pour ce constat : celle-ci ne peut pas revenir.", "That task doesn't exist.": "Cette tâche n'existe pas.",
-    "Comments": "Commentaires", "Add a comment": "Ajouter un commentaire", "Add comment": "Ajouter", "Your name": "Votre nom", "A comment needs some text.": "Un commentaire a besoin de texte.",
+    "Comments": "Commentaires", "Comment": "Commentaire", "Add comment": "Ajouter", "Your name": "Votre nom", "A comment needs some text.": "Un commentaire a besoin de texte.",
     "This week": "Cette semaine", "Month": "Mois", "Dates": "Dates", "Period": "Période", "Previous month": "Mois précédent", "Next month": "Mois suivant", "From": "Du", "To": "Au",
     "Filter": "Filtrer", "View": "Vue", "Board": "Kanban", "Table": "Tableau", "Search": "Rechercher", "All statuses": "Tous les statuts", "All types": "Tous les types", "Everyone": "Tout le monde",
     "task": "tâche", "tasks": "tâches", "No task": "Aucune tâche", "No tasks yet": "Pas encore de tâches",
-    "Create one here, or press Create task on a finding: a ranking drop, a broken link, a failed health check.": "Créez-en une ici, ou appuyez sur Créer une tâche depuis un constat : une position perdue, un lien cassé, un contrôle de santé en échec.",
-    "Change the filters above to see more tasks.": "Changez les filtres ci-dessus pour voir plus de tâches.", "Try again": "Réessayer",
+    "Create one, or press Create task on a finding.": "Créez-en une, ou appuyez sur Créer une tâche depuis un constat.",
+    "Change the filters above.": "Changez les filtres ci-dessus.", "Try again": "Réessayer",
     "Carried over from": "Reportée de", "Late": "En retard", "Show all": "Tout afficher",
-    "task with no due date is hidden in this period.": "tâche sans échéance est masquée sur cette période.", "tasks with no due date are hidden in this period.": "tâches sans échéance sont masquées sur cette période.",
+    "undated task hidden.": "tâche sans échéance masquée.", "undated tasks hidden.": "tâches sans échéance masquées.",
     "Content": "Contenu", "Technical": "Technique", "Links": "Liens", "UX": "UX", "Lead magnet": "Lead magnet", "Ads": "Publicité",
-    "All dates": "Toutes les dates", "The health test of": "Le test de santé du", "The links check of": "Le contrôle des liens du", "no longer finds this, so it looks fixed.": "ne trouve plus ce problème : il semble réglé.", "found this again after it was finished.": "a retrouvé ce problème après la fin de la tâche.", "Mark as done": "Marquer comme terminée", "Reopen": "Rouvrir", "Looks fixed": "Semble réglé", "Found again": "Retrouvé", "Unassigned": "Non attribuées", "Here's the finding": "Voici le constat", "Back to the task": "Retour à la tâche", "Task saved. Someone else's changes to it were kept too.": "Tâche enregistrée. Les changements d'une autre personne ont aussi été gardés.", "Someone else changed this task while you had it open, so nothing was saved yet.": "Quelqu'un d'autre a modifié cette tâche pendant que vous l'aviez ouverte : rien n'est encore enregistré.", "Someone else changed this task while you had it open.": "Quelqu'un d'autre a modifié cette tâche pendant que vous l'aviez ouverte.", "it now says": "indique maintenant", "Keep mine": "Garder la mienne", "Use theirs": "Reprendre la leur", "comment": "commentaire", "comments": "commentaires",
-    "fell": "a chuté", "rose": "a gagné", "on": "sur", "is at": "est à", "not in the results checked on": "absent des résultats vérifiés sur", "d": "j", "Found on": "Trouvé sur", "Backlink": "Backlink", "keyword": "mot-clé", "keywords": "mots-clés",
+    "All dates": "Toutes les dates", "Health test of": "Le test de santé du", "Links check of": "Le contrôle des liens du", "no longer finds this: looks fixed.": "ne trouve plus ce problème : semble réglé.", "found this again after it was finished.": "a retrouvé ce problème après la fin de la tâche.", "Mark as done": "Marquer comme terminée", "Reopen": "Rouvrir", "Looks fixed": "Semble réglé", "Found again": "Retrouvé", "Unassigned": "Non attribuées", "Here's the finding": "Voici le constat", "Back to task": "Retour à la tâche", "Task saved, with someone else's changes too.": "Tâche enregistrée, avec aussi les changements d'une autre personne.", "Someone else changed this task. Nothing is saved yet.": "Quelqu'un d'autre a modifié cette tâche. Rien n'est encore enregistré.", "Someone else changed this task while you had it open.": "Quelqu'un d'autre a modifié cette tâche pendant que vous l'aviez ouverte.", "now": "maintenant", "Keep mine": "Garder la mienne", "Use theirs": "Reprendre la leur", "comment": "commentaire", "comments": "commentaires",
+    "fell": "a chuté", "rose": "a gagné", "on": "sur", "is at": "est à", "not found on": "introuvable sur", "d": "j", "Found on": "Trouvé sur", "Backlink": "Backlink", "keyword": "mot-clé", "keywords": "mots-clés",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 })();

@@ -108,7 +108,7 @@ def set_target_countries():
 def upload_ai_report():
     """Search Console's generative AI report (AI Overviews and AI Mode), as its Export downloads it: a zip or CSV files."""
     if (request.content_length or 0) > gsc_ai_report.MAX_FILES * gsc_ai_report.MAX_BYTES + 65536:
-        raise Refused("These files are too large together.")
+        raise Refused("Too large together. Upload fewer at once.")
     files = [(upload.filename or "", upload.read(gsc_ai_report.MAX_BYTES + 1)) for upload in request.files.getlist("file")]
     user = g.get("user")
     return jsonify(gsc_ai_report.import_files(_engine(), request.form.get("site_id"), files, user["id"] if user else None)), 201

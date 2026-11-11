@@ -162,7 +162,7 @@ def run(job, engine: Engine) -> None:
         if time.monotonic() - started >= CHUNK_SECONDS:
             raise RunAgain(3)
         if not in_property(url, src["property"]):
-            _save(engine, site_id, url, {**_EMPTY, "error": "This page isn't in the site's Search Console property, so Google won't inspect it."})
+            _save(engine, site_id, url, {**_EMPTY, "error": "Not in the site's Search Console property, so not inspected."})
             continue
         try:
             found = inspect(token, src["property"], url)

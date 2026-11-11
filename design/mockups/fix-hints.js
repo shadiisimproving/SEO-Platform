@@ -11,9 +11,9 @@
   ];
   // Things only one tool does. Keyed by the connection id.
   const EXTRA = {
-    openpagerank: "Keys from the old DomCop Open PageRank site no longer work. Make a new key on the Open Page Rank tab of your Keywords Everywhere account.",
-    cloudflare: "The token needs Account, then Radar, then Read. A token for a zone or for DNS is refused.",
-    yandex: "A Yandex token lasts about 6 months. When it runs out, get a new one with step 4 of How to connect.",
+    openpagerank: "Old DomCop Open PageRank keys no longer work. Make a new one on the Open Page Rank tab of your Keywords Everywhere account.",
+    cloudflare: "The token needs Account → Radar → Read. Zone or DNS tokens are refused.",
+    yandex: "A Yandex token lasts about 6 months; then redo step 4 of How to connect.",
   };
 
   const has = (re, text) => re.test(text || "");
@@ -31,17 +31,17 @@
   function explain(message, ctx = {}) {
     const m = String(message || "");
     const tool = ctx.tool || "This tool";
-    const retry = ctx.retry === "refresh" ? "Then press Refresh data on this page. The numbers come back with the next pull." : "Then press Test. It should say Works.";
-    const keyStep = { text: `Open ${tool}'s key page and check the key is still there and active.`, url: ctx.keyUrl, link: "Open the key page" };
+    const retry = ctx.retry === "refresh" ? "Then press Refresh data here; numbers return with the next pull." : "Then press Test. It should say Works.";
+    const keyStep = { text: `Open ${tool}'s key page and check the key is still there and active.`, url: ctx.keyUrl, link: "Key page" };
 
     if (has(/has not been used in project|is disabled|Turn on the .+ in your Google Cloud project/i, m)) {
       const api = googleApi(m);
       return {
         summary: `The ${api.name} is turned off in your Google Cloud project${api.project ? ` ${api.project}` : ""}.`,
         steps: [
-          { text: "Open its page in Google Cloud, signed in with the account that made this key.", url: api.url, link: "Open the API page" },
-          { text: "Press Enable. If the button says Manage, it's already on." },
-          { text: "Wait about 5 minutes. It takes a moment to switch on." },
+          { text: "Open its page, signed in as the account that made this key.", url: api.url, link: "API page" },
+          { text: "Press Enable (Manage means it's already on)." },
+          { text: "Wait about 5 minutes for it to switch on." },
           { text: retry },
         ],
       };
@@ -51,8 +51,8 @@
       return {
         summary: "This key can't read that property.",
         steps: [
-          ga ? { text: "In Google Analytics, open Admin, then Property access management.", url: "https://analytics.google.com/analytics/web/", link: "Open Google Analytics" }
-            : { text: "In Search Console, open Settings, then Users and permissions.", url: "https://search.google.com/search-console/users", link: "Open Search Console" },
+          ga ? { text: "In Google Analytics: Admin → Property access management.", url: "https://analytics.google.com/analytics/web/", link: "Open Google Analytics", logo: "Google Analytics" }
+            : { text: "In Search Console: Settings → Users and permissions.", url: "https://search.google.com/search-console/users", link: "Open Search Console", logo: "Search Console" },
           { text: ctx.robot ? `Add ${ctx.robot} as ${ga ? "a Viewer" : "a Restricted user"}.` : `Add the robot key's email, or the Google account of these keys, as ${ga ? "a Viewer" : "a Restricted user"}.` },
           { text: retry },
         ],
@@ -62,8 +62,8 @@
       return {
         summary: `${tool} can't find the property this site uses.`,
         steps: [
-          { text: "In Settings, check the property picked for this site. Press Test there to fill the list with what the key can see." },
-          { text: "If it's missing from the list, the key can't see it: give the key access to it first." },
+          { text: "In Settings, check this site's property. Test fills the list with what the key can see." },
+          { text: "Not in the list? The key can't see it: give it access first." },
           { text: retry },
         ],
       };
@@ -72,8 +72,8 @@
       return {
         summary: "Google no longer accepts these keys.",
         steps: [
-          { text: "In Settings, open Google and follow How to get these keys to make new ones." },
-          { text: "Paste them in place of the old ones." },
+          { text: "In Settings → Google, follow How to get these keys to make new ones." },
+          { text: "Paste them over the old ones." },
           { text: retry },
         ],
       };
@@ -90,9 +90,9 @@
     }
     if (has(/limit is reached|quota|rate.?limit|too many requests|429/i, m)) {
       return {
-        summary: "The free limit is used up for now. Nothing is broken.",
+        summary: "Free limit used up for now. Nothing is broken.",
         steps: [
-          { text: ctx.refills ? `It refills: ${ctx.refills}. The app tries again after that by itself.` : "It refills on its own. The app tries again after that by itself." },
+          { text: ctx.refills ? `It refills: ${ctx.refills}. The app tries again after that by itself.` : "It refills on its own, and the app retries by itself." },
           { text: `Need it sooner? Check your usage on ${tool}'s dashboard, or move another tool above it in the list.`, url: ctx.keyUrl, link: `Open ${tool}` },
         ],
       };
@@ -120,9 +120,9 @@
         summary: `${tool} doesn't accept this key.`,
         steps: [
           keyStep,
-          { text: "Copy it again in full. A missing character, or a space at the end, is the usual cause." },
+          { text: "Copy it again in full: a missing character or trailing space is the usual cause." },
           { text: `Paste it in the API key box above. ${retry}` },
-          { text: "Still refused? Make a new key there and paste that one. Also check the account itself: email confirmed, plan not expired." },
+          { text: "Still refused? Make a new key there and paste it. Also check the account: email confirmed, plan not expired." },
           EXTRA[ctx.id] ? { text: EXTRA[ctx.id] } : null,
         ].filter(Boolean),
       };
@@ -130,7 +130,7 @@
     return {
       summary: "",
       steps: [
-        { text: "Open Settings, then this connection, and press Test to see the exact problem." },
+        { text: "Settings → this connection → Test shows the exact problem." },
         ctx.keyUrl ? keyStep : null,
         EXTRA[ctx.id] ? { text: EXTRA[ctx.id] } : null,
       ].filter(Boolean),
@@ -154,7 +154,7 @@
     return `<div class="fix-box" ${opts.id ? `id="${opts.id}"` : ""}>
       ${opts.summary && fix.summary ? `<p class="fix-summary">${icon("octagon-alert")}<span>${esc(t(fix.summary))}</span></p>` : ""}
       <b class="fix-title">${t("How to fix it")}</b>
-      <ol class="fix-steps">${fix.steps.map((s) => `<li>${esc(t(s.text))}${s.url ? ` <a class="ext-link" href="${esc(s.url)}" target="_blank" rel="noopener noreferrer">${icon("external-link")}${esc(t(s.link || "Open"))}</a>` : ""}</li>`).join("")}</ol>
+      <ol class="fix-steps">${fix.steps.map((s) => `<li>${esc(t(s.text))}${s.url ? ` ${window.UI.stepLink(s)}` : ""}</li>`).join("")}</ol>
       ${said}
     </div>`;
   }
@@ -163,33 +163,33 @@
 
   // French, added the same way as the other screens' words. Sentences built from a tool name are matched on their pattern.
   const fr = {
-    "How to fix it": "Comment corriger", "Open the key page": "Ouvrir la page des clés", "Open": "Ouvrir",
-    "Press Enable. If the button says Manage, it's already on.": "Cliquez sur Activer. Si le bouton indique Gérer, elle est déjà activée.",
-    "Wait about 5 minutes. It takes a moment to switch on.": "Patientez environ 5 minutes : l'activation prend un moment.",
-    "Open its page in Google Cloud, signed in with the account that made this key.": "Ouvrez sa page dans Google Cloud, connecté avec le compte qui a créé cette clé.",
-    "Open the API page": "Ouvrir la page de l'API",
-    "Then press Refresh data on this page. The numbers come back with the next pull.": "Cliquez ensuite sur Actualiser les données sur cette page. Les chiffres reviennent au prochain relevé.",
+    "How to fix it": "Comment corriger", "Key page": "Page des clés", "Open": "Ouvrir",
+    "Press Enable (Manage means it's already on).": "Cliquez sur Activer (Gérer signifie qu'elle est déjà activée).",
+    "Wait about 5 minutes for it to switch on.": "Patientez environ 5 minutes, le temps de l'activation.",
+    "Open its page, signed in as the account that made this key.": "Ouvrez sa page, connecté avec le compte qui a créé cette clé.",
+    "API page": "Page de l'API",
+    "Then press Refresh data here; numbers return with the next pull.": "Cliquez ensuite sur Actualiser les données ici ; les chiffres reviennent au prochain relevé.",
     "Then press Test. It should say Works.": "Cliquez ensuite sur Tester. Il doit indiquer Fonctionne.",
     "This key can't read that property.": "Cette clé ne peut pas lire cette propriété.",
-    "In Google Analytics, open Admin, then Property access management.": "Dans Google Analytics, ouvrez Administration, puis Gestion des accès à la propriété.",
-    "In Search Console, open Settings, then Users and permissions.": "Dans Search Console, ouvrez Paramètres, puis Utilisateurs et autorisations.",
+    "In Google Analytics: Admin → Property access management.": "Dans Google Analytics : Administration → Gestion des accès à la propriété.",
+    "In Search Console: Settings → Users and permissions.": "Dans Search Console : Paramètres → Utilisateurs et autorisations.",
     "Open Google Analytics": "Ouvrir Google Analytics", "Open Search Console": "Ouvrir Search Console",
-    "In Settings, check the property picked for this site. Press Test there to fill the list with what the key can see.": "Dans les réglages, vérifiez la propriété choisie pour ce site. Cliquez sur Tester pour remplir la liste avec ce que la clé voit.",
-    "If it's missing from the list, the key can't see it: give the key access to it first.": "Si elle n'est pas dans la liste, la clé ne la voit pas : donnez-lui d'abord accès.",
+    "In Settings, check this site's property. Test fills the list with what the key can see.": "Dans Réglages, vérifiez la propriété de ce site. Tester remplit la liste avec ce que la clé voit.",
+    "Not in the list? The key can't see it: give it access first.": "Absente de la liste ? La clé ne la voit pas : donnez-lui d'abord accès.",
     "Google no longer accepts these keys.": "Google n'accepte plus ces clés.",
-    "In Settings, open Google and follow How to get these keys to make new ones.": "Dans les réglages, ouvrez Google et suivez Comment obtenir ces clés pour en créer de nouvelles.",
-    "Paste them in place of the old ones.": "Collez-les à la place des anciennes.",
+    "In Settings → Google, follow How to get these keys to make new ones.": "Dans Réglages → Google, suivez Comment obtenir ces clés pour en créer de nouvelles.",
+    "Paste them over the old ones.": "Collez-les à la place des anciennes.",
     "The app can't unlock the key it saved.": "L'application ne peut pas déverrouiller la clé enregistrée.",
     "Whoever runs the server must run the command in the message first.": "La personne qui gère le serveur doit d'abord lancer la commande indiquée dans le message.",
     "Paste the key again in Settings and press Save.": "Collez à nouveau la clé dans les réglages et cliquez sur Enregistrer.",
-    "The free limit is used up for now. Nothing is broken.": "La limite gratuite est épuisée pour l'instant. Rien n'est cassé.",
-    "It refills on its own. The app tries again after that by itself.": "Elle se recharge d'elle-même. L'application réessaie ensuite toute seule.",
-    "Copy it again in full. A missing character, or a space at the end, is the usual cause.": "Copiez-la à nouveau en entier. Un caractère manquant ou une espace à la fin en est la cause habituelle.",
-    "Still refused? Make a new key there and paste that one. Also check the account itself: email confirmed, plan not expired.": "Toujours refusée ? Créez-y une nouvelle clé et collez-la. Vérifiez aussi le compte : e-mail confirmé, offre non expirée.",
-    "Open Settings, then this connection, and press Test to see the exact problem.": "Ouvrez les réglages, puis cette connexion, et cliquez sur Tester pour voir le problème exact.",
-    "Keys from the old DomCop Open PageRank site no longer work. Make a new key on the Open Page Rank tab of your Keywords Everywhere account.": "Les clés de l'ancien site Open PageRank de DomCop ne fonctionnent plus. Créez une nouvelle clé dans l'onglet Open Page Rank de votre compte Keywords Everywhere.",
-    "The token needs Account, then Radar, then Read. A token for a zone or for DNS is refused.": "Le jeton doit avoir Compte, puis Radar, puis Lecture. Un jeton de zone ou de DNS est refusé.",
-    "A Yandex token lasts about 6 months. When it runs out, get a new one with step 4 of How to connect.": "Un jeton Yandex dure environ 6 mois. Quand il expire, obtenez-en un nouveau avec l'étape 4 de Comment se connecter.",
+    "Free limit used up for now. Nothing is broken.": "Limite gratuite épuisée pour l'instant. Rien n'est cassé.",
+    "It refills on its own, and the app retries by itself.": "Elle se recharge seule, et l'application réessaie toute seule.",
+    "Copy it again in full: a missing character or trailing space is the usual cause.": "Copiez-la à nouveau en entier : un caractère manquant ou une espace finale en est la cause habituelle.",
+    "Still refused? Make a new key there and paste it. Also check the account: email confirmed, plan not expired.": "Toujours refusée ? Créez-y une nouvelle clé et collez-la. Vérifiez aussi le compte : e-mail confirmé, offre non expirée.",
+    "Settings → this connection → Test shows the exact problem.": "Réglages → cette connexion → Tester montre le problème exact.",
+    "Old DomCop Open PageRank keys no longer work. Make a new one on the Open Page Rank tab of your Keywords Everywhere account.": "Les anciennes clés Open PageRank de DomCop ne marchent plus. Créez-en une dans l'onglet Open Page Rank de votre compte Keywords Everywhere.",
+    "The token needs Account → Radar → Read. Zone or DNS tokens are refused.": "Le jeton doit avoir Compte → Radar → Lecture. Les jetons de zone ou DNS sont refusés.",
+    "A Yandex token lasts about 6 months; then redo step 4 of How to connect.": "Un jeton Yandex dure environ 6 mois ; refaites ensuite l'étape 4 de Comment connecter.",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 

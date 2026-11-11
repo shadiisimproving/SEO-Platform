@@ -137,7 +137,7 @@ def run(job, engine: Engine) -> None:
             raise RunAgain(3)
         try:
             if not indexed.in_property(url, src["property"]):
-                indexed._save(engine, site_id, url, {**indexed._EMPTY, "error": "This page isn't in the site's Search Console property, so Google won't inspect it."})
+                indexed._save(engine, site_id, url, {**indexed._EMPTY, "error": "Not in the site's Search Console property, so not inspected."})
                 continue
             wait = gap - (time.monotonic() - last)
             if wait > 0:

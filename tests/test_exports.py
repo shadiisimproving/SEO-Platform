@@ -570,7 +570,7 @@ def test_characters_the_pdf_cant_draw_stay_in_excel_and_csv(tmp_path):
         path = tmp_path / "cjk.pdf"
         path.write_bytes(body)
         found = subprocess.run(["pdftotext", str(path), "-"], capture_output=True, check=True).stdout.decode()
-        assert found.count("Some characters could not be drawn in this PDF") == 1
+        assert found.count("Some characters show as “?” in this PDF") == 1
     assert load_workbook(io.BytesIO(xlsx_out.write(report)))["Queries"]["A2"].value == "コーヒー 咖啡 커피"
     assert "コーヒー 咖啡 커피" in csv_out.write(report, "query")[0].decode("utf-8-sig")
     fine = _report([{"name": "café"}])

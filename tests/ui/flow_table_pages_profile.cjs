@@ -128,7 +128,7 @@ function longInsights(d, host) {
   await page.evaluate(() => { window.UI.state.lang = "fr"; window.UI.render(); }); await settle(1200);
   if (!(await page.$(bestFoot))) { await page.click('[data-pt-tab="pages"]'); await settle(); }
   const frFoot = await range(bestFoot), frBox = await page.getAttribute(box, "placeholder");
-  check("French: the footer and the search read in French", / sur /.test(frFoot) && frBox === "Rechercher une de leurs pages", `${frFoot} | ${frBox}`);
+  check("French: the footer and the search read in French", / sur /.test(frFoot) && frBox === "Rechercher une page", `${frFoot} | ${frBox}`);
   check("French: the Next button reads Suivant", /Suivant/.test(await page.locator(`${bestFoot} [data-tp-step="next"]`).textContent()));
   await page.screenshot({ path: OUT + "4-french.png" });
   await page.evaluate(() => { window.UI.state.lang = "en"; window.UI.render(); }); await settle(800);
@@ -169,7 +169,7 @@ function longInsights(d, host) {
   await page.click(cBox); await page.keyboard.type("article-29", { delay: 30 }); await settle();
   check("Content: search finds pages by address, focus kept", (await page.locator(cRows).count()) === 11 && (await focused()) === "search", await page.locator(cRows).count());
   await page.fill(cBox, "zzz-none"); await settle();
-  check("Content: no match says so", /Nothing matches the search/.test(await page.locator("#page").textContent()));
+  check("Content: no match says so", /Nothing matches/.test(await page.locator("#page").textContent()));
   await page.fill(cBox, ""); await settle();
   await page.evaluate(() => { window.UI.state.lang = "fr"; window.UI.render(); }); await settle(800);
   check("Content: French footer and search", / sur /.test(await range(cFoot)) && (await page.getAttribute(cBox, "placeholder")) === "Rechercher une page");

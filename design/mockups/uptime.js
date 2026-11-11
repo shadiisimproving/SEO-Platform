@@ -9,19 +9,23 @@
   const up = { started: false, ready: false, failed: "", sites: [], every: 15, staleAfter: 45, alertDays: 14, checking: new Set(), timers: new Map() };
 
   const WHY = {
-    never_checked: "Not checked yet. On the live site this runs by itself. On this Mac, only when you press Run.",
-    too_old: "The last check is too old to say. Nothing has checked this site lately.",
-    not_watching: "You turned off watching for this site, so nobody knows.",
-    turned_away: "The site turned the app away, so this check can't tell whether it's up.",
-    robots: "Its robots.txt doesn't let the app read the start page, so this check can't tell whether it's up.",
-    rate_limited: "The site asked the app to slow down, so this check can't tell whether it's up.",
-    our_connection: "This computer couldn't reach the internet, so this says nothing about the site.",
-    refused: "That address isn't a public website, so it wasn't read.",
+    never_checked: "Not checked",
+    too_old: "No recent check.",
+    not_watching: "Watching is off.",
+    turned_away: "The site blocked the app.",
+    robots: "Its robots.txt blocks the app.",
+    rate_limited: "The site asked to slow down.",
+    our_connection: "This computer had no internet.",
+    refused: "Not a public website, so not read.",
     server_error: "The server answered with an error.",
     page_error: "The start page answered with an error.",
     no_answer: "The site didn't answer, twice.",
     redirect_loop: "The start page redirects too many times.",
   };
+  // Why a cause says nothing about the site, one hover away (UI.tip).
+  const WHY_TIPS = { rate_limited: "So this check can't tell whether it's up.", our_connection: "So this says nothing about the site.",
+    never_checked: "On the live site this runs by itself. On this Mac, only when you press Run.", turned_away: "So this check can't tell whether it's up.",
+    robots: "It doesn't let the app read the start page, so this check can't tell whether it's up." };
   const OUTAGE_WORDS = { server_error: "Server error", page_error: "Page error", no_answer: "No answer", redirect_loop: "Too many redirects" };
 
   const stateChip = (s) => {
@@ -41,10 +45,12 @@
 
   function certificateFact(s) {
     const { t, esc, fmtDateOnly } = UI, c = s.certificate;
-    if (!c.https) return fact(t("Security certificate"), `<span class="muted">—</span>`, t("This site doesn't use HTTPS."));
-    if (c.problem === "untrusted") return fact(t("Security certificate"), UI.status("crit", t("Can't be verified")), t("Browsers will warn visitors about this site."));
-    if (!c.expires) return fact(t("Security certificate"), `<span class="muted">${t("Unknown")}</span>`, t(c.checked_at ? "It couldn't be read." : "Not read yet."));
-    return fact(t("Security certificate"), `<span class="small-v">${esc(fmtDateOnly(c.expires))}</span>`, `${expiryChip(c)} ${c.checked_at ? `<span>${t("Read on")} ${esc(ago(c.checked_at))}</span>` : ""}`);
+    if (!c.https) return fact(t("Security certificate"), `<span class="muted">—</span>`, t("No HTTPS."));
+    if (c.problem === "untrusted") return fact(t("Security certificate"), UI.status("crit", t("Can't be verified")), t("Browsers warn visitors."));
+    if (!c.expires) return fact(t("Security certificate"), `<span class="muted">${t("Unknown")}</span>`, t(c.checked_at ? "Couldn't be read." : "Not read yet."));
+    // The day it was read, without year or time: those stay on hover.
+    const readDay = (iso) => new Intl.DateTimeFormat(UI.locale(), { day: "numeric", month: "short" }).format(new Date(iso));
+    return fact(t("Security certificate"), `<span class="small-v">${esc(fmtDateOnly(c.expires))}</span>`, `${expiryChip(c)} ${c.checked_at ? `<span title="${esc(ago(c.checked_at))}">${t("Read on")} ${esc(readDay(c.checked_at))}</span>` : ""}`);
   }
 
   function domainFact(s) {
@@ -55,7 +61,7 @@
         ${d.source === "manual" ? `<button class="btn btn-small btn-ghost" type="button" data-up-date-clear="${s.id}">${icon("x")}${t("Clear")}</button>` : ""}
         <div class="error" role="alert" data-up-date-err hidden></div></form>`;
     const showForm = d.problem === "no_rdap" || d.source === "manual";
-    const where = d.source === "manual" ? t("Entered by hand. Change it after each renewal.") : d.problem === "no_rdap" ? t("This domain's ending has no public date. Enter it by hand to get a warning before it runs out.") : d.problem === "rdap_failed" ? t("The registry didn't answer this time, so this is the last date known.") : d.source === "rdap" ? t("From the domain registry") : t("Not read yet.");
+    const where = d.source === "manual" ? `${t("Entered by hand.")}${UI.tip("Change it after each renewal.")}` : d.problem === "no_rdap" ? `${t("No public date. Enter it by hand.")}${UI.tip("This domain's ending publishes no expiry date. Enter it to get a warning before it runs out.")}` : d.problem === "rdap_failed" ? t("Last known date: the registry didn't answer.") : d.source === "rdap" ? t("From the registry") : t("Not read yet.");
     const value = d.expires ? `<span class="small-v">${esc(fmtDateOnly(d.expires))}</span>` : `<span class="muted">${t("Unknown")}</span>`;
     return fact(`${t("Domain name")} <span class="mono">${esc(d.name)}</span>`, value, `${expiryChip(d)} <span>${where}</span>${showForm ? form : ""}`);
   }
@@ -67,13 +73,13 @@
     const dayTip = (d) => `${fmtDateOnly(d.day)}: ${d.state === "up" ? t("Online") : d.state === "down" ? `${t("Offline")} (${num(d.down)} ${t("of")} ${num(d.up + d.down)} ${t("checks")})` : t("Not watched")}`;
     return `<div class="up-strip-wrap"><div class="up-strip" role="img" aria-label="${t("Last 30 days")}: ${num(s.days.filter((d) => d.state === "up").length)} ${t("online")}, ${num(s.days.filter((d) => d.state === "down").length)} ${t("with an outage")}, ${num(s.days_not_watched)} ${t("not watched")}">
       ${s.days.map((d) => `<span class="up-day ${d.state === "unknown" ? "" : esc(d.state)}" data-tip="${esc(dayTip(d))}"></span>`).join("")}</div>
-      <div class="up-legend"><span>${esc(fmtDateOnly(s.days[0].day))}</span><span class="keys"><span><i class="up-day up"></i>${t("Online")}</span><span><i class="up-day down"></i>${t("Outage")}</span><span><i class="up-day"></i>${t("Not watched")}</span></span><span>${esc(fmtDateOnly(s.days[s.days.length - 1].day))}</span></div></div>`;
+      <div class="up-legend"><span>${esc(fmtDateOnly(s.days[0].day))}</span><span>${esc(fmtDateOnly(s.days[s.days.length - 1].day))}</span></div></div>`;
   }
 
   function outages(s) {
     const { t, esc, num } = UI;
     if (!s.incidents.length) return "";
-    return `<div class="up-outages"><h3>${t("Outages seen")}</h3><ul>${s.incidents.map((i) => `<li>
+    return `<div class="up-outages"><h3>${t("Outages")}</h3><ul>${s.incidents.map((i) => `<li>
       ${i.ended_at ? UI.status("info", t("Ended")) : UI.status("crit", t("Still down"))}
       <span class="tabular">${esc(ago(i.started_at))}</span>
       <span class="tabular">${num(i.minutes)} min</span>
@@ -83,16 +89,16 @@
   function card(s) {
     const { t, esc, num, icon, siteLogo } = UI;
     const busy = up.checking.has(s.id);
-    const why = s.reason && WHY[s.reason] ? `<p class="up-why">${t(WHY[s.reason])}${s.http_status && s.state === "down" ? ` <span class="mono">(${esc(s.http_status)})</span>` : ""}</p>` : "";
+    const why = s.reason && WHY[s.reason] ? `<p class="up-why">${t(WHY[s.reason])}${UI.tip(WHY_TIPS[s.reason])}${s.http_status && s.state === "down" ? ` <span class="mono">(${esc(s.http_status)})</span>` : ""}</p>` : "";
     const percent = s.uptime_percent === null ? `<span class="muted">—</span>` : `${UI.dec(s.uptime_percent)}%`;
-    const percentSub = s.uptime_percent === null ? t("No checks yet in the last 30 days") : `${t("Only counts the days it was watched.")} ${s.days_not_watched ? `${num(s.days_not_watched)} ${t("of")} 30 ${t(s.days_not_watched === 1 ? "day not watched" : "days not watched")}.` : ""}`;
+    const percentSub = s.uptime_percent === null ? t("No checks in 30 days") : s.days_not_watched ? `${num(s.days_not_watched)} ${t("of")} 30 ${t(s.days_not_watched === 1 ? "day not watched" : "days not watched")}.` : "";
     return `<section class="card up-card" data-up-site="${s.id}">
       <div class="up-head">
         <span class="up-host">${siteLogo(s.host)}<span class="mono">${esc(s.host)}</span></span>
         ${stateChip(s)}
-        <span class="small sec">${s.last_checked_at ? `${t("Last check")} ${esc(ago(s.last_checked_at))}` : t("Never checked")}</span>
+        <span class="small sec">${s.last_checked_at ? `${t("Last check")} ${esc(ago(s.last_checked_at))}` : t("Not checked")}</span>
         <span class="end">
-          <label class="opt small"><input type="checkbox" class="chk" style="margin:0" data-up-watch="${s.id}" ${s.watching ? "checked" : ""}>${t("Watch this site")}</label>
+          <label class="opt small"><input type="checkbox" class="chk" style="margin:0" data-up-watch="${s.id}" ${s.watching ? "checked" : ""}>${t("Watch")}</label>
           <button class="btn btn-small" data-up-check="${s.id}" ${busy ? "disabled" : ""}>${icon("refresh-cw", busy ? "spin" : "")}${t(busy ? "Checking…" : s.last_checked_at ? "Run again" : "Run")}</button>
         </span>
       </div>
@@ -111,14 +117,16 @@
     const { t, esc, icon } = UI;
     if (up.failed) return UI.failCard ? UI.failCard(up.failed, { onRetry: () => { up.failed = ""; up.ready = false; paint(); load(); } }) : `<div class="table-wrap"><div class="empty"><h3>${t("That didn't load")}</h3><p>${esc(t(up.failed))}</p></div></div>`;
     if (!up.ready) return UI.skeleton ? UI.skeleton("rows", { rows: 3 }) : `<div class="card"><div class="empty"><p>${t("Loading…")}</p></div></div>`;
-    if (!up.sites.length) return `<div class="table-wrap"><div class="empty"><h3>${t("No sites added yet")}</h3><p>${t("Add your own site, then watch whether it's up.")}</p><button class="btn btn-main" id="site-add">${icon("plus")}${t("Add a site")}</button></div></div>`;
+    if (!up.sites.length) return `<div class="table-wrap"><div class="empty"><h3>${t("No sites added yet")}</h3><p>${t("Add your own site first.")}</p><button class="btn btn-main" id="site-add">${icon("plus")}${t("Add a site")}</button></div></div>`;
     const picked = UI.siteHostPicked();
     const shown = picked ? up.sites.filter((s) => s.host === picked) : up.sites;
-    const rule = `<p class="note up-rule">${icon("info")}<span>${t("On the live site each site is read every {every} minutes. After {stale} minutes with no check it shows as Unknown, never as Online.").replace("{every}", up.every).replace("{stale}", up.staleAfter)} ${t("Certificates and domain names warn you {days} days before they run out.").replace("{days}", up.alertDays)}</span></p>`;
+    // What every card shares is said once, here: how often, how far ahead, what the percentage counts, and the strip's colours.
+    const keys = `<span class="up-legend keys"><span><i class="up-day up"></i>${t("Online")}</span><span><i class="up-day down"></i>${t("Outage")}</span><span><i class="up-day"></i>${t("Not watched")}</span></span>`;
+    const rule = `<div class="note up-rule">${icon("info")}<div><span>${t("Checked every {every} min.").replace("{every}", up.every).replace("{stale}", up.staleAfter)}${UI.tip("On the live site each site is read every {every} minutes. After {stale} minutes with no check it shows as Unknown, never as Online.", { every: up.every, stale: up.staleAfter })} ${t("Expiry alerts {days} days ahead.").replace("{days}", up.alertDays)} ${t("Counts watched days only.")}</span>${keys}</div></div>`;
     const order = { down: 0, unknown: 1, up: 2 };
     const sorted = [...shown].sort((a, b) => order[a.state] - order[b.state] || a.host.localeCompare(b.host));
     const banners = sorted.map((s) => window.HealthTest?.bannersFor?.(s.id, ["uptime_down", "ssl_expiry", "domain_expiry"]) || "").join("");
-    return rule + banners + (shown.length ? sorted.map(card).join("") : `<div class="table-wrap"><div class="empty"><p>${t("This site isn't one of your own sites.")}</p></div></div>`);
+    return rule + banners + (shown.length ? sorted.map(card).join("") : `<div class="table-wrap"><div class="empty"><p>${t("Not one of your own sites.")}</p></div></div>`);
   }
 
   /* A check finishing or an alert arriving redraws this tab, and that must never wipe a date being typed or lose someone's place. */
@@ -186,7 +194,7 @@
         stop(`${now.host}: ${UI.t(now.state === "up" ? "Online" : now.state === "down" ? "Offline" : "Unknown")}`, now.state === "down" ? "crit" : "info");
         return;
       }
-      if (Date.now() - started > POLL_LIMIT_MS) { stop(UI.t("The check is still waiting its turn. Come back in a moment.")); return; }
+      if (Date.now() - started > POLL_LIMIT_MS) { stop(UI.t("Still waiting. Come back soon.")); return; }
       up.timers.set(id, setTimeout(poll, POLL_MS));
     };
     up.timers.set(id, setTimeout(poll, POLL_MS));
@@ -208,7 +216,7 @@
       const el = e.target;
       if (!el.dataset?.upWatch) return;
       const id = Number(el.dataset.upWatch), on = el.checked;
-      COMP.api("PATCH", `uptime/sites/${id}`, { watching: on }).then((answer) => { replace(answer); UI.toast(UI.t(on ? "This site is being watched" : "No longer watching this site"), { kind: "info" }); }).catch((err) => { el.checked = !on; COMP.fail(err); });
+      COMP.api("PATCH", `uptime/sites/${id}`, { watching: on }).then((answer) => { replace(answer); UI.toast(UI.t(on ? "Watching on" : "Watching off"), { kind: "info" }); }).catch((err) => { el.checked = !on; COMP.fail(err); });
     });
     document.addEventListener("submit", (e) => {
       const form = e.target.closest?.("[data-up-date]");
@@ -250,26 +258,26 @@
 
   const fr = {
     "Uptime": "Disponibilité", "Online": "En ligne", "Offline": "Hors ligne", "Unknown": "Inconnu", "Expired": "Expiré", "OK": "OK", "day left": "jour restant", "days left": "jours restants",
-    "Security certificate": "Certificat de sécurité", "This site doesn't use HTTPS.": "Ce site n'utilise pas HTTPS.", "Can't be verified": "Impossible à vérifier", "Browsers will warn visitors about this site.": "Les navigateurs avertiront les visiteurs de ce site.",
-    "It couldn't be read.": "Il n'a pas pu être lu.", "Not read yet.": "Pas encore lu.", "Read on": "Lu le", "Domain name": "Nom de domaine", "Domain expiry date": "Date d'expiration du domaine",
-    "Change date": "Modifier la date", "Save date": "Enregistrer la date", "Clear": "Effacer", "Entered by hand. Change it after each renewal.": "Saisie à la main. Modifiez-la après chaque renouvellement.",
-    "This domain's ending has no public date. Enter it by hand to get a warning before it runs out.": "Cette extension de domaine n'a pas de date publique. Saisissez-la à la main pour être prévenu avant l'expiration.",
-    "The registry didn't answer this time, so this is the last date known.": "Le registre n'a pas répondu cette fois : c'est la dernière date connue.", "From the domain registry": "Depuis le registre du domaine",
+    "Security certificate": "Certificat de sécurité", "No HTTPS.": "Pas de HTTPS.", "Can't be verified": "Impossible à vérifier", "Browsers warn visitors.": "Les navigateurs avertissent les visiteurs.",
+    "Couldn't be read.": "Lecture impossible.", "Not read yet.": "Pas encore lu.", "Read on": "Lu le", "Domain name": "Nom de domaine", "Domain expiry date": "Date d'expiration du domaine",
+    "Change date": "Modifier la date", "Save date": "Enregistrer la date", "Clear": "Effacer", "Entered by hand.": "Saisie à la main.",
+    "No public date. Enter it by hand.": "Pas de date publique. Saisissez-la à la main.",
+    "Last known date: the registry didn't answer.": "Dernière date connue : le registre n'a pas répondu.", "From the registry": "Depuis le registre",
     "Last 30 days": "30 derniers jours", "online": "en ligne", "with an outage": "avec une panne", "not watched": "non surveillés", "Not watched": "Non surveillé", "Outage": "Panne",
-    "Outages seen": "Pannes constatées", "Ended": "Terminée", "Still down": "Toujours hors ligne", "Server error": "Erreur du serveur", "Page error": "Erreur de page", "No answer": "Pas de réponse", "Too many redirects": "Trop de redirections",
-    "No checks yet in the last 30 days": "Aucun contrôle sur les 30 derniers jours", "Only counts the days it was watched.": "Ne compte que les jours surveillés.", "day not watched": "jour non surveillé", "days not watched": "jours non surveillés",
-    "Last check": "Dernier contrôle", "Never checked": "Jamais contrôlé", "Watch this site": "Surveiller ce site", "Checking…": "Contrôle en cours…", "Run": "Lancer", "Run again": "Relancer", "Online, last 30 days": "En ligne, 30 derniers jours",
-    "Add your own site, then watch whether it's up.": "Ajoutez votre site, puis surveillez sa disponibilité.", "This site isn't one of your own sites.": "Ce site ne fait pas partie de vos sites.",
-    "On the live site each site is read every {every} minutes. After {stale} minutes with no check it shows as Unknown, never as Online.": "Sur le site en ligne, chaque site est lu toutes les {every} minutes. Après {stale} minutes sans contrôle, il s'affiche comme Inconnu, jamais comme En ligne.",
-    "Certificates and domain names warn you {days} days before they run out.": "Les certificats et noms de domaine vous préviennent {days} jours avant l'expiration.",
-    "Not checked yet. On the live site this runs by itself. On this Mac, only when you press Run.": "Pas encore contrôlé. Sur le site en ligne, cela tourne tout seul. Sur ce Mac, seulement quand vous appuyez sur Lancer.",
-    "The last check is too old to say. Nothing has checked this site lately.": "Le dernier contrôle est trop ancien pour le dire. Rien n'a contrôlé ce site récemment.", "You turned off watching for this site, so nobody knows.": "Vous avez désactivé la surveillance de ce site : personne ne le sait.",
-    "The site turned the app away, so this check can't tell whether it's up.": "Le site a refusé l'application : ce contrôle ne peut pas dire s'il est en ligne.", "Its robots.txt doesn't let the app read the start page, so this check can't tell whether it's up.": "Son robots.txt ne laisse pas l'application lire la page d'accueil : ce contrôle ne peut pas dire s'il est en ligne.",
-    "The site asked the app to slow down, so this check can't tell whether it's up.": "Le site a demandé à l'application de ralentir : ce contrôle ne peut pas dire s'il est en ligne.", "This computer couldn't reach the internet, so this says nothing about the site.": "Cet ordinateur n'a pas pu accéder à internet : cela ne dit rien sur le site.",
-    "That address isn't a public website, so it wasn't read.": "Cette adresse n'est pas un site public : elle n'a pas été lue.", "The server answered with an error.": "Le serveur a répondu par une erreur.", "The start page answered with an error.": "La page d'accueil a répondu par une erreur.",
-    "The site didn't answer, twice.": "Le site n'a pas répondu, deux fois.", "The start page redirects too many times.": "La page d'accueil redirige trop de fois.", "The check is still waiting its turn. Come back in a moment.": "Le contrôle attend son tour. Revenez dans un instant.",
+    "Outages": "Pannes", "Ended": "Terminée", "Still down": "Toujours hors ligne", "Server error": "Erreur du serveur", "Page error": "Erreur de page", "No answer": "Pas de réponse", "Too many redirects": "Trop de redirections",
+    "No checks in 30 days": "Aucun contrôle en 30 jours", "Only counts the days it was watched.": "Ne compte que les jours surveillés.", "Counts watched days only.": "Ne compte que les jours surveillés.", "day not watched": "jour non surveillé", "days not watched": "jours non surveillés",
+    "Last check": "Dernier contrôle", "Watch": "Surveiller", "Checking…": "Contrôle en cours…", "Run": "Lancer", "Run again": "Relancer", "Online, last 30 days": "En ligne, 30 derniers jours",
+    "Add your own site first.": "Ajoutez d'abord votre propre site.", "Not one of your own sites.": "Ce n'est pas un de vos sites.",
+    "Checked every {every} min.": "Contrôlé toutes les {every} min.",
+    "Expiry alerts {days} days ahead.": "Alertes d'expiration {days} jours avant.",
+    "Not checked": "Non contrôlé",
+    "No recent check.": "Aucun contrôle récent.", "Watching is off.": "Surveillance désactivée.",
+    "The site blocked the app.": "Le site a bloqué l'application.", "Its robots.txt blocks the app.": "Son robots.txt bloque l'application.",
+    "The site asked to slow down.": "Le site a demandé de ralentir.", "This computer had no internet.": "Cet ordinateur n'avait pas internet.",
+    "Not a public website, so not read.": "Pas un site public : non lu.", "The server answered with an error.": "Le serveur a répondu par une erreur.", "The start page answered with an error.": "La page d'accueil a répondu par une erreur.",
+    "The site didn't answer, twice.": "Le site n'a pas répondu, deux fois.", "The start page redirects too many times.": "La page d'accueil redirige trop de fois.", "Still waiting. Come back soon.": "Toujours en attente. Revenez bientôt.",
     "Date cleared": "Date effacée", "Date saved": "Date enregistrée", "Choose the date first.": "Choisissez d'abord la date.", "Enter the date as YYYY-MM-DD.": "Saisissez la date au format AAAA-MM-JJ.",
-    "This site is being watched": "Ce site est surveillé", "No longer watching this site": "Ce site n'est plus surveillé", "Uptime is only watched on your own websites.": "La disponibilité n'est surveillée que sur vos propres sites.",
+    "Watching on": "Surveillance activée", "Watching off": "Surveillance désactivée", "Uptime is only watched on your own websites.": "La disponibilité n'est surveillée que sur vos propres sites.",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 })();

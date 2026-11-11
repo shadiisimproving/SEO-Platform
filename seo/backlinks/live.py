@@ -417,7 +417,7 @@ def check_now(engine: Engine, backlink_id: int) -> bool:
     if row is None:
         raise NotFound("That backlink doesn't exist.")
     if row["status"] in ("found", "ignored"):
-        raise Refused("Log this link first, then it can be checked.")
+        raise Refused("Log this link before checking it.")
     queued = queue.enqueue(engine, LANE, JOB_KIND, payload={"backlink_id": backlink_id}, dedupe_key=f"backlink:{backlink_id}", max_attempts=2) is not None
     from seo.backlinks import indexed, source_index  # also ask Google about my page, and whether the linking page is on Google
     indexed.enqueue_for_backlink(engine, backlink_id)

@@ -139,13 +139,13 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await settle();
   await tab("activity");
   const lone = await page.evaluate(() => ({ you: document.querySelectorAll(".pt-bar-you").length, note: document.querySelector(".pt-panel .pt-note")?.textContent || "", youWord: /You\b/.test(document.querySelector(".pt-facts-row")?.textContent || "") }));
-  check("not read: no 'You' bars or figures, and the note says why", lone.you === 0 && !lone.youWord && /Your own site's pages are read tonight for the first time/.test(lone.note), JSON.stringify(lone));
+  check("not read: no 'You' bars or figures, and the note says why", lone.you === 0 && !lone.youWord && /yours are read tonight for the first time/.test(lone.note), JSON.stringify(lone));
   await page.locator(".pt-panel section.card").first().screenshot({ path: OUT + "6-activity-not-read.png" });
   await tab("pages");
   // 25 pages of questions, 15 on my topics: all 15 on the first page (pages of 25), one Task each, the 10 off-topic pages folded.
   const q = { rows: await count("#pt-questions > li"), tasks: await count("#pt-questions > li .pt-act button"), lead: await page.locator(".pt-panel section.card").nth(2).locator(".pt-lead").innerText() };
   check("questions: the 15 pages on my topics first, one Task each", q.rows === 15 && q.tasks === 15, JSON.stringify(q));
-  check("questions: the lead counts the ones on my topics and says my pages aren't read", /on your topics, on 15 pages/.test(q.lead) && /haven't been read yet/.test(q.lead), q.lead);
+  check("questions: the lead counts the ones on my topics and says my pages aren't read", /on your topics, on 15 pages/.test(q.lead) && /Your pages aren't read yet/.test(q.lead), q.lead);
   check("questions: a page shows 3 questions, then +n more", (await page.locator("#pt-questions > li").first().locator(".pt-qlist li").count()) === 3 && /\+2 more/.test(await page.locator("#pt-questions > li").first().innerText()));
   check("the pages footer counts the 15 pages on my topics", /1–15 of 15 pages/.test(await page.locator('[data-tp-foot="pt-q"] .tp-range').innerText()));
   check("off-topic pages are folded behind one button", (await count(".pt-qpages-other > li")) === 0 && /Show \d+ questions on other topics/.test(await page.locator("[data-pt-q-others]").innerText()));

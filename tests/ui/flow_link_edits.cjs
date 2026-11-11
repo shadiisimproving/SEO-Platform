@@ -13,6 +13,9 @@ const check = (name, ok, extra = "") => { results.push(Boolean(ok)); console.log
   const panel = async () => (await page.locator("#cg-edit-form").count()) > 0;
   const D = "coffee-review.example";
   const row = () => page.locator("#cs-links-table tbody tr").filter({ hasText: D }).first();
+  // What a row says: its words, and the names behind its logos and (i) tips. Since 2026-11-11 a tool such as Ahrefs
+  // shows as its logo, its name on hover (data-tip, alt).
+  const says = async (loc) => `${await loc.innerText()} ${(await loc.locator("[data-tip], img[alt]").evaluateAll((els) => els.map((e) => e.getAttribute("data-tip") || e.getAttribute("alt")))).join(" ")}`;
   if (process.env.LOGIN) {
     await page.goto(new URL("login", base).href);
     await page.locator("input[type=email], input[name=email], #email").first().fill("admin@example.com");
@@ -75,7 +78,7 @@ const check = (name, ok, extra = "") => { results.push(Boolean(ok)); console.log
   await page.locator("#cg-edit-save").click();
   await settle(800);
   check("saving closes the panel", !(await panel()));
-  const text = await row().innerText();
+  const text = await says(row());
   check("the table shows the new score and tool", text.includes("81") && text.includes("Ahrefs"), text.replace(/\s+/g, " ").slice(0, 110));
   check("How many follows the ticks", Number((await row().locator("td").nth(3).innerText()).trim()) === startCount - 1);
   check("it says it was typed by hand", (await row().locator(".cg-by-hand").count()) === 1);
@@ -89,7 +92,7 @@ const check = (name, ok, extra = "") => { results.push(Boolean(ok)); console.log
     await settle(1200);
     const gap = page.locator(`[data-cg-row="${D}"]`);
     if (await gap.count()) {
-      const line = await gap.innerText();
+      const line = await says(gap);
       check("Link gaps shows the same score", line.includes("81") && line.includes("Ahrefs"));
       await gap.locator("[data-cg-edit]").click();
       await settle();
@@ -105,14 +108,14 @@ const check = (name, ok, extra = "") => { results.push(Boolean(ok)); console.log
   // Back to automatic, then undo.
   await row().locator("[data-cs-edit]").click();
   await settle();
-  check("the panel says who and when", (await page.locator("#panel").innerText()).includes("Last edited"));
+  check("the panel says who and when", (await page.locator("#panel").innerText()).includes("Edited"));
   await page.locator("#panel").screenshot({ path: `${shots}/edit-panel-edited.png` });
   await page.locator("#cg-edit-reset").click();
   await settle(800);
-  check("back to automatic restores the row", !(await row().innerText()).includes("Ahrefs") && (await row().locator(".cg-by-hand").count()) === 0 && Number((await row().locator("td").nth(3).innerText()).trim()) === startCount);
+  check("back to automatic restores the row", !(await says(row())).includes("Ahrefs") && (await row().locator(".cg-by-hand").count()) === 0 && Number((await row().locator("td").nth(3).innerText()).trim()) === startCount);
   await page.locator('.toast button:has-text("Undo")').last().click();
   await settle(800);
-  check("Undo brings the edit back", (await row().innerText()).includes("Ahrefs") && Number((await row().locator("td").nth(3).innerText()).trim()) === startCount - 1);
+  check("Undo brings the edit back", (await says(row())).includes("Ahrefs") && Number((await row().locator("td").nth(3).innerText()).trim()) === startCount - 1);
 
   // A domain the list doesn't have, read in a tool.
   const NEW = "fresh-from-a-tool.example";
@@ -136,19 +139,19 @@ const check = (name, ok, extra = "") => { results.push(Boolean(ok)); console.log
   await page.locator("[data-cg-edit-rival]").first().uncheck();
   await page.locator("#cg-edit-save").click();
   await settle();
-  check("no competitor ticked is refused", (await page.locator("#cg-edit-error .error").innerText()).includes("at least one competitor"));
+  check("no competitor ticked is refused", (await page.locator("#cg-edit-error .error").innerText()).includes("Pick a competitor"));
   await page.locator("[data-cg-edit-rival]").first().check();
   await page.locator("#cg-edit-score").fill("99");
   await page.locator("#cg-edit-tool").fill("Ahrefs");
   await page.locator("#cg-edit-save").click();
   await settle(900);
   check("the panel closes", !(await panel()));
-  check("the new domain shows at once with its score", (await newRow().count()) === 1 && (await newRow().innerText()).includes("99") && (await newRow().innerText()).includes("Ahrefs"));
+  check("the new domain shows at once with its score", (await newRow().count()) === 1 && (await newRow().innerText()).includes("99") && (await says(newRow())).includes("Ahrefs"));
   await newRow().scrollIntoViewIfNeeded();
   await page.screenshot({ path: `${shots}/add-domain-row.png` });
   await newRow().locator("[data-cs-edit]").click();
   await settle();
-  check("its panel offers to remove it", (await page.locator("#cg-edit-reset").innerText()).includes("Remove this domain"));
+  check("its panel offers to remove it", (await page.locator("#cg-edit-reset").innerText()).includes("Remove domain"));
   await page.locator("#panel").screenshot({ path: `${shots}/add-domain-edit.png` });
   await page.locator("#cg-edit-reset").click();
   await settle(900);
@@ -173,7 +176,7 @@ const check = (name, ok, extra = "") => { results.push(Boolean(ok)); console.log
   await row().locator("[data-cs-edit]").click();
   await settle();
   const fr = await page.locator("#panel").innerText();
-  check("French panel", fr.includes("Modifier ce domaine") && fr.includes("Score d'autorité"));
+  check("French panel", fr.includes("Modifier le domaine") && fr.includes("Score d'autorité"));
   await page.locator("#panel").screenshot({ path: `${shots}/edit-panel-fr.png` });
   await page.locator("[data-discard-panel]").click();
   await settle();

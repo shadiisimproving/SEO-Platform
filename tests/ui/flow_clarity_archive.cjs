@@ -86,7 +86,7 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: pa
   await page.goto(`${ROOT}#settings`);
   await page.reload();
   await page.waitForSelector("#conn-clarity");
-  check("Clarity still says not connected", (await page.locator("#conn-clarity").innerText()).includes("Not connected"));
+  check("Clarity still says not connected", (await page.locator('#conn-clarity [data-conn="clarity"]').innerText()).trim() === "Connect"); // its button, since 2026-11-11 there is no "Not connected" word
 
   // The days show on Content for a period that holds them, with no Google data beside them.
   await page.locator('[data-go="content"]').first().click();
@@ -103,7 +103,7 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: pa
   await shot(page, "5-content-july");
   check("July shows its sessions with no Google data", screen.includes("Clarity sessions") && screen.includes("Connect"), screen.slice(0, 300));
   check("July's clicks are unknown, not zero", /Rage clicks\s*—/.test(screen) && /Dead clicks\s*—/.test(screen) && /Scroll depth\s*—/.test(screen), screen.slice(0, 400));
-  check("the screen says why they're unknown", screen.includes("31 days here have Clarity sessions only"), screen.slice(0, 400));
+  check("the screen says why they're unknown", screen.includes("31 days have Clarity sessions only"), screen.slice(0, 400));
 
   await page.goto("about:blank");
   await page.goto(`${ROOT}#content`);

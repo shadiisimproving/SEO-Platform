@@ -27,6 +27,18 @@
 
   const VERDICT = { counts: ["vd-counts", "Counts"], weak: ["vd-weak", "Weak"], none: ["vd-none", "Doesn't count"] };
   const REASONS = {
+    noindex: "Page set to noindex.",
+    robots_blocked: "Blocked by robots.txt.",
+    page_nofollow: "Page-wide nofollow.",
+    nofollow: "Marked nofollow.",
+    sponsored: "Marked sponsored.",
+    ugc: "Marked ugc.",
+    canonical_elsewhere: "Main version is another page.",
+    many_outbound: "Links to 100+ sites.",
+    source_not_indexed: "Linking page not on Google.",
+  };
+  /* The whole sentence behind each short reason: the (i) beside it in the panel, and the verdict badge's tooltip. */
+  const REASON_TIPS = {
     noindex: "The page is set to noindex, so Google drops the page and the link with it.",
     robots_blocked: "The site's robots.txt stops Google from reading the page.",
     page_nofollow: "The page tells Google not to follow any of its links.",
@@ -37,13 +49,17 @@
     many_outbound: "The page links to more than 100 other sites, which looks like a link list.",
     source_not_indexed: "Google doesn't have the linking page: two site: searches in a row didn't find it. A page Google doesn't have passes nothing.",
   };
+  const reasonTip = (r) => (REASON_TIPS[r] ? UI.tip(REASON_TIPS[r]) : "");
+  const UNKNOWN_WHY = "Google doesn't know this page yet, so the link can't help it rank.";
+  /* Search Console and site: search dates come as 2026-10-28; they read as the app's other dates do. */
+  const day = (v) => (/^\d{4}-\d{2}-\d{2}/.test(v || "") && UI.fmtDateOnly ? UI.fmtDateOnly(String(v).slice(0, 10)) : v);
   const ANCHORS = {
-    brand: ["Brand", "Your brand or domain name. The safest kind of anchor."],
-    url: ["Bare URL", "The address itself, such as www.example.com. Safe and natural."],
-    exact: ["Exact keyword", "Exactly one of your tracked keywords. Helps the most, but too many look bought."],
-    partial: ["Partial keyword", "Holds one of your tracked keywords among other words."],
+    brand: ["Brand", "Your brand or domain. The safest anchor."],
+    url: ["Bare URL", "The address, like www.example.com. Safe and natural."],
+    exact: ["Exact keyword", "Exactly one tracked keyword. Helps most; too many look bought."],
+    partial: ["Partial keyword", "A tracked keyword among other words."],
     generic: ["Generic", "Words like click here or read more. Natural, but tell Google little."],
-    other: ["Other", "None of the kinds above."],
+    other: ["Other", "None of the above."],
   };
   const t = (w) => UI.t(w), esc = (v) => UI.esc(v);
   const siteIdOf = (host) => (H.sites?.() || []).find((s) => s.host === host)?.id ?? null;
@@ -51,7 +67,7 @@
 
   // ---- in the table ---------------------------------------------------------------------------------
   function reasonsText(list) {
-    return (list || []).map((r) => t(REASONS[r] || r)).join(" ");
+    return (list || []).map((r) => t(REASON_TIPS[r] || REASONS[r] || r)).join(" ");
   }
 
   /* Beside the status: the verdict, then what Google's own list says. Only for a link that was read or that Search Console listed. */
@@ -60,17 +76,17 @@
     const c = b.check;
     if (c?.verdict && b.status === "live") {
       const [cls, word] = VERDICT[c.verdict];
-      const tip = c.verdict === "counts" ? t("Google can see this page and the link passes value.") : reasonsText(c.reasons);
+      const tip = c.verdict === "counts" ? t("Google sees the page; the link passes value.") : reasonsText(c.reasons);
       parts.push(`<span class="tag vd-tag ${cls}" data-tip="${esc(tip)}" tabindex="0">${t(word)}</span>`);
     }
-    if (b.status === "live" && b.sourceIndex?.state === "not_indexed") parts.push(`<span class="tag vd-tag vd-none" data-tip="${esc(t(REASONS.source_not_indexed))}" tabindex="0">${t("Linking page not indexed")}</span>`);
+    if (b.status === "live" && b.sourceIndex?.state === "not_indexed") parts.push(`<span class="tag vd-tag vd-none" data-tip="${esc(t(REASON_TIPS.source_not_indexed))}" tabindex="0">${t("Linking page not indexed")}</span>`);
     const ix = b.status === "live" ? b.targetIndex : null;
-    if (ix && (ix.state === "not_indexed" || ix.state === "unknown")) parts.push(`<span class="tag vd-tag vd-weak" data-tip="${esc(indexWhy(ix))}" tabindex="0">${t("Your page isn't indexed")}</span>`);
+    if (ix && (ix.state === "not_indexed" || ix.state === "unknown")) parts.push(`<span class="tag vd-tag vd-weak" data-tip="${esc(ix.state === "unknown" ? `${t(UNKNOWN_WHY)} ${indexWhy(ix)}` : indexWhy(ix))}" tabindex="0">${t("Your page isn't indexed")}</span>`);
     const g = b.gsc || {};
-    if (g.seen === "page") parts.push(`<span class="tag vd-tag vd-google" data-tip="${esc(t("Search Console lists this page among your links"))}${g.crawled ? ` · ${esc(t("last crawled"))} ${esc(g.crawled)}` : ""}" tabindex="0">${t("Google sees it")}</span>`);
-    else if (g.seen === "site") parts.push(`<span class="tag vd-tag vd-google" data-tip="${esc(t("Search Console lists this site among your links, but not this exact page."))}" tabindex="0">${t("Google sees the site")}</span>`);
-    else if (g.not_listed) parts.push(`<span class="tag vd-tag" data-tip="${esc(t("Placed more than 60 days before your last Search Console upload, and not in it. Its list is a sample, so this is only a hint."))}" tabindex="0">${t("Not listed by Google yet")}</span>`);
-    if (b.disavow) parts.push(`<span class="tag vd-tag vd-none" data-tip="${esc(t("Marked as spam: it's in the disavow file."))}" tabindex="0">${t("Spam")}</span>`);
+    if (g.seen === "page") parts.push(`<span class="tag vd-tag vd-google" data-tip="${esc(t("Search Console lists this page"))}${g.crawled ? ` · ${esc(t("crawled"))} ${esc(day(g.crawled))}` : ""}" tabindex="0">${t("Google sees it")}</span>`);
+    else if (g.seen === "site") parts.push(`<span class="tag vd-tag vd-google" data-tip="${esc(t("Search Console lists the site, not this page."))}" tabindex="0">${t("Google sees the site")}</span>`);
+    else if (g.not_listed) parts.push(`<span class="tag vd-tag" data-tip="${esc(t("Placed 60+ days before your last Search Console upload, yet missing from it. Its list is a sample: only a hint."))}" tabindex="0">${t("Not listed by Google yet")}</span>`);
+    if (b.disavow) parts.push(`<span class="tag vd-tag vd-none" data-tip="${esc(t("In the disavow file."))}" tabindex="0">${t("Spam")}</span>`);
     return parts.length ? `<span class="vd-row">${parts.join("")}</span>` : "";
   }
 
@@ -79,13 +95,13 @@
     const read = links.filter((b) => b.status === "live" && b.check?.verdict);
     if (!read.length) return "";
     const counts = read.filter((b) => b.check.verdict === "counts").length;
-    return `<span class="ab" data-tip="${esc(t("Read on the last check: followed, on a page Google can index."))}">${UI.num(counts)} ${t(counts === 1 ? "counts for Google" : "count for Google")}</span>`;
+    return `<span class="ab" data-tip="${esc(t("Last check: followed, on a page Google can index."))}">${UI.num(counts)} ${t(counts === 1 ? "counts for Google" : "count for Google")}</span>`;
   }
 
   /* Authority: the file's DA, or else Open PageRank with its name, because two tools' scores don't compare. */
   function authorityCell(b) {
     if (b.auth) return UI.dec(b.auth);
-    if (b.opr !== null && b.opr !== undefined) return `<span data-tip="${esc(t("Open PageRank, 0 to 10. Not the same scale as DA."))}" tabindex="0">${UI.dec(b.opr)} <span class="tag">OPR</span></span>`;
+    if (b.opr !== null && b.opr !== undefined) return `<span data-tip="${esc(t("Open PageRank, 0–10, not the DA scale."))}" tabindex="0">${UI.dec(b.opr)} <span class="tag">OPR</span></span>`;
     return "—";
   }
 
@@ -98,27 +114,27 @@
   const quiet = (word) => `<span class="muted">${t(word)}</span>`;
   const indexBad = (ix) => ix?.state === "not_indexed" || ix?.state === "unknown";
 
-  /* [tone, headline, one sentence or nothing]: is this link doing its job, and if not, the one reason that matters most. */
+  /* [tone, headline, one sentence or nothing, its (i) or nothing]: is this link doing its job, and if not, the one reason that matters most. */
   function answerOf(b) {
-    const c = b.check || {}, firstReason = c.reasons?.[0] ? t(REASONS[c.reasons[0]] || c.reasons[0]) : "";
-    if (b.disavow) return ["bad", t("Marked as spam"), t("It's in the disavow file.")];
+    const c = b.check || {}, firstReason = c.reasons?.[0] ? t(REASONS[c.reasons[0]] || c.reasons[0]) : "", firstTip = c.reasons?.[0] ? reasonTip(c.reasons[0]) : "";
+    if (b.disavow) return ["bad", t("Marked as spam"), t("In the disavow file.")];
     if (b.status === "planned") return ["idle", t("Not placed yet"), ""];
-    if (b.status === "lost") return ["bad", t("This link is lost"), t(c.outcome === "page_gone" ? "The page no longer exists." : "The link is no longer on the page.")];
-    if (c.target_http === 404 || c.target_http === 410) return ["bad", t("Your page is gone"), t("Your target page answers {n}, so this link is wasted until the page redirects to a live one.").replace("{n}", c.target_http)];
-    if (c.misses > 0) return ["warn", t("Not found on the last check"), t("It's read once more tomorrow before it counts as lost.")];
-    if (c.verdict === "none") return ["bad", t("Google doesn't count it"), firstReason];
-    if (b.sourceIndex?.state === "not_indexed") return ["bad", t("Linking page not indexed"), t("Ask the website to get it indexed, or the link passes nothing.")];
+    if (b.status === "lost") return ["bad", t("Link lost"), t(c.outcome === "page_gone" ? "Page gone." : "Link gone from the page.")];
+    if (c.target_http === 404 || c.target_http === 410) return ["bad", t("Your page is gone"), t("Answers {n}: redirect it to a live page.").replace("{n}", c.target_http), UI.tip("Your target page answers {n}, so this link is wasted until the page redirects to a live one.", { n: c.target_http })];
+    if (c.misses > 0) return ["warn", t("Missing on last check"), t("Rechecked tomorrow before it counts as lost.")];
+    if (c.verdict === "none") return ["bad", t("Google doesn't count it"), firstReason, firstTip];
+    if (b.sourceIndex?.state === "not_indexed") return ["bad", t("Linking page not indexed"), t("Ask the site to get it indexed."), UI.tip("Ask the website to get it indexed, or the link passes nothing.")];
     if (indexBad(b.targetIndex)) return ["warn", t("Your page isn't indexed"), ""]; // its row opens below with the why and a task
-    if (c.verdict === "weak") return ["warn", t("Weak link"), firstReason];
-    if (c.verdict === "counts") return ["good", t("Working"), t("The link is live and Google counts it.")];
-    if (c.outcome === "unknown") return ["idle", t("Couldn't check it"), t("A page that can't be read never counts as a lost link.")];
-    return ["idle", t("Not checked yet"), ""];
+    if (c.verdict === "weak") return ["warn", t("Weak link"), firstReason, firstTip];
+    if (c.verdict === "counts") return ["good", t("Working"), t("Live, and Google counts it.")];
+    if (c.outcome === "unknown") return ["idle", t("Couldn't check it"), t("An unreadable page never counts as a lost link.")];
+    return ["idle", t("Not checked"), ""];
   }
 
   function answerInner(b) {
-    const [tone, word, why] = answerOf(b);
+    const [tone, word, why, more = ""] = answerOf(b);
     const mark = { good: "circle-check", warn: "triangle-alert", bad: "octagon-alert", idle: "info" }[tone];
-    return `<div class="vd-answer ${tone}">${UI.icon(mark)}<div><strong>${esc(word)}</strong>${why ? `<p>${esc(why)}</p>` : ""}</div></div>`;
+    return `<div class="vd-answer ${tone}">${UI.icon(mark)}<div><strong>${esc(word)}</strong>${why ? `<p>${esc(why)}${more}</p>` : ""}</div></div>`;
   }
 
   const qRow = (key, label, value, body, open = false) => `<details class="fold vd-q" data-vd-row="${key}" ${open ? "open" : ""}><summary>${UI.icon("chevron-right")}<span class="vd-q-label">${label}</span><span class="vd-q-value">${value}</span></summary><div class="vd-q-body">${body}</div></details>`;
@@ -136,15 +152,15 @@
     S.linkStatus = linkStatus;
     const id = b.serverId, google = googleBody(b, server), index = indexBody(b, server), spammy = looksSpammy(b) || b.disavow, spam = spamBody(b, server);
     let html = `<div id="vd-answer" data-id="${id ?? ""}">${answerInner(b)}</div>`;
-    html += qRow("link", t("Is the link on the page?"), linkStatus(b.status), check, b.status === "live" && !b.check?.checked_at);
-    if (google) html += qRow("google", t("Does Google count it?"), googleValue(b), google);
-    if (index) html += qRow("index", t("Is your page in Google?"), indexValue(b), index, indexBad(b.targetIndex));
+    html += qRow("link", t("Link on the page?"), linkStatus(b.status), check, b.status === "live" && !b.check?.checked_at);
+    if (google) html += qRow("google", t("Counted by Google?"), googleValue(b), google);
+    if (index) html += qRow("index", t("Your page in Google?"), indexValue(b), index, indexBad(b.targetIndex));
     if (server && id) {
       html += `<div id="vd-effect" data-id="${id}">${effectInner(id)}</div>`;
       if (!S.effects.has(id)) loadEffect(id);
     } else if (sampleEffect) html += qRow("effect", t("Before and after"), sampleEffect.value, sampleEffect.body);
     html += qRow("traffic", t("Traffic from this link"), trafficValue, traffic);
-    if (spammy && spam) html += qRow("spam", t("Spam"), tagOf("vd-none", b.disavow ? "Marked as spam" : "Looks like spam"), spam);
+    if (spammy && spam) html += qRow("spam", t("Spam"), tagOf("vd-none", b.disavow ? "Marked as spam" : "Likely spam"), spam);
     html += qRow("details", t("Details"), anchor ? `<span class="muted" dir="auto">${esc(anchor)}</span>` : "", details + (spammy ? "" : spam));
     return html;
   }
@@ -169,19 +185,20 @@
     const c = b.check || {};
     let html = "";
     if (c.verdict) {
-      const reasons = (c.reasons || []).map((r) => `<li>${esc(t(REASONS[r] || r))}</li>`).join("");
-      html += c.verdict === "counts" ? `<p class="lk-result">${t("Google can see this page and the link passes value.")}</p>` : reasons ? `<ul class="vd-reasons">${reasons}</ul>` : "";
+      const reasons = (c.reasons || []).map((r) => `<li>${esc(t(REASONS[r] || r))}${reasonTip(r)}</li>`).join("");
+      html += c.verdict === "counts" ? `<p class="lk-result">${t("Google sees the page; the link passes value.")}</p>` : reasons ? `<ul class="vd-reasons">${reasons}</ul>` : "";
       const lang = (v) => (v || "").slice(0, 2);
       if (lang(c.page_lang) && lang(c.target_lang) && lang(c.page_lang) !== lang(c.target_lang)) {
-        html += `<p class="note">${UI.icon("info")}<span>${t("The linking page is in {a} and your page is in {b}. Links from pages in the same language and on the same topic usually help more.").replace("{a}", esc(lang(c.page_lang).toUpperCase())).replace("{b}", esc(lang(c.target_lang).toUpperCase()))}</span></p>`;
+        html += `<p class="note">${UI.icon("info")}<span>${t("Linking page in {a}, yours in {b}.").replace("{a}", esc(lang(c.page_lang).toUpperCase())).replace("{b}", esc(lang(c.target_lang).toUpperCase()))}${UI.tip("Links from pages in the same language and on the same topic usually help more.")}</span></p>`;
       }
     }
     html += sourceLine(b, server);
-    if (c.target_http === 404 || c.target_http === 410) {
-      html += `<p class="note warn">${UI.icon("triangle-alert")}<span>${t("Your target page answers {n}, so this link is wasted until the page redirects to a live one.").replace("{n}", c.target_http)}</span></p>`;
+    // Said once: the answer box on top already says it when it's the link's main problem.
+    if ((c.target_http === 404 || c.target_http === 410) && answerOf(b)[1] !== t("Your page is gone")) {
+      html += `<p class="note warn">${UI.icon("triangle-alert")}<span>${t("Answers {n}: redirect it to a live page.").replace("{n}", c.target_http)}${UI.tip("Your target page answers {n}, so this link is wasted until the page redirects to a live one.", { n: c.target_http })}</span></p>`;
     }
     const g = b.gsc || {};
-    if (g.seen || g.not_listed) html += `<p class="small sec">${UI.icon("search")} ${g.seen === "page" ? t("Search Console lists this page among your links") : g.seen === "site" ? t("Search Console lists this site among your links, but not this exact page.") : t("Not in your last Search Console upload.")}${g.crawled ? ` · ${t("last crawled")} ${esc(g.crawled)}` : ""}</p>`;
+    if (g.seen || g.not_listed) html += `<p class="small sec">${UI.icon("search")} ${g.seen === "page" ? t("Search Console lists this page") : g.seen === "site" ? t("Search Console lists the site, not this page.") : t("Not in your last Search Console upload.")}${g.crawled ? ` · ${t("crawled")} ${esc(day(g.crawled))}` : ""}</p>`;
     return html;
   }
 
@@ -190,14 +207,14 @@
     if (b.status !== "live") return "";
     const si = b.sourceIndex, facts = S.sites.get(b.site) || {};
     const via = si?.via === "Search Console" ? t("Search Console lists the link") : si?.via ? t("a site: search on {tool}").replace("{tool}", esc(si.via)) : "";
-    const when = si?.at ? ` · ${esc(si.at)}` : "";
+    const when = si?.at ? ` · ${esc(day(si.at))}` : "";
     if (!si) {
       if (!server) return "";
-      return `<p class="small sec">${UI.icon("search")} ${facts.site_search ? t("Whether Google has the linking page is searched on the next check.") : t("Connect a rankings search tool, such as SerpApi, to check whether Google has the linking page. Only free searches are used.")}</p>`;
+      return `<p class="small sec">${UI.icon("search")} ${facts.site_search ? t("The next check looks for the linking page on Google.") : t("Connect a search tool, such as SerpApi, to see if Google has the linking page. Free searches only.")}</p>`;
     }
-    if (si.state === "indexed") return `<p class="small sec">${UI.icon("circle-check")} ${t("The linking page is on Google")}: ${via}${when}</p>`;
-    if (si.state === "not_found") return `<p class="small sec">${UI.icon("search")} ${t("Not found on Google yet: a site: search didn't show the linking page. Search results are incomplete, so it's searched again in a few days, and only a second miss marks it not indexed.")}${when}</p>`;
-    if (si.state === "not_indexed") return `<p class="note warn">${UI.icon("triangle-alert")}<span>${t("Google doesn't have the linking page: two site: searches in a row didn't find it. Ask the website to get it indexed, or the link passes nothing.")}${when}</span></p>`;
+    if (si.state === "indexed") return `<p class="small sec">${UI.icon("circle-check")} ${t("Linking page on Google")}: ${via}${when}</p>`;
+    if (si.state === "not_found") return `<p class="small sec">${UI.icon("search")} ${t("Not found on Google yet; searched again in a few days.")}${UI.tip("A site: search didn't show the linking page. Search results are incomplete, so only a second miss marks it not indexed.")}${when}</p>`;
+    if (si.state === "not_indexed") return `<p class="note warn">${UI.icon("triangle-alert")}<span>${t("Ask the site to get it indexed.")}${UI.tip("Google doesn't have the linking page: two site: searches in a row didn't find it. Until it's indexed, the link passes nothing.")}${when}</span></p>`;
     return ""; // not_indexable: the reasons above already say why
   }
 
@@ -221,8 +238,8 @@
       return n || picked === key ? `<button class="chip" data-bl-filter="${key}" aria-pressed="${picked === key}" data-tip="${esc(t(tip))}">${t(word)}<b>${UI.num(n)}</b></button>` : "";
     };
     const site = S.domain ? `<button class="chip" data-vd-domain="" aria-pressed="true">${t("Site")}: <span class="mono" dir="auto">${esc(S.domain)}</span> ${UI.icon("x")}</button>` : "";
-    return site + chip("useful", "Useful", "Live, followed, on a page Google can index") + chip("visits", "Sends visits", "Brought at least one visit")
-      + chip("noindex", "Linking page not indexed", "Google doesn't have the page the link is on, or can't index it") + chip("useless", "Not useful", "Nofollow, sponsored, or on a page that passes nothing");
+    return site + chip("useful", "Useful", "Live, followed, indexable page") + chip("visits", "Sends visits", "At least one visit")
+      + chip("noindex", "Linking page not indexed", "Linking page not in Google, or not indexable") + chip("useless", "Not useful", "Nofollow, sponsored, or on a page that passes nothing");
   }
 
   const byWebsite = () => S.view === "website";
@@ -232,7 +249,7 @@
   }
 
   const ahrefsOn = () => [...S.sites.values()].some((f) => f.ahrefs);
-  const trafficHead = () => (ahrefsOn() ? `<th scope="col" class="r" data-tip="${esc(t("Ahrefs' estimate of the linking site's monthly visits from Google"))}">${t("Site traffic")}</th>` : "");
+  const trafficHead = () => (ahrefsOn() ? `<th scope="col" class="r" data-tip="${esc(t("Ahrefs estimate: the linking site's monthly Google visits"))}">${t("Site traffic")}</th>` : "");
   const trafficValue = (v) => (v === null || v === undefined ? '<span class="muted">—</span>' : UI.num(v));
   const trafficCell = (b) => (ahrefsOn() ? `<td class="r tabular" data-label="${t("Site traffic")}">${trafficValue(b.siteTraffic)}</td>` : "");
 
@@ -279,15 +296,15 @@
     }).sort((x, y) => (y.auth - x.auth) || (y.opr - x.opr) || (y.links.length - x.links.length) || x.domain.localeCompare(y.domain));
     if (!list.length) return COMP.empty(t("No links match"), t("Pick another filter."));
     const found = list.filter((g) => TP.matches(PAGES.sites, g.domain));
-    if (!found.length) return COMP.empty(t("No site matches this search"), t("Change the search or pick another filter."));
+    if (!found.length) return COMP.empty(t("No site matches"), t("Change the search or filter."));
     const shown = sortRows(found, S.siteSort, { domain: (g) => g.domain, links: (g) => g.links.length, authority: (g) => g.auth || (g.opr >= 0 ? g.opr : null), traffic: (g) => g.traffic, visits: (g) => g.visits });
     const page = TP.view(PAGES.sites, shown);
     const head = (id, label, cls, tip) => sortHead("data-bls-sort", S.siteSort, id, label, cls, tip);
-    return `<div class="bl-list"><div class="table-wrap"><table class="data" id="bl-sites"><thead><tr>${head("domain", "Site")}${head("links", "Links", "r")}<th scope="col" data-tip="${esc(t("The best of this site's links, as the last check read it"))}">${t("Best link")}</th>${head("authority", "Authority", "r")}${ahrefsOn() ? head("traffic", "Site traffic", "r", t("Ahrefs' estimate of the linking site's monthly visits from Google")) : ""}${head("visits", "Visits", "r")}</tr></thead><tbody>
+    return `<div class="bl-list"><div class="table-wrap"><table class="data" id="bl-sites"><thead><tr>${head("domain", "Site")}${head("links", "Links", "r")}<th scope="col" data-tip="${esc(t("Its best link, per the last check"))}">${t("Best link")}</th>${head("authority", "Authority", "r")}${ahrefsOn() ? head("traffic", "Site traffic", "r", t("Ahrefs estimate: the linking site's monthly Google visits")) : ""}${head("visits", "Visits", "r")}</tr></thead><tbody>
       ${page.rows.map((g) => {
         const tag = g.best ? `<span class="tag vd-tag ${VERDICT[g.best.check.verdict][0]}">${t(VERDICT[g.best.check.verdict][1])}</span>` : '<span class="muted">—</span>';
         const authority = g.auth ? UI.dec(g.auth) : g.opr >= 0 ? `${UI.dec(g.opr)} <span class="tag">OPR</span>` : '<span class="muted">—</span>';
-        return `<tr><td class="head-cell"><span class="with-logo">${UI.siteLogo ? UI.siteLogo(g.domain) : ""}<span class="logo-text"><button class="kw mono small" data-vd-domain="${esc(g.domain)}" style="text-align:start" data-tip="${esc(t("Show this site's links"))}"><span dir="auto">${esc(g.domain)}</span></button><span class="second">${g.live} ${t("live")}</span></span></span></td>
+        return `<tr><td class="head-cell"><span class="with-logo">${UI.siteLogo ? UI.siteLogo(g.domain) : ""}<span class="logo-text"><button class="kw mono small" data-vd-domain="${esc(g.domain)}" style="text-align:start" data-tip="${esc(t("Show its links"))}"><span dir="auto">${esc(g.domain)}</span></button><span class="second">${g.live} ${t("live")}</span></span></span></td>
           <td class="r tabular" data-label="${t("Links")}">${UI.num(g.links.length)}</td><td data-label="${t("Best link")}">${tag}</td><td class="r" data-label="${t("Authority")}">${authority}</td>
           ${ahrefsOn() ? `<td class="r tabular" data-label="${t("Site traffic")}">${trafficValue(g.traffic)}</td>` : ""}<td class="r tabular" data-label="${t("Visits")}">${g.visits === null ? '<span class="muted">—</span>' : UI.num(g.visits)}</td></tr>`;
       }).join("")}</tbody></table></div>
@@ -306,8 +323,8 @@
   const pathOf = (url) => { try { const u = new URL(url); return u.pathname + u.search; } catch { return url || ""; } };
 
   function indexWhy(ix) {
-    if (ix.state === "unknown") return t("Google doesn't know this page yet, so the link can't help it rank. Add it to your sitemap or ask for indexing in Search Console.");
-    return `${t("Google hasn't indexed this page, so the link can't help it rank yet.")}${ix.coverage ? ` ${t("Google says:")} “${ix.coverage}”` : ""}`;
+    if (ix.state === "unknown") return t("Add it to your sitemap or request indexing in Search Console.");
+    return `${t("The link can't help it rank yet.")}${ix.coverage ? ` ${t("Google says:")} “${ix.coverage}”` : ""}`;
   }
 
   function indexBody(b, server) {
@@ -315,25 +332,25 @@
     const ix = b.targetIndex, facts = S.sites.get(b.site) || {};
     if (!ix) {
       if (!server) return "";
-      if (!facts.index_check) return `<p class="small sec">${t("Connect Search Console for this site and Google is asked whether your target page is indexed.")} <a href="#settings">${t("Data sources")}</a></p>`;
-      return `<p class="small sec">${t("Google is asked on the next check. Press Run to ask today.")}</p>`;
+      if (!facts.index_check) return `<p class="small sec">${t("Connect Search Console to check if your page is indexed.")} <a href="#settings">${t("Data sources")}</a></p>`;
+      return `<p class="small sec">${t("Asked at the next check, or press Run.")}</p>`;
     }
     const page = pathOf(ix.url);
-    const from = `<p class="small muted vd-from">${t("From Search Console's URL Inspection")}${ix.checked ? `, ${esc(ix.checked)}` : ""}.</p>`;
+    const from = `<p class="small muted vd-from">${t("From Search Console's URL Inspection")}${ix.checked ? `, ${esc(day(ix.checked))}` : ""}.</p>`;
     if (ix.state === "error") return `<p class="small sec">${UI.icon("triangle-alert")} ${esc(t(ix.error))}</p>${from}`;
     if (ix.state === "indexed") {
-      return `<p class="lk-result">${PageLink.html(ix.url, { text: page, cls: "mono small" })}${ix.crawled ? ` · ${t("last crawled")} ${esc(ix.crawled)}` : ""}</p>${from}`;
+      return `<p class="lk-result">${PageLink.html(ix.url, { text: page, cls: "mono small" })}${ix.crawled ? ` · ${t("crawled")} ${esc(day(ix.crawled))}` : ""}</p>${from}`;
     }
-    const canonical = ix.google_canonical ? `<p class="small sec">${t("Google treats another page as the main version:")} ${PageLink.html(ix.google_canonical, { text: pathOf(ix.google_canonical), cls: "mono" })}</p>` : "";
+    const canonical = ix.google_canonical ? `<p class="small sec">${t("Google's main version:")} ${PageLink.html(ix.google_canonical, { text: pathOf(ix.google_canonical), cls: "mono" })}</p>` : "";
     const task = UI.taskButton ? UI.taskButton({ title: `${t("Get indexed:")} ${page}`, host: b.site, source: { type: "backlink", label: page, host: b.site, facts: [ix.coverage || t("Not indexed")], link: "#backlinks", key: `index|${b.site}|${page}` } }, { label: "Task" }) : "";
     return `<p class="lk-result">${PageLink.html(ix.url, { text: page, cls: "mono small" })}</p>
-      <p class="note warn">${UI.icon("triangle-alert")}<span>${esc(indexWhy(ix))}</span></p>${canonical}<div style="margin:6px 0">${task}</div>${from}`;
+      <p class="note warn">${UI.icon("triangle-alert")}<span>${esc(indexWhy(ix))}${ix.state === "unknown" ? UI.tip(UNKNOWN_WHY) : ""}</span></p>${canonical}<div style="margin:6px 0">${task}</div>${from}`;
   }
 
   /* Below the link check: the one thing a person decides about a bad link. */
   function spamBody(b, server) {
     if (!server || !b.serverId) return "";
-    return `<p class="small sec vd-spam">${looksSpammy(b) ? `${t("This page looks like spam: it has many outbound links or a high spam score.")} ` : ""}${t("Mark a link you can't get removed and that could look paid or spammy. It goes in the disavow file.")}</p>
+    return `<p class="small sec vd-spam">${looksSpammy(b) ? `${t("Many outbound links or a high spam score.")} ` : ""}${t("Mark a link you can't get removed and that could look paid or spammy. It goes in the disavow file.")}</p>
       <button class="btn btn-small" data-vd-disavow="${b.serverId}" data-on="${b.disavow ? "1" : ""}">${UI.icon(b.disavow ? "check" : "ban")}${t(b.disavow ? "Not spam" : "Mark as spam")}</button>`;
   }
 
@@ -348,14 +365,14 @@
     const e = S.effects.get(id);
     if (!e || e.loading) return "";
     const label = t("Before and after");
-    if (e.state === "waiting") return qRow("effect", label, quiet("Not ready yet"), `<p class="small sec">${t("The days after the link aren't all in Search Console yet, so there's nothing fair to compare.")} ${t("Ready on")} ${esc(UI.fmtDateOnly ? UI.fmtDateOnly(e.ready_on) : e.ready_on)}.</p>`); // F11
+    if (e.state === "waiting") return qRow("effect", label, quiet("Not ready yet"), `<p class="small sec">${t("Waiting for Search Console data.")}${UI.tip("The days after the link aren't all in Search Console yet, so there's nothing fair to compare.")} ${t("Ready on")} ${esc(UI.fmtDateOnly ? UI.fmtDateOnly(e.ready_on) : e.ready_on)}.</p>`); // F11
     if (e.state !== "ok") return e.state === "no_date" ? qRow("effect", label, '<span class="muted">—</span>', `<p class="small sec">${t(e.note)}</p>`) : "";
     const pct = (v) => (v === null || v === undefined ? "—" : `${v > 0 ? "+" : ""}${UI.num(v)}%`);
     const unit = UI.state.lang === "fr" ? "j" : "d";
     const line = (word, value) => `<tr><td class="sec">${t(word)}</td><td class="tabular">${value}</td></tr>`;
-    return qRow("effect", label, `<span class="tabular">${UI.num(e.before.clicks)} → ${UI.num(e.after.clicks)}</span> ${t("clicks")}`, `<p class="small sec">${t("Clicks to the target page")} · ${e.days} ${unit} ${t("before")} / ${t("after")}</p>
-      <table class="mini"><tbody>${line("This page", pct(e.page_change))}${line("The whole site", pct(e.site_change))}${e.after.position ? line("Position", `${UI.dec(e.before.position ?? "—")} → ${UI.dec(e.after.position)}`) : ""}</tbody></table>
-      <p class="small muted vd-from">${t("From Search Console. Timing only: this does not prove the link caused the change.")}</p>`);
+    return qRow("effect", label, `<span class="tabular">${UI.num(e.before.clicks)} → ${UI.num(e.after.clicks)}</span> ${t("clicks")}`, `<p class="small sec">${t("Target page clicks")} · ${e.days} ${unit} ${t("before")} / ${t("after")}</p>
+      <table class="mini"><tbody>${line("This page", pct(e.page_change))}${line("Whole site", pct(e.site_change))}${e.after.position ? line("Position", `${UI.dec(e.before.position ?? "—")} → ${UI.dec(e.after.position)}`) : ""}</tbody></table>
+      <p class="small muted vd-from">${t("From Search Console. Timing, not proof of cause.")}</p>`);
   }
 
   async function toggleDisavow(button) {
@@ -363,7 +380,7 @@
     button.disabled = true;
     try { await COMP.api("POST", `backlinks/${id}/disavow`, { disavow: on }); } catch (err) { UI.toast(t(err.message), { kind: "crit" }); button.disabled = false; return; }
     [...(window.BACKLINKS || []), ...(window.FOUND_LINKS || [])].forEach((b) => { if (b.serverId === id) b.disavow = on; });
-    UI.toast(t(on ? "Marked as spam" : "No longer marked as spam"), { kind: "info" });
+    UI.toast(t(on ? "Marked as spam" : "Spam mark removed"), { kind: "info" });
     UI.closePanel?.({ keep: false });
     UI.render();
   }
@@ -374,7 +391,7 @@
     const marked = [...(window.BACKLINKS || []), ...(window.FOUND_LINKS || [])].filter((b) => b.disavow && (!siteHost || b.site === siteHost)).length;
     const id = siteIdOf(siteHost);
     const disavow = server && marked
-      ? (id ? `<a class="btn btn-small" href="api/backlinks/disavow.txt?site_id=${id}" download data-tip="${esc(t("Google says most sites never need one. Upload it in Search Console only for spam links you can't get removed."))}">${UI.icon("download")}${t("Download disavow file")} <span class="muted">${UI.num(marked)}</span></a>` : `<span class="small sec">${t("Pick a site to download its disavow file.")}</span>`)
+      ? (id ? `<a class="btn btn-small" href="api/backlinks/disavow.txt?site_id=${id}" download data-tip="${esc(t("Google: most sites never need one. Upload it in Search Console only for spam links you can't get removed."))}">${UI.icon("download")}${t("Disavow file")} <span class="muted">${UI.num(marked)}</span></a>` : `<span class="small sec">${t("Pick a site to download its disavow file.")}</span>`)
       : "";
     return `<button class="btn btn-small" id="gsc-open">${UI.icon("search")}${t("Import from Search Console")}</button>${disavow}`;
   }
@@ -384,8 +401,10 @@
     return ` <button class="icon-btn" style="width:28px;height:28px;vertical-align:middle" data-vd-disavow="${f.serverId}" data-on="${f.disavow ? "1" : ""}" aria-label="${esc(t(f.disavow ? "Not spam" : "Mark as spam"))}" data-tip="${esc(t(f.disavow ? "Not spam" : "Mark as spam"))}">${UI.icon(f.disavow ? "check" : "ban")}</button>`;
   }
 
+  /* The source repeats on every imported row (usually Search Console): its logo, the name in the tooltip. One with no logo stays as words. */
   function foundSeen(f) {
-    return `${esc(f.seen)}${f.crawled ? ` <span class="second">${t("last crawled")} ${esc(f.crawled)}</span>` : ` <span class="second">${t("first seen")} ${esc(f.first)}</span>`}`;
+    const by = window.BRANDS?.FILES?.[f.seen] && UI.logoOnly ? UI.logoOnly(f.seen) : esc(f.seen);
+    return `${by}${f.crawled ? ` <span class="second">${t("crawled")} ${esc(day(f.crawled))}</span>` : ` <span class="second">${t("first seen")} ${esc(day(f.first))}</span>`}`;
   }
 
   // ---- Search Console upload ---------------------------------------------------------------------------
@@ -396,11 +415,11 @@
     dlg.classList.remove("wide");
     UI.setHTML(dlg, `<div class="dlg-head"><h2 id="dlg-title">${t("Import from Search Console")}</h2><button class="icon-btn" data-close-dlg aria-label="${t("Close")}">${UI.icon("x")}</button></div>
       <div class="dlg-body">
-        <p class="note">${UI.icon("info")}<span>${t("Search Console doesn't share its links with other apps, so download them once and upload the file here. About a minute per site.")}</span></p>
+        <p class="note">${UI.icon("info")}<span>${t("Download from Search Console, then upload here. About a minute per site.")}${UI.tip("Search Console doesn't share its links with other apps, so download them once and upload the file here.")}</span></p>
         <ol class="gsc-steps">
-          <li>${t("In Search Console, open Links in the menu on the left.")}</li>
-          <li>${t("Click Export external links at the top right, choose Latest links, then Download CSV.")}</li>
-          <li>${t("Upload that file here. Top linking sites and Top linked pages exports work too.")}</li>
+          <li>${t("In Search Console, open Links (left menu).")}</li>
+          <li>${t("Export external links (top right) → Latest links → Download CSV.")}</li>
+          <li>${t("Upload it below. Top linking sites or Top linked pages work too.")}</li>
         </ol>
         <label class="field"><span>${t("Our site")}</span><select class="select" id="gsc-site" style="width:100%">${sites.map((s) => `<option value="${esc(s.id)}" ${s.host === host ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></label>
         <label class="field"><span>${t("File")}</span><input class="input" type="file" id="gsc-file" accept=".csv,.zip,text/csv,application/zip"></label>
@@ -426,8 +445,8 @@
       const lines = [];
       if (a.kinds.includes("latest")) lines.push(`${UI.num(a.added)} ${t("new links in Found but never logged")}`, `${UI.num(a.seen)} ${t("logged links Google sees")}`);
       if (a.kinds.includes("sites")) lines.push(`${UI.num(a.domains)} ${t("linking sites")}`);
-      if (a.kinds.includes("pages")) lines.push(`${UI.num(a.pages)} ${t("of your pages with links. Each is read once a month for Reclaim.")}`);
-      if (a.skipped) lines.push(`${UI.num(a.skipped)} ${t("rows skipped: your own pages or the same page twice")}`);
+      if (a.kinds.includes("pages")) lines.push(`${UI.num(a.pages)} ${t("of your pages have links; each is read monthly for Reclaim.")}`);
+      if (a.skipped) lines.push(`${UI.num(a.skipped)} ${t("rows skipped: own pages or duplicates")}`);
       UI.setHTML(box, `<div class="note good">${UI.icon("circle-check")}<span>${lines.map(esc).join("<br>")}</span></div>`);
       S.reclaim.clear();
       await H.reload?.();
@@ -435,7 +454,7 @@
       UI.setHTML(box, `<div class="error" role="alert">${UI.icon("octagon-alert")}<span>${esc(t(err.message))}</span></div>`);
     }
     button.disabled = false;
-    UI.setHTML(button, `${UI.icon("list-plus")}${t("Upload another file")}`);
+    UI.setHTML(button, `${UI.icon("list-plus")}${t("Upload another")}`);
   }
 
   // ---- Reclaim -------------------------------------------------------------------------------------------
@@ -460,14 +479,14 @@
 
   function reclaimBody() {
     const list = reclaimPages();
-    if (!list.length) return COMP.empty(t("Nothing to reclaim"), t("Pages of yours that are gone but still have links show here."));
+    if (!list.length) return COMP.empty(t("Nothing to reclaim"), t("Gone pages that still have links show here."));
     const found = list.filter((p) => TP.matches(PAGES.reclaim, p.path, p.page, p.site, ...(p.domains || [])));
     const shown = sortRows(found, S.rcSort, { page: (p) => p.path || p.page, http: (p) => Number(p.http) || null, sites: (p) => p.sites || p.logged_links || 0 });
     const page = TP.view(PAGES.reclaim, shown);
     const head = (id, label, cls) => sortHead("data-rc-sort", S.rcSort, id, label, cls);
     // The search shows once the list is long enough to need it, or while it holds something.
     const search = list.length > 10 || TP.state(PAGES.reclaim).q ? `<div class="chips bl-search-line">${TP.search(PAGES.reclaim, t("Search pages or linking sites"))}</div>` : "";
-    return `<p class="note">${UI.icon("info")}<span>${t("Other sites link to these pages of yours, but the pages are gone. Redirect each one to the closest live page and the links count again.")}</span></p>
+    return `<p class="note">${UI.icon("info")}<span>${t("Redirect each to the closest live page to get its links back.")}${UI.tip("Other sites link to these pages of yours, but the pages are gone. Redirect each one to the closest live page and the links count again.")}</span></p>
       ${search}
       ${found.length ? `<div class="bl-list"><div class="table-wrap"><table class="data" id="rc-table"><thead><tr>${head("page", "Your page")}${head("http", "Answers")}${head("sites", "Sites linking", "r")}<th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead><tbody>
       ${page.rows.map((p) => `<tr style="cursor:default"><td class="head-cell mono small url-cell" data-tip="${esc(p.page)}">${PageLink.html(p.page || p.path, { text: p.path, host: p.site, title: "" })}${UI.state.site === "all" ? `<span class="second">${t("For")} ${esc(p.site)}</span>` : ""}${p.domains.length ? `<span class="second">${esc(p.domains.slice(0, 3).join(", "))}${p.domains.length > 3 ? "…" : ""}</span>` : ""}</td>
@@ -475,7 +494,7 @@
         <td class="r" data-label="${t("Sites linking")}">${UI.num(p.sites || p.logged_links)}${p.gsc_links ? `<span class="second">${UI.num(p.gsc_links)} ${t("links")}</span>` : ""}</td>
         <td class="r nowrap">${window.UI.taskButton({ title: `${t("Redirect")} ${p.path} ${t("to a live page")}`, host: p.site, source: { type: "backlink", label: p.path, host: p.site, facts: [`${p.http}`, `${p.sites || p.logged_links} ${t("sites linking")}`], link: "#backlinks", key: `reclaim|${p.site}|${p.path}` } }, { label: "Task" })}${p.gsc_id ? ` <button class="btn btn-small" data-rc-dismiss="${p.gsc_id}">${t("Dismiss")}</button>` : ""}</td></tr>`).join("")}
       </tbody></table></div>
-      ${TP.footer(PAGES.reclaim, page, { noun: t("pages") })}</div>` : COMP.empty(t("No page matches this search"), t("Change the search to see more pages."))}`;
+      ${TP.footer(PAGES.reclaim, page, { noun: t("pages") })}</div>` : COMP.empty(t("No page matches"), t("Change the search."))}`;
   }
 
   async function dismissReclaim(button) {
@@ -496,7 +515,7 @@
       COMP.api("GET", `backlinks/budget?site_id=${id}`).then((r) => { S.budgets.set(id, r.budget || false); if (UI.state.route === "backlinks") UI.render(); }).catch(() => S.budgets.set(id, false));
       return "";
     }
-    const edit = `<button class="btn btn-small" data-vd-budget="${id}">${UI.icon("pencil")}${t(got ? "Budget" : "Set a monthly budget")}</button>`;
+    const edit = `<button class="btn btn-small" data-vd-budget="${id}">${UI.icon("pencil")}${t(got ? "Budget" : "Monthly budget")}</button>`;
     if (!got) return edit;
     const month = new Date().toISOString().slice(0, 7);
     const mine = all.filter((b) => b.site === host && b.status !== "planned" && b.cost && H.currencyOf(b) === got.currency);
@@ -509,11 +528,11 @@
 
   function openBudget(button) {
     const id = Number(button.dataset.vdBudget), got = S.budgets.get(id) || {};
-    UI.openPanel(`${UI.panelHead(t("Monthly budget"), t("For buying links on this site, in one currency"))}
+    UI.openPanel(`${UI.panelHead(t("Monthly budget"), t("For buying links, in one currency"))}
       <form class="panel-body" id="vd-budget-form" data-id="${id}" novalidate>
         <div class="field-row"><label class="field"><span>${t("Amount")}</span><input class="input tabular" id="vd-amount" type="number" min="0" step="1" value="${esc(got.amount ?? "")}" data-autofocus></label>
         <label class="field"><span>${t("Currency")}</span><select class="select" id="vd-currency" style="width:100%">${CURRENCIES.map((c) => `<option ${c === (got.currency || "USD") ? "selected" : ""}>${c}</option>`).join("")}</select></label></div>
-        <p class="help">${t("Leave the amount empty to remove the budget. Only prices in this currency are added up.")}</p><div id="vd-budget-err"></div>
+        <p class="help">${t("Leave empty to remove. Only prices in this currency count.")}</p><div id="vd-budget-err"></div>
       </form>
       <div class="panel-foot"><button class="btn btn-main" id="vd-budget-save">${t("Save")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button></div>`, button, { key: `budget|${id}` });
   }
@@ -543,7 +562,7 @@
     const editing = UI.$("#bl-form")?.dataset.edit || "";
     const same = domain ? (window.BACKLINKS || []).filter((b) => b.site === site && b.domain === domain && String(b.id) !== editing && b.status !== "planned").length : 0;
     languageNote(input.value.trim(), domain, site);
-    UI.setHTML(box, same ? `<p class="note warn">${UI.icon("copy")}<span>${t("This website already links to {site}: {n}. Another link from the same website usually adds much less than a link from a new one.").replace("{site}", esc(site)).replace("{n}", same === 1 ? t("1 link") : `${UI.num(same)} ${t("links")}`)}</span></p>` : "");
+    UI.setHTML(box, same ? `<p class="note warn">${UI.icon("copy")}<span>${t("Already links to {site}: {n}.").replace("{site}", esc(site)).replace("{n}", same === 1 ? t("1 link") : `${UI.num(same)} ${t("links")}`)}${UI.tip("Another link from the same website usually adds much less than a link from a new one.")}</span></p>` : "");
   }
 
   // ---- Add backlink: a page in another language ------------------------------------------------------------
@@ -563,7 +582,7 @@
   /* The linking page's language, before anything is read: an earlier check of that website, else what the address says. */
   function guessLang(address, domain) {
     const earlier = (window.BACKLINKS || []).find((b) => b.domain === domain && b.check?.page_lang);
-    if (earlier) return { lang: earlier.check.page_lang.slice(0, 2), why: t("read on an earlier check of this site") };
+    if (earlier) return { lang: earlier.check.page_lang.slice(0, 2), why: t("from an earlier check") };
     let u;
     try { u = new URL(address); } catch { return null; }
     const first = u.pathname.split("/").filter(Boolean)[0] || "";
@@ -582,7 +601,7 @@
     if (!box) { box = document.createElement("div"); box.id = "bl-lang"; box.setAttribute("role", "status"); (UI.$("#bl-dup") || input?.closest(".field"))?.after(box); }
     const mine = siteLang(site), theirs = domain ? guessLang(address, domain) : null;
     const differs = mine && theirs && !sameLang(theirs.lang, mine);
-    UI.setHTML(box, differs ? `<p class="note">${UI.icon("info")}<span>${t("This page looks to be in {a} ({why}), and {site} is in {b}. A link from another language still counts, but one from a page in the same language usually helps more. The first check reads the page and says for sure.").replace("{a}", esc(theirs.lang.toUpperCase())).replace("{why}", esc(theirs.why)).replace("{site}", esc(site)).replace("{b}", esc(mine.toUpperCase()))}</span></p>` : "");
+    UI.setHTML(box, differs ? `<p class="note">${UI.icon("info")}<span>${t("Looks to be in {a} ({why}); {site} is in {b}.").replace("{a}", esc(theirs.lang.toUpperCase())).replace("{why}", esc(theirs.why)).replace("{site}", esc(site)).replace("{b}", esc(mine.toUpperCase()))}${UI.tip("A link from another language still counts, but one from a page in the same language usually helps more. The first check reads the page and says for sure.")}</span></p>` : "");
   }
 
   // ---- the plain-file sample -------------------------------------------------------------------------------
@@ -630,96 +649,96 @@
 
   const fr = {
     "Counts": "Compte", "Weak": "Faible", "Doesn't count": "Ne compte pas", "Spam": "Spam", "Google sees it": "Vu par Google", "Google sees the site": "Site vu par Google", "Not listed by Google yet": "Pas encore listé par Google",
-    "Google can see this page and the link passes value.": "Google peut voir cette page et le lien transmet de la valeur.",
-    "Search Console lists this page among your links": "Search Console liste cette page parmi vos liens", "last crawled": "dernière exploration",
-    "Search Console lists this site among your links, but not this exact page.": "Search Console liste ce site parmi vos liens, mais pas cette page précise.",
-    "Placed more than 60 days before your last Search Console upload, and not in it. Its list is a sample, so this is only a hint.": "Placé plus de 60 jours avant votre dernier import Search Console, et absent de celui-ci. Sa liste n'est qu'un échantillon : ce n'est qu'un indice.",
-    "Marked as spam: it's in the disavow file.": "Marqué comme spam : il est dans le fichier de désaveu.",
-    "Read on the last check: followed, on a page Google can index.": "Lu au dernier contrôle : suivi, sur une page que Google peut indexer.", "counts for Google": "compte pour Google", "count for Google": "comptent pour Google",
-    "Open PageRank, 0 to 10. Not the same scale as DA.": "Open PageRank, de 0 à 10. Pas la même échelle que le DA.",
-    "The page is set to noindex, so Google drops the page and the link with it.": "La page est en noindex : Google l'écarte, et le lien avec.",
-    "The site's robots.txt stops Google from reading the page.": "Le robots.txt du site empêche Google de lire la page.",
-    "The page tells Google not to follow any of its links.": "La page demande à Google de ne suivre aucun de ses liens.",
-    "Marked nofollow: Google takes it as a hint and usually passes no ranking value.": "Marqué nofollow : Google le prend comme une indication et ne transmet en général aucune valeur de classement.",
-    "Marked sponsored: right for a paid link, but it passes little or no ranking value.": "Marqué sponsored : normal pour un lien payé, mais il transmet peu ou pas de valeur de classement.",
-    "Marked ugc (user content): it passes little or no ranking value.": "Marqué ugc (contenu d'utilisateurs) : il transmet peu ou pas de valeur de classement.",
-    "The page names another page as its main version, so Google may count that one instead.": "La page désigne une autre page comme version principale : Google peut compter celle-là à la place.",
-    "The page links to more than 100 other sites, which looks like a link list.": "La page pointe vers plus de 100 autres sites, ce qui ressemble à une liste de liens.",
-    "Does Google count it?": "Google le compte-t-il ?",
-    "Is the link on the page?": "Le lien est-il sur la page ?", "Working": "Ça fonctionne", "The link is live and Google counts it.": "Le lien est en ligne et Google le compte.", "Weak link": "Lien faible", "Google doesn't count it": "Google ne le compte pas",
-    "Not placed yet": "Pas encore placé", "Your page is gone": "Votre page n'existe plus", "Not found on the last check": "Introuvable au dernier contrôle", "Couldn't check it": "Contrôle impossible", "It's in the disavow file.": "Il est dans le fichier de désaveu.",
-    "The page no longer exists.": "La page n'existe plus.", "The link is no longer on the page.": "Le lien n'est plus sur la page.", "Ask the website to get it indexed, or the link passes nothing.": "Demandez au site de la faire indexer, sinon le lien ne transmet rien.",
-    "Not checked": "Non contrôlé", "Not ready yet": "Pas encore prêt", "Looks like spam": "Ressemble à du spam", "The whole site": "Tout le site", "visit": "visite", "visits": "visites", "lead": "prospect", "leads": "prospects", "clicks": "clics",
-    "The linking page is in {a} and your page is in {b}. Links from pages in the same language and on the same topic usually help more.": "La page qui fait le lien est en {a} et votre page en {b}. Les liens venant de pages de même langue et de même sujet aident en général davantage.",
-    "Your target page answers {n}, so this link is wasted until the page redirects to a live one.": "Votre page cible répond {n} : ce lien est perdu tant qu'elle ne redirige pas vers une page en ligne.",
+    "Google sees the page; the link passes value.": "Google voit la page ; le lien transmet de la valeur.",
+    "Search Console lists this page": "Search Console liste cette page", "crawled": "exploré le",
+    "Search Console lists the site, not this page.": "Search Console liste le site, pas cette page.",
+    "Placed 60+ days before your last Search Console upload, yet missing from it. Its list is a sample: only a hint.": "Placé plus de 60 jours avant votre dernier import Search Console, mais absent. Sa liste est un échantillon : simple indice.",
+    "In the disavow file.": "Dans le fichier de désaveu.",
+    "Last check: followed, on a page Google can index.": "Dernier contrôle : suivi, sur une page indexable par Google.", "counts for Google": "compte pour Google", "count for Google": "comptent pour Google",
+    "Open PageRank, 0–10, not the DA scale.": "Open PageRank, de 0 à 10, pas l'échelle du DA.",
+    "Page set to noindex.": "Page en noindex.",
+    "Blocked by robots.txt.": "Bloquée par robots.txt.",
+    "Page-wide nofollow.": "Nofollow sur toute la page.",
+    "Marked nofollow.": "Marqué nofollow.",
+    "Marked sponsored.": "Marqué sponsored.",
+    "Marked ugc.": "Marqué ugc.",
+    "Main version is another page.": "La version principale est une autre page.",
+    "Links to 100+ sites.": "Pointe vers plus de 100 sites.",
+    "Counted by Google?": "Compté par Google ?",
+    "Link on the page?": "Lien sur la page ?", "Working": "Ça fonctionne", "Live, and Google counts it.": "En ligne, et Google le compte.", "Weak link": "Lien faible", "Google doesn't count it": "Google ne le compte pas",
+    "Not placed yet": "Pas encore placé", "Your page is gone": "Votre page n'existe plus", "Missing on last check": "Absent au dernier contrôle", "Couldn't check it": "Contrôle impossible", 
+    "Page gone.": "Page disparue.", "Link gone from the page.": "Lien absent de la page.", 
+    "Not checked": "Non contrôlé", "Not ready yet": "Pas encore prêt", "Likely spam": "Spam probable", "Whole site": "Tout le site", "visit": "visite", "visits": "visites", "lead": "prospect", "leads": "prospects", "clicks": "clics",
+    "Linking page in {a}, yours in {b}.": "Page source en {a}, la vôtre en {b}.",
+    "Answers {n}: redirect it to a live page.": "Répond {n} : redirigez-la vers une page en ligne.",
     "Not in your last Search Console upload.": "Absent de votre dernier import Search Console.",
-    "This page looks like spam: it has many outbound links or a high spam score.": "Cette page ressemble à du spam : beaucoup de liens sortants ou un score de spam élevé.",
+    "Many outbound links or a high spam score.": "Beaucoup de liens sortants ou un score de spam élevé.",
     "Mark a link you can't get removed and that could look paid or spammy. It goes in the disavow file.": "Marquez un lien que vous ne pouvez pas faire retirer et qui pourrait passer pour payé ou spam. Il ira dans le fichier de désaveu.",
-    "Mark as spam": "Marquer comme spam", "Not spam": "Pas du spam", "Marked as spam": "Marqué comme spam", "No longer marked as spam": "N'est plus marqué comme spam",
-    "The days after the link aren't all in Search Console yet, so there's nothing fair to compare.": "Les jours qui suivent le lien ne sont pas encore tous dans Search Console : rien de juste à comparer pour l'instant.", "Ready on": "Prêt le",
-    "Before and after": "Avant et après", "Correlation, not proof": "Corrélation, pas preuve", "Clicks to the target page": "Clics vers la page cible", "before": "avant", "after": "après", "This page": "Cette page", "the whole site": "tout le site", "position": "position",
-    "From Search Console. Timing only: this does not prove the link caused the change.": "Depuis Search Console. Simple coïncidence de dates : cela ne prouve pas que le lien a causé le changement.",
-    "It needs a target page and a date placed.": "Il faut une page cible et une date de mise en ligne.", "The date placed isn't written as YYYY-MM-DD, so it can't be compared.": "La date de mise en ligne n'est pas au format AAAA-MM-JJ : la comparaison est impossible.",
-    "Google says most sites never need one. Upload it in Search Console only for spam links you can't get removed.": "Google indique que la plupart des sites n'en ont jamais besoin. Importez-le dans Search Console seulement pour des liens spam impossibles à faire retirer.",
-    "Download disavow file": "Télécharger le fichier de désaveu", "Pick a site to download its disavow file.": "Choisissez un site pour télécharger son fichier de désaveu.",
+    "Mark as spam": "Marquer comme spam", "Not spam": "Pas du spam", "Marked as spam": "Marqué comme spam", "Spam mark removed": "Marquage spam retiré",
+    "Waiting for Search Console data.": "En attente des données Search Console.", "Ready on": "Prêt le",
+    "Before and after": "Avant et après", "Correlation, not proof": "Corrélation, pas preuve", "Target page clicks": "Clics de la page cible", "before": "avant", "after": "après", "This page": "Cette page", "the whole site": "tout le site", "position": "position",
+    "From Search Console. Timing, not proof of cause.": "Depuis Search Console. Simple coïncidence de dates, pas une preuve.",
+    "It needs a target page and a date placed.": "Il faut une page cible et une date de mise en ligne.", "Date placed must be YYYY-MM-DD.": "La date de pose doit être au format AAAA-MM-JJ.",
+    "Google: most sites never need one. Upload it in Search Console only for spam links you can't get removed.": "Google : la plupart des sites n'en ont jamais besoin. Importez-le dans Search Console seulement pour des liens spam impossibles à faire retirer.",
+    "Disavow file": "Fichier de désaveu", "Pick a site to download its disavow file.": "Choisissez un site pour télécharger son fichier de désaveu.",
     "Import from Search Console": "Importer depuis Search Console",
-    "Search Console doesn't share its links with other apps, so download them once and upload the file here. About a minute per site.": "Search Console ne partage pas ses liens avec d'autres applications : téléchargez-les une fois et importez le fichier ici. Environ une minute par site.",
-    "In Search Console, open Links in the menu on the left.": "Dans Search Console, ouvrez Liens dans le menu de gauche.",
-    "Click Export external links at the top right, choose Latest links, then Download CSV.": "Cliquez sur Exporter les liens externes en haut à droite, choisissez Derniers liens, puis Télécharger au format CSV.",
-    "Upload that file here. Top linking sites and Top linked pages exports work too.": "Importez ce fichier ici. Les exports Principaux sites de liens et Pages les plus liées fonctionnent aussi.",
-    "Choose the file Search Console downloaded.": "Choisissez le fichier téléchargé depuis Search Console.", "Needs the running app": "Nécessite l'application en marche", "Uploading…": "Import en cours…", "Upload": "Importer", "Upload another file": "Importer un autre fichier",
+    "Download from Search Console, then upload here. About a minute per site.": "Téléchargez depuis Search Console, puis importez ici. Environ une minute par site.",
+    "In Search Console, open Links (left menu).": "Dans Search Console, ouvrez Liens (menu de gauche).",
+    "Export external links (top right) → Latest links → Download CSV.": "Exporter les liens externes (en haut à droite) → Derniers liens → Télécharger au format CSV.",
+    "Upload it below. Top linking sites or Top linked pages work too.": "Importez-le ci-dessous. Principaux sites de liens ou Pages les plus liées marchent aussi.",
+    "Choose the file Search Console downloaded.": "Choisissez le fichier téléchargé depuis Search Console.", "Needs the running app": "Nécessite l'application en marche", "Uploading…": "Import en cours…", "Upload": "Importer", "Upload another": "Importer un autre",
     "new links in Found but never logged": "nouveaux liens dans Trouvés mais jamais saisis", "logged links Google sees": "liens saisis vus par Google", "linking sites": "sites qui font des liens",
-    "of your pages with links. Each is read once a month for Reclaim.": "de vos pages ont des liens. Chacune est lue une fois par mois pour À récupérer.", "rows skipped: your own pages or the same page twice": "lignes ignorées : vos propres pages, ou la même page deux fois",
-    "That doesn't look like a Search Console Links export. In Search Console open Links, then Export external links, and choose Latest links.": "Ce n'est pas un export Liens de Search Console. Dans Search Console, ouvrez Liens, puis Exporter les liens externes, et choisissez Derniers liens.",
-    "Download it from Search Console as CSV, not Excel.": "Téléchargez-le depuis Search Console au format CSV, pas Excel.", "That .zip file has no .csv inside.": "Ce fichier .zip ne contient aucun .csv.", "That .zip file can't be opened.": "Ce fichier .zip ne peut pas être ouvert.",
-    "That file is too large. A Search Console export is well under 10 MB.": "Ce fichier est trop volumineux. Un export Search Console fait bien moins de 10 Mo.",
-    "Reclaim": "À récupérer", "Nothing to reclaim": "Rien à récupérer", "Pages of yours that are gone but still have links show here.": "Vos pages disparues qui ont encore des liens apparaissent ici.",
-    "Other sites link to these pages of yours, but the pages are gone. Redirect each one to the closest live page and the links count again.": "D'autres sites pointent vers ces pages, mais elles n'existent plus. Redirigez chacune vers la page en ligne la plus proche et les liens comptent à nouveau.",
+    "of your pages have links; each is read monthly for Reclaim.": "de vos pages ont des liens ; chacune est lue chaque mois pour À récupérer.", "rows skipped: own pages or duplicates": "lignes ignorées : vos pages ou doublons",
+    "Not a Search Console Links export. Open Links, then Export external links, and choose Latest links.": "Ce n'est pas un export Liens de Search Console. Ouvrez Liens, puis Exporter les liens externes, et choisissez Derniers liens.",
+    "Download it as CSV, not Excel.": "Téléchargez-le en CSV, pas en Excel.", "No .csv inside that .zip.": "Aucun .csv dans ce .zip.", "Can't open that .zip.": "Impossible d'ouvrir ce .zip.",
+    "File too large: a Search Console export is well under 10 MB.": "Fichier trop volumineux : un export Search Console fait bien moins de 10 Mo.",
+    "Reclaim": "À récupérer", "Nothing to reclaim": "Rien à récupérer", "Gone pages that still have links show here.": "Vos pages disparues qui ont encore des liens s'affichent ici.",
+    "Redirect each to the closest live page to get its links back.": "Redirigez chacune vers la page en ligne la plus proche pour récupérer ses liens.",
     "Your page": "Votre page", "Answers": "Répond", "Sites linking": "Sites qui font un lien", "sites linking": "sites qui font un lien", "links": "liens", "1 link": "1 lien", "Redirect": "Rediriger", "to a live page": "vers une page en ligne", "Dismiss": "Écarter", "That page isn't in the list.": "Cette page n'est pas dans la liste.",
-    "Pick a site to set its monthly budget.": "Choisissez un site pour fixer son budget mensuel.", "Budget": "Budget", "Set a monthly budget": "Fixer un budget mensuel", "This month": "Ce mois-ci", "of": "sur", "per site that counts": "par site qui compte",
-    "Monthly budget": "Budget mensuel", "For buying links on this site, in one currency": "Pour l'achat de liens sur ce site, dans une seule devise", "Amount": "Montant", "Currency": "Devise",
-    "Leave the amount empty to remove the budget. Only prices in this currency are added up.": "Laissez le montant vide pour supprimer le budget. Seuls les prix dans cette devise sont additionnés.",
+    "Pick a site to set its monthly budget.": "Choisissez un site pour fixer son budget mensuel.", "Budget": "Budget", "This month": "Ce mois-ci", "of": "sur", "per site that counts": "par site qui compte",
+    "Monthly budget": "Budget mensuel", "For buying links, in one currency": "Pour l'achat de liens, dans une seule devise", "Amount": "Montant", "Currency": "Devise",
+    "Leave empty to remove. Only prices in this currency count.": "Laissez vide pour supprimer. Seuls les prix dans cette devise comptent.",
     "The budget must be a number.": "Le budget doit être un nombre.", "Choose one of USD, EUR, AED, GBP.": "Choisissez USD, EUR, AED ou GBP.",
-    "This website already links to {site}: {n}. Another link from the same website usually adds much less than a link from a new one.": "Ce site pointe déjà vers {site} : {n}. Un lien de plus depuis le même site apporte en général bien moins qu'un lien d'un nouveau site.",
+    "Already links to {site}: {n}.": "Pointe déjà vers {site} : {n}.",
     "Say whether to mark this link as spam.": "Indiquez si ce lien doit être marqué comme spam.",
-    "Is your page in Google?": "Votre page est-elle dans Google ?", "Indexed": "Indexée", "Not indexed": "Non indexée", "Unknown to Google": "Inconnue de Google", "Your page isn't indexed": "Votre page n'est pas indexée",
-    "Google hasn't indexed this page, so the link can't help it rank yet.": "Google n'a pas indexé cette page : le lien ne peut pas encore l'aider à se classer.", "Google says:": "Google indique :",
-    "Google doesn't know this page yet, so the link can't help it rank. Add it to your sitemap or ask for indexing in Search Console.": "Google ne connaît pas encore cette page : le lien ne peut pas l'aider à se classer. Ajoutez-la à votre sitemap ou demandez son indexation dans Search Console.",
-    "Google treats another page as the main version:": "Google considère une autre page comme version principale :", "Get indexed:": "Faire indexer :",
+    "Your page in Google?": "Votre page dans Google ?", "Indexed": "Indexée", "Not indexed": "Non indexée", "Unknown to Google": "Inconnue de Google", "Your page isn't indexed": "Votre page n'est pas indexée",
+    "The link can't help it rank yet.": "Le lien ne peut pas encore l'aider à se classer.", "Google says:": "Google indique :",
+    "Add it to your sitemap or request indexing in Search Console.": "Ajoutez-la à votre sitemap ou demandez son indexation dans Search Console.",
+    "Google's main version:": "Version principale pour Google :", "Get indexed:": "Faire indexer :",
     "From Search Console's URL Inspection": "Depuis l'inspection d'URL de Search Console",
-    "Connect Search Console for this site and Google is asked whether your target page is indexed.": "Connectez Search Console pour ce site, et Google sera interrogé pour savoir si votre page cible est indexée.", "Data sources": "Sources de données",
-    "Google is asked on the next check. Press Run to ask today.": "Google sera interrogé au prochain contrôle. Cliquez sur Lancer pour le faire aujourd'hui.",
-    "This page isn't in the site's Search Console property, so Google won't inspect it.": "Cette page n'est pas dans la propriété Search Console du site : Google ne l'inspectera pas.",
-    "This page looks to be in {a} ({why}), and {site} is in {b}. A link from another language still counts, but one from a page in the same language usually helps more. The first check reads the page and says for sure.": "Cette page semble être en {a} ({why}), et {site} est en {b}. Un lien depuis une autre langue compte quand même, mais un lien depuis une page de même langue aide en général davantage. Le premier contrôle lit la page et le confirme.",
-    "Google doesn't have the linking page: two site: searches in a row didn't find it. A page Google doesn't have passes nothing.": "Google n'a pas la page qui fait le lien : deux recherches site: de suite ne l'ont pas trouvée. Une page absente de Google ne transmet rien.",
+    "Connect Search Console to check if your page is indexed.": "Connectez Search Console pour vérifier si votre page est indexée.", "Data sources": "Sources de données",
+    "Asked at the next check, or press Run.": "Demandé au prochain contrôle, ou cliquez sur Lancer.",
+    "Not in the site's Search Console property, so not inspected.": "Absente de la propriété Search Console du site : pas d'inspection.",
+    "Looks to be in {a} ({why}); {site} is in {b}.": "Semble en {a} ({why}) ; {site} est en {b}.",
+    "Linking page not on Google.": "Page source absente de Google.",
     "Linking page not indexed": "Page source non indexée", "Search Console lists the link": "Search Console liste le lien", "a site: search on {tool}": "une recherche site: sur {tool}",
-    "Whether Google has the linking page is searched on the next check.": "Le prochain contrôle cherchera si Google a la page qui fait le lien.",
-    "Connect a rankings search tool, such as SerpApi, to check whether Google has the linking page. Only free searches are used.": "Connectez un outil de recherche des positions, comme SerpApi, pour vérifier si Google a la page qui fait le lien. Seules les recherches gratuites sont utilisées.",
-    "The linking page is on Google": "La page qui fait le lien est dans Google",
-    "Not found on Google yet: a site: search didn't show the linking page. Search results are incomplete, so it's searched again in a few days, and only a second miss marks it not indexed.": "Pas encore trouvée dans Google : une recherche site: n'a pas montré la page qui fait le lien. Les résultats sont incomplets : elle est recherchée à nouveau dans quelques jours, et seul un second échec la marque comme non indexée.",
-    "Google doesn't have the linking page: two site: searches in a row didn't find it. Ask the website to get it indexed, or the link passes nothing.": "Google n'a pas la page qui fait le lien : deux recherches site: de suite ne l'ont pas trouvée. Demandez au site de la faire indexer, sinon le lien ne transmet rien.",
+    "The next check looks for the linking page on Google.": "Le prochain contrôle cherchera la page source dans Google.",
+    "Connect a search tool, such as SerpApi, to see if Google has the linking page. Free searches only.": "Connectez un outil de recherche, comme SerpApi, pour voir si Google a la page source. Recherches gratuites uniquement.",
+    "Linking page on Google": "Page source dans Google",
+    "Not found on Google yet; searched again in a few days.": "Pas encore trouvée dans Google ; nouvelle recherche dans quelques jours.",
+    "Ask the site to get it indexed.": "Demandez au site de la faire indexer.",
     "Useful": "Liens utiles", "Sends visits": "Envoient des visites", "Not useful": "Liens non utiles", "Site": "Site", "Show": "Afficher", "By page": "Par page", "By site": "Par site",
-    "Live, followed, on a page Google can index": "En ligne, suivi, sur une page que Google peut indexer", "Brought at least one visit": "A apporté au moins une visite",
-    "Google doesn't have the page the link is on, or can't index it": "Google n'a pas la page qui porte le lien, ou ne peut pas l'indexer", "Nofollow, sponsored, or on a page that passes nothing": "Nofollow, sponsored, ou sur une page qui ne transmet rien",
-    "Site traffic": "Trafic du site", "Ahrefs' estimate of the linking site's monthly visits from Google": "Estimation Ahrefs des visites mensuelles venant de Google sur le site qui fait le lien",
+    "Live, followed, indexable page": "En ligne, suivi, page indexable", "At least one visit": "Au moins une visite",
+    "Linking page not in Google, or not indexable": "Page source absente de Google ou non indexable", "Nofollow, sponsored, or on a page that passes nothing": "Nofollow, sponsored, ou sur une page qui ne transmet rien",
+    "Site traffic": "Trafic du site", "Ahrefs estimate: the linking site's monthly Google visits": "Estimation Ahrefs : visites Google mensuelles du site source",
     "Brand": "Marque", "Bare URL": "URL nue", "Exact keyword": "Mot-clé exact", "Partial keyword": "Mot-clé partiel", "Generic": "Générique",
-    "Automatic": "Automatique", "Set by hand.": "Choisi à la main.", "set by hand": "choisi à la main", "None of the kinds above.": "Aucun des types ci-dessus.",
-    "Your brand or domain name. The safest kind of anchor.": "Votre marque ou votre nom de domaine. Le type d'ancre le plus sûr.",
-    "The address itself, such as www.example.com. Safe and natural.": "L'adresse elle-même, comme www.example.com. Sûr et naturel.",
-    "Exactly one of your tracked keywords. Helps the most, but too many look bought.": "Exactement un de vos mots-clés suivis. Aide le plus, mais en excès cela paraît acheté.",
-    "Holds one of your tracked keywords among other words.": "Contient un de vos mots-clés suivis parmi d'autres mots.",
+    "Automatic": "Automatique", "Set by hand.": "Choisi à la main.", "set by hand": "choisi à la main", "None of the above.": "Aucun des types précédents.",
+    "Your brand or domain. The safest anchor.": "Votre marque ou domaine. L'ancre la plus sûre.",
+    "The address, like www.example.com. Safe and natural.": "L'adresse, comme www.example.com. Sûr et naturel.",
+    "Exactly one tracked keyword. Helps most; too many look bought.": "Exactement un mot-clé suivi. Aide le plus ; trop nombreux, cela paraît acheté.",
+    "A tracked keyword among other words.": "Un mot-clé suivi parmi d'autres mots.",
     "Words like click here or read more. Natural, but tell Google little.": "Des mots comme cliquez ici ou en savoir plus. Naturel, mais cela dit peu de choses à Google.",
-    "No links match": "Aucun lien ne correspond", "Pick another filter.": "Choisissez un autre filtre.", "Links": "Liens", "live": "en ligne", "Best link": "Meilleur lien", "The best of this site's links, as the last check read it": "Le meilleur des liens de ce site, d'après le dernier contrôle", "Show this site's links": "Voir les liens de ce site",
+    "No links match": "Aucun lien ne correspond", "Pick another filter.": "Choisissez un autre filtre.", "Links": "Liens", "live": "en ligne", "Best link": "Meilleur lien", "Its best link, per the last check": "Son meilleur lien, d'après le dernier contrôle", "Show its links": "Voir ses liens",
     "Monthly Google traffic of each site that links to you": "Trafic Google mensuel de chaque site qui pointe vers vous", "Paid": "Payant", "About 50 API units per site a month": "Environ 50 unités d'API par site et par mois",
     "Off until you paste a key. The Site traffic column on Backlinks only shows while it's connected. At most 200 sites a month, about 10,000 units.": "Désactivé tant que vous ne collez pas de clé. La colonne Trafic du site des Backlinks n'apparaît que lorsqu'il est connecté. Au plus 200 sites par mois, environ 10 000 unités.",
-    "Check your plan": "Vérifiez votre forfait", "The Ahrefs API needs a plan with API units. Your plan page says how many you have.": "L'API Ahrefs nécessite un forfait avec des unités d'API. La page de votre forfait indique combien vous en avez.", "Open your limits": "Ouvrir vos limites",
-    "Create a key": "Créer une clé", "Open API keys in your Ahrefs account, press Create API key, and copy it.": "Ouvrez Clés API dans votre compte Ahrefs, cliquez sur Créer une clé API, puis copiez-la.", "Open API keys": "Ouvrir les clés API",
-    "Paste it in the API key box above and press Save. Test uses ahrefs.com, which Ahrefs never charges units for.": "Collez-la dans le champ Clé API ci-dessus et cliquez sur Enregistrer. Le test utilise ahrefs.com, pour lequel Ahrefs ne facture jamais d'unités.",
-    "Your Ahrefs plan's units, every month": "Les unités de votre forfait Ahrefs, chaque mois",
-    "read on an earlier check of this site": "lu lors d'un contrôle précédent de ce site", "from {x} in the address": "d'après {x} dans l'adresse",
+    "Check your plan": "Vérifiez votre forfait", "Needs a plan with API units. Your plan page shows how many.": "Il faut un forfait avec des unités d'API. La page du forfait en indique le nombre.", "Your limits": "Vos limites",
+    "Create a key": "Créer une clé", "In API keys, press Create API key and copy it.": "Dans Clés API, cliquez sur Créer une clé API et copiez-la.", "API keys": "Ouvrir les clés API",
+    "Paste it above and press Save. Test uses no units.": "Collez-la ci-dessus et cliquez sur Enregistrer. Le test n'utilise aucune unité.",
+    "Monthly, per your plan": "Chaque mois, selon votre forfait",
+    "from an earlier check": "d'après un contrôle précédent", "from {x} in the address": "d'après {x} dans l'adresse",
     "Search sites": "Rechercher un site", "Search links": "Rechercher un lien", "Search pages or linking sites": "Rechercher une page ou un site", "sites": "sites", "pages": "pages",
-    "No site matches this search": "Aucun site ne correspond à cette recherche", "Change the search or pick another filter.": "Modifiez la recherche ou choisissez un autre filtre.",
-    "No page matches this search": "Aucune page ne correspond à cette recherche", "Change the search to see more pages.": "Modifiez la recherche pour voir plus de pages.",
+    "No site matches": "Aucun site ne correspond", "Change the search or filter.": "Modifiez la recherche ou le filtre.",
+    "No page matches": "Aucune page ne correspond", "Change the search.": "Modifiez la recherche.",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 })();

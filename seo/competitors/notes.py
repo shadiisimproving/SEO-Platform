@@ -211,7 +211,7 @@ def create(engine: Engine, scope, body, site_id=None, competitor_id=None, page_u
             if not conn.execute(text("SELECT 1 FROM sites WHERE id = :i AND kind = 'competitor'"), {"i": competitor_id}).first():
                 raise NotFound("That competitor doesn't exist.")
             if site_id is not None and not conn.execute(text("SELECT 1 FROM site_competitors WHERE site_id = :s AND competitor_id = :c"), {"s": site_id, "c": competitor_id}).first():
-                raise NotFound("That competitor isn't on this website.")
+                raise NotFound("Competitor not found.")
         if scope == "task":
             task = conn.execute(text("SELECT site_id FROM tasks WHERE id = :i AND deleted_at IS NULL"), {"i": task_id}).first()
             if task is None:

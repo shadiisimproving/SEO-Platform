@@ -37,13 +37,13 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   const grewText = await grew.innerText();
   check("Activity shows how old their site is, with the years folded", (await grew.locator(".pt-years li").count()) >= 3, grewText.slice(0, 100));
   check("no 'waiting' text once it's known", !/Looking them up|Waiting for/.test(grewText));
-  check("the domain's dates show", /domain registered/i.test(grewText));
+  check("the domain's dates show", /\bregistered\b/i.test(grewText));
   await page.screenshot({ path: OUT + "1-activity.png", fullPage: true });
 
   await tab("site");
   const siteText = await page.locator("#pt-panel").innerText();
   check("Their site loads, with no 'didn't load' line", !/didn't load/.test(siteText), siteText.slice(0, 120));
-  check("Their site shows how strong they are", /How strong they are/.test(siteText) && /Domain registered/.test(siteText));
+  check("Their site shows how strong they are", /How strong they are/.test(siteText) && /\bregistered\b/i.test(siteText));
   await page.screenshot({ path: OUT + "2-their-site.png", fullPage: true });
   await tab("pages");
   check("Pages loads too", !/didn't load/.test(await page.locator("#pt-panel").innerText()));

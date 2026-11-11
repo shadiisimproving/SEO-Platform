@@ -26,6 +26,7 @@
 .up-outages li { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 7px 0; border-top: 1px solid var(--line); font-size: 13px; }
 .up-outages .tabular { font-variant-numeric: tabular-nums; }
 .up-rule { margin-bottom: 14px; }
+.up-rule .up-legend { justify-content: flex-start; gap: 4px 12px; margin-top: 4px; } /* the strip's colours, said once for every card */
 @media (max-width: 760px) { .up-grid { grid-template-columns: minmax(0, 1fr); } }
 
 .lk-result { margin: 0 0 8px; font-size: 13px; color: var(--text-2); overflow-wrap: anywhere; }

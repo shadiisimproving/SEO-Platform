@@ -157,7 +157,7 @@ def overview(scope: Scope) -> dict:
         "distribution": [{"bucket": name, "queries": buckets[name]} for name, _, _ in BUCKETS],
         "gaining": sorted((m for m in moves if m["change"] > 0), key=lambda m: -m["change"])[:10],
         "losing": sorted((m for m in moves if m["change"] < 0), key=lambda m: m["change"])[:10],
-        "lag_note": "Search Console lags 2 to 3 days and counts days in Pacific time.",
+        "lag_note": "Lags 2–3 days",
     }
 
 
@@ -436,7 +436,7 @@ def add_rule(engine: Engine, kind, pattern, value=None, site_id=None) -> dict:
     if not clean or len(clean) > 255:
         raise Refused("Type what the rule should match.")
     if kind in ("channel", "category") and not (isinstance(value, str) and value.strip()):
-        raise Refused("Type the name it should get.")
+        raise Refused("Type the channel name.")
     named = value.strip()[:120] if isinstance(value, str) and value.strip() else None
     with engine.begin() as conn:
         new_id = conn.execute(

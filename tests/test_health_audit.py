@@ -339,7 +339,7 @@ def test_one_redirect_to_another_website_is_not_a_chain():
 
 def test_slow_pages_and_unverified_links():
     assert results(Issue(SLOW, "https://shop.example/x", 200, "Took 6 s", seconds=6.0)) == {"slow_pages": ["https://shop.example/x"]}
-    assert results(Issue(UNVERIFIED, "https://shop.example/x", 403, "The site blocked the check", pages=["https://shop.example/a"])) == {}
+    assert results(Issue(UNVERIFIED, "https://shop.example/x", 403, "Blocked by site", pages=["https://shop.example/a"])) == {}
 
 
 # ---- any language -----------------------------------------------------------------------------

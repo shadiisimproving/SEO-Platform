@@ -56,7 +56,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
     check(/Rankings checked: \d+ of \d+/.test(await text(".in-mix-head .small")), "how much rests on real checks");
     const kinds = await page.locator(".in-mix-table .in-kind").allInnerTexts();
     console.log("     kinds:", kinds.join(" / "));
-    for (const k of ["Just dropped", "A rival passed you", "Almost there, both agree", "Ranked but not clicked", "Another page shown", "Rivals lead, people search it", "Tracked, no searches seen"]) check(kinds.includes(k), `${k} is listed`);
+    for (const k of ["Just dropped", "Rival passed you", "Almost there, both agree", "Ranked, not clicked", "Another page shown", "Rivals lead, people search it", "Tracked, no searches"]) check(kinds.includes(k), `${k} is listed`);
     const names = await page.locator(".in-mix-table tbody .t").allInnerTexts();
     check(new Set(names).size === names.length, "each keyword shows once");
     check((await page.locator(".in-mix-table .in-season").allInnerTexts()).includes("Check it"), "a drop seen once says Check it");
@@ -114,7 +114,7 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("the AI answer depends on what was read", async () => {
     await page.locator(".in-mix-table tbody tr", { hasText: "red shoes" }).first().click();
     await page.waitForSelector("#panel .in-do", { timeout: 4000 });
-    check((await text("#panel .in-do")).includes("AI Overview is taking"), "AI Overview named as the cause");
+    check((await text("#panel .in-do")).includes("AI Overview takes these clicks"), "AI Overview named as the cause");
     await page.keyboard.press("Escape");
     await page.waitForTimeout(500);
   });

@@ -37,7 +37,7 @@ async function shared(page, label) {
   const order = await page.evaluate(() => {
     const y = (s) => document.querySelector(s)?.getBoundingClientRect().top ?? -1;
     const head = (word) => [...document.querySelectorAll(".card-head h2")].find((h) => h.textContent === word)?.getBoundingClientRect().top ?? -1;
-    return { nums: y(".today-nums"), todo: head("Do these first"), down: head("Going down"), rivals: head("Rivals, on pages that compete with yours") };
+    return { nums: y(".today-nums"), todo: head("Do these first"), down: head("Going down"), rivals: head("Rival changes on competing pages") };
   });
   check(order.nums < order.todo && order.todo < order.down && order.down < order.rivals, `${label}: order is numbers, to-do, moves, rivals`);
 }
@@ -77,7 +77,7 @@ async function shared(page, label) {
   check(!(await page.$$eval("[data-row] .t", (els) => els.some((x) => x.textContent.includes("site-one.example")))), `sample: one site shows only its rows (${one.second})`);
   await shot(page, "after-sample-one-site");
   await page.goto("about:blank"); await page.goto(`${SAMPLE}?data=first#today`); await page.waitForSelector(".today-lead"); await settle(page);
-  check((await facts(page)).lead.startsWith("No results yet"), "sample: first run says so and shows no false zero");
+  check((await facts(page)).lead.startsWith("Connect Google to see leads, visits and clicks"), "sample: first run says so and shows no false zero");
   await shot(page, "after-sample-first-run");
 
   // ---- both looks, widths and French

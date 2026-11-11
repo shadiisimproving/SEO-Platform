@@ -28,15 +28,15 @@
     add(r.clicks, fr ? ["Clics Google", "clics Google"] : ["Google clicks", "Google clicks"], true);
     if (parts.length && !byDays) return fr ? `${parts.join(" et ")} sur cette période (${range?.label || ""}).` : `${parts.join(" and ")} over this period (${range?.label || ""}).`;
     if (parts.length) return fr ? `${parts.join(" et ")} sur les ${r.days} derniers jours.` : `${parts.join(" and ")} over the last ${r.days} days.`;
-    if (r.leads.value !== null || r.visits.value !== null || r.clicks.value !== null) return t("There isn't an earlier period to compare with yet.");
+    if (r.leads.value !== null || r.visits.value !== null || r.clicks.value !== null) return t("No earlier period to compare with yet.");
     const states = [r.clicks?.source, r.visits?.source].filter(Boolean);
-    if (states.includes("waiting")) return t("Google is connected. The first numbers arrive after the next run.");
-    if (states.includes("failing")) return t("Google stopped answering. Settings says what to fix.");
-    return t("No results yet. Connect Google to see leads, visits and clicks.");
+    if (states.includes("waiting")) return t("Google connected. First numbers after the next run.");
+    if (states.includes("failing")) return t("Google stopped answering. See Settings.");
+    return t("Connect Google to see leads, visits and clicks.");
   }
   /* What a box says when it has no number: the source's real state, in Channels' words. */
   function stateWord(source, name) {
-    if (source === "waiting") return t("Connected. Waiting for its first data");
+    if (source === "waiting") return t("Connected. Waiting for data");
     if (source === "failing") return `${name}: ${t("stopped working")}`;
     if (source === "not_used") return `${name}: ${t("not used")}`;
     if (source === "ok") return t("No data in this period");
@@ -51,6 +51,7 @@
 
   // ---- three numbers ------------------------------------------------------------------------------
   const pill = (value, unit, withWord = true) => {
+    if (unit === "%" && UI().state.lang === "fr") unit = " %"; // French puts a space before %: +12 %
     if (value === 0) return `<span class="sec d-pill">±0${unit}</span>`;
     const better = value > 0;
     return `<span class="${better ? "good" : "crit"} d-pill">${icon(better ? "arrow-up" : "arrow-down")}${better ? "+" : "−"}${num(Math.abs(value))}${unit}${withWord ? ` ${t(better ? "better" : "worse")}` : ""}</span>`;
@@ -74,15 +75,15 @@
   function figure(key, label, href, data, unit, emptyWord) {
     const covers = data.sites && data.sites < data.of ? `<span class="muted">${num(data.sites)} ${t("of")} ${num(data.of)} ${t("sites")}</span>` : "";
     let fig = esc(data.value === null ? "—" : num(data.value)), note;
-    if (data.state === "not_set_up") { fig = `<span class="today-fig-word">${t("Not set up")}</span>`; note = `<span class="muted">${t("Mark your forms as key events in GA4")}</span>`; }
+    if (data.state === "not_set_up") { fig = `<span class="today-fig-word">${t("Not set up")}</span>`; note = `<span class="muted">${t("Mark forms as GA4 key events")}</span>`; }
     else if (data.value === null) note = `<span class="muted">${data.source ? esc(stateWord(data.source, key === "clicks" ? "Search Console" : "GA4")) : t(emptyWord)}</span>`;
-    else note = `${data.change === null ? `<span class="muted">${t("No earlier period to compare")}</span>` : pill(data.change, unit)}${covers}${key === "leads" ? `<span class="muted">${t("Graph: running total")}</span>` : ""}`;
+    else note = `${data.change === null ? `<span class="muted">${t("No earlier period")}</span>` : pill(data.change, unit, false)}${covers}${key === "leads" ? `<span class="muted">${t("Running total")}</span>` : ""}`;
     return `<section class="tile today-num"><a class="today-num-link" href="${withSite(href)}"><div class="lab">${t(label)}</div><div class="fig">${fig}</div></a><div class="delta">${note}</div>${data.state === "not_set_up" ? "" : graph(key, label, data.points)}</section>`;
   }
   function numbers(r, range) {
     const w = r.window, period = w?.from && w?.to ? `${day(w.from)} – ${day(w.to)}` : "";
-    const against = !w ? "" : w.compare_unavailable ? t("No earlier period stored to compare with") : w.compare === "none" ? t("No comparison") : w.compare === "yoy" ? t("against the same days a year before") : t("against the period before");
-    const caption = w ? `${esc(range?.label || "")}${range?.label ? " · " : ""}${esc(period)} · ${esc(against)}` : `${t("Last 28 days against the 28 before")}${r.through ? ` · ${t("Data through")} ${esc(day(r.through))}` : ""}`;
+    const against = !w ? "" : w.compare_unavailable ? t("No earlier period stored") : w.compare === "none" ? t("No comparison") : w.compare === "yoy" ? t("vs last year") : t("vs period before");
+    const caption = w ? `${esc(range?.label || "")}${range?.label ? " · " : ""}${esc(period)} · ${esc(against)}` : `${t("Last 28 days vs the 28 before")}${r.through ? ` · ${t("Data through")} ${esc(day(r.through))}` : ""}`;
     const drawn = [r.leads, r.visits, r.clicks].some((x) => x.points?.some((p) => p.now !== null));
     const key = drawn ? `<span class="today-legend"><span><i class="today-key"></i>${t("This period")}</span><span><i class="today-key was"></i>${t("Period before")}</span></span>` : "";
     return `<div class="tiles today-nums">
@@ -118,10 +119,10 @@
   function workCard(vm) {
     const count = (word, value) => (value ? `<a class="stat-row" href="#backlinks"><span>${t(word)}</span><span class="num">${num(value)}</span></a>` : "");
     const s = vm.sources;
-    const waiting = s.waiting ? ` · ${num(s.waiting)} ${t("waiting for first data")}` : "";
+    const waiting = s.waiting ? ` · ${num(s.waiting)} ${t("waiting for data")}` : "";
     const line = s.total
       ? `<a class="stat-row today-sources" href="#settings"><span>${t("Data sources")}${s.note ? `<span class="small muted today-note">${esc(s.note)}</span>` : ""}</span>${UI().status(s.ok === s.total ? "good" : s.ok + (s.waiting || 0) === s.total ? "info" : "warn", `${num(s.ok)} ${t("of")} ${num(s.total)} ${t("OK")}${waiting}`)}</a>`
-      : `<div class="stat-row"><span class="muted">${t("No data sources connected yet.")}</span><button class="btn btn-small" ${s.connectAttr}>${t("Connect Google")}</button></div>`;
+      : `<div class="stat-row"><span class="muted">${t("No data sources connected.")}</span><button class="btn btn-small" ${s.connectAttr}>${t("Connect Google")}</button></div>`;
     return `<section class="card"><div class="card-head"><h2>${t("My work")}</h2></div>
         <div id="today-tasks">${tasksHtml()}</div>${count("Backlinks to follow up", vm.followUp)}${count("Renewals in 30 days", vm.renewals)}${line}</section>`;
   }
@@ -136,11 +137,11 @@
     if (move.type === "keyword") {
       const up = move.places > 0;
       const target = move.keyword_id ? "#keywords" : "#overview";
-      return `<li><div class="what"><div class="t"><a class="today-link" href="${target}" data-today-keyword="${esc(move.query)}" data-today-host="${esc(move.host || "")}" data-today-keyword-id="${esc(move.keyword_id || "")}" data-today-range="7d" dir="auto">${esc(move.query)}</a>${hostTag(move.host)}</div><div class="d">${t("Search Console average")}</div></div>
+      return `<li><div class="what"><div class="t"><a class="today-link" href="${target}" data-today-keyword="${esc(move.query)}" data-today-host="${esc(move.host || "")}" data-today-keyword-id="${esc(move.keyword_id || "")}" data-today-range="7d" dir="auto">${esc(move.query)}</a>${hostTag(move.host)}</div><div class="d">${UI().logoOnly("Search Console", t("Search Console average position"))}</div></div>
         <span class="chg ${up ? "good" : "crit"}">${icon(up ? "arrow-up" : "arrow-down")}#${num(move.was)} → #${num(move.now)}</span>${task}</li>`;
     }
     const up = move.change > 0;
-    return `<li><div class="what"><div class="t">${PageLink.html(move.url || move.path, { text: move.path, host: move.host, cls: "today-link mono" })}${hostTag(move.host)}</div><div class="d">${t("Google clicks")} ${num(move.was)} → ${num(move.clicks)}</div></div>
+    return `<li><div class="what"><div class="t">${PageLink.html(move.url || move.path, { text: move.path, host: move.host, cls: "today-link mono" })}${hostTag(move.host)}</div><div class="d">${UI().logoOnly("Google", t("Google clicks"))} ${num(move.was)} → ${num(move.clicks)} ${t("clicks")}</div></div>
       <span class="chg ${up ? "good" : "crit"}">${icon(up ? "arrow-up" : "arrow-down")}${up ? "+" : "−"}${num(Math.abs(move.change))}%</span>${task}</li>`;
   }
   const moveCard = (title, moves, down) => `<section class="card"><div class="card-head"><h2>${t(title)}</h2></div>
@@ -148,28 +149,32 @@
 
   // ---- rivals -------------------------------------------------------------------------------------
   function rivalRow(r) {
-    const find = { title: `${r.host}: ${r.label} ${r.path}`, host: r.my_host, pages: [r.my_path], source: { type: "competitor", label: `${r.host}: ${r.label}`, host: r.my_host, facts: [r.path, `${t("Competes with your page")} ${r.my_path}`], link: `#competitors/pairs/${r.pair_id}`, key: `change|${r.id}` } };
+    const find = { title: `${r.host}: ${r.label} ${r.path}`, host: r.my_host, pages: [r.my_path], source: { type: "competitor", label: `${r.host}: ${r.label}`, host: r.my_host, facts: [r.path, `${t("Your page")} ${r.my_path}`], link: `#competitors/pairs/${r.pair_id}`, key: `change|${r.id}` } };
     return `<li><div class="what"><div class="t"><span class="mono" dir="auto">${esc(r.host)}</span> · ${esc(r.label)} · ${PageLink.html(r.url || r.path, { text: r.path, host: r.host, cls: "mono" })}</div>
-        <div class="d">${t("Competes with your page")} ${PageLink.html(r.my_url || r.my_path, { text: r.my_path, host: r.my_host, cls: "mono" })}${hostTag(r.my_host)}${r.when ? ` · ${esc(r.when)}` : ""}</div>${window.ChangeSummary?.slot(r) || ""}</div>
+        <div class="d">${t("Your page")} ${PageLink.html(r.my_url || r.my_path, { text: r.my_path, host: r.my_host, cls: "mono" })}${hostTag(r.my_host)}${r.when ? ` · ${esc(r.when)}` : ""}</div>${window.ChangeSummary?.slot(r) || ""}</div>
       <div class="acts">${UI().taskButton(find, { label: "Task" })}<button class="btn btn-small" data-today-pair="${esc(String(r.pair_id))}" data-today-site="${esc(String(r.site_id))}">${t("Compare")}</button></div></li>`;
   }
   function rivalCard(rivals, other) {
     const word = UI().state.lang === "fr" ? `${num(other)} ${other === 1 ? "autre modification" : "autres modifications"}` : `${num(other)} other ${other === 1 ? "edit" : "edits"}`;
     const more = other ? `<div class="row-item" style="border-bottom:0"><a class="link-btn" href="#competitors">${word}</a></div>` : "";
-    const none = rivals.length ? "" : `<div class="empty today-empty"><p>${t("No edits on pages that compete with yours in the last 7 days.")}</p></div>`;
-    return `<section class="card"><div class="card-head"><h2>${t("Rivals, on pages that compete with yours")}</h2><span class="end small muted">${t("Last 7 days")}</span></div>
+    const none = rivals.length ? "" : `<div class="empty today-empty"><p>${t("No rival changes in the last 7 days.")}</p></div>`;
+    return `<section class="card"><div class="card-head"><h2>${t("Rival changes on competing pages")}</h2><span class="end small muted">${t("Last 7 days")}</span></div>
         ${rivals.length ? `<ul class="rows">${rivals.map(rivalRow).join("")}</ul>` : ""}${none}${more}</section>`;
   }
 
   // ---- sites --------------------------------------------------------------------------------------
   function sitesCard(sites) {
     const cell = (value, change, unit) => (value === null || value === undefined ? `<span class="muted" title="${t("No data yet")}">—</span>` : `<span class="today-cell">${num(value)}${change === null || change === undefined ? "" : pill(change, unit, false)}</span>`);
+    // The date most rows share is said once in the card head; only a row whose data stops on another day keeps its own.
+    const tally = {};
+    sites.forEach((s) => { if (s.through) tally[s.through] = (tally[s.through] || 0) + 1; });
+    const through = Object.keys(tally).sort((a, b) => tally[b] - tally[a] || b.localeCompare(a))[0] || "";
     const row = (s) => {
-      const sub = [s.alerts ? `${num(s.alerts)} ${t(s.alerts === 1 ? "warning" : "warnings")}` : "", s.through ? `${t("Data through")} ${esc(day(s.through))}` : ""].filter(Boolean).join(" · ");
+      const sub = [s.alerts ? `${num(s.alerts)} ${t(s.alerts === 1 ? "warning" : "warnings")}` : "", s.through && s.through !== through ? `${t("Data through")} ${esc(day(s.through))}` : ""].filter(Boolean).join(" · ");
       return `<tr style="cursor:default"><td data-label="${t("Site")}">${s.pick ? `<button class="today-link mono" data-site="${esc(s.pick)}" dir="auto">${esc(s.host)}</button>` : `<span class="mono" dir="auto">${esc(s.host)}</span>`}${sub ? `<div class="small muted">${sub}</div>` : ""}</td>
         <td class="c" data-label="${t("Leads")}">${s.leads_state === "not_set_up" ? `<span class="muted">${t("Not set up")}</span>` : cell(s.leads, s.leads_change, "")}</td><td class="c" data-label="${t("Visits")}"><span class="today-cell">${cell(s.visits, s.visits_change, "%")}${s.trend?.length > 1 ? UI().spark(s.trend, { w: 64, h: 22 }) : ""}</span></td><td class="c" data-label="${t("Google clicks")}">${cell(s.clicks, s.clicks_change, "%")}</td></tr>`;
     };
-    return `<section class="card"><div class="card-head"><h2>${t("Sites")}</h2><span class="end small muted">${t("Last 28 days against the 28 before")}</span></div>
+    return `<section class="card"><div class="card-head"><h2>${t("Sites")}</h2><span class="end small muted">${t("Last 28 days vs the 28 before")}${through ? ` · ${t("Data through")} ${esc(day(through))}` : ""}</span></div>
       <div class="table-wrap" style="box-shadow:none"><table class="data"><thead><tr><th>${t("Site")}</th><th class="c">${t("Leads")}</th><th class="c">${t("Visits")}</th><th class="c">${t("Google clicks")}</th></tr></thead><tbody>${sites.map(row).join("")}</tbody></table></div></section>`;
   }
 
@@ -183,7 +188,7 @@
     return `<div class="today-answer"><p class="today-lead" dir="auto">${esc(answer(r, vm.range))}</p><p class="today-second" dir="auto">${esc(needsYou(urgent))}${stopped}</p></div>
       ${numbers(r, vm.range)}
       <div class="cols"><div>${todoCard(vm.todo)}</div><div>${workCard(vm)}</div></div>
-      ${anyMove || hasData ? `<div class="today-moves-head"><span class="small muted">${t("Last 7 days against the 7 before")}</span></div><div class="today-moves">${moveCard("Going down", vm.goingDown, true)}${moveCard("Going up", vm.goingUp, false)}</div>` : ""}
+      ${anyMove || hasData ? `<div class="today-moves-head"><span class="small muted">${t("Week on week")}</span></div><div class="today-moves">${moveCard("Going down", vm.goingDown, true)}${moveCard("Going up", vm.goingUp, false)}</div>` : ""}
       ${vm.rivals.length || vm.otherEdits || hasData ? rivalCard(vm.rivals, vm.otherEdits) : ""}
       ${allSites() && vm.sites.length > 1 ? sitesCard(vm.sites) : ""}`;
   }
@@ -199,22 +204,22 @@
   });
 
   const fr = {
-    "Google is connected. The first numbers arrive after the next run.": "Google est connecté. Les premiers chiffres arrivent après le prochain passage.",
-    "Google stopped answering. Settings says what to fix.": "Google ne répond plus. Les réglages disent quoi corriger.",
-    "Connected. Waiting for its first data": "Connecté. En attente des premières données", "stopped working": "ne fonctionne plus", "not used": "non utilisé", "not connected": "non connecté",
-    "No data in this period": "Pas de données sur cette période", "waiting for first data": "en attente des premières données",
-    "No earlier period stored to compare with": "Pas de période antérieure enregistrée pour comparer", "No comparison": "Sans comparaison",
-    "against the same days a year before": "contre les mêmes jours un an avant", "against the period before": "contre la période précédente",
+    "Google connected. First numbers after the next run.": "Google connecté. Premiers chiffres après le prochain passage.",
+    "Google stopped answering. See Settings.": "Google ne répond plus. Voir les réglages.",
+    "Connected. Waiting for data": "Connecté. En attente de données", "stopped working": "ne fonctionne plus", "not used": "non utilisé", "not connected": "non connecté",
+    "No data in this period": "Pas de données sur cette période", "waiting for data": "en attente de données",
+    "No earlier period stored": "Pas de période antérieure enregistrée", "No comparison": "Sans comparaison",
+    "vs last year": "vs l'an dernier", "vs period before": "vs période précédente",
     "Visits and leads: {a} – {b}, where Google Analytics' data ends.": "Visites et leads : {a} – {b}, là où s'arrêtent les données de Google Analytics.",
     "Do these first": "À faire en premier", "Going down": "En baisse", "Going up": "En hausse", "Nothing fell much.": "Pas de forte baisse.", "Nothing rose much.": "Pas de forte hausse.",
-    "Nothing needs you today.": "Rien à traiter aujourd'hui.", "Google numbers stop at": "Les chiffres Google s'arrêtent au", "There isn't an earlier period to compare with yet.": "Il n'y a pas encore de période antérieure à comparer.",
-    "No results yet. Connect Google to see leads, visits and clicks.": "Pas encore de résultats. Connectez Google pour voir les leads, les visites et les clics.",
-    "Not set up": "Non configuré", "Mark your forms as key events in GA4": "Marquez vos formulaires comme événements clés dans GA4", "GA4 not connected": "GA4 non connecté", "Search Console not connected": "Search Console non connecté",
-    "No earlier period to compare": "Pas de période antérieure à comparer", "sites": "sites", "Google clicks": "Clics Google", "Search Console average": "Moyenne Search Console", "Late": "En retard", "No date": "Sans date",
-    "No open tasks for you.": "Aucune tâche ouverte pour vous.", "View all tasks": "Voir toutes les tâches", "Competes with your page": "Concurrence votre page", "Compare": "Comparer", "Rivals, on pages that compete with yours": "Concurrents, sur les pages face aux vôtres",
-    "No edits on pages that compete with yours in the last 7 days.": "Aucune modification sur les pages face aux vôtres ces 7 derniers jours.", "Last 7 days": "7 derniers jours", "Last 7 days against the 7 before": "7 derniers jours contre les 7 précédents",
-    "Last 28 days against the 28 before": "28 derniers jours contre les 28 précédents", "No data yet": "Pas encore de données",
-    "Graph: running total": "Graphique : total cumulé", "This period": "Cette période", "Period before": "Période précédente", "See page": "Voir la page", "Title changed": "Titre modifié", "Content changed": "Contenu modifié", "Restored": "Restauré",
+    "Nothing needs you today.": "Rien à traiter aujourd'hui.", "Google numbers stop at": "Les chiffres Google s'arrêtent au", "No earlier period to compare with yet.": "Pas encore de période antérieure à comparer.",
+    "Connect Google to see leads, visits and clicks.": "Connectez Google pour voir les leads, les visites et les clics.",
+    "Not set up": "Non configuré", "Mark forms as GA4 key events": "Marquez vos formulaires comme événements clés GA4", "GA4 not connected": "GA4 non connecté", "Search Console not connected": "Search Console non connecté",
+    "No earlier period": "Pas de période antérieure", "sites": "sites", "Google clicks": "Clics Google", "Search Console average": "Moyenne Search Console", "Search Console average position": "Position moyenne Search Console", "clicks": "clics", "Late": "En retard", "No date": "Sans date",
+    "No open tasks for you.": "Aucune tâche ouverte pour vous.", "View all tasks": "Voir toutes les tâches", "Your page": "Votre page", "Compare": "Comparer", "Rival changes on competing pages": "Changements des concurrents sur les pages rivales",
+    "No rival changes in the last 7 days.": "Aucun changement des concurrents ces 7 derniers jours.", "Last 7 days": "7 derniers jours", "Week on week": "Semaine sur semaine",
+    "Last 28 days vs the 28 before": "28 derniers jours vs les 28 précédents", "No data yet": "Pas encore de données",
+    "Running total": "Total cumulé", "This period": "Cette période", "Period before": "Période précédente", "See page": "Voir la page", "Title changed": "Titre modifié", "Content changed": "Contenu modifié", "Restored": "Restauré",
     "/loyer-a-seville/ lost 32% of its Google clicks": "/loyer-a-seville/ a perdu 32 % de ses clics Google", "Last 7 days against the 7 before: 85 → 58": "7 derniers jours contre les 7 précédents : 85 → 58",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });

@@ -1578,8 +1578,8 @@ def test_many_competitors_are_added_from_one_pasted_list(world):
     assert [a["address"] for a in body["already"]] == ["old.example"]
     assert {r["address"]: r["reason"] for r in body["refused"]} == {
         "me.example": "me.example is part of your own websites, so it can't be a competitor.",
-        "mailto:a@b.example": "That doesn't look like a website address.",
-        "not-an-address": "That doesn't look like a website address.",
+        "mailto:a@b.example": "Not a website address.",
+        "not-an-address": "Not a website address.",
     }
     listed = client.get(f"/api/competitors?site_id={world.own}").get_json()["competitors"]
     assert sorted(c["host"] for c in listed) == ["old.example", "one.example", "three.example", "two.example"]
@@ -2245,7 +2245,7 @@ def test_a_bad_address_is_refused(world, address, words):
 
 def test_adding_needs_a_competitor_and_refuses_my_site_and_the_competitor_itself(world):
     rival, _ = edit_world(world)
-    with pytest.raises(Refused, match="at least one competitor"):
+    with pytest.raises(Refused, match="Pick a competitor"):
         gaps.add_domain(world.engine, "fresh.example", competitors=[])
     with pytest.raises(Refused, match="your own"):
         gaps.add_domain(world.engine, "https://me.example/page", competitors=[rival])

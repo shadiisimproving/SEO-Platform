@@ -151,7 +151,7 @@ const text = (page, sel) => page.locator(sel).first().innerText().catch(() => ""
   seed("normal"); seed("noserp");
   run = await start({ height: 1300 }); page = run.page;
   const aio = await text(page, ".ai-aio");
-  check(aio.includes("No keywords tracked yet"), `no checks: ${aio.replace(/\s+/g, " ")}`);
+  check(aio.includes("No keywords tracked, so no AI Overview checks yet"), `no checks: ${aio.replace(/\s+/g, " ")}`);
   await page.locator(".ai-aio").screenshot({ path: SHOTS ? path.join(SHOTS, "after-no-serpapi.png") : undefined });
   await run.browser.close();
   seed("serpback");

@@ -433,7 +433,7 @@ def _table_flowables(report: Report, table: Table, width: float, styles, cells) 
     if not table.rows:
         count = ""
     elif shown < all_rows:
-        count = t("First {shown} of {total} rows. The Excel and CSV files hold more.").replace("{shown}", fmt.number(lang, shown)).replace("{total}", fmt.number(lang, all_rows))
+        count = t("First {shown} of {total} rows; Excel and CSV hold more.").replace("{shown}", fmt.number(lang, shown)).replace("{total}", fmt.number(lang, all_rows))
     else:
         count = (t("1 row") if all_rows == 1 else t("{n} rows").replace("{n}", fmt.number(lang, all_rows)))
     head = [Paragraph(glyphs.markup(t(table.title), glyphs.BOLD), styles["h2"])]
@@ -567,7 +567,7 @@ def write(report: Report) -> bytes:
     notes = list(report.notes)
     if glyphs.missed():
         report.undrawn = True
-        notes.append("Some characters could not be drawn in this PDF and show as “?”. The Excel and CSV files hold them as they are.")
+        notes.append("Some characters show as “?” in this PDF; Excel and CSV keep them.")
     for note in notes:
         story.append(Paragraph(glyphs.markup(fmt.tr(lang, note)), styles["note"]))
         story.append(Spacer(1, 4))

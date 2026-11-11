@@ -231,17 +231,17 @@ def _openrouter(engine: Engine, purpose: str, system: str, user: str) -> tuple[s
         ).json()
     except SourceError as exc:
         if exc.kind == "quota":
-            raise Refused("OpenRouter's free limit is reached. It refills at midnight UTC.") from exc
+            raise Refused("OpenRouter free limit reached. Refills at midnight UTC.") from exc
         if exc.kind == "auth":
             raise Refused("OpenRouter refused this key. Paste it again in Settings.") from exc
-        raise Refused("OpenRouter didn't answer. Try again in a moment.") from exc
+        raise Refused("OpenRouter didn't answer. Try again.") from exc
     except ValueError as exc:
-        raise Refused("OpenRouter's answer couldn't be read. Try again in a moment.") from exc
+        raise Refused("OpenRouter's answer was unreadable. Try again.") from exc
     choices = reply.get("choices") if isinstance(reply, dict) else None
     message = (choices[0].get("message") or {}) if choices and isinstance(choices[0], dict) else {}
     words = message.get("content")
     if not isinstance(words, str) or not words.strip():
-        raise Refused("The free model gave no answer. Try again: it may pick another one.")
+        raise Refused("The free model didn't answer. Try again for another.")
     sources.note_app_key(engine, "openrouter", None)
     return words.strip(), str(reply.get("model") or OPENROUTER_MODEL)[:120], 0.0
 

@@ -164,7 +164,7 @@ def _clean_domain(value) -> str:
     """Suggestions are by root domain, so that's the spelling a decision about one is stored in."""
     domain = root_domain(store.to_ascii_host(hostname(value))) if isinstance(value, str) else ""
     if not domain:
-        raise Refused("That doesn't look like a website's domain.")
+        raise Refused("Not a website domain.")
     return domain
 
 
@@ -203,7 +203,7 @@ def add_competitor(engine: Engine, site_id: int, address: str, source: str = "ma
     scheme, rest = url.split("://", 1)
     # "a@b.example" and "mailto:a@b.example" would read as a login on b.example, and ftp:// isn't a website.
     if scheme.lower() not in ("http", "https") or "@" in rest.split("/", 1)[0]:
-        raise Refused("That doesn't look like a website address.")
+        raise Refused("Not a website address.")
     host = store.host_and_domain(url)[0]
     with engine.connect() as conn:
         require_own(conn, site_id)
@@ -294,5 +294,5 @@ def remove_competitor(engine: Engine, site_id: int, competitor_id: int) -> None:
         require_own(conn, site_id)
         done = conn.execute(text("DELETE FROM site_competitors WHERE site_id = :s AND competitor_id = :c"), {"s": site_id, "c": competitor_id}).rowcount
         if not done:
-            raise NotFound("That competitor isn't on this website.")
+            raise NotFound("Competitor not found.")
         conn.execute(text("DELETE FROM page_pairs WHERE site_id = :s AND competitor_id = :c"), {"s": site_id, "c": competitor_id})

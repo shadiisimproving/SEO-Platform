@@ -63,6 +63,18 @@ button.ai-chip { cursor: pointer; border: 0; font: inherit; font-size: 12px; }
 .ai-actions .rows .what .t { line-height: 19px; overflow-wrap: anywhere; }
 .ai-actions .rows .what .d { margin-top: 2px; line-height: 17px; }
 .ai-actions .acts { flex-wrap: wrap; justify-content: flex-end; }
+/* Several actions with the same advice: the advice once with its count, each row's fact and Task under it. */
+.ai-actions .ai-act-group .what { display: grid; gap: 4px; }
+.ai-times { font-weight: 600; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ai-act-sub { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.ai-act-sub > li { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px 10px; flex-wrap: wrap; }
+.ai-actions .ai-act-sub > li .d { flex: 1 1 200px; margin: 0; padding-top: 4px; min-width: 0; overflow-wrap: anywhere; font-size: 13px; color: var(--text); }
+.ai-act-sub > li .acts { flex: none; }
+/* Cited pages: a cited page that sent no visit, marked in its visits cell and counted once above the table. */
+.ai-cnv { display: inline-flex; vertical-align: -2px; cursor: help; }
+.ai-cnv svg.i { width: 14px; height: 14px; }
+.ai-cnv-line { display: flex; align-items: center; gap: 6px; padding-top: 6px; }
+.ai-cnv-line svg.i { width: 14px; height: 14px; flex: none; }
 
 /* the tabs card */
 .ai-tabs-card { margin-bottom: 14px; }

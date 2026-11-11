@@ -6,7 +6,7 @@
   "use strict";
   let UI = null, t, esc, num, icon;
   const RANGES = [["24h", "Last 24 hours"], ["7d", "Last 7 days"], ["28d", "Last 28 days"], ["3m", "Last 3 months"], ["6m", "Last 6 months"], ["12m", "Last 12 months"], ["16m", "Last 16 months"], ["tm", "This month"], ["lm", "Last month"], ["custom", "Custom"]];
-  const COMPARES = [["prev", "vs previous period"], ["yoy", "vs same period last year"], ["none", "No comparison"]];
+  const COMPARES = [["prev", "vs previous period"], ["yoy", "vs last year"], ["none", "No comparison"]];
   const METRICS = [
     { id: "clicks", name: "Clicks", color: "var(--ch-1)", ic: "mouse-pointer-click" },
     { id: "impressions", name: "Impressions", color: "var(--ch-2)", ic: "eye" },
@@ -14,12 +14,12 @@
     { id: "position", name: "Average position", color: "var(--ch-5)", ic: "arrow-up-narrow-wide", invert: true },
   ];
   const TABS = [["query", "Queries"], ["page", "Pages"], ["country", "Countries"], ["device", "Devices"], ["opportunities", "Opportunities"]];
-  const SHOWS = [["all", "All"], ["gaining", "Gaining clicks"], ["losing", "Losing clicks"], ["new", "New"], ["lost", "Lost"], ["top3", "Top 3"], ["4-10", "Positions 4 to 10"], ["11-20", "Positions 11 to 20"], ["21+", "Position 21 and after"]];
+  const SHOWS = [["all", "All"], ["gaining", "Gaining clicks"], ["losing", "Losing clicks"], ["new", "New"], ["lost", "Lost"], ["top3", "Top 3"], ["4-10", "Positions 4–10"], ["11-20", "Positions 11–20"], ["21+", "Positions 21+"]];
   const OPPS = [
-    ["almost", "Almost on page 1", "Queries at positions 11 to 20 with real impressions. A small push brings them onto page 1."],
-    ["low_ctr", "Low click rate", "Non-brand queries clicked far less than this site's own queries at the same position. Rewrite the title and description."],
-    ["compete", "Two pages compete", "Queries where two or more of your pages each get a fair share of the impressions, so Google can't pick one."],
-    ["lost", "Lost queries", "Queries that had clicks in the period before and now show nowhere. Small ones are left out."],
+    ["almost", "Almost on page 1", "Positions 11–20, close to page 1.", "Queries at positions 11 to 20 with real impressions. A small push brings them onto page 1."],
+    ["low_ctr", "Low click rate", "Clicked less than usual: rewrite the title and description.", "Non-brand queries clicked far less than this site's own queries at the same position. Rewrite the title and description."],
+    ["compete", "Two pages compete", "Two or more of your pages split the impressions.", "Queries where two or more of your pages each get a fair share of the impressions, so Google can't pick one."],
+    ["lost", "Lost queries", "Had clicks before, now gone.", "Queries that had clicks in the period before and now show nowhere. Small ones are left out."],
   ];
   const PER = [25, 50, 100]; // rows on a page: a site has hundreds of queries, so the table is paged
   const OV = {
@@ -32,7 +32,7 @@
   // ---- filters on Queries and Pages, worked out on the server (search.filter_from) -----------------
   function blankFilter() { return { q: "", q_mode: "contains", min_clicks: "", min_impressions: "", pos_from: "", pos_to: "" }; }
   const TEXT_MODES = [["contains", "Contains"], ["not", "Doesn't contain"], ["exact", "Exactly"], ["regex", "Matches regex"]];
-  const NUMBER_FILTERS = [["min_clicks", "Clicks at least"], ["min_impressions", "Impressions at least"], ["pos_from", "Position from"], ["pos_to", "Position to"]];
+  const NUMBER_FILTERS = [["min_clicks", "Min clicks"], ["min_impressions", "Min impressions"], ["pos_from", "Position from"], ["pos_to", "Position to"]];
   const filterOf = (dim) => OV.filters[dim] || null;
   const ADDR = { min_clicks: "minc", min_impressions: "mini", pos_from: "pf", pos_to: "pt" }; // short names in the address
   const numbersOn = (f) => NUMBER_FILTERS.filter(([id]) => String(f[id]).trim() !== "").length;
@@ -129,7 +129,7 @@
     }
     const places = Math.round((before - now) * 10) / 10; // fewer is better
     if (places === 0) return `${pill(true, t("No change"), true)} <span class="ab">${dec1(before)} → ${dec1(now)}</span>`;
-    const word = Math.abs(places) === 1 ? t(places > 0 ? "place better" : "place worse") : t(places > 0 ? "places better" : "places worse");
+    const word = Math.abs(places) === 1 ? t(places > 0 ? "place" : "place") : t(places > 0 ? "places" : "places");
     return `${pill(places > 0, `${UI.dec(Math.abs(places))} ${word}`)} <span class="ab">${dec1(before)} → ${dec1(now)}</span>`;
   }
   /* A number cell: the value, then its change in a slot of its own so changes line up down the column.
@@ -141,7 +141,7 @@
     if (d === 0) return "";
     const good = lowerIsBetter ? d < 0 : d > 0;
     const text = lowerIsBetter ? `${good ? "↑" : "↓"}${UI.dec(Math.abs(d))}` : `${d > 0 ? "+" : "−"}${num(Math.abs(d))}`;
-    const tip = lowerIsBetter ? t(good ? "Moved up in Google" : "Moved down in Google") : t("Change from the period before");
+    const tip = lowerIsBetter ? t(good ? "Moved up in Google" : "Moved down in Google") : t("vs period before");
     return `<span class="ov-d ${good ? "good" : "crit"}" title="${tip}">${text}</span>`;
   };
   const numCell = (value, change) => `<span class="ov-nc"><span class="ov-v">${value}</span>${change === null ? "" : `<span class="ov-dslot">${change}</span>`}</span>`;
@@ -185,7 +185,7 @@
      Before, every cause read "Google didn't answer", and the reason was four steps away in Settings. */
   function liveErrorNote(message) {
     const fix = window.FIX?.explain ? window.FIX.explain(message, { tool: "Search Console", id: "google", retry: "refresh" }) : null;
-    const why = fix?.summary ? t(fix.summary) : t("Google didn't answer, so this is the last pull.");
+    const why = fix?.summary ? t(fix.summary) : t("Google didn't answer.");
     const steps = window.FIX?.html ? window.FIX.html(message, { tool: "Search Console", id: "google", retry: "refresh" }, { said: true }) : "";
     return `<div class="note warn ov-live-error" role="alert">${icon("triangle-alert")}<div><p><b>${t("These are the last saved numbers.")}</b> ${esc(why)}</p>${steps}
       <p class="ov-empty-act"><button class="btn btn-small" data-ov-fix-google>${icon("settings")}${t("Open the Google connection")}</button></p></div></div>`;
@@ -289,7 +289,7 @@
     cross.removeAttribute("hidden"); cross.setAttribute("x1", xs); cross.setAttribute("x2", xs);
     const rows = info.shown.map((m) => `<div><span><i class="lv-key" style="background:${m.color}"></i>${esc(t(m.name))}</span><span>${esc(fmt[m.id](p[m.id]))}${w ? ` <span class="muted">(${esc(fmt[m.id](w[m.id]))})</span>` : ""}</span></div>`).join("");
     const notes = info.marks.filter((m) => m.at === i).map((m) => `<div class="ov-tip-note">${esc(m.text)}</div>`).join("");
-    UI.setHTML(tip, `<b>${esc(dayLabel(p.day, true))}${p.fresh ? ` · ${t("not final")}` : ""}</b>${rows}${w ? `<div class="muted ov-tip-was">${t("In brackets: the period before")} (${esc(dayLabel(w.day))})</div>` : ""}${notes}`);
+    UI.setHTML(tip, `<b>${esc(dayLabel(p.day, true))}${p.fresh ? ` · ${t("not final")}` : ""}</b>${rows}${w ? `<div class="muted ov-tip-was">${t("In brackets: period before")} (${esc(dayLabel(w.day))})</div>` : ""}${notes}`);
     tip.hidden = false;
     const rect = svg.getBoundingClientRect(), left = (xs / W) * rect.width + 18, room = box.clientWidth - tip.offsetWidth - 8;
     tip.style.left = `${Math.max(8, Math.min(room, left + 12 > room ? left - tip.offsetWidth - 12 : left + 12))}px`;
@@ -320,7 +320,7 @@
      always at hand and never pushes the rows down under the pointer. Where the heading can't stick, it floats at the foot instead. */
   const selBar = (where) => (OV.selected.size ? `<span class="ov-selbar ov-selbar-${where}" role="status"><span>${num(OV.selected.size)} ${t(OV.selected.size === 1 ? "query picked" : "queries picked")}</span><button class="btn btn-main btn-small" data-ov-track-picked>${icon("plus")}${t("Track them")}</button><button class="link-btn" data-ov-pick-clear>${t("Clear")}</button></span>` : "");
   function table(dim, rows, { columns, selectable = false, key = dim, total = rows.length }) {
-    if (!rows.length) return `<div class="empty"><p>${t("Nothing to show for this choice.")}</p></div>`;
+    if (!rows.length) return `<div class="empty"><p>${t("Nothing for this choice.")}</p></div>`;
     let list = rows;
     if (OV.sort?.table === key) {
       const col = columns.find((c) => c.id === OV.sort.id);
@@ -334,7 +334,7 @@
     if (selectable) queueMicrotask(() => { const box = UI.$("[data-ov-pick-all]"); if (box) box.indeterminate = someOn; });
     const head = `${selectable ? `<th class="ov-pick-col"><input type="checkbox" data-ov-pick-all aria-label="${t("Pick all shown")}" title="${t("Pick all shown")}" ${allOn ? "checked" : ""} ${free.length ? "" : "disabled"}></th>` : ""}${columns.map((c) => {
       const on = OV.sort?.table === key && OV.sort.id === c.id;
-      return `<th class="${c.num ? "ov-n" : ""}${on ? " ov-sorted" : ""}" scope="col" aria-sort="${on ? (OV.sort.dir === "asc" ? "ascending" : "descending") : "none"}"><button class="th-btn" data-ov-sort="${c.id}" data-table="${key}" ${UI.def(c.label) ? `data-tip="${esc(UI.def(c.label))}"` : ""}>${esc(t(c.label))}${on ? icon(OV.sort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button>${selectable && c.id === "name" ? selBar("head") : ""}</th>`;
+      return `<th class="${c.num ? "ov-n" : ""}${on ? " ov-sorted" : ""}" scope="col" aria-sort="${on ? (OV.sort.dir === "asc" ? "ascending" : "descending") : "none"}"><button class="th-btn" data-ov-sort="${c.id}" data-table="${key}" ${c.tip || UI.def(c.label) ? `data-tip="${esc(c.tip ? t(c.tip) : UI.def(c.label))}"` : ""}>${esc(t(c.label))}${on ? icon(OV.sort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button>${selectable && c.id === "name" ? selBar("head") : ""}</th>`;
     }).join("")}`;
     const body = view.rows.map((r) => {
       const id = r.name ?? r.key;
@@ -350,7 +350,7 @@
     const perPick = list.length > PER[0] ? `<label class="ov-per"><span class="sr">${t("Rows per page")}</span><select class="select" data-ov-per>${PER.map((n) => `<option value="${n}" ${OV.per === n ? "selected" : ""}>${num(n)} ${t("per page")}</option>`).join("")}</select></label>` : "";
     // One box around the table and its footer: the footer sticks to the bottom of the screen only while the table itself is in view.
     return `<div class="ov-list"><div class="table-wrap ov-table"><table class="data"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>${selectable ? selBar("foot") : ""}
-      <div class="lv-foot ov-foot"><span class="ov-range">${num(view.from + 1)}–${num(view.from + view.rows.length)} ${t("of")} ${num(total)}</span>${pager}${perPick}${total > list.length ? `<span class="ov-capped">${t("Only the first %n can be shown. Filter to see the rest.").replace("%n", num(list.length))}</span>` : ""}</div></div>`;
+      <div class="lv-foot ov-foot"><span class="ov-range">${num(view.from + 1)}–${num(view.from + view.rows.length)} ${t("of")} ${num(total)}</span>${pager}${perPick}${total > list.length ? `<span class="ov-capped">${t("First %n shown. Filter to see the rest.").replace("%n", num(list.length))}</span>` : ""}</div></div>`;
   }
   const columnsFor = (dim, compare) => [
     { id: "name", label: { query: "Query", page: "Page", country: "Country", device: "Device" }[dim], get: (r) => r.name, html: (r) => `<div class="ov-cell">${nameCell(dim, r)}${rowActions(dim, r)}</div>` },
@@ -377,9 +377,9 @@
     if (entry.loading) return `${controls}${UI.skeleton("rows", { rows: 8 })}`;
     if (entry.error) return `${controls}<div class="empty"><p>${esc(t(entry.error))}</p>${filterOn(filterOf(OV.tab)) ? `<div class="ov-empty-act"><button class="btn" data-ov-filter-clear>${t("Clear filters")}</button></div>` : ""}</div>`;
     const b = entry.data;
-    const fresh = b.fresh_included?.from ? `<p class="small muted ov-hint ov-fresh-note" role="note">${icon("clock")}${t("Includes days not final yet")} (${esc(b.fresh_included.from === b.fresh_included.to ? dayLabel(b.fresh_included.from) : `${dayLabel(b.fresh_included.from)} – ${dayLabel(b.fresh_included.to)}`)})</p>` : "";
+    const fresh = b.fresh_included?.from ? `<p class="small muted ov-hint ov-fresh-note" role="note">${icon("clock")}${t("Includes not-final days")} (${esc(b.fresh_included.from === b.fresh_included.to ? dayLabel(b.fresh_included.from) : `${dayLabel(b.fresh_included.from)} – ${dayLabel(b.fresh_included.to)}`)})</p>` : "";
     const note = (b.small_hidden ? `<p class="small muted ov-hint">${num(b.small_hidden)} ${t("small ones hidden (under 3 clicks and 50 impressions).")}</p>` : "") + fresh;
-    const queriesLine = OV.tab === "query" && d.queries !== null ? `<p class="small muted ov-hint">${num(d.queries)} ${t("queries with impressions")}${d.queries_before !== null && d.queries_before !== undefined ? ` · ${num(d.queries_before)} ${t("before")}` : ""}. ${t("Google leaves out rare searches, so queries never add up to the total clicks.")}</p>` : "";
+    const queriesLine = OV.tab === "query" && d.queries !== null ? `<p class="small muted ov-hint">${num(d.queries)} ${t("queries with impressions")}${d.queries_before !== null && d.queries_before !== undefined ? ` · ${num(d.queries_before)} ${t("before")}` : ""}. ${t("Rare searches left out.")}${UI.tip("Google leaves out rare searches, so queries never add up to the total clicks.")}</p>` : "";
     if (!b.rows.length && filterOn(filterOf(OV.tab))) return `${controls}<div class="empty"><p>${t(OV.tab === "page" ? "No pages match these filters." : "No queries match these filters.")}</p><div class="ov-empty-act"><button class="btn" data-ov-filter-clear>${t("Clear filters")}</button></div></div>`;
     return `${controls}${queriesLine}${note}${table(OV.tab, b.rows, { columns: columnsFor(OV.tab, compare), selectable: OV.tab === "query", total: b.total ?? b.rows.length })}`;
   }
@@ -449,19 +449,19 @@
     return `<span class="seg" role="group" aria-label="${t("Brand searches")}">${[["all", "All"], ["non_brand", "Non-brand"], ["brand", "Brand"]].map(([id, name]) => `<button data-ov-brand="${id}" aria-pressed="${OV.brand === id}">${t(name)}</button>`).join("")}</span><button class="link-btn" data-ov-brand-edit>${t("Brand words")}</button>`;
   }
   function opportunitiesBody(d) {
-    const [, , why] = OPPS.find(([id]) => id === OV.opp);
+    const [, , why, whyTip] = OPPS.find(([id]) => id === OV.opp);
     const entry = load("opportunities", { kind: OV.opp });
-    const controls = `<div class="ov-controls"><label class="ov-show"><span>${t("Show")}</span><select class="select" data-ov-opp>${OPPS.map(([id, name]) => `<option value="${id}" ${OV.opp === id ? "selected" : ""}>${t(name)}</option>`).join("")}</select></label></div><p class="small muted ov-hint">${t(why)}</p>`;
+    const controls = `<div class="ov-controls"><label class="ov-show"><span>${t("Show")}</span><select class="select" data-ov-opp>${OPPS.map(([id, name]) => `<option value="${id}" ${OV.opp === id ? "selected" : ""}>${t(name)}</option>`).join("")}</select></label></div><p class="small muted ov-hint">${t(why)}${UI.tip(whyTip)}</p>`;
     if (entry.loading) return `${controls}${UI.skeleton("rows", { rows: 8 })}`;
     if (entry.error) return `${controls}<div class="empty"><p>${esc(entry.error)}</p></div>`;
     const o = entry.data;
-    if (o.needs === "brand_words") return `${controls}<div class="empty"><p>${t("Add your brand words to see this. Brand searches are clicked far more, so they'd make every other query look weak.")}</p><div class="ov-empty-act"><button class="btn btn-main" data-ov-brand-edit>${t("Add your brand words")}</button></div></div>`;
-    if (o.needs === "more_data") return `${controls}<div class="empty"><p>${t("Not enough queries yet to know this site's usual click rate at each position.")}</p></div>`;
+    if (o.needs === "brand_words") return `${controls}<div class="empty"><p>${t("Needs your brand words.")}${UI.tip("Brand searches are clicked far more, so they'd make every other query look weak.")}</p><div class="ov-empty-act"><button class="btn btn-main" data-ov-brand-edit>${t("Add your brand words")}</button></div></div>`;
+    if (o.needs === "more_data") return `${controls}<div class="empty"><p>${t("Not enough queries yet.")}${UI.tip("Not enough queries yet to know this site's usual click rate at each position.")}</p></div>`;
     const name = { id: "name", label: "Query", get: (r) => r.name, html: (r) => `<div class="ov-cell">${nameCell("query", r)}${rowActions("query", r)}</div>` };
     const cols = {
       almost: [name, { id: "position", label: "Position", num: true, get: (r) => r.position, html: (r) => dec1(r.position) }, { id: "impressions", label: "Impressions", num: true, get: (r) => r.impressions, html: (r) => num(r.impressions) }, { id: "clicks", label: "Clicks", num: true, get: (r) => r.clicks, html: (r) => num(r.clicks) }],
-      low_ctr: [name, { id: "click_rate", label: "Click rate", num: true, get: (r) => r.click_rate, html: (r) => rate(r.click_rate) }, { id: "expected_rate", label: "Usual at this position", num: true, get: (r) => r.expected_rate, html: (r) => rate(r.expected_rate) }, { id: "position", label: "Position", num: true, get: (r) => r.position, html: (r) => dec1(r.position) }],
-      compete: [name, { id: "impressions", label: "Impressions", num: true, get: (r) => r.impressions, html: (r) => num(r.impressions) }, { id: "pages", label: "Pages that share it", get: (r) => r.pages.length, html: (r) => `<ul class="ov-pages">${r.pages.map((p) => `<li>${PageLink.html(p.page, { text: pathOf(p.page) })} <span class="muted">${num(p.share)}% · ${t("pos.")} ${dec1(p.position)}</span></li>`).join("")}</ul>` }],
+      low_ctr: [name, { id: "click_rate", label: "Click rate", num: true, get: (r) => r.click_rate, html: (r) => rate(r.click_rate) }, { id: "expected_rate", label: "Usual rate", tip: "Usual click rate at this position", num: true, get: (r) => r.expected_rate, html: (r) => rate(r.expected_rate) }, { id: "position", label: "Position", num: true, get: (r) => r.position, html: (r) => dec1(r.position) }],
+      compete: [name, { id: "impressions", label: "Impressions", num: true, get: (r) => r.impressions, html: (r) => num(r.impressions) }, { id: "pages", label: "Pages sharing it", get: (r) => r.pages.length, html: (r) => `<ul class="ov-pages">${r.pages.map((p) => `<li>${PageLink.html(p.page, { text: pathOf(p.page) })} <span class="muted">${num(p.share)}% · ${t("pos.")} ${dec1(p.position)}</span></li>`).join("")}</ul>` }],
       lost: [name, { id: "clicks_before", label: "Clicks before", num: true, get: (r) => r.clicks_before, html: (r) => num(r.clicks_before) }, { id: "impressions_before", label: "Impressions before", num: true, get: (r) => r.impressions_before, html: (r) => num(r.impressions_before) }, { id: "position_before", label: "Position before", num: true, get: (r) => r.position_before, html: (r) => dec1(r.position_before) }],
     }[OV.opp];
     return `${controls}${table("query", o.rows, { columns: cols, key: `opp-${OV.opp}` })}`;
@@ -478,11 +478,18 @@
     if (!UI.$("#panel")) return;
     const tot = data.totals;
     const spark = (id, invert) => { const v = data.series.map((p) => p[id]).filter((x) => x !== null); return v.length > 1 ? UI.spark(v, { w: 260, h: 48, invert }) : ""; };
-    const split = data.split.length ? `<h3 class="ov-h3">${t(dim === "query" ? "Pages that show for it" : "Queries that bring it")}</h3>
-      ${dim === "query" ? `<p class="small muted">${t("Shares of impressions. Search Console counts each page apart, so these don't add up to the query.")}</p>` : ""}
-      <ul class="rows ov-split">${data.split.slice(0, 15).map((p) => `<li><div class="what"><div class="t" dir="auto">${dim === "query" ? PageLink.html(p.name, { text: pathOf(p.name) }) : esc(p.name)}</div><div class="s muted">${num(p.clicks)} ${t("clicks")} · ${num(p.impressions)} ${t("impressions")} · ${t("pos.")} ${dec1(p.position)}</div></div>${dim === "query" && p.share !== null ? `<span class="ov-share">${num(p.share)}%</span>` : ""}</li>`).join("")}</ul>` : "";
-    const places = data.countries ? `<h3 class="ov-h3">${t("Countries")}</h3><ul class="rows ov-split">${data.countries.slice(0, 8).map((c) => `<li><div class="what"><div class="t">${esc(c.code ? UI.countryName(c.code) : t("Unknown"))}</div><div class="s muted">${num(c.impressions)} ${t("impressions")} · ${t("pos.")} ${dec1(c.position)}</div></div><span>${num(c.clicks)}</span></li>`).join("")}</ul>`
-      : data.countries_error ? `<p class="small muted">${t("Countries come from Google live, and it didn't answer.")}</p>` : "";
+    /* Clicks, impressions and position named once in a heading row; the rows hold the numbers only. The first column's name
+       is the section title just above, so it is said to screen readers only. */
+    const numHeads = `<th scope="col" class="ov-sn">${t("Clicks")}</th><th scope="col" class="ov-sn">${t("Impressions")}</th><th scope="col" class="ov-sn">${t("Pos.")}</th>`;
+    const numCells = (r) => `<td class="ov-sn">${num(r.clicks)}</td><td class="ov-sn">${num(r.impressions)}</td><td class="ov-sn">${dec1(r.position)}</td>`;
+    const shares = dim === "query" && data.split.some((p) => p.share !== null && p.share !== undefined);
+    const split = data.split.length ? `<h3 class="ov-h3">${t(dim === "query" ? "Pages" : "Queries")}</h3>
+      ${dim === "query" ? `<p class="small muted">${t("Shares of impressions.")}${UI.tip("Search Console counts each page apart, so these don't add up to the query.")}</p>` : ""}
+      <table class="mini ov-split"><thead><tr><th scope="col"><span class="sr">${t(dim === "query" ? "Page" : "Query")}</span></th>${shares ? `<th scope="col" class="ov-sn"><span class="sr">${t("Share")}</span></th>` : ""}${numHeads}</tr></thead>
+      <tbody>${data.split.slice(0, 15).map((p) => `<tr><td class="ov-sname" dir="auto">${dim === "query" ? PageLink.html(p.name, { text: pathOf(p.name) }) : esc(p.name)}</td>${shares ? `<td class="ov-sn ov-share">${p.share !== null && p.share !== undefined ? `${num(p.share)}${fr() ? " %" : "%"}` : ""}</td>` : ""}${numCells(p)}</tr>`).join("")}</tbody></table>` : "";
+    const places = data.countries ? `<h3 class="ov-h3">${t("Countries")}</h3><table class="mini ov-split"><thead><tr><th scope="col"><span class="sr">${t("Country")}</span></th>${numHeads}</tr></thead>
+      <tbody>${data.countries.slice(0, 8).map((c) => `<tr><td class="ov-sname">${esc(c.code ? UI.countryName(c.code) : t("Unknown"))}</td>${numCells(c)}</tr>`).join("")}</tbody></table>`
+      : data.countries_error ? `<p class="small muted">${t("Countries: Google didn't answer.")}</p>` : "";
     const tracked = dim === "query" && data.tracked;
     UI.openPanel(`${head}<div class="panel-body">
         <div class="ov-panel-nums">
@@ -495,8 +502,8 @@
         ${spark("position") ? `<div class="ov-panel-spark"><span class="lab">${t("Position, day by day (higher is better)")}</span>${spark("position", true)}</div>` : ""}
         ${split}${places}
       </div>
-      <div class="panel-foot">${dim === "query" ? (tracked ? `<span class="ov-tracked">${icon("check")}${t("Tracked in Keywords")}</span>` : `<button class="btn btn-main" data-ov-track="${esc(value)}">${icon("plus")}${t("Track as a keyword")}</button>`) : ""}
-        <button class="btn" data-ov-task="${dim}" data-value="${esc(value)}">${icon("square-check")}${t("Create a task")}</button></div>`, opener);
+      <div class="panel-foot">${dim === "query" ? (tracked ? `<span class="ov-tracked">${icon("check")}${t("Tracked in Keywords")}</span>` : `<button class="btn btn-main" data-ov-track="${esc(value)}">${icon("plus")}${t("Track")}</button>`) : ""}
+        <button class="btn" data-ov-task="${dim}" data-value="${esc(value)}">${icon("square-check")}${t("Create task")}</button></div>`, opener);
   }
 
   // ---- brand words, notes, the check -----------------------------------------------------------------
@@ -504,27 +511,27 @@
     const site = UI.siteIdPicked();
     let words = [];
     try { words = await window.COMP.api("GET", `search/brand?${site ? `site_id=${site}` : ""}`); } catch { words = []; }
-    UI.openPanel(`${UI.panelHead(t("Brand words"), t("Searches that contain one of these count as brand searches. Case and accents don't matter."))}
+    UI.openPanel(`${UI.panelHead(t("Brand words"), t("Searches containing any of these count as brand. Case and accents ignored."))}
       <div class="panel-body">
         ${words.length ? `<ul class="rows">${words.map((w) => `<li><div class="what"><div class="t" dir="auto">${esc(w.pattern)}</div><div class="s muted">${esc(w.site_id ? (window.SITES.find((s) => s.realId === w.site_id)?.host || "") : t("All my sites"))}</div></div><button class="btn btn-small btn-ghost" data-ov-brand-del="${w.id}">${t("Remove")}</button></li>`).join("")}</ul>` : `<p class="muted">${t("No brand words yet.")}</p>`}
-        <form class="ov-brand-form" id="ov-brand-form"><label class="field"><span>${t("Add a brand word")}</span><input class="input" name="f_word" dir="auto" autocomplete="off" placeholder="${esc(t("Such as your company or site name"))}" data-autofocus></label>
+        <form class="ov-brand-form" id="ov-brand-form"><label class="field"><span>${t("Add a brand word")}</span><input class="input" name="f_word" dir="auto" autocomplete="off" placeholder="${esc(t("Company or site name"))}" data-autofocus></label>
         <div class="error" id="ov-brand-error" role="alert" hidden></div><button class="btn btn-main" type="submit">${t("Add")}</button></form>
       </div>`, opener);
   }
   function notePanel(opener, d) {
-    UI.openPanel(`${UI.panelHead(t("Add a note to the chart"), t("Mark a change you made, such as new titles, so you can see what followed."))}
+    UI.openPanel(`${UI.panelHead(t("Add a note"), t("Mark a change, like new titles, to see what followed."))}
       <form class="panel-body" id="ov-note-form" novalidate>
         <label class="field"><span>${t("Day")}</span><input class="input" type="date" name="f_day" value="${esc(d.to)}" min="${esc(d.from)}" max="${esc(d.newest || d.to)}" required></label>
         <label class="field"><span>${t("Note")}</span><input class="input" name="f_text" maxlength="300" dir="auto" autocomplete="off" data-autofocus></label>
         <div class="error" id="ov-note-error" role="alert" hidden></div>
       </form>
-      <div class="panel-foot"><button class="btn btn-main" data-ov-note-save>${t("Save the note")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button></div>`, opener, { key: "ov-note", reopen: () => notePanel(opener, d) });
+      <div class="panel-foot"><button class="btn btn-main" data-ov-note-save>${t("Save note")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button></div>`, opener, { key: "ov-note", reopen: () => notePanel(opener, d) });
   }
   function verifyPanel(opener, v) {
     const list = (title, rows, label) => (rows?.length ? `<h3 class="ov-h3">${t(title)}</h3><div class="table-wrap"><table class="data"><thead><tr><th>${t(label)}</th><th class="c">Search Console</th><th class="c">${t("Saved here")}</th></tr></thead><tbody>${rows.map((r) => `<tr><td dir="auto">${esc(r.day ? dayLabel(r.day, true) : r.name)}</td><td class="c">${num(r.google.clicks)} / ${num(r.google.impressions)}</td><td class="c">${num(r.saved.clicks)} / ${num(r.saved.impressions)}</td></tr>`).join("")}</tbody></table></div>` : "");
     UI.openPanel(`${UI.panelHead(t("Differs from Search Console"), `${t("Last 28 days, checked")} ${esc(since(v.checked_at))}. ${t("Clicks / impressions.")}`)}
       <div class="panel-body">
-        <p>${t(v.fixable ? "Some days changed at Google after they were saved. Reading them again fixes it." : "Every day matches. Google adds up some tables over a range differently from its days, which a new pull can't change.")}</p>
+        <p>${t(v.fixable ? "Google changed some days after saving. Reading them again fixes it." : "Every day matches. Google's range totals differ from its days; a new pull can't change that.")}</p>
         ${list("Days", v.days, "Date")}${list("Queries", v.queries, "Query")}${list("Pages", v.pages, "Page")}
       </div>
       <div class="panel-foot">${v.fixable ? `<button class="btn btn-main" data-ov-verify-fix>${t("Read those days again")}</button>` : ""}<button class="btn" data-close-panel>${t("Close")}</button></div>`, opener);
@@ -545,20 +552,20 @@
     const entry = load("overview");
     const d = entry.data;
     const refresh = `<button class="btn" data-ov-refresh ${OV.poll ? "disabled" : ""}>${icon("refresh-cw")}${t(OV.poll ? "Reading…" : "Refresh data")}</button>`;
-    const head = UI.topbar(t("Overview"), t("How the site does on Google, from Search Console"), `${d && !STATES[d.state] ? refresh : ""}`);
+    const head = UI.topbar(t("Overview"), t("Your Google results, from Search Console"), `${d && !STATES[d.state] ? refresh : ""}`);
     const wrap = (body) => `${head}<div class="content page-enter ov">${periodLine(d)}${body}</div>`;
     if (entry.loading) return wrap(UI.skeleton("page"));
-    if (entry.noServer) return wrap(`<section class="card"><div class="empty"><h3>${t("Needs the running app")}</h3><p>${t("Opened as a plain file there's no real data to show here.")}</p></div></section>`);
+    if (entry.noServer) return wrap(`<section class="card"><div class="empty"><h3>${t("Needs the running app")}</h3><p>${t("Opened as a file: no real data.")}</p></div></section>`);
     if (entry.error) return wrap(UI.failCard(entry.error, { retry: "data-ov-retry" }));
     if (STATES[d.state] && !d.totals) return wrap(window.LV?.stateCard ? window.LV.stateCard({ data: d }, "gsc") : `<section class="card"><div class="empty"><p>${esc(d.state)}</p></div></section>`);
     if (!d.totals) return wrap(`${trust(d)}<section class="card"><div class="empty"><h3>${t("No data in this period.")}</h3><p>${t("Pick a longer or earlier period.")}</p></div></section>`);
     const chartHead = `<div class="card-head"><h2>${t({ hour: "Hour by hour", week: "Week by week", day: "Day by day" }[d.granularity])}</h2>
-      <span class="end ov-chart-tools">${d.single_site ? `<button class="link-btn" data-ov-note-add>${icon("plus")}${t("Add a note")}</button>` : ""}<button class="link-btn" data-ov-table aria-expanded="${OV.table}">${t(OV.table ? "Hide the table" : "Show as a table")}</button></span></div>`;
+      <span class="end ov-chart-tools">${d.single_site ? `<button class="link-btn" data-ov-note-add>${icon("plus")}${t("Add a note")}</button>` : ""}<button class="link-btn" data-ov-table aria-expanded="${OV.table}">${t(OV.table ? "Hide table" : "Show table")}</button></span></div>`;
     return wrap(`${trust(d)}
       ${d.answer ? `<p class="ov-answer" dir="auto">${sentence(d.answer, d)}</p>` : ""}
       ${cards(d)}
       <section class="card ov-chart-card">${chartHead}${chart(d)}</section>
-      ${d.hourly ? `<p class="small muted ov-hint">${t("Tables below use whole days, so they show the last 2 days.")}</p>` : ""}
+      ${d.hourly ? `<p class="small muted ov-hint">${t("Tables below show the last 2 whole days.")}</p>` : ""}
       ${tabsCard(d)}`);
   }
 
@@ -571,7 +578,7 @@
       if (Date.now() - started > 120000) { stopPolling(); return; }
       try {
         const now = await window.COMP.api("GET", `search/overview?${query()}`);
-        if (now.last_pull && now.last_pull !== before) { stopPolling(); UI.toast(t("Search Console data is up to date.")); }
+        if (now.last_pull && now.last_pull !== before) { stopPolling(); UI.toast(t("Search Console data updated.")); }
       } catch { stopPolling(); }
     }, 5000);
     UI.render({ keepScroll: true });
@@ -583,7 +590,7 @@
   const hostPicked = () => UI.siteHostPicked() || window.SITES.find((s) => s.realId)?.host || null;
   function track(queries, opener) {
     const d = current();
-    if (!window.KW) { UI.toast(t("Open Keywords to add it."), { kind: "info" }); return; }
+    if (!window.KW) { UI.toast(t("Add it in Keywords."), { kind: "info" }); return; }
     window.KW.track(queries, hostPicked(), opener, d?.market || {});
   }
   function bind() {
@@ -664,12 +671,12 @@
       if (hit("[data-ov-verify-open]")) { const v = current()?.verify; if (v) verifyPanel(hit("[data-ov-verify-open]"), v); return; }
       if ((el = hit("[data-ov-verify-run]"))) {
         el.disabled = true;
-        try { const v = await window.COMP.api("POST", "search/verify", { site_id: UI.siteIdPicked() }); forget(); UI.render({ keepScroll: true }); UI.toast(t(v.ok ? "It matches Search Console." : "It differs from Search Console. Press the warning to see where."), { kind: v.ok ? "good" : "info" }); }
+        try { const v = await window.COMP.api("POST", "search/verify", { site_id: UI.siteIdPicked() }); forget(); UI.render({ keepScroll: true }); UI.toast(t(v.ok ? "It matches Search Console." : "It differs from Search Console. See the warning."), { kind: v.ok ? "good" : "info" }); }
         catch (err) { UI.toast(err.message, { kind: "crit" }); el.disabled = false; }
         return;
       }
       if (hit("[data-ov-verify-fix]")) {
-        try { await window.COMP.api("POST", "search/verify", { site_id: UI.siteIdPicked(), fix: true }); UI.closePanel(); UI.toast(t("Reading those days again. It updates here when done.")); startPolling(current()?.last_pull); } catch (err) { UI.toast(err.message, { kind: "crit" }); }
+        try { await window.COMP.api("POST", "search/verify", { site_id: UI.siteIdPicked(), fix: true }); UI.closePanel(); UI.toast(t("Re-reading those days. Updates here when done.")); startPolling(current()?.last_pull); } catch (err) { UI.toast(err.message, { kind: "crit" }); }
         return;
       }
       if ((el = hit("[data-ov-refresh]"))) {
@@ -794,53 +801,53 @@
 
   const words = {
     "Last 24 hours": "Dernières 24 heures", "Last 7 days": "7 derniers jours", "Last 28 days": "28 derniers jours", "Last 3 months": "3 derniers mois", "Last 6 months": "6 derniers mois", "Last 12 months": "12 derniers mois", "Last 16 months": "16 derniers mois", "Custom": "Personnalisée",
-    "vs previous period": "vs période précédente", "vs same period last year": "vs même période l'an dernier", "No comparison": "Sans comparaison", "this period": "cette période",
+    "vs previous period": "vs période précédente", "vs last year": "vs l'an dernier", "No comparison": "Sans comparaison", "this period": "cette période",
     "Queries": "Requêtes", "Pages": "Pages", "Countries": "Pays", "Devices": "Appareils", "Opportunities": "Opportunités", "Split by": "Répartir par",
-    "All": "Toutes", "Gaining clicks": "Gagnent des clics", "Losing clicks": "Perdent des clics", "New": "Nouvelles", "Lost": "Perdues", "Top 3": "Top 3", "Positions 4 to 10": "Positions 4 à 10", "Positions 11 to 20": "Positions 11 à 20", "Position 21 and after": "Position 21 et au-delà",
+    "All": "Toutes", "Gaining clicks": "Gagnent des clics", "Losing clicks": "Perdent des clics", "New": "Nouvelles", "Lost": "Perdues", "Top 3": "Top 3", "Positions 4–10": "Positions 4–10", "Positions 11–20": "Positions 11–20", "Positions 21+": "Positions 21+",
     "Almost on page 1": "Presque en page 1", "Low click rate": "Taux de clic faible", "Two pages compete": "Deux pages en concurrence", "Lost queries": "Requêtes perdues",
-    "Queries at positions 11 to 20 with real impressions. A small push brings them onto page 1.": "Requêtes en positions 11 à 20 avec de vraies impressions. Un petit effort les amène en page 1.",
-    "Non-brand queries clicked far less than this site's own queries at the same position. Rewrite the title and description.": "Requêtes hors marque bien moins cliquées que les autres requêtes du site à la même position. Réécrivez le titre et la description.",
-    "Queries where two or more of your pages each get a fair share of the impressions, so Google can't pick one.": "Requêtes pour lesquelles deux de vos pages ou plus reçoivent chacune une bonne part des impressions : Google n'arrive pas à en choisir une.",
-    "Queries that had clicks in the period before and now show nowhere. Small ones are left out.": "Requêtes qui avaient des clics sur la période précédente et n'apparaissent plus. Les petites sont écartées.",
-    "pts": "pts", "place better": "place de mieux", "place worse": "place de moins", "places better": "places de mieux", "places worse": "places de moins", "No change": "Sans changement",
+    "Positions 11–20, close to page 1.": "Positions 11 à 20, proches de la page 1.",
+    "Clicked less than usual: rewrite the title and description.": "Moins cliquées que d'habitude : réécrivez le titre et la description.",
+    "Two or more of your pages split the impressions.": "Deux de vos pages ou plus se partagent les impressions.",
+    "Had clicks before, now gone.": "Avaient des clics avant, disparues depuis.",
+    "pts": "pts", "place": "place", "places": "places", "No change": "Sans changement",
     "Live from Search Console": "En direct de la Search Console", "Saved data": "Données enregistrées", "last pulled": "dernière lecture", "Days from": "Les jours à partir du", "aren't final yet": "ne sont pas encore définitifs",
     "Matches Search Console": "Identique à la Search Console", "checked": "vérifié", "Differs from Search Console": "Diffère de la Search Console", "Check now": "Vérifier maintenant", "Compare with Search Console": "Comparer avec la Search Console",
-    "Google didn't answer, so this is the last pull.": "Google n'a pas répondu : voici la dernière lecture.", "just now": "à l'instant", "Totals": "Totaux",
+    "Google didn't answer.": "Google n'a pas répondu.", "just now": "à l'instant", "Totals": "Totaux",
     "Shown on the chart": "Affiché sur le graphique", "Press to show it on the chart": "Appuyez pour l'afficher sur le graphique", "Press a number above to show its line.": "Appuyez sur un chiffre au-dessus pour afficher sa courbe.",
     "Period before": "Période précédente", "Not final yet": "Pas encore définitif", "not final": "provisoire", "Notes and finished tasks": "Notes et tâches terminées", "Delete the note": "Supprimer la note",
-    "Week from": "Semaine du", "Hour": "Heure", "Clicks before": "Clics avant", "Impressions before": "Impressions avant", "Position before": "Position avant", "In brackets: the period before": "Entre parenthèses : la période précédente",
-    "Unknown": "Inconnu", "Mobile": "Mobile", "Tablet": "Tablette", "Computer": "Ordinateur", "Tracked in Keywords": "Suivi dans Mots-clés", "Tracked": "Suivi", "Track": "Suivre", "Moved up in Google": "Monté dans Google", "Moved down in Google": "Descendu dans Google", "Change from the period before": "Écart avec la période d’avant", "Task": "Tâche",
-    "Nothing to show for this choice.": "Rien à afficher pour ce choix.", "Pick": "Choisir", "Pick all shown": "Tout choisir", "Show": "Afficher",
-    "Previous": "Précédent", "Next": "Suivant", "Page": "Page", "Rows per page": "Lignes par page", "per page": "par page", "Only the first %n can be shown. Filter to see the rest.": "Seules les %n premières s’affichent. Filtrez pour voir les autres.", "query picked": "requête choisie", "queries picked": "requêtes choisies", "Track them": "Les suivre", "Clear": "Effacer",
+    "Week from": "Semaine du", "Hour": "Heure", "Clicks before": "Clics avant", "Impressions before": "Impressions avant", "Position before": "Position avant", "In brackets: period before": "Entre parenthèses : période précédente",
+    "Unknown": "Inconnu", "Mobile": "Mobile", "Tablet": "Tablette", "Computer": "Ordinateur", "Tracked in Keywords": "Suivi dans Mots-clés", "Tracked": "Suivi", "Track": "Suivre", "Moved up in Google": "Monté dans Google", "Moved down in Google": "Descendu dans Google", "vs period before": "vs période précédente", "Task": "Tâche",
+    "Nothing for this choice.": "Rien pour ce choix.", "Pick": "Choisir", "Pick all shown": "Tout choisir", "Show": "Afficher",
+    "Previous": "Précédent", "Next": "Suivant", "Page": "Page", "Rows per page": "Lignes par page", "per page": "par page", "First %n shown. Filter to see the rest.": "%n premières affichées. Filtrez pour voir les autres.", "query picked": "requête choisie", "queries picked": "requêtes choisies", "Track them": "Les suivre", "Clear": "Effacer",
     "small ones hidden (under 3 clicks and 50 impressions).": "petites écartées (moins de 3 clics et 50 impressions).", "queries with impressions": "requêtes avec des impressions", "before": "avant",
-    "Google leaves out rare searches, so queries never add up to the total clicks.": "Google écarte les recherches rares : les requêtes n'additionnent donc jamais tous les clics.",
+    "Rare searches left out.": "Recherches rares exclues.",
     "Add your brand words": "Ajoutez vos mots de marque", "Brand searches": "Recherches de marque", "Non-brand": "Hors marque", "Brand": "Marque", "Brand words": "Mots de marque",
-    "Add your brand words to see this. Brand searches are clicked far more, so they'd make every other query look weak.": "Ajoutez vos mots de marque pour voir ceci. Les recherches de marque sont bien plus cliquées : elles feraient paraître faibles toutes les autres requêtes.",
-    "Not enough queries yet to know this site's usual click rate at each position.": "Pas encore assez de requêtes pour connaître le taux de clic habituel du site à chaque position.",
+    "Needs your brand words.": "Il faut vos mots de marque.",
+    "Not enough queries yet.": "Pas encore assez de requêtes.",
     "Contains": "Contient", "Doesn't contain": "Ne contient pas", "Exactly": "Exactement", "Matches regex": "Correspond à la regex",
-    "Clicks at least": "Clics au moins", "Impressions at least": "Impressions au moins", "Position from": "Position de", "Position to": "Position jusqu'à",
+    "Min clicks": "Clics minimum", "Min impressions": "Impressions minimum", "Position from": "Position de", "Position to": "Position jusqu'à",
     "Filter queries": "Filtrer les requêtes", "Filter pages": "Filtrer les pages", "How the text matches": "Comment le texte correspond", "More filters": "Plus de filtres", "Clear filters": "Effacer les filtres",
     "No queries match these filters.": "Aucune requête ne correspond à ces filtres.", "No pages match these filters.": "Aucune page ne correspond à ces filtres.",
-    "That pattern isn't valid.": "Cette expression n'est pas valide.", "Filters take numbers.": "Les filtres prennent des nombres.", "That filter is too long.": "Ce filtre est trop long.",
-    "Usual at this position": "Habituel à cette position", "Pages that share it": "Pages qui se la partagent", "pos.": "pos.",
-    "Pages that show for it": "Pages qui apparaissent pour elle", "Queries that bring it": "Requêtes qui l'amènent", "Shares of impressions. Search Console counts each page apart, so these don't add up to the query.": "Parts des impressions. La Search Console compte chaque page à part : elles ne s'additionnent pas pour donner la requête.",
-    "clicks": "clics", "impressions": "impressions", "Countries come from Google live, and it didn't answer.": "Les pays viennent de Google en direct, et il n'a pas répondu.",
-    "Clicks, day by day": "Clics, jour par jour", "Position, day by day (higher is better)": "Position, jour par jour (plus haut, c'est mieux)", "Track as a keyword": "Suivre comme mot-clé", "Create a task": "Créer une tâche",
-    "Searches that contain one of these count as brand searches. Case and accents don't matter.": "Les recherches qui contiennent l'un de ces mots comptent comme recherches de marque. Majuscules et accents n'ont pas d'importance.",
-    "All my sites": "Tous mes sites", "No brand words yet.": "Pas encore de mots de marque.", "Add a brand word": "Ajouter un mot de marque", "Such as your company or site name": "Par exemple le nom de votre société ou de votre site", "Add": "Ajouter",
+    "That pattern isn't valid.": "Cette expression n'est pas valide.", "Filters take numbers.": "Les filtres prennent des nombres.", "Filter too long.": "Filtre trop long.",
+    "Usual rate": "Taux habituel", "Pages sharing it": "Pages qui la partagent", "pos.": "pos.", "Pos.": "Pos.", "Share": "Part", "Country": "Pays", "Query": "Requête",
+    "Shares of impressions.": "Parts des impressions.",
+    "clicks": "clics", "impressions": "impressions", "Countries: Google didn't answer.": "Pays : Google n'a pas répondu.",
+    "Clicks, day by day": "Clics, jour par jour", "Position, day by day (higher is better)": "Position, jour par jour (plus haut, c'est mieux)", "Create task": "Créer une tâche",
+    "Searches containing any of these count as brand. Case and accents ignored.": "Les recherches contenant l'un de ces mots comptent comme marque. Majuscules et accents ignorés.",
+    "All my sites": "Tous mes sites", "No brand words yet.": "Pas encore de mots de marque.", "Add a brand word": "Ajouter un mot de marque", "Company or site name": "Nom de la société ou du site", "Add": "Ajouter",
     "Brand word added": "Mot de marque ajouté", "Brand word removed": "Mot de marque retiré",
-    "Add a note to the chart": "Ajouter une note au graphique", "Mark a change you made, such as new titles, so you can see what followed.": "Marquez un changement que vous avez fait, comme de nouveaux titres, pour voir ce qui a suivi.",
-    "Day": "Jour", "Note": "Note", "Save the note": "Enregistrer la note", "Note added": "Note ajoutée", "Note deleted": "Note supprimée", "Add a note": "Ajouter une note",
+    "Mark a change, like new titles, to see what followed.": "Marquez un changement, comme de nouveaux titres, pour voir la suite.",
+    "Day": "Jour", "Note": "Note", "Save note": "Enregistrer la note", "Note added": "Note ajoutée", "Note deleted": "Note supprimée", "Add a note": "Ajouter une note",
     "Saved here": "Enregistré ici", "Last 28 days, checked": "28 derniers jours, vérifiés", "Clicks / impressions.": "Clics / impressions.", "Days": "Jours",
-    "Some days changed at Google after they were saved. Reading them again fixes it.": "Certains jours ont changé chez Google après leur enregistrement. Les relire corrige cela.",
-    "Every day matches. Google adds up some tables over a range differently from its days, which a new pull can't change.": "Chaque jour correspond. Google additionne certains tableaux sur une période autrement que jour par jour, ce qu'une nouvelle lecture ne peut pas changer.",
-    "Read those days again": "Relire ces jours", "Includes days not final yet": "Inclut des jours pas encore définitifs", "These are the last saved numbers.": "Voici les derniers chiffres enregistrés.", "Open the Google connection": "Ouvrir la connexion Google", "From": "Du", "To": "Au", "Period": "Période", "Compare with": "Comparer avec", "Reading…": "Lecture…",
+    "Google changed some days after saving. Reading them again fixes it.": "Google a modifié certains jours après leur enregistrement. Les relire corrige cela.",
+    "Every day matches. Google's range totals differ from its days; a new pull can't change that.": "Chaque jour correspond. Les totaux de Google sur une période diffèrent de ses jours ; une nouvelle lecture n'y change rien.",
+    "Read those days again": "Relire ces jours", "Includes not-final days": "Inclut des jours provisoires", "These are the last saved numbers.": "Voici les derniers chiffres enregistrés.", "Open the Google connection": "Ouvrir la connexion Google", "From": "Du", "To": "Au", "Period": "Période", "Compare with": "Comparer avec", "Reading…": "Lecture…",
     "Hour by hour": "Heure par heure", "Week by week": "Semaine par semaine", "Day by day": "Jour par jour",
-    "Tables below use whole days, so they show the last 2 days.": "Les tableaux ci-dessous utilisent des journées entières : ils montrent les 2 derniers jours.",
-    "Search Console data is up to date.": "Les données de la Search Console sont à jour.", "Open Keywords to add it.": "Ouvrez Mots-clés pour l'ajouter.",
-    "It matches Search Console.": "C'est identique à la Search Console.", "It differs from Search Console. Press the warning to see where.": "Cela diffère de la Search Console. Appuyez sur l'alerte pour voir où.",
-    "Reading those days again. It updates here when done.": "Relecture de ces jours. La page se met à jour une fois terminé.",
-    "That brand word is already there.": "Ce mot de marque est déjà là.", "That note is already on that day.": "Cette note existe déjà ce jour-là.", "Type what the rule should match.": "Indiquez ce que la règle doit reconnaître.",
+    "Tables below show the last 2 whole days.": "Les tableaux ci-dessous montrent les 2 derniers jours entiers.",
+    "Search Console data updated.": "Données Search Console à jour.", "Add it in Keywords.": "Ajoutez-le dans Mots-clés.",
+    "It matches Search Console.": "C'est identique à la Search Console.", "It differs from Search Console. See the warning.": "Cela diffère de la Search Console. Voir l'alerte.",
+    "Re-reading those days. Updates here when done.": "Relecture de ces jours. Mise à jour ici une fois terminé.",
+    "Already a brand word.": "Déjà un mot de marque.", "That note is already on that day.": "Cette note existe déjà ce jour-là.", "Type what the rule should match.": "Indiquez ce que la règle doit reconnaître.",
     "Type a short note, up to 300 characters.": "Saisissez une note courte, 300 caractères au plus.", "Pick one site for a note.": "Choisissez un site pour la note.",
   };
   Object.keys(words).forEach((w) => { if (window.FR[w] === undefined) window.FR[w] = words[w]; });

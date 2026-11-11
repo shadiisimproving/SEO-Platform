@@ -36,7 +36,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
 
   await page.getByRole("button", { name: "A competitor" }).click(); await page.waitForTimeout(800);
   await page.fill("#nb-pick", `nobody-${RUN}.example`); await page.keyboard.press("Enter"); await page.waitForTimeout(500);
-  check("an unknown competitor is refused with a reason", /isn't one of your competitors/.test(await page.textContent("#nb-pick-target")));
+  check("an unknown competitor is refused with a reason", /No such competitor\. Pick one/.test(await page.textContent("#nb-pick-target")));
   await page.screenshot({ path: OUT + "1-unknown-competitor.png" });
 
   await page.getByRole("button", { name: "All my sites" }).click(); await page.waitForTimeout(600);
@@ -83,7 +83,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   const taskTitles = await page.$$eval("#nb-pick-list option", (els) => els.map((o) => o.value));
   check("the task list is filled", taskTitles.length > 0);
   await page.fill("#nb-pick", `No such task ${RUN}`); await page.keyboard.press("Enter"); await page.waitForTimeout(400);
-  check("an unknown task is refused", /isn't one of your tasks/.test(await page.textContent("#nb-pick-target")));
+  check("an unknown task is refused", /No such task\. Pick one/.test(await page.textContent("#nb-pick-target")));
   if (taskTitles[0]) {
     await page.fill("#nb-pick", taskTitles[0]); await page.keyboard.press("Enter"); await page.waitForTimeout(500);
     await page.keyboard.type(`On the task ${RUN}`); await page.waitForTimeout(1500);

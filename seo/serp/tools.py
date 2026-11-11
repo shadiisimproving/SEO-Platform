@@ -658,7 +658,7 @@ class BrowserBackup:
     free_monthly = None
     manual_only = True  # only when ticked in Refresh: never down the automatic order, and never on an upload
     gap_seconds = 20.0  # one keyword at a time, spaced out
-    MISSING = "The browser backup needs Playwright, which isn't installed. Install it with: .venv/bin/pip install playwright"
+    MISSING = "The browser backup needs Playwright. Install it: .venv/bin/pip install playwright"
     CAPTCHA = "A captcha appeared and didn't clear, so the browser backup stopped. The app doesn't try to get past it."
 
     def __init__(self, country: str, open_page=None, sleep=time.sleep, clear_wait: float = 15.0):

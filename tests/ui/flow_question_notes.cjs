@@ -51,8 +51,8 @@ function reshape(d, host) {
   check("a row shows their questions and my page's", /Their questions/.test(first) && /How long does a visa take/.test(first) && /My guide to visa/.test(first) && /How much is a visa/.test(first), first.slice(0, 200));
   check("the row says how the pages were matched", /Paired/.test(first));
   check("a guess says it's a guess", /Closest topic/.test(await rows.nth(1).innerText()));
-  check("my page with no questions says so", /No questions in its headings/.test(await rows.nth(1).innerText()));
-  check("no page of mine says so", /No page of yours on this yet/.test(await rows.nth(2).innerText()));
+  check("my page with no questions says so", /No questions\./.test(await rows.nth(1).innerText()));
+  check("no page of mine says so", /None yet\./.test(await rows.nth(2).innerText()));
   check("no bar before anything is ticked", (await page.locator("#pt-q-selbar .selbar").count()) === 0);
   await card("Questions they answer").screenshot({ path: OUT + "1-rows.png" });
 
@@ -96,7 +96,7 @@ function reshape(d, host) {
   const age = card("How old their site is"), text = await age.innerText();
   check("the age card has four figures", (await age.locator(".pt-fig").count()) === 4, text.slice(0, 120));
   check("a column for each year", (await age.locator(".pt-years li").count()) === 7);
-  check("the long sentences are gone", !/most of them first|doesn't save every page|renews by|From the Wayback/.test(text), text);
+  check("the long sentences are gone", !/most of them first|misses pages|renews by|From the Wayback/.test(text), text);
   check("nothing folded", (await age.locator("details").count()) === 0);
   await age.screenshot({ path: OUT + "6-age.png" });
 

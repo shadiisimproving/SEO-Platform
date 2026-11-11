@@ -44,7 +44,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await page.click("#nb-fab");
   await page.waitForSelector("#panel.nb-panel-wrap");
   const onBacklinks = await choices();
-  check("the panel offers this screen first, then the website, then All notes", /This screen: Backlinks\|true/.test(onBacklinks[0]) && /All notes/.test(onBacklinks.at(-1)), onBacklinks.join(" / "));
+  check("the panel offers this screen first, then the website, then All notes", /Backlinks screen\|true/.test(onBacklinks[0]) && /All notes/.test(onBacklinks.at(-1)), onBacklinks.join(" / "));
   await writeNote(`Ask the mediator about prices ${RUN}`);
   await page.screenshot({ path: OUT + "2-backlinks-note.png" });
   check("the note is saved on this screen", (await rows()).some((v) => v.includes(RUN)));

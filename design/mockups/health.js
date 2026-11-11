@@ -12,15 +12,15 @@
 
   // The same plain words as seo/health/audit.py, so an alert can say them without loading its whole test.
   const CHECK_WORDS = {
-    broken_pages: "Pages that answer with an error", broken_links: "Links to pages that don't exist", server_errors: "Pages the server failed to answer",
-    noindex: "Pages hidden from search engines", canonical_elsewhere: "Pages that point search engines to another page", no_title: "Pages with no title",
-    duplicate_title: "Pages sharing the same title", no_h1: "Pages with no main heading (H1)", many_h1: "Pages with more than one main heading",
-    no_meta: "Pages with no meta description", duplicate_meta: "Pages sharing the same meta description", images_no_alt: "Pages with images missing alt text",
-    almost_no_text: "Pages with almost no readable text", redirect_chains: "Links that go through more than 2 redirects", slow_pages: "Pages slower than 5 seconds",
+    broken_pages: "Pages that answer with an error", broken_links: "Broken links", server_errors: "Server errors",
+    noindex: "Hidden from search engines", canonical_elsewhere: "Pages that point search engines to another page", no_title: "No title",
+    duplicate_title: "Duplicate titles", no_h1: "No main heading (H1)", many_h1: "Several main headings",
+    no_meta: "No meta description", duplicate_meta: "Duplicate meta descriptions", images_no_alt: "Images missing alt text",
+    almost_no_text: "Almost no text", redirect_chains: "More than 2 redirects", slow_pages: "Slower than 5 seconds",
   };
   const SITE_WORDS = {
-    start_page_down: "The start page didn't load", start_page_noindex: "The start page is hidden from search engines", ssl_expired: "The security certificate has expired",
-    ssl_expiring: "The security certificate expires within 14 days", ssl_error: "The security certificate couldn't be verified",
+    start_page_down: "Start page didn't load", start_page_noindex: "Start page hidden from search engines", ssl_expired: "Certificate expired",
+    ssl_expiring: "Certificate expires within 14 days", ssl_error: "Certificate couldn't be verified",
   };
   const SEVERITY = { crit: "Critical", warn: "Warning", info: "Info" };
   const UPTIME_KINDS = ["uptime_down", "ssl_expiry", "domain_expiry"];
@@ -61,7 +61,7 @@
 
   /* A short plain sentence for Today, in both languages. */
   function shortDetail(a) {
-    const d = a.detail || {}, fr = window.FR, name = "Monthly health test.", nameFr = fr[name];
+    const d = a.detail || {}, fr = window.FR, name = "Health test.", nameFr = fr[name];
     if (a.kind === "uptime_down") return d.state === "back" ? ["Uptime. It's back up, but check what happened.", "Disponibilité. Il répond de nouveau, mais vérifiez ce qui s'est passé."] : ["Uptime. Visitors can't reach this site right now.", "Disponibilité. Les visiteurs ne peuvent pas accéder à ce site pour l'instant."];
     if (a.kind === "ssl_expiry") return ["Uptime. Browsers warn visitors once a certificate runs out. Renew it.", "Disponibilité. Les navigateurs avertissent les visiteurs quand un certificat expire. Renouvelez-le."];
     if (a.kind === "domain_expiry") return ["Uptime. The site stops working if the domain name runs out. Renew it.", "Disponibilité. Le site cesse de fonctionner si le nom de domaine expire. Renouvelez-le."];
@@ -242,7 +242,7 @@
       return false;
     }, {
       every: POLL_MS, grow: 1.15, slowest: 30000, most: 6 * 3600000,
-      onEnd: (why) => { if (why === "errors" || why === "gone") UI.toast(UI.t("Lost touch with the health test. Reload the page to see where it is."), { kind: "warn" }); },
+      onEnd: (why) => { if (why === "errors" || why === "gone") UI.toast(UI.t("Lost track of the health test. Reload the page."), { kind: "warn" }); },
     });
   }
 
@@ -259,7 +259,7 @@
         <button class="btn btn-small" data-ht-seen="${a.id}">${icon("check")}${t("Mark as seen")}</button></div>
       ${worse ? `<h3 class="ht-sub">${t("What got worse")}</h3><ul class="ht-worse">${worse}</ul>` : ""}
       ${whole ? `<h3 class="ht-sub">${t("What's wrong")}</h3><ul class="ht-worse">${whole}</ul>` : ""}
-      ${a.kind === "health_failed" ? `<p class="small sec ht-alert-text">${t("The test couldn't finish. Try it again with Run now.")}</p>` : ""}
+      ${a.kind === "health_failed" ? `<p class="small sec ht-alert-text">${t("The test couldn't finish. Press Run now.")}</p>` : ""}
     </section>`;
   }
 
@@ -269,7 +269,7 @@
     // The server picks the test to compare with, the same one its alerts use, so the card and the alert never disagree.
     if (d.previous_score === null || d.previous_score === undefined) {
       const earlier = ht.audits.some((x) => x.id < a.id && x.status === "complete" && x.score !== null);
-      return earlier ? { kind: "different", why: "The last test read far fewer or far more pages, so the two can't be compared." } : { kind: "first" };
+      return earlier ? { kind: "different", why: "Not compared" } : { kind: "first" };
     }
     return { kind: "change", change: a.score - d.previous_score, prev: d.previous_audit };
   }
@@ -279,23 +279,23 @@
     const d = ht.open, a = d?.audit;
     const graded = ht.audits.filter((x) => x.status === "complete" && x.score !== null).map((x) => x.score).reverse();
     const trend = graded.length >= 2
-      ? `<div class="ht-trend">${UI.spark(graded, { w: 320, h: 56, area: true })}<span class="sr">${t("Score over the last tests")}: ${graded.join(", ")}</span><p class="small muted">${num(graded.length)} ${t("tests, dates in the table below")}</p></div>`
-      : `<p class="small muted ht-trend">${t("The trend line starts after 2 full tests.")}</p>`;
+      ? `<div class="ht-trend">${UI.spark(graded, { w: 320, h: 56, area: true })}<span class="sr">${t("Score over the last tests")}: ${graded.join(", ")}</span><p class="small muted">${num(graded.length)} ${t("tests, dates below")}</p></div>`
+      : `<p class="small muted ht-trend">${t("Trend shows after 2 full tests.")}</p>`;
     if (!a || a.score === null || a.score === undefined) {
-      const words = ht.activeId && !a ? "The first test is running." : a?.status === "failed" ? "No score: this test failed." : "No score yet. Press Run now for the first test.";
+      const words = ht.activeId && !a ? "First test running." : a?.status === "failed" ? "No score: this test failed." : "No score yet. Press Run now.";
       return `<section class="card ht-score"><div class="ht-score-head"><h2 class="ht-sub">${t("Health score")}</h2></div><p class="sec ht-none-yet">${t(words)}</p></section>`;
     }
     const cmp = comparison(d);
     let change = "";
     if (cmp.kind === "change") {
       const word = cmp.change === 0 ? `<span class="sec d-pill">${t("No change")}</span>` : UI.delta(cmp.change);
-      change = `${word}<span class="small muted">${t("since the last test")}${cmp.prev ? `, ${esc(UI.fmtDateOnly(cmp.prev.created_at))}` : ""}</span>`;
-    } else if (cmp.kind === "first") change = `<span class="small muted">${t("First test, so nothing to compare with yet.")}</span>`;
-    else if (cmp.kind === "different") change = `<span class="small muted">${t(cmp.why)}</span>`;
-    else change = `${status("warn", t("Partial test"))}<span class="small muted">${t("It only covers what it read, so it isn't compared.")}</span>`;
+      change = `${word}<span class="small muted">${t("since last test")}${cmp.prev ? `, ${esc(UI.fmtDateOnly(cmp.prev.created_at))}` : ""}</span>`;
+    } else if (cmp.kind === "first") change = `<span class="small muted">${t("First test: nothing to compare yet.")}</span>`;
+    else if (cmp.kind === "different") change = `<span class="small muted">${t(cmp.why)}${UI.tip("The last test read far fewer or far more pages, so the two can't be compared.")}</span>`;
+    else change = `${status("warn", t("Partial test"))}<span class="small muted">${t("Not compared")}${UI.tip("It only covers what it read, so it isn't compared.")}</span>`;
     return `<section class="card ht-score" aria-label="${t("Health score")}">
       <div class="ht-score-head"><h2 class="ht-sub">${t("Health score")}</h2><span class="small muted">${esc(UI.fmtDateOnly(a.finished_at || a.created_at))}</span></div>
-      <div class="ht-fig"><span class="ht-num tabular" id="ht-score">${num(a.score)}</span><span class="sec">${t("out of 100")}</span></div>
+      <div class="ht-fig"><span class="ht-num tabular" id="ht-score">${num(a.score)}</span><span class="sec">${t("/100")}</span></div>
       <p class="small muted">${t("Better is higher.")}</p>
       <div class="ht-change">${change}</div>
       ${trend}
@@ -306,11 +306,11 @@
     const { t, esc, icon } = UI;
     const busy = Boolean(ht.activeId);
     const last = s.last_tested_at ? `${t("Last test")} ${esc(COMP.ago(s.last_tested_at))}.` : t("No test yet.");
-    const next = !s.monthly ? "" : s.next_test_at ? `${t("Next test")} ${esc(fmtDayMonth(s.next_test_at))}.` : t("First test at the next monthly run.");
+    const next = !s.monthly ? "" : s.next_test_at ? `${t("Next test")} ${esc(fmtDayMonth(s.next_test_at))}.` : t("First test: next monthly run.");
     return `<section class="card ht-plan">
-      <p id="ht-line">${t(s.monthly ? "Runs by itself once a month." : "Runs only when you press Run now.")} ${last} ${next}</p>
-      <p class="note ht-mac">${icon("info")}<span>${t("The monthly test runs on the hosted version. Here, press Run now.")}</span></p>
-      <label class="opt ht-monthly"><input type="checkbox" class="chk" style="margin:0" id="ht-monthly" ${s.monthly ? "checked" : ""}>${t("Test this site once a month")}</label>
+      <p id="ht-line">${t(s.monthly ? "Runs every month." : "Runs only by hand.")} ${last} ${next}</p>
+      <p class="note ht-mac">${icon("info")}<span>${t("On this Mac, press Run now.")}${UI.tip("The monthly test only runs on the hosted version.")}</span></p>
+      <label class="opt ht-monthly"><input type="checkbox" class="chk" style="margin:0" id="ht-monthly" ${s.monthly ? "checked" : ""}>${t("Test monthly")}</label>
       <div class="lc-form ht-run-row">
         <button class="btn btn-main" id="ht-run" ${busy ? "disabled" : ""}>${icon("refresh-cw")}${t("Run now")}</button>
       </div>
@@ -333,8 +333,8 @@
     if (!a || !text) return;
     const { t, num, readingWords } = UI;
     const paused = Boolean(a.paused_until), read = a.pages_read || 0, left = a.pages_not_read || 0;
-    text.textContent = ht.stopping ? t("Stopping after this request…") : paused ? t(UI.BUDGET_PAUSE_WORDS) : a.status === "queued" ? t("Waiting for the worker to start…") : readingWords(read, left);
-    UI.$("#ht-progress-sub").textContent = paused ? readingWords(read, left) : t("You can leave this page: it keeps going.");
+    text.textContent = ht.stopping ? t("Stopping after this request…") : paused ? t(UI.BUDGET_PAUSE_WORDS) : a.status === "queued" ? t("Waiting to start…") : readingWords(read, left);
+    UI.$("#ht-progress-sub").textContent = paused ? readingWords(read, left) : t("Keeps going if you leave.");
     UI.$("#ht-bar").style.setProperty("--p", read / Math.max(1, read + left));
     UI.$("#ht-spin svg")?.classList.toggle("spin", !paused);
     const historyPages = UI.$("[data-ht-live-pages]"), historyWord = UI.$("[data-ht-live-word]");
@@ -346,7 +346,7 @@
     const { t, num } = UI;
     const out = [];
     if (a.status === "failed") out.push(["crit", `${t("This test failed.")}${a.error ? ` ${a.error}` : ""}`]);
-    if (a.stop_reason === "user") out.push(["warn", `${t("Stopped by you after")} ${num(a.pages_read)} ${t(a.pages_read === 1 ? "page" : "pages")}. ${t("This test is not complete.")}`]);
+    if (a.stop_reason === "user") out.push(["warn", `${t("Stopped by you after")} ${num(a.pages_read)} ${t(a.pages_read === 1 ? "page" : "pages")}. ${t("Test incomplete.")}`]);
     if (a.skipped_robots) out.push(["info", `${t("skipped by robots.txt")}: ${num(a.skipped_robots)}`]);
     return out;
   }
@@ -356,9 +356,11 @@
     const { t, esc, status, num } = UI;
     const list = d.site_problems || [];
     return `<section class="card ht-whole">
-      <div class="card-head"><h2>${t("Whole-site problems")}</h2><span class="end">${list.length ? status("crit", `${num(list.length)} ${t("found")}`) : status("good", t("None found"))}</span></div>
-      ${list.length ? `<ul class="rows">${list.map((p) => `<li>${status("crit", t("Critical"))}<div class="what"><div class="t">${esc(t(p.meaning))}</div>${FIX_WORDS[p.code] ? `<div class="d">${t(FIX_WORDS[p.code])}</div>` : ""}</div><div class="acts">${UI.taskButton(healthFind(p.code, p.meaning, [d.audit?.created_at ? `${t("Test of")} ${UI.fmtDateOnly(d.audit.created_at)}` : ""]))}</div></li>`).join("")}</ul>` : ""}
-      <p class="help ht-foot">${t(d.audit.status === "stopped" ? "The start page is checked. A test that was stopped doesn't get as far as the security certificate. Uptime and domain expiry aren't part of this test." : "The start page and the security certificate are checked. Uptime and domain expiry aren't part of this test.")}</p>
+      <div class="card-head"><h2>${t("Whole-site problems")}</h2><span class="end">${list.length ? status("crit", `${num(list.length)} ${critWord(list.length)}`) : status("good", t("None found"))}</span></div>
+      ${list.length ? `<ul class="rows">${list.map((p) => `<li><div class="what"><div class="t">${esc(t(p.meaning))}</div>${FIX_WORDS[p.code] ? `<div class="d">${t(FIX_WORDS[p.code])}${UI.tip(FIX_TIPS[p.code])}</div>` : ""}</div><div class="acts">${UI.taskButton(healthFind(p.code, p.meaning, [d.audit?.created_at ? `${t("Test of")} ${UI.fmtDateOnly(d.audit.created_at)}` : ""]))}</div></li>`).join("")}</ul>` : ""}
+      <p class="help ht-foot">${d.audit.status === "stopped"
+        ? `${t("Start page checked. Stopped before the certificate.")}${UI.tip("A stopped test doesn't get as far as the security certificate. Uptime and domain expiry aren't part of this test.")}`
+        : `${t("Start page and certificate checked.")}${UI.tip("Uptime and domain expiry aren't part of this test. See the Uptime tab.")}`}</p>
     </section>`;
   }
 
@@ -374,28 +376,36 @@
 
   // What to do about each finding, in a line. Whoever gets the task starts from here.
   const FIX_WORDS = {
-    broken_pages: "Restore these pages, or redirect them to the closest page that exists.",
-    broken_links: "Change each link to a page that exists, or remove it.",
-    server_errors: "Ask whoever runs the server to check its error log. These pages can vanish from search while it lasts.",
-    noindex: "If these pages should be found, remove the noindex tag.",
-    canonical_elsewhere: "Check that each page should point to the other one. If not, point it to itself.",
+    broken_pages: "Restore them, or redirect to the closest page.",
+    broken_links: "Fix or remove each link.",
+    server_errors: "Have the server error log checked.",
+    noindex: "Remove noindex if they should be found.",
+    canonical_elsewhere: "Unless intended, point each page to itself.",
     no_title: "Write a title for each page.",
-    duplicate_title: "Give each page a title of its own.",
+    duplicate_title: "Give each page its own title.",
     no_h1: "Add one main heading to each page.",
-    many_h1: "Keep one main heading on each page, and turn the others into subheadings.",
+    many_h1: "Keep one main heading; make the rest subheadings.",
     no_meta: "Write a meta description for each page.",
-    duplicate_meta: "Give each page a meta description of its own.",
+    duplicate_meta: "Give each page its own meta description.",
     images_no_alt: "Describe each image in its alt text.",
-    almost_no_text: "Add useful text, or stop these pages being indexed.",
+    almost_no_text: "Add useful text, or noindex these pages.",
     redirect_chains: "Link straight to the final address.",
-    slow_pages: "Check image sizes and scripts first, then the hosting.",
-    start_page_down: "Check the hosting first: nothing else on the site can be read while this lasts.",
-    start_page_noindex: "Remove the noindex tag from the start page, unless the whole site should stay hidden.",
-    robots_down: "Ask whoever runs the server to fix robots.txt. Search engines stay away until it answers.",
+    slow_pages: "Check images and scripts, then hosting.",
+    start_page_down: "Check the hosting first.",
+    start_page_noindex: "Remove its noindex, unless the site should stay hidden.",
+    robots_down: "Have robots.txt fixed.",
     ssl_expired: "Renew the certificate now: browsers are warning visitors away.",
-    ssl_expiring: "Renew the certificate, or check that automatic renewal is on.",
-    ssl_error: "Ask whoever runs the hosting to check the certificate.",
+    ssl_expiring: "Renew it, or check auto-renewal is on.",
+    ssl_error: "Have the host check the certificate.",
   };
+  // The who and the why behind a fix, one hover away (UI.tip).
+  const FIX_TIPS = {
+    server_errors: "Ask whoever runs the server. These pages can vanish from search while the errors last.",
+    start_page_down: "Nothing else on the site can be read while the start page is down.",
+    robots_down: "Ask whoever runs the server. Search engines stay away until robots.txt answers.",
+  };
+  // Every whole-site problem is critical, so the card head says it once with the count: "2 critical", "2 critiques".
+  const critWord = (n) => (UI.state.lang === "fr" ? (n === 1 ? "critique" : "critiques") : "critical");
   const hostShown = () => ht.sites.find((s) => sameId(s.id, ht.siteId))?.host;
   function healthFind(code, meaning, facts) {
     const { t } = UI, host = hostShown();
@@ -406,16 +416,16 @@
   function checkRow(c, compared) {
     const { t, esc, icon, num, status } = UI;
     const sev = c.severity === "crit" ? "crit" : c.severity === "warn" ? "warn" : "info";
-    const pages = (c.pages || []).map((p) => `<li>${COMP.link(p)}</li>`).join("");
+    const pages = (c.pages || []).map((p) => `<li>${COMP.link(p, pathOnly(p))}</li>`).join("");
     const more = c.count - (c.pages || []).length;
     return `<details class="ht-check" data-ht-check="${esc(c.code)}" ${ht.openChecks.has(c.code) ? "open" : ""}>
       <summary><span class="ht-check-what">${icon("chevron-right", "ht-chev")}<span>${esc(t(c.meaning))}</span></span>
         <span class="ht-check-sev">${status(sev, t(SEVERITY[sev]))}</span>
-        <span class="ht-check-count tabular">${num(c.count)} ${t(c.count === 1 ? "page" : "pages")}</span>
+        <span class="ht-check-count tabular" aria-label="${num(c.count)} ${t(c.count === 1 ? "page" : "pages")}">${num(c.count)}<span class="ht-count-word" aria-hidden="true"> ${t(c.count === 1 ? "page" : "pages")}</span></span>
         <span class="ht-check-change">${changeCell(c, compared)}</span></summary>
       <ul class="ht-pages">${pages}${more > 0 ? `<li class="small muted">${t("and")} ${num(more)} ${t("more")}</li>` : ""}</ul>
       <div class="ht-check-act">
-        ${FIX_WORDS[c.code] ? `<p class="small sec">${t(FIX_WORDS[c.code])}</p>` : ""}
+        ${FIX_WORDS[c.code] ? `<p class="small sec">${t(FIX_WORDS[c.code])}${UI.tip(FIX_TIPS[c.code])}</p>` : ""}
         ${UI.taskButton(healthFind(c.code, c.meaning, [`${num(c.count)} ${t(c.count === 1 ? "page" : "pages")}`, ...(c.pages || []).slice(0, 10), more > 0 ? `${t("and")} ${num(more)} ${t("more")}` : "", ht.open?.audit?.created_at ? `${t("Test of")} ${UI.fmtDateOnly(ht.open.audit.created_at)}` : ""]))}
       </div>
     </details>`;
@@ -428,8 +438,8 @@
     const cleanRow = (c) => { const sev = c.severity === "crit" ? "crit" : c.severity === "warn" ? "warn" : "info"; return `<li><span class="ht-clean-what">${esc(t(c.meaning))}</span><span class="ht-check-sev">${status(sev, t(SEVERITY[sev]))}</span>${compared && c.previous ? `<span class="ht-check-change">${changeCell(c, compared)}</span>` : ""}</li>`; };
     return `<section class="card ht-checks">
       <div class="card-head"><h2>${t("Checks")}</h2><span class="end small muted">${num(found.length)} ${t("with problems")}</span></div>
-      ${found.length ? `<div class="ht-check-heads small muted" aria-hidden="true"><span>${t("What it looks at")}</span><span>${t("Severity")}</span><span>${t("Pages affected")}</span><span>${t("Since last test")}</span></div>${found.map((c) => checkRow(c, compared)).join("")}` : `<p class="lc-none small sec">${t("This test found no problems on these pages.")}</p>`}
-      ${clean.length ? `<details class="ht-clean" data-ht-check="clean" ${ht.openChecks.has("clean") ? "open" : ""}><summary>${icon("chevron-right", "ht-chev")}${num(clean.length)} ${t(clean.length === 1 ? "check with nothing found" : "checks with nothing found")}</summary><ul class="ht-clean-list">${clean.map(cleanRow).join("")}</ul></details>` : ""}
+      ${found.length ? `<div class="ht-check-heads small muted" aria-hidden="true"><span>${t("Problem")}</span><span>${t("Severity")}</span><span>${t("Pages")}</span><span>${t("Since last test")}</span></div>${found.map((c) => checkRow(c, compared)).join("")}` : `<p class="lc-none small sec">${t("No problems found.")}</p>`}
+      ${clean.length ? `<details class="ht-clean" data-ht-check="clean" ${ht.openChecks.has("clean") ? "open" : ""}><summary>${icon("chevron-right", "ht-chev")}${num(clean.length)} ${t(clean.length === 1 ? "check passed" : "checks passed")}</summary><ul class="ht-clean-list">${clean.map(cleanRow).join("")}</ul></details>` : ""}
     </section>`;
   }
 
@@ -460,15 +470,31 @@
     const { t, num, esc } = UI, ix = ht.indexing;
     if (!ix) return UI.skeleton ? UI.skeleton("rows", { rows: 3 }) : `<p class="lc-none small muted">${t("Loading…")}</p>`;
     if (ix.failed) return `<p class="lc-none small sec">${t("That didn't load")}</p>`;
-    if (!ix.on) return `<p class="lc-none small sec">${t("Connect Search Console for this site and Google is asked, page by page, whether each one is indexed.")} <a href="#settings">${t("Data sources")}</a></p>`;
-    if (!ix.pages) return `<p class="lc-none small sec">${t("No page of this site has been read yet. The daily read fills this in.")}</p>`;
-    const parts = [ix.checked ? `${num(ix.indexed)} ${t("of")} ${num(ix.checked)} ${t(ix.checked === 1 ? "page checked is on Google." : "pages checked are on Google.")}` : t("No page has been checked yet.")];
-    if (ix.not_indexed_count) parts.push(`${num(ix.not_indexed_count)} ${t(ix.not_indexed_count === 1 ? "isn't, and Google says why below." : "aren't, and Google says why below.")}`);
+    if (!ix.on) return `<p class="lc-none small sec">${t("Connect Search Console to see this.")}${UI.tip("Google is then asked, page by page, whether each page of this site is indexed.")} <a href="#settings">${t("Data sources")}</a></p>`;
+    if (!ix.pages) return `<p class="lc-none small sec">${t("No pages read yet.")}${UI.tip("The daily read fills this in.")}</p>`;
+    const parts = [ix.checked ? `${num(ix.indexed)} ${t("of")} ${num(ix.checked)} ${t(ix.checked === 1 ? "page checked is on Google." : "pages checked are on Google.")}` : t("No page checked yet.")];
+    if (ix.not_indexed_count) parts.push(`${num(ix.not_indexed_count)} ${t(ix.not_indexed_count === 1 ? "isn't (why below)." : "aren't (why below).")}`);
     if (ix.unchecked) parts.push(`${num(ix.unchecked)} ${t("still to check")} (${t("about")} ${num(ix.days_left)} ${t(ix.days_left === 1 ? "day" : "days")}, ${num(ix.per_day)} ${t("a day")}).`);
-    const rows = ix.not_indexed || [], found = rows.filter((a) => TP.matches(PAGES.index, pathOnly(a.url), a.coverage, a.google_canonical)), page = TP.view(PAGES.index, found);
+    const rows = ix.not_indexed || [], found = rows.filter((a) => TP.matches(PAGES.index, pathOnly(a.url), a.coverage, a.google_canonical));
+    /* Google's same reason on many pages is said once, as a heading with its count, biggest group first. Its words stay as
+       Google wrote them. The rows keep only what differs: the page, the page Google prefers, the day it was asked. */
+    const why = (a) => a.coverage || t(a.state === "unknown" ? "Unknown to Google" : "Not indexed");
+    const counts = new Map();
+    found.forEach((a) => counts.set(why(a), (counts.get(why(a)) || 0) + 1));
+    const rank = [...counts.keys()].sort((x, y) => counts.get(y) - counts.get(x));
+    const page = TP.view(PAGES.index, [...found].sort((x, y) => rank.indexOf(why(x)) - rank.indexOf(why(y))));
     const search = wantsSearch(PAGES.index, rows.length) ? `<div class="chips ht-find">${TP.search(PAGES.index, t("Search pages or what Google says"))}</div>` : "";
-    const table = !rows.length ? "" : !found.length ? `${search}<p class="lc-none small sec">${t("No page matches this search.")}</p>` : `${search}<div class="ht-list"><div class="table-wrap"><table class="data lc-table" id="ht-not-indexed"><thead><tr><th scope="col">${t("Page")}</th><th scope="col">${t("Google says")}</th><th scope="col">${t("Asked on")}</th></tr></thead><tbody>
-      ${page.rows.map((a) => `<tr style="cursor:default"><td class="head-cell">${COMP.link(a.url, pathOnly(a.url))}</td><td data-label="${t("Google says")}" dir="auto">${esc(a.coverage || t(a.state === "unknown" ? "Unknown to Google" : "Not indexed"))}${a.google_canonical ? `<span class="second">${t("Google prefers")} ${COMP.link(a.google_canonical, pathOnly(a.google_canonical))}</span>` : ""}</td><td data-label="${t("Asked on")}" class="nowrap small muted">${esc(a.checked || "—")}</td></tr>`).join("")}</tbody></table></div>
+    const drawn = page.rows.map((a) => `<tr style="cursor:default"><td class="head-cell">${COMP.link(a.url, pathOnly(a.url))}${a.google_canonical ? `<span class="second">${t("Google prefers")} ${COMP.link(a.google_canonical, pathOnly(a.google_canonical))}</span>` : ""}</td><td data-label="${t("Asked on")}" class="nowrap small muted">${esc(a.checked || "—")}</td></tr>`);
+    // A heading wherever the reason changes: once per group here, or on each row while a column sort mixes the groups.
+    let body = "", last = null;
+    page.rows.forEach((a, i) => {
+      const w = why(a), n = counts.get(w) || 0;
+      if (w !== last) body += `<tr class="ht-group" style="cursor:default"><th scope="colgroup" colspan="2" dir="auto">${esc(w)}${n > 1 ? ` <span class="muted tabular">×${num(n)}</span>` : ""}</th></tr>`;
+      last = w;
+      body += drawn[i];
+    });
+    const table = !rows.length ? "" : !found.length ? `${search}<p class="lc-none small sec">${t("No page matches.")}</p>` : `${search}<div class="ht-list"><div class="table-wrap"><table class="data lc-table" id="ht-not-indexed"><thead><tr><th scope="col">${t("Page")}</th><th scope="col">${t("Asked on")}</th></tr></thead><tbody>
+      ${body}</tbody></table></div>
       ${TP.footer(PAGES.index, page, { noun: t("pages") })}</div>`;
     return `<p class="ht-answer lc-none">${parts.join(" ")}</p>${table}`;
   }
@@ -481,27 +507,27 @@
     const { t, num } = UI, r = d.internal_links;
     if (!r) return "";
     const parts = [];
-    if (r.sitemap_read && r.sitemap_pages) parts.push(r.orphan_count ? `${num(r.orphan_count)} ${t(r.orphan_count === 1 ? "page in your sitemap has no link from another page of the site." : "pages in your sitemap have no link from another page of the site.")}` : t("Every page in your sitemap has a link from another page."));
-    else parts.push(t("No sitemap was found, so pages linked from nowhere can't be listed."));
-    if (r.has_search_data) parts.push(r.few_links_count ? `${num(r.few_links_count)} ${t(r.few_links_count === 1 ? "page that gets visits from Google has" : "pages that get visits from Google have")} ${num(r.few_links_line)} ${t("links in or fewer: link to them from related pages.")}` : t("Your pages that get visits from Google all have links in."));
+    if (r.sitemap_read && r.sitemap_pages) parts.push(r.orphan_count ? `${num(r.orphan_count)} ${t(r.orphan_count === 1 ? "sitemap page has no link from another page." : "sitemap pages have no link from another page.")}` : t("Every sitemap page is linked from another page."));
+    else parts.push(`${t("No sitemap found.")}${UI.tip("So pages linked from nowhere can't be listed.")}`);
+    if (r.has_search_data) parts.push(r.few_links_count ? `${num(r.few_links_count)} ${t(r.few_links_count === 1 ? "page with Google visits has" : "pages with Google visits have")} ${num(r.few_links_line)} ${t("links in or fewer: link to them from related pages.")}` : t("Pages with Google visits all have links in."));
     const few = r.few_links || [], fewFound = few.filter((p) => TP.matches(PAGES.few, pathOnly(p.url))), fewPage = TP.view(PAGES.few, sorted("few", fewFound));
     const fewSearch = wantsSearch(PAGES.few, few.length) ? `<div class="chips ht-find">${TP.search(PAGES.few, t("Search pages"))}</div>` : "";
-    const fewCut = r.few_links_count > few.length ? `${t("The {sent} with the most clicks are listed, of {total}.").replace("{sent}", num(few.length)).replace("{total}", num(r.few_links_count))}` : null;
-    const table = !few.length ? "" : !fewFound.length ? `${fewSearch}<p class="lc-none small sec">${t("No page matches this search.")}</p>` : `${fewSearch}<div class="ht-list"><div class="table-wrap"><table class="data lc-table" id="ht-few-links"><thead><tr><th scope="col">${t("Page")}</th>${sortHead("few", "links_in", "Links in")}${sortHead("few", "clicks", "Clicks")}</tr></thead><tbody>
+    const fewCut = r.few_links_count > few.length ? `${t("{sent} of {total}, most clicks first").replace("{sent}", num(few.length)).replace("{total}", num(r.few_links_count))}` : null;
+    const table = !few.length ? "" : !fewFound.length ? `${fewSearch}<p class="lc-none small sec">${t("No page matches.")}</p>` : `${fewSearch}<div class="ht-list"><div class="table-wrap"><table class="data lc-table" id="ht-few-links"><thead><tr><th scope="col">${t("Page")}</th>${sortHead("few", "links_in", "Links in")}${sortHead("few", "clicks", "Clicks")}</tr></thead><tbody>
       ${fewPage.rows.map((p) => `<tr style="cursor:default"><td class="head-cell">${COMP.link(p.url, pathOnly(p.url))}</td><td class="r tabular" data-label="${t("Links in")}">${num(p.links_in)}</td><td class="r tabular" data-label="${t("Clicks")}">${num(p.clicks)}</td></tr>`).join("")}</tbody></table></div>
       ${TP.footer(PAGES.few, fewPage, { noun: t("pages"), capped: fewCut })}</div>`;
     const every = r.pages || [], everyFound = every.filter((p) => TP.matches(PAGES.linksIn, pathOnly(p.url))), everyPage = TP.view(PAGES.linksIn, sorted("linksIn", everyFound));
     const all = ht.linksAll ? `<div class="ht-links-all" style="padding:0 18px 14px">
-        ${r.orphans?.length ? `<h3>${t("In the sitemap, linked from nowhere")}</h3><ul class="ht-pages">${r.orphans.map((u) => `<li>${COMP.link(u, pathOnly(u))}</li>`).join("")}${r.orphan_count > r.orphans.length ? `<li class="small muted">${t("and")} ${num(r.orphan_count - r.orphans.length)} ${t("more")}</li>` : ""}</ul>` : ""}
-        <h3>${t("Links in, every page read")}</h3>
+        ${r.orphans?.length ? `<h3>${t("Linked from nowhere")}</h3><ul class="ht-pages">${r.orphans.map((u) => `<li>${COMP.link(u, pathOnly(u))}</li>`).join("")}${r.orphan_count > r.orphans.length ? `<li class="small muted">${t("and")} ${num(r.orphan_count - r.orphans.length)} ${t("more")}</li>` : ""}</ul>` : ""}
+        <h3>${t("Links in per page")}</h3>
         ${wantsSearch(PAGES.linksIn, every.length) ? `<div class="chips ht-find">${TP.search(PAGES.linksIn, t("Search pages"))}</div>` : ""}
         ${everyFound.length ? `<div class="ht-list"><div class="table-wrap"><table class="data lc-table" id="ht-links-in"><thead><tr><th scope="col">${t("Page")}</th>${sortHead("linksIn", "links_in", "Links in")}</tr></thead><tbody>
         ${everyPage.rows.map((p) => `<tr style="cursor:default"><td class="head-cell">${COMP.link(p.url, pathOnly(p.url))}</td><td class="r tabular" data-label="${t("Links in")}">${num(p.links_in)}</td></tr>`).join("")}</tbody></table></div>
-        ${TP.footer(PAGES.linksIn, everyPage, { noun: t("pages"), capped: r.pages_read > every.length ? t("The {sent} with the fewest links in are listed, of {total}.").replace("{sent}", num(every.length)).replace("{total}", num(r.pages_read)) : null })}</div>` : every.length ? `<p class="small sec">${t("No page matches this search.")}</p>` : ""}
-        ${r.sitemap_cut ? `<p class="small muted">${t("The sitemap couldn't be read in full, so this list may be short.")}</p>` : ""}</div>` : "";
+        ${TP.footer(PAGES.linksIn, everyPage, { noun: t("pages"), capped: r.pages_read > every.length ? t("{sent} of {total}, fewest links in first").replace("{sent}", num(every.length)).replace("{total}", num(r.pages_read)) : null })}</div>` : every.length ? `<p class="small sec">${t("No page matches.")}</p>` : ""}
+        ${r.sitemap_cut ? `<p class="small muted">${t("Sitemap only partly read: list may be incomplete.")}</p>` : ""}</div>` : "";
     return `<section class="card ht-links"><div class="card-head"><h2>${t("Internal links")}</h2><span class="end small muted">${num(r.pages_read)} ${t(r.pages_read === 1 ? "page read" : "pages read")}</span></div>
       <p class="ht-answer lc-none">${parts.join(" ")}</p>${table}
-      <div style="padding:10px 18px 14px"><button type="button" class="btn btn-small" data-ht-links-all aria-expanded="${Boolean(ht.linksAll)}">${t(ht.linksAll ? "Show less" : "Every page and its links in")}</button></div>${all}</section>`;
+      <div style="padding:10px 18px 14px"><button type="button" class="btn btn-small" data-ht-links-all aria-expanded="${Boolean(ht.linksAll)}">${t(ht.linksAll ? "Show less" : "Show all pages")}</button></div>${all}</section>`;
   }
 
   function resultWord(a) {
@@ -516,16 +542,16 @@
     const page = TP.view(PAGES.history, ht.audits);
     return `<section class="card ht-history" aria-label="${t("History")}">
       <div class="card-head"><h2>${t("History")}</h2><span class="end small muted">${esc(site()?.host || "")}</span></div>
-      ${ht.audits.length ? `<table class="data lc-table" id="ht-history"><thead><tr><th scope="col">${t("Date")}</th><th scope="col">${t("How it ran")}</th><th scope="col" class="r">${t("Score")}</th><th scope="col" class="r">${t("Pages")}</th><th scope="col">${t("Result")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead><tbody>
+      ${ht.audits.length ? `<table class="data lc-table" id="ht-history"><thead><tr><th scope="col">${t("Date")}</th><th scope="col">${t("How")}</th><th scope="col" class="r">${t("Score")}</th><th scope="col" class="r">${t("Pages")}</th><th scope="col">${t("Result")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead><tbody>
         ${page.rows.map((a) => `<tr ${isActive(a) ? 'style="cursor:default"' : `data-ht-row="${a.id}"`} class="${ht.open?.audit.id === a.id ? "open" : ""}">
           <td class="head-cell" data-label="${t("Date")}">${esc(UI.fmtStamp(a.created_at))}</td>
-          <td data-label="${t("How it ran")}">${t(a.trigger === "monthly" ? "Monthly" : "By hand")}</td>
+          <td data-label="${t("How")}">${t(a.trigger === "monthly" ? "Monthly" : "By hand")}</td>
           <td class="r" data-label="${t("Score")}">${a.score === null || a.score === undefined ? '<span class="muted">—</span>' : `${num(a.score)}${isPartial(a) ? ` <span class="tag">${t("partial")}</span>` : ""}`}</td>
           <td class="r" data-label="${t("Pages")}" ${isActive(a) ? "data-ht-live-pages" : ""}>${num(a.pages_read)}</td>
           <td data-label="${t("Result")}"><span class="small sec" ${isActive(a) ? "data-ht-live-word" : ""}>${esc(resultWord(a))}</span></td>
           <td class="r nowrap" data-label=""><button class="btn btn-small" data-ht-open="${a.id}" aria-label="${t("Open")}: ${esc(UI.fmtStamp(a.created_at))}" ${isActive(a) ? "disabled" : ""}>${t("Open")}</button></td>
         </tr>`).join("")}</tbody></table>
-        ${TP.footer(PAGES.history, page, { noun: t("tests") })}` : `<p class="lc-none small muted">${t("No tests yet for this site.")}</p>`}
+        ${TP.footer(PAGES.history, page, { noun: t("tests") })}` : `<p class="lc-none small muted">${t("No tests yet.")}</p>`}
     </section>`;
   }
 
@@ -534,7 +560,7 @@
     if (!ht.ready) return UI.skeleton ? UI.skeleton("page", { tiles: 2, rows: 6, chart: false }) : `<div class="card"><div class="empty"><p>${t("Loading…")}</p></div></div>`;
     if (ht.failed) return UI.failCard ? UI.failCard(ht.failed, { onRetry: () => { ht.failed = ""; ht.ready = false; paint(); loadAll(); } }) : `<div class="table-wrap"><div class="empty"><h3>${t("That didn't load")}</h3><p>${esc(t(ht.failed))}</p></div></div>`;
     if (!ht.sites.length) {
-      return `<div class="table-wrap"><div class="empty" id="ht-empty"><h3>${t("No sites added yet")}</h3><p>${t("Add your own site, then test its health.")}</p><button class="btn btn-main" id="site-add">${icon("plus")}${t("Add a site")}</button></div></div>`;
+      return `<div class="table-wrap"><div class="empty" id="ht-empty"><h3>${t("No sites added yet")}</h3><p>${t("Add your own site first.")}</p><button class="btn btn-main" id="site-add">${icon("plus")}${t("Add a site")}</button></div></div>`;
     }
     const s = site();
     const a = ht.open?.audit;
@@ -545,7 +571,7 @@
     const alerts = openAlerts().filter((x) => isTestAlert(x) && sameId(x.site_id, s.id) && !UI.state.seen.has(`alert-${x.id}`));
     return `<div class="comp-bar ht-bar"><label class="field comp-site"><span>${t("Site")}</span><select class="select" id="ht-site">${ht.sites.map((x) => `<option value="${esc(x.id)}" ${sameId(x.id, ht.siteId) ? "selected" : ""}>${esc(x.host)}</option>`).join("")}</select></label>${UI.showingNote(hostShown())}</div>
       ${alerts.map(bannerHtml).join("")}
-      ${past ? `<p class="note ht-past">${icon("info")}<span>${t("You're looking at an older test.")} <button class="link-btn" data-ht-latest>${t("Back to the latest test")}</button></span></p>` : ""}
+      ${past ? `<p class="note ht-past">${icon("info")}<span>${t("Viewing an older test.")} <button class="link-btn" data-ht-latest>${t("Latest test")}</button></span></p>` : ""}
       <div class="ht-top">${scoreCard()}${planCard(s)}</div>
       ${progressHtml()}
       ${a ? notices(a).map(noticeHtml).join("") : ""}
@@ -659,7 +685,7 @@
           Object.assign(s, answer);
           paint();
           UI.$("#ht-monthly")?.focus();
-          UI.toast(UI.t(answer.monthly ? "This site will be tested once a month" : "Monthly test turned off"), { kind: "info" });
+          UI.toast(UI.t(answer.monthly ? "Monthly test on" : "Monthly test off"), { kind: "info" });
         }).catch((err) => { el.checked = !el.checked; COMP.fail(err); });
       }
     });
@@ -812,129 +838,129 @@
   })();
 
   Object.assign(window.FR, {
-    "Search pages or what Google says": "Rechercher une page ou ce que dit Google", "Search pages": "Rechercher une page", "No page matches this search.": "Aucune page ne correspond à cette recherche.",
-    "The {sent} with the most clicks are listed, of {total}.": "Les {sent} avec le plus de clics sont listées, sur {total}.", "The {sent} with the fewest links in are listed, of {total}.": "Les {sent} avec le moins de liens entrants sont listées, sur {total}.",
+    "Search pages or what Google says": "Rechercher une page ou ce que dit Google", "Search pages": "Rechercher une page", "No page matches.": "Aucune page ne correspond.",
+    "{sent} of {total}, most clicks first": "{sent} sur {total}, les plus cliquées d'abord", "{sent} of {total}, fewest links in first": "{sent} sur {total}, les moins liées d'abord",
     "tests": "tests",
-    "Restore these pages, or redirect them to the closest page that exists.": "Rétablissez ces pages, ou redirigez-les vers la page existante la plus proche.",
-    "Change each link to a page that exists, or remove it.": "Faites pointer chaque lien vers une page existante, ou retirez-le.",
-    "Ask whoever runs the server to check its error log. These pages can vanish from search while it lasts.": "Demandez à la personne qui gère le serveur de vérifier son journal d'erreurs. Ces pages peuvent disparaître des recherches tant que ça dure.",
-    "If these pages should be found, remove the noindex tag.": "Si ces pages doivent être trouvées, retirez la balise noindex.",
-    "Check that each page should point to the other one. If not, point it to itself.": "Vérifiez que chaque page doit bien pointer vers l'autre. Sinon, faites-la pointer vers elle-même.",
-    "Write a title for each page.": "Rédigez un titre pour chaque page.", "Give each page a title of its own.": "Donnez à chaque page son propre titre.",
-    "Add one main heading to each page.": "Ajoutez un titre principal à chaque page.", "Keep one main heading on each page, and turn the others into subheadings.": "Gardez un seul titre principal par page, et transformez les autres en sous-titres.",
-    "Write a meta description for each page.": "Rédigez une meta description pour chaque page.", "Give each page a meta description of its own.": "Donnez à chaque page sa propre meta description.",
-    "Describe each image in its alt text.": "Décrivez chaque image dans son texte alternatif.", "Add useful text, or stop these pages being indexed.": "Ajoutez du texte utile, ou empêchez l'indexation de ces pages.",
-    "Link straight to the final address.": "Faites pointer le lien directement vers l'adresse finale.", "Check image sizes and scripts first, then the hosting.": "Vérifiez d'abord le poids des images et les scripts, puis l'hébergement.",
-    "Check the hosting first: nothing else on the site can be read while this lasts.": "Vérifiez d'abord l'hébergement : rien d'autre sur le site ne peut être lu tant que ça dure.",
-    "Remove the noindex tag from the start page, unless the whole site should stay hidden.": "Retirez la balise noindex de la page d'accueil, sauf si tout le site doit rester caché.",
-    "Ask whoever runs the server to fix robots.txt. Search engines stay away until it answers.": "Demandez à la personne qui gère le serveur de réparer robots.txt. Les moteurs de recherche restent à l'écart tant qu'il ne répond pas.",
-    "Renew the certificate now: browsers are warning visitors away.": "Renouvelez le certificat maintenant : les navigateurs découragent les visiteurs.", "Renew the certificate, or check that automatic renewal is on.": "Renouvelez le certificat, ou vérifiez que le renouvellement automatique est actif.",
-    "Ask whoever runs the hosting to check the certificate.": "Demandez à la personne qui gère l'hébergement de vérifier le certificat.", "Test of": "Test du",
+    "Restore them, or redirect to the closest page.": "Rétablissez-les, ou redirigez vers la page la plus proche.",
+    "Fix or remove each link.": "Corrigez ou retirez chaque lien.",
+    "Have the server error log checked.": "Faites vérifier le journal d'erreurs du serveur.",
+    "Remove noindex if they should be found.": "Retirez noindex si elles doivent être trouvées.",
+    "Unless intended, point each page to itself.": "Sauf si c'est voulu, faites pointer chaque page vers elle-même.",
+    "Write a title for each page.": "Rédigez un titre pour chaque page.", "Give each page its own title.": "Donnez à chaque page son propre titre.",
+    "Add one main heading to each page.": "Ajoutez un titre principal à chaque page.", "Keep one main heading; make the rest subheadings.": "Gardez un seul titre principal ; passez les autres en sous-titres.",
+    "Write a meta description for each page.": "Rédigez une meta description pour chaque page.", "Give each page its own meta description.": "Donnez à chaque page sa propre méta-description.",
+    "Describe each image in its alt text.": "Décrivez chaque image dans son texte alternatif.", "Add useful text, or noindex these pages.": "Ajoutez du texte utile, ou passez ces pages en noindex.",
+    "Link straight to the final address.": "Faites pointer le lien directement vers l'adresse finale.", "Check images and scripts, then hosting.": "Vérifiez images et scripts, puis l'hébergement.",
+    "Check the hosting first.": "Vérifiez d'abord l'hébergement.",
+    "Remove its noindex, unless the site should stay hidden.": "Retirez sa balise noindex, sauf si le site doit rester caché.",
+    "Have robots.txt fixed.": "Faites réparer robots.txt.",
+    "Renew the certificate now: browsers are warning visitors away.": "Renouvelez le certificat maintenant : les navigateurs découragent les visiteurs.", "Renew it, or check auto-renewal is on.": "Renouvelez-le, ou vérifiez que le renouvellement automatique est actif.",
+    "Have the host check the certificate.": "Faites vérifier le certificat par l'hébergeur.", "Test of": "Test du",
     "Monthly health test": "Test de santé mensuel",
-    "Monthly health test.": "Test de santé mensuel.",
+    "Health test.": "Test de santé.",
     "Critical": "Critique",
     "Warning": "Avertissement",
     "Info": "Info",
     "Pages that answer with an error": "Pages qui répondent par une erreur",
-    "Links to pages that don't exist": "Liens vers des pages qui n'existent pas",
-    "Pages the server failed to answer": "Pages auxquelles le serveur n'a pas su répondre",
-    "Pages hidden from search engines": "Pages cachées aux moteurs de recherche",
+    "Broken links": "Liens cassés",
+    "Server errors": "Erreurs serveur",
+    "Hidden from search engines": "Cachées aux moteurs de recherche",
     "Pages that point search engines to another page": "Pages qui renvoient les moteurs vers une autre page",
-    "Pages with no title": "Pages sans titre",
-    "Pages sharing the same title": "Pages avec le même titre",
-    "Pages with no main heading (H1)": "Pages sans titre principal (H1)",
-    "Pages with more than one main heading": "Pages avec plus d'un titre principal",
-    "Pages with no meta description": "Pages sans méta-description",
-    "Pages sharing the same meta description": "Pages avec la même méta-description",
-    "Pages with images missing alt text": "Pages avec des images sans texte alternatif",
-    "Pages with almost no readable text": "Pages presque sans texte lisible",
-    "Links that go through more than 2 redirects": "Liens qui passent par plus de 2 redirections",
-    "Pages slower than 5 seconds": "Pages de plus de 5 secondes",
-    "The start page didn't load": "La page de départ n'a pas chargé",
-    "The start page is hidden from search engines": "La page de départ est cachée aux moteurs de recherche",
-    "The security certificate has expired": "Le certificat de sécurité a expiré",
-    "The security certificate expires within 14 days": "Le certificat de sécurité expire dans moins de 14 jours",
-    "The security certificate couldn't be verified": "Le certificat de sécurité n'a pas pu être vérifié",
+    "No title": "Pas de titre",
+    "Duplicate titles": "Titres en double",
+    "No main heading (H1)": "Pas de titre principal (H1)",
+    "Several main headings": "Plusieurs titres principaux",
+    "No meta description": "Pas de méta-description",
+    "Duplicate meta descriptions": "Méta-descriptions en double",
+    "Images missing alt text": "Images sans texte alternatif",
+    "Almost no text": "Presque pas de texte",
+    "More than 2 redirects": "Plus de 2 redirections",
+    "Slower than 5 seconds": "Plus de 5 secondes",
+    "Start page didn't load": "La page de départ n'a pas chargé",
+    "Start page hidden from search engines": "Page de départ cachée aux moteurs de recherche",
+    "Certificate expired": "Certificat expiré",
+    "Certificate expires within 14 days": "Le certificat expire sous 14 jours",
+    "Certificate couldn't be verified": "Certificat non vérifiable",
     "What got worse": "Ce qui s'est dégradé",
     "What's wrong": "Ce qui ne va pas",
-    "The test couldn't finish. Try it again with Run now.": "Le test n'a pas pu se terminer. Relancez-le avec Lancer.",
+    "The test couldn't finish. Press Run now.": "Le test n'a pas pu se terminer. Appuyez sur Lancer.",
     "Health score": "Score de santé",
-    "out of 100": "sur 100",
+    "/100": "/100",
     "Better is higher.": "Plus c'est haut, mieux c'est.",
     "No change": "Pas de changement",
-    "since the last test": "depuis le dernier test",
-    "First test, so nothing to compare with yet.": "Premier test : rien à comparer pour l'instant.",
-    "The last test read far fewer or far more pages, so the two can't be compared.": "Le dernier test a lu bien moins ou bien plus de pages : les deux ne se comparent pas.",
+    "since last test": "depuis le dernier test",
+    "First test: nothing to compare yet.": "Premier test : rien à comparer.",
+    
     "Partial test": "Test partiel",
-    "It only covers what it read, so it isn't compared.": "Il ne couvre que ce qu'il a lu : il n'est donc pas comparé.",
+    
     "Score over the last tests": "Score des derniers tests",
-    "tests, dates in the table below": "tests, dates dans le tableau ci-dessous",
-    "The trend line starts after 2 full tests.": "La courbe commence après 2 tests complets.",
-    "The first test is running.": "Le premier test est en cours.",
+    "tests, dates below": "tests, dates ci-dessous",
+    "Trend shows after 2 full tests.": "La courbe apparaît après 2 tests complets.",
+    "First test running.": "Premier test en cours.",
     "No score: this test failed.": "Pas de score : ce test a échoué.",
-    "No score yet. Press Run now for the first test.": "Pas encore de score. Appuyez sur Lancer pour le premier test.",
-    "Runs by itself once a month.": "Se lance tout seul une fois par mois.",
-    "Runs only when you press Run now.": "Se lance seulement quand vous appuyez sur Lancer.",
+    "No score yet. Press Run now.": "Pas encore de score. Appuyez sur Lancer.",
+    "Runs every month.": "Se lance chaque mois.",
+    "Runs only by hand.": "Se lance seulement à la main.",
     "Last test": "Dernier test",
     "No test yet.": "Pas encore de test.",
     "Next test": "Prochain test le",
-    "First test at the next monthly run.": "Premier test au prochain passage mensuel.",
-    "The monthly test runs on the hosted version. Here, press Run now.": "Le test mensuel tourne sur la version hébergée. Ici, appuyez sur Lancer.",
-    "Test this site once a month": "Tester ce site une fois par mois",
-    "You can leave this page: it keeps going.": "Vous pouvez quitter cette page : le test continue.",
+    "First test: next monthly run.": "Premier test : prochain passage mensuel.",
+    "On this Mac, press Run now.": "Sur ce Mac, appuyez sur Lancer.",
+    "Test monthly": "Tester chaque mois",
+    "Keeps going if you leave.": "Continue même si vous quittez la page.",
     "This test failed.": "Ce test a échoué.",
-    "This test is not complete.": "Ce test n'est pas complet.",
+    "Test incomplete.": "Test incomplet.",
     "Whole-site problems": "Problèmes sur tout le site",
     "found": "trouvés",
     "None found": "Aucun trouvé",
-    "The start page and the security certificate are checked. Uptime and domain expiry aren't part of this test.": "La page de départ et le certificat de sécurité sont vérifiés. La disponibilité et l'expiration du domaine ne font pas partie de ce test.",
-    "The start page is checked. A test that was stopped doesn't get as far as the security certificate. Uptime and domain expiry aren't part of this test.": "La page de départ est vérifiée. Un test arrêté ne va pas jusqu'au certificat de sécurité. La disponibilité et l'expiration du domaine ne font pas partie de ce test.",
+    "Start page and certificate checked.": "Page de départ et certificat vérifiés.",
+    "Start page checked. Stopped before the certificate.": "Page de départ vérifiée. Arrêté avant le certificat.",
     "Not compared": "Non comparé",
     "worse": "pire",
     "better": "mieux",
     "more": "de plus",
     "Checks": "Vérifications",
     "with problems": "avec des problèmes",
-    "What it looks at": "Ce qu'il regarde",
+    "Problem": "Problème",
     "Severity": "Gravité",
-    "Pages affected": "Pages touchées",
+    "Pages": "Pages",
     "Since last test": "Depuis le dernier test",
-    "This test found no problems on these pages.": "Ce test n'a trouvé aucun problème sur ces pages.",
-    "check with nothing found": "vérification sans problème",
-    "checks with nothing found": "vérifications sans problème",
+    "No problems found.": "Aucun problème trouvé.",
+    "check passed": "vérification réussie",
+    "checks passed": "vérifications réussies",
     "Stopped by you": "Arrêté par vous",
-    "How it ran": "Comment il a tourné",
+    "How": "Comment",
     "Score": "Score",
     "Monthly": "Mensuel",
     "By hand": "À la main",
     "partial": "partiel",
-    "No tests yet for this site.": "Pas encore de test pour ce site.",
-    "Add your own site, then test its health.": "Ajoutez votre site, puis testez sa santé.",
-    "You're looking at an older test.": "Vous regardez un test plus ancien.",
-    "Back to the latest test": "Revenir au dernier test",
-    "This site will be tested once a month": "Ce site sera testé une fois par mois",
-    "Monthly test turned off": "Test mensuel désactivé",
+    "No tests yet.": "Pas encore de test.",
+    "Add your own site first.": "Ajoutez d'abord votre propre site.",
+    "Viewing an older test.": "Vous consultez un test plus ancien.",
+    "Latest test": "Dernier test",
+    "Monthly test on": "Test mensuel activé",
+    "Monthly test off": "Test mensuel désactivé",
     "Health test finished": "Test de santé terminé",
     "Health test stopped": "Test de santé arrêté",
     "Health test failed": "Test de santé échoué",
     "On Google": "Sur Google", "Search Console, page by page": "Search Console, page par page",
-    "Connect Search Console for this site and Google is asked, page by page, whether each one is indexed.": "Connectez Search Console pour ce site et Google est interrogé, page par page, pour savoir si chacune est indexée.",
-    "No page of this site has been read yet. The daily read fills this in.": "Aucune page de ce site n'a encore été lue. La lecture quotidienne remplira cette partie.",
-    "No page has been checked yet.": "Aucune page n'a encore été vérifiée.",
+    "Connect Search Console to see this.": "Connectez Search Console pour voir ceci.",
+    "No pages read yet.": "Aucune page lue pour l'instant.",
+    "No page checked yet.": "Aucune page vérifiée pour l'instant.",
     "page checked is on Google.": "page vérifiée est sur Google.", "pages checked are on Google.": "pages vérifiées sont sur Google.",
-    "isn't, and Google says why below.": "n'y est pas, et Google dit pourquoi ci-dessous.", "aren't, and Google says why below.": "n'y sont pas, et Google dit pourquoi ci-dessous.",
+    "isn't (why below).": "n'y est pas (raison ci-dessous).", "aren't (why below).": "n'y sont pas (raisons ci-dessous).",
     "still to check": "encore à vérifier", "Google says": "Google dit", "Asked on": "Demandé le", "Google prefers": "Google préfère",
     "Internal links": "Liens internes", "page read": "page lue", "pages read": "pages lues", "Links in": "Liens entrants",
-    "page in your sitemap has no link from another page of the site.": "page de votre sitemap n'a aucun lien depuis une autre page du site.",
-    "pages in your sitemap have no link from another page of the site.": "pages de votre sitemap n'ont aucun lien depuis une autre page du site.",
-    "Every page in your sitemap has a link from another page.": "Chaque page de votre sitemap a un lien depuis une autre page.",
-    "No sitemap was found, so pages linked from nowhere can't be listed.": "Aucun sitemap trouvé : les pages liées de nulle part ne peuvent pas être listées.",
-    "page that gets visits from Google has": "page qui reçoit des visites de Google a", "pages that get visits from Google have": "pages qui reçoivent des visites de Google ont",
+    "sitemap page has no link from another page.": "page du sitemap n'a aucun lien depuis une autre page.",
+    "sitemap pages have no link from another page.": "pages du sitemap n'ont aucun lien depuis une autre page.",
+    "Every sitemap page is linked from another page.": "Chaque page du sitemap reçoit un lien d'une autre page.",
+    "No sitemap found.": "Aucun sitemap trouvé.",
+    "page with Google visits has": "page avec des visites Google a", "pages with Google visits have": "pages avec des visites Google ont",
     "links in or fewer: link to them from related pages.": "liens entrants ou moins : ajoutez des liens depuis des pages proches.",
-    "Your pages that get visits from Google all have links in.": "Vos pages qui reçoivent des visites de Google ont toutes des liens entrants.",
-    "Every page and its links in": "Chaque page et ses liens entrants", "In the sitemap, linked from nowhere": "Dans le sitemap, liées de nulle part",
-    "Links in, every page read": "Liens entrants, chaque page lue", "The sitemap couldn't be read in full, so this list may be short.": "Le sitemap n'a pas pu être lu en entier : cette liste peut être incomplète.",
-    "Lost touch with the health test. Reload the page to see where it is.": "Le suivi du test de santé a été perdu. Rechargez la page pour voir où il en est.",
+    "Pages with Google visits all have links in.": "Les pages qui reçoivent des visites Google ont toutes des liens entrants.",
+    "Show all pages": "Afficher toutes les pages", "Linked from nowhere": "Liées de nulle part",
+    "Links in per page": "Liens entrants par page", "Sitemap only partly read: list may be incomplete.": "Sitemap lu en partie : liste peut-être incomplète.",
+    "Lost track of the health test. Reload the page.": "Suivi du test de santé perdu. Rechargez la page.",
     "A health test of this website is already running.": "Un test de santé de ce site est déjà en cours.",
     "That test has already finished.": "Ce test est déjà terminé.",
     "That test doesn't exist.": "Ce test n'existe pas.",

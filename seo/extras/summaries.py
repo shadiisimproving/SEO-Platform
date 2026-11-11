@@ -88,21 +88,21 @@ def _ask(key: str, event, change: str, language: str) -> tuple[str, str]:
         ).json()
     except SourceError as exc:
         if exc.kind == "quota":
-            raise Refused("OpenRouter's free limit is reached. It refills at midnight UTC.") from exc
+            raise Refused("OpenRouter free limit reached. Refills at midnight UTC.") from exc
         if exc.kind == "auth":
             raise Refused("OpenRouter refused this key. Paste it again in Settings.") from exc
-        raise Refused("OpenRouter didn't answer. Try again in a moment.") from exc
+        raise Refused("OpenRouter didn't answer. Try again.") from exc
     except ValueError as exc:
-        raise Refused("OpenRouter's answer couldn't be read. Try again in a moment.") from exc
+        raise Refused("OpenRouter's answer was unreadable. Try again.") from exc
     choices = reply.get("choices") if isinstance(reply, dict) else None
     message = (choices[0].get("message") or {}) if choices and isinstance(choices[0], dict) else {}
     words = message.get("content")
     if not isinstance(words, str) or not words.strip():
         # A model can reach OpenRouter and still fail, with status 200 and an error in the body.
-        raise Refused("The free model gave no answer. Try again: it may pick another one.")
+        raise Refused("The free model didn't answer. Try again for another.")
     words = " ".join(words.split())
     if not usable(words):
-        raise Refused("The free model gave no answer. Try again: it may pick another one.")
+        raise Refused("The free model didn't answer. Try again for another.")
     return words[:MOST_SHOWN], str(reply.get("model") or MODEL)[:120]
 
 
@@ -130,7 +130,7 @@ def summarise(engine: Engine, event_id: int, language: str = "en") -> dict:
     if not key:
         raise Refused("Connect OpenRouter in Settings first.")
     if not change.strip():
-        raise Refused("No text was saved for this change, so there's nothing to summarise.")
+        raise Refused("No saved text to summarise.")
     words, model = _ask(key, event, change, lang)
     sources.note_app_key(engine, "openrouter", None)
     answer = {"text": words, "model": model, "language": lang}

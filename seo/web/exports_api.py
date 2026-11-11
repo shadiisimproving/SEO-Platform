@@ -48,7 +48,7 @@ def export(view_id: str, fmt: str):
     if fmt not in registry.FORMATS:
         raise NotFound("Exports are PDF, Excel or CSV.")
     if fmt not in registry.formats():
-        raise Refused("This server can't make that kind of file yet. Pick another format.")
+        raise Refused("This file type isn't available here. Pick another.")
     args = _asked()
     lang = "fr" if args.get("lang") == "fr" else "en"
     report = registry.build(current_app.config["ENGINE"], view_id, args, lang)

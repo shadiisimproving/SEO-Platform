@@ -355,7 +355,7 @@ def _checked_score(authority, authority_label) -> tuple[int | None, str]:
     if authority in ("", None):
         authority = None
     elif type(authority) is not int or not 0 <= authority <= 100:
-        raise Refused("The authority score goes from 0 to 100.")
+        raise Refused("Score must be 0 to 100.")
     if authority_label is not None and not isinstance(authority_label, str):
         raise Refused("The tool's name must be text.")
     label = (authority_label or "").strip()
@@ -374,7 +374,7 @@ def _checked_link(sample_url, clean: str) -> str | None:
         return None
     found = _domain_of_address(url)
     if not found:
-        raise Refused("That doesn't look like a web address.")
+        raise Refused("Not a web address.")
     if store.to_ascii_host(found) != clean:
         raise Refused(f"That link isn't on {clean}.")
     return url
@@ -417,7 +417,7 @@ def add_domain(engine: Engine, domain, competitors=None, authority=None, authori
     address = domain.strip()
     clean = store.to_ascii_host(cleaner.root_domain(address))[:190] if cleaner.root_domain(address) else ""
     if not clean:
-        raise Refused("That doesn't look like a web address.")
+        raise Refused("Not a web address.")
     authority, label = _checked_score(authority, authority_label)
     # A pasted page is the example link, unless another was given.
     if not sample_url and address.lower().startswith(("http://", "https://")) and urlsplit(address).path not in ("", "/"):
@@ -426,7 +426,7 @@ def add_domain(engine: Engine, domain, competitors=None, authority=None, authori
     with engine.begin() as conn:
         chosen = _competitor_ids(conn, competitors)
         if not chosen:
-            raise Refused("Tick at least one competitor this domain links to.")
+            raise Refused("Pick a competitor.")
         if clean in my_domains(conn):
             raise Refused("That's one of your own websites.")
         marks = {f"c{i}": competitor_id for i, competitor_id in enumerate(chosen)}
@@ -466,7 +466,7 @@ def reset_edit(engine: Engine, domain) -> None:
 
 def add_to_prospects(engine: Engine, site_id: int, domains: list) -> dict:
     if not isinstance(domains, list) or not domains or not all(isinstance(d, str) for d in domains):
-        raise Refused("Pick at least one domain.")
+        raise Refused("Pick a domain.")
     # Only the good ones. Spam, and anything not checked yet, is never added, whatever the request says.
     report = {g["domain"]: g for g in _all_gaps(engine, site_id)["everything"] if g["quality"] == GOOD}
     added, skipped = [], []

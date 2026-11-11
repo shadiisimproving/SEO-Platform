@@ -43,7 +43,7 @@ MAX_JOB_ATTEMPTS = 5  # failures in a row with no chunk finished in between. Onl
 STOP_POLL_SECONDS = 1.0
 MOST_PAGE_CHARACTERS_IN_A_ROW = 4_000_000  # a row has to fit in the database's largest packet: 16 MB, at up to 4 bytes a character
 LONGEST_ADDRESS_STORED = 16_000  # characters that are sure to fit in a TEXT column
-GROUPS = {"broken": "Broken", "unverified": "Could not verify", "redirect": "Redirect chains", "slow": "Slow"}
+GROUPS = {"broken": "Broken", "unverified": "Couldn't verify", "redirect": "Redirect chains", "slow": "Slow"}
 NOT_OWN_TEXT = "Refused: this is not one of your own websites."
 ABANDONED_TEXT = "The worker stopped before this scan finished. Run it again."
 
@@ -73,15 +73,15 @@ def add_site(engine: Engine, address: str, kind: str, is_allowed: Callable[[str]
         raise Refused("Say whether this is your own website or a competitor.")
     raw = (address or "").strip()
     if not raw:
-        raise Refused("Enter the website's address.")
+        raise Refused("Enter the address.")
     if "://" not in raw:
         raw = f"https://{raw}"
     start_url = normalize_url(raw)
     host = host_key(start_url)
     if not start_url or "." not in host or " " in raw:
-        raise Refused("That doesn't look like a website address.")
+        raise Refused("Not a website address.")
     if not is_allowed(start_url):
-        raise Refused("That address isn't a public website.")
+        raise Refused("Not a public website.")
     with engine.begin() as conn:
         existing = conn.execute(text("SELECT kind FROM sites WHERE host = :h"), {"h": host}).scalar()
         if existing:
@@ -544,7 +544,7 @@ def scan_csv(engine: Engine, scan_id: int) -> str:
     data = get_scan(engine, scan_id)
     out = io.StringIO()
     writer = csv.writer(out)
-    writer.writerow(["Group", "Page with the link", "Target URL", "Status code", "Reason", "Hops", "Seconds", "Final URL"])
+    writer.writerow(["Group", "Linking page", "Target URL", "Status code", "Reason", "Hops", "Seconds", "Final URL"])
     for issue in data["issues"]:
         for page in issue["pages"] or [""]:
             writer.writerow([_safe_cell(v) for v in (
