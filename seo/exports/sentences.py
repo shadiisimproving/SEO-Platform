@@ -12,7 +12,15 @@ from typing import Callable
 
 _WHAT = {"security certificate": "certificat de sécurité", "domain name": "nom de domaine"}
 _MATCH = {"contains": "contient", "doesn't contain": "ne contient pas", "is exactly": "est exactement", "matches": "correspond à"}
+# seo/health/audit.py SITE_CHECKS in lower case, as seo/health/service.py joins them in an alert's title. The first six are
+# the wording since 2026-11-11; the others stay for alerts saved before.
 _SITE_CHECKS = {
+    "start page didn't load": "la page de départ n'a pas chargé",
+    "start page hidden from search engines": "la page de départ est cachée aux moteurs de recherche",
+    "robots.txt gives a server error, so search engines stay away": "le robots.txt renvoie une erreur du serveur, donc les moteurs de recherche restent à l'écart",
+    "certificate expired": "certificat expiré",
+    "certificate expires within 14 days": "le certificat expire sous 14 jours",
+    "certificate couldn't be verified": "certificat non vérifiable",
     "the start page didn't load": "la page de départ n'a pas chargé",
     "the start page is hidden from search engines": "la page de départ est cachée aux moteurs de recherche",
     "the site's robots.txt answers with a server error, so search engines stay away": "le robots.txt du site répond par une erreur du serveur, donc les moteurs de recherche restent à l'écart",
@@ -42,7 +50,7 @@ _PATTERNS: list[tuple[str, str | Callable[[re.Match], str | None]]] = [
     # Today's to-do: alerts
     (r"^Clarity data lost in (\d+) h$", "Données Clarity perdues dans {1} h"),
     (r"^Clarity data is being lost$", "Des données Clarity sont en train d'être perdues"),
-    (r"^Clarity only keeps the last 3 days for the app to read\.$", "Clarity ne garde que les 3 derniers jours à lire pour l'application."),
+    (r"^(?:Clarity keeps only 3 days of data|Clarity only keeps the last 3 days for the app to read)\.$", "Clarity ne garde que 3 jours de données."),
     (r"^(.+): the (security certificate|domain name) expires on (.+)$", lambda m: f"{m.group(1)} : le {_WHAT[m.group(2)]} expire le {_day(m.group(3))}"),
     (r"^(.+): the (security certificate|domain name) has expired$", lambda m: f"{m.group(1)} : le {_WHAT[m.group(2)]} a expiré"),
     (r"^(.+): health fell from (\d+) to (\d+)$", "{1} : la santé est passée de {2} à {3}"),
@@ -59,8 +67,8 @@ _PATTERNS: list[tuple[str, str | Callable[[re.Match], str | None]]] = [
     (r"^(.+) stopped working on (\d+) sites$", "{1} ne fonctionne plus sur {2} sites"),
     (r"^(.+) stopped working$", "{1} ne fonctionne plus"),
     (r"^A background job stopped: (.+)$", "Une tâche de fond s'est arrêtée : {1}"),
-    # Today's to-do: what the Search insights found
-    (r"^(.+) lost (\d+)% of its Google clicks$", "{1} a perdu {2} % de ses clics Google"),
+    # Today's to-do: what the Search insights found. Alerts saved before 2026-11-11 say a drop the old way: both are read.
+    (r"^(.+?)(?: lost (\d+)% of its Google clicks|: −(\d+)% Google clicks)$", lambda m: f"{m.group(1)} : −{m.group(2) or m.group(3)} % de clics Google"),
     (r"^(.+) dropped out of Google$", "{1} a disparu de Google"),
     (r"^(.+) is slowly losing clicks$", "{1} perd lentement des clics"),
     (r"^“(.*)” is almost on page 1$", "« {1} » est presque en page 1"),
@@ -80,8 +88,8 @@ _PATTERNS: list[tuple[str, str | Callable[[re.Match], str | None]]] = [
     (r"^(.+) brings leads and is losing clicks$", "{1} apporte des demandes et perd des clics"),
     (r"^Google shows (.+), but it's broken$", "Google affiche {1}, mais elle est cassée"),
     # their details
-    (r"^Last 7 days against the 7 before: (.+)$", "7 derniers jours contre les 7 précédents : {1}"),
-    (r"^About (\d+) clicks a month at stake(?:\. See Search → Insights\.)?$", "Environ {1} clics par mois en jeu"),
+    (r"^(?:Week on week|Last 7 days against the 7 before): (.+)$", "Semaine sur semaine : {1}"),
+    (r"^(?:~(\d+) clicks/month|About (\d+) clicks a month) at stake(?:\. See Search → Insights\.)?$", lambda m: f"~{m.group(1) or m.group(2)} clics/mois en jeu"),
     # the Links checker's reasons with a number or an address in them (seo/links/checker.py)
     (r"^(\d+) redirects before the final page$", "{1} redirections avant la page finale"),
     (r"^More than (\d+) redirects, so the check gave up$", "Plus de {1} redirections : la vérification a abandonné"),

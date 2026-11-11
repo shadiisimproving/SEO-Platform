@@ -12,7 +12,7 @@
     "Choose your password": "Choisissez votre mot de passe", "Your temporary password only works once.": "Votre mot de passe temporaire ne sert qu'une fois.",
     "Enter your username and password.": "Saisissez votre nom d'utilisateur et votre mot de passe.", "That didn't work. Try again.": "Cela n'a pas marché. Réessayez.",
     "Can't reach the app. Check it's running, then try again.": "L'application est injoignable. Vérifiez qu'elle tourne, puis réessayez.",
-    "Wrong username or password.": "Nom d'utilisateur ou mot de passe incorrect.",
+    "Wrong username or password, or too many tries: wait 15 minutes.": "Nom d'utilisateur ou mot de passe incorrect, ou trop d'essais : attendez 15 minutes.",
   };
   const t = (text) => (fr && FR[text]) || text;
   if (fr) {

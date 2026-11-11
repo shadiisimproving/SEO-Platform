@@ -85,12 +85,12 @@ def test_no_ai_is_the_default_so_nothing_about_the_site_is_sent(engine, site, ke
     found = _finding(engine, site)
     sources.save_app_key(engine, "openrouter", "sk-or-test-1234")  # a key pasted for competitor summaries doesn't count as a choice
     assert ai.settings(engine)["sites"][0]["provider"] == "none" and service.one(engine, found)["ai"]["provider"] == "none"
-    with pytest.raises(Refused, match="No AI is chosen"):
+    with pytest.raises(Refused, match="No AI chosen yet, so nothing is sent"):
         ai.on_finding(engine, found, "explain")
     assert openrouter == []
     ai.save_settings(engine, {"sites": [{"id": site, "provider": "openrouter"}]})
     ai.save_settings(engine, {"sites": [{"id": site, "provider": "none"}]})
-    with pytest.raises(Refused, match="No AI is chosen"):
+    with pytest.raises(Refused, match="No AI chosen yet, so nothing is sent"):
         ai.on_finding(engine, found, "explain")
 
 

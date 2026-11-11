@@ -69,7 +69,7 @@ def test_a_keyword_checked_minutes_ago_is_not_checked_again(world):
     assert t.calls == ["a"]
     e = probe.estimate(world.engine, world.own, first)
     assert e["searches"] == 0 and e["recent"] == 1 and e["hours"] == 12
-    with pytest.raises(Refused, match="checked in the last 12 hours"):
+    with pytest.raises(Refused, match="^Checked in the last 12 hours: no search spent\\.$"):
         probe.start(world.engine, world.own, first)
     every = probe.estimate(world.engine, world.own)
     assert every["searches"] == 1 and every["recent"] == 1
@@ -121,7 +121,7 @@ def test_a_check_whose_job_is_gone_no_longer_shows_as_running(world):
         conn.execute(text("UPDATE jobs SET status = 'dead', active_key = NULL"))
         conn.execute(text("UPDATE probe_runs SET created_at = UTC_TIMESTAMP(3) - INTERVAL 5 MINUTE"))
     run = probe.listing(world.engine, world.own)["run"]
-    assert run["status"] == "complete" and "stopped before the end" in run["reason"]
+    assert run["status"] == "complete" and run["reason"] == probe.STOPPED and "Stopped early" in run["reason"]
 
 
 # ---- the reader's order and sitemap dates (F62, F128, F69, F97) -------------------------------------------
@@ -198,7 +198,7 @@ def test_a_firecrawl_run_with_no_job_behind_it_shows_stopped_and_can_start_again
         conn.execute(text("UPDATE jobs SET status = 'dead', active_key = NULL WHERE kind = 'competitors.firecrawl'"))
         conn.execute(text("UPDATE competitor_crawls SET fc_status = 'running' WHERE competitor_id = :c"), {"c": rival})
     shown = state(world, rival)["firecrawl"]
-    assert shown["status"] == "failed" and "stopped before the end" in shown["message"]
+    assert shown["status"] == "failed" and "Firecrawl stopped early" in shown["message"]
     assert firecrawl.start(world.engine, rival, "read")["queued"] is True
 
 

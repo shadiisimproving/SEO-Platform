@@ -95,7 +95,7 @@
   function nextTasks(count) {
     const me = window.BOOT?.user?.name?.trim().toLowerCase();
     const mine = T.tasks.filter((task) => onThisSite(task) && isOpen(task) && (!me || (task.owner_label || "").trim().toLowerCase() === me));
-    return [...mine].sort(byDue).slice(0, count).map((task) => ({ id: task.id, title: task.title, due: task.due, late: isLate(task) }));
+    return [...mine].sort(byDue).slice(0, count).map((task) => ({ id: task.id, title: task.title, due: task.due, late: isLate(task), site_host: task.site_host || "" }));
   }
   const openForKey = (key) => (key ? T.tasks.find((task) => isOpen(task) && task.source?.key === key) : null);
 
@@ -109,7 +109,7 @@
       { title: "Rewrite the visa page title", keywords: ["visa séville prix"], pages: ["/vivre-seville-prix/"], owner_label: "Sara", due: offset(2), kind: "Content", priority: "high", impact: 4, status: "doing", comments: [{ name: "Sara", text: "New title sent to the writer.", at: now.toISOString() }] },
       { title: "Replace 2 lost backlinks", owner_label: "Nadia", due: offset(3), kind: "Links" },
       { title: "Add FAQ to the tax page", owner_label: "Nour", due: offset(4), kind: "Content" },
-      { title: "Pages that answer with an error: site-two.example", site_id: "site-two", site_host: "site-two.example", owner_label: "Nour", due: offset(-40), kind: "Technical", priority: "high", source: { type: "health", label: "Pages that answer with an error", host: "site-two.example", facts: ["site-two.example/old-offer"], link: "#health/test/broken_pages", key: "sample|broken" }, finding: { state: "gone", by: "health", at: now.toISOString() } },
+      { title: "Error pages", site_id: "site-two", site_host: "site-two.example", owner_label: "Nour", due: offset(-40), kind: "Technical", priority: "high", source: { type: "health", label: "Error pages", host: "site-two.example", facts: ["site-two.example/old-offer"], link: "#health/test/broken_pages", key: "sample|broken" }, finding: { state: "gone", by: "health", at: now.toISOString() } },
       { title: "Check why /loyer-a-seville/ lost traffic", pages: ["/loyer-a-seville/"], keywords: ["loyer à séville"], site_id: "", site_host: "", due: "", kind: "" },
       { title: "Publish the new pricing page", owner_label: "Mickaël", due: offset(-5), kind: "Content", status: "done", completed_on: offset(-1) },
     ];
@@ -154,7 +154,7 @@
     COMP.sampleWrite("POST tasks/(\\d+)/restore", (m) => {
       const task = trash.find((x) => x.id === Number(m[1]));
       if (!task) throw new Error("That task doesn't exist.");
-      if (task.status !== "done" && clash(task.source?.key, task.id)) throw new Error("A new task was made for this finding, so this one can't come back.");
+      if (task.status !== "done" && clash(task.source?.key, task.id)) throw new Error("Can't restore: a newer task covers this finding.");
       trash.splice(trash.indexOf(task), 1);
       rows().unshift(task);
       return JSON.parse(JSON.stringify(task));
@@ -627,6 +627,17 @@
     return `<th scope="col" aria-sort="${on ? (T.sort.dir === "asc" ? "ascending" : "descending") : "none"}"><button type="button" class="th-btn" data-tk-sort="${id}">${t(label)}${on ? icon(T.sort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
   };
 
+  /* Where a task came from, under its title. Most titles are made from the finding, so the grey line would say the same
+     words again: then a small target icon carries them as its tooltip. A title someone rewrote keeps the line. */
+  const plainWords = (text) => String(text || "").toLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  function sourceBit(task) {
+    const label = task.source?.label;
+    if (!label) return "";
+    if (!plainWords(task.title).includes(plainWords(label))) return `<span class="second" dir="auto">${esc(label)}</span>`;
+    const words = t("From a finding: {label}").split("{label}").join(label);
+    return ` <span class="comp-ic tk-from" role="img" title="${esc(words)}" data-tip="${esc(words)}" aria-label="${esc(words)}">${icon("target")}</span>`;
+  }
+
   function table(list) {
     const rows = sortedRows(list.filter((task) => !T.status || task.status === T.status));
     if (!rows.length) return COMP.empty(t("Nothing matches these filters"), t("Change the filters above."));
@@ -635,7 +646,7 @@
     return `<div class="tk-list"><div class="table-wrap"><table class="data tk-table" id="tk-table">
       <thead><tr>${sortHead("title", "Title")}<th scope="col">${t("Status")}</th>${sortHead("priority", "Priority")}${showSite ? `<th scope="col">${t("Site")}</th>` : ""}<th scope="col">${t("Owner")}</th>${sortHead("due", "Due date")}<th scope="col">${t("Type")}</th></tr></thead>
       <tbody>${view.rows.map((task) => `<tr data-task-row="${task.id}">
-        <td class="head-cell"><button type="button" class="kw tk-row-title" data-task-open="${task.id}" dir="auto" style="text-align:start">${esc(task.title)}</button>${task.source?.label ? `<span class="second" dir="auto">${esc(task.source.label)}</span>` : ""}${findingTag(task)}</td>
+        <td class="head-cell"><button type="button" class="kw tk-row-title" data-task-open="${task.id}" dir="auto" style="text-align:start">${esc(task.title)}</button>${sourceBit(task)}${findingTag(task)}</td>
         <td data-label="${t("Status")}">${moveSelect(task)}</td>
         <td data-label="${t("Priority")}">${task.priority === "high" ? status("serious", t("High")) : `<span class="small sec">${priorityWord(task.priority)}</span>`}</td>
         ${showSite ? `<td class="mono small" data-label="${t("Site")}" dir="auto">${task.site_host ? esc(task.site_host) : `<span class="muted" style="font-family:var(--font)">${t("All sites")}</span>`}</td>` : ""}
@@ -932,7 +943,8 @@
     "Business impact, 1 to 5": "Impact business, de 1 à 5", "Hours estimated": "Heures estimées", "Hours spent": "Heures passées", "Note": "Note", "Impact": "Impact",
     "Source": "Source", "Open finding": "Ouvrir le constat", "Created": "Créée", "Open": "Ouvrir", "Delete": "Supprimer",
     "Site removed:": "Site retiré :", "A task needs a title.": "Une tâche a besoin d'un titre.", "This finding already has an open task.": "Ce constat a déjà une tâche ouverte.",
-    "A new task was made for this finding, so this one can't come back.": "Une nouvelle tâche a été créée pour ce constat : celle-ci ne peut pas revenir.", "That task doesn't exist.": "Cette tâche n'existe pas.",
+    "Can't restore: a newer task covers this finding.": "Restauration impossible : une tâche plus récente couvre ce constat.", "That task doesn't exist.": "Cette tâche n'existe pas.",
+    "From a finding: {label}": "Depuis un constat : {label}",
     "Comments": "Commentaires", "Comment": "Commentaire", "Add comment": "Ajouter", "Your name": "Votre nom", "A comment needs some text.": "Un commentaire a besoin de texte.",
     "This week": "Cette semaine", "Month": "Mois", "Dates": "Dates", "Period": "Période", "Previous month": "Mois précédent", "Next month": "Mois suivant", "From": "Du", "To": "Au",
     "Filter": "Filtrer", "View": "Vue", "Board": "Kanban", "Table": "Tableau", "Search": "Rechercher", "All statuses": "Tous les statuts", "All types": "Tous les types", "Everyone": "Tout le monde",

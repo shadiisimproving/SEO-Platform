@@ -25,6 +25,8 @@
 #cp-table .cp-simple-pos { width: 72px; }
 .cp-page-title { display: block; overflow-wrap: anywhere; font-weight: 500; }
 .cp-page .second { white-space: normal; overflow-wrap: anywhere; font-weight: 400; }
+.cp-page-marks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; } /* Your choice and the reading spinner, beside my page */
+.cp-page-marks .cp-reading { margin-top: 0; }
 .cp-youthem { font-size: 12px; white-space: nowrap; }
 .cp-verdict { display: inline-flex; align-items: flex-start; gap: 4px; font-size: 13px; font-weight: 500; }
 .cp-verdict svg.i { width: 14px; height: 14px; flex: none; margin-top: 3px; }
@@ -166,6 +168,9 @@
 .tag.cg-flag { color: var(--crit-t); box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 50%, transparent); display: inline-flex; align-items: center; gap: 3px; }
 .tag.cg-flag svg.i { width: 12px; height: 12px; }
 .cg-title { display: block; margin-top: 2px; white-space: normal; overflow-wrap: anywhere; font-family: var(--sans, inherit); font-size: 12px; color: var(--text-2); font-weight: 400; }
+.cg-reasons { margin: -2px 0 10px; } /* Flagged as spam: each reason once, with its count */
+.cg-reasons .chip { display: inline-flex; align-items: center; }
+.cg-reasons .chip .comp-ic { color: inherit; }
 .cg-why { display: block; margin-top: 3px; white-space: normal; font-size: 12px; color: var(--text-2); }
 .cg-tools .chips { margin: 0; }
 .cg-tools { align-items: center; }
@@ -315,6 +320,7 @@
 .cp-rival-name { align-items: center; }
 .ca-chips .chip { display: inline-flex; align-items: center; gap: 6px; }
 .ca-chips .chip .site-logo { vertical-align: 0; }
+.ca-chips .chip.ca-logo-chip { min-width: 30px; padding: 1px 6px; justify-content: center; } /* a competitor cited is its logo alone, the host on hover */
 .ca-once { margin: 8px 2px 0; }
 #cg-table .cg-flag { align-self: flex-start; }
 @media (min-width: 641px) and (max-width: 1000px) { #cg-table :is(td, th) { padding-left: 4px; padding-right: 4px; } #cg-table :is(td, th):first-child { padding-left: 10px; } #cg-table .head-cell { min-width: 0; } }

@@ -62,10 +62,10 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   const dayNotes = (await call("GET", `notes?scope=date&day=${today}`)).notes || [];
   check("the day note is saved on that day", dayNotes.some((n) => n.body === `Changed the menu ${RUN}`));
 
-  // A group of pages: shows on a page inside it.
-  await page.getByRole("button", { name: "A group of pages" }).click(); await page.waitForTimeout(700);
+  // A folder: its note shows on a page inside it.
+  await page.getByRole("button", { name: "A folder" }).click(); await page.waitForTimeout(700);
   await page.fill("#nb-pick", "/"); await page.keyboard.press("Enter"); await page.waitForTimeout(400);
-  check("the whole website is refused as a group", /whole website/.test(await page.textContent("#nb-pick-target")));
+  check("the whole website is refused as a folder", /whole site: add a folder/.test(await page.textContent("#nb-pick-target")));
   await page.fill("#nb-pick", `/guide-${RUN}`); await page.keyboard.press("Enter"); await page.waitForTimeout(500);
   check("a group always ends in a slash", (await page.inputValue("#nb-pick")) === `https://${site.host}/guide-${RUN}/`, await page.inputValue("#nb-pick"));
   await page.keyboard.type(`Every guide needs a date ${RUN}`); await page.waitForTimeout(300);

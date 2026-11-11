@@ -32,7 +32,7 @@
     // Anything else: picked from a list. The page's own buttons already offer what's on screen, so these come after.
     list.push(
       { id: "pick-page", pick: "page", label: t("A page"), icon: "file-text", where: { scope: "page", pageUrl: null, siteId: site } },
-      { id: "pick-section", pick: "section", label: t("A group of pages"), icon: "folder-open", where: { scope: "section", pageUrl: null, siteId: site } },
+      { id: "pick-section", pick: "section", label: t("A folder"), icon: "folder-open", where: { scope: "section", pageUrl: null, siteId: site } },
       { id: "pick-keyword", pick: "keyword", label: t("A keyword"), icon: "key-round", where: { scope: "keyword", keyword: null, siteId: site } },
       { id: "pick-date", pick: "date", label: t("A date"), icon: "calendar-days", where: { scope: "date", day: null, siteId: site } },
       { id: "pick-domain", pick: "domain", label: t("A linking website"), icon: "link-2", where: { scope: "domain", domain: null, siteId: site } },

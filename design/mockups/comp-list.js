@@ -102,7 +102,12 @@
   }
 
   // ---- the watching state ------------------------------------------------------------------
-  const BLOCKED_TEXT = "This site doesn't allow automated visitors, so its edits can't be tracked. The app doesn't try to get past that.";
+  /* A blocked read: the server's few words (seo/competitors/crawl.py BLOCKED_TEXT), the full sentence in a tip. Reads saved
+     before 2026-11-11 carry the full sentence as their message: they are said the same way. Any other message stays as sent. */
+  const BLOCKED_TEXT = "Blocks bots, so edits can't be tracked.";
+  const BLOCKED_TIP = "This site doesn't allow automated visitors, so its edits can't be tracked. The app doesn't try to get past that.";
+  const blockedWords = (message) => (!message || message === BLOCKED_TEXT || message === BLOCKED_TIP ? null : message);
+  const blockedHtml = (message) => { const own = blockedWords(message); return own ? esc(say(own)) : `${esc(t(BLOCKED_TEXT))}${UI.tip(BLOCKED_TIP)}`; };
   const crawling = (crawl) => crawl?.status === "queued" || crawl?.status === "running";
 
   /* retry is { id, site }: with it, a failed read gets a Try again button that asks for a read at once. */
@@ -123,8 +128,8 @@
     else if (c.status === "ok") inner = `<span class="second">${esc(fill("Read {when}", { when: COMP.ago(c.finished_at) }))}${howWords}</span>`;
     else if (c.status === "running") inner = `<span class="status sec">${icon("refresh-cw", "spin")}${esc(t("Reading…"))}</span>${c.pages_read ? `<span class="second">${esc(many(c.pages_read, "{n} page read", "{n} pages read"))}</span>` : ""}`;
     else if (c.status === "queued") inner = `<span class="status sec">${icon("clock")}${esc(t("Waiting"))}</span>`;
-    else if (c.status === "blocked" && row) inner = withTip(UI.status("warn", t("Blocked")), say(c.message || BLOCKED_TEXT));
-    else if (c.status === "blocked") inner = `${UI.status("warn", t("Blocked"))}<span class="second cl-wrap">${esc(say(c.message || BLOCKED_TEXT))}</span>`;
+    else if (c.status === "blocked" && row) inner = withTip(UI.status("warn", t("Blocked")), say(blockedWords(c.message) || BLOCKED_TIP));
+    else if (c.status === "blocked") inner = `${UI.status("warn", t("Blocked"))}<span class="second cl-wrap">${blockedHtml(c.message)}</span>`;
     else if (c.status === "failed" && row) inner = `${withTip(UI.status("crit", t("Read failed")), t("Retries at the next daily read."))}${retryButton}`;
     else if (c.status === "failed") inner = `${UI.status("crit", t("Read failed"))}<span class="second cl-wrap">${esc(t("Trying again at the next daily read."))}</span>${retryButton}`;
     else inner = `<span class="status sec">${icon("clock")}${esc(t("Not read yet"))}</span>`;
@@ -139,7 +144,7 @@
     const names = (hosts) => esc(hosts.slice(0, 3).join(", ") + (hosts.length > 3 ? ` ${fill("and {n} more", { n: UI.num(hosts.length - 3) })}` : ""));
     const blocked = hostsWith("blocked"), failed = hostsWith("failed");
     return [
-      blocked.length ? `<p class="help cl-watch-note">${icon("triangle-alert")}<span>${many(blocked.length, "{n} blocks bots: {hosts} — edits can't be tracked.", "{n} block bots: {hosts} — edits can't be tracked.", { hosts: names(blocked) })}${UI.tip(blocked.length === 1 ? BLOCKED_TEXT : BLOCKED_MANY)}</span></p>` : "",
+      blocked.length ? `<p class="help cl-watch-note">${icon("triangle-alert")}<span>${many(blocked.length, "{n} blocks bots: {hosts} — edits can't be tracked.", "{n} block bots: {hosts} — edits can't be tracked.", { hosts: names(blocked) })}${UI.tip(blocked.length === 1 ? BLOCKED_TIP : BLOCKED_MANY)}</span></p>` : "",
       failed.length ? `<p class="help cl-watch-note"><span>${fill("Read failed ×{n}: {hosts} — retries at the next daily read.", { n: UI.num(failed.length), hosts: names(failed) })}</span></p>` : "",
     ].join("");
   }
@@ -402,8 +407,8 @@
   ];
   const KINDS = {
     title: ["pencil", "Title changed"], meta: ["pencil", "Meta description changed"], h1: ["pencil", "Main heading changed"], headings: ["pencil", "Subheadings changed"],
-    canonical: ["pencil", "Preferred address changed"], robots: ["pencil", "Indexing changed"], schema: ["pencil", "Structured data changed"], content: ["file-text", "Content changed"],
-    search_title: ["search", "Probably edited: new title in results"],
+    canonical: ["pencil", "Canonical changed"], robots: ["pencil", "Indexing changed"], schema: ["pencil", "Structured data changed"], content: ["file-text", "Content changed"],
+    search_title: ["search", "Search title changed"], // as Today names it (today-live.js KINDS)
     new_page: ["plus", "New page"], page_gone: ["minus", "Page removed"],
     rank_new: ["trending-up", "Started ranking for"], rank_lost: ["arrow-down", "Stopped ranking for"], rank_up: ["arrow-up", "Moved up on"], rank_down: ["arrow-down", "Moved down on"],
     ai_cited: ["sparkles", "Cited in AI Overview for"], ai_dropped: ["sparkles", "Dropped from AI Overview for"],
@@ -748,8 +753,8 @@
   const headNote = (p) => baseNote(p) + (COMP.reading ? COMP.reading.box(p, COMP.siteId) : ""); // comp-reading.js: sitemap, big site, JavaScript, Firecrawl
   function baseNote(p) {
     const c = p.crawl || {};
-    if (c.status === "blocked") return COMP.reading ? "" : `<p class="note warn cl-head-note">${icon("triangle-alert")}<span>${esc(say(c.message || BLOCKED_TEXT))} ${esc(t("Rankings, AI Overviews and shared keywords still work."))}</span></p>`;
-    if (c.status === "failed") return `<p class="note crit cl-head-note">${icon("octagon-alert")}<span>${esc(t("Last read failed. Trying again at the next daily read; rankings still work."))}${c.message ? ` <span class="small mono cl-wrap" dir="auto">${esc(c.message)}</span>` : ""}</span></p>`;
+    if (c.status === "blocked") return COMP.reading ? "" : `<p class="note warn cl-head-note">${icon("triangle-alert")}<span>${blockedHtml(c.message)} ${esc(t("Rankings, AI Overviews and shared keywords still work."))}</span></p>`;
+    if (c.status === "failed") return `<p class="note crit cl-head-note">${icon("octagon-alert")}<span>${esc(t("Last read failed. Trying again at the next daily read; rankings still work."))}${c.message ? ` <span class="small mono cl-wrap" dir="auto">${esc(say(c.message))}</span>` : ""}</span></p>`; // the app's own sentences (reading.STOPPED_READ…) in French; a raw error stays as sent
     return "";
   }
   const paused = (p) => p.tracking === "off"; // tracking off: nothing is read, so no "Watching" and no Read now
@@ -931,7 +936,7 @@
         <span class="ico">${icon("clock")}</span>
         <div class="cl-waiting-words">
           <h2>${esc(saved)} ${esc(state)} ${t("Nothing is lost.")}</h2>
-          <p class="sec">${esc(say(run.stop_reason || "No search tool is connected yet. The keywords are saved, and they'll be checked once a tool's key is added in Settings."))}</p>
+          <p class="sec">${esc(say(run.stop_reason || "No search tool connected: add a key in Settings."))}</p>
           <p class="small muted">${t("Free tools only. Resumes by itself when a tool is ready or checks refill.")}</p>
         </div>
       </div>
@@ -1343,7 +1348,7 @@
     const site = COMP.siteId;
     const country = UI.$("#cl-up-country").value, language = UI.$("#cl-up-language").value;
     if (upload.file ? !readKeywords(upload.text).keywords.length : !readKeywords(area.value).keywords.length) {
-      const message = t("No keywords found. Put one keyword on each line, or use a column named keyword.");
+      const message = t("No keywords found. Use one per line, or a column named keyword.");
       if (upload.file) fieldError(null, fileBox, message); else fieldError(area, textBox, upload.file || area.value.trim() ? message : t("Choose a file, or paste your keywords."));
       return;
     }
@@ -1754,7 +1759,7 @@
     const file = form?.get("file");
     const source = file ? decodeFile(new Uint8Array(await file.arrayBuffer())).text : String(body?.text || "");
     const names = readKeywords(source).keywords;
-    if (!names.length) refuse("No keywords found. Put one keyword on each line, or use a column named keyword.");
+    if (!names.length) refuse("No keywords found. Use one per line, or a column named keyword.");
     if (names.length > 20000) refuse(`That's ${names.length} keywords. The limit for one list is 20000.`);
     const answer = sampleFind(site);
     const known = new Set([...answer.suggestions, ...answer.platforms, ...answer.dismissed].flatMap((x) => (x.evidence || []).map((e) => e.keyword)));
@@ -1779,7 +1784,7 @@
     const site = Number(body?.site_id);
     const answer = sampleFind(site);
     if (!answer.keywords_total) refuse("Upload your keyword list first.");
-    if (runActive(answer.run)) refuse("A check of this website's keywords is already running.", 409);
+    if (runActive(answer.run)) refuse("A check is already running.", 409);
     const run = startSampleRun(site, { kind: "refresh", total: answer.keywords_total, new_keywords: answer.keywords_total });
     simulateRun(site, run, () => {
       const at = stamp();
@@ -1819,7 +1824,7 @@
     "Changes seen": "Changements vus", "Read with": "Lue avec",
     "Mobile": "Mobile", "Desktop": "Ordinateur", "top {n} checked": "top {n} vérifié", "Your best position, same check": "Votre meilleure position, même vérification",
     "Keyword": "Mot-clé", "Their page": "Leur page", "Title in results": "Titre dans les résultats", "Was": "Avant", "Now": "Maintenant", "Your position": "Votre position",
-    "Search engine": "Moteur de recherche", "Tool": "Outil", "Country": "Pays", "Device": "Appareil", "Location": "Lieu", "Results checked": "Résultats vérifiés", "Checked": "Vérifié le",
+    "Search engine": "Moteur de recherche", "Tool": "Outil", "Country": "Pays", "Device": "Appareil", "Location": "Lieu", "Results checked": "Résultats vérifiés", "Checked": "Vérifié",
     "All checked with {tool}, {when}.": "Tous vérifiés avec {tool}, {when}.",
     "Search keywords": "Chercher un mot-clé", "Find a competitor": "Chercher un concurrent", "competitors": "concurrents", "keywords": "mots-clés",
     "No competitor matches “{text}”.": "Aucun concurrent ne correspond à « {text} ».", "No keyword matches.": "Aucun mot-clé ne correspond.", "Clear search": "Effacer la recherche",
@@ -1857,7 +1862,7 @@
     "From a suggestion": "Depuis une suggestion",
     "Added by hand": "Ajouté à la main",
     "Edits can't be tracked on this site.": "Les modifications de ce site ne peuvent pas être suivies.",
-    "This site doesn't allow automated visitors, so its edits can't be tracked. The app doesn't try to get past that.": "Ce site n'autorise pas les visiteurs automatisés, donc ses modifications ne peuvent pas être suivies. L'application n'essaie pas de contourner ce choix.",
+    "Blocks bots, so edits can't be tracked.": "Bloque les robots : modifications non suivies.",
 
     // Add and remove
     "For": "Pour",
@@ -1933,11 +1938,11 @@
     "Ranking moves": "Mouvements de classement",
     "AI Overview": "AI Overview",
     "Title changed": "Titre modifié",
-    "Probably edited: new title in results": "Sans doute modifiée : nouveau titre dans les résultats",
+    "Search title changed": "Titre dans les résultats modifié",
     "Meta description changed": "Meta description modifiée",
     "Main heading changed": "Titre principal modifié",
     "Subheadings changed": "Sous-titres modifiés",
-    "Preferred address changed": "Adresse préférée modifiée",
+    "Canonical changed": "Canonique modifiée",
     "Indexing changed": "Indexation modifiée",
     "Structured data changed": "Données structurées modifiées",
     "Content changed": "Contenu modifié",
@@ -2031,7 +2036,7 @@
     "Uses {n} free check.": "Utilise {n} vérification gratuite.",
     "Uses {n} free checks.": "Utilise {n} vérifications gratuites.",
     "Never spends paid credits. If free checks run out, it pauses and resumes when they refill.": "Aucun crédit payant. Si les vérifications gratuites s'épuisent, tout s'arrête puis reprend quand elles reviennent.",
-    "A check of this website's keywords is already running.": "Une vérification des mots-clés de ce site est déjà en cours.",
+    "A check is already running.": "Une vérification est déjà en cours.",
     "Upload your keyword list first.": "Importez d'abord votre liste de mots-clés.",
 
     // The run
@@ -2054,13 +2059,13 @@
     "{n} keywords checked.": "{n} mots-clés vérifiés.",
     "{n} suggestion to review.": "{n} suggestion à examiner.",
     "{n} suggestions to review.": "{n} suggestions à examiner.",
-    "No search tool is connected yet. The keywords are saved, and they'll be checked once a tool's key is added in Settings.": "Aucun outil de recherche n'est encore connecté. Les mots-clés sont enregistrés, et ils seront vérifiés dès qu'une clé d'outil sera ajoutée dans les réglages.",
+    "No search tool connected: add a key in Settings.": "Aucun outil de recherche connecté : ajoutez une clé dans les réglages.",
     "DuckDuckGo stopped at a bot check.": "DuckDuckGo s'est arrêté sur une vérification anti-robot.",
     "The app won't bypass it.": "L'application ne la contourne pas.",
     "DuckDuckGo asked us to slow down, so this tool stopped.": "DuckDuckGo a demandé de ralentir, cet outil s'est donc arrêté.",
     "SerpApi refused the key.": "SerpApi a refusé la clé.",
     "SerpApi has no free searches left for now.": "SerpApi n'a plus de recherches gratuites pour l'instant.",
-    "Everything checked so far is saved, and the rest carries on when a tool has free checks again.": "Tout ce qui a été vérifié est enregistré, et le reste reprend quand un outil a de nouveau des vérifications gratuites.",
+    "Progress is saved; the rest resumes when a tool has free checks.": "La progression est enregistrée ; le reste reprend quand un outil a des vérifications gratuites.",
 
     // The upload panel
     "Drop a file here": "Déposez un fichier ici",
@@ -2096,7 +2101,7 @@
     "Choose a .csv or .txt file.": "Choisissez un fichier .csv ou .txt.",
     "File too large: 10 MB at most.": "Fichier trop volumineux : 10 Mo maximum.",
     "Choose a file, or paste your keywords.": "Choisissez un fichier, ou collez vos mots-clés.",
-    "No keywords found. Put one keyword on each line, or use a column named keyword.": "Aucun mot-clé trouvé. Mettez un mot-clé par ligne, ou utilisez une colonne nommée keyword.",
+    "No keywords found. Use one per line, or a column named keyword.": "Aucun mot-clé trouvé. Un par ligne, ou une colonne nommée keyword.",
     "Already checked: nothing searched.": "Déjà vérifié : aucune recherche.",
     "{n} keywords already checked: nothing searched.": "{n} mots-clés déjà vérifiés : aucune recherche.",
     "The country must be a two-letter code, such as FR.": "Le pays doit être un code à deux lettres, comme FR.",

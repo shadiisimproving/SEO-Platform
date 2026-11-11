@@ -98,7 +98,7 @@
     "Your pages were shown {n} times, {p}.": "Vos pages ont été montrées {n} fois, {p}.",
     "Up {p}% on the upload before.": "En hausse de {p} % par rapport à l'import précédent.", "Down {p}% on the upload before.": "En baisse de {p} % par rapport à l'import précédent.",
     "Most from: {list}": "Surtout de : {list}", "Replaced the upload for {p}.": "Import remplacé pour {p}.", "Saved: {p}.": "Enregistré : {p}.", "Google's AI report is in.": "Le rapport IA de Google est importé.",
-    "This isn't Search Console's generative AI report. In Search Console, open Performance → Generative AI, press Export and download the CSV.": "Ce n'est pas le rapport IA générative de la Search Console. Dans la Search Console, ouvrez Performances → IA générative, cliquez sur Exporter et téléchargez le CSV.",
+    "Not Search Console's generative AI report. Open Performance → Generative AI → Export → Download CSV.": "Ce n'est pas le rapport IA générative de la Search Console. Ouvrez Performances → IA générative → Exporter → Télécharger CSV.",
     "Download the report as CSV (Export → Download CSV), not as a spreadsheet.": "Téléchargez le rapport en CSV (Exporter → Télécharger CSV), pas en tableur.",
     "Search pages": "Rechercher une page", "No page matches.": "Aucune page ne correspond.", "page": "page", "pages": "pages",
     "Pick the site this report is about.": "Choisissez le site concerné par ce rapport.", "Choose the export file first.": "Choisissez d'abord le fichier exporté.",

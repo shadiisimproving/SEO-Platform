@@ -182,7 +182,7 @@ def _alert_title(row) -> str:
     if row["kind"] == "dropped_out":
         return f"{evidence.get('path')} dropped out of Google"
     if row["kind"] == "page_down":
-        return f"{evidence.get('path')} lost {abs(evidence.get('percent') or 0)}% of its Google clicks"
+        return f"{evidence.get('path')}: −{abs(evidence.get('percent') or 0)}% Google clicks"  # Today reads the old wording too
     if row["kind"] == "odd_day":
         return f"Google clicks fell on {evidence.get('day')}: {evidence.get('clicks')}, usually {round(evidence.get('usual') or 0)}"
     return "Google clicks fell sharply"
@@ -211,7 +211,7 @@ def _alerts(engine: Engine, ctx: data.Ctx) -> None:
                     text("DELETE FROM alerts WHERE site_id = :s AND kind = :k AND JSON_UNQUOTE(JSON_EXTRACT(detail, '$.finding_key')) = :f"),
                     {"s": ctx.site_id, "k": ALERT_KIND, "f": row["finding_key"]},
                 )
-            detail = {"finding_key": row["finding_key"], "finding": row["kind"], "detail": f"About {round(row['at_stake'])} clicks a month at stake. See Search → Insights."}
+            detail = {"finding_key": row["finding_key"], "finding": row["kind"], "detail": f"~{round(row['at_stake'])} clicks/month at stake"}  # the row's Open goes to Insights
             conn.execute(
                 text("INSERT INTO alerts (site_id, kind, severity, title, detail) VALUES (:s, :k, 'crit', :t, :d)"),
                 {"s": ctx.site_id, "k": ALERT_KIND, "t": _alert_title(row)[:300], "d": json.dumps(detail, ensure_ascii=False)},

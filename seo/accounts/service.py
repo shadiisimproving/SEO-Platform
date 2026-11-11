@@ -22,7 +22,7 @@ _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 _USERNAME = re.compile(r"^[a-z0-9][a-z0-9._-]{2,59}$")
 # Checked when the email is unknown, so an unknown address takes as long to refuse as a known one.
 _DUMMY_HASH = generate_password_hash(secrets.token_urlsafe(16))
-WRONG = "Wrong username or password, or this account is locked for a while after too many tries."
+WRONG = f"Wrong username or password, or too many tries: wait {LOCK_MINUTES} minutes."  # login.js has its French
 _PUBLIC = "id, email, name, role, must_change_password, disabled, last_login_at, created_at, locked_until > UTC_TIMESTAMP(3) AS locked"
 
 

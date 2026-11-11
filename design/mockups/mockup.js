@@ -1361,7 +1361,7 @@
 
   function healthPage() {
     const head = topbar(t("Site health"), t("Problems on your sites"), "", false);
-    const tabs = `<div class="tabs health-tabs" role="tablist" aria-label="${t("Site health")}"><button class="tab" role="tab" data-health-tab="test" aria-selected="${state.healthTab === "test"}">${icon("heart-pulse")}${t("Monthly health test")}</button><button class="tab" role="tab" data-health-tab="links" aria-selected="${state.healthTab === "links"}">${icon("link-2")}${t("Links checker")}</button><button class="tab" role="tab" data-health-tab="uptime" aria-selected="${state.healthTab === "uptime"}">${icon("activity")}${t("Uptime")}</button></div>`;
+    const tabs = `<div class="tabs health-tabs" role="tablist" aria-label="${t("Site health")}"><button class="tab" role="tab" data-health-tab="test" aria-selected="${state.healthTab === "test"}">${icon("heart-pulse")}${t("Health test")}</button><button class="tab" role="tab" data-health-tab="links" aria-selected="${state.healthTab === "links"}">${icon("link-2")}${t("Links checker")}</button><button class="tab" role="tab" data-health-tab="uptime" aria-selected="${state.healthTab === "uptime"}">${icon("activity")}${t("Uptime")}</button></div>`;
     if (state.healthTab === "test" && window.HealthTest) return `${head}<div class="content page-enter">${tabs}${window.HealthTest.body()}</div>`;
     if (state.healthTab === "uptime") return `${head}<div class="content page-enter">${tabs}${window.UptimeWatch.body()}</div>`;
     if (!lc.ready) return `${head}<div class="content page-enter">${tabs}${window.UI.skeleton("table")}</div>`;
@@ -3171,7 +3171,7 @@
         </fieldset>`}
         ${!steps ? "" : `<details class="fold how" ${canTest && c.status !== "off" ? "" : "open"}><summary>${icon("chevron-right")}${t(howWord)}<span class="hint">${steps} ${t(steps === 1 ? "step" : "steps")}</span></summary>
           ${stepList(c.steps)}
-          ${c.risk ? `<p class="note warn" style="margin:0 0 10px">${icon("triangle-alert")}<span>${esc(t(c.risk))}</span></p>` : ""}
+          ${c.risk ? `<p class="note warn" style="margin:0 0 10px">${icon("triangle-alert")}<span>${esc(t(c.risk))}${c.riskTip ? UI.tip(c.riskTip) : ""}</span></p>` : ""}
           ${c.url && !c.steps.some((s) => s.url) ? `<p style="margin:0 0 10px"><a class="ext-link" href="${esc(c.url)}" target="_blank" rel="noopener noreferrer">${icon("external-link")}${t("Official page")}</a></p>` : ""}
         </details>`}
         ${window.LIVE?.oldClarityData?.(c) || ""}

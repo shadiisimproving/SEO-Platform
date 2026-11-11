@@ -208,7 +208,9 @@
       const code = typeof err === "object" && err ? err.status : undefined;
       const plain = (key) => ({ words: t(key), full: "" });
       if (code === 0 || /failed to fetch|networkerror|load failed|network request failed/i.test(message)) return plain("Server unreachable. Check the connection, then try again.");
-      if (code === 429 || /too many requests|^error 429$/i.test(message)) return plain("Server busy. Try again in a minute.");
+      // Busy is our own server's 429. A sentence that names who asked to slow down ("Too many requests to Anthropic…") keeps its words.
+      const named = /too many requests (?:to|from|at) \S|trop de requêtes (?:chez|de|à) \S/i.test(message);
+      if (!named && (code === 429 || /too many requests|^error 429$/i.test(message))) return plain("Server busy. Try again in a minute.");
       if (/^(internal server error|error 50\d|bad gateway|service unavailable|gateway time-?out)$/i.test(message.trim()) || (code >= 500 && !message)) return plain("Something went wrong on the server. Try again.");
       if (/^error 404$|^not found$/i.test(message.trim())) return plain("No longer there. Reload the page.");
       if (/^(timeout|timed out|request timed out|the read operation timed out)\.?$/i.test(message.trim())) return plain("The server took too long. Try again.");

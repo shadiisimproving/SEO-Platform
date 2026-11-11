@@ -11,6 +11,8 @@
   const t = (s) => UI.t(s);
   const esc = (v) => UI.esc(v);
   const fill = (text, values) => text.replace(/\{(\w+)\}/g, (_, key) => values[key]);
+  // The same English word can need another French one where it sits: "Checked|count" shows as "Checked" in English.
+  const inPlace = (key) => t(key).split("|")[0];
   // A check tool by its logo alone, its name on hover and for screen readers. A tool with no logo keeps its name.
   const toolMark = (tool) => (window.BRANDS?.FILES?.[tool] ? UI.logoOnly(tool) : `<span>${esc(tool)}</span> `);
 
@@ -25,10 +27,11 @@
     </section>`;
   }
 
-  /* The caveats sit behind an (i) beside the filters. Only the one action stays in view, and only while something isn't captured. */
+  /* The caveats sit behind an (i) beside the filters. Only the one action stays in view, and only while something isn't captured.
+     The button names SerpApi; hovering it says any tool that sees AI Overviews will do (one (i) on the line is enough). */
   function plainNote(s) {
     const words = `${t("Updates with each check; never spends credits itself. Google only.")} ${t("Not captured: the tool can't see AI Overviews. One may still exist.")}`;
-    return `<div class="ca-note-line">${COMP.info(words)}${s.not_captured ? `<button class="btn btn-small" data-ca-connect>${t("Connect a tool that sees AI Overviews")}</button>` : ""}</div>`;
+    return `<div class="ca-note-line">${COMP.info(words)}${s.not_captured ? `<button class="btn btn-small" data-ca-connect data-tip="${esc(t("Connect a tool that sees AI Overviews, such as SerpApi."))}">${t("Connect SerpApi")}</button>` : ""}</div>`;
   }
 
   // ---- the table --------------------------------------------------------------------------------
@@ -47,7 +50,8 @@
     if (!row.cited_me) return statusWord("minus", "No", "muted");
     return `${UI.status("good", t("Yes"))}${row.my_cited_urls.map((url) => `<span class="second">${COMP.link(url)}</span>`).join("")}`;
   }
-  const rivalChips = (list) => (list.length ? `<span class="ca-chips">${list.map((c) => `<button class="chip" data-ca-rival="${c.id}" dir="auto" aria-label="${t("Open competitor")}: ${esc(c.host)}">${window.UI.siteLogo(c.host, 16)}${esc(c.host)}</button>`).join("")}</span>` : `<span class="muted">—</span>`);
+  // Each competitor cited is its logo alone, a button to its profile: the host shows on hover and for screen readers.
+  const rivalChips = (list) => (list.length ? `<span class="ca-chips">${list.map((c) => `<button class="chip ca-logo-chip" data-ca-rival="${c.id}" data-tip="${esc(c.host)}" aria-label="${esc(t("Open competitor"))}: ${esc(c.host)}">${window.UI.siteLogo(c.host, 16)}</button>`).join("")}</span>` : `<span class="muted">—</span>`);
   const otherSites = (list) => (list.length ? `<span class="ca-others">${list.map((d) => `<span class="mono small" dir="auto">${esc(d)}</span>`).join("")}</span>` : `<span class="muted">—</span>`);
 
   function keywordTable(all) {
@@ -177,7 +181,7 @@
         <div class="legend"><span><i style="border-color:var(--series-1)"></i>${t("With AI Overview")}</span><span><i class="dash" style="border-color:var(--series-1)"></i>${t("You're cited")}</span></div>
         <div id="ca-chart" class="ca-chart"></div>
         <details class="fold ca-numbers"><summary>${UI.icon("chevron-right")}${t("See the numbers")}</summary>
-          <table class="mini"><thead><tr><th scope="col">${t("Day")}</th><th scope="col" class="r">${t("Checked")}</th><th scope="col" class="r">${t("With AI Overview")}</th><th scope="col" class="r">${t("Citing you")}</th></tr></thead>
+          <table class="mini"><thead><tr><th scope="col">${t("Day")}</th><th scope="col" class="r">${inPlace("Checked|count")}</th><th scope="col" class="r">${t("With AI Overview")}</th><th scope="col" class="r">${t("Citing you")}</th></tr></thead>
           <tbody>${trend.map((p) => `<tr><td>${esc(dayLabel(p.day, true))}</td><td class="r tabular">${UI.num(p.checked)}</td><td class="r tabular">${UI.num(p.overviews)} (${percent(p.overviews, p.checked)})</td><td class="r tabular">${UI.num(p.cited_me)} (${percent(p.cited_me, p.checked)})</td></tr>`).join("")}</tbody></table>
         </details>
       </div>`;
@@ -262,7 +266,7 @@
     "None cited yet": "Aucun cité pour l'instant",
     "Updates with each check; never spends credits itself. Google only.": "Se met à jour à chaque relevé ; ne dépense jamais de crédits seul. Google uniquement.",
     "Not captured: the tool can't see AI Overviews. One may still exist.": "Non capté : l'outil ne voit pas les AI Overviews. Il peut y en avoir un.",
-    "Connect a tool that can": "Connecter un outil qui les voit", "Connect a tool that sees AI Overviews": "Connecter un outil qui voit les AI Overviews",
+    "Connect a tool that can": "Connecter un outil qui les voit", "Connect SerpApi": "Connecter SerpApi",
     "AI Overview": "AI Overview",
     "You're cited": "Vous êtes cité",
     "You're not cited": "Vous n'êtes pas cité",
@@ -291,7 +295,8 @@
     
     "See the numbers": "Voir les chiffres",
     "Day": "Jour",
-    "Checked": "Relevés",
+    "Checked": "Vérifié",
+    "Checked|count": "Vérifiés",
     
     "Citing you": "Vous citant",
     "No keyword checked yet": "Aucun mot-clé relevé pour l'instant",

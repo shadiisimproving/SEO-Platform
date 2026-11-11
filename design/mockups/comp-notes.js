@@ -583,7 +583,7 @@
     if (e.scope === "site") return `${icon("globe")}<span>${t(siteOf(e.siteId) === null ? "All my sites" : "Whole site")}</span>${forSite}`;
     if (e.scope === "screen") return `${icon("layout-dashboard")}<span>${esc(screenName(e.screen))}</span>${forSite}`;
     if (e.scope === "keyword") return `${icon("key-round")}<span dir="auto">${esc(e.keyword || t("A keyword"))}</span>${forSite}`;
-    if (e.scope === "section") return `${icon("folder-open")}<span class="mono" dir="ltr">${esc(e.pageUrl ? `${COMP.shortUrl(e.pageUrl)}/…` : t("A group of pages"))}</span>${forSite}`;
+    if (e.scope === "section") return `${icon("folder-open")}<span class="mono" dir="ltr">${esc(e.pageUrl ? `${COMP.shortUrl(e.pageUrl)}/…` : t("A folder"))}</span>${forSite}`;
     if (e.scope === "date") return `${icon("calendar-days")}<span>${esc(e.day ? dayName(e.day) : t("A date"))}</span>${forSite}`;
     if (e.scope === "domain") return `${icon("link-2")}<span class="mono" dir="ltr">${esc(e.domain || t("A linking website"))}</span>${forSite}`;
     if (e.scope === "task") return `${icon("square-check")}<span dir="auto">${esc(e.task || t("A task"))}</span>${forSite}`;
@@ -742,7 +742,7 @@
     const extra = { day, domain, taskId, task };
     const key = targetKey(scope, competitorId, pageUrl, screen, site, keyword, extra);
     const e = composerFor(key, { scope, competitorId, pageUrl, screen, keyword, ...extra, siteId: site });
-    const heading = title || t(scope === "competitor" ? "Notes on this competitor" : scope === "page" ? "Notes on this page" : scope === "keyword" ? "Notes on this keyword" : scope === "section" ? "Notes on this group of pages" : scope === "date" ? "Notes on this day" : scope === "domain" ? "Notes on this linking website" : scope === "task" ? "Notes on this task" : scope === "screen" ? "Notes on this screen" : scope === "site" ? "Notes on this website" : "Notes on all competitors");
+    const heading = title || t(scope === "competitor" ? "Notes on this competitor" : scope === "page" ? "Notes on this page" : scope === "keyword" ? "Notes on this keyword" : scope === "section" ? "Notes on this folder" : scope === "date" ? "Notes on this day" : scope === "domain" ? "Notes on this linking website" : scope === "task" ? "Notes on this task" : scope === "screen" ? "Notes on this screen" : scope === "site" ? "Notes on this website" : "Notes on all competitors");
     return `<section class="${bare ? "nb-bare" : "card"} nb-block" data-note-block="${esc(key)}" data-note-scope="${esc(scope)}" data-note-competitor="${esc(competitorId ?? "")}" data-note-page="${esc(pageUrl ?? "")}" data-note-screen="${esc(screen ?? "")}" data-note-keyword="${esc(keyword ?? "")}" data-note-day="${esc(day ?? "")}" data-note-domain="${esc(domain ?? "")}" data-note-task="${esc(taskId ?? "")}" data-note-task-title="${esc(task ?? "")}" data-note-site="${esc(siteOf(site) ?? "")}">
       ${bare ? "" : `<div class="card-head"><h2 dir="auto">${esc(heading)}</h2><span class="end small muted">${t("Saves by itself")}</span></div>`}
       ${composeField(e, key, heading)}
@@ -813,10 +813,14 @@
     domain: { field: "domain", ltr: true, mono: true, label: "Linking website", hint: "Search or type a website", empty: "Choose a site, then write: price, contact, answer.",
       list: (f) => f.domains.map((d) => [d, ""]) },
     task: { field: "task", label: "Task", hint: "Search tasks", empty: "Choose a task, then write.",
-      list: (f) => f.tasks.map((x) => [x.title, x.status === "done" ? UI.t("Done") : ""]) },
+      list: (f) => f.tasks.map((x) => [taskValue(x, f.tasks), x.status === "done" ? UI.t("Done") : ""]) },
     competitor: { field: "competitor", ltr: true, label: "Competitor", hint: "Search competitors", empty: "Choose a competitor, then write.",
       list: (f) => f.competitors.map((c) => [c.host, c.display !== c.host ? c.display : ""]) },
   };
+  /* A health task is named by its check alone ("Error pages"), so two sites can each have a task with that title.
+     Those are told apart by their site, in the list and in what's typed: "Error pages · site-two.example". */
+  const sameTitle = (a, b) => a.title.trim().toLowerCase() === b.title.trim().toLowerCase();
+  const taskValue = (x, all) => (all.some((y) => y !== x && sameTitle(x, y) && (y.site_host || "") !== (x.site_host || "")) ? `${x.title} · ${x.site_host || UI.t("All sites")}` : x.title);
   const pickedValue = (choice) => choice.where[PICKS[choice.pick].field] || "";
   function pickerTarget(choice) {
     const { t } = UI;
@@ -907,16 +911,17 @@
       case "section": {
         let url = fullAddress(value).split(/[?#]/)[0];
         if (!url.endsWith("/")) url += "/";
-        if (!/^https?:\/\/[^/]+\/.+\/$/.test(url)) return [url, null, "That's the whole website. Write the note on the website instead, or add a folder such as /blog/."];
+        if (!/^https?:\/\/[^/]+\/.+\/$/.test(url)) return [url, null, "That's the whole site: add a folder like /blog/, or write on the website."];
         return [url, { pageUrl: url }];
       }
       case "keyword": return [value, { keyword: value }];
-      case "date": return /^\d{4}-\d{2}-\d{2}$/.test(value) ? [value, { day: value }] : [value, null, "Choose the day this note is about."];
+      case "date": return /^\d{4}-\d{2}-\d{2}$/.test(value) ? [value, { day: value }] : [value, null, "Pick a day."];
       case "domain": { const d = cleanDomain(value); return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(d) ? [d, { domain: d }] : [value, null, "Enter the linking website, such as example.com."]; }
       case "task": {
         const found = await pickerOptions(choice.where.siteId).catch(() => ({ tasks: [] }));
-        const task = (found.tasks || []).find((x) => x.title.trim().toLowerCase() === value.toLowerCase());
-        return task ? [task.title, { taskId: task.id, task: task.title }] : [value, null, "No such task. Pick one from the list."];
+        const all = found.tasks || [], typed = value.trim().toLowerCase();
+        const task = all.find((x) => taskValue(x, all).trim().toLowerCase() === typed) || all.find((x) => x.title.trim().toLowerCase() === typed);
+        return task ? [taskValue(task, all), { taskId: task.id, task: task.title }] : [value, null, "No such task. Pick one from the list."];
       }
       case "competitor": {
         const wanted = cleanDomain(value);
@@ -1407,12 +1412,12 @@
     },
     checkBody(body) {
       if (typeof body !== "string") throw refusal("A note needs some text.");
-      if (new Blob([body]).size > MAX_BYTES) throw refusal("This note is too long to save. Your text is still here: split it into two notes.");
+      if (new Blob([body]).size > MAX_BYTES) throw refusal("Note too long. Your text is still here: split it in two.");
     },
     create(b) {
       this.checkBody(b.body);
-      if (!["all", "competitor", "page", "site", "screen", "keyword", "date", "domain", "section", "task"].includes(b.scope)) throw refusal("A note goes on all competitors, one competitor, a page or group of pages, a keyword, a day, a linking website, a task, a screen or a website.");
-      if (b.scope === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(b.day || "")) throw refusal("Choose the day this note is about.");
+      if (!["all", "competitor", "page", "site", "screen", "keyword", "date", "domain", "section", "task"].includes(b.scope)) throw refusal("That isn't something a note can go on.");
+      if (b.scope === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(b.day || "")) throw refusal("Pick a day.");
       if (b.scope === "domain" && !/^[a-z0-9.-]+\.[a-z]{2,}$/i.test(b.domain || "")) throw refusal("Enter the linking website, such as example.com.");
       if (b.scope === "task" && typeof b.task_id !== "number") throw refusal("Say which task this note is about.");
       if (b.scope === "keyword" && !keywordKey(b.keyword)) throw refusal("Enter the keyword.");
@@ -1478,7 +1483,7 @@
     "Add text": "Ajouter du texte", "Add file": "Ajouter un fichier", "Adding {name}…": "Ajout de {name}…", "Remove {name}": "Retirer {name}", "File deleted": "Fichier supprimé",
     "{name} is over 25 MB.": "{name} dépasse 25 Mo.", "Couldn't add {name}: {why}": "Impossible d'ajouter {name} : {why}", "Note not saved.": "Note non enregistrée.",
     "Couldn't delete this file. Try again.": "Impossible de supprimer ce fichier. Réessayez.", "Couldn't restore the file.": "Impossible de restaurer le fichier.",
-    "This file is too large. The limit is 25 MB.": "Ce fichier est trop lourd. La limite est de 25 Mo.", "That file is empty.": "Ce fichier est vide.", "Choose a file to add.": "Choisissez un fichier à ajouter.", "That file doesn't exist.": "Ce fichier n'existe pas.", "That file couldn't be read.": "Ce fichier n'a pas pu être lu.",
+    "This file is over 25 MB.": "Ce fichier dépasse 25 Mo.", "That file is empty.": "Ce fichier est vide.", "Choose a file to add.": "Choisissez un fichier à ajouter.", "That file doesn't exist.": "Ce fichier n'existe pas.", "That file couldn't be read.": "Ce fichier n'a pas pu être lu.",
     "Saves by itself": "S'enregistre tout seul",
     "Saving…": "Enregistrement…",
     "Saved {time}": "Enregistré à {time}", "Joins the list when you leave.": "Rejoint la liste quand vous quittez le champ.", "New note": "Nouvelle note", "Choose a competitor": "Choisissez un concurrent",
@@ -1499,22 +1504,22 @@
     "Notes on this competitor": "Notes sur ce concurrent",
     "Notes on this page": "Notes sur cette page",
     "Notes on all competitors": "Notes sur tous les concurrents",
-    "A group of pages": "Un groupe de pages", "A date": "Une date", "A linking website": "Un site qui fait un lien", "A task": "Une tâche", "Day": "Jour", "Task": "Tâche",
-    "Notes on this group of pages": "Notes sur ce groupe de pages", "Notes on this day": "Notes sur ce jour", "Notes on this linking website": "Notes sur ce site", "Notes on this task": "Notes sur cette tâche",
+    "A folder": "Un dossier", "A date": "Une date", "A linking website": "Un site qui fait un lien", "A task": "Une tâche", "Day": "Jour", "Task": "Tâche",
+    "Notes on this folder": "Notes sur ce dossier", "Notes on this day": "Notes sur ce jour", "Notes on this linking website": "Notes sur ce site", "Notes on this task": "Notes sur cette tâche",
     "Linking website": "Site qui fait un lien", "Address starts with": "L'adresse commence par", "/blog/ or example.com/services/": "/blog/ ou example.com/services/",
     "Search or type a website": "Chercher ou saisir un site", "Search tasks": "Chercher une tâche",
     "Choose a folder, then write.": "Choisissez un dossier, puis écrivez.",
     "Choose a day, then write what happened.": "Choisissez un jour, puis écrivez ce qui s'est passé.",
     "Choose a site, then write: price, contact, answer.": "Choisissez un site, puis écrivez : prix, contact, réponse.",
     "Choose a task, then write.": "Choisissez une tâche, puis écrivez.",
-    "That's the whole website. Write the note on the website instead, or add a folder such as /blog/.": "C'est le site entier. Écrivez la note sur le site, ou ajoutez un dossier comme /blog/.",
-    "Choose the day this note is about.": "Choisissez le jour concerné par cette note.", "Enter the linking website, such as example.com.": "Saisissez le site qui fait le lien, par exemple example.com.",
+    "That's the whole site: add a folder like /blog/, or write on the website.": "C'est le site entier : ajoutez un dossier comme /blog/, ou écrivez sur le site.",
+    "Pick a day.": "Choisissez un jour.", "Enter the linking website, such as example.com.": "Saisissez le site qui fait le lien, par exemple example.com.",
     "No such task. Pick one from the list.": "Tâche inconnue. Choisissez-en une dans la liste.", "Say which task this note is about.": "Indiquez la tâche concernée par cette note.", "That task doesn't exist.": "Cette tâche n'existe pas.",
-    "Choose a day between 2000 and next year.": "Choisissez un jour entre 2000 et l'an prochain.", "Enter the address the pages start with, such as example.com/blog/.": "Saisissez le début des adresses des pages, par exemple example.com/blog/.",
-    "A note goes on all competitors, one competitor, a page or group of pages, a keyword, a day, a linking website, a task, a screen or a website.": "Une note porte sur tous les concurrents, un concurrent, une page ou un groupe de pages, un mot-clé, un jour, un site qui fait un lien, une tâche, un écran ou un site.",
+    "Choose a day between 2000 and next year.": "Choisissez un jour entre 2000 et l'an prochain.", "Enter the folder address, such as example.com/blog/.": "Saisissez l'adresse du dossier, par exemple example.com/blog/.",
+    "That isn't something a note can go on.": "Une note ne peut pas porter là-dessus.",
     "Notes on this keyword": "Notes sur ce mot-clé", "Or about": "Ou sur", "Or about something else": "Ou sur autre chose", "A keyword": "Un mot-clé", "Keyword": "Mot-clé",
     "Enter the keyword to save. Kept on this computer.": "Saisissez le mot-clé pour enregistrer. Gardée sur cet ordinateur.",
-    "Enter the keyword.": "Saisissez le mot-clé.", "This keyword is too long. The limit is 400 characters.": "Ce mot-clé est trop long. La limite est de 400 caractères.",
+    "Enter the keyword.": "Saisissez le mot-clé.", "This keyword is over 400 characters.": "Ce mot-clé dépasse 400 caractères.",
     "Choose a page, then write.": "Choisissez une page, puis écrivez.",
     "Choose a keyword, then write.": "Choisissez un mot-clé, puis écrivez.",
     "Choose a competitor, then write.": "Choisissez un concurrent, puis écrivez.", "Search competitors": "Chercher un concurrent",
@@ -1546,7 +1551,7 @@
     "What you've noticed about them.": "Ce que vous avez remarqué chez lui.",
     "No notes match this search.": "Aucune note ne correspond à cette recherche.",
     "A note needs some text.": "Une note a besoin de texte.",
-    "This note is too long to save. Your text is still here: split it into two notes.": "Cette note est trop longue pour être enregistrée. Votre texte est toujours là : coupez-le en deux notes.",
+    "Note too long. Your text is still here: split it in two.": "Note trop longue. Votre texte est toujours là : coupez-la en deux.",
     "A note goes on all competitors, one competitor, or a page.": "Une note porte sur tous les concurrents, un concurrent ou une page.",
     "Say which competitor this note is about.": "Indiquez le concurrent concerné par cette note.",
     "Enter the page's address.": "Saisissez l'adresse de la page.",

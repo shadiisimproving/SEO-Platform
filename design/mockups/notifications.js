@@ -11,7 +11,7 @@
   const WORDS = {
     "Notifications": "Notifications",
     "Mark all read": "Tout marquer comme lu",
-    "New search": "Nouvelle recherche",
+    "New search on Google": "Nouvelle recherche sur Google",
     "Position {n}": "Position {n}",
     "{n} impressions": "{n} impressions",
     "1 impression": "1 impression",
@@ -159,7 +159,7 @@
     return `<li class="bell-row bell-row-go ${item.read ? "" : "unread"}" data-bell-row="${item.id}">
       <span class="bell-dot" aria-hidden="true"></span>
       <div class="bell-body">
-        <p class="bell-title"><button type="button" class="bell-go" data-bell-go="${item.id}" title="${esc(t("Open in Overview → Queries"))}"><span class="bell-kind">${esc(t("New search"))}</span> <b dir="auto">“${esc(d.query || "")}”</b></button></p>
+        <p class="bell-title"><button type="button" class="bell-go" data-bell-go="${item.id}" title="${esc(t("Open in Overview → Queries"))}"><span class="bell-kind" role="img" title="${esc(t("New search on Google"))}" aria-label="${esc(t("New search on Google"))}">${UI.icon("search")}</span> <b dir="auto">“${esc(d.query || "")}”</b></button></p>
         <p class="bell-meta">${logo}<span>${esc(item.host)}</span>${d.page ? `<span>·</span>${PageLink.html(d.page, { text: pathOf(d.page), host: item.host, cls: "bell-path" })}` : ""}<span>·</span><span>${esc(dayLabel(d.day))}</span></p>
         <p class="bell-meta">${facts.map((f) => `<span>${esc(f)}</span>`).join("<span>·</span>")}</p>
       </div>

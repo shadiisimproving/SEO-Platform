@@ -463,7 +463,7 @@
     const oldest = c.oldest_days === null || c.oldest_days === undefined ? "" : ` ${c.oldest_days <= 1 ? t("Oldest: a day or less.") : fill("Oldest {n} days.", { n: num(c.oldest_days) })}`;
     const world = d.rows.filter(worldWide).length;
     const worldLine = world ? `<p class="small muted in-world-line">${icon("globe")}<span>${esc(world === 1 ? t("1 uses all-country positions") : fill("{n} use all-country positions", { n: num(world) }))}</span></p>` : "";
-    const thin = c.recent * 2 < c.tracked ? `<p class="small ov-hint in-need">${t("Most rank checks are old or missing, so this list is short because of the data, not because all is well.")}</p>` : "";
+    const thin = c.recent * 2 < c.tracked ? `<p class="small ov-hint in-need">${t("Short list: most rank checks are old or missing.")}${UI.tip("It's short because of the data, not because all is well.")}</p>` : "";
     return `<div class="in-mix-head"><p class="in-mix-answer" dir="auto">${esc(fill("Of {a} tracked keywords, {b} have Search Console data.", { a: num(c.tracked), b: num(c.with_search) }))}${esc(clause)}</p>${worldLine}
       <p class="small muted">${esc(fill("Rankings checked: {a} of {b} in the last {d} days.", { a: num(c.recent), b: num(c.tracked), d: num(c.fresh_days) }))}${esc(oldest)} <a href="#keywords">${t("Refresh in Keywords")}</a></p></div>${thin}`;
   }
@@ -515,7 +515,7 @@
       known(e.click_rate) ? li("Click rate", `${UI.dec(e.click_rate)}%`) : "", known(e.expected_rate) ? li("Usual rate", `${UI.dec(e.expected_rate)}%`, USUAL_TIP) : "",
     ].join("");
     const how = `<p class="small muted">${esc(fill("Checked {d} with {tool} from {place}, top {n}.", { d: dayLabel((e.checked || "").slice(0, 10)), tool: e.tool || "", place: e.location || "—", n: num(e.depth ?? 0) }))}</p>`;
-    const pages = e.clicked_page ? `<h3 class="ov-h3">${t("Pages")}</h3><ul class="rows ov-split">${li("Shown in the last check", pageLink(e.ranking_page, { text: pathOf(e.ranking_page), host: f.host }))}${li("Clicked", pageLink(e.clicked_page, { text: pathOf(e.clicked_page), host: f.host }))}</ul>` : "";
+    const pages = e.clicked_page ? `<h3 class="ov-h3">${t("Pages")}</h3><ul class="rows ov-split">${li("Shown", pageLink(e.ranking_page, { text: pathOf(e.ranking_page), host: f.host }))}${li("Clicked", pageLink(e.clicked_page, { text: pathOf(e.clicked_page), host: f.host }))}</ul>` : "";
     const results = e.results?.length ? `<h3 class="ov-h3">${t("Who ranks for it")}</h3><ul class="rows ov-split in-serp">${e.results.map((r) => `<li class="${r.mine ? "mine" : ""}"><div class="what"><div class="t" dir="auto">${UI.siteLogo ? UI.siteLogo(r.host, 16) : ""} <a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.host)}</a>${r.mine ? ` <span class="in-tag">${t("You")}</span>` : r.rival ? ` <span class="in-tag">${t("Followed rival")}</span>` : ""}</div></div><span>${num(r.position)}</span></li>`).join("")}</ul>` : "";
     const also = e.also?.length ? `<p class="small muted">${t("Also")}: ${e.also.map((k) => esc(t(KIND[k]?.name || k))).join(", ")}</p>` : "";
     return `<ul class="rows ov-split">${rows}</ul>${how}${pages}${results}${also}`;
@@ -542,7 +542,7 @@
     const info = f.ai;
     const lang = UI.state.lang === "fr" ? "fr" : "en";
     const kept = info.kept?.[lang] || {};
-    if (info.provider === "none") return `<h3 class="ov-h3">${t("With AI")}</h3><p class="small muted">${t("No AI is chosen for this site yet. Pick one in Settings → AI. Nothing about the site is sent until you do.")} <a href="#settings">${t("Open Settings")}</a></p>`;
+    if (info.provider === "none") return `<h3 class="ov-h3">${t("With AI")}</h3><p class="small muted">${t("No AI chosen yet, so nothing is sent. Pick one in Settings → AI.")} <a href="#settings">${t("Open Settings")}</a></p>`;
     const ready = aiReady(info.provider);
     const head = `<h3 class="ov-h3">${t("With AI")} <span class="muted small">${t(info.provider === "claude" ? "Claude (Anthropic key)" : "Free models (OpenRouter)")}</span></h3>`;
     if (!ready && !Object.keys(kept).length) return `${head}<p class="small muted">${t(info.provider === "claude" ? "Paste an Anthropic key in Settings to use Claude here." : "Connect OpenRouter in Settings, or pick Claude for this site.")} <a href="#settings">${t("Open Settings")}</a></p>`;
@@ -784,7 +784,7 @@
 
   const words = {
     "No site yet": "Pas encore de site", "Add a site and connect Search Console to get insights.": "Ajoutez un site et connectez la Search Console pour obtenir des analyses.",
-    "No AI is chosen for this site yet. Pick one in Settings → AI. Nothing about the site is sent until you do.": "Aucune IA n'est encore choisie pour ce site. Choisissez-en une dans Réglages → IA. Rien sur le site n'est envoyé avant.",
+    "No AI chosen yet, so nothing is sent. Pick one in Settings → AI.": "Aucune IA choisie : rien n'est envoyé. Choisissez-en une dans Réglages → IA.",
     "Add a site": "Ajouter un site", "Run": "Lancer", "What to do": "Que faire",
     "The search isn't in the title or H1: put it there first.": "La recherche n'est ni dans le titre ni dans le H1 : mettez-la là d'abord.",
     "The search isn't in the title.": "La recherche n'est pas dans le titre.", "The search isn't in the H1.": "La recherche n'est pas dans le H1.",
@@ -874,10 +874,10 @@
     "Sends only the numbers above and the page's title and headings.": "Envoie seulement les chiffres ci-dessus, le titre et les intertitres de la page.",
     "Paste an Anthropic key in Settings first, or pick OpenRouter's free models for this site.": "Collez d'abord une clé Anthropic dans les réglages, ou choisissez les modèles gratuits d'OpenRouter pour ce site.",
     "Connect OpenRouter in Settings first, or pick Claude for this site.": "Connectez d'abord OpenRouter dans les réglages, ou choisissez Claude pour ce site.",
-    "Anthropic refused this key. Paste it again in Settings.": "Anthropic a refusé cette clé. Collez-la à nouveau dans les réglages.", "Claude declined to answer this one.": "Claude a refusé de répondre à celle-ci.",
-    "Claude gave no answer. Try again.": "Claude n'a pas répondu. Réessayez.", "Claude is busy or down right now. Try again in a moment.": "Claude est occupé ou indisponible. Réessayez dans un instant.",
+    "Anthropic refused this key. Paste it again in Settings.": "Anthropic a refusé cette clé. Collez-la à nouveau dans les réglages.", "Claude declined to answer.": "Claude a refusé de répondre.",
+    "Claude gave no answer. Try again.": "Claude n'a pas répondu. Réessayez.", "Claude is busy or down. Try again in a moment.": "Claude est occupé ou indisponible. Réessayez dans un instant.",
     "The Anthropic account is out of credit. Add some in the Claude Console.": "Le compte Anthropic n'a plus de crédit. Ajoutez-en dans la Claude Console.",
-    "Anthropic says too many requests right now. Try again in a minute.": "Anthropic signale trop de requêtes. Réessayez dans une minute.", "Anthropic couldn't be reached. Try again in a moment.": "Anthropic est injoignable. Réessayez dans un instant.",
+    "Too many requests to Anthropic. Try again in a minute.": "Trop de requêtes chez Anthropic. Réessayez dans une minute.", "Anthropic couldn't be reached. Try again in a moment.": "Anthropic est injoignable. Réessayez dans un instant.",
     "AI can't write that for this kind of insight.": "L'IA ne peut pas écrire cela pour ce type d'analyse.",
     "Leads": "Leads", "Technical": "Technique", "Did it work": "Ça a marché ?",
     "Query losing places": "Requête qui perd des places", "One device or country": "Un appareil ou un pays", "Unstable ranking": "Classement instable", "Brand hides a loss": "La marque cache une perte",
@@ -947,9 +947,9 @@
     "Check it": "À vérifier", "One rank check only. Check again before acting.": "Une seule vérification. Revérifiez avant d'agir.", "All countries": "Tous pays", "Not found in the results checked": "Absente des résultats vérifiés", "One check only": "Une seule vérification",
     "One looks like a fresh drop": "Un ressemble à une chute récente", "{a} look like fresh drops": "{a} ressemblent à des chutes récentes", ", and rivals lead on {b} that people really search.": ", et les concurrents dominent sur {b} vraiment recherchés.", " Rivals lead on {b} that people really search.": " Les concurrents dominent sur {b} vraiment recherchés.",
     "Of {a} tracked keywords, {b} have Search Console data.": "Sur {a} mots-clés suivis, {b} ont des données Search Console.", "Rankings checked: {a} of {b} in the last {d} days.": "Positions vérifiées : {a} sur {b} ces {d} derniers jours.", "Oldest {n} days.": "La plus ancienne : {n} jours.", "Oldest: a day or less.": "La plus ancienne : un jour ou moins.", "Refresh in Keywords": "Actualiser dans Mots-clés", "Open Keywords": "Ouvrir Mots-clés",
-    "Most rank checks are old or missing, so this list is short because of the data, not because all is well.": "La plupart des vérifications sont anciennes ou manquantes : cette liste est courte à cause des données, pas parce que tout va bien.", "No tracked keywords yet": "Pas encore de mots-clés suivis", "Add keywords and check them.": "Ajoutez des mots-clés et vérifiez-les.", "No rank checks yet": "Pas encore de vérification de position", "Press Refresh in Keywords.": "Lancez Actualiser dans Mots-clés.",
+    "Short list: most rank checks are old or missing.": "Liste courte : la plupart des vérifications sont anciennes ou manquantes.", "No tracked keywords yet": "Pas encore de mots-clés suivis", "Add keywords and check them.": "Ajoutez des mots-clés et vérifiez-les.", "No rank checks yet": "Pas encore de vérification de position", "Press Refresh in Keywords.": "Lancez Actualiser dans Mots-clés.",
     "Keyword": "Mot-clé", "Search Console": "Search Console", "Last check": "Dernière vérif.", "Who's above": "Qui est devant", "Before": "Avant", "Pages": "Pages", "Shown": "Montrée", "Clicked": "Cliquée", "Search Console position, same country": "Position Search Console, même pays", "Search Console position, all countries": "Position Search Console, tous pays", "Previous check": "Vérification précédente",
-    "Checked {d} with {tool} from {place}, top {n}.": "Vérifié le {d} avec {tool} depuis {place}, top {n}.", "Shown in the last check": "Montrée dans la dernière vérification", "Who ranks for it": "Qui se classe dessus", "You": "Vous", "Followed rival": "Concurrent suivi", "Also": "Aussi",
+    "Checked {d} with {tool} from {place}, top {n}.": "Vérifié le {d} avec {tool} depuis {place}, top {n}.", "Who ranks for it": "Qui se classe dessus", "You": "Vous", "Followed rival": "Concurrent suivi", "Also": "Aussi",
     "Impressions × (your usual click rate at its average position − at its last-check place), per month.": "Impressions × (votre taux de clic habituel à sa position moyenne − à sa place au dernier relevé), ramené au mois.", "Impressions × (your usual click rate at its old place − at its place now), per month.": "Impressions × (votre taux de clic habituel à son ancienne place − à sa place actuelle), ramené au mois.", "Impressions × usual click rate at its position, minus its clicks, per month.": "Impressions × taux de clic habituel à sa position, moins ses clics, ramené au mois.", "Last 28 days' clicks to the clicked page, per month.": "Clics de la page cliquée sur les 28 derniers jours, ramenés au mois.",
     "{n} use all-country positions": "{n} utilisent des positions tous pays", "1 uses all-country positions": "1 utilise des positions tous pays",
     "Search findings": "Chercher un constat", "No finding matches this search.": "Aucun constat ne correspond à cette recherche.", "finding": "constat", "findings": "constats",

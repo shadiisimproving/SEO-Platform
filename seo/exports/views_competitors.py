@@ -13,7 +13,7 @@ TRACKING = {"on": "On", "pages": "Pages only", "off": "Off"}
 
 
 # As the competitor screens name them (comp-list.js KINDS). The ranking and AI ones are followed by the keyword, in its own column.
-MOVE_KINDS = {'title': 'Title changed', 'meta': 'Meta description changed', 'h1': 'Main heading changed', 'headings': 'Subheadings changed', 'canonical': 'Preferred address changed', 'robots': 'Indexing changed', 'schema': 'Structured data changed', 'content': 'Content changed', 'new_page': 'New page', 'page_gone': 'Page removed', 'rank_new': 'Started ranking for', 'rank_lost': 'Stopped ranking for', 'rank_up': 'Moved up on', 'rank_down': 'Moved down on', 'ai_cited': 'Cited in AI Overview for', 'ai_dropped': 'Dropped from AI Overview for'}
+MOVE_KINDS = {'title': 'Title changed', 'meta': 'Meta description changed', 'h1': 'Main heading changed', 'headings': 'Subheadings changed', 'canonical': 'Canonical changed', 'robots': 'Indexing changed', 'schema': 'Structured data changed', 'content': 'Content changed', 'search_title': 'Search title changed', 'new_page': 'New page', 'page_gone': 'Page removed', 'rank_new': 'Started ranking for', 'rank_lost': 'Stopped ranking for', 'rank_up': 'Moved up on', 'rank_down': 'Moved down on', 'ai_cited': 'Cited in AI Overview for', 'ai_dropped': 'Dropped from AI Overview for'}
 
 
 def _site(args) -> int:
@@ -119,7 +119,7 @@ def keyword_check(engine, args) -> Report:
     data = probe.listing(engine, site_id)
     rows = data.get("keywords") or []
     report = Report("keyword-check", "Keyword check", site=registry.site_host(engine, site_id))
-    report.tiles = [Tile("Keywords", len(rows), "int"), Tile("Checked", sum(1 for r in rows if r.get("checked")), "int"), Tile("Where I rank", sum(1 for r in rows if r.get("me")), "int")]
+    report.tiles = [Tile("Keywords", len(rows), "int"), Tile("Keywords checked", sum(1 for r in rows if r.get("checked")), "int"), Tile("Where I rank", sum(1 for r in rows if r.get("me")), "int")]
     report.tables.append(Table("keywords", "Keywords", [
         C("keyword", "Keyword", "text", width=3.6), C("country", "Country", "text", width=1), C("me", "My position", "int", get=lambda r: (r.get("me") or {}).get("position")),
         C("my_url", "My page", "url", get=lambda r: (r.get("me") or {}).get("url")),

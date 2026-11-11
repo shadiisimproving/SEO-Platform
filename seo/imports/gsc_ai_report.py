@@ -31,7 +31,7 @@ MAX_BYTES = 5 * 1024 * 1024  # one upload; a zip's files together may hold up to
 MAX_UNZIPPED = 25 * 1024 * 1024
 MAX_FILES = 12
 PAGES_KEPT = 500
-NOT_THE_REPORT = "This isn't Search Console's generative AI report. In Search Console, open Performance → Generative AI, press Export and download the CSV."
+NOT_THE_REPORT = "Not Search Console's generative AI report. Open Performance → Generative AI → Export → Download CSV."
 
 
 def _fold(value: str) -> str:

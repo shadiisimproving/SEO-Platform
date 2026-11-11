@@ -121,6 +121,6 @@
     [SHORT.off]: "Le suivi est désactivé : les chiffres de mots-clés sont masqués et les pages ne sont pas lues.",
     "Paused": "En pause", "Not tracked for keywords.": "Pas suivi pour les mots-clés.",
     "Tracking is on, pages or off.": "Le suivi est activé, pages seulement ou désactivé.",
-    "Tracking is off for this competitor, so its pages aren't read. Turn it on, or to Pages only, first.": "Le suivi de ce concurrent est désactivé, ses pages ne sont donc pas lues. Activez-le, ou passez-le sur Pages seulement, d'abord.",
+    "Tracking is off, so its pages aren't read. Set it to On or Pages only first.": "Le suivi est désactivé : ses pages ne sont pas lues. Passez-le d'abord sur Activé ou Pages seulement.",
   });
 })();

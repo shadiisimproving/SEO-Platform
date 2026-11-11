@@ -114,7 +114,7 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
     await page.waitForTimeout(3000);
     await shot("09-today", true);
     const body = await page.locator("main").innerText();
-    check(/clicks a month at stake/.test(body), "Today lists insights with clicks at stake");
+    check(/clicks\/month at stake/.test(body), "Today lists insights with clicks at stake");
   });
 
   await step("French and dark", async () => {

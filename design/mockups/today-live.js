@@ -6,7 +6,7 @@
   // at: when the last answer landed (not when it was asked), so a slow server isn't asked again the moment it answers (F5).
   // busy: one load at a time. failed: the query that failed, so it isn't asked again until Try again or something changes.
   const T = { key: null, data: null, error: "", summary: {}, at: 0, busy: false, failed: null };
-  const KINDS = { new_page: "New page", page_gone: "Page removed", title: "Title changed", search_title: "Probably edited (title in search results)", meta: "Meta description changed", h1: "Main heading changed", headings: "Headings changed", content: "Content changed", canonical: "Canonical changed", schema: "Structured data changed", links: "Links changed", redirect: "Redirect changed", status: "Status changed", robots: "Indexing changed" };
+  const KINDS = { new_page: "New page", page_gone: "Page removed", title: "Title changed", search_title: "Search title changed", meta: "Meta description changed", h1: "Main heading changed", headings: "Headings changed", content: "Content changed", canonical: "Canonical changed", schema: "Structured data changed", links: "Links changed", redirect: "Redirect changed", status: "Status changed", robots: "Indexing changed" };
 
   const words = (title) => {
     if (UI.state.lang !== "fr") return title;
@@ -19,8 +19,10 @@
     if ((m = title.match(/^(.+): health fell from (\d+) to (\d+)$/))) return `${m[1]} : la santé est passée de ${m[2]} à ${m[3]}`;
     if ((m = title.match(/^(.+) stopped working on (\d+) sites$/))) return `${m[1]} ne fonctionne plus sur ${m[2]} sites`;
     if ((m = title.match(/^(.+) stopped working$/))) return `${m[1]} ne fonctionne plus`;
-    if ((m = title.match(/^(.+) lost (\d+)% of its Google clicks$/))) return `${m[1]} a perdu ${m[2]} % de ses clics Google`;
-    if ((m = title.match(/^Last 7 days against the 7 before: (.+)$/))) return `7 derniers jours contre les 7 précédents : ${m[1]}`;
+    // A big drop, as alerts store it: the wording since 2026-11-11, and the old one rows saved before still carry.
+    if ((m = title.match(/^(.+): −(\d+)% Google clicks$/) || title.match(/^(.+) lost (\d+)% of its Google clicks$/))) return `${m[1]} : −${m[2]} % de clics Google`;
+    if ((m = title.match(/^(?:Week on week|Last 7 days against the 7 before): (.+)$/))) return `Semaine sur semaine : ${m[1]}`;
+    if ((m = title.match(/^(?:~(\d+) clicks\/month|About (\d+) clicks a month) at stake(?:\. See Search → Insights\.)?$/))) return `~${m[1] || m[2]} clics/mois en jeu`;
     if ((m = title.match(/^A background job stopped: (.+)$/))) return `Une tâche de fond s'est arrêtée : ${m[1]}`;
     return t(title);
   };
@@ -202,9 +204,9 @@
   const fr = {
     "just now": "à l'instant", "See page": "Voir la page", "See why": "Voir pourquoi", "See it": "Voir", "Try again": "Réessayer",
     "Clarity data lost in {n} h": "Données Clarity perdues dans {n} h", "Clarity data is being lost": "Des données Clarity sont en train d'être perdues",
-    "Clarity only keeps the last 3 days for the app to read.": "Clarity ne garde que les 3 derniers jours à lire pour l'app.",
-    "{path} lost {percent}% of its Google clicks": "{path} a perdu {percent} % de ses clics Google", "Last 7 days against the 7 before: {was} → {now}": "7 derniers jours contre les 7 précédents : {was} → {now}",
-    "About {n} clicks a month at stake": "Environ {n} clics par mois en jeu", "About {n} clicks a month at stake. See Search → Insights.": "Environ {n} clics par mois en jeu. Voir Recherche → Analyses.",
+    "Clarity keeps only 3 days of data.": "Clarity ne garde que 3 jours de données.",
+    "{path}: −{percent}% Google clicks": "{path} : −{percent} % de clics Google", "Week on week: {was} → {now}": "Semaine sur semaine : {was} → {now}",
+    "~{n} clicks/month at stake": "~{n} clics/mois en jeu",
     "{path} dropped out of Google": "{path} est sortie de Google", "{path} is slowly losing clicks": "{path} perd lentement des clics",
     "“{query}” is almost on page 1": "« {query} » est presque en page 1", "“{query}” is close to the top 3": "« {query} » est proche du top 3",
     "“{query}” is clicked less than usual": "« {query} » est moins cliquée que d'habitude", "“{query}” is seen but never clicked": "« {query} » est vue mais jamais cliquée",
@@ -216,10 +218,10 @@
     "{path} brings leads and is losing clicks": "{path} apporte des leads et perd des clics", "Shown on Google, but it's broken": "Affichée sur Google, mais cassée", "Google shows {path}, but it's broken": "Google affiche {path}, mais elle est cassée",
     "“{keyword}”: Google's AI Overview no longer cites you": "« {keyword} » : l'AI Overview de Google ne vous cite plus", "“{keyword}”: an AI Overview now shows, without you": "« {keyword} » : un AI Overview s'affiche désormais, sans vous",
     "“{keyword}”: Google's AI Overview now cites you": "« {keyword} » : l'AI Overview de Google vous cite désormais", "“{keyword}”: a new AI Overview cites you": "« {keyword} » : un nouvel AI Overview vous cite",
-    "“{keyword}”: the AI Overview has gone": "« {keyword} » : l'AI Overview a disparu", "From the last two rank checks that could read Google's AI Overview": "D'après les deux derniers relevés qui ont pu lire l'AI Overview de Google",
+    "“{keyword}”: the AI Overview has gone": "« {keyword} » : l'AI Overview a disparu", "Last two AI Overview checks": "Deux derniers relevés de l'AI Overview",
     "Mobile": "Mobile", "Desktop": "Ordinateur", "Tablet": "Tablette",
     "Background work": "Tâches de fond", "Last ran": "Dernier passage", "never": "jamais", "Marked as seen": "Marqué comme vu",
-    "New page": "Nouvelle page", "Page removed": "Page retirée", "Title changed": "Titre modifié", "Probably edited (title in search results)": "Sans doute modifiée (titre dans les résultats)", "Meta description changed": "Méta description modifiée", "Main heading changed": "Titre principal modifié", "Headings changed": "Titres modifiés", "Content changed": "Contenu modifié", "Canonical changed": "Canonique modifiée", "Structured data changed": "Données structurées modifiées", "Links changed": "Liens modifiés", "Redirect changed": "Redirection modifiée", "Status changed": "Statut modifié", "Indexing changed": "Indexation modifiée",
+    "New page": "Nouvelle page", "Page removed": "Page retirée", "Title changed": "Titre modifié", "Search title changed": "Titre dans les résultats modifié", "Meta description changed": "Méta description modifiée", "Main heading changed": "Titre principal modifié", "Headings changed": "Titres modifiés", "Content changed": "Contenu modifié", "Canonical changed": "Canonique modifiée", "Structured data changed": "Données structurées modifiées", "Links changed": "Liens modifiés", "Redirect changed": "Redirection modifiée", "Status changed": "Statut modifié", "Indexing changed": "Indexation modifiée",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 })();

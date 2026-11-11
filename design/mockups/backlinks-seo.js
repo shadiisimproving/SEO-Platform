@@ -83,9 +83,11 @@
     const ix = b.status === "live" ? b.targetIndex : null;
     if (ix && (ix.state === "not_indexed" || ix.state === "unknown")) parts.push(`<span class="tag vd-tag vd-weak" data-tip="${esc(ix.state === "unknown" ? `${t(UNKNOWN_WHY)} ${indexWhy(ix)}` : indexWhy(ix))}" tabindex="0">${t("Your page isn't indexed")}</span>`);
     const g = b.gsc || {};
-    if (g.seen === "page") parts.push(`<span class="tag vd-tag vd-google" data-tip="${esc(t("Search Console lists this page"))}${g.crawled ? ` · ${esc(t("crawled"))} ${esc(day(g.crawled))}` : ""}" tabindex="0">${t("Google sees it")}</span>`);
-    else if (g.seen === "site") parts.push(`<span class="tag vd-tag vd-google" data-tip="${esc(t("Search Console lists the site, not this page."))}" tabindex="0">${t("Google sees the site")}</span>`);
-    else if (g.not_listed) parts.push(`<span class="tag vd-tag" data-tip="${esc(t("Placed 60+ days before your last Search Console upload, yet missing from it. Its list is a sample: only a hint."))}" tabindex="0">${t("Not listed by Google yet")}</span>`);
+    // What Search Console's list says: its logo and one word, the whole sentence in the tooltip.
+    const listed = (cls, tip, word) => `<span class="tag vd-tag${cls}" data-tip="${esc(tip)}" tabindex="0">${UI.logoOnly("Search Console", tip)} ${t(word)}</span>`;
+    if (g.seen === "page") parts.push(listed(" vd-google", `${t("Google sees it: Search Console lists this page among your links.")}${g.crawled ? ` · ${t("crawled")} ${day(g.crawled)}` : ""}`, "Listed"));
+    else if (g.seen === "site") parts.push(listed(" vd-google", t("Google sees the site: Search Console lists the site, not this page."), "Site listed"));
+    else if (g.not_listed) parts.push(listed("", `${t("Not listed by Google yet.")} ${t("Placed 60+ days before your last Search Console upload, yet missing from it. Its list is a sample: only a hint.")}`, "Not listed"));
     if (b.disavow) parts.push(`<span class="tag vd-tag vd-none" data-tip="${esc(t("In the disavow file."))}" tabindex="0">${t("Spam")}</span>`);
     return parts.length ? `<span class="vd-row">${parts.join("")}</span>` : "";
   }
@@ -350,7 +352,7 @@
   /* Below the link check: the one thing a person decides about a bad link. */
   function spamBody(b, server) {
     if (!server || !b.serverId) return "";
-    return `<p class="small sec vd-spam">${looksSpammy(b) ? `${t("Many outbound links or a high spam score.")} ` : ""}${t("Mark a link you can't get removed and that could look paid or spammy. It goes in the disavow file.")}</p>
+    return `<p class="small sec vd-spam">${looksSpammy(b) ? `${t("Many outbound links or a high spam score.")} ` : ""}${t("It goes in the disavow file.")}${UI.tip("Mark a link you can't get removed and that could look paid or spammy.")}</p>
       <button class="btn btn-small" data-vd-disavow="${b.serverId}" data-on="${b.disavow ? "1" : ""}">${UI.icon(b.disavow ? "check" : "ban")}${t(b.disavow ? "Not spam" : "Mark as spam")}</button>`;
   }
 
@@ -648,7 +650,7 @@
   };
 
   const fr = {
-    "Counts": "Compte", "Weak": "Faible", "Doesn't count": "Ne compte pas", "Spam": "Spam", "Google sees it": "Vu par Google", "Google sees the site": "Site vu par Google", "Not listed by Google yet": "Pas encore listé par Google",
+    "Counts": "Compte", "Weak": "Faible", "Doesn't count": "Ne compte pas", "Spam": "Spam", "Listed": "Listé", "Site listed": "Site listé", "Not listed": "Pas listé",
     "Google sees the page; the link passes value.": "Google voit la page ; le lien transmet de la valeur.",
     "Search Console lists this page": "Search Console liste cette page", "crawled": "exploré le",
     "Search Console lists the site, not this page.": "Search Console liste le site, pas cette page.",
@@ -673,7 +675,7 @@
     "Answers {n}: redirect it to a live page.": "Répond {n} : redirigez-la vers une page en ligne.",
     "Not in your last Search Console upload.": "Absent de votre dernier import Search Console.",
     "Many outbound links or a high spam score.": "Beaucoup de liens sortants ou un score de spam élevé.",
-    "Mark a link you can't get removed and that could look paid or spammy. It goes in the disavow file.": "Marquez un lien que vous ne pouvez pas faire retirer et qui pourrait passer pour payé ou spam. Il ira dans le fichier de désaveu.",
+    "It goes in the disavow file.": "Il ira dans le fichier de désaveu.",
     "Mark as spam": "Marquer comme spam", "Not spam": "Pas du spam", "Marked as spam": "Marqué comme spam", "Spam mark removed": "Marquage spam retiré",
     "Waiting for Search Console data.": "En attente des données Search Console.", "Ready on": "Prêt le",
     "Before and after": "Avant et après", "Correlation, not proof": "Corrélation, pas preuve", "Target page clicks": "Clics de la page cible", "before": "avant", "after": "après", "This page": "Cette page", "the whole site": "tout le site", "position": "position",

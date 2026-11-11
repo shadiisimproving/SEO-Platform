@@ -16,8 +16,8 @@ from seo.competitors import firecrawl
 from seo.competitors.crawl import EVERY_FEW_DAYS, MAX_DISCOVERED, PAGES_PER_DAY, TIERS, TOP_RANK
 
 
-STOPPED_READ = "The last read stopped before the end. Pages read before it are saved, and it carries on at the next daily read."
-STOPPED_FIRECRAWL = "Firecrawl's run stopped before the end. Pages read before it are saved. Try again."
+STOPPED_READ = "Last read stopped early. Pages so far are saved; it resumes at the next daily read."
+STOPPED_FIRECRAWL = "Firecrawl stopped early. Pages read so far are saved. Try again."
 
 
 def facts(conn, competitor_id: int, row) -> dict:

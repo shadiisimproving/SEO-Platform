@@ -434,7 +434,7 @@
         const c = conn(el.dataset.id);
         if (!c || c.group === "serp") return;
         take();
-        if (c.id === "clarity") { sayError("Clarity has a token per site. Tick This site doesn't use it next to the site, then press Save."); return; }
+        if (c.id === "clarity") { sayError("Clarity has one token per site: tick Not used beside the site, then press Save."); return; }
         if (c.id === "google") { sayError("Press Remove next to the Google connection above."); return; }
         if (!window.confirm(t("Remove this key? You'd have to paste it again."))) return;
         try { await api("DELETE", `app-keys/${c.id}`); await reload(); UI.forgetPanelForm(); UI.closePanel(); UI.render(); UI.toast(t("Disconnected"), { kind: "info" }); } catch (err) { sayError(err.message); }
@@ -582,7 +582,7 @@
     "It sees no Search Console property yet: add its email there, then test again.": "Elle ne voit encore aucune propriété Search Console : ajoutez-y son e-mail, puis testez à nouveau.",
     "No test: it would spend 1 of Clarity's 10 daily requests. The first pull shows if the token works.": "Pas de test : il consommerait 1 des 10 requêtes quotidiennes de Clarity. La première lecture montre si le jeton fonctionne.",
     "Remove this key? You'd have to paste it again.": "Retirer cette clé ? Il faudra la coller à nouveau.", "Remove this Google connection? Sites keep their data, and stop updating until they use another one.": "Retirer cette connexion Google ? Les sites gardent leurs données et ne se mettent plus à jour tant qu'ils n'en utilisent pas une autre.",
-    "Clarity has a token per site. Tick This site doesn't use it next to the site, then press Save.": "Clarity a un jeton par site. Cochez Ce site ne l'utilise pas à côté du site, puis appuyez sur Enregistrer.", "Press Remove next to the Google connection above.": "Appuyez sur Retirer à côté de la connexion Google ci-dessus.",
+    "Clarity has one token per site: tick Not used beside the site, then press Save.": "Clarity a un jeton par site : cochez Non utilisé à côté du site, puis cliquez sur Enregistrer.", "Press Remove next to the Google connection above.": "Appuyez sur Retirer à côté de la connexion Google ci-dessus.",
     "Works without a key, with a lower limit; a free key raises it.": "Marche sans clé, avec une limite plus basse ; une clé gratuite l'augmente.",
     "This key can't be checked until it's first used.": "Cette clé ne peut être vérifiée qu'à sa première utilisation.",
     "Where each site's data comes from": "D'où viennent les données de chaque site", "Who can sign in": "Qui peut se connecter", "Your sites": "Vos sites", "Not used": "Non utilisé", "Failing": "En échec", "Waiting for data": "En attente de données", "Not set up": "Non configuré", "Set up": "Configurer",

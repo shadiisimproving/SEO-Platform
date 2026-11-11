@@ -12,8 +12,8 @@
 
   // The same plain words as seo/health/audit.py, so an alert can say them without loading its whole test.
   const CHECK_WORDS = {
-    broken_pages: "Pages that answer with an error", broken_links: "Broken links", server_errors: "Server errors",
-    noindex: "Hidden from search engines", canonical_elsewhere: "Pages that point search engines to another page", no_title: "No title",
+    broken_pages: "Error pages", broken_links: "Broken links", server_errors: "Server errors",
+    noindex: "Hidden from search engines", canonical_elsewhere: "Canonical points elsewhere", no_title: "No title",
     duplicate_title: "Duplicate titles", no_h1: "No main heading (H1)", many_h1: "Several main headings",
     no_meta: "No meta description", duplicate_meta: "Duplicate meta descriptions", images_no_alt: "Images missing alt text",
     almost_no_text: "Almost no text", redirect_chains: "More than 2 redirects", slow_pages: "Slower than 5 seconds",
@@ -364,14 +364,15 @@
     </section>`;
   }
 
+  /* Since last test, as a signed number: red and + are worse, green and − are better. No arrow, because ↑ and ↓ mean
+     moves in Google in this app; "worse" or "better" stays for the tooltip and screen readers. */
   function changeCell(c, compared) {
-    const { t, num, icon } = UI;
+    const { t, num, esc } = UI;
     if (!compared || c.previous === null || c.previous === undefined) return `<span class="muted small">${t("Not compared")}</span>`;
     const moved = c.count - c.previous;
     if (moved === 0) return `<span class="sec small">${t("No change")}</span>`;
-    return moved > 0
-      ? `<span class="crit d-pill">${icon("arrow-up")}+${num(moved)} ${t("worse")}</span>`
-      : `<span class="good d-pill">${icon("arrow-down")}−${num(-moved)} ${t("better")}</span>`;
+    const shown = moved > 0 ? `+${num(moved)}` : `−${num(-moved)}`, word = t(moved > 0 ? "worse" : "better");
+    return `<span class="${moved > 0 ? "crit" : "good"} d-pill" role="img" title="${esc(word)}" data-tip="${esc(word)}" aria-label="${esc(`${shown} ${word}`)}">${shown}</span>`;
   }
 
   // What to do about each finding, in a line. Whoever gets the task starts from here.
@@ -394,7 +395,7 @@
     start_page_down: "Check the hosting first.",
     start_page_noindex: "Remove its noindex, unless the site should stay hidden.",
     robots_down: "Have robots.txt fixed.",
-    ssl_expired: "Renew the certificate now: browsers are warning visitors away.",
+    ssl_expired: "Renew the certificate now.",
     ssl_expiring: "Renew it, or check auto-renewal is on.",
     ssl_error: "Have the host check the certificate.",
   };
@@ -403,6 +404,7 @@
     server_errors: "Ask whoever runs the server. These pages can vanish from search while the errors last.",
     start_page_down: "Nothing else on the site can be read while the start page is down.",
     robots_down: "Ask whoever runs the server. Search engines stay away until robots.txt answers.",
+    ssl_expired: "Browsers are warning visitors away.",
   };
   // Every whole-site problem is critical, so the card head says it once with the count: "2 critical", "2 critiques".
   const critWord = (n) => (UI.state.lang === "fr" ? (n === 1 ? "critique" : "critiques") : "critical");
@@ -410,7 +412,8 @@
   function healthFind(code, meaning, facts) {
     const { t } = UI, host = hostShown();
     // By site and check, not by test: next month's test finding the same thing is still the same job.
-    return { title: `${t(meaning)}: ${host || ""}`, host, description: FIX_WORDS[code] ? t(FIX_WORDS[code]) : "", source: { type: "health", label: t(meaning), host, facts: facts.filter(Boolean), link: `#health/test/${code}`, key: `health|${ht.siteId}|${code}` } };
+    // The title is the check alone: the task's site tag and Site column already name the host. Tasks saved before keep "…: host".
+    return { title: t(meaning), host, description: FIX_WORDS[code] ? t(FIX_WORDS[code]) : "", source: { type: "health", label: t(meaning), host, facts: facts.filter(Boolean), link: `#health/test/${code}`, key: `health|${ht.siteId}|${code}` } };
   }
 
   function checkRow(c, compared) {
@@ -854,18 +857,18 @@
     "Check the hosting first.": "Vérifiez d'abord l'hébergement.",
     "Remove its noindex, unless the site should stay hidden.": "Retirez sa balise noindex, sauf si le site doit rester caché.",
     "Have robots.txt fixed.": "Faites réparer robots.txt.",
-    "Renew the certificate now: browsers are warning visitors away.": "Renouvelez le certificat maintenant : les navigateurs découragent les visiteurs.", "Renew it, or check auto-renewal is on.": "Renouvelez-le, ou vérifiez que le renouvellement automatique est actif.",
+    "Renew the certificate now.": "Renouvelez le certificat maintenant.", "Renew it, or check auto-renewal is on.": "Renouvelez-le, ou vérifiez que le renouvellement automatique est actif.",
     "Have the host check the certificate.": "Faites vérifier le certificat par l'hébergeur.", "Test of": "Test du",
-    "Monthly health test": "Test de santé mensuel",
+    "Health test": "Test de santé",
     "Health test.": "Test de santé.",
     "Critical": "Critique",
     "Warning": "Avertissement",
     "Info": "Info",
-    "Pages that answer with an error": "Pages qui répondent par une erreur",
+    "Error pages": "Pages en erreur",
     "Broken links": "Liens cassés",
     "Server errors": "Erreurs serveur",
     "Hidden from search engines": "Cachées aux moteurs de recherche",
-    "Pages that point search engines to another page": "Pages qui renvoient les moteurs vers une autre page",
+    "Canonical points elsewhere": "Canonique vers une autre page",
     "No title": "Pas de titre",
     "Duplicate titles": "Titres en double",
     "No main heading (H1)": "Pas de titre principal (H1)",

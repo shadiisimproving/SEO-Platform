@@ -67,7 +67,7 @@ def install(app, secret_key: str, https: bool = False) -> None:
         if path.startswith("/api/") and request.method not in SAFE:
             sent = request.headers.get("X-CSRF-Token", "")
             if not hmac.compare_digest(sent, session.get("csrf", "")):
-                return jsonify(error="This page is out of date. Reload it and try again."), 403
+                return jsonify(error="Page out of date. Reload and try again."), 403
         if user["must_change_password"] and not path.startswith("/api/auth/"):
             if path.startswith("/api/"):
                 return jsonify(error="Change your temporary password first.", must_change=True), 403

@@ -27,7 +27,7 @@ def make(client, **fields):
 
 
 def finding(key="health|12|broken_pages", **extra):
-    return {"type": "health", "label": "Pages that answer with an error", "host": "shop.example", "facts": ["1 page"], "link": "#health", "key": key, **extra}
+    return {"type": "health", "label": "Error pages", "host": "shop.example", "facts": ["1 page"], "link": "#health", "key": key, **extra}
 
 
 def test_create_move_and_reload(client, own_site):

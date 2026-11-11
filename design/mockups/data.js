@@ -33,7 +33,7 @@ window.FR = {
   "Tool": "Outil", "Checks": "Relevés", "Credits left after": "Crédits restants après", "Refills": "Recharge", "monthly": "mensuelle", "one-time": "une seule fois", "no credits": "sans crédit",
   "Free tools only": "Outils gratuits uniquement", "Runs out after": "Épuisé après", "Cancel": "Annuler", "Confirm": "Confirmer", "Nothing to refresh": "Rien à actualiser",
   "Refreshing": "Actualisation", "out of credits, using": "à court de crédits, passage à", "saved": "enregistrés", "Stop": "Arrêter", "Stopped": "Arrêté", "Finished": "Terminé",
-  "Results": "Résultats", "Other locations": "Autres lieux", "Recheck": "Revérifier", "Check": "Vérifier", "never": "jamais", "Not compared with France": "Non comparé à la France", "Checked": "Relevé", "Position": "Position", "Status": "État", "Differs by": "Écart de",
+  "Results": "Résultats", "Other locations": "Autres lieux", "Recheck": "Revérifier", "Check": "Vérifier", "never": "jamais", "Not compared with France": "Non comparé à la France", "Checked": "Vérifié", "Position": "Position", "Status": "État", "Differs by": "Écart de",
   "Position history": "Historique des positions", "1 = top. One dot per check.": "1 = en haut. Un point par relevé.", "Table": "Tableau", "Chart": "Graphique", "Competitors on this page": "Concurrents sur cette page", "AI Overview": "Aperçu IA", "average": "moyenne", "Date": "Date",
   "Close": "Fermer", "Save": "Enregistrer", "Add backlink": "Ajouter un backlink", "Total": "Total", "Live": "Actifs", "Lost": "Perdus", "New": "Nouveaux", "Visits": "Visites", "Leads": "Leads",
   "All backlinks": "Tous les backlinks", "Mediators": "Intermédiaires", "Found but never logged": "Trouvés mais jamais saisis", "Source page": "Page source", "Open details": "Ouvrir le détail", "Target": "Cible", "Authority": "Autorité", "Cost": "Coût", "Cost per visit": "Coût par visite", "Mediator": "Intermédiaire", "Owner": "Responsable",
@@ -247,7 +247,8 @@ window.CONNECTIONS = [
   { id: "anthropic", group: "extra", name: "Anthropic", logo: "anthropic", desc: "Claude for Search insights: explanations, titles, briefs, FAQs", status: "off", price: "A few cents per answer", limit: "Monthly cap: Settings → AI", auth: "key", sites: "all", url: "https://platform.claude.com/settings/keys",
     note: "Off without a key. Only sites set to Claude under AI use it.",
     noteTip: "Only a click asks Claude, each answer is kept, and nothing is sent once the month's cap is reached.",
-    risk: "Only for a site you set to Claude under Settings → AI: it sends the numbers Search Console gave for that insight (queries, page addresses, clicks), and the page's title and headings, to Anthropic. Nothing about your leads is sent.",
+    risk: "Sends the insight's numbers, title and headings to Anthropic. Leads are never sent.",
+    riskTip: "Only for sites set to Claude in Settings → AI: it sends that insight's Search Console numbers (queries, page addresses, clicks) and the page's title and headings to Anthropic. Nothing about your leads is sent.",
     steps: [
       { title: "Create an account", text: "Create an account and add a little credit.", url: "https://platform.claude.com/", link: "Open the Claude Console", logo: "Claude" },
       { title: "Create the key", text: "In API keys, create a key. Optional: a spending limit on its workspace.", url: "https://platform.claude.com/settings/keys", link: "API keys" },
@@ -255,7 +256,8 @@ window.CONNECTIONS = [
     ] },
   { id: "openrouter", group: "extra", name: "OpenRouter", logo: "openrouter", desc: "Summarises competitors' changes", status: "off", price: "Free", limit: "50 requests a day, 20 a minute", auth: "key", sites: "all", url: "https://openrouter.ai/keys",
     note: "Off without a key. Only a click spends a request; answers are kept.",
-    risk: "Competitor summaries send the competitor's public page text. AI on Search insights sends your site's queries, page addresses and clicks, but only for a site you set to OpenRouter under Settings → AI (no site is, until you choose). Free models may keep what they're sent. Nothing about your leads is sent.",
+    risk: "Free models may keep what they're sent. Leads are never sent.",
+    riskTip: "Competitor summaries send the competitor's public page text. AI on Search insights sends your queries, page addresses and clicks, only for sites set to OpenRouter in Settings → AI (none until you choose). Free models may keep what they're sent. Nothing about your leads is sent.",
     steps: [
       { title: "Create an account", text: "Create a free account. No card needed.", url: "https://openrouter.ai/", link: "Open OpenRouter", logo: "OpenRouter" },
       { title: "Create the key", text: "Open Keys and create a key. To be safe, set its credit limit to 0.", url: "https://openrouter.ai/keys", link: "Keys" },
@@ -358,7 +360,7 @@ Object.assign(window.FR, {
 });
 
 window.ATTENTION = [
-  { id: "a0", rank: 2, sev: "warn", host: "site-one.example", title: "/loyer-a-seville/ lost 32% of its Google clicks", detail: "Last 7 days against the 7 before: 85 → 58", act: "See page", key: "content" },
+  { id: "a0", rank: 2, sev: "warn", host: "site-one.example", title: "/loyer-a-seville/: −32% Google clicks", detail: "Week on week: 85 → 58", act: "See page", key: "content" },
   { id: "a1", rank: 4, sev: "crit", title: "Google connection expired", detail: "Search Console and GA4 stopped updating 2 h ago", act: "Fix", key: "fix" },
   { id: "a2", rank: 3, sev: "warn", title: "Clarity data lost in 31 h", detail: "Last pull was 41 h ago. The API only goes back 72 h", act: "Run now", key: "clarity" },
   { id: "a3", rank: 2, sev: "warn", title: "2 backlinks lost", detail: "Found by the monthly link check", act: "Review", key: "backlinks" },

@@ -27,7 +27,7 @@
     if (!window.COMP?.server) return "";
     load();
     const head = `<div class="card-head"><h2>${t("AI on Search insights")}</h2><div class="hint-text">${t("AI runs only on a click.")}${U().tip ? U().tip("Each answer is kept. AI never changes what's found or how it's ranked.") : ""}</div></div>
-      <p class="small ai-sends">${icon("info")}<span>${t("What is sent: for the insight you click, this site's queries, page addresses and click numbers, plus the page's title and headings. Nothing about your leads. OpenRouter's free models may keep what they're sent. With No AI, nothing leaves the app.")}</span></p>`;
+      <p class="small ai-sends">${icon("info")}<span>${t("Sent: the clicked insight's queries, page addresses and clicks, plus the page's title and headings. Never leads. OpenRouter's free models may keep it.")}${U().tip ? U().tip("With No AI, nothing leaves the app.") : ""}</span></p>`;
     if (!A.data) return `<section class="card" id="ai-settings">${head}${A.error ? (U().failCard ? U().failCard(A.error, { retry: "data-ai-retry" }) : `<div class="empty"><p class="muted">${esc(t(A.error))}</p><button class="btn" data-ai-retry>${t("Try again")}</button></div>`) : (U().skeleton ? U().skeleton("rows", { rows: 3 }) : `<div class="empty"><p class="muted">${t("Loading…")}</p></div>`)}</section>`;
     const d = A.data;
     const rows = d.sites.map((s) => `<li><div class="what"><div class="t" dir="auto">${esc(s.host)}</div></div>
@@ -73,10 +73,10 @@
     "Claude this month": "Claude ce mois-ci", "answer": "réponse", "answers": "réponses", "Monthly cap ($)": "Plafond mensuel ($)", "Save": "Enregistrer",
     "Claude Haiku 5.5: explanations, titles, weekly summary. Claude Sonnet 5.5: briefs and FAQs. Nothing that could pass the cap is sent.": "Claude Haiku 5.5 : explications, titres, résumé de la semaine. Claude Sonnet 5.5 : briefs et FAQ. Rien qui pourrait dépasser le plafond n'est envoyé.",
     "AI choice saved": "Choix de l'IA enregistré", "No AI (nothing is sent)": "Pas d'IA (rien n'est envoyé)", "Only an admin can change this.": "Seul un admin peut modifier ceci.",
-    "What is sent: for the insight you click, this site's queries, page addresses and click numbers, plus the page's title and headings. Nothing about your leads. OpenRouter's free models may keep what they're sent. With No AI, nothing leaves the app.": "Ce qui est envoyé : pour l'analyse sur laquelle vous cliquez, les requêtes de ce site, les adresses de pages et les nombres de clics, ainsi que le titre et les intertitres de la page. Rien sur vos leads. Les modèles gratuits d'OpenRouter peuvent garder ce qu'ils reçoivent. Avec Pas d'IA, rien ne sort de l'application.",
-    "No AI is chosen for this site yet. Pick one in Settings → AI. Nothing about the site is sent until you do.": "Aucune IA n'est choisie pour ce site. Choisissez-en une dans Réglages → IA. Rien sur le site n'est envoyé avant.",
-    "Pick No AI, OpenRouter's free models or Claude.": "Choisissez Pas d'IA, les modèles gratuits d'OpenRouter ou Claude.", "Cap saved": "Plafond enregistré", "The monthly cap must be a number of dollars.": "Le plafond mensuel doit être un nombre de dollars.",
-    "The monthly cap must be between 0 and 1,000 dollars.": "Le plafond mensuel doit être entre 0 et 1 000 dollars.", "Pick OpenRouter's free models or Claude.": "Choisissez les modèles gratuits d'OpenRouter ou Claude.",
+    "Sent: the clicked insight's queries, page addresses and clicks, plus the page's title and headings. Never leads. OpenRouter's free models may keep it.": "Envoyé : les requêtes, adresses de pages et clics de l'analyse cliquée, plus le titre et les intertitres de la page. Jamais les leads. Les modèles gratuits d'OpenRouter peuvent le garder.",
+    "No AI chosen yet, so nothing is sent. Pick one in Settings → AI.": "Aucune IA choisie : rien n'est envoyé. Choisissez-en une dans Réglages → IA.",
+    "Pick No AI, OpenRouter's free models or Claude.": "Choisissez Pas d'IA, les modèles gratuits d'OpenRouter ou Claude.", "Cap saved": "Plafond enregistré", "The cap must be a dollar amount.": "Le plafond doit être un montant en dollars.",
+    "The cap must be $0 to $1,000.": "Le plafond doit être entre 0 et 1 000 $.", "Pick OpenRouter's free models or Claude.": "Choisissez les modèles gratuits d'OpenRouter ou Claude.",
   };
   window.FR = window.FR || {};
   Object.keys(words).forEach((w) => { if (window.FR[w] === undefined) window.FR[w] = words[w]; });

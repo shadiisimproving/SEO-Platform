@@ -188,7 +188,7 @@ def crawl_now(competitor_id: int):
         site_id = _site_arg()
         pairs._competitor(conn, site_id, competitor_id)
         if tracking.of_site(conn, site_id).get(competitor_id) == tracking.OFF:
-            raise Refused("Tracking is off for this competitor, so its pages aren't read. Turn it on, or to Pages only, first.")
+            raise Refused("Tracking is off, so its pages aren't read. Set it to On or Pages only first.")
     suggest.queue_crawl(_engine(), competitor_id)
     return jsonify(ok=True), 202
 
@@ -206,7 +206,7 @@ def firecrawl_start(competitor_id: int):
     with _engine().connect() as conn:
         pairs._competitor(conn, body["site_id"], competitor_id)
         if tracking.of_site(conn, body["site_id"]).get(competitor_id) == tracking.OFF:
-            raise Refused("Tracking is off for this competitor, so its pages aren't read. Turn it on, or to Pages only, first.")
+            raise Refused("Tracking is off, so its pages aren't read. Set it to On or Pages only first.")
     return jsonify(firecrawl.start(_engine(), competitor_id, body["action"], body.get("pages"))), 202
 
 
@@ -217,7 +217,7 @@ def firecrawl_weekly(competitor_id: int):
     with _engine().connect() as conn:
         pairs._competitor(conn, body["site_id"], competitor_id)
         if body["on"] is True and tracking.of_site(conn, body["site_id"]).get(competitor_id) == tracking.OFF:
-            raise Refused("Tracking is off for this competitor, so its pages aren't read. Turn it on, or to Pages only, first.")
+            raise Refused("Tracking is off, so its pages aren't read. Set it to On or Pages only first.")
     return jsonify(firecrawl.set_weekly(_engine(), competitor_id, body["on"]))
 
 

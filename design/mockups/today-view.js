@@ -111,9 +111,10 @@
   }
 
   // ---- my work ------------------------------------------------------------------------------------
+  // With All sites picked, each task says its site: two "Error pages" tasks from two sites would look the same (2026-11-11).
   function tasksHtml() {
     const list = UI().nextTasks?.(3) || [];
-    const rows = list.map((task) => `<button class="stat-row" data-today-task="${esc(String(task.id))}"><span class="today-task-name" dir="auto">${esc(task.title)}</span>${task.late ? UI().status("crit", `${t("Late")} · ${esc(day(task.due))}`) : `<span class="small muted nowrap">${task.due ? esc(day(task.due)) : t("No date")}</span>`}</button>`).join("");
+    const rows = list.map((task) => `<button class="stat-row" data-today-task="${esc(String(task.id))}"><span class="today-task-name" dir="auto">${esc(task.title)}${hostTag(task.site_host, task.title)}</span>${task.late ? UI().status("crit", `${t("Late")} · ${esc(day(task.due))}`) : `<span class="small muted nowrap">${task.due ? esc(day(task.due)) : t("No date")}</span>`}</button>`).join("");
     return `${rows || `<div class="stat-row"><span class="muted">${t("No open tasks for you.")}</span></div>`}<div class="stat-row"><a class="link-btn" href="#tasks">${t("View all tasks")}</a></div>`;
   }
   function workCard(vm) {
@@ -220,7 +221,7 @@
     "No rival changes in the last 7 days.": "Aucun changement des concurrents ces 7 derniers jours.", "Last 7 days": "7 derniers jours", "Week on week": "Semaine sur semaine",
     "Last 28 days vs the 28 before": "28 derniers jours vs les 28 précédents", "No data yet": "Pas encore de données",
     "Running total": "Total cumulé", "This period": "Cette période", "Period before": "Période précédente", "See page": "Voir la page", "Title changed": "Titre modifié", "Content changed": "Contenu modifié", "Restored": "Restauré",
-    "/loyer-a-seville/ lost 32% of its Google clicks": "/loyer-a-seville/ a perdu 32 % de ses clics Google", "Last 7 days against the 7 before: 85 → 58": "7 derniers jours contre les 7 précédents : 85 → 58",
+    "/loyer-a-seville/: −32% Google clicks": "/loyer-a-seville/ : −32 % de clics Google", "Week on week: 85 → 58": "Semaine sur semaine : 85 → 58",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 })();

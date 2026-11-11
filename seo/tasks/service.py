@@ -333,7 +333,7 @@ def restore(engine: Engine, task_id: int) -> dict:
             return _dict(_one(conn, task_id))
     except IntegrityError as error:
         if "open_source_key" in str(error.orig):
-            raise Conflict("A new task was made for this finding, so this one can't come back.") from None
+            raise Conflict("Can't restore: a newer task covers this finding.") from None
         raise
 
 

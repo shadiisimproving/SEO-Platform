@@ -1,6 +1,7 @@
 /* What to do about an error. Each tool's own sentence stays as it is; this reads it and adds a short "How to fix it"
    list under it: the page to open, the button to press, and how to see that it worked. Used by the Connections panel,
-   its Test button, and the data cards that say a source stopped working. */
+   its Test button, and the data cards that say a source stopped working.
+   The box sits under the tool's own name (the panel's head), so its sentences don't repeat it (2026-11-11). */
 (function () {
   // Google names its APIs in its errors. These are the pages that turn each one on.
   const GOOGLE_APIS = [
@@ -30,14 +31,13 @@
   /* ctx: { tool, id, keyUrl, refills, retry: "test" | "refresh", robot } → { summary, steps: [{ text, url, link }] } */
   function explain(message, ctx = {}) {
     const m = String(message || "");
-    const tool = ctx.tool || "This tool";
     const retry = ctx.retry === "refresh" ? "Then press Refresh data here; numbers return with the next pull." : "Then press Test. It should say Works.";
-    const keyStep = { text: `Open ${tool}'s key page and check the key is still there and active.`, url: ctx.keyUrl, link: "Key page" };
+    const keyStep = { text: "Check the key is still there and active.", url: ctx.keyUrl, link: "Key page" };
 
     if (has(/has not been used in project|is disabled|Turn on the .+ in your Google Cloud project/i, m)) {
       const api = googleApi(m);
       return {
-        summary: `The ${api.name} is turned off in your Google Cloud project${api.project ? ` ${api.project}` : ""}.`,
+        summary: `The ${api.name} is off in your Google Cloud project${api.project ? ` ${api.project}` : ""}.`,
         steps: [
           { text: "Open its page, signed in as the account that made this key.", url: api.url, link: "API page" },
           { text: "Press Enable (Manage means it's already on)." },
@@ -60,7 +60,7 @@
     }
     if (has(/doesn't know this property|not found|404/i, m)) {
       return {
-        summary: `${tool} can't find the property this site uses.`,
+        summary: "Can't find this site's property.",
         steps: [
           { text: "In Settings, check this site's property. Test fills the list with what the key can see." },
           { text: "Not in the list? The key can't see it: give it access first." },
@@ -92,36 +92,37 @@
       return {
         summary: "Free limit used up for now. Nothing is broken.",
         steps: [
-          { text: ctx.refills ? `It refills: ${ctx.refills}. The app tries again after that by itself.` : "It refills on its own, and the app retries by itself." },
-          { text: `Need it sooner? Check your usage on ${tool}'s dashboard, or move another tool above it in the list.`, url: ctx.keyUrl, link: `Open ${tool}` },
+          { text: ctx.refills ? `It refills: ${ctx.refills}. The app then retries by itself.` : "It refills on its own, and the app retries by itself." },
+          // The link is the tool's name as words: Bright Data's logo alone would look like an (i).
+          { text: "Need it sooner? Check your usage, or move another tool above it.", url: ctx.keyUrl, link: ctx.tool || "Open" },
         ],
       };
     }
     if (has(/answered with an error \(5\d\d\)|Couldn't reach|timed? ?out|temporar/i, m)) {
       return {
-        summary: `${tool} had a problem on its side, or couldn't be reached. Your key is probably fine.`,
+        summary: "The tool failed or couldn't be reached. Your key is probably fine.",
         steps: [
           { text: `Wait an hour. ${retry}` },
-          { text: `If it still fails tomorrow, check ${tool}'s website for an outage notice.` },
+          { text: "Still failing tomorrow? Look for an outage notice on its website." },
         ],
       };
     }
     if (has(/address_error|IP address|unregistered/i, m)) {
       return {
-        summary: `${tool} refuses requests from this server's address.`,
+        summary: "It refuses this server's IP address.",
         steps: [
-          { ...keyStep, text: `Open your ${tool} account and add this server's IP address to the allowed list.` },
+          { ...keyStep, text: "In your account, allow this server's IP address." },
           { text: retry },
         ],
       };
     }
     if (has(/refused access|refused this key|refused the key|refused the request|invalid|unauthori[sz]ed|authentication|forbidden|40[13]/i, m)) {
       return {
-        summary: `${tool} doesn't accept this key.`,
+        summary: "This key is refused.",
         steps: [
           keyStep,
           { text: "Copy it again in full: a missing character or trailing space is the usual cause." },
-          { text: `Paste it in the API key box above. ${retry}` },
+          { text: `Paste it above. ${retry}` },
           { text: "Still refused? Make a new key there and paste it. Also check the account: email confirmed, plan not expired." },
           EXTRA[ctx.id] ? { text: EXTRA[ctx.id] } : null,
         ].filter(Boolean),
@@ -150,7 +151,7 @@
     const { t, esc, icon } = window.UI;
     const fix = explain(message, ctx);
     if (!fix.steps.length) return "";
-    const said = opts.said && message ? `<details class="fix-said"><summary>${icon("chevron-right")}${esc(t(`What ${ctx.tool || "it"} said`))}</summary><p dir="auto">${esc(t(message))}</p></details>` : "";
+    const said = opts.said && message ? `<details class="fix-said"><summary>${icon("chevron-right")}${esc(t("Exact message"))}</summary><p dir="auto">${esc(t(message))}</p></details>` : "";
     return `<div class="fix-box" ${opts.id ? `id="${opts.id}"` : ""}>
       ${opts.summary && fix.summary ? `<p class="fix-summary">${icon("octagon-alert")}<span>${esc(t(fix.summary))}</span></p>` : ""}
       <b class="fix-title">${t("How to fix it")}</b>
@@ -190,34 +191,33 @@
     "Old DomCop Open PageRank keys no longer work. Make a new one on the Open Page Rank tab of your Keywords Everywhere account.": "Les anciennes clés Open PageRank de DomCop ne marchent plus. Créez-en une dans l'onglet Open Page Rank de votre compte Keywords Everywhere.",
     "The token needs Account → Radar → Read. Zone or DNS tokens are refused.": "Le jeton doit avoir Compte → Radar → Lecture. Les jetons de zone ou DNS sont refusés.",
     "A Yandex token lasts about 6 months; then redo step 4 of How to connect.": "Un jeton Yandex dure environ 6 mois ; refaites ensuite l'étape 4 de Comment connecter.",
+    // The sentences that named the tool before (2026-11-11): the panel's head names it once.
+    "This key is refused.": "Cette clé est refusée.", "Can't find this site's property.": "Propriété de ce site introuvable.",
+    "The tool failed or couldn't be reached. Your key is probably fine.": "L'outil a échoué ou n'a pas pu être joint. Votre clé est sans doute bonne.",
+    "It refuses this server's IP address.": "Il refuse l'adresse IP de ce serveur.",
+    "Check the key is still there and active.": "Vérifiez que la clé existe toujours et qu'elle est active.",
+    "Need it sooner? Check your usage, or move another tool above it.": "Besoin plus tôt ? Vérifiez votre consommation, ou placez un autre outil au-dessus.",
+    "Still failing tomorrow? Look for an outage notice on its website.": "Toujours en échec demain ? Cherchez un avis de panne sur son site.",
+    "In your account, allow this server's IP address.": "Dans votre compte, autorisez l'adresse IP de ce serveur.",
+    "Exact message": "Message exact",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 
-  // Sentences with a tool or API name in them.
+  // Sentences with an API name, a refill time or a robot's email in them. The tool's own name is no longer in any (2026-11-11).
   const patterns = [
-    [/^The (.+) is turned off in your Google Cloud project( \d+)?\.$/, (m) => `L'API ${m[1].replace(/ API$/, "")} est désactivée dans votre projet Google Cloud${m[2] || ""}.`],
-    [/^Open (.+)'s key page and check the key is still there and active\.$/, (m) => `Ouvrez la page des clés de ${m[1]} et vérifiez que la clé existe toujours et qu'elle est active.`],
-    [/^Paste it in the API key box above\. (.+)$/, (m) => `Collez-la dans le champ Clé API ci-dessus. ${window.FR[m[1]] || m[1]}`],
-    [/^(.+) doesn't accept this key\.$/, (m) => `${m[1]} n'accepte pas cette clé.`],
-    [/^(.+) can't find the property this site uses\.$/, (m) => `${m[1]} ne trouve pas la propriété utilisée par ce site.`],
-    [/^(.+) had a problem on its side, or couldn't be reached\. Your key is probably fine\.$/, (m) => `${m[1]} a eu un problème de son côté, ou n'a pas pu être joint. Votre clé est sans doute correcte.`],
+    [/^The (.+) is off in your Google Cloud project( \d+)?\.$/, (m) => `L'API ${m[1].replace(/ API$/, "")} est désactivée dans votre projet Google Cloud${m[2] || ""}.`],
+    [/^Paste it above\. (.+)$/, (m) => `Collez-la ci-dessus. ${window.FR[m[1]] || m[1]}`],
     [/^Wait an hour\. (.+)$/, (m) => `Patientez une heure. ${window.FR[m[1]] || m[1]}`],
-    [/^If it still fails tomorrow, check (.+)'s website for an outage notice\.$/, (m) => `Si ça échoue encore demain, regardez sur le site de ${m[1]} s'il y a une panne.`],
-    [/^It refills: (.+)\. The app tries again after that by itself\.$/, (m) => `Elle se recharge : ${(window.FR[m[1]] || m[1]).toLowerCase()}. L'application réessaie ensuite toute seule.`],
-    [/^Need it sooner\? Check your usage on (.+)'s dashboard, or move another tool above it in the list\.$/, (m) => `Besoin plus tôt ? Vérifiez votre consommation sur le tableau de bord de ${m[1]}, ou placez un autre outil au-dessus dans la liste.`],
-    [/^Open your (.+) account and add this server's IP address to the allowed list\.$/, (m) => `Ouvrez votre compte ${m[1]} et ajoutez l'adresse IP de ce serveur à la liste autorisée.`],
-    [/^(.+) refuses requests from this server's address\.$/, (m) => `${m[1]} refuse les requêtes venant de l'adresse de ce serveur.`],
+    [/^It refills: (.+)\. The app then retries by itself\.$/, (m) => `Elle se recharge : ${(window.FR[m[1]] || m[1]).toLowerCase()}. L'application réessaie ensuite seule.`],
     [/^Add (.+) as a Viewer\.$/, (m) => `Ajoutez ${m[1]} comme Lecteur.`],
     [/^Add (.+) as a Restricted user\.$/, (m) => `Ajoutez ${m[1]} comme utilisateur restreint.`],
-    [/^What (.+) said$/, (m) => `Ce que ${m[1]} a répondu`],
-    [/^Open (.+)$/, (m) => `Ouvrir ${m[1]}`],
   ];
   // The app's t() only looks words up, so these are taught to it the moment a box is drawn.
   const teach = (text) => { if (window.FR[text] !== undefined) return; const hit = patterns.find(([re]) => re.test(text)); if (hit) window.FR[text] = hit[1](text.match(hit[0])); };
   const plainHtml = html;
   window.FIX.html = (message, ctx = {}, opts = {}) => {
     const fix = explain(message, ctx);
-    [fix.summary, ...fix.steps.flatMap((s) => [s.text, s.link]), `What ${ctx.tool || "it"} said`].filter(Boolean).forEach(teach);
+    [fix.summary, ...fix.steps.flatMap((s) => [s.text, s.link])].filter(Boolean).forEach(teach);
     return plainHtml(message, ctx, opts);
   };
 })();

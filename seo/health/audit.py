@@ -23,11 +23,11 @@ THIN_WORDS = 50
 
 # code: (what it means, how much it can cost out of 100 when every page has it, severity)
 CHECKS: dict[str, tuple[str, int, str]] = {
-    "broken_pages": ("Pages that answer with an error", 28, CRIT),
+    "broken_pages": ("Error pages", 28, CRIT),
     "broken_links": ("Broken links", 18, CRIT),
     "server_errors": ("Server errors", 16, CRIT),
     "noindex": ("Hidden from search engines", 8, WARN),
-    "canonical_elsewhere": ("Pages that point search engines to another page", 6, WARN),
+    "canonical_elsewhere": ("Canonical points elsewhere", 6, WARN),
     "no_title": ("No title", 8, WARN),
     "duplicate_title": ("Duplicate titles", 5, WARN),
     "no_h1": ("No main heading (H1)", 5, WARN),
@@ -43,7 +43,7 @@ CHECKS: dict[str, tuple[str, int, str]] = {
 SITE_CHECKS: dict[str, tuple[str, int]] = {
     "start_page_down": ("Start page didn't load", 60),
     "start_page_noindex": ("Start page hidden from search engines", 40),
-    "robots_down": ("The site's robots.txt answers with a server error, so search engines stay away", 60),
+    "robots_down": ("robots.txt gives a server error, so search engines stay away", 60),
     "ssl_expired": ("Certificate expired", 40),
     "ssl_expiring": ("Certificate expires within 14 days", 15),
     "ssl_error": ("Certificate couldn't be verified", 20),

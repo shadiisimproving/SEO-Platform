@@ -118,9 +118,9 @@ def save_settings(engine: Engine, body: dict) -> dict:
             try:
                 cap = round(float(body["cap"]), 2)
             except (TypeError, ValueError) as exc:
-                raise Refused("The monthly cap must be a number of dollars.") from exc
+                raise Refused("The cap must be a dollar amount.") from exc
             if not 0 <= cap <= 1000:
-                raise Refused("The monthly cap must be between 0 and 1,000 dollars.")
+                raise Refused("The cap must be $0 to $1,000.")
             _set(conn, "ai_cap_usd", f"{cap:g}")
     return settings(engine)
 
@@ -200,20 +200,20 @@ def _claude(engine: Engine, purpose: str, system: str, user: str) -> tuple[str, 
     except anthropic.PermissionDeniedError as exc:
         raise Refused("This Anthropic key can't use that model. Check the key's workspace in the Claude Console.") from exc
     except anthropic.RateLimitError as exc:
-        raise Refused("Anthropic says too many requests right now. Try again in a minute.") from exc
+        raise Refused("Too many requests to Anthropic. Try again in a minute.") from exc
     except anthropic.BadRequestError as exc:
         if "credit" in str(exc).lower():
             raise Refused("The Anthropic account is out of credit. Add some in the Claude Console.") from exc
         raise Refused("Anthropic didn't accept the request. Try again, or pick the free models.") from exc
     except anthropic.APIStatusError as exc:
-        raise Refused("Claude is busy or down right now. Try again in a moment." if exc.status_code >= 500 else "Anthropic didn't answer as expected. Try again in a moment.") from exc
+        raise Refused("Claude is busy or down. Try again in a moment." if exc.status_code >= 500 else "Anthropic didn't answer as expected. Try again in a moment.") from exc
     except anthropic.APIConnectionError as exc:
         raise Refused("Anthropic couldn't be reached. Try again in a moment.") from exc
     dollars = _cost(model, response.usage)
     _add_spend(engine, dollars)  # paid for even when the answer is a refusal
     sources.note_app_key(engine, "anthropic", None)
     if response.stop_reason == "refusal":
-        raise Refused("Claude declined to answer this one.")
+        raise Refused("Claude declined to answer.")
     words = "".join(block.text for block in response.content if block.type == "text").strip()
     if not words:
         raise Refused("Claude gave no answer. Try again.")
@@ -253,7 +253,7 @@ def ask(engine: Engine, site_id: int, purpose: str, facts: dict, lang: str = "en
     lang = lang if lang in LANGUAGES else "en"
     provider = provider_of(engine, site_id)
     if provider not in ("openrouter", "claude"):
-        raise Refused("No AI is chosen for this site yet. Pick one in Settings → AI. Nothing about the site is sent until you do.")
+        raise Refused("No AI chosen yet, so nothing is sent. Pick one in Settings → AI.")
     system = _system(purpose, lang)
     user = f"<facts>\n{json.dumps(facts, ensure_ascii=False, default=str)[:20000]}\n</facts>"
     words, model, dollars = (_claude if provider == "claude" else _openrouter)(engine, purpose, system, user)

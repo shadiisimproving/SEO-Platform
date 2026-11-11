@@ -295,4 +295,4 @@ def test_today_findings_come_with_their_words_apart_for_the_reader_language(engi
     [row] = [r for r in today.today(engine, site)["todo"] if r["kind"] == "search_finding"]
     assert row["title"] == "“sofa repair” is close to the top 3"
     assert row["words"]["title"][0] == "“{query}” is close to the top 3" and row["words"]["title"][1]["query"] == "sofa repair"
-    assert row["words"]["detail"] == ["About {n} clicks a month at stake", {"n": 42}]
+    assert row["words"]["detail"] == ["~{n} clicks/month at stake", {"n": 42}]

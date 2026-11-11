@@ -185,9 +185,10 @@
      Before, every cause read "Google didn't answer", and the reason was four steps away in Settings. */
   function liveErrorNote(message) {
     const fix = window.FIX?.explain ? window.FIX.explain(message, { tool: "Search Console", id: "google", retry: "refresh" }) : null;
-    const why = fix?.summary ? t(fix.summary) : t("Google didn't answer.");
-    const steps = window.FIX?.html ? window.FIX.html(message, { tool: "Search Console", id: "google", retry: "refresh" }, { said: true }) : "";
-    return `<div class="note warn ov-live-error" role="alert">${icon("triangle-alert")}<div><p><b>${t("These are the last saved numbers.")}</b> ${esc(why)}</p>${steps}
+    const steps = window.FIX?.html ? window.FIX.html(message, { tool: "Search Console", id: "google", retry: "refresh" }, { said: true }) : ""; // first: it teaches t() the French of sentences built from a name
+    // The fix box's sentences don't name the tool (2026-11-11), so its logo says once which one this is.
+    const why = fix?.summary ? `${UI.logoOnly("Search Console")} ${esc(t(fix.summary))}` : esc(t("Google didn't answer."));
+    return `<div class="note warn ov-live-error" role="alert">${icon("triangle-alert")}<div><p><b>${t("These are the last saved numbers.")}</b> ${why}</p>${steps}
       <p class="ov-empty-act"><button class="btn btn-small" data-ov-fix-google>${icon("settings")}${t("Open the Google connection")}</button></p></div></div>`;
   }
 

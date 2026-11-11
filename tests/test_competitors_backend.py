@@ -170,7 +170,7 @@ def test_the_same_word_in_another_market_is_another_keyword(world):
 
 def test_no_tool_connected_waits_with_a_plain_reason_then_resumes(world):
     run = keywords.upload(world.engine, world.own, "one\ntwo")
-    assert run["status"] == "waiting" and "No search tool is connected" in run["stop_reason"]
+    assert run["status"] == "waiting" and run["stop_reason"] == "No search tool connected: add a key in Settings."
     assert scalar(world.engine, "SELECT COUNT(*) FROM site_keywords") == 2  # the list is kept
     assert keywords.resume_waiting(world.engine) == []
     tool = FakeTool()
@@ -1113,6 +1113,7 @@ def test_note_options_list_folders_linking_websites_and_tasks(world):
     one = world.client.get(f"/api/notes/options?site_id={world.own}").get_json()
     assert "links.example" in one["domains"]
     assert [t["id"] for t in one["tasks"]] == [task["id"]]
+    assert one["tasks"][0]["site_host"] == task["site_host"] and task["site_host"]  # health tasks share titles across sites: the picker tells them apart by site
     assert notes._sections([{"url": "https://shop-one.example/blog/guides/brew"}, {"url": "https://shop-one.example/blog/news"}]) == [
         {"url": "https://shop-one.example/blog/", "pages": 2}, {"url": "https://shop-one.example/blog/guides/", "pages": 1},
     ]
@@ -1291,7 +1292,7 @@ def test_a_site_that_blocks_robots_is_blocked_with_no_page_requests(world):
     rival = add_rival(world)
     world.drain("crawl")
     state = crawl_state(world, rival)
-    assert state["status"] == "blocked" and state["baseline_done"] == 0 and "automated visitors" in state["message"]
+    assert state["status"] == "blocked" and state["baseline_done"] == 0 and state["message"] == "Blocks bots, so edits can't be tracked."
     assert world.requests == ["https://rival.example/robots.txt"]
 
 

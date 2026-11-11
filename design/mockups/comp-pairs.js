@@ -144,13 +144,18 @@
     return `<p class="note cp-rival-note cp-reading-line" role="status">${UI.icon("refresh-cw", "spin")}<span>${esc(fill(t(urls.size === 1 ? "Reading {n} page…" : "Reading {n} pages…"), { n: UI.num(urls.size) }))}</span></p>`;
   }
 
-  function pairRow(p) {
+  /* The Competitor column shows only while the rows can differ: with one competitor picked under Against, it goes.
+     With all of them, each row shows the competitor's logo alone, its host on hover and for screen readers. */
+  function pairRow(p, withRival = true) {
     const lead = leadKeyword(p);
     const reading = isWaiting(p.my_state) || isWaiting(p.their_state);
     const position = (word, value) => `<td class="c cp-simple-pos" data-label="${t(word)}">${lead ? COMP.pos(value, lead.keyword.depth) : dash()}</td>`;
+    const rival = p.competitor || COMP.shortUrl(p.their_url).split("/")[0];
+    // "Your choice" and the reading spinner sit with my page, so they stay when the Competitor column goes.
+    const marks = `${p.source === "manual" ? `<span class="tag cp-yours">${t("Your choice")}</span>` : ""}${reading ? (W.expired ? plainStatus("clock", "Waiting") : readingMark()) : ""}`;
     return `<tr data-cp-row="${p.id}">
-      <td class="head-cell cp-page">${p.my_title ? `<span class="cp-page-title" dir="auto">${esc(p.my_title)}</span>${PageLink.html(p.my_url, { text: pathOf(p.my_url), cls: "second mono", dir: "ltr" })}` : PageLink.html(p.my_url, { text: pathOf(p.my_url), cls: "cp-page-title mono", dir: "ltr" })}</td>
-      <td data-label="${t("Competitor")}"><div class="cp-val"><span class="with-logo cp-rival-name">${window.UI.siteLogo(p.competitor || COMP.shortUrl(p.their_url).split("/")[0], 16)}<span class="logo-text" dir="auto">${esc(p.competitor || COMP.shortUrl(p.their_url).split("/")[0])}</span></span>${p.source === "manual" ? ` <span class="tag cp-yours">${t("Your choice")}</span>` : ""}${reading ? `<span class="second">${W.expired ? plainStatus("clock", "Waiting") : readingMark()}</span>` : ""}</div></td>
+      <td class="head-cell cp-page">${p.my_title ? `<span class="cp-page-title" dir="auto">${esc(p.my_title)}</span>${PageLink.html(p.my_url, { text: pathOf(p.my_url), cls: "second mono", dir: "ltr" })}` : PageLink.html(p.my_url, { text: pathOf(p.my_url), cls: "cp-page-title mono", dir: "ltr" })}${marks ? `<span class="cp-page-marks">${marks}</span>` : ""}</td>
+      ${withRival ? `<td data-label="${t("Competitor")}"><div class="cp-val"><span class="cg-logo cp-rival-logo" role="img" tabindex="0" data-tip="${esc(rival)}" aria-label="${esc(rival)}">${window.UI.siteLogo(rival, 20)}</span></div></td>` : ""}
       <td data-label="${t("Keyword")}"><div class="cp-val">${lead ? `<span dir="auto">${esc(lead.keyword.keyword)}</span>${lead.rest > 0 ? `<span class="second">+ ${UI.num(lead.rest)} ${t(lead.rest === 1 ? "more" : "more")}</span>` : ""}` : `<span class="muted small">${t("None")}</span>`}</div></td>
       ${position("You", lead?.keyword.my_position)}
       ${position("Them", lead?.keyword.their_position)}
@@ -193,14 +198,15 @@
     }
     // One list, the furthest behind on top, so the first row is always the first thing to look at. A heading can sort it another way.
     const page = TP.view(PAGES, sortedPairs(shown));
+    const withRival = !S.filter; // Against names the one competitor, so every row would repeat it
     const head = (key, label, cls = "") => {
       const on = S.sort?.key === key;
       return `<th scope="col" class="${cls}" aria-sort="${on ? (S.sort.dir === "asc" ? "ascending" : "descending") : "none"}"><button type="button" class="th-btn" data-cp-sort="${key}">${label}${on ? UI.icon(S.sort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
     };
     return `${tools}${readingLine(shown)}
       <div class="cp-pages"><div class="table-wrap"><table class="data" id="cp-table">
-        <thead><tr>${head("page", COMP.who("you", null, t("My page")))}<th scope="col">${COMP.who("them", null, t("Competitor"))}</th><th scope="col">${t("Keyword")}</th>${head("mine", youThemHead("mine"), "c")}${head("theirs", youThemHead("theirs"), "c")}<th scope="col">${t("Who's ahead")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
-        <tbody>${page.rows.map(pairRow).join("")}</tbody>
+        <thead><tr>${head("page", COMP.who("you", null, t("My page")))}${withRival ? `<th scope="col">${COMP.who("them", null, t("Competitor"))}</th>` : ""}<th scope="col">${t("Keyword")}</th>${head("mine", youThemHead("mine"), "c")}${head("theirs", youThemHead("theirs"), "c")}<th scope="col">${t("Who's ahead")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
+        <tbody>${page.rows.map((p) => pairRow(p, withRival)).join("")}</tbody>
       </table></div>${TP.footer(PAGES, page, { noun: t("pairs") })}</div>`;
   }
   /* My page: A to Z. You and Them: the position on the pair's keyword, the best first. Not in the results always goes last. */

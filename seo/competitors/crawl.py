@@ -42,7 +42,7 @@ MAX_FEEDS = 3
 STOP_AFTER_FAILURES = 3  # in a row: the site isn't answering, or it's blocking us, so hammering it helps nobody
 SETTLED_STATUSES = ("gone", "robots")  # these won't change tomorrow, so they wait for the slow re-read
 READABLE_STATUSES = ("ok", "not_modified", "not_html")
-BLOCKED_TEXT = "This site doesn't allow automated visitors, so its edits can't be tracked. The app doesn't try to get past that."
+BLOCKED_TEXT = "Blocks bots, so edits can't be tracked."
 BUDGET_TEXT = "Today's crawl budget is used up. This site's read carries on tomorrow."
 TODAY_DONE_TEXT = "This site has had its reads for today. It carries on tomorrow."
 SLOW_DOWN_TEXT = "The site asked the app to slow down, so it stopped for today. It carries on tomorrow."
@@ -582,7 +582,7 @@ SEARCH_TITLE = "search_title"  # a change event: the title in my ranking checks 
 
 def guess_blocked_edits(engine: Engine) -> int:
     """A site that blocks the reader can't be read, so its edits are guessed from outside, for free: when two of my ranking
-    checks of the same keyword show its page with different titles, the timeline says the page was probably edited.
+    checks of the same keyword show its page with different titles, the timeline says “Search title changed”.
     Each new title is reported once."""
     with engine.connect() as conn:
         hosts = [

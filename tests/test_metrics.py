@@ -326,7 +326,20 @@ def test_today_ranks_by_what_is_being_lost_not_only_by_label(engine, site):
     _alert_row(engine, site, "uptime_down", "crit", "site is down", {"state": "down"})
     _page_clicks(engine, site, "mine.example", "fell", END, 100, 40)
     titles = [item["title"] for item in today_view.today(engine)["todo"]]
-    assert titles == ["site is down", "/fell/ lost 60% of its Google clicks", "a backlink was lost", "certificate soon", "Google data stopped working", "health fell"]
+    assert titles == ["site is down", "/fell/: −60% Google clicks", "a backlink was lost", "certificate soon", "Google data stopped working", "health fell"]
+
+
+def test_today_says_a_big_search_drop_the_new_way_even_when_it_was_saved_the_old_way(engine, site):
+    """Search alerts keep the English they were saved with (seo.insights.engine). Rows from before 2026-11-11 are read too,
+    and said like the new ones, with their words apart for the French screen."""
+    _alert_row(engine, site, "search_drop", "crit", "/old/ lost 40% of its Google clicks", {"finding_key": "a", "detail": "About 12 clicks a month at stake. See Search → Insights."})
+    _alert_row(engine, site, "search_drop", "crit", "/new/: −35% Google clicks", {"finding_key": "b", "detail": "~8 clicks/month at stake"})
+    rows = {row["title"]: row for row in today_view.today(engine, site)["todo"] if row["kind"] == "search_drop"}
+    assert set(rows) == {"/old/: −40% Google clicks", "/new/: −35% Google clicks"}
+    old, new = rows["/old/: −40% Google clicks"], rows["/new/: −35% Google clicks"]
+    assert old["detail"] == "~12 clicks/month at stake" and new["detail"] == "~8 clicks/month at stake"
+    assert old["words"] == {"title": ["{path}: −{percent}% Google clicks", {"path": "/old/", "percent": 40}], "detail": ["~{n} clicks/month at stake", {"n": 12}]}
+    assert new["words"] == {"title": ["{path}: −{percent}% Google clicks", {"path": "/new/", "percent": 35}], "detail": ["~{n} clicks/month at stake", {"n": 8}]}
 
 
 def test_today_a_source_failing_on_several_sites_is_one_row(engine, site):

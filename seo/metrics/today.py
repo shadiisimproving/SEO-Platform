@@ -20,6 +20,10 @@ CLARITY_WARN_HOURS = 48
 LANE_STALE_MINUTES = {"crawl": 30, "refresh": 30, "collectors": 30}
 SEVERITY = {"crit": 0, "warn": 1, "info": 2}
 ALERT_KIND_SEARCH = "search_drop"  # seo.insights.engine.ALERT_KIND, the big drops Insights raises
+# Its stored sentences (seo.insights.engine). Rows saved before 2026-11-11 say them the old way ("/x/ lost 40% of its Google
+# clicks", "About 12 clicks a month at stake. See Search → Insights."), so both wordings are read, and said the new way.
+_SEARCH_DROP_TITLE = re.compile(r"^(.+?)(?: lost (\d+)% of its Google clicks|: −(\d+)% Google clicks)$")
+_SEARCH_STAKE = re.compile(r"^(?:About (\d+) clicks a month|~(\d+) clicks/month) at stake")
 
 MOVE_PERCENT, MOVE_MIN_CLICKS = 20, 20  # a page shown under Going down or Going up
 BIG_DROP_PERCENT, BIG_DROP_MIN_CLICKS, BIG_DROPS_SHOWN = 30, 50, 3  # a page that joins the to-do list
@@ -82,9 +86,16 @@ def _attention(engine: Engine, site_id: int | None) -> list[dict]:
                 "id": f"alert-{row['id']}", "alert_ids": [row["id"]], "severity": row["severity"], "kind": kind, "host": row["host"], "title": row["title"], "rank": _rank(kind, row["severity"], detail), "site_codes": (detail or {}).get("site"),
                 "detail": (detail or {}).get("error") or (detail or {}).get("detail") or "", "link": _link(kind), "created_at": _iso(row["created_at"]),
             }
-            stake = re.match(r"^About (\d+) clicks a month at stake", item["detail"]) if kind == ALERT_KIND_SEARCH else None
+            stake = _SEARCH_STAKE.match(item["detail"]) if kind == ALERT_KIND_SEARCH else None
             if stake:
-                item["words"] = {"detail": ["About {n} clicks a month at stake. See Search → Insights.", {"n": int(stake.group(1))}]}
+                n = int(stake.group(1) or stake.group(2))
+                item["detail"] = f"~{n} clicks/month at stake"
+                item["words"] = {"detail": ["~{n} clicks/month at stake", {"n": n}]}
+            drop = _SEARCH_DROP_TITLE.match(item["title"] or "") if kind == ALERT_KIND_SEARCH else None
+            if drop:
+                path, percent = drop.group(1), int(drop.group(2) or drop.group(3))
+                item["title"] = f"{path}: −{percent}% Google clicks"
+                item.setdefault("words", {})["title"] = ["{path}: −{percent}% Google clicks", {"path": path, "percent": percent}]
             items.append(item)
         # Clarity only gives the last 3 days, so a gap becomes permanent. Say how long is left, counted from the last good pull.
         for row in conn.execute(
@@ -97,8 +108,8 @@ def _attention(engine: Engine, site_id: int | None) -> list[dict]:
                 items.append({
                     "id": f"clarity-{row['site_id']}", "severity": "crit" if left <= 12 else "warn", "kind": "clarity_gap", "host": row["host"],
                     "title": f"Clarity data lost in {left} h" if left > 0 else "Clarity data is being lost",
-                    "detail": "Clarity only keeps the last 3 days for the app to read.", "link": "#settings", "created_at": None, "rank": LOST_FOR_GOOD_SOON,
-                    "words": {"title": ["Clarity data lost in {n} h", {"n": left}] if left > 0 else ["Clarity data is being lost", {}], "detail": ["Clarity only keeps the last 3 days for the app to read.", {}]},
+                    "detail": "Clarity keeps only 3 days of data.", "link": "#settings", "created_at": None, "rank": LOST_FOR_GOOD_SOON,
+                    "words": {"title": ["Clarity data lost in {n} h", {"n": left}] if left > 0 else ["Clarity data is being lost", {}], "detail": ["Clarity keeps only 3 days of data.", {}]},
                 })
         for row in conn.execute(text("SELECT kind, last_error, id FROM jobs WHERE status = 'dead' AND finished_at > UTC_TIMESTAMP(3) - INTERVAL 7 DAY ORDER BY id DESC LIMIT 5")).mappings().all():
             if not site_id:
@@ -291,14 +302,14 @@ def _is_big_drop(move: dict) -> bool:
 def _drop_row(move: dict) -> dict:
     return {
         "id": f"drop-{move['key']}", "seen_key": move["key"], "kind": "page_drop", "severity": "crit" if move["change"] <= -50 else "warn", "rank": LOSING_RESULTS, "host": move["host"],
-        "title": f"{move['path']} lost {abs(move['change'])}% of its Google clicks", "detail": f"Last 7 days against the 7 before: {move['was']} → {move['clicks']}", "page": move["page"], "link": "#overview", "created_at": None,
-        "words": {"title": ["{path} lost {percent}% of its Google clicks", {"path": move["path"], "percent": abs(move["change"])}], "detail": ["Last 7 days against the 7 before: {was} → {now}", {"was": move["was"], "now": move["clicks"]}]},
+        "title": f"{move['path']}: −{abs(move['change'])}% Google clicks", "detail": f"Week on week: {move['was']} → {move['clicks']}", "page": move["page"], "link": "#overview", "created_at": None,
+        "words": {"title": ["{path}: −{percent}% Google clicks", {"path": move["path"], "percent": abs(move["change"])}], "detail": ["Week on week: {was} → {now}", {"was": move["was"], "now": move["clicks"]}]},
         "open": {"page": move["page"], "range": "7d"},
     }
 
 
 _FINDING_TITLES = {
-    "page_down": "{path} lost {percent}% of its Google clicks",
+    "page_down": "{path}: −{percent}% Google clicks",
     "dropped_out": "{path} dropped out of Google",
     "decay": "{path} is slowly losing clicks",
     "almost": "“{query}” is almost on page 1",
@@ -330,10 +341,10 @@ def _finding_row(f: dict) -> dict:
     return {
         "id": f"finding-{f['key']}", "seen_key": f["key"], "kind": "search_finding", "finding": f["kind"], "finding_id": f["id"], "severity": "warn",
         "rank": LOSING_RESULTS if f["group"] in ("changed", "decline") else OTHER, "host": f["host"],
-        "title": _FINDING_TITLES.get(f["kind"], "{path}").format(**values), "detail": f"About {round(f['at_stake'])} clicks a month at stake",
+        "title": _FINDING_TITLES.get(f["kind"], "{path}").format(**values), "detail": f"~{round(f['at_stake'])} clicks/month at stake",
         "page": f["page"], "query": f["query"], "link": f"#insights/{f['id']}", "created_at": None,
         # The same sentence as parts, so the screen can say it in the reader's language (English key, values apart).
-        "words": {"title": [_FINDING_TITLES.get(f["kind"], "{path}"), values], "detail": ["About {n} clicks a month at stake", {"n": round(f["at_stake"])}],
+        "words": {"title": [_FINDING_TITLES.get(f["kind"], "{path}"), values], "detail": ["~{n} clicks/month at stake", {"n": round(f["at_stake"])}],
                   **({"segment_dim": evidence.get("dim")} if evidence.get("segment") else {})},
     }
 
@@ -359,9 +370,9 @@ def _ai_overview_rows(engine: Engine, site_id: int | None) -> list[dict]:
         key = digest("aio", str(change["site_id"]), change["keyword"], change["kind"], change["at"].isoformat())
         rows.append({
             "id": f"aio-{key}", "seen_key": key, "kind": "ai_overview", "change": change["kind"], "severity": severity, "rank": rank, "host": change["host"],
-            "title": template.format(keyword=change["keyword"]), "detail": "From the last two rank checks that could read Google's AI Overview",
+            "title": template.format(keyword=change["keyword"]), "detail": "Last two AI Overview checks",
             "query": change["keyword"], "link": "#competitors/ai", "created_at": _iso(change["at"]),
-            "words": {"title": [template, {"keyword": change["keyword"]}], "detail": ["From the last two rank checks that could read Google's AI Overview", {}]},
+            "words": {"title": [template, {"keyword": change["keyword"]}], "detail": ["Last two AI Overview checks", {}]},
         })
     return rows
 

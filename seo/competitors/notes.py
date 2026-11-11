@@ -28,10 +28,10 @@ SCREENS = (
     "today", "channels", "conversions", "content", "overview", "keywords", "competitors", "ai", "ads",
     "tasks", "backlinks", "resources", "health", "settings",
 )
-WRONG_SCOPE = "A note goes on all competitors, one competitor, a page or group of pages, a keyword, a day, a linking website, a task, a screen or a website."
+WRONG_SCOPE = "That isn't something a note can go on."
 MAX_FILE_BYTES = 25 * 1024 * 1024
 UPLOAD_OVERHEAD = 1024 * 1024  # the form around the file
-TOO_LARGE = "This file is too large. The limit is 25 MB."
+TOO_LARGE = "This file is over 25 MB."
 
 
 def files_dir() -> Path:
@@ -81,7 +81,7 @@ def _check_body(body) -> str:
     if not isinstance(body, str):
         raise Refused("A note needs some text.")
     if len(body.encode("utf-8")) > MAX_BYTES:
-        raise Refused("This note is too long to save. Your text is still here: split it into two notes.")
+        raise Refused("Note too long. Your text is still here: split it in two.")
     return body
 
 
@@ -153,7 +153,7 @@ def _clean_day(value) -> date:
     except ValueError:
         day = None
     if day is None:
-        raise Refused("Choose the day this note is about.")
+        raise Refused("Pick a day.")
     if day.year < 2000 or day > date.today() + timedelta(days=366):
         raise Refused("Choose a day between 2000 and next year.")
     return day
@@ -175,7 +175,7 @@ def create(engine: Engine, scope, body, site_id=None, competitor_id=None, page_u
         if not word:
             raise Refused("Enter the keyword.")
         if len(word) > 400:
-            raise Refused("This keyword is too long. The limit is 400 characters.")
+            raise Refused("This keyword is over 400 characters.")
         fields.update(keyword=word, keyword_hash=keyword_hash(word))
     if scope == "date":
         fields["day"] = _clean_day(day)
@@ -200,9 +200,9 @@ def create(engine: Engine, scope, body, site_id=None, competitor_id=None, page_u
     if scope == "section":
         clean_url = clean_section(page_url)
         if not clean_url:
-            raise Refused("Enter the address the pages start with, such as example.com/blog/.")
+            raise Refused("Enter the folder address, such as example.com/blog/.")
         if clean_url.split("://", 1)[-1].count("/") < 2:
-            raise Refused("That's the whole website. Write the note on the website instead, or add a folder such as /blog/.")
+            raise Refused("That's the whole site: add a folder like /blog/, or write on the website.")
         hashed = pages.url_hash(clean_url)
     with engine.begin() as conn:
         if site_id is not None:
@@ -388,9 +388,10 @@ def options(engine: Engine, site_id: int | None = None) -> dict:
             domains.update(r[0] for r in conn.execute(text(
                 f"SELECT DISTINCT r.domain FROM competitor_referrers r JOIN site_competitors sc ON sc.competitor_id = r.competitor_id WHERE sc.site_id IN ({marks}) LIMIT 3000"
             )) if r[0])
-            # A task for all sites belongs to each of them too.
-            tasks = [{"id": r[0], "title": r[1], "status": r[2]} for r in conn.execute(text(
-                f"SELECT id, title, status FROM tasks WHERE deleted_at IS NULL AND (site_id IN ({marks}) OR site_id IS NULL) ORDER BY status = 'done', updated_at DESC LIMIT 500"
+            # A task for all sites belongs to each of them too. Its site goes along: a health task's title is the check
+            # alone ("Error pages"), so two sites can share one, and the picker tells them apart by site.
+            tasks = [{"id": r[0], "title": r[1], "status": r[2], "site_host": r[3]} for r in conn.execute(text(
+                f"SELECT id, title, status, site_host FROM tasks WHERE deleted_at IS NULL AND (site_id IN ({marks}) OR site_id IS NULL) ORDER BY status = 'done', updated_at DESC LIMIT 500"
             ))]
     found: dict[str, str] = {}
     for one in sites:

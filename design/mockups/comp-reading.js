@@ -39,7 +39,7 @@
     if (c.status === "blocked") {
       // The header's Blocked chip and this one line say it all: the site refuses bots, rankings still work, Firecrawl is the only way in.
       // Two short sentences, each with its full sentence behind its own (i); the line is HTML, every piece escaped.
-      out.push({ kind: "warn", html: `${esc(t("Blocks bots: edits can't be tracked. Rankings and AI Overviews still work."))}${tip("This site doesn't allow automated visitors, so its edits can't be tracked. Rankings, AI Overviews and shared keywords still work.")} ${esc(t("Title changes in results still show as “probably edited”."))}${tip("When its title changes in your ranking checks, the timeline shows the page as probably edited.")}${f.connected ? ` ${esc(t("Firecrawl can read it when you click."))}` : ""}`, act: f.connected ? fcButton("read", t("Read with Firecrawl"), Math.min(c.pages_known || 1, 50)) : connectHint });
+      out.push({ kind: "warn", html: `${esc(t("Blocks bots: edits can't be tracked. Rankings and AI Overviews still work."))}${tip("This site doesn't allow automated visitors, so its edits can't be tracked. Rankings, AI Overviews and shared keywords still work.")} ${esc(t("Title changes in results still show, as “Search title changed”."))}${tip("When its title changes in your ranking checks, the timeline shows “Search title changed” for that page.")}${f.connected ? ` ${esc(t("Firecrawl can read it when you click."))}` : ""}`, act: f.connected ? fcButton("read", t("Read with Firecrawl"), Math.min(c.pages_known || 1, 50)) : connectHint });
     } else {
       const listedByFirecrawl = f.action === "map" && f.status === "ok" && f.finished_at;
       if ((c.list_source === "links" || c.list_source === "feed") && listedByFirecrawl) {
@@ -214,7 +214,8 @@
     "Firecrawl can read it once connected in Settings.": "Firecrawl peut le lire une fois connecté dans les réglages.",
     "Open Settings": "Ouvrir les réglages",
     "Blocks bots: edits can't be tracked. Rankings and AI Overviews still work.": "Bloque les robots : modifications non suivies. Positions et AI Overviews fonctionnent toujours.",
-    "Title changes in results still show as “probably edited”.": "Un changement de titre dans les résultats s'affiche comme « sans doute modifiée ».",
+    "Title changes in results still show, as “Search title changed”.": "Les changements de titre dans les résultats s'affichent toujours, en « Titre dans les résultats modifié ».",
+    "When its title changes in your ranking checks, the timeline shows “Search title changed” for that page.": "Quand son titre change dans vos suivis de positions, la chronologie affiche « Titre dans les résultats modifié » pour cette page.",
     "Firecrawl can read it when you click.": "Firecrawl peut le lire quand vous cliquez.",
     "{n} more note": "{n} autre remarque",
     "{n} more notes": "{n} autres remarques",
@@ -265,8 +266,8 @@
     "Firecrawl has no credits left this month.": "Firecrawl n'a plus de crédits ce mois-ci.",
     "Connect Firecrawl in Settings first.": "Connectez d'abord Firecrawl dans les réglages.",
     "Firecrawl is already working on this site.": "Firecrawl travaille déjà sur ce site.",
-    "Firecrawl's run stopped before the end. Pages read before it are saved. Try again.": "Le passage de Firecrawl s'est arrêté avant la fin. Les pages lues avant sont enregistrées. Réessayez.",
-    "The last read stopped before the end. Pages read before it are saved, and it carries on at the next daily read.": "La dernière lecture s'est arrêtée avant la fin. Les pages lues avant sont enregistrées, et elle reprend à la prochaine lecture quotidienne.",
+    "Firecrawl stopped early. Pages read so far are saved. Try again.": "Firecrawl s'est arrêté avant la fin. Les pages déjà lues sont enregistrées. Réessayez.",
+    "Last read stopped early. Pages so far are saved; it resumes at the next daily read.": "Dernière lecture arrêtée avant la fin. Les pages lues sont enregistrées ; elle reprend à la prochaine lecture quotidienne.",
     "There's no page here that needs Firecrawl.": "Aucune page ici n'a besoin de Firecrawl.",
     "Its {n} page is read daily; edits show next morning.": "{n} page lue chaque jour ; les modifications apparaissent le lendemain.",
     "All {n} pages read daily; edits show next morning.": "Ses {n} pages sont lues chaque jour ; les modifications apparaissent le lendemain.",

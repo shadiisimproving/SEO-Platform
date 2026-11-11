@@ -489,6 +489,25 @@ def test_the_links_checkers_reasons_are_french():
     assert fmt.tr("fr", "The request failed: timed out") == "La requête a échoué : timed out"
 
 
+def test_todays_stored_sentences_are_french_in_the_old_wording_and_the_new():
+    """Alerts keep the English they were saved with: the wording before 2026-11-11 and the one since have the same French."""
+    for old, new, french in (
+        ("/a/ lost 32% of its Google clicks", "/a/: −32% Google clicks", "/a/ : −32 % de clics Google"),
+        ("Last 7 days against the 7 before: 85 → 58", "Week on week: 85 → 58", "Semaine sur semaine : 85 → 58"),
+        ("About 12 clicks a month at stake. See Search → Insights.", "~12 clicks/month at stake", "~12 clics/mois en jeu"),
+        ("About 12 clicks a month at stake", "~12 clicks/month at stake", "~12 clics/mois en jeu"),
+        ("Clarity only keeps the last 3 days for the app to read.", "Clarity keeps only 3 days of data.", "Clarity ne garde que 3 jours de données."),
+        ("site-one.example: the site's robots.txt answers with a server error, so search engines stay away",
+         "site-one.example: robots.txt gives a server error, so search engines stay away",
+         None),
+    ):
+        assert fmt.tr("fr", old) != old and fmt.tr("fr", new) != new, (old, new)
+        if french:
+            assert fmt.tr("fr", old) == fmt.tr("fr", new) == french
+    assert fmt.tr("fr", "Last two AI Overview checks") == "Deux derniers relevés de l'AI Overview"
+    assert fmt.tr("fr", "site-one.example: start page didn't load; certificate expired") == "site-one.example : la page de départ n'a pas chargé ; certificat expiré"
+
+
 def test_every_view_in_french_has_no_english_the_app_wrote(engine, site, fixed_today):
     """The check tests/ui/check_exports_french.py runs on the demo's full data, here on this small site."""
     from tests.ui.check_exports_french import check

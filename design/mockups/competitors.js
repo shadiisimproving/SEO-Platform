@@ -63,7 +63,7 @@
        A change sent in between starts a new GET, so nobody is handed an answer from before their own change.
      - 429: waits as long as the server's Retry-After says (1 to 30 s, 5 s if it says nothing), then tries again, twice
        at most. COMP.coolUntil holds that moment, and COMP.poll waits for it too. Then it rejects with a plain sentence.
-     - 403 "This page is out of date": asks auth/me again once (window.whoAmI.again) and sends the change again. */
+     - 403 "Page out of date" (seo/web/auth.py; /out of date/ matches it, old wording too): asks auth/me again once (window.whoAmI.again) and sends the change again. */
   const inflight = new Map();
   /* Counts changes sent by any script, through COMP.api or not, so a GET started before one is never shared after it. */
   let changes = 0;

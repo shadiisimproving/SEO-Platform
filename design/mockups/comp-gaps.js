@@ -3,7 +3,7 @@
 (() => {
   "use strict";
   let UI = null;
-  const S = { site: null, data: null, filter: "", hide: false, quality: "all", reach: "any", pa: "", sort: null, picked: new Set(), adding: false, openLink: null, linkSort: null };
+  const S = { site: null, data: null, filter: "", hide: false, quality: "all", reason: "", reach: "any", pa: "", sort: null, picked: new Set(), adding: false, openLink: null, linkSort: null };
   const PAGES = "cg"; // the table's pages and search (table-pages.js), like every long table in the app
   const LINK_PAGES = "cg-links"; // the same for the links of the one domain that is open
   let sync = Promise.resolve(); // calls caused by the Backlinks page, kept in the order they happened
@@ -165,7 +165,10 @@
   }
   // Without a chosen column, the server's order: most competitors first, then the best authority.
   const sorted = (list) => (S.sort ? sortBy(list, SORTS[S.sort.id], S.sort.dir) : list);
-  const shownGaps = () => sorted(byRival().filter((g) => S.quality === "all" || (S.quality === "spam") === isFlagged(g)));
+  /* Why a flagged domain is flagged, as one key: who flagged it and the reason's words. */
+  const reasonKey = (g) => `${g.flagged_by || ""}|${g.reason_words || ""}`;
+  const reasonOk = (g) => S.quality !== "spam" || !S.reason || reasonKey(g) === S.reason;
+  const shownGaps = () => sorted(byRival().filter((g) => (S.quality === "all" || (S.quality === "spam") === isFlagged(g)) && reasonOk(g)));
   const canPick = (gap) => !isFlagged(gap) && !inConsideration(gap) && !gap.in_todo;
   const pickable = () => TP.view(PAGES, shownGaps()).rows.filter(canPick); // only rows on this page: "Select all shown" means shown
 
@@ -273,14 +276,15 @@
   function rowHtml(gap) {
     const flagged = isFlagged(gap), considered = inConsideration(gap) || Boolean(gap.in_todo), picked = S.picked.has(gap.domain);
     const tags = [
-      flagged ? `<span class="tag cg-flag">${UI.icon("ban")}${t("Spam")}</span>` : "",
+      flagged ? `<span class="tag cg-flag" tabindex="0" data-tip="${esc(COMP.spamWhy(gap))}">${UI.icon("ban")}${t("Spam")}</span>` : "",
       gap.lost_link ? `<span class="tag cg-lost">${UI.icon("link-2-off")}${t("Lost link")}</span>` : "",
       gap.in_todo ? `<span class="tag cp-yours cg-todo-tag">${UI.icon("clock")}${t("In To do")}</span>` : considered ? `<span class="tag cp-yours">${t("In consideration")}</span>` : "",
       gap.is_competitor ? `<span class="tag">${t("Competitor")}</span>` : "",
       gap.kept ? `<span class="tag">${t("Kept by you")}</span>` : "",
       gap.page_note === "unread" ? `<span class="tag" data-tip="${t("The site blocked the app; that doesn't make it spam.")}">${t("Home page not read")}</span>` : "",
     ].filter(Boolean).join(" ");
-    const why = flagged ? `<span class="second cg-why">${COMP.spamWhyHtml(gap)}</span>` : "";
+    // With Flagged as spam on, the reasons are said once above the table, so a row keeps only its tag (the reason in its tooltip).
+    const why = flagged && S.quality !== "spam" ? `<span class="second cg-why">${COMP.spamWhyHtml(gap)}</span>` : "";
     const word = gap.reason === "my_choice" ? "Undo" : "Not spam";
     const action = flagged
       ? `<button class="btn btn-small" data-cg-decide="${gap.reason === "my_choice" ? "auto" : "keep"}" data-domain="${esc(gap.domain)}" aria-label="${t(word)}: ${esc(gap.display || gap.domain)}">${t(word)}</button>`
@@ -317,6 +321,17 @@
     </div>`;
   }
 
+  /* With Flagged as spam on: each reason once, with how many domains it flagged, instead of on every row. Each one narrows the list. */
+  function reasonsLine() {
+    if (S.quality !== "spam") return "";
+    const groups = new Map();
+    byRival().filter(isFlagged).forEach((g) => { const key = reasonKey(g), entry = groups.get(key) || { gap: g, n: 0 }; entry.n += 1; groups.set(key, entry); });
+    if (S.reason && !groups.has(S.reason)) S.reason = "";
+    if (!groups.size) return "";
+    const list = [...groups].sort((a, b) => b[1].n - a[1].n);
+    return `<div class="chips cg-reasons" role="group" aria-label="${esc(t("Why they're flagged"))}">${list.map(([key, e]) => `<button type="button" class="chip cg-reason" data-cg-reason="${esc(key)}" aria-pressed="${S.reason === key}">${COMP.spamWhyHtml(e.gap)}<b>×${UI.num(e.n)}</b></button>`).join("")}</div>`;
+  }
+
   /* Every heading shows it can be sorted, before anyone has clicked it. */
   function sortHead(attr, sort, id, label, cls = "") {
     const on = sort?.id === id, arrow = on ? (sort.dir === "asc" ? "arrow-up" : "arrow-down") : "chevrons-up-down";
@@ -347,6 +362,7 @@
       const checking = d.funnel?.checking;
       return `${strip}${checking ? COMP.empty(t("Checking for spam"), t("Domains appear as their home pages are read."), uploadButton(d, "btn")) : COMP.empty(t("No domains left"), t("All already link to you or are yours."), uploadButton(d, "btn"))}${left}`;
     }
+    const reasons = reasonsLine(); // first: a reason no longer there stops narrowing the list
     const shown = shownGaps(), open = pickable(), page = TP.view(PAGES, shown);
     const all = open.length > 0 && open.every((g) => S.picked.has(g.domain));
     const some = open.some((g) => S.picked.has(g.domain));
@@ -367,13 +383,14 @@
         <div class="chips cp-chips" role="group" aria-label="${t("Flagged as spam")}">
           ${[["all", "All", byRival().length], ["good", "Good ones", byRival().filter((g) => !isFlagged(g)).length], ["spam", "Flagged as spam", byRival().filter(isFlagged).length]].map(([id, word, n]) => `<button class="chip" data-cg-quality="${id}" aria-pressed="${S.quality === id}">${t(word)}<b>${UI.num(n)}</b></button>`).join("")}
         </div>
-        <label class="opt"><input type="checkbox" class="chk" id="cg-hide" style="margin:0" ${S.hide ? "checked" : ""}>${t("Hide those already in consideration")}</label>
+        <label class="opt"><input type="checkbox" class="chk" id="cg-hide" style="margin:0" ${S.hide ? "checked" : ""}>${t("Hide added ones")}</label>
         <span class="cg-picktools">
           ${uploadButton(d)}
           <button class="btn btn-small" data-cg-add-domain>${UI.icon("plus")}${t("Add a domain")}</button>
           ${COMP.info(INTRO)}
         </span>
       </div>
+      ${reasons}
       ${shown.length ? `<div class="cg-list"><div class="table-wrap"><table class="data" id="cg-table">
         <thead><tr>
           <th scope="col" class="chk-cell"><input type="checkbox" class="chk" id="cg-all" style="margin:0" aria-label="${t("Select all shown")}" ${all ? "checked" : ""} ${open.length ? "" : "disabled"} data-indeterminate="${!all && some}"></th>
@@ -821,7 +838,14 @@
       if ((el = hit("[data-cg-add-domain]"))) { COMP.editGap(null, S.data.competitors.map((c) => ({ id: c.id, host: c.host })), el, reloadHere); return; }
       if (hit("#cg-edit-save")) { saveEdit(hit("#cg-edit-save")); return; }
       if (hit("#cg-edit-reset")) { resetEdit(hit("#cg-edit-reset")); return; }
-      if ((el = hit("[data-cg-quality]"))) { S.quality = el.dataset.cgQuality; TP.reset(PAGES); trimPicked(); COMP.paint(); UI.$(`[data-cg-quality="${S.quality}"]`)?.focus(); return; }
+      if ((el = hit("[data-cg-reason]"))) {
+        const key = el.dataset.cgReason;
+        S.reason = S.reason === key ? "" : key;
+        TP.reset(PAGES); trimPicked(); COMP.paint();
+        [...UI.$$("[data-cg-reason]")].find((b) => b.dataset.cgReason === key)?.focus();
+        return;
+      }
+      if ((el = hit("[data-cg-quality]"))) { S.quality = el.dataset.cgQuality; S.reason = ""; TP.reset(PAGES); trimPicked(); COMP.paint(); UI.$(`[data-cg-quality="${S.quality}"]`)?.focus(); return; }
       if ((el = hit("[data-cg-sort]"))) {
         const id = el.dataset.cgSort, first = id === "domain" || id === "anchor" ? "asc" : "desc"; // words A to Z, numbers biggest first
         S.sort = S.sort?.id !== id ? { id, dir: first } : S.sort.dir === first ? { id, dir: first === "asc" ? "desc" : "asc" } : null; // a third click goes back to the usual order
@@ -896,7 +920,7 @@
     },
     async load() {
       const siteId = COMP.siteId;
-      if (S.site !== siteId) { S.site = siteId; S.filter = ""; S.hide = false; S.quality = "all"; S.reach = "any"; S.sort = null; S.openLink = null; S.linkSort = null; TP.state(PAGES).q = ""; TP.reset(PAGES); S.picked.clear(); }
+      if (S.site !== siteId) { S.site = siteId; S.filter = ""; S.hide = false; S.quality = "all"; S.reason = ""; S.reach = "any"; S.sort = null; S.openLink = null; S.linkSort = null; TP.state(PAGES).q = ""; TP.reset(PAGES); S.picked.clear(); }
       await sync; // anything the Backlinks page just changed is on the server before reading it back
       const [answer, competitors] = await Promise.all([COMP.api("GET", `link-gaps?site_id=${siteId}`), COMP.api("GET", `competitors?site_id=${siteId}`)]);
       if (siteId !== COMP.siteId) return; // another site was picked while this was on its way
@@ -1226,7 +1250,7 @@
     "Upload a CSV of links to one of your competitors, and the domains that don't link to you appear here.": "Importez un CSV des liens vers un de vos concurrents : les domaines qui ne pointent pas vers vous apparaîtront ici.",
     "No gaps in your files": "Aucun lien manquant dans vos fichiers",
     "Every domain in your files already links to you, or is one of your own.": "Tous les domaines de vos fichiers pointent déjà vers vous, ou sont les vôtres.",
-    "Hide those already in consideration": "Masquer ceux déjà à l'étude",
+    "Hide added ones": "Masquer les ajoutés", "Why they're flagged": "Pourquoi ils sont signalés",
     "Search domains": "Chercher un domaine", "Competitor": "Concurrent", "All competitors": "Tous les concurrents",
     "Any number": "Un ou plusieurs", "Only 1": "Un seul", "domains": "domaines",
     "Select all shown": "Tout sélectionner à l'écran",

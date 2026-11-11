@@ -14,6 +14,13 @@
   const fill = (key, values = {}) => t(key).replace(/\{(\w+)\}/g, (all, name) => (name in values ? values[name] : all));
   const many = (n, one, other, values = {}) => fill((UI.state.lang === "fr" ? n < 2 : n === 1) ? one : other, { n: UI.num(n), ...values });
   const busy = (run) => run && (run.status === "queued" || run.status === "running");
+  /* The server's refusal when every keyword was just checked (probe.recent_words) carries the hours Refresh uses: said
+     through the same keys as the confirm box, so its French doesn't depend on the number. */
+  const said = (message) => {
+    const m = String(message ?? "").match(/^(All c|C)hecked in the last (\d+) hours: no search spent\.$/);
+    if (!m) return t(message);
+    return fill(m[1] === "C" ? "Checked in the last {hours} hours: no search spent." : "All checked in the last {hours} hours: no search spent.", { hours: UI.num(Number(m[2])) });
+  };
   const engineName = (name) => ({ google: "Google", bing: "Bing", duckduckgo: "DuckDuckGo", yandex: "Yandex" }[name] || name || "");
   const pageLink = (url, text) => (window.PageLink ? window.PageLink.html(url, { text, cls: "small" }) : COMP.link(url, text, "small"));
 
@@ -193,7 +200,7 @@
     } catch (err) {
       button.disabled = false;
       const box = UI.$("[data-kc-go-error]");
-      if (box) { box.textContent = t(err.message); box.hidden = false; }
+      if (box) { box.textContent = said(err.message); box.hidden = false; }
       return;
     }
     S.confirm = null;
@@ -337,18 +344,18 @@
     "{added} added, {already} already there.": "{added} ajoutés, {already} déjà présents.",
     "{n} keyword added.": "{n} mot-clé ajouté.", "{n} keywords added.": "{n} mots-clés ajoutés.",
     "Keyword check holds at most 500 keywords. Remove some first.": "La vérification de mots-clés contient au plus 500 mots-clés. Retirez-en d'abord.",
-    "A keyword check is already running for this site.": "Une vérification de mots-clés est déjà en cours pour ce site.",
+    "A check is already running.": "Une vérification est déjà en cours.",
     "No keywords found. Put one keyword on each line.": "Aucun mot-clé trouvé. Mettez un mot-clé par ligne.",
     "Type at least one keyword, one on each line.": "Tapez au moins un mot-clé, un par ligne.",
     "“{k}” removed.": "« {k} » retiré.",
     "{n} keyword skipped: checked in the last {hours} hours.": "{n} mot-clé ignoré : vérifié dans les {hours} dernières heures.",
     "{n} keywords skipped: checked in the last {hours} hours.": "{n} mots-clés ignorés : vérifiés dans les {hours} dernières heures.",
     "Nothing to check now.": "Rien à vérifier pour l'instant.",
-    "This keyword was checked in the last 12 hours, so it isn't checked again and no search is spent.": "Ce mot-clé a été vérifié dans les 12 dernières heures : il n'est pas vérifié à nouveau et aucune recherche n'est dépensée.",
+    "Checked in the last 12 hours: no search spent.": "Vérifié dans les 12 dernières heures : aucune recherche dépensée.",
     "Checked in the last {hours} hours: no search spent.": "Vérifié dans les {hours} dernières heures : aucune recherche dépensée.",
     "All checked in the last {hours} hours: no search spent.": "Tous vérifiés dans les {hours} dernières heures : aucune recherche dépensée.",
-    "This check stopped before the end. Everything checked so far is saved. Press Check to carry on.": "Cette vérification s'est arrêtée avant la fin. Tout ce qui a été vérifié est enregistré. Appuyez sur Vérifier pour continuer.",
-    "No search tool is connected yet. Add one in Settings, then check again.": "Aucun outil de recherche n'est encore connecté. Ajoutez-en un dans les réglages, puis vérifiez à nouveau.",
-    "Everything checked so far is saved. Press Check again when a tool has free checks.": "Tout ce qui a été vérifié est enregistré. Appuyez à nouveau sur Vérifier quand un outil aura des vérifications gratuites.",
+    "Stopped early. Progress is saved; press Check to carry on.": "Arrêtée avant la fin. La progression est enregistrée ; appuyez sur Vérifier pour continuer.",
+    "No search tool connected. Add one in Settings, then check again.": "Aucun outil de recherche connecté. Ajoutez-en un dans les réglages, puis vérifiez à nouveau.",
+    "Progress is saved. Press Check again when a tool has free checks.": "La progression est enregistrée. Appuyez à nouveau sur Vérifier quand un outil aura des vérifications gratuites.",
   });
 })();

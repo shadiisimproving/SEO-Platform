@@ -30,11 +30,11 @@ MAX_KEYWORDS = 500
 DEPTH = 10
 CHUNK_SECONDS = 40.0
 STALE_RUN_SECONDS = 60
-NO_TOOL = "No search tool is connected yet. Add one in Settings, then check again."
+NO_TOOL = "No search tool connected. Add one in Settings, then check again."
 FAILS_BEFORE_DROP = 3  # in a row, timeouts included: as Refresh does (F124)
 NO_KEYWORDS = "Type at least one keyword, one on each line."
-STOPPED = "This check stopped before the end. Everything checked so far is saved. Press Check to carry on."
-KEPT = "Everything checked so far is saved. Press Check again when a tool has free checks."
+STOPPED = "Stopped early. Progress is saved; press Check to carry on."
+KEPT = "Progress is saved. Press Check again when a tool has free checks."
 
 
 # ---- the list ---------------------------------------------------------------------------------------
@@ -152,8 +152,8 @@ def _just_checked(engine: Engine, conn, ids: list[int], name: str) -> tuple[set[
 
 def recent_words(n: int, hours: int) -> str:
     if n == 1:
-        return f"This keyword was checked in the last {hours} hours, so it isn't checked again and no search is spent."
-    return f"These {n} keywords were checked in the last {hours} hours, so they aren't checked again and no search is spent."
+        return f"Checked in the last {hours} hours: no search spent."
+    return f"All checked in the last {hours} hours: no search spent."  # the screen's own words (comp-probe.js), French there
 
 
 def estimate(engine: Engine, site_id: int, only=None) -> dict:
@@ -195,7 +195,7 @@ def start(engine: Engine, site_id: int, only=None) -> dict:
         require_own(conn, site_id)
         conn.execute(text("SELECT id FROM sites WHERE id = :s FOR UPDATE"), {"s": site_id}).first()  # a double click makes one run
         if _running(conn, site_id):
-            raise Conflict("A keyword check is already running for this site.")
+            raise Conflict("A check is already running.")
         ids = _ids(conn, site_id, only)
         if not ids:
             raise Refused("Add a keyword first.")

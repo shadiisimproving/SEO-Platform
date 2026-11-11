@@ -136,7 +136,7 @@ def upload(engine: Engine, site_id: int, data, country: str = "", language: str 
     country, language = _check_market(country, language)
     keywords = parse_keywords(data)
     if not keywords:
-        raise Refused("No keywords found. Put one keyword on each line, or use a column named keyword.")
+        raise Refused("No keywords found. Use one per line, or a column named keyword.")
     if len(keywords) > MAX_KEYWORDS:
         raise Refused(f"That's {len(keywords)} keywords. The limit for one list is {MAX_KEYWORDS}.")
     with engine.begin() as conn:
@@ -184,7 +184,7 @@ def refresh(engine: Engine, site_id: int, search_engine: str | None = None) -> d
             {"s": site_id},
         ).first()
         if running:
-            raise Conflict("A check of this website's keywords is already running.")
+            raise Conflict("A check is already running.")
         run_id = conn.execute(
             text("INSERT INTO keyword_uploads (site_id, engine, kind, total, new_keywords) VALUES (:s, :e, 'refresh', :t, :t)"),
             {"s": site_id, "e": name, "t": total},
@@ -278,8 +278,8 @@ def _finish(engine: Engine, run_id: int, status: str, reason: str | None = None)
         insights_engine.enqueue(engine, site_id)  # Rank and clicks reads these checks
 
 
-NO_TOOL = "No search tool is connected yet. The keywords are saved, and they'll be checked once a tool's key is added in Settings."
-KEPT = "Everything checked so far is saved, and the rest carries on when a tool has free checks again."
+NO_TOOL = "No search tool connected: add a key in Settings."
+KEPT = "Progress is saved; the rest resumes when a tool has free checks."
 KEPT_REFRESH = "Everything checked so far is saved. Press it again when a tool has free checks."
 
 
