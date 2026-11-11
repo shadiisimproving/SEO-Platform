@@ -37,7 +37,7 @@
     "AI visits": ["Visits that came from an AI assistant such as ChatGPT, Perplexity or Copilot.", "Visites venues d'un assistant IA comme ChatGPT, Perplexity ou Copilot."],
     "Share of all visits": ["AI visits divided by all visits.", "Visites IA divisées par toutes les visites."],
     Cost: ["What Google Ads charged in this period.", "Ce que Google Ads a facturé sur la période."],
-    Tracked: ["Keywords you follow on this site. Rankings are checked only when you press Refresh.", "Mots-clés suivis sur ce site. Les positions ne sont vérifiées que lorsque vous appuyez sur Actualiser."],
+    Tracked: ["Keywords you follow on this site. DuckDuckGo positions are checked by themselves every day, and the other engines when you press Refresh.", "Mots-clés suivis sur ce site. Les positions DuckDuckGo sont vérifiées toutes seules chaque jour, et les autres moteurs quand vous appuyez sur Actualiser."],
     Ranked: ["Tracked keywords found in the results the last check read.", "Mots-clés suivis trouvés dans les résultats lus au dernier contrôle."],
     "Top 10": ["Tracked keywords on Google's first page (positions 1 to 10) in the last check, read from the results page itself.", "Mots-clés suivis en première page de Google (positions 1 à 10) au dernier contrôle, lus sur la page de résultats elle-même."],
     "Cited by AI": ["Tracked keywords where Google's AI Overview names your site.", "Mots-clés suivis pour lesquels l'aperçu IA de Google cite votre site."],

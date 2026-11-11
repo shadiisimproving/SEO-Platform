@@ -1,6 +1,7 @@
 """The Refresh button: preview, confirm, run in the background, stop.
 
-Only a person pressing Confirm starts this. No command, schedule or job in the app calls start().
+A person pressing Confirm starts this. One exception (owner, 2026-11-11): seo.serp.auto_ddg starts DuckDuckGo checks each day
+and on Refresh data, on free searches only (DuckDuckGo direct, then Bright Data's free credits), never SerpApi. Nothing else calls start().
 Free tools first, in the editable order; on Google a tool that reads AI Overviews (SerpApi) goes in front while it has free
 searches, then the order (connections.AI_FIRST_WHY, switchable). A tool that runs out or fails hands over to the next free one. Paid use only
 happens when the tool's own switch is on, this run asked for it, and the run's limit has room. A timeout is never tried

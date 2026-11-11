@@ -85,7 +85,8 @@
     const ids = [...new Set(entries.map((e) => e.job_id).filter(Boolean))];
     const clarityLater = entries.some((e) => e.skipped === "clarity_daily");
     // A full Refresh data also starts a read of my site's pages (owner, 2026-11-10); it runs on its own, so every message after it says so.
-    const pagesNote = answers.some((a) => a.pages) ? ` ${t(PAGES_NOTE)}` : "";
+    // DuckDuckGo positions too (owner, 2026-11-11): they have no site-owner tool, so Refresh data starts a free check of them.
+    const pagesNote = (answers.some((a) => a.pages) ? ` ${t(PAGES_NOTE)}` : "") + (answers.some((a) => a.rankings) ? ` ${t(DDG_NOTE)}` : "");
     const laterNote = (clarityLater ? ` ${t("Clarity was already read today. It reads again after midnight UTC.")}` : "") + pagesNote;
     if (!ids.length) {
       UI.toast(pagesNote ? laterNote.trim() : t("Nothing to read yet: connect a data source first, or it's already running.") + laterNote, { kind: pagesNote ? "good" : "info" });
@@ -127,6 +128,8 @@
   }
   const PAGES_NOTE = "Your site's pages are being read too. That takes a while: it waits 3 seconds between pages.";
   LV.PAGES_NOTE = PAGES_NOTE;
+  const DDG_NOTE = "DuckDuckGo positions are being checked too, on free searches. They show on Keywords when it finishes.";
+  LV.DDG_NOTE = DDG_NOTE;
   const SOURCE_NAMES = { gsc: "Search Console", ga4: "Google Analytics", bing: "Bing Webmaster", yandex: "Yandex Webmaster", clarity: "Microsoft Clarity", pagespeed: "PageSpeed Insights" };
   LV.watchReads = watchReads;
   /* Both periods in words, from the dates the server really used, then how far the data goes. */
@@ -836,6 +839,7 @@
     "Clarity's own dashboard downloads can go in too: Settings → Microsoft Clarity → Clarity dashboard downloads.": "Les exports du tableau de bord Clarity peuvent aussi être ajoutés : Réglages → Microsoft Clarity → Exports du tableau de bord Clarity.",
     "Contact us": "Nous contacter", "Outbound click": "Clic sortant", "Submit form": "Envoi de formulaire", "Request quote": "Demande de devis", "Book": "Réservation", "Checkout": "Paiement", "See reviews": "Voir les avis",
     "Clarity sessions": "Sessions Clarity", "Scroll depth": "Profondeur de défilement", "Rage clicks": "Clics de rage", "Dead clicks": "Clics morts",
+    "DuckDuckGo positions are being checked too, on free searches. They show on Keywords when it finishes.": "Les positions DuckDuckGo sont vérifiées aussi, avec des recherches gratuites. Elles s'affichent dans Mots-clés une fois terminé.",
     "Your site's pages are being read too. That takes a while: it waits 3 seconds between pages.": "Les pages de votre site sont lues aussi. Cela prend un moment : 3 secondes d'attente entre chaque page.",
     "Reading the latest data. It appears here when it arrives.": "Lecture des dernières données. Elles s'affichent ici dès leur arrivée.", "Nothing to read yet: connect a data source first, or it's already running.": "Rien à lire pour l'instant : connectez d'abord une source de données, ou la lecture est déjà en cours.",
   };

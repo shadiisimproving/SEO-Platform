@@ -626,7 +626,7 @@
           <button class="icon-btn" data-toast="Sample export ready" aria-label="${t("Export CSV")}" data-tip="${t("Export CSV")}">${icon("download")}</button>
         </span>
       </div>
-      ${e === "duckduckgo" ? `<p class="note">${icon("info")}<span>${t("DuckDuckGo has no tool for site owners, so its rankings only come from Refresh.")}</span></p>` : ""}
+      ${e === "duckduckgo" ? `<p class="note">${icon("info")}<span>${t("DuckDuckGo has no tool for site owners, so the app checks its positions by itself every day, oldest first, on free searches only. Refresh and Refresh data check them now.")}</span></p>` : ""}
       ${keywordsTable()}${selectionBar()}`;
     return topbar(t("Keywords"), sub, main) + `
       <div class="content page-enter">

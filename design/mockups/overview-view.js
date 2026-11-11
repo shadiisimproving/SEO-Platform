@@ -679,6 +679,7 @@
         try {
           const answers = await Promise.all(ids.map((id) => window.COMP.api("POST", `sites/${id}/collect`, {})));
           if (answers.some((a) => a.pages) && window.LV?.PAGES_NOTE) UI.toast(t(window.LV.PAGES_NOTE), { kind: "info" }); // my pages are read too (2026-11-10)
+          if (answers.some((a) => a.rankings) && window.LV?.DDG_NOTE) UI.toast(t(window.LV.DDG_NOTE), { kind: "info" }); // and DuckDuckGo positions (2026-11-11)
           OV.fresh = true; forget();
           startPolling(before);
         } catch (err) { UI.toast(err.message, { kind: "crit" }); el.disabled = false; }

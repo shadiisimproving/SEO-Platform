@@ -376,12 +376,14 @@ class BrightData:
         elif engine == "bing":
             base, params = "https://www.bing.com/search", {"q": keyword, "first": page * 10 + 1, **({"cc": country.lower()} if country else {}), **({"setLang": language.lower()} if language else {})}
         elif engine == "duckduckgo":
-            base, params = "https://duckduckgo.com/", {"q": keyword, "kl": ddg_region(country, language)}
+            # duckduckgo.com/?q= is a JavaScript page with no results in it, and Bright Data has no parsed JSON for it: live
+            # on 2026-11-11 it "answered 200 without data" 3 times out of 3. The plain HTML page lists them (_duckduckgo).
+            return f"https://html.duckduckgo.com/html/?{urlencode({'q': keyword, 'kl': ddg_region(country, language)})}"
         else:
             base, params = "https://yandex.com/search/", {"text": keyword, "p": page}
         return f"{base}?{urlencode({**params, **mobile, 'brd_json': '1'})}"
 
-    def _page(self, address: str) -> dict:
+    def _reply(self, address: str) -> httpx.Response:
         reply = _request(lambda: self.client.post(
             "https://api.brightdata.com/request",
             headers={"Authorization": f"Bearer {self.key}"},
@@ -393,9 +395,29 @@ class BrightData:
             raise ToolStopped("Bright Data has no free searches left for now.")
         if reply.status_code != 200:
             raise SearchFailed(f"Bright Data answered {reply.status_code}")
-        return _json_or_fail(reply, self.name)
+        return reply
+
+    def _page(self, address: str) -> dict:
+        return _json_or_fail(self._reply(address), self.name)
+
+    def _duckduckgo(self, keyword: str, country: str, language: str, device: str, depth: int) -> Answer:
+        """DuckDuckGo's plain HTML page, read the same way DuckDuckGo direct reads it. One page, one credit.
+
+        DuckDuckGo shows the hosting server a bot check (live, 2026-11-11), so this is how the server gets DuckDuckGo's
+        results without SerpApi (owner, 2026-11-11). A page with nothing readable is one failed search: it was still billed.
+        """
+        with _so_far(0):
+            body = self._reply(self.page_address(keyword, "duckduckgo", country, language, device, 0)).content
+        results = parse_ddg(body)[:depth]
+        if not results and b"no-results" not in body:
+            failed = SearchFailed("Bright Data's DuckDuckGo page had no results the app could read.")
+            failed.charged = 1
+            raise failed
+        return Answer(self.name, ddg_region(country, language), depth, results, NOT_CAPTURED, [], 1)
 
     def search(self, keyword: str, engine: str, country: str, language: str, device: str, depth: int) -> Answer:
+        if engine == "duckduckgo":
+            return self._duckduckgo(keyword, country, language, device, depth)
         found: list[Found] = []
         seen: set[str] = set()
         charged = 0
@@ -405,12 +427,9 @@ class BrightData:
             charged += 1
             rows = _rows(data.get("organic"), len(found), seen)
             found += rows
-            if not rows or engine == "duckduckgo":
+            if not rows:
                 break
-        if engine == "duckduckgo":
-            location = ddg_region(country, language)
-        else:
-            location = country.upper() if country and engine != "yandex" else ""
+        location = country.upper() if country and engine != "yandex" else ""
         # brd_ai_overview exists, but its answer's fields aren't documented, so nothing is claimed about AI Overviews yet.
         return Answer(self.name, location, depth, found[:depth], NOT_CAPTURED, [], charged)
 

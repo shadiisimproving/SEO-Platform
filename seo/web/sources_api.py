@@ -97,7 +97,16 @@ def collect(site_id: int):
     # A full Refresh data also reads the site's own pages now, instead of waiting for the nightly read (owner, 2026-11-10).
     # "Refresh this one" names its sources, so it stays a data read only.
     pages = only is None and _queue_own_read(site_id)
-    return jsonify(started=[e["source"] for e in entries if e["new"]], jobs=entries, pages=pages), 202
+    # And DuckDuckGo's positions, which have no site-owner tool to read (owner, 2026-11-11). Free tool only; keywords
+    # checked lately are left out, so pressing it twice doesn't search twice.
+    rankings = only is None and _queue_duckduckgo(site_id)
+    return jsonify(started=[e["source"] for e in entries if e["new"]], jobs=entries, pages=pages, rankings=rankings), 202
+
+
+def _queue_duckduckgo(site_id: int) -> bool:
+    from seo.serp import auto_ddg
+
+    return auto_ddg.queue_site(_engine(), site_id) is not None
 
 
 def _queue_own_read(site_id: int) -> bool:

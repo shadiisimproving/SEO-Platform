@@ -14,7 +14,7 @@ from seo.health import indexing as health_indexing, service as health_service  #
 from seo.insights import engine as insights_engine  # noqa: F401 - registers the Search insights job handler
 from seo.links import service as links_service  # registers the links checker's job handler
 from seo.notifications import new_queries  # noqa: F401 - registers the new-search notification's job handler
-from seo.serp import refresh  # noqa: F401 - registers the Refresh button's job handler. No command here may start one.
+from seo.serp import auto_ddg, refresh  # noqa: F401 - refresh registers the Refresh button's job handler. Only collect-due starts one: auto_ddg's free DuckDuckGo check.
 from seo.worker.runner import EXIT_CODES, tick
 
 
@@ -37,7 +37,7 @@ def main(argv: list[str] | None = None) -> int:
     watch.add_argument("--budget", type=float, default=240, help="seconds before it stops checking")
     placed = commands.add_parser("backlinks-due", help="queue a live check for each of my sites with a backlink due one")
     placed.add_argument("--test-db", action="store_true", help=argparse.SUPPRESS)
-    collect = commands.add_parser("collect-due", help="queue each site's data sources that are due, and this month's authority scores")
+    collect = commands.add_parser("collect-due", help="queue each site's data sources that are due, this month's authority scores, and today's DuckDuckGo positions")
     collect.add_argument("--test-db", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
@@ -45,7 +45,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "collect-due":
         queued = collector_jobs.enqueue_due(engine)
         collector_jobs.enqueue_authority(engine)
-        print(f"collect-due: queued {len(queued)} source{'' if len(queued) == 1 else 's'}")
+        ddg = auto_ddg.enqueue_due(engine)  # DuckDuckGo positions once a day, with its free tool only (owner, 2026-11-11)
+        ddg_words = f", DuckDuckGo positions for {len(ddg)} site{'' if len(ddg) == 1 else 's'}" if ddg else ""
+        print(f"collect-due: queued {len(queued)} source{'' if len(queued) == 1 else 's'}{ddg_words}")
         return 0
     if args.command == "uptime-due":
         queued = uptime_service.enqueue_due(engine)

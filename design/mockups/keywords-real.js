@@ -18,7 +18,7 @@
     "No Refresh yet": "Aucune actualisation", "Add keywords": "Ajouter des mots-clés", "No keywords yet": "Pas encore de mots-clés", "Add the keywords you want to follow for this site.": "Ajoutez les mots-clés à suivre pour ce site.",
     "Add a site first": "Ajoutez d'abord un site", "Keywords belong to a site. Add yours, then come back.": "Les mots-clés appartiennent à un site. Ajoutez le vôtre, puis revenez.", "Go to Settings": "Aller aux réglages",
     "Keywords, one per line": "Mots-clés, un par ligne", "Or upload a file": "Ou importez un fichier", "For which site?": "Pour quel site ?", "Country": "Pays", "Language": "Langue", "Any country": "Tous les pays", "Optional, such as fr": "Facultatif, par exemple fr", "Country and language are the ones this site's keywords use most.": "Le pays et la langue sont ceux que les mots-clés de ce site utilisent le plus.",
-    "Each new keyword gets one check with a free tool, to see who really ranks. After that, a search only runs when you press Refresh.": "Chaque nouveau mot-clé reçoit un contrôle avec un outil gratuit, pour voir qui se classe vraiment. Ensuite, une recherche ne part que lorsque vous appuyez sur Actualiser.",
+    "Each new keyword gets one check with a free tool, to see who really ranks. After that, DuckDuckGo is checked by itself every day, and the other engines when you press Refresh.": "Chaque nouveau mot-clé reçoit un contrôle avec un outil gratuit, pour voir qui se classe vraiment. Ensuite, DuckDuckGo est vérifié tout seul chaque jour, et les autres moteurs quand vous appuyez sur Actualiser.",
     "Put at least one keyword, or choose a file.": "Indiquez au moins un mot-clé, ou choisissez un fichier.", "Keywords added": "Mots-clés ajoutés",
     "Couldn't load the keywords.": "Impossible de charger les mots-clés.", "Try again": "Réessayer", "Loading…": "Chargement…",
     "Refresh keywords": "Actualiser les mots-clés", "keyword": "mot-clé", "keywords": "mots-clés", "Engines": "Moteurs", "Depth": "Profondeur", "Top": "Top", "Tools": "Outils", "Automatic: free first": "Automatique : gratuits d'abord", "Choose tools": "Choisir les outils",
@@ -39,7 +39,8 @@
     "Stop following this keyword on this site? Its past checks stay.": "Ne plus suivre ce mot-clé sur ce site ? Ses anciens contrôles restent.",
     "No Search Console data yet": "Pas encore de données Search Console", "Connect Search Console for this site in Settings, and its queries appear here within 3 days.": "Connectez Search Console pour ce site dans les réglages : ses requêtes apparaîtront ici sous 3 jours.",
     "No Bing Webmaster data yet": "Pas encore de données Bing Webmaster", "No Yandex Webmaster data yet": "Pas encore de données Yandex Webmaster", "Connect it for this site in Settings, and its queries appear here.": "Connectez-le pour ce site dans les réglages : ses requêtes apparaîtront ici.",
-    "DuckDuckGo has no tool for site owners, so its rankings only come from Refresh.": "DuckDuckGo n'a pas d'outil pour les propriétaires de sites : ses positions ne viennent que d'Actualiser.",
+    "DuckDuckGo has no tool for site owners, so the app checks its positions by itself every day, oldest first, on free searches only. Refresh and Refresh data check them now.": "DuckDuckGo n'a pas d'outil pour les propriétaires de sites : l'app vérifie ses positions toute seule chaque jour, les plus anciennes d'abord, avec des recherches gratuites uniquement. Actualiser et Actualiser les données les vérifient tout de suite.",
+    "Automatic DuckDuckGo check": "Contrôle DuckDuckGo automatique", "automatic check": "contrôle automatique",
     "Clicks": "Clics", "Click rate": "Taux de clic", "selected": "sélectionnés", "Clear selection": "Effacer la sélection", "Create task": "Créer une tâche", "Export CSV": "Exporter en CSV", "Export ready": "Export prêt",
     "Up": "En hausse", "Down": "En baisse", "Top 3": "Top 3", "Top 10": "Top 10", "All": "Tous", "Not ranked": "Non classés", "Cited by AI": "Cités par l'IA", "Same keyword on 2 pages": "Même mot-clé sur 2 pages", "Two of your pages show up for this keyword.": "Deux de vos pages ressortent pour ce mot-clé.",
     "Tracked": "Suivis", "Ranked": "Classés", "compared": "comparés", "Positions": "Positions", "By bucket": "Par tranche", "Queries": "Requêtes", "All engines": "Tous les moteurs", "Volume": "Volume", "Trend": "Tendance", "AI": "IA", "avg position": "position moy.",
@@ -78,6 +79,7 @@
   const kwPages = () => TP.state(KW_PAGES);
   const api = (...args) => window.COMP.api(...args);
   const mine = (run) => Boolean(run) && (!run.by || run.by === window.BOOT.user?.name);
+  const AUTO_BY = "Automatic"; // seo/serp/auto_ddg.py: the daily DuckDuckGo check, and the one Refresh data starts
   const engineOf = () => (state.engine === "all" ? "google" : state.engine);
   const name = (id) => ENGINES.find(([e]) => e === id)?.[1] || id;
   const token = () => (crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}abc`).replace(/-/g, "");
@@ -280,7 +282,7 @@
 
   function queriesView() {
     const e = engineOf();
-    if (e === "duckduckgo") return `<p class="note">${icon("info")}<span>${t("DuckDuckGo has no tool for site owners, so its rankings only come from Refresh.")}</span></p>`;
+    if (e === "duckduckgo") return `<p class="note">${icon("info")}<span>${t("DuckDuckGo has no tool for site owners, so the app checks its positions by itself every day, oldest first, on free searches only. Refresh and Refresh data check them now.")}</span></p>`;
     const key = `${e}`;
     if (!K.queries[key]) { K.queries[key] = "loading"; api("GET", `rankings/queries?engine=${e}`).then((answer) => { K.queries[key] = answer.rows; if (state.view === "queries") UI.render({ keepScroll: true }); }).catch(() => { K.queries[key] = []; if (state.view === "queries") UI.render({ keepScroll: true }); }); }
     if (K.queries[key] === "loading") return UI.skeleton("table", { rows: 8 });
@@ -376,7 +378,7 @@
           <button class="icon-btn kwr-add-small" id="kwr-add-small" aria-label="${t("Add keywords")}" data-tip="${t("Add keywords")}">${icon("plus")}</button>
         </span>
       </div>
-      ${state.engine === "duckduckgo" ? `<p class="note">${icon("info")}<span>${t("DuckDuckGo has no tool for site owners, so its rankings only come from Refresh.")}</span></p>` : ""}
+      ${state.engine === "duckduckgo" ? `<p class="note">${icon("info")}<span>${t("DuckDuckGo has no tool for site owners, so the app checks its positions by itself every day, oldest first, on free searches only. Refresh and Refresh data check them now.")}</span></p>` : ""}
       ${outOfChecks(all)}
       ${table(shown)}${selectionBar()}`;
     const sub = [K.data.data_through ? `${t("Data through")} ${UI.fmtDateOnly(K.data.data_through)}` : "", lastCheckWords(all)].filter(Boolean).join(" · ");
@@ -404,7 +406,7 @@
   function addPanel(opener, prefill = "", hostWanted = null, market = {}) {
     const sites = window.BOOT.sites.length ? window.SITES.filter((s) => window.BOOT.sites.some((x) => x.host === s.host)) : window.SITES;
     const picked = hostWanted || UI.siteHostPicked() || sites[0]?.host;
-    UI.openPanel(`${UI.panelHead(t("Add keywords"), t("Each new keyword gets one check with a free tool, to see who really ranks. After that, a search only runs when you press Refresh."))}
+    UI.openPanel(`${UI.panelHead(t("Add keywords"), t("Each new keyword gets one check with a free tool, to see who really ranks. After that, DuckDuckGo is checked by itself every day, and the other engines when you press Refresh."))}
       <form class="panel-body" id="kwr-add-form" novalidate>
         <div id="kwr-add-error" role="alert"></div>
         <label class="field"><span>${t("For which site?")}</span><select class="select" id="kwr-add-site" style="width:100%">${sites.map((s) => `<option value="${esc(s.host)}" ${s.host === picked ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></label>
@@ -516,7 +518,7 @@
     const notes = [];
     if (answer.no_tools_for.length) notes.push(`<p class="note warn" style="margin:10px 0 0">${icon("triangle-alert")}<span>${t("No tool can search")} ${esc(answer.no_tools_for.map(name).join(", "))}. ${t("Connect one in Settings.")}</span></p>`);
     if (answer.runs_out_after !== null) notes.push(`<p class="note warn" style="margin:10px 0 0">${icon("triangle-alert")}<span>${t("Runs out after")} ${plural(answer.runs_out_after, "check", "checks")}.</span></p>`);
-    if (answer.running.length) notes.push(`<p class="note" style="margin:10px 0 0">${icon("info")}<span>${t("Already being refreshed:")} ${esc(answer.running.slice(0, 5).map((x) => `${x.keyword}${x.by ? ` (${t("by")} ${x.by})` : ""}`).join(", "))}${answer.running.length > 5 ? ` +${answer.running.length - 5}` : ""}</span></p>`);
+    if (answer.running.length) notes.push(`<p class="note" style="margin:10px 0 0">${icon("info")}<span>${t("Already being refreshed:")} ${esc(answer.running.slice(0, 5).map((x) => `${x.keyword}${x.by ? ` (${x.by === AUTO_BY ? t("automatic check") : `${t("by")} ${x.by}`})` : ""}`).join(", "))}${answer.running.length > 5 ? ` +${answer.running.length - 5}` : ""}</span></p>`);
     if (answer.recent.length || r.includeRecent) notes.push(`<div style="margin:10px 0 0">${answer.recent.length ? `<p class="small sec" style="margin:0 0 4px" dir="auto">${t("Checked in the last")} ${num(answer.just_checked_hours)} ${t("hours, so left out:")} ${esc(answer.recent.slice(0, 5).map((x) => x.keyword).join(", "))}${answer.recent.length > 5 ? ` +${answer.recent.length - 5}` : ""}</p>` : ""}<label class="opt small"><input type="checkbox" class="chk" style="margin:0" id="kwr-recent" ${r.includeRecent ? "checked" : ""}>${t("Check them again")}</label></div>`);
     if (r.mode === "pick" && r.picked.has("Browser on this Mac")) notes.push(`<p class="note" style="margin:10px 0 0">${icon("info")}<span>${t("A real browser on this Mac reads the results. It stops at the first captcha that doesn't clear.")}</span></p>`);
     const sum = answer.checks ? `<p class="small sec" style="margin:0">${t("This will use")} <b>${plural(answer.credits, "credit", "credits")}</b> ${t("over")} ${plural(answer.checks, "check", "checks")}.${answer.cost ? ` <b>${t("Estimated cost")}: $${dec(Number(answer.cost.toFixed(2)))}</b>` : ""}</p>` : `<p class="small sec" style="margin:0">${t("Nothing to check.")}</p>`;
@@ -559,7 +561,7 @@
     UI.ignoreClicks();
     K.refresh = null;
     K.selected.clear();
-    if (run.excluded?.length) UI.toast(`${t("Already being refreshed:")} ${run.excluded.slice(0, 3).map((x) => `${x.keyword}${x.by ? ` (${x.by})` : ""}`).join(", ")}`, { kind: "info" });
+    if (run.excluded?.length) UI.toast(`${t("Already being refreshed:")} ${run.excluded.slice(0, 3).map((x) => `${x.keyword}${x.by ? ` (${x.by === AUTO_BY ? t("automatic check") : x.by})` : ""}`).join(", ")}`, { kind: "info" });
     follow(run);
     if (state.route === "keywords") UI.render({ keepScroll: true });
   }
@@ -582,7 +584,7 @@
     $("#tray-bar").style.setProperty("--p", run.total ? done / run.total : 0);
     const bits = [];
     if (run.moved) bits.push(`${t(run.moved.from)} ${t("out of credits, continuing with")} ${t(run.moved.to)}`);
-    if (run.by && run.by !== window.ME?.name) bits.push(`${t("started by")} ${run.by}`);
+    if (run.by && run.by !== window.ME?.name) bits.push(run.by === AUTO_BY ? t("Automatic DuckDuckGo check") : `${t("started by")} ${run.by}`);
     $("#tray-msg").textContent = bits.join(" · ");
   }
   /* Followed with the app's one poller (COMP.poll in competitors.js): it pauses while the tab is hidden, waits longer after
