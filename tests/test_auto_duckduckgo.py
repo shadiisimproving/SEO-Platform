@@ -11,7 +11,7 @@ from sqlalchemy import text
 
 from seo.links import service as links
 from seo.serp import auto_ddg, connections, refresh
-from seo.serp.tools import BrightData, SearchFailed
+from seo.serp.tools import BrightData, SearchFailed, ToolStopped
 from tests.test_refresh import ALLOW, Fake, save, spent, track, world  # noqa: F401 - world is the shared fixture
 
 DDG, BRIGHT = connections.DDG, connections.BRIGHT
@@ -125,6 +125,28 @@ def test_never_past_bright_datas_own_free_credits(world):
     assert len(world.bright.calls) == 2 and world.serp.calls == []
 
 
+class RefusingBrightData(Fake):
+    """Bright Data as the owner's zone answered DuckDuckGo live on 2026-11-11."""
+
+    def search(self, keyword, engine, country, language, device, depth):
+        self.calls.append((keyword, engine, depth))
+        raise ToolStopped("Bright Data can't read DuckDuckGo with this zone: No parser found for this resource.")
+
+
+def test_when_bright_data_refuses_duckduckgo_it_rests_a_day_and_counts_no_credit(world):
+    tools(world, ddg=blocked_ddg(), bright=RefusingBrightData(BRIGHT, free_monthly=5000))
+    track(world, "one", "two", "three")
+    auto_ddg.enqueue_due(world.engine)
+    world.drain()  # DuckDuckGo direct: a bot check
+    assert auto_ddg.enqueue_due(world.engine) == [world.site]
+    world.drain()  # Bright Data: refused on the first search, the rest of the run stops
+    assert len(world.bright.calls) == 1 and spent(world, BRIGHT) == 0
+    # The hourly passes after it leave both alone for the day, and SerpApi is never the answer.
+    assert auto_ddg.enqueue_due(world.engine) == [] and auto_ddg.enqueue_due(world.engine) == []
+    assert world.client.post(f"/api/sites/{world.site}/collect", json={}).get_json()["rankings"] is False
+    assert len(world.bright.calls) == 1 and world.serp.calls == []
+
+
 def test_serpapi_alone_is_never_used(world):
     world.tools["duckduckgo"] = [Fake("SerpApi", free_monthly=250)]
     track(world, "one")
@@ -196,21 +218,21 @@ def _ddg_html(*hosts):
     return f"<html><body>{rows}</body></html>".encode()
 
 
-def _bright(body, seen):
+def _bright(body, seen, headers=None):
     def answer(request):
         seen.append(request)
-        return httpx.Response(200, content=body, headers={"content-type": "text/html"})
+        return httpx.Response(200, content=body, headers=headers if headers is not None else {"content-type": "text/html"})
 
     return BrightData("KEY", "serp_api1", client=httpx.Client(transport=httpx.MockTransport(answer)))
 
 
-def test_bright_data_asks_for_duckduckgos_html_page_and_reads_it_like_duckduckgo_direct():
+def test_bright_data_asks_for_duckduckgos_page_as_its_docs_show_and_reads_it_like_duckduckgo_direct():
     seen = []
     found = _bright(_ddg_html("a.example", "mine.example", "b.example"), seen).search("café dubaï", "duckduckgo", "AE", "fr", "desktop", 10)
     sent = json.loads(seen[0].content)
     address = urlsplit(sent["url"])
     assert len(seen) == 1 and sent["zone"] == "serp_api1" and sent["format"] == "raw"
-    assert address.netloc == "html.duckduckgo.com" and address.path == "/html/"
+    assert address.netloc == "duckduckgo.com" and address.path == "/"
     assert parse_qs(address.query) == {"q": ["café dubaï"], "kl": ["xa-en"]}  # no brd_json: there's no parsed JSON for DuckDuckGo
     assert [(r.position, r.url) for r in found.results] == [(1, "https://a.example/page"), (2, "https://mine.example/page"), (3, "https://b.example/page")]
     assert found.tool == "Bright Data" and found.real_location == "xa-en" and found.charged == 1
@@ -221,3 +243,22 @@ def test_bright_data_says_when_nobody_ranks_and_fails_on_a_page_it_cant_read():
     with pytest.raises(SearchFailed) as failed:
         _bright(b"<html>Something else entirely</html>", []).search("x", "duckduckgo", "FR", "fr", "desktop", 10)
     assert failed.value.charged == 1  # the page came back, so it was billed
+
+
+def test_bright_data_reads_duckduckgos_drawn_page_and_leaves_out_its_adverts():
+    drawn = (
+        '<html><body><ol class="react-results--main">'
+        '<li data-layout="ad"><article data-testid="ad"><h2><a data-testid="result-title-a" href="https://advert.example/">Ad</a></h2></article></li>'
+        '<li data-layout="organic"><article id="r1-0" data-testid="result"><h2><a data-testid="result-title-a" href="https://a.example/one">A</a></h2></article></li>'
+        '<li data-layout="organic"><article id="r1-1" data-testid="result"><h2><a data-testid="result-title-a" href="https://mine.example/page">Mine</a></h2></article></li>'
+        '</ol></body></html>'
+    ).encode()
+    found = _bright(drawn, []).search("x", "duckduckgo", "FR", "fr", "desktop", 10)
+    assert [(r.position, r.url) for r in found.results] == [(1, "https://a.example/one"), (2, "https://mine.example/page")]
+
+
+def test_bright_data_refusing_duckduckgo_stops_the_tool_and_counts_nothing():
+    refused = {"x-brd-error": "No parser found for this resource", "x-brd-error-code": "parse_no_parser", "x-brd-status-code": "502"}
+    with pytest.raises(ToolStopped) as stopped:
+        _bright(b"", [], headers=refused).search("x", "duckduckgo", "FR", "fr", "desktop", 10)
+    assert "can't read DuckDuckGo" in str(stopped.value) and "No parser found" in str(stopped.value) and stopped.value.charged == 0

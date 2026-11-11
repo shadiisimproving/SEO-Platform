@@ -112,15 +112,21 @@ def ddg_region(country: str, language: str = "") -> str:
     return region
 
 
+_DDG_PLAIN = "//a[contains(concat(' ', normalize-space(@class), ' '), ' result__a ')]"  # html.duckduckgo.com
+_DDG_DRAWN = "//article[@data-testid='result']//a[@data-testid='result-title-a']"  # duckduckgo.com once its script has run
+_DDG_AD = "ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' result--ad ') or @data-testid='ad' or @data-layout='ad']"
+
+
 def parse_ddg(body: bytes) -> list[Found]:
-    """Normal results only: adverts and DuckDuckGo's own links are left out."""
+    """Normal results only: adverts and DuckDuckGo's own links are left out. Reads both of DuckDuckGo's layouts: the plain
+    HTML page DuckDuckGo direct asks for, and the drawn page a service that runs its script (Bright Data) sends back."""
     try:
         doc = lxml_html.document_fromstring(body)
     except (etree.ParserError, ValueError, TypeError):  # an empty or broken page has no results to read
         return []
     found: list[Found] = []
-    for anchor in doc.xpath("//a[contains(concat(' ', normalize-space(@class), ' '), ' result__a ')]"):
-        if anchor.xpath("ancestor::*[contains(concat(' ', normalize-space(@class), ' '), ' result--ad ')]"):
+    for anchor in doc.xpath(_DDG_PLAIN) or doc.xpath(_DDG_DRAWN):
+        if anchor.xpath(_DDG_AD):
             continue
         href = (anchor.get("href") or "").strip()
         if href.startswith("//"):
@@ -376,9 +382,10 @@ class BrightData:
         elif engine == "bing":
             base, params = "https://www.bing.com/search", {"q": keyword, "first": page * 10 + 1, **({"cc": country.lower()} if country else {}), **({"setLang": language.lower()} if language else {})}
         elif engine == "duckduckgo":
-            # duckduckgo.com/?q= is a JavaScript page with no results in it, and Bright Data has no parsed JSON for it: live
-            # on 2026-11-11 it "answered 200 without data" 3 times out of 3. The plain HTML page lists them (_duckduckgo).
-            return f"https://html.duckduckgo.com/html/?{urlencode({'q': keyword, 'kl': ddg_region(country, language)})}"
+            # The address Bright Data's own DuckDuckGo examples use, without brd_json: there's no parsed JSON for DuckDuckGo
+            # (live, 2026-11-11, "answered 200 without data"). It sends the drawn page back as HTML, read by parse_ddg.
+            # html.duckduckgo.com was refused the same way ("No parser found"), so it isn't asked for.
+            return f"https://duckduckgo.com/?{urlencode({'q': keyword, 'kl': ddg_region(country, language), **mobile})}"
         else:
             base, params = "https://yandex.com/search/", {"text": keyword, "p": page}
         return f"{base}?{urlencode({**params, **mobile, 'brd_json': '1'})}"
@@ -401,13 +408,20 @@ class BrightData:
         return _json_or_fail(self._reply(address), self.name)
 
     def _duckduckgo(self, keyword: str, country: str, language: str, device: str, depth: int) -> Answer:
-        """DuckDuckGo's plain HTML page, read the same way DuckDuckGo direct reads it. One page, one credit.
+        """DuckDuckGo's page as HTML, read the same way DuckDuckGo direct reads it. One page, one credit.
 
         DuckDuckGo shows the hosting server a bot check (live, 2026-11-11), so this is how the server gets DuckDuckGo's
         results without SerpApi (owner, 2026-11-11). A page with nothing readable is one failed search: it was still billed.
+        An empty answer with Bright Data's own error code is a refusal, not a page: live on 2026-11-11 the owner's zone
+        answered "No parser found for this resource" (parse_no_parser) to every DuckDuckGo address. It stops the tool, and
+        isn't counted as a credit.
         """
         with _so_far(0):
-            body = self._reply(self.page_address(keyword, "duckduckgo", country, language, device, 0)).content
+            reply = self._reply(self.page_address(keyword, "duckduckgo", country, language, device, 0))
+            refused = reply.headers.get("x-brd-error-code")
+            if refused and not reply.content:
+                raise ToolStopped(f"Bright Data can't read DuckDuckGo with this zone: {reply.headers.get('x-brd-error') or refused}.")
+        body = reply.content
         results = parse_ddg(body)[:depth]
         if not results and b"no-results" not in body:
             failed = SearchFailed("Bright Data's DuckDuckGo page had no results the app could read.")
