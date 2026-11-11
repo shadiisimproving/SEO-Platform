@@ -16,6 +16,7 @@ window.ICONS = {
 "check": "<path d=\"M20 6 9 17l-5-5\" />",
 "chevron-up": "<path d=\"m18 15-6-6-6 6\" />",
 "chevron-down": "<path d=\"m6 9 6 6 6-6\" />",
+"chevrons-up-down": "<path d=\"m7 15 5 5 5-5\" /><path d=\"m7 9 5-5 5 5\" />",
 "chevron-left": "<path d=\"m15 18-6-6 6-6\" />",
 "chevron-right": "<path d=\"m9 18 6-6-6-6\" />",
 "circle-check": "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"m9 12 2 2 4-4\" />",

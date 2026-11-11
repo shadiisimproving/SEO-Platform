@@ -3,8 +3,9 @@
 (() => {
   "use strict";
   let UI = null;
-  const S = { site: null, data: null, filter: "", hide: false, quality: "all", reach: "any", pa: "", sort: null, picked: new Set(), adding: false, openLinks: new Set() };
+  const S = { site: null, data: null, filter: "", hide: false, quality: "all", reach: "any", pa: "", sort: null, picked: new Set(), adding: false, openLink: null, linkSort: null };
   const PAGES = "cg"; // the table's pages and search (table-pages.js), like every long table in the app
+  const LINK_PAGES = "cg-links"; // the same for the links of the one domain that is open
   let sync = Promise.resolve(); // calls caused by the Backlinks page, kept in the order they happened
 
   const t = (s) => UI.t(s);
@@ -128,34 +129,51 @@
   /* One competitor, or all of them together; "2 or more" keeps the domains that link to several, the strongest gaps. */
   /* The search finds a domain by its name, its title, or the anchor text and pages of its links. */
   const searched = () => allRows().filter((g) => TP.matches(PAGES, g.domain, g.display, g.title, ...(g.links || []).flatMap((l) => [l.anchor, l.source_title, l.source_url, l.target_url])) && !(S.hide && (inConsideration(g) || g.in_todo)));
-  const reaches = (g) => S.reach === "any" || g.competitor_count >= 2;
+  /* "any", "1" for exactly one competitor, or a number for that many or more. */
+  const reachOk = (g, reach) => reach === "any" || (reach === "1" ? g.competitor_count === 1 : g.competitor_count >= Number(reach));
+  const reaches = (g) => reachOk(g, S.reach);
   /* A domain's links, only those to the chosen competitor when one is chosen. The server sends them strongest page first. */
   const linksOf = (g) => (g.links || []).filter((l) => !S.filter || String(l.competitor_id) === S.filter);
-  const bestPa = (g) => linksOf(g).reduce((best, l) => (l.page_authority !== null && l.page_authority !== undefined && (best === null || l.page_authority > best) ? l.page_authority : best), null);
-  const strongEnough = (g) => !S.pa || (bestPa(g) ?? -1) >= Number(S.pa);
-  const byRival = () => searched().filter((g) => (!S.filter || g.competitors.some((c) => String(c.id) === S.filter)) && reaches(g) && strongEnough(g));
-  const SORTS = {
-    domain: (g) => g.display || g.domain, links: (g) => g.competitor_count, authority: (g) => g.authority, spam: (g) => g.spam_score, pa: bestPa,
-  };
-  const PA_STEPS = [10, 20, 30, 40, 50];
-  function sorted(list) {
-    if (!S.sort) return list; // the server's order: most competitors first, then the best authority
-    const get = SORTS[S.sort.id], dir = S.sort.dir === "asc" ? 1 : -1;
-    return [...list].sort((a, b) => {
-      const x = get(a), y = get(b);
-      if (x === null || x === undefined) return 1;
-      if (y === null || y === undefined) return -1;
-      return (typeof x === "number" ? x - y : String(x).localeCompare(String(y))) * dir;
-    });
+  const linkHits = (l) => TP.matches(PAGES, l.anchor, l.source_title, l.source_url, l.target_url);
+  const isSet = (n) => n !== null && n !== undefined;
+  /* The link the row speaks for: its strongest page, among the links holding the words while searching. Page Authority and anchor text always come from this same link. */
+  function topLink(g) {
+    const links = linksOf(g), hits = TP.state(PAGES).q?.trim() ? links.filter(linkHits) : [];
+    return (hits.length ? hits : links).reduce((best, l) => (best === null || (l.page_authority ?? -1) > (best.page_authority ?? -1) ? l : best), null);
   }
+  const bestPa = (g) => topLink(g)?.page_authority ?? null;
+  const strongEnough = (g) => !S.pa || (bestPa(g) ?? -1) >= Number(S.pa);
+  const ofRival = (g) => !S.filter || g.competitors.some((c) => String(c.id) === S.filter);
+  const byRival = () => searched().filter((g) => ofRival(g) && reaches(g) && strongEnough(g));
+  /* Status sorts by how far along a domain is: To do, In consideration, a lost link, nothing yet, then spam. */
+  const statusRank = (g) => (g.in_todo ? 3 : inConsideration(g) ? 2 : g.lost_link ? 1 : isFlagged(g) ? -1 : 0);
+  const SORTS = {
+    domain: (g) => g.display || g.domain, links: (g) => g.competitor_count, authority: (g) => g.authority, spam: (g) => g.spam_score, pa: bestPa, anchor: (g) => topLink(g)?.anchor || null, status: statusRank,
+  };
+  const LINK_SORTS = { anchor: (l) => l.anchor || null, pa: (l) => l.page_authority, from: (l) => l.source_url, to: (l) => l.target_url || null };
+  const PA_STEPS = [10, 20, 30, 40, 50];
+  /* Each value is read once. What has no value goes last, whichever way the column is sorted. */
+  function sortBy(list, get, order) {
+    const dir = order === "asc" ? 1 : -1;
+    return list.map((item) => [get(item), item]).sort(([x], [y]) => {
+      if (!isSet(x)) return isSet(y) ? 1 : 0;
+      if (!isSet(y)) return -1;
+      return (typeof x === "number" ? x - y : String(x).localeCompare(String(y))) * dir;
+    }).map(([, item]) => item);
+  }
+  // Without a chosen column, the server's order: most competitors first, then the best authority.
+  const sorted = (list) => (S.sort ? sortBy(list, SORTS[S.sort.id], S.sort.dir) : list);
   const shownGaps = () => sorted(byRival().filter((g) => S.quality === "all" || (S.quality === "spam") === isFlagged(g)));
   const canPick = (gap) => !isFlagged(gap) && !inConsideration(gap) && !gap.in_todo;
   const pickable = () => TP.view(PAGES, shownGaps()).rows.filter(canPick); // only rows on this page: "Select all shown" means shown
 
-  // The rules of the list sit behind an (i) on the Sources line, not in a box over the table.
+  // The rules of the list sit behind an (i) beside its buttons, not in a box over the table.
   const INTRO = "Spam is flagged first, and only the good ones can be added. Nothing is removed. It comes from files you upload and domains you add by hand: no paid tool, no AI. Adding a domain doesn't create a backlink, and doesn't change the Backlinks top cards.";
-  const intro = () => "";
 
+
+  /* A site shown by its logo alone; its name comes on hover or focus and is read out by a screen reader. */
+  const LOGOS_SHOWN = 8;
+  const logoOnly = (host, size) => `<span class="cg-logo" role="img" tabindex="0" data-tip="${esc(host)}" aria-label="${esc(host)}">${UI.siteLogo(host, size)}</span>`;
 
   /* One line, so the table is what you see first. Everything the tiles used to offer is still here. */
   function summaryLine(d) {
@@ -165,35 +183,20 @@
     const goodSent = allRows().filter((g) => !isFlagged(g)).length;
     const capped = f && f.good > goodSent ? `<span class="cg-stat sec">${esc(t("The {sent} with the most competitors are listed, of {total}.").replace("{sent}", UI.num(goodSent)).replace("{total}", UI.num(f.good)))}</span>` : "";
     const checking = f?.checking ? `<span class="cg-stat sec">${UI.icon("refresh-cw", "spin")}<b class="tabular">${UI.num(f.checking)}</b> ${t("Still being checked")}</span>` : "";
-    // A competitor with nothing yet can only be fed from Sources, so say so here while Sources is folded away.
+    // A competitor with nothing yet is named here, with the way to feed it.
     const empty = d.competitors.some((c) => c.has_data) ? d.competitors.filter((c) => !c.has_data) : [];
-    const names = empty.slice(0, 2).map((c) => `<span class="mono" dir="auto">${esc(c.host)}</span>`).join(", ");
-    const missing = empty.length ? `<span class="cg-stat">${t("No links yet for")} ${names}${empty.length > 2 ? ` ${t("and")} ${UI.num(empty.length - 2)} ${t("more")}` : ""} <button class="link-btn" data-cg-show-sources>${t("Add links")}</button></span>` : "";
+    const rest = empty.slice(LOGOS_SHOWN);
+    const faces = `<span class="cg-logos">${empty.slice(0, LOGOS_SHOWN).map((c) => logoOnly(c.host, 20)).join("")}${rest.length ? `<span class="cg-logos-more tabular" tabindex="0" data-tip="${esc(rest.map((c) => c.host).join(", "))}">+${UI.num(rest.length)}</span>` : ""}</span>`;
+    const missing = empty.length ? `<span class="cg-stat">${t("No links yet for")} ${faces} <button class="link-btn" id="cg-up-missing" data-cg-upload="${empty[0].id}">${t("Add links")}</button></span>` : "";
     const open = allRows().filter(canPick).length;
     const addAll = open ? `<button class="btn btn-main btn-small cg-add-all" id="cg-add-all" data-cg-add-all>${UI.icon("plus")}${t("Add all good ones")} (${UI.num(open)})</button>` : "";
     if (!stats && !checking && !missing && !addAll) return "";
     return `<div class="cg-summary" aria-label="${t("Spam filter")}" role="group">${stats}${capped}${checking}${missing}${addAll}</div>`;
   }
 
-  /* How the list is fed. Folded once there's a list, and open while there's nothing else on the page to do. */
-  function sourcesFold(d) {
-    const open = S.sourcesOpen ?? !allRows().length;
-    return `<details class="fold cg-sources-fold" id="cg-sources-fold" ${open ? "open" : ""}><summary>${UI.icon("chevron-right")}${t("Sources")}${COMP.info(INTRO)}</summary>
-      ${intro()}${sourcesStrip(d)}
-    </details>`;
-  }
-
-  function sourcesStrip(d) {
-    // Links read before Common Crawl was removed still count, so a rival with only those isn't called empty.
-    const line = (c) => t(c.has_file ? "A file uploaded" : c.has_data ? "Links already found" : "No file uploaded yet");
-    return `<section class="card" aria-label="${t("Where the links come from")}">
-      <div class="card-head"><h2>${t("Where the links come from")}</h2></div>
-      <ul class="rows cg-sources">${d.competitors.map((c) => `<li>
-        <div class="what"><div class="t mono" dir="auto">${esc(c.host)}</div><div class="d">${line(c)}</div></div>
-        <div class="acts"><button class="btn btn-small" id="cg-up-${c.id}" data-cg-upload="${c.id}">${UI.icon("list-plus")}${t("Upload links for this competitor")}</button></div>
-      </li>`).join("")}</ul>
-    </section>`;
-  }
+  /* Files are uploaded per competitor. The window opens on the first one still without links, and lets you pick another. */
+  const uploadTarget = (d) => (d.competitors.find((c) => !c.has_data) || d.competitors[0]).id;
+  const uploadButton = (d, cls = "btn btn-small") => `<button class="${cls}" id="cg-upload" data-cg-upload="${uploadTarget(d)}">${UI.icon("list-plus")}${t("Upload links")}</button>`;
 
   /* The competitor choice. A native list can't show pictures, so it's a button and a menu, each competitor with its logo and its count. */
   function competitorPick(base, rivals, countFor) {
@@ -216,29 +219,45 @@
     // Common Crawl's rank is a different scale, so it's never shown as if it were a score.
     return `<span class="muted" title="${esc(t("No authority score for this domain yet."))}">—</span>`; // unknown is —, with the reason on hover, as everywhere in Competitors. An old Common Crawl rank isn't a score: left out since that source was removed.
   };
-  /* Each link of the domain, inside its row: the anchor text, the linking page's Page Authority, the page it's on and the competitor page it points to.
-     Three show at first; the rest open in the same row, never on another page. */
-  const LINKS_SHOWN = 3;
-  function linkLine(l) {
-    const anchor = l.anchor ? `<span class="cg-anchor" dir="auto">${esc(l.anchor)}</span>` : `<span class="cg-anchor muted">${t("No anchor text")}</span>`;
-    const pa = l.page_authority !== null && l.page_authority !== undefined ? `<span class="tag cg-pa" data-tip="${t("Page Authority of the linking page")}" tabindex="0">PA <b class="tabular">${UI.num(l.page_authority)}</b></span>` : "";
-    const from = `<a class="cg-link-from mono" dir="auto" href="${esc(l.source_url)}" target="_blank" rel="noopener noreferrer nofollow" data-tip="${esc(l.source_title || l.source_url)}">${esc(COMP.shortUrl(l.source_url))}</a>`;
-    const to = l.target_url ? `<span class="cg-link-to mono" dir="auto" data-tip="${esc(t("Points to"))}: ${esc(l.target_url)}" tabindex="0">→ ${esc(COMP.shortUrl(l.target_url))}</span>` : "";
-    return `<li><span class="cg-link-head">${anchor}${pa}</span><span class="cg-link-pages">${from}${to}</span></li>`;
+  const dash = (why) => `<span class="muted" title="${esc(t(why))}">—</span>`;
+  const linkTotal = (gap, links) => (S.filter ? links.length : Math.max(gap.link_count || 0, links.length));
+  const paCell = (gap) => { const pa = bestPa(gap); return isSet(pa) ? `<span class="tabular" tabindex="0" data-tip="${t("Page Authority of the linking page")}">${UI.num(pa)}</span>` : dash("The file for this domain had no link details."); };
+  /* The row shows one anchor on one line, whole on hover. The button opens all the domain's links under the row. */
+  function anchorCell(gap) {
+    const links = linksOf(gap);
+    if (!links.length) return dash("The file for this domain had no link details.");
+    const top = topLink(gap), total = linkTotal(gap, links), open = S.openLink === gap.domain;
+    const anchor = top.anchor ? `<span class="cg-anchor" dir="auto" tabindex="0" data-tip="${esc(top.anchor)}">${esc(top.anchor)}</span>` : `<span class="cg-anchor muted">${t("No anchor text")}</span>`;
+    const word = total === 1 ? t("1 link") : t("{n} links").replace("{n}", UI.num(total));
+    return `<span class="cg-anchor-line">${anchor}<button type="button" class="cg-links-btn" data-cg-links="${esc(gap.domain)}" aria-expanded="${open}" aria-label="${esc(gap.display || gap.domain)}: ${esc(word)}">${esc(word)}${UI.icon("chevron-down")}</button></span>`;
   }
-  function linksCell(gap) {
+  /* A page of the row's own site needs only its path; the domain is already on the row. */
+  const pathOf = (url) => { try { const u = new URL(url), path = `${u.pathname}${u.search}`; try { return decodeURI(path); } catch { return path; } } catch { return url; } };
+  function linkRow(l) {
+    const rival = S.data.competitors.find((c) => c.id === l.competitor_id)?.host;
+    const to = l.target_url ? `<span class="cg-link-to">${rival ? logoOnly(rival, 16) : ""}${COMP.link(l.target_url, pathOf(l.target_url), "cg-page mono")}</span>` : `<span class="muted">—</span>`;
+    return `<tr>
+      <td class="cg-link-anchor" data-label="${t("Anchor text")}">${l.anchor ? `<span dir="auto">${esc(l.anchor)}</span>` : `<span class="muted">${t("No anchor text")}</span>`}</td>
+      <td class="c" data-label="${t("Page Authority")}">${isSet(l.page_authority) ? `<span class="tabular">${UI.num(l.page_authority)}</span>` : `<span class="muted">—</span>`}</td>
+      <td data-label="${t("Linking page")}">${COMP.link(l.source_url, pathOf(l.source_url), "cg-page mono")}</td>
+      <td data-label="${t("Points to")}">${to}</td>
+    </tr>`;
+  }
+  /* All of a domain's links in a table of their own, opened under its row: no other page. While searching, the links holding the words come first. */
+  function linksPanel(gap) {
     let links = linksOf(gap);
-    if (!links.length) return `<span class="muted" title="${esc(t("The file for this domain had no link details."))}">—</span>`;
-    // While searching, the links that hold the words come first.
-    const q = TP.state(PAGES).q?.trim();
-    if (q) links = [...links.filter((l) => TP.matches(PAGES, l.anchor, l.source_title, l.source_url, l.target_url)), ...links.filter((l) => !TP.matches(PAGES, l.anchor, l.source_title, l.source_url, l.target_url))];
-    const open = S.openLinks.has(gap.domain), shown = open ? links : links.slice(0, LINKS_SHOWN);
-    const total = S.filter ? links.length : Math.max(gap.link_count || 0, links.length);
-    const more = links.length > LINKS_SHOWN
-      ? `<button type="button" class="link-btn cg-links-more" data-cg-links="${esc(gap.domain)}" aria-expanded="${open}">${open ? t("Show fewer") : t("Show all {n} links").replace("{n}", UI.num(links.length))}</button>`
-      : "";
-    const capped = open && total > links.length ? `<span class="small sec">${esc(t("The {shown} strongest of {total} are listed.").replace("{shown}", UI.num(links.length)).replace("{total}", UI.num(total)))}</span>` : "";
-    return `<ul class="cg-links">${shown.map(linkLine).join("")}</ul>${more}${capped}`;
+    if (TP.state(PAGES).q?.trim()) links = [...links.filter(linkHits), ...links.filter((l) => !linkHits(l))];
+    if (S.linkSort) links = sortBy(links, LINK_SORTS[S.linkSort.id], S.linkSort.dir);
+    const page = TP.view(LINK_PAGES, links), total = linkTotal(gap, links);
+    const head = (id, label, cls) => sortHead("data-cg-link-sort", S.linkSort, id, label, cls);
+    const capped = total > links.length ? `<p class="small sec cg-links-capped">${esc(t("The {shown} strongest of {total} are listed.").replace("{shown}", UI.num(links.length)).replace("{total}", UI.num(total)))}</p>` : "";
+    return `<tr class="cg-links-row"><td colspan="9"><div class="cg-links-panel">
+      <table class="data cg-links-table" aria-label="${esc(t("Links from {domain}").replace("{domain}", gap.display || gap.domain))}">
+        <thead><tr>${head("anchor", "Anchor text")}${head("pa", "Page Authority", "c")}${head("from", "Linking page")}${head("to", "Points to")}</tr></thead>
+        <tbody>${page.rows.map(linkRow).join("")}</tbody>
+      </table>
+      ${links.length > TP.PER[0] ? TP.footer(LINK_PAGES, page, { noun: t("links") }) : ""}${capped}
+    </div></td></tr>`;
   }
   const spamCell = (gap) => (gap.spam_score === null || gap.spam_score === undefined ? `<span class="muted" title="${esc(t("No spam score for this domain yet."))}">—</span>` : `<span class="tabular">${UI.dec(gap.spam_score)}</span>`);
 
@@ -257,16 +276,18 @@
     const action = flagged
       ? `<button class="btn btn-small" data-cg-decide="${gap.reason === "my_choice" ? "auto" : "keep"}" data-domain="${esc(gap.domain)}" aria-label="${t(word)}: ${esc(gap.display || gap.domain)}">${t(word)}</button>`
       : `<button class="icon-btn cg-spam-btn" data-cg-decide="spam" data-domain="${esc(gap.domain)}" aria-label="${t("Mark as spam")}: ${esc(gap.display || gap.domain)}" data-tip="${t("Mark as spam")}">${UI.icon("ban")}<span class="cg-spam-word">${t("Mark as spam")}</span></button>`;
-    return `<tr data-cg-row="${esc(gap.domain)}" class="${picked ? "sel" : ""} ${considered || flagged ? "cg-off" : ""} ${flagged ? "cg-flagged" : ""}">
+    const open = S.openLink === gap.domain && linksOf(gap).length > 0;
+    return `<tr data-cg-row="${esc(gap.domain)}" class="${picked ? "sel" : ""} ${open ? "open" : ""} ${considered || flagged ? "cg-off" : ""} ${flagged ? "cg-flagged" : ""}">
       <td class="chk-cell"><input type="checkbox" class="chk" data-cg-pick="${esc(gap.domain)}" aria-label="${esc(gap.display || gap.domain)}" ${picked ? "checked" : ""} ${considered || flagged ? "disabled" : ""}></td>
       <td class="head-cell"><span class="with-logo">${UI.siteLogo(gap.domain)}<span class="logo-text"><span class="nb-inline"><span class="kw mono" dir="auto">${esc(gap.display || gap.domain)}</span>${gap.sample_url ? `<a class="icon-btn cg-example-link" href="${esc(gap.sample_url)}" target="_blank" rel="noopener noreferrer nofollow" data-tip="${esc(t("Example link"))}: ${esc(COMP.shortUrl(gap.sample_url))}" aria-label="${esc(t("Example link"))}: ${esc(COMP.shortUrl(gap.sample_url))}">${UI.icon("external-link")}</a>` : ""}${COMP.notes?.badge ? COMP.notes.badge({ scope: "domain", domain: gap.domain, siteId: COMP.siteId ?? null }, gap.display || gap.domain) : ""}</span>${gap.title ? `<span class="second cg-title" dir="auto">${esc(gap.title)}</span>` : ""}</span></span></td>
-      <td data-label="${t("Links to")}"><span class="cp-tags cg-rivals">${gap.competitor_count > 1 ? `<b class="tabular cg-count" data-tip="${t("How many of your competitors it links to")}">${UI.num(gap.competitor_count)}</b>` : ""}${gap.competitors.map((c) => `<span class="tag cg-rival">${UI.siteLogo(c.host, 14)}<span dir="auto">${esc(c.host)}</span></span>`).join(" ")}</span></td>
+      <td data-label="${t("Links to")}"><span class="cg-rivals"><b class="tabular cg-count" tabindex="0" data-tip="${t("How many of your competitors it links to")}">${UI.num(gap.competitor_count)}</b><span class="cg-logos">${gap.competitors.map((c) => logoOnly(c.host, 20)).join("")}</span></span></td>
       <td class="c" data-label="${t("Authority")}">${authorityCell(gap)}</td>
       <td class="c" data-label="${t("Spam score")}">${spamCell(gap)}</td>
-      <td class="cg-links-cell" data-label="${t("Links: anchor text and Page Authority")}">${linksCell(gap)}</td>
+      <td class="c" data-label="${t("Page Authority")}">${paCell(gap)}</td>
+      <td class="cg-anchor-cell" data-label="${t("Anchor text")}">${anchorCell(gap)}</td>
       <td data-label="${t("Status")}">${tags ? `<span class="cp-tags">${tags}</span>` : `<span class="muted">—</span>`}${why}</td>
       <td class="r nowrap" data-label=""><button class="icon-btn" data-cg-edit="${esc(gap.domain)}" aria-label="${t("Edit")}: ${esc(gap.display || gap.domain)}" data-tip="${t("Edit")}">${UI.icon("pencil")}</button> ${action}</td>
-    </tr>`;
+    </tr>${open ? linksPanel(gap) : ""}`;
   }
 
   function selectionBar() {
@@ -287,20 +308,35 @@
     </div>`;
   }
 
+  /* Every heading shows it can be sorted, before anyone has clicked it. */
+  function sortHead(attr, sort, id, label, cls = "") {
+    const on = sort?.id === id, arrow = on ? (sort.dir === "asc" ? "arrow-up" : "arrow-down") : "chevrons-up-down";
+    return `<th scope="col" class="${cls}" aria-sort="${on ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}"><button type="button" class="th-btn cg-th" ${attr}="${id}">${t(label)}${UI.icon(arrow, on ? "" : "cg-th-idle")}</button></th>`;
+  }
+
+  /* How many competitors a domain links to. The choices stop at the most any domain reaches, and each says how many domains it holds. */
+  function reachField() {
+    const rows = searched().filter((g) => ofRival(g) && strongEnough(g));
+    const most = allRows().reduce((top, g) => Math.max(top, g.competitor_count), Number(S.reach) || 0);
+    const choices = [["any", t("Any number of them")], ["1", t("Only 1 of them")]];
+    for (let n = 2; n <= most; n += 1) choices.push([String(n), t("{n} or more of them").replace("{n}", UI.num(n))]);
+    return `<label class="field cg-reach"><span>${t("Links to")}</span><select class="select" id="cg-reach">${choices.map(([id, word]) => `<option value="${id}" ${id === S.reach ? "selected" : ""}>${esc(word)} (${UI.num(rows.filter((g) => reachOk(g, id)).length)})</option>`).join("")}</select></label>`;
+  }
+
   function body() {
     const d = S.data;
     if (!d) return COMP.loading();
     if (!d.competitors.length) {
       return COMP.empty(t("No competitors yet"), t("Link gaps show who links to your competitors but not to you. Add a competitor first."), `<button class="btn btn-main" data-cg-find>${UI.icon("search")}${t("Find competitors")}</button>`);
     }
-    const strip = `${summaryLine(d)}${sourcesFold(d)}`;
+    const strip = summaryLine(d);
     const left = d.already_linking ? `<p class="help cg-left">${esc(leftOutWords(d.already_linking))}</p>` : "";
     if (!d.competitors.some((c) => c.has_data)) {
       return `${strip}${COMP.empty(t("No links yet"), t("Upload a CSV of links to one of your competitors, from a free SEMrush or Ubersuggest account, or add a domain by hand. The domains that don't link to you appear here, with spam flagged."), `<button class="btn btn-main" id="cg-up-empty" data-cg-upload="${d.competitors[0].id}">${UI.icon("list-plus")}${t("Upload a CSV")}</button><button class="btn" data-cg-add-domain>${UI.icon("plus")}${t("Add a domain")}</button>`)}`;
     }
     if (!allRows().length) {
       const checking = d.funnel?.checking;
-      return `${strip}${checking ? COMP.empty(t("Checking for spam"), t("Domains appear here as their home pages are read.")) : COMP.empty(t("No domains left"), t("Every domain already links to you, or is one of your own."))}${left}`;
+      return `${strip}${checking ? COMP.empty(t("Checking for spam"), t("Domains appear here as their home pages are read."), uploadButton(d, "btn")) : COMP.empty(t("No domains left"), t("Every domain already links to you, or is one of your own."), uploadButton(d, "btn"))}${left}`;
     }
     const shown = shownGaps(), open = pickable(), page = TP.view(PAGES, shown);
     const all = open.length > 0 && open.every((g) => S.picked.has(g.domain));
@@ -309,17 +345,12 @@
     const base = searched().filter(reaches);
     const countFor = (id) => base.filter((g) => g.competitors.some((c) => String(c.id) === String(id))).length;
     const rivals = d.competitors.filter((c) => c.has_data);
-    const head = (id, label, cls = "") => {
-      const on = S.sort?.id === id;
-      return `<th scope="col" class="${cls}${on ? " cg-sorted" : ""}" aria-sort="${on ? (S.sort.dir === "asc" ? "ascending" : "descending") : "none"}"><button type="button" class="th-btn" data-cg-sort="${id}">${t(label)}${on ? UI.icon(S.sort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
-    };
+    const head = (id, label, cls) => sortHead("data-cg-sort", S.sort, id, label, cls);
     return `${strip}
       <div class="cp-tools cg-tools">
         ${TP.search(PAGES, t("Search domains"))}
         ${competitorPick(base, rivals, countFor)}
-        <div class="field cg-reach"><span>${t("Links to")}</span><div class="chips cp-chips" role="group" aria-label="${t("Links to")}">
-          ${[["any", "Any number of them"], ["several", "2 or more of them"]].map(([id, word]) => `<button class="chip" data-cg-reach="${id}" aria-pressed="${S.reach === id}">${t(word)}</button>`).join("")}
-        </div></div>
+        ${reachField()}
         <label class="field"><span>${t("Page Authority")}</span><select class="select" id="cg-pa">
           <option value="">${t("Any Page Authority")}</option>
           ${PA_STEPS.map((n) => `<option value="${n}" ${String(n) === S.pa ? "selected" : ""}>${esc(t("{n} or more").replace("{n}", UI.num(n)))}</option>`).join("")}
@@ -329,14 +360,15 @@
         </div>
         <label class="opt"><input type="checkbox" class="chk" id="cg-hide" style="margin:0" ${S.hide ? "checked" : ""}>${t("Hide those already in consideration")}</label>
         <span class="cg-picktools">
+          ${uploadButton(d)}
           <button class="btn btn-small" data-cg-add-domain>${UI.icon("plus")}${t("Add a domain")}</button>
-          <button class="link-btn" id="cg-select-all" data-cg-select-all ${open.length ? "" : "disabled"}>${t("Select all shown")} (${UI.num(open.length)})</button>
+          ${COMP.info(INTRO)}
         </span>
       </div>
       ${shown.length ? `<div class="cg-list"><div class="table-wrap"><table class="data" id="cg-table">
         <thead><tr>
           <th scope="col" class="chk-cell"><input type="checkbox" class="chk" id="cg-all" style="margin:0" aria-label="${t("Select all shown")}" ${all ? "checked" : ""} ${open.length ? "" : "disabled"} data-indeterminate="${!all && some}"></th>
-          ${head("domain", "Domain")}${head("links", "Links to")}${head("authority", "Authority", "c")}${head("spam", "Spam score", "c")}${head("pa", "Links: anchor text and Page Authority")}<th scope="col">${t("Status")}</th><th scope="col"><span class="sr">${t("Action")}</span></th>
+          ${head("domain", "Domain")}${head("links", "Links to")}${head("authority", "Authority", "c")}${head("spam", "Spam score", "c")}${head("pa", "Page Authority", "c")}${head("anchor", "Anchor text")}${head("status", "Status")}<th scope="col"><span class="sr">${t("Action")}</span></th>
         </tr></thead>
         <tbody>${page.rows.map(rowHtml).join("")}</tbody>
       </table></div>
@@ -400,7 +432,7 @@
     S.picked.clear();
     COMP.refreshLogos({ watch: true });
     await COMP.reload({ quiet: true });
-    UI.$("#cg-select-all")?.focus({ preventScroll: true });
+    UI.$("#cg-all")?.focus({ preventScroll: true });
     sayAdded(items, skipped, host);
   }
 
@@ -592,7 +624,7 @@
     window.UI.reloadBacklinks?.();
     COMP.refreshLogos({ watch: true });
     await COMP.reload({ quiet: true });
-    UI.$("#cg-select-all")?.focus({ preventScroll: true });
+    UI.$("#cg-all")?.focus({ preventScroll: true });
     const n = made.length;
     // A domain already in Backlinks (a lost link, say) can't be logged twice: it stays in In consideration, and the words say so.
     const words = `${UI.num(n)} ${t(n === 1 ? "domain added to To do" : "domains added to To do")}${logged ? `. ${UI.num(logged)} ${t(logged === 1 ? "is already in your Backlinks, so it stays in In consideration" : "are already in your Backlinks, so they stay in In consideration")}` : ""}${skipped.length ? `. ${UI.num(skipped.length)} ${t("skipped")}` : ""}`;
@@ -693,7 +725,7 @@
     return `${dialogHead()}
       <div class="dlg-body">
         <p class="small sec" style="margin-bottom:12px">${t("A CSV of links to this competitor, exported from a free SEMrush or Ubersuggest account. Needs a URL or domain column.")}</p>
-        <label class="field"><span>${t("Competitor")}</span><select class="select" id="cg-up-who" style="width:100%">${d.competitors.map((c) => `<option value="${c.id}" ${c.id === competitorId ? "selected" : ""}>${esc(c.host)}</option>`).join("")}</select></label>
+        <label class="field"><span>${t("Competitor")}</span><select class="select" id="cg-up-who" style="width:100%">${d.competitors.map((c) => `<option value="${c.id}" ${c.id === competitorId ? "selected" : ""}>${esc(c.host)} · ${t(c.has_file ? "A file uploaded" : c.has_data ? "Links already found" : "No file uploaded yet")}</option>`).join("")}</select></label>
         <label class="field"><span>${t("File")}</span><input class="input" id="cg-up-file" type="file" accept=".csv,.tsv,.txt,text/csv"></label>
         <div id="cg-up-error">${error ? errorBox(error) : ""}</div>
       </div>
@@ -704,7 +736,6 @@
   function openUpload(competitorId, opener) {
     const dlg = UI.$("#dlg");
     uploadOpener = opener?.id || null;
-    S.sourcesOpen = true; // focus comes back to this button, so Sources has to still be open after the reload
     dlg.classList.remove("wide");
     UI.setHTML(dlg, uploadForm(competitorId));
     dlg.showModal();
@@ -755,13 +786,6 @@
       if (hit("[data-cg-find]")) { COMP.open("find"); return; }
       if ((el = hit("#cg-filter"))) { openCompetitorPick(el); return; }
       if ((el = hit("[data-cg-choose]"))) { UI.closePopover(); S.filter = el.dataset.cgChoose; TP.reset(PAGES); trimPicked(); COMP.paint(); UI.$("#cg-filter")?.focus(); return; }
-      if (hit("[data-cg-show-sources]")) {
-        const fold = UI.$("#cg-sources-fold");
-        if (fold) { S.sourcesOpen = true; fold.open = true; fold.querySelector("summary")?.focus({ preventScroll: true }); fold.scrollIntoView({ block: "nearest" }); }
-        return;
-      }
-      // Only a person's click counts: the browser also fires "toggle" when a fold is drawn already open.
-      if ((el = hit("#cg-sources-fold > summary"))) { S.sourcesOpen = !el.parentElement.open; return; }
       if ((el = hit("[data-cg-upload]"))) { openUpload(Number(el.dataset.cgUpload), el); return; }
       if (hit("[data-cg-send]")) { sendUpload(hit("[data-cg-send]")); return; }
       if ((el = hit("[data-cg-another]"))) {
@@ -785,21 +809,26 @@
       if (hit("#cg-edit-save")) { saveEdit(hit("#cg-edit-save")); return; }
       if (hit("#cg-edit-reset")) { resetEdit(hit("#cg-edit-reset")); return; }
       if ((el = hit("[data-cg-quality]"))) { S.quality = el.dataset.cgQuality; TP.reset(PAGES); trimPicked(); COMP.paint(); UI.$(`[data-cg-quality="${S.quality}"]`)?.focus(); return; }
-      if ((el = hit("[data-cg-reach]"))) { S.reach = el.dataset.cgReach; TP.reset(PAGES); trimPicked(); COMP.paint(); UI.$(`[data-cg-reach="${S.reach}"]`)?.focus(); return; }
       if ((el = hit("[data-cg-sort]"))) {
-        const id = el.dataset.cgSort, first = id === "domain" ? "asc" : "desc"; // names A to Z, numbers biggest first
+        const id = el.dataset.cgSort, first = id === "domain" || id === "anchor" ? "asc" : "desc"; // words A to Z, numbers biggest first
         S.sort = S.sort?.id !== id ? { id, dir: first } : S.sort.dir === first ? { id, dir: first === "asc" ? "desc" : "asc" } : null; // a third click goes back to the usual order
         TP.reset(PAGES); trimPicked(); COMP.paint(); UI.$(`[data-cg-sort="${id}"]`)?.focus();
         return;
       }
       if ((el = hit("[data-cg-links]"))) {
         const domain = el.dataset.cgLinks;
-        if (S.openLinks.has(domain)) S.openLinks.delete(domain); else S.openLinks.add(domain);
+        S.openLink = S.openLink === domain ? null : domain; // one at a time, so the list stays readable
+        S.linkSort = null; TP.reset(LINK_PAGES);
         COMP.paint(); UI.$(`[data-cg-links="${CSS.escape(domain)}"]`)?.focus();
         return;
       }
-      if (hit("[data-cg-clear]")) { S.picked.clear(); updateSelection(); UI.$("#cg-select-all")?.focus({ preventScroll: true }); return; }
-      if (hit("[data-cg-select-all]")) { pickable().forEach((g) => S.picked.add(g.domain)); updateSelection(); return; }
+      if ((el = hit("[data-cg-link-sort]"))) {
+        const id = el.dataset.cgLinkSort, first = id === "pa" ? "desc" : "asc"; // numbers biggest first, words A to Z
+        S.linkSort = S.linkSort?.id !== id ? { id, dir: first } : S.linkSort.dir === first ? { id, dir: first === "asc" ? "desc" : "asc" } : null;
+        TP.reset(LINK_PAGES); COMP.paint(); UI.$(`[data-cg-link-sort="${id}"]`)?.focus();
+        return;
+      }
+      if (hit("[data-cg-clear]")) { S.picked.clear(); updateSelection(); UI.$("#cg-all")?.focus({ preventScroll: true }); return; }
       // The whole row ticks its box, except where the click is on something of its own.
       const row = hit("#cg-table tbody tr");
       if (row && !hit("a, button, input, select, label") && !String(getSelection?.() || "")) {
@@ -823,6 +852,7 @@
         updateSelection();
         return;
       }
+      if (id === "cg-reach") { S.reach = e.target.value; TP.reset(PAGES); trimPicked(); COMP.paint(); UI.$("#cg-reach")?.focus(); return; }
       if (id === "cg-pa") { S.pa = e.target.value; TP.reset(PAGES); trimPicked(); COMP.paint(); UI.$("#cg-pa")?.focus(); return; }
       if (id === "cg-hide") { S.hide = e.target.checked; TP.reset(PAGES); trimPicked(); COMP.paint(); UI.$("#cg-hide")?.focus(); return; }
       if (id === "cg-up-file") {
@@ -848,11 +878,12 @@
       UI = helpers;
       bind();
       TP.on(PAGES, () => { trimPicked(); COMP.paint(); }); // another page, another size, or a search: picks off screen are let go
+      TP.on(LINK_PAGES, () => COMP.paint());
       COMP.isServer().then((server) => { if (server) return loadExistingProspects(); return null; }).catch(() => {});
     },
     async load() {
       const siteId = COMP.siteId;
-      if (S.site !== siteId) { S.site = siteId; S.filter = ""; S.hide = false; S.quality = "all"; S.reach = "any"; S.sort = null; TP.state(PAGES).q = ""; TP.reset(PAGES); S.picked.clear(); S.sourcesOpen = undefined; }
+      if (S.site !== siteId) { S.site = siteId; S.filter = ""; S.hide = false; S.quality = "all"; S.reach = "any"; S.sort = null; S.openLink = null; S.linkSort = null; TP.state(PAGES).q = ""; TP.reset(PAGES); S.picked.clear(); }
       await sync; // anything the Backlinks page just changed is on the server before reading it back
       const [answer, competitors] = await Promise.all([COMP.api("GET", `link-gaps?site_id=${siteId}`), COMP.api("GET", `competitors?site_id=${siteId}`)]);
       if (siteId !== COMP.siteId) return; // another site was picked while this was on its way
@@ -1151,12 +1182,11 @@
     "You lost this link": "Vous avez perdu ce lien",
     "One of your competitors": "Un de vos concurrents",
     "Links to": "Pointe vers",
-    "Links: anchor text and Page Authority": "Liens : ancre et Page Authority",
+    "Upload links": "Importer des liens", "Anchor text": "Texte d'ancre", "Linking page": "Page qui fait le lien", "1 link": "1 lien", "{n} links": "{n} liens", "links": "liens", "Links from {domain}": "Liens de {domain}",
     "Page Authority": "Page Authority",
     "Page Authority of the linking page": "Page Authority de la page qui fait le lien",
     "No anchor text": "Pas de texte d'ancre",
     "Points to": "Pointe vers",
-    "Show all {n} links": "Afficher les {n} liens",
     "{n} or more": "{n} ou plus",
     "Any Page Authority": "Toutes",
     "The {shown} strongest of {total} are listed.": "Les {shown} plus fortes sur {total} sont affichées.",
@@ -1185,7 +1215,7 @@
     "Every domain in your files already links to you, or is one of your own.": "Tous les domaines de vos fichiers pointent déjà vers vous, ou sont les vôtres.",
     "Hide those already in consideration": "Masquer ceux déjà à l'étude",
     "Search domains": "Chercher un domaine", "Competitor": "Concurrent", "All competitors, together": "Tous les concurrents, ensemble",
-    "Any number of them": "Un ou plusieurs", "2 or more of them": "Au moins 2 d'entre eux", "domains": "domaines",
+    "Any number of them": "Un ou plusieurs", "Only 1 of them": "Un seul d'entre eux", "{n} or more of them": "Au moins {n} d'entre eux", "domains": "domaines",
     "Select all shown": "Tout sélectionner à l'écran",
     "Nothing to show with these filters": "Rien à afficher avec ces filtres",
     "Change the filters above to see more domains.": "Modifiez les filtres ci-dessus pour voir plus de domaines.",

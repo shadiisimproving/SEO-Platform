@@ -156,8 +156,6 @@
 .cg-stat b { font-weight: 600; color: var(--text); }
 .cg-stat .mono { overflow-wrap: anywhere; }
 .cg-add-all { margin-left: auto; }
-.cg-sources-fold { margin-bottom: 12px; }
-.cg-sources-fold > .note { margin-top: 10px; }
 #cg-table tr.cg-flagged td { background: color-mix(in srgb, var(--crit-t) 4%, transparent); }
 #cg-table tr.cg-flagged .kw { color: var(--text-2); }
 .tag.cg-flag { color: var(--crit-t); box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 50%, transparent); display: inline-flex; align-items: center; gap: 3px; }
@@ -165,12 +163,10 @@
 .cg-title { display: block; margin-top: 2px; white-space: normal; overflow-wrap: anywhere; font-family: var(--sans, inherit); font-size: 12px; color: var(--text-2); font-weight: 400; }
 .cg-why { display: block; margin-top: 3px; white-space: normal; font-size: 12px; color: var(--text-2); }
 .cg-tools .chips { margin: 0; }
-.cg-sources .what .d { overflow-wrap: anywhere; }
-.cg-sources .what .t { font-weight: 500; overflow-wrap: anywhere; }
 .cg-tools { align-items: center; }
 .cg-tools .opt { margin: 0; }
 .cg-tools .field > span { margin-bottom: 3px; }
-.cg-picktools { margin-left: auto; display: inline-flex; gap: 12px; }
+.cg-picktools { margin-left: auto; display: inline-flex; align-items: center; gap: 12px; }
 #cg-table tbody tr { cursor: pointer; }
 #cg-table tbody tr.cg-off { cursor: default; }
 #cg-table .chk:disabled { opacity: .35; cursor: not-allowed; }
@@ -278,8 +274,6 @@
   .ca-chips { justify-content: flex-end; }
   .ca-others { align-items: flex-end; }
   .cg-rivals { justify-content: flex-end; }
-  .rows.cg-sources > li { flex-wrap: wrap; }
-  .rows.cg-sources .acts { padding-left: 0; }
 }
 
 @media (max-width: 640px) {
@@ -297,7 +291,6 @@
 .cg-count { margin-right: 4px; color: var(--text); }
 .cg-example-link { width: 22px; height: 22px; vertical-align: middle; margin-left: 2px; color: var(--muted); }
 .cg-example-link svg.i { width: 13px; height: 13px; }
-.cg-sources-fold > summary .comp-info { margin-left: 4px; }
 /* AI Overview watch: the caveats behind an (i), the one action beside it. */
 .ca-note-line { display: flex; align-items: center; gap: 8px; margin: -4px 0 10px; }
 /* 2026-11-10: on a wide screen the Status column was taking the room while a domain's name broke after its hyphen. */
@@ -323,26 +316,52 @@
 /* 2026-11-10, re-review: a domain never breaks after its hyphen in Page vs page's Competitor column or in AI Overview's other sites ("rival- / one.example" at 820). */
 .cp-rival-name .logo-text, .ca-others > span { white-space: nowrap; overflow-wrap: normal; }
 
-/* Link gaps: each link of the domain inside its row: anchor text, Page Authority, the page it's on → the competitor page. */
-#cg-table .cg-links-cell { min-width: 240px; max-width: 340px; }
-.cg-links { list-style: none; margin: 0; padding: 0; display: grid; gap: 7px; }
-.cg-links li { display: grid; gap: 1px; min-width: 0; }
-.cg-link-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.cg-anchor { font-size: 13px; color: var(--text); overflow-wrap: anywhere; min-width: 0; }
-.cg-anchor:not(.muted)::before { content: "“"; color: var(--text-3, var(--text-2)); }
-.cg-anchor:not(.muted)::after { content: "”"; color: var(--text-3, var(--text-2)); }
-.tag.cg-pa { flex: none; font-size: 11px; }
-.tag.cg-pa b { font-weight: 600; }
-.cg-link-pages { display: flex; flex-wrap: wrap; gap: 0 6px; font-size: 11.5px; color: var(--text-2); min-width: 0; }
-.cg-link-from { color: var(--text-2); overflow-wrap: anywhere; text-decoration: none; }
-.cg-link-from:hover, .cg-link-from:focus-visible { color: var(--accent, var(--text)); text-decoration: underline; }
-.cg-link-to { overflow-wrap: anywhere; }
-.cg-links-more { margin-top: 6px; font-size: 12px; }
-.cg-links-cell .small { display: block; margin-top: 3px; }
+/* Link gaps: one short line per domain. Its strongest link's Page Authority and anchor text have their own columns; all its links open under the row. */
+#cg-table .th-btn.cg-th, .cg-links-table .th-btn.cg-th { cursor: pointer; display: inline-flex; align-items: center; gap: 3px; }
+.th-btn.cg-th:hover { color: var(--text); }
+.th-btn.cg-th:hover .cg-th-idle { opacity: 1; }
+.data th .th-btn svg.cg-th-idle { opacity: .5; }
+/* The anchor gives way first, so the row's buttons stay on screen. */
+@media (min-width: 1000px) { #cg-table .head-cell { min-width: 0; } }
+.cg-anchor-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-width: 0; }
+.cg-anchor { flex: 1 1 auto; min-width: 0; width: clamp(150px, calc(100vw - 1460px), 460px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--text); }
+.cg-links-btn { flex: none; display: inline-flex; align-items: center; gap: 3px; padding: 3px 6px 3px 8px; border: 0; border-radius: var(--r-s); background: var(--track); font: inherit; font-size: 12px; color: var(--accent-text); white-space: nowrap; cursor: pointer; }
+.cg-links-btn:hover { background: var(--hover); }
+.cg-links-btn:focus-visible { outline: 2px solid var(--c-blue); outline-offset: 1px; }
+.cg-links-btn svg.i { width: 13px; height: 13px; transition: transform .15s; }
+.cg-links-btn[aria-expanded="true"] svg.i { transform: rotate(180deg); }
+.cg-rivals { display: flex; align-items: center; gap: 8px; }
+.cg-logos { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.cg-rivals .cg-logos { width: 125px; } /* five logos a line, so a row stays short */
+.cg-logo { display: inline-flex; border-radius: 4px; }
+.cg-logo .site-logo { vertical-align: 0; border-radius: 4px; }
+.cg-logo:focus-visible, .cg-logos-more:focus-visible { outline: 2px solid var(--c-blue); outline-offset: 1px; }
+.cg-logos-more { font-size: 12px; color: var(--text-2); }
+#cg-table tbody tr.cg-links-row, #cg-table tbody tr.cg-links-row tr { cursor: default; }
+#cg-table tbody tr.cg-links-row:hover td { background: none; }
+#cg-table tbody tr.cg-links-row:hover td:first-child { box-shadow: none; }
+#cg-table tr.cg-links-row > td { padding: 0 12px 12px 48px; }
+.cg-links-panel { border-radius: var(--r-s); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+.cg-links-table { width: 100%; scroll-margin-top: 130px; }
+#cg-table .cg-links-table thead th { position: static; background: var(--track); -webkit-backdrop-filter: none; backdrop-filter: none; }
+.cg-links-table td { vertical-align: top; font-size: 13px; }
+.cg-links-table .cg-link-anchor { width: 38%; overflow-wrap: anywhere; }
+.cg-links-table .cg-page { font-size: 12px; overflow-wrap: anywhere; }
+.cg-link-to { display: inline-flex; align-items: flex-start; gap: 6px; min-width: 0; }
+.cg-links-panel .tp-foot { position: static; padding: 8px 12px; }
+.cg-links-capped { margin: 0; padding: 8px 12px; border-top: 1px solid var(--line); }
 @media (max-width: 640px) {
-  /* On a phone the links get the card's full width under their label, read left to right like the domain. */
-  #cg-table td.cg-links-cell { display: block; min-width: 0; max-width: none; text-align: left; }
-  #cg-table td.cg-links-cell::before { display: block; margin-bottom: 4px; }
+  /* On a phone the anchor gets the card's full width, and each link is a plain block inside the open card. */
+  #cg-table td.cg-anchor-cell { display: block; min-width: 0; text-align: left; }
+  #cg-table td.cg-anchor-cell::before { display: block; margin-bottom: 4px; }
+  .cg-anchor { white-space: normal; overflow-wrap: anywhere; width: auto; }
+  .cg-rivals .cg-logos { width: auto; justify-content: flex-end; }
+  #cg-table tr.cg-links-row > td { display: block; padding: 0; }
+  #cg-table tr.cg-links-row > td::before { content: none; }
+  .cg-links-panel { box-shadow: none; border-radius: 0; }
+  .cg-links-table .cg-link-anchor { width: auto; }
+  .data.cg-links-table tbody tr { margin: 0; padding: 9px 0; background: none; box-shadow: none; border-radius: 0; border-top: 1px solid var(--line); }
+  .cg-links-panel .tp-foot { padding-bottom: 8px; }
 }
 
 /* Link gaps: the competitor choice, each with its logo, and the logo on each "Links to" tag. */

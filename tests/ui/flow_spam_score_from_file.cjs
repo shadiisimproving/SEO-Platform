@@ -24,10 +24,9 @@ fs.writeFileSync(FILE, "﻿" + [
 (async () => {
   const { browser, page, problems } = await open({ width: 1440, height: 950 });
   await page.goto(BASE + "#competitors/gaps"); await page.waitForSelector("#cg-table", { timeout: 20000 }); await page.waitForTimeout(600);
-  if (!(await page.locator("#cg-sources-fold").evaluate((el) => el.open))) await page.click("#cg-sources-fold > summary");
-  await page.locator("[data-cg-upload]").first().click();
+  await page.click("#cg-upload");
   await page.waitForSelector("#cg-up-file");
-  const who = await page.locator("#cg-up-who option").evaluateAll((opts) => opts.find((o) => o.textContent.trim() === "rival-one.example")?.value);
+  const who = await page.locator("#cg-up-who option").evaluateAll((opts) => opts.find((o) => o.textContent.trim().startsWith("rival-one.example "))?.value);
   await page.selectOption("#cg-up-who", who);
   await page.setInputFiles("#cg-up-file", FILE);
   await page.click("#cg-up-send");
