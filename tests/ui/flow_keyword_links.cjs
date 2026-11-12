@@ -82,8 +82,9 @@ const SCREENS = ["today", "overview", "insights", "content", "ai", "keywords", "
     if (!n) continue;
     const link = page.locator("#main a.kw-link").first();
     const word = (await link.getAttribute("data-kw-link")) || "";
-    await link.scrollIntoViewIfNeeded();
-    await link.click();
+    // A screen may still be redrawing (the simpler screens warm up their data): wait, then try once more.
+    await wait(page, 1000);
+    await link.click({ timeout: 10000 }).catch(async () => { await wait(page, 2000); await page.locator("#main a.kw-link").first().click({ timeout: 10000 }); });
     await wait(page, 2500);
     const r = await route();
     const panel = await page.evaluate(() => document.querySelector("#panel h2, #panel .panel-head")?.textContent || "");

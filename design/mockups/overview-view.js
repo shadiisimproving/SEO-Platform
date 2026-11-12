@@ -559,7 +559,7 @@
             data.split?.length ? {
               title: isQuery ? "Pages" : "Queries", rows: data.split, total: data.split.length,
               columns: [
-                { label: isQuery ? "Page" : "Query", key: "name", html: (r) => (isQuery ? PageLink.html(r.name, { text: pathOf(r.name) }) : `<span dir="auto">${esc(r.name)}</span>`) },
+                { label: isQuery ? "Page" : "Query", key: "name", html: (r) => (isQuery ? PageLink.html(r.name, { text: pathOf(r.name) }) : KeywordLink.html(r.name, { host: hostPicked() })) },
                 ...(shares(data) ? [{ label: "Share", key: "share", num: true, html: (r) => (r.share === null || r.share === undefined ? "" : `${num(r.share)}${fr() ? " %" : "%"}`) }] : []),
                 ...numberCols,
               ],
