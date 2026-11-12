@@ -121,21 +121,30 @@
   function tiles(p, ins, acts = []) {
     const c = p.compare || {}, f = ins?.facts || {};
     const off = p.tracking && p.tracking !== "on";
-    const fig = (label, value, sub = "", tip = "", who = "") => `<div class="pt-fig" ${tip ? `data-tip="${esc(tip)}"` : ""}><span class="pt-fig-lab">${who ? COMP.who(who, null, esc(label)) : esc(label)}</span><span class="pt-fig-val"><b class="tabular">${value}</b>${sub ? `<span class="pt-fig-sub">${sub}</span>` : ""}</span></div>`;
-    const out = [];
-    // With no keyword list or no check yet there are no keyword figures to show, and the Keywords tab says why: no row of dashes.
-    if (!off && !kwUnknown()) {
-      out.push(fig(t("Shared keywords"), figure(c.shared), c.shared ? fill("{them} lead {they} · {you} lead {mine}", { them: COMP.who("them"), they: num(c.they_ahead), you: COMP.who("you"), mine: num(c.i_ahead) }) : "", t("Keywords you both rank on.")));
-      out.push(fig(t("Only them"), figure(c.theirs_only), "", t("They rank, you weren't found."), "them"));
-      out.push(fig(t("Only you"), figure(c.mine_only), "", t("You rank, they weren't found."), "you"));
-    }
-    // Each number once, with its owner's logo and name beside it. Yours is left out until your site is read.
+    /* Four equal number cards (2026-11-12, the owner found the one-line strip of squares, logos and coloured words hard to read):
+       one big number, one plain sub line, and whose it is as one small coloured word (COMP.who). A card opens what it counts:
+       Shared, Only them and Only you their Keywords choice, Pages the Pages tab. Simpler screens: UI.card; otherwise the same look. */
     const myHost = COMP.site?.()?.host || p.site?.host;
-    const owned = (who, host, value) => `${COMP.who(who, host)}${value}`;
-    const theirPages = p.crawl?.status === "blocked" ? dash : figure(f.pages);
-    out.push(fig(t("Pages"), `${f.my_pages ? owned("you", myHost, num(f.my_pages)) : ""}${owned("them", p.host, theirPages)}`, "", f.my_pages ? t("Pages found on each site.") : t("Yours are counted once your site is read.")));
-    if (known(f.da) || known(f.my_da)) out.push(fig(t("Authority"), `${known(f.my_da) ? owned("you", myHost, num(f.my_da)) : ""}${owned("them", p.host, figure(f.da))}`, "", t("Moz Domain Authority.")));
-    return `<section class="pt-strip" aria-label="${esc(t("How you compare"))}">${out.join("")}${acts.length ? `<div class="pt-answer-acts">${acts.join("")}</div>` : ""}</section>`;
+    const theirPages = p.crawl?.status === "blocked" ? null : known(f.pages) ? f.pages : null;
+    const kwKnown = !off && !kwUnknown();
+    const why = off ? t("Not tracked for keywords.") : t("Keywords not checked.");
+    const cards = [
+      { id: "shared", label: t("Shared keywords"), value: kwKnown ? c.shared : null, tip: t("Keywords you both rank on."),
+        sub: !kwKnown ? esc(why) : c.shared ? esc(fill("They lead {they}, you lead {mine}", { they: num(c.they_ahead || 0), mine: num(c.i_ahead || 0) })) : esc(t("No shared keyword")), go: ["kw", "shared"] },
+      { id: "theirs_only", label: COMP.who("them", null, t("Only them")), value: kwKnown ? c.theirs_only : null, tip: t("They rank, you weren't found."), sub: esc(kwKnown ? t("They rank, you don't") : why), go: ["kw", "theirs_only"] },
+      { id: "mine_only", label: COMP.who("you", null, t("Only you")), value: kwKnown ? c.mine_only : null, tip: t("You rank, they weren't found."), sub: esc(kwKnown ? t("You rank, they don't") : why), go: ["kw", "mine_only"] },
+      { id: "pages", label: t("Pages"), value: theirPages, tip: f.my_pages ? t("Pages found on each site.") : t("Yours are counted once your site is read."),
+        sub: esc(f.my_pages ? fill("{mine} yours · {theirs} theirs", { mine: num(f.my_pages), theirs: theirPages === null ? "—" : num(theirPages) }) : theirPages === null ? (p.crawl?.status === "blocked" ? t("Their site blocks bots") : t("Not read yet")) : t("Theirs · yours once read")), go: ["tab", "pages"] },
+    ];
+    if (known(f.da) || known(f.my_da)) cards.push({ id: "authority", label: t("Authority"), value: known(f.da) ? f.da : null, tip: t("Moz Domain Authority."), sub: esc(known(f.my_da) ? fill("Yours {n}", { n: num(f.my_da) }) : t("Their score; yours not looked up")), go: ["tab", "site"] });
+    const simple = UI().simple?.() && UI().card;
+    const card = (x) => {
+      const attrs = { "data-pt-card": x.id, "data-pt-go-kind": x.go[0], "data-pt-go-to": x.go[1], "title": x.tip };
+      if (simple) return UI().card({ id: `pt-${x.id}`, label: `<span class="pt-fig-lab">${x.label}</span>`, value: x.value, sub: x.sub, info: x.tip, def: false, button: true, cls: "pt-card pt-fig", attrs });
+      const fig = x.value === null || x.value === undefined ? `<span class="muted">—</span>` : num(x.value);
+      return `<button type="button" class="pt-card pt-fig" data-pt-card="${x.id}" data-pt-go-kind="${x.go[0]}" data-pt-go-to="${x.go[1]}" data-tip="${esc(x.tip)}"><span class="pt-card-lab pt-fig-lab">${x.label}</span><span class="pt-card-row"><span class="pt-card-fig tabular">${fig}</span><span class="pt-card-sub">${x.sub}</span></span></button>`;
+    };
+    return `<section class="pt-strip pt-cards${simple ? " tiles" : ""}" aria-label="${esc(t("How you compare"))}">${cards.map(card).join("")}</section>`;
   }
 
   // ---- the tabs ------------------------------------------------------------------------------
@@ -369,25 +378,53 @@
       : busyMonths.length < 3 ? (busyMonths.length ? `<p class="small sec pt-few-months">${asWords}.</p>` : "")
       : monthChart(months, showMine);
     const years = historyBlock(ins);
+    const edits = editsCard(r, showMine);
     return `<section class="card"><div class="card-head"><h2>${t("How fast they publish")}</h2><span class="end small muted">${t("New pages each month")}${UI().tip("Counted from the dates on their pages.")}</span></div><div class="cl-section-body">${lead}${chart}${showMine || !months.length ? "" : notReadNote()}</div></section>
+      ${edits}
       ${years}
       <section class="card" aria-label="${esc(t("Timeline"))}"><div class="card-head"><h2>${t("Timeline")}</h2>${COMP.info("Moves only compare two checks by the same tool and place, so a tool change never shows as a move.")}</div>
         <div class="cl-section-body" id="cl-timeline">${parts.timelineBody(p)}</div></section>`;
   }
 
+  /* Edits to pages they already had, per month, beside mine. The app only sees edits from the day it started watching,
+     so the months before that are left out instead of shown as zero. */
+  function editsCard(r, showMine) {
+    const all = r?.edits || [];
+    const since = r?.edits_since?.theirs;
+    const from = since ? since.slice(0, 7) : null;
+    const months = from ? all.filter((m) => m.month >= from) : [];
+    S.editMonths = months; // the hover label reads the same months the bars were drawn from
+    const total = months.reduce((n, m) => n + (m.theirs || 0), 0);
+    const myTotal = showMine ? months.reduce((n, m) => n + (m.mine || 0), 0) : null;
+    const now = months[months.length - 1];
+    const said = [];
+    if (from) {
+      said.push(`${fill("Since {day}:", { day: longDay(since) })} ${total ? many(total, "they made {n} edit", "they made {n} edits") : t("they made no edits")}${showMine ? `, ${many(myTotal, "you made {n}", "you made {n}")}` : ""}.`);
+      if (now && months.length > 1) said.push(fill("This month: {theirs}{mine}.", { theirs: num(now.theirs || 0), mine: showMine ? `, ${t("you")} ${num(now.mine || 0)}` : "" }));
+    }
+    const lead = said.length ? `<p class="pt-lead">${esc(said.join(" "))}</p>` : "";
+    const busy = months.filter((m) => (m.theirs || 0) + (showMine ? m.mine || 0 : 0) > 0);
+    const chart = !from ? `<p class="cl-none small sec">${t("Fills in once the app has read their pages twice.")}</p>`
+      : !busy.length ? "" : monthChart(months, showMine, "edits");
+    return `<section class="card"><div class="card-head"><h2>${t("How often they edit")}</h2><span class="end small muted">${t("Edits each month")}${UI().tip("Changes the app saw on pages they already had: title, text, headings and so on. Counted from the day the app started watching.")}</span></div><div class="cl-section-body">${lead}${chart}</div></section>`;
+  }
+  const longDay = (iso) => { try { return new Date(`${iso}T00:00:00Z`).toLocaleDateString(UI().state.lang || undefined, { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }); } catch { return iso; } };
+
   /* Bars drawn in HTML at a fixed height, so the numbers stay the same size on any screen. The key above the chart
      is the facts row, so there's no second legend. A hover label per month, and the same numbers as a short table. */
-  function monthChart(months, showMine) {
+  function monthChart(months, showMine, series = "months") {
     const max = Math.max(1, ...months.flatMap((m) => [m.theirs || 0, showMine ? m.mine || 0 : 0]));
     const step = niceStep(max), ceil = Math.ceil(max / step) * step;
     const height = (v) => (v ? `max(3px, ${(v / ceil) * 100}%)` : "0");
     const ticks = [];
     for (let v = 0; v <= ceil; v += step) ticks.push(`<span class="pt-tick" style="bottom:${(v / ceil) * 100}%"><span class="tabular">${num(v)}</span></span>`);
     const cols = months.map((m, i) => `<div class="pt-month" data-pt-month="${i}"><div class="pt-pair"><i class="pt-bar-them" style="height:${height(m.theirs)}">${m.theirs ? `<b class="pt-bar-val tabular">${num(m.theirs)}</b>` : ""}</i>${showMine ? `<i class="pt-bar-you" style="height:${height(m.mine)}">${m.mine ? `<b class="pt-bar-val tabular">${num(m.mine)}</b>` : ""}</i>` : ""}</div><span class="pt-mlabel">${esc(shortMonth(m.month))}</span></div>`).join("");
-    const label = showMine ? t("New pages each month, them against you") : t("Their new pages each month");
+    const label = series === "edits"
+      ? (showMine ? t("Edits each month, them against you") : t("Their edits each month"))
+      : (showMine ? t("New pages each month, them against you") : t("Their new pages each month"));
     const table = `<details class="pt-as-table"><summary class="small">${t("Show table")}</summary><div class="cl-scroll"><table class="data cl-table pt-narrow"><thead><tr><th scope="col">${t("Month")}</th>${vsHead("them", S.p?.host)}${showMine ? vsHead("you", COMP.site?.()?.host || S.p?.site?.host) : ""}</tr></thead><tbody>${months.map((m) => `<tr><td class="head-cell">${esc(longMonth(m.month))}</td><td class="c tabular">${num(m.theirs || 0)}</td>${showMine ? `<td class="c tabular">${num(m.mine || 0)}</td>` : ""}</tr>`).join("")}</tbody></table></div></details>`;
     const key = showMine ? `<p class="pt-chart-key small sec">${COMP.who("them", S.p?.host)}${COMP.who("you", COMP.site?.()?.host || S.p?.site?.host)}</p>` : "";
-    return `${key}<div class="pt-chart-wrap"><div class="pt-chart${showMine ? " pt-two" : ""}" role="img" aria-label="${esc(label)}"><div class="pt-plot">${ticks.join("")}<div class="pt-cols">${cols}</div></div></div><div class="pt-tip" id="pt-tip" hidden></div></div>${table}`;
+    return `${key}<div class="pt-chart-wrap" data-pt-series="${series}"><div class="pt-chart${showMine ? " pt-two" : ""}" role="img" aria-label="${esc(label)}"><div class="pt-plot">${ticks.join("")}<div class="pt-cols">${cols}</div></div></div><div class="pt-tip" hidden></div></div>${table}`;
   }
   const niceStep = (max) => { const raw = max / 4; const mag = 10 ** Math.floor(Math.log10(raw)); const n = raw / mag; return Math.max(1, (n <= 1 ? 1 : n <= 2 ? 2 : n <= 5 ? 5 : 10) * mag); };
   const shortMonth = (ym) => { try { return new Date(`${ym}-01T00:00:00Z`).toLocaleDateString(UI().state.lang || undefined, { month: "short", timeZone: "UTC" }); } catch { return ym; } };
@@ -577,7 +614,9 @@
   function headBlock(p, ins) {
     Object.assign(S, { p, ins, kwShown: kwUnknown() });
     const said = answer(p, ins);
-    return `${said.html}${tiles(p, ins, said.acts)}`;
+    // The answer's buttons sit at the end of its sentence, so the four cards need no row of their own under them.
+    const acts = said.acts.length ? `<div class="pt-answer-acts">${said.acts.join("")}</div>` : "";
+    return `${acts ? said.html.replace(/<\/section>\s*$/, `${acts}</section>`) : said.html}${tiles(p, ins)}`;
   }
 
   function repaint(focus) {
@@ -615,8 +654,8 @@
   }
 
   function showTip(g) {
-    const tip = UI().$("#pt-tip"), wrap = g.closest(".pt-chart-wrap");
-    const months = S.ins?.rhythm?.months || [];
+    const wrap = g.closest(".pt-chart-wrap"), tip = wrap?.querySelector(".pt-tip");
+    const months = (wrap?.dataset.ptSeries === "edits" ? S.editMonths : S.ins?.rhythm?.months) || [];
     const m = months[Number(g.dataset.ptMonth)];
     if (!tip || !wrap || !m) return;
     UI().setHTML(tip, `<b>${esc(longMonth(m.month))}</b><span><i class="pt-key pt-key-them"></i>${t("Them")} <b class="tabular">${num(m.theirs || 0)}</b></span>${S.showMine ? `<span><i class="pt-key pt-key-you"></i>${t("You")} <b class="tabular">${num(m.mine || 0)}</b></span>` : ""}`);
@@ -631,8 +670,7 @@
     UI().$$(".pt-month", wrap).forEach((other) => other.classList.toggle("dim", other !== g));
   }
   function hideTip() {
-    const tip = UI().$("#pt-tip");
-    if (tip) tip.hidden = true;
+    UI().$$(".pt-tip").forEach((tip) => { tip.hidden = true; });
     UI().$$(".pt-month.dim").forEach((g) => g.classList.remove("dim"));
   }
 
@@ -644,6 +682,11 @@
       const hit = (sel) => e.target.closest?.(sel);
       let el;
       if ((el = hit("[data-pt-tab]"))) { pickTab(el.dataset.ptTab); return; }
+      if ((el = hit("[data-pt-card]"))) {
+        if (el.dataset.ptGoKind === "kw") { S.parts?.showKeywords?.(el.dataset.ptGoTo); pickTab("keywords", { focus: false }); UI().$(`[data-cl-kw="${el.dataset.ptGoTo}"]`)?.focus({ preventScroll: false }); }
+        else pickTab(el.dataset.ptGoTo);
+        return;
+      }
       if (hit("[data-pt-only-them]")) { S.parts?.showKeywords?.("theirs_only"); pickTab("keywords", { focus: false }); UI().$('[data-cl-kw="theirs_only"]')?.focus({ preventScroll: false }); return; }
       if ((el = hit("[data-pt-go]"))) { UI().go?.(el.dataset.ptGo); return; }
       if (hit("[data-pt-gaps]")) { COMP.open("gaps"); return; }
@@ -799,6 +842,12 @@
     "nothing removed": "rien de retiré",
     "{share} of their pages were updated in 12 months.": "{share} de leurs pages ont été mises à jour en 12 mois.",
     "How fast they publish": "À quel rythme ils publient",
+    "How often they edit": "À quelle fréquence ils modifient", "Edits each month": "Modifications par mois",
+    "Edits each month, them against you": "Modifications par mois, eux face à vous", "Their edits each month": "Leurs modifications par mois",
+    "they made {n} edit": "ils ont fait {n} modification", "they made {n} edits": "ils ont fait {n} modifications", "they made no edits": "ils n'ont fait aucune modification",
+    "you made {n}": "vous {n}", "Since {day}:": "Depuis le {day} :", "This month: {theirs}{mine}.": "Ce mois-ci : {theirs}{mine}.",
+    "Fills in once the app has read their pages twice.": "Se remplit quand l'app a lu leurs pages deux fois.",
+    "Changes the app saw on pages they already had: title, text, headings and so on. Counted from the day the app started watching.": "Changements vus par l'app sur des pages qui existaient déjà : titre, texte, titres de section… Comptés depuis le jour où l'app a commencé à surveiller.",
     
     "you": "vous",
     "domain registered {date}": "domaine enregistré en {date}",
@@ -829,6 +878,9 @@
     "They rank, you weren't found.": "Ils se classent, vous êtes introuvable.",
     "You rank, they weren't found.": "Vous vous classez, eux sont introuvables.",
     "Pages found on each site.": "Pages trouvées sur chaque site.",
+    "They lead {they}, you lead {mine}": "Ils mènent sur {they}, vous sur {mine}", "They rank, you don't": "Ils se classent, pas vous", "You rank, they don't": "Vous vous classez, pas eux",
+    "{mine} yours · {theirs} theirs": "{mine} à vous · {theirs} à eux", "Their site blocks bots": "Leur site bloque les robots", "Theirs · yours once read": "Les leurs · les vôtres une fois lues",
+    "Yours {n}": "Le vôtre : {n}", "Their score; yours not looked up": "Le leur ; le vôtre pas encore cherché",
     "Questions in their headings": "Questions dans leurs titres",
     "Your own pages aren't read yet, so the app can't tell which of these you already answer.": "Vos propres pages ne sont pas encore lues : l'application ne peut pas dire lesquelles vous traitez déjà.",
     "Too few months to draw yet.": "Trop peu de mois pour tracer un graphique.",

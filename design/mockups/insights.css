@@ -26,14 +26,14 @@
 .in-bar-row.quiet b { color: var(--muted); }
 .in-see { margin-top: 10px; }
 
-.in-figs { display: flex; flex-wrap: wrap; margin-bottom: 14px; border-radius: 14px; background: var(--glass); box-shadow: inset 0 0 0 1px var(--line); }
-.in-fig { flex: 1 1 160px; display: flex; align-items: baseline; gap: 8px; padding: 10px 18px; min-width: 0; }
-.in-fig + .in-fig { border-left: 1px solid var(--line); }
-.in-fig .lab { font-size: 13px; color: var(--text-2); }
-.in-fig .fig { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
-.in-fig .sub { font-size: 12px; color: var(--muted); }
+.in-figs:not(.in-cards) { display: flex; flex-wrap: wrap; margin-bottom: 14px; border-radius: 14px; background: var(--glass); box-shadow: inset 0 0 0 1px var(--line); }
+.in-figs:not(.in-cards) .in-fig { flex: 1 1 160px; display: flex; align-items: baseline; gap: 8px; padding: 10px 18px; min-width: 0; }
+.in-figs:not(.in-cards) .in-fig + .in-fig { border-left: 1px solid var(--line); }
+.in-figs:not(.in-cards) .in-fig .lab { font-size: 13px; color: var(--text-2); }
+.in-figs:not(.in-cards) .in-fig .fig { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
+.in-figs:not(.in-cards) .in-fig .sub { font-size: 12px; color: var(--muted); }
 
-.tab .in-count { display: inline-block; min-width: 18px; margin-left: 4px; padding: 0 5px; border-radius: 999px; font-size: 11px; line-height: 17px; text-align: center; color: var(--text-2); background: var(--chip); }
+:is(.tab, .page-tab) .in-count { display: inline-block; min-width: 18px; margin-left: 4px; padding: 0 5px; border-radius: 999px; font-size: 11px; line-height: 17px; text-align: center; color: var(--text-2); background: var(--chip); }
 .in-need { color: var(--warn-t); }
 .in-need a { color: inherit; text-decoration: underline; }
 
@@ -41,7 +41,13 @@
 .in-table .t { font-weight: 500; color: var(--text); overflow-wrap: anywhere; }
 .in-table .s { margin-top: 2px; overflow-wrap: anywhere; }
 .in-what { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-bottom: 3px; }
-.in-kind { font-size: 12px; color: var(--text-2); }
+/* The kind's tag, one colour per family (insights-view.js kindFamily). Red and amber are kept for losses and technical
+   problems, which are what they mean in the Clear look; chances blue, gains teal, plain information grey. */
+.in-kind { font-size: 11px; font-weight: 600; letter-spacing: .01em; line-height: 18px; padding: 0 8px; border-radius: 999px; color: var(--c-blue); background: var(--c-blue-pale); overflow-wrap: anywhere; }
+.in-kind.k-loss { color: var(--crit-t); background: color-mix(in srgb, var(--crit-t) 12%, transparent); }
+.in-kind.k-tech { color: var(--warn-t); background: color-mix(in srgb, var(--warn-t) 14%, transparent); }
+.in-kind.k-gain { color: var(--c-teal); background: var(--c-teal-pale); }
+.in-kind.k-info { color: var(--text-2); background: var(--track); }
 .in-task { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--good-t); }
 .in-task svg { width: 13px; height: 13px; }
 .in-act-col { width: 1%; white-space: nowrap; color: var(--muted); }
@@ -77,10 +83,10 @@
 .in-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 
 @media (max-width: 640px) {
-  .in-figs { flex-direction: column; }
-  .in-fig { justify-content: space-between; padding: 10px 14px; flex: none; }
-  .in-fig + .in-fig { border-left: 0; border-top: 1px solid var(--line); }
-  .in-fig .lab { margin-right: auto; }
+  .in-figs:not(.in-cards) { flex-direction: column; }
+  .in-figs:not(.in-cards) .in-fig { justify-content: space-between; padding: 10px 14px; flex: none; }
+  .in-figs:not(.in-cards) .in-fig + .in-fig { border-left: 0; border-top: 1px solid var(--line); }
+  .in-figs:not(.in-cards) .in-fig .lab { margin-right: auto; }
   .in-table :is(td, th).in-act-col { display: none; }
 }
 .in-season { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; color: var(--warn-t); background: var(--line); }
@@ -124,4 +130,18 @@
 .in-ans-cause { display: block; font-size: 14px; font-weight: 400; }
 .in-ans-cause b.down { color: var(--crit-t); }
 .in-ans-cause b.up { color: var(--good-t); }
+
+/* ---- The simpler screen (html[data-simple="1"], insights-view.js simplePage): three number cards, the underline tabs with
+   their (i), Filter in the search row, and a finding in the wide row panel. Nothing here applies with the switch off. */
+html[data-simple="1"] .in-cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0 0 14px; }
+html[data-simple="1"] .in-tabs-head { display: flex; flex-wrap: nowrap; align-items: flex-end; gap: 4px; padding: 0 10px 0 0; border-bottom: 1px solid var(--line); }
+html[data-simple="1"] .in-tabs-head .page-tabs.in-card { flex: 1 1 auto; min-width: 0; border-bottom: 0; }
+html[data-simple="1"] .in-tabs-i { flex: none; display: inline-flex; align-items: center; min-height: 40px; }
+html[data-simple="1"] .in-tabs-card .ov-controls { padding-top: 12px; }
+html[data-simple="1"] .in-tabs-card .in-need { margin-top: 8px; }
+html[data-simple="1"] #panel .rp-chart.in-spark { margin: 0 0 16px; color: inherit; }
+html[data-simple="1"] #panel .in-stake-how { display: flex; align-items: center; gap: 2px; margin: 0 0 6px; font-size: 12px; }
+html[data-simple="1"] #panel .rp-sec-html .in-do { margin: 6px 0 0; }
+html[data-simple="1"] #panel .in-ai-wrap { margin-top: 4px; }
+@media (max-width: 860px) { html[data-simple="1"] .in-cards { grid-template-columns: 1fr; gap: 8px; } }
 .in-answer .ov-answer + .ov-answer { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }

@@ -16,12 +16,23 @@ const one = (page, sel, fn) => page.$eval(sel, fn);
   await page.waitForSelector("#cs-moves-list", { timeout: 15000 }); await page.waitForTimeout(600);
   await one(page, "#cs-moves", (el) => el.scrollIntoView());
   await page.screenshot({ path: `${OUT}/w1-collective.png` });
-  const rows = await all(page, "#cs-moves-list > li", (e) => e.length);
+  const rows = await all(page, "#cs-moves-list tbody > tr", (e) => e.length);
   check(rows > 5, `more than the old 5 rows show at once (${rows})`);
   check(Boolean(await page.$("#cs-moves [data-tp-key]")), "the list has pages, as every long table");
-  const facts = await all(page, "#cs-moves-list .cl-facts", (e) => e.length);
-  check(facts > 0, `rows show a line of facts (${facts})`);
-  const titles = await all(page, "#cs-moves-list .cl-facts-title", (e) => e.map((x) => x.textContent.trim()).filter(Boolean));
+  // 2026-11-12: a normal table, one row per change, with tick boxes from table-tools.js
+  const heads = await all(page, "#cs-moves-list thead th", (e) => e.map((x) => x.textContent.trim()));
+  check(["Date", "Competitor", "Change", "Page", "What changed"].every((h) => heads.includes(h)), `a table with its headings (${heads.join(" | ")})`);
+  const ticks = await all(page, "#cs-moves-list tbody tr .tt-pick input", (e) => e.length);
+  check(ticks === rows, `every row has a tick box (${ticks} of ${rows})`);
+  await page.locator("#cs-moves-list tbody tr .tt-pick input").nth(0).click({ force: true });
+  await page.locator("#cs-moves-list tbody tr .tt-pick input").nth(1).click({ force: true }); await page.waitForTimeout(300);
+  check(/2 selected/.test(await page.textContent("#tt-bar")), "ticking two rows shows 2 selected");
+  check(Boolean(await page.$("#tt-bar [data-tt-note]")), "the bar offers Add a note");
+  await page.screenshot({ path: `${OUT}/w1b-selected.png` });
+  await page.click("[data-tt-clear-picks]"); await page.waitForTimeout(300);
+  const facts = await all(page, "#cs-moves-list .cl-tl-short", (e) => e.length);
+  check(facts > 0, `rows say what changed (${facts})`);
+  const titles = await all(page, "#cs-moves-list .cl-tl-title", (e) => e.map((x) => x.textContent.trim()).filter(Boolean));
   check(titles.length > 0, `rows show the page's title (${JSON.stringify(titles.slice(0, 2))})`);
   const fold = await page.$("#cs-moves-list details.cl-more-facts");
   check(Boolean(fold), "a row has All the details");
@@ -32,7 +43,7 @@ const one = (page, sel, fn) => page.$eval(sel, fn);
     await fold.scrollIntoViewIfNeeded();
     await page.screenshot({ path: `${OUT}/w2-details.png` });
   }
-  const pageFold = await page.$('#cs-moves-list li:has-text("New page") details.cl-more-facts');
+  const pageFold = await page.$('#cs-moves-list tr:has-text("Added") details.cl-more-facts');
   check(Boolean(pageFold), "a new page has All the details");
   if (pageFold) {
     await (await pageFold.$("summary")).click(); await page.waitForTimeout(300);
@@ -46,7 +57,7 @@ const one = (page, sel, fn) => page.$eval(sel, fn);
   const other = kinds.find(([k, n]) => k !== "all" && n > 0);
   if (other) {
     await page.click(`[data-cs-mv-kind="${other[0]}"]`); await page.waitForTimeout(400);
-    const shown = await all(page, "#cs-moves-list > li", (e) => e.length);
+    const shown = await all(page, "#cs-moves-list tbody > tr", (e) => e.length);
     check([25, 50, 100].some((per) => shown === Math.min(other[1], per)), `${other[0]} shows its ${other[1]} (${shown} on this page)`);
     check((await page.getAttribute(`[data-cs-mv-kind="${other[0]}"]`, "aria-pressed")) === "true", "the chip pressed says so");
     await page.click('[data-cs-mv-kind="all"]'); await page.waitForTimeout(300);
@@ -55,7 +66,7 @@ const one = (page, sel, fn) => page.$eval(sel, fn);
   check(choices.length > 2, `each competitor can be picked (${choices.map((c) => c[1]).join(" | ")})`);
   if (choices.length > 1) {
     await page.selectOption("#cs-mv-rival", choices[1][0]); await page.waitForTimeout(400);
-    const who = await all(page, "#cs-moves-list .cs-who .logo-text", (e) => [...new Set(e.map((x) => x.textContent.trim()))]);
+    const who = await all(page, "#cs-moves-list .cl-tl-rival .logo-text", (e) => [...new Set(e.map((x) => x.textContent.trim()))]);
     check(who.length === 1, `only that competitor is listed (${who.join(", ")})`);
     await page.screenshot({ path: `${OUT}/w3-one-competitor.png` });
     await page.selectOption("#cs-mv-rival", ""); await page.waitForTimeout(300);

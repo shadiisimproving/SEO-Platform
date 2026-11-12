@@ -74,3 +74,46 @@
 @media (max-width: 640px) { .lv-tools { padding: 10px 12px 6px; } }
 /* The card clips instead of hiding its overflow, so the pages footer can stick: "hidden" would make the card its scroll box. */
 .card:has(> .tp-foot) { overflow: clip; }
+
+/* Content's unknown page and social networks with their logos (2026-11-12, both looks). */
+.lv-unknown { color: var(--text-2); font-style: italic; }
+.lv-bar .lab.with-logo { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+
+/* The simpler screens: Channels, Conversions and Content (UI.simple(), track T2, 2026-11-12). Nothing here applies with the switch off. */
+html[data-simple="1"] .lv-page > :is(.card, .lv-two, .page-tabs) + :is(.card, .lv-two) { margin-top: 14px; }
+html[data-simple="1"] .lv-page > .page-tabs + .card { margin-top: 0; }
+/* The floating Notes button sits over the page's foot: the last rows can scroll clear of it. */
+html[data-simple="1"] body:has(#nb-fab) .lv-page { padding-bottom: 64px; }
+html[data-simple="1"] .lv-chart-sm .lv-chart { --lv-h: 180px; }
+html[data-simple="1"] .lv-chart-sm .lv-chart svg { height: 180px; }
+html[data-simple="1"] tr[data-rp-open] { cursor: pointer; }
+html[data-simple="1"] tr[data-rp-open]:focus-visible { outline: 2px solid var(--focus, var(--c-blue)); outline-offset: -2px; }
+/* A short list (a Clarity download's pages and referrers): the number right beside its words, no empty stretch between. */
+html[data-simple="1"] .lv-compact table.data { width: auto; min-width: min(100%, 360px); }
+html[data-simple="1"] .lv-compact table.data td:first-of-type, html[data-simple="1"] .lv-compact table.data th:first-of-type { max-width: 520px; }
+/* Tabs at a card's top, the table's own tools (Filter) at their right. */
+html[data-simple="1"] .lv-tabbar { display: flex; align-items: center; gap: 8px; border-bottom: 1px solid var(--line); padding-right: 12px; }
+html[data-simple="1"] .lv-tabbar .page-tabs.in-card { flex: 1 1 auto; border-bottom: 0; min-width: 0; }
+html[data-simple="1"] .lv-tab-tools { margin-left: auto; display: inline-flex; align-items: center; gap: 8px; }
+html[data-simple="1"] .lv-tab-tools:empty { display: none; }
+html[data-simple="1"] .lv-clarity .page-tabs.in-card { border-bottom: 1px solid var(--line); }
+/* From visit to lead: one line per channel. */
+html[data-simple="1"] .lv-funnel-lines { gap: 4px; }
+html[data-simple="1"] .lv-fline { min-height: 32px; grid-template-columns: minmax(90px, 160px) 1fr 20em; }
+html[data-simple="1"] .lv-fline .val { text-align: right; white-space: nowrap; }
+html[data-simple="1"] .lv-in-card { padding: 12px 18px 4px; margin: 0; }
+html[data-simple="1"] .lv-pad { padding: 12px 18px 14px; margin: 0; }
+html[data-simple="1"] .lv-answer { padding-bottom: 0; }
+html[data-simple="1"] .lv-h3 { margin: 0 0 8px; }
+html[data-simple="1"] .lv-h3:not(:first-child) { margin-top: 14px; }
+html[data-simple="1"] .lv-errors { margin: 0; padding-left: 18px; }
+html[data-simple="1"] .lv-speed-real { margin: 0; }
+html[data-simple="1"] .lv-rules-help { margin: 0 0 10px; }
+html[data-simple="1"] .lv-rules-none { margin: 0 0 8px; }
+html[data-simple="1"] #panel .lv-rule-form { padding: 12px 0 0; }
+html[data-simple="1"] #panel .lv-rule { padding: 8px 0; }
+@media (max-width: 640px) {
+  html[data-simple="1"] .lv-fline { grid-template-columns: 1fr; gap: 4px; }
+  html[data-simple="1"] .lv-fline .val { text-align: left; white-space: normal; }
+  html[data-simple="1"] .lv-compact table.data { width: 100%; }
+}

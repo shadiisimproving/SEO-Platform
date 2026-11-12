@@ -107,7 +107,22 @@ def _mine(conn, sites: list[dict]) -> list[dict]:
     edits = profile.edits_last_30_days(conn, OWN)
     marks = ",".join(str(i) for i in ids)
     since = dict(conn.execute(text(f"SELECT s.id, MIN(p.first_seen_at) FROM sites s JOIN domains d ON d.host = s.host JOIN pages p ON p.domain_id = d.id WHERE s.id IN ({marks}) GROUP BY s.id")).all())
-    return [{**site, "display": store.to_display_host(site["host"]), "edits_30d": int(edits.get(site["id"], 0)), "reading_since": _iso(since.get(site["id"])), "crawl": crawls[site["id"]]} for site in sites]
+    # The edits themselves, newest first, for the Competitors table's "See your edits" (2026-11-12): the same 30 days and rule as the count.
+    recent: dict[int, list[dict]] = {}
+    rows = conn.execute(text(
+        "SELECT s.id AS site_id, e.id, e.kind, e.detected_at, e.before_value, e.after_value, e.changed_words, p.url FROM sites s "
+        "JOIN domains d ON d.host = s.host JOIN change_events e ON e.domain_id = d.id JOIN pages p ON p.id = e.page_id "
+        f"WHERE s.id IN ({marks}) AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL 30 DAY ORDER BY e.detected_at DESC, e.id DESC"
+    )).mappings().all()
+    for r in rows:
+        held = recent.setdefault(r["site_id"], [])
+        if len(held) < MINE_EDITS:
+            held.append({"id": r["id"], "kind": r["kind"], "at": _iso(r["detected_at"]), "url": r["url"], "before": r["before_value"], "after": r["after_value"], "changed_words": r["changed_words"]})
+    return [{**site, "display": store.to_display_host(site["host"]), "edits_30d": int(edits.get(site["id"], 0)), "reading_since": _iso(since.get(site["id"])), "crawl": crawls[site["id"]],
+             "recent_edits": recent.get(site["id"], [])} for site in sites]
+
+
+MINE_EDITS = 200  # the newest of my own edits sent with the count; the count itself stays exact
 
 
 def rivals(engine: Engine, site_id: int | None = None) -> dict:

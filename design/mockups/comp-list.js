@@ -52,7 +52,7 @@
   const list = { rows: null, site: null, scroll: 0, flash: null, follow: null };
   const view = { data: null, filter: "all", limit: 50, kw: "shared", sort: { key: "keyword", dir: 1 } };
   /* The long tables have pages and a search (table-pages.js), like every long table in the app. The timeline is a list of days, with Show more. */
-  const PAGES = { list: "cl-list", keywords: "cl-kw" }, EVIDENCE = (domain) => `cl-ev:${domain}`;
+  const PAGES = { list: "cl-list", keywords: "cl-kw", timeline: "cl-tl" }, EVIDENCE = (domain) => `cl-ev:${domain}`;
   const FIND_FROM = 11; // more than 10 rows, as on every table: a search box shows from this many rows, or while a search is on
   const find = { data: null, site: null, open: new Set(), groups: new Set(), polling: null, lastBadge: null };
   const upload = { file: null, bytes: null, text: "", unicode: true, reencode: false, encoding: "" };
@@ -623,6 +623,9 @@
     return `${line}${rows ? `<details class="cl-more-facts"><summary>${icon("chevron-right")}${t("Details")}</summary><dl class="cl-dl">${rows}</dl></details>` : ""}`;
   }
   COMP.changeFacts = factsOf;
+  /* For other tabs listing changes (the Competitors table's "See your edits"): the kind in words, and the one short line. */
+  COMP.changeWord = (kind) => t(KINDS[kind]?.[1] || kind);
+  COMP.changeShort = (e) => shortChange(e);
   COMP.TIMELINE_FILTERS = TIMELINE_FILTERS; // Who is moving (comp-summary.js) filters the same way
 
   /* `who` says whose timeline it is when the row isn't on that competitor's profile: { id, rival, own }. */
@@ -645,30 +648,98 @@
   }
   COMP.timelineRow = (e, who, common = null) => timelineRow(e, false, who, common);
 
+  /* The profile's timeline (2026-11-12). The owner found it about 10,000 px tall with hundreds of changes, each a tall block.
+     Now: one compact row per change, paged like every long list (TP: 25/50/100 and a search), filtered by kind and period.
+     Repeats are grouped: the same page with the same kind of change in the period is one row, "×3", dated by its latest.
+     Why that grouping: the question here is "which of their pages are they working on, and how", and a page edited on six
+     days is one story, not six rows; a day with many pages stays as many rows, each still dated. Everything known about a
+     change (before and after, the page's facts, every date of a group) is behind the row's Details. Task shows on hover.
+     Who is moving (comp-summary.js) keeps COMP.timelineRow: this only changes the profile. */
+  const TL_PERIODS = [[7, "7 days"], [30, "30 days"], [0, "All"]];
+  const TL_KIND = (kind) => (kind === "new_page" ? ["plus", "Added|change", "up"] : kind === "page_gone" ? ["minus", "Removed|change", "down"]
+    : kind.startsWith("rank_") ? [KINDS[kind]?.[0] || "arrow-up", ["rank_new", "rank_up"].includes(kind) ? "Moved up|change" : "Moved down|change", ["rank_new", "rank_up"].includes(kind) ? "up" : "down"]
+    : kind.startsWith("ai_") ? ["sparkles", kind === "ai_cited" ? "Cited by AI|change" : "Dropped by AI|change", kind === "ai_cited" ? "up" : "down"]
+    : [KINDS[kind]?.[0] || "pencil", "Changed|change", "edit"]);
+  const wordsOf = (v) => { const m = String(v ?? "").match(/^(\d+) words$/); return m ? Number(m[1]) : null; };
+  const signed = (n) => `${n > 0 ? "+" : n < 0 ? "−" : "±"}${UI.num(Math.abs(n))}`;
+  /* One short "what changed", in plain words. */
+  function shortChange(e) {
+    if (e.kind === "content") {
+      const a = wordsOf(e.before), b = wordsOf(e.after);
+      if (a !== null && b !== null) return tag(fill("{n} words|delta", { n: signed(b - a) })) + (Number.isFinite(e.changed_words) && e.changed_words > 0 && Math.abs(b - a) !== e.changed_words ? ` · ${fill("~{n} changed", { n: UI.num(e.changed_words) })}` : "");
+      return t("Content changed");
+    }
+    if (e.kind === "headings" || e.kind === "h1" || e.kind === "schema") {
+      const was = listItems(asList(e.before)), now = listItems(asList(e.after));
+      const added = now.filter((x) => !was.includes(x)).length, gone = was.filter((x) => !now.includes(x)).length;
+      const noun = e.kind === "schema" ? ["{n} structured data type", "{n} structured data types"] : ["{n} heading", "{n} headings"];
+      const bits = [added ? `+${many(added, ...noun)}` : "", gone ? `−${many(gone, ...noun)}` : ""].filter(Boolean);
+      return bits.length ? bits.join(", ") : t("Same items, new order.");
+    }
+    if (e.kind.startsWith("rank_")) return `${e.kind === "rank_new" ? `>${UI.num(e.depth || 10)}` : `#${UI.num(e.from)}`} → ${e.kind === "rank_lost" ? `>${UI.num(e.depth || 10)}` : `#${UI.num(e.to)}`}`;
+    if (e.kind.startsWith("ai_")) return t(e.kind === "ai_cited" ? "Now cited in the AI Overview" : "No longer cited in the AI Overview");
+    if (e.kind === "new_page" || e.kind === "page_gone") return e.page?.words ? many(e.page.words, "{n} word", "{n} words") : "";
+    return t(KINDS[e.kind]?.[1] || e.kind); // title, meta, canonical…: the kind says it; before and after are in Details
+  }
+  const groupKey = (e) => `${e.kind.startsWith("rank_") || e.kind.startsWith("ai_") ? `k:${e.keyword}` : `u:${e.url || ""}`}|${e.kind}`;
+  function timelineGroups(list) {
+    const groups = new Map();
+    list.forEach((e) => { const key = groupKey(e); if (!groups.has(key)) groups.set(key, []); groups.get(key).push(e); });
+    return [...groups.values()].map((all) => ({ e: all[0], all })); // the list comes newest first, so each group's first is its latest
+  }
+  const tlPath = (url) => { try { const u = new URL(url); return `${u.pathname}${u.search}` || "/"; } catch { return COMP.shortUrl(url); } };
+  /* `who` (Who is moving, comp-summary.js, 2026-11-12): the row is in every competitor's list, so a Competitor column
+     follows the date and the Task names that competitor. */
+  function tlRow(g, common, who = null) {
+    const e = g.e, [ic, word, tone] = TL_KIND(e.kind), [, full] = KINDS[e.kind] || ["", e.kind];
+    const isMove = e.kind.startsWith("rank_") || e.kind.startsWith("ai_");
+    const title = isMove ? e.keyword : e.page?.title || "";
+    const where = isMove
+      ? `<span class="kw" dir="auto">${esc(e.keyword || "")}</span>${e.url ? `<span class="second">${COMP.link(e.url, tlPath(e.url))}</span>` : ""}`
+      : `${title ? `<span class="cl-tl-title" dir="auto">${esc(title)}</span>` : ""}${e.url ? `<span class="${title ? "second" : ""}">${COMP.link(e.url, tlPath(e.url))}</span>` : ""}`;
+    const times = g.all.length > 1 ? `<span class="tag tabular cl-tl-times" data-tip="${esc(g.all.map((x) => UI.fmtDateOnly(x.at)).join(", "))}" tabindex="0">×${UI.num(g.all.length)}</span>` : "";
+    const detail = isMove ? moveDetail(e, common) : e.kind === "new_page" || e.kind === "page_gone" ? "" : changeDetail(e);
+    const dates = g.all.length > 1 ? `<div class="cl-dl-row"><dt>${esc(t("Dates"))}</dt><dd>${esc(g.all.map((x) => UI.fmtDateOnly(x.at)).join(" · "))}</dd></div>` : "";
+    const facts = isMove ? moveDetails(e) : e.page ? pageDetails(e.page) : "";
+    const more = `<details class="cl-more-facts cl-tl-more"><summary>${icon("chevron-right")}${t("Details")}</summary><div class="cl-tl-detail"><div class="t">${esc(t(full))}</div>${detail}${window.ChangeSummary?.slot(e) || ""}<dl class="cl-dl">${dates}${facts}</dl></div></details>`;
+    return `<tr data-cl-tl-row="${esc(groupKey(e))}">
+      <td class="nowrap cl-tl-date" data-label="${attr("Date")}">${COMP.ageCell(e.at)}</td>
+      ${who ? `<td class="nowrap cl-tl-rival" data-label="${attr("Competitor")}"><span class="with-logo">${UI.siteLogo(who.rival, 16)}<span class="logo-text" dir="auto">${esc(who.display || who.rival)}</span></span></td>` : ""}
+      <td class="nowrap" data-label="${esc(tag("Change|kind"))}"><span class="cl-tl-kind cl-tl-${tone}" data-tip="${esc(t(full))}">${icon(ic)}<span>${esc(tag(word))}</span></span>${times}</td>
+      <td class="cl-tl-where" data-label="${attr(isMove ? "Keyword" : "Page")}">${where}</td>
+      <td class="cl-tl-what" data-label="${attr("What changed")}"><span class="cl-tl-short">${esc(shortChange(e))}</span>${more}</td>
+      <td class="r nowrap" data-label=""><span class="row-act">${UI.taskButton(timelineFind(e, full, who), { label: "Task" })}</span></td>
+    </tr>`;
+  }
+  COMP.timelineTableRow = (e, who, common = null) => tlRow({ e, all: [e] }, common, who);
+
   function timelineBody(p) {
-    const all = p.timeline || [];
+    const every = p.timeline || [];
+    const days = view.tlDays || 0, since = days ? Date.now() - days * 86400000 : 0;
+    const inPeriod = days ? every.filter((e) => new Date(e.at).getTime() >= since) : every;
     const filter = TIMELINE_FILTERS.find(([id]) => id === view.filter) || TIMELINE_FILTERS[0];
-    const kinds = (x) => (x[2] ? all.filter((e) => x[2].includes(e.kind)).length : all.length);
-    const chips = `<div class="chips" role="group" aria-label="${attr("Filter the timeline")}">${TIMELINE_FILTERS.filter((x) => x[0] === "all" || x[0] === view.filter || kinds(x) > 0).map((x) => `<button class="chip" data-cl-tl="${x[0]}" aria-pressed="${view.filter === x[0]}">${esc(tag(x[1]))}<b>${UI.num(kinds(x))}</b></button>`).join("")}</div>`;
-    const shown = filter[2] ? all.filter((e) => filter[2].includes(e.kind)) : all;
+    const ofKind = (x, list) => (x[2] ? list.filter((e) => x[2].includes(e.kind)) : list);
+    const searched = inPeriod.filter((e) => TP.matches(PAGES.timeline, e.keyword, e.url, e.page?.title, e.title, t(KINDS[e.kind]?.[1] || "")));
+    const chips = `<div class="chips" role="group" aria-label="${attr("Filter the timeline")}">${TIMELINE_FILTERS.filter((x) => x[0] === "all" || x[0] === view.filter || ofKind(x, searched).length > 0).map((x) => `<button class="chip" data-cl-tl="${x[0]}" aria-pressed="${view.filter === x[0]}">${esc(tag(x[1]))}<b>${UI.num(ofKind(x, searched).length)}</b></button>`).join("")}</div>`;
+    const period = `<div class="seg cl-tl-period" role="group" aria-label="${attr("Period")}">${TL_PERIODS.map(([n, w]) => `<button type="button" data-cl-tl-days="${n}" aria-pressed="${days === n}">${esc(t(w))}</button>`).join("")}</div>`;
+    const search = every.length >= FIND_FROM || TP.state(PAGES.timeline).q ? TP.search(PAGES.timeline, t("Search pages, keywords, titles")) : "";
+    const tools = `<div class="cp-tools cl-tl-tools">${search}${period}</div>${chips}`;
+    const shown = ofKind(filter, searched);
     if (!shown.length) {
       const blocked = p.crawl?.status === "blocked" && ["edits", "new", "gone"].includes(filter[0]);
       const early = !p.crawl?.baseline_done && !blocked;
-      return `${chips}<p class="cl-none small sec">${esc(blocked ? t("Site blocks bots: page changes can't be tracked.") : early ? t("Nothing yet: changes show from the second read.") : filter[0] === "rank" ? t("No moves yet: a move needs two checks by one tool.") : t("Nothing here yet."))}</p>`;
+      const words = TP.state(PAGES.timeline).q ? t("No change matches these filters.") : blocked ? t("Site blocks bots: page changes can't be tracked.") : early ? t("Nothing yet: changes show from the second read.") : filter[0] === "rank" ? t("No moves yet: a move needs two checks by one tool.") : days && every.length ? t("Nothing in this period") : t("Nothing here yet.");
+      return `${tools}<p class="cl-none small sec">${esc(words)}</p>`;
     }
-    const part = shown.slice(0, view.limit);
-    const days = new Map();
-    part.forEach((e, i) => {
-      const day = String(e.at || "").slice(0, 10);
-      if (!days.has(day)) days.set(day, []);
-      days.get(day).push([e, i]);
-    });
-    const firstNew = view.limit > 50 ? view.limit - 50 : -1;
-    const left = shown.length - part.length;
-    const common = moveCommon(part); // what every move shown shares, said once over the days
-    return `${chips}${moveCommonLine(common)}
-      <div class="cl-days">${[...days.entries()].map(([day, entries]) => `<section class="cl-day"><h3 class="cl-day-name">${esc(UI.fmtDateOnly(`${day}T00:00:00Z`))}</h3><ul class="rows cl-tl">${entries.map(([e, i]) => timelineRow(e, i === firstNew, null, common)).join("")}</ul></section>`).join("")}</div>
-      ${left ? `<p class="cl-more"><button class="btn btn-small" data-cl-tl-more>${t("Show more")} (${UI.num(left)})</button></p>` : ""}`;
+    const groups = timelineGroups(shown);
+    const page = TP.view(PAGES.timeline, groups);
+    const common = moveCommon(page.rows.map((g) => g.e)); // what every move shown shares, said once over the list
+    return `${tools}${moveCommonLine(common)}
+      <div class="cl-pages"><div class="table-wrap cl-scroll"><table class="data cl-tl-table" data-tt-off>
+        <thead><tr><th scope="col">${t("Date")}</th><th scope="col">${esc(tag("Change|kind"))}</th><th scope="col">${t("Page")}</th><th scope="col">${t("What changed")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
+        <tbody>${page.rows.map((g) => tlRow(g, common)).join("")}</tbody>
+      </table></div>${TP.footer(PAGES.timeline, page, { noun: t(groups.length === shown.length ? "changes" : "rows") })}</div>
+      ${groups.length < shown.length ? `<p class="small sec cl-tl-grouped">${esc(fill("{n} changes in {rows} rows: the same page with the same kind of change is one row (×).", { n: UI.num(shown.length), rows: UI.num(groups.length) }))}</p>` : ""}`;
   }
 
   function paintTimeline(focus) {
@@ -720,17 +791,81 @@
   }
 
   /* Positions centred under centred headings. When every row was checked by the same tool at the same age, that's said once under the table. */
+  /* Recheck from a competitor's Keywords tab (2026-11-12, the owner): tick rows for "Recheck" in the selection bar, or use a row's own
+     Recheck (shown on hover with the simpler screens). Both open Keywords' Refresh dialog through window.KW.recheck: the same preview,
+     free-credit cost and Confirm, and nothing is spent without Confirm. A profile keyword has no id, so the site's tracked keywords
+     (GET rankings) give it, by keyword and country. Once the dialog closes, the profile is asked again every few seconds until those
+     keywords carry a newer check, then the positions and the Checked column are drawn again. */
+  const kwKey = (k) => `${String(k.keyword).toLowerCase()}|${String(k.country || "").toUpperCase()}`;
+  const recheck = { site: null, ids: null, loading: null, follow: null };
+  function keywordIds() {
+    const site = COMP.siteId;
+    if (recheck.site === site && recheck.ids) return Promise.resolve(recheck.ids);
+    if (recheck.site === site && recheck.loading) return recheck.loading;
+    recheck.site = site; recheck.ids = null;
+    recheck.loading = COMP.api("GET", `rankings?site_id=${site}`).then((d) => {
+      const ids = new Map();
+      (d.rows || []).forEach((r) => { if (r.keyword_id) ids.set(`${String(r.keyword).toLowerCase()}|${String(r.country || "").toUpperCase()}`, r.keyword_id); });
+      if (recheck.site === site) recheck.ids = ids;
+      return ids;
+    }).finally(() => { recheck.loading = null; });
+    return recheck.loading;
+  }
+  async function recheckKeywords(keys, opener) {
+    if (!window.KW?.recheck) { UI.toast(t("Recheck needs the Keywords screen: open Keywords once, then try again."), { kind: "info" }); return; }
+    const rows = (view.data?.keywords || []).filter((k) => keys.includes(kwKey(k)));
+    if (!rows.length) return;
+    let ids;
+    try { ids = await keywordIds(); } catch (err) { fail(err); return; }
+    const engine = rows[0].engine || "google";
+    const wanted = rows.filter((k) => (k.engine || "google") === engine).map((k) => ids.get(kwKey(k))).filter(Boolean);
+    if (!wanted.length) { UI.toast(t("These keywords aren't in your keyword list, so they can't be rechecked here."), { kind: "info" }); return; }
+    const before = new Map(rows.map((k) => [kwKey(k), k.checked_at || ""]));
+    const runsBefore = document.querySelectorAll(".kwr-run").length;
+    const opened = await window.KW.recheck(wanted, { engine, opener });
+    if (!opened) return;
+    UI.$("#dlg")?.addEventListener("close", () => {
+      if (document.querySelectorAll(".kwr-run").length <= runsBefore) return; // closed without Confirm: nothing runs, nothing to follow
+      view.kwPicked?.clear(); paintKeywords();
+      followRecheck(before);
+    }, { once: true });
+  }
+  function followRecheck(before) {
+    recheck.follow?.stop?.();
+    const id = view.data?.id, site = COMP.siteId;
+    recheck.follow = COMP.poll(async () => {
+      if (view.data?.id !== id || COMP.siteId !== site || UI.state.route !== "competitors") return false;
+      const fresh = await COMP.api("GET", `competitors/${id}/profile?site_id=${site}`, null, { fresh: true });
+      const newer = (fresh.keywords || []).filter((k) => before.has(kwKey(k)) && (k.checked_at || "") > before.get(kwKey(k)));
+      if (!newer.length) return true;
+      Object.assign(view.data, { keywords: fresh.keywords, past_keywords: fresh.past_keywords, compare: fresh.compare });
+      paintKeywords();
+      return newer.length < before.size; // all of them newer: done
+    }, { every: 4000, grow: 1.1, slowest: 15000, most: 10 * 60000 });
+  }
+  function kwSelbar() {
+    const n = view.kwPicked?.size || 0;
+    if (!n) return "";
+    return `<div class="selbar cg-selbar cl-kw-selbar" id="cl-kw-selbar" role="region" aria-label="${attr("selected")}"><b class="cg-sel-count">${UI.num(n)} ${t("selected")}</b>
+      <button type="button" class="btn btn-main btn-small" data-cl-recheck-picked>${icon("refresh-cw")}${t("Recheck")}</button>
+      <button type="button" class="icon-btn" data-cl-kw-clear aria-label="${attr("Clear selection")}" data-tip="${attr("Clear selection")}">${icon("x")}</button></div>`;
+  }
+
   function keywordTable(sorted, head, place) {
     const toolOf = (k) => `${k.tool || ""} · ${engineName(k.engine)}`;
     const ages = new Set(sorted.map((k) => COMP.ago(k.checked_at))), tools = new Set(sorted.map(toolOf));
     const once = sorted.length > 1 && tools.size === 1 && ages.size === 1;
     const toolCell = (k) => `<td data-label="${attr("Checked")}"><span class="cl-checked">${COMP.toolLogos(k.engine, k.tool)} ${COMP.ageCell(k.checked_at)}</span></td>`; // engine and tool as logos, then the age
     const logo = (host) => (host ? UI.siteLogo(host, 16) : ""); // You and Them carry their site's logo and colour, as on every table of the profile
-    return `<table class="data cl-table cl-kw-table"><thead><tr>${head("keyword", "Keyword")}${head("my_position", "You", "c pt-col-you", logo(COMP.site?.()?.host || view.data?.site?.host))}${head("their_position", "Them", "c pt-col-them", logo(view.data?.host))}${once ? "" : head("checked_at", "Checked")}</tr></thead><tbody>${sorted.map((k) => `<tr>
+    view.kwPicked ||= new Set();
+    const allPicked = sorted.length > 0 && sorted.every((k) => view.kwPicked.has(kwKey(k)));
+    return `<table class="data cl-table cl-kw-table"><thead><tr><th scope="col" class="chk-cell"><input type="checkbox" class="chk" data-cl-kw-all aria-label="${attr("Select all shown")}" ${allPicked ? "checked" : ""}></th>${head("keyword", "Keyword")}${head("my_position", "You", "c pt-col-you", logo(COMP.site?.()?.host || view.data?.site?.host))}${head("their_position", "Them", "c pt-col-them", logo(view.data?.host))}${once ? "" : head("checked_at", "Checked")}<th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead><tbody>${sorted.map((k) => `<tr data-cl-kw-row="${esc(kwKey(k))}">
+          <td class="chk-cell"><input type="checkbox" class="chk" data-cl-kw-pick="${esc(kwKey(k))}" aria-label="${esc(fill("Select {keyword}", { keyword: k.keyword }))}" ${view.kwPicked.has(kwKey(k)) ? "checked" : ""}></td>
           <td class="head-cell"><span class="kw" dir="auto">${esc(k.keyword)}</span>${COMP.profileTabs?.keywordMarks?.(k) ?? ""}</td>
           <td class="c" data-label="${attr("You")}">${place(k.my_position, k.my_url, k.depth)}</td>
           <td class="c" data-label="${attr("Them")}">${place(k.their_position, k.their_url, k.depth)}</td>
-          ${once ? "" : toolCell(k)}</tr>`).join("")}</tbody></table>${once ? `<p class="small sec cl-kw-foot">${fillHtml("All checked with {tool}, {when}.", { tool: COMP.toolLogos(sorted[0].engine, sorted[0].tool), when: esc(COMP.ago(sorted[0].checked_at)) })}</p>` : ""}`;
+          ${once ? "" : toolCell(k)}
+          <td class="r nowrap" data-label=""><button type="button" class="btn btn-small row-act" data-cl-recheck="${esc(kwKey(k))}" aria-label="${esc(fill("Recheck {keyword}", { keyword: k.keyword }))}">${icon("refresh-cw")}${t("Recheck")}</button></td></tr>`).join("")}</tbody></table>${once ? `<p class="small sec cl-kw-foot">${fillHtml("All checked with {tool}, {when}.", { tool: COMP.toolLogos(sorted[0].engine, sorted[0].tool), when: esc(COMP.ago(sorted[0].checked_at)) })}</p>` : ""}<div id="cl-kw-selbar-box">${kwSelbar()}</div>`;
   }
 
   function paintKeywords(focus) {
@@ -770,17 +905,35 @@
     if (note) UI.setHTML(note, headNote(p));
   }
 
+  /* Simpler screens, the profile header (plan section 2): "Tracking: On ▾" is one button that opens the three choices, and
+     Refresh data and Remove sit behind a ⋯ after Notes. The choices and buttons are the same controls as before. */
+  const TRACK_WORD = { on: "On", pages: "Pages only", off: "Off" };
+  const trackButton = (p) => `<button type="button" class="btn btn-small cl-track-btn" data-cl-track="${p.id}" aria-haspopup="menu" aria-expanded="false">${esc(fill("Tracking: {state}", { state: t(TRACK_WORD[COMP.trackingOf?.(p) || "on"]) }))}${icon("chevron-down", "chev")}</button>`;
+  function openTrackMenu(button) {
+    const p = view.data;
+    if (!p) return;
+    UI.popover(button, `<div class="cs-menu" role="menu" aria-label="${attr("Tracking")}"><p class="cs-menu-lab">${t("Tracking")}</p>${COMP.trackingSwitch?.(p) ?? ""}</div>`, "cs-menu-pop");
+  }
+  function openMoreMenu(button) {
+    const p = view.data;
+    if (!p) return;
+    UI.popover(button, `<div class="cs-menu" role="menu" aria-label="${attr("More")}">
+      <button type="button" class="cs-menu-item" role="menuitem" data-cl-read="${p.id}" ${crawling(p.crawl) || paused(p) ? "disabled" : ""}>${icon("refresh-cw")}${t("Refresh data")}</button>
+      <button type="button" class="cs-menu-item" role="menuitem" data-cl-remove="${p.id}">${icon("trash-2")}${t("Remove")}</button></div>`, "cs-menu-pop");
+  }
+
   function profileBody() {
     const p = view.data;
+    const simpleHead = Boolean(UI.simple?.());
     const url = `https://${p.host}/`;
     return `<section class="card cl-head" aria-labelledby="cl-profile-title">
         <div class="cl-head-row">
           <div class="cl-head-main">
-            <h2 id="cl-profile-title" tabindex="-1">${UI.siteLogo(p.host, 24)} ${COMP.link(url, p.display || p.host, "cl-head-link")}${icon("external-link", "muted")}${COMP.trackingSwitch?.(p) ?? ""}</h2>
+            <h2 id="cl-profile-title" tabindex="-1">${UI.siteLogo(p.host, 24)} ${COMP.link(url, p.display || p.host, "cl-head-link")}${icon("external-link", "muted")}${simpleHead ? trackButton(p) : COMP.trackingSwitch?.(p) ?? ""}</h2>
             ${COMP.profileTabs?.factsLine?.(p, view.insights) ?? ""}
             <p class="small sec cl-head-meta" data-tip="${esc(`${howAdded(p.source)} · ${fill("added {when}", { when: COMP.ago(p.added_at) })}`)}">${COMP.siteId === COMP.ALL ? `${esc(fill("compared with {site}", { site: p.site?.host || "" }))} · ` : ""}<span id="cl-watch-state" class="cl-head-watch">${watchArea(p)}</span></p>
           </div>
-          <div class="cl-head-acts">${COMP.notes?.button?.([{ label: p.display || p.host, icon: "crosshair", where: { scope: "competitor", competitorId: p.id, siteId: COMP.siteId } }]) ?? ""}<button class="btn" data-cl-read="${p.id}" ${crawling(p.crawl) ? "disabled" : ""} ${paused(p) ? "hidden" : ""}>${icon("refresh-cw")}${t("Refresh data")}</button><button class="btn btn-ghost" data-cl-remove="${p.id}">${icon("trash-2")}${t("Remove")}</button></div>
+          <div class="cl-head-acts">${COMP.notes?.button?.([{ label: p.display || p.host, icon: "crosshair", where: { scope: "competitor", competitorId: p.id, siteId: COMP.siteId } }]) ?? ""}${simpleHead ? `<button type="button" class="icon-btn cl-more-btn" data-cl-more="${p.id}" aria-haspopup="menu" aria-expanded="false" aria-label="${attr("More")}" data-tip="${attr("Refresh data and Remove")}">${icon("ellipsis")}</button>` : `<button class="btn" data-cl-read="${p.id}" ${crawling(p.crawl) ? "disabled" : ""} ${paused(p) ? "hidden" : ""}>${icon("refresh-cw")}${t("Refresh data")}</button><button class="btn btn-ghost" data-cl-remove="${p.id}">${icon("trash-2")}${t("Remove")}</button>`}</div>
         </div>
         <div id="cl-head-note">${headNote(p)}</div>
         ${COMP.profileTabs?.headBlock?.(p, view.insights) ?? ""}
@@ -850,6 +1003,7 @@
       UI = helpers; bindEvents();
       TP.on(PAGES.list, () => COMP.paint()); // another page, another size or a search; the helper keeps the focus
       TP.on(PAGES.keywords, () => paintKeywords());
+      TP.on(PAGES.timeline, () => paintTimeline());
     },
     async load() {
       const site = COMP.siteId;
@@ -1420,6 +1574,11 @@
       if (performance.now() < ignoreUntil) return;
       const hit = (sel) => e.target.closest?.(sel);
       let el;
+      if (hit(".cs-menu [data-ct-set], .cs-menu [data-cl-read], .cs-menu [data-cl-remove]") && UI.$("[data-cl-track][aria-expanded=\"true\"], [data-cl-more][aria-expanded=\"true\"]")) {
+        const from = UI.$("[data-cl-track][aria-expanded=\"true\"]") ? "[data-cl-track]" : "[data-cl-more]";
+        COMP.refocus = from;
+        setTimeout(() => { UI.closePopover?.(); if (!document.activeElement || document.activeElement === document.body) UI.$(from)?.focus({ preventScroll: true }); }, 0);
+      }
 
       // My competitors
       if (hit("#cl-add-open")) { openAdd(hit("#cl-add-open")); return; }
@@ -1439,6 +1598,17 @@
         view.filter = id;
         view.limit = 50;
         paintTimeline(() => focusAttr("data-cl-tl", id)?.focus({ preventScroll: true }));
+        return;
+      }
+      if ((el = hit("[data-cl-track]"))) { openTrackMenu(el); return; }
+      if ((el = hit("[data-cl-more]"))) { openMoreMenu(el); return; }
+      if ((el = hit("[data-cl-recheck]"))) { recheckKeywords([el.dataset.clRecheck], el); return; }
+      if ((el = hit("[data-cl-recheck-picked]"))) { recheckKeywords([...(view.kwPicked || [])], el); return; }
+      if (hit("[data-cl-kw-clear]")) { view.kwPicked?.clear(); paintKeywords(() => UI.$("[data-cl-kw-all]")?.focus({ preventScroll: true })); return; }
+      if ((el = hit("[data-cl-tl-days]"))) {
+        view.tlDays = Number(el.dataset.clTlDays) || 0;
+        TP.reset(PAGES.timeline);
+        paintTimeline(() => focusAttr("data-cl-tl-days", String(view.tlDays))?.focus({ preventScroll: true }));
         return;
       }
       if (hit("[data-cl-tl-more]")) {
@@ -1481,6 +1651,17 @@
     // In the address box Enter starts a new line, so Cmd or Ctrl + Enter adds.
     document.addEventListener("keydown", (e) => { if (e.target.id === "cl-add-address" && e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); submitAdd(); } });
     document.addEventListener("change", (e) => {
+      if (e.target.matches?.("[data-cl-kw-pick], [data-cl-kw-all]")) {
+        view.kwPicked ||= new Set();
+        const boxes = UI.$$("[data-cl-kw-pick]");
+        if (e.target.matches("[data-cl-kw-all]")) boxes.forEach((b) => { b.checked = e.target.checked; });
+        boxes.forEach((b) => { if (b.checked) view.kwPicked.add(b.dataset.clKwPick); else view.kwPicked.delete(b.dataset.clKwPick); });
+        const all = UI.$("[data-cl-kw-all]");
+        if (all) { const on = boxes.filter((b) => b.checked).length; all.checked = on > 0 && on === boxes.length; all.indeterminate = on > 0 && on < boxes.length; }
+        const box = UI.$("#cl-kw-selbar-box");
+        if (box) UI.setHTML(box, kwSelbar());
+        return;
+      }
       if (e.target.id === "cl-file") pickFile(e.target.files[0]);
       else if (e.target.id === "cl-up-encoding" && upload.bytes) { upload.encoding = e.target.value; decodeNow(); }
       else if (e.target.id === "cl-up-language" && upload.bytes && !upload.unicode && LIKELY_ENCODING[e.target.value]) { upload.encoding = LIKELY_ENCODING[e.target.value]; decodeNow(); }
@@ -1808,6 +1989,15 @@
 
   // ---- French ------------------------------------------------------------------------------------------------------
   Object.assign(window.FR, {
+    "Added|change": "Ajoutée", "Removed|change": "Retirée", "Changed|change": "Modifiée", "Moved up|change": "Monte", "Moved down|change": "Descend",
+    "Now cited in the AI Overview": "Désormais cité dans l'aperçu IA", "No longer cited in the AI Overview": "Plus cité dans l'aperçu IA",
+    "Cited by AI|change": "Citée par l'IA", "Dropped by AI|change": "Plus citée par l'IA", "Change|kind": "Changement", "rows": "lignes",
+    "{n} words|delta": "{n} mots", "~{n} changed": "~{n} modifiés", "{n} structured data type": "{n} type de données structurées", "{n} structured data types": "{n} types de données structurées",
+    "{n} changes in {rows} rows: the same page with the same kind of change is one row (×).": "{n} changements en {rows} lignes : une même page avec le même type de changement tient sur une ligne (×).",
+    "Tracking: {state}": "Suivi : {state}", "Refresh data and Remove": "Actualiser et retirer",
+    "Recheck {keyword}": "Revérifier {keyword}", "Select {keyword}": "Sélectionner {keyword}",
+    "Recheck needs the Keywords screen: open Keywords once, then try again.": "La revérification passe par l’écran Mots-clés : ouvrez-le une fois, puis réessayez.",
+    "These keywords aren't in your keyword list, so they can't be rechecked here.": "Ces mots-clés ne sont pas dans votre liste, ils ne peuvent pas être revérifiés ici.",
     "Details": "Détails", "{n} word": "{n} mot", "{n} words": "{n} mots", "{n} heading": "{n} titre", "{n} headings": "{n} titres",
     "{n} image": "{n} image", "{n} images": "{n} images", "{n} video": "{n} vidéo", "{n} videos": "{n} vidéos",
     "{a} internal · {b} external links": "{a} liens internes · {b} externes", "published {date}": "publiée le {date}", "sitemap {date}": "sitemap {date}",

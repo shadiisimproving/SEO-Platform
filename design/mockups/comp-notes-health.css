@@ -167,3 +167,6 @@ details[open] > summary .ht-chev { transform: rotate(90deg); }
 .nv-kinds[hidden] { display: none; }
 .nv-card .nb-list > .nb-row:first-child { border-top: 0; }
 .nv-card #nv-empty .empty { padding: 36px 18px; }
+
+/* Room under every screen, so the floating Notes button never sits on the last rows (owner, 2026-11-12). */
+body:has(#nb-fab) #page .content { padding-bottom: 72px; }

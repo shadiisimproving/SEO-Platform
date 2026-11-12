@@ -35,14 +35,14 @@ const overlap = (a, b) => a && b && a.x < b.x + b.width && b.x < a.x + a.width &
   await page.screenshot({ path: OUT + "1-dialog-before.png" });
   await page.click("#kwr-confirm");
 
-  await page.waitForFunction(() => /continuing with/.test(document.querySelector("#tray-msg")?.textContent || ""), null, { timeout: fresh ? 15000 : 3000 }).catch(() => {});
-  const running = (await page.textContent("#tray-msg").catch(() => "")) || "";
+  await page.waitForFunction(() => /continuing with/.test(document.querySelector(".tray-msg")?.textContent || ""), null, { timeout: fresh ? 15000 : 3000 }).catch(() => {});
+  const running = (await page.textContent(".tray-msg").catch(() => "")) || "";
   if (fresh) check("the tray gives the real reason a tool handed over", /DuckDuckGo direct was blocked by a bot check, continuing with Bright Data/.test(running), running);
   check("the tray no longer says out of credits", !/out of credits/i.test(running));
   const tray = await page.locator("#tray").boundingBox(), notes = await page.locator("#nb-fab").boundingBox();
   check("the tray doesn't sit on the Notes button", notes && tray && !overlap(tray, notes), JSON.stringify({ tray, notes }));
   await page.screenshot({ path: OUT + "2-tray-running.png" });
-  await page.waitForFunction(() => /Finished|Stopped/.test(document.querySelector("#tray-title")?.textContent || document.querySelector("#tray .top")?.textContent || ""), null, { timeout: 60000 }).catch(() => {});
+  await page.waitForFunction(() => /Finished|Stopped/.test(document.querySelector(".tray-title")?.textContent || document.querySelector("#tray .top")?.textContent || ""), null, { timeout: 60000 }).catch(() => {});
   await page.screenshot({ path: OUT + "3-tray-finished.png" });
   await page.waitForTimeout(9500); // the finished tray goes away by itself
 

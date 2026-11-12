@@ -59,3 +59,22 @@ a.comp-url:hover { color: var(--accent-text); }
 }
 /* On a phone the floating Notes button sits over the bottom of the page: leave room, so the last row's buttons aren't under it. */
 @media (max-width: 640px) { #comp-body { padding-bottom: 72px; } }
+
+/* ---- The simpler screens (html[data-simple="1"], plan section 2): the head's site menu, page tabs, row menus ------------- */
+/* Whose competitors, as a small menu at the start of the head's line. */
+html[data-simple="1"] .comp-site-pick { display: inline-flex; vertical-align: middle; }
+html[data-simple="1"] .comp-site-select { height: 26px; min-height: 26px; padding: 0 26px 0 8px; font-size: 12px; border-radius: var(--r-s); background-position: right 6px center; max-width: 220px; }
+html[data-simple="1"] .cs-basis-line { font-variant-numeric: tabular-nums; }
+html[data-simple="1"] .cs-basis-line .brand-logo { width: 14px; height: 14px; vertical-align: -2px; }
+html[data-simple="1"] .comp-tabs.page-tabs { flex-wrap: nowrap; }
+html[data-simple="1"] .comp-tabs .page-tab:hover { background: none; }
+/* The ⋯ menus: Tracking (On / Pages only / Off) and Remove, or Refresh data and Remove on a profile. */
+.cs-menu { display: grid; gap: 6px; min-width: 240px; padding: 4px; }
+.cs-menu-lab { margin: 0; font-size: 12px; font-weight: 600; color: var(--text-2); }
+.cs-menu .ct-switch { width: 100%; }
+.cs-menu .ct-switch button { flex: 1; }
+.cs-menu-help { margin: 0 0 4px; max-width: 260px; }
+.cs-menu-item { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 10px; border-radius: var(--r-s); text-align: start; color: var(--text); font-size: 13px; }
+.cs-menu-item:hover, .cs-menu-item:focus-visible { background: var(--hover); }
+.cs-menu-item:disabled { color: var(--muted); cursor: default; background: none; }
+.cs-menu-item + .cs-menu-item, .cs-menu .ct-switch + .cs-menu-help + .cs-menu-item { border-top: 1px solid var(--line); border-radius: 0 0 var(--r-s) var(--r-s); }

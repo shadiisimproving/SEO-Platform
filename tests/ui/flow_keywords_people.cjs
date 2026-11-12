@@ -45,7 +45,7 @@ async function refreshAll(page, engine) {
   await a.page.goto(`${BASE}?r=1#keywords`); await a.page.waitForSelector("#kw-table", { timeout: 15000 }); await settle(a.page, 800);
   check(await a.page.$("#tray") !== null, "a reload during a run brings the tray back");
   await shot(a.page, "31-tray-after-reload");
-  await a.page.click("#kwr-stop"); await a.page.click("#kwr-stop", { force: true, timeout: 500 }).catch(() => {});
+  await a.page.click(".kwr-stop"); await a.page.click(".kwr-stop", { force: true, timeout: 500 }).catch(() => {});
   await finished(a.page); await settle(a.page, 600); await shot(a.page, "32-stopped");
   const stoppedText = (await a.page.textContent("#tray")).replace(/\s+/g, " ");
   note("   tray after Stop:", stoppedText);

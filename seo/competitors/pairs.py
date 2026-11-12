@@ -159,7 +159,10 @@ def ranking_summary(checks, my_url: str, their_url: str) -> dict:
             only_mine += 1
         else:
             only_theirs += 1
-        keywords.append({"keyword": check.keyword, "my_position": mine.position if mine else None, "their_position": theirs.position if theirs else None, "depth": check.depth})
+        # Which tool measured both positions, and when: one check gives both, so You and Them are always comparable (2026-11-12).
+        # check_id lets the screen tell, and say, if a row ever holds two checks.
+        keywords.append({"keyword": check.keyword, "my_position": mine.position if mine else None, "their_position": theirs.position if theirs else None, "depth": check.depth,
+                         "engine": check.engine, "tool": getattr(check, "tool", None), "checked_at": _iso(getattr(check, "checked_at", None)), "check_id": getattr(check, "id", None)})
     # Those both pages rank for come first, biggest gap first: they say the most about this pair.
     keywords.sort(key=lambda k: (k["my_position"] is None or k["their_position"] is None, -abs((k["my_position"] or 0) - (k["their_position"] or 0)), k["keyword"]))
     return {

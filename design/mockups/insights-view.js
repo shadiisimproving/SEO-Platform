@@ -53,7 +53,7 @@
   const HIDDEN_TIP = "Searches Google counts but doesn't name.";
   const USUAL_TIP = "Usual click rate at this position"; // beside the short "Usual rate"
   const PAGES = "in"; // the table's pages and search (table-pages.js), like every long table in the app
-  const IN = { tab: "first", status: "open", cache: new Map(), sortDir: "desc", opened: null, mixChip: "all" }; // sortDir: clicks a month, biggest first
+  const IN = { tab: "first", status: "open", cache: new Map(), sortDir: "desc", opened: null, mixChip: "all", gone: new Set() }; // sortDir: clicks a month, biggest first
   window.INSIGHTS = IN;
 
   const fr = () => UI.state.lang === "fr";
@@ -80,6 +80,9 @@
   /* What was on screen stays there while a newer answer loads, so a change never flashes "Loading…". */
   function load() {
     const key = `insights?${query()}`;
+    // Simpler screens: answers kept 5 minutes and fetched ahead by screen-data.js. A change sent (Run again, Not useful, a
+    // task) makes them old there by itself: shown at once, asked again in the background.
+    if (window.SCREEN_DATA?.on()) return window.SCREEN_DATA.entry(key, { route: "insights", redraw });
     const old = IN.cache.get(key);
     if (old && !old.stale) return old;
     const entry = { loading: !old?.data, data: old?.data };
@@ -225,6 +228,21 @@
     }
   }
   const kindName = (f) => t(KIND[f.kind]?.name || f.kind);
+  /* The kind's tag has one colour per family, so kinds read apart at a glance (owner, 2026-11-12; cc36dc2 had made it grey):
+     loss red, opportunity blue, gain or result teal, technical amber, plain information grey. insights.css draws them. */
+  const FAMILY = {
+    loss: ["page_down", "dropped_out", "decay", "query_down", "unstable", "brand_split", "slide", "lead_page", "rank_drop", "rival_passed"],
+    gain: ["page_up", "rank_rise", "task_result", "note_result"],
+    tech: ["duplicate", "shown_broken", "data_gaps", "compete", "page_switch"],
+    info: ["no_demand"],
+  };
+  const FAMILY_OF = Object.fromEntries(Object.entries(FAMILY).flatMap(([fam, kinds]) => kinds.map((k) => [k, fam])));
+  function kindFamily(f) {
+    const e = f.evidence || {};
+    if (f.kind === "segment") return e.down ? "loss" : "gain";
+    if (f.kind === "odd_day") return e.low ? "loss" : "gain";
+    return FAMILY_OF[f.kind] || "chance"; // every other kind is a chance to win clicks
+  }
   // Kinds about a page: the page is named on top already, so "Page that ranks" would say it twice.
   const PAGE_IS_SUBJECT = ["dropped_out", "page_down", "page_up", "decay", "lead_page", "no_leads", "duplicate", "shown_broken", "questions", "page_near", "task_result"];
 
@@ -338,10 +356,10 @@
     return t("The search is already in the title and H1.");
   }
   const doLine = (f) => (f.kind === "rank_no_click" ? t(NO_CLICK_DO[f.evidence?.ai] || NO_CLICK_DO["not-captured"]) : DO[f.kind] ? t(DO[f.kind]) : "");
-  function doBlock(f) {
+  function doBlock(f, titled = true) { // titled false: the row panel's section already says "What to do"
     const line = doLine(f), page = onPageLine(f);
     if (!line && !page) return "";
-    return `<div class="in-do"><h3 class="ov-h3">${t("What to do")}</h3>${page ? `<p class="small in-do-page">${icon("file-text")}${esc(page)}</p>` : ""}${line ? `<p class="small">${esc(line)}</p>` : ""}</div>`;
+    return `<div class="in-do">${titled ? `<h3 class="ov-h3">${t("What to do")}</h3>` : ""}${page ? `<p class="small in-do-page">${icon("file-text")}${esc(page)}</p>` : ""}${line ? `<p class="small">${esc(line)}</p>` : ""}</div>`;
   }
   // A position in the site's target countries comes with the world's beside it.
   const countryName = (code3) => { const two = COUNTRIES[code3] || (code3 || "").slice(0, 2).toUpperCase(); try { return new Intl.DisplayNames([UI.locale()], { type: "region" }).of(two) || two; } catch { return two; } };
@@ -349,17 +367,29 @@
 
   // ---- target countries: whose searches the quick wins read --------------------------------------
   const C = { site: null, data: null, busy: false };
-  function countriesLine() {
+  function countriesData() {
     const site = UI.siteIdPicked();
-    if (!site || !window.COMP?.server) return "";
+    if (!site || !window.COMP?.server) return null;
+    if (window.SCREEN_DATA?.on()) { // simpler screens: kept and fetched ahead with the rest of the screen
+      const d = window.SCREEN_DATA.entry(`search/countries?site_id=${site}`, { route: "insights", redraw }).data || null;
+      if (d) { C.site = site; C.data = d; }
+      return d;
+    }
     if (C.site !== site && !C.busy) {
       C.busy = true; C.site = site;
       window.COMP.api("GET", `search/countries?site_id=${site}`).then((d) => { C.data = d; }).catch(() => { C.data = null; }).finally(() => { C.busy = false; redraw(); });
     }
-    const d = C.site === site ? C.data : null;
+    return C.site === site ? C.data : null;
+  }
+  function countriesPart() {
+    const d = countriesData();
     if (!d) return "";
     const names = d.countries.length ? d.countries.map((c) => countryName(c.key)).join(", ") : t("not set");
-    return `<span class="ov-dot" aria-hidden="true">·</span><span>${t(d.chosen ? "Countries" : "Countries (by clicks)")}: ${esc(names)} <button class="link-btn" data-in-countries>${fr() ? "Modifier" : "Change"}</button></span>`;
+    return `<span>${t(d.chosen ? "Countries" : "Countries (by clicks)")}: ${esc(names)} <button class="link-btn" data-in-countries>${fr() ? "Modifier" : "Change"}</button></span>`;
+  }
+  function countriesLine() {
+    const part = countriesPart();
+    return part ? `<span class="ov-dot" aria-hidden="true">·</span>${part}` : "";
   }
   function countriesPanel(opener) {
     const d = C.data;
@@ -375,7 +405,46 @@
   }
 
   // ---- the page -----------------------------------------------------------------------------------
+  /* ---- the simpler screen (UI.simple(), plan section 2): one head, three number cards, the tabs card, and a finding opens
+     in the wide row panel. With the switch off, page() below draws exactly what it drew before. */
+  const simple = () => Boolean(UI.simple?.());
+  const SEP = '<span class="head-sep"> · </span>';
+  const lowerFirst = (s) => (s ? s.charAt(0).toLocaleLowerCase(UI.locale()) + s.slice(1) : "");
+  // The head's date line: what the findings cover, how fresh, and whose searches the quick wins read (Change stays a link).
+  const headLine = (s) => [esc(t("Last 28 days vs the 28 before")), esc(t("final days only")), s?.ran_at ? esc(lowerFirst(updated(s.ran_at))) : "", s?.ran_at ? countriesPart() : ""].filter(Boolean).join(SEP);
+  // The AI settings only matter to the AI buttons: asked when a finding opens, or once the screen has rested a moment (so the
+  // AI summary button can show), never with the screen's first answers.
+  function aiLater() {
+    if (IN.ai || IN.aiTimer) return;
+    IN.aiTimer = setTimeout(() => { IN.aiTimer = null; if (UI.state.route === "insights") aiSettings(); }, 3000);
+  }
+  function simplePage() {
+    const entry = load();
+    const s0 = entry.data?.summary;
+    const run = s0?.ran_at ? `<button class="btn" data-in-run>${icon("refresh-cw")}${t("Run again")}</button>` : "";
+    const head = UI.head({ title: t("Insights"), period: false, line: headLine(s0), info: "Worked out daily from your Search Console data", main: run });
+    const wrap = (body) => `${head}<div class="content page-enter in">${body}</div>`;
+    if (entry.loading) return wrap(UI.skeleton("page", { tiles: 3, chart: false }));
+    if (entry.noServer || !window.COMP?.server) return wrap(`<section class="card"><div class="empty"><h3>${t("Needs the running app")}</h3><p>${t("Opened as a file: no real data.")}</p></div></section>`);
+    if (entry.error && !entry.data) return wrap(UI.failCard(entry.error, { retry: "data-in-retry" }));
+    let d = entry.data;
+    const s = d.summary;
+    if (!s) return wrap(`<section class="card"><div class="empty"><h3>${t("No site yet")}</h3><p>${t("Add a site and connect Search Console to get insights.")}</p><div class="ov-empty-act"><button class="btn btn-main" data-lv-add-site>${t("Add a site")}</button></div></div></section>`);
+    if (!s.ran_at) return wrap(`<section class="card"><div class="empty"><h3>${t("Nothing worked out yet")}</h3><p>${t("They run daily on their own. Run them now to see the first ones.")}</p><div class="ov-empty-act"><button class="btn btn-main" data-in-run>${icon("refresh-cw")}${t("Run")}</button></div></div></section>`);
+    // A finding just marked Not useful leaves the open list at once, while the kept answer is asked again.
+    if (IN.status === "open" && IN.gone.size) d = { ...d, rows: d.rows.filter((r) => !IN.gone.has(r.id)) };
+    aiLater();
+    const card = (id, label, value, sub, info) => UI.card({ id, label: esc(t(label)), value: value ?? null, sub: esc(t(sub)), def: false, info, cls: "in-fig" });
+    const cards = `<div class="tiles in-figs in-cards">
+      ${card("to-recover", "To recover", s.to_recover, "clicks a month", "Clicks a month at stake on the open findings that lost clicks.")}
+      ${card("to-win", "To win", s.to_win, "clicks a month", "Clicks a month at stake on the open chances to win, not counting a query or page already counted as a loss.")}
+      ${card("fixed", "Fixed in 30 days", s.fixed, "findings", "Findings done, or gone by themselves, in the last 30 days.")}
+    </div>`;
+    return wrap(`${topBlock(s)}${cards}${tabsCard(d)}`);
+  }
+
   function page() {
+    if (simple()) return simplePage();
     const entry = load();
     const run = `<button class="btn" data-in-run>${icon("refresh-cw")}${t("Run again")}</button>`;
     const head = UI.topbar(t("Insights"), t("Worked out daily from your Search Console data"), entry.data?.summary?.ran_at ? run : "", false);
@@ -404,11 +473,12 @@
     const needs = d.summary.needs || {};
     const shownTabs = TABS.filter(([id]) => id !== "leads" || counts.leads?.open || (needs.lead_page && needs.lead_page !== "ga4") || (!needs.lead_page && d.summary.ran_at));
     if (!shownTabs.some(([id]) => id === IN.tab)) IN.tab = "first";
-    const tabs = `<div class="tabs" role="tablist" aria-label="${t("Insights")}">${shownTabs.map(([id, name]) => {
+    const on = simple(); // the simpler screens: the app's underline tabs (screen-parts.css .page-tabs)
+    const tabs = `<div class="${on ? "page-tabs in-card in-tabs" : "tabs"}" role="tablist" aria-label="${t("Insights")}">${shownTabs.map(([id, name]) => {
       const n = id === "first" ? null : counts[id]?.open;
-      return `<button class="tab" role="tab" data-in-tab="${id}" aria-selected="${IN.tab === id}">${t(name)}${n ? ` <span class="in-count">${num(n)}</span>` : ""}</button>`;
+      return `<button class="${on ? "page-tab" : "tab"}" role="tab" data-in-tab="${id}" aria-selected="${IN.tab === id}">${t(name)}${n ? ` <span class="in-count">${num(n)}</span>` : ""}</button>`;
     }).join("")}</div>`;
-    const controls = `<div class="ov-controls">${d.rows.length ? TP.search(PAGES, t("Search findings")) : ""}<label class="ov-show"><span>${t("Show")}</span><select class="select" data-in-status>${STATUSES.map(([id, name]) => `<option value="${id}" ${IN.status === id ? "selected" : ""}>${t(name)}</option>`).join("")}</select></label></div>`;
+    const controls = `<div class="ov-controls"${on ? " data-tt-slot" : ""}>${d.rows.length ? TP.search(PAGES, t("Search findings")) : ""}<label class="ov-show"><span>${t("Show")}</span><select class="select" data-in-status>${STATUSES.map(([id, name]) => `<option value="${id}" ${IN.status === id ? "selected" : ""}>${t(name)}</option>`).join("")}</select></label></div>`;
     const notes = [];
     if (IN.tab === "wins" && needs.low_ctr === "brand_words") notes.push(`${t("Low click rates need your brand words.")}${UI.tip("Brand searches are clicked far more and would make every other query look weak.")} <a href="#overview">${t("Add them on Overview")}</a>`);
     if ((IN.tab === "decline" && needs.decay) || (IN.tab === "changed" && needs.page_down)) notes.push(t("Needs more history: 16 weeks for slow decline, 8 for changes."));
@@ -421,6 +491,13 @@
       impact: "Done tasks and dated notes, before vs after.",
     }[IN.tab];
     const HINT_TIPS = { impact: "28 days before against 28 days starting a week after." };
+    if (on) {
+      // The tab's hint, and any note with nothing to press, go behind the (i) beside the tabs; a note with a link stays.
+      const acts = notes.filter((n) => n.includes("<a ")), quiet = notes.filter((n) => !n.includes("<a "));
+      const info = UI.info([t(hint), HINT_TIPS[IN.tab] ? t(HINT_TIPS[IN.tab]) : "", ...quiet].filter(Boolean));
+      return `<section class="card ov-tabs-card in-tabs-card"><div class="card-head ov-tabs-head in-tabs-head">${tabs}<span class="in-tabs-i">${info}</span></div>${controls}
+        ${acts.map((n) => `<p class="small ov-hint in-need">${n}</p>`).join("")}${IN.tab === "mix" ? mixTab(d) : table(d.rows)}</section>`;
+    }
     return `<section class="card ov-tabs-card"><div class="card-head ov-tabs-head">${tabs}</div>${controls}
       <p class="small muted ov-hint">${t(hint)}${UI.tip(HINT_TIPS[IN.tab] || "")}</p>${notes.map((n) => `<p class="small ov-hint in-need">${n}</p>`).join("")}${IN.tab === "mix" ? mixTab(d) : table(d.rows)}</section>`;
   }
@@ -457,7 +534,7 @@
   const worldWide = (f) => MIX_KINDS.has(f.kind) && f.evidence?.same_country === false && f.kind !== "no_demand";
   function tagLine(f, many) {
     const e = f.evidence || {};
-    const tags = [`<span class="in-kind">${esc(kindName(f))}</span>`];
+    const tags = [`<span class="in-kind k-${kindFamily(f)}">${esc(kindName(f))}</span>`];
     if (e.confirmed === false) tags.push(`<span class="in-season" data-tip="${t("One rank check only. Check again before acting.")}" tabindex="0">${t("Check it")}</span>`);
     if (e.seasonal) tags.push(`<span class="in-season">${t("Seasonal")}</span>`);
     if (worldWide(f)) tags.push(`<span class="in-world" role="img" title="${esc(t("Search Console position, all countries"))}" aria-label="${esc(t("Search Console position, all countries"))}">${icon("globe")}</span>`);
@@ -523,7 +600,8 @@
   }
   function mixEvidence(f) {
     const e = f.evidence || {};
-    const li = (label, value, tip = "") => `<li><div class="what"><div class="t">${esc(t(label))}${UI.tip(tip)}</div></div><span>${value}</span></li>`;
+    const twice = simple() && UI.$("#panel.rp"); // the row panel shows these as its numbers
+    const li = (label, value, tip = "") => (twice && IN_NUMBERS.has(label) ? "" : `<li><div class="what"><div class="t">${esc(t(label))}${UI.tip(tip)}</div></div><span>${value}</span></li>`);
     const rows = [
       li(e.same_country ? "Search Console position, same country" : "Search Console position, all countries", known(e.position) ? dec1(e.position) : "—"), li("Last check", esc(scrapedWord(e))),
       known(e.was) ? li("Previous check", num(e.was)) : "", li("Impressions", known(e.impressions) ? num(e.impressions) : "—"), li("Clicks", known(e.clicks) ? num(e.clicks) : "—"),
@@ -553,7 +631,7 @@
       <div class="in-ai-acts"><button class="link-btn" data-in-ai-copy="${purpose}">${t("Copy")}</button><button class="link-btn" data-in-ai="${purpose}" data-in-ai-again="1">${t("Ask again")}</button></div></div>`;
   }
   const aiBlock = (f) => (f.ai?.purposes?.length ? `<section class="in-ai-wrap" data-in-ai-wrap>${aiInner(f)}</section>` : "");
-  function aiInner(f) {
+  function aiInner(f, withButtons = true) { // withButtons false: the row panel has them in its foot
     const info = f.ai;
     const lang = UI.state.lang === "fr" ? "fr" : "en";
     const kept = info.kept?.[lang] || {};
@@ -561,7 +639,7 @@
     const ready = aiReady(info.provider);
     const head = `<h3 class="ov-h3">${t("With AI")} <span class="muted small">${t(info.provider === "claude" ? "Claude (Anthropic key)" : "Free models (OpenRouter)")}</span></h3>`;
     if (!ready && !Object.keys(kept).length) return `${head}<p class="small muted">${t(info.provider === "claude" ? "Paste an Anthropic key in Settings to use Claude here." : "Connect OpenRouter in Settings, or pick Claude for this site.")} <a href="#settings">${t("Open Settings")}</a></p>`;
-    const buttons = info.purposes.filter((p) => !kept[p]).map((p) => `<button class="btn btn-small" data-in-ai="${p}" ${ready ? "" : "disabled"}>${icon("sparkles")}${t(AI_ASK[p])}</button>`).join("");
+    const buttons = !withButtons ? "" : info.purposes.filter((p) => !kept[p]).map((p) => `<button class="btn btn-small" data-in-ai="${p}" ${ready ? "" : "disabled"}>${icon("sparkles")}${t(AI_ASK[p])}</button>`).join("");
     return `${head}<div class="in-ai">${info.purposes.filter((p) => kept[p]).map((p) => aiAnswer(p, kept[p])).join("")}${buttons ? `<div class="in-ai-buttons">${buttons}</div>` : ""}
       <p class="small muted">${t("Sends only the numbers above and the page's title and headings.")}${UI.tip("AI never changes what's found or how it's ranked.")}</p></div>`;
   }
@@ -575,6 +653,7 @@
       const answer = await window.COMP.api("POST", `insights/${f.id}/ai`, { purpose, lang: UI.state.lang === "fr" ? "fr" : "en", again });
       const lang = answer.language;
       f.ai.kept = { ...(f.ai.kept || {}), [lang]: { ...(f.ai.kept?.[lang] || {}), [purpose]: answer } };
+      if (simple() && IN.rp?.el && IN.current === f) { IN.rp.update(findingSpec(f)); markPanel(); return; } // the foot's button gives way too
       const wrap = UI.$("#panel [data-in-ai-wrap]");
       if (wrap && IN.current === f) UI.setHTML(wrap, aiInner(f));
 
@@ -604,9 +683,12 @@
   }
 
   // ---- one finding, in the side panel ---------------------------------------------------------------
+  // In the row panel these are its numbers on top already (findingNumbers), so the list below doesn't say them twice.
+  const IN_NUMBERS = new Set(["Clicks", "Impressions", "Position", "Click rate"]);
   function evidenceList(f) {
     const e = f.evidence || {};
-    const li = (label, value, tip = "") => `<li><div class="what"><div class="t">${esc(t(label))}${UI.tip(tip)}</div></div><span>${value}</span></li>`;
+    const twice = simple() && UI.$("#panel.rp");
+    const li = (label, value, tip = "") => (twice && IN_NUMBERS.has(label) ? "" : `<li><div class="what"><div class="t">${esc(t(label))}${UI.tip(tip)}</div></div><span>${value}</span></li>`);
     const rows = [];
     if (MIX_KINDS.has(f.kind)) return mixEvidence(f);
     if (f.kind === "change") {
@@ -691,7 +773,87 @@
     const aio = e.ai_overview ? `<p class="small muted in-how">${icon("sparkles")}${esc(fill("Counted at {p}%: an AI Overview shows on this search ({d}) and takes some clicks.", { p: num(Math.round((e.ai_overview.share || 0) * 100)), d: dayLabel(e.ai_overview.checked) }))}</p>` : "";
     return `${stake}${aio}`;
   }
+  /* ---- one finding in the wide row panel (simpler screens, UI.rowPanel in row-panel.js) ----------------------------------
+     Its numbers on top, the clicks and position day by day, then what to do and the facts behind it; Task, Track, the AI
+     buttons, Not useful and Add a note in the foot. Every hook the flows read (.in-stake, .in-do, .in-serp, data-in-*) stays. */
+  function aiFetch() {
+    if ((IN.ai && Date.now() - (IN.aiAt || 0) < 15000) || !window.COMP?.server) return Promise.resolve(IN.ai);
+    if (!IN.aiAsk) IN.aiAsk = window.COMP.api("GET", "insights/ai").then((d) => { IN.ai = d; }).catch(() => { IN.ai = IN.ai || { sites: [], keys: {} }; })
+      .finally(() => { IN.aiAsk = null; IN.aiAt = Date.now(); });
+    return IN.aiAsk.then(() => IN.ai);
+  }
+  function findingNumbers(f) {
+    const e = f.evidence || {};
+    if (f.kind === "change") {
+      return [{ id: "clicks", label: "Clicks", value: e.now?.clicks ?? null, before: e.before?.clicks }, { id: "impressions", label: "Impressions", value: e.now?.impressions ?? null, before: e.before?.impressions }];
+    }
+    const done = (f.kind === "task_result" || f.kind === "note_result") && e.ready;
+    const pick = (now, was) => ({ value: known(now) ? now : null, before: known(was) ? was : undefined });
+    const list = [
+      { id: "stake", label: "Clicks a month at stake", def: false, value: f.at_stake >= 1 ? Math.round(f.at_stake) : null, sub: leadsLine(e) || (f.at_stake >= 1 ? "" : t("Not counted for this kind")) },
+      { id: "clicks", label: "Clicks", ...(done ? pick(e.after?.clicks, e.before?.clicks) : pick(e.clicks, e.clicks_before)) },
+      { id: "impressions", label: "Impressions", ...(done ? pick(e.after?.impressions, e.before?.impressions) : pick(e.impressions, e.impressions_before)) },
+      { id: "position", label: "Position", fmt: "pos", ...(done ? pick(e.after?.position, e.before?.position) : pick(e.position, e.position_before)) },
+    ];
+    if (known(e.click_rate)) list.push({ id: "rate", label: "Click rate", value: `${UI.dec(e.click_rate)}%`, sub: known(e.expected_rate) ? fill("usual {u}%", { u: UI.dec(e.expected_rate) }) : "" });
+    return list.filter((n) => n.id === "stake" || known(n.value) || known(n.before));
+  }
+  function findingChart(f) {
+    const days = (f.series || []).map((p) => p.day).filter(Boolean);
+    if (days.length < 2) return null;
+    const line = (key) => Object.fromEntries((f.series || []).filter((p) => p.day).map((p) => [p.day, known(p[key]) ? p[key] : null]));
+    const out = [{ label: "Clicks, day by day", days, series: [{ name: "Clicks", values: line("clicks") }] }];
+    if (f.kind !== "odd_day" && f.kind !== "change" && (f.series || []).filter((p) => known(p.position)).length > 1) out.push({ label: "Position", days, invert: true, series: [{ name: "Position", values: line("position") }] });
+    return out;
+  }
+  function findingSpec(f) {
+    const e = f.evidence || {};
+    const change = f.kind === "change";
+    const onPage = !change && f.page && PAGE_IS_SUBJECT.includes(f.kind);
+    const words = stakeWords(f);
+    const how = !change && f.at_stake >= 1 ? `<p class="in-stake in-stake-how small muted">${t("How clicks at stake are counted")}${words ? UI.tip(words, { p: e.target ?? "" }) : ""}</p>` : "";
+    const aio = e.ai_overview ? `<p class="small muted in-how">${icon("sparkles")}${esc(fill("Counted at {p}%: an AI Overview shows on this search ({d}) and takes some clicks.", { p: num(Math.round((e.ai_overview.share || 0) * 100)), d: dayLabel(e.ai_overview.checked) }))}</p>` : "";
+    const where = !change && f.page && !onPage ? `<p class="small">${pageLink(f.page, { text: pathOf(f.page), host: f.host })}</p>` : "";
+    const reason = change ? "" : `<p class="small" dir="auto">${esc(reasonOf(f))}${f.kind === "no_demand" ? UI.tip("It may be too rare for Google to report.") : ""}</p>`;
+    const todo = `${how}${aio}${where}${reason}${doBlock(f, false)}`;
+    const ai = f.ai?.purposes?.length ? f.ai : null;
+    const lang = fr() ? "fr" : "en", kept = ai?.kept?.[lang] || {};
+    const ready = ai && ai.provider !== "none" && aiReady(ai.provider);
+    const actions = [];
+    if (!change && !f.task) actions.push({ label: "Create task", main: true, icon: "square-check", attrs: { "data-in-task": String(f.id) } });
+    if (!change && f.query && !e.tracked && !MIX_KINDS.has(f.kind)) actions.push({ label: "Track", icon: "plus", attrs: { "data-in-track": f.query } });
+    if (ai && ai.provider !== "none") ai.purposes.filter((p) => !kept[p]).forEach((p) => actions.push({ label: AI_ASK[p], icon: "sparkles", disabled: !ready, attrs: { "data-in-ai": p } }));
+    // Own French: backlinks-seo.js gives the shared "Not useful" key "Liens non utiles", which means links there.
+    if (f.status === "dismissed") actions.push({ label: fr() ? "La remettre" : "Bring it back", attrs: { "data-in-undismiss": String(f.id) } });
+    else if (f.status === "open" && !change) actions.push({ label: fr() ? "Pas utile" : "Not useful", attrs: { "data-in-dismiss": String(f.id) } });
+    const site = f.site_id ?? UI.siteIdPicked();
+    const note = change ? null : [f.query ? { label: f.query, where: { scope: "keyword", keyword: f.query, siteId: site } } : null, f.page ? { label: pathOf(f.page), where: { scope: "page", pageUrl: f.page, siteId: site } } : null].filter(Boolean);
+    const sub = change ? answer(f, false) : [kindName(f), !UI.siteIdPicked() ? f.host : "", f.task ? t(f.task === "done" ? "Task done" : "Task open") : ""].filter(Boolean).join(" · ");
+    return {
+      id: "insight", kind: "Insight", period: false, title: change ? t("Change breakdown") : titleOf(f), sub,
+      page: onPage ? { url: f.page, host: f.host } : undefined,
+      numbers: findingNumbers(f), chart: findingChart(f),
+      sections: [change ? null : { title: "What to do", html: todo }, { title: change ? "Why" : "The facts behind it", html: evidenceList(f) }],
+      html: `${ai ? `<section class="in-ai-wrap" data-in-ai-wrap>${aiInner(f, false)}</section>` : ""}${f.status === "dismissed" ? `<p class="small muted">${t("Hidden as not useful. Comes back if it doubles.")}</p>` : ""}`,
+      actions, note: note?.length ? note : undefined,
+    };
+  }
+  // The chart keeps the old panel's hook (.in-spark), drawn again whenever the panel is.
+  const markPanel = () => UI.$("#panel.rp .rp-chart")?.classList.add("in-spark", "in-chart");
+  function openFindingPanel(id, opener) {
+    IN.opened = id;
+    IN.rp = UI.rowPanel({
+      id: "insight", kind: "Insight", period: false, title: t("Insight"), opener,
+      load: async () => {
+        const [f] = await Promise.all([window.COMP.api("GET", `insights/${id}`), aiFetch()]);
+        IN.current = f;
+        setTimeout(markPanel, 0);
+        return findingSpec(f);
+      },
+    });
+  }
   async function openFinding(id, opener) {
+    if (simple()) { openFindingPanel(id, opener); return; }
     IN.opened = id;
     UI.openPanel(`${UI.panelHead(t("Insight"), "")}<div class="panel-body"><p class="muted">${t("Loading…")}</p></div>`, opener);
     let f;
@@ -734,7 +896,7 @@
       if ((el = hit("[data-in-mix]"))) { IN.mixChip = el.dataset.inMix; TP.reset(PAGES); UI.render({ keepScroll: true }); UI.$(`[data-in-mix="${IN.mixChip}"]`)?.focus({ preventScroll: true }); return; }
       if (hit("[data-in-sort]")) { IN.sortDir = IN.sortDir === "asc" ? "desc" : "asc"; TP.reset(PAGES); UI.render({ keepScroll: true }); UI.$("[data-in-sort]")?.focus({ preventScroll: true }); return; }
       if (hit("[data-in-search-clear]")) { TP.state(PAGES).q = ""; TP.reset(PAGES); UI.render({ keepScroll: true }); UI.$(`[data-tp-search][data-tp-key="${PAGES}"]`)?.focus({ preventScroll: true }); return; }
-      if (hit("[data-in-retry]")) { forget(); UI.render(); return; }
+      if (hit("[data-in-retry]")) { forget(); if (window.SCREEN_DATA?.on()) window.SCREEN_DATA.forget("insights"); UI.render(); return; }
       if ((el = hit("[data-in-run]"))) {
         el.disabled = true;
         try { await window.COMP.api("POST", "insights/run", { site_id: UI.siteIdPicked() || null }); forget(); UI.render({ keepScroll: true }); UI.toast(t("Insights worked out again.")); }
@@ -759,10 +921,11 @@
         const undo = el.matches("[data-in-undismiss]"), id = Number(el.dataset.inDismiss || el.dataset.inUndismiss);
         try {
           await window.COMP.api("POST", `insights/${id}/dismiss`, { undo });
+          if (undo) IN.gone.delete(id); else IN.gone.add(id); // simpler screens: off the open list at once (simplePage)
           forget();
           IN.cache.forEach((entry) => { if (entry.data?.rows) entry.data.rows = entry.data.rows.filter((r) => r.id !== id); }); // gone at once; the server's list follows
           UI.closePanel(); UI.render({ keepScroll: true });
-          UI.toast(t(undo ? "Brought back" : "Hidden. Comes back if it doubles."), undo ? {} : { undo: async () => { await window.COMP.api("POST", `insights/${id}/dismiss`, { undo: true }); forget(); UI.render({ keepScroll: true }); } });
+          UI.toast(t(undo ? "Brought back" : "Hidden. Comes back if it doubles."), undo ? {} : { undo: async () => { await window.COMP.api("POST", `insights/${id}/dismiss`, { undo: true }); IN.gone.delete(id); forget(); UI.render({ keepScroll: true }); } });
         } catch (err) { UI.toast(err.message, { kind: "crit" }); }
         return;
       }
@@ -780,6 +943,7 @@
       const error = e.target.querySelector("[data-in-countries-error]");
       try {
         C.data = await window.COMP.api("PUT", "search/countries", { site_id: UI.siteIdPicked(), countries });
+        if (window.SCREEN_DATA?.on()) window.SCREEN_DATA.put(`search/countries?site_id=${UI.siteIdPicked()}`, C.data);
         UI.closePanel(); forget(); UI.render({ keepScroll: true });
         UI.toast(t("Saved. Applies from the next Search Console read."));
       } catch (err) { error.hidden = false; error.textContent = t(err.message); }
@@ -795,7 +959,14 @@
   }
 
   window.SCREENS = window.SCREENS || {};
-  window.SCREENS.insights = { init(helpers) { UI = helpers; ({ t, esc, num, icon } = helpers); bind(); TP.on(PAGES, redraw); }, page };
+  window.SCREENS.insights = {
+    init(helpers) {
+      UI = helpers; ({ t, esc, num, icon } = helpers); bind(); TP.on(PAGES, redraw);
+      // The first-view answers, for screen-data.js's warm-up and menu hover (simpler screens only; it reads site and tab then).
+      window.SCREEN_DATA?.screen?.("insights", () => { const site = UI.siteIdPicked(); return [`insights?${query()}`, site ? `search/countries?site_id=${site}` : ""]; });
+    },
+    page,
+  };
 
   const words = {
     "No site yet": "Pas encore de site", "Add a site and connect Search Console to get insights.": "Ajoutez un site et connectez la Search Console pour obtenir des analyses.",
@@ -967,6 +1138,12 @@
     "Checked {d} with {tool} from {place}, top {n}.": "Vérifié le {d} avec {tool} depuis {place}, top {n}.", "Who ranks for it": "Qui se classe dessus", "You": "Vous", "Followed rival": "Concurrent suivi", "Also": "Aussi",
     "Impressions × (your usual click rate at its average position − at its last-check place), per month.": "Impressions × (votre taux de clic habituel à sa position moyenne − à sa place au dernier relevé), ramené au mois.", "Impressions × (your usual click rate at its old place − at its place now), per month.": "Impressions × (votre taux de clic habituel à son ancienne place − à sa place actuelle), ramené au mois.", "Impressions × usual click rate at its position, minus its clicks, per month.": "Impressions × taux de clic habituel à sa position, moins ses clics, ramené au mois.", "Last 28 days' clicks to the clicked page, per month.": "Clics de la page cliquée sur les 28 derniers jours, ramenés au mois.",
     "{n} use all-country positions": "{n} utilisent des positions tous pays", "1 uses all-country positions": "1 utilise des positions tous pays",
+    "final days only": "jours définitifs seulement", "Last 28 days vs the 28 before": "28 derniers jours vs les 28 précédents",
+    "How clicks at stake are counted": "Comment les clics en jeu sont comptés", "Not counted for this kind": "Pas compté pour ce type",
+    "usual {u}%": "habituel {u} %", "The facts behind it": "Les faits derrière", "Create task": "Créer une tâche", "Track": "Suivre",
+    "Clicks a month at stake on the open findings that lost clicks.": "Clics par mois en jeu sur les constats ouverts qui ont perdu des clics.",
+    "Clicks a month at stake on the open chances to win, not counting a query or page already counted as a loss.": "Clics par mois en jeu sur les occasions ouvertes, sans compter une requête ou une page déjà comptée comme perte.",
+    "Findings done, or gone by themselves, in the last 30 days.": "Constats réglés, ou disparus d'eux-mêmes, ces 30 derniers jours.",
     "Search findings": "Chercher un constat", "No finding matches this search.": "Aucun constat ne correspond à cette recherche.", "finding": "constat", "findings": "constats",
   };
   Object.keys(words).forEach((w) => { if (window.FR[w] === undefined) window.FR[w] = words[w]; });

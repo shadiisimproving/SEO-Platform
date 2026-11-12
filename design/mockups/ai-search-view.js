@@ -1,7 +1,26 @@
 /* AI search (redesigned 2026-11-10). It answers two questions: do AI assistants send me leads, and do AI answers cite me?
    Today's order: the answer, four numbers, the weekly chart beside at most three next actions, one card with tabs, then
    Google's AI Overviews. Every card names its source and period in its header (a chip), and a source that fails only
-   greys its own card: the rest still shows. The numbers come from /api/metrics/ai (seo/metrics/ai_search.py). */
+   greys its own card: the rest still shows. The numbers come from /api/metrics/ai (seo/metrics/ai_search.py).
+
+   The simpler screens (UI.simple(), ?simple=1; plan-seo-command-center-simplify-screens-like-mickaz.md, section 2, track T7).
+   With the switch off, nothing below changes. With it on:
+   - The head (UI.head) says the dates, the comparison and one sources chip ("4 sources up to date ›", amber or red when one
+     needs the owner) that opens the Sources panel. Its (i) holds the screen's sentence and "Google Analytics hid rows".
+     Refresh data is one button: refreshing one source, uploading a Clarity download and checking AI Overviews are in Sources.
+   - The answer keeps its two lines; the sources line under it goes (it is the head's chip).
+   - Four number cards (UI.card): AI visits with its weekly graph, Leads, Lead rate ("organic search 7.3%" under it) and
+     Copilot citations ("Upload a Clarity AI download" under it while there is none).
+   - AI visits per week: Clarity live beside Google Analytics once connected, one line with Connect until then. Its small
+     print ("Weeks count only the days read", the second opinion) goes behind (i)s.
+   - Next actions: one row each, Compare visible, Task on hover (.row-act), no grey second line.
+   - One card, tabs in the underline look: Assistants · Landing pages · Cited pages · Questions to win, and Google AI report
+     as a fifth once one is uploaded. "Edit the AI list" and Filter sit in its head, each tab's small print in its (i).
+     A row opens its panel (UI.rowPanel): an assistant's, or a page's.
+   - One line for Google's AI Overviews with Open the watch. Check now is in Sources and asks here before spending.
+   - Google's AI report upload and its how-to are in the Sources panel. The closing note is the tabs card's (i).
+   - One request on first open (metrics/ai, through SCREEN_DATA). The AI report loads quietly after the first draw, and the
+     AI Overview check's price only when Check now is asked. The logo timer goes through SCREEN_DATA.logos(). */
 (() => {
   "use strict";
   let UI = null, t, esc, num, icon;
@@ -16,6 +35,8 @@
   const share = (v) => (v === null || v === undefined ? "—" : `${UI.dec(Math.round(v * 10) / 10)}${unit()}`);
   const pct = (v) => { const out = LVx().pct(v); return out === "—" ? out : out.replace(/ %$/, unit()); };
   const plural = (n, one, many) => tf(n === 1 ? one : many, { n: num(n) });
+  const simple = () => Boolean(UI?.simple?.()); // the simpler screens switch (mockup.js)
+  const SD = () => (simple() && window.SCREEN_DATA?.on?.() ? window.SCREEN_DATA : null); // the shared 5-minute cache, when it acts
 
   /* Rows of 1 (a page cited once, a page with one visit) say little each. Five or more of them fold into one line, and when
      every row is 1 the table becomes a sentence. Pure, so it's tested on its own (tests/js/ai_search.cjs). */
@@ -67,6 +88,21 @@
     const narrow = `<button class="ai-chip ${bad.length ? "warn" : "ok"} ai-only-narrow" data-ai-sources>${tf(bad.length ? "{n} sources · {m} need you ›" : "{n} sources ›", { n: num(all.length), m: num(bad.length) })}</button>`;
     return `<div class="ai-sources-line"><span class="ai-only-wide">${wide}</span>${narrow}<button class="link-btn ai-only-wide" data-ai-sources>${t("Sources")} ›</button></div>`;
   }
+  /* The simpler screens on a phone: the head's date line is cut to one line, so its sources chip comes back under the answer. */
+  function narrowSources(d) {
+    const h = headSources(d);
+    return `<div class="ai-sources-line ai-only-narrow"><button class="ai-chip ${h.sev === "crit" ? "crit" : h.sev ? "warn" : "ok"}" data-ai-sources>${h.sev ? icon(h.sev === "crit" ? "octagon-alert" : "triangle-alert") : ""}<span>${esc(h.word)} ›</span></button></div>`;
+  }
+  /* The simpler head's sources chip, in the date line: all well in one phrase, or what needs the owner, amber or red. It opens
+     the Sources panel (data-ai-sources, handled below). */
+  function headSources(d) {
+    const all = d.source_states, bad = all.filter((s) => ["failing", "old"].includes(s.state));
+    const used = all.filter((s) => !["not_connected", "not_set_up", "not_used"].includes(s.state)).length;
+    if (!bad.length) return { word: used === 1 ? t("Source up to date") : tf("{n} sources up to date", { n: num(used) }), open: "data-ai-sources" };
+    const one = bad.length === 1 ? bad[0] : null;
+    const word = !one ? tf("{n} sources need you", { n: num(bad.length) }) : one.state === "failing" ? `${nameOf(one)} ${t("stopped working")}` : chipWords(one, true);
+    return { word, sev: bad.some((s) => s.state === "failing") ? "crit" : "warn", open: "data-ai-sources" };
+  }
 
   // ---- the answer --------------------------------------------------------------------------------
   const mark = (domain) => `<span class="ai-who">${UI.siteLogo(domain, 16)}<span class="mono" dir="ltr">${esc(domain)}</span></span>`;
@@ -88,11 +124,31 @@
     } else if (d.ai_overviews.with_overview) {
       lines.push(esc(tf("AI Overviews on {o} of {c} keywords checked; you're cited in {m}.", { o: num(d.ai_overviews.with_overview), c: num(d.ai_overviews.captured), m: num(d.ai_overviews.cited_me) })));
     }
-    return `<div class="ai-answer"><p class="today-lead">${lines[0]}</p>${lines[1] ? `<p class="today-second">${lines[1]}</p>` : ""}${sourcesLine(d)}</div>`;
+    return `<div class="ai-answer"><p class="today-lead">${lines[0]}</p>${lines[1] ? `<p class="today-second">${lines[1]}</p>` : ""}${simple() ? narrowSources(d) : sourcesLine(d)}</div>`;
   }
 
   // ---- four numbers ------------------------------------------------------------------------------
+  /* The simpler screens' four cards (UI.card): each says one fact under its figure, and AI visits carries its weekly graph. */
+  function cards(d) {
+    const ga4 = stateOf(d, "ga4"), off = ["not_connected", "not_used", "no_sites"].includes(ga4.state);
+    const has = (v) => v !== null && v !== undefined;
+    const weeks = d.weekly.map((w) => w.sessions).filter((v) => v !== null);
+    const visits = UI.card({ id: "ai-visits", label: "AI visits", value: off ? null : d.sessions, change: off ? null : { now: d.sessions, before: d.before },
+      sub: off ? esc(t("Google Analytics not connected")) : null, spark: !off && weeks.length > 1 ? weeks : null, cls: "tile" });
+    const leads = UI.card({ id: "ai-leads", label: "Leads", value: off ? null : d.key_events_set_up ? d.leads : `<span class="today-fig-word">${esc(t("Not set up"))}</span>`,
+      change: !off && d.key_events_set_up && has(d.before_leads) ? { now: d.leads, before: d.before_leads, unit: "" } : null,
+      sub: off ? "" : !d.key_events_set_up ? esc(t("Mark forms as GA4 key events")) : null, cls: "tile" });
+    const r = d.rate, o = d.organic, rateOff = off || !d.key_events_set_up;
+    const rate = UI.card({ id: "ai-rate", label: "Lead rate", def: "AI lead rate", value: rateOff || r.value === null ? null : pct(r.value),
+      sub: rateOff ? "" : r.value === null ? esc(tf("needs {need} AI visits, {n} so far", { need: num(r.needs), n: num(r.visits) })) : o.value === null ? "" : `<span class="nowrap">${esc(t("organic search"))} ${pct(o.value)}</span>`, cls: "tile" });
+    const c = d.copilot, one = c.sites.length === 1 ? c.sites[0] : null, cited = has(c.citations);
+    const cite = UI.card({ id: "ai-citations", label: "Copilot citations", value: cited ? c.citations : null,
+      change: cited && one?.before && has(one.before.citations) ? { now: c.citations, before: one.before.citations, unit: "" } : null,
+      sub: !cited ? `<button class="link-btn" data-lv-connect="clarity">${t("Upload a Clarity AI download")}</button>` : has(c.share) ? `<span class="nowrap">${esc(t("share"))} ${share(c.share)}</span>` : null, cls: "tile" });
+    return `<section class="tiles ai-tiles">${visits}${leads}${rate}${cite}</section>`;
+  }
   function tiles(d) {
+    if (simple() && UI.card) return cards(d);
     const ga4 = stateOf(d, "ga4"), off = ["not_connected", "not_used", "no_sites"].includes(ga4.state);
     const weeks = d.weekly.map((w) => w.sessions).filter((v) => v !== null);
     const visits = UI.tile(t("AI visits"), off ? "—" : UI.cnt(d.sessions), off ? `<span class="ab">${t("Google Analytics not connected")}</span>` : LVx().change(d.sessions, d.before), { ic: "sparkles", line: !off && weeks.length > 1 ? weeks : null });
@@ -156,10 +212,26 @@
       : !read ? empty(t("Clarity not read these weeks yet."))
       : !any ? empty(tf("Clarity read {n}: no AI visits.", { n: plural(read, "{n} day", "{n} days") }))
       : LVx().lineChart("ai-weeks-clarity", days, [{ name: "AI visits", color: "var(--ch-2)", values }], { dayLabel: label });
+    if (simple()) { // its small print goes behind an (i) beside its name
+      const info = read && !NOT_ON.includes(live.state) ? UI.info([tf("Weeks count only the days read: {n} so far.", { n: num(read) }), "Clarity only gives its last 3 days."]) : "";
+      return half("clarity", t("Clarity live"), live, body).replace("</h3>", `</h3>${info}`);
+    }
     const note = read && !NOT_ON.includes(live.state) ? `<div class="ai-half-foot"><p class="small muted ai-second"><span>${esc(tf("Weeks count only the days read: {n} so far.", { n: num(read) }))}${UI.tip("Clarity only gives its last 3 days.")}</span></p></div>` : "";
     return half("clarity", t("Clarity live"), live, body, note);
   }
+  /* The simpler screens: Clarity live beside Google Analytics once it's connected, one line with Connect until then. The
+     second opinion is the card head's (i). */
+  function chartCardSimple(d) {
+    const live = stateOf(d, "clarity_live"), s = d.second_opinion;
+    const liveOn = !NOT_ON.includes(live.state);
+    const second = !s || !liveOn ? "" : !s.days ? UI.info("No Clarity live reads on these days yet to compare.")
+      : UI.info([tf("Second opinion: Clarity live saw {c} on the {n} read; Google Analytics saw {g}.", { c: plural(s.clarity, "{n} AI visit", "{n} AI visits"), n: plural(s.days, "day", "{n} days"), g: num(s.ga4) }), "Same days for both. They count differently, so they're never added."]);
+    const line = liveOn ? "" : `<p class="ai-clarity-line" data-ai-half="clarity">${esc(`${t("Clarity live")}: ${t(live.state === "not_used" ? "not used" : "not connected")}`)}${live.state === "not_connected" ? `<span class="head-sep"> · </span><button class="link-btn" data-lv-connect="clarity">${t("Connect")}</button>` : ""}</p>`;
+    return `<section class="card ai-chart"><div class="card-head"><h2>${t("AI visits per week")}</h2>${second}</div>
+      <div class="ai-halves">${ga4Half(d)}${liveOn ? clarityHalf(d) : ""}</div>${line}</section>`;
+  }
   function chartCard(d) {
+    if (simple()) return chartCardSimple(d);
     const second = secondOpinion(d);
     return `<section class="card ai-chart"><div class="card-head"><h2>${t("AI visits per week")}</h2></div>
       <div class="ai-halves">${ga4Half(d)}${clarityHalf(d)}</div>${second ? `<div class="ai-chart-foot">${second}</div>` : ""}</section>`;
@@ -195,7 +267,20 @@
       source: { type: "search", label: words.title, host: a.host, facts, link: "#ai", key: a.key },
     };
   }
+  /* The simpler screens: one row per action, its fact only. Compare stays in view; Task shows on hover or focus (.row-act). */
+  function actionsCardSimple(d) {
+    const list = d.next_actions.slice(0, 3);
+    const rows = list.map((a) => {
+      const w = actionText(a);
+      return `<li><span>${icon(w.ic, w.tone)}</span><div class="what"><div class="t">${w.html}</div></div>
+        <div class="acts"><span class="row-act">${UI.taskButton(taskFind(a, w), { label: "Task" })}</span>${a.kind === "compare" ? `<button class="btn btn-small" data-ai-watch="${esc(String(a.site_id))}">${t("Compare")}</button>` : ""}</div></li>`;
+    }).join("");
+    const count = d.next_action_count > list.length ? `<span class="end small muted">${tf("{n} of {m}", { n: num(list.length), m: num(d.next_action_count) })}</span>` : "";
+    return `<section class="card ai-actions ai-actions-simple"><div class="card-head"><h2>${t("Next actions")}</h2>${count}</div>
+      ${rows ? `<ul class="rows">${rows}</ul>` : `<div class="empty today-empty"><p>${t("Nothing to do right now.")}${UI.info("Ideas come from AI visits, Copilot's questions and AI Overviews.")}</p></div>`}</section>`;
+  }
   function actionsCard(d) {
+    if (simple()) return actionsCardSimple(d);
     const list = d.next_actions;
     const acts = (a, w) => `<div class="acts">${UI.taskButton(taskFind(a, w), { label: "Task" })}${a.kind === "compare" ? `<button class="btn btn-small" data-ai-watch="${esc(String(a.site_id))}">${t("Compare")}</button>` : ""}</div>`;
     // Kinds whose advice is the same on every row (all but the FAQ, whose page differs) are grouped, in the order they come.
@@ -221,17 +306,32 @@
 
   // ---- one card, four tabs -----------------------------------------------------------------------
   const TABS = [["assistants", "Assistants"], ["pages", "Landing pages"], ["cited", "Cited pages"], ["questions", "Questions to win"]];
-  const lead = (html) => `<p class="ai-tab-lead">${html}</p>`;
+  /* The simpler screens: each tab's small print goes to the (i) in the card's head instead of a line above the table
+     (keep: true for a line that asks for something). Its words, with any hover tip's, as plain sentences. */
+  let tabInfo = [];
+  const plainOf = (html) => {
+    const doc = new DOMParser().parseFromString(`<body>${html}</body>`, "text/html");
+    const tips = [...doc.querySelectorAll("[data-tip]")].map((x) => x.getAttribute("data-tip"));
+    doc.querySelectorAll("[data-tip]").forEach((x) => x.remove());
+    return [doc.body.textContent.replace(/\s+/g, " ").trim(), ...tips].filter(Boolean);
+  };
+  const lead = (html, { keep = false } = {}) => { if (simple() && !keep) { tabInfo.push(...plainOf(html)); return ""; } return `<p class="ai-tab-lead">${html}</p>`; };
+  /* The simpler screens: a row opens its panel (row-panel.js). The first cell carries a mark, moved onto the row here, since
+     LV.dataTable draws the rows. A Task in a row shows on hover or focus. */
+  const rowMark = (kind, key, host = "") => (simple() && key ? `<i hidden data-ai-rp="${esc(kind)}" data-ai-rp-key="${esc(key)}" data-ai-rp-host="${esc(host || "")}"></i>` : "");
+  const rowsOpen = (html) => (!simple() ? html : html.replace(/<tr style="cursor:default">(<td[^>]*>)<i hidden data-ai-rp="([^"]*)" data-ai-rp-key="([^"]*)" data-ai-rp-host="([^"]*)"><\/i>/g,
+    (_, td, kind, key, host) => `<tr data-rp-open="${kind}" data-rp-key="${key}"${host ? ` data-rp-host="${host}"` : ""} tabindex="0">${td}`));
+  const rowAct = (html) => (simple() && html ? `<span class="row-act">${html}</span>` : html);
   function folded(id, columns, rows, { test, word, allWord, empty }) {
     const f = foldRows(rows, test), open = A.fold.has(id);
     if (f.all && !open) return `<div class="ai-fold-all"><p>${esc(tf(allWord, { n: num(f.folded) }))}</p><button class="link-btn" data-ai-fold="${id}">${t("Show")}</button></div>`;
     const shown = open || !f.folded ? rows : rows.filter((r) => !test(r));
     const line = f.folded && !open ? `<div class="ai-fold"><span>${esc(tf(word, { n: num(f.folded) }))}</span><button class="link-btn" data-ai-fold="${id}">${t("Show")}</button></div>`
       : f.folded && open ? `<div class="ai-fold"><button class="link-btn" data-ai-fold="${id}">${t("Hide")}</button></div>` : "";
-    return LVx().dataTable(id, columns, shown, { pageSize: 10, empty }) + line;
+    return rowsOpen(LVx().dataTable(id, columns, shown, { pageSize: 10, empty })) + line;
   }
   const notSet = (text, button = "") => `<div class="empty"><p>${text}</p>${button ? `<div style="margin-top:10px">${button}</div>` : ""}</div>`;
-  const pageCell = (r) => `${PageLink.html(r.url || r.path, { text: r.path, host: r.host, cls: "mono lv-url" })}${LVx().siteOfPage(r)}`;
+  const pageCell = (r) => `${rowMark("page", r.path, r.host)}${PageLink.html(r.url || r.path, { text: r.path, host: r.host, cls: "mono lv-url" })}${LVx().siteOfPage(r)}`;
 
   function assistantsTab(d) {
     const ga4 = stateOf(d, "ga4");
@@ -239,25 +339,25 @@
     if (!d.sources.length) return notSet(`${t("No AI visits in this period: a real zero.")}${UI.tip("Google Analytics has data, and none of it came from the assistants on the AI list.")}`);
     const rateCell = (r) => (r.rate !== null ? pct(r.rate) : `<span class="muted" data-tip="${esc(tf("needs {need} AI visits, {n} so far", { need: num(d.limits.lead_rate_min_visits), n: num(r.sessions) }))}">—</span>`);
     const columns = [
-      { key: "source", label: "Assistant", html: (r) => mark(r.source) },
+      { key: "source", label: "Assistant", html: (r) => `${rowMark("assistant", r.source)}${mark(r.source)}` },
       { key: "sessions", label: "Visits", num: true },
       ...(d.key_events_set_up ? [{ key: "leads", label: "Leads", num: true }, { key: "rate", label: "Lead rate", num: true, html: rateCell }] : []),
     ];
     const small = d.sources.filter((r) => r.rate === null).length;
-    return `${small && d.key_events_set_up ? lead(`${esc(tf("Lead rate shows from {n} AI visits.", { n: num(d.limits.lead_rate_min_visits) }))}${UI.tip("Below that, one lead more or less swings it too far.")}`) : ""}${LVx().dataTable("ai-assistants", columns, d.sources, { pageSize: 10 })}`;
+    return `${small && d.key_events_set_up ? lead(`${esc(tf("Lead rate shows from {n} AI visits.", { n: num(d.limits.lead_rate_min_visits) }))}${UI.tip("Below that, one lead more or less swings it too far.")}`) : ""}${rowsOpen(LVx().dataTable("ai-assistants", columns, d.sources, { pageSize: 10 }))}`;
   }
   function pagesTab(d) {
     const ga4 = stateOf(d, "ga4");
     if (["not_connected", "not_used", "no_sites"].includes(ga4.state)) return notSet(t("Connect Google Analytics to see AI landing pages."), `<button class="btn btn-main" data-lv-connect="google">${t("Connect")}</button>`);
     const min = d.limits.cta_min_visits;
     const none = d.pages.filter((p) => !p.leads).length;
-    const action = (r) => (d.key_events_set_up && !r.leads && r.sessions >= min ? UI.taskButton(taskFind({ kind: "cta", host: r.host, path: r.path, visits: r.sessions, key: `ai|cta|${r.host}|${r.path}` }, actionText({ kind: "cta", host: r.host, path: r.path, visits: r.sessions })), { label: "Task" }) : "");
+    const action = (r) => rowAct(d.key_events_set_up && !r.leads && r.sessions >= min ? UI.taskButton(taskFind({ kind: "cta", host: r.host, path: r.path, visits: r.sessions, key: `ai|cta|${r.host}|${r.path}` }, actionText({ kind: "cta", host: r.host, path: r.path, visits: r.sessions })), { label: "Task" }) : "");
     const columns = [
       { key: "path", label: "Page", get: LVx().pageName, html: pageCell },
       { key: "sessions", label: "Visits", num: true },
       ...(d.key_events_set_up ? [{ key: "leads", label: "Leads", num: true }, { key: "action", label: "Action", get: () => null, html: action }] : []),
     ];
-    const said = !d.pages.length ? "" : d.key_events_set_up ? lead(esc(tf("{n} of {m} pages: AI visits, no lead. Task button from {min} visits.", { n: num(none), m: num(d.pages.length), min: num(min) }))) : lead(esc(t("Leads aren't tracked: mark your forms as key events in GA4.")));
+    const said = !d.pages.length ? "" : d.key_events_set_up ? lead(esc(tf("{n} of {m} pages: AI visits, no lead. Task button from {min} visits.", { n: num(none), m: num(d.pages.length), min: num(min) }))) : lead(esc(t("Leads aren't tracked: mark your forms as key events in GA4.")), { keep: true });
     return said + folded("ai-pages", columns, d.pages, { test: (r) => r.sessions === 1, word: "{n} pages with one AI visit each", allWord: "{n} pages got one AI visit each; none stands out yet.", empty: "No AI landing pages in this period." });
   }
   const uploadAi = () => `<button class="btn btn-main" data-lv-connect="clarity">${t("Upload a Clarity AI download")}</button>`;
@@ -288,7 +388,7 @@
     const below = d.limits.faq_share_below;
     const rows = withQ.flatMap((s) => s.queries.map((q) => ({ ...q, host: s.host }))).sort((a, b) => (a.share ?? 100) - (b.share ?? 100) || (b.citations || 0) - (a.citations || 0));
     const best = (r) => (r.page ? `${PageLink.html(r.page.url, { text: r.page.path, host: r.host, cls: "mono lv-url" })}${r.page.match === "close" ? `<div class="lv-cat" dir="auto">${esc(tf("via “{q}”", { q: r.page.query }))}</div>` : ""}` : `<span class="muted">${t("No page yet")}</span>`);
-    const action = (r) => (r.share !== null && r.share < below ? (() => { const a = { kind: "faq", host: r.host, query: r.query, share: r.share, citations: r.citations, page: r.page, key: `ai|faq|${r.host}|${r.query.toLowerCase()}` }; return UI.taskButton(taskFind(a, actionText(a)), { label: "Task" }); })() : "");
+    const action = (r) => (r.share !== null && r.share < below ? (() => { const a = { kind: "faq", host: r.host, query: r.query, share: r.share, citations: r.citations, page: r.page, key: `ai|faq|${r.host}|${r.query.toLowerCase()}` }; return rowAct(UI.taskButton(taskFind(a, actionText(a)), { label: "Task" })); })() : "");
     const columns = [
       { key: "query", label: "Question", html: (r) => `<span dir="auto">${esc(r.query)}</span>` },
       { key: "share", label: "Share", num: true, html: (r) => `<span class="${r.share !== null && r.share < below ? "warn" : ""}">${share(r.share)}</span>` },
@@ -298,7 +398,25 @@
     const low = rows.filter((r) => r.share !== null && r.share < below).length;
     return lead(`${esc(tf("{n} of {m} questions give you under {s} of Copilot's answers.", { n: num(low), m: num(rows.length), s: share(below) }))}${UI.tip("Best page: the page Google already shows for that search.")}`) + LVx().dataTable("ai-questions", columns, rows, { pageSize: 10 });
   }
+  /* The simpler screens: the underline tabs, Google's AI report as a fifth once uploaded, and in the head the (i) (the AI list's
+     caveat and the tab's small print), Edit the AI list and the table's Filter (data-tt-slot, table-tools.js). */
+  function tabsCardSimple(d) {
+    const report = window.GoogleAIReport?.has?.();
+    const tabs = report ? [...TABS, ["report", "Google AI report"]] : TABS;
+    if (!tabs.some(([id]) => id === A.tab)) A.tab = "assistants";
+    tabInfo = [];
+    const body = A.tab === "report" ? window.GoogleAIReport.tab() : { assistants: assistantsTab, pages: pagesTab, cited: citedTab, questions: questionsTab }[A.tab](d);
+    // Each tab's count is its badge (the table then needs no "1–5 of 5" under it: data-tt-own-count).
+    const ga4On = !NOT_ON.includes(stateOf(d, "ga4").state), c = d.copilot;
+    const counts = { assistants: ga4On ? d.sources.length : null, pages: ga4On ? d.pages.length : null, cited: c.sites.length ? c.sites.reduce((n, x) => n + x.pages.length, 0) : null, questions: c.sites.some((x) => x.queries) ? c.sites.reduce((n, x) => n + (x.queries?.length || 0), 0) : null };
+    const badge = (id) => (counts[id] ? ` <span class="n-badge">${num(counts[id])}</span>` : "");
+    const info = A.tab === "report" ? tabInfo : ["Some AI visits show as Direct or Organic Search.", "AI apps often send no referrer, so their visits show as Direct. Clicks from Google's AI Overviews count as Organic Search.", ...tabInfo];
+    return `<section class="card ai-tabs-card ai-tabs-simple"><div class="card-head ai-tabs-head"><div class="page-tabs in-card" role="tablist" aria-label="${t("AI search")}">${tabs.map(([id, word]) => `<button class="page-tab tab" role="tab" id="ai-tab-${id}" data-ai-tab="${id}" aria-selected="${A.tab === id}" tabindex="${A.tab === id ? 0 : -1}">${t(word)}${badge(id)}</button>`).join("")}</div>
+      <span class="end ai-tabs-tools">${UI.info(info)}<button class="link-btn" data-ai-list>${t("Edit the AI list")}</button><span data-tt-slot=""></span></span></div>
+      <div role="tabpanel" aria-labelledby="ai-tab-${A.tab}" ${A.tab === "report" ? "" : "data-tt-own-count"}>${body}</div></section>`;
+  }
   function tabsCard(d) {
+    if (simple()) return tabsCardSimple(d);
     const chipFor = { assistants: stateOf(d, "ga4"), pages: stateOf(d, "ga4"), cited: stateOf(d, "clarity_download"), questions: stateOf(d, "clarity_download") }[A.tab];
     const body = { assistants: assistantsTab, pages: pagesTab, cited: citedTab, questions: questionsTab }[A.tab](d);
     return `<section class="card ai-tabs-card"><div class="ai-tabs-head"><div class="tabs" role="tablist" aria-label="${t("AI search")}">${TABS.map(([id, word]) => `<button class="tab" role="tab" id="ai-tab-${id}" data-ai-tab="${id}" aria-selected="${A.tab === id}" tabindex="${A.tab === id ? 0 : -1}">${t(word)}</button>`).join("")}</div><span class="end">${chip(chipFor, { short: true })}</span></div>
@@ -310,7 +428,7 @@
     const o = d.ai_overviews, key = `${UI.siteIdPicked() || "all"}|${o.keyword_ids.join(",")}`;
     if (!o.keyword_ids.length || A.aio.key === key || !window.COMP?.server) return;
     A.aio = { ...A.aio, key, preview: null, asking: true, confirm: false };
-    window.COMP.api("POST", "refresh/preview", { keyword_ids: o.keyword_ids, engines: ["google"], depth: 10, mode: "auto", picked: [], include_recent: false })
+    return window.COMP.api("POST", "refresh/preview", { keyword_ids: o.keyword_ids, engines: ["google"], depth: 10, mode: "auto", picked: [], include_recent: false })
       .then((p) => { A.aio.preview = p; }).catch(() => { A.aio.preview = { failed: true }; })
       .finally(() => { A.aio.asking = false; if (UI.state.route === "ai" && !UI.$("#panel")) UI.render({ keepScroll: true }); });
   }
@@ -324,7 +442,21 @@
     const words = tool && tool.left !== null && tool.left !== undefined ? tf("Check now · uses {c} of {l} left", { c: num(p.credits), l: num(tool.left) }) : tf("Check now · {n}", { n: plural(p.checks, "{n} check", "{n} checks") });
     return `<button class="btn btn-small" data-ai-aio-check>${esc(words)}</button>`;
   }
+  /* The simpler screens: one line and Open the watch. Check now (Sources, or the head's chip) asks the price only then, and its
+     button and confirm show here once asked (A.aio.asked). */
+  function aioLine(d) {
+    const o = d.ai_overviews;
+    const said = !o.tracked ? t("No keywords tracked, so no AI Overview checks yet.")
+      : !o.captured ? t("No AI Overview checks yet.")
+      : tf("AI Overviews on {o} of {c} keywords checked; you're cited in {m}.", { o: num(o.with_overview), c: num(o.captured), m: num(o.cited_me) });
+    const p = A.aio.preview, tool = p?.tools?.find((x) => x.credits) || p?.tools?.[0];
+    const check = A.aio.run || (A.aio.asked && o.keyword_ids.length) ? aioCheckButton(o) : !o.keyword_ids.length ? `<button class="btn btn-small" data-go="keywords">${t("Add keywords")}</button>` : "";
+    const confirm = A.aio.confirm && p?.checks ? `<div class="ai-confirm" role="group" aria-label="${t("Check now")}"><span>${esc(tf("This checks {k} on Google with {tool} and uses {c}.", { k: plural(p.checks, "{n} keyword", "{n} keywords"), tool: tool?.name || "", c: plural(p.credits, "{n} credit", "{n} credits") }))}</span><button class="btn btn-small btn-main" data-ai-aio-go>${t("Check now")}</button><button class="btn btn-small btn-ghost" data-ai-aio-cancel>${t("Cancel")}</button></div>` : "";
+    return `<section class="card ai-aio ai-aio-line"><div class="ai-aio-row"><p class="ai-aio-said">${icon("sparkles", "sec")}<span>${esc(said)}</span></p>
+      <span class="ai-aio-acts">${check}<button class="link-btn" data-ai-watch="${esc(String(UI.siteIdPicked() || ""))}">${t("Open the watch")} ›</button></span></div>${confirm}</section>`;
+  }
   function aioCard(d) {
+    if (simple()) return aioLine(d);
     const o = d.ai_overviews, serp = stateOf(d, "serp");
     aioPreview(d);
     const said = !o.tracked ? t("No keywords tracked, so no AI Overview checks yet.")
@@ -352,6 +484,7 @@
     }
     A.aio = { key: "", preview: null, asking: false, confirm: false, run: null };
     LVx().forget?.();
+    SD()?.forget("metrics/ai");
     if (UI.state.route === "ai" && !UI.$("#panel")) UI.render({ keepScroll: true });
     UI.toast(t("AI Overviews checked."), { kind: "good" });
   }
@@ -381,7 +514,7 @@
         <p class="small muted">${facts.filter(Boolean).map(esc).join(" · ")}</p>${sites}${fix}<div class="ai-src-acts">${buttons}</div></section>`;
     };
     UI.openPanel(`${UI.panelHead(t("Sources"), t("Each card names its source; a failing one greys only its card."))}
-      <div class="panel-body" id="ai-sources-panel">${d.source_states.map(row).join("")}</div>`, opener);
+      <div class="panel-body" id="ai-sources-panel">${d.source_states.map(row).join("")}${simple() ? window.GoogleAIReport?.panel?.() || "" : ""}</div>`, opener);
   }
 
   // ---- the AI list, behind "Edit the AI list ›" ---------------------------------------------------
@@ -410,7 +543,7 @@
       LVx().forget();
       const key = `metrics/ai?${currentKey()}`;
       const data = await window.COMP.api("GET", key);
-      LVx().cache.set(key, { loading: false, data, route: "ai" });
+      if (SD()) { SD().forget("metrics/ai"); SD().put(key, data); } else LVx().cache.set(key, { loading: false, data, route: "ai" });
       A.listBusy = false;
       const body = UI.$("#ai-list-body");
       if (body) { UI.setHTML(body, listHtml(data)); body.querySelector("input")?.focus(); }
@@ -426,7 +559,8 @@
   // ---- the page ----------------------------------------------------------------------------------
   let lastKey = "";
   const currentKey = () => lastKey;
-  const current = () => LVx().cache.get(`metrics/ai?${lastKey}`)?.data || null;
+  const current = () => (SD() ? SD().peek(`metrics/ai?${lastKey}`) : LVx().cache.get(`metrics/ai?${lastKey}`)?.data || null);
+  const askKey = () => { const parts = [UI.range.days()]; const site = UI.siteIdPicked(); if (site) parts.push(`site_id=${site}`); return parts.join("&"); };
   function refreshSplit(d) {
     const live = stateOf(d, "clarity_live"), readToday = live.sites.length && live.sites.every((s) => s.read_today);
     const liveOff = ["not_connected", "not_used"].includes(live.state);
@@ -438,15 +572,29 @@
     const reading = LVx().reading;
     return `<span class="ai-split"><button class="btn" data-lv-collect ${reading ? "disabled" : ""}>${icon("refresh-cw")}<span data-lv-collect-word>${reading ? esc(LVx().readingWord()) : t("Refresh data")}</span></button><button class="btn ai-caret" data-ai-menu aria-haspopup="menu" aria-expanded="${A.menu}" aria-label="${t("Refresh one source")}">${icon("chevron-down")}</button>${menu}</span>`;
   }
+  // The simpler screens: Refresh data alone. Refreshing one source is in the Sources panel. .ai-split stays as the hook.
+  function refreshOne() {
+    const reading = LVx().reading;
+    return `<span class="ai-split"><button class="btn" data-lv-collect ${reading ? "disabled" : ""}>${icon("refresh-cw")}<span data-lv-collect-word>${reading ? esc(LVx().readingWord()) : t("Refresh data")}</span></button></span>`;
+  }
   function aiPage() {
-    const entry = LVx().load("metrics/ai");
-    lastKey = (() => { const parts = [UI.range.days()]; const site = UI.siteIdPicked(); if (site) parts.push(`site_id=${site}`); return parts.join("&"); })();
+    lastKey = askKey();
+    // The simpler screens ask through the shared 5-minute cache (screen-data.js); the same address as LV.load's.
+    const entry = SD() ? SD().entry(`metrics/ai?${lastKey}`, { route: "ai" }) : LVx().load("metrics/ai");
     const sub = t("Do AI assistants send you leads, and do AI answers cite you?");
-    const wrap = (main, body) => `${UI.topbar(t("AI search"), sub, main)}<div class="content page-enter ai-page">${body}</div>`;
+    const wrap = (main, body, d = null) => (simple() && UI.head
+      ? `${UI.head({ title: t("AI search"), source: d ? headSources(d) : null, info: ["Do AI assistants send you leads, and do AI answers cite you?", ...(d?.hid_rows ? ["Google Analytics hid some rows with few visits, so small numbers may be missing. A longer period may show them."] : [])], main })}<div class="content page-enter ai-page">${body}</div>`
+      : `${UI.topbar(t("AI search"), sub, main)}<div class="content page-enter ai-page">${body}</div>`);
     if (entry.loading || entry.error || entry.noServer) return wrap("", LVx().stateCard(entry, "ga4"));
     const d = entry.data;
     if (d.state === "no_sites") return wrap("", LVx().stateCard(entry, "ga4"));
     if (d.through) UI.range.end("ai", d.through);
+    if (simple()) {
+      window.GoogleAIReport?.later?.(); // its fifth tab, quietly after this first draw
+      return wrap(refreshOne(), `${answer(d)}${tiles(d)}
+      <div class="ai-mid">${chartCard(d)}${actionsCard(d)}</div>
+      ${tabsCard(d)}${aioCard(d)}`, d);
+    }
     const fold = `<p class="note lv-note ai-limits">${icon("info")}<span>${t("Some AI visits show as Direct or Organic Search.")}${UI.tip("AI apps often send no referrer, so their visits show as Direct. Clicks from Google's AI Overviews count as Organic Search.")}</span><button class="link-btn" data-ai-list>${t("Edit the AI list")} ›</button></p>`;
     return wrap(refreshSplit(d), `${answer(d)}${LVx().hiddenNote(d.hid_rows)}${tiles(d)}
       <div class="ai-mid">${chartCard(d)}${actionsCard(d)}</div>
@@ -476,11 +624,17 @@
       if ((el = hit("[data-ai-tab]"))) { A.tab = el.dataset.aiTab; UI.render({ keepScroll: true }); UI.$(`[data-ai-tab="${A.tab}"]`)?.focus({ preventScroll: true }); return; }
       if ((el = hit("[data-ai-fold]"))) { const id = el.dataset.aiFold; if (A.fold.has(id)) A.fold.delete(id); else A.fold.add(id); UI.render({ keepScroll: true }); return; }
       if ((el = hit("[data-ai-sources]"))) { sourcesPanel(el); return; }
+      if (SD() && hit("[data-lv-retry]")) { SD().forget("metrics/ai"); UI.render(); return; } // the shared cache keeps a failure until Try again
       if ((el = hit("[data-ai-list]"))) { listPanel(el); return; }
       if ((el = hit("[data-ai-watch]"))) { const site = Number(el.dataset.aiWatch) || undefined; window.COMP.open("ai", {}, site); return; }
       if (hit("[data-ai-aio-focus]")) {
         A.menu = false;
         if (UI.$("#panel")) UI.closePanel();
+        if (simple()) { // the price is asked only now; the line then shows Check now and its confirm
+          A.aio.asked = true;
+          const d = current(), asking = d && !A.aio.preview && !A.aio.asking ? aioPreview(d) : null;
+          if (asking) asking.then(() => { A.aio.confirm = Boolean(A.aio.preview?.checks); if (UI.state.route === "ai" && !UI.$("#panel:not(.closing)")) { UI.render({ keepScroll: true }); (UI.$("[data-ai-aio-go]") || UI.$("[data-ai-aio-check]"))?.focus({ preventScroll: true }); } });
+        }
         A.aio.confirm = Boolean(A.aio.preview?.checks);
         UI.render({ keepScroll: true });
         setTimeout(() => { const box = UI.$(".ai-aio"); box?.scrollIntoView({ block: "center", behavior: UI.reduceMotion() ? "auto" : "smooth" }); (UI.$("[data-ai-aio-go]") || UI.$("[data-ai-aio-check]"))?.focus({ preventScroll: true }); }, 150);
@@ -514,12 +668,19 @@
       const key = wanted.join(",");
       if (!wanted.length || key === looked) return;
       looked = key;
-      window.COMP.refreshLogos().then(() => { if (wanted.some((s) => window.LOGOS_KNOWN?.has(s)) && UI.state.route === "ai" && !UI.$("#panel") && !document.activeElement?.matches?.("input")) UI.render({ keepScroll: true }); });
+      (simple() && window.SCREEN_DATA?.logos ? window.SCREEN_DATA.logos() : window.COMP.refreshLogos()).then(() => { if (wanted.some((s) => window.LOGOS_KNOWN?.has(s)) && UI.state.route === "ai" && !UI.$("#panel") && !document.activeElement?.matches?.("input")) UI.render({ keepScroll: true }); });
     }, 4000);
   }
 
   window.SCREENS = window.SCREENS || {};
-  window.SCREENS.ai = { init(helpers) { UI = helpers; ({ t, esc, num, icon } = helpers); bind(); }, page: aiPage };
+  window.SCREENS.ai = {
+    init(helpers) {
+      UI = helpers; ({ t, esc, num, icon } = helpers); bind();
+      // The simpler screens: the first-view answer, for the warm-up and the menu hover (screen-data.js). One request.
+      window.SCREEN_DATA?.screen?.("ai", () => [`metrics/ai?${askKey()}`]);
+    },
+    page: aiPage,
+  };
 
   const fr = {
     "Google Analytics": "Google Analytics", "Clarity live": "Clarity en direct", "Clarity download": "Export Clarity", "{n} of {m} sites": "{n} sites sur {m}",
@@ -589,6 +750,8 @@
     "Refresh data": "Actualiser les données", "Refresh one source": "Actualiser une seule source", "Do AI assistants send you leads, and do AI answers cite you?": "Les assistants IA vous envoient-ils des leads, et les réponses IA vous citent-elles ?",
     "Some AI visits show as Direct or Organic Search.": "Certaines visites IA apparaissent en Direct ou en Recherche organique.",
     "Edit the AI list": "Modifier la liste IA",
+    // the simpler screens
+    "{n} sources up to date": "{n} sources à jour", "{n} sources need you": "{n} sources à traiter", "Google AI report": "Rapport IA de Google",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
   // Definitions behind the (i) on two of the numbers. shared-ui.js holds the rest, in the same object.

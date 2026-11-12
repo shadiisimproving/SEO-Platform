@@ -178,7 +178,7 @@ const sitesCount = (page) => page.$eval("#cs-rivals-table", (t) => [...t.querySe
   await fresh(page);
   await page.waitForSelector("#cs-keywords [data-cs-retry]");
   await page.waitForSelector("#cs-rivals-table");
-  check("one section failing leaves the rest working", Boolean(await page.waitForSelector("#cs-links-table", { timeout: 10000 }).catch(() => null)) && Boolean(await page.$("#cs-moves .rows")));
+  check("one section failing leaves the rest working", Boolean(await page.waitForSelector("#cs-links-table", { timeout: 10000 }).catch(() => null)) && Boolean(await page.$("#cs-moves .rows, #cs-moves table, #cs-moves-list"))  /* Who is moving became a table on 2026-11-12 */);
   await shot(page, "section-failed");
   await page.unroute("**/api/collective/keywords**");
   await page.click("#cs-keywords [data-cs-retry]");

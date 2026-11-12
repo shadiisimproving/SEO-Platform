@@ -24,6 +24,32 @@
   const PAIRS_WHY = "Pairs appear once a competitor ranks for the same keywords as you.";
   // A check tool by its logo alone, its name on hover and for screen readers. A tool with no logo keeps its name.
   const toolMark = (tool) => (window.BRANDS?.FILES?.[tool] ? UI.logoOnly(tool) : `<span>${esc(tool)}</span>`);
+  /* Where one position came from: the tool's logo, and on hover "#5, measured by SerpApi on Google · checked 10 Nov 2026 · You and
+     Them come from this same check." A side may carry its own tool, date and check (my_tool, their_checked_at, my_check_id…); when
+     the two sides differ, both tooltips name the other side's tool and date and say not to compare them as one, and the logo is ringed. */
+  function sourceMark(k, side) {
+    const other = side === "my" ? "their" : "my";
+    const tool = k[`${side}_tool`] || k.tool, at = k[`${side}_checked_at`] || k.checked_at, engine = k[`${side}_engine`] || k.engine;
+    if (!tool) return "";
+    const engineWord = UI.ENGINES?.find(([id]) => id === engine)?.[1] || engine || "";
+    const otherTool = k[`${other}_tool`] || k.tool, otherAt = k[`${other}_checked_at`] || k.checked_at, otherEngine = k[`${other}_engine`] || k.engine;
+    const checkOf = (s) => k[`${s}_check_id`] ?? k.check_id;
+    const apart = otherTool !== tool || otherEngine !== engine || String(otherAt || "") !== String(at || "") || checkOf(side) !== checkOf(other);
+    const position = k[`${side}_position`];
+    const what = position === null || position === undefined ? fill(t("Not in the first {n} results"), { n: k.depth || 10 }) : `#${position}`;
+    const by = fill(t(engineWord ? "{what}, measured by {tool} on {engine}" : "{what}, measured by {tool}"), { what, tool, engine: engineWord });
+    const when = at ? fill(t("checked {date}"), { date: UI.fmtDateOnly(at) }) : "";
+    const otherWho = t(side === "my" ? "Them" : "You");
+    const same = apart
+      ? fill(t("{side} came from {tool}, {date}: a different check, so don't compare the two as one."), { side: otherWho, tool: otherTool || "?", date: otherAt ? UI.fmtDateOnly(otherAt) : "—" })
+      : t("You and Them come from this same check.");
+    const words = [by, when, same].filter(Boolean).join(" · ");
+    // brands.js turns a brand name in a tooltip into its logo alone, but this tooltip exists to name the tool: an invisible
+    // word joiner inside each tool name keeps it as words there. The screen-reader label keeps the plain names.
+    const named = [tool, otherTool].filter((n) => n && n.length > 1).reduce((s, n) => s.split(n).join(`${n[0]}⁠${n.slice(1)}`), words);
+    const file = window.BRANDS?.FILES?.[tool];
+    return `<span class="cp-src${apart ? " cp-src-apart" : ""}" role="img" tabindex="0" data-tip="${esc(named)}" aria-label="${esc(words)}" data-cp-src="${esc(tool)}">${file ? `<img class="logo brand-logo" src="logos/${file}" alt="">` : `<span class="cp-src-word">${esc(tool)}</span>`}</span>`;
+  }
 
   /* The server's own sentences, in the language on screen. The host inside this one changes, so it can't be a plain lookup. */
   const serverWords = (message) => {
@@ -150,7 +176,9 @@
   function pairRow(p, withRival = true) {
     const lead = leadKeyword(p);
     const reading = isWaiting(p.my_state) || isWaiting(p.their_state);
-    const position = (word, value) => `<td class="c cp-simple-pos" data-label="${t(word)}">${lead ? COMP.pos(value, lead.keyword.depth) : dash()}</td>`;
+    // Each position carries the logo of the tool that measured it, its name and date in the tooltip (2026-11-12): a position
+    // never reads without its source. Both come from one check; if a row ever holds two, the tooltip says so.
+    const position = (word, value, side) => `<td class="c cp-simple-pos" data-label="${t(word)}">${lead ? `<span class="cp-pos-src">${COMP.pos(value, lead.keyword.depth)}${sourceMark(lead.keyword, side)}</span>` : dash()}</td>`;
     const rival = p.competitor || COMP.shortUrl(p.their_url).split("/")[0];
     // "Your choice" and the reading spinner sit with my page, so they stay when the Competitor column goes.
     const marks = `${p.source === "manual" ? `<span class="tag cp-yours">${t("Your choice")}</span>` : ""}${reading ? (W.expired ? plainStatus("clock", "Waiting") : readingMark()) : ""}`;
@@ -158,8 +186,8 @@
       <td class="head-cell cp-page">${p.my_title ? `<span class="cp-page-title" dir="auto">${esc(p.my_title)}</span>${PageLink.html(p.my_url, { text: pathOf(p.my_url), cls: "second mono", dir: "ltr" })}` : PageLink.html(p.my_url, { text: pathOf(p.my_url), cls: "cp-page-title mono", dir: "ltr" })}${marks ? `<span class="cp-page-marks">${marks}</span>` : ""}</td>
       ${withRival ? `<td data-label="${t("Competitor")}"><div class="cp-val"><span class="cg-logo cp-rival-logo" role="img" tabindex="0" data-tip="${esc(rival)}" aria-label="${esc(rival)}">${window.UI.siteLogo(rival, 20)}</span></div></td>` : ""}
       <td data-label="${t("Keyword")}"><div class="cp-val">${lead ? `<span dir="auto">${esc(lead.keyword.keyword)}</span>${lead.rest > 0 ? `<span class="second">+ ${UI.num(lead.rest)} ${t(lead.rest === 1 ? "more" : "more")}</span>` : ""}` : `<span class="muted small">${t("None")}</span>`}</div></td>
-      ${position("You", lead?.keyword.my_position)}
-      ${position("Them", lead?.keyword.their_position)}
+      ${position("You", lead?.keyword.my_position, "my")}
+      ${position("Them", lead?.keyword.their_position, "their")}
       <td data-label="${t("Who's ahead")}"><div class="cp-val">${verdictBadge(verdictOf(p))}</div></td>
       <td class="r nowrap cp-row-acts" data-label=""><button class="btn btn-small" id="cp-open-${p.id}" data-cp-open="${p.id}" aria-label="${t("Compare")}: ${esc(COMP.shortUrl(p.my_url))} / ${esc(COMP.shortUrl(p.their_url))}">${t("Compare")}${UI.icon("chevron-right")}</button></td>
     </tr>`;
@@ -1118,6 +1146,10 @@
     "They're ahead on {a} of {b} keywords": "Ils sont devant sur {a} mots-clés sur {b}", "You're ahead on {a} of {b} keywords": "Vous êtes devant sur {a} mots-clés sur {b}",
     "Same position": "Même position", "Even across {b} keywords": "À égalité sur {b} mots-clés", "You": "Vous", "Them": "Eux",
     "more": "de plus", "Words": "Mots", "Headings": "Titres", "Rankings": "Positions",
+    "checked {date}": "vérifié le {date}", "Not in the first {n} results": "Absent des {n} premiers résultats",
+    "{what}, measured by {tool} on {engine}": "{what}, mesuré par {tool} sur {engine}", "{what}, measured by {tool}": "{what}, mesuré par {tool}",
+    "You and Them come from this same check.": "Vous et Eux viennent de cette même vérification.",
+    "{side} came from {tool}, {date}: a different check, so don't compare the two as one.": "{side} vient de {tool}, {date} : une autre vérification, ne comparez pas les deux comme une seule.",
     "Who's ahead": "Qui est devant", "Compare": "Comparer", "All": "Toutes", "They're ahead": "Ils sont devant", "You're ahead": "Vous êtes devant", "Even": "À égalité",
     "Your pages beside the competitor page ranking with them most, furthest behind first. Pairs you change stay.": "Vos pages à côté de la page concurrente qui se classe le plus avec elles, les plus en retard d'abord. Les paires modifiées restent.",
     "{host} blocks reading: rankings only.": "{host} bloque la lecture : positions seulement.",

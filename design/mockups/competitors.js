@@ -261,6 +261,19 @@
   /* A caveat behind an (i): the sentence shows on hover or focus, instead of sitting over the table. */
   COMP.info = (text) => `<button type="button" class="comp-info" data-tip="${UI.esc(UI.t(text))}" aria-label="${UI.esc(UI.t(text))}">${UI.icon("info")}</button>`;
 
+  /* Tooltips left stuck open (2026-11-12, the owner saw black boxes "all down" a long timeline). mockup.js shows a tooltip on
+     hover and hides it on mouseout, but a row redrawn under the pointer, or a scroll of the page while the pointer rests,
+     sends no mouseout: the fixed box stays, and a scrolling screenshot repeats it down the page. Here: any scroll, or the
+     hovered element leaving the page, takes every open tooltip away. (The same three lines belong in mockup.js's hideTip.) */
+  {
+    let hovered = null;
+    const clear = () => document.querySelectorAll("body > .tooltip").forEach((tip) => tip.remove());
+    document.addEventListener("mouseover", (e) => { hovered = e.target.closest?.("[data-tip]") || null; }, true);
+    document.addEventListener("scroll", () => { if (document.querySelector("body > .tooltip")) clear(); }, { capture: true, passive: true });
+    new MutationObserver(() => { if (hovered && !hovered.isConnected && document.querySelector("body > .tooltip")) { hovered = null; clear(); } })
+      .observe(document.documentElement, { childList: true, subtree: true });
+  }
+
   // ---- the shell ----------------------------------------------------------------------------
   /* "My competitors" (id list) lives inside the Competitors tab (id summary) since 2026-11-09: with no competitor open, the merged tab shows.
      An old address naming either tab lands on the same screen. */
@@ -281,6 +294,20 @@
     COMP.lastPicked = UI.siteHostPicked();
   };
 
+  /* Simpler screens: the open tab's head line and main action changed (an answer arrived). Only those parts are drawn again. */
+  COMP.paintHead = () => {
+    if (!COMP.simple() || UI.state.route !== "competitors") return;
+    const tab = COMP.currentTab(), basis = UI.$("#cs-basis");
+    if (basis) UI.setHTML(basis, tab?.headLine?.() || "");
+    const tools = UI.$("#topbar .tools"), want = tab?.headMain?.() || "";
+    const have = tools?.querySelector("[data-comp-main]");
+    const wantKey = want.match(/data-comp-main="([^"]*)"/)?.[1] ?? null;
+    if (tools && (have?.getAttribute("data-comp-main") ?? null) !== wantKey) {
+      have?.remove();
+      if (want) { const box = document.createElement("span"); box.className = "comp-main"; UI.setHTML(box, want); tools.append(...box.childNodes); }
+    }
+  };
+
   /* Redraw only the body of the current tab: the site picker and tabs keep their state and focus. */
   COMP.paint = () => {
     const box = UI.$("#comp-body");
@@ -288,6 +315,9 @@
     if (!box || !tab) return;
     UI.setHTML(box, tab.body());
     tab.after?.();
+    COMP.paintHead?.();
+    if (COMP.refocus && (!document.activeElement || document.activeElement === document.body)) { UI.$(COMP.refocus)?.focus({ preventScroll: true }); }
+    COMP.refocus = null;
   };
 
   /* Load the tab's data again, then redraw it. Pass { quiet: true } to keep what's on screen while it loads. */
@@ -356,9 +386,30 @@
     COMP.ready = true;
   }
 
+  /* The simpler screens (UI.simple(), plan section 2, Competitors): one head for the whole area. Its line names whose
+     competitors these are (the #comp-site menu, kept small because the side menu's site switcher can't pick All my sites
+     on its own and flows find it by id), then what the open tab says about its data (tab.headLine, the Competitors tab's
+     "10 of 10 keywords checked · SerpApi · 10 min ago"). The tab's one main action (tab.headMain) sits on the right, and the
+     old subtitle and the tab's caveats go behind the (i). Page tabs follow, in the underline look. */
+  function simpleHead(tab) {
+    const { t, esc } = UI;
+    let line = "", main = "";
+    const info = ["Who ranks against you, and what they do"];
+    if (COMP.ready && COMP.sites.length) {
+      const all = COMP.siteId === ALL;
+      const allOption = COMP.canShowAll() ? `<option value="${ALL}" ${all ? "selected" : ""}>${t("All my sites")}</option>` : "";
+      line = `<span class="comp-site-pick"><select class="select comp-site-select" id="comp-site" aria-label="${esc(t("Competitors of"))}">${allOption}${COMP.sites.map((s) => `<option value="${s.id}" ${s.id === COMP.siteId ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></span><span id="cs-basis" class="cs-basis-line">${tab?.headLine?.() || ""}</span>`;
+      main = tab?.headMain?.() || "";
+      if (tab?.headInfo) info.push(...[].concat(tab.headInfo()).filter(Boolean));
+    }
+    return UI.head({ title: t("Competitors"), period: false, line, info, main });
+  }
+  COMP.simple = () => Boolean(UI?.simple?.());
+
   function page() {
     const { t, esc, icon, topbar } = UI;
-    const head = topbar(t("Competitors"), t("Who ranks against you, and what they do"), "", false);
+    const simple = COMP.simple();
+    const head = simple ? simpleHead(COMP.ready && COMP.sites.length ? COMP.currentTab() : null) : topbar(t("Competitors"), t("Who ranks against you, and what they do"), "", false);
     // The list of sites didn't come: say what failed and offer Try again, instead of loading for ever (UX review bug 3).
     if (!COMP.ready && COMP.loadError) return `${head}<div class="content page-enter" id="comp-load-failed">${COMP.failed(COMP.loadError, "The list of sites didn't load.")}</div>`;
     if (!COMP.ready) return `${head}<div class="content page-enter">${COMP.loading()}</div>`;
@@ -383,6 +434,13 @@
     const tab = COMP.currentTab();
     const all = COMP.siteId === ALL;
     const allOption = COMP.canShowAll() ? `<option value="${ALL}" ${all ? "selected" : ""}>${t("All my sites")}</option>` : "";
+    if (simple) {
+      return `${head}<div class="content page-enter comp-simple">
+      ${all ? "" : `<div class="page-tabs comp-tabs" role="tablist" aria-label="${t("Competitors")}">${COMP.tabs.filter((x) => !x.hidden).map((x) => `<button type="button" class="page-tab" role="tab" data-comp-tab="${x.id}" aria-selected="${COMP.tabLit(x, tab)}" tabindex="${COMP.tabLit(x, tab) ? 0 : -1}">${esc(t(x.label))}${x.badge?.() ? `<span class="n-badge">${x.badge()}</span>` : ""}</button>`).join("")}</div>`}
+      <div id="comp-setup">${COMP.setup?.html?.() ?? ""}</div>
+      <div id="comp-body">${tab.loadedFor === COMP.siteId ? tab.body() : COMP.loading()}</div>
+    </div>`;
+    }
     return `${head}<div class="content page-enter">
       <div class="comp-bar"><label class="field comp-site"><span>${t("Competitors of")}</span><select class="select" id="comp-site">${allOption}${COMP.sites.map((s) => `<option value="${s.id}" ${s.id === COMP.siteId ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></label>${UI.showingNote(COMP.site()?.host)}</div>
       ${all ? "" : `<div class="tabs comp-tabs" role="tablist" aria-label="${t("Competitors")}">${COMP.tabs.filter((x) => !x.hidden).map((x) => `<button class="tab" role="tab" data-comp-tab="${x.id}" aria-selected="${COMP.tabLit(x, tab)}">${x.icon ? icon(x.icon) : ""}${esc(t(x.label))}${x.badge?.() ? `<span class="count">${x.badge()}</span>` : ""}</button>`).join("")}</div>`}
@@ -413,6 +471,13 @@
       COMP.UI = helpers;
       COMP.tabs.forEach((tab) => tab.init?.(helpers));
       COMP.refreshLogos();
+      // Simpler screens: the Competitors tab's first-view answers, for the warm-up and the menu hover (screen-data.js).
+      window.SCREEN_DATA?.screen?.("competitors", () => {
+        const site = COMP.siteId ?? UI.preferredSite?.(COMP.sites)?.id;
+        if (!COMP.ready || site === null || site === undefined) return ["links/sites"];
+        const q = site === ALL ? "" : `?site_id=${site}`;
+        return ["links/sites", ...(site === ALL ? [] : [`competitors${q}`]), `collective/rivals${q}`, `collective/keywords${q}`, `collective/moves${q}`, `collective/links${q}`];
+      });
       document.addEventListener("click", (e) => {
         if (e.target.closest?.("[data-comp-retry]")) {
           if (!COMP.ready) { COMP.loadError = null; UI.render(); } else COMP.reload();

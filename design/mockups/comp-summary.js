@@ -5,11 +5,18 @@
   "use strict";
   const COMP = window.COMP;
   let UI = null, t = null, esc = null;
+  if (window.ICONS && !window.ICONS.ellipsis) window.ICONS.ellipsis = '<circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/>';
   const SECTIONS = ["rivals", "keywords", "moves", "links"];
   /* Every table, Who is moving too since 2026-11-10, has pages (table-pages.js), as every long table in the app. */
   const FIRST_ROWS = { moves: 5 }, MORE_ROWS = 50;
   const PAGES = { rivals: "cs-rivals", keywords: "cs-keywords", links: "cs-links", flagged: "cs-flagged", moves: "cs-moves" };
-  const S = { site: null, token: 0, data: {}, errors: {}, limit: {}, list: null, order: null, orderSite: null, find: "", sort: null, kwRival: "", kwSort: null, lnSort: null, flaggedOpen: false, linkQ: "", mvKind: "all", mvRival: "", mvDays: 30 };
+  const S = { site: null, token: 0, data: {}, errors: {}, limit: {}, list: null, order: null, orderSite: null, find: "", sort: null, kwRival: "", kwSort: null, lnSort: null, flaggedOpen: false, linkQ: "", mvKind: "all", mvRival: "", mvDays: 30, low: "keywords" };
+  /* The simpler screens (UI.simple(), plan section 2): the head says how the positions were checked, four number cards, the
+     Competitors table with one ⋯ per row (Tracking and Remove), then one card with three tabs: They beat you on (first),
+     Who is moving (all its filters) and Shared links. Each tab keeps its ids (#cs-keywords, #cs-moves, #cs-links), so a card
+     or a link opens it. With the switch off, every function here draws exactly what it drew before. */
+  const simple = () => Boolean(UI?.simple?.());
+  const LOW = [["keywords", "They beat you on"], ["moves", "Who is moving"], ["links", "Shared links"]];
   const FIND_FROM = 11; // more than 10 rows, as on every table: a search box shows from this many rows, or while a search is on
 
   const fill = (words, values) => t(words).replace(/\{(\w+)\}/g, (all, name) => (name in values ? values[name] : all));
@@ -30,7 +37,8 @@
   // ---- loading: each section on its own, and a late answer for another site is dropped --------------
   async function fetchSection(part, token, site) {
     try {
-      const answer = await COMP.api("GET", pathFor(part, site));
+      const path = pathFor(part, site);
+      const answer = window.SCREEN_DATA?.on?.() ? await window.SCREEN_DATA.get(path) : await COMP.api("GET", path);
       if (token !== S.token) return;
       S.data[part] = answer;
       delete S.errors[part];
@@ -45,7 +53,8 @@
   async function fetchList(token, site) {
     if (site === COMP.ALL) { S.list = null; return; }
     try {
-      const answer = await COMP.api("GET", `competitors?site_id=${site}`);
+      const path = `competitors?site_id=${site}`;
+      const answer = window.SCREEN_DATA?.on?.() ? await window.SCREEN_DATA.get(path) : await COMP.api("GET", path);
       if (token !== S.token) return;
       S.list = new Map(answer.competitors.map((c) => [c.id, c]));
     } catch { if (token === S.token) S.list = new Map(); }
@@ -128,6 +137,9 @@
     const tiles = UI.$("#cs-tiles"), basisLine = UI.$("#cs-basis");
     if (tiles) UI.setHTML(tiles, tilesHtml());
     if (basisLine) UI.setHTML(basisLine, basisHtml());
+    if (simple()) COMP.paintHead?.();
+    const lowTabs = UI.$("#cs-low-tabs");
+    if (lowTabs && simple()) { const focused = document.activeElement?.dataset?.csLow; UI.setHTML(lowTabs, lowTabsHtml()); if (focused) UI.$(`[data-cs-low="${focused}"]`)?.focus({ preventScroll: true }); }
   }
 
   const refreshLinks = () => fetchSection("links", S.token, S.site);
@@ -137,6 +149,7 @@
     const c = S.data.rivals?.coverage;
     if (!c || !c.keywords || !c.checked) return ""; // no list, or a list never checked: the setup banner above the tabs already says so, once
     const when = c.newest === c.oldest ? fill("checked {when}", { when: COMP.ago(c.newest) }) : fill("newest check {newest}, oldest {oldest}", { newest: COMP.ago(c.newest), oldest: COMP.ago(c.oldest) });
+    if (simple()) return `<span class="head-sep"> · </span>${esc(fill("{checked} of {total} keywords checked", { checked: UI.num(c.checked), total: UI.num(c.keywords) }))}<span class="head-sep"> · </span>${COMP.toolLogos(null, c.tools[0]) && c.tools.length === 1 ? UI.logoOnly(c.tools[0]) : esc(c.tools.join(", "))}<span class="head-sep"> · </span>${esc(when)}`;
     return `${esc(`${fill("{checked} of {total} keywords checked, with {tools}", { checked: UI.num(c.checked), total: UI.num(c.keywords), tools: c.tools.join(", ") })}, ${when}.`)} ${COMP.info("Positions are only compared inside one check.")}`;
   }
 
@@ -151,6 +164,10 @@
   /* Unknown is unknown: with nothing checked, read or uploaded, a card says — and not 0. */
   function tilesHtml() {
     const one = (part, label, value, sub, ic, line = null) => {
+      if (simple()) {
+        const words = value === null ? "…" : value === undefined ? null : value;
+        return UI.card({ id: `cs-${part}`, label: esc(t(label)), value: words, sub: sub ? esc(sub) : "", spark: value && line ? line : null, def: false, button: true, cls: "cs-jump", attrs: { "data-cs-jump": part, "aria-label": `${t(label)}: ${value === null ? "…" : value === undefined ? "—" : UI.num(value)}` } });
+      }
       const words = value === null ? "…" : value === undefined ? "—" : UI.num(value);
       return `<button type="button" class="cs-jump" data-cs-jump="${part}" aria-label="${attr(label)}: ${esc(words)}">${UI.tile(t(label), value === null || value === undefined ? `<span class="muted"${value === undefined && sub ? ` title="${attr(sub)}"` : ""}>${words}</span>` : UI.num(value), sub ? `<span class="ab">${esc(sub)}</span>` : "", { ic, line: value ? line : null })}</button>`;
     };
@@ -169,7 +186,9 @@
 
   // ---- shared pieces -------------------------------------------------------------------------------
   /* subTip: the full sentence behind (i), right after the sub line (UI.tip). */
-  const sectionHead = (title, sub = "", info = "", subTip = "") => `<div class="cs-head"><h2 tabindex="-1">${esc(t(title))}${info ? COMP.info(info) : ""}</h2>${sub ? `<p class="small sec">${esc(sub)}${subTip ? UI.tip(subTip) : ""}</p>` : ""}</div>`;
+  const sectionHead = (title, sub = "", info = "", subTip = "") => simple()
+    ? `<div class="cs-head cs-head-quiet"><h2 class="sr" tabindex="-1">${esc(t(title))}</h2>${sub ? `<p class="sr">${esc(sub)}</p>` : ""}</div>`
+    : `<div class="cs-head"><h2 tabindex="-1">${esc(t(title))}${info ? COMP.info(info) : ""}</h2>${sub ? `<p class="small sec">${esc(sub)}${subTip ? UI.tip(subTip) : ""}</p>` : ""}</div>`;
   /* Every competitor in view, so a link can be ticked for one a domain isn't listed under yet. */
   const rivalsInView = (d) => [...new Map([...(d.rivals || []), ...[...d.gaps, ...d.flagged].flatMap((row) => row.rivals)].map((r) => [r.id, r])).values()].sort((a, b) => a.host.localeCompare(b.host));
   const linksHead = (title, sub, d) => `<div class="cs-head-row">${sectionHead(title, sub, "Spam is flagged, never removed, and only good domains can be added.")}${rivalsInView(d).length ? `<button class="btn btn-small" data-cs-add-domain>${UI.icon("plus")}${t("Add a domain")}</button>` : ""}</div>`;
@@ -231,7 +250,25 @@
     if (firstReadOnly(r)) return unknown(FIRST_READ);
     return UI.num(r.edits_30d);
   }
+  /* A row link on the simpler screens: the row opens the competitor, the name is its keyboard way in (Enter), not a button. */
+  const rowLink = (attrs, label, html) => `<span class="cs-row-link" role="link" tabindex="0" ${attrs} aria-label="${esc(label)}">${html}</span>`;
+  const menuButton = (r) => `<button type="button" class="icon-btn cs-row-menu" data-cs-menu="${r.id}" aria-haspopup="menu" aria-expanded="false" aria-label="${esc(fill("More for {rival}", { rival: r.display || r.host }))}" data-tip="${attr("Tracking and Remove")}">${UI.icon("ellipsis")}</button>`;
+  function simpleRivalRow(r) {
+    const all = S.site === COMP.ALL, l = listRow(r.id);
+    const name = `${UI.siteLogo(r.host)}<span class="logo-text kw" dir="auto">${esc(r.display || r.host)}</span>`;
+    const site = r.sites[0];
+    return `<tr${site ? ` data-cs-row="${r.id}" data-cs-row-site="${site.id}"` : ""} class="${l?.tracking && l.tracking !== "on" ? `ct-row-${l.tracking}` : ""}">
+      <td class="head-cell">${site ? rowLink(`data-cs-open="${r.id}" data-cs-site="${site.id}"`, fill("Open {rival}", { rival: r.display || r.host }), `<span class="with-logo">${name}</span>`).replace('class="cs-row-link"', 'class="cs-row-link cs-rival-open"') : `<span class="with-logo">${name}</span>`}${!all && l && l.source !== "suggested" ? ` ${COMP.iconTip("user", t("Added by hand"), "cl-hand")}` : ""}${l?.tracking === "pages" ? ` <span class="tag cs-track-tag">${esc(t("Pages only"))}</span>` : ""}</td>
+      ${all ? `<td data-label="${attr("Your sites")}"><span class="cs-sites">${r.sites.map((x) => rowLink(`class="cs-site" data-cs-open="${r.id}" data-cs-site="${x.id}" data-tip="${esc(x.host)}"`, fill("Open {rival} for {site}", { rival: r.display || r.host, site: x.host }), `${UI.siteLogo(x.host, 18)}<span class="sr">${esc(x.host)}</span>`).replace('class="cs-row-link" role="link" tabindex="0" class="cs-site"', 'class="cs-row-link cs-site" role="link" tabindex="0"')).join("")}</span></td>` : ""}
+      <td class="c" data-label="${attr("Ranks on your keywords")}">${trackedOn(r) ? count(r.ranks_on) : unknown("Not tracked for keywords.")}</td>
+      <td class="c" data-label="${attr("Who leads")}">${leadCell(r)}</td>
+      <td class="c" data-label="${attr("Edits in 30 days")}">${editsCell(r)}</td>
+      <td data-label="${attr("Watching")}" data-cl-watch="${r.id}">${l?.tracking === "off" ? `<span class="status sec">${UI.icon("pause")}${esc(t("Paused"))}</span>` : COMP.watching(r.crawl, site ? { id: r.id, site: site.id } : null)}</td>
+      ${all ? "" : `<td class="r nowrap cs-menu-cell" data-label="">${l ? menuButton(r) : ""}</td>`}
+    </tr>`;
+  }
   const rivalRow = (r) => {
+    if (simple()) return simpleRivalRow(r);
     const all = S.site === COMP.ALL, l = listRow(r.id);
     const name = `${UI.siteLogo(r.host)}<span class="logo-text kw mono" dir="auto">${esc(r.display || r.host)}</span>`;
     return `<tr${r.sites[0] ? ` data-cs-row="${r.id}" data-cs-row-site="${r.sites[0].id}"` : ""} class="${l?.tracking && l.tracking !== "on" ? `ct-row-${l.tracking}` : ""}">
@@ -259,20 +296,77 @@
     const short = since && Date.now() - since < 30 * DAY; // read for less than the period: say from when, so it isn't taken for a full 30 days
     return `<span class="cs-lead-cell">${UI.num(m.edits_30d)}${short ? `<span class="second">${esc(fill("since {date}", { date: UI.fmtDateOnly(m.reading_since) }))}</span>` : ""}</span>`; // one box, so a phone's card keeps the date under the number
   }
-  const youRow = (m, all) => `<tr class="cs-you-row">
-      <td class="head-cell"><span class="with-logo">${UI.siteLogo(m.host)}<span class="logo-text kw mono" dir="auto">${esc(m.display || m.host)}</span></span><span class="second">${COMP.who("you", null, t("You"))}</span></td>
-      <td class="cs-you-gap" colspan="${all ? 3 : 2}"></td>
-      <td class="c" data-label="${attr("Edits in 30 days")}">${youEdits(m)}</td>
-      <td data-label="${attr("Watching")}">${COMP.watching(m.crawl, null)}</td>
-      ${all ? "" : `<td class="cs-you-gap" colspan="2"></td>`}
-    </tr>`;
+  /* 2026-11-12, the owner found the pinned row "looks bad": a half-empty competitor row with a mono address and blank cells.
+     Now one slim, muted line across the whole table: "[logo] Your site · site-one.example · 4 edits in 30 days · all pages
+     daily · See your edits". No blank cells, "Reading now" only while a read runs, and the edits open in a side panel.
+     It stays a row of the table (tr.cs-you-row, first in tbody, one wide cell), so table-tools gives it no tick box and
+     sorting, filtering and paging leave it on top. */
+  const youCols = (all) => (UI.simple?.() ? 6 : all ? 6 : 7);
+  function youEditsWords(m) {
+    const c = m.crawl || {}, since = m.reading_since ? new Date(m.reading_since).getTime() : null;
+    if (c.status === "blocked") return `<span class="sec" data-tip="${attr("Edits can't be tracked on this site.")}" tabindex="0">${esc(t("Edits not tracked"))}</span>`;
+    if (!c.baseline_done) return `<span class="sec" data-tip="${attr("The first read isn't done yet.")}" tabindex="0">${esc(t("Edits show after the first read"))}</span>`;
+    if (!m.edits_30d && since && Date.now() - since < DAY) return `<span class="sec" data-tip="${attr(FIRST_READ)}" tabindex="0">${esc(t("Edits show from the next read"))}</span>`;
+    const short = since && Date.now() - since < 30 * DAY; // read for less than the period: say from when, so it isn't taken for a full 30 days
+    const n = `<b class="tabular">${UI.num(m.edits_30d)}</b>`;
+    return short ? fillHtml(m.edits_30d === 1 ? "{n} edit since {date}" : "{n} edits since {date}", { n, date: esc(UI.fmtDateOnly(m.reading_since)) })
+      : fillHtml(m.edits_30d === 1 ? "{n} edit in 30 days" : "{n} edits in 30 days", { n });
+  }
+  function youReading(m) {
+    const c = m.crawl || {};
+    if (c.status === "running" || c.status === "queued") return `<span class="status sec">${UI.icon("refresh-cw", "spin")}${esc(t("Reading now"))}</span>`;
+    if (c.status === "blocked") return COMP.watching(c, null);
+    if (c.status === "failed") return `<span class="crit-t">${esc(t("Last read failed"))}</span>`;
+    const how = COMP.reading?.follow?.(c);
+    if (how) return `<span data-tip="${esc(how.text)}" tabindex="0">${esc(how.short)}</span>`;
+    return c.finished_at ? esc(fill("Read {when}", { when: COMP.ago(c.finished_at) })) : "";
+  }
+  const youRow = (m, all) => {
+    const bits = [youEditsWords(m), youReading(m)].filter(Boolean);
+    const see = m.recent_edits?.length ? `<button type="button" class="link-btn cs-you-edits" data-cs-you-edits="${esc(m.id)}">${t("See your edits")}</button>` : "";
+    return `<tr class="cs-you-row" data-cs-you="${esc(m.id)}"><td class="cs-you-cell" colspan="${youCols(all)}"><div class="cs-you-line">
+      <span class="cs-you-name">${COMP.who("you", m.host, t("Your site"))} <span class="sec" dir="auto">${esc(m.display || m.host)}</span></span>
+      ${bits.map((b) => `<span class="cs-you-bit">${b}</span>`).join("")}${see ? `<span class="cs-you-act">${see}</span>` : ""}
+    </div></td></tr>`;
+  };
+  /* "See your edits": my own site's edits in the 30 days, newest first, in the side panel. */
+  function openYourEdits(id, opener) {
+    const m = (S.data.rivals?.mine || []).find((x) => String(x.id) === String(id));
+    if (!m) return;
+    const rows = m.recent_edits || [];
+    const path = (url) => { try { const u = new URL(url); return u.pathname + u.search; } catch { return COMP.shortUrl(url); } };
+    if (UI.simple?.() && UI.rowPanel) {
+      UI.rowPanel({ kind: "Your site", id: "your-edits", title: m.display || m.host, logo: m.host, period: false, opener, sub: t("Edits in 30 days"),
+        numbers: [{ id: "edits", label: "Edits in 30 days", value: m.edits_30d }, { id: "pages", label: "Pages changed", value: new Set(rows.map((e) => e.url)).size }],
+        sections: [{ title: t("Your edits"), badge: rows.length, limit: 50, rows, columns: [
+          { label: t("Date"), html: (e) => COMP.ageCell(e.at) },
+          { label: t("Change|kind").split("|")[0], get: (e) => COMP.changeWord?.(e.kind) || e.kind },
+          { label: t("Page"), html: (e) => COMP.link(e.url, path(e.url)) },
+          { label: t("What changed"), get: (e) => COMP.changeShort?.(e) || "" },
+        ] }] });
+      return;
+    }
+    const list = rows.map((e) => `<tr><td class="nowrap">${COMP.ageCell(e.at)}</td><td>${esc(COMP.changeWord?.(e.kind) || e.kind)}</td><td>${COMP.link(e.url, path(e.url))}</td><td class="sec">${esc(COMP.changeShort?.(e) || "")}</td></tr>`).join("");
+    UI.openPanel(`${UI.panelHead(fill("Your edits on {site}", { site: m.display || m.host }), esc(fill(m.edits_30d === 1 ? "{n} edit in 30 days" : "{n} edits in 30 days", { n: UI.num(m.edits_30d) })), UI.siteLogo(m.host, 34))}
+      <div class="panel-body"><div class="table-wrap"><table class="data cs-you-edits-table" data-tt-off><thead><tr><th scope="col">${t("Date")}</th><th scope="col">${esc(t("Change|kind").split("|")[0])}</th><th scope="col">${t("Page")}</th><th scope="col">${t("What changed")}</th></tr></thead><tbody>${list}</tbody></table></div>
+      ${m.edits_30d > rows.length ? `<p class="small sec">${esc(fill("The newest {n} shown.", { n: UI.num(rows.length) }))}</p>` : ""}</div>`, opener);
+  }
 
   function rivalsHtml() {
     const title = "Competitors";
+    const cardHead = `<div class="card-head"><h2 tabindex="-1">${t(title)}</h2></div>`;
+    if (simple() && S.errors.rivals) return `${cardHead}${failedCard("rivals", title)}`;
+    if (simple() && !S.data.rivals) return `${cardHead}${COMP.loading()}`;
     if (S.errors.rivals) return failedCard("rivals", title);
     const d = S.data.rivals;
     if (!d) return loadingCard(title);
     const all = S.site === COMP.ALL;
+    if (simple()) {
+      const finder = allRivals().length >= FIND_FROM || S.find
+        ? `<div class="cs-find"><label class="cs-find-box">${UI.icon("search")}<span class="sr">${t("Find a competitor")}</span><input type="search" class="input" id="cs-find" placeholder="${attr("Find a competitor")}" value="${esc(S.find)}" autocomplete="off" spellcheck="false"></label></div>`
+        : "";
+      return `${cardHead}${finder}<div id="cs-rivals-list">${rivalsList()}</div>`;
+    }
     const head = `<div class="cs-head-row">${sectionHead(title, watchingWords(), all ? "Most wins over you first. Each icon is one of your sites: click to open the competitor there." : "Most wins over you first.")}<button class="btn btn-main" id="cl-add-open">${UI.icon("plus")}${t(all ? "Add competitors" : "Add a competitor")}</button></div>`;
     const finder = allRivals().length >= FIND_FROM || S.find
       ? `<div class="cs-find"><label class="cs-find-box">${UI.icon("search")}<span class="sr">${t("Find a competitor")}</span><input type="search" class="input" id="cs-find" placeholder="${attr("Find a competitor")}" value="${esc(S.find)}" autocomplete="off" spellcheck="false"></label></div>`
@@ -292,9 +386,9 @@
     const every = orderedRivals().filter(matches), page = TP.view(PAGES.rivals, every), rows = page.rows;
     if (S.find && !every.length) return `<div class="table-wrap"><div class="empty cs-find-none"><p>${esc(fill("No competitor matches “{text}”.", { text: S.find }))}</p><button type="button" class="btn btn-small" data-cs-find-clear>${t("Show all")}</button></div></div>`;
     return `<div class="cs-pages"><div class="table-wrap"><table class="data cs-merged" id="cs-rivals-table">
-        <thead><tr>${sortHead("name", "Competitor")}${all ? `<th scope="col">${t("Your sites")}</th>` : ""}${sortHead("ranks", "Ranks on your keywords", "c")}${sortHead("leads", "Who leads", "c", "Who's ahead on shared keywords, and how many you're absent on.")}${sortHead("edits", "Edits in 30 days", "c")}<th scope="col">${t("Watching")}</th>${all ? "" : `<th scope="col">${t("Tracking")}</th><th scope="col"><span class="sr">${t("Action")}</span></th>`}</tr></thead>
+        <thead><tr>${sortHead("name", "Competitor")}${all ? `<th scope="col">${t("Your sites")}</th>` : ""}${sortHead("ranks", "Ranks on your keywords", "c")}${sortHead("leads", "Who leads", "c", "Who's ahead on shared keywords, and how many you're absent on.")}${sortHead("edits", "Edits in 30 days", "c")}<th scope="col">${t("Watching")}</th>${all ? "" : simple() ? `<th scope="col"><span class="sr">${t("Actions")}</span></th>` : `<th scope="col">${t("Tracking")}</th><th scope="col"><span class="sr">${t("Action")}</span></th>`}</tr></thead>
         <tbody>${(S.data.rivals?.mine || []).map((m) => youRow(m, all)).join("")}${rows.map(rivalRow).join("")}</tbody>
-      </table></div>${TP.footer(PAGES.rivals, page, { noun: t("competitors") })}${COMP.watchNotes?.([...(S.data.rivals?.mine || []), ...every.map((r) => ({ host: r.host, display: r.display, crawl: r.crawl, tracking: listRow(r.id)?.tracking }))]) || ""}</div>${S.find ? `<p class="small sec cs-find-count">${esc(fill("{n} of {total} competitors match.", { n: UI.num(every.length), total: UI.num(allRivals().length) }))}</p>` : ""}`;
+      </table></div>${TP.footer(PAGES.rivals, page, { noun: t("competitors") })}${simple() ? "" : COMP.watchNotes?.([...(S.data.rivals?.mine || []), ...every.map((r) => ({ host: r.host, display: r.display, crawl: r.crawl, tracking: listRow(r.id)?.tracking }))]) || ""}</div>${S.find ? `<p class="small sec cs-find-count">${esc(fill("{n} of {total} competitors match.", { n: UI.num(every.length), total: UI.num(allRivals().length) }))}</p>` : ""}`;
   }
   function paintRivalsList() {
     const box = UI.$("#cs-rivals-list");
@@ -347,11 +441,11 @@
   const sameCheck = (rows) => rows.length > 1 && new Set(rows.map((k) => `${whereChecked(k)}|${COMP.ago(k.checked_at)}`)).size === 1;
   function keywordRow(k, once = false) {
     const many = S.site === COMP.ALL && k.my_best?.host;
-    return `<tr>
+    return `<tr${simple() ? ` data-cs-kw="${esc(k.keyword_id)}" class="cs-kw-row"` : ""}>
       <td class="head-cell"><span class="kw mono" dir="auto">${esc(k.keyword)}</span>${once ? "" : `<span class="second cs-where">${whereHtml(k)} ${COMP.ageCell(k.checked_at)}</span>`}</td>
       <td class="c cs-my-place" data-label="${attr("Your position")}"><div>${COMP.pos(k.my_best?.position, k.depth)}${many ? `<span class="second mono" dir="auto">${esc(k.my_best.host)}</span>` : ""}<span class="cs-move">${moveCell(k)}</span></div></td>
       <td data-label="${attr("Ahead of you")}"><div>${aheadCell(k)}</div></td>
-      <td class="r nowrap" data-label="">${UI.taskButton(keywordFind(k), { label: "Task" })}</td>
+      <td class="r nowrap" data-label="">${simple() ? `<span class="row-act">${UI.taskButton(keywordFind(k), { label: "Task" })}</span>` : UI.taskButton(keywordFind(k), { label: "Task" })}</td>
     </tr>`;
   }
 
@@ -380,7 +474,7 @@
         <option value="">${t("All competitors")} (${UI.num(searched.length)})</option>
         ${rivals.map((a) => `<option value="${esc(a.host)}" ${a.host === S.kwRival ? "selected" : ""}>${esc(a.display || a.host)} (${UI.num(countFor(a.host))})</option>`).join("")}
       </select></label>` : "";
-    const tools = search || choose ? `<div class="cp-tools cs-tools">${search}${choose}</div>` : "";
+    const tools = simple() ? `<div class="cp-tools cs-tools cs-panel-tools">${search}${choose}<span class="cs-tools-end" data-tt-slot></span></div>` : search || choose ? `<div class="cp-tools cs-tools">${search}${choose}</div>` : "";
     const head = `${sectionHead(title, t("Most competitors ahead first."), "A keyword counts once across your sites. Where and when it was checked shows under it, or once under the table.")}${tools}`;
     if (!shown.length) return `${head}${TP.state(PAGES.keywords).q ? noneFound(t("No keyword matches."), PAGES.keywords) : COMP.empty(t("Nothing matches these filters"), t("Pick another competitor."))}`;
     const once = sameCheck(rows);
@@ -400,6 +494,13 @@
   // ---- 3. Who is moving right now? ------------------------------------------------------------------
   function movesNote(d) {
     const names = (hosts) => hosts.slice(0, 3).join(", ") + (hosts.length > 3 ? ` ${fill("and {n} more", { n: UI.num(hosts.length - 3) })}` : "");
+    if (simple()) {
+      const notes = [
+        d.blocked.length ? fill("Page changes can't be tracked for {hosts}: they don't allow automated visitors, so no change here doesn't mean nothing changed.", { hosts: names(d.blocked) }) : "",
+        d.not_started.length ? `${fill("Not watched yet: {hosts}.", { hosts: names(d.not_started) })} ${t("The first read only sets a starting point.")}` : "",
+      ].filter(Boolean);
+      return notes.length ? `<p class="small sec cs-moves-note">${d.blocked.length ? UI.status("warn", fill("{n} not watched", { n: UI.num(d.blocked.length + d.not_started.length) })) : esc(fill("{n} not watched", { n: UI.num(d.blocked.length + d.not_started.length) }))}${UI.info(notes)}</p>` : "";
+    }
     return [
       d.blocked.length ? `<p class="help">${UI.icon("triangle-alert")} ${esc(fill("Can't see page changes for {hosts}: they block bots.", { hosts: names(d.blocked) }))}${UI.tip("Page changes can't be tracked for {hosts}: they don't allow automated visitors, so no change here doesn't mean nothing changed.", { hosts: names(d.blocked) })}</p>` : "",
       d.not_started.length ? `<p class="help">${esc(fill("Not watched yet: {hosts}.", { hosts: names(d.not_started) }))}${UI.tip("The first read only sets a starting point.")}</p>` : "",
@@ -426,6 +527,10 @@
     return `<div class="cp-tools cs-tools">${TP.search(PAGES.moves, t("Search pages, keywords, titles"))}${choose}${period}</div>${chips}`;
   }
 
+  /* 2026-11-12, the owner: "a normal table, I can select items from it, with pages". One table row per change, the same row
+     as a competitor's own timeline plus a Competitor column (COMP.timelineTableRow, comp-list.js). table-tools.js gives it
+     tick boxes (Add a note), Filter and sorting across every page, since the rows are drawn with page.rows.map. */
+  const moveRow = (e, common) => COMP.timelineTableRow(e, { id: e.rival.id, rival: e.rival.host, display: e.rival.display, own: e.rival.sites[0]?.host }, common);
   function movesHtml() {
     const title = "Who is moving";
     if (S.errors.moves) return failedCard("moves", title);
@@ -442,7 +547,10 @@
     const capped = d.total > d.moves.length ? fill("{sent} of {total}, newest first", { sent: UI.num(d.moves.length), total: UI.num(d.total) }) : null;
     const common = COMP.moveCommon?.(page.rows) || null; // what every move on this page shares, said once over the list (comp-list.js)
     const list = shown.length
-      ? `${COMP.moveCommonLine?.(common) || ""}<section class="card cs-compact"><ul class="rows cl-tl" id="cs-moves-list">${page.rows.map((e) => COMP.timelineRow(e, { id: e.rival.id, rival: e.rival.host, display: e.rival.display, own: e.rival.sites[0]?.host }, common)).join("")}</ul></section>${TP.footer(PAGES.moves, page, { noun: t("changes"), capped })}`
+      ? `${COMP.moveCommonLine?.(common) || ""}<div class="table-wrap"><table class="data cl-tl-table cs-moves-table" id="cs-moves-list">
+          <thead><tr><th scope="col">${t("Date")}</th><th scope="col">${t("Competitor")}</th><th scope="col">${esc(t("Change|kind").split("|")[0])}</th><th scope="col">${t("Page")}</th><th scope="col">${t("What changed")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
+          <tbody>${page.rows.map((e) => moveRow(e, common)).join("")}</tbody>
+        </table></div>${TP.footer(PAGES.moves, page, { noun: t("changes"), capped })}`
       : noneFound(t("No change matches these filters."), PAGES.moves);
     return `${sectionHead(title, sub, "", subTip)}${movesTools(d, inKind)}${movesNote(d)}<div class="cs-pages">${list}</div>`;
   }
@@ -513,8 +621,63 @@
   const SORT_DIRS = new Set(["up", "down"]);
 
   // ---- the tab ---------------------------------------------------------------------------------------
+  /* The lower card's tabs, each with how many rows it holds once known. */
+  function lowTabsHtml() {
+    const n = { keywords: S.data.keywords?.total, moves: S.data.moves?.total, links: S.data.links?.funnel?.shared };
+    return LOW.map(([part, label]) => `<button type="button" class="page-tab" role="tab" id="cs-low-${part}" data-cs-low="${part}" aria-controls="cs-${part}" aria-selected="${S.low === part}" tabindex="${S.low === part ? 0 : -1}">${esc(t(label))}${n[part] ? `<span class="n-badge">${UI.num(n[part])}</span>` : ""}</button>`).join("");
+  }
+  function showLow(part, { focus = true, scroll = false } = {}) {
+    S.low = part;
+    UI.$$("[data-cs-low]").forEach((b) => { const on = b.dataset.csLow === part; b.setAttribute("aria-selected", String(on)); b.tabIndex = on ? 0 : -1; });
+    LOW.forEach(([id]) => { const panel = UI.$(`#cs-${id}`); if (panel) panel.hidden = id !== part; });
+    if (scroll) UI.$("#cs-lower")?.scrollIntoView({ block: "start" });
+    if (focus) UI.$(`[data-cs-low="${part}"]`)?.focus({ preventScroll: true });
+    window.TT?.run?.(); // a table shown for the first time gets its tools
+  }
+
+  /* A "keyword they beat you on" in the side panel: your place and its last move, who's ahead with their pages, and the actions. */
+  function openKeywordPanel(id, opener) {
+    const k = S.data.keywords?.keywords?.find((x) => String(x.keyword_id) === String(id));
+    if (!k || !UI.rowPanel) return;
+    const now = k.my_best?.position ?? null, was = k.my_move?.changed ? k.my_move.was : null;
+    const best = k.rivals_ahead.reduce((m, a) => Math.min(m, a.position), 99);
+    UI.rowPanel({
+      kind: "Keyword", id: "cs-keyword", title: k.keyword, period: false, opener,
+      sub: [k.country, engineName(k.engine), k.tool, COMP.ago(k.checked_at)].filter(Boolean).join(" · "),
+      numbers: [
+        { id: "you", label: "Your position", value: now, before: was, fmt: "pos", sub: now === null ? fill("Not in the top {n}", { n: UI.num(k.depth) }) : undefined },
+        { id: "ahead", label: "Competitors ahead", value: k.rivals_ahead.length },
+        { id: "best", label: "Best of them", value: best === 99 ? null : best, fmt: "pos" },
+      ],
+      sections: [{ title: t("Ahead of you"), badge: k.rivals_ahead.length, rows: k.rivals_ahead, columns: [
+        { label: t("Competitor"), html: (a) => `<span class="with-logo">${UI.siteLogo(a.host, 16)}<span class="logo-text" dir="auto">${esc(a.display || a.host)}</span></span>` },
+        { label: t("Position"), num: true, html: (a) => `#${UI.num(a.position)}` },
+        { label: t("Their page"), html: (a) => (a.url ? COMP.link(a.url) : `<span class="muted">—</span>`) },
+      ] }],
+      task: keywordFind(k), note: true,
+      actions: [{ label: t("Compare pages"), icon: "columns-3", onClick: (e, panel) => { panel.close(); COMP.open("pairs"); } }],
+    });
+  }
+
+  /* Tracking and Remove, behind the row's ⋯ (simpler screens). The switch and Remove are the same controls as before, so
+     comp-tracking.js and comp-list.js handle them; the menu closes once one is pressed and the keyboard goes back to the ⋯. */
+  function openRowMenu(button) {
+    const id = Number(button.dataset.csMenu), l = listRow(id);
+    if (!l) return;
+    const name = l.display || l.host;
+    UI.popover(button, `<div class="cs-menu" role="menu" aria-label="${esc(fill("More for {rival}", { rival: name }))}">
+      <p class="cs-menu-lab">${t("Tracking")}</p>${COMP.trackingSwitch?.({ ...l, tracking: l.tracking || "on" }) ?? ""}
+      <p class="cs-menu-help small sec">${esc(t({ on: "Keywords, pages and links: everything.", pages: "No keyword numbers; pages still read and links still count.", off: "Paused: no keyword numbers, no page reads. Stays in your list." }[l.tracking || "on"]))}</p>
+      <button type="button" class="cs-menu-item" role="menuitem" data-cl-remove="${id}">${UI.icon("trash-2")}${t("Remove")}</button>
+    </div>`, "cs-menu-pop");
+  }
+
   const tab = {
     id: "summary", order: 0, label: "Competitors", icon: "crosshair",
+    /* The simpler head (competitors.js simpleHead): how the positions were checked, and Add a competitor. */
+    headLine: () => basisHtml(),
+    headMain: () => (S.data.rivals && allRivals().length ? `<button type="button" class="btn btn-main" id="cl-add-open" data-comp-main="add">${UI.icon("plus")}<span>${t(S.site === COMP.ALL ? "Add competitors" : "Add a competitor")}</span></button>` : ""),
+    headInfo: () => ["Positions are only compared inside one check.", "Rows: most wins over you first. Click one to open it."],
     /* In the address (competitors.js asks): #competitors/summary?site=…&find=rival&sort=ranks-down. */
     address() {
       return { find: S.find.trim() || undefined, sort: S.sort ? `${S.sort.key}-${S.sort.dir}` : undefined };
@@ -564,6 +727,14 @@
       if (S.data.rivals && !allRivals().length) {
         return COMP.empty(t("No competitors yet"), t("Upload keywords in Find competitors to see who ranks against you."), `<div class="cl-empty-acts"><button class="btn btn-main" data-cl-go-find>${UI.icon("target")}${t("Find competitors")}</button><button class="btn" id="cl-add-open">${UI.icon("plus")}${t("Add competitors")}</button></div>`);
       }
+      if (simple()) {
+        return `<section class="tiles cs-tiles" id="cs-tiles" aria-label="${attr("Summary")}">${tilesHtml()}</section>
+        <section class="card cs-section cs-rivals-card" id="cs-rivals">${SECTION.rivals()}</section>
+        <section class="card cs-lower" id="cs-lower" aria-label="${attr("More about your competitors")}">
+          <div class="page-tabs in-card cs-low-tabs" id="cs-low-tabs" role="tablist" aria-label="${attr("More about your competitors")}">${lowTabsHtml()}</div>
+          ${LOW.map(([part]) => `<div class="cs-section cs-low-panel" id="cs-${part}" role="tabpanel" aria-labelledby="cs-low-${part}" ${S.low === part ? "" : "hidden"}>${SECTION[part]()}</div>`).join("")}
+        </section>`;
+      }
       return `<p class="small sec cs-basis" id="cs-basis">${basisHtml()}</p>
         <section class="tiles cs-tiles" id="cs-tiles" aria-label="${attr("Summary")}">${tilesHtml()}</section>
         ${SECTIONS.map((part) => `<section class="cs-section" id="cs-${part}">${SECTION[part]()}</section>`).join("")}`;
@@ -595,6 +766,14 @@
       paintSection("keywords");
       UI.$("#cs-kw-rival")?.focus({ preventScroll: true });
     });
+    // Simpler screens: a row link (the competitor's name) and a keyword row open on Enter, as a link does.
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" || !simple() || UI.state.route !== "competitors") return;
+      const target = e.target.closest?.(".cs-row-link, tr[data-cs-kw]");
+      if (!target || (target.matches("tr") && e.target !== target)) return;
+      e.preventDefault();
+      target.click();
+    });
     // The spam fold stays open or shut as it was left when its section is drawn again.
     document.addEventListener("toggle", (e) => { if (e.target.classList?.contains("cs-flagged")) S.flaggedOpen = e.target.open; }, true);
     // Try again on a failed read (comp-list.js) changes a rival's state: keep this copy in step for the next redraw.
@@ -613,6 +792,21 @@
         UI.$(`[data-cs-mv-kind="${S.mvKind}"]`)?.focus({ preventScroll: true });
         return;
       }
+      if (simple() && (el = hit("[data-cs-low]"))) { showLow(el.dataset.csLow); return; }
+      if (simple() && (el = hit("[data-cs-menu]"))) { openRowMenu(el); return; }
+      if (simple() && hit(".cs-menu [data-ct-set], .cs-menu [data-cl-remove]")) {
+        const menuFor = UI.$("[data-cs-menu][aria-expanded=\"true\"]")?.dataset.csMenu;
+        if (menuFor) COMP.refocus = `[data-cs-menu="${menuFor}"]`;
+        setTimeout(() => UI.closePopover?.(), 0);
+        return;
+      }
+      if (simple() && (el = hit("tr[data-cs-kw]")) && !hit("a, button, input, select, textarea, summary, label, .row-act")) { openKeywordPanel(el.dataset.csKw, el); return; }
+      if (simple() && (el = hit("[data-cs-jump]"))) {
+        const part = el.dataset.csJump;
+        if (part === "rivals") { UI.$("#cs-rivals")?.scrollIntoView({ block: "start" }); UI.$("#cs-rivals h2")?.focus({ preventScroll: true }); }
+        else showLow(part, { scroll: true });
+        return;
+      }
       if ((el = hit("[data-cs-jump]"))) {
         const section = UI.$(`#cs-${el.dataset.csJump}`);
         section?.scrollIntoView({ block: "start" });
@@ -621,6 +815,7 @@
       }
       if ((el = hit("[data-cs-open]"))) { COMP.open("list", { competitorId: Number(el.dataset.csOpen) }, Number(el.dataset.csSite)); return; }
       if ((el = hit("[data-cs-row]")) && !hit("a, button, input, select, textarea, summary, label")) { COMP.open("list", { competitorId: Number(el.dataset.csRow) }, Number(el.dataset.csRowSite)); return; }
+      if ((el = hit("[data-cs-you-edits]"))) { openYourEdits(el.dataset.csYouEdits, el); return; }
       if ((el = hit("[data-cs-review]"))) { COMP.open("gaps", {}, Number(el.dataset.csReview)); return; }
       if ((el = hit("[data-cs-retry]"))) {
         const part = el.dataset.csRetry;
@@ -688,6 +883,11 @@
   }
 
   Object.assign(window.FR, {
+    "They beat you on": "Ils vous battent sur", "Shared links": "Liens communs", "More about your competitors": "Plus sur vos concurrents",
+    "More for {rival}": "Plus pour {rival}", "Tracking and Remove": "Suivi et retrait", "Competitors ahead": "Concurrents devant",
+    "Best of them": "Le meilleur d'entre eux", "Compare pages": "Comparer les pages", "Not in the top {n}": "Hors du top {n}",
+    "{n} not watched": "{n} non suivis", "{checked} of {total} keywords checked": "{checked} mots-clés vérifiés sur {total}",
+    "Rows: most wins over you first. Click one to open it.": "Lignes : d'abord ceux qui vous battent le plus. Cliquez sur l'une pour l'ouvrir.",
     "Filter the changes": "Filtrer les changements", "Period": "Période", "Past year": "Dernière année", "Past {n} days": "{n} derniers jours",
     "Search pages, keywords, titles": "Chercher une page, un mot-clé, un titre", "changes": "changements", "No change matches these filters.": "Aucun changement ne correspond à ces filtres.",
     "Past {n} days, newest first.": "{n} derniers jours, du plus récent au plus ancien.",
@@ -713,6 +913,11 @@
     "Ranks on your keywords": "Se classe sur vos mots-clés",
     "Who leads": "Qui est devant",
     "since {date}": "depuis le {date}",
+    "Your site": "Votre site", "Edits not tracked": "Modifications non suivies", "Edits show after the first read": "Modifications visibles après la première lecture",
+    "Edits show from the next read": "Modifications visibles dès la prochaine lecture", "{n} edit since {date}": "{n} modification depuis le {date}", "{n} edits since {date}": "{n} modifications depuis le {date}",
+    "{n} edit in 30 days": "{n} modification en 30 jours", "{n} edits in 30 days": "{n} modifications en 30 jours", "Reading now": "Lecture en cours", "Last read failed": "Dernière lecture échouée",
+    "See your edits": "Voir vos modifications", "Your edits": "Vos modifications", "Your edits on {site}": "Vos modifications sur {site}", "Pages changed": "Pages modifiées",
+    "The newest {n} shown.": "Les {n} plus récentes sont affichées.",
     "Who's ahead on shared keywords, and how many you're absent on.": "Qui est devant sur les mots-clés communs, et sur combien vous êtes absent.",
     "you're absent on {n}": "vous êtes absent sur {n}",
     "No ranking check yet": "Aucune vérification de classement",

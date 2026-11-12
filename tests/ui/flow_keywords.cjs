@@ -58,7 +58,7 @@ const settle = (page, ms = 500) => page.waitForTimeout(ms);
   check(await page.evaluate(() => document.activeElement?.id === "kwr-recent"), "ticking Check them again keeps the keyboard there");
   await page.dblclick("#kwr-confirm"); await page.waitForSelector("#tray", { timeout: 8000 }); await settle(page, 700);
   await shot(page, "10-tray-running");
-  check(await page.$eval("#kwr-refresh", (b) => b.disabled), "Refresh can't be pressed again while one runs");
+  check(!(await page.isDisabled("#kwr-refresh")), "Refresh can be pressed again while one runs (another keyword, Check deeper)");
   const runs = await page.evaluate(async () => (await (await fetch("api/refresh/runs")).json()).runs.length);
   check(runs === 1, `a double click makes one run (saw ${runs})`);
   await page.waitForFunction(() => /saved|enregistr/.test(document.querySelector("#tray .top")?.textContent || ""), null, { timeout: 60000 });

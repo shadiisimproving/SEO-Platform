@@ -28,8 +28,10 @@
   }
 
   /* What a screen has now. The first call fetches and redraws when the answer comes, so a page never waits on a blank. */
-  function load(name) {
-    const key = `${name}?${periodQuery()}`;
+  function load(name, extra = "") {
+    const key = `${name}?${periodQuery()}${extra}`;
+    // The simpler screens keep answers 5 minutes and fetch the next screens quietly (screen-data.js); off, LV's own cache as before.
+    if (window.SCREEN_DATA?.on()) return window.SCREEN_DATA.entry(key);
     const held = LV.cache.get(key);
     if (held) return held;
     const entry = { loading: true };
@@ -40,7 +42,7 @@
     entry.route = UI.state.route;
     return entry;
   }
-  const forget = () => LV.cache.clear();
+  const forget = () => { LV.cache.clear(); if (window.SCREEN_DATA?.on()) window.SCREEN_DATA.forget(); };
   LV.forget = forget;
   window.addEventListener("seocc:site-added", () => forget()); // an answer from before said "No site yet"
 
@@ -233,7 +235,9 @@
      every long table in the app (table-pages.js). */
   const SORTS = new Map();
   const pagesKey = (id) => `lv-${id}`;
-  function dataTable(id, columns, rows, { csv = false, empty = "Nothing in this period.", search = "Search table" } = {}) { // downloads are the Export button in the top bar (export.js)
+  /* rowAttrs(row): the row's own attributes, such as data-rp-open for its side panel (simpler screens); wrapAttrs: the table's
+     box's, such as data-tt-own-count; compact: the table as wide as its words, the numbers right beside them. */
+  function dataTable(id, columns, rows, { csv = false, empty = "Nothing in this period.", search = "Search table", rowAttrs = null, wrapAttrs = "", compact = false } = {}) { // downloads are the Export button in the top bar (export.js)
     if (!rows.length) return `<div class="empty"><p>${t(empty)}</p></div>`;
     const TP = window.TP, key = pagesKey(id);
     TP.on(key, () => UI.render());
@@ -260,11 +264,11 @@
     }).join("");
     LV.chartData.set(`table-${id}`, { columns, rows: shown });
     if (!shown.length) return `${box}<div class="empty"><p>${t("Nothing matches.")}</p></div>`;
-    const body = view.rows.map((row) => `<tr style="cursor:default">${columns.map((c) => {
+    const body = view.rows.map((row) => `<tr ${(rowAttrs && rowAttrs(row)) || 'style="cursor:default"'}>${columns.map((c) => {
       const v = value(c, row);
       return `<td class="${c.num ? "c" : ""}" data-label="${esc(t(c.label))}">${c.html ? c.html(row) : v === null || v === undefined ? `<span class="muted">—</span>` : c.num ? num(v) : esc(v)}</td>`;
     }).join("")}</tr>`).join("");
-    return `${box}<div class="table-wrap" style="box-shadow:none"><table class="data"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>${TP.footer(key, view)}
+    return `${box}<div class="table-wrap${compact ? " lv-compact" : ""}" style="box-shadow:none"${wrapAttrs ? ` ${wrapAttrs}` : ""}><table class="data"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>${TP.footer(key, view)}
       ${csv ? `<div class="lv-foot"><button class="link-btn end" data-lv-csv="${id}">${icon("download")}${t("Download CSV")}</button></div>` : ""}`;
   }
 
@@ -282,10 +286,25 @@
 
   const rateCell = (r) => pct(r.rate);
   const topbarFor = (title, sub, entry) => UI.topbar(t(title), t(sub), entry?.data && !["no_sites", "not_connected", "not_used"].includes(entry.data.state) ? refreshBtn() : "");
-  const page = (head, body) => `${head}<div class="content page-enter">${body}</div>`;
+  const page = (head, body) => `${head}<div class="content page-enter${UI.simple?.() ? " lv-page" : ""}">${body}</div>`;
   /* On All sites, /contact/ can be on several sites, so a page row says whose it is. It sorts and exports that way too. */
   const siteOfPage = (r) => (!UI.siteHostPicked() && r.host ? `<div class="lv-cat mono" dir="auto">${esc(r.host)}</div>` : "");
   const pageName = (r) => (!UI.siteHostPicked() && r.host ? `${r.host}${r.path}` : r.path);
+  /* GA4's "(not set)" isn't a page of the site (owner, 2026-11-12): the server sends it last, marked unknown, and it reads as
+     words with its reason, never as a link to "/(not set)/". */
+  const UNKNOWN_TIP = "Google Analytics couldn't tell which page these visits landed on, often visits that left before the page loaded.";
+  const unknownPage = (r) => `<span class="lv-unknown" dir="auto">${t("Unknown page (not set)")}</span>${UI.simple?.() && UI.info ? UI.info(UNKNOWN_TIP) : UI.tip(UNKNOWN_TIP)}${siteOfPage(r)}`;
+  /* Where a table's numbers come from and for which days, said in its card head, so two tables that count the same page
+     differently (Google Analytics for the period picked, a Clarity download for its own) never clash unexplained. */
+  const sourceAndDays = (source) => { const g = UI.range.get(); return `${esc(t(source))} · ${esc(UI.fmtRange(g.from, g.to))}`; };
+  /* Social networks, one row per network with its logo; the ways GA4 wrote it are the name's tip (m.facebook.com, meta…). */
+  const socialBars = (rows) => {
+    const max = Math.max(...rows.map((r) => r.sessions), 1);
+    return `<div class="lv-bars">${rows.map((r) => {
+      const ways = (r.sources || []).filter((x) => x && x !== r.source);
+      return `<div class="lv-bar"><span class="lab with-logo">${r.domain ? UI.siteLogo(r.domain, 16) : ""}<span class="logo-text" dir="auto"${ways.length ? ` data-tip="${esc(ways.join(", "))}"` : ""}>${esc(t(r.source))}</span></span><span class="track"><i style="width:${Math.max(r.sessions ? 2 : 0, (r.sessions / max) * 100)}%"></i></span><span class="val">${num(r.sessions)}</span></div>`;
+    }).join("")}</div>`;
+  };
 
   // ---- Overview ---------------------------------------------------------------------------------
   const METRICS = [["clicks", "Clicks"], ["impressions", "Impressions"], ["position", "Average position"]];
@@ -384,6 +403,7 @@
   }
 
   function channelsPage() {
+    if (simple()) return channelsSimple();
     const entry = load("metrics/channels");
     const blocked = stateCard(entry, "ga4");
     const head = topbarFor("Channels", "Visit and lead sources, from Google Analytics", entry);
@@ -423,6 +443,7 @@
 
   // ---- Conversions ------------------------------------------------------------------------------
   function conversionsPage() {
+    if (simple()) return conversionsSimple();
     const entry = load("metrics/conversions");
     const blocked = stateCard(entry, "ga4");
     const head = topbarFor("Conversions", "From visit to lead. Counts only, no personal data.", entry);
@@ -453,7 +474,7 @@
           { key: "rate", label: "Lead rate", num: true, html: rateCell },
         ], d.page_types, { csv: false })}</section>
         <section class="card"><div class="card-head"><h2>${t("Pages that bring leads")}</h2></div>${dataTable("converting", [
-          { key: "path", label: "Page", get: pageName, html: (r) => `${PageLink.html(r.path, { host: r.host, cls: "mono lv-url" })}${siteOfPage(r)}` },
+          { key: "path", label: "Page", get: pageName, html: (r) => (r.unknown ? unknownPage(r) : `${PageLink.html(r.path, { host: r.host, cls: "mono lv-url" })}${siteOfPage(r)}`) },
           { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }, { key: "rate", label: "Lead rate", num: true, html: rateCell },
         ], d.pages, { csv: false, empty: "No page brought a lead in this period.", search: "Search pages" })}</section>
       </div>`);
@@ -461,6 +482,7 @@
 
   // ---- Content ----------------------------------------------------------------------------------
   function contentPage() {
+    if (simple()) return contentSimple();
     const entry = load("metrics/content");
     const head = topbarFor("Content", "Every page and its results", entry);
     if (entry.loading || entry.error) return page(head, stateCard(entry, "ga4"));
@@ -482,12 +504,12 @@
     const missing = d.ga4.state !== "ok" ? "Visits and leads stay blank until Google Analytics is connected." : d.gsc.state !== "ok" ? "Google clicks and position stay blank until Search Console is connected." : "";
     return page(head, `
       ${missing ? `<p class="note lv-note">${icon("info")}<span>${t(missing)}</span></p>` : ""}${hiddenNote(d.hid_rows)}${clarityReportCard("dashboard")}${clarityCard}
-      <section class="card"><div class="card-head"><h2>${t("All pages")}</h2><span class="end small muted">${num(d.total_pages)} ${t(d.total_pages === 1 ? "page" : "pages")}</span></div>${dataTable("content", [
-        { key: "path", label: "Page", get: pageName, html: (r) => `<div class="mono lv-url">${PageLink.html(r.path, { host: r.host })}</div>${siteOfPage(r)}<div class="lv-cat" dir="auto">${esc(t(r.category))}</div>${UI.relatedTag?.({ host: r.host || UI.siteHostPicked() || "", page: r.path }) || ""}` },
+      <section class="card"><div class="card-head"><h2>${t("All pages")}</h2><span class="end small muted">${num(d.total_pages)} ${t(d.total_pages === 1 ? "page" : "pages")} · ${sourceAndDays("Google Analytics and Search Console")}</span></div>${dataTable("content", [
+        { key: "path", label: "Page", get: pageName, html: (r) => (r.unknown ? unknownPage(r) : `<div class="mono lv-url">${PageLink.html(r.path, { host: r.host })}</div>${siteOfPage(r)}<div class="lv-cat" dir="auto">${esc(t(r.category))}</div>${UI.relatedTag?.({ host: r.host || UI.siteHostPicked() || "", page: r.path }) || ""}`) },
         { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }, { key: "clicks", label: "Google clicks", num: true },
         { key: "position", label: "Position", num: true, html: (r) => decimal(r.position) }, { key: "ai", label: "AI visits", num: true },
       ], d.pages, { search: "Search pages" })}</section>
-      <section class="card" style="margin-top:14px"><div class="card-head"><h2>${t("Social networks")}</h2></div>${d.social.length ? bars(d.social, { value: (r) => r.sessions, label: (r) => r.source }) : `<div class="empty"><p>${t("No visits from social networks in this period.")}</p></div>`}</section>
+      <section class="card" style="margin-top:14px"><div class="card-head"><h2>${t("Social networks")}</h2><span class="end small muted">${sourceAndDays("Google Analytics")}</span></div>${d.social.length ? socialBars(d.social) : `<div class="empty"><p>${t("No visits from social networks in this period.")}</p></div>`}</section>
       ${speedCard()}`); // Page speed moved here from Overview on 2026-11-09: it's about pages, not Google results
   }
 
@@ -566,6 +588,262 @@
         ${crTabRow("dashboard", [["pages", "Top pages"], ["referrers", "Referrers"], ["problems", "Problems"], ["visitors", "Visitors"]])}${body}</section>`;
     }
     return ""; // the "ai" kind (Copilot's citations) is drawn by ai-search-view.js now
+  }
+
+  // ---- the simpler screens: Channels, Conversions and Content (UI.simple(), ?simple=1; track T2, 2026-11-12) ----------------
+  /* The model the other screens copy (plan-seo-command-center-simplify-screens-like-mickaz.md, section 2). Each screen:
+     - draws UI.head: the period buttons, the dates, the source and how fresh, and its caveats behind the (i) (nothing between
+       the head and the first card but page tabs);
+     - answers with UI.card number cards, each with its own graph of this period and the period before;
+     - shows one main thing first, the rest one tab or one panel away;
+     - marks rows data-rp-open so a click opens UI.rowPanel (row-panel.js), and leaves the ticks, Filter and the count to the
+       table layer (table-tools.js), which places them in the card head or in a data-tt-slot;
+     - loads through SCREEN_DATA in one call: the folded answers (?include=) instead of one call per part.
+     With the switch off none of this runs: each page function returns its old drawing. */
+  const INCLUDE = { "metrics/channels": "&include=logos", "metrics/content": "&include=clarity,speed,clarity_reports" };
+  const simple = () => Boolean(UI.simple?.());
+  const HID_TIP = "Google Analytics hid some rows with few visits, so small numbers may be missing. A longer period may show them.";
+  const TABS = { content: "pages", conversions: "pages", clarity: "" };
+  const blockedStates = ["no_sites", "not_connected", "not_used"];
+  function simpleHead(title, entry, { source = null, status = null, info = [] } = {}) {
+    const main = entry?.data && !blockedStates.includes(entry.data.state) ? refreshBtn() : "";
+    return UI.head({ title: t(title), period: true, source, status, info: info.filter(Boolean), main });
+  }
+  /* A source that isn't there becomes the head's status chip, which opens its connection. */
+  const SOURCE_STATE = { not_connected: "not connected", not_used: "not used", failing: "stopped working", waiting: "waiting for data" };
+  const sourceStatus = (state, name) => (state && state !== "ok" && SOURCE_STATE[state] ? { sev: state === "failing" ? "crit" : "warn", word: `${t(name)}: ${t(SOURCE_STATE[state])}`, open: 'data-lv-connect="google"' } : null);
+  // Page tabs in the underline style (screen-parts.css). inCard: right under a card's top, with the table's tools beside them.
+  const pageTabs = (group, tabs, label, inCard = false) => `<div class="page-tabs${inCard ? " in-card" : ""}" role="tablist" aria-label="${esc(t(label))}">${tabs.map(([id, word, count]) => `<button type="button" class="page-tab" role="tab" data-lv-ptab="${group}:${id}" aria-selected="${TABS[group] === id}">${esc(word)}${count !== undefined ? ` <span class="n-badge">${num(count)}</span>` : ""}</button>`).join("")}</div>`;
+  const pickTab = (group, tabs) => { if (!tabs.some(([id]) => id === TABS[group])) TABS[group] = tabs[0]?.[0] || ""; };
+  // The days both periods reported, for a card's graph: this period solid, the period before dashed (UI.card).
+  const daySpark = (d, pick) => (d?.days?.length > 1 ? { days: d.days.map((r) => r.day), now: d.days.map(pick), before: (d.days_before || []).map(pick) } : null);
+  const ratePct = (r) => (r && r.sessions ? (r.leads / r.sessions) * 100 : null);
+  const known = (v) => v !== null && v !== undefined;
+  // Rows that open their side panel (row-panel.js): a click, or Enter on the focused row.
+  const opensPanel = (kind, key, host = "") => `data-rp-open="${kind}" data-rp-key="${esc(key)}"${host ? ` data-rp-host="${esc(host)}"` : ""} tabindex="0"`;
+  const pageRow = (r) => (r.unknown ? 'style="cursor:default"' : opensPanel("page", r.path, r.host || UI.siteHostPicked() || ""));
+  const pageCell = (r) => (r.unknown ? unknownPage(r) : `<div class="mono lv-url">${PageLink.html(r.path, { host: r.host })}</div>${siteOfPage(r)}`);
+
+  // ---- Channels: cards, every channel (rules in a panel), then the chart beside the referring sites
+  function channelsSimple() {
+    const entry = load("metrics/channels", INCLUDE["metrics/channels"]);
+    const d = entry.data;
+    if (d?.through) UI.range.end(UI.state.route, d.through);
+    const head = simpleHead("Channels", entry, { source: { name: "Google Analytics", through: d?.through }, info: ["Visit and lead sources, from Google Analytics", d?.hid_rows && HID_TIP] });
+    const blocked = stateCard(entry, "ga4");
+    if (blocked) return page(head, blocked);
+    if (!d.channels.length) return page(head, emptyCard(t("No data in this period."), `${t("Google Analytics has data through")} ${esc(d.through ? shortDay(d.through) : "—")}.`));
+    // The icons the server already has come with the answer; a list with letters still waiting looks again, in the quiet queue.
+    if (Array.isArray(d.logos) && window.LOGOS_KNOWN?.add) d.logos.forEach((name) => window.LOGOS_KNOWN.add(name));
+    const referrerList = d.referrers.map((r) => r.domain).join(",");
+    if (referrerList !== LV.referrersWatched) {
+      LV.referrersWatched = referrerList;
+      if (d.referrers.some((r) => UI.siteLogo(r.domain).includes("letter"))) (window.SCREEN_DATA?.logos || window.COMP?.refreshLogos)?.({ watch: true });
+    }
+    const before = d.before, top = d.channels[0];
+    const cards = `<section class="tiles lv-cards">
+        ${UI.card({ id: "visits", label: "Visits", value: d.total.sessions, change: { now: d.total.sessions, before: before?.sessions }, spark: daySpark(d, (r) => r.sessions) })}
+        ${UI.card({ id: "leads", label: "Leads", value: d.total.leads, change: { now: d.total.leads, before: before?.leads }, spark: daySpark(d, (r) => r.leads) })}
+        ${UI.card({ id: "rate", label: "Lead rate", value: ratePct(d.total), format: "pct", change: { now: ratePct(d.total), before: ratePct(before), unit: "pts" }, spark: daySpark(d, ratePct) })}
+        ${UI.card({ id: "channels", label: "Channels", value: d.channels.length, sub: top ? esc(fillIn(t("Most visits: {name}"), { name: t(top.channel) })) : "" })}
+      </section>`;
+    const swatch = (name) => `<i class="lv-key" style="background:${colourOf(name)}"></i>${esc(t(name))}`;
+    const days = d.series.map((r) => r.day);
+    const series = d.series_names.map((name) => ({ name, color: colourOf(name), values: Object.fromEntries(d.series.map((r) => [r.day, r.values[name] ?? 0])) }));
+    return page(head, `${cards}
+      <section class="card"><div class="card-head"><h2>${t("Every channel")}</h2><button type="button" class="btn btn-small end" data-lv-rules aria-haspopup="dialog">${icon("pencil")}${t("Channel rules")}</button></div>${dataTable("channels", [
+        { key: "channel", label: "Channel", html: (r) => swatch(r.channel) },
+        { key: "sessions", label: "Visits", num: true },
+        { key: "share", label: "Share", num: true, get: (r) => r.share, html: (r) => pct(r.share) },
+        { key: "leads", label: "Leads", num: true },
+        { key: "rate", label: "Lead rate", num: true, get: (r) => r.rate, html: rateCell },
+        { key: "change", label: "Change", num: true, html: (r) => (r.change === null ? `<span class="muted">—</span>` : `<span class="${r.change >= 0 ? "good" : "crit"} d-pill">${icon(r.change >= 0 ? "arrow-up" : "arrow-down")}${r.change >= 0 ? "+" : "−"}${num(Math.abs(r.change))}%</span>`) },
+      ], d.channels, { rowAttrs: (r) => opensPanel("channel", r.channel) })}</section>
+      <div class="lv-two lv-pair">
+        <section class="card"><div class="card-head"><h2>${t("Visits by channel")}</h2></div><div class="lv-chart-sm">${lineChart("channels", days, series)}</div></section>
+        <section class="card"><div class="card-head"><h2>${t("Referring sites")}</h2></div>${dataTable("referrers", [
+          { key: "domain", label: "Site", html: (r) => `<span class="with-logo">${UI.siteLogo(r.domain, 16)}<span class="logo-text mono" dir="auto">${esc(r.domain)}</span></span>` },
+          { key: "sessions", label: "Visits", num: true },
+          { key: "leads", label: "Leads", num: true },
+        ], d.referrers, { empty: "No referring sites in this period.", search: "Search sites", rowAttrs: (r) => opensPanel("referrer", r.domain) })}</section>
+      </div>`);
+  }
+  // Channel rules, one click from the channel table's head: the hint, the rules and the form, in a side panel.
+  const channelsKey = () => `metrics/channels?${periodQuery()}${INCLUDE["metrics/channels"]}`;
+  const rulesBody = (rules) => `<p class="help lv-rules-help">${t("Rename channels by source/medium (* = anything). Past days change too.")}</p>
+      ${rules.length ? `<div class="lv-rules-list">${rules.map((r) => `<div class="lv-rule"><span class="grow mono" dir="auto">${esc(r.pattern)}${r.value ? ` → ${esc(r.value)}` : ""}</span><button class="btn btn-small btn-ghost" data-lv-rule-del="${r.id}" aria-label="${t("Remove")}: ${esc(r.pattern)}">${t("Remove")}</button></div>`).join("")}</div>` : `<p class="small muted lv-rules-none">${t("No rules yet.")}</p>`}
+      <form class="lv-rule-form" data-lv-rule-form="channel"><input class="input mono" name="f_pattern" placeholder="chatgpt.com/*" aria-label="${t("Matches")}" autocomplete="off" data-autofocus><input class="input" name="f_value" placeholder="${esc(t("Channel name"))}" aria-label="${t("Channel name")}" autocomplete="off"><button class="btn btn-small" type="submit">${t("Add rule")}</button><span class="error" data-lv-rule-error hidden></span></form>`;
+  function rulesPanel(opener) {
+    const rules = window.SCREEN_DATA?.peek(channelsKey())?.rules || LV.cache.get?.(channelsKey())?.data?.rules || [];
+    UI.openPanel(`${UI.panelHead(t("Channel rules"), "")}<div class="panel-body" data-lv-rules-body>${rulesBody(rules)}</div>`, opener);
+  }
+  /* After a rule is added or removed. Off, or with no rules panel open: forget and redraw, as before. In the panel: the
+     channels are asked again, the page under it redrawn, and the panel's list drawn from the new answer. */
+  async function afterRuleChange() {
+    forget();
+    const body = UI.$("#panel [data-lv-rules-body]");
+    if (!simple() || !body || !window.SCREEN_DATA?.on()) { UI.render(); return; }
+    try { await window.SCREEN_DATA.get(channelsKey()); } catch { /* the page says it on its next draw */ }
+    UI.render();
+    const data = window.SCREEN_DATA.peek(channelsKey());
+    const still = UI.$("#panel [data-lv-rules-body]");
+    if (still && data) { UI.setHTML(still, rulesBody(data.rules || [])); still.querySelector('[name="f_pattern"]')?.focus({ preventScroll: true }); }
+  }
+
+  // ---- Conversions: cards, the visit-to-lead line per channel, then pages and page types as two tabs of one card
+  function conversionsSimple() {
+    const entry = load("metrics/conversions");
+    const d = entry.data;
+    const through = d?.through || (d?.period?.trimmed ? d.period.to : null);
+    if (through) UI.range.end(UI.state.route, through);
+    const head = simpleHead("Conversions", entry, { source: { name: "Google Analytics", through }, info: ["From visit to lead, by channel and by page.", "Counts only: no personal data comes into this app.", d?.hid_rows && HID_TIP] });
+    const blocked = stateCard(entry, "ga4");
+    if (blocked) return page(head, blocked);
+    if (!d.sessions) return page(head, emptyCard(t("No data in this period."), `${t("Google Analytics has data through")} ${esc(d.through ? shortDay(d.through) : "—")}.`));
+    const set = d.key_events_set_up, was = d.before;
+    // A line that carries an action stays on screen: without key events there are no leads to count.
+    const setUp = set ? "" : `<p class="note warn lv-note">${icon("triangle-alert")}<span>${t("No key events. Mark your forms as key events in GA4.")}</span></p>`;
+    const cards = `<section class="tiles lv-cards">
+        ${UI.card({ id: "visits", label: "Visits", value: d.sessions, change: { now: d.sessions, before: was?.sessions }, spark: daySpark(d, (r) => r.sessions) })}
+        ${UI.card({ id: "leads", label: "Leads", value: set ? d.leads : null, sub: set ? null : esc(t("Not set up")), change: set ? { now: d.leads, before: was?.leads } : null, spark: set ? daySpark(d, (r) => r.leads) : null })}
+        ${UI.card({ id: "rate", label: "Lead rate", value: set && known(d.rate) ? d.rate * 100 : null, format: "pct", sub: set ? null : esc(t("Not set up")), change: set && known(d.rate) ? { now: d.rate * 100, before: known(was?.rate) ? was.rate * 100 : null, unit: "pts" } : null, spark: set ? daySpark(d, ratePct) : null })}
+      </section>`;
+    const max = Math.max(...d.funnel.map((x) => x.sessions), 1);
+    // One line per channel; the visits that didn't become a lead are the bar's tip.
+    const funnel = d.funnel.map((r) => `<div class="lv-bar lv-fline"><span class="lab" dir="auto">${esc(t(r.channel))}</span><span class="track" data-tip="${esc(fillIn(t("{n} visits didn't become a lead"), { n: num(r.lost) }))}"><i style="width:${Math.max(r.sessions ? 2 : 0, (r.sessions / max) * 100)}%"></i></span><span class="val">${num(r.sessions)} ${t("visits")} → ${num(r.leads)} ${t("leads")} · ${pct(r.rate)}<span class="sr"> · ${num(r.lost)} ${t("without a lead")}</span></span></div>`).join("");
+    const tabs = [["pages", t("Pages that bring leads"), d.pages.length], ["types", t("Page types"), d.page_types.length]];
+    pickTab("conversions", tabs);
+    const table = TABS.conversions === "types"
+      ? dataTable("types", [
+        { key: "type", label: "Type", get: (r) => t(r.type), html: (r) => `<span dir="auto">${esc(t(r.type))}</span>` },
+        { key: "pages", label: "Pages", num: true }, { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true },
+        { key: "rate", label: "Lead rate", num: true, html: rateCell },
+      ], d.page_types, { wrapAttrs: "data-tt-own-count" })
+      : dataTable("converting", [
+        { key: "path", label: "Page", get: pageName, html: (r) => (r.unknown ? unknownPage(r) : `${PageLink.html(r.path, { host: r.host, cls: "mono lv-url" })}${siteOfPage(r)}`) },
+        { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }, { key: "rate", label: "Lead rate", num: true, html: rateCell },
+      ], d.pages, { empty: "No page brought a lead in this period.", search: "Search pages", rowAttrs: pageRow, wrapAttrs: "data-tt-own-count" });
+    return page(head, `${setUp}${cards}
+      <section class="card"><div class="card-head"><h2>${t("From visit to lead, by channel")}</h2></div><div class="lv-bars lv-funnel-lines">${funnel}</div></section>
+      <section class="card lv-tab-card"><div class="lv-tabbar">${pageTabs("conversions", tabs, "Pages", true)}<span class="lv-tab-tools" data-tt-slot></span></div>${table}</section>`);
+  }
+
+  // ---- Content: page tabs; All pages first, then social networks, page speed, and Clarity once it has something
+  function contentSimple() {
+    const entry = load("metrics/content", INCLUDE["metrics/content"]);
+    const d = entry.data;
+    const ok = (s) => s?.state === "ok";
+    const sources = d ? [ok(d.ga4) && { name: "Google Analytics", through: d.ga4.through }, ok(d.gsc) && { name: "Search Console", through: d.gsc.through }].filter(Boolean) : null;
+    const status = d ? sourceStatus(d.ga4?.state, "Google Analytics") || sourceStatus(d.gsc?.state, "Search Console") : null;
+    const head = simpleHead("Content", entry, { source: sources?.length ? sources : null, status, info: ["Every page and its results", d?.hid_rows && HID_TIP] });
+    if (entry.loading || entry.error || entry.noServer) return page(head, stateCard(entry, "ga4"));
+    const heat = d.clarity, reports = d.clarity_reports, runs = d.speed?.runs || [];
+    const downloads = (reports?.sites || []).filter((s) => s.dashboard);
+    const tabs = [["pages", t("All pages")], ["social", t("Social networks")], ["speed", t("Page speed")]];
+    if (heat?.has_data || downloads.length) tabs.push(["clarity", "Clarity"]);
+    pickTab("content", tabs);
+    const tab = TABS.content;
+    let body;
+    if (tab === "social") {
+      body = `<section class="card"><div class="card-head"><h2>${t("Social networks")}</h2><span class="end small muted">${sourceAndDays("Google Analytics")}</span></div>${d.social?.length ? socialBars(d.social) : `<div class="empty"><p>${t("No visits from social networks in this period.")}</p></div>`}</section>`;
+    } else if (tab === "speed") {
+      body = speedSimple(runs, downloads);
+    } else if (tab === "clarity") {
+      body = claritySimple(heat, downloads);
+    } else if (!d.pages.length) {
+      const blocked = stateCard({ data: { ...d, state: d.ga4.state === "ok" ? d.gsc.state : d.ga4.state, through: d.ga4.through, error: d.ga4.error || d.gsc.error } }, d.ga4.state === "ok" ? "gsc" : "ga4");
+      body = blocked || emptyCard(t("No data in this period."), t("Pick a longer or earlier period."));
+    } else {
+      body = `<section class="card"><div class="card-head"><h2>${t("All pages")}</h2><span class="end small muted">${sourceAndDays("Google Analytics and Search Console")}</span></div>${dataTable("content", [
+        { key: "path", label: "Page", get: pageName, html: (r) => `${pageCell(r)}${r.unknown ? "" : `<div class="lv-cat" dir="auto">${esc(t(r.category))}</div>${UI.relatedTag?.({ host: r.host || UI.siteHostPicked() || "", page: r.path }) || ""}`}` },
+        { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }, { key: "clicks", label: "Google clicks", num: true },
+        { key: "position", label: "Position", num: true, html: (r) => decimal(r.position) }, { key: "ai", label: "AI visits", num: true },
+      ], d.pages, { search: "Search pages", rowAttrs: pageRow })}</section>`;
+    }
+    return page(head, `${pageTabs("content", tabs, "Content")}${body}`);
+  }
+  // Page speed: the PageSpeed tests, then the real visitors' speed from a Clarity download (it isn't Clarity's own data).
+  function speedSimple(runs, downloads) {
+    const ms = (v) => (v === null || v === undefined ? null : Math.round(v / 100) / 10);
+    const tests = runs.length ? dataTable("speed", [
+      { key: "host", label: "Site", html: (r) => `<span class="mono" dir="auto">${esc(r.host)}</span>` },
+      { key: "strategy", label: "Device", get: (r) => t(r.strategy === "mobile" ? "Phone" : "Computer") },
+      { key: "performance", label: "Score", num: true },
+      { key: "lcp_ms", label: "Largest content (s)", num: true, get: (r) => ms(r.lcp_ms), html: (r) => (r.lcp_ms === null ? `<span class="muted">—</span>` : decimal(ms(r.lcp_ms))) },
+      { key: "inp_ms", label: "Response (ms)", num: true },
+      { key: "cls", label: "Layout shift", num: true, html: (r) => (r.cls === null ? `<span class="muted">—</span>` : decimal(Math.round(r.cls * 100) / 100)) },
+      { key: "field_data", label: "Measured on", get: (r) => t(r.field_data ? "Real visitors" : "Test run") },
+    ], runs) : `<div class="empty"><p>${t("No speed test yet. Refresh data runs one.")}</p></div>`;
+    const one = downloads.length === 1 && UI.siteIdPicked() ? downloads[0].dashboard : null, perf = one?.performance || null;
+    const real = perf && Object.values(perf).some(known) ? `<section class="card"><div class="card-head"><h2>${t("Page speed, real visitors")}</h2><span class="end small muted">${esc(t("Clarity download"))} · ${spanOf(one)}</span></div>
+      <ul class="rows lv-speed-real">
+        <li><div class="what"><div class="t">${t("Speed score")}</div></div><div class="acts">${known(perf.score) ? num(Math.round(perf.score)) : "—"} / 100</div></li>
+        <li><div class="what"><div class="t">${t("Largest content")} (LCP)</div></div><div class="acts">${grade(perf.lcp_ms, 2500, 4000, known(perf.lcp_ms) ? `${decimal(Math.round(perf.lcp_ms / 100) / 10)} s` : "")}</div></li>
+        <li><div class="what"><div class="t">${t("Click response")} (INP)</div></div><div class="acts">${grade(perf.inp_ms, 200, 500, `${num(perf.inp_ms)} ms`)}</div></li>
+        <li><div class="what"><div class="t">${t("Layout shift")} (CLS)</div></div><div class="acts">${grade(perf.cls, 0.1, 0.25, decimal(perf.cls))}</div></li></ul></section>` : "";
+    return `<section class="card"><div class="card-head"><h2>${t("Page speed")}</h2><span class="end small muted">${esc(t("PageSpeed Insights"))} · ${t("Home page")}</span></div>${tests}</section>${real}`;
+  }
+  /* One Clarity block (owner, 2026-11-12): what Clarity counts live for the period picked first, then a download's report for its
+     own days behind a tab. Each says its source and days, so its numbers never pass for Google Analytics'. */
+  function claritySimple(heat, downloads) {
+    const live = Boolean(heat?.has_data);
+    const one = downloads.length === 1 && UI.siteIdPicked();
+    const span = one ? spanOf(downloads[0].dashboard) : sharedSpan(downloads, "dashboard");
+    const views = [...(live ? [["live", `${t("Live data")} · ${UI.fmtRange(UI.range.get().from, UI.range.get().to)}`]] : []), ...(downloads.length ? [["download", `${t("Clarity download")}${span ? ` · ${span.replace(/&ndash;|–/g, "–")}` : ""}`]] : [])];
+    pickTab("clarity", views);
+    const view = TABS.clarity;
+    const tabRow = views.length > 1 ? pageTabs("clarity", views, "Clarity", true) : "";
+    const sessionsOnly = heat?.sessions_only_days;
+    // The tabs say each view's source and days; with one view, the card head says them.
+    const head = (word) => `<div class="card-head"><h2>Microsoft Clarity</h2>${tabRow ? "" : `<span class="end small muted">${word}</span>`}</div>`;
+    if (view === "live") {
+      // Days with sessions only (an old recordings import): said behind the sessions card's (i).
+      const info = sessionsOnly ? fillIn(t(sessionsOnly === 1 ? "1 day has Clarity sessions only: no scroll depth or clicks." : "{n} days have Clarity sessions only: no scroll depth or clicks."), { n: num(sessionsOnly) }) : "";
+      return `<section class="card lv-clarity">${head(`${esc(t("Live data"))} · ${sourceAndDays("Microsoft Clarity")}`)}${tabRow}
+        <section class="tiles lv-cards lv-in-card">
+          ${UI.card({ id: "clarity-sessions", label: "Clarity sessions", value: heat.sessions, info, sub: `${esc(t("Data through"))} ${esc(shortDay(heat.through))}` })}
+          ${UI.card({ id: "scroll", label: "Scroll depth", value: heat.scroll_depth, format: "pct" })}
+          ${UI.card({ id: "rage", label: "Rage clicks", value: heat.rage_clicks })}
+          ${UI.card({ id: "dead", label: "Dead clicks", value: heat.dead_clicks })}
+        </section></section>`;
+    }
+    return `<section class="card lv-clarity">${head(`${esc(t("Clarity download"))}${span ? ` · ${span}` : ""}`)}${tabRow}${clarityDownload(downloads, one)}</section>`;
+  }
+  // A Clarity download's report, for its own days: compact tables, and no speed (that is on Page speed).
+  function clarityDownload(sites, one) {
+    if (!one) {
+      return dataTable("cr-sites", [
+        { key: "host", label: "Site", html: (s) => pickSite(s, "dashboard", sharedSpan(sites, "dashboard")) },
+        { key: "real", label: "Real visits", num: true, get: (s) => realVisits(s.dashboard) },
+        { key: "bots", label: "Bots", num: true, get: (s) => s.dashboard.bot_sessions },
+        { key: "scroll", label: "Scroll depth", num: true, get: (s) => s.dashboard.scroll_depth, html: (s) => pctOf(s.dashboard.scroll_depth) },
+        { key: "dead", label: "Dead clicks", num: true, get: (s) => s.dashboard.insights?.dead_clicks?.share, html: (s) => pctOf(s.dashboard.insights?.dead_clicks?.share) },
+      ], sites, { compact: true, wrapAttrs: "data-tt-own-count" });
+    }
+    const r = sites[0].dashboard, real = realVisits(r), ins = r.insights || {};
+    const answer = r.sessions ? `${num(real)} ${t("real visits")}: ${t("Clarity counted")} ${num(r.sessions)} ${t("and marked")} ${num(r.bot_sessions || 0)} ${t("as bots")} (${pctOf((100 * (r.bot_sessions || 0)) / r.sessions)}).` : t("No visits in this file.");
+    const tab = crTabs.dashboard;
+    const body = tab === "referrers"
+      ? `${dataTable("cr-referrers", [{ key: "source", label: "Referrer", html: (x) => `<span class="with-logo">${UI.siteLogo(x.source, 16)}<span class="logo-text mono" dir="ltr">${esc(x.source)}</span></span>` }, { key: "sessions", label: "Visits", num: true }], r.referrers || [], { empty: "No referrers in this file.", search: "Search sites", compact: true, wrapAttrs: "data-tt-own-count" })}${r.own_referrals ? `<p class="small muted lv-pad">${num(r.own_referrals)} ${t("visits from the site's own pages left out.")}</p>` : ""}`
+      : tab === "problems"
+        ? `<div class="lv-pad"><h3 class="small lv-h3">${t("What visitors ran into")}</h3>${bars([["Dead clicks", ins.dead_clicks], ["Quick back clicks", ins.quick_back], ["Rage clicks", ins.rage_clicks], ["Excessive scrolling", ins.excessive_scrolling]].filter(([, v]) => v).map(([name, v]) => ({ name: t(name), sessions: v.sessions })), { value: (x) => x.sessions, label: (x) => x.name })}
+            <h3 class="small lv-h3">${t("JavaScript errors")}: ${num(r.js_errors?.total || 0)}</h3>${(r.js_errors?.top || []).length ? `<ul class="small lv-errors">${r.js_errors.top.map((x) => `<li><span class="mono">${esc(x.message)}</span> · ${num(x.sessions)}</li>`).join("")}</ul>` : `<p class="small muted">${t("None.")}</p>`}</div>`
+        : tab === "visitors"
+          ? `<div class="lv-two lv-pad"><div><h3 class="small lv-h3">${t("Browsers")}</h3>${bars((r.browsers || []).slice(0, 8), { value: (x) => x.sessions, label: (x) => x.name })}</div>
+              <div><ul class="rows">
+                <li><div class="what"><div class="t">${t("Unique visitors")}</div></div><div class="acts">${num(r.unique_users)}</div></li>
+                <li><div class="what"><div class="t">${t("Returning visitors' visits")}</div></div><div class="acts">${num(r.returning_user_sessions)}</div></li>
+                <li><div class="what"><div class="t">${t("Pages per visit")}</div></div><div class="acts">${decimal(known(r.pages_per_session) ? Math.round(r.pages_per_session * 100) / 100 : null)}</div></li>
+                <li><div class="what"><div class="t">${t("Active time per visit")}</div></div><div class="acts">${num(r.active_seconds)} s</div></li>
+                ${(r.smart_events || []).map((x) => `<li><div class="what"><div class="t" dir="auto">${esc(t(x.name))}</div><div class="s">${t("Smart event")}</div></div><div class="acts">${num(x.sessions)}</div></li>`).join("")}</ul></div></div>`
+          : dataTable("cr-pages", [{ key: "url", label: "Page", html: (x) => PageLink.html(x.url, { text: x.url.replace(/^https?:\/\/[^/]+/, "") || "/", cls: "mono lv-url", dir: "ltr" }) }, { key: "sessions", label: "Visits", num: true }], r.top_pages || [], { empty: "No pages in this file.", search: "Search pages", compact: true, wrapAttrs: "data-tt-own-count" });
+    return `<p class="lv-pad lv-answer">${answer}</p>
+      <section class="tiles lv-cards lv-in-card">
+        ${UI.card({ id: "cr-real", label: "Real visits", value: real, sub: `${esc(t("of"))} ${num(r.sessions)}` })}
+        ${UI.card({ id: "cr-scroll", label: "Scroll depth", value: known(r.scroll_depth) ? Math.round(r.scroll_depth * 10) / 10 : null, format: "pct" })}
+        ${UI.card({ id: "cr-dead", label: "Dead clicks", value: known(ins.dead_clicks?.share) ? Math.round(ins.dead_clicks.share * 10) / 10 : null, format: "pct", sub: `${num(ins.dead_clicks?.sessions)} ${esc(t("visits"))}` })}
+      </section>
+      ${crTabRow("dashboard", [["pages", "Top pages"], ["referrers", "Referrers"], ["problems", "Problems"], ["visitors", "Visitors"]])}${body}`;
   }
 
   // ---- AI search: its own file since 2026-11-10 (ai-search-view.js), with what it needs from here on LV ----------------
@@ -684,6 +962,14 @@
       if ((el = hit("[data-lv-metric]"))) { overviewMetric = el.dataset.lvMetric; UI.render(); return; }
       if ((el = hit("[data-lv-idea]"))) { trackIdeas([ideas.rows[Number(el.dataset.lvIdea)]], el); return; }
       if ((el = hit("[data-lv-idea-all]"))) { trackIdeas(ideas.fresh || [], el); return; }
+      if ((el = hit("[data-lv-rules]"))) { rulesPanel(el); return; }
+      if ((el = hit("[data-lv-ptab]"))) { // the simpler screens' page tabs and in-card tabs
+        const [group, id] = el.dataset.lvPtab.split(":");
+        TABS[group] = id;
+        UI.render();
+        document.querySelector(`[data-lv-ptab="${CSS.escape(el.dataset.lvPtab)}"]`)?.focus({ preventScroll: true });
+        return;
+      }
       if ((el = hit("[data-cr-tab]"))) {
         const [kind, tab] = el.dataset.crTab.split(":");
         crTabs[kind] = tab;
@@ -715,7 +1001,7 @@
         return;
       }
       if ((el = hit("[data-lv-rule-del]"))) {
-        try { await window.COMP.api("DELETE", `rules/${el.dataset.lvRuleDel}`); forget(); UI.render(); UI.toast(t("Rule removed")); } catch (err) { UI.toast(err.message, { kind: "crit" }); }
+        try { await window.COMP.api("DELETE", `rules/${el.dataset.lvRuleDel}`); await afterRuleChange(); UI.toast(t("Rule removed")); } catch (err) { UI.toast(err.message, { kind: "crit" }); }
         return;
       }
       if ((el = hit("[data-rs-filter]"))) { R.tag = el.dataset.rsFilter; UI.render(); document.querySelector(`[data-rs-filter="${CSS.escape(R.tag)}"]`)?.focus({ preventScroll: true }); return; }
@@ -747,7 +1033,7 @@
         const site = UI.siteIdPicked();
         try {
           await window.COMP.api("POST", "rules", { kind: form.dataset.lvRuleForm, pattern: form.elements.f_pattern.value, value: form.elements.f_value?.value, site_id: site || null });
-          forget(); UI.render(); UI.toast(t("Rule added"));
+          await afterRuleChange(); UI.toast(t("Rule added"));
         } catch (err) { box.textContent = t(err.message); box.hidden = false; form.elements.f_pattern.focus(); }
         return;
       }
@@ -808,7 +1094,14 @@
   // ---- register ---------------------------------------------------------------------------------
   window.SCREENS = window.SCREENS || {};
   const screen = (route, draw) => { window.SCREENS[route] = { page: draw }; };
-  window.SCREENS.overview = { init(helpers) { UI = helpers; ({ t, esc, num, icon } = helpers); bind(); }, page: overviewPage };
+  window.SCREENS.overview = { init(helpers) { UI = helpers; ({ t, esc, num, icon } = helpers); bind(); registerFirstViews(); }, page: overviewPage };
+  /* Each screen's first-view answer, for SCREEN_DATA's warm-up and the menu hover: the same addresses load() asks, so a visit
+     after the warm-up asks nothing. Read when they run, with the site and period of that moment. Off, nothing asks for them. */
+  function registerFirstViews() {
+    if (!window.SCREEN_DATA?.screen) return;
+    [["channels", "metrics/channels"], ["conversions", "metrics/conversions"], ["content", "metrics/content"]]
+      .forEach(([route, name]) => window.SCREEN_DATA.screen(route, () => [`${name}?${periodQuery()}${INCLUDE[name] || ""}`]));
+  }
   screen("channels", channelsPage); screen("conversions", conversionsPage); screen("content", contentPage);
   // Google Ads stays out of the menu for now (owner, 2026-11-05): it shows Soon. To bring it back, add screen("ads", adsPage). GA4 still stores its daily numbers, so nothing is lost meanwhile.
   screen("resources", resourcesPage); // AI search registers itself from ai-search-view.js
@@ -895,6 +1188,19 @@
     "{ok} of {total} read.": "{ok} sur {total} lus.",
     "{names} failed: the card on the page says why.": "{names} a échoué : la carte sur la page explique pourquoi.", "Fix it": "Corriger",
     "Up to date.": "À jour.", "Updated: {names}.": "Mis à jour : {names}.",
+  });
+  Object.assign(fr, { // Content's fixes and the simpler Channels, Conversions and Content (2026-11-12)
+    "Unknown page (not set)": "Page inconnue (not set)",
+    "Google Analytics couldn't tell which page these visits landed on, often visits that left before the page loaded.": "Google Analytics n'a pas pu dire sur quelle page ces visites sont arrivées, souvent des visites parties avant le chargement de la page.",
+    "Google Analytics and Search Console": "Google Analytics et Search Console", "Most visits: {name}": "Le plus de visites : {name}", "No rules yet.": "Pas encore de règle.",
+    "From visit to lead, by channel and by page.": "De la visite au lead, par canal et par page.",
+    "Counts only: no personal data comes into this app.": "Des chiffres seulement : aucune donnée personnelle n'entre dans cette application.",
+    "Google Analytics hid some rows with few visits, so small numbers may be missing. A longer period may show them.": "Google Analytics a masqué des lignes à faibles visites : de petits nombres peuvent manquer. Une période plus longue peut les montrer.",
+    "{n} visits didn't become a lead": "{n} visites ne sont pas devenues un lead", "waiting for data": "en attente de données",
+    "Live data": "En direct", "Clarity download": "Export Clarity", "No speed test yet. Refresh data runs one.": "Pas encore de test de vitesse. Actualiser les données en lance un.",
+    "1 day has Clarity sessions only: no scroll depth or clicks.": "1 jour n'a que des sessions Clarity : ni défilement ni clics.",
+    "{n} days have Clarity sessions only: no scroll depth or clicks.": "{n} jours n'ont que des sessions Clarity : ni défilement ni clics.",
+    "X (Twitter)": "X (Twitter)",
   });
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 })();

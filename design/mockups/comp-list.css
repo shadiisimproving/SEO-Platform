@@ -240,3 +240,24 @@ details.cl-more-facts[open] > summary svg { transform: rotate(90deg); }
 @media (max-width: 640px) { .cl-state-tip + .cl-retry { margin: 6px 0 0; } }
 /* Find competitors' evidence: the once-line sits under the pager, in line with it. */
 .cl-evidence-body > .cl-kw-foot { margin: 0; padding: 0 18px 12px; }
+/* 2026-11-12: the profile's timeline as one compact row per change, paged (comp-list.js timelineBody). */
+.cl-tl-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; margin-bottom: 8px; }
+.cl-tl-tools .cl-tl-period { margin-inline-start: auto; }
+.cl-tl-table td { vertical-align: top; }
+.cl-tl-date { color: var(--text-2); width: 1%; }
+.cl-tl-kind { display: inline-flex; align-items: center; gap: 6px; font-weight: 500; }
+.cl-tl-kind svg.i { width: 14px; height: 14px; }
+.cl-tl-kind.cl-tl-up svg.i { color: var(--good-t); }
+.cl-tl-kind.cl-tl-down svg.i { color: var(--crit-t); }
+.cl-tl-kind.cl-tl-edit svg.i { color: var(--muted); }
+.cl-tl-times { margin-inline-start: 6px; cursor: help; }
+.cl-tl-where { min-width: 0; max-width: 420px; }
+.cl-tl-where > * { display: block; overflow: hidden; text-overflow: ellipsis; }
+.cl-tl-title { font-weight: 500; }
+.cl-tl-short { display: block; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.cl-tl-more { margin-top: 2px; }
+.cl-tl-more > summary { font-size: 12px; }
+.cl-tl-detail { display: grid; gap: 6px; padding: 8px 0 4px; max-width: 560px; }
+.cl-tl-detail .t { font-weight: 600; }
+.cl-tl-grouped { margin-top: 6px; }
+@media (max-width: 640px) { .cl-tl-tools .cl-tl-period { margin-inline-start: 0; } .cl-tl-where { max-width: none; } }

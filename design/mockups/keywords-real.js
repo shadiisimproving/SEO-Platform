@@ -67,6 +67,8 @@
     "The search failed.": "La recherche a échoué.", "The app stopped during this search.": "L'application s'est arrêtée pendant cette recherche.",
     "It wasn't tried again, because it may already have been charged.": "Elle n'a pas été relancée : elle a peut-être déjà été facturée.", "It isn't tried again, because it may already have been charged.": "Elle n'est pas relancée : elle a peut-être déjà été facturée.",
     "not compared with": "non comparés avec",
+    // the simpler screens (?simple=1): the head's line, the ⋯ beside the chips, the line under the table, ideas in Add keywords
+    "with {tool}": "avec {tool}", "More table options": "Plus d'options du tableau", "In the list": "Dans la liste", "Search Console": "Search Console",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 
@@ -83,11 +85,23 @@
   let UI, t, esc, icon, num, dec, status, logo, $, $$, state;
   const K = {
     data: null, error: "", loading: false, stale: true, tools: null, order: {}, settings: {}, selected: new Set(), queries: {},
-    run: null, poll: null, orderEngine: "google", panel: null, refresh: null, browserMissing: false,
+    runs: new Map(), orderEngine: "google", panel: null, refresh: null, browserMissing: false,
     wantOpen: null, qsort: null, // a keyword named in the address; the Queries table's sorted heading
     allPages: false, shownList: null, // picks kept on every page after "Select all N keywords"; the list the table last drew
   };
   const fill = (words, n) => t(words).replace("{n}", n);
+  /* The simpler screens (plan-seo-command-center-simplify-screens-like-mickaz.md, section 2, Keywords), only with ?simple=1:
+     - the head: "Search Console, through 10 Nov · Last check 29 min with SerpApi", the screen's sentence behind its (i);
+     - the engine tabs (page tabs) with Positions · By bucket · Queries at their end, above the four number cards (UI.card),
+       because the cards follow the engine; DuckDuckGo's how-it-works is an (i) beside the tabs;
+     - one row: Search keywords, the eight chips, then Filter (data-tt-slot) and a ⋯ that shows Compact rows and Columns;
+     - the table: Trend off by default (Columns turns it on; the panel has the history), Scraped results as the badge only
+       (the tool, when every row shares it, and the ages are said once under the table), no Check deeper in rows (the panel
+       has it), the keyword as text: the whole row opens the panel (a click, Enter on the focused row), ↑ ↓ move while open;
+     - Keyword ideas at the top of the Add keywords panel, its Add putting the words in the panel's list;
+     - the rows and tools load through SCREEN_DATA (screen-data.js), so the warm-up can fetch them before Keywords opens.
+     With the switch off, every line below draws what it drew before. */
+  const simple = () => Boolean(UI?.simple?.());
   /* Both tables page and search the way every long table does (table-pages.js): TP keeps the search, the page and the size. */
   const KW_PAGES = "kw", Q_PAGES = "kwq";
   const kwPages = () => TP.state(KW_PAGES);
@@ -123,8 +137,8 @@
   };
 
   // ---- loading --------------------------------------------------------------------------------
-  async function loadTools() {
-    const answer = await api("GET", "tools");
+  async function loadTools(given = null) {
+    const answer = given || await api("GET", "tools");
     K.tools = answer.tools; K.order = answer.order; K.settings = answer.settings; K.browserMissing = answer.browser_missing;
     K.aiFirst = answer.first_for_ai || {}; K.aiFirstWhy = answer.first_for_ai_why || "";
     syncSettings();
@@ -155,7 +169,13 @@
     if (K.loading) return;
     K.loading = true;
     try {
-      const [data] = await Promise.all([api("GET", "rankings"), loadTools()]);
+      // The simpler screens: through SCREEN_DATA, so an answer the warm-up fetched shows at once. Only the first load may use
+      // a held answer; every later one follows a change (a Refresh, keywords added, Stop tracking), so it asks again.
+      const held = window.SCREEN_DATA?.on?.() ? { fresh: Boolean(K.loadedOnce) } : null;
+      const [data] = held
+        ? await Promise.all([window.SCREEN_DATA.get("rankings", held), window.SCREEN_DATA.get("tools", held).then((answer) => loadTools(answer))])
+        : await Promise.all([api("GET", "rankings"), loadTools()]);
+      K.loadedOnce = true;
       K.data = data; K.error = ""; K.stale = false;
       const live = new Set(data.rows.map((row) => row.id));
       [...K.selected].forEach((id) => { if (!live.has(id)) K.selected.delete(id); });
@@ -190,6 +210,9 @@
       return `<span class="muted dash" role="img" tabindex="0" data-tip="${esc(t("Not checked"))}" aria-label="${esc(t("Not checked"))}">—</span>`;
     }
     const differs = view.disagree ? `<span class="warn" role="img" data-tip="${esc(t("Tools disagree"))}: ${esc(view.disagree.tools.map((x) => t(x)).join(" / "))}, ${view.disagree.diff}" tabindex="0" aria-label="${t("Tools disagree")}">${icon("triangle-alert")}</span>` : "";
+    // The simpler screens: the badge only (and its warnings). The tool's logo stays when the rows don't all share one tool;
+    // the age, the other tools and Check deeper are in the panel, and the ages are said once under the table.
+    if (simple()) return `<span class="res"><span class="res-line">${K.oneTool ? "" : logoMark(view.main.tool, t(view.main.tool))}${posBadge(view.main)}${flagged(view.main)}${differs}</span></span>`;
     const rest = [...view.suspects.slice(-1), ...view.others].slice(0, 2).map((x) => line(x)).join("");
     const deeper = view.main.p || view.main.status !== "ok" ? "" : `<button class="link-btn" data-kwr-deeper="${esc(row.id)}" data-engine-id="${e}">${t("Check deeper")}</button>`;
     return `<span class="res">${line(view.main, differs)}${rest}${deeper}</span>`;
@@ -270,9 +293,14 @@
          ${state.cols.trend ? `<td data-label="${t("Trend")}">${trend}</td>` : ""}
          ${state.cols.page ? `<td class="url-cell mono small" data-label="${t("Page")}" ${row.page ? `data-tip="${esc(row.page)}"` : ""}>${row.page ? PageLink.html(row.page, { text: shortPath(row.page), title: "" }) : '<span class="muted dash">—</span>'}${row.two_pages ? `<span class="warn" role="img" tabindex="0" data-tip="${esc(t("Two of your pages rank for it."))}" aria-label="${esc(t("Two pages compete"))}">${icon("triangle-alert")}</span>` : ""}</td>` : ""}
          ${state.cols.ai ? `<td data-label="${t("AI")}">${aiCell(row)}</td>` : ""}`;
-    return `<tr data-kwr-row="${esc(row.id)}" class="${K.selected.has(row.id) ? "sel" : ""} ${K.panel?.id === row.id && $("#panel") ? "open" : ""}">
+    // The simpler screens: the keyword is text and the whole row opens the panel (a click, or Enter once the row has focus).
+    // data-kwr-open stays on the keyword, holding only its words, so a click on it and the flows that look for it still work.
+    const kwName = simple()
+      ? `<span class="kw" data-kwr-open="${esc(row.id)}" dir="auto">${esc(row.keyword)}</span>`
+      : `<button class="kw" data-kwr-open="${esc(row.id)}" dir="auto" style="text-align:start">${esc(row.keyword)}</button>`;
+    return `<tr data-kwr-row="${esc(row.id)}" class="${K.selected.has(row.id) ? "sel" : ""} ${K.panel?.id === row.id && $("#panel") ? "open" : ""}" ${simple() ? 'tabindex="0"' : ""}>
       <td class="chk-cell"><input type="checkbox" class="chk" data-kwr-select="${esc(row.id)}" ${K.selected.has(row.id) ? "checked" : ""} aria-label="${t("selected")}: ${esc(row.keyword)}"></td>
-      <td class="head-cell"><button class="kw" data-kwr-open="${esc(row.id)}" dir="auto" style="text-align:start">${esc(row.keyword)}</button>${state.site === "all" ? `<span class="second mono" dir="auto">${esc(row.site)}</span>` : ""}</td>
+      <td class="head-cell">${kwName}${state.site === "all" ? `<span class="second mono" dir="auto">${esc(row.site)}</span>` : ""}</td>
       ${cells}</tr>`;
   }
 
@@ -295,9 +323,22 @@
          ${state.cols.trend ? `<th scope="col">${t("Trend")}</th>` : ""}${state.cols.page ? `<th scope="col">${t("Page")}</th>` : ""}${state.cols.ai ? `<th scope="col">${t("AI")}</th>` : ""}`;
     const every = rows.length > 0 && rows.every((row) => K.selected.has(row.id));
     K.shownList = { total: view.total, pageFull: every };
-    return `<div class="ov-list"><div class="table-wrap ${state.dense ? "dense" : ""}"><table class="data" id="kw-table" aria-label="${t("Keywords")}">
+    const quiet = simple(), source = quiet ? sourceLine(rows) : "";
+    return `<div class="ov-list"><div class="table-wrap ${state.dense ? "dense" : ""}"><table class="data" id="kw-table" aria-label="${t("Keywords")}" ${quiet ? "data-tt-own-count" : ""}>
       <thead><tr><th scope="col" class="chk-cell"><input type="checkbox" class="chk" id="kwr-select-all" ${every ? "checked" : ""} aria-label="${t("All")}"></th>${sortHeader("k", t("Keyword"))}${head}</tr></thead>
-      <tbody>${rows.map(rowHtml).join("")}</tbody></table></div>${TP.footer(KW_PAGES, view, { noun: t(view.total === 1 ? "keyword" : "keywords") })}</div>`;
+      <tbody>${rows.map(rowHtml).join("")}</tbody></table></div>${TP.footer(KW_PAGES, view, { noun: t(view.total === 1 ? "keyword" : "keywords") })}${source}</div>`;
+  }
+  /* The simpler screens: which tool read the rows on show, and how long ago, said once under the table ("Scraped results:
+     SerpApi · 14 min – 2 d"). When they all share one tool, the rows leave its logo out (K.oneTool, read by scrapedCell). */
+  function sourceLine(rows) {
+    const e = engineOf(), mains = state.engine === "all" ? [] : rows.map((row) => row.engines[e]?.main).filter(Boolean);
+    const tools = [...new Set(mains.map((m) => m.tool))];
+    K.oneTool = tools.length === 1;
+    if (!mains.length) return "";
+    const ages = mains.map((m) => m.age_days).filter((a) => a !== null && a !== undefined).sort((a, b) => a - b);
+    const newest = ages.length ? age(ages[0]) : "", oldest = ages.length ? age(ages[ages.length - 1]) : "";
+    const when = newest === oldest ? newest : `${newest} – ${oldest}`;
+    return `<p class="kw-src small muted" id="kw-src">${t("Scraped results")}: ${tools.map((tool) => `<span class="kw-src-tool">${logo(tool, 14)}${esc(t(tool))}</span>`).join(", ")}${when ? ` · ${esc(when)}` : ""}</p>`;
   }
 
   /* The heading's box ticks the page on show; the bar offers the whole list, on every page, as Gmail does. */
@@ -411,6 +452,7 @@
     })();
     const chips = [["all", "All"], ["top3", "Top 3"], ["top10", "Top 10"], ["up", "Up"], ["down", "Down"], ["none", "Not ranked"], ["cited", "Cited by AI"], ["two", "Two pages compete"]];
     const shown = filtered();
+    if (simple()) return simplePage({ title, all, e, good, counts, chips, shown, moved, addButton });
     const body = state.view === "bucket" ? bucketView(all) : state.view === "queries" ? queriesView() : `
       <div class="kw-find">${TP.search(KW_PAGES, t("Search keywords"))}</div>
       <div class="chips" role="group" aria-label="${t("Keywords")}">
@@ -425,7 +467,7 @@
       ${outOfChecks(all)}
       ${table(shown)}${selectionBar()}`;
     const sub = [K.data.data_through ? `${t("Data through")} ${UI.fmtDateOnly(K.data.data_through)}` : "", lastCheckWords(all)].filter(Boolean).join(" · ");
-    const main = `${addButton}<button class="btn ${K.selected.size ? "" : "btn-main"}" id="kwr-refresh" ${mine(K.run) ? "disabled" : ""}>${icon("refresh-cw")}${t("Refresh")}</button>`;
+    const main = `${addButton}<button class="btn ${K.selected.size ? "" : "btn-main"}" id="kwr-refresh">${icon("refresh-cw")}${t("Refresh")}</button>`;
     return UI.topbar(title, sub, main, false) + `
       <div class="content page-enter">
         <section class="tiles" id="kw-tiles">
@@ -445,20 +487,114 @@
       </div>`;
   }
 
+  /* ---- the simpler screens' Keywords (see simple() at the top) ------------------------------------------------------------ */
+  const DDG_HOW = "DuckDuckGo has no tool for site owners, so the app checks its positions by itself every day, oldest first, on free searches only. Refresh and Refresh data check them now.";
+  // The tool of the newest check on screen, for the head's "Last check 29 min with SerpApi".
+  function newestTool(rows) {
+    let best = null;
+    rows.forEach((row) => ENGINES.forEach(([e]) => { const m = row.engines[e]?.main; if (m && m.age_days !== null && m.age_days !== undefined && (!best || m.age_days < best.age_days)) best = m; }));
+    return best?.tool || "";
+  }
+  // The head's line: where the engines' own numbers come from and how fresh, then the last check and its tool.
+  function headLine(all) {
+    const day = String(K.data.data_through || "").slice(0, 10);
+    const own = /^\d{4}-\d{2}-\d{2}$/.test(day) ? `<span class="head-src">${esc(t("Search Console"))}, ${esc(t("through {day}").replace("{day}", UI.fmtDay(day, { day: "numeric", month: "short" })))}</span>` : "";
+    const tool = newestTool(all);
+    const last = `<span class="head-src">${lastCheckWords(all)}${tool ? ` ${esc(t("with {tool}").replace("{tool}", t(tool)))}` : ""}</span>`;
+    return [own, last].filter(Boolean).join('<span class="head-sep"> · </span>');
+  }
+  // Compact rows and Columns, behind one ⋯: they show while the pointer or the keyboard is on it, or once it's pressed
+  // (a touch screen, which can't hover, keeps them shown). Their ids stay, so the app's own handlers still run them.
+  const moreTools = () => `<span class="kw-more ${K.moreOpen ? "open" : ""}">
+      <span class="kw-more-items" id="kw-more-items">
+        <button class="icon-btn" id="density" aria-label="${t(state.dense ? "Comfortable rows" : "Compact rows")}" data-tip="${t(state.dense ? "Comfortable rows" : "Compact rows")}">${icon("rows-3")}</button>
+        <button class="icon-btn" id="columns" aria-label="${t("Columns")}" data-tip="${t("Columns")}">${icon("columns-3")}</button>
+      </span>
+      <button class="icon-btn kw-more-btn" id="kw-more" aria-expanded="${K.moreOpen ? "true" : "false"}" aria-controls="kw-more-items" aria-label="${t("More table options")}" data-tip="${t("More table options")}"><span aria-hidden="true">⋯</span></button>
+    </span>`;
+  function simplePage({ title, all, e, good, counts, chips, shown, moved, addButton }) {
+    const ranked = all.filter((r) => good(r)).length, top10 = all.filter((r) => good(r) && good(r) <= 10).length, cited = all.filter((r) => r.ai.state === "cited").length;
+    const views = [["positions", "Positions"], ["bucket", "By bucket"], ["queries", "Queries"]];
+    const body = state.view === "bucket" ? bucketView(all) : state.view === "queries" ? queriesView() : `
+      <div class="kw-bar">
+        <div class="kw-find">${TP.search(KW_PAGES, t("Search keywords"))}</div>
+        <div class="chips" role="group" aria-label="${t("Keywords")}">${chips.map(([id, label]) => `<button class="chip" data-filter="${id}" aria-pressed="${state.filter === id}">${t(label)}<b>${num(counts[id])}</b></button>`).join("")}</div>
+        <span class="kw-bar-end table-tools"><span class="kw-tt-slot" data-tt-slot="kw-table"></span>${moreTools()}
+          <button class="icon-btn kwr-add-small" id="kwr-add-small" aria-label="${t("Add keywords")}" data-tip="${t("Add keywords")}">${icon("plus")}</button></span>
+      </div>
+      ${outOfChecks(all)}
+      ${table(shown)}${selectionBar()}`;
+    const main = `${addButton}<button class="btn ${K.selected.size ? "" : "btn-main"}" id="kwr-refresh">${icon("refresh-cw")}${t("Refresh")}</button>`;
+    const head = UI.head({ title, period: false, line: headLine(all), info: ["Rankings from engines' own tools and scraped results"], main });
+    return head + `
+      <div class="content page-enter kw-simple">
+        <div class="kw-tabs-row">
+          <div class="page-tabs kw-engines" role="tablist" aria-label="${t("Engines")}">
+            ${[...ENGINES, ["all", t("All engines")]].map(([id, label]) => `<button class="page-tab" role="tab" data-engine="${id}" aria-selected="${state.engine === id}">${id === "all" ? "" : logo(id, 16)}${label}</button>`).join("")}
+          </div>
+          ${state.engine === "duckduckgo" ? UI.info(DDG_HOW) : ""}
+          <span class="seg kw-views" role="group" aria-label="${t("Positions")}">${views.map(([id, label]) => `<button data-view="${id}" aria-pressed="${state.view === id}">${t(label)}</button>`).join("")}</span>
+        </div>
+        <section class="tiles" id="kw-tiles">
+          ${UI.card({ id: "kw-tracked", label: t("Tracked"), value: all.length, cls: "tile" })}
+          ${UI.card({ id: "kw-ranked", label: t("Ranked"), value: ranked, sub: `${t("of")} ${num(all.length)} · ${esc(name(e))}`, cls: "tile" })}
+          ${UI.card({ id: "kw-top10", label: `${t("Top 10")} <span class="muted">· ${t("Scraped results")}</span>`, def: "Top 10", value: top10, change: moved.compared ? { value: moved.change, unit: "" } : null, sub: moved.compared ? `${num(moved.compared)} ${t("compared")}` : "", cls: "tile" })}
+          ${UI.card({ id: "kw-cited", label: t("Cited by AI"), value: cited, sub: `${t("of")} ${num(all.length)}`, cls: "tile" })}
+        </section>
+        ${body}
+      </div>`;
+  }
+
   // ---- add keywords ---------------------------------------------------------------------------
+  /* Keyword ideas inside the Add keywords panel (simpler screens). Its search redraws the screen (screens-live.js), so after()
+     draws the ideas again here, only when they changed, keeping the keyboard on the same control. */
+  const ideasHtml = () => { K.ideasDrawn = ideasCard(); return K.ideasDrawn; };
+  function redrawIdeas() {
+    const slot = $("#kwr-ideas-slot");
+    if (!slot) return;
+    const html = ideasCard();
+    if (html === K.ideasDrawn) return;
+    const focused = slot.contains(document.activeElement) ? document.activeElement : null;
+    const again = focused?.name ? `[name="${CSS.escape(focused.name)}"]` : focused?.type === "submit" ? "button[type=submit]" : null;
+    K.ideasDrawn = html;
+    UI.setHTML(slot, html);
+    if (again) $(again, slot)?.focus({ preventScroll: true });
+  }
+  // An idea's Add, or Add all, inside the panel: the words join the list (once each), with the ideas' country and language.
+  function addToList(words, market, opener) {
+    const box = $("#kwr-add-text");
+    if (!box) return;
+    const have = new Set(box.value.split("\n").map((w) => w.trim().toLowerCase()).filter(Boolean));
+    const fresh = words.filter((w) => !have.has(String(w).trim().toLowerCase()));
+    box.value = [box.value.replace(/\s+$/, ""), ...fresh].filter(Boolean).join("\n");
+    if (market.country !== undefined) { const c = $("#kwr-add-country"); if (c) c.value = String(market.country || "").toUpperCase(); }
+    if (market.language !== undefined) { const l = $("#kwr-add-language"); if (l) l.value = market.language || ""; }
+    const why = $("#kwr-add-why");
+    if (why && market.why) { why.textContent = t(market.why); why.hidden = false; }
+    // The pressed Add says the word is in the list; Add all is spent once every idea is.
+    if (opener?.matches?.("[data-lv-idea]")) { opener.disabled = true; UI.setHTML(opener, `${icon("check")}${t("In the list")}`); }
+    if (opener?.matches?.("[data-lv-idea-all]")) $$("#kwr-ideas-slot [data-lv-idea]").forEach((b) => { b.disabled = true; UI.setHTML(b, `${icon("check")}${t("In the list")}`); });
+    UI.toast(`${num(fresh.length)} ${t(fresh.length === 1 ? "keyword" : "keywords")} · ${t("In the list")}`, { kind: "info" });
+  }
   function addPanel(opener, prefill = "", hostWanted = null, market = {}) {
     const sites = window.BOOT.sites.length ? window.SITES.filter((s) => window.BOOT.sites.some((x) => x.host === s.host)) : window.SITES;
     const picked = hostWanted || UI.siteHostPicked() || sites[0]?.host;
+    // The simpler screens: Keyword ideas sits at the top of this panel (on Keywords), and its Add puts the words in the list
+    // below (KW.track). The form stays the panel's first form, so its draft is the one kept; CSS shows the ideas first.
+    const withIdeas = simple() && state.route === "keywords" && Boolean(window.LV?.ideasCard);
+    const why = market.country || market.language ? t(market.why || "Most used by this site's keywords.") : "";
     UI.openPanel(`${UI.panelHead(t("Add keywords"), t("One free check each; then DuckDuckGo daily, the rest on Refresh.") + UI.tip("Each new keyword gets one check with a free tool, to see who really ranks. After that, DuckDuckGo is checked by itself every day, and the other engines when you press Refresh."))}
-      <form class="panel-body" id="kwr-add-form" novalidate>
+      ${withIdeas ? '<div class="panel-body kwr-add-body">' : ""}
+      <form ${withIdeas ? 'class="kwr-add-fields"' : 'class="panel-body"'} id="kwr-add-form" novalidate>
         <div id="kwr-add-error" role="alert"></div>
         <label class="field"><span>${t("Site")}</span><select class="select" id="kwr-add-site" style="width:100%">${sites.map((s) => `<option value="${esc(s.host)}" ${s.host === picked ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></label>
         <label class="field"><span>${t("Keywords, one per line")}</span><textarea class="input" id="kwr-add-text" rows="8" dir="auto" spellcheck="false">${esc(prefill)}</textarea></label>
         <label class="field"><span>${t("Or upload a file")}</span><input class="input" id="kwr-add-file" type="file" accept=".csv,.txt,.tsv"></label>
         <label class="field"><span>${t("Country")}</span><select class="select" id="kwr-add-country" style="width:100%"><option value="">${t("Any country")}</option>${UI.countryOptions((market.country || "").toUpperCase())}</select></label>
         <label class="field"><span>${t("Language")}</span><input class="input" id="kwr-add-language" placeholder="${esc(t("Optional, such as fr"))}" value="${esc(market.language || "")}" autocomplete="off"></label>
-        ${market.country || market.language ? `<p class="small muted" style="margin:0">${t(market.why || "Most used by this site's keywords.")}</p>` : ""}
+        ${withIdeas ? `<p class="small muted" id="kwr-add-why" style="margin:0" ${why ? "" : "hidden"}>${why}</p>` : why ? `<p class="small muted" style="margin:0">${why}</p>` : ""}
       </form>
+      ${withIdeas ? `<div class="kwr-ideas" id="kwr-ideas-slot">${ideasHtml()}</div></div>` : ""}
       <div class="panel-foot"><button class="btn btn-main" id="kwr-add-save">${t("Add keywords")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button></div>`, opener, { key: `kwr-add|${prefill}`, reopen: () => addPanel(opener, prefill, hostWanted, market) });
   }
 
@@ -493,7 +629,6 @@
 
   /* `deeper` is Check deeper's own view of the dialog: { keyword, tools } names the one keyword and the tools that missed it. */
   function openRefresh(ids, engines, depth = 10, mode = "auto", picked = [], deeper = null) {
-    if (mine(K.run)) { UI.toast(t("Already refreshing."), { kind: "info" }); return; }
     const unique = [...new Set(ids)];
     K.refresh = { ids: unique, engines: new Set(engines || [state.engine === "all" ? "google" : state.engine]), depth, mode, picked: new Set(picked), includeRecent: false, paid: false, cap: 5, token: token(), asked: 0, preview: null, deeper };
     $("#dlg").classList.remove("wide");
@@ -635,74 +770,92 @@
   }
 
   // ---- tray -----------------------------------------------------------------------------------
+  /* One tray, one block per Refresh: a second Refresh (another keyword, Check deeper, a panel Recheck) can start while the
+     first one runs; the server leaves out any keyword already being checked and names it. K.runs: run id → { run, poll }. */
+  const runBlock = (id) => $(`#tray [data-run="${id}"]`);
+  function dropBlock(block) {
+    const tray = block?.closest("#tray");
+    block?.remove();
+    if (tray && !tray.querySelector(".kwr-run")) $("#tray-root").replaceChildren();
+  }
   function follow(run) {
-    K.run = run;
-    UI.setHTML($("#tray-root"), `<div class="tray" id="tray" role="status">
-      <div class="top">${icon("refresh-cw", "spin")}<span id="tray-title">${t("Refreshing")}</span><span class="end tabular" id="tray-count"></span></div>
-      <div class="bar"><i id="tray-bar"></i></div>
-      <div class="msg" id="tray-msg"></div>
-      <div id="tray-actions" style="margin-top:8px"><button class="btn btn-small" id="kwr-stop">${t("Stop")}</button></div></div>`);
+    if (!run || K.runs.has(run.id)) return;
+    let tray = $("#tray");
+    if (!tray) { UI.setHTML($("#tray-root"), `<div class="tray" id="tray" role="status"></div>`); tray = $("#tray"); }
+    tray.classList.remove("pill");
+    // A finished run's block (Stopped, failures to retry) gives way to the new one, as the old single tray did; running ones stay.
+    tray.querySelectorAll(".kwr-run").forEach((old) => { if (!K.runs.has(Number(old.dataset.run))) old.remove(); });
+    const block = document.createElement("div");
+    block.className = "kwr-run"; block.dataset.run = run.id;
+    UI.setHTML(block, `<div class="top">${icon("refresh-cw", "spin")}<span class="tray-title">${t("Refreshing")}</span><span class="end tabular tray-count"></span></div>
+      <div class="bar"><i class="tray-bar"></i></div>
+      <div class="msg tray-msg"></div>
+      <div class="tray-actions" style="margin-top:8px"><button class="btn btn-small kwr-stop" data-stop="${run.id}">${t("Stop")}</button></div>`);
+    tray.append(block);
+    K.runs.set(run.id, { run, poll: null });
     paintTray(run);
-    startPoll();
+    startPoll(run.id);
   }
   function paintTray(run) {
-    const count = $("#tray-count"), done = run.done + run.failed + run.not_run;
-    if (!count) return;
-    count.textContent = `${num(done)} / ${num(run.total)}`;
-    $("#tray-bar").style.setProperty("--p", run.total ? done / run.total : 0);
+    const block = runBlock(run.id), done = run.done + run.failed + run.not_run;
+    if (!block) return;
+    $(".tray-count", block).textContent = `${num(done)} / ${num(run.total)}`;
+    $(".tray-bar", block).style.setProperty("--p", run.total ? done / run.total : 0);
     const bits = [];
+    if (run.keywords?.length === 1) bits.push(run.keywords[0]);
     if (run.moved) bits.push(`${t(run.moved.from)} ${t(run.moved.why || "stopped working")}, ${t("continuing with")} ${t(run.moved.to)}`);
     if (run.by && run.by !== window.ME?.name) bits.push(run.by === AUTO_BY ? t("Automatic DuckDuckGo check") : `${t("started by")} ${run.by}`);
-    $("#tray-msg").textContent = bits.join(" · ");
+    $(".tray-msg", block).textContent = bits.join(" · ");
   }
-  /* Followed with the app's one poller (COMP.poll in competitors.js): it pauses while the tab is hidden, waits longer after
-     each failure, respects a 429 cool-down, and stops on 404 or 401 or after 6 failures in a row (F21). */
-  function startPoll() {
-    K.poll?.stop?.();
-    if (!K.run) return;
-    const id = K.run.id;
-    K.poll = window.COMP.poll(async () => {
-      if (!K.run || K.run.id !== id) return false;
+  /* Each run is followed with the app's one poller (COMP.poll in competitors.js): it pauses while the tab is hidden, waits longer
+     after each failure, respects a 429 cool-down, and stops on 404 or 401 or after 6 failures in a row (F21). */
+  function startPoll(id) {
+    const entry = K.runs.get(id);
+    if (!entry) return;
+    entry.poll?.stop?.();
+    entry.poll = window.COMP.poll(async () => {
+      if (K.runs.get(id) !== entry) return false;
       const run = await api("GET", `refresh/runs/${id}`);
-      K.run = run;
+      entry.run = run;
       paintTray(run);
       if (run.status === "queued" || run.status === "running") return true;
       finishTray(run);
       return false;
-    }, { every: 1000, grow: 1.15, slowest: 15000, errors: 6, onEnd: (why, err) => { if ((why === "gone" || why === "errors" || why === "ceiling") && K.run?.id === id) lostTray(why === "errors" ? err?.message || "" : ""); } });
+    }, { every: 1000, grow: 1.15, slowest: 15000, errors: 6, onEnd: (why, err) => { if ((why === "gone" || why === "errors" || why === "ceiling") && K.runs.get(id) === entry) lostTray(id, why === "errors" ? err?.message || "" : ""); } });
   }
-  function lostTray(message) {
-    K.run = null; K.poll?.stop?.();
-    const tray = $("#tray");
-    if (!tray) return;
-    UI.setHTML(tray.querySelector(".top"), `${icon("triangle-alert", "warn")}<span>${esc(t("Lost track of this Refresh"))}</span>`);
-    $("#tray-msg").textContent = message ? `${t(message)} ${t("Progress is saved. Reload to see it.")}` : t("Progress is saved. Reload to see it.");
-    UI.setHTML(tray.querySelector("#tray-actions"), `<button class="btn btn-small" id="kwr-tray-close">${t("Close")}</button>`);
+  function lostTray(id, message) {
+    K.runs.get(id)?.poll?.stop?.(); K.runs.delete(id);
+    const block = runBlock(id);
+    if (!block) return;
+    UI.setHTML($(".top", block), `${icon("triangle-alert", "warn")}<span>${esc(t("Lost track of this Refresh"))}</span>`);
+    $(".tray-msg", block).textContent = message ? `${t(message)} ${t("Progress is saved. Reload to see it.")}` : t("Progress is saved. Reload to see it.");
+    UI.setHTML($(".tray-actions", block), `<button class="btn btn-small kwr-tray-close">${t("Close")}</button>`);
   }
   function finishTray(run) {
-    K.run = null;
+    K.runs.delete(run.id);
     const saved = `${num(run.done)} ${t("saved")}${run.failed ? ` · ${num(run.failed)} ${t("failed")}` : ""}`;
     const title = run.status === "cancelled" ? `${t("Stopped")} · ${saved}` : run.status === "stopped" ? `${t(/No free tools left/.test(run.stop_reason || "") ? "Stopped: no free tools left" : "Stopped")} · ${saved}` : `${t("Finished")} · ${saved}`;
-    const tray = $("#tray");
-    if (tray) {
-      UI.setHTML(tray.querySelector(".top"), `${run.status === "done" && !run.failed ? icon("circle-check", "good") : icon("triangle-alert", "warn")}<span>${esc(title)}</span>`);
-      UI.setHTML(tray.querySelector("#tray-actions"), run.status === "stopped" ? `<button class="btn btn-small" id="kwr-tray-close">${t("Close")}</button>` : "");
+    const block = runBlock(run.id);
+    if (block) {
+      UI.setHTML($(".top", block), `${run.status === "done" && !run.failed ? icon("circle-check", "good") : icon("triangle-alert", "warn")}<span class="tray-title">${esc(title)}</span>`);
+      UI.setHTML($(".tray-actions", block), run.status === "stopped" ? `<button class="btn btn-small kwr-tray-close">${t("Close")}</button>` : "");
       const why = run.stop_reason ? translateSentences(run.stop_reason) : "";
       // Which searches failed and why, with a Retry for those only. The run lists them in `failures` (keyword, engine, error).
       const fails = Array.isArray(run.failures) ? run.failures : [];
-      if (why) UI.setHTML($("#tray-msg"), trayFails([], run.stop_reason));
+      if (why) UI.setHTML($(".tray-msg", block), trayFails([], run.stop_reason));
       if (run.failed && fails.length) {
-        UI.setHTML($("#tray-msg"), `${trayFails(fails, run.stop_reason)}${run.spent ? `<p class="small muted" style="margin:6px 0 0">${t("Only successful searches were charged.")}</p>` : ""}`);
+        UI.setHTML($(".tray-msg", block), `${trayFails(fails, run.stop_reason)}${run.spent ? `<p class="small muted" style="margin:6px 0 0">${t("Only successful searches were charged.")}</p>` : ""}`);
         const ids = [...new Set(fails.map((f) => f.keyword_id).filter(Boolean))], engines = [...new Set(fails.map((f) => f.engine).filter(Boolean))];
-        UI.setHTML(tray.querySelector("#tray-actions"), `${ids.length ? `<button class="btn btn-small btn-main" id="kwr-tray-retry" data-ids="${ids.join(",")}" data-engines="${esc(engines.join(","))}">${t("Retry")} (${num(ids.length)})</button> ` : ""}<button class="btn btn-small" id="kwr-tray-close">${t("Close")}</button>`);
+        UI.setHTML($(".tray-actions", block), `${ids.length ? `<button class="btn btn-small btn-main kwr-tray-retry" data-ids="${ids.join(",")}" data-engines="${esc(engines.join(","))}">${t("Retry")} (${num(ids.length)})</button> ` : ""}<button class="btn btn-small kwr-tray-close">${t("Close")}</button>`);
       } else if (run.failed) {
-        // Older answers have no list: say so plainly, and keep the tray until it's closed.
-        $("#tray-msg").textContent = `${why ? `${why} ` : ""}${t("The keyword's own panel shows each failed check.")}`;
-        UI.setHTML(tray.querySelector("#tray-actions"), `<button class="btn btn-small" id="kwr-tray-close">${t("Close")}</button>`);
+        // Older answers have no list: say so plainly, and keep the block until it's closed.
+        $(".tray-msg", block).textContent = `${why ? `${why} ` : ""}${t("The keyword's own panel shows each failed check.")}`;
+        UI.setHTML($(".tray-actions", block), `<button class="btn btn-small kwr-tray-close">${t("Close")}</button>`);
       }
       if (run.status !== "stopped" && !run.failed) {
-        setTimeout(() => tray.classList.add("pill"), 5000);
-        setTimeout(() => { if ($("#tray") === tray) $("#tray-root").replaceChildren(); }, 9000);
+        // Alone in the tray, it shrinks to a pill first; beside other runs, it just goes.
+        setTimeout(() => { const tray = block.closest("#tray"); if (tray && tray.querySelectorAll(".kwr-run").length === 1) tray.classList.add("pill"); }, 5000);
+        setTimeout(() => dropBlock(block), 9000);
       }
     }
     K.stale = true; K.queries = {};
@@ -786,7 +939,7 @@
     K.panel = { id, siteId: row.site_id, keywordId: row.keyword_id, engine: e, table: false, line: null };
     $$("tr.open").forEach((tr) => tr.classList.remove("open"));
     $$("#kw-table tbody tr").find((tr) => tr.dataset.kwrRow === id)?.classList.add("open");
-    UI.openPanel(`${UI.panelHead(row.keyword, `${esc(name(e))}`)}<div class="panel-body">${UI.skeleton ? UI.skeleton("panel") : `<p class="muted">${t("Loading…")}</p>`}</div>`, opener);
+    UI.openPanel(`${UI.panelHead(row.keyword, `${esc(name(e))}`)}<div class="panel-body">${UI.skeleton ? UI.skeleton("panel") : `<p class="muted">${t("Loading…")}</p>`}</div>`, opener, simple() ? { wide: true } : null); // the simpler screens' 760 px row panel frame
     UI.syncUrl(); // the address names the open keyword, so a reload or a pasted link opens it again
     await loadPanel(K.panel);
   }
@@ -837,7 +990,7 @@
       const canRun = tool.connected && tool.engines.includes(e);
       const empty = tool.left !== null && tool.left < Math.max(1, tool.credits_per_search) && !tool.paid_on;
       const elsewhere = !x && view.away.find((a) => a.tool === tool.name);
-      const button = !canRun ? `<span class="small muted">${t("Not connected")}</span>` : `<button class="btn btn-small" data-kwr-check="${esc(tool.name)}" data-low="${low ? tool.left : ""}" ${mine(K.run) || empty ? "disabled" : ""} ${empty ? `data-tip="${esc(t("No free checks left."))}"` : ""}>${t("Refresh")}</button>${tool.left === null ? "" : `<span class="second">${num(tool.left)} ${t("left")}</span>`}`;
+      const button = !canRun ? `<span class="small muted">${t("Not connected")}</span>` : `<button class="btn btn-small" data-kwr-check="${esc(tool.name)}" data-low="${low ? tool.left : ""}" ${empty ? "disabled" : ""} ${empty ? `data-tip="${esc(t("No free checks left."))}"` : ""}>${t("Refresh")}</button>${tool.left === null ? "" : `<span class="second">${num(tool.left)} ${t("left")}</span>`}`;
       return `<tr><td class="nowrap">${logo(tool.name, 16)} ${esc(t(tool.name))}</td><td>${x ? posBadge(x) : '<span class="muted">—</span>'}</td><td class="sec small nowrap">${x ? age(x.age_days) : elsewhere ? age(elsewhere.age_days) : t("never")}</td><td>${x ? statusOf(x) : elsewhere ? `<span class="small sec">${t("Another location")}</span>` : ""}</td><td class="r">${button}</td></tr>`;
     }).join("");
     const suspects = view.suspects.map((x) => `<tr><td class="nowrap">${logo(x.tool, 16)} ${esc(t(x.tool))}</td><td>${posBadge(x)}</td><td class="sec small nowrap">${age(x.age_days)}</td><td>${status("warn", t("Suspect result"))}</td><td></td></tr>`).join("");
@@ -1042,6 +1195,9 @@
       const hit = (sel) => e.target.closest?.(sel);
       let el;
       if (hit("#kwr-retry")) { K.stale = true; K.error = ""; load(); UI.render(); return; }
+      // The simpler screens: the whole row opens its panel (not its tick box, page link or a button in it); ⋯ pins its tools.
+      if (simple() && (el = hit("#kw-table tbody tr[data-kwr-row]")) && !hit("a, button, input, select, textarea, label, [data-kwr-open], .chk-cell")) { openKeyword(el.dataset.kwrRow, el); return; }
+      if ((el = hit("#kw-more"))) { K.moreOpen = !K.moreOpen; el.setAttribute("aria-expanded", String(K.moreOpen)); el.closest(".kw-more")?.classList.toggle("open", K.moreOpen); return; }
       if (hit("[data-kwr-search-clear]")) { kwPages().q = ""; TP.reset(KW_PAGES); UI.render({ keepScroll: true }); $(`[data-tp-search][data-tp-key="${KW_PAGES}"]`)?.focus(); return; }
       if (hit("[data-kwq-search-clear]")) { TP.state(Q_PAGES).q = ""; TP.reset(Q_PAGES); UI.render({ keepScroll: true }); $(`[data-tp-search][data-tp-key="${Q_PAGES}"]`)?.focus(); return; }
       if ((el = hit("[data-kwq-sort]"))) {
@@ -1074,9 +1230,9 @@
       if ((el = hit("[data-kwr-check]"))) { recheck(el); return; }
       if (hit("#kwr-forget")) { forget(); return; }
       if (hit("#kwr-chart-toggle")) { K.panel.table = !K.panel.table; paintPanel(K.panel); $("#kwr-chart-toggle")?.focus(); return; }
-      if (hit("#kwr-stop")) { const b = hit("#kwr-stop"); b.disabled = true; b.textContent = t("Stopping…"); if (K.run) api("POST", `refresh/runs/${K.run.id}/cancel`).catch(() => {}); return; }
-      if (hit("#kwr-tray-close")) { $("#tray-root").replaceChildren(); return; }
-      if ((el = hit("#kwr-tray-retry"))) { const ids = el.dataset.ids.split(",").map(Number).filter(Boolean), engines = el.dataset.engines.split(",").filter(Boolean); $("#tray-root").replaceChildren(); openRefresh(ids, engines.length ? engines : undefined); return; }
+      if ((el = hit(".kwr-stop"))) { el.disabled = true; el.textContent = t("Stopping…"); api("POST", `refresh/runs/${el.dataset.stop}/cancel`).catch(() => {}); return; }
+      if ((el = hit(".kwr-tray-close"))) { dropBlock(el.closest(".kwr-run")); return; }
+      if ((el = hit(".kwr-tray-retry"))) { const ids = el.dataset.ids.split(",").map(Number).filter(Boolean), engines = el.dataset.engines.split(",").filter(Boolean); dropBlock(el.closest(".kwr-run")); openRefresh(ids, engines.length ? engines : undefined); return; }
       if ((el = hit("[data-kwr-mode]"))) { K.refresh.mode = el.dataset.kwrMode; $$("[data-kwr-mode]").forEach((b) => b.setAttribute("aria-pressed", b === el)); updatePreview(); return; }
       if ((el = hit("[data-kwr-connect]"))) { const id = CONN_ID[el.dataset.kwrConnect]; $("#dlg").close(); K.refresh = null; UI.openConnection(id); return; }
       if (hit("#kwr-confirm") && !hit("#kwr-confirm").disabled) { confirmRefresh(hit("#kwr-confirm")); return; }
@@ -1099,6 +1255,20 @@
       }
     });
     document.addEventListener("close", (e) => { if (e.target.id === "dlg") K.refresh = null; }, true);
+    // The simpler screens: Enter or Space on a focused row opens its panel; while it's open, ↑ and ↓ open the row above or below
+    // (from the row, the panel itself or nowhere in particular, never from a field or a list inside the panel).
+    document.addEventListener("keydown", (e) => {
+      if (!simple() || state.route !== "keywords" || e.altKey || e.metaKey || e.ctrlKey) return;
+      const row = e.target.matches?.("#kw-table tbody tr[data-kwr-row]") ? e.target : null;
+      if (row && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openKeyword(row.dataset.kwrRow, row); return; }
+      if ((e.key !== "ArrowDown" && e.key !== "ArrowUp") || !K.panel || !$("#panel") || $("#dlg")?.open) return;
+      if (!(row || e.target === $("#panel") || e.target === document.body)) return;
+      const rows = $$("#kw-table tbody tr[data-kwr-row]"), at = rows.findIndex((tr) => tr.dataset.kwrRow === K.panel.id);
+      const next = at < 0 ? null : rows[at + (e.key === "ArrowDown" ? 1 : -1)];
+      if (!next) return;
+      e.preventDefault();
+      openKeyword(next.dataset.kwrRow, next);
+    });
   }
   const idsOfSelected = () => [...new Set([...K.selected].map((id) => rowById(id)?.keyword_id).filter(Boolean))];
 
@@ -1109,19 +1279,25 @@
       UI = helpers;
       ({ t, esc, icon, num, dec, status, logo, $, $$, state } = helpers);
       bind();
+      if (simple()) {
+        state.cols.trend = false; // Trend leaves the default columns (Columns turns it on; the panel has the history)
+        // The warm-up and the menu hover fetch what Keywords first shows (screen-data.js).
+        window.SCREEN_DATA?.screen?.("keywords", () => ["rankings", "tools"]);
+      }
       // Another page, another size or a search draws the screen again; the helper puts the focus back where it was.
       TP.on(KW_PAGES, () => UI.render({ keepScroll: true }));
       TP.on(Q_PAGES, () => UI.render({ keepScroll: true }));
       // Add a note in the bar (table-tools.js) writes one per picked keyword, on other pages too.
       window.TT?.ownSource?.("kwr-selbar", () => [KW_PAGES, [...K.selected].map(rowById).filter(Boolean)]);
       if (state.route === "keywords" || state.route === "settings") load(); // otherwise when Keywords, Settings or ⌘K first needs it (F17)
-      // A Refresh started before a reload, or by a colleague, still shows.
-      api("GET", "refresh/runs").then((answer) => { if (answer.runs[0] && !K.run) follow(answer.runs[0]); }).catch(() => {});
+      // Every Refresh started before a reload, or by a colleague, still shows.
+      api("GET", "refresh/runs").then((answer) => answer.runs.forEach(follow)).catch(() => {});
     },
     page,
     after() {
       if (K.stale && !K.loading) load();
       openWanted();
+      if (simple()) redrawIdeas();
     },
     address() {
       const out = {};
@@ -1161,8 +1337,36 @@
   // Keywords added elsewhere (Competitors → Keyword check → Add to my keywords) show here without a reload.
   document.addEventListener("keywords:changed", () => { K.stale = true; K.queries = {}; if (state.route === "keywords" && !K.loading) load(); });
   /* Other screens track a query through the same panel, so there's one way to add a keyword. queries: one or many. */
+  /* window.KW, for other screens:
+       KW.track(queries, host, opener, market)   the Add keywords panel, filled in (one query or many). On the simpler screens,
+                                                 from Keyword ideas inside that panel, the words join its list instead.
+       KW.open({ keywordId, keyword, host })     Keywords on that site, with that keyword's panel open once the rows are in.
+       KW.recheck(keywordIds, { engine = "google", opener })
+                                                 the Refresh dialog for those tracked keyword ids (the keyword_id of
+                                                 /api/rankings rows), on one engine, from any screen and without leaving it:
+                                                 the same preview, free-credit cost and Confirm, and the tray once it runs.
+                                                 It loads the search tools first when Keywords hasn't been opened yet.
+                                                 Focus goes back to `opener` when the dialog closes. Resolves to true once the
+                                                 dialog is open, false when there was nothing to check or the tools couldn't load.
+                                                 Switch on or off alike. */
   window.KW = {
-    track: (queries, host, opener, market) => addPanel(opener, [].concat(queries).join("\n"), host, market || {}),
+    track: (queries, host, opener, market) => {
+      const words = [].concat(queries).filter(Boolean);
+      if (simple() && opener?.closest?.("#kwr-ideas-slot") && $("#kwr-add-form")) { addToList(words, market || {}, opener); return; }
+      addPanel(opener, words.join("\n"), host, market || {});
+    },
+    async recheck(keywordIds, { engine = "google", opener = null } = {}) {
+      const ids = [...new Set([].concat(keywordIds ?? []).map(Number).filter((n) => Number.isInteger(n) && n > 0))];
+      if (!ids.length) return false;
+      if (!K.tools) {
+        try { await loadTools(); } catch (err) { UI.toast(t(err.message), { kind: "crit" }); return false; }
+      }
+      if ($("#dlg")?.open) $("#dlg").close();
+      openRefresh(ids, [ENGINES.some(([id]) => id === engine) ? engine : "google"]);
+      const back = opener || document.activeElement;
+      $("#dlg").addEventListener("close", () => { if (back?.isConnected) back.focus({ preventScroll: true }); }, { once: true });
+      return true;
+    },
     /* Open one keyword's panel from anywhere: Keywords opens on its site, and the panel opens once the rows are in. */
     open({ keywordId = null, keyword = "", host = null } = {}) {
       if (host) UI.pickSite(host);

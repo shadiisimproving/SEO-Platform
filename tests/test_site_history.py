@@ -281,3 +281,19 @@ def test_opening_a_profile_asks_for_the_icons_of_the_sites_linking_to_them(world
     client = create_app(engine=world.engine, auth=False).test_client()
     assert client.get(f"/api/competitors/{rival}/insights?site_id={world.own}").status_code == 200
     assert asked == ["linking-site.example"]
+
+
+def test_edits_are_counted_per_month_apart_from_new_and_removed_pages(world):
+    rival = add_rival(world)
+    with world.engine.begin() as conn:
+        conn.execute(text("INSERT IGNORE INTO domains (host) VALUES ('rival.example')"))
+        domain_id = conn.execute(text("SELECT id FROM domains WHERE host = 'rival.example'")).scalar()
+        conn.execute(text("INSERT INTO pages (domain_id, url, url_hash, content_hash, title) VALUES (:d, 'https://rival.example/a', 'ea', 'c', 'A')"), {"d": domain_id})
+        page_id = conn.execute(text("SELECT id FROM pages WHERE url_hash = 'ea'")).scalar()
+        for kind in ("title", "text", "text", "new_page", "page_gone"):
+            conn.execute(text("INSERT INTO change_events (page_id, domain_id, kind) VALUES (:p, :d, :k)"), {"p": page_id, "d": domain_id, "k": kind})
+        conn.execute(text("INSERT INTO change_events (page_id, domain_id, kind, detected_at) VALUES (:p, :d, 'text', UTC_TIMESTAMP(3) - INTERVAL 20 MONTH)"), {"p": page_id, "d": domain_id})
+    rhythm = insights.insights(world.engine, world.own, rival)["rhythm"]
+    assert len(rhythm["edits"]) == 12 and rhythm["edits"][-1]["theirs"] == 3, "three edits this month; a new or removed page isn't one"
+    assert sum(m["theirs"] for m in rhythm["edits"]) == 3, "an edit older than the 12 months stays out"
+    assert rhythm["edits_since"]["theirs"] is not None and rhythm["edits"][-1]["mine"] is None, "my site hasn't been read, so no count of mine"

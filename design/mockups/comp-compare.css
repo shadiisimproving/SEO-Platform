@@ -388,3 +388,10 @@
 .cg-rival .site-logo { vertical-align: 0; border-radius: 3px; }
 .cg-rival .site-logo.letter { font-size: 9px; }
 @media (max-width: 860px) { .cg-pick { min-width: 0; width: 100%; } }
+/* 2026-11-12: the tool that measured a pair's position, as its logo right after the number (comp-pairs.js sourceMark). */
+.cp-pos-src { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.cp-src { display: inline-flex; align-items: center; cursor: help; border-radius: 4px; }
+.cp-src .brand-logo { width: 14px; height: 14px; margin: 0; vertical-align: 0; }
+.cp-src-word { font-size: 11px; font-weight: 500; color: var(--muted); }
+.cp-src-apart { box-shadow: 0 0 0 1.5px var(--warn-t, var(--line-2)); }
+.cp-src:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }

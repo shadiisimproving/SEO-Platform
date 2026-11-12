@@ -1798,6 +1798,9 @@ def test_my_own_edits_sit_beside_the_rivals_counted_the_same_way(world):
     assert mine["me-two.example"]["edits_30d"] == 0 and mine["me-two.example"]["reading_since"] is None
     assert mine["me-two.example"]["crawl"]["status"] == "none" or "baseline_done" in mine["me-two.example"]["crawl"]
     assert rival_row(answer)["edits_30d"] == 1
+    # The edits themselves come along for "See your edits": the same 30 days, so the old h1 edit isn't there either.
+    assert [e["kind"] for e in mine["me.example"]["recent_edits"]] == [e["kind"] for e in mine["me.example"]["recent_edits"] if e["kind"] != "h1"] and len(mine["me.example"]["recent_edits"]) == 1
+    assert mine["me.example"]["recent_edits"][0]["url"].startswith("https://me.example/") and mine["me-two.example"]["recent_edits"] == []
     one = collective.rivals(world.engine, two)
     assert [m["host"] for m in one["mine"]] == ["me-two.example"]
 
@@ -2313,6 +2316,18 @@ def test_a_page_pair_counts_a_keyword_once_however_many_engines_checked_it():
 
     summary = pairs.ranking_summary([check("bing", 1, 9), check("google", 5, 3)], "https://mine.example/a", "https://rival.example/a")
     assert (summary["shared"], summary["they_ahead"], summary["i_ahead"], summary["gap"], summary["keywords_total"]) == (1, 1, 0, 2, 1)
+
+
+def test_a_page_pairs_positions_say_which_tool_measured_them_and_when():
+    """Both positions of a pair's keyword come from one check, so the list can name its tool and date beside them (2026-11-12)."""
+    from datetime import datetime
+    from types import SimpleNamespace
+
+    rows = [SimpleNamespace(url="https://mine.example/a", position=4), SimpleNamespace(url="https://rival.example/a", position=2)]
+    check = SimpleNamespace(keyword_id=1, keyword="coffee", engine="google", tool="SerpApi", checked_at=datetime(2026, 11, 10, 8, 0), depth=10, results=rows)
+    keyword = pairs.ranking_summary([check], "https://mine.example/a", "https://rival.example/a")["keywords"][0]
+    assert (keyword["my_position"], keyword["their_position"], keyword["engine"], keyword["tool"]) == (4, 2, "google", "SerpApi")
+    assert keyword["checked_at"].startswith("2026-11-10T08:00")
 
 
 def test_a_suggested_rivals_average_doesnt_mix_engines(world):

@@ -25,7 +25,7 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
 
   await step("top of the page", async () => {
     await shot("01-insights", true);
-    check((await text(".in-answer")).match(/Clicks (fell|rose|are steady)/) !== null, "a sentence says why clicks moved");
+    check((await text(".in-answer")).match(/Clicks\s+[\d,]+\s*→\s*[\d,]+/) !== null && Boolean(await page.$(".in-answer .d-pill")), "the answer gives the clicks before → now with a change badge");  /* the answer became a badge and rows on 2026-11-12 (73e0d10) */
     check((await count(".in-bar-row")) >= 2, "the parts of the change are listed");
     check((await count(".in-fig")) === 3, "three numbers");
     const rows = await page.locator(".in-table tbody tr").count();
@@ -128,7 +128,7 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
     await page.waitForTimeout(1200);
     await shot("10-fr-dark", true);
     check((await text(".topbar h1, h1")).includes("Analyses"), "the title is in French");
-    check((await text(".in-answer")).match(/Les clics/) !== null, "the sentence is in French");
+    check((await text(".in-answer")).match(/Clics/) !== null, "the answer is in French");
   });
 
   await step("phone width", async () => {

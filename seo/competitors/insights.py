@@ -15,7 +15,7 @@ from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta, timezone
 from urllib.parse import urlsplit
 
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine, bindparam, text
 
 from seo.competitors import history, pairs, quality, tracking
 from seo.competitors.keywords import _iso, require_own
@@ -159,7 +159,27 @@ def _date_iso(value) -> str | None:
 
 # ---- activity -------------------------------------------------------------------------------------
 
-def _rhythm(conn, host: str, theirs: list[dict], mine: list[dict], by_year: dict) -> dict:
+EDIT_SKIP = ("new_page", "page_gone")  # a page coming or going isn't an edit
+
+
+def _edits_by_month(conn, host: str, keys: list[str]) -> tuple[list[int], str | None]:
+    """Edits per month over the chart's months, and the day the app first saw any change on that site."""
+    rows = conn.execute(
+        text(
+            "SELECT DATE_FORMAT(e.detected_at, '%Y-%m') AS ym, COUNT(*) AS n FROM change_events e JOIN domains d ON d.id = e.domain_id "
+            "WHERE d.host IN (:h, :w) AND e.kind NOT IN :skip AND e.detected_at >= :start GROUP BY ym"
+        ).bindparams(bindparam("skip", expanding=True)),
+        {"h": host, "w": f"www.{host}", "skip": list(EDIT_SKIP), "start": f"{keys[0]}-01"},
+    ).all()
+    counts = {ym: int(n) for ym, n in rows}
+    first = conn.execute(
+        text("SELECT MIN(e.detected_at) FROM change_events e JOIN domains d ON d.id = e.domain_id WHERE d.host IN (:h, :w)"),
+        {"h": host, "w": f"www.{host}"},
+    ).scalar()
+    return [counts.get(key, 0) for key in keys], first.date().isoformat() if first else None
+
+
+def _rhythm(conn, host: str, my_host: str, theirs: list[dict], mine: list[dict], by_year: dict) -> dict:
     today = datetime.now(timezone.utc).date()
     keys = []
     year, month = today.year, today.month
@@ -173,6 +193,8 @@ def _rhythm(conn, host: str, theirs: list[dict], mine: list[dict], by_year: dict
         return [counts.get(key, 0) for key in keys]
 
     their_months, my_months = per_month(theirs), per_month(mine) if mine else [None] * MONTHS
+    their_edits, edits_since = _edits_by_month(conn, host, keys)
+    my_edits, my_edits_since = _edits_by_month(conn, my_host, keys) if mine else ([None] * MONTHS, None)
     new_urls = _events(conn, host, "new_page", 30)
     sections = Counter(_section(url) for url in new_urls)
     year_ago = today - timedelta(days=365)
@@ -184,6 +206,9 @@ def _rhythm(conn, host: str, theirs: list[dict], mine: list[dict], by_year: dict
 
     return {
         "months": [{"month": key, "theirs": t, "mine": m} for key, t, m in zip(keys, their_months, my_months)],
+        # Edits to pages they already had, by the month the app saw them. Only counted since the app started watching.
+        "edits": [{"month": key, "theirs": t, "mine": m} for key, t, m in zip(keys, their_edits, my_edits)],
+        "edits_since": {"theirs": edits_since, "mine": my_edits_since},
         "new_30d": len(new_urls),
         # My site's pages are read when paired, not every day, so nothing reports its new or removed pages yet.
         "my_new_30d": None,
@@ -523,7 +548,7 @@ def insights(engine: Engine, site_id: int, competitor_id: int) -> dict:
         mine_read = conn.execute(text("SELECT status, finished_at, message FROM competitor_crawls WHERE competitor_id = :s"), {"s": site_id}).mappings().first()
         facts["my_reading"] = None if mine_read is None else {"status": mine_read["status"], "read_once": mine_read["finished_at"] is not None}
         past = history.state(conn, host) or {}
-        rhythm = _rhythm(conn, host, theirs, mine, past.get("pages_by_year"))
+        rhythm = _rhythm(conn, host, my_host, theirs, mine, past.get("pages_by_year"))
         questions = _questions(conn, site_id, theirs, mine)
         links = _links(conn, site_id, competitor_id, host) if setting != tracking.OFF else {"linking_domains": None, "my_linking_domains": None, "not_to_me": 0, "top": []}
         best, cannibal = [], {}

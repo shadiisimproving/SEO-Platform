@@ -150,6 +150,28 @@ def test_content_joins_ga4_and_search_console_whatever_the_slash(engine, site):
     assert len(rows) == 1 and rows[0]["path"] == "/visa/" and rows[0]["sessions"] == 30 and rows[0]["clicks"] == 12 and rows[0]["position"] == 4
 
 
+def test_content_puts_not_set_last_and_marks_it(engine, site):
+    with engine.begin() as conn:
+        for h, path, sessions in (("a", "(not set)", 900), ("b", "/visa/", 30), ("c", "/", 20)):
+            conn.execute(text("INSERT INTO ga4_page_daily (site_id, day, page_hash, path, sessions, users, key_events) VALUES (:s, :d, :h, :p, :x, :x, 1)"), {"s": site, "d": D1, "h": h, "p": path, "x": sessions})
+    rows = service.content(_scope(engine))["pages"]
+    assert [r["path"] for r in rows] == ["/visa/", "/", "(not set)/"]
+    assert [r["unknown"] for r in rows] == [False, False, True]
+    pages = service.conversions(_scope(engine))["pages"]
+    assert pages[-1]["unknown"] and not pages[0]["unknown"]
+
+
+def test_content_groups_social_sources_by_network(engine, site):
+    for source, sessions in (("m.facebook.com", 10), ("facebook.com", 5), ("l.facebook.com", 3), ("meta", 2), ("Linkedin", 4), ("linkedin.com", 6), ("lnkd.in", 1), ("instagram", 7), ("forum.example", 8)):
+        _ga4(engine, site, D1, "Organic Social", source, "social" if "." in source else "(not set)", sessions)
+    social = {r["source"]: r for r in service.content(_scope(engine))["social"]}
+    assert social["Facebook"]["sessions"] == 20 and social["Facebook"]["domain"] == "facebook.com"
+    assert social["Facebook"]["sources"] == sorted(["m.facebook.com", "facebook.com", "l.facebook.com", "meta"])
+    assert social["LinkedIn"]["sessions"] == 11 and social["Instagram"]["sessions"] == 7
+    assert social["forum.example"]["domain"] == "forum.example" and set(social) == {"Facebook", "LinkedIn", "Instagram", "forum.example"}
+    assert list(social)[0] == "Facebook"  # most visits first
+
+
 def test_content_leaves_a_missing_source_blank_not_zero(engine, site):
     with engine.begin() as conn:
         conn.execute(text("INSERT INTO gsc_page (site_id, day, page_hash, page, clicks, impressions, position) VALUES (:s, :d, 'h', 'https://mine.example/x/', 3, 9, 4)"), {"s": site, "d": D1})

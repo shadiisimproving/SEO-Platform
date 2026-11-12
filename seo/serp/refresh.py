@@ -601,6 +601,10 @@ def run_dict(engine: Engine, run_id: int) -> dict:
             "SELECT i.keyword_id, k.keyword, i.engine, COALESCE(i.used_tool, i.tool) AS tool, i.status, i.error FROM rank_run_items i "
             "JOIN keywords k ON k.id = i.keyword_id WHERE i.run_id = :i AND i.status IN ('failed', 'timeout') ORDER BY i.id LIMIT 200"
         ), {"i": run_id}).mappings().all() if row is not None else []
+        # Up to two of its keywords, so the tray can name a one-keyword Refresh beside the others.
+        keywords = [r[0] for r in conn.execute(text(
+            "SELECT k.keyword FROM rank_run_items i JOIN keywords k ON k.id = i.keyword_id WHERE i.run_id = :i GROUP BY k.id, k.keyword ORDER BY MIN(i.id) LIMIT 2"
+        ), {"i": run_id}).all()] if row is not None else []
     if row is None:
         raise NotFound("That Refresh doesn't exist.")
     message = row["message"] or ""
@@ -610,7 +614,7 @@ def run_dict(engine: Engine, run_id: int) -> dict:
         "id": row["id"], "status": row["status"], "total": row["total"], "done": row["done"], "failed": row["failed"], "not_run": row["not_run"],
         "moved": {"from": moved[0], "to": moved[1], "why": short_why(dropped.get(moved[0], ""))} if moved else None, "stop_reason": row["stop_reason"], "depth": row["depth"], "mode": row["mode"],
         "engines": _json(row["engines"]) or [], "by": row["by_name"], "excluded": _json(row["excluded"]) or [], "spent": float(row["spent"] or 0),
-        "cancel_requested": bool(row["cancel_requested"]), "created_at": _iso(row["created_at"]), "finished_at": _iso(row["finished_at"]),
+        "keywords": keywords, "cancel_requested": bool(row["cancel_requested"]), "created_at": _iso(row["created_at"]), "finished_at": _iso(row["finished_at"]),
         # Which searches failed and why, so the tray can say so and offer "Retry these".
         "failures": [{"keyword_id": f["keyword_id"], "keyword": f["keyword"], "engine": f["engine"], "tool": f["tool"], "timed_out": f["status"] == "timeout", "error": _plain(f["error"], f["status"])} for f in failed],
     }

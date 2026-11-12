@@ -16,6 +16,25 @@ from seo.core.errors import Refused
 
 DEFAULT_AI_DOMAINS = ("chatgpt.com", "chat.openai.com", "openai.com", "perplexity.ai", "gemini.google.com", "bard.google.com", "copilot.microsoft.com", "claude.ai", "deepseek.com", "chat.deepseek.com", "you.com", "poe.com", "mistral.ai", "chat.mistral.ai", "grok.com", "x.ai", "meta.ai")
 SOCIAL_CHANNELS = {"organic social", "paid social"}
+# Content's Social networks, one row per network (owner, 2026-11-12): GA4 writes one network many ways (m.facebook.com,
+# l.facebook.com, facebook.com, "meta"; Linkedin and linkedin.com). A source is matched by its words, then by its domain.
+SOCIAL_NETWORKS = (
+    ("Facebook", "facebook.com", ("facebook", "fb", "fb.com", "fb.me", "meta", "meta.com")),
+    ("Instagram", "instagram.com", ("instagram", "ig")),
+    ("LinkedIn", "linkedin.com", ("linkedin", "lnkd.in")),
+    ("TikTok", "tiktok.com", ("tiktok",)),
+    ("X (Twitter)", "x.com", ("twitter", "t.co", "x", "x.com")),
+    ("YouTube", "youtube.com", ("youtube", "youtu.be")),
+    ("Pinterest", "pinterest.com", ("pinterest", "pin.it")),
+    ("Reddit", "reddit.com", ("reddit",)),
+    ("Snapchat", "snapchat.com", ("snapchat",)),
+    ("WhatsApp", "whatsapp.com", ("whatsapp", "wa.me")),
+    ("Threads", "threads.net", ("threads", "threads.com")),
+    ("Telegram", "telegram.org", ("telegram", "t.me")),
+    ("Quora", "quora.com", ("quora",)),
+    ("Tumblr", "tumblr.com", ("tumblr",)),
+)
+UNKNOWN_PAGES = {"(not set)", "(other)"}  # GA4's words for a page it couldn't name: not a page of the site
 TOP_SERIES = 5
 BUCKETS = (("1-3", 1, 3), ("4-10", 4, 10), ("11-20", 11, 20), ("21-50", 21, 50), ("51+", 51, 10**9))
 
@@ -77,6 +96,26 @@ def _path(url_or_path: str) -> str:
     value = url_or_path or ""
     path = urlsplit(value).path if "://" in value else value.split("?", 1)[0].split("#", 1)[0]
     return path.rstrip("/") + "/" if path.rstrip("/") else "/"
+
+
+def _unknown_page(path: str) -> bool:
+    """GA4's "(not set)" written as a page ("(not set)/" once it has its slash): shown last, never as a link."""
+    return str(path or "").strip("/").strip().lower() in UNKNOWN_PAGES
+
+
+def _social_network(source: str) -> tuple[str, str | None]:
+    """The network a GA4 social source belongs to, and its domain for the logo: m.facebook.com and "meta" are Facebook.
+    A source matching none keeps its own name, with itself as the domain when it is one."""
+    raw = str(source or "").strip().lower()
+    host = raw.split("/", 1)[0].removeprefix("www.")
+    labels = host.split(".")
+    for name, domain, words in SOCIAL_NETWORKS:
+        if raw in words or host in words or host == domain or host.endswith(f".{domain}"):
+            return name, domain
+        # lm.facebook.com, facebook.de, linkedin.android: the network's word as a label of the host
+        if any(word.isalpha() and len(word) > 3 and word in labels for word in words):
+            return name, domain
+    return (source or "(not set)"), (host if "." in host else None)
 
 
 def _sources_state(scope: Scope, source: str) -> dict:
@@ -363,7 +402,7 @@ def conversions(scope: Scope) -> dict:
         "key_events_set_up": has_leads_set_up,
         "funnel": [{"channel": name, "sessions": item["sessions"], "leads": round(item["leads"], 2), "rate": _ratio(item["leads"], item["sessions"]), "lost": item["sessions"] - round(item["leads"])} for name, item in sorted(by_channel.items(), key=lambda pair: -pair[1]["sessions"])],
         "page_types": [{"type": name, "pages": item["pages"], "sessions": item["sessions"], "leads": round(item["leads"], 2), "rate": _ratio(item["leads"], item["sessions"])} for name, item in sorted(types.items(), key=lambda pair: -pair[1]["sessions"])],
-        "pages": [{"host": hosts.get(row["site_id"], ""), "path": row["path"], "sessions": int(row["sessions"] or 0), "leads": round(float(row["leads"] or 0), 2), "rate": _ratio(float(row["leads"] or 0), int(row["sessions"] or 0))} for row in sorted(pages, key=lambda r: -float(r["leads"] or 0)) if float(row["leads"] or 0) > 0][:25],
+        "pages": [{"host": hosts.get(row["site_id"], ""), "path": row["path"], "sessions": int(row["sessions"] or 0), "leads": round(float(row["leads"] or 0), 2), "rate": _ratio(float(row["leads"] or 0), int(row["sessions"] or 0)), "unknown": _unknown_page(row["path"])} for row in sorted(pages, key=lambda r: (_unknown_page(r["path"]), -float(r["leads"] or 0))) if float(row["leads"] or 0) > 0][:25],
         "hid_rows": _hidden(scope),
         **_conversions_before(scope, daily, sessions, leads),
     }
@@ -426,18 +465,24 @@ def content(scope: Scope, limit: int = 500) -> dict:
         {
             "host": item["host"], "path": item["path"], "category": categorise(item["path"]), "sessions": item["sessions"], "leads": round(item["leads"], 2) if item["leads"] is not None else None,
             "clicks": item["clicks"], "impressions": item["impressions"], "position": round(item["w"] / item["impressions"], 1) if item["impressions"] else None, "ai": item["ai"],
+            "unknown": _unknown_page(item["path"]),
         }
         for item in pages.values()
     ]
-    rows.sort(key=lambda r: -((r["sessions"] or 0) + (r["clicks"] or 0)))
-    social: dict[str, int] = defaultdict(int)
+    # GA4's "(not set)" isn't a page of the site: it goes last, marked, so it is never read as a real page (owner, 2026-11-12).
+    rows.sort(key=lambda r: (r["unknown"], -((r["sessions"] or 0) + (r["clicks"] or 0))))
+    # One row per network, whichever way GA4 wrote it, with the domain its logo comes from and the sources it groups.
+    social: dict[str, dict] = {}
     for row in _ga4_rows(scope, scope.start, scope.end):
         if str(row["channel"]).lower() in SOCIAL_CHANNELS:
-            social[row["source"]] += int(row["sessions"] or 0)
+            name, domain = _social_network(row["source"])
+            item = social.setdefault(name, {"source": name, "domain": domain, "sessions": 0, "sources": set()})
+            item["sessions"] += int(row["sessions"] or 0)
+            item["sources"].add(str(row["source"] or ""))
     return {
         "ga4": ga4_state, "gsc": gsc_state, "state": "ok" if rows else (ga4_state["state"] if ga4_state["state"] != "ok" else gsc_state["state"]),
         "pages": rows[:limit], "total_pages": len(rows),
-        "social": [{"source": name, "sessions": count} for name, count in sorted(social.items(), key=lambda pair: -pair[1])],
+        "social": [{**item, "sources": sorted(item["sources"])} for item in sorted(social.values(), key=lambda item: (-item["sessions"], item["source"]))],
         "hid_rows": _hidden(scope),
     }
 

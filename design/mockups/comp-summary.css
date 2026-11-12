@@ -135,3 +135,42 @@
 /* Under each keyword: the country, the engine and tool logos, the age. */
 .cs-where { display: flex; align-items: center; flex-wrap: wrap; gap: 2px 5px; }
 .cs-kw-foot .comp-src { margin-inline: 2px; }
+/* 2026-11-12: my own site, pinned above the competitors as one slim muted line across the table (comp-summary.js youRow). */
+#cs-rivals-table > tbody > tr.cs-you-row > td.cs-you-cell { padding-block: 8px; }
+.cs-you-line { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; font-size: 13px; color: var(--text-2); }
+.cs-you-name { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.cs-you-bit { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.cs-you-bit::before { content: "·"; color: var(--muted); margin-inline-end: 8px; }
+.cs-you-bit b { color: var(--text); font-weight: 600; }
+.cs-you-act { margin-inline-start: auto; }
+@media (max-width: 640px) {
+  #cs-rivals-table > tbody > tr.cs-you-row { display: block; }
+  #cs-rivals-table > tbody > tr.cs-you-row > td.cs-you-cell { display: block; width: auto; }
+  #cs-rivals-table > tbody > tr.cs-you-row > td.cs-you-cell::before { display: none; }
+  .cs-you-line { gap: 4px 12px; }
+  .cs-you-bit { white-space: normal; }
+  .cs-you-bit::before { display: none; }
+  .cs-you-act { margin-inline-start: 0; width: 100%; }
+}
+
+/* ---- The simpler screens (html[data-simple="1"]): the table in its own card, the row link, the three tabs below -------- */
+html[data-simple="1"] .cs-rivals-card { padding: 0; overflow: clip; margin-bottom: 14px; }
+html[data-simple="1"] .cs-rivals-card > .card-head { padding: 12px 16px 8px; margin: 0; }
+html[data-simple="1"] .cs-rivals-card .table-wrap { box-shadow: none; border-radius: 0; background: none; }
+html[data-simple="1"] .cs-rivals-card .cs-find { padding: 0 16px 8px; }
+html[data-simple="1"] #cs-rivals-table tbody tr[data-cs-row] { cursor: pointer; }
+.cs-row-link { cursor: pointer; border-radius: var(--r-s); }
+.cs-row-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.cs-row-link .kw { font-weight: 600; }
+html[data-simple="1"] #cs-rivals-table tbody tr[data-cs-row]:hover .cs-row-link .kw { color: var(--accent-text); }
+html[data-simple="1"] .cs-menu-cell { width: 44px; }
+html[data-simple="1"] .cs-track-tag { margin-inline-start: 6px; }
+html[data-simple="1"] .cs-lower { padding: 0 0 12px; overflow: clip; }
+html[data-simple="1"] .cs-low-tabs { padding-inline: 8px; }
+html[data-simple="1"] .cs-low-panel { padding: 12px 16px 0; }
+html[data-simple="1"] .cs-head-quiet { display: contents; }
+html[data-simple="1"] .cs-panel-tools { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; }
+html[data-simple="1"] .cs-panel-tools .cs-tools-end { margin-inline-start: auto; }
+html[data-simple="1"] tr.cs-kw-row { cursor: pointer; }
+html[data-simple="1"] .cs-moves-note { display: flex; align-items: center; gap: 4px; margin: 6px 0; }
+@media (max-width: 640px) { html[data-simple="1"] .cs-low-panel { padding-inline: 10px; } }

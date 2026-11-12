@@ -26,3 +26,58 @@
 .tray-fails.kwr-fails li.kwr-plain { font-weight: 400; color: var(--text-2); }
 .tray-fails.kwr-fails li.kwr-fk { display: flex; align-items: center; gap: 6px; padding-inline-start: 22px; color: var(--text-2); min-width: 0; }
 .tray-fails.kwr-fails li.kwr-fk .k { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+/* Several Refreshes at once: one block each in the same tray, newest at the bottom; the tray scrolls past four or so. */
+#tray:has(.kwr-run + .kwr-run) { max-height: min(70vh, 520px); overflow-y: auto; }
+.tray .kwr-run + .kwr-run { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+
+/* ---- The simpler screens' Keywords (html[data-simple="1"], keywords-real.js simplePage) ------------------------------------
+   The engine tabs with the views at their end, above the cards; one row of search, chips, Filter and ⋯; rows that open on a
+   click; the tools said once under the table; Keyword ideas at the top of Add keywords. Nothing here acts with the switch off. */
+html[data-simple="1"] .kw-tabs-row { display: flex; align-items: flex-end; gap: 8px; flex-wrap: wrap; margin: 0 0 14px; border-bottom: 1px solid var(--line-2); }
+html[data-simple="1"] .kw-tabs-row .page-tabs { margin: 0; border-bottom: 0; flex: 1 1 auto; min-width: 0; }
+html[data-simple="1"] .kw-tabs-row > .def-i { align-self: center; margin-inline-start: -6px; }
+html[data-simple="1"] .kw-tabs-row .kw-views { margin: 0 0 6px auto; flex: none; }
+html[data-simple="1"] .kw-bar { display: flex; align-items: center; gap: 8px 10px; flex-wrap: wrap; margin: 0 0 12px; }
+html[data-simple="1"] .kw-bar .kw-find { margin: 0; flex: 0 1 260px; min-width: 180px; }
+html[data-simple="1"] .kw-bar .kw-find .kw-search { max-width: none; }
+html[data-simple="1"] .kw-bar .chips { margin: 0; flex: 0 1 auto; }
+html[data-simple="1"] .kw-bar-end { display: inline-flex; align-items: center; gap: 4px; margin-inline-start: auto; }
+html[data-simple="1"] .kw-tt-slot:empty { display: none; }
+/* The ⋯: Compact rows and Columns show while the pointer or the keyboard is on it, or once it's pressed. They keep their place,
+   so nothing moves when they appear, and a click or Tab still reaches them. */
+html[data-simple="1"] .kw-more { display: inline-flex; align-items: center; gap: 2px; }
+html[data-simple="1"] .kw-more-items { display: inline-flex; gap: 2px; opacity: 0; transition: opacity var(--t-fast); }
+html[data-simple="1"] .kw-more:is(:hover, :focus-within, .open) .kw-more-items { opacity: 1; }
+html[data-simple="1"] .kw-more-btn > span { font-size: 18px; line-height: 1; letter-spacing: -.05em; }
+html[data-simple="1"] .kw-more.open .kw-more-btn { background: var(--selected); color: var(--accent-text); }
+@media (hover: none) { html[data-simple="1"] .kw-more-items { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { html[data-simple="1"] .kw-more-items { transition: none; } }
+/* A row opens its panel: the whole row shows it can be pressed, and where the keyboard is. */
+html[data-simple="1"] #kw-table tbody tr[data-kwr-row] { cursor: pointer; }
+html[data-simple="1"] #kw-table tbody tr[data-kwr-row]:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+html[data-simple="1"] #kw-table tbody tr[data-kwr-row]:hover .kw { color: var(--accent-text); }
+/* Which tools read the rows on show, said once under the table. */
+html[data-simple="1"] .kw-src { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 6px; margin: 8px 2px 0; }
+html[data-simple="1"] .kw-src-tool { display: inline-flex; align-items: center; gap: 4px; color: var(--text-2); }
+/* Add keywords with Keyword ideas: the form stays the panel's first form (its draft is the one kept); the ideas show first. */
+html[data-simple="1"] #panel .kwr-add-body { display: flex; flex-direction: column; gap: 14px; }
+html[data-simple="1"] #panel .kwr-add-body > .kwr-ideas { order: -1; }
+html[data-simple="1"] #panel .kwr-ideas > .card { margin: 0 !important; box-shadow: inset 0 0 0 1px var(--line); background: var(--track); }
+html[data-simple="1"] #panel .kwr-ideas .card-head { padding: 12px 14px 4px; }
+html[data-simple="1"] #panel .kwr-ideas .lv-rule-form { padding: 8px 14px 12px; }
+html[data-simple="1"] #panel .kwr-ideas .rows { max-height: 240px; overflow-y: auto; }
+html[data-simple="1"] #panel .kwr-ideas .lv-ideas-bar { padding-inline: 14px; }
+html[data-simple="1"] #panel .kwr-add-fields .field:last-of-type { margin-bottom: 0; }
+/* The row panel is 760 px here: a Refresh's tray moves left of it, or on top of it once the panel takes most of the screen. */
+html[data-simple="1"] #panel-root:has(#panel.wide) ~ #tray-root .tray { right: calc(760px + var(--gap) * 2); }
+@media (max-width: 1180px) {
+  html[data-simple="1"] #panel-root:has(#panel.wide) ~ #tray-root .tray { right: 16px; bottom: 76px; z-index: 35; }
+}
+@media (max-width: 640px) {
+  html[data-simple="1"] .kw-bar .kw-find { flex: 1 1 100%; }
+  html[data-simple="1"] .kw-tabs-row .kw-views { margin: 6px 0 8px; }
+}
+/* In the 760 px panel the position history keeps the size it has in the narrow one, instead of growing with the width. */
+html[data-simple="1"] #panel.wide svg.chart { display: block; width: 100%; max-width: 520px; height: auto; }
+/* A phone has no hover: the ⋯'s two tools take no room until it's pressed. */
+@media (max-width: 640px) { html[data-simple="1"] .kw-more:not(.open) .kw-more-items { display: none; } }
