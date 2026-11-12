@@ -124,3 +124,4 @@
 .in-ans-cause { display: block; font-size: 14px; font-weight: 400; }
 .in-ans-cause b.down { color: var(--crit-t); }
 .in-ans-cause b.up { color: var(--good-t); }
+.in-answer .ov-answer + .ov-answer { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
