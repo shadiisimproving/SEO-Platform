@@ -714,6 +714,8 @@
 
   window.HealthTest = {
     showCheck(code) { ht.openChecks.add(code); },
+    checkWord: (code) => CHECK_WORDS[code] || code, // a check's name, for the task panel's Technical list
+
     shownAudit: () => ht.open?.audit?.id ?? null, // export.js: the test on screen
     init(helpers) {
       UI = helpers;

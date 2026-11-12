@@ -31,6 +31,7 @@ def create_app(engine: Engine | None = None, url_allowed: Callable[[str], bool] 
     from seo.web.metrics_api import metrics_api
     from seo.web.sources_api import sources_api
     from seo.web.tasks_api import tasks_api
+    from seo.web.pages_api import pages_api
     from seo.web.backlinks_api import backlinks_api
     from seo.web.uptime_api import uptime_api
     from seo.web.search_api import search_api
@@ -48,6 +49,7 @@ def create_app(engine: Engine | None = None, url_allowed: Callable[[str], bool] 
     app.register_blueprint(health_api)
     app.register_blueprint(logos_api)
     app.register_blueprint(tasks_api)
+    app.register_blueprint(pages_api)
     app.register_blueprint(backlinks_api)
     app.register_blueprint(uptime_api)
     app.register_blueprint(sources_api)

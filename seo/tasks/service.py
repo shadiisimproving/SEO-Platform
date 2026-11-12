@@ -37,7 +37,11 @@ _LISTS = {
     "keywords": (190, "A keyword"),
 }
 _MAX_LINKED = 50
-FIELDS = {*_TEXT, *_LISTS, "status", "priority", "site_id", "due", "impact", "hours_estimate", "hours_spent"}
+# What else a task can be about. Pages and keywords keep their own lists above; "general" means about nothing in the app.
+ABOUT_KINDS = ("page", "keyword", "ranking", "backlink", "domain", "technical", "competitor", "note", "general")
+_ABOUT_ITEM_KINDS = ("ranking", "backlink", "domain", "technical", "competitor", "note")
+_TECH_PARTS = ("health", "link", "index", "speed")  # a technical item's ref starts with one: health:<code>, link:<address>...
+FIELDS = {*_TEXT, *_LISTS, "about", "status", "priority", "site_id", "due", "impact", "hours_estimate", "hours_spent"}
 _MAX_SOURCE_BYTES = 16000
 _MAX_COMMENT = 2000
 _MAX_COMMENTS = 500
@@ -59,6 +63,7 @@ def _dict(row) -> dict:
         "hypothesis": row["hypothesis"] or "", "impact": row["impact"], "hours_estimate": row["hours_estimate"],
         "hours_spent": row["hours_spent"], "note": row["note"] or "", "owner_label": row["owner_label"] or "",
         "pages": _load(row["pages"], []), "keywords": _load(row["keywords"], []),
+        "about": _load(row.get("about"), None) or {"main": "", "items": []},
         "comments": _load(row["comments"], []), "source": source, "completed_on": row["completed_at"].date().isoformat() if row["completed_at"] else "",
         "created_at": _iso(row["created_at"]), "updated_at": _iso(row["updated_at"]),
         # Exact to the millisecond, because two saves can land in the same second.
@@ -125,7 +130,62 @@ def _clean_list(name: str, value) -> str | None:
     return json.dumps(list(kept.values()), ensure_ascii=False) if kept else None
 
 
-def _clean(conn, body: dict) -> dict:
+def _clean_about(conn, about, site_id: int | None) -> str | None:
+    """{main, items: [{kind, ref, label}]}. A backlink, competitor or note must exist, and belong to the task's site
+    when it has one, so a task never points at another site's link. The label is kept, so the card needs no lookup."""
+    if about is None:
+        return None
+    if not isinstance(about, dict) or set(about) - {"main", "items"}:
+        raise Refused("about must be an object with main and items.")
+    main = about.get("main") or ""
+    if main and main not in ABOUT_KINDS:
+        raise Refused("That isn't something a task can be about.")
+    items = about.get("items") or []
+    if not isinstance(items, list):
+        raise Refused("about items must be a list.")
+    if len(items) > _MAX_LINKED:
+        raise Refused(f"A task can be about {_MAX_LINKED} things at most.")
+    kept: dict[tuple, dict] = {}
+    for item in items:
+        if not isinstance(item, dict) or set(item) - {"kind", "ref", "label"}:
+            raise Refused("Each thing a task is about needs a kind, a ref and a label.")
+        kind, ref, label = item.get("kind"), item.get("ref"), item.get("label") or ""
+        if kind not in _ABOUT_ITEM_KINDS:
+            raise Refused("That isn't something a task can be about.")
+        if isinstance(ref, int) and not isinstance(ref, bool):
+            ref = str(ref)
+        if not isinstance(ref, str) or not ref.strip() or len(ref) > 500:
+            raise Refused("Each thing a task is about needs a ref of up to 500 characters.")
+        if not isinstance(label, str) or len(label) > 300:
+            raise Refused("A label can hold 300 characters.")
+        ref = ref.strip()
+        if kind in ("backlink", "competitor", "note"):
+            if not ref.isdigit():
+                raise Refused(f"That {kind} doesn't exist.")
+            _check_owned(conn, kind, int(ref), site_id)
+        if kind == "technical" and ref.partition(":")[0] not in _TECH_PARTS:
+            raise Refused("That isn't a technical issue this app knows.")
+        kept.setdefault((kind, ref.casefold()), {"kind": kind, "ref": ref, "label": label.strip() or ref})
+    if not main and not kept:
+        return None
+    return json.dumps({"main": main, "items": list(kept.values())}, ensure_ascii=False)
+
+
+def _check_owned(conn, kind: str, ref: int, site_id: int | None) -> None:
+    if kind == "backlink":
+        row = conn.execute(text("SELECT site_id FROM backlinks WHERE id = :i"), {"i": ref}).first()
+        ok = row is not None and (site_id is None or row[0] == site_id)
+    elif kind == "note":
+        row = conn.execute(text("SELECT site_id FROM notes WHERE id = :i AND deleted_at IS NULL"), {"i": ref}).first()
+        ok = row is not None and (site_id is None or row[0] in (None, site_id))
+    else:
+        sql = "SELECT 1 FROM site_competitors WHERE competitor_id = :i" + (" AND site_id = :s" if site_id is not None else "")
+        ok = conn.execute(text(sql), {"i": ref, "s": site_id}).first() is not None
+    if not ok:
+        raise Refused(f"That {kind} doesn't belong to this task's site.")
+
+
+def _clean(conn, body: dict, site_before: int | None = None) -> dict:
     """Only what was sent changes, so moving a card sends the status and nothing else."""
     values: dict = {}
     for name in _LISTS:
@@ -182,6 +242,8 @@ def _clean(conn, body: dict) -> dict:
         else:
             site = require_own(conn, body["site_id"])
             values["site_id"], values["site_host"] = site["id"], site["host"]
+    if "about" in body:
+        values["about"] = _clean_about(conn, body["about"], values["site_id"] if "site_id" in values else site_before)
     return values
 
 
@@ -295,7 +357,7 @@ def update(engine: Engine, task_id: int, body: dict) -> dict:
             before = _one(conn, task_id, lock=True)
             if expected is not None and expected != before["updated_at"].isoformat(timespec="milliseconds"):
                 raise Conflict(CHANGED_MEANWHILE)
-            values = _clean(conn, body)
+            values = _clean(conn, body, before["site_id"])
             sets = [f"{name} = :{name}" for name in values] + ["updated_at = UTC_TIMESTAMP(3)"]
             new_status = values.get("status", before["status"])
             if new_status != before["status"]:

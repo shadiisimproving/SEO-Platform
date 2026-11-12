@@ -455,6 +455,8 @@
             empty: "No AI visits in this period.",
           },
         ],
+        // Everything else known about the page (rankings, backlinks, tasks, notes, technical, content) is on Pages.
+        actions: window.SCREENS?.pages ? [{ label: "All about this page", icon: "layers", attrs: { "data-rp-pages": d.url }, onClick: (e, panel) => { panel.close(); window.SCREENS.pages.open(d.url); } }] : [],
         task: { title: `${t("Look into a page")}: ${d.path}`, host: d.host, priority: "medium", pages: [d.url], source: { type: "other", label: d.path, host: d.host, facts: facts(d), link: `#${UI.state.route}`, key: `page|${d.host}|${d.path}` } },
         note: { label: d.path, where: where("page", { pageUrl: d.url }) },
       }),
@@ -522,7 +524,7 @@
     "Numbers": "Chiffres", "The period before": "La période précédente", "This period": "Cette période", "See all": "Tout voir",
     "Channel": "Canal", "Page": "Page", "Assistant": "Assistant", "Referring site": "Site référent", "Keyword": "Mot-clé",
     "Sources": "Sources", "Source": "Source", "Mediums": "Supports", "Medium": "Support", "Share": "Part", "Share of all visits": "Part des visites",
-    "Landing pages": "Pages d'arrivée", "Open site": "Ouvrir le site", "Open page": "Ouvrir la page", "Add a note": "Ajouter une note", "Task": "Tâche",
+    "Landing pages": "Pages d'arrivée", "Open site": "Ouvrir le site", "Open page": "Ouvrir la page", "All about this page": "Tout sur cette page", "Add a note": "Ajouter une note", "Task": "Tâche",
     "Searches that bring it": "Les recherches qui y mènent", "Where AI visits come from": "D'où viennent les visites IA", "Share of AI visits": "Part des visites IA",
     "AI visits per week": "Visites IA par semaine", "Week to": "Semaine au", "Needs {n} visits": "Il faut {n} visites",
     "No searches in this period.": "Aucune recherche sur cette période.", "No AI visits in this period.": "Aucune visite IA sur cette période.",

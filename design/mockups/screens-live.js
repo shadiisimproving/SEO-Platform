@@ -508,7 +508,7 @@
         { key: "path", label: "Page", get: pageName, html: (r) => (r.unknown ? unknownPage(r) : `<div class="mono lv-url">${PageLink.html(r.path, { host: r.host })}</div>${siteOfPage(r)}<div class="lv-cat" dir="auto">${esc(t(r.category))}</div>${UI.relatedTag?.({ host: r.host || UI.siteHostPicked() || "", page: r.path }) || ""}`) },
         { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }, { key: "clicks", label: "Google clicks", num: true },
         { key: "position", label: "Position", num: true, html: (r) => decimal(r.position) }, { key: "ai", label: "AI visits", num: true },
-      ], d.pages, { search: "Search pages" })}</section>
+      ], d.pages, { search: "Search pages", rowAttrs: (r) => (r.unknown || !window.SCREENS?.pages ? 'style="cursor:default"' : `data-pg-goto="${esc(`https://${r.host || UI.siteHostPicked() || ""}${r.path}`)}" tabindex="0" title="${esc(t("All about this page"))}"`) })}</section>
       <section class="card" style="margin-top:14px"><div class="card-head"><h2>${t("Social networks")}</h2><span class="end small muted">${sourceAndDays("Google Analytics")}</span></div>${d.social.length ? socialBars(d.social) : `<div class="empty"><p>${t("No visits from social networks in this period.")}</p></div>`}</section>
       ${speedCard()}`); // Page speed moved here from Overview on 2026-11-09: it's about pages, not Google results
   }

@@ -931,6 +931,7 @@
           <div class="cl-head-main">
             <h2 id="cl-profile-title" tabindex="-1">${UI.siteLogo(p.host, 24)} ${COMP.link(url, p.display || p.host, "cl-head-link")}${icon("external-link", "muted")}${simpleHead ? trackButton(p) : COMP.trackingSwitch?.(p) ?? ""}</h2>
             ${COMP.profileTabs?.factsLine?.(p, view.insights) ?? ""}
+            ${UI.relatedTag?.({ host: "", item: { kind: "competitor", ref: p.id }, label: p.host }) ?? ""}
             <p class="small sec cl-head-meta" data-tip="${esc(`${howAdded(p.source)} · ${fill("added {when}", { when: COMP.ago(p.added_at) })}`)}">${COMP.siteId === COMP.ALL ? `${esc(fill("compared with {site}", { site: p.site?.host || "" }))} · ` : ""}<span id="cl-watch-state" class="cl-head-watch">${watchArea(p)}</span></p>
           </div>
           <div class="cl-head-acts">${COMP.notes?.button?.([{ label: p.display || p.host, icon: "crosshair", where: { scope: "competitor", competitorId: p.id, siteId: COMP.siteId } }]) ?? ""}${simpleHead ? `<button type="button" class="icon-btn cl-more-btn" data-cl-more="${p.id}" aria-haspopup="menu" aria-expanded="false" aria-label="${attr("More")}" data-tip="${attr("Refresh data and Remove")}">${icon("ellipsis")}</button>` : `<button class="btn" data-cl-read="${p.id}" ${crawling(p.crawl) ? "disabled" : ""} ${paused(p) ? "hidden" : ""}>${icon("refresh-cw")}${t("Refresh data")}</button><button class="btn btn-ghost" data-cl-remove="${p.id}">${icon("trash-2")}${t("Remove")}</button>`}</div>

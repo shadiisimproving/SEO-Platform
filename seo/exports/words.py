@@ -4,6 +4,12 @@ English is the key, as on the screens. A word with no entry here stays in Englis
 when a view uses a label that has none.
 """
 FR: dict[str, str] = {
+    # Pages screen (2026-11-12)
+    "Get clicks": "Reçoivent des clics", "Indexed": "Indexée", "Not indexed": "Non indexées", "Open tasks": "Tâches ouvertes", "Rankings": "Positions",
+    "Anchor": "Ancre", "Counts?": "Compte ?", "Website": "Site", "Nothing found.": "Rien trouvé.",
+    "No backlink you've logged points at this page.": "Aucun backlink enregistré ne pointe vers cette page.",
+    "No tracked keyword ranks with this page.": "Aucun mot-clé suivi ne se classe avec cette page.",
+    "Health test": "Test de santé", "Broken link": "Lien cassé", "Google index": "Index Google",
     # the file itself
     "About": "À propos", "Site": "Site", "All sites": "Tous les sites", "Period": "Période", "Compared with": "Comparé à", "compared with": "comparé à",
     "Made on": "Créé le", "Headline numbers": "Chiffres clés", "Change": "Évolution", "Sheets": "Feuilles", "Rows": "Lignes", "of {n} in all": "sur {n} au total",

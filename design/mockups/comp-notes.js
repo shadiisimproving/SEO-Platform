@@ -22,7 +22,7 @@
   const DRAFTS_KEY = "note-drafts", SAMPLE_KEY = "notes-sample", TAB = "tab", ALL_NOTES = "*";
   // The same list as notes.SCREENS on the server: the side menu's screens.
   const SCREEN_NAMES = {
-    today: "Today", channels: "Channels", conversions: "Conversions", content: "Content", overview: "Overview", keywords: "Keywords", competitors: "Competitors",
+    today: "Today", channels: "Channels", conversions: "Conversions", content: "Content", overview: "Overview", pages: "Pages", keywords: "Keywords", competitors: "Competitors",
     ai: "AI search", ads: "Google Ads", tasks: "Tasks", backlinks: "Backlinks", resources: "Resources", health: "Site health", settings: "Settings",
   };
 
@@ -606,7 +606,7 @@
       ${showWhere ? `<div class="nb-where small" data-note-where="${e.uid}">${whereHtml(e, everySite)}</div>` : ""}
       <textarea class="input nb-text" dir="auto" rows="1" data-note-field="${e.uid}" placeholder="${t("Add text")}" aria-label="${esc(fieldLabel(e))}"></textarea>
       <div class="nb-files" data-note-files="${e.uid}" hidden></div>
-      <div class="nb-foot">${statusLine(e)}${attachButton(e)}<button class="icon-btn nb-delete" data-note-delete="${e.uid}" aria-label="${t("Delete this note")}" data-tip="${t("Delete")}">${icon("trash-2")}</button></div>
+      <div class="nb-foot">${statusLine(e)}${e.id && UI.relatedTag ? UI.relatedTag({ host: "", item: { kind: "note", ref: e.id }, label: String(e.text || "").split("\n")[0].slice(0, 80) }) : ""}${attachButton(e)}<button class="icon-btn nb-delete" data-note-delete="${e.uid}" aria-label="${t("Delete this note")}" data-tip="${t("Delete")}">${icon("trash-2")}</button></div>
     </li>`;
   }
 
