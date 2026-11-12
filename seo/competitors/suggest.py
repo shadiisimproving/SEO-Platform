@@ -106,7 +106,7 @@ def suggestions(engine: Engine, site_id: int) -> dict:
             if my_row is not None:
                 entry["both"].add(check.keyword_id)
             entry["evidence"].append({
-                "keyword": check.keyword, "position": row.position, "url": row.url, "engine": check.engine, "tool": check.tool,
+                "keyword": check.keyword, "keyword_id": check.keyword_id, "position": row.position, "url": row.url, "engine": check.engine, "tool": check.tool,
                 "location": check.real_location, "my_position": my_row.position if my_row else None, "my_depth": check.depth,
                 "checked_at": _iso(check.checked_at),
             })

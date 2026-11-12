@@ -82,7 +82,7 @@
     return `${chips}${oneTool ? `<p class="help ca-tool-line">${t("Tool")}: ${esc(oneTool)}</p>` : ""}<div class="ca-pages"><div class="table-wrap ${oneTool ? "ca-one-tool" : ""}"><table class="data ca-table" id="ca-table">
       <thead><tr><th scope="col">${t("Keyword")}</th><th scope="col">${t("AI Overview")}</th><th scope="col" class="pt-col-you">${COMP.who("you", null, t("You cited"))}</th><th scope="col" class="pt-col-them">${COMP.who("them", null, t("Competitors cited"))}</th><th scope="col">${t("Other sites cited")}</th>${once ? "" : `<th scope="col">${t("Checked")}</th>`}</tr></thead>
       <tbody>${page.rows.map((r) => `<tr>
-        <td class="head-cell"><span class="kw" dir="auto">${esc(r.keyword)}</span></td>
+        <td class="head-cell"><span class="kw">${KeywordLink.html(r.keyword, { id: r.keyword_id, host: COMP.site()?.host })}</span></td>
         <td data-label="${t("AI Overview")}">${overviewCell(r.state)}</td>
         <td data-label="${t("You cited")}"><div class="cp-val">${citedCell(r)}</div></td>
         <td data-label="${t("Competitors cited")}"><div class="cp-val">${rivalChips(r.competitors_cited)}</div></td>
@@ -111,7 +111,7 @@
   function changeLine(c, oneTool) {
     const [iconName, words] = CHANGE_WORDS[c.kind] || ["info", "Something changed for {keyword}"];
     const competitor = c.competitor_id ? `<button class="link-btn ca-rival-link" data-ca-rival="${c.competitor_id}" dir="auto">${esc(c.competitor)}</button>` : `<span dir="auto">${esc(c.competitor || "")}</span>`;
-    return `<li><span class="ca-change-ico" aria-hidden="true">${UI.icon(iconName)}</span><div class="what"><div class="t">${fill(esc(t(words)), { keyword: `<b dir="auto">${esc(c.keyword)}</b>`, competitor })}</div></div>${oneTool ? "" : `<span class="small muted ca-change-tool">${UI.logoOnly(c.tool)}</span>`}<div class="acts">${UI.taskButton(aiFind(c, words), { label: "Task" })}</div></li>`;
+    return `<li><span class="ca-change-ico" aria-hidden="true">${UI.icon(iconName)}</span><div class="what"><div class="t">${fill(esc(t(words)), { keyword: `<b>${KeywordLink.html(c.keyword, { id: c.keyword_id, host: COMP.site()?.host })}</b>`, competitor })}</div></div>${oneTool ? "" : `<span class="small muted ca-change-tool">${UI.logoOnly(c.tool)}</span>`}<div class="acts">${UI.taskButton(aiFind(c, words), { label: "Task" })}</div></li>`;
   }
   function changesBlock(changes) {
     if (!changes.length) {

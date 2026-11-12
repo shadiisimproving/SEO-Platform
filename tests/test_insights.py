@@ -332,7 +332,7 @@ def test_listing_names_each_subject_once_and_today_takes_the_normal_ones(engine,
     assert rows and all(r["severity"] == "normal" for r in rows)
     board = today.today(engine, site)
     found = [item for item in board["todo"] if item["kind"] == "search_finding"]
-    assert found and all(item["seen_key"] for item in found)
+    assert found and all(item["seen_key"] and "keyword_id" in item for item in found)  # keyword_id: the query in the title opens its keyword
     assert len({item["id"] for item in board["todo"]}) == len(board["todo"])
 
 

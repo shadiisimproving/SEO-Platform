@@ -161,7 +161,7 @@ def ranking_summary(checks, my_url: str, their_url: str) -> dict:
             only_theirs += 1
         # Which tool measured both positions, and when: one check gives both, so You and Them are always comparable (2026-11-12).
         # check_id lets the screen tell, and say, if a row ever holds two checks.
-        keywords.append({"keyword": check.keyword, "my_position": mine.position if mine else None, "their_position": theirs.position if theirs else None, "depth": check.depth,
+        keywords.append({"keyword": check.keyword, "keyword_id": check.keyword_id, "my_position": mine.position if mine else None, "their_position": theirs.position if theirs else None, "depth": check.depth,
                          "engine": check.engine, "tool": getattr(check, "tool", None), "checked_at": _iso(getattr(check, "checked_at", None)), "check_id": getattr(check, "id", None)})
     # Those both pages rank for come first, biggest gap first: they say the most about this pair.
     keywords.sort(key=lambda k: (k["my_position"] is None or k["their_position"] is None, -abs((k["my_position"] or 0) - (k["their_position"] or 0)), k["keyword"]))
@@ -376,7 +376,7 @@ def _keyword_rows(engine: Engine, row: dict, my_side: dict, their_side: dict) ->
         my_other = check.best_on(row["my_host"]) if mine is None else None
         their_other = check.best_on(row["their_host"]) if theirs is None else None
         rows.append({
-            "keyword": keyword, "engine": check.engine, "tool": check.tool, "location": check.real_location, "depth": check.depth,
+            "keyword": keyword, "keyword_id": check.keyword_id, "engine": check.engine, "tool": check.tool, "location": check.real_location, "depth": check.depth,
             "checked_at": _iso(check.checked_at), "my_position": mine.position if mine else None, "their_position": theirs.position if theirs else None,
             "my_other": {"url": my_other.url, "position": my_other.position} if my_other else None,
             "their_other": {"url": their_other.url, "position": their_other.position} if their_other else None,

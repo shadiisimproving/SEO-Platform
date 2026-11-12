@@ -399,8 +399,11 @@
   // ---- 2. Which keywords do they beat me on? --------------------------------------------------------
   /* Each competitor is compared with the sites it's linked to, which isn't always the site doing best overall. */
   function aheadChip(k, a) {
-    const other = a.my_host && a.my_host !== k.my_best?.host ? `<span class="second">${esc(fill("ahead of {site}, {position}", { site: a.my_host, position: `#${a.my_position}` }))}</span>` : "";
-    return `<li><span class="with-logo">${UI.siteLogo(a.host, 16)}<span class="logo-text"><span class="mono small" dir="auto">${esc(a.display || a.host)}</span> <b class="tabular">#${a.position}</b>${other}</span></span></li>`;
+    const name = a.display || a.host;
+    const other = a.my_host && a.my_host !== k.my_best?.host ? ` · ${fill("ahead of {site}, {position}", { site: a.my_host, position: `#${a.my_position}` })}` : "";
+    const says = `${name} #${a.position}${other}`;
+    const site = (COMP.sites || []).find((x) => x.host === (a.my_host || k.my_best?.host || k.my_sites?.[0]));
+    return `<li><button type="button" class="cs-ahead-logo" data-cs-open="${esc(a.id)}"${site ? ` data-cs-site="${esc(site.id)}"` : ""} data-tip="${esc(says)}" aria-label="${esc(says)}">${UI.siteLogo(a.host, 20)}<b class="tabular">#${a.position}</b></button></li>`;
   }
 
   function keywordFind(k) {
@@ -425,24 +428,22 @@
   }
 
   /* Collapsing one competitor would take a line to hide a line, so a list only folds when that saves at least two. */
-  const SHOWN_AHEAD = 3;
+    /* Who's ahead: each competitor as its logo and place, all in a row; a click opens its profile (2026-11-12: "only
+     competitors' logos, no name, and make the logo clickable"). The name, and on another site of yours its place there, on hover. */
   function aheadCell(k) {
-    const all = k.rivals_ahead;
-    const fold = all.length >= SHOWN_AHEAD + 2;
-    const first = fold ? all.slice(0, SHOWN_AHEAD) : all, rest = fold ? all.slice(SHOWN_AHEAD) : [];
-    return `<ul class="cs-ahead">${first.map((a) => aheadChip(k, a)).join("")}</ul>${rest.length ? `<details class="cs-rest"><summary><span class="cs-rest-closed">${esc(fill(t("Show {n} more"), { n: UI.num(rest.length) }))}</span><span class="cs-rest-open">${esc(t("Show less"))}</span></summary><ul class="cs-ahead">${rest.map((a) => aheadChip(k, a)).join("")}</ul></details>` : ""}`;
+    return `<ul class="cs-ahead">${k.rivals_ahead.map((a) => aheadChip(k, a)).join("")}</ul>`;
   }
 
   /* Four columns: the keyword (with where and when it was checked), your place and its last move, who's ahead, a task. */
   /* Where a keyword was checked. When every row shown says the same, with the same age, it's said once under the table. */
   const whereChecked = (k) => `${k.country} · ${engineName(k.engine)} · ${k.tool}`;
   /* …as drawn: the country, then the engine and tool as logos (2026-11-11). */
-  const whereHtml = (k) => `${k.country ? `${esc(k.country)} ` : ""}${COMP.toolLogos(k.engine, k.tool)}`;
+  const whereHtml = (k) => `${k.country ? `${UI.flag(k.country)} ` : ""}${COMP.toolLogos(k.engine, k.tool)}`;
   const sameCheck = (rows) => rows.length > 1 && new Set(rows.map((k) => `${whereChecked(k)}|${COMP.ago(k.checked_at)}`)).size === 1;
   function keywordRow(k, once = false) {
     const many = S.site === COMP.ALL && k.my_best?.host;
     return `<tr${simple() ? ` data-cs-kw="${esc(k.keyword_id)}" class="cs-kw-row"` : ""}>
-      <td class="head-cell"><span class="kw mono" dir="auto">${esc(k.keyword)}</span>${once ? "" : `<span class="second cs-where">${whereHtml(k)} ${COMP.ageCell(k.checked_at)}</span>`}</td>
+      <td class="head-cell"><span class="kw mono">${KeywordLink.html(k.keyword, { id: k.keyword_id, host: k.my_best?.host || k.my_sites?.[0] })}</span>${once ? "" : `<span class="second cs-where">${whereHtml(k)} ${COMP.ageCell(k.checked_at)}</span>`}</td>
       <td class="c cs-my-place" data-label="${attr("Your position")}"><div>${COMP.pos(k.my_best?.position, k.depth)}${many ? `<span class="second mono" dir="auto">${esc(k.my_best.host)}</span>` : ""}<span class="cs-move">${moveCell(k)}</span></div></td>
       <td data-label="${attr("Ahead of you")}"><div>${aheadCell(k)}</div></td>
       <td class="r nowrap" data-label="">${simple() ? `<span class="row-act">${UI.taskButton(keywordFind(k), { label: "Task" })}</span>` : UI.taskButton(keywordFind(k), { label: "Task" })}</td>
@@ -813,7 +814,7 @@
         section?.querySelector("h2")?.focus({ preventScroll: true });
         return;
       }
-      if ((el = hit("[data-cs-open]"))) { COMP.open("list", { competitorId: Number(el.dataset.csOpen) }, Number(el.dataset.csSite)); return; }
+      if ((el = hit("[data-cs-open]"))) { COMP.open("list", { competitorId: Number(el.dataset.csOpen) }, el.dataset.csSite ? Number(el.dataset.csSite) : undefined); return; }
       if ((el = hit("[data-cs-row]")) && !hit("a, button, input, select, textarea, summary, label")) { COMP.open("list", { competitorId: Number(el.dataset.csRow) }, Number(el.dataset.csRowSite)); return; }
       if ((el = hit("[data-cs-you-edits]"))) { openYourEdits(el.dataset.csYouEdits, el); return; }
       if ((el = hit("[data-cs-review]"))) { COMP.open("gaps", {}, Number(el.dataset.csReview)); return; }

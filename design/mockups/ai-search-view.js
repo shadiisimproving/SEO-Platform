@@ -249,13 +249,13 @@
     if (a.kind === "cta") return { title: tf("{p}: {n} AI visits, no lead", { p: a.path, n: num(a.visits) }), html: tf("{p}: {n} AI visits, no lead", { p: pageLink(a.path, a.host), n: num(a.visits) }), detail: t("Add a call to action high on the page."), ic: "triangle-alert", tone: "warn" };
     if (a.kind === "faq") {
       const q = UI.state.lang === "fr" ? `« ${a.query} »` : `“${a.query}”`;
-      return { title: tf("{q}: {s} share of Copilot's answers", { q, s: share(a.share) }), html: tf("{q}: {s} share of Copilot's answers", { q: `<span dir="auto">${esc(q)}</span>`, s: share(a.share) }),
+      return { title: tf("{q}: {s} share of Copilot's answers", { q, s: share(a.share) }), html: tf("{q}: {s} share of Copilot's answers", { q: KeywordLink.html(a.query, { host: a.host, text: q }), s: share(a.share) }),
         detail: a.page ? tf("Add an FAQ that answers it to {p}.", { p: a.page.path }) : t("No page of yours ranks for it yet. Write one."),
         detailHtml: a.page ? tf("Add an FAQ that answers it to {p}.", { p: pageLink(a.page.path, a.host, a.page.url) }) : null, ic: "info", tone: "sec" };
     }
     if (a.kind === "compare") {
       const rival = a.rivals[0];
-      return { title: tf("{r} is cited in AI Overview for “{k}”, you aren't.", { r: rival, k: a.keyword }), html: tf("{r} is cited in AI Overview for “{k}”, you aren't.", { r: mark(rival), k: `<span dir="auto">${esc(a.keyword)}</span>` }), detail: t("See what their page says that yours doesn't."), ic: "info", tone: "sec" };
+      return { title: tf("{r} is cited in AI Overview for “{k}”, you aren't.", { r: rival, k: a.keyword }), html: tf("{r} is cited in AI Overview for “{k}”, you aren't.", { r: mark(rival), k: KeywordLink.html(a.keyword, { id: a.keyword_id, host: a.host }) }), detail: t("See what their page says that yours doesn't."), ic: "info", tone: "sec" };
     }
     return { title: tf("Copilot cites {p} {n} but sends no visit", { p: a.path, n: plural(a.citations, "{n} time", "{n} times") }), html: tf("Copilot cites {p} {n} but sends no visit", { p: pageLink(a.path, a.host, a.url), n: plural(a.citations, "{n} time", "{n} times") }), detail: t("Give a reason to click: figures, a tool or a checklist."), ic: "info", tone: "sec" };
   }
@@ -387,10 +387,10 @@
     if (!withQ.length) return notSet(t("No questions in this download. Include them in Clarity's export, then upload again."), uploadAi());
     const below = d.limits.faq_share_below;
     const rows = withQ.flatMap((s) => s.queries.map((q) => ({ ...q, host: s.host }))).sort((a, b) => (a.share ?? 100) - (b.share ?? 100) || (b.citations || 0) - (a.citations || 0));
-    const best = (r) => (r.page ? `${PageLink.html(r.page.url, { text: r.page.path, host: r.host, cls: "mono lv-url" })}${r.page.match === "close" ? `<div class="lv-cat" dir="auto">${esc(tf("via “{q}”", { q: r.page.query }))}</div>` : ""}` : `<span class="muted">${t("No page yet")}</span>`);
+    const best = (r) => (r.page ? `${PageLink.html(r.page.url, { text: r.page.path, host: r.host, cls: "mono lv-url" })}${r.page.match === "close" ? `<div class="lv-cat">${tf("via “{q}”", { q: KeywordLink.html(r.page.query, { host: r.host }) })}</div>` : ""}` : `<span class="muted">${t("No page yet")}</span>`);
     const action = (r) => (r.share !== null && r.share < below ? (() => { const a = { kind: "faq", host: r.host, query: r.query, share: r.share, citations: r.citations, page: r.page, key: `ai|faq|${r.host}|${r.query.toLowerCase()}` }; return rowAct(UI.taskButton(taskFind(a, actionText(a)), { label: "Task" })); })() : "");
     const columns = [
-      { key: "query", label: "Question", html: (r) => `<span dir="auto">${esc(r.query)}</span>` },
+      { key: "query", label: "Question", html: (r) => KeywordLink.html(r.query, { host: r.host }) },
       { key: "share", label: "Share", num: true, html: (r) => `<span class="${r.share !== null && r.share < below ? "warn" : ""}">${share(r.share)}</span>` },
       { key: "best", label: "Best page", get: (r) => r.page?.path || null, html: best },
       { key: "action", label: "Action", get: () => null, html: action },

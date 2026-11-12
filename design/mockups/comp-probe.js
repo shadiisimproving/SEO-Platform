@@ -99,10 +99,12 @@
     /* What every row on the page shares is said once under the table (2026-11-11): the country and language, and the tool
        when every checked row used the same one. Rows keep what differs: keyword, positions, competitors, age. */
     const placeOf = (k) => [k.country, k.language].filter(Boolean).join(" · ");
+    // As drawn: the country as its flag (its name on hover), then the language (2026-11-12).
+    const placeHtml = (k) => [k.country ? UI.flag(k.country) : "", k.language ? esc(k.language) : ""].filter(Boolean).join(" · ") || esc(t("Any country"));
     const checkedRows = page.rows.filter((k) => k.checked);
     const samePlace = page.rows.length > 1 && new Set(page.rows.map(placeOf)).size === 1;
     const sameTool = samePlace && checkedRows.length > 0 && new Set(checkedRows.map((k) => k.tool || "")).size === 1 && Boolean(checkedRows[0].tool);
-    const allRows = samePlace ? `<p class="small sec kc-all-rows">${esc(t("All rows:"))} ${esc(placeOf(page.rows[0]) || t("Any country"))}${sameTool ? ` · ${UI.logoOnly(checkedRows[0].tool)}` : ""}</p>` : "";
+    const allRows = samePlace ? `<p class="small sec kc-all-rows">${esc(t("All rows:"))} ${placeHtml(page.rows[0])}${sameTool ? ` · ${UI.logoOnly(checkedRows[0].tool)}` : ""}</p>` : "";
     const head = (key, label, cls = "", who = "") => {
       const on = S.sort?.key === key;
       return `<th scope="col" class="${cls}" aria-sort="${on ? (S.sort.dir === "asc" ? "ascending" : "descending") : "none"}"><button type="button" class="th-btn" data-kc-sort="${key}">${who ? COMP.who(who, null, t(label)) : t(label)}${on ? UI.icon(S.sort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
@@ -110,7 +112,7 @@
     return `${search}<div class="kc-pages"><div class="table-wrap"><table class="data kc-table" id="kc-table">
       <thead><tr>${head("keyword", "Keyword")}${head("me", "You", "c pt-col-you", "you")}${head("rivals", "Competitors ranking", "pt-col-them", "them")}<th scope="col">${t("Checked")}</th><th scope="col"><span class="sr-only">${t("Actions")}</span></th></tr></thead>
       <tbody>${page.rows.map((k) => `<tr>
-        <td class="head-cell" data-label="${esc(t("Keyword"))}"><span class="kw" dir="auto">${esc(k.keyword)}</span>${samePlace ? "" : `<span class="second">${esc(placeOf(k) || t("Any country"))}</span>`}</td>
+        <td class="head-cell" data-label="${esc(t("Keyword"))}"><span class="kw">${KeywordLink.html(k.keyword, { id: k.tracked ? k.id : null, host: COMP.site()?.host })}</span>${samePlace ? "" : `<span class="second">${placeHtml(k)}</span>`}</td>
         <td class="c" data-label="${esc(t("You"))}">${k.me ? `<span class="kc-pos tabular">#${UI.num(k.me.position)}</span>` : `<span class="muted">${k.checked ? "—" : ""}</span>`}</td>
         <td data-label="${esc(t("Competitors ranking"))}">${cell(k)}</td>
         <td class="nowrap" data-label="${esc(t("Checked"))}">${k.checked ? `<span class="kc-checked small">${COMP.ageCell(k.checked_at)}${sameTool || !k.tool ? "" : ` ${UI.logoOnly(k.tool)}`}</span>` : ""}</td>

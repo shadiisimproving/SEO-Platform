@@ -1026,6 +1026,11 @@ body:has(#tray) .main::after { content: ""; display: block; height: 110px; }
 a.page-link { color: inherit; text-decoration: none; cursor: pointer; overflow-wrap: anywhere; }
 a.page-link:hover, a.page-link:focus-visible { color: var(--accent-text); text-decoration: underline; text-underline-offset: 2px; }
 a.page-link.page-open { color: var(--accent-text); text-decoration: underline; text-underline-offset: 2px; }
+/* A keyword that opens its details (keyword-links.js): looks like the text it replaces, shows it's a link on hover. */
+a.kw-link { color: inherit; text-decoration: none; cursor: pointer; overflow-wrap: anywhere; }
+a.kw-link:hover, a.kw-link:focus-visible { color: var(--accent-text); text-decoration: underline; text-underline-offset: 2px; }
+/* A country as its flag, the name on hover (UI.flag). */
+.flag { display: inline-block; font-size: 1.05em; line-height: 1; vertical-align: -0.1em; cursor: default; }
 /* Backlinks: the address opens the page, the row opens the details. Keyboard users reach the details through this button, shown only while focused. */
 #bl-table .url-cell .nb-inline > a.page-link { white-space: nowrap; }
 #bl-table button.sr:focus-visible { position: static; width: auto; height: auto; clip: auto; margin-left: 6px; font-size: 12px; color: var(--accent-text); }

@@ -185,7 +185,7 @@
     return `<tr data-cp-row="${p.id}">
       <td class="head-cell cp-page">${p.my_title ? `<span class="cp-page-title" dir="auto">${esc(p.my_title)}</span>${PageLink.html(p.my_url, { text: pathOf(p.my_url), cls: "second mono", dir: "ltr" })}` : PageLink.html(p.my_url, { text: pathOf(p.my_url), cls: "cp-page-title mono", dir: "ltr" })}${marks ? `<span class="cp-page-marks">${marks}</span>` : ""}</td>
       ${withRival ? `<td data-label="${t("Competitor")}"><div class="cp-val"><span class="cg-logo cp-rival-logo" role="img" tabindex="0" data-tip="${esc(rival)}" aria-label="${esc(rival)}">${window.UI.siteLogo(rival, 20)}</span></div></td>` : ""}
-      <td data-label="${t("Keyword")}"><div class="cp-val">${lead ? `<span dir="auto">${esc(lead.keyword.keyword)}</span>${lead.rest > 0 ? `<span class="second">+ ${UI.num(lead.rest)} ${t(lead.rest === 1 ? "more" : "more")}</span>` : ""}` : `<span class="muted small">${t("None")}</span>`}</div></td>
+      <td data-label="${t("Keyword")}"><div class="cp-val">${lead ? `${KeywordLink.html(lead.keyword.keyword, { id: lead.keyword.keyword_id, host: COMP.site()?.host })}${lead.rest > 0 ? `<span class="second">+ ${UI.num(lead.rest)} ${t(lead.rest === 1 ? "more" : "more")}</span>` : ""}` : `<span class="muted small">${t("None")}</span>`}</div></td>
       ${position("You", lead?.keyword.my_position, "my")}
       ${position("Them", lead?.keyword.their_position, "their")}
       <td data-label="${t("Who's ahead")}"><div class="cp-val">${verdictBadge(verdictOf(p))}</div></td>
@@ -459,7 +459,7 @@
     const checked = once ? "" : `<span class="second cp-kw-checked">${toolMark(r.tool)}${window.BRANDS?.FILES?.[r.tool] ? "" : " ·"} ${esc(COMP.ago(r.checked_at))}</span>`;
     return `<tbody class="cp-kw-group">
       <tr class="cp-kw-mine">
-        <td class="head-cell cp-kw-name" rowspan="2"><span class="kw" dir="auto">${esc(r.keyword)}</span>${checked}</td>
+        <td class="head-cell cp-kw-name" rowspan="2"><span class="kw">${KeywordLink.html(r.keyword, { id: r.keyword_id, host: COMP.site()?.host })}</span>${checked}</td>
         <td class="cp-kw-result" rowspan="2" data-label="${t("Who's ahead")}">${verdictBadge(keywordResult(r))}${otherPage(r.my_other, "Your {path} is #{n}", "A page of yours is #{n}, address not given by Google")}${otherPage(r.their_other, "Their {path} is #{n}", "A page of theirs is #{n}, address not given by Google")}</td>
         <td class="cp-kw-who">${youThemHead("mine")}</td>
         ${positionCell(r.my_position, r.their_position, r.depth, t("Position"), r.my_unknown)}

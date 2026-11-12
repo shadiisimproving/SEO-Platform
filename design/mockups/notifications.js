@@ -119,10 +119,12 @@
   const floorOf = (item) => item.detail?.min_impressions || 10;
   const floorHtml = (n, cls = "") => `<p class="bell-meta bell-floor ${cls}">${esc(fill("{n}+ impressions since first shown", { n: num(n) }))}</p>`;
   let floorOnRows = false;
+  // A search tracked since opens its keyword in Keywords; any other, Overview → Queries (keyword-links.js).
+  const goTip = (query, host) => t(window.KW?.trackedId?.(query || "", host || null) ? "See this keyword" : "Open in Overview → Queries");
   /* The day's new searches for one site, in one row: the three most shown, the rest behind Show them. */
   function groupHtml(item, readBtn, logo) {
     const d = item.detail || {}, queries = d.queries || [], open = B.opened === item.id;
-    const list = (open ? queries : queries.slice(0, GROUP_SHOWN)).map((q, i) => `<li><button type="button" class="bell-go" data-bell-go="${item.id}" data-q="${i}" title="${esc(t("Open in Overview → Queries"))}"><span dir="auto">${esc(q.query)}</span></button>
+    const list = (open ? queries : queries.slice(0, GROUP_SHOWN)).map((q, i) => `<li><button type="button" class="bell-go" data-bell-go="${item.id}" data-q="${i}" title="${esc(goTip(q.query, item.host))}"><span dir="auto">${esc(q.query)}</span></button>
         <span class="bell-num">${esc([place(q.position), plural(q.impressions, "1 impression", "{n} impressions")].filter(Boolean).join(" · "))}</span>
         <button type="button" class="icon-btn bell-track-one" data-bell-track="${item.id}" data-q="${i}" aria-label="${esc(`${t("Track")}: ${q.query}`)}" title="${esc(t("Track"))}">${UI.icon("plus")}</button></li>`).join("");
     const more = queries.length > GROUP_SHOWN ? `<button type="button" class="link-btn" data-bell-more="${item.id}" aria-expanded="${open}">${esc(open ? t("Hide") : fill("Show all {n}", { n: num(queries.length) }))}</button>` : "";
@@ -143,7 +145,7 @@
     if (item.kind === "new_queries") return groupHtml(item, readBtn, logo);
     if (item.kind === "new_query_more") {
       const open = B.opened === item.id;
-      const list = open ? `<ul class="bell-more">${(d.queries || []).map((q, i) => `<li><button type="button" class="bell-go" data-bell-go="${item.id}" data-q="${i}" title="${esc(t("Open in Overview → Queries"))}"><span dir="auto">${esc(q.query)}</span></button><span class="bell-num">${esc(place(q.position))}</span></li>`).join("")}</ul>` : "";
+      const list = open ? `<ul class="bell-more">${(d.queries || []).map((q, i) => `<li><button type="button" class="bell-go" data-bell-go="${item.id}" data-q="${i}" title="${esc(goTip(q.query, item.host))}"><span dir="auto">${esc(q.query)}</span></button><span class="bell-num">${esc(place(q.position))}</span></li>`).join("")}</ul>` : "";
       return `<li class="bell-row ${item.read ? "" : "unread"}" data-bell-row="${item.id}">
         <span class="bell-dot" aria-hidden="true"></span>
         <div class="bell-body">
@@ -159,7 +161,7 @@
     return `<li class="bell-row bell-row-go ${item.read ? "" : "unread"}" data-bell-row="${item.id}">
       <span class="bell-dot" aria-hidden="true"></span>
       <div class="bell-body">
-        <p class="bell-title"><button type="button" class="bell-go" data-bell-go="${item.id}" title="${esc(t("Open in Overview → Queries"))}"><span class="bell-kind" role="img" title="${esc(t("New search on Google"))}" aria-label="${esc(t("New search on Google"))}">${UI.icon("search")}</span> <b dir="auto">“${esc(d.query || "")}”</b></button></p>
+        <p class="bell-title"><button type="button" class="bell-go" data-bell-go="${item.id}" title="${esc(goTip(d.query, item.host))}"><span class="bell-kind" role="img" title="${esc(t("New search on Google"))}" aria-label="${esc(t("New search on Google"))}">${UI.icon("search")}</span> <b dir="auto">“${esc(d.query || "")}”</b></button></p>
         <p class="bell-meta">${logo}<span>${esc(item.host)}</span>${d.page ? `<span>·</span>${PageLink.html(d.page, { text: pathOf(d.page), host: item.host, cls: "bell-path" })}` : ""}<span>·</span><span>${esc(dayLabel(d.day))}</span></p>
         <p class="bell-meta">${facts.map((f) => `<span>${esc(f)}</span>`).join("<span>·</span>")}</p>
       </div>
@@ -267,7 +269,7 @@
       window.KW.track([query], item.host, opener, {});
       return;
     }
-    // The search itself, or anywhere on its row but a button or link, opens it in Overview → Queries.
+    // The search itself, or anywhere on its row but a button or link, opens it: its keyword when tracked, else Overview → Queries.
     const go = hit("[data-bell-go]") || (!hit("button, a, input") && hit(".bell-row-go"));
     if (go) {
       const item = B.items.find((i) => i.id === Number(go.dataset.bellGo || go.dataset.bellRow));
@@ -275,7 +277,11 @@
       const d = item.detail || {}, one = go.dataset.q !== undefined ? d.queries?.[Number(go.dataset.q)] : null, q = one ? one.query : d.query;
       setRead(item.id, true);
       closePanel();
-      if (window.OV?.openQuery) window.OV.openQuery({ host: item.host, query: q, day: one?.first_day || d.day });
+      // Tracked (or not known yet): the keyword's panel, as every keyword link opens it. Surely untracked: Overview over a
+      // period that holds the search's first day, which only OV.openQuery is told.
+      const tracked = window.KW?.trackedId ? window.KW.trackedId(q || "", item.host || null) : null;
+      if (tracked !== null && window.KeywordLink) window.KeywordLink.open({ id: tracked || null, keyword: q, host: item.host });
+      else if (window.OV?.openQuery) window.OV.openQuery({ host: item.host, query: q, day: one?.first_day || d.day });
       else UI.go("overview");
       return;
     }

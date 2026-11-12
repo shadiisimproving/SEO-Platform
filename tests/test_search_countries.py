@@ -191,6 +191,7 @@ def test_ai_overview_changes_show_on_today_in_both_languages(engine, site):
     [row] = [r for r in today.today(engine, site)["todo"] if r["kind"] == "ai_overview"]
     assert row["change"] == "aio_uncited" and row["severity"] == "warn" and row["title"] == "“sofa repair”: Google's AI Overview no longer cites you"
     assert row["words"]["title"] == ["“{keyword}”: Google's AI Overview no longer cites you", {"keyword": "sofa repair"}]
+    assert row["keyword_id"] == keyword and row["query"] == "sofa repair"  # the keyword in the title opens its panel
     _check(engine, keyword, "absent", False, now - timedelta(hours=1))
     assert [r["change"] for r in today.today(engine, site)["todo"] if r["kind"] == "ai_overview"] == ["aio_gone"]
 

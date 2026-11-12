@@ -174,7 +174,7 @@
 
   // ---- the sentence on top ----------------------------------------------------------------------
   // The sentence is HTML: a page in it opens that page, and everything taken from the data is escaped here.
-  const driverName = (d) => (d.dim === "page" ? PageLink.html(d.name, { text: pathOf(d.name) }) : esc(fr() ? `« ${d.name} »` : `“${d.name}”`));
+  const driverName = (d) => (d.dim === "page" ? PageLink.html(d.name, { text: pathOf(d.name) }) : KeywordLink.html(d.name, { host: hostPicked(), text: fr() ? `« ${d.name} »` : `“${d.name}”` }));
   const pathOf = (url) => { try { const u = new URL(url); return u.pathname || "/"; } catch { return url; } };
   function sentence(a, window_) {
     if (!a) return "";
@@ -346,7 +346,7 @@
     if (dim === "page") return PageLink.html(r.name, { text: pathOf(r.name), cls: "ov-name" });
     if (dim === "country") return `<span class="ov-name">${esc(r.code ? UI.countryName(r.code) : t("Unknown"))}</span>`;
     if (dim === "device") return `<span class="ov-name">${esc(t({ MOBILE: "Mobile", DESKTOP: "Computer", TABLET: "Tablet" }[r.name] || r.name))}</span>`;
-    return `<span class="ov-name" dir="auto">${esc(r.name)}</span>${r.tracked ? ` <span class="ov-tracked" title="${t("Tracked in Keywords")}">${icon("check")}${t("Tracked")}</span>` : ""}`;
+    return `<span class="ov-name">${KeywordLink.html(r.name, { host: hostPicked() })}</span>${r.tracked ? ` <span class="ov-tracked" title="${t("Tracked in Keywords")}">${icon("check")}${t("Tracked")}</span>` : ""}`;
   };
   const rowActions = (dim, r) => {
     if (dim !== "query" && dim !== "page") return "";
@@ -596,7 +596,7 @@
     const split = data.split.length ? `<h3 class="ov-h3">${t(dim === "query" ? "Pages" : "Queries")}</h3>
       ${dim === "query" ? `<p class="small muted">${t("Shares of impressions.")}${UI.tip("Search Console counts each page apart, so these don't add up to the query.")}</p>` : ""}
       <table class="mini ov-split"><thead><tr><th scope="col"><span class="sr">${t(dim === "query" ? "Page" : "Query")}</span></th>${shares ? `<th scope="col" class="ov-sn"><span class="sr">${t("Share")}</span></th>` : ""}${numHeads}</tr></thead>
-      <tbody>${data.split.slice(0, 15).map((p) => `<tr><td class="ov-sname" dir="auto">${dim === "query" ? PageLink.html(p.name, { text: pathOf(p.name) }) : esc(p.name)}</td>${shares ? `<td class="ov-sn ov-share">${p.share !== null && p.share !== undefined ? `${num(p.share)}${fr() ? " %" : "%"}` : ""}</td>` : ""}${numCells(p)}</tr>`).join("")}</tbody></table>` : "";
+      <tbody>${data.split.slice(0, 15).map((p) => `<tr><td class="ov-sname" dir="auto">${dim === "query" ? PageLink.html(p.name, { text: pathOf(p.name) }) : KeywordLink.html(p.name, { host: hostPicked() })}</td>${shares ? `<td class="ov-sn ov-share">${p.share !== null && p.share !== undefined ? `${num(p.share)}${fr() ? " %" : "%"}` : ""}</td>` : ""}${numCells(p)}</tr>`).join("")}</tbody></table>` : "";
     const places = data.countries ? `<h3 class="ov-h3">${t("Countries")}</h3><table class="mini ov-split"><thead><tr><th scope="col"><span class="sr">${t("Country")}</span></th>${numHeads}</tr></thead>
       <tbody>${data.countries.slice(0, 8).map((c) => `<tr><td class="ov-sname">${esc(c.code ? UI.countryName(c.code) : t("Unknown"))}</td>${numCells(c)}</tr>`).join("")}</tbody></table>`
       : data.countries_error ? `<p class="small muted">${t("Countries: Google didn't answer.")}</p>` : "";
@@ -612,7 +612,7 @@
         ${spark("position") ? `<div class="ov-panel-spark"><span class="lab">${t("Position, day by day (higher is better)")}</span>${spark("position", true)}</div>` : ""}
         ${split}${places}
       </div>
-      <div class="panel-foot">${dim === "query" ? (tracked ? `<span class="ov-tracked">${icon("check")}${t("Tracked in Keywords")}</span>` : `<button class="btn btn-main" data-ov-track="${esc(value)}">${icon("plus")}${t("Track")}</button>`) : ""}
+      <div class="panel-foot">${dim === "query" ? (tracked ? `<span class="ov-tracked">${icon("check")}${t("Tracked in Keywords")}</span><button class="link-btn" data-ov-kw-open="${esc(value)}">${icon("arrow-right")}${t("Open in Keywords")}</button>` : `<button class="btn btn-main" data-ov-track="${esc(value)}">${icon("plus")}${t("Track")}</button>`) : ""}
         <button class="btn" data-ov-task="${dim}" data-value="${esc(value)}">${icon("square-check")}${t("Create task")}</button></div>`, opener);
   }
 
@@ -658,7 +658,7 @@
   }
   const diffList = (title, rows, label) => (rows?.length ? `<h3 class="ov-h3">${t(title)}</h3><div class="table-wrap"><table class="data"><thead><tr><th>${t(label)}</th><th class="c">Search Console</th><th class="c">${t("Saved here")}</th></tr></thead><tbody>${rows.map((r) => `<tr><td dir="auto">${esc(r.day ? dayLabel(r.day, true) : r.name)}</td><td class="c">${num(r.google.clicks)} / ${num(r.google.impressions)}</td><td class="c">${num(r.saved.clicks)} / ${num(r.saved.impressions)}</td></tr>`).join("")}</tbody></table></div>` : "");
   function verifyPanel(opener, v) {
-    const list = (title, rows, label) => (rows?.length ? `<h3 class="ov-h3">${t(title)}</h3><div class="table-wrap"><table class="data"><thead><tr><th>${t(label)}</th><th class="c">Search Console</th><th class="c">${t("Saved here")}</th></tr></thead><tbody>${rows.map((r) => `<tr><td dir="auto">${esc(r.day ? dayLabel(r.day, true) : r.name)}</td><td class="c">${num(r.google.clicks)} / ${num(r.google.impressions)}</td><td class="c">${num(r.saved.clicks)} / ${num(r.saved.impressions)}</td></tr>`).join("")}</tbody></table></div>` : "");
+    const list = (title, rows, label) => (rows?.length ? `<h3 class="ov-h3">${t(title)}</h3><div class="table-wrap"><table class="data"><thead><tr><th>${t(label)}</th><th class="c">Search Console</th><th class="c">${t("Saved here")}</th></tr></thead><tbody>${rows.map((r) => `<tr><td dir="auto">${r.day ? esc(dayLabel(r.day, true)) : label === "Query" ? KeywordLink.html(r.name, { host: hostPicked() }) : esc(r.name)}</td><td class="c">${num(r.google.clicks)} / ${num(r.google.impressions)}</td><td class="c">${num(r.saved.clicks)} / ${num(r.saved.impressions)}</td></tr>`).join("")}</tbody></table></div>` : "");
     UI.openPanel(`${UI.panelHead(t("Differs from Search Console"), `${t("Last 28 days, checked")} ${esc(since(v.checked_at))}. ${t("Clicks / impressions.")}`)}
       <div class="panel-body">
         <p>${t(v.fixable ? "Google changed some days after saving. Reading them again fixes it." : "Every day matches. Google's range totals differ from its days; a new pull can't change that.")}</p>
@@ -803,6 +803,7 @@
         [...document.querySelectorAll("[data-ov-pick]")].find((box) => box.dataset.ovPick === id)?.focus({ preventScroll: true });
         return;
       }
+      if ((el = hit("[data-ov-kw-open]"))) { KeywordLink.open({ keyword: el.dataset.ovKwOpen, host: hostPicked() }); return; }
       if ((el = hit("[data-ov-task]"))) {
         e.stopPropagation();
         const dim = el.dataset.ovTask, value = el.dataset.value;
@@ -967,7 +968,7 @@
     "Shown on the chart": "Affiché sur le graphique", "Press to show it on the chart": "Appuyez pour l'afficher sur le graphique", "Press a number above to show its line.": "Appuyez sur un chiffre au-dessus pour afficher sa courbe.",
     "Period before": "Période précédente", "Not final yet": "Pas encore définitif", "not final": "provisoire", "Notes and finished tasks": "Notes et tâches terminées", "Delete the note": "Supprimer la note",
     "Week from": "Semaine du", "Hour": "Heure", "Clicks before": "Clics avant", "Impressions before": "Impressions avant", "Position before": "Position avant", "In brackets: period before": "Entre parenthèses : période précédente",
-    "Unknown": "Inconnu", "Mobile": "Mobile", "Tablet": "Tablette", "Computer": "Ordinateur", "Tracked in Keywords": "Suivi dans Mots-clés", "Tracked": "Suivi", "Track": "Suivre", "Moved up in Google": "Monté dans Google", "Moved down in Google": "Descendu dans Google", "vs period before": "vs période précédente", "Task": "Tâche",
+    "Unknown": "Inconnu", "Mobile": "Mobile", "Tablet": "Tablette", "Computer": "Ordinateur", "Tracked in Keywords": "Suivi dans Mots-clés", "Open in Keywords": "Ouvrir dans Mots-clés", "Tracked": "Suivi", "Track": "Suivre", "Moved up in Google": "Monté dans Google", "Moved down in Google": "Descendu dans Google", "vs period before": "vs période précédente", "Task": "Tâche",
     "Nothing for this choice.": "Rien pour ce choix.", "Pick": "Choisir", "Pick all shown": "Tout choisir", "Show": "Afficher",
     "Previous": "Précédent", "Next": "Suivant", "Page": "Page", "Rows per page": "Lignes par page", "per page": "par page", "First %n shown. Filter to see the rest.": "%n premières affichées. Filtrez pour voir les autres.", "query picked": "requête choisie", "queries picked": "requêtes choisies", "Track them": "Les suivre", "Clear": "Effacer",
     "small ones hidden (under 3 clicks and 50 impressions).": "petites écartées (moins de 3 clics et 50 impressions).", "queries with impressions": "requêtes avec des impressions", "before": "avant",

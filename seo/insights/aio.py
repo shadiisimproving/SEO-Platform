@@ -32,7 +32,7 @@ def states(engine: Engine, site_id: int | None = None) -> dict:
     with engine.connect() as conn:
         rows = conn.execute(
             text(
-                "SELECT sk.site_id, s.host, k.keyword, k.country, k.language, c.id, c.ai_state, c.real_location, c.checked_at FROM site_keywords sk "
+                "SELECT sk.site_id, s.host, k.id keyword_id, k.keyword, k.country, k.language, c.id, c.ai_state, c.real_location, c.checked_at FROM site_keywords sk "
                 "JOIN sites s ON s.id = sk.site_id AND s.kind = 'own' JOIN keywords k ON k.id = sk.keyword_id "
                 "JOIN serp_targets t ON t.keyword_id = k.id AND t.engine = 'google' AND t.device = 'desktop' JOIN serp_checks c ON c.target_id = t.id "
                 f"WHERE c.status = 'ok' AND c.ai_state IN ('present', 'absent') {clause} ORDER BY c.id"
@@ -48,7 +48,7 @@ def states(engine: Engine, site_id: int | None = None) -> dict:
                 cited.setdefault(c["check_id"], []).append(c["host"])
     out: dict = {}
     for r in rows:
-        seen = {"state": r["ai_state"], "cited": any(store.on_host(h, r["host"]) for h in cited.get(r["id"], [])), "at": r["checked_at"], "keyword": r["keyword"], "host": r["host"], "site_id": r["site_id"]}
+        seen = {"state": r["ai_state"], "cited": any(store.on_host(h, r["host"]) for h in cited.get(r["id"], [])), "at": r["checked_at"], "keyword": r["keyword"], "keyword_id": r["keyword_id"], "host": r["host"], "site_id": r["site_id"]}
         slot = out.setdefault((r["site_id"], _key(r["keyword"])), [])
         slot.insert(0, seen)
         del slot[2:]
@@ -86,5 +86,5 @@ def changes(engine: Engine, site_id: int | None, now: datetime, days: int = 7) -
             kind = "aio_cited" if new["cited"] else "aio_uncited"
         else:
             continue
-        out.append({"kind": kind, "site_id": site, "host": new["host"], "keyword": new["keyword"], "at": new["at"]})
+        out.append({"kind": kind, "site_id": site, "host": new["host"], "keyword": new["keyword"], "keyword_id": new["keyword_id"], "at": new["at"]})
     return out

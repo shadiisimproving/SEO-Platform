@@ -367,6 +367,8 @@ def test_suggestions_count_order_and_show_their_evidence(world):
     first = next(e for e in big["evidence"] if e["keyword"] == "k1")
     assert (first["position"], first["url"], first["engine"], first["tool"], first["location"], first["my_position"]) == (1, "https://big.example/a", "google", "SerpApi", "FR", 2)
     assert next(e for e in big["evidence"] if e["keyword"] == "k3")["my_position"] is None
+    ids = {r["keyword"]: r["id"] for r in rows(world.engine, "SELECT id, keyword FROM keywords")}
+    assert all(e["keyword_id"] == ids[e["keyword"]] for e in big["evidence"])  # the keyword on screen opens its own details
 
 
 def test_a_one_off_is_left_out_once_there_is_enough_data(world):
@@ -691,6 +693,7 @@ def test_timeline_merges_edits_new_and_removed_pages_and_ranking_moves(world):
     assert {"title", "new_page", "page_gone", "rank_down"} <= {e["kind"] for e in timeline}
     move = next(e for e in timeline if e["kind"] == "rank_down")
     assert (move["from"], move["to"], move["keyword"], move["tool"]) == (1, 3, "k1", "SerpApi")
+    assert move["keyword_id"] == {r["keyword"]: r["id"] for r in rows(world.engine, "SELECT id, keyword FROM keywords")}["k1"]
     assert [e["at"] for e in timeline] == sorted((e["at"] for e in timeline), reverse=True)
 
 
@@ -734,6 +737,8 @@ def test_past_and_current_keywords_and_how_we_compare(world):
     status = {row["keyword"]: row["status"] for row in answer["keywords"]}
     assert status == {"now shared": "shared", "i lead": "shared", "only them": "theirs_only", "only me": "mine_only"}
     assert [(p["keyword"], p["last_position"], p["last_url"]) for p in answer["past_keywords"]] == [("used to", 1, "https://rival.example/old")]
+    ids = {r["keyword"]: r["id"] for r in rows(world.engine, "SELECT id, keyword FROM keywords")}
+    assert all(row["keyword_id"] == ids[row["keyword"]] for row in answer["keywords"] + answer["past_keywords"])
     compare = answer["compare"]
     assert (compare["shared"], compare["they_ahead"], compare["i_ahead"], compare["theirs_only"], compare["mine_only"], compare["my_average"], compare["their_average"]) == (2, 1, 1, 1, 1, 1.5, 1.5)
     overview = profile.overview(world.engine, world.own)[0]
@@ -884,6 +889,8 @@ def test_ai_states_and_who_is_cited(world):
     summary = answer["summary"]
     assert (summary["tracked"], summary["captured"], summary["not_captured"], summary["with_overview"], summary["cited_me"]) == (5, 3, 2, 2, 1)
     assert summary["rivals"] == [{"host": "rival.example", "keywords": 1}]
+    ids = {r["keyword"]: r["id"] for r in rows(world.engine, "SELECT id, keyword FROM keywords")}
+    assert all(r["keyword_id"] == ids[r["keyword"]] for r in answer["keywords"])
 
 
 def test_changes_compare_like_with_like_and_skip_what_was_not_captured(world):
@@ -898,6 +905,8 @@ def test_changes_compare_like_with_like_and_skip_what_was_not_captured(world):
     kinds = sorted((c["keyword"], c["kind"]) for c in changes)
     assert kinds == [("k", "me_cited"), ("k", "me_dropped"), ("k", "overview_appeared"), ("k", "rival_cited")]
     assert next(c for c in changes if c["kind"] == "rival_cited")["competitor_id"] == rival
+    ids = {r["keyword"]: r["id"] for r in rows(world.engine, "SELECT id, keyword FROM keywords")}
+    assert all(c["keyword_id"] == ids[c["keyword"]] for c in changes)
 
 
 def test_trend_counts_by_day_without_what_was_not_captured(world):
@@ -1724,6 +1733,8 @@ def test_a_pair_says_who_ranks_higher_and_by_how_much(world):
     assert ranking["gap"] == 1.0  # (1 + 3 - 1) / 3
     assert ranking["keywords"][0]["keyword"] == "two"  # the biggest gap comes first
     assert ranking["keywords_total"] == 5
+    ids = {r["keyword"]: r["id"] for r in rows(world.engine, "SELECT id, keyword FROM keywords")}
+    assert all(k["keyword_id"] == ids[k["keyword"]] for k in ranking["keywords"])
     assert pairs.pair_detail(world.engine, pair["id"])["ranking"] == ranking
 
 
@@ -1745,6 +1756,9 @@ def test_a_page_missing_from_a_keyword_names_the_sites_other_page(world):
     assert rows["other page"]["my_position"] is None
     assert rows["other page"]["my_other"] == {"url": "https://me.example/b", "position": 1}
     assert rows["shared"]["my_other"] is None
+    with world.engine.connect() as conn:  # each keyword row opens that keyword's own details
+        ids = dict(conn.execute(text("SELECT keyword, id FROM keywords")).all())
+    assert all(r["keyword_id"] == ids[k] for k, r in rows.items())
 
 
 # ---- all my competitors together ------------------------------------------------------------------

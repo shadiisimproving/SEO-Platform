@@ -36,7 +36,7 @@ def watch(engine: Engine, site_id: int) -> dict:
     for check in latest:
         captured = check.ai_state != "not_captured"
         rows.append({
-            "keyword": check.keyword, "country": check.country, "language": check.language, "tool": check.tool, "location": check.real_location,
+            "keyword": check.keyword, "keyword_id": check.keyword_id, "country": check.country, "language": check.language, "tool": check.tool, "location": check.real_location,
             "checked_at": _iso(check.checked_at), "state": check.ai_state,
             "cited_me": check.cites(site["host"]) if captured else None,
             "my_cited_urls": [row.url for row in check.citations if store.on_host(row.host, site["host"])],
@@ -66,7 +66,7 @@ def watch(engine: Engine, site_id: int) -> dict:
         previous[key] = check
         if before is None:
             continue
-        common = {"keyword": check.keyword, "at": _iso(check.checked_at), "tool": check.tool}
+        common = {"keyword": check.keyword, "keyword_id": check.keyword_id, "at": _iso(check.checked_at), "tool": check.tool}
         if before.ai_state != check.ai_state:
             changes.append({**common, "kind": "overview_appeared" if check.ai_state == PRESENT else "overview_gone"})
         if before.cites(site["host"]) != check.cites(site["host"]):

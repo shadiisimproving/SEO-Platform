@@ -90,6 +90,15 @@
   // Any country: names come from the browser, in the language on screen.
   const COUNTRY_CODES = "AD AE AF AG AI AL AM AO AQ AR AS AT AU AW AX AZ BA BB BD BE BF BG BH BI BJ BL BM BN BO BQ BR BS BT BW BY BZ CA CC CD CF CG CH CI CK CL CM CN CO CR CU CV CW CX CY CZ DE DJ DK DM DO DZ EC EE EG EH ER ES ET FI FJ FK FM FO FR GA GB GD GE GF GG GH GI GL GM GN GP GQ GR GS GT GU GW GY HK HN HR HT HU ID IE IL IM IN IO IQ IR IS IT JE JM JO JP KE KG KH KI KM KN KP KR KW KY KZ LA LB LC LI LK LR LS LT LU LV LY MA MC MD ME MF MG MH MK ML MM MN MO MP MQ MR MS MT MU MV MW MX MY MZ NA NC NE NF NG NI NL NO NP NR NU NZ OM PA PE PF PG PH PK PL PM PN PR PS PT PW PY QA RE RO RS RU RW SA SB SC SD SE SG SH SI SJ SK SL SM SN SO SR SS ST SV SX SY SZ TC TD TG TH TJ TK TL TM TN TO TR TT TV TW TZ UA UG US UY UZ VA VC VE VG VI VN VU WF WS XK YE YT ZA ZM ZW".split(" ");
   const countryName = (code) => { try { return new Intl.DisplayNames([state.lang === "fr" ? "fr" : "en"], { type: "region" }).of(code) || code; } catch { return code; } };
+  /* A country as its flag, its name on hover and for screen readers (2026-11-12: "FR, change this with the France logo").
+     A code that isn't two letters stays as text. */
+  const flag = (code) => {
+    const c = String(code || "").trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(c)) return c ? `<span class="small">${esc(c)}</span>` : "";
+    const name = countryName(c);
+    const emoji = String.fromCodePoint(...[...c].map((ch) => 0x1f1e6 + ch.charCodeAt(0) - 65));
+    return `<span class="flag" role="img" title="${esc(name)}" aria-label="${esc(name)}">${emoji}</span>`;
+  };
   const countryOptions = (selected) => COUNTRY_CODES.map((c) => [c, countryName(c)]).sort((a, b) => a[1].localeCompare(b[1], state.lang)).map(([c, n]) => `<option value="${c}" ${c === selected ? "selected" : ""}>${esc(n)}</option>`).join("");
   // The languages a keyword list or an idea search can pick, named the same way.
   const LANGUAGE_CODES = "af ar az bg bn ca cs da de el en es et fa fi fil fr he hi hr hu hy id it ja ka kk ko lt lv ms nb nl pa pl pt ro ru si sk sl sq sr sv sw ta te th tr uk ur uz vi zh".split(" ");
@@ -1159,7 +1168,7 @@
         <tbody>${page.rows.length ? "" : `<tr style="cursor:default"><td colspan="12"><div class="empty"><h3>${t("No link matches")}</h3><p>${t("Change the search or filter.")}</p></div></td></tr>`}${page.rows.map((b) => `<tr data-bl="${b.id}" id="row-${b.id}">
           <td class="head-cell url-cell"><span class="with-logo">${siteLogo(linkDomain(b.src))}<span class="logo-text"><span class="nb-inline">${PageLink.html(b.src, { text: b.src.replace(/^https?:\/\//, ""), cls: "kw mono small" })}<button class="sr" data-open-bl="${b.id}">${t("Open details")}</button>${window.COMP?.notes?.badge ? window.COMP.notes.badge({ scope: "domain", domain: linkDomain(b.src), siteId: window.UI.siteIdPicked?.() ?? null }, linkDomain(b.src)) : ""}</span><span class="second" dir="auto">${esc(b.anchor || b.check?.anchor || "—")}</span>${state.site === "all" && b.site ? `<span class="second mono" dir="auto">${t("For")} ${esc(b.site)}</span>` : ""}</span></span></td>
           <td class="mono small url-cell" data-label="${t("Target")}">${b.target ? PageLink.html(b.target, { host: b.site }) : "—"}</td>
-          <td data-label="${t("Keyword")}">${b.keyword ? `<span dir="auto">${esc(b.keyword)}</span>` : '<span class="muted">—</span>'}</td>
+          <td data-label="${t("Keyword")}">${b.keyword ? KeywordLink.html(b.keyword, { host: b.site }) : '<span class="muted">—</span>'}</td>
           <td data-label="${t("Anchor type")}">${window.BacklinkSeo.anchorTag(b) || '<span class="muted">—</span>'}</td>
           <td data-label="${t("Status")}">${linkStatus(b.status)}${window.LinkExtras.rowNote(b)}${window.BacklinkSeo.badge(b)}</td>
           <td class="r" data-label="${t("Authority")}">${window.BacklinkSeo.authorityCell(b)}</td>${window.BacklinkSeo.trafficCell(b)}
@@ -2238,7 +2247,7 @@
           ${fact("Site", b.site, { cls: "mono small" })}
           ${fact("Anchor text", b.anchor)}
           ${fact("Anchor type", window.BacklinkSeo.anchorWord(b))}
-          ${fact("Keyword", b.keyword)}
+          ${b.keyword ? `<tr><td class="sec">${t("Keyword")}</td><td style="overflow-wrap:anywhere">${KeywordLink.html(b.keyword, { host: b.site })}</td></tr>` : ""}
           ${fact("Link type", b.linkType)}
           ${fact("Mediator", b.mediator)}
           ${fact("Contact", b.contact)}
@@ -4226,7 +4235,7 @@
     head: drawHead, // the simpler screens' head (plan 3.1); UI.topbar draws it too while the switch is on
     $, $$, state, store, t, num, dec, esc, icon, status, logo, siteLogo, setHTML, fragment, locale, reduceMotion,
     topbar, tile, cnt, spark, delta, toast, render, renderSidebar, go, openPanel, closePanel, panelHead, forgetPanelForm,
-    countryName, countryOptions, COUNTRY_CODES, languageOptions, fmtStamp, fmtDateOnly, ENGINES, WHOLE_SITE_WORDS, BUDGET_PAUSE_WORDS, readingWords,
+    countryName, flag, countryOptions, COUNTRY_CODES, languageOptions, fmtStamp, fmtDateOnly, ENGINES, WHOLE_SITE_WORDS, BUDGET_PAUSE_WORDS, readingWords,
     siteHostPicked: () => (state.site === "all" ? null : window.SITES.find((x) => x.id === state.site)?.host || null),
     ignoreClicks: (ms = 400) => { ignoreClicksUntil = performance.now() + ms; },
     popover, closePopover, // a screen's own menu, such as a competitor choice with each logo: a native list can't show pictures

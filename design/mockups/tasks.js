@@ -301,7 +301,7 @@
   function openRelated(about, opener) {
     const list = relatedTo(about).filter(isOpen);
     if (list.length === 1) { openTask({ task: list[0], opener }); return; }
-    UI.openPanel(`${UI.panelHead(t("Related tasks"), `<span class="mono" dir="auto">${esc(about.page || about.keyword || "")}</span>`)}
+    UI.openPanel(`${UI.panelHead(t("Related tasks"), `<span class="mono">${about.page ? `<span dir="auto">${esc(about.page)}</span>` : KeywordLink.html(about.keyword || "", { host: about.host || null })}</span>`)}
       <div class="panel-body">${relatedTasks(about)}</div>`, opener);
   }
 
@@ -320,8 +320,8 @@
   }
   function drawLinks(id) {
     const box = UI.$(`[data-links="${id}"] .tk-chips`);
-    const host = id === "task-pages" ? T.sites.find((s) => String(s.id) === UI.$("#task-site")?.value)?.host : null;
-    if (box) UI.setHTML(box, linksOf(id).map((value, i) => `<span class="tk-chip" dir="auto">${id === "task-pages" ? PageLink.html(value, { host }) : `<span>${esc(value)}</span>`}<button type="button" class="tk-chip-x" data-link-remove="${i}" aria-label="${t("Remove")}: ${esc(value)}">${icon("x")}</button></span>`).join(""));
+    const host = T.sites.find((s) => String(s.id) === UI.$("#task-site")?.value)?.host || null;
+    if (box) UI.setHTML(box, linksOf(id).map((value, i) => `<span class="tk-chip" dir="auto">${id === "task-pages" ? PageLink.html(value, { host }) : `<span>${KeywordLink.html(value, { host })}</span>`}<button type="button" class="tk-chip-x" data-link-remove="${i}" aria-label="${t("Remove")}: ${esc(value)}">${icon("x")}</button></span>`).join(""));
   }
   /* What's typed in the box joins the list. Keywords can be pasted with commas; addresses can hold commas, so only spaces split them. */
   function commitLink(id) {
@@ -823,7 +823,7 @@
     });
     document.addEventListener("change", (e) => {
       const id = e.target.id;
-      if (id === "task-site") { fillSuggestions(); return; }
+      if (id === "task-site") { fillSuggestions(); drawLinks("task-pages"); drawLinks("task-keywords"); return; } // the links point at the site picked
       if (e.target.matches?.("[data-task-move]")) { moveTask(Number(e.target.dataset.taskMove), e.target.value, `#${id}`); return; }
       if (id === "tk-status") { T.status = e.target.value; TP.reset(PAGES); paint(); return; }
       if (id === "tk-kind") { T.kind = e.target.value; TP.reset(PAGES); paint(); return; }

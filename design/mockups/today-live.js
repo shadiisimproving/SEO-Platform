@@ -106,12 +106,28 @@
     const pair = a.words?.[part];
     if (!pair) return part === "title" ? words(a.title) : a.detail ? words(a.detail) : "";
     const [key, values] = pair;
-    return Object.entries(values || {}).reduce((out, [k, v]) => {
-      let shown = typeof v === "number" ? UI.num(v) : String(v ?? "");
-      if (k === "segment" && a.words.segment_dim === "device") shown = t(DEVICE_WORDS[String(v).toUpperCase()] || shown);
-      if (k === "day" && /^\d{4}-\d{2}-\d{2}$/.test(shown)) shown = new Intl.DateTimeFormat(UI.locale(), { day: "numeric", month: "long" }).format(new Date(`${shown}T00:00:00`));
-      return out.split(`{${k}}`).join(shown);
-    }, t(key));
+    return Object.entries(values || {}).reduce((out, [k, v]) => out.split(`{${k}}`).join(shownValue(a, k, v)), t(key));
+  }
+  function shownValue(a, k, v) {
+    let shown = typeof v === "number" ? UI.num(v) : String(v ?? "");
+    if (k === "segment" && a.words.segment_dim === "device") shown = t(DEVICE_WORDS[String(v).toUpperCase()] || shown);
+    if (k === "day" && /^\d{4}-\d{2}-\d{2}$/.test(shown)) shown = new Intl.DateTimeFormat(UI.locale(), { day: "numeric", month: "long" }).format(new Date(`${shown}T00:00:00`));
+    return shown;
+  }
+  /* The same title as HTML, the searched words in it a link to that keyword (keyword-links.js). The sentence and every
+     value are escaped here; only the link is markup. */
+  const KEYWORD_SLOTS = new Set(["query", "keyword"]);
+  function sayHtml(a, part) {
+    const pair = a.words?.[part];
+    if (!pair || !window.KeywordLink) return esc(say(a, part));
+    const [key, values] = pair;
+    const slots = Object.entries(values || {}), marks = []; // each value is marked in the sentence first, so a value holding "{x}" can't be filled again
+    const out = esc(slots.reduce((text, [k], i) => text.split(`{${k}}`).join(`\u0000${i}\u0000`), t(key)));
+    slots.forEach(([k, v], i) => {
+      const shown = shownValue(a, k, v);
+      marks[i] = KEYWORD_SLOTS.has(k) && shown.trim() ? window.KeywordLink.html(shown, { id: a.keyword_id || null, host: a.host || null }) : esc(shown);
+    });
+    return out.replace(/\u0000(\d+)\u0000/g, (_, i) => marks[Number(i)]);
   }
   const MAIN_WORD = { source_failing: "Fix", backlink_lost: "Review", backlink_changed: "Review", page_drop: "See page", search_finding: "See why", ai_overview: "See it" };
   const mainButton = (a) => {
@@ -122,7 +138,7 @@
   const todoItem = (a) => {
     const title = say(a, "title"), detail = say(a, "detail");
     return {
-      id: a.id, severity: a.severity, kind: a.kind, title, detail, host: a.host,
+      id: a.id, severity: a.severity, kind: a.kind, title, titleHtml: sayHtml(a, "title"), detail, host: a.host,
       seenAttr: a.alert_ids ? `data-lv-seen="${esc(a.alert_ids.join(","))}"` : a.seen_key ? `data-lv-drop="${esc(a.seen_key)}"` : "",
       mainHtml: mainButton(a),
       find: a.kind === "search_finding" ? { title, host: a.host || null, priority: "medium", pages: a.page ? [a.page] : [], keywords: a.query ? [a.query] : [], source: { type: "search", key: a.seen_key, label: title, host: a.host || undefined, facts: detail ? [detail] : [], link: a.link } } : { title, host: a.host || null, priority: a.severity === "crit" ? "high" : "medium", ...(a.page ? { pages: [a.page] } : {}), source: { type: "alert", label: title, host: a.host || undefined, facts: detail ? [detail] : [], link: a.link, key: a.seen_key ? `drop|${a.seen_key}` : `alert|${a.kind}|${a.host || ""}|${a.title}` } },
@@ -210,11 +226,11 @@
     OV.filters.page = { q: page, q_mode: "exact", min_clicks: "", min_impressions: "", pos_from: "", pos_to: "" };
     UI.go("overview");
   }
-  /* A keyword in Going up / Going down: the site's own keyword opens in Keywords with its panel (KW.open, Keywords' hook);
-     a search nobody tracks yet opens in Overview → Queries, filtered to it. Either way over the same 7 days. */
+  /* A keyword in Going up / Going down opens like every keyword link (keyword-links.js): its Keywords panel when tracked,
+     Overview → Queries filtered to it when not. Over the same 7 days the row speaks of, so the range is set first. */
   function openKeyword(query, host, keywordId, range) {
     if (range && UI.range?.set) UI.range.set({ preset: range });
-    if (keywordId && window.KW?.open) { if (host) UI.pickSite(host); window.KW.open({ keywordId: Number(keywordId), keyword: query, host }); return; }
+    if (window.KeywordLink) { window.KeywordLink.open({ id: keywordId || null, keyword: query, host: host || null }); return; }
     if (window.OV?.openQuery) { window.OV.openQuery({ host, query }); return; }
     UI.go(keywordId ? "keywords" : "overview");
   }
@@ -244,6 +260,7 @@
         const el = e.target.closest?.("[data-today-page]");
         if (el) openPage(el.dataset.todayPage, el.dataset.todayHost, el.dataset.todayRange);
         const kw = e.target.closest?.("[data-today-keyword]");
+        if (kw && (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0)) return; // a new tab follows the link
         if (kw) { e.preventDefault(); openKeyword(kw.dataset.todayKeyword, kw.dataset.todayHost, kw.dataset.todayKeywordId, kw.dataset.todayRange); }
       });
       window.addEventListener("seocc:site-added", () => { T.key = null; T.failed = null; });

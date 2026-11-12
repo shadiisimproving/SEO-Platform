@@ -13,7 +13,12 @@
 .cs-section > .help svg.i { width: 13px; height: 13px; vertical-align: -2px; }
 .cs-sites { display: flex; flex-wrap: wrap; gap: 4px; }
 .cs-site { min-height: 24px; padding: 1px 9px; overflow-wrap: break-word; text-align: start; }
-.cs-ahead, .cs-states { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.cs-states { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+/* Who's ahead: logos and places in a row (aheadChip). */
+.cs-ahead { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+.cs-ahead-logo { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; padding: 2px 7px 2px 4px; border: 1px solid var(--line); border-radius: 999px; background: var(--panel-solid, transparent); font: inherit; font-size: 13px; color: inherit; cursor: pointer; }
+.cs-ahead-logo:hover { border-color: var(--accent-text); }
+.cs-ahead-logo:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
 .cs-states > li { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
 .cs-state { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; }
 .cs-rest { margin-top: 4px; }
@@ -48,7 +53,6 @@
   .cs-section .data td > div { min-width: 0; }
   .cs-section .data td > div .second { text-align: right; }
   .cs-ahead, .cs-states, .cs-sites, .cs-rest { min-width: 0; justify-content: flex-end; text-align: right; }
-  .cs-ahead .with-logo, .cs-ahead .logo-text { min-width: 0; overflow-wrap: anywhere; }
   .cs-states > li { justify-content: flex-end; }
   .cs-more { justify-content: flex-start; }
 }

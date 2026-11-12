@@ -294,9 +294,10 @@ def test_faq_for_questions_under_20_percent_share_lowest_first():
 
 
 def test_compare_when_a_rival_is_cited_in_an_ai_overview_and_i_am_not():
-    aio = {"rivals_only": [{"site_id": 1, "host": "mine.example", "keyword": "Visa Dubai", "rivals": ["rival.example"]}]}
+    aio = {"rivals_only": [{"site_id": 1, "host": "mine.example", "keyword": "Visa Dubai", "keyword_id": 7, "rivals": ["rival.example"]}]}
     actions, _ = ai_search.next_actions([], True, NO_COPILOT, aio)
-    assert actions == [{"kind": "compare", "host": "mine.example", "site_id": 1, "keyword": "Visa Dubai", "rivals": ["rival.example"], "key": "ai|aio|mine.example|visa dubai", "rank": 1}]
+    # keyword_id: the keyword on screen opens that keyword's panel (keyword-links.js)
+    assert actions == [{"kind": "compare", "host": "mine.example", "site_id": 1, "keyword": "Visa Dubai", "keyword_id": 7, "rivals": ["rival.example"], "key": "ai|aio|mine.example|visa dubai", "rank": 1}]
 
 
 def test_a_page_copilot_cites_often_but_sends_no_visit_needs_a_reason_to_click():

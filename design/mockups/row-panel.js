@@ -444,7 +444,7 @@
         sections: [
           {
             title: "Searches that bring it", rows: d.queries, total: d.queries_total,
-            columns: [{ label: "Query", key: "query", html: (r) => `<span class="mono" dir="auto">${esc(r.query)}</span>` }, { label: "Clicks", key: "clicks", num: true }, { label: "Impressions", key: "impressions", num: true }, { label: "Position", key: "position", num: true, fmt: "dec" }],
+            columns: [{ label: "Query", key: "query", html: (r) => `<span class="mono">${KeywordLink.html(r.query, { host: d.host })}</span>` }, { label: "Clicks", key: "clicks", num: true }, { label: "Impressions", key: "impressions", num: true }, { label: "Position", key: "position", num: true, fmt: "dec" }],
             more: d.addresses?.length && window.OV?.openPage ? { label: "See all", onClick: (e, panel) => { panel.close(); window.OV.openPage({ host: d.host, page: d.addresses[0] }); } } : null,
             empty: "No searches in this period.",
           },

@@ -317,7 +317,7 @@ def _ai_overviews(scope, today: date) -> dict:
             if row["state"] != NOT_CAPTURED:
                 tools.add(row["tool"])
             if row["state"] == PRESENT and row["cited_me"] is False and row["competitors_cited"]:
-                rivals_only.append({"site_id": site_id, "host": hosts.get(site_id, ""), "keyword": row["keyword"], "rivals": [c["host"] for c in row["competitors_cited"]]})
+                rivals_only.append({"site_id": site_id, "host": hosts.get(site_id, ""), "keyword": row["keyword"], "keyword_id": row.get("keyword_id"), "rivals": [c["host"] for c in row["competitors_cited"]]})
     with scope.engine.connect() as conn:
         statement = text("SELECT keyword_id FROM site_keywords WHERE site_id IN :sites").bindparams(bindparam("sites", expanding=True))
         keyword_ids = sorted({row[0] for row in conn.execute(statement, {"sites": scope.site_ids or [0]})})
@@ -431,7 +431,7 @@ def next_actions(pages: list[dict], leads_set_up: bool, copilot: dict, aio: dict
             if p["citations"] >= CLICK_MIN_CITATIONS and p["visits"] == 0:
                 kinds["click"].append({"kind": "click", "host": site["host"], "path": p["path"], "url": p["url"], "citations": p["citations"], "key": f"ai|click|{site['host']}|{p['path']}"})
     for row in aio["rivals_only"]:
-        kinds["compare"].append({"kind": "compare", "host": row["host"], "site_id": row["site_id"], "keyword": row["keyword"], "rivals": row["rivals"], "key": f"ai|aio|{row['host']}|{row['keyword'].lower()}"})
+        kinds["compare"].append({"kind": "compare", "host": row["host"], "site_id": row["site_id"], "keyword": row["keyword"], "keyword_id": row.get("keyword_id"), "rivals": row["rivals"], "key": f"ai|aio|{row['host']}|{row['keyword'].lower()}"})
     order = ("cta", "faq", "compare", "click")
     chosen = [kinds[k][0] for k in order if kinds[k]][:limit]
     for k in order:

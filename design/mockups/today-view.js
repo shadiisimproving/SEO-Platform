@@ -137,7 +137,7 @@
   const taskLook = () => (UI().simple?.() ? { label: "Task", cls: "btn btn-small row-act" } : { label: "Task" });
   const hostTag = (host, title = "") => (host && allSites() && !title.includes(host) ? ` <span class="small muted mono" dir="auto">${esc(host)}</span>` : "");
   const todoRow = (item) => `<li data-row="${esc(item.id)}"><span>${severityIcon(item.severity)}</span>
-      <div class="what"><div class="t" dir="auto">${esc(item.title)}${hostTag(item.host, item.title)}</div>${item.detail ? `<div class="d" dir="auto">${esc(item.detail)}</div>` : ""}</div>
+      <div class="what"><div class="t" dir="auto">${item.titleHtml || esc(item.title)}${hostTag(item.host, item.title)}</div>${item.detail ? `<div class="d" dir="auto">${esc(item.detail)}</div>` : ""}</div>
       <div class="acts">${item.seenAttr ? `<button class="icon-btn ack" ${item.seenAttr} aria-label="${t("Mark as seen")}: ${esc(item.title)}" data-tip="${t("Mark as seen")}">${icon("check")}</button>` : ""}
         ${UI().taskButton(item.find, taskLook())}${item.mainHtml}</div></li>`;
   function todoCard(todo) {
@@ -178,7 +178,7 @@
     if (move.type === "keyword") {
       const up = move.places > 0;
       const target = move.keyword_id ? "#keywords" : "#overview";
-      return `<li><div class="what"><div class="t"><a class="today-link" href="${target}" data-today-keyword="${esc(move.query)}" data-today-host="${esc(move.host || "")}" data-today-keyword-id="${esc(move.keyword_id || "")}" data-today-range="7d" dir="auto">${esc(move.query)}</a>${hostTag(move.host)}</div><div class="d">${UI().logoOnly("Search Console", t("Search Console average position"))}</div></div>
+      return `<li><div class="what"><div class="t"><a class="today-link" href="${esc(window.KeywordLink ? window.KeywordLink.href(move.query, move.host) : target)}" data-today-keyword="${esc(move.query)}" data-today-host="${esc(move.host || "")}" data-today-keyword-id="${esc(move.keyword_id || "")}" data-today-range="7d" dir="auto">${esc(move.query)}</a>${hostTag(move.host)}</div><div class="d">${UI().logoOnly("Search Console", t("Search Console average position"))}</div></div>
         <span class="chg ${up ? "good" : "crit"}">${icon(up ? "arrow-up" : "arrow-down")}#${num(move.was)} → #${num(move.now)}</span>${task}</li>`;
     }
     const up = move.change > 0;

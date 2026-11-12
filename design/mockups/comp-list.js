@@ -639,7 +639,7 @@
     const [ic, word] = KINDS[e.kind] || ["circle-dot", e.kind];
     const isMove = e.kind.startsWith("rank_");
     const isAi = e.kind.startsWith("ai_");
-    const about = isMove || isAi ? ` <span class="kw" dir="auto">${esc(e.keyword)}</span>` : "";
+    const about = isMove || isAi ? ` <span class="kw">${KeywordLink.html(e.keyword, { id: e.keyword_id, host: who ? who.own : view.data?.site?.host || COMP.site?.()?.host })}</span>` : "";
     const aiSource = isAi && !common?.source ? COMP.toolLogos(e.engine, e.tool) : "";
     const detail = isMove ? moveDetail(e, common) : isAi ? (aiSource ? `<div class="d">${aiSource}</div>` : "") : e.kind === "new_page" || e.kind === "page_gone" ? "" : changeDetail(e);
     /* Only a marker of the kind of change, never a button: no box, just a coloured icon. */
@@ -782,7 +782,7 @@
     const place = (n, url, depth) => `<span class="cl-cell">${COMP.pos(n, depth)}${url ? `<span class="cl-url">${COMP.link(url)}</span>` : ""}</span>`;
     const table = view.kw === "past"
       ? `<table class="data cl-table"><thead><tr>${head("keyword", "Keyword")}${head("last_position", "Last position", "pt-col-them", UI.siteLogo(p.host, 16))}${head("last_seen", "Last seen")}<th scope="col">${t("Tool")}</th></tr></thead><tbody>${sorted.map((k) => `<tr>
-          <td class="head-cell"><span class="kw" dir="auto">${esc(k.keyword)}</span></td>
+          <td class="head-cell"><span class="kw">${KeywordLink.html(k.keyword, { id: k.keyword_id, host: COMP.site?.()?.host || p.site?.host })}</span></td>
           <td data-label="${attr("Last position")}">${place(k.last_position, k.last_url)}</td>
           <td data-label="${attr("Last seen")}">${COMP.ageCell(k.last_seen)}</td>
           <td data-label="${attr("Tool")}">${COMP.toolLogos(k.engine, k.tool)}</td></tr>`).join("")}</tbody></table>`
@@ -861,7 +861,7 @@
     const allPicked = sorted.length > 0 && sorted.every((k) => view.kwPicked.has(kwKey(k)));
     return `<table class="data cl-table cl-kw-table"><thead><tr><th scope="col" class="chk-cell"><input type="checkbox" class="chk" data-cl-kw-all aria-label="${attr("Select all shown")}" ${allPicked ? "checked" : ""}></th>${head("keyword", "Keyword")}${head("my_position", "You", "c pt-col-you", logo(COMP.site?.()?.host || view.data?.site?.host))}${head("their_position", "Them", "c pt-col-them", logo(view.data?.host))}${once ? "" : head("checked_at", "Checked")}<th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead><tbody>${sorted.map((k) => `<tr data-cl-kw-row="${esc(kwKey(k))}">
           <td class="chk-cell"><input type="checkbox" class="chk" data-cl-kw-pick="${esc(kwKey(k))}" aria-label="${esc(fill("Select {keyword}", { keyword: k.keyword }))}" ${view.kwPicked.has(kwKey(k)) ? "checked" : ""}></td>
-          <td class="head-cell"><span class="kw" dir="auto">${esc(k.keyword)}</span>${COMP.profileTabs?.keywordMarks?.(k) ?? ""}</td>
+          <td class="head-cell"><span class="kw">${KeywordLink.html(k.keyword, { id: k.keyword_id, host: COMP.site?.()?.host || view.data?.site?.host })}</span>${COMP.profileTabs?.keywordMarks?.(k) ?? ""}</td>
           <td class="c" data-label="${attr("You")}">${place(k.my_position, k.my_url, k.depth)}</td>
           <td class="c" data-label="${attr("Them")}">${place(k.their_position, k.their_url, k.depth)}</td>
           ${once ? "" : toolCell(k)}
@@ -1147,7 +1147,7 @@
     const onceLine = once ? `<p class="small sec cl-kw-foot">${fillHtml("All checked with {tool}, {when}.", { tool: COMP.toolLogos(rows[0].engine, rows[0].tool), when: esc(COMP.ago(rows[0].checked_at)) })}</p>` : "";
     return `<div class="cl-pages"><div class="cl-scroll"><table class="data cl-table"><thead><tr><th scope="col">${t("Keyword")}</th><th scope="col" class="pt-col-them">${COMP.who("them", null, t("Their position"))}</th><th scope="col" class="pt-col-you">${COMP.who("you", null, t("Your position"))}</th>${once ? "" : `<th scope="col">${t("Checked")}</th>`}</tr></thead><tbody>
       ${rows.map((e) => `<tr>
-        <td class="head-cell"><span class="kw" dir="auto">${esc(e.keyword)}</span></td>
+        <td class="head-cell"><span class="kw">${KeywordLink.html(e.keyword, { id: e.keyword_id, host: COMP.site?.()?.host })}</span></td>
         <td data-label="${attr("Their position")}">${place(e)}</td>
         <td data-label="${attr("Your position")}">${COMP.pos(e.my_position, e.my_depth)}</td>
         ${once ? "" : `<td data-label="${attr("Checked")}"><span class="cl-checked">${COMP.toolLogos(e.engine, e.tool)} ${COMP.ageCell(e.checked_at)}</span></td>`}

@@ -204,7 +204,7 @@
     if (f.kind === "segment") return esc(segmentName(e));
     if (f.kind === "brand_split") return esc(t("Non-brand searches"));
     if (["topic", "data_gaps", "task_result", "note_result"].includes(f.kind)) return esc(titleOf(f));
-    if (f.query) return esc(f.query);
+    if (f.query) return KeywordLink.html(f.query, { id: e.keyword_id, host: f.host });
     return f.page ? pageLink(f.page, { text: e.path || pathOf(f.page), host: f.host }) : esc(titleOf(f));
   }
   /* The line under the name holds only what no column can. */
@@ -513,7 +513,7 @@
     const body = view.rows.map((f) => {
       const n = figures(f);
       return `<tr class="ov-row" data-in-open="${f.id}" tabindex="0">
-      <td class="head-cell" data-label="${t("What")}">${tagLine(f, many)}<div class="t" dir="auto">${subjectOf(f)}</div>${factLine(f)}</td>
+      <td class="head-cell" data-label="${t("What")}">${tagLine(f, many)}<div class="t">${subjectOf(f)}</div>${factLine(f)}</td>
       ${countCell("Impressions", n.impressions)}${countCell("Clicks", n.clicks)}
       <td class="ov-n in-pos" data-label="${t("Position")}">${numCell(posBadge(n.position), cellChange(n.position, n.before, true))}</td>
       <td class="ov-n" data-label="${changeWord()}">${n.change ? esc(n.change) : "—"}</td>
@@ -588,7 +588,7 @@
     const body = view.rows.map((f) => {
       const e = f.evidence || {};
       return `<tr class="ov-row" data-in-open="${f.id}" tabindex="0">
-      <td class="head-cell" data-label="${t("Keyword")}">${tagLine(f, many)}<div class="t" dir="auto">${esc(f.query || "")}</div></td>
+      <td class="head-cell" data-label="${t("Keyword")}">${tagLine(f, many)}<div class="t">${KeywordLink.html(f.query || "", { id: e.keyword_id, host: f.host })}</div></td>
       ${countCell("Impressions", e.impressions)}${countCell("Clicks", e.clicks)}
       <td class="ov-n" data-label="${t("Search Console")}">${posBadge(e.position)}</td>
       <td class="ov-n" data-label="${t("Last check")}">${scrapedCell(e)}</td>
@@ -695,7 +695,7 @@
       Object.entries(e.parts).filter(([, v]) => Math.round(v)).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).forEach(([id, v]) => rows.push(li(PARTS[id][v > 0 ? 0 : 1], signed(v), id === "hidden" ? HIDDEN_TIP : "")));
       const brand = e.brand ? `<h3 class="ov-h3">${t("Brand and non-brand searches")}</h3><ul class="rows ov-split">${[["brand", "Brand"], ["other", "Non-brand"]].map(([k, name]) => li(name, `${num(e.brand[k].clicks_before)} → ${num(e.brand[k].clicks)}`)).join("")}</ul>` : "";
       const season = e.last_year ? `<p class="small ${e.seasonal ? "" : "muted"}">${e.seasonal ? `<b>${t("Seasonal")}</b>: ` : ""}${fill("Same weeks last year: {a} → {b} clicks ({p}%).", { a: num(e.last_year.clicks_before), b: num(e.last_year.clicks), p: signed(e.last_year.percent) })}</p>` : "";
-      return `<ul class="rows ov-split">${rows.join("")}</ul>${season}${brand}${moversList(e)}`;
+      return `<ul class="rows ov-split">${rows.join("")}</ul>${season}${brand}${moversList(e, f.host)}`;
     }
     if (e.clicks_before !== undefined && e.clicks !== undefined) rows.push(li("Clicks", `${num(e.clicks_before)} → ${num(e.clicks)}`));
     else if (e.clicks !== undefined) rows.push(li("Clicks", num(e.clicks)));
@@ -711,8 +711,8 @@
     if (e.last_seen) rows.push(li("Last seen on Google", esc(dayLabel(e.last_seen))));
     const list = `<ul class="rows ov-split">${rows.join("")}</ul>`;
     const queryRow = (q) => q.clicks_before !== undefined
-      ? `<li><div class="what"><div class="t" dir="auto">${esc(q.query)}</div><div class="s muted">${t("pos.")} ${dec1(q.position_before)} → ${dec1(q.position)}</div></div><span>${num(q.clicks_before)} → ${num(q.clicks)}</span></li>`
-      : `<li><div class="what"><div class="t" dir="auto">${esc(q.query)}</div><div class="s muted">${t("pos.")} ${dec1(q.position)} · ${num(q.impressions)} ${t("impressions")}</div></div><span>${num(q.clicks)} ${t("clicks")}</span></li>`;
+      ? `<li><div class="what"><div class="t">${KeywordLink.html(q.query, { host: f.host })}</div><div class="s muted">${t("pos.")} ${dec1(q.position_before)} → ${dec1(q.position)}</div></div><span>${num(q.clicks_before)} → ${num(q.clicks)}</span></li>`
+      : `<li><div class="what"><div class="t">${KeywordLink.html(q.query, { host: f.host })}</div><div class="s muted">${t("pos.")} ${dec1(q.position)} · ${num(q.impressions)} ${t("impressions")}</div></div><span>${num(q.clicks)} ${t("clicks")}</span></li>`;
     const queriesTitle = { questions: "Questions", topic: "Its biggest searches", page_near: "Searches just past page 1" }[f.kind] || "Queries behind it";
     const queries = e.queries?.length ? `<h3 class="ov-h3">${t(queriesTitle)}</h3><ul class="rows ov-split">${e.queries.map(queryRow).join("")}</ul>` : "";
     const variants = e.variants?.length ? `<h3 class="ov-h3">${t("Its addresses on Google")}</h3><ul class="rows ov-split">${e.variants.map((v) => `<li><div class="what"><div class="t" dir="auto">${pageLink(v.page, { text: v.page })}</div><div class="s muted">${t("pos.")} ${dec1(v.position)} · ${num(v.clicks)} ${t("clicks")}</div></div><span>${num(v.impressions)}</span></li>`).join("")}</ul>
@@ -731,9 +731,9 @@
     const page = f.page && !PAGE_IS_SUBJECT.includes(f.kind) ? `<p class="small muted">${t("Page that ranks")}: ${pageLink(f.page, { text: pathOf(f.page) })}</p>` : "";
     return `${list}${season}${leads}${page}${queries}${variants}${pages}${results}${gaps}${causes}`;
   }
-  function moversList(e) {
+  function moversList(e, host) {
     const groups = Object.entries(e.movers || {}).filter(([, list]) => list.length).sort((a, b) => Math.abs(e.parts[b[0]]) - Math.abs(e.parts[a[0]]));
-    return groups.slice(0, 3).map(([id, list]) => `<h3 class="ov-h3">${esc(t(PARTS[id][e.parts[id] > 0 ? 0 : 1]))}</h3><ul class="rows ov-split">${list.map((m) => `<li><div class="what"><div class="t" dir="auto">${esc(m.query)}</div><div class="s muted">${m.position_before !== null && m.position_before !== undefined ? `${t("pos.")} ${dec1(m.position_before)} → ${dec1(m.position)} · ` : ""}${num(m.impressions_before)} → ${num(m.impressions)} ${t("impressions")}</div></div><span>${signed(m.effect)}</span></li>`).join("")}</ul>`).join("");
+    return groups.slice(0, 3).map(([id, list]) => `<h3 class="ov-h3">${esc(t(PARTS[id][e.parts[id] > 0 ? 0 : 1]))}</h3><ul class="rows ov-split">${list.map((m) => `<li><div class="what"><div class="t">${KeywordLink.html(m.query, { host })}</div><div class="s muted">${m.position_before !== null && m.position_before !== undefined ? `${t("pos.")} ${dec1(m.position_before)} → ${dec1(m.position)} · ` : ""}${num(m.impressions_before)} → ${num(m.impressions)} ${t("impressions")}</div></div><span>${signed(m.effect)}</span></li>`).join("")}</ul>`).join("");
   }
   /* How "clicks a month at stake" was worked out, in words, so it can be checked: the (i) beside the figure. */
   function stakeWords(f) {
@@ -871,7 +871,7 @@
       ${canTrack ? `<button class="btn" data-in-track="${esc(f.query)}">${icon("plus")}${t("Track")}</button>` : ""}
       ${f.status === "dismissed" ? `<button class="btn btn-ghost" data-in-undismiss="${f.id}">${t("Bring it back")}</button>` : f.status === "open" ? `<button class="btn btn-ghost" data-in-dismiss="${f.id}">${t("Not useful")}</button>` : ""}
     </div>`;
-    const where = f.page ? `<p class="small">${pageLink(f.page, { text: pathOf(f.page), host: f.host })}</p>` : "";
+    const where = (f.query ? `<p class="small">${KeywordLink.html(f.query, { id: f.evidence?.keyword_id, host: f.host })}</p>` : "") + (f.page ? `<p class="small">${pageLink(f.page, { text: pathOf(f.page), host: f.host })}</p>` : "");
     UI.openPanel(`${UI.panelHead(title, sub)}<div class="panel-body">${stakeBlock(f)}${where}${f.kind !== "change" ? `<p class="small" dir="auto">${esc(reasonOf(f))}${f.kind === "no_demand" ? UI.tip("It may be too rare for Google to report.") : ""}</p>` : ""}${doBlock(f)}${chart}${evidenceList(f)}${aiBlock(f)}
       ${f.status === "dismissed" ? `<p class="small muted">${t("Hidden as not useful. Comes back if it doubles.")}</p>` : ""}${actions}</div>`, opener);
     IN.current = f;

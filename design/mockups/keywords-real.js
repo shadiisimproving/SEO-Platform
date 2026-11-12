@@ -386,7 +386,7 @@
       return `<th scope="col" class="c" aria-sort="${on ? (K.qsort.dir === "asc" ? "ascending" : "descending") : "none"}"><button type="button" class="th-btn" data-kwq-sort="${id}">${label}${on ? icon(K.qsort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
     };
     return `${tools}<div class="ov-list"><div class="table-wrap"><table class="data" id="kwq-table"><thead><tr><th scope="col">${t("Keyword")}</th>${head("clicks", t("Clicks"))}${head("impressions", "Impressions")}${head("ctr", t("Click rate"))}${head("position", t("Position"))}<th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
-      <tbody>${view.rows.map((row) => `<tr style="cursor:default"><td class="head-cell kw" dir="auto">${esc(row.query)}${state.site === "all" ? `<span class="second mono">${esc(row.site)}</span>` : ""}</td><td class="c" data-label="${t("Clicks")}">${num(row.clicks)}</td><td class="c" data-label="Impressions">${num(row.impressions)}</td><td class="c" data-label="${t("Click rate")}">${row.impressions ? `${dec(Math.round((row.clicks / row.impressions) * 1000) / 10)}%` : "—"}</td><td class="c" data-label="${t("Position")}">${row.position === null ? "—" : dec(Math.round(row.position * 10) / 10)}</td><td class="r">${tracked.has(`${row.site}|${row.query.toLowerCase()}`) ? "" : `<button class="btn btn-small" data-kwr-follow="${esc(row.query)}" data-site-host="${esc(row.site)}">${t("Track")}</button>`}</td></tr>`).join("")}</tbody></table></div>
+      <tbody>${view.rows.map((row) => `<tr style="cursor:default"><td class="head-cell kw">${KeywordLink.html(row.query, { host: row.site })}${state.site === "all" ? `<span class="second mono">${esc(row.site)}</span>` : ""}</td><td class="c" data-label="${t("Clicks")}">${num(row.clicks)}</td><td class="c" data-label="Impressions">${num(row.impressions)}</td><td class="c" data-label="${t("Click rate")}">${row.impressions ? `${dec(Math.round((row.clicks / row.impressions) * 1000) / 10)}%` : "—"}</td><td class="c" data-label="${t("Position")}">${row.position === null ? "—" : dec(Math.round(row.position * 10) / 10)}</td><td class="r">${tracked.has(`${row.site}|${row.query.toLowerCase()}`) ? "" : `<button class="btn btn-small" data-kwr-follow="${esc(row.query)}" data-site-host="${esc(row.site)}">${t("Track")}</button>`}</td></tr>`).join("")}</tbody></table></div>
       ${TP.footer(Q_PAGES, view, { noun: t(view.total === 1 ? "query" : "queries") })}</div>`;
   }
   /* The Queries table keeps the server's order (most clicks first) until a heading is pressed. Numbers go biggest first,
@@ -924,7 +924,7 @@
       const head = `${esc(words)}${g.rows.length > 1 ? ` ×${num(g.rows.length)}` : ""}${g.stop ? ` · ${esc(g.stop.fold)}` : ""}`;
       const charged = g.rows.some((f) => f.timed_out) ? `<li class="kwr-fk why">${esc(t("May have been charged: a Retry spends again."))}</li>` : "";
       const more = g.rows.length > shown.length ? `<li class="kwr-fk muted">+${num(g.rows.length - shown.length)}</li>` : "";
-      return `<li class="kwr-fg">${lead(g.tool, words)}${tipped([full, g.stop?.tip].filter(Boolean).join(" "), head)}</li>${charged}${shown.map((f) => `<li class="kwr-fk"><span class="k" dir="auto">${esc(f.keyword || "")}</span>${f.engine ? logoMark(f.engine, name(f.engine), 14) : ""}</li>`).join("")}${more}`;
+      return `<li class="kwr-fg">${lead(g.tool, words)}${tipped([full, g.stop?.tip].filter(Boolean).join(" "), head)}</li>${charged}${shown.map((f) => `<li class="kwr-fk"><span class="k">${KeywordLink.html(f.keyword || "", { id: f.keyword_id })}</span>${f.engine ? logoMark(f.engine, name(f.engine), 14) : ""}</li>`).join("")}${more}`;
     });
     stops.filter((s) => !s.used).forEach((s) => lines.push(s.own ? `<li class="kwr-fg">${logoMark(s.tool, t(s.tool))}${tipped(s.tip, esc(s.own))}</li>` : `<li class="kwr-fg kwr-plain"><span>${esc(s.tip)}</span></li>`));
     return lines.length ? `<ul class="tray-fails kwr-fails">${lines.join("")}</ul>` : "";
@@ -1320,8 +1320,12 @@
   function openWanted() {
     if (K.wantKeyword && K.data && state.route === "keywords") {
       const w = K.wantKeyword;
-      const found = K.data.rows.find((r) => (w.keywordId ? r.keyword_id === w.keywordId : r.keyword.toLowerCase() === w.keyword) && (!w.host || r.site === w.host));
+      const found = (w.keywordId && K.data.rows.find((r) => r.keyword_id === w.keywordId && (!w.host || r.site === w.host)))
+        || (w.keywordId && K.data.rows.find((r) => r.keyword_id === w.keywordId))
+        || K.data.rows.find((r) => sameWord(r.keyword, w.keyword) && (!w.host || r.site === w.host));
       K.wantKeyword = null;
+      // Not tracked here: the search itself, in Overview → Queries, rather than a list with no panel (keyword-links.js).
+      if (!found && w.text && window.OV?.openQuery) { window.OV.openQuery({ host: w.host, query: w.text }); return; }
       if (found) {
         K.wantOpen = found.id; kwPages().q = "";
         if (!filtered().some((r) => r.id === found.id)) state.filter = "all"; // a chip that hides it is lifted
@@ -1331,7 +1335,7 @@
     if (!K.wantOpen || !K.data || state.route !== "keywords") return;
     const id = K.wantOpen;
     K.wantOpen = null;
-    if (rowById(id) && !$("#panel")) setTimeout(() => openKeyword(id), 0);
+    if (rowById(id) && (!$("#panel") || K.panel?.id !== id)) setTimeout(() => openKeyword(id), 0); // another keyword's panel gives way
   }
   window.addEventListener("seocc:site-added", () => { K.stale = true; });
   // Keywords added elsewhere (Competitors → Keyword check → Add to my keywords) show here without a reload.
@@ -1349,7 +1353,18 @@
                                                  Focus goes back to `opener` when the dialog closes. Resolves to true once the
                                                  dialog is open, false when there was nothing to check or the tools couldn't load.
                                                  Switch on or off alike. */
+  /* The same keyword whatever its spacing, width or case, as the server compares them (seo/serp/store.py clean_keyword). */
+  const cleanWord = (v) => String(v || "").normalize("NFKC").replace(/[\u200b-\u200f\u2060\ufeff\u00ad]/g, "").replace(/\s+/g, " ").trim().toLocaleLowerCase();
+  const sameWord = (a, b) => cleanWord(a) === cleanWord(b);
   window.KW = {
+    /* keyword_id of that keyword on that site (any site when host is null); null when the list is in and doesn't hold it;
+       undefined when the list hasn't loaded yet, so nobody can say. */
+    trackedId(keyword, host = null) {
+      const rows = K.data?.rows || window.SCREEN_DATA?.peek?.("rankings")?.rows;
+      if (!rows) return undefined;
+      const hit = rows.find((r) => sameWord(r.keyword, keyword) && (!host || r.site === host));
+      return hit ? hit.keyword_id : null;
+    },
     track: (queries, host, opener, market) => {
       const words = [].concat(queries).filter(Boolean);
       if (simple() && opener?.closest?.("#kwr-ideas-slot") && $("#kwr-add-form")) { addToList(words, market || {}, opener); return; }
@@ -1370,7 +1385,7 @@
     /* Open one keyword's panel from anywhere: Keywords opens on its site, and the panel opens once the rows are in. */
     open({ keywordId = null, keyword = "", host = null } = {}) {
       if (host) UI.pickSite(host);
-      K.wantKeyword = { keywordId, keyword: String(keyword || "").toLowerCase(), host };
+      K.wantKeyword = { keywordId, keyword: String(keyword || ""), text: String(keyword || "").trim(), host };
       if (state.route !== "keywords") UI.go("keywords"); else openWanted();
       if (K.stale && !K.loading) load(); else openWanted();
     },

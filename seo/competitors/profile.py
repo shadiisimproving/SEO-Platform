@@ -116,7 +116,7 @@ def _ranking_timeline(history: list[store.Check], host: str, mine_hosts: list[st
             continue
         was, now = before.best_on(host), check.best_on(host)
         at = _iso(check.checked_at)
-        common = {"at": at, "keyword": check.keyword, "tool": check.tool, "engine": check.engine, **_check_facts(check, now or was, mine_hosts)}
+        common = {"at": at, "keyword": check.keyword, "keyword_id": check.keyword_id, "tool": check.tool, "engine": check.engine, **_check_facts(check, now or was, mine_hosts)}
         if was is None and now is not None:
             events.append({**common, "kind": "rank_new", "to": now.position, "url": now.url, "depth": check.depth})
         elif was is not None and now is None:
@@ -138,7 +138,7 @@ def _keyword_tables(checks: list[store.Check], history: list[store.Check], site_
         if theirs is not None:
             current_ids.add(check.target_id)
         current.append({
-            "keyword": check.keyword, "country": check.country, "engine": check.engine, "tool": check.tool, "location": check.real_location, "depth": check.depth,
+            "keyword": check.keyword, "keyword_id": check.keyword_id, "country": check.country, "engine": check.engine, "tool": check.tool, "location": check.real_location, "depth": check.depth,
             "checked_at": _iso(check.checked_at), "my_position": mine.position if mine else None, "my_url": mine.url if mine else None,
             "their_position": theirs.position if theirs else None, "their_url": theirs.url if theirs else None,
             "status": "shared" if mine and theirs else "theirs_only" if theirs else "mine_only",
@@ -152,7 +152,7 @@ def _keyword_tables(checks: list[store.Check], history: list[store.Check], site_
         latest = latest_of.get(check.target_id)
         if theirs is not None and latest is not None and check.target_id not in current_ids and check.same_kind_as(latest):
             past[check.target_id] = {
-                "keyword": check.keyword, "engine": check.engine, "last_position": theirs.position, "last_url": theirs.url,
+                "keyword": check.keyword, "keyword_id": check.keyword_id, "engine": check.engine, "last_position": theirs.position, "last_url": theirs.url,
                 "last_seen": _iso(check.checked_at), "tool": check.tool,
             }
     return (

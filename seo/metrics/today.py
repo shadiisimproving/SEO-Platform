@@ -342,7 +342,7 @@ def _finding_row(f: dict) -> dict:
         "id": f"finding-{f['key']}", "seen_key": f["key"], "kind": "search_finding", "finding": f["kind"], "finding_id": f["id"], "severity": "warn",
         "rank": LOSING_RESULTS if f["group"] in ("changed", "decline") else OTHER, "host": f["host"],
         "title": _FINDING_TITLES.get(f["kind"], "{path}").format(**values), "detail": f"~{round(f['at_stake'])} clicks/month at stake",
-        "page": f["page"], "query": f["query"], "link": f"#insights/{f['id']}", "created_at": None,
+        "page": f["page"], "query": f["query"], "keyword_id": evidence.get("keyword_id"), "link": f"#insights/{f['id']}", "created_at": None,
         # The same sentence as parts, so the screen can say it in the reader's language (English key, values apart).
         "words": {"title": [_FINDING_TITLES.get(f["kind"], "{path}"), values], "detail": ["~{n} clicks/month at stake", {"n": round(f["at_stake"])}],
                   **({"segment_dim": evidence.get("dim")} if evidence.get("segment") else {})},
@@ -371,7 +371,7 @@ def _ai_overview_rows(engine: Engine, site_id: int | None) -> list[dict]:
         rows.append({
             "id": f"aio-{key}", "seen_key": key, "kind": "ai_overview", "change": change["kind"], "severity": severity, "rank": rank, "host": change["host"],
             "title": template.format(keyword=change["keyword"]), "detail": "Last two AI Overview checks",
-            "query": change["keyword"], "link": "#competitors/ai", "created_at": _iso(change["at"]),
+            "query": change["keyword"], "keyword_id": change.get("keyword_id"), "link": "#competitors/ai", "created_at": _iso(change["at"]),
             "words": {"title": [template, {"keyword": change["keyword"]}], "detail": ["Last two AI Overview checks", {}]},
         })
     return rows

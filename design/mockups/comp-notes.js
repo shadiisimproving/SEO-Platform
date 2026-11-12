@@ -582,7 +582,7 @@
     if (e.scope === "page") return `${icon("file-text")}${e.pageUrl ? COMP.link(e.pageUrl) : `<span>${t("A page")}</span>`}${forSite}`;
     if (e.scope === "site") return `${icon("globe")}<span>${t(siteOf(e.siteId) === null ? "All my sites" : "Whole site")}</span>${forSite}`;
     if (e.scope === "screen") return `${icon("layout-dashboard")}<span>${esc(screenName(e.screen))}</span>${forSite}`;
-    if (e.scope === "keyword") return `${icon("key-round")}<span dir="auto">${esc(e.keyword || t("A keyword"))}</span>${forSite}`;
+    if (e.scope === "keyword") return `${icon("key-round")}${e.keyword ? KeywordLink.html(e.keyword, { host: hostOf(e.siteId) }) : `<span>${t("A keyword")}</span>`}${forSite}`;
     if (e.scope === "section") return `${icon("folder-open")}<span class="mono" dir="ltr">${esc(e.pageUrl ? `${COMP.shortUrl(e.pageUrl)}/…` : t("A folder"))}</span>${forSite}`;
     if (e.scope === "date") return `${icon("calendar-days")}<span>${esc(e.day ? dayName(e.day) : t("A date"))}</span>${forSite}`;
     if (e.scope === "domain") return `${icon("link-2")}<span class="mono" dir="ltr">${esc(e.domain || t("A linking website"))}</span>${forSite}`;
