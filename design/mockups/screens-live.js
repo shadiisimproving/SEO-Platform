@@ -14,7 +14,8 @@
   };
 
   // ---- asking the server ----------------------------------------------------------------------
-  const pct = (v, digits = 1) => (v === null || v === undefined ? "—" : `${String(+(v * 100).toFixed(digits)).replace(".", UI.state.lang === "fr" ? "," : ".")} %`);
+  // "38.5%" in English, "38,5 %" in French: the language's own way, never built by hand.
+  const pct = (v, digits = 1) => (v === null || v === undefined ? "—" : new Intl.NumberFormat(UI.locale(), { style: "percent", maximumFractionDigits: digits }).format(v));
   const shortDay = (day) => new Intl.DateTimeFormat(UI.locale(), { day: "numeric", month: "short" }).format(new Date(`${day}T00:00:00`));
   const dayDate = (d) => { const p = (n) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; };
   const shift = (day, by) => { const d = new Date(`${day}T00:00:00`); d.setDate(d.getDate() + by); return dayDate(d); };
@@ -48,7 +49,11 @@
 
   // ---- states ---------------------------------------------------------------------------------
   const loadingCard = () => UI.skeleton("page");
-  const emptyCard = (title, body, action = "") => `<section class="card"><div class="empty"><h3>${esc(title)}</h3><p>${body}</p>${action ? `<div style="margin-top:12px">${action}</div>` : ""}</div></section>`;
+  // An empty period always offers the way out: a longer period, one click (UI.longerPeriodButton, mockup.js).
+  const emptyCard = (title, body, action = "") => {
+    const act = action || (title === t("No data in this period.") && UI.longerPeriodButton ? UI.longerPeriodButton() : "");
+    return `<section class="card"><div class="empty"><h3>${esc(title)}</h3><p>${body}</p>${act ? `<div style="margin-top:12px">${act}</div>` : ""}</div></section>`;
+  };
   const connectBtn = (id, word = "Connect") => `<button class="btn btn-main" data-lv-connect="${id}">${t(word)}</button>`;
   const NAMES = { gsc: "Search Console", ga4: "Google Analytics" };
 
@@ -58,6 +63,14 @@
     if (entry.error) return UI.failCard(entry.error, { retry: "data-lv-retry" });
     const name = t(NAMES[source]);
     const d = entry.data;
+    /* Numbers saved before the source was disconnected or broke stay on screen, with a note saying so, like Overview does.
+       Before, Channels said "not connected" over 6,000 saved visits that Today was counting ("2 of 3 sites"). */
+    const saved = Boolean(d.channels?.length || d.sessions || d.totals || d.pages?.length || d.rows?.length);
+    if (saved && ["not_connected", "not_used", "failing"].includes(d.state)) {
+      const why = d.state === "failing" ? `${name}: ${t("stopped working")}` : `${name}: ${t("not connected now")}`;
+      LV.savedNote = `<p class="note warn lv-saved-note" role="status">${icon("clock")}<span>${esc(why)}. ${t("These are the numbers saved before.")}</span>${connectBtn("google", d.state === "failing" ? "Fix" : "Connect").replace("btn btn-main", "btn btn-small")}</p>`;
+      return "";
+    }
     if (d.state === "no_sites") return emptyCard(t("No site yet"), t("Add a site to see its data."), `<button class="btn btn-main" id="site-switch-hint" data-lv-add-site>${t("Add a site")}</button>`);
     if (d.state === "not_connected") return emptyCard(`${name}: ${t("not connected")}`, t("Connect it in Settings and pick this site's property."), connectBtn("google"));
     if (d.state === "not_used") return emptyCard(`${name}: ${t("not used")}`, t("This site doesn't use it, as you said. Change that in Settings."), connectBtn("google", "Open Settings"));
@@ -161,7 +174,7 @@
   /* marks: { day: count } draws a dot on the first line for those days, such as a lead in that week; markName names it in the
      read-out. dayLabel: how a day reads in the read-out and the table, such as "Week to 9 Nov". */
   function lineChart(id, days, series, { invert = false, unit = "", legend = true, marks = null, markName = "Leads", dayLabel = null } = {}) {
-    if (!days.length) return `<div class="empty"><p>${t("No data in this period.")}</p></div>`;
+    if (!days.length) return `<div class="empty"><p>${t("No data in this period.")}</p>${UI.longerPeriodButton ? UI.longerPeriodButton() : ""}</div>`;
     const all = series.flatMap((s) => days.map((d) => s.values[d]).filter((v) => v !== null && v !== undefined));
     const top = Math.max(...all, 1), low = invert ? Math.min(...all, 1) : 0;
     const W = 1000, H = 200;
@@ -286,7 +299,10 @@
 
   const rateCell = (r) => pct(r.rate);
   const topbarFor = (title, sub, entry) => UI.topbar(t(title), t(sub), entry?.data && !["no_sites", "not_connected", "not_used"].includes(entry.data.state) ? refreshBtn() : "");
-  const page = (head, body) => `${head}<div class="content page-enter${UI.simple?.() ? " lv-page" : ""}">${body}</div>`;
+  const page = (head, body) => {
+    const note = LV.savedNote || ""; LV.savedNote = ""; // stateCard's note for saved numbers goes on top of this page only
+    return `${head}<div class="content page-enter${UI.simple?.() ? " lv-page" : ""}">${note}${body}</div>`;
+  };
   /* On All sites, /contact/ can be on several sites, so a page row says whose it is. It sorts and exports that way too. */
   const siteOfPage = (r) => (!UI.siteHostPicked() && r.host ? `<div class="lv-cat mono" dir="auto">${esc(r.host)}</div>` : "");
   const pageName = (r) => (!UI.siteHostPicked() && r.host ? `${r.host}${r.path}` : r.path);
@@ -399,7 +415,7 @@
     return `<section class="card" style="margin-top:14px"><div class="card-head"><h2>${t(title)}</h2></div>
       <p class="help" style="padding:10px 18px 2px;margin:0">${t(hint)}</p>
       ${rules.map((r) => `<div class="lv-rule"><span class="grow mono" dir="auto">${esc(r.pattern)}${r.value ? ` → ${esc(r.value)}` : ""}</span><button class="btn btn-small btn-ghost" data-lv-rule-del="${r.id}" aria-label="${t("Remove")}: ${esc(r.pattern)}">${t("Remove")}</button></div>`).join("")}
-      <form class="lv-rule-form" data-lv-rule-form="${kind}"><input class="input mono" name="f_pattern" placeholder="${esc(patternHint)}" aria-label="${t("Matches")}" autocomplete="off">${valueHint ? `<input class="input" name="f_value" placeholder="${esc(t(valueHint))}" aria-label="${t(valueHint)}" autocomplete="off">` : ""}<button class="btn btn-small" type="submit">${t("Add rule")}</button><span class="error" data-lv-rule-error hidden></span></form></section>`;
+      <form class="lv-rule-form" data-lv-rule-form="${kind}"><input class="input mono" spellcheck="false" autocapitalize="off" name="f_pattern" placeholder="${esc(patternHint)}" aria-label="${t("Matches")}" autocomplete="off">${valueHint ? `<input class="input" name="f_value" placeholder="${esc(t(valueHint))}" aria-label="${t(valueHint)}" autocomplete="off">` : ""}<button class="btn btn-small" type="submit">${t("Add rule")}</button><span class="error" data-lv-rule-error hidden></span></form></section>`;
   }
 
   function channelsPage() {
@@ -493,7 +509,7 @@
     const sessionsOnly = heat.data?.sessions_only_days;
     const clarityCard = heat.data?.has_data ? `<section class="tiles">
         ${UI.tile(t("Clarity sessions"), UI.cnt(heat.data.sessions), `<span class="ab">${t("Data through")} ${esc(shortDay(heat.data.through))}</span>`, { ic: "activity" })}
-        ${UI.tile(t("Scroll depth"), heat.data.scroll_depth === null ? "—" : `${decimal(heat.data.scroll_depth)} %`, "", { ic: "layers" })}
+        ${UI.tile(t("Scroll depth"), heat.data.scroll_depth === null ? "—" : pct(heat.data.scroll_depth / 100), "", { ic: "layers" })}
         ${UI.tile(t("Rage clicks"), known(heat.data.rage_clicks), "", { ic: "mouse-pointer-click" })}
         ${UI.tile(t("Dead clicks"), known(heat.data.dead_clicks), "", { ic: "mouse-pointer-click" })}
       </section>${sessionsOnly ? `<p class="note lv-note">${icon("info")}<span>${num(sessionsOnly)} ${t(sessionsOnly === 1 ? "day has Clarity sessions only: no scroll depth or clicks." : "days have Clarity sessions only: no scroll depth or clicks.")}</span></p>` : ""}` : "";
@@ -515,7 +531,7 @@
 
   // ---- Clarity downloads: totals for the file's own period, shown apart from the period picked above ----
   const crTabs = { dashboard: "pages" };
-  const pctOf = (v) => (v === null || v === undefined ? "—" : `${decimal(Math.round(v * 10) / 10)} %`);
+  const pctOf = (v) => (v === null || v === undefined ? "—" : pct(v / 100)); // v is already in percent
   const realVisits = (d) => (d.sessions === null || d.sessions === undefined ? null : Math.max(0, d.sessions - (d.bot_sessions || 0)));
   const spanOf = (r) => `${esc(shortDay(r.period_start))} – ${esc(shortDay(r.period_end))}`;
   const grade = (value, good, poor, text) => (value === null || value === undefined ? "—" : `<span class="${value <= good ? "good" : value <= poor ? "warn" : "crit"}">${text}</span> <span class="small muted">${t(value <= good ? "good" : value <= poor ? "needs work" : "slow")}</span>`);
@@ -672,7 +688,7 @@
   const channelsKey = () => `metrics/channels?${periodQuery()}${INCLUDE["metrics/channels"]}`;
   const rulesBody = (rules) => `<p class="help lv-rules-help">${t("Rename channels by source/medium (* = anything). Past days change too.")}</p>
       ${rules.length ? `<div class="lv-rules-list">${rules.map((r) => `<div class="lv-rule"><span class="grow mono" dir="auto">${esc(r.pattern)}${r.value ? ` → ${esc(r.value)}` : ""}</span><button class="btn btn-small btn-ghost" data-lv-rule-del="${r.id}" aria-label="${t("Remove")}: ${esc(r.pattern)}">${t("Remove")}</button></div>`).join("")}</div>` : `<p class="small muted lv-rules-none">${t("No rules yet.")}</p>`}
-      <form class="lv-rule-form" data-lv-rule-form="channel"><input class="input mono" name="f_pattern" placeholder="chatgpt.com/*" aria-label="${t("Matches")}" autocomplete="off" data-autofocus><input class="input" name="f_value" placeholder="${esc(t("Channel name"))}" aria-label="${t("Channel name")}" autocomplete="off"><button class="btn btn-small" type="submit">${t("Add rule")}</button><span class="error" data-lv-rule-error hidden></span></form>`;
+      <form class="lv-rule-form" data-lv-rule-form="channel"><input class="input mono" spellcheck="false" autocapitalize="off" name="f_pattern" placeholder="chatgpt.com/*" aria-label="${t("Matches")}" autocomplete="off" data-autofocus><input class="input" name="f_value" placeholder="${esc(t("Channel name"))}" aria-label="${t("Channel name")}" autocomplete="off"><button class="btn btn-small" type="submit">${t("Add rule")}</button><span class="error" data-lv-rule-error hidden></span></form>`;
   function rulesPanel(opener) {
     const rules = window.SCREEN_DATA?.peek(channelsKey())?.rules || LV.cache.get?.(channelsKey())?.data?.rules || [];
     UI.openPanel(`${UI.panelHead(t("Channel rules"), "")}<div class="panel-body" data-lv-rules-body>${rulesBody(rules)}</div>`, opener);
@@ -938,7 +954,7 @@
     UI.openPanel(`${UI.panelHead(t(editing ? "Edit resource" : "Add a resource"), "")}
       <form class="panel-body" id="lv-resource-form" data-id="${r.id || ""}" novalidate>
         <label class="field"><span>${t("Title")}</span><input class="input" name="f_title" dir="auto" value="${esc(r.title || "")}" autocomplete="off"></label>
-        <label class="field"><span>${t("Link")}</span><input class="input mono" name="f_url" dir="ltr" value="${esc(r.url || "")}" placeholder="https://" autocomplete="off"></label>
+        <label class="field"><span>${t("Link")}</span><input class="input mono" type="url" inputmode="url" spellcheck="false" autocapitalize="off" name="f_url" dir="ltr" value="${esc(r.url || "")}" placeholder="https://" autocomplete="off"></label>
         <label class="field"><span>${t("Site")}</span><select class="select" name="f_site_id" style="width:100%"><option value="">${t("All sites")}</option>${window.SITES.filter((s) => s.realId).map((s) => `<option value="${s.realId}" ${(editing ? r.site_id === s.realId : picked === s.host) ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></label>
         <div class="field"><span id="rs-tags-label">${t("Tags")}</span>
           <input type="hidden" name="f_tags" value="${esc(JSON.stringify(r.tags || []))}">
@@ -1115,6 +1131,7 @@
     "Search queries": "Rechercher une requête", "Search resources": "Rechercher une ressource", "Search campaigns": "Rechercher une campagne",
     "Loading…": "Chargement…", "Needs the running app": "Il faut lancer l'application", "Opened as a file: no real data.": "Ouverte comme fichier : pas de vraies données.",
     "That didn't load": "Le chargement a échoué", "No site yet": "Pas encore de site", "Add a site to see its data.": "Ajoutez un site pour voir ses données.",
+    "not connected now": "plus connecté", "These are the numbers saved before.": "Ce sont les chiffres enregistrés avant.",
     "not connected": "non connecté", "not used": "non utilisé", "stopped working": "ne fonctionne plus", "Google Analytics": "Google Analytics", "Search Console": "Search Console",
     "Connect it in Settings and pick this site's property.": "Connectez-le dans les réglages et choisissez la propriété du site.",
     "This site doesn't use it, as you said. Change that in Settings.": "Ce site ne l'utilise pas, comme indiqué. Modifiable dans les réglages.",

@@ -22,7 +22,7 @@
 .pt-panel > .card { margin-bottom: 14px; }
 
 .pt-marks { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 8px; vertical-align: middle; }
-.pt-mark { display: inline-flex; align-items: center; gap: 3px; font-size: 11px; line-height: 18px; padding: 0 6px; }
+.pt-mark { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; line-height: 18px; padding: 0 6px; }
 .pt-mark svg.i { width: 12px; height: 12px; }
 .pt-none { color: var(--text-2); font-style: italic; margin-right: 6px; }
 
@@ -44,7 +44,7 @@
 .pt-plot { position: relative; height: 200px; }
 .pt-tick { position: absolute; left: 0; right: 0; height: 0; border-top: 1px solid var(--line); }
 .pt-tick:first-child { border-top-color: var(--line-2); }
-.pt-tick span { position: absolute; left: -40px; width: 32px; transform: translateY(-50%); text-align: right; font-size: 11px; color: var(--muted); }
+.pt-tick span { position: absolute; left: -40px; width: 32px; transform: translateY(-50%); text-align: right; font-size: 12px; color: var(--muted); }
 .pt-cols { position: absolute; inset: 0; display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); }
 .pt-month { position: relative; display: flex; align-items: flex-end; justify-content: center; transition: opacity var(--t-fast); }
 .pt-month:hover { background: var(--hover); border-radius: var(--r-s) var(--r-s) 0 0; }
@@ -54,7 +54,7 @@
 .pt-two .pt-pair i { width: min(14px, 32%); }
 .pt-pair .pt-bar-them { background: var(--pt-them); }
 .pt-pair .pt-bar-you { background: var(--pt-you); }
-.pt-mlabel { position: absolute; top: calc(100% + 7px); left: 50%; transform: translateX(-50%); font-size: 11px; color: var(--muted); white-space: nowrap; }
+.pt-mlabel { position: absolute; top: calc(100% + 7px); left: 50%; transform: translateX(-50%); font-size: 12px; color: var(--muted); white-space: nowrap; }
 @media (max-width: 640px) { .pt-month:nth-child(even) .pt-mlabel { visibility: hidden; } }
 .pt-tip { position: absolute; top: 0; transform: translateX(-50%); display: grid; gap: 2px; padding: 8px 10px; border-radius: var(--r-s); background: var(--panel-solid); border: 1px solid var(--line-2); box-shadow: 0 6px 20px rgba(0, 0, 0, .12); font-size: 12px; pointer-events: none; white-space: nowrap; z-index: 3; }
 .pt-tip[hidden] { display: none; } /* display: grid above beats the browser's own [hidden]: the empty tip showed as a small hollow circle */
@@ -164,8 +164,8 @@
 
 /* Each bar carries its number, so the chart reads without hovering or a y-axis. */
 .pt-pair i { position: relative; }
-.pt-bar-val { font-style: normal; position: absolute; bottom: calc(100% + 3px); left: 50%; transform: translateX(-50%); font-size: 11px; font-weight: 600; color: var(--text-2); white-space: nowrap; }
-.pt-two .pt-bar-val { font-size: 10px; }
+.pt-bar-val { font-style: normal; position: absolute; bottom: calc(100% + 3px); left: 50%; transform: translateX(-50%); font-size: 12px; font-weight: 600; color: var(--text-2); white-space: nowrap; }
+.pt-two .pt-bar-val { font-size: 12px; }
 .pt-chart { padding-top: 18px; }
 .pt-chart-key { display: flex; gap: 16px; margin: 0 0 4px; }
 .pt-chart-key span { display: inline-flex; align-items: center; gap: 6px; }
@@ -215,13 +215,17 @@
 .pt-sides { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .pt-sides-one { grid-template-columns: minmax(0, 1fr); }
 .pt-side { display: flex; flex-direction: column; gap: 3px; min-width: 0; padding: 10px 12px; border-radius: var(--r-s); box-shadow: inset 0 0 0 1px var(--line); }
-.pt-side-ahead { background: var(--c-blue-pale); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-blue) 35%, transparent); }
+/* Coloured by side, never by status (UI critique 2026-11-12: "Them · Ahead" was filled blue): you blue, them purple (MASTER.md). */
+.pt-side-ahead.pt-side-you { background: var(--c-blue-pale); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-blue) 35%, transparent); }
+.pt-side-ahead.pt-side-them { background: var(--c-purple-pale); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c-purple) 35%, transparent); }
 .pt-side-who { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
 .pt-side-who .site-logo { vertical-align: 0; border-radius: 3px; }
-.pt-side-flag { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--accent-text); }
+.pt-side-flag { margin-left: auto; font-size: 12px; font-weight: 600; color: var(--accent-text); }
+.pt-side-them .pt-side-flag { color: var(--c-purple); }
 .pt-side-val { font-size: 20px; font-weight: 600; line-height: 26px; color: var(--text); overflow-wrap: anywhere; }
 .pt-side-bar { display: block; height: 4px; margin-top: 4px; border-radius: 2px; background: var(--track); overflow: hidden; }
 .pt-side-bar i { display: block; height: 100%; border-radius: 2px; background: var(--c-blue); }
+.pt-side-them .pt-side-bar i { background: var(--c-purple); }
 .pt-link-score b { font-weight: 600; color: var(--text); margin-right: 4px; }
 @media (max-width: 640px) { .pt-side-val { font-size: 17px; line-height: 22px; } }
 /* 2026-11-12: the profile's figures as four equal number cards (comp-profile-tabs.js tiles). One big number, one plain line,
@@ -244,3 +248,24 @@ html[data-simple="1"] .pt-strip.pt-cards.tiles { margin-bottom: 0; }
 .pt-card.pt-fig { display: grid; }
 @media (max-width: 640px) { .pt-answer > .pt-answer-acts { margin-left: 0; } }
 .pt-card-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0 10px; min-width: 0; }
+
+/* 2026-11-12, UI critique: the verdict badge alone over the number cards, and small You/Them tables in Activity instead of
+   sentences of numbers. */
+.pt-answer-verdict { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 14px; }
+.pt-verdict-lab { font-size: 13px; font-weight: 500; color: var(--text-2); }
+.data.pt-side-table { width: auto; min-width: min(100%, 520px); margin: 0 0 14px; }
+.data.pt-side-table :is(th, td) { padding: 9px 16px; }
+/* The row's side (You / Them) is a row heading, not a column head: no sticky grey head look. */
+.data.pt-side-table tbody th[scope="row"] { position: static; top: auto; background: none; -webkit-backdrop-filter: none; backdrop-filter: none; box-shadow: none; font-weight: 500; text-align: start; white-space: nowrap; vertical-align: middle; text-transform: none; letter-spacing: 0; font-size: 13px; color: var(--text); }
+.data.pt-side-table td { vertical-align: middle; }
+.data.pt-side-table thead th { position: static; top: auto; }
+.data.pt-side-table tbody th[scope="row"] { border-bottom: 0; }
+.pt-side-table td { font-size: 14px; }
+.pt-row-you td { color: var(--text); }
+.pt-count-tag { font-size: 12px; line-height: 18px; color: var(--text-2); background: var(--chip); margin-inline-start: 8px; }
+@media (max-width: 640px) {
+  .data.pt-side-table { min-width: 0; width: 100%; }
+  .data.pt-side-table tbody th[scope="row"] { display: block; padding: 0 0 6px; border: 0; }
+}
+.cl-head .pt-answer-text.pt-answer-verdict { display: flex; }
+.cl-head .pt-answer-verdict > .status { margin: 0; vertical-align: 0; }

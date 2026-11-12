@@ -401,7 +401,7 @@
     const blank = (v) => (v === null || v === undefined ? `<span class="muted">—</span>` : num(v));
     return `<section class="card"><div class="card-head"><h2>${t("Important domains")}</h2><span class="end small muted">${d.moz_connected ? `${num(d.rows_left)} ${t("of")} ${num(d.rows_free)} ${t("Moz rows left this month")}` : t("Moz isn't connected")}</span></div>
       <p class="help" style="padding:10px 18px 2px;margin:0">${t("Moz runs only on these domains, and only when you press the button.")}${UI.tip("Moz gives few free rows. Results are kept, so a row is never used twice in a month.")}</p>
-      <form class="lv-rule-form" data-lv-domain-form style="border-top:0"><input class="input mono" name="f_domain" placeholder="example.com" aria-label="${t("Add a domain")}" autocomplete="off"><button class="btn btn-small" type="submit">${t("Add a domain")}</button>
+      <form class="lv-rule-form" data-lv-domain-form style="border-top:0"><input class="input mono" spellcheck="false" autocapitalize="off" name="f_domain" placeholder="example.com" aria-label="${t("Add a domain")}" autocomplete="off"><button class="btn btn-small" type="submit">${t("Add a domain")}</button>
         <button type="button" class="btn btn-small btn-main" data-lv-moz ${d.moz_connected && waiting && d.rows_left ? "" : "disabled"}>${t("Get Moz data")}${waiting ? ` (${num(waiting)})` : ""}</button>
         <button type="button" class="btn btn-small" data-lv-radar ${d.radar_connected && d.domains.length ? "" : "disabled"}>${t("Get popularity")}</button><span class="error" data-lv-rule-error hidden></span></form>
       ${finder}${found.length ? `<div class="table-wrap" style="box-shadow:none"><table class="data"><thead><tr><th>${t("Domain")}</th><th class="c">${t("Authority")}</th><th class="c">${t("Moz Domain Authority")}</th><th class="c">${t("Linking domains")}</th><th class="c">${t("Links")}</th><th class="c">${t("Popularity")}</th><th></th></tr></thead><tbody>
@@ -436,7 +436,7 @@
         take();
         if (c.id === "clarity") { sayError("Clarity has one token per site: tick Not used beside the site, then press Save."); return; }
         if (c.id === "google") { sayError("Press Remove next to the Google connection above."); return; }
-        if (!window.confirm(t("Remove this key? You'd have to paste it again."))) return;
+        if (!(await UI.confirmDanger({ title: t("Remove this key?"), body: t("You'd have to paste it again."), yes: t("Remove") }))) return;
         try { await api("DELETE", `app-keys/${c.id}`); await reload(); UI.forgetPanelForm(); UI.closePanel(); UI.render(); UI.toast(t("Disconnected"), { kind: "info" }); } catch (err) { sayError(err.message); }
         return;
       }
@@ -448,7 +448,7 @@
       }
       if ((el = hit("[data-lv-google-del]"))) {
         take();
-        if (!window.confirm(t("Remove this Google connection? Sites keep their data, and stop updating until they use another one."))) return;
+        if (!(await UI.confirmDanger({ title: t("Remove this Google connection?"), body: t("Sites keep their data, and stop updating until they use another one."), yes: t("Remove") }))) return;
         try { await api("DELETE", `google-connections/${el.dataset.lvGoogleDel}`); await reload(); UI.forgetPanelForm(); UI.closePanel(); UI.render(); UI.toast(t("Disconnected"), { kind: "info" }); } catch (err) { sayError(err.message); }
         return;
       }
@@ -581,7 +581,9 @@
     "Google connection": "Connexion Google", "works": "fonctionne", "property": "propriété", "properties": "propriétés", "It didn't work.": "Ça n'a pas fonctionné.", "Testing…": "Test…", "Works.": "Fonctionne.",
     "It sees no Search Console property yet: add its email there, then test again.": "Elle ne voit encore aucune propriété Search Console : ajoutez-y son e-mail, puis testez à nouveau.",
     "No test: it would spend 1 of Clarity's 10 daily requests. The first pull shows if the token works.": "Pas de test : il consommerait 1 des 10 requêtes quotidiennes de Clarity. La première lecture montre si le jeton fonctionne.",
-    "Remove this key? You'd have to paste it again.": "Retirer cette clé ? Il faudra la coller à nouveau.", "Remove this Google connection? Sites keep their data, and stop updating until they use another one.": "Retirer cette connexion Google ? Les sites gardent leurs données et ne se mettent plus à jour tant qu'ils n'en utilisent pas une autre.",
+    "Remove this key? You'd have to paste it again.": "Retirer cette clé ? Il faudra la coller à nouveau.",
+    "Remove this key?": "Retirer cette clé ?", "You'd have to paste it again.": "Il faudra la coller à nouveau.", "Remove this Google connection?": "Retirer cette connexion Google ?",
+    "Sites keep their data, and stop updating until they use another one.": "Les sites gardent leurs données et ne sont plus mis à jour jusqu'à ce qu'ils en utilisent une autre.", "Remove this Google connection? Sites keep their data, and stop updating until they use another one.": "Retirer cette connexion Google ? Les sites gardent leurs données et ne se mettent plus à jour tant qu'ils n'en utilisent pas une autre.",
     "Clarity has one token per site: tick Not used beside the site, then press Save.": "Clarity a un jeton par site : cochez Non utilisé à côté du site, puis cliquez sur Enregistrer.", "Press Remove next to the Google connection above.": "Appuyez sur Retirer à côté de la connexion Google ci-dessus.",
     "Works without a key, with a lower limit; a free key raises it.": "Marche sans clé, avec une limite plus basse ; une clé gratuite l'augmente.",
     "This key can't be checked until it's first used.": "Cette clé ne peut être vérifiée qu'à sa première utilisation.",

@@ -1,5 +1,5 @@
-/* Backlinks: the real Check now on a link's panel, and the Mediators tab with its add and edit panel.
-   Mediators are loaded through COMP.api, which answers from the sample when opened as a plain file. */
+/* Backlinks: the real Check / Refresh on a link's panel, and the Mediators tab with its add and edit panel.
+   Mediators are the people and agencies who place links (the owner's word, kept on screen 2026-11-12). They are loaded through COMP.api, which answers from the sample when opened as a plain file. */
 (() => {
   "use strict";
   const COMP = window.COMP;
@@ -58,7 +58,7 @@
           ${cell("Spent", helpers.spentWords(list), "r")}${cell("Visits", visits, "r")}${cell("Cost per visit", helpers.mediatorCost(list), "r")}
           <td class="r"><button class="btn btn-small" data-md-edit="${esc(m.name)}" aria-label="${t("Edit")}: ${esc(m.name)}">${icon("pencil")}${t("Edit")}</button></td></tr>`;
       }).join("")}</tbody></table></div>
-      ${TP.footer(PAGES, page, { noun: t("mediators") })}</div>` : COMP.empty(t("No mediator matches"), t("Change the search."))}`;
+      ${TP.footer(PAGES, page, { noun: t("mediators") })}</div>` : COMP.empty(t("No mediator matches"), t("Change the search."), `<button type="button" class="btn btn-small" data-tp-key="${PAGES}" data-tp-clear>${icon("x")}${t("Clear search")}</button>`)}`;
   }
 
   function openPanel(name, opener) {
@@ -67,9 +67,9 @@
     const box = (id, label, value, extra = "") => `<label class="field"><span>${t(label)}</span><input class="input" id="${id}" dir="auto" value="${esc(value || "")}" ${extra}></label>`;
     UI.openPanel(`${panelHead(t(m ? "Edit mediator" : "Add mediator"), m ? "" : t("Only the name is required"))}
       <form class="panel-body" id="md-form" data-id="${m?.id || ""}" data-was="${esc(m?.name || "")}" novalidate>
-        ${box("md-name", "Name", m?.name, 'data-autofocus aria-describedby="md-err" maxlength="180"')}<div id="md-err"></div>
-        ${box("md-contact", "Contact", m?.contact, 'maxlength="250"')}
-        <div class="field-row">${box("md-platform", "Platform", m?.platform, 'maxlength="180"')}${box("md-price", "Usual price", m?.price_text, 'placeholder="150 €, AED 500" maxlength="60"')}</div>
+        ${box("md-name", "Name", m?.name, 'data-autofocus aria-describedby="md-err" maxlength="180" autocomplete="off" spellcheck="false"')}<div id="md-err"></div>
+        ${box("md-contact", "Contact", m?.contact, 'maxlength="250" autocomplete="off" spellcheck="false"')}
+        <div class="field-row">${box("md-platform", "Platform", m?.platform, 'maxlength="180" autocomplete="off"')}${box("md-price", "Usual price", m?.price_text, 'placeholder="150 €, AED 500" maxlength="60"')}</div>
         <label class="field"><span>${t("Notes")}</span><textarea class="input" id="md-notes" rows="3" dir="auto" maxlength="5000">${esc(m?.notes || "")}</textarea></label>
       </form>
       <div class="panel-foot"><button class="btn btn-main" id="md-save">${t("Save")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button></div>`,
@@ -113,7 +113,7 @@
 
   function sentence(b) {
     const { t, esc, fmtStamp } = UI, c = b.check;
-    if (!c || !c.checked_at) return b.status === "planned" ? `${t("Not checked. Planned links are read only on request.")}${UI.tip("Reading a planned link never changes its status.")}` : t("Not checked. Read monthly, or when you press Run.");
+    if (!c || !c.checked_at) return b.status === "planned" ? `${t("Not checked. Planned links are read only on request.")}${UI.tip("Reading a planned link never changes its status.")}` : t("Not checked. Read monthly, or when you press Check.");
     const when = esc(fmtStamp(c.checked_at));
     if (c.outcome === "found") return `${t("Checked on")} ${when}: ${t(c.is_nofollow ? "link there, nofollow." : "link there, passes value.")}`;
     if (c.outcome === "unknown") return `${t("Couldn't check on")} ${when}. ${t(REASONS[c.reason] || "That page couldn't be read.")} ${t("An unreadable page never counts as a lost link.")}`;
@@ -168,7 +168,7 @@
     return `<p class="lk-result" role="status">${busy ? t("Reading the page…") : sentence(b)}</p>
       ${latest?.changes?.length && latest.outcome === "found" ? `<ul class="lk-changes">${latest.changes.map((x) => `<li>${changeWords(x)}</li>`).join("")}</ul>` : ""}
       ${factsOf(b)}${historyHtml(b.serverId)}
-      <button class="btn btn-small" id="link-check-now" style="margin-top:10px" data-id="${b.serverId}" ${busy ? "disabled" : ""}>${icon("refresh-cw", busy ? "spin" : "")}${t(busy ? "Checking…" : b.check?.checked_at ? "Run again" : "Run")}</button>`;
+      <button class="btn btn-small" id="link-check-now" style="margin-top:10px" data-id="${b.serverId}" ${busy ? "disabled" : ""}>${icon("refresh-cw", busy ? "spin" : "")}${t(busy ? "Checking…" : b.check?.checked_at ? "Refresh" : "Check")}</button>`;
   }
 
   const paintBlock = (b) => { const box = UI.$(`#lk-block[data-id="${b.serverId}"]`); if (box) UI.setHTML(box, blockInner(b)); };
@@ -255,6 +255,11 @@
   };
 
   const fr = {
+    "Add mediator": "Ajouter un intermédiaire", "Edit mediator": "Modifier l'intermédiaire", "No mediators yet": "Pas encore d'intermédiaires", "Mediator": "Intermédiaire", "Mediators": "Intermédiaires",
+    "Search mediators": "Rechercher un intermédiaire", "mediators": "intermédiaires", "No mediator matches": "Aucun intermédiaire ne correspond", "Mediator saved": "Intermédiaire enregistré", "A mediator needs a name.": "Un intermédiaire a besoin d'un nom.",
+    "A mediator with that name exists.": "Un intermédiaire porte déjà ce nom.", "That mediator doesn't exist.": "Cet intermédiaire n'existe pas.", "Clear search": "Effacer la recherche",
+    "Known mediator: empty fields filled in.": "Intermédiaire connu : champs vides remplis.", "New mediator: {name}, added on save.": "Nouvel intermédiaire : {name}, ajouté à l'enregistrement.",
+    "Not checked. Read monthly, or when you press Check.": "Non contrôlé. Lu chaque mois, ou quand vous cliquez sur Vérifier.", "Refresh": "Actualiser",
     "Add mediator": "Ajouter un intermédiaire", "Edit mediator": "Modifier l'intermédiaire", "No mediators yet": "Pas encore d'intermédiaires", "Only the name is required": "Seul le nom est obligatoire", "Usual price": "Prix habituel", "Name": "Nom",
     "Add the people and agencies who place your links.": "Ajoutez les personnes et agences qui placent vos liens.",
     "Spent adds up per currency.": "Les dépenses s'additionnent par devise.",

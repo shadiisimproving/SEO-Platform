@@ -20,7 +20,8 @@
       .catch((err) => { A.error = err.message; A.at = Date.now(); })
       .finally(() => { A.loading = false; if (U()?.state.route === "settings" && !U().$("#panel")) U().render({ keepScroll: true }); });
   }
-  const money = (v) => `$${Number(v || 0).toFixed(v && v < 1 ? 4 : 2)}`;
+  // Dollars the language's way ("$0.0042", "0,0042 $US"): tiny amounts keep four decimals so they don't read as zero.
+  const money = (v) => { const n = Number(v || 0), d = n && n < 1 ? 4 : 2; return new Intl.NumberFormat(U().locale(), { style: "currency", currency: "USD", minimumFractionDigits: d, maximumFractionDigits: d }).format(n); };
 
   A.card = function card() {
     const { t, esc, icon } = U();

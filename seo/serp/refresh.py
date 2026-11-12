@@ -253,7 +253,7 @@ def start(engine: Engine, body: dict, by: str | None = None) -> dict:
             raise Conflict("Already refreshing.")
         if len(names) == 1 and ask["mode"] == "pick":  # the keyword panel's Recheck: the same rule as the Refresh dialog
             raise Refused(RECENT_ONE)
-        raise Refused("All checked just now. Tick Check them again to go ahead.")
+        raise Refused("All checked just now. Tick Refresh them too to go ahead.")
     tools_each = ask["picked"] if ask["mode"] == "pick" else [None]
     try:
         with engine.begin() as conn:

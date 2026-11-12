@@ -47,7 +47,7 @@
 .card .table-wrap .data th { position: static; }
 .lv-foot .link-btn { display: inline-flex; align-items: center; gap: 5px; }
 /* An AI summary of a competitor's change. It reads apart from the facts around it. */
-.cs-summary { margin-top: 6px; padding: 8px 10px; border-radius: 8px; background: var(--c-purple-pale); font-size: 13px; }
+.cs-summary { margin-top: 6px; padding: 8px 10px; border-radius: 8px; background: var(--c-indigo-pale); font-size: 13px; }
 .cs-summary-by { display: flex; align-items: center; gap: 5px; margin-top: 4px; color: var(--muted); font-size: 12px; }
 .cs-summary-by svg, .cs-summary-btn svg { width: 13px; height: 13px; flex: none; }
 .cs-summary-slot { margin-top: 4px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
@@ -117,3 +117,6 @@ html[data-simple="1"] #panel .lv-rule { padding: 8px 0; }
   html[data-simple="1"] .lv-fline .val { text-align: left; white-space: normal; }
   html[data-simple="1"] .lv-compact table.data { width: 100%; }
 }
+.lv-saved-note { margin: 0 0 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; } /* saved numbers from a source not connected now (screens-live.js stateCard) */
+.lv-saved-note > span { flex: 1 1 220px; min-width: 0; }
+.lv-saved-note > .btn { margin-inline-start: auto; }

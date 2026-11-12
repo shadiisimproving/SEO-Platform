@@ -16,6 +16,10 @@ const { chromium } = findPlaywright();
 async function open({ width = 1440, height = 900, url } = {}) {
   const browser = await chromium.launch({ channel: "chrome", headless: true });
   const context = await browser.newContext({ viewport: { width, height }, acceptDownloads: true });
+  // The simpler screens became the default on 2026-11-12. The flows were written for one mode each: a flow that wants the
+  // simpler screens asks with ?simple=1, so every other one keeps the screens it was written for (?simple=0), unless
+  // SEOCC_REAL_DEFAULT=1 asks for the app's own default.
+  if (process.env.SEOCC_REAL_DEFAULT !== "1") await context.addInitScript(() => { try { if (localStorage.getItem("seocc2-simple") === null) localStorage.setItem("seocc2-simple", "0"); } catch { /* a page without storage */ } });
   const page = await context.newPage();
   const problems = [];
   page.on("pageerror", (e) => problems.push(`pageerror: ${e.message}`));

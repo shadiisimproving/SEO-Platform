@@ -1,4 +1,5 @@
 /* Backlinks: the "does it count" badges, Search Console upload steps, Reclaim. Colours come from the theme's own tokens. */
+.vd-tag { font-size: 12px; } /* 12 px floor: .tag is 11 px in mockup.css */
 .vd-row { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-inline-start: 4px; vertical-align: middle; }
 .vd-tag.vd-counts { color: var(--good-t); box-shadow: inset 0 0 0 1px var(--good-t); }
 .vd-tag.vd-weak { color: var(--warn-t); box-shadow: inset 0 0 0 1px var(--warn-t); }
@@ -28,11 +29,76 @@ details.vd-q > summary { padding: 12px 0; }
 .vd-head-line { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* A long address must shorten, not push the close button off the panel. */
 .panel-head > div:has(.vd-head-line) { flex: 1; min-width: 0; }
-.vd-anchor { margin-top: 3px; font-size: 11px; }
+.vd-anchor { margin-top: 3px; font-size: 12px; } /* 12 px floor (MASTER) */
 .url-cell .vd-anchor { display: inline-block; }
 .vd-view { margin-inline-end: 6px; }
-.vd-view .tab { padding: 4px 10px; font-size: 12px; }
+.vd-view .tab { padding: 4px 10px; font-size: 12px; min-height: 28px; }
 /* The search line above a long table on Backlinks and Site health (table-pages.js, 2026-11-10). Inside a card it lines up
    with the card's own text. */
 #ht-indexing > .ht-find, .ht-links > .ht-find { padding-inline: 18px; }
 .ht-links-all > .ht-find { margin-top: 4px; }
+
+/* ---- Backlinks, both modes (UI critique 2026-11-12) ---- */
+/* The Lost card says it once, in its pill: the number stays the ordinary colour. */
+#bl-tiles .fig .serious, #bl-tiles .ncard-value .serious { color: inherit; }
+/* A status pill keeps 4.5:1 on a hovered, ticked or open row: its own background is opaque, so the row's tint can't lower it. */
+:is(#bl-table, #bl-sites, #found-table, #md-table, #rc-table, #td-table, #pr-table, .bl-answer) .status { background: color-mix(in srgb, currentColor 11%, var(--panel-solid)); }
+/* Notes beside a linking site: a 24 px target, not 23 x 17. */
+:is(#bl-table, #found-table, #pr-table) .nb-badge { min-width: 24px; min-height: 24px; justify-content: center; }
+/* Phones: the section and list tabs wrap onto a second line instead of hiding one off the edge (the ink follows offsetTop). */
+@media (max-width: 640px) {
+  .tabs:has(> [data-bl-section]), .tabs:has(> [data-bl-tab]) { flex-wrap: wrap; overflow-x: visible; }
+}
+
+/* ---- the simpler Backlinks (html[data-simple], backlinks-seo.js "the simpler Backlinks") ---- */
+.bl-top { display: grid; gap: var(--gap, 14px); margin-bottom: 14px; }
+.bl-top > #bl-tiles { margin-bottom: 0; }
+@media (min-width: 1100px) {
+  .bl-top { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; }
+  .bl-top > #bl-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.bl-simple .bl-answer { padding: 0; margin: 0; overflow: hidden; }
+.bl-simple .bl-answer .vd-answer { margin: 0; border-radius: 0; padding: 12px 16px; }
+.bl-simple .bl-answer .vd-answer strong { font-size: 15px; line-height: 20px; }
+.bl-needs { list-style: none; margin: 0; padding: 4px 16px 8px; }
+.bl-need { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto auto; align-items: center; gap: 4px 12px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.bl-need:first-child { border-top: 0; }
+.bl-need-toggle { display: none; list-style: none; }
+.bl-need-mark { min-width: 0; }
+.bl-need-word { min-width: 0; color: var(--text-2); }
+.bl-need-n { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: end; min-width: 2ch; }
+.bl-need .btn { min-height: 28px; }
+.bl-sbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px; }
+.bl-sbar .tp-search { flex: 1 1 220px; max-width: 360px; }
+.bl-sbar .btn { min-height: 32px; }
+.bl-sbar .chip { min-height: 32px; }
+.bl-sbar-end { margin-inline-start: auto; display: inline-flex; gap: 8px; }
+#bl-cols-btn .bl-count:not(:empty) { color: var(--text-2); background: var(--chip); box-shadow: inset 0 0 0 1px var(--line); }
+.bl-count:not(:empty) { margin-inline-start: 4px; padding: 0 6px; min-width: 18px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 18px; text-align: center; color: var(--on-accent); background: var(--accent-1); }
+.bl-on { display: inline-flex; align-items: center; gap: 4px; color: var(--text); box-shadow: inset 0 0 0 1px var(--accent-1); }
+.bl-on svg.i { width: 13px; height: 13px; }
+.bl-col-off { display: none !important; }
+.bl-split { display: inline-flex; }
+.bl-split > #add-backlink { border-start-end-radius: 0; border-end-end-radius: 0; }
+.bl-split-more { padding-inline: 8px; min-width: 32px; border-start-start-radius: 0; border-end-start-radius: 0; margin-inline-start: 1px; }
+#popover.bl-pop { min-width: 240px; max-width: min(380px, calc(100vw - 32px)); }
+.bl-fpop { display: grid; gap: 12px; padding: 4px; }
+.bl-fhead { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+.bl-fgroup .chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; }
+.bl-fgroup .chip { min-height: 32px; }
+.bl-col-opt { display: flex; align-items: center; gap: 8px; min-height: 32px; font-size: 13px; }
+.bl-col-opt .muted { margin-inline-start: auto; }
+.bl-menu { display: grid; padding: 4px; }
+.bl-menu-item { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 6px 10px; border-radius: var(--r-s); font-size: 13px; text-align: start; color: var(--text); }
+.bl-menu-item:hover, .bl-menu-item:focus-visible { background: var(--hover); }
+@media (max-width: 640px) {
+  .bl-simple .bl-answer .vd-answer { padding: 10px 14px; }
+  .bl-needs { padding: 2px 14px 6px; }
+  .bl-need { grid-template-columns: minmax(0, 1fr) auto auto; padding: 6px 0; }
+  .bl-need-mark { display: none; } /* the words say it; the row stays one line */
+  .bl-needs:not(.open) .bl-need-more { display: none; }
+  .bl-needs:not(.open) .bl-need-toggle { display: block; padding: 6px 0 2px; border-top: 1px solid var(--line); }
+  .bl-need-toggle .link-btn { min-height: 28px; }
+  .bl-sbar .tp-search { flex-basis: 100%; max-width: none; }
+  .bl-simple #bl-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

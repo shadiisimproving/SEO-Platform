@@ -19,7 +19,9 @@ const seen = () => {
   const shown = (el) => { const r = el.getBoundingClientRect(); if (r.width <= 1 || r.height <= 1) return false;
     let o = 1; for (let n = el; n && n !== document.body; n = n.parentElement) { const s = getComputedStyle(n);
       if (s.display === "none" || s.visibility === "hidden") return false; o *= Number(s.opacity); } return o > 0.05; };
-  return [...main.querySelectorAll("button,select,input,textarea,a[href],summary,[role=button],[role=tab]")].filter(shown).length;
+  // A row's tick box stays faintly visible since 2026-11-12 (UI critique: hidden ones weren't discovered); it isn't counted here.
+  const rowTick = (el) => el.matches('tbody :is(.tt-pick, .tt-own-pick) input[type="checkbox"]');
+  return [...main.querySelectorAll("button,select,input,textarea,a[href],summary,[role=button],[role=tab]")].filter((el) => !rowTick(el)).filter(shown).length;
 };
 const opacity = (page, sel) => page.locator(sel).evaluate((el) => Number(getComputedStyle(el.closest(".kw-more-items") || el).opacity));
 const inView = (page, sel) => page.locator(sel).evaluate((el) => el.offsetParent !== null);
@@ -52,33 +54,30 @@ const errorsOf = (run) => [...run.problems.filter((p) => !/Failed to load resour
   check(!(await has(page, "#period")) && await has(page, "#topbar .head-line .def-i"), "no period, and the screen's sentence is behind the (i)");
   check(await top(page, ".kw-tabs-row") < await top(page, "#kw-tiles"), "the engine tabs sit above the cards, since the cards follow the engine");
   check(await page.locator("#kw-tiles .ncard").count() === 4, "four number cards");
-  check(await page.locator(".kw-tabs-row [data-view]").count() === 3, "Positions, By bucket and Queries at the end of the tabs' row");
+  check(await page.locator(".kw-tabs-row [data-view]").count() === 0, "Positions, By bucket and Queries moved inside Filter (UI critique 2026-11-12)");
   check(!(await has(page, "#kw-table button.kw")) && await page.locator("#kw-table [data-kwr-open]").count() >= 8, "the keyword is text, not a button, and still names its row");
   check(!(await has(page, "#kw-table [data-kwr-deeper]")), "no Check deeper in the rows (it's in the panel)");
   const heads = () => page.locator("#kw-table thead th").allInnerTexts().then((x) => x.join("|"));
   check(!(await heads()).includes("Trend"), "Trend isn't a default column");
   const src = await text(page, "#kw-src");
-  check(/Scraped results:/.test(src), `the tools and ages are said once under the table (${src.trim()})`);
-  check(await has(page, ".kw-bar .tt-filter"), "Filter sits in the chips' row");
-  check(await opacity(page, "#density") < 0.05 && await opacity(page, "#columns") < 0.05, "Compact rows and Columns are out of sight at rest");
+  check(/Checked by:/.test(src), `the tools and ages are said once under the table (${src.trim()})`);
+  check(await has(page, ".kw-bar #kw-filter") && !(await has(page, ".kw-bar .chip")) && !(await has(page, "#density")), "one search and one Filter: the chips, Compact rows and Columns are inside it");
   const controls = await page.evaluate(seen);
-  check(controls <= 39, `about 39 controls at rest (${controls})`);
+  check(controls <= 30, `fewer controls at rest, 39 before the Filter panel (${controls})`);
   check(!(await has(page, "[data-lv-ideas]")), "Keyword ideas left the screen (it's in Add keywords)");
 
-  // ---- ⋯, Columns and Compact rows -----------------------------------------------------------------------------------------
-  await page.hover("#kw-more"); await settle(page, 300);
-  check(await opacity(page, "#density") > 0.9, "the pointer on ⋯ shows Compact rows and Columns");
-  await page.screenshot({ path: `${out}/s02-more.png`, clip: { x: 700, y: 0, width: 740, height: 420 } });
-  await page.click("#columns"); await settle(page, 300);
-  await page.check('#popover [data-col="trend"]'); await settle(page, 400);
+  // ---- Filter: the chips, the view, Columns and Compact rows ---------------------------------------------------------------------
+  await page.click("#kw-filter"); await settle(page, 300);
+  check(await page.getAttribute("#kw-filter", "aria-expanded") === "true" && await has(page, "#kw-filter-panel .chip") && await has(page, "#kw-filter-panel [data-view]"), "Filter opens the chips and the view");
+  await page.screenshot({ path: `${out}/s02-more.png`, clip: { x: 260, y: 0, width: 1180, height: 560 } });
+  await page.check('#kw-filter-panel [data-col="trend"]'); await settle(page, 400);
   check((await heads()).includes("Trend"), "Columns turns Trend on");
-  await page.uncheck('#popover [data-col="trend"]'); await page.keyboard.press("Escape"); await settle(page, 300);
+  await page.uncheck('#kw-filter-panel [data-col="trend"]'); await settle(page, 300);
   await page.click("#density"); await settle(page, 300);
-  check(await has(page, ".table-wrap.dense #kw-table"), "Compact rows still works from the ⋯");
+  check(await has(page, ".table-wrap.dense #kw-table"), "Compact rows still works from Filter");
   await page.click("#density"); await settle(page, 300);
-  await page.mouse.move(5, 5); await page.click("#kw-more"); await page.mouse.move(5, 5); await settle(page, 300);
-  check(await page.getAttribute("#kw-more", "aria-expanded") === "true" && await opacity(page, "#density") > 0.9, "pressing ⋯ keeps them shown, for touch and keyboard");
-  await page.click("#kw-more"); await settle(page, 200);
+  await page.click("#kw-filter-close"); await settle(page, 300);
+  check(!(await has(page, "#kw-filter-panel")) && await page.evaluate(() => document.activeElement?.id === "kw-filter"), "Close filters goes back to the Filter button");
 
   // ---- a row opens its panel ---------------------------------------------------------------------------------------------
   await page.click("#kw-table tbody tr:nth-child(1) td:nth-child(5)"); // the Change cell: no link, no button
@@ -104,9 +103,10 @@ const errorsOf = (run) => [...run.problems.filter((p) => !/Failed to load resour
   // ---- Keyword ideas at the top of Add keywords --------------------------------------------------------------------------
   await page.click("#kwr-add"); await page.waitForSelector("#kwr-ideas-slot [data-lv-ideas]", { timeout: 8000 }); await settle(page, 500);
   check(await top(page, "#kwr-ideas-slot") < await top(page, "#kwr-add-form"), "Keyword ideas shows at the top of Add keywords");
-  check(await page.inputValue("#kwr-ideas-slot [name=f_country]") === "FR", "its country starts on the one the site's keywords use most");
+  check(await page.inputValue("#kwr-add-country") === "FR" && await page.inputValue("#kwr-ideas-slot [name=f_country]") === "FR", "one Country for the ideas and the list, starting on the one the site's keywords use most");
+  check(!(await page.locator("#kwr-ideas-slot [name=f_country]").isVisible()) && await top(page, "#kwr-add-country") < await top(page, "#kwr-ideas-slot"), "the ideas have no picker of their own: the shared one sits above them");
   await page.fill("#kwr-ideas-slot [name=f_q]", "abonnement");
-  await page.selectOption("#kwr-ideas-slot [name=f_language]", "fr");
+  await page.selectOption("#kwr-add-language", "fr");
   await page.click("#kwr-ideas-slot button[type=submit]");
   await page.waitForSelector("#kwr-ideas-slot .lv-ideas-bar", { timeout: 8000 }).catch(() => {}); await settle(page, 400);
   check(a.asked.at(-1)?.q === "abonnement" && a.asked.at(-1)?.country === "FR" && a.asked.at(-1)?.language === "fr", "the search sends the words, country and language");
@@ -117,7 +117,7 @@ const errorsOf = (run) => [...run.problems.filter((p) => !/Failed to load resour
   await ideaRow("abonnement netflix").getByRole("button").click(); await settle(page, 300);
   check(await page.inputValue("#kwr-add-text") === "abonnement netflix", "Add puts the idea in the list below");
   check(await page.inputValue("#kwr-add-country") === "FR" && await page.inputValue("#kwr-add-language") === "fr", "with the ideas' country and language");
-  check(/these ideas/.test(await text(page, "#kwr-add-form")), "and says where they come from");
+  check(/these ideas/.test(await text(page, "#panel .kwr-add-body")), "and says where they come from");
   check(/In the list/.test(await ideaRow("abonnement netflix").innerText()), "the pressed Add says it's in the list");
   await page.click("#kwr-ideas-slot [data-lv-idea-all]"); await settle(page, 300);
   check(await page.inputValue("#kwr-add-text") === "abonnement netflix\nabonnement\nabonnement free\nabonnement canal+", "Add all adds each idea not tracked and not in the list yet, once");
@@ -133,7 +133,7 @@ const errorsOf = (run) => [...run.problems.filter((p) => !/Failed to load resour
   await page.evaluate(() => { window.UI.state.lang = "fr"; window.UI.state.theme = "dark"; window.UI.render(); }); await settle(page, 800);
   const lineFr = await text(page, "#topbar .head-line");
   check(/jusqu'au/.test(lineFr) && / avec/.test(lineFr), `the head's line reads in French (${lineFr.replace(/\s+/g, " ")})`);
-  check(/Résultats relevés/.test(await text(page, "#kw-src")), "so does the line under the table");
+  check(/Contrôlé par/.test(await text(page, "#kw-src")), "so does the line under the table");
   await page.screenshot({ path: `${out}/s05-fr-dark.png` });
   await page.click("#kwr-add"); await page.waitForSelector("#kwr-ideas-slot [data-lv-ideas]"); await settle(page, 400);
   check(/Idées de mots-clés/.test(await text(page, "#kwr-ideas-slot")), "Keyword ideas reads in French in the panel");
@@ -166,9 +166,9 @@ const errorsOf = (run) => [...run.problems.filter((p) => !/Failed to load resour
   const c = await start("1", { width: 390, height: 844 });
   await c.page.waitForSelector("#kw-table", { timeout: 20000 }); await settle(c.page, 1200);
   check(await c.page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth) <= 1, "no sideways scroll at 390 px");
-  check(await inView(c.page, "#kwr-add-small"), "Add keywords can be reached at phone width");
-  check(!(await inView(c.page, "#density")), "on a phone the ⋯'s tools take no room until it's pressed");
-  await c.page.click("#kw-more"); await settle(c.page, 300);
+  check(await inView(c.page, "#kwr-add-phone") && await inView(c.page, "#kwr-refresh-phone"), "Add keywords and Refresh, labelled, can be reached at phone width");
+  check(!(await has(c.page, "#density")), "on a phone Filter's tools take no room until it's pressed");
+  await c.page.click("#kw-filter"); await settle(c.page, 300);
   check(await inView(c.page, "#density"), "and show once it is");
   await c.page.screenshot({ path: `${out}/s08-phone.png`, fullPage: true });
   check(!errorsOf(c).length, "no console errors at phone width");
@@ -178,7 +178,7 @@ const errorsOf = (run) => [...run.problems.filter((p) => !/Failed to load resour
   const d = await start("0");
   await d.page.waitForSelector("#kw-table", { timeout: 20000 }); await settle(d.page, 1200);
   check(await has(d.page, "#kw-table button.kw[data-kwr-open]") && !(await has(d.page, ".kw-simple")) && !(await has(d.page, "#kw-src")), "switch off: the old table, keyword buttons and all");
-  check(await has(d.page, "[data-lv-ideas]") && await has(d.page, ".tabs-row .tabs") && !(await has(d.page, "#kw-more")), "switch off: Keyword ideas on the screen, the old tabs, no ⋯");
+  check(await has(d.page, "[data-lv-ideas]") && await has(d.page, ".tabs-row .tabs") && !(await has(d.page, "#kw-filter")), "switch off: Keyword ideas on the screen, the old tabs, no Filter panel");
   await d.page.click("#kwr-add"); await d.page.waitForSelector("#kwr-add-form"); await settle(d.page, 300);
   check(!(await has(d.page, "#kwr-ideas-slot")) && await has(d.page, "form.panel-body#kwr-add-form"), "switch off: Add keywords as before");
   await d.page.screenshot({ path: `${out}/s09-switch-off.png` });

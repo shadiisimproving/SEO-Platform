@@ -72,13 +72,22 @@
   }
   /* A link to another screen keeps the site picked here; the period goes along by itself (the app's one range). */
   const withSite = (href, host = allSites() ? null : UI().siteHostPicked?.()) => (host && !href.includes("?") ? `${href}?site=${encodeURIComponent(host)}` : href);
+  /* "vs 28 before": the period before's own total, from the graph's days, only when it gives the server's change. */
+  function beforeWords(data) {
+    const points = data.points || [], was = points.filter((p) => p.was !== null && p.was !== undefined);
+    if (data.change === null || typeof data.value !== "number" || !points.length || was.length !== points.length) return "";
+    const before = was.reduce((sum, p) => sum + p.was, 0);
+    return data.value - before === data.change ? `<span class="muted">${esc(t("{n} in the period before").replace("{n}", num(before)))}</span>` : "";
+  }
   function figure(key, label, href, data, unit, emptyWord) {
     const covers = data.sites && data.sites < data.of ? `<span class="muted">${num(data.sites)} ${t("of")} ${num(data.of)} ${t("sites")}</span>` : "";
     let fig = esc(data.value === null ? "—" : num(data.value)), note;
     if (data.state === "not_set_up") { fig = `<span class="today-fig-word">${t("Not set up")}</span>`; note = `<span class="muted">${t("Mark forms as GA4 key events")}</span>`; }
     else if (data.value === null) note = `<span class="muted">${data.source ? esc(stateWord(data.source, key === "clicks" ? "Search Console" : "GA4")) : t(emptyWord)}</span>`;
-    else note = `${data.change === null ? `<span class="muted">${t("No earlier period")}</span>` : pill(data.change, unit, false)}${covers}${key === "leads" ? `<span class="muted">${t("Running total")}</span>` : ""}`;
-    return `<section class="tile today-num"><a class="today-num-link" href="${withSite(href)}"><div class="lab">${t(label)}</div><div class="fig">${fig}</div></a><div class="delta">${note}</div>${data.state === "not_set_up" ? "" : graph(key, label, data.points)}</section>`;
+    else note = `${data.change === null ? `<span class="muted">${t("No earlier period")}</span>` : pill(data.change, unit, false)}${key === "leads" ? beforeWords(data) : ""}${covers}`;
+    // Leads build up day by day, so the graph says so under it: a dashed line climbing faster is the period before, not a fall.
+    const cap = key === "leads" && data.state !== "not_set_up" && data.points?.some((p) => p.now !== null) ? `<p class="small muted today-graph-cap">${t("Running total, day by day. Dashed: the period before.")}</p>` : "";
+    return `<section class="tile today-num"><a class="today-num-link" href="${withSite(href)}"><div class="lab">${t(label)}</div><div class="fig">${fig}</div></a><div class="delta">${note}</div>${data.state === "not_set_up" ? "" : graph(key, label, data.points)}${cap}</section>`;
   }
   /* The simpler screens (UI.simple()): one number card each, through UI.card, with a tall graph of its own (owner, 2026-11-05)
      but no axis numbers and no "Show as a table": the screen each card opens has the full chart and its table. The dates
@@ -132,18 +141,34 @@
   }
 
   // ---- do these first -----------------------------------------------------------------------------
+  /* Why a row is where it is (seo/metrics/today.py _reason), so the order explains itself: an icon and a word, never colour alone. */
+  const REASONS = {
+    offline: ["globe", "Site is offline", "crit"], may_go_offline: ["clock", "Site could go offline", "crit"], losing_clicks: ["arrow-down", "Losing clicks", "warn"],
+    losing_link: ["link-2-off", "Lost a backlink", "warn"], data_lost: ["clock", "Data being lost", "warn"], data_stopped: ["ban", "Data stopped", "warn"],
+    site_problem: ["heart-pulse", "Site problem", "warn"], chance: ["target", "Chance to win", "info"], info: ["info", "Good to know", "info"], check: ["info", "Worth a look", "info"],
+  };
+  const reasonTag = (item) => {
+    const r = REASONS[item.reason];
+    return r ? `<span class="today-why today-why-${r[2]}">${icon(r[0])}${esc(t(r[1]))}</span>` : "";
+  };
+  /* What shows before Show all: every serious row, always, then warnings up to three rows in all, in the order given
+     (the server ranks by what is being lost: a domain or certificate about to expire comes first). */
+  function firstRows(todo) {
+    let warnLeft = Math.max(0, 3 - todo.filter((item) => item.severity === "crit").length);
+    return todo.filter((item) => item.severity === "crit" || (item.severity === "warn" && warnLeft-- > 0));
+  }
   const severityIcon = (severity) => (severity === "crit" ? icon("octagon-alert", "crit") : severity === "warn" ? icon("triangle-alert", "warn") : icon("info", "sec"));
   // A row's Task button shows on hover or keyboard focus with the simpler screens switch on (.row-act, table-tools.css).
   const taskLook = () => (UI().simple?.() ? { label: "Task", cls: "btn btn-small row-act" } : { label: "Task" });
   const hostTag = (host, title = "") => (host && allSites() && !title.includes(host) ? ` <span class="small muted mono" dir="auto">${esc(host)}</span>` : "");
   const todoRow = (item) => `<li data-row="${esc(item.id)}"><span>${severityIcon(item.severity)}</span>
-      <div class="what"><div class="t" dir="auto">${item.titleHtml || esc(item.title)}${hostTag(item.host, item.title)}</div>${item.detail ? `<div class="d" dir="auto">${esc(item.detail)}</div>` : ""}</div>
-      <div class="acts">${item.seenAttr ? `<button class="icon-btn ack" ${item.seenAttr} aria-label="${t("Mark as seen")}: ${esc(item.title)}" data-tip="${t("Mark as seen")}">${icon("check")}</button>` : ""}
+      <div class="what"><div class="t" dir="auto">${item.titleHtml || esc(item.title)}${hostTag(item.host, item.title)}</div>${item.reason || item.detail ? `<div class="d">${reasonTag(item)}${item.detail ? `<span dir="auto">${esc(item.detail)}</span>` : ""}</div>` : ""}</div>
+      <div class="acts">${item.seenAttr ? `<button class="btn btn-small btn-ghost ack" ${item.seenAttr} aria-label="${t("Mark seen")}: ${esc(item.title)}" data-tip="${t("Hide it until something changes. Undo in the message.")}">${icon("eye")}<span>${t("Mark seen")}</span></button>` : ""}
         ${UI().taskButton(item.find, taskLook())}${item.mainHtml}</div></li>`;
   function todoCard(todo) {
-    const urgent = todo.filter((item) => item.severity !== "info");
-    const shown = UI().state.attentionAll ? todo : urgent.slice(0, 3);
-    const more = todo.length > urgent.slice(0, 3).length;
+    const first = firstRows(todo);
+    const shown = UI().state.attentionAll ? todo : first;
+    const more = todo.length > first.length;
     const body = todo.length
       ? `${shown.length ? `<ul class="rows">${shown.map(todoRow).join("")}</ul>` : ""}${more ? `<div class="row-item" style="border-bottom:0"><button class="link-btn" id="show-all">${UI().state.attentionAll ? t("Show less") : `${t("Show all")} ${num(todo.length)}`}</button></div>` : ""}`
       : `<div class="empty today-empty"><p>${t("Nothing needs you today.")}</p></div>`;
@@ -157,13 +182,17 @@
     const rows = list.map((task) => `<button class="stat-row" data-today-task="${esc(String(task.id))}"><span class="today-task-name" dir="auto">${esc(task.title)}${hostTag(task.site_host, task.title)}</span>${task.late ? UI().status("crit", `${t("Late")} · ${esc(day(task.due))}`) : `<span class="small muted nowrap">${task.due ? esc(day(task.due)) : t("No date")}</span>`}</button>`).join("");
     return `${rows || `<div class="stat-row"><span class="muted">${t("No open tasks for you.")}</span></div>`}<div class="stat-row"><a class="link-btn" href="#tasks">${t("View all tasks")}</a></div>`;
   }
+  /* Which site has nothing connected, said by name: "site-three.example: connect Google", or how many when it's several. */
+  const hostsWord = (hosts) => (hosts.length === 1 ? hosts[0] : `${num(hosts.length)} ${t("sites")}`);
+  const connectWords = (s) => (s.hosts?.length ? `${hostsWord(s.hosts)}: ${t("connect Google")}` : t("Connect Google"));
+  const noSourcesWords = (s) => (s.hosts?.length ? `${hostsWord(s.hosts)}: ${t("nothing connected now.")}` : t("No data sources connected."));
   function workCard(vm) {
     const count = (word, value) => (value ? `<a class="stat-row" href="#backlinks"><span>${t(word)}</span><span class="num">${num(value)}</span></a>` : "");
     const s = vm.sources;
     const waiting = s.waiting ? ` · ${num(s.waiting)} ${t("waiting for data")}` : "";
     const line = s.total
       ? `<a class="stat-row today-sources" href="#settings"><span>${t("Data sources")}${s.note ? `<span class="small muted today-note">${esc(s.note)}</span>` : ""}</span>${UI().status(s.ok === s.total ? "good" : s.ok + (s.waiting || 0) === s.total ? "info" : "warn", `${num(s.ok)} ${t("of")} ${num(s.total)} ${t("OK")}${waiting}`)}</a>`
-      : `<div class="stat-row"><span class="muted">${t("No data sources connected.")}</span><button class="btn btn-small" ${s.connectAttr}>${t("Connect Google")}</button></div>`;
+      : `<div class="stat-row"><span class="muted" dir="auto">${esc(noSourcesWords(s))}</span><button class="btn btn-small" ${s.connectAttr} aria-label="${esc(connectWords(s))}">${t("Connect Google")}</button></div>`;
     return `<section class="card"><div class="card-head"><h2>${t("My work")}</h2></div>
         <div id="today-tasks">${tasksHtml()}</div>${count("Backlinks to follow up", vm.followUp)}${count("Renewals in 30 days", vm.renewals)}${vm.sourcesInHead ? "" : line}</section>`;
   }
@@ -227,7 +256,12 @@
     const hasData = r.leads.value !== null || r.visits.value !== null || r.clicks.value !== null;
     const stopped = vm.googleStopped && r.through ? ` ${t("Google numbers stop at")} ${esc(day(r.through))}.` : "";
     const anyMove = vm.goingDown.length || vm.goingUp.length;
-    return `<div class="today-answer"><p class="today-lead" dir="auto">${esc(answer(r, vm.range))}</p><p class="today-second" dir="auto">${esc(needsYou(urgent))}${stopped}</p></div>
+    // A verdict badge and the count; the numbers are in the cards below, so they aren't said again here (2026-11-12).
+    const crit = vm.todo.filter((item) => item.severity === "crit").length;
+    const verdict = crit ? UI().status("crit", `${t("Urgent")}: ${num(crit)}`) : urgent ? UI().status("warn", t("To do")) : UI().status("good", t("All clear"));
+    const state = hasData ? "" : `<p class="today-state" dir="auto">${esc(answer(r, vm.range))}</p>`;
+    return `<div class="today-answer"><p class="today-verdict">${verdict} <span class="today-second" dir="auto">${esc(needsYou(urgent))}${stopped}</span></p>${state}</div>
+      ${vm.setupHtml || ""}
       ${numbers(r, vm.range)}
       <div class="cols"><div>${todoCard(vm.todo)}</div><div>${workCard(vm)}</div></div>
       ${anyMove || hasData ? `${UI().simple?.() ? "" : `<div class="today-moves-head"><span class="small muted">${t("Week on week")}</span></div>`}<div class="today-moves">${moveCard("Going down", vm.goingDown, true)}${moveCard("Going up", vm.goingUp, false)}</div>` : ""}
@@ -240,7 +274,7 @@
   function headParts(vm) {
     const s = vm.sources, w = vm.results?.window, info = [];
     let source;
-    if (!s.total) source = { word: t("Connect Google"), sev: "warn", open: s.connectAttr };
+    if (!s.total) source = { word: connectWords(s), sev: "warn", open: s.connectAttr };
     else {
       const fine = s.ok === s.total || s.ok + (s.waiting || 0) === s.total;
       source = { word: `${num(s.ok)} ${t("of")} ${num(s.total)} ${t("sources OK")}${s.waiting ? ` · ${num(s.waiting)} ${t("waiting for data")}` : ""}`, sev: fine ? "" : "warn", open: 'data-go="settings"' };
@@ -278,6 +312,11 @@
     "Last 28 days vs the 28 before": "28 derniers jours vs les 28 précédents", "No data yet": "Pas encore de données",
     "Running total": "Total cumulé", "This period": "Cette période", "Period before": "Période précédente", "See page": "Voir la page", "Title changed": "Titre modifié", "Content changed": "Contenu modifié", "Restored": "Restauré",
     "Graph: running total.": "Graphique : total cumulé.", "Connect Google": "Connecter Google", "sources OK": "sources OK", "7 days": "7 jours",
+    "Urgent": "Urgent", "To do": "À traiter", "All clear": "Rien d'urgent", "Mark seen": "Marquer vu", "Hide it until something changes. Undo in the message.": "Masqué jusqu'au prochain changement. Annulable dans le message.",
+    "Site is offline": "Site hors ligne", "Site could go offline": "Le site peut tomber", "Losing clicks": "Perd des clics", "Lost a backlink": "Backlink perdu", "Data being lost": "Données en train de se perdre",
+    "Data stopped": "Données arrêtées", "Site problem": "Problème sur le site", "Chance to win": "Occasion à saisir", "Good to know": "Bon à savoir", "Worth a look": "À regarder",
+    "connect Google": "connecter Google", "no data sources connected.": "aucune source de données connectée.", "nothing connected now.": "rien de connecté pour l’instant.", "{n} in the period before": "{n} sur la période précédente",
+    "Running total, day by day. Dashed: the period before.": "Total cumulé, jour après jour. En pointillé : la période précédente.",
     "/loyer-a-seville/: −32% Google clicks": "/loyer-a-seville/ : −32 % de clics Google", "Week on week: 85 → 58": "Semaine sur semaine : 85 → 58",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });

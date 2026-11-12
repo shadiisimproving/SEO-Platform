@@ -348,7 +348,30 @@ def test_today_ranks_by_what_is_being_lost_not_only_by_label(engine, site):
     _alert_row(engine, site, "uptime_down", "crit", "site is down", {"state": "down"})
     _page_clicks(engine, site, "mine.example", "fell", END, 100, 40)
     titles = [item["title"] for item in today_view.today(engine)["todo"]]
-    assert titles == ["site is down", "/fell/: −60% Google clicks", "a backlink was lost", "certificate soon", "Google data stopped working", "health fell"]
+    # A certificate ending within 14 days can take the site offline: it goes up with the site being down (UI critique 2026-11-12).
+    assert titles == ["site is down", "certificate soon", "/fell/: −60% Google clicks", "a backlink was lost", "Google data stopped working", "health fell"]
+
+
+def test_today_puts_a_domain_or_certificate_ending_within_14_days_first_with_its_reason(engine, site):
+    """A domain or certificate about to end was a warning ranked below lost clicks, so it could hide under Show all."""
+    _page_clicks(engine, site, "mine.example", "fell", END, 100, 40)
+    _alert_row(engine, site, "backlink_lost", "warn", "a backlink was lost")
+    _alert_row(engine, site, "ssl_expiry", "warn", "mine.example: the security certificate expires on 2026-11-24", {"state": "expiring", "days": 12})
+    _alert_row(engine, site, "domain_expiry", "warn", "mine.example: the domain name expires on 2026-11-21", {"state": "expiring", "days": 9})
+    _alert_row(engine, site, "x", "info", "for your information")
+    rows = today_view.today(engine)["todo"]
+    assert [row["title"] for row in rows[:2]] == ["mine.example: the domain name expires on 2026-11-21", "mine.example: the security certificate expires on 2026-11-24"]
+    assert all(row["severity"] == "crit" and row["reason"] == "may_go_offline" for row in rows[:2])
+    reasons = {row["title"]: row["reason"] for row in rows}
+    assert reasons["/fell/: −60% Google clicks"] == "losing_clicks" and reasons["a backlink was lost"] == "losing_link" and reasons["for your information"] == "info"
+    # The side menu's badge reads the same list, in the same order.
+    assert [row["title"] for row in today_view.attention(engine)][:2] == [row["title"] for row in rows[:2]]
+
+
+def test_today_an_expired_domain_says_the_site_is_offline(engine, site):
+    _alert_row(engine, site, "domain_expiry", "crit", "mine.example: the domain name has expired", {"state": "expired", "days": -2})
+    row = today_view.today(engine)["todo"][0]
+    assert row["severity"] == "crit" and row["reason"] == "offline"
 
 
 def test_today_says_a_big_search_drop_the_new_way_even_when_it_was_saved_the_old_way(engine, site):

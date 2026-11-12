@@ -851,3 +851,40 @@ def test_a_keyword_never_checked_isnt_called_not_ranked(world):
     save(world, ids[2], position=None)
     tile = rankings.listing(world.engine, world.site)["tiles"]["google"]
     assert tile["tracked"] == 3 and tile["ranked"] == 1 and tile["not_ranked"] == 1
+
+
+# ---- a keyword just added says who is checking it (UI critique 2026-11-12) ----------------------------
+
+def upload_running(world, *names, tool=None):
+    """Keywords added through an upload whose first free check is queued, as seo.competitors.keywords.upload leaves them."""
+    with world.engine.begin() as conn:
+        upload = conn.execute(text("INSERT INTO keyword_uploads (site_id, engine, kind, total, new_keywords, status, tool) VALUES (:s, 'google', 'upload', :n, :n, 'queued', :t)"), {"s": world.site, "n": len(names), "t": tool}).lastrowid
+    ids = track(world, *names)
+    with world.engine.begin() as conn:
+        conn.execute(text("UPDATE site_keywords SET upload_id = :u WHERE site_id = :s"), {"u": upload, "s": world.site})
+    return upload, ids
+
+
+def test_a_new_keyword_says_which_tool_is_checking_it_until_its_first_result(world):
+    upload, (moka, press) = upload_running(world, "moka pot", "french press", tool="SerpApi")
+    rows = {r["keyword"]: r for r in rankings.listing(world.engine, world.site)["rows"]}
+    assert rows["moka pot"]["checking"] == {"engine": "google", "tool": "SerpApi"} and rows["french press"]["checking"]["tool"] == "SerpApi"
+    save(world, moka)  # its first result is in: the row speaks for itself again, the other one still waits
+    rows = {r["keyword"]: r for r in rankings.listing(world.engine, world.site)["rows"]}
+    assert "checking" not in rows["moka pot"] and rows["french press"]["checking"]["tool"] == "SerpApi"
+    with world.engine.begin() as conn:
+        conn.execute(text("UPDATE keyword_uploads SET status = 'complete' WHERE id = :u"), {"u": upload})
+    assert all("checking" not in r for r in rankings.listing(world.engine, world.site)["rows"])
+
+
+def test_before_the_first_search_starts_it_names_the_tool_first_in_line(world):
+    upload_running(world, "moka pot")  # no search has gone out yet, so the run has no tool of its own
+    line = connections.not_blocked(world.engine, connections.tools_for(world.engine, "google"))
+    assert rankings.listing(world.engine, world.site)["rows"][0]["checking"] == {"engine": "google", "tool": line[0].name if line else None}
+
+
+def test_an_upload_that_lost_its_job_does_not_say_checking_forever(world):
+    upload, _ = upload_running(world, "moka pot", tool="SerpApi")
+    with world.engine.begin() as conn:
+        conn.execute(text("UPDATE keyword_uploads SET created_at = UTC_TIMESTAMP(3) - INTERVAL 1 HOUR WHERE id = :u"), {"u": upload})
+    assert "checking" not in rankings.listing(world.engine, world.site)["rows"][0]

@@ -99,7 +99,7 @@
         <span class="small sec">${s.last_checked_at ? `${t("Last check")} ${esc(ago(s.last_checked_at))}` : t("Not checked")}</span>
         <span class="end">
           <label class="opt small"><input type="checkbox" class="chk" style="margin:0" data-up-watch="${s.id}" ${s.watching ? "checked" : ""}>${t("Watch")}</label>
-          <button class="btn btn-small" data-up-check="${s.id}" ${busy ? "disabled" : ""}>${icon("refresh-cw", busy ? "spin" : "")}${t(busy ? "Checking…" : s.last_checked_at ? "Run again" : "Run")}</button>
+          <button class="btn btn-small" data-up-check="${s.id}" ${busy ? "disabled" : ""}>${icon("refresh-cw", busy ? "spin" : "")}${t(busy ? "Checking…" : s.last_checked_at ? "Refresh" : "Check")}</button>
         </span>
       </div>
       ${why}
@@ -126,7 +126,7 @@
     const order = { down: 0, unknown: 1, up: 2 };
     const sorted = [...shown].sort((a, b) => order[a.state] - order[b.state] || a.host.localeCompare(b.host));
     const banners = sorted.map((s) => window.HealthTest?.bannersFor?.(s.id, ["uptime_down", "ssl_expiry", "domain_expiry"]) || "").join("");
-    return rule + banners + (shown.length ? sorted.map(card).join("") : `<div class="table-wrap"><div class="empty"><p>${t("Not one of your own sites.")}</p></div></div>`);
+    return rule + banners + (shown.length ? sorted.map(card).join("") : `<div class="table-wrap"><div class="empty"><h3>${t("Not one of your own sites")}</h3><p>${t("Uptime watches your own sites only.")}</p><button type="button" class="btn btn-small" data-up-all>${t("Show all your sites")}</button></div></div>`);
   }
 
   /* A check finishing or an alert arriving redraws this tab, and that must never wipe a date being typed or lose someone's place. */
@@ -205,6 +205,7 @@
     document.addEventListener("click", (e) => {
       const target = e.target;
       let el;
+      if (target.closest?.("[data-up-all]")) { UI.pickSite("all"); UI.render(); return; } // the empty state's one action
       if (target.closest?.("[data-up-retry]")) { up.failed = ""; up.ready = false; paint(); load(); return; }
       if ((el = target.closest?.("[data-up-check]"))) { checkNow(Number(el.dataset.upCheck) || el.dataset.upCheck); return; }
       if ((el = target.closest?.("[data-up-date-clear]"))) {
@@ -266,7 +267,7 @@
     "Last 30 days": "30 derniers jours", "online": "en ligne", "with an outage": "avec une panne", "not watched": "non surveillés", "Not watched": "Non surveillé", "Outage": "Panne",
     "Outages": "Pannes", "Ended": "Terminée", "Still down": "Toujours hors ligne", "Server error": "Erreur du serveur", "Page error": "Erreur de page", "No answer": "Pas de réponse", "Too many redirects": "Trop de redirections",
     "No checks in 30 days": "Aucun contrôle en 30 jours", "Only counts the days it was watched.": "Ne compte que les jours surveillés.", "Counts watched days only.": "Ne compte que les jours surveillés.", "day not watched": "jour non surveillé", "days not watched": "jours non surveillés",
-    "Last check": "Dernier contrôle", "Watch": "Surveiller", "Checking…": "Contrôle en cours…", "Run": "Lancer", "Run again": "Relancer", "Online, last 30 days": "En ligne, 30 derniers jours",
+    "Last check": "Dernier contrôle", "Watch": "Surveiller", "Checking…": "Contrôle en cours…", "Run": "Lancer", "Run again": "Relancer", "Refresh": "Actualiser", "Not one of your own sites": "Pas un de vos sites", "Uptime watches your own sites only.": "La disponibilité ne surveille que vos propres sites.", "Show all your sites": "Voir tous vos sites", "Online, last 30 days": "En ligne, 30 derniers jours",
     "Add your own site first.": "Ajoutez d'abord votre propre site.", "Not one of your own sites.": "Ce n'est pas un de vos sites.",
     "Checked every {every} min.": "Contrôlé toutes les {every} min.",
     "Expiry alerts {days} days ahead.": "Alertes d'expiration {days} jours avant.",

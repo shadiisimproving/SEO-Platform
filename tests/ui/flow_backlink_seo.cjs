@@ -27,11 +27,11 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
 
   // the verdict beside the status, and the Live card's line
   const barista = page.locator("#bl-table tbody tr", { hasText: "barista-mag.example" });
-  check("a sponsored link shows Weak", (await barista.locator(".vd-weak", { hasText: /^Weak$/ }).count()) === 1);
-  check("a plain link shows Counts", (await page.locator("#bl-table tbody tr", { hasText: "foodblog.example" }).locator(".vd-counts").count()) === 1);
+  check("a sponsored link shows Barely useful", (await barista.locator(".vd-weak", { hasText: /^Barely useful$/ }).count()) === 1);
+  check("a plain link shows Useful", (await page.locator("#bl-table tbody tr", { hasText: "foodblog.example" }).locator(".vd-counts").count()) === 1);
   check("no separate Nofollow tag once there's a verdict", (await barista.locator(".tag", { hasText: /^Nofollow$/ }).count()) === 0);
   const liveTile = await page.locator("#bl-tiles .tile").nth(1).innerText();
-  check("Live card says how many count for Google", /count for Google|counts for Google/.test(liveTile), liveTile.replace(/\s+/g, " "));
+  check("Live card says how many are useful", /\d+ useful/.test(liveTile), liveTile.replace(/\s+/g, " "));
   await page.screenshot({ path: OUT + "1-done.png" });
 
   // the panel: why, before and after, mark as spam
@@ -60,7 +60,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await page.setInputFiles("#gsc-file", latest);
   await page.click("#gsc-send"); await page.waitForSelector("#gsc-result .note, #gsc-result .error", { timeout: 15000 });
   const result = await page.locator("#gsc-result").innerText();
-  check("upload says what it did", /1 new links in Found but never logged/.test(result) && /1 logged links Google sees/.test(result), result.replace(/\s+/g, " "));
+  check("upload says what it did", /1 new links you didn't add/.test(result) && /1 logged links Google sees/.test(result), result.replace(/\s+/g, " "));
   await page.setInputFiles("#gsc-file", pages);
   await page.click("#gsc-send"); await page.waitForFunction(() => /of your pages have links/.test(document.querySelector("#gsc-result")?.innerText || ""), null, { timeout: 15000 });
   await page.click("#dlg [data-close-dlg]"); await settle();
@@ -149,7 +149,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   check("a Not useful chip", (await page.locator('[data-bl-filter="useless"]').count()) === 1);
   await page.click('[data-bl-filter="useful"]'); await settle();
   const usefulRows = await page.locator("#bl-table tbody tr").allInnerTexts();
-  check("Useful lists only links that count", usefulRows.length >= 1 && usefulRows.every((r) => r.includes("Counts")), usefulRows.length);
+  check("Useful lists only links that count", usefulRows.length >= 1 && usefulRows.every((r) => r.includes("Useful")), usefulRows.length);
   await page.click('[data-bl-filter="useless"]'); await settle();
   check("Not useful lists the sponsored link", (await page.locator("#bl-table tbody tr", { hasText: "barista-mag.example" }).count()) === 1);
   await page.click('[data-bl-filter="all"]'); await settle();
@@ -205,7 +205,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await menu(page, "theme"); await settle(400);
   await page.screenshot({ path: OUT + "7-dark.png" });
   await menu(page, "lang"); await settle(600);
-  check("French words", (await page.locator("#bl-table").innerText()).includes("Faible"));
+  check("French words", (await page.locator("#bl-table").innerText()).includes("Peu utile"));
   await page.screenshot({ path: OUT + "8-fr.png" });
   await menu(page, "lang"); await menu(page, "theme");
 

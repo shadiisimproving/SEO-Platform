@@ -20,13 +20,14 @@
   // ---- the section --------------------------------------------------------------------------------
   function rowHtml(b) {
     const { t, esc, icon } = UI;
-    const scores = [b.auth !== null && b.auth !== undefined ? `DA ${b.auth}` : "", b.pageAuthority !== null && b.pageAuthority !== undefined ? `PA ${b.pageAuthority}` : "", b.rating ? `${t("Rating")} ${b.rating}` : ""].filter(Boolean).join(" · ");
+    // Authority and Page authority, the words Link gaps and In consideration use (no DA or PA): one name for each score everywhere.
+    const scores = [b.auth !== null && b.auth !== undefined ? `${t("Authority")} ${b.auth}` : "", b.pageAuthority !== null && b.pageAuthority !== undefined ? `${t("Page authority")} ${b.pageAuthority}` : "", b.rating ? `${t("Rating")} ${b.rating}` : ""].filter(Boolean).join(" · ");
     const forSite = UI.state.site === "all" ? `<span class="second">${t("for")} ${esc(b.site)}</span>` : "";
     return `<tr id="todo-${esc(b.id)}" style="cursor:default">
       <td class="head-cell url-cell"><span class="with-logo">${UI.siteLogo(b.domain)}<span class="logo-text"><a class="kw mono small" href="${esc(b.src)}" target="_blank" rel="noopener noreferrer nofollow" data-tip="${esc(b.src)}">${esc(b.src.replace(/^https?:\/\//, ""))}</a>${scores ? `<span class="second tabular">${esc(scores)}</span>` : ""}${forSite}</span></span></td>
-      <td data-label="${t("Link type")}"><input class="input td-input" list="td-types" data-td-type="${esc(b.id)}" value="${esc(b.linkType || "")}" aria-label="${t("Link type")}: ${esc(b.domain)}" dir="auto"></td>
-      <td data-label="${t("Article")}"><span class="td-article"><input class="input td-input" type="url" inputmode="url" data-td-article="${esc(b.id)}" value="${esc(b.articleUrl || "")}" placeholder="https://docs.google.com/…" aria-label="${t("Article")}: ${esc(b.domain)}" aria-describedby="td-note-${esc(b.id)}"><a class="icon-btn td-open" id="td-open-${esc(b.id)}" href="${esc(b.articleUrl || "#")}" target="_blank" rel="noopener noreferrer" aria-label="${t("Open the article")}" data-tip="${t("Open the article")}" ${b.articleUrl ? "" : "hidden"}>${icon("external-link")}</a></span><span class="second td-note" id="td-note-${esc(b.id)}">${needsArticle(b) ? t("Needs an article") : ""}</span></td>
-      <td data-label="${t("Mediator")}"><input class="input td-input" list="td-mediators" data-td-mediator="${esc(b.id)}" value="${esc(b.mediator || "")}" aria-label="${t("Mediator")}: ${esc(b.domain)}" dir="auto"></td>
+      <td data-label="${t("Link type")}"><input class="input td-input" list="td-types" data-td-type="${esc(b.id)}" value="${esc(b.linkType || "")}" aria-label="${t("Link type")}: ${esc(b.domain)}" dir="auto" autocomplete="off"></td>
+      <td data-label="${t("Article")}"><span class="td-article"><input class="input td-input" type="url" inputmode="url" autocomplete="off" spellcheck="false" data-td-article="${esc(b.id)}" value="${esc(b.articleUrl || "")}" placeholder="https://docs.google.com/…" aria-label="${t("Article")}: ${esc(b.domain)}" aria-describedby="td-note-${esc(b.id)}"><a class="icon-btn td-open" id="td-open-${esc(b.id)}" href="${esc(b.articleUrl || "#")}" target="_blank" rel="noopener noreferrer" aria-label="${t("Open the article")}" data-tip="${t("Open the article")}" ${b.articleUrl ? "" : "hidden"}>${icon("external-link")}</a></span><span class="second td-note" id="td-note-${esc(b.id)}">${needsArticle(b) ? t("Needs an article") : ""}</span></td>
+      <td data-label="${t("Mediator")}"><input class="input td-input" list="td-mediators" data-td-mediator="${esc(b.id)}" value="${esc(b.mediator || "")}" aria-label="${t("Mediator")}: ${esc(b.domain)}" dir="auto" autocomplete="off" spellcheck="false"></td>
       <td data-label="${t("Status")}"><select class="select td-input" data-td-sent="${esc(b.id)}" aria-label="${t("Status")}: ${esc(b.domain)}"><option value="" ${b.sentAt ? "" : "selected"}>${t("To send")}</option><option value="sent" ${b.sentAt ? "selected" : ""}>${t("Sent")}</option></select></td>
       <td class="r nowrap" data-label=""><button class="btn btn-small" data-td-placed="${esc(b.id)}">${t("Mark placed")}</button> <button class="icon-btn" style="width:28px;height:28px;vertical-align:middle" data-td-back="${esc(b.id)}" aria-label="${t("Back to In consideration")}: ${esc(b.domain)}" data-tip="${t("Back to In consideration")}">${icon("corner-down-left")}</button></td>
     </tr>`;
@@ -41,7 +42,7 @@
     const all = planned();
     const names = mediatorNames();
     if (T.mediator && !names.includes(T.mediator)) T.mediator = "";
-    if (!all.length) return `<div class="table-wrap"><div class="empty"><h3>${t("Nothing to do yet")}</h3><p>${t("Move links here from In consideration, add articles, then send them to your mediator.")}</p></div></div>`;
+    if (!all.length) return `<div class="table-wrap"><div class="empty"><h3>${t("Nothing to do yet")}</h3><p>${t("Move links here from In consideration, add articles, then send them to your mediator.")}</p><button type="button" class="btn btn-small" data-bl-section="consideration">${icon("filter")}${t("Open In consideration")}</button></div></div>`;
     const mine = byMediator(), list = shownLinks(), page = TP.view(PAGES, list);
     const toSend = mine.filter((b) => !b.sentAt).length;
     // To send or Sent, with how many each holds for the mediator picked: the counts the line used to give.
@@ -57,7 +58,7 @@
       <datalist id="td-mediators">${names.map((name) => `<option value="${esc(name)}"></option>`).join("")}</datalist>
       <div class="bl-list"><div class="table-wrap"><table class="data" id="td-table">
         <thead><tr><th scope="col">${t("Site")}</th><th scope="col">${t("Link type")}</th><th scope="col">${t("Article")}</th><th scope="col">${t("Mediator")}</th><th scope="col">${t("Status")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
-        <tbody>${page.rows.map(rowHtml).join("") || `<tr style="cursor:default"><td colspan="6"><div class="empty"><p>${t(mine.length ? "Nothing here with this search or status." : "Nothing here for this mediator.")}</p></div></td></tr>`}</tbody>
+        <tbody>${page.rows.map(rowHtml).join("") || `<tr style="cursor:default"><td colspan="6"><div class="empty"><p>${t(mine.length ? "Nothing here with this search or status." : "Nothing here for this mediator.")}</p><button type="button" class="btn btn-small" data-td-reset>${icon("x")}${t(mine.length ? "Clear search and status" : "Show all mediators")}</button></div></td></tr>`}</tbody>
       </table></div>
       ${TP.footer(PAGES, page, { noun: t("links") })}</div>
       <p class="help" style="margin-top:10px">${t("Not counted in the cards above or checked until placed.")}</p>`;
@@ -97,8 +98,8 @@
     T.moving = prospects;
     UI.openPanel(`${UI.panelHead(t("Move to To do"), `${num(prospects.length)} ${t(prospects.length === 1 ? "link" : "links")}`)}
       <form class="panel-body" id="td-move-form" novalidate>
-        <label class="field"><span>${t("Mediator")} <span class="req">*</span></span><input class="input" id="td-move-mediator" list="td-move-mediators" dir="auto" data-autofocus aria-describedby="td-move-error" maxlength="180"><datalist id="td-move-mediators">${mediatorNames().map((name) => `<option value="${esc(name)}"></option>`).join("")}</datalist><div id="td-move-error"></div></label>
-        <label class="field"><span>${t("Link type")}</span><input class="input" id="td-move-type" list="td-move-types" dir="auto" value="Guest post" maxlength="100"><datalist id="td-move-types">${H.LINK_TYPES.map((name) => `<option value="${esc(name)}"></option>`).join("")}</datalist></label>
+        <label class="field"><span>${t("Mediator")} <span class="req">*</span></span><input class="input" id="td-move-mediator" list="td-move-mediators" dir="auto" autocomplete="off" spellcheck="false" data-autofocus aria-describedby="td-move-error" maxlength="180"><datalist id="td-move-mediators">${mediatorNames().map((name) => `<option value="${esc(name)}"></option>`).join("")}</datalist><div id="td-move-error"></div></label>
+        <label class="field"><span>${t("Link type")}</span><input class="input" id="td-move-type" list="td-move-types" dir="auto" value="Guest post" maxlength="100" autocomplete="off"><datalist id="td-move-types">${H.LINK_TYPES.map((name) => `<option value="${esc(name)}"></option>`).join("")}</datalist></label>
         <p class="help">${t("You add each article's Google Docs link in To do.")}</p>
       </form>
       <div class="panel-foot"><button class="btn btn-main" id="td-move-save">${t("Move")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button></div>`, opener);
@@ -254,7 +255,7 @@
     T.placing = b;
     UI.openPanel(`${UI.panelHead(t("Mark placed"), b.domain)}
       <form class="panel-body" id="td-placed-form" novalidate>
-        <label class="field"><span>${t("Published address")} <span class="req">*</span></span><input class="input mono" id="td-live-url" type="url" inputmode="url" placeholder="https://" data-autofocus aria-describedby="td-live-error" value="${esc(b.src)}"><div id="td-live-error"></div></label>
+        <label class="field"><span>${t("Published address")} <span class="req">*</span></span><input class="input mono" id="td-live-url" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://" data-autofocus aria-describedby="td-live-error" value="${esc(b.src)}"><div id="td-live-error"></div></label>
         <p class="help">${t("The exact page it's published on; the monthly check reads it.")}${UI.tip("The page where the article was published. The monthly check reads this page to see that your link is still there, so it must be the exact address.")}</p>
       </form>
       <div class="panel-foot"><button class="btn btn-main" id="td-placed-save">${t("Move to Done")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button></div>`, opener);
@@ -299,7 +300,8 @@
       if ((el = target.closest?.("[data-td-placed]"))) { const b = findLink(el.dataset.tdPlaced); if (b) openPlaced(b, el); return; }
       if ((el = target.closest?.("[data-td-back]"))) { const b = findLink(el.dataset.tdBack); if (b) moveBack(b, el); return; }
       if ((el = target.closest?.("#td-move-save"))) { if (!el.disabled) saveMove(el); return; }
-      if ((el = target.closest?.("#td-placed-save"))) { if (!el.disabled) savePlaced(el); }
+      if ((el = target.closest?.("#td-placed-save"))) { if (!el.disabled) savePlaced(el); return; }
+      if (target.closest?.("[data-td-reset]")) { T.sent = ""; T.mediator = ""; TP.state(PAGES).q = ""; TP.reset(PAGES); UI.render(); UI.$("[data-tp-search][data-tp-key=\"bl-todo\"]")?.focus(); }
     });
     document.addEventListener("submit", (e) => {
       if (e.target.id === "td-move-form") { e.preventDefault(); UI.$("#td-move-save")?.click(); }
@@ -332,10 +334,16 @@
   window.LinkTodo = {
     init(helpers, extras) { UI = helpers; H = extras; bind(); TP.on(PAGES, () => UI.render()); },
     body, openMove, count: () => planned().length,
+    links: () => H.siteLinks?.() || [], // the picked site's links, for the simpler Backlinks head (backlinks-seo.js)
     seen: () => ({ ids: shownLinks().map((b) => b.id), mediator: T.mediator || "" }), // export.js: the rows as filtered and searched, every page
   };
 
   const fr = {
+    "Authority": "Autorité", "Page authority": "Autorité de la page", "Mediator": "Intermédiaire", "All mediators": "Tous les intermédiaires", "Export for a mediator": "Exporter pour un intermédiaire",
+    "Move links here from In consideration, add articles, then send them to your mediator.": "Déplacez ici des liens à l'étude, ajoutez les articles, puis envoyez-les à votre intermédiaire.", "Open In consideration": "Ouvrir À l'étude",
+    "Nothing here for this mediator.": "Rien pour cet intermédiaire.", "Clear search and status": "Effacer la recherche et le statut", "Show all mediators": "Voir tous les intermédiaires", "Choose a mediator.": "Choisissez un intermédiaire.",
+    "No mediator": "Sans intermédiaire", "Give them a mediator first.": "Attribuez-leur d'abord un intermédiaire.", "Search sites or mediators": "Rechercher un site ou un intermédiaire",
+    "Set each Google Doc to \"Anyone with the link can view\" first, or the mediator can't open it.": "Réglez d'abord chaque Google Doc sur « Tous les utilisateurs disposant du lien peuvent consulter », sinon l'intermédiaire ne pourra pas l'ouvrir.",
     "To do": "À faire", "Article": "Article", "Open the article": "Ouvrir l'article", "Needs an article": "Article manquant", "To send": "À envoyer", "Sent": "Envoyé", "to send": "à envoyer", "sent": "envoyés",
     "Mark placed": "Marquer placé", "Back to In consideration": "Remettre à l'étude", "back in In consideration": "de nouveau à l'étude",
     "Nothing to do yet": "Rien à faire pour l'instant", "Move links here from In consideration, add articles, then send them to your mediator.": "Déplacez ici des liens à l'étude, ajoutez les articles, puis envoyez-les à votre intermédiaire.",

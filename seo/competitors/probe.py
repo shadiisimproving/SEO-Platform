@@ -34,7 +34,7 @@ NO_TOOL = "No search tool connected. Add one in Settings, then check again."
 FAILS_BEFORE_DROP = 3  # in a row, timeouts included: as Refresh does (F124)
 NO_KEYWORDS = "Type at least one keyword, one on each line."
 STOPPED = "Stopped early. Progress is saved; press Check to carry on."
-KEPT = "Progress is saved. Press Check again when a tool has free checks."
+KEPT = "Progress is saved. Press Refresh when a tool has free checks."
 
 
 # ---- the list ---------------------------------------------------------------------------------------
@@ -306,7 +306,7 @@ def run_probe(job, engine: Engine) -> None:
         reasons = " ".join(dict.fromkeys(stopped))
         _finish(engine, run_id, "waiting", f"{reasons} {KEPT}".strip() if reasons else NO_TOOL)
     elif failed:
-        _finish(engine, run_id, "complete", f"{failed} keyword{'' if failed == 1 else 's'} couldn't be checked. Press Check again to retry.")
+        _finish(engine, run_id, "complete", f"{failed} keyword{'' if failed == 1 else 's'} couldn't be checked. Press Refresh to try them again.")
     else:
         _finish(engine, run_id, "complete")
 

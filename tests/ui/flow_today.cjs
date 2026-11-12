@@ -14,7 +14,7 @@ const shot = (page, name, full = true) => page.screenshot({ path: `${out}/${name
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1);
 const rowsText = (page) => page.$$eval("[data-row] .t", (els) => els.map((x) => x.textContent.trim()));
 const facts = (page) => page.evaluate(() => ({
-  lead: document.querySelector(".today-lead")?.textContent, second: document.querySelector(".today-second")?.textContent,
+  lead: [".today-verdict", ".today-state"].map((sel) => document.querySelector(sel)?.textContent || "").join(" ").trim(), second: document.querySelector(".today-second")?.textContent,
   badge: Number(document.querySelector('.nav-item[data-go="today"] .count')?.textContent || 0),
   nums: [...document.querySelectorAll(".today-num")].map((x) => x.innerText.replace(/\n+/g, " | ")),
 }));
@@ -22,7 +22,8 @@ const count = (s) => { const m = /^(\d+)/.exec(s || ""); return m ? Number(m[1])
 
 async function shared(page, label) {
   let f = await facts(page);
-  check(!!f.lead, `${label}: the answer sentence is there: "${f.lead}"`);
+  check(!!f.lead, `${label}: the verdict badge is there: "${f.lead}"`);
+  check(!/ are (up|down) | over the last /.test(f.lead), `${label}: no sentence repeating the cards (UI critique 2026-11-12)`);
   check(count(f.second) === f.badge, `${label}: headline count ${count(f.second)} matches the menu badge ${f.badge}`);
   check(f.nums.length === 3, `${label}: three numbers: ${f.nums.join(" // ")}`);
   check(!(await page.$(".hero, #hero-plot, [data-hero-metric]")), `${label}: the old chart is gone`);
@@ -49,7 +50,7 @@ async function shared(page, label) {
   page.on("response", (r) => { if (r.status() === 404 && r.url().startsWith(REAL) && !r.url().includes("/api/auth/me")) missing.push(r.url()); });
 
   // ---- sample
-  await page.goto(`${SAMPLE}#today`); await page.waitForSelector(".today-lead"); await settle(page);
+  await page.goto(`${SAMPLE}#today`); await page.waitForSelector(".today-verdict"); await settle(page);
   await shared(page, "sample");
   await shot(page, "after-sample-1440");
   let rows = await rowsText(page);
@@ -65,25 +66,25 @@ async function shared(page, label) {
   check(rows.some((x) => x.includes("blocks our crawler")), "sample: information rows only appear under Show all");
   await page.click("#show-all"); await settle(page, 200);
   await page.click('[data-today-pair="1"]'); await page.waitForSelector("#cp-back", { timeout: 8000 }); check(true, "sample: Compare opens that pair in Page vs page");
-  await page.goto("about:blank"); await page.goto(`${SAMPLE}#today`); await page.waitForSelector(".today-lead");
+  await page.goto("about:blank"); await page.goto(`${SAMPLE}#today`); await page.waitForSelector(".today-verdict");
   for (const [word, route] of [["Leads", "conversions"], ["Visits", "channels"], ["Google clicks", "overview"]]) {
     await page.click(`a.today-num-link[href="#${route}"]`); await settle(page, 300);
     check(page.url().includes(`#${route}`), `sample: ${word} opens ${route}`);
-    await page.goBack(); await page.waitForSelector(".today-lead"); await settle(page, 200);
+    await page.goBack(); await page.waitForSelector(".today-verdict"); await settle(page, 200);
   }
   await page.click('[data-site="site-two"]'); await settle(page, 300);
   const one = await facts(page);
   check(!(await page.$("table.data")), "sample: one site hides the Sites table");
   check(!(await page.$$eval("[data-row] .t", (els) => els.some((x) => x.textContent.includes("site-one.example")))), `sample: one site shows only its rows (${one.second})`);
   await shot(page, "after-sample-one-site");
-  await page.goto("about:blank"); await page.goto(`${SAMPLE}?data=first#today`); await page.waitForSelector(".today-lead"); await settle(page);
-  check((await facts(page)).lead.startsWith("Connect Google to see leads, visits and clicks"), "sample: first run says so and shows no false zero");
+  await page.goto("about:blank"); await page.goto(`${SAMPLE}?data=first#today`); await page.waitForSelector(".today-verdict"); await settle(page);
+  check((await facts(page)).lead.includes("Connect Google to see leads, visits and clicks"), "sample: first run says so and shows no false zero");
   await shot(page, "after-sample-first-run");
 
   // ---- both looks, widths and French
   for (const [w, h] of [[1024, 800], [390, 844]]) {
     await page.setViewportSize({ width: w, height: h });
-    await page.goto("about:blank"); await page.goto(`${SAMPLE}#today`); await page.waitForSelector(".today-lead"); await settle(page);
+    await page.goto("about:blank"); await page.goto(`${SAMPLE}#today`); await page.waitForSelector(".today-verdict"); await settle(page);
     check(!(await overflow(page)), `sample: no sideways scroll at ${w}`);
     await shot(page, `after-sample-${w}`);
   }
@@ -91,7 +92,7 @@ async function shared(page, label) {
 
   // ---- real app. As a plain file the screens ask for an API that isn't there, so only errors from here on count.
   problems.length = 0;
-  await page.goto("about:blank"); await page.goto(`${REAL}#today`); await page.waitForSelector(".today-lead", { timeout: 20000 }); await settle(page, 1200);
+  await page.goto("about:blank"); await page.goto(`${REAL}#today`); await page.waitForSelector(".today-verdict", { timeout: 20000 }); await settle(page, 1200);
   await shared(page, "real");
   await shot(page, "after-real-1440");
   rows = await rowsText(page);
@@ -103,7 +104,7 @@ async function shared(page, label) {
     const dropKey = await drop.getAttribute("data-lv-drop");
     await drop.click(); await settle(page, 900);
     check((await facts(page)).badge === was - 1, "real: Mark as seen removes the drop");
-    await page.reload(); await page.waitForSelector(".today-lead"); await settle(page, 1200);
+    await page.reload(); await page.waitForSelector(".today-verdict"); await settle(page, 1200);
     check((await facts(page)).badge === was - 1, "real: it stays gone after a reload");
     const down = await page.$$eval(".today-moves .card:first-child .today-link", (els) => els.map((x) => x.textContent));
     console.log("     going down:", down);
@@ -113,13 +114,13 @@ async function shared(page, label) {
   const compare = await page.$("[data-today-pair]");
   if (compare) { await compare.click(); await page.waitForSelector("#cp-back", { timeout: 8000 }); check(true, "real: Compare opens the pair"); }
   else console.log("     no rival edit on a paired page in the demo data");
-  await page.goto("about:blank"); await page.goto(`${REAL}#today`); await page.waitForSelector(".today-lead"); await settle(page, 800);
+  await page.goto("about:blank"); await page.goto(`${REAL}#today`); await page.waitForSelector(".today-verdict"); await settle(page, 800);
   for (const route of ["channels", "overview"]) {
     await page.click(`a.today-num-link[href="#${route}"]`); await settle(page, 1500);
     const opened = await page.evaluate(() => ({ graphs: document.querySelectorAll("[data-lv-chart]").length, text: document.querySelector("#page").innerText.replace(/\s+/g, " ").slice(0, 170) }));
     console.log(`     ${route}:`, opened.graphs, "graph(s) ·", opened.text);
     check(page.url().includes(`#${route}`), `real: the number opens ${route}`);
-    await page.goBack(); await page.waitForSelector(".today-lead"); await settle(page, 400);
+    await page.goBack(); await page.waitForSelector(".today-verdict"); await settle(page, 400);
   }
   await page.click('button[data-lv-table="today-visits"]'); await settle(page, 400);
   check(!!(await page.$(".today-num table.data")), "real: a graph can be read as a table");
@@ -127,7 +128,7 @@ async function shared(page, label) {
   await menu(page, "lang"); await settle(page, 700);
   await shot(page, "after-real-french");
   const frLead = (await facts(page)).lead;
-  check(/^Leads .*derniers jours/.test(frLead), `real: French sentence: ${frLead}`);  // the glossary's word since 10 Nov 2026
+  check(/à traiter|Rien d'urgent|Urgent/.test(frLead), `real: French verdict: ${frLead}`);
   const frRows = await rowsText(page);
   check(!frRows.some((x) => /expires on|health fell/.test(x)), `real: French to-do rows: ${frRows.join(" / ")}`);
   await menu(page, "lang"); await settle(page, 500);
@@ -140,7 +141,7 @@ async function shared(page, label) {
   await page.setViewportSize({ width: 1440, height: 1000 });
 
   // ---- keyboard, reduced motion
-  await page.goto("about:blank"); await page.goto(`${REAL}#today`); await page.waitForSelector(".today-lead"); await settle(page, 900);
+  await page.goto("about:blank"); await page.goto(`${REAL}#today`); await page.waitForSelector(".today-verdict"); await settle(page, 900);
   await page.focus('[data-lv-chart="today-clicks"]'); await page.keyboard.press("End"); await settle(page, 150);
   const keyed = await page.evaluate(() => { const tip = document.querySelector('[data-lv-chart="today-clicks"] .lv-tip'); return tip.hidden ? "" : tip.innerText; });
   check(/This period/.test(keyed), `real: arrow keys read a graph: ${keyed.replace(/\n+/g, " | ")}`);
@@ -151,14 +152,14 @@ async function shared(page, label) {
   const focused = await page.evaluate(() => document.activeElement !== document.body);
   check(focused, "real: Tab keeps moving through the page");
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.reload(); await page.waitForSelector(".today-lead"); await settle(page, 600);
+  await page.reload(); await page.waitForSelector(".today-verdict"); await settle(page, 600);
   check((await page.$$(".today-num [data-lv-chart]")).length === 3, "real: graphs still draw with reduced motion");
   await page.emulateMedia({ reducedMotion: "no-preference" });
 
   // ---- accessibility, once the page has settled. AXE_PATH points at axe.min.js when it's available.
   if (process.env.AXE_PATH) {
     const scan = async (label, url, dark) => {
-      await page.goto("about:blank"); await page.goto(url); await page.waitForSelector(".today-lead"); await settle(page, 1500);
+      await page.goto("about:blank"); await page.goto(url); await page.waitForSelector(".today-verdict"); await settle(page, 1500);
       if (dark) { await menu(page, "theme"); await settle(page, 800); }
       await page.addScriptTag({ path: process.env.AXE_PATH });
       const found = await page.evaluate(async () => (await window.axe.run("#page", { resultTypes: ["violations"] })).violations.map((v) => `${v.id} (${v.impact}): ${v.nodes.slice(0, 3).map((n) => n.target.join(" ")).join(" ; ")}`));

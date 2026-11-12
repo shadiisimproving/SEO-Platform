@@ -32,7 +32,8 @@
   ];
   // Most specific first: "UTM source" before "source", "Renewal date" before "date", "Mediator contact" before "mediator".
   const MOST_SPECIFIC = ["utm_source", "utm_medium", "utm_campaign", "renewal", "due", "anchor_kind", "keyword", "link_type", "status", "placed", "anchor", "cost", "contact", "platform", "mediator", "owner", "notes", "site", "target", "src"].map((key) => FIELDS.find(([field]) => field === key));
-  const labelOf = (key) => FIELDS.find(([field]) => field === key)[1];
+  const SCREEN_WORDS = {};
+  const labelOf = (key) => SCREEN_WORDS[key] || FIELDS.find(([field]) => field === key)[1];
 
   // ---- the template ---------------------------------------------------------------------------
   const TEMPLATE_COLUMNS = FIELDS.map(([, label]) => label);

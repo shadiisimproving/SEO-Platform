@@ -19,7 +19,7 @@ const SITE = "site-one.example";
 const url = (extra = "") => `${BASE}?flow=${Date.now()}&simple=1${extra}#today?site=${SITE}`;
 const digits = (s) => Number(String(s || "").replace(/[^\d]/g, "")) || null;
 const facts = (page) => page.evaluate(() => ({
-  lead: document.querySelector(".today-lead")?.textContent, second: document.querySelector(".today-second")?.textContent,
+  lead: [".today-verdict", ".today-state"].map((sel) => document.querySelector(sel)?.textContent || "").join(" ").trim(), second: document.querySelector(".today-second")?.textContent,
   badge: Number(document.querySelector('.nav-item[data-go="today"] .count')?.textContent || 0),
 }));
 const count = (s) => Number((String(s || "").match(/^(\d+)/) || [0, 0])[1]);
@@ -29,7 +29,9 @@ const controls = (page) => page.evaluate(() => {
   const shown = (el) => { const r = el.getBoundingClientRect(); if (r.width <= 1 || r.height <= 1) return false;
     let o = 1; for (let n = el; n && n !== document.body; n = n.parentElement) { const s = getComputedStyle(n);
       if (s.display === "none" || s.visibility === "hidden") return false; o *= Number(s.opacity); } return o > 0.05; };
-  return [...document.querySelector("#main").querySelectorAll("button,select,input,textarea,a[href],summary,[role=button],[role=tab]")].filter(shown).length;
+  // A row's tick box stays faintly visible since 2026-11-12 (UI critique: hidden ones weren't discovered); it isn't counted here.
+  const rowTick = (el) => el.matches('tbody :is(.tt-pick, .tt-own-pick) input[type="checkbox"]');
+  return [...document.querySelector("#main").querySelectorAll("button,select,input,textarea,a[href],summary,[role=button],[role=tab]")].filter((el) => !rowTick(el)).filter(shown).length;
 });
 const visible = (page, sel) => page.$eval(sel, (el) => { let o = 1; for (let n = el; n && n !== document.body; n = n.parentElement) o *= Number(getComputedStyle(n).opacity); return o > 0.5; });
 
@@ -41,7 +43,7 @@ const visible = (page, sel) => page.$eval(sel, (el) => { let o = 1; for (let n =
   const go = async (route, ms = 1200) => { await page.click(`button[data-go="${route}"]`); await settle(page, ms); };
 
   // ---- first view
-  await page.goto(url()); await page.waitForSelector(".today-lead", { timeout: 20000 }); await settle(page, 1500);
+  await page.goto(url()); await page.waitForSelector(".today-verdict", { timeout: 20000 }); await settle(page, 1500);
   check(await page.evaluate(() => window.UI.simple() && document.documentElement.dataset.simple === "1"), "the switch is on");
   await page.mouse.move(5, 5); await settle(page, 300);
   await page.screenshot({ path: `${OUT}/1-today-1440.png` });
@@ -50,12 +52,12 @@ const visible = (page, sel) => page.$eval(sel, (el) => { let o = 1; for (let n =
     line: document.querySelector("#topbar .head-line")?.textContent.replace(/\s+/g, " ").trim(),
     presets: [...document.querySelectorAll("#topbar .head-period [data-preset]")].map((b) => `${b.dataset.preset}:${b.getAttribute("aria-pressed")}`),
     more: Boolean(document.querySelector("#topbar #period")), compare: Boolean(document.querySelector("#topbar #compare")),
-    chip: document.querySelector('#topbar .head-line [data-go="settings"], #topbar .head-line [data-lv-connect]')?.textContent.trim(),
+    chip: document.querySelector('#topbar .head-line [data-go="settings"], #topbar .head-line [data-lv-connect], #topbar .head-line [data-today-connect]')?.textContent.trim(),
   }));
   check(head.title === "Today", "the head says Today");
   check(/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday) \d+ \w+/.test(head.line) && /–/.test(head.line) && /vs /.test(head.line), `one date line: the day, the dates, the comparison: ${head.line}`);
   check(head.presets.join() === "7d:false,28d:true,3m:false,12m:false" && head.more && head.compare, `four period buttons and More, 28 days pressed: ${head.presets}`);
-  check(/sources OK|Connect Google/.test(head.chip || ""), `the sources are one chip in the date line: ${head.chip}`);
+  check(/sources OK|connect Google/i.test(head.chip || ""), `the sources are one chip in the date line: ${head.chip}`);
   check(!(await page.$(".today-sources")), "the Data sources row has left My work");
   check(!(await page.$(".today-caption")), "no caption under the cards: the dates are in the head");
   check(!(await page.$(".today-moves-head")), "no Week on week line: each move card says 7 days");
@@ -98,7 +100,7 @@ const visible = (page, sel) => page.$eval(sel, (el) => { let o = 1; for (let n =
   check(await visible(page, "[data-row] .row-act"), "and shows on the row's hover");
   await page.mouse.move(5, 5); await settle(page, 300);
   const n = await controls(page);
-  check(n <= 36, `controls at rest: ${n} (47 before with the switch on, 44 with it off; target 33 on two moving rows)`);
+  check(n <= 37, `controls at rest: ${n} (every serious row now shows; 47 before with the switch on, 44 with it off; target 33 on two moving rows)`);
   const f = await facts(page);
   check(count(f.second) === f.badge, `the headline count ${count(f.second)} matches the menu badge ${f.badge}`);
   const drop = await page.$("[data-lv-drop]");
@@ -162,8 +164,8 @@ const visible = (page, sel) => page.$eval(sel, (el) => { let o = 1; for (let n =
 
   // ---- French, dark, phone
   await page.goto(url("&lang=fr")); await page.waitForSelector(".today-num"); await settle(page, 1500);
-  const fr = await page.evaluate(() => ({ lead: document.querySelector(".today-lead").textContent, title: document.querySelector("#topbar h1").textContent, seven: document.querySelector('#topbar [data-preset="7d"]').textContent, label: document.querySelector('.ncard[data-card="visits"] .ncard-name').textContent, heads: [...document.querySelectorAll(".today-moves .card-head .end")].map((x) => x.textContent), rows: [...document.querySelectorAll("[data-row] .t")].map((x) => x.textContent) }));
-  check(/derniers jours/.test(fr.lead) && fr.title === "Aujourd'hui" && fr.seven === "7 jours" && fr.label === "Visites" && fr.heads.every((x) => x === "7 jours"), `French: ${JSON.stringify({ ...fr, rows: undefined })}`);
+  const fr = await page.evaluate(() => ({ lead: document.querySelector(".today-verdict").textContent, title: document.querySelector("#topbar h1").textContent, seven: document.querySelector('#topbar [data-preset="7d"]').textContent, label: document.querySelector('.ncard[data-card="visits"] .ncard-name').textContent, heads: [...document.querySelectorAll(".today-moves .card-head .end")].map((x) => x.textContent), rows: [...document.querySelectorAll("[data-row] .t")].map((x) => x.textContent) }));
+  check(/à traiter|Rien d'urgent|Urgent/.test(fr.lead) && fr.title === "Aujourd'hui" && fr.seven === "7 jours" && fr.label === "Visites" && fr.heads.every((x) => x === "7 jours"), `French: ${JSON.stringify({ ...fr, rows: undefined })}`);
   check(!fr.rows.some((r) => /\b(lost|clicks|no longer|health fell)\b/i.test(r)), "the to-do rows are in French");
   await page.mouse.move(5, 5); await page.screenshot({ path: `${OUT}/2-today-1440-fr.png` });
   await page.goto(url("&theme=dark&lang=en")); await page.waitForSelector(".today-num"); await settle(page, 1500);
@@ -198,7 +200,7 @@ const visible = (page, sel) => page.$eval(sel, (el) => { let o = 1; for (let n =
 
   // ---- the switch off: Today exactly as before
   await page.goto(`${BASE}?flow=${Date.now()}&simple=0#today?site=${SITE}`); await page.waitForSelector(".today-num", { timeout: 20000 }); await settle(page, 1500);
-  const old = await page.evaluate(() => ({ simple: window.UI.simple(), ncards: document.querySelectorAll(".ncard").length, charts: document.querySelectorAll(".today-num [data-lv-chart]").length, caption: Boolean(document.querySelector(".today-caption")), sources: Boolean(document.querySelector(".today-sources, .stat-row [data-lv-connect]")), rowAct: document.querySelectorAll(".row-act").length }));
+  const old = await page.evaluate(() => ({ simple: window.UI.simple(), ncards: document.querySelectorAll(".ncard").length, charts: document.querySelectorAll(".today-num [data-lv-chart]").length, caption: Boolean(document.querySelector(".today-caption")), sources: Boolean(document.querySelector(".today-sources, .stat-row [data-lv-connect], .stat-row [data-today-connect]")), rowAct: document.querySelectorAll(".row-act").length }));
   check(!old.simple && !old.ncards && old.charts === 3 && old.caption && old.sources && !old.rowAct, `with the switch off Today is as before: ${JSON.stringify(old)}`);
 
   const seen = problems.filter((x) => !/favicon|status of 404|status of 500/.test(String(x)));

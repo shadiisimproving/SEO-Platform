@@ -18,11 +18,14 @@
   --ink-bg: #fff; --ink-shadow: 0 1px 3px rgba(15, 34, 51, .18);
   --accent-1: #1F78BC; --accent-2: #1A72B5; --on-accent: #fff; --accent-text: #176AAB; --accent-glow: rgba(30, 127, 194, .35); --focus: #176AAB;
   --series-1: #1A72B5; --series-2: #3BA4E8; --series-3: #6D4AFF; --ours: #176AAB;
-  --chart-them: #6D4AFF; --chart-you: #176AAB; /* a competitor vs you in one chart: a pair checked for colour blindness */
+  --chart-them: #6D4AFF; --chart-you: #176AAB; --you-text: #176AAB; --them-text: #6D4AFF; /* a competitor vs you in one chart: a pair checked for colour blindness */
   --good-t: #067647; --warn-t: #93500A; --serious-t: #B54708; --crit-t: #B42318;
   --c-blue: #176AAB; --c-blue-pale: #E8F3FB; --c-purple: #6D4AFF; --c-purple-pale: #F1EEFF;
-  --c-teal: #0B7F72; --c-teal-pale: #E6F6F4; --c-indigo: #4338CA; --c-indigo-pale: #EEF2FF;
+  --c-teal: #0B7F72; --c-teal-pale: #E6F6F4; --c-indigo: #4E5F78; --c-indigo-pale: #EEF1F5; /* slate since 2026-11-12: the old indigo read as the competitor purple */
+  --c-grey: #4B5866; --c-grey-pale: #EEF1F4; /* a neutral fourth for rotations: purple only ever means a competitor */
   --scrim: rgba(7, 41, 63, .4);
+  --badge-bg: #B42318; --badge-fg: #fff; /* 6.5:1 */
+  --danger-bg: #B42318; --danger-fg: #fff;
 }
 [data-look="clear"][data-theme="dark"] {
   --text: #F1F4F7; --text-2: #CFD6DD; --muted: #A9B3BE;
@@ -38,10 +41,13 @@
   --ink-bg: #343D47; --ink-shadow: 0 1px 3px rgba(0, 0, 0, .4);
   --accent-1: #1F78BC; --accent-2: #1A72B5; --on-accent: #fff; --accent-text: #7CC4F5; --accent-glow: rgba(30, 127, 194, .5); --focus: #9AD3F8;
   --series-1: #6FBDF0; --series-2: #9AD3F8; --series-3: #B9A6FF; --ours: #7CC4F5;
-  --chart-them: #987EF2; --chart-you: #1872C0; /* not --series-3/--ours: those two are too close for red-green colour blindness */
+  --chart-them: #987EF2; --chart-you: #1872C0; --you-text: #7CC4F5; --them-text: #B5A3F7; /* not --series-3/--ours: those two are too close for red-green colour blindness */
   --c-blue: #7CC4F5; --c-blue-pale: rgba(59, 164, 232, .16); --c-purple: #B9A6FF; --c-purple-pale: rgba(109, 74, 255, .22);
-  --c-teal: #5EEAD4; --c-teal-pale: rgba(45, 212, 191, .14); --c-indigo: #B4BDFF; --c-indigo-pale: rgba(129, 140, 248, .18);
+  --c-teal: #5EEAD4; --c-teal-pale: rgba(45, 212, 191, .14); --c-indigo: #AEBCD1; --c-indigo-pale: rgba(148, 163, 184, .16);
+  --c-grey: #C3CCD5; --c-grey-pale: rgba(195, 204, 213, .14);
   --scrim: rgba(0, 0, 0, .55);
+  --badge-bg: #FFA3B0; --badge-fg: #2A0A10; /* 9.6:1 */
+  --danger-bg: #FFA3B0; --danger-fg: #2A0A10;
 }
 
 /* ---- Both looks: solid white surfaces, no drifting sky, no glow ---- */
@@ -57,11 +63,13 @@
 [data-look="clear"] .chk:checked { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3.5 8.5 3 3 6-7'/%3E%3C/svg%3E"), linear-gradient(120deg, var(--accent-1), var(--accent-2)); }
 [data-look="clear"] .tab[aria-selected="true"], [data-look="clear"] .seg button[aria-pressed="true"] { color: var(--accent-text); font-weight: 600; }
 
-/* A colour per card, so a row of numbers can be told apart at a glance. */
+/* A colour per card, so a row of numbers can be told apart at a glance. Blue, teal, indigo, grey: never purple, which only
+   ever means a competitor, and never a status colour. */
 [data-look="clear"] .tile { --c: var(--c-blue); --c-pale: var(--c-blue-pale); }
-[data-look="clear"] .tile:nth-child(4n+2) { --c: var(--c-purple); --c-pale: var(--c-purple-pale); }
-[data-look="clear"] .tile:nth-child(4n+3) { --c: var(--c-teal); --c-pale: var(--c-teal-pale); }
-[data-look="clear"] .tile:nth-child(4n+4) { --c: var(--c-indigo); --c-pale: var(--c-indigo-pale); }
+[data-look="clear"] .tile:nth-child(4n+2) { --c: var(--c-teal); --c-pale: var(--c-teal-pale); }
+[data-look="clear"] .tile:nth-child(4n+3) { --c: var(--c-indigo); --c-pale: var(--c-indigo-pale); }
+[data-look="clear"] .tile:nth-child(4n+4) { --c: var(--c-grey); --c-pale: var(--c-grey-pale); }
+[data-look="clear"] .tile:has(.ico.neutral) { --c: var(--c-grey); --c-pale: var(--c-grey-pale); } /* a count at 0: nothing to flag */
 [data-look="clear"] .tile:has(.ico.serious) { --c: var(--serious-t); --c-pale: color-mix(in srgb, var(--serious) 16%, transparent); }
 [data-look="clear"] .tile .ico { color: var(--c); background: var(--c-pale); box-shadow: none; }
 [data-look="clear"] .tile .spark-line { stroke: var(--c); }
@@ -70,22 +78,22 @@
 /* The simpler screens' number card (UI.card, screen-parts.css) takes the same colours, on its small graph instead of an icon
    square. Counted among the cards only, so a heading beside them doesn't shift the colours. Off with the switch off. */
 [data-look="clear"][data-simple="1"] .ncard { --c: var(--c-blue); --c-pale: var(--c-blue-pale); }
-[data-look="clear"][data-simple="1"] .ncard:nth-child(4n+2 of .ncard) { --c: var(--c-purple); --c-pale: var(--c-purple-pale); }
-[data-look="clear"][data-simple="1"] .ncard:nth-child(4n+3 of .ncard) { --c: var(--c-teal); --c-pale: var(--c-teal-pale); }
-[data-look="clear"][data-simple="1"] .ncard:nth-child(4n+4 of .ncard) { --c: var(--c-indigo); --c-pale: var(--c-indigo-pale); }
+[data-look="clear"][data-simple="1"] .ncard:nth-child(4n+2 of .ncard) { --c: var(--c-teal); --c-pale: var(--c-teal-pale); }
+[data-look="clear"][data-simple="1"] .ncard:nth-child(4n+3 of .ncard) { --c: var(--c-indigo); --c-pale: var(--c-indigo-pale); }
+[data-look="clear"][data-simple="1"] .ncard:nth-child(4n+4 of .ncard) { --c: var(--c-grey); --c-pale: var(--c-grey-pale); }
 /* In a table the small trend lines stay quiet: the numbers beside them matter more. */
 [data-look="clear"] .data .spark-line { stroke: var(--muted); }
 [data-look="clear"] .data .spark-dot { fill: var(--muted); }
 
 /* Each tab's icon has its own colour, so tabs read apart before their words do. */
 [data-look="clear"] .tabs .tab:nth-of-type(4n+1) svg.i { color: var(--c-blue); }
-[data-look="clear"] .tabs .tab:nth-of-type(4n+2) svg.i { color: var(--c-purple); }
-[data-look="clear"] .tabs .tab:nth-of-type(4n+3) svg.i { color: var(--c-teal); }
-[data-look="clear"] .tabs .tab:nth-of-type(4n+4) svg.i { color: var(--c-indigo); }
+[data-look="clear"] .tabs .tab:nth-of-type(4n+2) svg.i { color: var(--c-teal); }
+[data-look="clear"] .tabs .tab:nth-of-type(4n+3) svg.i { color: var(--c-indigo); }
+[data-look="clear"] .tabs .tab:nth-of-type(4n+4) svg.i { color: var(--c-grey); }
 
 /* Two authority scales look different, because they are. */
 [data-look="clear"] .cg-auth .tag { color: var(--c-blue); background: var(--c-blue-pale); box-shadow: none; }
-[data-look="clear"] .cg-auth .tag[data-tip*="Common Crawl"] { color: var(--c-purple); background: var(--c-purple-pale); }
+[data-look="clear"] .cg-auth .tag[data-tip*="Common Crawl"] { color: var(--c-indigo); background: var(--c-indigo-pale); }
 
 /* Task columns: grey to do, blue under way, green done. */
 [data-look="clear"] .tk-col-head h2::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; vertical-align: 1px; background: var(--muted); }
@@ -95,9 +103,10 @@
 /* The foot of the side menu: one account row, opening Settings, dark mode, language and sign out (mockup.js sideAccount). */
 .side-acct { display: flex; align-items: center; gap: 4px; }
 .side-acct .acct-btn { flex: 1 1 auto; min-width: 0; margin: 0; }
-.side-acct .acct-btn .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+/* Two lines rather than "Settings and dis…": the label and a long name fit. */
+.side-acct .acct-btn .label { flex: 1; min-width: 0; overflow: hidden; text-align: left; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.25; }
 .side-acct .acct-btn .chev { width: 14px; height: 14px; flex: none; }
-.acct-av { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; flex: none; font-size: 11px; font-weight: 700; background: var(--accent-2); color: var(--on-accent); }
+.acct-av { width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; flex: none; font-size: var(--fs-min); font-weight: 700; background: var(--accent-2); color: var(--on-accent); }
 .side-acct .rail-toggle { flex: none; }
 .app.rail .side-acct { flex-direction: column; }
 .app.rail .side-acct .chev { display: none; }

@@ -20,7 +20,7 @@ const settle = (page, ms = 500) => page.waitForTimeout(ms);
   const bodyText = await page.textContent("#page");
   check(!/coût de la vie|visa séville|titre de séjour/.test(bodyText), "no sample keyword on the real screen");
   check((await page.$$("#kw-table tbody tr")).length >= 10, "real rows show");
-  check(/Scraped results/.test(bodyText), "the Top 10 tile says its source");
+  check(/our checks/.test(bodyText), "the Top 10 tile says its source");
   check(await page.$("#period") === null, "no period picker that wouldn't do anything");
 
   // Each engine tab, and the views
@@ -143,7 +143,7 @@ const settle = (page, ms = 500) => page.waitForTimeout(ms);
   await page.keyboard.press("Escape"); await settle(page, 300);
   await page.evaluate(() => { window.UI.state.lang = "en"; window.UI.state.theme = "light"; window.UI.render(); });
   await page.setViewportSize({ width: 390, height: 800 }); await settle(page, 500); await shot(page, "22-narrow");
-  check(await page.$eval("#kwr-add-small", (b) => b.offsetParent !== null), "Add keywords can be reached at phone width");
+  check(await page.locator("#kwr-add-phone").evaluate((b) => b.offsetParent !== null), "Add keywords can be reached at phone width");
   const sideways = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   check(sideways <= 1, `no sideways scroll at 390 px (${sideways})`);
   await page.setViewportSize({ width: 1024, height: 800 }); await settle(page, 400); await shot(page, "23-1024");

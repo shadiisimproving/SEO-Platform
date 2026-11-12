@@ -329,7 +329,7 @@
     const signature = `${key}|${U().state?.lang}|${labels.join("|")}|${chips}`;
     if (bar.dataset.signature === signature) return;
     bar.dataset.signature = signature;
-    U().setHTML(bar, `${chips}${st.filters.size > 1 ? `<button type="button" class="link-btn" data-tt-key="${k}" data-tt-unfilter-all>${t("Clear all")}</button>` : ""}<button type="button" class="btn btn-small tt-filter" data-tt-key="${k}" data-tt-filter aria-haspopup="dialog">${U().icon("filter")}${t("Filter")}${st.filters.size ? ` <b class="tt-count">${num(st.filters.size)}</b>` : ""}</button>`);
+    U().setHTML(bar, `${chips}${st.filters.size > 1 ? `<button type="button" class="link-btn" data-tt-key="${k}" data-tt-unfilter-all>${t("Clear all")}</button>` : ""}<button type="button" class="btn btn-small tt-filter" data-tt-key="${k}" data-tt-filter aria-haspopup="dialog" aria-expanded="false">${U().icon("filter")}${t("Filter")}${st.filters.size ? ` <b class="tt-count">${num(st.filters.size)}</b>` : ""}</button>`);
   }
 
   let pop = null;
@@ -338,6 +338,7 @@
     const key = pop.key;
     pop.el.remove();
     pop = null;
+    document.querySelectorAll(`[data-tt-filter][data-tt-key="${CSS.escape(key)}"]`).forEach((b) => b.setAttribute("aria-expanded", "false"));
     if (focusBack) document.querySelector(`[data-tt-filter][data-tt-key="${CSS.escape(key)}"]`)?.focus();
   }
   function controlHtml(st, col) {
@@ -366,6 +367,7 @@
     const key = button.dataset.ttKey;
     if (pop?.key === key) { closePop(true); return; }
     closePop();
+    button.setAttribute("aria-expanded", "true");
     const el = document.createElement("div");
     el.className = "popover tt-pop";
     el.setAttribute("role", "dialog");
@@ -476,8 +478,10 @@
         button.className = "th-btn tt-th";
         button.dataset.ttSort = String(i);
         button.dataset.ttKey = key;
-        button.append(...th.childNodes);
-        th.append(button);
+        // A definition mark (i) is focusable on its own, so it stays beside the sort button, never inside it (a control in a control).
+        const marks = [...th.childNodes].filter((n) => n.nodeType === 1 && n.matches(".def-i"));
+        button.append(...[...th.childNodes].filter((n) => !marks.includes(n)));
+        th.append(button, ...marks);
         th.dataset.ttCol = "";
       }
       const dir = st.sort?.col === i ? st.sort.dir : 0, shown = String(dir);

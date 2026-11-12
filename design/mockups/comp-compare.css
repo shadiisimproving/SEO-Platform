@@ -4,7 +4,8 @@
 .cp-val { min-width: 0; overflow-wrap: anywhere; }
 .cp-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .cp-tags .tag { white-space: normal; overflow-wrap: anywhere; }
-.tag.cp-yours { color: var(--accent-text); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-1) 55%, transparent); background: color-mix(in srgb, var(--accent-1) 12%, transparent); }
+/* A solid pale fill, not a see-through tint, so the text keeps 5:1 on any row colour (it was 4.49:1 on a tinted row). */
+.tag.cp-yours { font-size: 12px; line-height: 18px; color: var(--accent-text); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-1) 55%, transparent); background: var(--c-blue-pale); }
 .cp-tools { display: flex; align-items: flex-end; gap: 12px 16px; flex-wrap: wrap; margin-bottom: 12px; }
 .cp-tools .field { margin: 0; flex: 0 1 280px; min-width: 0; }
 .cp-tools .field select { width: 100%; }
@@ -386,12 +387,42 @@
 .cg-pick-menu > button .tick { margin-left: 4px; }
 .cg-rivals .tag.cg-rival { display: inline-flex; align-items: center; gap: 5px; }
 .cg-rival .site-logo { vertical-align: 0; border-radius: 3px; }
-.cg-rival .site-logo.letter { font-size: 9px; }
+.cg-rival .site-logo.letter { font-size: 12px; }
 @media (max-width: 860px) { .cg-pick { min-width: 0; width: 100%; } }
 /* 2026-11-12: the tool that measured a pair's position, as its logo right after the number (comp-pairs.js sourceMark). */
 .cp-pos-src { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
 .cp-src { display: inline-flex; align-items: center; cursor: help; border-radius: 4px; }
 .cp-src .brand-logo { width: 14px; height: 14px; margin: 0; vertical-align: 0; }
-.cp-src-word { font-size: 11px; font-weight: 500; color: var(--muted); }
+.cp-src-word { font-size: 12px; font-weight: 500; color: var(--muted); }
 .cp-src-apart { box-shadow: 0 0 0 1.5px var(--warn-t, var(--line-2)); }
 .cp-src:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+
+/* 2026-11-12, UI critique: Link gaps fits its card at 1440 px. Authority, Page Authority and Spam score share one Strength cell,
+   the anchor text moved into the "N links" disclosure, and Mark as spam into the picked bar and each row's ⋯ menu. */
+.cg-strength { display: inline-flex; flex-direction: column; align-items: center; gap: 2px; }
+.cg-str-sub { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-2); white-space: nowrap; }
+.cg-str-sub b { font-weight: 600; color: var(--text); }
+.cg-str-sub > span[tabindex]:focus-visible { outline: 2px solid var(--c-blue); outline-offset: 1px; border-radius: 3px; }
+.cg-act-cell { display: table-cell; }
+.cg-act-cell > .btn { margin-inline-end: 4px; }
+.cg-menu-note { display: block; font-size: 12px; margin-top: 1px; }
+.cs-menu-item > span { min-width: 0; }
+/* The status pills: 12 px, with a solid pale fill so the words keep 4.5:1 on a tinted row. */
+#cg-table .cp-tags .tag { font-size: 12px; line-height: 18px; }
+#cg-table .tag.cg-lost { background: color-mix(in srgb, var(--warn-t) 8%, var(--panel-solid, #fff)); }
+#cg-table .tag.cg-flag { background: color-mix(in srgb, var(--crit-t) 6%, var(--panel-solid, #fff)); }
+/* Simpler screens: search, the competitor menu and one Filter button; the rest is in the Filter box. */
+.cg-tools-simple { align-items: flex-end; }
+.cg-tools-simple .cg-filters { align-self: flex-end; min-height: 36px; }
+.cg-filters .tt-count { margin-inline-start: 4px; font-weight: 600; color: var(--accent-text); }
+.cg-filter-pop { width: min(340px, calc(100vw - 16px)); }
+.cg-filter-pop-body { display: grid; gap: 12px; padding: 4px; }
+.cg-filter-pop-body .field { margin: 0; }
+.cg-filter-pop-body .field select { width: 100%; }
+.cg-filter-pop-body .chips { margin: 0; }
+.cg-filter-pop-body .link-btn { justify-self: start; }
+.cg-head-acts { display: inline-flex; gap: 8px; flex-wrap: wrap; }
+@media (max-width: 640px) {
+  .cg-strength { align-items: flex-end; }
+  .cg-act-cell { display: flex; justify-content: flex-end; }
+}

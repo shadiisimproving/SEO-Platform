@@ -78,7 +78,7 @@
   const switchWanted = (() => {
     const asked = new URLSearchParams(location.search).get("simple");
     if (asked === "1" || asked === "0") return asked === "1";
-    try { return localStorage.getItem("seocc2-simple") === "1"; } catch { return false; }
+    try { return localStorage.getItem("seocc2-simple") !== "0"; } catch { return true; }
   })();
 
   const held = new Map();          // path → entry

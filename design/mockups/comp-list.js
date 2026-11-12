@@ -812,7 +812,7 @@
     return recheck.loading;
   }
   async function recheckKeywords(keys, opener) {
-    if (!window.KW?.recheck) { UI.toast(t("Recheck needs the Keywords screen: open Keywords once, then try again."), { kind: "info" }); return; }
+    if (!window.KW?.recheck) { UI.toast(t("Refresh needs the Keywords screen: open Keywords once, then try again."), { kind: "info" }); return; }
     const rows = (view.data?.keywords || []).filter((k) => keys.includes(kwKey(k)));
     if (!rows.length) return;
     let ids;
@@ -847,7 +847,7 @@
     const n = view.kwPicked?.size || 0;
     if (!n) return "";
     return `<div class="selbar cg-selbar cl-kw-selbar" id="cl-kw-selbar" role="region" aria-label="${attr("selected")}"><b class="cg-sel-count">${UI.num(n)} ${t("selected")}</b>
-      <button type="button" class="btn btn-main btn-small" data-cl-recheck-picked>${icon("refresh-cw")}${t("Recheck")}</button>
+      <button type="button" class="btn btn-main btn-small" data-cl-recheck-picked>${icon("refresh-cw")}${t("Refresh")}</button>
       <button type="button" class="icon-btn" data-cl-kw-clear aria-label="${attr("Clear selection")}" data-tip="${attr("Clear selection")}">${icon("x")}</button></div>`;
   }
 
@@ -865,7 +865,7 @@
           <td class="c" data-label="${attr("You")}">${place(k.my_position, k.my_url, k.depth)}</td>
           <td class="c" data-label="${attr("Them")}">${place(k.their_position, k.their_url, k.depth)}</td>
           ${once ? "" : toolCell(k)}
-          <td class="r nowrap" data-label=""><button type="button" class="btn btn-small row-act" data-cl-recheck="${esc(kwKey(k))}" aria-label="${esc(fill("Recheck {keyword}", { keyword: k.keyword }))}">${icon("refresh-cw")}${t("Recheck")}</button></td></tr>`).join("")}</tbody></table>${once ? `<p class="small sec cl-kw-foot">${fillHtml("All checked with {tool}, {when}.", { tool: COMP.toolLogos(sorted[0].engine, sorted[0].tool), when: esc(COMP.ago(sorted[0].checked_at)) })}</p>` : ""}<div id="cl-kw-selbar-box">${kwSelbar()}</div>`;
+          <td class="r nowrap" data-label=""><button type="button" class="btn btn-small row-act" data-cl-recheck="${esc(kwKey(k))}" aria-label="${esc(fill("Refresh {keyword}", { keyword: k.keyword }))}">${icon("refresh-cw")}${t("Refresh")}</button></td></tr>`).join("")}</tbody></table>${once ? `<p class="small sec cl-kw-foot">${fillHtml("All checked with {tool}, {when}.", { tool: COMP.toolLogos(sorted[0].engine, sorted[0].tool), when: esc(COMP.ago(sorted[0].checked_at)) })}</p>` : ""}<div id="cl-kw-selbar-box">${kwSelbar()}</div>`;
   }
 
   function paintKeywords(focus) {
@@ -1144,7 +1144,7 @@
     const capped = (item.keywords || 0) > page.total ? fill("First {n} shown.", { n: UI.num(page.total) }) : null;
     // Engine and tool as logos, then the age. When every row says the same, the column goes and it's said once under the table (2026-11-11).
     const once = rows.length > 1 && new Set(rows.map((e) => `${e.engine || ""}|${e.tool || ""}|${COMP.ago(e.checked_at)}`)).size === 1;
-    const onceLine = once ? `<p class="small sec cl-kw-foot">${fillHtml("All checked with {tool}, {when}.", { tool: COMP.toolLogos(rows[0].engine, rows[0].tool), when: esc(COMP.ago(rows[0].checked_at)) })}</p>` : "";
+    const onceLine = once ? `<p class="small sec cl-kw-foot">${fillHtml("All checked with {tool}, {when}.", { tool: COMP.toolWords(rows[0].engine, rows[0].tool), when: esc(COMP.ago(rows[0].checked_at)) })}</p>` : "";
     return `<div class="cl-pages"><div class="cl-scroll"><table class="data cl-table"><thead><tr><th scope="col">${t("Keyword")}</th><th scope="col" class="pt-col-them">${COMP.who("them", null, t("Their position"))}</th><th scope="col" class="pt-col-you">${COMP.who("you", null, t("Your position"))}</th>${once ? "" : `<th scope="col">${t("Checked")}</th>`}</tr></thead><tbody>
       ${rows.map((e) => `<tr>
         <td class="head-cell"><span class="kw">${KeywordLink.html(e.keyword, { id: e.keyword_id, host: COMP.site?.()?.host })}</span></td>
@@ -1218,7 +1218,7 @@
     const canCheck = d.keywords_checked > 0 && run?.status !== "waiting";
     return `<section class="tool-band cl-band" aria-label="${attr("Your keyword list")}">
       <p><span class="cl-band-main">${icon("clock")}<span id="cl-checked-line">${esc(bits.join(" · "))}</span></span>${failed || rule ? `<span class="small muted cl-band-sub">${esc([failed, rule].filter(Boolean).join(" "))}</span>` : ""}</p>
-      <div class="cl-band-acts"><button class="btn" data-cl-upload>${icon("upload")}${t("Upload keywords")}</button>${canCheck ? `<button class="btn" id="cl-check-again" ${runActive(run) ? "disabled" : ""}>${icon("refresh-cw")}${t("Check again")}</button>` : ""}</div>
+      <div class="cl-band-acts"><button class="btn" data-cl-upload>${icon("upload")}${t("Upload keywords")}</button>${canCheck ? `<button class="btn" id="cl-check-again" ${runActive(run) ? "disabled" : ""}>${icon("refresh-cw")}${t("Refresh")}</button>` : ""}</div>
     </section>`;
   }
 
@@ -1317,7 +1317,7 @@
     dlg.classList.remove("wide");
     UI.setHTML(dlg, `<div class="dlg-head"><h2 id="dlg-title">${t("Check your keywords again?")}</h2><button class="icon-btn" data-close-dlg aria-label="${attr("Close")}">${icon("x")}</button></div>
       <div class="dlg-body"><p>${esc(many(d.keywords_total, "Uses {n} free check.", "Uses {n} free checks."))}</p><p class="small sec" style="margin-top:8px">${t("Never spends paid credits. If free checks run out, it pauses and resumes when they refill.")}</p></div>
-      <div class="dlg-foot"><button class="btn" data-close-dlg>${t("Cancel")}</button><button class="btn btn-main" data-cl-check-yes>${t("Check again")}</button></div>`);
+      <div class="dlg-foot"><button class="btn" data-close-dlg>${t("Cancel")}</button><button class="btn btn-main" data-cl-check-yes>${t("Refresh")}</button></div>`);
     dlg.showModal();
     UI.$("[data-cl-check-yes]", dlg)?.focus();
   }
@@ -1995,7 +1995,7 @@
     "{n} words|delta": "{n} mots", "~{n} changed": "~{n} modifiés", "{n} structured data type": "{n} type de données structurées", "{n} structured data types": "{n} types de données structurées",
     "{n} changes in {rows} rows: the same page with the same kind of change is one row (×).": "{n} changements en {rows} lignes : une même page avec le même type de changement tient sur une ligne (×).",
     "Tracking: {state}": "Suivi : {state}", "Refresh data and Remove": "Actualiser et retirer",
-    "Recheck {keyword}": "Revérifier {keyword}", "Select {keyword}": "Sélectionner {keyword}",
+    "Recheck {keyword}": "Revérifier {keyword}", "Refresh {keyword}": "Actualiser {keyword}", "Refresh needs the Keywords screen: open Keywords once, then try again.": "L'actualisation passe par l’écran Mots-clés : ouvrez-le une fois, puis réessayez.", "Select {keyword}": "Sélectionner {keyword}",
     "Recheck needs the Keywords screen: open Keywords once, then try again.": "La revérification passe par l’écran Mots-clés : ouvrez-le une fois, puis réessayez.",
     "These keywords aren't in your keyword list, so they can't be rechecked here.": "Ces mots-clés ne sont pas dans votre liste, ils ne peuvent pas être revérifiés ici.",
     "Details": "Détails", "{n} word": "{n} mot", "{n} words": "{n} mots", "{n} heading": "{n} titre", "{n} headings": "{n} titres",

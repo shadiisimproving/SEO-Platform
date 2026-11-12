@@ -98,8 +98,9 @@ function longInsights(d, host) {
   check("the Notes button covers no footer control", !geo.overlap);
   await page.screenshot({ path: OUT + "2-best-pages-sticky.png" });
 
-  // ---- their questions ----
+  // ---- their questions (their own tab since 2026-11-12) ----
   const qFoot = '[data-tp-foot="pt-q"]';
+  await page.click('[data-pt-tab="questions"]'); await settle();
   await page.locator("#pt-questions").scrollIntoViewIfNeeded();
   check("their questions open on 25 pages", (await page.locator("#pt-questions > li").count()) === 25);
   check("the questions footer gives the total", (await range(qFoot)) === "1–25 of 80 pages", await range(qFoot));
@@ -117,6 +118,7 @@ function longInsights(d, host) {
 
   // ---- another competitor starts on page 1, unsearched ----
   // Leave this one on page 5 with a search, then open another from the list, in the same visit.
+  await page.click('[data-pt-tab="pages"]'); await settle();
   await page.fill(box, "page 1"); await settle(); await page.click(`${bestFoot} [data-tp-step="next"]`); await settle();
   if (two) {
     await page.evaluate(() => window.COMP.open("summary")); await settle(1500); // back to the list in the same visit, so the pages state is still in memory
@@ -139,6 +141,7 @@ function longInsights(d, host) {
   check("390px: no sideways scroll on the Pages tab", !(await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1)));
   await page.locator(bestFoot).scrollIntoViewIfNeeded();
   await page.screenshot({ path: OUT + "5-phone-best.png" });
+  await page.click('[data-pt-tab="questions"]'); await settle();
   await page.locator(qFoot).scrollIntoViewIfNeeded();
   await page.screenshot({ path: OUT + "6-phone-questions.png" });
   await page.setViewportSize({ width: 1440, height: 950 });

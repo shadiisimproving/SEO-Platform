@@ -504,8 +504,8 @@
         : [s.last_ok_at ? `${t("Last good read")} ${stamp(s.last_ok_at)}` : "", s.last_attempt_at ? `${t("Last try")} ${stamp(s.last_attempt_at)}` : ""];
       const readToday = src.id === "clarity_live" && src.sites.length && src.sites.every((x) => x.read_today);
       const buttons = [
-        src.id === "ga4" ? `<button class="btn btn-small" data-lv-collect data-lv-collect-sources="ga4,gsc" ${LVx().reading ? "disabled" : ""}>${t("Read again now")}</button>` : "",
-        src.id === "clarity_live" && !["not_connected", "not_used"].includes(src.state) ? `<button class="btn btn-small" data-lv-collect data-lv-collect-sources="clarity" ${readToday || LVx().reading ? "disabled" : ""}>${t(readToday ? "Read today: next after 00:00 UTC" : "Read again now")}</button>` : "",
+        src.id === "ga4" ? `<button class="btn btn-small" data-lv-collect data-lv-collect-sources="ga4,gsc" ${LVx().reading ? "disabled" : ""}>${t("Refresh")}</button>` : "",
+        src.id === "clarity_live" && !["not_connected", "not_used"].includes(src.state) ? `<button class="btn btn-small" data-lv-collect data-lv-collect-sources="clarity" ${readToday || LVx().reading ? "disabled" : ""}>${t(readToday ? "Read today: next after 00:00 UTC" : "Refresh")}</button>` : "",
         src.id === "clarity_download" ? `<button class="btn btn-small" data-lv-connect="clarity">${t("Upload")}</button>` : "",
         src.id === "serp" ? `<button class="btn btn-small" data-ai-aio-focus>${t("Check now")}</button>` : "",
         `<button class="btn btn-small btn-ghost" data-lv-connect="${CONNECT[src.id]}">${t(["not_connected", "not_set_up"].includes(src.state) && src.id !== "serp" && src.id !== "clarity_download" ? "Connect" : src.state === "failing" ? "Fix" : "Settings")}</button>`,
@@ -528,7 +528,7 @@
     return `<p class="help" style="margin:0 0 10px">${t("Visits from these count as AI, whatever their Google Analytics channel. Changes apply to past days too.")}</p>
       <div class="ai-list">${d.domains.map(tag).join("")}</div>
       ${off.length ? `<p class="small muted" style="margin:12px 0 4px">${t("Removed")}:</p><div class="ai-list">${off.map((r) => `<span class="tag mono" dir="ltr">${esc(r.pattern)} <button type="button" class="link-btn" data-ai-rule-del="${r.id}">${t("Put back")}</button></span>`).join("")}</div>` : ""}
-      <form class="lv-rule-form ai-list-form" data-ai-rule-form style="border-top:0;padding:14px 0 0"><input class="input mono" name="f_pattern" placeholder="assistant.example" aria-label="${t("Add a site to this list")}" autocomplete="off"><button class="btn btn-small" type="submit" ${A.listBusy ? "disabled" : ""}>${t("Add")}</button></form>
+      <form class="lv-rule-form ai-list-form" data-ai-rule-form style="border-top:0;padding:14px 0 0"><input class="input mono" spellcheck="false" autocapitalize="off" name="f_pattern" placeholder="assistant.example" aria-label="${t("Add a site to this list")}" autocomplete="off"><button class="btn btn-small" type="submit" ${A.listBusy ? "disabled" : ""}>${t("Add")}</button></form>
       <p class="error" data-ai-rule-error role="alert" hidden></p>`;
   }
   function listPanel(opener) {
@@ -588,7 +588,7 @@
     if (entry.loading || entry.error || entry.noServer) return wrap("", LVx().stateCard(entry, "ga4"));
     const d = entry.data;
     if (d.state === "no_sites") return wrap("", LVx().stateCard(entry, "ga4"));
-    if (d.through) UI.range.end("ai", d.through);
+    if (d.through) UI.range.end("ai", d.through, "Google Analytics");
     if (simple()) {
       window.GoogleAIReport?.later?.(); // its fifth tab, quietly after this first draw
       return wrap(refreshOne(), `${answer(d)}${tiles(d)}

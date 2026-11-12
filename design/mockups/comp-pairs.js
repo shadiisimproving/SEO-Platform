@@ -48,7 +48,7 @@
     // word joiner inside each tool name keeps it as words there. The screen-reader label keeps the plain names.
     const named = [tool, otherTool].filter((n) => n && n.length > 1).reduce((s, n) => s.split(n).join(`${n[0]}⁠${n.slice(1)}`), words);
     const file = window.BRANDS?.FILES?.[tool];
-    return `<span class="cp-src${apart ? " cp-src-apart" : ""}" role="img" tabindex="0" data-tip="${esc(named)}" aria-label="${esc(words)}" data-cp-src="${esc(tool)}">${file ? `<img class="logo brand-logo" src="logos/${file}" alt="">` : `<span class="cp-src-word">${esc(tool)}</span>`}</span>`;
+    return `<span class="cp-src${apart ? " cp-src-apart" : ""}" role="img" tabindex="0" data-tip="${esc(named)}" aria-label="${esc(words)}" data-cp-src="${esc(tool)}">${file ? `<img class="logo brand-logo" src="logos/${file}" alt="" width="14" height="14">` : `<span class="cp-src-word">${esc(tool)}</span>`}</span>`;
   }
 
   /* The server's own sentences, in the language on screen. The host inside this one changes, so it can't be a plain lookup. */
@@ -64,10 +64,10 @@
     robots: ["Not allowed", "robots.txt forbids reading this page. The app respects that."],
     blocked: ["Blocked", "The site blocked the app, e.g. with a bot check. The app won't bypass it."],
     gone: ["Page gone", "The site says this page no longer exists."],
-    network_error: ["Couldn't reach it", "The site couldn't be reached. Try Read again later."],
-    server_error: ["Site error", "The site had its own error. Try Read again later."],
+    network_error: ["Couldn't reach it", "The site couldn't be reached. Try Refresh later."],
+    server_error: ["Site error", "The site had its own error. Try Refresh later."],
     http_error: ["Site error", "The site answered with an error: nothing to read."],
-    rate_limited: ["Too many requests", "The site asked to slow down. Try Read again later."],
+    rate_limited: ["Too many requests", "The site asked to slow down. Try Refresh later."],
     not_html: ["Not a web page", "Not a normal web page: no text to read."],
     too_large: ["Too large", "This page is too large to read."],
     too_many_redirects: ["Too many redirects", "This address redirects too many times, so the app stopped."],
@@ -75,7 +75,7 @@
     redirect: LEADS_ELSEWHERE,
     refused: ["Not opened", "The app doesn't open this kind of address."],
   };
-  const OTHER_WORDS = ["Couldn't read it", "Couldn't read this page. Try Read again later."];
+  const OTHER_WORDS = ["Couldn't read it", "Couldn't read this page. Try Refresh later."];
   const wordsFor = (state) => READ_WORDS[state] || OTHER_WORDS;
   const plainStatus = (iconName, word, cls = "") => `<span class="status sec">${UI.icon(iconName, cls)}${esc(t(word))}</span>`;
 
@@ -485,7 +485,7 @@
     const missing = d.keywords.find((r) => r.my_position === null || r.their_position === null);
     // Every keyword checked with the same tool at the same age: said once under the table, not on each row (as on AI Overview watch).
     const once = list.length > 1 && new Set(list.map((r) => `${r.tool}|${COMP.ago(r.checked_at)}`)).size === 1;
-    const checkedOnce = once ? fill(esc(t("All checked with {tool}, {when}.")), { tool: toolMark(list[0].tool), when: esc(COMP.ago(list[0].checked_at)) }) : "";
+    const checkedOnce = once ? fill(esc(t("All checked with {tool}, {when}.")), { tool: esc(list[0].tool || ""), when: esc(COMP.ago(list[0].checked_at)) }) : "";
     const notes = [checkedOnce, esc(t("A tick: the keyword appears there.")), missing ? esc(fill(t(">{n}: not in the top {n}."), { n: UI.num(missing.depth) })) : ""].filter(Boolean).join(" ");
     return `${search}<div class="cp-pages"><div class="table-wrap"><table class="data cp-kw" id="cp-kw" data-tt-off>
       <thead><tr><th scope="col">${t("Keyword")}</th><th scope="col">${t("Who's ahead")}</th><th scope="col"><span class="sr">${t("Page")}</span></th><th scope="col" class="c">${t("Position")}</th>${MARKS.map(([, label]) => `<th scope="col" class="c">${t(label)}</th>`).join("")}<th scope="col">${t("AI Overview")}</th></tr></thead>
@@ -554,7 +554,7 @@
           <h2>${fill(esc(t("My page against {competitor}")), { competitor: `<span dir="auto">${esc(d.competitor)}</span>` })}</h2>
           ${d.source === "manual" ? `<span class="tag cp-yours" data-tip="${esc(t("Rankings won't replace it."))}">${t("Your choice")}</span>` : ""}
           <span class="end cp-actions">
-            <button class="btn btn-small" id="cp-read" data-cp-read ${busy ? "disabled" : ""}>${UI.icon("refresh-cw", busy ? "spin" : "")}${t("Read again")}</button>
+            <button class="btn btn-small" id="cp-read" data-cp-read ${busy ? "disabled" : ""}>${UI.icon("refresh-cw", busy ? "spin" : "")}${t("Refresh")}</button>
             <button class="btn btn-small" id="cp-change" data-cp-change="${d.id}">${UI.icon("pencil")}${t("Change pair")}</button>
             ${notesButton(d)}
             ${UI.taskButton(pairFind(d))}
@@ -1199,12 +1199,12 @@
     "Page gone": "Page disparue",
     "The site says this page no longer exists.": "Le site indique que cette page n'existe plus.",
     "Couldn't reach it": "Site injoignable",
-    "The site couldn't be reached. Try Read again later.": "Le site était injoignable. Réessayez plus tard avec Relire.",
+    "The site couldn't be reached. Try Refresh later.": "Le site était injoignable. Réessayez plus tard avec Actualiser.",
     "Site error": "Erreur du site",
-    "The site had its own error. Try Read again later.": "Le site a eu sa propre erreur. Réessayez plus tard avec Relire.",
+    "The site had its own error. Try Refresh later.": "Le site a eu sa propre erreur. Réessayez plus tard avec Actualiser.",
     "The site answered with an error: nothing to read.": "Le site a répondu par une erreur : rien à lire.",
     "Too many requests": "Trop de requêtes",
-    "The site asked to slow down. Try Read again later.": "Le site a demandé de ralentir. Réessayez plus tard avec Relire.",
+    "The site asked to slow down. Try Refresh later.": "Le site a demandé de ralentir. Réessayez plus tard avec Actualiser.",
     "Not a web page": "Pas une page web",
     "Not a normal web page: no text to read.": "Pas une page web normale : aucun texte à lire.",
     "Too large": "Trop volumineuse",
@@ -1216,7 +1216,7 @@
     "Not opened": "Non ouverte",
     "The app doesn't open this kind of address.": "L'application n'ouvre pas ce type d'adresse.",
     "Couldn't read it": "Lecture impossible",
-    "Couldn't read this page. Try Read again later.": "Lecture de cette page impossible. Réessayez plus tard avec Relire.",
+    "Couldn't read this page. Try Refresh later.": "Lecture de cette page impossible. Réessayez plus tard avec Actualiser.",
     "Not read yet. It's waiting for the next worker run.": "Pas encore lue. Elle attend le prochain passage du programme de lecture.",
     "Reading this page…": "Lecture de cette page…",
     "Needs JavaScript to show its text, so word counts aren't reliable.": "Il faut JavaScript pour afficher son texte : le nombre de mots n'est pas fiable.",

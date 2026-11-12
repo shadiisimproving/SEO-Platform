@@ -421,7 +421,7 @@
   function simplePage() {
     const entry = load();
     const s0 = entry.data?.summary;
-    const run = s0?.ran_at ? `<button class="btn" data-in-run>${icon("refresh-cw")}${t("Run again")}</button>` : "";
+    const run = s0?.ran_at ? `<button class="btn" data-in-run>${icon("refresh-cw")}${t("Refresh")}</button>` : "";
     const head = UI.head({ title: t("Insights"), period: false, line: headLine(s0), info: "Worked out daily from your Search Console data", main: run });
     const wrap = (body) => `${head}<div class="content page-enter in">${body}</div>`;
     if (entry.loading) return wrap(UI.skeleton("page", { tiles: 3, chart: false }));
@@ -446,7 +446,7 @@
   function page() {
     if (simple()) return simplePage();
     const entry = load();
-    const run = `<button class="btn" data-in-run>${icon("refresh-cw")}${t("Run again")}</button>`;
+    const run = `<button class="btn" data-in-run>${icon("refresh-cw")}${t("Refresh")}</button>`;
     const head = UI.topbar(t("Insights"), t("Worked out daily from your Search Console data"), entry.data?.summary?.ran_at ? run : "", false);
     const wrap = (body) => `${head}<div class="content page-enter in">${body}</div>`;
     if (entry.loading) return wrap(UI.skeleton ? UI.skeleton("page", { tiles: 3, chart: false }) : `<section class="card" aria-busy="true"><div class="empty"><p>${t("Loading…")}</p></div></section>`);
@@ -459,7 +459,7 @@
     const changes = s.changes || [];
     aiSettings();
     const top = topBlock(s);
-    const figs = `<div class="in-figs">
+    const figs = `<h2 class="sr">${t("Clicks at stake")}</h2><div class="in-figs">
       <div class="in-fig"><div class="lab">${t("To recover")}</div><div class="fig">${num(s.to_recover ?? 0)}</div><div class="sub">${t("clicks a month")}</div></div>
       <div class="in-fig"><div class="lab">${t("To win")}</div><div class="fig">${num(s.to_win ?? 0)}</div><div class="sub">${t("clicks a month")}</div></div>
       <div class="in-fig"><div class="lab">${t("Fixed in 30 days")}</div><div class="fig">${num(s.fixed)}</div><div class="sub">${t("findings")}</div></div>
@@ -491,15 +491,17 @@
       impact: "Done tasks and dated notes, before vs after.",
     }[IN.tab];
     const HINT_TIPS = { impact: "28 days before against 28 days starting a week after." };
+    // The same ranked list Today shows as "Do these first": said so, with the way there, so it isn't read as a second to-do.
+    const sameList = IN.tab === "first" ? `<p class="small muted ov-hint in-same">${icon("list-ordered")}<span>${t("The same list as Do these first on Today.")} <a href="#today">${t("Open Today")}</a></span></p>` : "";
     if (on) {
       // The tab's hint, and any note with nothing to press, go behind the (i) beside the tabs; a note with a link stays.
       const acts = notes.filter((n) => n.includes("<a ")), quiet = notes.filter((n) => !n.includes("<a "));
       const info = UI.info([t(hint), HINT_TIPS[IN.tab] ? t(HINT_TIPS[IN.tab]) : "", ...quiet].filter(Boolean));
-      return `<section class="card ov-tabs-card in-tabs-card"><div class="card-head ov-tabs-head in-tabs-head">${tabs}<span class="in-tabs-i">${info}</span></div>${controls}
-        ${acts.map((n) => `<p class="small ov-hint in-need">${n}</p>`).join("")}${IN.tab === "mix" ? mixTab(d) : table(d.rows)}</section>`;
+      return `<section class="card ov-tabs-card in-tabs-card" aria-labelledby="in-findings-h"><h2 class="sr" id="in-findings-h">${t("Findings")}</h2><div class="card-head ov-tabs-head in-tabs-head">${tabs}<span class="in-tabs-i">${info}</span></div>${controls}
+        ${sameList}${acts.map((n) => `<p class="small ov-hint in-need">${n}</p>`).join("")}${IN.tab === "mix" ? mixTab(d) : table(d.rows)}</section>`;
     }
-    return `<section class="card ov-tabs-card"><div class="card-head ov-tabs-head">${tabs}</div>${controls}
-      <p class="small muted ov-hint">${t(hint)}${UI.tip(HINT_TIPS[IN.tab] || "")}</p>${notes.map((n) => `<p class="small ov-hint in-need">${n}</p>`).join("")}${IN.tab === "mix" ? mixTab(d) : table(d.rows)}</section>`;
+    return `<section class="card ov-tabs-card" aria-labelledby="in-findings-h"><h2 class="sr" id="in-findings-h">${t("Findings")}</h2><div class="card-head ov-tabs-head">${tabs}</div>${controls}
+      <p class="small muted ov-hint">${t(hint)}${UI.tip(HINT_TIPS[IN.tab] || "")}</p>${sameList}${notes.map((n) => `<p class="small ov-hint in-need">${n}</p>`).join("")}${IN.tab === "mix" ? mixTab(d) : table(d.rows)}</section>`;
   }
 
   function table(all) {
@@ -625,7 +627,8 @@
   }).join("\n");
   function aiAnswer(purpose, answer) {
     const by = answer.provider === "claude" ? MODEL_NAMES[answer.model] || answer.model : t("a free model");
-    const cost = answer.cost ? ` · $${answer.cost < 0.01 ? answer.cost.toFixed(4) : answer.cost.toFixed(2)}` : "";
+    const digits = answer.cost < 0.01 ? 4 : 2;
+    const cost = answer.cost ? ` · ${esc(new Intl.NumberFormat(UI.locale(), { style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(answer.cost))}` : "";
     return `<div class="in-ai-answer" data-in-ai-box="${purpose}"><p class="in-ai-label">${icon("sparkles")}${t("Written by AI")} · ${esc(by)}${cost}</p>
       <div class="in-ai-text" dir="auto">${aiText(answer.text)}</div>
       <div class="in-ai-acts"><button class="link-btn" data-in-ai-copy="${purpose}">${t("Copy")}</button><button class="link-btn" data-in-ai="${purpose}" data-in-ai-again="1">${t("Ask again")}</button></div></div>`;
@@ -882,7 +885,8 @@
     const e = f.evidence || {};
     UI.openTask?.({
       title: titleOf(f), host: f.host, opener, priority: f.severity === "big" ? "high" : "medium",
-      keywords: f.query ? [f.query] : [], pages: f.page ? [f.page] : [],
+      // The finding's own search, else the searches behind it (a page's or a topic's), so the task lists them from the start.
+      keywords: f.query ? [f.query] : (e.queries || []).map((q) => q.query).filter(Boolean).slice(0, 5), pages: f.page ? [f.page] : [],
       source: { type: "search", key: f.key, label: `${t("Search insights")}: ${kindName(f)}`, facts: [reasonOf(f), f.at_stake >= 1 ? `${num(Math.round(f.at_stake))} ${t("clicks a month at stake")}` : ""].filter(Boolean), link: `#insights/${f.id}`, host: f.host },
       description: [e.path ? f.page : "", onPageLine(f), doLine(f)].filter(Boolean).join("\n"),
     });
@@ -1005,6 +1009,7 @@
     "No country data yet.": "Pas encore de données par pays.", "Save": "Enregistrer", "clicks": "clics", "Saved. Applies from the next Search Console read.": "Enregistré. S'applique dès la prochaine lecture de la Search Console.",
     "Counted at {p}%: an AI Overview shows on this search ({d}) and takes some clicks.": "Compté à {p} % : un AI Overview s'affiche sur cette recherche ({d}) et prend une partie des clics.",
     "Insights": "Analyses", "Worked out daily from your Search Console data": "Calculé chaque jour à partir de vos données Search Console",
+    "Clicks at stake": "Clics en jeu", "Findings": "Constats", "The same list as Do these first on Today.": "La même liste que « À faire d'abord » sur Aujourd'hui.", "Open Today": "Ouvrir Aujourd'hui",
     "To do first": "À faire d'abord", "What changed": "Ce qui a changé", "Slow decline": "Lent déclin", "Quick wins": "Gains rapides",
     "Still open": "En cours", "Went away": "Disparues", "Done": "Fait",
     "Losing clicks": "Clics en baisse", "Gaining clicks": "Clics en hausse", "Dropped out of Google": "Sortie de Google", "Odd day": "Jour inhabituel",

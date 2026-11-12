@@ -251,7 +251,7 @@ const fakeQuestions = (host, about) => { const groups = Array.from({ length: 25 
   };
   await part("10 page links, profile", async () => {
     if (!(await onProfile())) await openProfile(open1.id);
-    for (const id of ["keywords", "pages", "activity", "site"]) {
+    for (const id of ["keywords", "pages", "questions", "activity", "site"]) {
       await page.click(`[data-pt-tab="${id}"]`); await settle(700);
       await linkCheck(`profile, ${id}`);
     }
@@ -266,7 +266,7 @@ const fakeQuestions = (host, about) => { const groups = Array.from({ length: 25 
       await route.fulfill({ response: reply, json: body });
     });
     await openProfile(open1.id);
-    await page.click('[data-pt-tab="pages"]'); await settle(700);
+    await page.click('[data-pt-tab="questions"]'); await settle(700); // their own tab since 2026-11-12
     // Since 2026-11-10 long lists come in pages of 25 (table-pages.js) instead of Show more: the 15 pages on my topics fit on one.
     const q = await page.evaluate(() => { const rows = [...document.querySelectorAll("#pt-questions > li")]; return { rows: rows.length, tasks: rows.filter((li) => /Task|Tâche/.test(li.querySelector(".pt-act button")?.textContent || "")).length, more: Boolean(document.querySelector("[data-pt-q-more]")), foot: document.querySelector('[data-tp-foot="pt-q"] .tp-range')?.textContent.trim() || "" }; });
     check("8. questions: the 15 pages on my topics, in pages with the total", q.rows === 15 && !q.more && q.foot === "1–15 of 15 pages", q);

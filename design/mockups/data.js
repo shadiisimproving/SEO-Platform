@@ -36,6 +36,7 @@ window.FR = {
   "Results": "Résultats", "Other locations": "Autres lieux", "Recheck": "Revérifier", "Check": "Vérifier", "never": "jamais", "Not compared with France": "Non comparé à la France", "Checked": "Vérifié", "Position": "Position", "Status": "État", "Differs by": "Écart de",
   "Position history": "Historique des positions", "1 = top. One dot per check.": "1 = en haut. Un point par relevé.", "Table": "Tableau", "Chart": "Graphique", "Competitors on this page": "Concurrents sur cette page", "AI Overview": "Aperçu IA", "average": "moyenne", "Date": "Date",
   "Close": "Fermer", "Save": "Enregistrer", "Add backlink": "Ajouter un backlink", "Total": "Total", "Live": "Actifs", "Lost": "Perdus", "New": "Nouveaux", "Visits": "Visites", "Leads": "Leads",
+  "Totals": "Totaux", "In Links you didn't add": "Dans Liens non ajoutés", "Flags domains already in In consideration, Done or Links you didn't add.": "Signale les domaines déjà à l'étude, dans Réalisés ou dans Liens non ajoutés.", "Authority at least": "Autorité minimum", "Page authority at least": "Autorité de la page minimum", "Page authority": "Autorité de la page",
   "All backlinks": "Tous les backlinks", "Mediators": "Intermédiaires", "Found but never logged": "Trouvés mais jamais saisis", "Source page": "Page source", "Open details": "Ouvrir le détail", "Target": "Cible", "Authority": "Autorité", "Cost": "Coût", "Cost per visit": "Coût par visite", "Mediator": "Intermédiaire", "Owner": "Responsable",
   "lost this week": "perdus cette semaine", "Live ": "Actif", "Lost ": "Perdu", "Nofollow": "Nofollow",
   "Our site": "Notre site", "Target page": "Page cible", "Anchor text": "Texte d'ancre", "Link as placed": "Lien tel que placé", "UTM in this link?": "UTM dans ce lien ?", "Yes": "Oui", "No": "Non", "Source": "Source", "Medium": "Support", "Campaign": "Campagne",
@@ -362,7 +363,7 @@ Object.assign(window.FR, {
 window.ATTENTION = [
   { id: "a0", rank: 2, sev: "warn", host: "site-one.example", title: "/loyer-a-seville/: −32% Google clicks", detail: "Week on week: 85 → 58", act: "See page", key: "content" },
   { id: "a1", rank: 4, sev: "crit", title: "Google connection expired", detail: "Search Console and GA4 stopped updating 2 h ago", act: "Fix", key: "fix" },
-  { id: "a2", rank: 3, sev: "warn", title: "Clarity data lost in 31 h", detail: "Last pull was 41 h ago. The API only goes back 72 h", act: "Run now", key: "clarity" },
+  { id: "a2", rank: 3, sev: "warn", title: "Clarity data lost in 31 h", detail: "Last pull was 41 h ago. The API only goes back 72 h", act: "Refresh", key: "clarity" },
   { id: "a3", rank: 2, sev: "warn", title: "2 backlinks lost", detail: "Found by the monthly link check", act: "Review", key: "backlinks" },
   { id: "a5", rank: 6, sev: "info", title: "rival-three.example blocks our crawler", detail: "Its pages can't be tracked. Other data still works", act: "Review", key: "none" },
 ];

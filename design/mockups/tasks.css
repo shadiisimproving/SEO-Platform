@@ -36,7 +36,7 @@
 .tk-tags:empty { display: none; }
 .tk-tags .tag { overflow-wrap: anywhere; font-size: 12px; line-height: 20px; padding: 0 8px; box-shadow: none; background: var(--track); }
 .tk-kind-blue.tag { color: var(--c-blue); background: var(--c-blue-pale); }
-.tk-kind-purple.tag { color: var(--c-purple); background: var(--c-purple-pale); }
+.tk-kind-grey.tag { color: var(--c-grey, var(--text-2)); background: var(--c-grey-pale, var(--track)); }
 .tk-kind-teal.tag { color: var(--c-teal); background: var(--c-teal-pale); }
 .tk-kind-indigo.tag { color: var(--c-indigo); background: var(--c-indigo-pale); }
 .tk-site { display: inline-flex; align-items: center; gap: 5px; min-width: 0; overflow-wrap: anywhere; }

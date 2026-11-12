@@ -106,7 +106,7 @@ button.cl-name:hover { color: var(--accent-text); }
 .cl-cmp .lab { padding-top: 0; min-height: 34px; }
 .cl-sides { display: flex; gap: 18px; }
 .cl-side { display: flex; flex-direction: column; min-width: 0; }
-.cl-who { font-size: 11px; color: var(--muted); }
+.cl-who { font-size: 12px; color: var(--muted); }
 .cl-fig { font-size: 24px; font-weight: 600; letter-spacing: -.02em; line-height: 30px; }
 .cl-cmp .delta { margin-top: auto; }
 .cl-cmp .ab { font-size: 12px; }
@@ -213,8 +213,8 @@ details.cl-more-facts[open] > summary svg { transform: rotate(90deg); }
 
 /* Mine and theirs, one look across the app (COMP.who): blue is you, purple is them, always with the word. */
 .who { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; white-space: nowrap; }
-.who-you { color: var(--chart-you); }
-.who-them { color: var(--chart-them); }
+.who-you { color: var(--you-text, var(--chart-you)); }
+.who-them { color: var(--them-text, var(--chart-them)); }
 .who .pt-key { margin: 0; }
 .data thead .pt-col-you { box-shadow: inset 0 -2px 0 var(--chart-you); color: var(--text); font-weight: 600; }
 .data thead .pt-col-them { box-shadow: inset 0 -2px 0 var(--chart-them); color: var(--text); font-weight: 600; }

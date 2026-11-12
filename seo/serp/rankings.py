@@ -301,8 +301,39 @@ def rows_of_site(engine: Engine, site_id: int) -> list[dict]:
     return _rows(engine, site_id)["rows"]
 
 
+def _first_checks(engine: Engine, rows: list[dict]) -> None:
+    """A keyword just added waits for its first free check (an upload's run, seo.competitors.keywords). Until a result comes,
+    its row says which tool is on it ("Checking with SerpApi…") instead of blank dashes."""
+    from seo.competitors.keywords import _HAS_JOB, STALE_RUN_SECONDS
+
+    if not rows:
+        return
+    with engine.connect() as conn:
+        waiting = conn.execute(text(
+            "SELECT sk.site_id, sk.keyword_id, u.engine, u.tool FROM keyword_uploads u JOIN site_keywords sk ON sk.upload_id = u.id "
+            f"WHERE u.kind = 'upload' AND u.status IN ('queued', 'running') AND (u.created_at >= UTC_TIMESTAMP(3) - INTERVAL {STALE_RUN_SECONDS} SECOND OR {_HAS_JOB})"
+        )).mappings().all()
+    if not waiting:
+        return
+    first_tool: dict[str, str | None] = {}
+
+    def tool_for(name: str) -> str | None:
+        if name not in first_tool:
+            line = connections.not_blocked(engine, connections.tools_for(engine, name))
+            first_tool[name] = line[0].name if line else None
+        return first_tool[name]
+
+    by_key = {(w["site_id"], w["keyword_id"]): w for w in waiting}
+    for row in rows:
+        w = by_key.get((row["site_id"], row["keyword_id"]))
+        if w is None or any(view["main"] for view in row["engines"].values()):
+            continue
+        row["checking"] = {"engine": w["engine"], "tool": w["tool"] or tool_for(w["engine"])}
+
+
 def listing(engine: Engine, site_id: int | None = None) -> dict:
     built = _rows(engine, site_id)
+    _first_checks(engine, built["rows"])
     through = [day for day in built["through"].values() if day]
     return {
         "rows": built["rows"], "tiles": {name: tiles(built["rows"], name) for name in ENGINES},

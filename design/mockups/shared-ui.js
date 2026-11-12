@@ -211,17 +211,19 @@
       const file = window.BRANDS?.FILES?.[brand];
       const label = tip || brand;
       if (!file) return `<span>${esc(brand)}</span>`;
-      return `<span class="brand-mention logo-only" title="${esc(label)}" data-tip="${esc(label)}"><img class="logo brand-logo" src="logos/${file}" alt="${esc(label)}"></span>`;
+      return `<span class="brand-mention logo-only" title="${esc(label)}" data-tip="${esc(label)}"><img class="logo brand-logo" src="logos/${file}" width="16" height="16" alt="${esc(label)}"></span>`;
     };
     // A How to connect step's link ({ url, link, logo }). With `logo`, the link only names that brand, so it shows the
-    // brand's logo and ↗, and its words ("Open Search Console") are the tooltip and what a screen reader says.
+    // brand's logo and name with its words ("Open [logo] Search Console"): a link's only label is never a bare logo.
     // When the step's own sentence already names the brand (it gets its logo there), the link is ↗ alone: one logo, not two.
     UI.stepLink = (s, fallback = "Open") => {
       if (!s?.url) return "";
       const words = t(s.link || fallback), attrs = `href="${esc(s.url)}" target="_blank" rel="noopener noreferrer"`;
       if (s.logo && window.BRANDS?.FILES?.[s.logo]) {
         const named = s.text && t(s.text).includes(s.logo);
-        return `<a class="ext-link logo-link" ${attrs} aria-label="${esc(words)}" data-tip="${esc(words)}"${named ? ' style="min-width:24px;min-height:24px;justify-content:center"' : ""}>${named ? "" : UI.logoOnly(s.logo, words)}<span aria-hidden="true">↗</span></a>`;
+        // The link's own words name the brand ("Open Search Console"), so brands.js puts its logo beside the name.
+        if (!named) return `<a class="ext-link" ${attrs}>${icon("external-link")}${esc(words)}</a>`;
+        return `<a class="ext-link logo-link" ${attrs} aria-label="${esc(words)}" data-tip="${esc(words)}" style="min-width:24px;min-height:24px;justify-content:center"><span aria-hidden="true">↗</span></a>`;
       }
       return `<a class="ext-link" ${attrs}>${icon("external-link")}${esc(words)}</a>`;
     };

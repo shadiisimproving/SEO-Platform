@@ -197,6 +197,44 @@ def test_a_person_can_overrule_the_filter_both_ways(world):
         gaps.decide(world.engine, world.own, "fine.example", "maybe")
 
 
+def test_spam_takes_a_domain_off_in_consideration_and_undo_puts_both_back(world):
+    """UI critique 2026-11-12: Spam and In consideration were shown together. Marking spam now takes it off the list, whole."""
+    gaps.import_referrers(world.engine, world.own, world.rival, csv_of(["fine.example"]), "links.csv")
+    world.check()
+    gaps.add_to_prospects(world.engine, world.own, ["fine.example"])
+    [row] = gaps.list_prospects(world.engine, world.own)
+    gaps.update_prospect(world.engine, row["id"], owner="Sam", stage="contacted", rating=4)
+    answer = gaps.decide(world.engine, world.own, "fine.example", "spam")
+    assert [p["id"] for p in answer["prospects_removed"]] == [row["id"]] and answer["prospects_removed"][0]["owner"] == "Sam"
+    assert gaps.list_prospects(world.engine, world.own) == []
+    flagged = world.gaps()["filtered"]
+    assert [g["domain"] for g in flagged] == ["fine.example"] and flagged[0]["in_consideration"] is False
+    # Undo: back to the filter's own verdict, and back in consideration with its own id, owner, status and rating.
+    gaps.decide(world.engine, world.own, "fine.example", "auto", answer["prospects_removed"])
+    [back] = gaps.list_prospects(world.engine, world.own)
+    assert (back["id"], back["owner"], back["stage"], back["rating"]) == (row["id"], "Sam", "contacted", 4)
+    assert next(g for g in world.gaps()["gaps"] if g["domain"] == "fine.example")["in_consideration"] is True
+    # Only Undo restores, only that domain, only on that site.
+    with pytest.raises(gaps.Refused):
+        gaps.decide(world.engine, world.own, "fine.example", "keep", [back])
+    with pytest.raises(gaps.Refused):
+        gaps.decide(world.engine, world.own, "other.example", "auto", [{**back, "id": None}])
+    # Spam on a domain nobody added removes nothing.
+    assert gaps.decide(world.engine, world.own, "nowhere.example", "spam") == {"prospects_removed": []}
+
+
+def test_the_decide_route_answers_with_what_it_took_off_the_list(world):
+    from seo.web import create_app
+    gaps.import_referrers(world.engine, world.own, world.rival, csv_of(["fine.example"]), "links.csv")
+    world.check()
+    gaps.add_to_prospects(world.engine, world.own, ["fine.example"])
+    client = create_app(engine=world.engine, url_allowed=ALLOW, auth=False).test_client()
+    reply = client.post("/api/link-gaps/decide", json={"site_id": world.own, "domain": "fine.example", "decision": "spam"})
+    assert reply.status_code == 200 and [p["domain"] for p in reply.get_json()["prospects_removed"]] == ["fine.example"]
+    undo = client.post("/api/link-gaps/decide", json={"site_id": world.own, "domain": "fine.example", "decision": "auto", "restore": reply.get_json()["prospects_removed"]})
+    assert undo.status_code == 200 and [p["domain"] for p in gaps.list_prospects(world.engine, world.own)] == ["fine.example"]
+
+
 def test_a_decision_is_per_site_and_a_later_import_doesnt_undo_it(world):
     other = links.add_site(world.engine, "https://other-own.example/", "own", is_allowed=ALLOW)["id"]
     suggest.add_competitor(world.engine, other, "rival.example", "manual", ALLOW)

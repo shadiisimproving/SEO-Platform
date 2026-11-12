@@ -33,7 +33,7 @@
 .in-figs:not(.in-cards) .in-fig .fig { font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); }
 .in-figs:not(.in-cards) .in-fig .sub { font-size: 12px; color: var(--muted); }
 
-:is(.tab, .page-tab) .in-count { display: inline-block; min-width: 18px; margin-left: 4px; padding: 0 5px; border-radius: 999px; font-size: 11px; line-height: 17px; text-align: center; color: var(--text-2); background: var(--chip); }
+:is(.tab, .page-tab) .in-count { display: inline-block; min-width: 18px; margin-left: 4px; padding: 0 5px; border-radius: 999px; font-size: var(--fs-min); line-height: 17px; text-align: center; color: var(--text-2); background: var(--chip); }
 .in-need { color: var(--warn-t); }
 .in-need a { color: inherit; text-decoration: underline; }
 
@@ -43,12 +43,12 @@
 .in-what { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-bottom: 3px; }
 /* The kind's tag, one colour per family (insights-view.js kindFamily). Red and amber are kept for losses and technical
    problems, which are what they mean in the Clear look; chances blue, gains teal, plain information grey. */
-.in-kind { font-size: 11px; font-weight: 600; letter-spacing: .01em; line-height: 18px; padding: 0 8px; border-radius: 999px; color: var(--c-blue); background: var(--c-blue-pale); overflow-wrap: anywhere; }
+.in-kind { font-size: var(--fs-min); font-weight: 600; letter-spacing: .01em; line-height: 18px; padding: 0 8px; border-radius: 999px; color: var(--c-blue); background: var(--c-blue-pale); overflow-wrap: anywhere; }
 .in-kind.k-loss { color: var(--crit-t); background: color-mix(in srgb, var(--crit-t) 12%, transparent); }
 .in-kind.k-tech { color: var(--warn-t); background: color-mix(in srgb, var(--warn-t) 14%, transparent); }
 .in-kind.k-gain { color: var(--c-teal); background: var(--c-teal-pale); }
 .in-kind.k-info { color: var(--text-2); background: var(--track); }
-.in-task { display: inline-flex; align-items: center; gap: 4px; font-size: 11px; color: var(--good-t); }
+.in-task { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-min); color: var(--good-t); }
 .in-task svg { width: 13px; height: 13px; }
 .in-act-col { width: 1%; white-space: nowrap; color: var(--muted); }
 .in-act-col svg { width: 15px; height: 15px; vertical-align: middle; }
@@ -89,13 +89,13 @@
   .in-figs:not(.in-cards) .in-fig .lab { margin-right: auto; }
   .in-table :is(td, th).in-act-col { display: none; }
 }
-.in-season { font-size: 11px; font-weight: 600; padding: 1px 8px; border-radius: 999px; color: var(--warn-t); background: var(--line); }
+.in-season { font-size: var(--fs-min); font-weight: 600; padding: 1px 8px; border-radius: 999px; color: var(--warn-t); background: var(--line); }
 .in-ai-wrap { margin-top: 16px; }
 .in-ai { display: grid; gap: 10px; }
 .in-ai-buttons { display: flex; flex-wrap: wrap; gap: 8px; }
 .in-ai-buttons .btn svg, .in-weekly-btn svg, .in-ai-label svg { width: 14px; height: 14px; }
 .in-ai-answer { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--c-blue-pale); }
-.in-ai-label { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600; letter-spacing: .02em; color: var(--c-blue); margin: 0 0 6px; }
+.in-ai-label { display: flex; align-items: center; gap: 6px; font-size: var(--fs-min); font-weight: 600; letter-spacing: .02em; color: var(--c-blue); margin: 0 0 6px; }
 .in-ai-text { white-space: pre-line; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
 .in-ai-acts { display: flex; gap: 14px; margin-top: 8px; }
 .in-weekly-btn { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; }
@@ -145,3 +145,4 @@ html[data-simple="1"] #panel .rp-sec-html .in-do { margin: 6px 0 0; }
 html[data-simple="1"] #panel .in-ai-wrap { margin-top: 4px; }
 @media (max-width: 860px) { html[data-simple="1"] .in-cards { grid-template-columns: 1fr; gap: 8px; } }
 .in-answer .ov-answer + .ov-answer { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+.in-same { display: flex; align-items: center; gap: 6px; } .in-same svg.i { width: 14px; height: 14px; flex: none; }

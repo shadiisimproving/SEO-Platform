@@ -94,7 +94,9 @@ const dayFrom = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 1
   check(!calls.some((u) => /refresh\/preview/.test(u)), "the check's price isn't asked until Check now");
   const count = await page.evaluate(() => {
     const shown = (el) => { const r = el.getBoundingClientRect(); if (r.width <= 1 || r.height <= 1) return false; let o = 1; for (let n = el; n && n !== document.body; n = n.parentElement) { const s = getComputedStyle(n); if (s.display === "none" || s.visibility === "hidden") return false; o *= Number(s.opacity); } return o > 0.05; };
-    return [...document.querySelector("#main").querySelectorAll("button,select,input,textarea,a[href],summary,[role=button],[role=tab]")].filter(shown).length;
+    // A row's tick box stays faintly visible since 2026-11-12 (UI critique: hidden ones weren't discovered); it isn't counted here.
+    const rowTick = (el) => el.matches('tbody :is(.tt-pick, .tt-own-pick) input[type="checkbox"]');
+    return [...document.querySelector("#main").querySelectorAll("button,select,input,textarea,a[href],summary,[role=button],[role=tab]")].filter((el) => !rowTick(el)).filter(shown).length;
   });
   check(count <= 28, `about 28 controls at rest: ${count}`);
   await shot(page, "simple.png");

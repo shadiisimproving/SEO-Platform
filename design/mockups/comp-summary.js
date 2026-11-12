@@ -149,7 +149,7 @@
     const c = S.data.rivals?.coverage;
     if (!c || !c.keywords || !c.checked) return ""; // no list, or a list never checked: the setup banner above the tabs already says so, once
     const when = c.newest === c.oldest ? fill("checked {when}", { when: COMP.ago(c.newest) }) : fill("newest check {newest}, oldest {oldest}", { newest: COMP.ago(c.newest), oldest: COMP.ago(c.oldest) });
-    if (simple()) return `<span class="head-sep"> · </span>${esc(fill("{checked} of {total} keywords checked", { checked: UI.num(c.checked), total: UI.num(c.keywords) }))}<span class="head-sep"> · </span>${COMP.toolLogos(null, c.tools[0]) && c.tools.length === 1 ? UI.logoOnly(c.tools[0]) : esc(c.tools.join(", "))}<span class="head-sep"> · </span>${esc(when)}`;
+    if (simple()) return `<span class="head-sep"> · </span>${esc(fill("{checked} of {total} keywords checked", { checked: UI.num(c.checked), total: UI.num(c.keywords) }))}<span class="head-sep"> · </span>${esc(c.tools.join(", "))}<span class="head-sep"> · </span>${esc(when)}`;
     return `${esc(`${fill("{checked} of {total} keywords checked, with {tools}", { checked: UI.num(c.checked), total: UI.num(c.keywords), tools: c.tools.join(", ") })}, ${when}.`)} ${COMP.info("Positions are only compared inside one check.")}`;
   }
 
@@ -223,7 +223,8 @@
     return `<div class="cs-more"><span class="small sec">${esc(fill("{shown} of {total}", { shown: UI.num(shown), total: UI.num(total) }))}</span><button class="btn btn-small" data-cs-more="${part}">${t(word)} (${UI.num(total - shown)})</button></div>`;
   }
   /* All my sites: each of my sites as its icon, with the name on hover and for screen readers, so the row stays one line. */
-  const siteChip = (rival, site) => `<button type="button" class="cs-site" data-cs-open="${rival.id}" data-cs-site="${site.id}" data-tip="${esc(site.host)}" aria-label="${esc(fill("Open {rival} for {site}", { rival: rival.display || rival.host, site: site.host }))}">${UI.siteLogo(site.host, 18)}<span class="sr">${esc(site.host)}</span></button>`;
+  /* All my sites: each of my sites by its icon and its name, since two sites without an icon would show the same letter. */
+  const siteChip = (rival, site) => `<button type="button" class="cs-site" data-cs-open="${rival.id}" data-cs-site="${site.id}" aria-label="${esc(fill("Open {rival} for {site}", { rival: rival.display || rival.host, site: site.host }))}">${UI.siteLogo(site.host, 18)}<span class="cs-site-name mono" dir="auto">${esc(site.host)}</span></button>`;
 
   // ---- 1. Who are my biggest rivals? ---------------------------------------------------------------
   /* The whole row opens the competitor, for its first site. The name is the real button, so it works from the keyboard too. */
@@ -250,16 +251,16 @@
     if (firstReadOnly(r)) return unknown(FIRST_READ);
     return UI.num(r.edits_30d);
   }
-  /* A row link on the simpler screens: the row opens the competitor, the name is its keyboard way in (Enter), not a button. */
-  const rowLink = (attrs, label, html) => `<span class="cs-row-link" role="link" tabindex="0" ${attrs} aria-label="${esc(label)}">${html}</span>`;
+  /* The competitor's name opens it, on both screens: a real button, so the keyboard and screen readers get it without help. */
+  const rivalOpen = (r, site, name) => `<button type="button" class="cs-rival-open cs-row-link with-logo" data-cs-open="${r.id}" data-cs-site="${site.id}" aria-label="${attr(fill("Open {rival}", { rival: r.display || r.host }))}">${name}</button>`;
   const menuButton = (r) => `<button type="button" class="icon-btn cs-row-menu" data-cs-menu="${r.id}" aria-haspopup="menu" aria-expanded="false" aria-label="${esc(fill("More for {rival}", { rival: r.display || r.host }))}" data-tip="${attr("Tracking and Remove")}">${UI.icon("ellipsis")}</button>`;
   function simpleRivalRow(r) {
     const all = S.site === COMP.ALL, l = listRow(r.id);
     const name = `${UI.siteLogo(r.host)}<span class="logo-text kw" dir="auto">${esc(r.display || r.host)}</span>`;
     const site = r.sites[0];
     return `<tr${site ? ` data-cs-row="${r.id}" data-cs-row-site="${site.id}"` : ""} class="${l?.tracking && l.tracking !== "on" ? `ct-row-${l.tracking}` : ""}">
-      <td class="head-cell">${site ? rowLink(`data-cs-open="${r.id}" data-cs-site="${site.id}"`, fill("Open {rival}", { rival: r.display || r.host }), `<span class="with-logo">${name}</span>`).replace('class="cs-row-link"', 'class="cs-row-link cs-rival-open"') : `<span class="with-logo">${name}</span>`}${!all && l && l.source !== "suggested" ? ` ${COMP.iconTip("user", t("Added by hand"), "cl-hand")}` : ""}${l?.tracking === "pages" ? ` <span class="tag cs-track-tag">${esc(t("Pages only"))}</span>` : ""}</td>
-      ${all ? `<td data-label="${attr("Your sites")}"><span class="cs-sites">${r.sites.map((x) => rowLink(`class="cs-site" data-cs-open="${r.id}" data-cs-site="${x.id}" data-tip="${esc(x.host)}"`, fill("Open {rival} for {site}", { rival: r.display || r.host, site: x.host }), `${UI.siteLogo(x.host, 18)}<span class="sr">${esc(x.host)}</span>`).replace('class="cs-row-link" role="link" tabindex="0" class="cs-site"', 'class="cs-row-link cs-site" role="link" tabindex="0"')).join("")}</span></td>` : ""}
+      <td class="head-cell">${site ? rivalOpen(r, site, name) : `<span class="with-logo">${name}</span>`}${!all && l && l.source !== "suggested" ? ` ${COMP.iconTip("user", t("Added by hand"), "cl-hand")}` : ""}${l?.tracking === "pages" ? ` <span class="tag cs-track-tag">${esc(t("Pages only"))}</span>` : ""}</td>
+      ${all ? `<td data-label="${attr("Your sites")}"><span class="cs-sites">${r.sites.map((x) => siteChip(r, x)).join("")}</span></td>` : ""}
       <td class="c" data-label="${attr("Ranks on your keywords")}">${trackedOn(r) ? count(r.ranks_on) : unknown("Not tracked for keywords.")}</td>
       <td class="c" data-label="${attr("Who leads")}">${leadCell(r)}</td>
       <td class="c" data-label="${attr("Edits in 30 days")}">${editsCell(r)}</td>
@@ -294,7 +295,7 @@
     if (!c.baseline_done) return unknown("The first read isn't done yet.");
     if (!m.edits_30d && since && Date.now() - since < DAY) return unknown(FIRST_READ);
     const short = since && Date.now() - since < 30 * DAY; // read for less than the period: say from when, so it isn't taken for a full 30 days
-    return `<span class="cs-lead-cell">${UI.num(m.edits_30d)}${short ? `<span class="second">${esc(fill("since {date}", { date: UI.fmtDateOnly(m.reading_since) }))}</span>` : ""}</span>`; // one box, so a phone's card keeps the date under the number
+    return `<span class="cs-lead-cell">${UI.num(m.edits_30d)}${short ? `<span class="second">${esc(sinceWords(m.reading_since))}</span>` : ""}</span>`; // one box, so a phone's card keeps the date under the number
   }
   /* 2026-11-12, the owner found the pinned row "looks bad": a half-empty competitor row with a mono address and blank cells.
      Now one slim, muted line across the whole table: "[logo] Your site · site-one.example · 4 edits in 30 days · all pages
@@ -302,6 +303,22 @@
      It stays a row of the table (tr.cs-you-row, first in tbody, one wide cell), so table-tools gives it no tick box and
      sorting, filtering and paging leave it on top. */
   const youCols = (all) => (UI.simple?.() ? 6 : all ? 6 : 7);
+  /* "since 12 Nov 2026" when that is today read wrong (UI critique 2026-11-12): today and yesterday get their own words. */
+  const dayAgo = (iso) => {
+    const d = new Date(iso), now = new Date();
+    const key = (x) => `${x.getFullYear()}-${x.getMonth()}-${x.getDate()}`;
+    if (key(d) === key(now)) return 0;
+    const y = new Date(now); y.setDate(now.getDate() - 1);
+    return key(d) === key(y) ? 1 : null;
+  };
+  function sinceWords(iso, n) {
+    const ago = dayAgo(iso);
+    if (n === undefined) return ago === 0 ? t("today") : ago === 1 ? t("since yesterday") : fill("since {date}", { date: UI.fmtDateOnly(iso) });
+    const num = `<b class="tabular">${UI.num(n)}</b>`;
+    if (ago === 0) return fillHtml(n === 1 ? "{n} edit today" : "{n} edits today", { n: num });
+    if (ago === 1) return fillHtml(n === 1 ? "{n} edit since yesterday" : "{n} edits since yesterday", { n: num });
+    return fillHtml(n === 1 ? "{n} edit since {date}" : "{n} edits since {date}", { n: num, date: esc(UI.fmtDateOnly(iso)) });
+  }
   function youEditsWords(m) {
     const c = m.crawl || {}, since = m.reading_since ? new Date(m.reading_since).getTime() : null;
     if (c.status === "blocked") return `<span class="sec" data-tip="${attr("Edits can't be tracked on this site.")}" tabindex="0">${esc(t("Edits not tracked"))}</span>`;
@@ -309,7 +326,7 @@
     if (!m.edits_30d && since && Date.now() - since < DAY) return `<span class="sec" data-tip="${attr(FIRST_READ)}" tabindex="0">${esc(t("Edits show from the next read"))}</span>`;
     const short = since && Date.now() - since < 30 * DAY; // read for less than the period: say from when, so it isn't taken for a full 30 days
     const n = `<b class="tabular">${UI.num(m.edits_30d)}</b>`;
-    return short ? fillHtml(m.edits_30d === 1 ? "{n} edit since {date}" : "{n} edits since {date}", { n, date: esc(UI.fmtDateOnly(m.reading_since)) })
+    return short ? sinceWords(m.reading_since, m.edits_30d)
       : fillHtml(m.edits_30d === 1 ? "{n} edit in 30 days" : "{n} edits in 30 days", { n });
   }
   function youReading(m) {
@@ -767,10 +784,10 @@
       paintSection("keywords");
       UI.$("#cs-kw-rival")?.focus({ preventScroll: true });
     });
-    // Simpler screens: a row link (the competitor's name) and a keyword row open on Enter, as a link does.
+    // Simpler screens: a keyword row opens on Enter, as a link does (the competitor's name is a button).
     document.addEventListener("keydown", (e) => {
       if (e.key !== "Enter" || !simple() || UI.state.route !== "competitors") return;
-      const target = e.target.closest?.(".cs-row-link, tr[data-cs-kw]");
+      const target = e.target.closest?.("tr[data-cs-kw]");
       if (!target || (target.matches("tr") && e.target !== target)) return;
       e.preventDefault();
       target.click();
@@ -913,7 +930,8 @@
     "Summary": "Synthèse",
     "Ranks on your keywords": "Se classe sur vos mots-clés",
     "Who leads": "Qui est devant",
-    "since {date}": "depuis le {date}",
+    "since {date}": "depuis le {date}", "today": "aujourd'hui", "since yesterday": "depuis hier",
+    "{n} edit today": "{n} modification aujourd'hui", "{n} edits today": "{n} modifications aujourd'hui", "{n} edit since yesterday": "{n} modification depuis hier", "{n} edits since yesterday": "{n} modifications depuis hier",
     "Your site": "Votre site", "Edits not tracked": "Modifications non suivies", "Edits show after the first read": "Modifications visibles après la première lecture",
     "Edits show from the next read": "Modifications visibles dès la prochaine lecture", "{n} edit since {date}": "{n} modification depuis le {date}", "{n} edits since {date}": "{n} modifications depuis le {date}",
     "{n} edit in 30 days": "{n} modification en 30 jours", "{n} edits in 30 days": "{n} modifications en 30 jours", "Reading now": "Lecture en cours", "Last read failed": "Dernière lecture échouée",

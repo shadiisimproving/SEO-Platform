@@ -396,11 +396,18 @@
       <button type="button" class="btn btn-small" id="tk-comment-send" data-id="${task.id}">${t("Add comment")}</button>
     </section>`;
 
-  /* task: an existing one. Otherwise prefill: { title, host, description, source }. */
-  function openTask({ task = null, title = "", host = null, description = "", source = null, priority = "medium", pages = [], keywords = [], opener = null } = {}) {
+  /* A new task from a finding gets a type from what the finding is about, so it lands under a type, not blank free text. */
+  const KIND_OF_SOURCE = { keyword: "Content", search: "Content", page: "Content", competitor: "Content", health: "Technical", link: "Technical", alert: "Technical", backlink: "Links" };
+  /* Who is signed in: a new task is theirs unless they change it, so it shows in their "My work" on Today. */
+  const signedIn = () => window.BOOT?.user?.name?.trim() || myName();
+
+  /* task: an existing one. Otherwise prefill: { title, host, description, source, kind, owner, keywords, pages }. */
+  function openTask({ task = null, title = "", host = null, description = "", source = null, priority = "medium", pages = [], keywords = [], kind = "", owner = null, query = "", opener = null } = {}) {
+    // The keyword a finding carries, wherever it keeps it.
+    if (!task && !keywords.length) { const k = query || source?.query || source?.keyword; if (k) keywords = [k]; }
     T.base = task ? JSON.parse(JSON.stringify(task)) : null;
     T.openId = task ? task.id : null;
-    const given = task || {};
+    const given = task || { owner_label: owner ?? signedIn(), kind: kind || KIND_OF_SOURCE[source?.type] || "" };
     const siteId = task ? task.site_id : (T.sites.find((s) => s.host === (host ?? hostHere()))?.id ?? "");
     const siteOptions = `<option value="">${t("All sites")}</option>${T.sites.map((s) => `<option value="${esc(String(s.id))}" ${String(s.id) === String(siteId ?? "") ? "selected" : ""}>${esc(s.host)}</option>`).join("")}`;
     const removedSite = task && !task.site_id && task.site_host ? `<p class="help" style="margin-top:-6px">${t("Site removed:")} <span class="mono" dir="auto">${esc(task.site_host)}</span></p>` : "";
@@ -432,7 +439,7 @@
       </form>
       ${task ? commentsBlock(task) : ""}${task && window.COMP?.notes ? `<div class="task-notes">${window.COMP.notes.block({ scope: "task", taskId: task.id, task: task.title, siteId: task.site_id ?? null, title: t("Notes on this task") })}</div>` : ""}</div>
       <div class="panel-foot"><button class="btn btn-main" id="task-save" ${task ? `data-id="${task.id}"` : ""}>${t("Save")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button>${task ? `<button class="btn btn-ghost danger" id="task-delete" data-id="${task.id}">${t("Delete")}</button>` : ""}</div>`,
-    opener, { key: draftKey, reopen: () => openTask({ task, title, host, description, source, priority, pages, keywords, opener }), after: () => { drawLinks("task-pages"); drawLinks("task-keywords"); fillSuggestions(); window.COMP?.notes?.mount(); } });
+    opener, { key: draftKey, reopen: () => openTask({ task, title, host, description, source, priority, pages, keywords, kind, owner, opener }), after: () => { drawLinks("task-pages"); drawLinks("task-keywords"); fillSuggestions(); window.COMP?.notes?.mount(); } });
     pendingSource = task ? null : source;
   }
   let pendingSource = null; // what the panel on screen would be created from
@@ -579,7 +586,7 @@
   };
   const siteBit = (task) => (hostHere() || !task.site_host ? "" : `<span class="tk-site small sec">${UI.siteLogo(task.site_host, 14)}<span class="mono" dir="auto">${esc(task.site_host)}</span></span>`);
   // A colour per type, so they read apart at a glance. A type someone made up stays plain.
-  const KIND_TONES = { Content: "blue", Technical: "purple", Links: "teal", UX: "indigo", "Lead magnet": "teal", Ads: "indigo" };
+  const KIND_TONES = { Content: "blue", Technical: "grey", Links: "teal", UX: "indigo", "Lead magnet": "teal", Ads: "indigo" };
   const kindTag = (kind) => (kind ? `<span class="tag ${KIND_TONES[kind] ? `tk-kind-${KIND_TONES[kind]}` : ""}" dir="auto">${esc(t(kind))}</span>` : "");
   const moveSelect = (task, id = `tk-move-${task.id}`) => `<select class="select tk-move" id="${id}" data-task-move="${task.id}" aria-label="${t("Status")}: ${esc(task.title)}">${STATUSES.map(([key, word]) => `<option value="${key}" ${key === task.status ? "selected" : ""}>${columnWord(word)}</option>`).join("")}</select>`;
 

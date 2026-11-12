@@ -24,10 +24,11 @@
   const RANGES = [["24h", "Last 24 hours"], ["7d", "Last 7 days"], ["28d", "Last 28 days"], ["3m", "Last 3 months"], ["6m", "Last 6 months"], ["12m", "Last 12 months"], ["16m", "Last 16 months"], ["tm", "This month"], ["lm", "Last month"], ["custom", "Custom"]];
   const COMPARES = [["prev", "vs previous period"], ["yoy", "vs last year"], ["none", "No comparison"]];
   const METRICS = [
-    { id: "clicks", name: "Clicks", color: "var(--ch-1)", ic: "mouse-pointer-click" },
-    { id: "impressions", name: "Impressions", color: "var(--ch-2)", ic: "eye" },
-    { id: "click_rate", name: "Click rate", color: "var(--ch-3)", ic: "percent" },
-    { id: "position", name: "Average position", color: "var(--ch-5)", ic: "arrow-up-narrow-wide", invert: true },
+    // The card colours in their order (look-clear.css): blue, teal, indigo, grey. Never purple (a competitor) or a status colour.
+    { id: "clicks", name: "Clicks", color: "var(--c-blue)", ic: "mouse-pointer-click" },
+    { id: "impressions", name: "Impressions", color: "var(--c-teal)", ic: "eye" },
+    { id: "click_rate", name: "Click rate", color: "var(--c-indigo)", ic: "percent" },
+    { id: "position", name: "Average position", color: "var(--c-grey)", ic: "arrow-up-narrow-wide", invert: true },
   ];
   const TABS = [["query", "Queries"], ["page", "Pages"], ["country", "Countries"], ["device", "Devices"], ["opportunities", "Opportunities"]];
   const SHOWS = [["all", "All"], ["gaining", "Gaining clicks"], ["losing", "Losing clicks"], ["new", "New"], ["lost", "Lost"], ["top3", "Top 3"], ["4-10", "Positions 4–10"], ["11-20", "Positions 11–20"], ["21+", "Positions 21+"]];
@@ -176,21 +177,20 @@
   // The sentence is HTML: a page in it opens that page, and everything taken from the data is escaped here.
   const driverName = (d) => (d.dim === "page" ? PageLink.html(d.name, { text: pathOf(d.name) }) : KeywordLink.html(d.name, { host: hostPicked(), text: fr() ? `« ${d.name} »` : `“${d.name}”` }));
   const pathOf = (url) => { try { const u = new URL(url); return u.pathname || "/"; } catch { return url; } };
-  function sentence(a, window_) {
+  /* Only what the cards below don't say (critique, 2026-11-12): the Clicks card already holds the total and its change, so no
+     badge or "Clicks 1,200 → 1,350" here. What's left is who drove it: the biggest gains or losses as rows, or the top query
+     and page. Nothing to add, nothing drawn. */
+  function sentence(a) {
     if (!a) return "";
-    const range = t(RANGES.find(([id]) => id === window_.range)?.[1] || "this period").toLowerCase();
     if (a.kind === "summary") {
-      const top = [a.top_query ? (fr() ? `la requête qui apporte le plus est ${driverName({ dim: "query", name: a.top_query })}` : `the top query is ${driverName({ dim: "query", name: a.top_query })}`) : "", a.top_page ? (fr() ? `la page ${driverName({ dim: "page", name: a.top_page })}` : `the top page ${driverName({ dim: "page", name: a.top_page })}`) : ""].filter(Boolean);
-      return fr() ? `${num(a.clicks)} clics sur ${range}${top.length ? ` ; ${top.join(", ")}` : ""}.` : `${num(a.clicks)} clicks over ${range}${top.length ? `; ${top.join(", ")}` : ""}.`;
+      const rows = [a.top_query ? [fr() ? "Requête qui apporte le plus" : "Top query", driverName({ dim: "query", name: a.top_query })] : null, a.top_page ? [fr() ? "Page qui apporte le plus" : "Top page", driverName({ dim: "page", name: a.top_page })] : null].filter(Boolean);
+      return rows.length ? `<ul class="ov-ans-list ov-ans-tops">${rows.map(([label, name]) => `<li><span class="ov-ans-label">${label}</span><span class="ov-ans-name">${name}</span></li>`).join("")}</ul>` : "";
     }
-    if (a.kind === "steady") return `<span class="ov-ans-head">${pill(true, fr() ? "Stable" : "Steady", true)}<span>${fr() ? "Clics" : "Clicks"} <b>${num(a.before)} → ${num(a.clicks)}</b></span></span>`;
+    if (a.kind === "steady" || !a.drivers?.length) return "";
     const up = a.kind === "up";
-    // A badge and the two numbers, then one row per page: easier to read than one long sentence (owner, 2026-11-12).
-    const head = `<span class="ov-ans-head">${pill(up, `${num(Math.abs(a.percent))}%`)}<span>${fr() ? "Clics" : "Clicks"} <b>${num(a.before)} → ${num(a.clicks)}</b></span></span>`;
-    if (!a.drivers?.length) return head;
     const top = Math.max(1, ...a.drivers.map((d) => Math.abs(d.change)));
     const rows = a.drivers.map((d) => `<li><span class="ov-ans-name">${driverName(d)}</span><span class="ov-ans-bar" aria-hidden="true"><i class="${d.change < 0 ? "down" : "up"}" style="width:${Math.max(4, Math.round(Math.abs(d.change) / top * 100))}%"></i></span><b class="${d.change < 0 ? "down" : "up"}">${d.change > 0 ? "+" : "−"}${num(Math.abs(d.change))}</b></li>`).join("");
-    return `${head}<span class="ov-ans-label">${fr() ? (up ? "Plus forts gains" : "Plus fortes pertes") : up ? "Biggest gains" : "Biggest losses"}</span><ul class="ov-ans-list">${rows}</ul>`;
+    return `<span class="ov-ans-label">${fr() ? (up ? "Plus forts gains de clics" : "Plus fortes pertes de clics") : up ? "Biggest gains in clicks" : "Biggest losses in clicks"}</span><ul class="ov-ans-list">${rows}</ul>`;
   }
 
   // ---- trust line ------------------------------------------------------------------------------
@@ -215,7 +215,7 @@
     const fix = window.FIX?.explain ? window.FIX.explain(message, { tool: "Search Console", id: "google", retry: "refresh" }) : null;
     const steps = window.FIX?.html ? window.FIX.html(message, { tool: "Search Console", id: "google", retry: "refresh" }, { said: true }) : ""; // first: it teaches t() the French of sentences built from a name
     // The fix box's sentences don't name the tool (2026-11-11), so its logo says once which one this is.
-    const why = fix?.summary ? `${UI.logoOnly("Search Console")} ${esc(t(fix.summary))}` : esc(t("Google didn't answer."));
+    const why = fix?.summary ? `Search Console: ${esc(t(fix.summary))}` : esc(t("Google didn't answer."));
     return `<div class="note warn ov-live-error" role="alert">${icon("triangle-alert")}<div><p><b>${t("These are the last saved numbers.")}</b> ${why}</p>${steps}
       <p class="ov-empty-act"><button class="btn btn-small" data-ov-fix-google>${icon("settings")}${t("Open the Google connection")}</button></p></div></div>`;
   }
@@ -251,24 +251,30 @@
     }).join("")}</section>`;
   }
 
-  // ---- chart: one axis per line, position upside down, comparison dashed, not-final days lighter -----
+  // ---- chart: one small chart per number, stacked on the same days ------------------------------
+  /* Clicks (tens) and impressions (thousands) on twin axes both looked flat, and the two scales invited a false comparison.
+     So each number shown gets its own strip with its own scale, on one shared row of days, one crosshair and one tooltip.
+     Position runs upside down (1 at the top), the comparison is dashed, days not final yet are lighter. */
   const W = 1000, H = 220;
   function chart(d) {
     const pts = d.series;
-    if (!pts.length) return `<div class="empty"><p>${t("No data in this period.")}</p></div>`;
+    if (!pts.length) return `<div class="empty"><p>${t("No data in this period.")}</p>${UI.longerPeriodButton ? UI.longerPeriodButton() : ""}</div>`;
     const shown = METRICS.filter((m) => OV.lines.has(m.id));
     if (!shown.length) return `<div class="empty"><p>${t("Press a number above to show its line.")}</p></div>`;
     const x = (i) => (pts.length === 1 ? W / 2 : (i / (pts.length - 1)) * W);
     const freshAt = pts.findIndex((p) => p.fresh);
-    const axes = {};
-    const draw = shown.map((m) => {
+    const grid = [0, 0.5, 1].map((f) => `<line class="lv-grid" x1="0" x2="${W}" y1="${8 + f * (H - 16)}" y2="${8 + f * (H - 16)}"/>`).join("");
+    // Markers sit on the point whose day (or week) holds them.
+    const markAt = (m) => { let at = -1; pts.forEach((p, i) => { if (p.day.slice(0, 10) <= m.day) at = i; }); return at; };
+    const marks = (d.markers || []).map((m) => ({ ...m, at: markAt(m) })).filter((m) => m.at >= 0);
+    const flags = marks.map((m) => `<g class="ov-flag ${m.kind}"><line x1="${x(m.at)}" x2="${x(m.at)}" y1="0" y2="${H}"/></g>`).join("");
+    const strip = (m) => {
       const values = pts.map((p) => p[m.id]);
       const was = (d.compare_series || []).map((p) => p[m.id]);
       const all = [...values, ...was].filter((v) => v !== null && v !== undefined);
-      let lo = Math.min(...all), hi = Math.max(...all);
+      let lo = all.length ? Math.min(...all) : 0, hi = all.length ? Math.max(...all) : 1;
       if (!m.invert) lo = 0;
       if (hi === lo) hi = lo + 1;
-      axes[m.id] = { lo, hi };
       const y = (v) => (m.invert ? 8 + ((v - lo) / (hi - lo)) * (H - 16) : H - 8 - ((v - lo) / (hi - lo)) * (H - 16));
       const path = (list, from = 0, to = list.length - 1) => {
         let s = "", pen = false;
@@ -281,35 +287,29 @@
         return s;
       };
       const solidEnd = freshAt > 0 ? freshAt - 1 : freshAt === 0 ? -1 : values.length - 1;
-      return `${was.length ? `<path class="lv-line ov-was" d="${path(was)}" stroke="${m.color}"/>` : ""}
+      const lines = `${was.length ? `<path class="lv-line ov-was" d="${path(was)}" stroke="${m.color}"/>` : ""}
         ${solidEnd >= 0 ? `<path class="lv-line" d="${path(values, 0, solidEnd)}" stroke="${m.color}"/>` : ""}
         ${freshAt >= 0 ? `<path class="lv-line ov-fresh" d="${path(values, Math.max(0, freshAt - 1))}" stroke="${m.color}"/>` : ""}
         ${pts.length === 1 && values[0] !== null ? `<circle cx="${x(0)}" cy="${y(values[0])}" r="4" fill="${m.color}"/>` : ""}`;
-    }).join("");
-    const grid = [0, 0.5, 1].map((f) => `<line class="lv-grid" x1="0" x2="${W}" y1="${8 + f * (H - 16)}" y2="${8 + f * (H - 16)}"/>`).join("");
-    // Markers sit on the point whose day (or week) holds them.
-    const markAt = (m) => { let at = -1; pts.forEach((p, i) => { if (p.day.slice(0, 10) <= m.day) at = i; }); return at; };
-    const marks = (d.markers || []).map((m) => ({ ...m, at: markAt(m) })).filter((m) => m.at >= 0);
-    const flags = marks.map((m) => `<g class="ov-flag ${m.kind}"><line x1="${x(m.at)}" x2="${x(m.at)}" y1="0" y2="${H}"/></g>`).join("");
+      const [top, bottom] = m.invert ? [lo, hi] : [hi, lo];
+      // Grey text that passes contrast, with the line's colour as a small mark beside the strip's name.
+      const key = `<i class="ov-ylab-key" style="background:${m.color}" aria-hidden="true"></i>`;
+      const name = shown.length > 1 ? `<span class="ov-strip-name">${key}${esc(t(m.name))}</span>` : "";
+      return `<div class="ov-strip" data-ov-strip="${m.id}">${name}
+          <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${grid}${flags}${lines}<line class="lv-cross" x1="0" x2="0" y1="0" y2="${H}" hidden/></svg>
+          <span class="ov-ylab left">${shown.length > 1 ? "" : key}${esc(fmt[m.id](top))}</span><span class="ov-ylab left bottom">${esc(fmt[m.id](bottom))}</span>
+        </div>`;
+    };
     const every = Math.max(1, Math.floor(pts.length / 6));
     const inner = pts.map((p, i) => [p, i]).filter(([, i]) => i > 0 && i % every === 0 && i < pts.length - every / 2).slice(0, 5);
     const ticks = [[pts[0], 0], ...inner, ...(pts.length > 1 ? [[pts[pts.length - 1], pts.length - 1]] : [])]; // the last day always shows
-    const axisLabel = (m, side) => {
-      const a = axes[m.id];
-      if (!a) return "";
-      const [top, bottom] = m.invert ? [a.lo, a.hi] : [a.hi, a.lo];
-      // Grey text that passes contrast, with the line's colour as a small mark beside it (the purple alone was 4.2 to 1).
-      const key = `<i class="ov-ylab-key" style="background:${m.color}" aria-hidden="true"></i>`;
-      return `<span class="ov-ylab ${side}">${key}${esc(fmt[m.id](top))}</span><span class="ov-ylab ${side} bottom">${key}${esc(fmt[m.id](bottom))}</span>`;
-    };
     window.OV.chart = { pts, was: d.compare_series || [], shown, marks };
-    const legend = `<div class="lv-legend">${shown.map((m) => `<span><i class="lv-key" style="background:${m.color}"></i>${esc(t(m.name))}</span>`).join("")}
+    const legend = `<div class="lv-legend">${shown.length === 1 ? `<span><i class="lv-key" style="background:${shown[0].color}"></i>${esc(t(shown[0].name))}</span>` : ""}
       ${d.compare_series ? `<span><i class="ov-key-dash" aria-hidden="true"></i>${t("Period before")}</span>` : ""}
       ${freshAt >= 0 ? `<span><i class="ov-key-fresh" aria-hidden="true"></i>${t("Not final yet")}</span>` : ""}
       ${marks.length ? `<span><i class="ov-key-flag" aria-hidden="true"></i>${t("Notes and finished tasks")}</span>` : ""}</div>`;
-    return `<div class="lv-chart ov-chart" data-ov-chart tabindex="0" role="img" aria-label="${t("Chart")}: ${esc(shown.map((m) => t(m.name)).join(", "))}. ${t("Use the arrow keys to read each day.")}">
-        <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${grid}${flags}${draw}<line class="lv-cross" x1="0" x2="0" y1="0" y2="${H}" hidden/></svg>
-        ${shown[0] ? axisLabel(shown[0], "left") : ""}${shown.length === 2 ? axisLabel(shown[1], "right") : ""}
+    return `<div class="lv-chart ov-chart${shown.length > 1 ? " ov-multi" : ""}" style="--ov-strips:${shown.length}" data-ov-chart tabindex="0" role="img" aria-label="${t("Chart")}: ${esc(shown.map((m) => t(m.name)).join(", "))}. ${t("Use the arrow keys to read each day.")}">
+        ${shown.map(strip).join("")}
         <div class="lv-tip" hidden></div>
         <div class="lv-axis" aria-hidden="true">${ticks.map(([p]) => `<span>${esc(dayLabel(p.day))}</span>`).join("")}</div>
       </div>${legend}
@@ -331,8 +331,8 @@
     box.dataset.at = i;
     const p = info.pts[i], w = info.was[i];
     const xs = info.pts.length === 1 ? W / 2 : (i / (info.pts.length - 1)) * W;
-    const cross = box.querySelector(".lv-cross"), tip = box.querySelector(".lv-tip"), svg = box.querySelector("svg");
-    cross.removeAttribute("hidden"); cross.setAttribute("x1", xs); cross.setAttribute("x2", xs);
+    const tip = box.querySelector(".lv-tip"), svg = box.querySelector("svg");
+    box.querySelectorAll(".lv-cross").forEach((cross) => { cross.removeAttribute("hidden"); cross.setAttribute("x1", xs); cross.setAttribute("x2", xs); });
     const rows = info.shown.map((m) => `<div><span><i class="lv-key" style="background:${m.color}"></i>${esc(t(m.name))}</span><span>${esc(fmt[m.id](p[m.id]))}${w ? ` <span class="muted">(${esc(fmt[m.id](w[m.id]))})</span>` : ""}</span></div>`).join("");
     const notes = info.marks.filter((m) => m.at === i).map((m) => `<div class="ov-tip-note">${esc(m.text)}</div>`).join("");
     UI.setHTML(tip, `<b>${esc(dayLabel(p.day, true))}${p.fresh ? ` · ${t("not final")}` : ""}</b>${rows}${w ? `<div class="muted ov-tip-was">${t("In brackets: period before")} (${esc(dayLabel(w.day))})</div>` : ""}${notes}`);
@@ -644,7 +644,7 @@
     const v = d.verify;
     const line = (ic, tone, words) => `<li class="${tone}">${icon(ic)}<span>${words}</span></li>`;
     const rows = [d.origin === "live" ? line("circle-check", "good", t("Live from Search Console"))
-      : line("clock", "warn", `${t("Saved data")}${d.last_pull ? ` · ${t("last pulled")} ${esc(since(d.last_pull))}` : ""}`)];
+      : line("clock", "", `${t("Saved data")}${d.last_pull ? ` · ${t("last pulled")} ${esc(since(d.last_pull))}` : ""}`)];
     if (d.fresh_from && d.fresh_from <= d.to) rows.push(line("clock", "", `${t("Days from")} ${esc(dayLabel(d.fresh_from))} ${t("aren't final yet")}`));
     if (v && v.ok) rows.push(line("circle-check", "good", `${t("Matches Search Console")}${v.checked_at ? ` · ${t("checked")} ${esc(since(v.checked_at))}` : ""}`));
     else if (v) rows.push(line("triangle-alert", "warn", `${t("Differs from Search Console")}${v.checked_at ? ` · ${t("checked")} ${esc(since(v.checked_at))}` : ""}`));
@@ -672,7 +672,7 @@
   /* The dates come from the shared picker in the top bar. Here, the days the server really used, and both periods in words. */
   function periodLine(d) {
     if (!d || !d.from) return "";
-    if (d.final_through || d.to) UI.range.end("overview", d.final_through || d.to);
+    if (d.final_through || d.to) UI.range.end("overview", d.final_through || d.to, "Search Console");
     const now = d.hourly ? t("Last 24 hours") : `${dayLabel(d.from)} – ${dayLabel(d.to, true)}`;
     const before = d.compare_from && d.compare_to ? ` ${t("vs")} ${dayLabel(d.compare_from)} – ${dayLabel(d.compare_to, true)}` : "";
     const none = d.compare_unavailable === "history" ? ` · ${t("No comparison: Search Console doesn't keep that far back.")}` : "";
@@ -706,11 +706,11 @@
     if (entry.noServer) return wrap(`<section class="card"><div class="empty"><h3>${t("Needs the running app")}</h3><p>${t("Opened as a file: no real data.")}</p></div></section>`);
     if (entry.error) return wrap(UI.failCard(entry.error, { retry: "data-ov-retry" }));
     if (STATES[d.state] && !d.totals) return wrap(window.LV?.stateCard ? window.LV.stateCard({ data: d }, "gsc") : `<section class="card"><div class="empty"><p>${esc(d.state)}</p></div></section>`);
-    if (!d.totals) return wrap(`${trust(d)}<section class="card"><div class="empty"><h3>${t("No data in this period.")}</h3><p>${t("Pick a longer or earlier period.")}</p></div></section>`);
+    if (!d.totals) return wrap(`${trust(d)}<section class="card"><div class="empty"><h3>${t("No data in this period.")}</h3><p>${t("Pick a longer or earlier period.")}</p>${UI.longerPeriodButton ? `<div style="margin-top:12px">${UI.longerPeriodButton()}</div>` : ""}</div></section>`);
     const chartHead = `<div class="card-head"><h2>${t({ hour: "Hour by hour", week: "Week by week", day: "Day by day" }[d.granularity])}</h2>
       <span class="end ov-chart-tools">${d.single_site ? `<button class="link-btn" data-ov-note-add>${icon("plus")}${t("Add a note")}</button>` : ""}<button class="link-btn" data-ov-table aria-expanded="${OV.table}">${t(OV.table ? "Hide table" : "Show table")}</button></span></div>`;
     return wrap(`${trust(d)}
-      ${d.answer ? `<div class="ov-answer" dir="auto">${sentence(d.answer, d)}</div>` : ""}
+      ${(() => { const said = sentence(d.answer); return said ? `<div class="ov-answer" dir="auto">${said}</div>` : ""; })()}
       ${cards(d)}
       <section class="card ov-chart-card">${chartHead}${chart(d)}</section>
       ${d.hourly && !simple() ? `<p class="small muted ov-hint">${t("Tables below show the last 2 whole days.")}</p>` : ""}
@@ -890,7 +890,7 @@
     });
     document.addEventListener("pointerout", (e) => {
       const box = e.target.closest?.("[data-ov-chart]");
-      if (box && !box.contains(e.relatedTarget) && document.activeElement !== box) { box.querySelector(".lv-tip").hidden = true; box.querySelector(".lv-cross").setAttribute("hidden", ""); }
+      if (box && !box.contains(e.relatedTarget) && document.activeElement !== box) { box.querySelector(".lv-tip").hidden = true; box.querySelectorAll(".lv-cross").forEach((c) => c.setAttribute("hidden", "")); }
     });
     window.addEventListener("seocc:keywords-added", () => { OV.selected.clear(); forget(); redraw(); });
     // A site added since the last answer: that answer said "No site yet", so it's asked again.

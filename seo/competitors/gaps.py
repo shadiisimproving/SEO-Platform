@@ -314,12 +314,19 @@ def link_gaps(engine: Engine, site_id: int) -> dict:
     }
 
 
-def decide(engine: Engine, site_id: int, domain: str, decision: str) -> None:
-    """Keep it, mark it as spam, or hand it back to the rules."""
+def decide(engine: Engine, site_id: int, domain: str, decision: str, restore=None) -> dict:
+    """Keep it, mark it as spam, or hand it back to the rules.
+
+    Spam and In consideration never show together (UI critique 2026-11-12): marking a domain as spam takes it off this
+    site's In consideration list, and the rows taken off come back in `prospects_removed`, whole. Undo sends them back as
+    `restore` with the decision "auto", which puts each one back as it was: owner, status and rating included."""
     if decision not in ("keep", "spam", "auto"):
         raise Refused("Keep it, mark it as spam, or go back to automatic.")
     if not isinstance(domain, str) or not domain.strip():
         raise Refused("Say which domain.")
+    if restore is not None and (decision != "auto" or not isinstance(restore, list) or len(restore) > 20):
+        raise Refused("Only Undo can put a domain back in consideration.")
+    removed: list[dict] = []
     with engine.begin() as conn:
         require_own(conn, site_id)
         if decision == "auto":
@@ -329,6 +336,46 @@ def decide(engine: Engine, site_id: int, domain: str, decision: str) -> None:
                 text("INSERT INTO link_gap_overrides (site_id, domain, decision) VALUES (:s, :d, :v) ON DUPLICATE KEY UPDATE decision = :v"),
                 {"s": site_id, "d": domain[:190], "v": decision},
             )
+        if decision == "spam":
+            rows = conn.execute(text("SELECT * FROM prospects WHERE site_id = :s AND domain = :d"), {"s": site_id, "d": domain[:190]}).mappings().all()
+            removed = [_prospect_row(r) for r in rows]
+            if rows:
+                conn.execute(text("DELETE FROM prospects WHERE site_id = :s AND domain = :d"), {"s": site_id, "d": domain[:190]})
+        for row in restore or []:
+            _restore_prospect(conn, site_id, domain[:190], row)
+    return {"prospects_removed": removed}
+
+
+def _prospect_row(r) -> dict:
+    return {"id": r["id"], "site_id": r["site_id"], "url": r["url"], "domain": r["domain"], "authority": r["authority"], "authority_label": r["authority_label"],
+            "spam_score": r["spam_score"], "source_file": r["source_file"], "source_kind": r["source_kind"], "created_at": _iso(r["created_at"]), "owner": r["owner"] or "",
+            "stage": r["stage"], "page_authority": r["page_authority"], "rating": r["rating"]}
+
+
+def _restore_prospect(conn, site_id: int, domain: str, row) -> None:
+    """One row taken off by marking spam, put back with its own id. Only that domain, on that site, can come back this way."""
+    if not isinstance(row, dict) or row.get("domain") != domain or row.get("site_id") != site_id:
+        raise Refused("Only Undo can put a domain back in consideration.")
+    url = row.get("url")
+    if not isinstance(url, str) or not url.strip() or len(url) > _MAX_URL:
+        raise Refused("Only Undo can put a domain back in consideration.")
+    owner = row.get("owner") or None
+    if owner is not None and (not isinstance(owner, str) or len(owner) > _MAX_OWNER):
+        raise Refused("The owner's name must be text, up to 120 characters.")
+    stage = row.get("stage") or "new"
+    if stage not in PROSPECT_STAGES:
+        raise Refused("That isn't a status a prospect can have.")
+    kind = row.get("source_kind") if row.get("source_kind") in ("csv", "link_gap") else "link_gap"
+    pid = row.get("id") if type(row.get("id")) is int and row.get("id") > 0 else None
+    conn.execute(
+        text(
+            "INSERT IGNORE INTO prospects (id, site_id, url, domain, authority, authority_label, spam_score, source_file, source_kind, page_authority, rating, owner, stage) "
+            "VALUES (:i, :s, :u, :d, :a, :l, :sp, :f, :k, :pa, :r, :o, :st)"
+        ),
+        {"i": pid, "s": site_id, "u": url, "d": domain, "a": _number_or_none(row.get("authority"), "Authority"), "l": _text_or_none(row.get("authority_label"), "label", _MAX_LABEL),
+         "sp": _number_or_none(row.get("spam_score"), "Spam score"), "f": _text_or_none(row.get("source_file"), "file", _MAX_FILE), "k": kind,
+         "pa": _number_or_none(row.get("page_authority"), "Page Authority"), "r": _rating(row.get("rating")), "o": owner, "st": stage},
+    )
 
 
 def _listed_domain(conn, domain) -> str:

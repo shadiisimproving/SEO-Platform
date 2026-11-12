@@ -324,9 +324,9 @@ def import_gaps():
 
 @competitors_api.post("/link-gaps/decide")
 def decide_gap():
-    body = _body({"site_id", "domain", "decision"}, ("site_id", "domain", "decision"))
-    gaps.decide(_engine(), body["site_id"], body["domain"], body["decision"])
-    return jsonify(ok=True)
+    body = _body({"site_id", "domain", "decision", "restore"}, ("site_id", "domain", "decision"))
+    answer = gaps.decide(_engine(), body["site_id"], body["domain"], body["decision"], body.get("restore"))
+    return jsonify(ok=True, **answer)
 
 
 @competitors_api.post("/link-gaps/edit")

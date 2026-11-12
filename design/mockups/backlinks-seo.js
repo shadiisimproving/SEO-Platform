@@ -25,7 +25,9 @@
   }
   const MANY_OUTBOUND = 100, SPAM_SCORE = 30, CURRENCIES = ["USD", "EUR", "AED", "GBP"];
 
-  const VERDICT = { counts: ["vd-counts", "Counts"], weak: ["vd-weak", "Weak"], none: ["vd-none", "Doesn't count"] };
+  /* The verdict in plain words (2026-11-12 critique: "Counts" and "Weak" read as jargon). The same three words name the Useful and
+     Not useful filters, so a badge and the filter that finds it agree. */
+  const VERDICT = { counts: ["vd-counts", "Useful"], weak: ["vd-weak", "Barely useful"], none: ["vd-none", "Not useful"] };
   const REASONS = {
     noindex: "Page set to noindex.",
     robots_blocked: "Blocked by robots.txt.",
@@ -97,7 +99,7 @@
     const read = links.filter((b) => b.status === "live" && b.check?.verdict);
     if (!read.length) return "";
     const counts = read.filter((b) => b.check.verdict === "counts").length;
-    return `<span class="ab" data-tip="${esc(t("Last check: followed, on a page Google can index."))}">${UI.num(counts)} ${t(counts === 1 ? "counts for Google" : "count for Google")}</span>`;
+    return `<span class="ab" data-tip="${esc(t("Last check: followed, on a page Google can index."))}">${UI.num(counts)} ${t("useful")}</span>`;
   }
 
   /* Authority: the file's DA, or else Open PageRank with its name, because two tools' scores don't compare. */
@@ -167,7 +169,7 @@
     return html;
   }
 
-  /* After Run again: the verdict and the answers on the right change, and any row the person opened stays open. */
+  /* After Refresh: the verdict and the answers on the right change, and any row the person opened stays open. */
   function repaint(b) {
     const box = UI.$(`#vd-answer[data-id="${b.serverId}"]`);
     if (!box) return;
@@ -233,15 +235,17 @@
     return FILTERS[filter] ? mine.filter(FILTERS[filter]) : mine;
   }
 
-  /* The four answers a person asks of their links. A chip shows once it has something, or while it's picked. */
+  /* The answers a person asks of their links, Lost first. A chip shows once it has something, or while it's picked. Lost is one of
+     them, not a status filter of its own beside the section tabs (critique 2026-11-12): mockup.js's older "2 lost" chip is taken
+     out after each draw (dropDuplicateLost). */
   function filterChips(list, picked) {
     const chip = (key, word, tip) => {
       const n = list.filter(FILTERS[key]).length;
-      return n || picked === key ? `<button class="chip" data-bl-filter="${key}" aria-pressed="${picked === key}" data-tip="${esc(t(tip))}">${t(word)}<b>${UI.num(n)}</b></button>` : "";
+      return n || picked === key ? `<button class="chip vd-chip" data-bl-filter="${key}" aria-pressed="${picked === key}" data-tip="${esc(t(tip))}">${t(word)}<b>${UI.num(n)}</b></button>` : "";
     };
     const site = S.domain ? `<button class="chip" data-vd-domain="" aria-pressed="true">${t("Site")}: <span class="mono" dir="auto">${esc(S.domain)}</span> ${UI.icon("x")}</button>` : "";
-    return site + chip("useful", "Useful", "Live, followed, indexable page") + chip("visits", "Sends visits", "At least one visit")
-      + chip("noindex", "Linking page not indexed", "Linking page not in Google, or not indexable") + chip("useless", "Not useful", "Nofollow, sponsored, or on a page that passes nothing");
+    return site + chip("lost", "Lost", "Gone from the page, or the page is gone") + chip("useful", "Useful", "Live, followed, on a page Google can index") + chip("visits", "Sends visits", "At least one visit")
+      + chip("noindex", "Linking page not indexed", "Linking page not in Google, or not indexable") + chip("useless", "Not useful", "Barely or not useful: nofollow, sponsored, or on a page that passes nothing");
   }
 
   const byWebsite = () => S.view === "website";
@@ -296,9 +300,11 @@
       const sum = trafficTotals(links), visits = sum.known ? sum.visits : null;
       return { domain, links, best, auth, opr, visits, traffic: links.find((b) => b.siteTraffic !== null && b.siteTraffic !== undefined)?.siteTraffic ?? null, live: links.filter((b) => b.status === "live").length };
     }).sort((x, y) => (y.auth - x.auth) || (y.opr - x.opr) || (y.links.length - x.links.length) || x.domain.localeCompare(y.domain));
-    if (!list.length) return COMP.empty(t("No links match"), t("Pick another filter."));
+    // Each empty state says what to do, with one button that does it (critique 2026-11-12).
+    const clearSearch = (key) => `<button type="button" class="btn btn-small" data-tp-key="${esc(key)}" data-tp-clear>${UI.icon("x")}${t("Clear search")}</button>`;
+    if (!list.length) return COMP.empty(t("No links match"), t("Pick another filter."), `<button type="button" class="btn btn-small" data-bl-filter="all">${t("Show all links")}</button>`);
     const found = list.filter((g) => TP.matches(PAGES.sites, g.domain));
-    if (!found.length) return COMP.empty(t("No site matches"), t("Change the search or filter."));
+    if (!found.length) return COMP.empty(t("No site matches"), t("Change the search."), clearSearch(PAGES.sites));
     const shown = sortRows(found, S.siteSort, { domain: (g) => g.domain, links: (g) => g.links.length, authority: (g) => g.auth || (g.opr >= 0 ? g.opr : null), traffic: (g) => g.traffic, visits: (g) => g.visits });
     const page = TP.view(PAGES.sites, shown);
     const head = (id, label, cls, tip) => sortHead("data-bls-sort", S.siteSort, id, label, cls, tip);
@@ -335,7 +341,7 @@
     if (!ix) {
       if (!server) return "";
       if (!facts.index_check) return `<p class="small sec">${t("Connect Search Console to check if your page is indexed.")} <a href="#settings">${t("Data sources")}</a></p>`;
-      return `<p class="small sec">${t("Asked at the next check, or press Run.")}</p>`;
+      return `<p class="small sec">${t("Asked at the next check, or press Check.")}</p>`;
     }
     const page = pathOf(ix.url);
     const from = `<p class="small muted vd-from">${t("From Search Console's URL Inspection")}${ix.checked ? `, ${esc(day(ix.checked))}` : ""}.</p>`;
@@ -387,7 +393,7 @@
     UI.render();
   }
 
-  // ---- Found but never logged ------------------------------------------------------------------------
+  // ---- Links you didn't add (found by Search Console or another tool, never logged) ------------------------------------------------------------------------
   function foundTools(siteHost) {
     const server = H.server?.();
     const marked = [...(window.BACKLINKS || []), ...(window.FOUND_LINKS || [])].filter((b) => b.disavow && (!siteHost || b.site === siteHost)).length;
@@ -445,7 +451,7 @@
     try {
       const a = await COMP.api("POST", "backlinks/gsc-import", undefined, { form });
       const lines = [];
-      if (a.kinds.includes("latest")) lines.push(`${UI.num(a.added)} ${t("new links in Found but never logged")}`, `${UI.num(a.seen)} ${t("logged links Google sees")}`);
+      if (a.kinds.includes("latest")) lines.push(`${UI.num(a.added)} ${t("new links you didn't add")}`, `${UI.num(a.seen)} ${t("logged links Google sees")}`);
       if (a.kinds.includes("sites")) lines.push(`${UI.num(a.domains)} ${t("linking sites")}`);
       if (a.kinds.includes("pages")) lines.push(`${UI.num(a.pages)} ${t("of your pages have links; each is read monthly for Reclaim.")}`);
       if (a.skipped) lines.push(`${UI.num(a.skipped)} ${t("rows skipped: own pages or duplicates")}`);
@@ -481,7 +487,7 @@
 
   function reclaimBody() {
     const list = reclaimPages();
-    if (!list.length) return COMP.empty(t("Nothing to reclaim"), t("Gone pages that still have links show here."));
+    if (!list.length) return COMP.empty(t("Nothing to reclaim"), t("Upload Search Console's Top linked pages to find gone pages that still have links."), `<button type="button" class="btn btn-small" id="gsc-open">${UI.icon("search")}${t("Import from Search Console")}</button>`);
     const found = list.filter((p) => TP.matches(PAGES.reclaim, p.path, p.page, p.site, ...(p.domains || [])));
     const shown = sortRows(found, S.rcSort, { page: (p) => p.path || p.page, http: (p) => Number(p.http) || null, sites: (p) => p.sites || p.logged_links || 0 });
     const page = TP.view(PAGES.reclaim, shown);
@@ -496,7 +502,7 @@
         <td class="r" data-label="${t("Sites linking")}">${UI.num(p.sites || p.logged_links)}${p.gsc_links ? `<span class="second">${UI.num(p.gsc_links)} ${t("links")}</span>` : ""}</td>
         <td class="r nowrap">${window.UI.taskButton({ title: `${t("Redirect")} ${p.path} ${t("to a live page")}`, host: p.site, source: { type: "backlink", label: p.path, host: p.site, facts: [`${p.http}`, `${p.sites || p.logged_links} ${t("sites linking")}`], link: "#backlinks", key: `reclaim|${p.site}|${p.path}` } }, { label: "Task" })}${p.gsc_id ? ` <button class="btn btn-small" data-rc-dismiss="${p.gsc_id}">${t("Dismiss")}</button>` : ""}</td></tr>`).join("")}
       </tbody></table></div>
-      ${TP.footer(PAGES.reclaim, page, { noun: t("pages") })}</div>` : COMP.empty(t("No page matches"), t("Change the search."))}`;
+      ${TP.footer(PAGES.reclaim, page, { noun: t("pages") })}</div>` : COMP.empty(t("No page matches"), t("Change the search."), `<button type="button" class="btn btn-small" data-tp-key="${PAGES.reclaim}" data-tp-clear>${UI.icon("x")}${t("Clear search")}</button>`)}`;
   }
 
   async function dismissReclaim(button) {
@@ -506,7 +512,7 @@
     UI.render();
   }
 
-  // ---- budget, in the Mediators tab ------------------------------------------------------------------------
+  // ---- budget, in the Mediators tab (people and agencies who place links) ------------------------------------------------------------------------
   function budgetBar(all) {
     if (!H.server?.()) return "";
     const host = pickedHost(), id = siteIdOf(host);
@@ -620,10 +626,239 @@
     set("b2", { verdict: "weak", reasons: ["nofollow"], is_nofollow: true }, { gsc: { seen: "site" }, targetIndex: { state: "not_indexed", url: page(b2, "/"), coverage: "Crawled - currently not indexed", crawled: "2026-10-12", checked: "2026-11-02" } });
   }
 
+  // ---- the simpler Backlinks (UI.simple(), ?simple=1; UI critique 2026-11-12) ------------------------------------------
+  /* mockup.js draws the Backlinks screen. On the simpler screens it is reshaped here right after each draw, before the browser
+     paints (a MutationObserver on #page), so the default screen stays as it was and every button keeps mockup.js's handlers.
+     - The answer first: a verdict, then one row per thing that needs you (lost links, links that don't help, gone pages, links
+       you didn't add, To do), each with its number and one action.
+     - Four number cards: Live, New, Visits, Leads. Total is Live + Lost, and Lost is the answer's first row.
+     - One tab tier, the sections. What to show (All links, Mediators, Links you didn't add, Gone pages), the filters and By page /
+       By site sit behind one Filter button, and the ones in use show as chips beside it, each with its ×.
+     - The links table shows at most five columns; the rest are under More columns. A column that holds only "—" in the rows on
+       show hides by itself and is listed there as empty.
+     - The imports sit behind the arrow of the Add backlink split button. */
+  const SIMPLE = { cols: new Map(), refocus: "", last: "", needsOpen: false };
+  const simpleOn = () => !!(UI?.simple?.() && UI.state.route === "backlinks");
+  const linksHere = () => (window.LinkTodo?.links?.() || []).filter((b) => b.status !== "planned"); // To do never counts
+  const foundHere = () => { const host = pickedHost(); return (window.FOUND_LINKS || []).filter((f) => !f.ignored && (!host || !f.site || f.site === host)); };
+  const FILTER_WORDS = { lost: "Lost", useful: "Useful", visits: "Sends visits", noindex: "Linking page not indexed", useless: "Not useful" };
+  const SHOW_WORDS = { all: "All links", mediators: "Mediators", found: "Links you didn't add", reclaim: "Gone pages" };
+  /* The links table's columns, as mockup.js draws them: [key, heading(s), shown by default]. The source page always shows. */
+  const COLS = [["target", ["Target"], true], ["keyword", ["Keyword"], false], ["anchor", ["Anchor type"], false], ["status", ["Status"], true], ["authority", ["Authority"], true],
+    ["traffic", ["Site traffic"], false], ["visits", ["Visits"], true], ["leads", ["Leads"], false], ["cost", ["Cost per visit"], false], ["mediator", ["Mediator", "Mediator"], false]];
+  const EMPTY_CELL = /^[\s—–-]*$/;
+
+  function needsYou(all) {
+    const n = (test) => all.filter(test).length;
+    const lost = n(FILTERS.lost), useless = n(isUseless), gone = reclaimCount(), found = foundHere().length, todo = window.LinkTodo?.count?.() || 0;
+    return [
+      lost && { key: "lost", mark: UI.status("serious", t("Lost ")), word: "Links lost", n: lost, act: "Show them" },
+      useless && { key: "useless", mark: UI.status("warn", t("Not useful")), word: "Links that barely help your ranking", n: useless, act: "Show them" },
+      gone && { key: "reclaim", mark: UI.status("serious", t("Page gone")), word: "Your gone pages that still have links", n: gone, act: "Fix them" },
+      found && { key: "found", mark: UI.status("info", t("Not added")), word: "Links you didn't add", n: found, act: "Review them" },
+      todo && { key: "todo", mark: UI.status("planned", t("To do")), word: "Links waiting to be placed", n: todo, act: "Open To do" },
+    ].filter(Boolean);
+  }
+
+  function answerHtml(all) {
+    const rows = needsYou(all);
+    const head = rows.length
+      ? `<div class="vd-answer warn">${UI.icon("triangle-alert")}<div><strong>${esc(rows.length === 1 ? t("1 thing needs you") : t("{n} things need you").replace("{n}", UI.num(rows.length)))}</strong></div></div>`
+      : `<div class="vd-answer good">${UI.icon("circle-check")}<div><strong>${esc(t("Nothing needs you"))}</strong><p>${esc(t("No lost links, and nothing waiting."))}</p></div></div>`;
+    // On a phone the first three rows show and the rest wait behind "Show N more", so a link row still fits on the first screen.
+    const list = rows.map((r, i) => `<li class="bl-need${i >= 3 ? " bl-need-more" : ""}" data-need="${r.key}"><span class="bl-need-mark">${r.mark}</span><span class="bl-need-word">${esc(t(r.word))}</span><b class="bl-need-n tabular">${UI.num(r.n)}</b><button type="button" class="btn btn-small" data-bl-go="${r.key}">${esc(t(r.act))}</button></li>`).join("");
+    const more = rows.length > 3 ? `<li class="bl-need-toggle"><button type="button" class="link-btn" data-bl-needs-more aria-expanded="${SIMPLE.needsOpen}">${esc(t("Show {n} more").replace("{n}", UI.num(rows.length - 3)))}</button></li>` : "";
+    return `<section class="card bl-answer" aria-label="${esc(t("What needs you"))}">${head}${list ? `<ul class="bl-needs${SIMPLE.needsOpen ? " open" : ""}">${list}${more}</ul>` : ""}</section>`;
+  }
+
+  /* An answer row's action: the section, the list and the filter that show those links, then the keyboard goes to the list. */
+  function goTo(where) {
+    const s = UI.state;
+    if (where === "todo") s.blSection = "todo";
+    else {
+      Object.assign(s, { blSection: "done", blTab: where === "found" || where === "reclaim" ? where : "all", blMediator: "" });
+      if (where === "lost" || where === "useless") s.blFilter = where;
+      S.domain = ""; S.view = "page";
+    }
+    TP.reset(PAGES.links);
+    SIMPLE.refocus = "#bl-filter-btn";
+    UI.render();
+  }
+
+  /* The filters in use, as chips beside Filter: each × puts that one back. */
+  function activeChips() {
+    const s = UI.state, chips = [];
+    const chip = (attr, value, words) => chips.push(`<button type="button" class="chip bl-on" ${attr}="${esc(value)}" aria-label="${esc(t("Remove the filter"))}: ${esc(words)}"><span dir="auto">${esc(words)}</span>${UI.icon("x")}</button>`);
+    if (s.blTab !== "all") chip("data-bl-tab", "all", t(SHOW_WORDS[s.blTab] || s.blTab));
+    if (s.blTab === "all") {
+      if (s.blFilter && s.blFilter !== "all") chip("data-bl-filter", "all", t(FILTER_WORDS[s.blFilter] || s.blFilter));
+      if (s.blMediator) chip("data-bl-mediator", "", `${t("Mediator")}: ${s.blMediator}`);
+      if (S.domain) chip("data-vd-domain", "", `${t("Site")}: ${S.domain}`);
+      if (byWebsite()) chip("data-vd-view", "page", t("By site"));
+    }
+    return chips;
+  }
+
+  function filterPop(anchor, all) {
+    const s = UI.state, num = UI.num;
+    const choice = (attr, value, words, n, on) => `<button type="button" class="chip" ${attr}="${esc(value)}" aria-pressed="${on}">${esc(words)}${n === null ? "" : `<b>${num(n)}</b>`}</button>`;
+    const group = (title, inner) => `<div class="bl-fgroup" role="group" aria-label="${esc(title)}"><p class="bl-fhead">${esc(title)}</p><div class="chips">${inner}</div></div>`;
+    const gone = reclaimCount();
+    let html = group(t("Show"), [["all", all.length], ["mediators", window.LinkExtras?.count?.(all) ?? null], ["found", foundHere().length], ...(gone || s.blTab === "reclaim" ? [["reclaim", gone]] : [])]
+      .map(([key, n]) => choice("data-bl-tab", key, t(SHOW_WORDS[key]), n, s.blTab === key)).join(""));
+    if (s.blTab === "all") {
+      const byPerson = s.blMediator ? all.filter((b) => b.mediator === s.blMediator) : all;
+      html += group(t("Links"), choice("data-bl-filter", "all", t("All"), byPerson.length, !s.blFilter || s.blFilter === "all") + filterChips(byPerson, s.blFilter));
+      html += group(t("View"), choice("data-vd-view", "page", t("By page"), null, !byWebsite()) + choice("data-vd-view", "website", t("By site"), null, byWebsite()));
+    }
+    UI.popover(anchor, `<div class="bl-fpop">${html}</div>`, "bl-pop");
+  }
+
+  /* Which column a heading or a cell is, by its words (the cells carry their column's name in data-label). */
+  const colOfWords = (words) => COLS.find(([, names]) => names.some((n) => t(n) === words))?.[0] || null;
+  function columnsOf(table) {
+    const info = new Map(COLS.map(([key, , def]) => [key, { def, cells: [], heads: [] }]));
+    table.querySelectorAll("thead th").forEach((th) => { const key = colOfWords(th.textContent.replace(/\s+/g, " ").trim()); if (key) { th.dataset.blCol = key; info.get(key).heads.push(th); } });
+    table.querySelectorAll("tbody td[data-label]").forEach((td) => { const key = colOfWords(td.dataset.label); if (key) info.get(key).cells.push(td); });
+    info.forEach((c, key) => {
+      c.empty = c.cells.length > 0 && c.cells.every((td) => EMPTY_CELL.test(td.textContent));
+      c.on = SIMPLE.cols.has(key) ? SIMPLE.cols.get(key) : c.def && !c.empty; // a choice made under More columns wins
+      c.present = c.heads.length > 0;
+    });
+    return info;
+  }
+  function applyColumns() {
+    const table = UI.$("#bl-table");
+    if (!table) return null;
+    const info = columnsOf(table);
+    info.forEach((c) => [...c.heads, ...c.cells].forEach((el) => el.classList.toggle("bl-col-off", !c.on)));
+    const hidden = [...info.values()].filter((c) => c.present && !c.on).length, button = UI.$("#bl-cols-btn b");
+    if (button) button.textContent = hidden ? UI.num(hidden) : "";
+    return info;
+  }
+  function columnsPop(anchor) {
+    const info = applyColumns();
+    if (!info) return;
+    const rows = COLS.filter(([key]) => info.get(key).present).map(([key, names]) => {
+      const c = info.get(key);
+      return `<label class="opt bl-col-opt"><input type="checkbox" class="chk" data-bl-col-pick="${key}" ${c.on ? "checked" : ""}><span>${esc(t(names[0]))}</span>${c.empty ? `<span class="small muted">${esc(t("empty here"))}</span>` : ""}</label>`;
+    }).join("");
+    UI.popover(anchor, `<div class="bl-fpop" role="group" aria-label="${esc(t("Columns"))}"><p class="bl-fhead">${esc(t("Columns"))}</p>${rows}</div>`, "bl-pop");
+  }
+
+  /* The split button's arrow: the other ways to add. An item presses the arrow itself under the old button's id (bulk-open,
+     gsc-open, bulk-template), so mockup.js and this file open their panel or dialog with the arrow as the opener, and closing it
+     gives the keyboard back to the arrow. */
+  function addMenu(anchor) {
+    const item = (id, icon, words) => `<button type="button" class="bl-menu-item" data-bl-add="${id}" role="menuitem">${UI.icon(icon)}${esc(t(words))}</button>`;
+    UI.popover(anchor, `<div class="bl-menu" role="menu" aria-label="${esc(t("More ways to add"))}">${item("bulk-open", "list-plus", "Import a CSV file")}${item("gsc-open", "search", "Import from Search Console")}${item("bulk-template", "download", "Download the CSV template")}</div>`, "bl-pop");
+  }
+
+  function splitAdd() {
+    const add = UI.$("#add-backlink");
+    if (!add || add.parentElement.classList.contains("bl-split")) return;
+    const wrap = document.createElement("span");
+    wrap.className = "bl-split";
+    add.replaceWith(wrap);
+    wrap.append(add, UI.fragment(`<button type="button" class="btn btn-main bl-split-more" id="bl-add-more" data-pop-toggle aria-haspopup="menu" aria-expanded="false" aria-label="${esc(t("More ways to add"))}" data-tip="${esc(t("Import a CSV file or from Search Console"))}">${UI.icon("chevron-down")}</button>`));
+  }
+
+  function toolbar(content, all) {
+    const s = UI.state, tab = s.blTab, sections = content.querySelector(":scope > .tabs.sections");
+    const on = activeChips();
+    const bar = UI.fragment(`<div class="bl-sbar"><span class="bl-sbar-search"></span><button type="button" class="btn btn-small" id="bl-filter-btn" data-pop-toggle aria-haspopup="dialog" aria-expanded="false">${UI.icon("filter")}${esc(t("Filter"))}${on.length ? `<b class="bl-count">${UI.num(on.length)}</b>` : ""}</button>${on.join("")}<span class="bl-sbar-end"></span></div>`).firstElementChild;
+    if (tab === "all") {
+      const row = content.querySelector(":scope > .chips");
+      const search = row?.querySelector(".tp-search");
+      if (search) bar.querySelector(".bl-sbar-search").replaceWith(search);
+      if (row) row.replaceWith(bar); else sections?.after(bar);
+      if (UI.$("#bl-table", content)) bar.querySelector(".bl-sbar-end").append(UI.fragment(`<button type="button" class="btn btn-small" id="bl-cols-btn" data-pop-toggle aria-haspopup="dialog" aria-expanded="false">${UI.icon("columns-3")}${esc(t("More columns"))}<b class="bl-count"></b></button>`));
+    } else {
+      sections?.after(bar);
+      // Links you didn't add: its own line keeps its search, Show ignored and the disavow file; the upload is in the split button.
+      content.querySelector(":scope > .chips #gsc-open")?.remove();
+    }
+    bar.querySelector(".bl-sbar-search:empty")?.remove();
+    // An empty list asks for one thing: a CSV. Search Console is in the split button's menu.
+    content.querySelector(".empty .bl-tools #gsc-open")?.remove();
+  }
+
+  function simplify() {
+    const content = UI.$("#page .content");
+    if (!content || !content.querySelector(":scope > .tabs.sections")) return; // still loading, or it failed: the card says so
+    content.classList.add("bl-simple");
+    content.setAttribute("data-tt-filter-off", ""); // one Filter on this screen: the one below, not table-tools' as well
+    const all = linksHere(), tiles = content.querySelector("#bl-tiles");
+    if (tiles) {
+      const cards = [...tiles.children];
+      if (cards.length === 6) { cards[2].remove(); cards[0].remove(); } // Total and Lost: Live + Lost, and the answer's first row
+      // The answer and the cards side by side on a wide screen, one above the other on a phone.
+      const top = document.createElement("div");
+      top.className = "bl-top";
+      tiles.replaceWith(top);
+      top.append(UI.fragment(answerHtml(all)), tiles);
+    }
+    content.querySelectorAll(":scope > .tabs[role=tablist]:not(.sections)").forEach((el) => el.remove()); // one tab tier
+    splitAdd();
+    if (UI.state.blSection === "done") toolbar(content, all);
+    applyColumns();
+    if (SIMPLE.refocus) { const el = UI.$(SIMPLE.refocus); SIMPLE.refocus = ""; el?.focus({ preventScroll: true }); el?.scrollIntoView?.({ block: "nearest" }); }
+    else if (SIMPLE.last && (!document.activeElement || document.activeElement === document.body)) UI.$(`#${CSS.escape(SIMPLE.last)}`)?.focus({ preventScroll: true });
+  }
+
+  /* Both modes: the chip line has one Lost, the one filterChips draws with the other answers. */
+  function dropDuplicateLost() {
+    UI.$$('#page .chips > [data-bl-filter="lost"]:not(.vd-chip)').forEach((chip) => chip.remove());
+  }
+
+  function watchPage() {
+    const page = document.getElementById("page");
+    if (!page) return;
+    new MutationObserver(() => {
+      if (UI.state.route !== "backlinks") return;
+      dropDuplicateLost();
+      if (simpleOn()) simplify();
+    }).observe(page, { childList: true });
+    // The keyboard stays on Filter or More columns when a list loads late and the screen draws again (the Mediators list does).
+    document.addEventListener("focusin", (e) => { SIMPLE.last = e.target.closest?.(".bl-sbar [id]")?.id || ""; });
+  }
+
+  function simpleClicks(e) {
+    if (!simpleOn()) return false;
+    const hit = (sel) => e.target.closest?.(sel);
+    let el;
+    // A choice in the Filter menu: the menu closes, the screen draws again, and the keyboard goes back to Filter.
+    if (hit("#popover.bl-pop") && hit("[data-bl-tab], [data-bl-filter], [data-vd-view], [data-bl-mediator], [data-vd-domain]")) { SIMPLE.refocus = "#bl-filter-btn"; UI.closePopover(); return false; }
+    if (hit(".bl-on")) { SIMPLE.refocus = "#bl-filter-btn"; return false; } // a chip's ×: mockup.js or the lines below do the rest
+    if ((el = hit("#popover.bl-pop [data-bl-add]"))) {
+      e.stopPropagation();
+      UI.closePopover();
+      const arrow = UI.$("#bl-add-more");
+      if (!arrow) return true;
+      arrow.id = el.dataset.blAdd; // for this one press only
+      try { arrow.click(); } finally { arrow.id = "bl-add-more"; }
+      return true;
+    }
+    const toggle = (id, open) => { if ((el = hit(id))) { e.stopPropagation(); if (UI.$("#popover") && el.getAttribute("aria-expanded") === "true") UI.closePopover({ focus: true }); else open(el); return true; } return false; };
+    if (toggle("#bl-filter-btn", (b) => filterPop(b, linksHere()))) return true;
+    if (toggle("#bl-cols-btn", columnsPop)) return true;
+    if (toggle("#bl-add-more", addMenu)) return true;
+    if ((el = hit("[data-bl-needs-more]"))) { SIMPLE.needsOpen = true; el.closest(".bl-needs").classList.add("open"); el.setAttribute("aria-expanded", "true"); el.closest(".bl-needs").querySelector(".bl-need-more button")?.focus(); return true; }
+    if ((el = hit("[data-bl-go]"))) { e.stopPropagation(); goTo(el.dataset.blGo); return true; }
+    return false;
+  }
+
   function bind() {
+    document.addEventListener("change", (e) => {
+      const box = e.target.closest?.("[data-bl-col-pick]");
+      if (!box) return;
+      SIMPLE.cols.set(box.dataset.blColPick, box.checked);
+      applyColumns();
+    });
     document.addEventListener("click", (e) => {
       const hit = (sel) => e.target.closest?.(sel);
       let el;
+      if (simpleClicks(e)) return;
       if ((el = hit("#gsc-open"))) { openGsc(el); return; }
       if ((el = hit("#gsc-send"))) { sendGsc(el); return; }
       if ((el = hit("[data-vd-disavow]"))) { e.stopPropagation(); toggleDisavow(el); return; }
@@ -642,7 +877,7 @@
   }
 
   window.BacklinkSeo = {
-    init(ui, helpers) { UI = ui; H = helpers; bind(); sample(); TP.on(PAGES.sites, () => UI.render()); TP.on(PAGES.reclaim, () => UI.render()); },
+    init(ui, helpers) { UI = ui; H = helpers; bind(); sample(); watchPage(); TP.on(PAGES.sites, () => UI.render()); TP.on(PAGES.reclaim, () => UI.render()); },
     noteSite: (host, facts) => { if (host && facts) S.sites.set(host, facts); },
     filterRows, filterChips, viewSwitch, trafficTotals, byWebsite, websiteTable, searchBox, resetPages, sortRows, sortHead, nextSort, PAGES, trafficHead, trafficCell, anchorTag, anchorWord, anchorOptions,
     badge, liveNote, authorityCell, panelBlocks, repaint, foundTools, foundButton, foundSeen, reclaimBody, reclaimCount, budgetBar, duplicateNote,
@@ -650,13 +885,21 @@
   };
 
   const fr = {
-    "Counts": "Compte", "Weak": "Faible", "Doesn't count": "Ne compte pas", "Spam": "Spam", "Listed": "Listé", "Site listed": "Site listé", "Not listed": "Pas listé",
+    "All links": "Tous les liens", "Links you didn't add": "Liens non ajoutés", "Gone pages": "Pages disparues", "Links lost": "Liens perdus",
+    "Links that barely help your ranking": "Liens qui aident peu votre classement", "Your gone pages that still have links": "Vos pages disparues qui ont encore des liens",
+    "Show {n} more": "Voir {n} de plus", "Links waiting to be placed": "Liens en attente de pose",
+    "Show them": "Les voir", "Fix them": "Les corriger", "Review them": "Les passer en revue", "Open To do": "Ouvrir À faire", "Not added": "Non ajouté",
+    "1 thing needs you": "1 point demande votre attention", "{n} things need you": "{n} points demandent votre attention", "Nothing needs you": "Rien ne demande votre attention",
+    "No lost links, and nothing waiting.": "Aucun lien perdu, et rien en attente.", "What needs you": "Ce qui demande votre attention", "Remove the filter": "Retirer le filtre",
+    "More columns": "Plus de colonnes", "empty here": "vide ici", "More ways to add": "Autres façons d'ajouter", "Import a CSV file": "Importer un fichier CSV",
+    "Download the CSV template": "Télécharger le modèle CSV", "Import a CSV file or from Search Console": "Importer un fichier CSV ou depuis Search Console",
+    "Barely useful": "Peu utile", "Spam": "Spam", "Listed": "Listé", "Site listed": "Site listé", "Not listed": "Pas listé",
     "Google sees the page; the link passes value.": "Google voit la page ; le lien transmet de la valeur.",
     "Search Console lists this page": "Search Console liste cette page", "crawled": "exploré le",
     "Search Console lists the site, not this page.": "Search Console liste le site, pas cette page.",
     "Placed 60+ days before your last Search Console upload, yet missing from it. Its list is a sample: only a hint.": "Placé plus de 60 jours avant votre dernier import Search Console, mais absent. Sa liste est un échantillon : simple indice.",
     "In the disavow file.": "Dans le fichier de désaveu.",
-    "Last check: followed, on a page Google can index.": "Dernier contrôle : suivi, sur une page indexable par Google.", "counts for Google": "compte pour Google", "count for Google": "comptent pour Google",
+    "Last check: followed, on a page Google can index.": "Dernier contrôle : suivi, sur une page indexable par Google.", "useful": "utiles",
     "Open PageRank, 0–10, not the DA scale.": "Open PageRank, de 0 à 10, pas l'échelle du DA.",
     "Page set to noindex.": "Page en noindex.",
     "Blocked by robots.txt.": "Bloquée par robots.txt.",
@@ -689,7 +932,7 @@
     "Export external links (top right) → Latest links → Download CSV.": "Exporter les liens externes (en haut à droite) → Derniers liens → Télécharger au format CSV.",
     "Upload it below. Top linking sites or Top linked pages work too.": "Importez-le ci-dessous. Principaux sites de liens ou Pages les plus liées marchent aussi.",
     "Choose the file Search Console downloaded.": "Choisissez le fichier téléchargé depuis Search Console.", "Needs the running app": "Nécessite l'application en marche", "Uploading…": "Import en cours…", "Upload": "Importer", "Upload another": "Importer un autre",
-    "new links in Found but never logged": "nouveaux liens dans Trouvés mais jamais saisis", "logged links Google sees": "liens saisis vus par Google", "linking sites": "sites qui font des liens",
+    "new links you didn't add": "nouveaux liens que vous n'avez pas ajoutés", "logged links Google sees": "liens saisis vus par Google", "linking sites": "sites qui font des liens",
     "of your pages have links; each is read monthly for Reclaim.": "de vos pages ont des liens ; chacune est lue chaque mois pour À récupérer.", "rows skipped: own pages or duplicates": "lignes ignorées : vos pages ou doublons",
     "Not a Search Console Links export. Open Links, then Export external links, and choose Latest links.": "Ce n'est pas un export Liens de Search Console. Ouvrez Liens, puis Exporter les liens externes, et choisissez Derniers liens.",
     "Download it as CSV, not Excel.": "Téléchargez-le en CSV, pas en Excel.", "No .csv inside that .zip.": "Aucun .csv dans ce .zip.", "Can't open that .zip.": "Impossible d'ouvrir ce .zip.",
@@ -709,7 +952,7 @@
     "Google's main version:": "Version principale pour Google :", "Get indexed:": "Faire indexer :",
     "From Search Console's URL Inspection": "Depuis l'inspection d'URL de Search Console",
     "Connect Search Console to check if your page is indexed.": "Connectez Search Console pour vérifier si votre page est indexée.", "Data sources": "Sources de données",
-    "Asked at the next check, or press Run.": "Demandé au prochain contrôle, ou cliquez sur Lancer.",
+    "Asked at the next check, or press Check.": "Demandé au prochain contrôle, ou cliquez sur Vérifier.",
     "Not in the site's Search Console property, so not inspected.": "Absente de la propriété Search Console du site : pas d'inspection.",
     "Looks to be in {a} ({why}); {site} is in {b}.": "Semble en {a} ({why}) ; {site} est en {b}.",
     "Linking page not on Google.": "Page source absente de Google.",
@@ -719,9 +962,9 @@
     "Linking page on Google": "Page source dans Google",
     "Not found on Google yet; searched again in a few days.": "Pas encore trouvée dans Google ; nouvelle recherche dans quelques jours.",
     "Ask the site to get it indexed.": "Demandez au site de la faire indexer.",
-    "Useful": "Liens utiles", "Sends visits": "Envoient des visites", "Not useful": "Liens non utiles", "Site": "Site", "Show": "Afficher", "By page": "Par page", "By site": "Par site",
-    "Live, followed, indexable page": "En ligne, suivi, page indexable", "At least one visit": "Au moins une visite",
-    "Linking page not in Google, or not indexable": "Page source absente de Google ou non indexable", "Nofollow, sponsored, or on a page that passes nothing": "Nofollow, sponsored, ou sur une page qui ne transmet rien",
+    "Useful": "Utile", "Show all links": "Voir tous les liens", "Upload Search Console's Top linked pages to find gone pages that still have links.": "Importez les Pages les plus liées de Search Console pour trouver les pages disparues qui ont encore des liens.", "Gone from the page, or the page is gone": "Absent de la page, ou page disparue", "Sends visits": "Envoient des visites", "Not useful": "Pas utile", "Site": "Site", "Show": "Afficher", "By page": "Par page", "By site": "Par site",
+    "Live, followed, on a page Google can index": "En ligne, suivi, sur une page que Google peut indexer", "At least one visit": "Au moins une visite",
+    "Linking page not in Google, or not indexable": "Page source absente de Google ou non indexable", "Barely or not useful: nofollow, sponsored, or on a page that passes nothing": "Peu ou pas utile : nofollow, sponsored, ou sur une page qui ne transmet rien",
     "Site traffic": "Trafic du site", "Ahrefs estimate: the linking site's monthly Google visits": "Estimation Ahrefs : visites Google mensuelles du site source",
     "Brand": "Marque", "Bare URL": "URL nue", "Exact keyword": "Mot-clé exact", "Partial keyword": "Mot-clé partiel", "Generic": "Générique",
     "Automatic": "Automatique", "Set by hand.": "Choisi à la main.", "set by hand": "choisi à la main", "None of the above.": "Aucun des types précédents.",

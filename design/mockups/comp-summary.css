@@ -89,8 +89,12 @@
 .cs-lead-side b { color: var(--text); margin-left: 3px; }
 .cs-lead-side .pt-key { margin-right: 4px; }
 .cs-merged .cl-watch .second { max-width: 220px; }
-/* All my sites: each site is its icon. */
-.cs-site { display: inline-grid; place-items: center; width: 26px; height: 26px; padding: 0; border-radius: var(--r-s); background: none; border: 0; cursor: pointer; }
+/* All my sites: each site is its icon and its name, one per line (two sites without an icon showed the same letter). */
+.cs-sites { flex-direction: column; align-items: flex-start; gap: 2px; }
+.cs-site { display: inline-flex; align-items: center; gap: 6px; min-height: 26px; padding: 2px 6px 2px 4px; margin-inline-start: -4px; border-radius: var(--r-s); background: none; border: 0; cursor: pointer; font-size: 12px; color: var(--text-2); text-align: start; }
+.cs-site .cs-site-name { font-size: 12px; white-space: nowrap; }
+@media (max-width: 640px) { .cs-sites { align-items: flex-end; } }
+.cs-site:hover .cs-site-name, .cs-site:focus-visible .cs-site-name { color: var(--accent-text); text-decoration: underline; text-underline-offset: 3px; }
 .cs-site:hover, .cs-site:focus-visible { background: var(--hover); }
 .cs-site .site-logo { vertical-align: middle; }
 .cs-head h2 .comp-info { margin-left: 6px; }

@@ -21,7 +21,7 @@ const summaryReady = (page) => page.waitForFunction(() => {
   const body = document.querySelector("#comp-body");
   if (!body || body.textContent.includes("Loading…") || body.textContent.includes("Chargement…")) return false;
   const answered = (id, full) => document.querySelector(`#cs-${id} ${full}, #cs-${id} .empty`);
-  return document.querySelector("#cs-rivals") ? answered("rivals", "table") && answered("keywords", "table") && answered("moves", ".rows") && answered("links", "table") : body.querySelector(".empty");
+  return document.querySelector("#cs-rivals") ? answered("rivals", "table") && answered("keywords", "table") && (answered("moves", "table") || answered("moves", ".rows")) && answered("links", "table") : body.querySelector(".empty");
 }, null, { timeout: 15000 });
 const picked = (page) => page.$eval("#comp-site", (x) => x.options[x.selectedIndex].textContent.trim());
 const menu = (page) => page.evaluate(() => window.UI.siteHostPicked());
@@ -116,7 +116,9 @@ const sitesCount = (page) => page.$eval("#cs-rivals-table", (t) => [...t.querySe
     await page.click(`#cs-rivals-table tr:has-text("rival-two.example") .cs-site:has-text("${host}")`);
     await page.waitForSelector("#cl-profile-title");
     const title = await page.$eval("#cl-profile-title", (x) => x.textContent);
-    check(`the rival opens for ${host}`, title.includes("rival-two.example") && (await picked(page)) === host && (await menu(page)) === host, title);
+    // Since 2026-11-12 (UI critique) the profile names its site in its own chip and the side menu keeps All sites.
+    const scope = (await page.textContent("#comp-scope > span:last-child").catch(() => "")).trim();
+    check(`the rival opens for ${host}, the side menu stays on All sites`, title.includes("rival-two.example") && scope === `For ${host}` && (await menu(page)) === null, `${title} | ${scope}`);
     await page.goBack();
     await summaryReady(page);
     check(`Back from that profile returns to All my sites (${host})`, (await picked(page)) === "All my sites" && (await menu(page)) === null, await picked(page));

@@ -75,6 +75,18 @@
     if (!ui || !COMP?.notes) return;
     if (!document.querySelector("#main")) { setTimeout(start, 200); return; } // the sign-in screen has no app yet
     button();
+    /* On a phone the round button would sit on the right of every card, where values are. It steps aside while the page
+       scrolls down to read, and comes back on the way up, at the end, or after a pause (mockup.css .nb-away). */
+    const main = document.querySelector("#main");
+    let lastTop = main.scrollTop, settle = 0;
+    main.addEventListener("scroll", () => {
+      const top = main.scrollTop, atEnd = top + main.clientHeight >= main.scrollHeight - 4;
+      const away = top > lastTop + 4 && top > 60 && !atEnd ? true : top < lastTop - 4 || atEnd ? false : null;
+      if (away !== null) document.body.classList.toggle("nb-away", away);
+      lastTop = top;
+      clearTimeout(settle);
+      settle = setTimeout(() => document.body.classList.remove("nb-away"), 1600);
+    }, { passive: true });
     document.addEventListener("click", (e) => {
       const fab = e.target.closest?.("#nb-fab");
       if (fab) { open(fab); return; }

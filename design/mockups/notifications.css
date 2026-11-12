@@ -2,8 +2,8 @@
 .bell-btn { position: relative; }
 .bell-btn .bell-count {
   position: absolute; top: 1px; right: 0; min-width: 16px; padding: 0 4px; border-radius: 8px;
-  font-size: 10px; font-weight: 700; line-height: 16px; text-align: center; font-variant-numeric: tabular-nums;
-  background: linear-gradient(135deg, #f43f5e, #d81b45); color: #fff; box-shadow: 0 0 0 2px var(--glass-2);
+  font-size: var(--fs-min); font-weight: 700; line-height: 16px; text-align: center; font-variant-numeric: tabular-nums;
+  background: var(--badge-bg, var(--crit-t)); color: var(--badge-fg, #fff); box-shadow: 0 0 0 2px var(--glass-2);
 }
 
 .bell-pop { padding: 0; display: flex; flex-direction: column; min-width: 0; }
@@ -51,6 +51,6 @@
 .bell-group .bell-go { flex: 1 1 auto; min-width: 0; }
 .bell-track-one { width: 24px; height: 24px; flex: none; }
 .bell-track-one svg { width: 13px; height: 13px; }
-.bell-floor { margin-top: 4px; font-size: 11px; }
+.bell-floor { margin-top: 4px; font-size: var(--fs-min); }
 /* Said once for every day's row, under the list. */
 .bell-floor.bell-foot { margin: 0; padding: 8px 14px 12px; border-top: 1px solid var(--line); }

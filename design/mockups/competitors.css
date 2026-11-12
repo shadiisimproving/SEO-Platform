@@ -24,7 +24,7 @@ a.comp-url:hover { color: var(--accent-text); }
 
 /* A website's icon, or its first letter. Icons come in any shape and colour, so they sit on a plain white tile in both modes. */
 .site-logo { display: inline-block; flex: none; border-radius: 6px; object-fit: contain; background: #fff; box-shadow: 0 0 0 1px var(--line); vertical-align: -5px; }
-.site-logo.letter { display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; font-family: var(--sans, inherit); color: var(--text-2); background: var(--chip); }
+.site-logo.letter { display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; font-family: var(--sans, inherit); color: var(--text-2); background: var(--chip); }
 .with-logo { display: inline-flex; align-items: flex-start; gap: 8px; min-width: 0; }
 .with-logo > .site-logo { margin-top: 1px; }
 .with-logo > .logo-text { min-width: 0; display: inline-block; }
@@ -78,3 +78,12 @@ html[data-simple="1"] .comp-tabs .page-tab:hover { background: none; }
 .cs-menu-item:hover, .cs-menu-item:focus-visible { background: var(--hover); }
 .cs-menu-item:disabled { color: var(--muted); cursor: default; background: none; }
 .cs-menu-item + .cs-menu-item, .cs-menu .ct-switch + .cs-menu-help + .cs-menu-item { border-top: 1px solid var(--line); border-radius: 0 0 var(--r-s) var(--r-s); }
+/* Simpler screens: the tabs past the everyday four sit behind More. */
+html[data-simple="1"] .comp-tabs-more { display: inline-flex; align-items: center; gap: 4px; }
+html[data-simple="1"] .comp-tabs-more svg.i { width: 14px; height: 14px; }
+/* A profile opened from All my sites: its own site, named here, while the side menu keeps All sites. */
+.comp-scope { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 2px 10px 2px 6px; border-radius: 999px; background: var(--chip); box-shadow: inset 0 0 0 1px var(--line); font-size: 13px; color: var(--text-2); white-space: nowrap; }
+.comp-scope .site-logo { vertical-align: 0; border-radius: 4px; }
+
+/* The More menu sits beside the tab list, not in it (a tablist holds only tabs); the list itself lays out as part of the row. */
+.comp-tablist { display: contents; }

@@ -46,14 +46,15 @@ fs.writeFileSync(FILE, "﻿" + [
   await page.screenshot({ path: OUT + "1-after-upload.png", fullPage: false });
 
   const heads = (await page.locator("#cg-table > thead th").allTextContents()).map((h) => h.trim());
-  check("Page Authority and Anchor text are separate columns", heads.includes("Page Authority") && heads.includes("Anchor text"), heads.join(" | "));
+  // 2026-11-12 (UI critique): Authority, Page Authority and Spam score share one Strength cell; the anchor text is in the "N links" disclosure.
+  check("Strength and Links columns, no separate Page Authority or Anchor text", heads.includes("Strength") && heads.includes("Links") && !heads.includes("Page Authority") && !heads.includes("Anchor text"), heads.join(" | "));
   const idle = await page.locator("#cg-table > thead .th-btn").evaluateAll((bs) => bs.map((b) => ({ icon: !!b.querySelector("svg path"), cursor: getComputedStyle(b).cursor })));
-  check("every heading shows a sort mark and a hand cursor before any click", idle.length === 7 && idle.every((b) => b.icon && b.cursor === "pointer"), JSON.stringify(idle));
+  check("every heading shows a sort mark and a hand cursor before any click", idle.length === 5 && idle.every((b) => b.icon && b.cursor === "pointer"), JSON.stringify(idle));
   const row = (domain) => page.locator(`#cg-table tr[data-cg-row="${domain}"]`);
   const cr = row("coffee-review.example");
   const cell = (n) => cr.locator(`> td:nth-child(${n})`);
-  check("the row's Page Authority column holds the strongest page's number", (await cell(6).textContent()).trim() === "44", await cell(6).textContent());
-  check("the Anchor text column holds that same link's anchor", (await cr.locator(".cg-anchor").textContent()).trim() === "best coffee subscription");
+  check("the Strength cell holds the strongest page's Page Authority", /Page\s*44/.test(await cell(4).textContent()), await cell(4).textContent());
+  check("the row no longer carries an anchor line", (await cr.locator(".cg-anchor").count()) === 0);
   check("the row says how many links it has", /^6 links$/.test((await cr.locator("[data-cg-links]").textContent()).trim()), await cr.locator("[data-cg-links]").textContent());
   check("no links are listed until the row is opened", (await page.locator(".cg-links-row").count()) === 0);
   check("Links to shows logos, not addresses", (await cr.locator("td:nth-child(3) .site-logo").count()) >= 1 && !/rival-one/.test(await cell(3).textContent()), await cell(3).textContent());
@@ -66,7 +67,7 @@ fs.writeFileSync(FILE, "﻿" + [
   const focused = await page.evaluate(() => document.activeElement?.dataset?.cgLinks);
   check("the button opens all the links under the row, focus stays on it", (await linkRows.count()) === 6 && focused === "coffee-review.example", `${await linkRows.count()} ${focused}`);
   const subHeads = (await panel.locator("thead th:not(.tt-pick)").allTextContents()).map((h) => h.trim());
-  check("the links table has one column each", subHeads.join() === "Anchor text,Page Authority,Linking page,Points to", subHeads.join(" | "));
+  check("the links table has one column each", subHeads.join() === "Anchor text,Page authority,Linking page,Points to", subHeads.join(" | "));
   const first = linkRows.first();
   check("each link gives its own anchor, PA, page and target", /best coffee subscription/.test(await first.textContent()) && (await first.locator("td:nth-child(3)").textContent()).trim() === "44" && /best-subscriptions/.test(await first.locator("td:nth-child(4)").textContent()) && /subscribe/.test(await first.locator("td:nth-child(5)").textContent()));
   check("the linking page opens in a new tab", (await first.locator("td:nth-child(4) a").getAttribute("target")) === "_blank");
@@ -86,16 +87,17 @@ fs.writeFileSync(FILE, "﻿" + [
   await row("local-news.example").locator("[data-cg-links]").click(); await page.waitForTimeout(300);
   check("the button folds it back", (await page.locator(".cg-links-row").count()) === 0);
 
-  // Sorting by Page Authority: the best link's PA, biggest first, then smallest first.
+  // Sorting by Strength: by authority, biggest first, then smallest first.
   const order = async () => (await page.locator("#cg-table > tbody > tr").evaluateAll((rows) => rows.map((r) => r.dataset.cgRow)));
-  await page.click('[data-cg-sort="pa"]'); await page.waitForTimeout(400);
-  const down = await order();
-  check("sorting by Page Authority puts the strongest page first", down.slice(0, 3).join() === "coffee-review.example,local-news.example,home-kitchen.example", down.slice(0, 5).join(", "));
-  check("the heading says it's sorted", (await page.locator('th:has([data-cg-sort="pa"])').getAttribute("aria-sort")) === "descending");
-  await page.click('[data-cg-sort="pa"]'); await page.waitForTimeout(400);
-  const up = await order();
-  check("a second click sorts smallest first, domains with no Page Authority last", up.slice(0, 3).join() === "home-kitchen.example,local-news.example,coffee-review.example", up.join(", "));
-  await page.click('[data-cg-sort="pa"]'); await page.waitForTimeout(300);
+  const auths = async () => (await page.locator("#cg-table > tbody > tr[data-cg-row] .cg-auth .tabular").allTextContents()).map((x) => parseInt(x.replace(/\D/g, ""), 10));
+  await page.click('[data-cg-sort="authority"]'); await page.waitForTimeout(400);
+  const down = await auths();
+  check("sorting by Strength puts the highest authority first", down.length > 2 && down.every((n, i) => !i || n <= down[i - 1]), down.join());
+  check("the heading says it's sorted", (await page.locator('th:has([data-cg-sort="authority"])').getAttribute("aria-sort")) === "descending");
+  await page.click('[data-cg-sort="authority"]'); await page.waitForTimeout(400);
+  const up = await auths();
+  check("a second click sorts smallest first", up.every((n, i) => !i || n >= up[i - 1]), up.join());
+  await page.click('[data-cg-sort="authority"]'); await page.waitForTimeout(300);
 
   // Filtering by Page Authority.
   await page.selectOption("#cg-pa", "40"); await page.waitForTimeout(400);
@@ -111,7 +113,7 @@ fs.writeFileSync(FILE, "﻿" + [
   await page.fill("[data-tp-search]", "gift box"); await page.waitForTimeout(700);
   const found = await order();
   check("searching anchor text finds the domain", found.length === 1 && found[0] === "coffee-review.example", found.join(", "));
-  check("the row shows the matching anchor, with that link's own Page Authority", /coffee gift box/.test(await cr.locator(".cg-anchor").textContent()) && (await cell(6).textContent()).trim() === "19", await cell(6).textContent());
+  check("the row's Strength shows the matching link's own Page Authority", /Page\s*19/.test(await cell(4).textContent()), await cell(4).textContent());
   await page.screenshot({ path: OUT + "4-search-anchor.png" });
   await page.click("[data-tp-clear]"); await page.waitForTimeout(400);
 
@@ -119,14 +121,17 @@ fs.writeFileSync(FILE, "﻿" + [
   await page.click("#cg-filter"); await page.waitForTimeout(300);
   await page.locator(".cg-pick-menu [data-cg-choose]", { hasText: "rival-two.example" }).click(); await page.waitForTimeout(400);
   // The demo's rival-two file gives coffee-review one link, with no anchor text in that file.
-  const onlyTwo = await cr.locator(".cg-anchor-cell").textContent();
-  check("with rival-two chosen, coffee-review shows only rival-two's link", /No anchor text/.test(onlyTwo) && /1 link/.test(onlyTwo) && !/best coffee subscription/.test(onlyTwo), onlyTwo.replace(/\s+/g, " ").trim());
+  const onlyTwo = await cell(5).textContent();
+  await cr.locator("[data-cg-links]").click(); await page.waitForTimeout(300);
+  const twoPanel = await page.locator(".cg-links-row").textContent();
+  check("with rival-two chosen, coffee-review shows only rival-two's link", /^1 link$/.test(onlyTwo.trim()) && /No anchor text/.test(twoPanel) && !/best coffee subscription/.test(twoPanel), `${onlyTwo.trim()} | ${twoPanel.replace(/\s+/g, " ").trim().slice(0, 80)}`);
+  await cr.locator("[data-cg-links]").click(); await page.waitForTimeout(300);
   await page.click("#cg-filter"); await page.click('[data-cg-choose=""]'); await page.waitForTimeout(300);
 
   // French.
   await page.evaluate(() => { UI.state.lang = "fr"; UI.render(); }); await page.waitForTimeout(500);
   const frHeads = await page.locator("#cg-table > thead th").allTextContents();
-  check("the heading is in French", frHeads.some((h) => /Texte d'ancre/.test(h)), frHeads.join(" | "));
+  check("the heading is in French", frHeads.some((h) => /Force/.test(h)) && frHeads.some((h) => /Liens/.test(h)), frHeads.join(" | "));
   check("the links button is in French", /6 liens/.test(await cr.locator("[data-cg-links]").textContent()));
   await page.evaluate(() => { UI.state.lang = "en"; UI.render(); }); await page.waitForTimeout(400);
 

@@ -179,8 +179,9 @@ async function whole(page, path) {
   const ends = await on(page, '#demo-today [data-card="visits"] .ncard-days', (d) => [...d.children].map((x) => x.textContent).join(" | "));
   check(ends === "14 Oct | 10 Nov", "a tall card names its first and last day", ends);
   const colours = await onAll(page, "#demo-report .ncard", (c) => c.map((x) => getComputedStyle(x).getPropertyValue("--c").trim()));
-  const tokens = await page.evaluate(() => ["--c-blue", "--c-purple", "--c-teal", "--c-indigo"].map((k) => getComputedStyle(document.documentElement).getPropertyValue(k).trim()));
-  check(colours.join() === tokens.join(), "one colour per card, from look-clear's rule: blue, purple, teal, indigo", colours.join());
+  // Purple only ever means a competitor (UI critique, 2026-11-12): the rotation is blue, teal, indigo, grey.
+  const tokens = await page.evaluate(() => ["--c-blue", "--c-teal", "--c-indigo", "--c-grey"].map((k) => getComputedStyle(document.documentElement).getPropertyValue(k).trim()));
+  check(colours.join() === tokens.join(), "one colour per card, from look-clear's rule: blue, teal, indigo, grey", colours.join());
   const lineColour = await page.evaluate(() => {
     const card = document.querySelector('#demo-report [data-card="leads"]'), probe = document.createElement("span");
     probe.style.color = getComputedStyle(card).getPropertyValue("--c"); document.body.append(probe);

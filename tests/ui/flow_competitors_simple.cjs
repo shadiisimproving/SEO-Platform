@@ -63,7 +63,11 @@ const inPage = (page, fn, arg) => page.evaluate(fn, arg);
   if (MODE === "1") {
     // ---- the head, page tabs, the row's ⋯ ---------------------------------------------------------------------------------
     check("the head has Add a competitor as its one main action", Boolean(await page.$("#topbar #cl-add-open")));
-    check("page tabs in the underline look, seven of them", (await page.locator(".comp-tabs.page-tabs [data-comp-tab]").count()) === 7);
+    // 2026-11-12 (UI critique): seven tabs were too many; the everyday four stay, the rest sit behind More.
+    check("page tabs in the underline look, four of them and More", (await page.locator(".comp-tabs.page-tabs [data-comp-tab]").count()) === 4 && (await page.locator(".comp-tabs.page-tabs #comp-tabs-more").count()) === 1);
+    await page.click("#comp-tabs-more"); await settle(300);
+    check("More holds Find competitors, Keyword check and Notes", (await page.locator("#popover [data-comp-tab]").allTextContents()).map((x) => x.trim()).join() === "Find competitors,Keyword check,Notes");
+    await page.keyboard.press("Escape"); await settle(200);
     check("no Tracking switch or Remove button sits on the rows", (await page.locator("#cs-rivals-table [data-ct-set], #cs-rivals-table [data-cl-remove]").count()) === 0);
     await page.hover("#cs-rivals-table tbody tr[data-cs-row]");
     await page.click("#cs-rivals-table [data-cs-menu] >> nth=0"); await settle(400);

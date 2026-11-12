@@ -27,14 +27,16 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
   await step("top of the page", async () => {
     await shot("01-overview");
     check((await text(".ov-trust")).includes("Search Console"), "the trust line says where the numbers come from");
-    check((await text(".ov-answer")).length > 10, "a sentence answers first");
+    // Since 2026-11-12 the line on top says only what the cards don't: who drove the change (rows), or nothing.
+    const answer = await text(".ov-answer");
+    check(!/^Clicks\b/m.test(answer) && !/\d → \d/.test(answer.split("\n")[0] || ""), "the line on top doesn't repeat the Clicks card");
     check((await page.locator(".ov-card").count()) === 4, "four numbers");
     check((await page.locator(".ov-card[aria-pressed=true]").count()) === 2, "clicks and impressions are on the chart at first");
     const before = await page.locator(".ov-chart path.lv-line").count();
     await page.click('[data-ov-line="position"]'); await page.waitForTimeout(400);
     check((await page.locator(".ov-chart path.lv-line").count()) > before, "pressing Average position adds its line");
     await page.click('[data-ov-line="position"]'); await page.waitForTimeout(300);
-    const box = await page.locator(".ov-chart svg").boundingBox();
+    const box = await page.locator(".ov-chart svg").first().boundingBox(); // one strip per number since 2026-11-12
     await page.mouse.move(box.x + box.width * 0.6, box.y + 60); await page.waitForTimeout(200);
     check((await text(".ov-chart .lv-tip")).includes("Clicks"), "hovering the chart reads the day out");
     await shot("02-hover");
@@ -67,7 +69,7 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
   });
 
   await step("open a query", async () => {
-    await page.locator(".ov-row .ov-name").first().click(); await page.waitForTimeout(1800);
+    await page.locator(".ov-row td.ov-n").first().click(); await page.waitForTimeout(1800); // not the name: a query is a keyword link
     const panel = await text("#panel");
     check(panel.includes("Pages") && panel.includes("Countries"), "the panel shows its pages and countries");
     await shot("04-query-panel");
@@ -122,7 +124,7 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
     await pick("6m");
     check((await text(".ov-chart-card h2")) === "Week by week", "6 months is drawn week by week");
     await pick("24h");
-    check((await text(".ov-chart-card h2")) === "Hour by hour" && (await text(".ov-answer")).length > 0, "24 hours is hour by hour, with a sentence");
+    check((await text(".ov-chart-card h2")) === "Hour by hour", "24 hours is hour by hour");
     await shot("06-24-hours");
     await pick("28d");
     await page.click("#compare"); await page.waitForTimeout(200); await page.click('[data-compare="none"]'); await page.waitForTimeout(2000);
@@ -134,7 +136,8 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
     await menu(page, "lang"); await page.waitForTimeout(800);
     await menu(page, "theme"); await page.waitForTimeout(1500);
     await page.evaluate(() => document.querySelector(".content")?.scrollTo(0, 0));
-    check(/clics/i.test(await text(".ov-answer")), "the sentence is in French");
+    const said = await text(".ov-answer");
+    check(!said || /clics/i.test(said), "the line on top is in French");
     await shot("07-french-dark");
     await page.setViewportSize({ width: 390, height: 844 }); await page.waitForTimeout(1200);
     check(!(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1)), "no sideways scroll on a phone");

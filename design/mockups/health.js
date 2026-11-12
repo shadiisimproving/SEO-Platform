@@ -259,7 +259,7 @@
         <button class="btn btn-small" data-ht-seen="${a.id}">${icon("check")}${t("Mark as seen")}</button></div>
       ${worse ? `<h3 class="ht-sub">${t("What got worse")}</h3><ul class="ht-worse">${worse}</ul>` : ""}
       ${whole ? `<h3 class="ht-sub">${t("What's wrong")}</h3><ul class="ht-worse">${whole}</ul>` : ""}
-      ${a.kind === "health_failed" ? `<p class="small sec ht-alert-text">${t("The test couldn't finish. Press Run now.")}</p>` : ""}
+      ${a.kind === "health_failed" ? `<p class="small sec ht-alert-text">${t("The test couldn't finish. Press Refresh.")}</p>` : ""}
     </section>`;
   }
 
@@ -282,7 +282,7 @@
       ? `<div class="ht-trend">${UI.spark(graded, { w: 320, h: 56, area: true })}<span class="sr">${t("Score over the last tests")}: ${graded.join(", ")}</span><p class="small muted">${num(graded.length)} ${t("tests, dates below")}</p></div>`
       : `<p class="small muted ht-trend">${t("Trend shows after 2 full tests.")}</p>`;
     if (!a || a.score === null || a.score === undefined) {
-      const words = ht.activeId && !a ? "First test running." : a?.status === "failed" ? "No score: this test failed." : "No score yet. Press Run now.";
+      const words = ht.activeId && !a ? "First test running." : a?.status === "failed" ? "No score: this test failed." : "No score yet. Press Refresh.";
       return `<section class="card ht-score"><div class="ht-score-head"><h2 class="ht-sub">${t("Health score")}</h2></div><p class="sec ht-none-yet">${t(words)}</p></section>`;
     }
     const cmp = comparison(d);
@@ -309,10 +309,10 @@
     const next = !s.monthly ? "" : s.next_test_at ? `${t("Next test")} ${esc(fmtDayMonth(s.next_test_at))}.` : t("First test: next monthly run.");
     return `<section class="card ht-plan">
       <p id="ht-line">${t(s.monthly ? "Runs every month." : "Runs only by hand.")} ${last} ${next}</p>
-      <p class="note ht-mac">${icon("info")}<span>${t("On this Mac, press Run now.")}${UI.tip("The monthly test only runs on the hosted version.")}</span></p>
+      <p class="note ht-mac">${icon("info")}<span>${t("On this Mac, press Refresh.")}${UI.tip("The monthly test only runs on the hosted version.")}</span></p>
       <label class="opt ht-monthly"><input type="checkbox" class="chk" style="margin:0" id="ht-monthly" ${s.monthly ? "checked" : ""}>${t("Test monthly")}</label>
       <div class="lc-form ht-run-row">
-        <button class="btn btn-main" id="ht-run" ${busy ? "disabled" : ""}>${icon("refresh-cw")}${t("Run now")}</button>
+        <button class="btn btn-main" id="ht-run" ${busy ? "disabled" : ""}>${icon("refresh-cw")}${t("Refresh")}</button>
       </div>
       <p class="help" id="ht-whole-site">${t(UI.WHOLE_SITE_WORDS)}</p>
     </section>`;
@@ -886,7 +886,7 @@
     "Certificate couldn't be verified": "Certificat non vérifiable",
     "What got worse": "Ce qui s'est dégradé",
     "What's wrong": "Ce qui ne va pas",
-    "The test couldn't finish. Press Run now.": "Le test n'a pas pu se terminer. Appuyez sur Lancer.",
+    "The test couldn't finish. Press Refresh.": "Le test n'a pas pu se terminer. Appuyez sur Actualiser.",
     "Health score": "Score de santé",
     "/100": "/100",
     "Better is higher.": "Plus c'est haut, mieux c'est.",
@@ -901,14 +901,14 @@
     "Trend shows after 2 full tests.": "La courbe apparaît après 2 tests complets.",
     "First test running.": "Premier test en cours.",
     "No score: this test failed.": "Pas de score : ce test a échoué.",
-    "No score yet. Press Run now.": "Pas encore de score. Appuyez sur Lancer.",
+    "No score yet. Press Refresh.": "Pas encore de score. Appuyez sur Actualiser.",
     "Runs every month.": "Se lance chaque mois.",
     "Runs only by hand.": "Se lance seulement à la main.",
     "Last test": "Dernier test",
     "No test yet.": "Pas encore de test.",
     "Next test": "Prochain test le",
     "First test: next monthly run.": "Premier test : prochain passage mensuel.",
-    "On this Mac, press Run now.": "Sur ce Mac, appuyez sur Lancer.",
+    "On this Mac, press Refresh.": "Sur ce Mac, appuyez sur Actualiser.",
     "Test monthly": "Tester chaque mois",
     "Keeps going if you leave.": "Continue même si vous quittez la page.",
     "This test failed.": "Ce test a échoué.",

@@ -44,7 +44,7 @@ function reshape(d, host) {
   };
   const card = (name) => page.locator("section.card", { hasText: name }).first();
 
-  await openProfile("pages");
+  await openProfile("questions"); // their own tab since 2026-11-12
   const rows = page.locator("#pt-questions > li");
   check("every row has a tick box", (await page.locator("#pt-questions [data-pt-qpick]").count()) === 3);
   const first = await rows.nth(0).innerText();
@@ -103,7 +103,7 @@ function reshape(d, host) {
   await page.setViewportSize({ width: 390, height: 800 }); await settle(500);
   check("no sideways scroll on a phone", await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
   await age.screenshot({ path: OUT + "7-age-phone.png" });
-  await page.click('[data-pt-tab="pages"]'); await settle();
+  await page.click('[data-pt-tab="questions"]'); await settle();
   await page.locator("#pt-questions > li").first().screenshot({ path: OUT + "8-row-phone.png" });
   check("no sideways scroll on the rows", await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth));
 

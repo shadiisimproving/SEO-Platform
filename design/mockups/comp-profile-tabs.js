@@ -1,5 +1,5 @@
 /* A competitor's profile, built around what an SEO person checks:
-     an answer in one sentence, four tiles, then one tab per question —
+     a verdict badge, four number cards, then one tab per question —
      Keywords (where do they beat me?), Pages (which of their pages matter?),
      Activity (how fast are they moving?), Their site (how strong is it, and how do they build pages?).
 
@@ -9,7 +9,10 @@
 (() => {
   "use strict";
   const COMP = window.COMP;
-  const TABS = [["keywords", "Keywords", "key-round"], ["pages", "Pages", "file-text"], ["activity", "Activity", "activity"], ["site", "Their site", "globe"]];
+  /* Questions has its own tab since 2026-11-12 (UI critique): as the third card under Pages, the questions they answer and I
+     don't were hard to find. */
+  const TABS = [["keywords", "Keywords", "key-round"], ["pages", "Pages", "file-text"], ["questions", "Questions", "message-circle-question"], ["activity", "Activity", "activity"], ["site", "Their site", "globe"]];
+  if (window.ICONS && !window.ICONS["message-circle-question"]) window.ICONS["message-circle-question"] = '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>';
   const TAB_KEY = "competitor-tab";
   const S = { tab: null, p: null, ins: null, parts: null, buildMore: false, strengthBusy: false, strengthError: "", shownId: null, bestSort: null };
   /* Long lists here have pages and a search, like every long table in the app (table-pages.js, loaded after this file). */
@@ -64,7 +67,9 @@
       } catch { return null; }
   }
 
-  // ---- the answer, in one sentence ------------------------------------------------------------
+  // ---- the answer: a verdict badge over the four number cards ----------------------------------
+  /* 2026-11-12, UI critique: the sentence ("They beat you on 5 of 6 shared keywords and…") said again what the cards below
+     show. On screen now only the verdict, as a badge; the numbers are the cards'. The words still name a task made from here. */
   function answer(p, ins) {
     const c = p.compare || {};
     const bits = [];
@@ -91,11 +96,11 @@
       const site = p.site?.host || "";
       acts.push(UI().taskButton({ title: `${p.host}: ${[first, second].filter(Boolean).join(" ")}`.slice(0, 180), host: site, source: { type: "competitor", label: p.host, host: site, facts: [first, second].filter(Boolean), link: `#competitors/list/${p.id}`, key: `answer|${p.id}` } }));
     }
-    const words = [first, second].filter(Boolean).join(" ");
+    // Status colour only for who ranks higher, always with its icon and word (MASTER.md).
     const verdict = !off && c.shared ? (c.i_ahead === c.they_ahead ? UI().status("info", t("Level")) : c.i_ahead > c.they_ahead ? UI().status("good", t("You're ahead")) : UI().status("warn", t("They're ahead"))) : "";
-    // The buttons go on the figures' row (tiles), so the sentence and its actions cost one line less of height.
-    return { acts, html: `<section class="pt-answer" aria-label="${esc(t("In one sentence"))}">
-      ${words ? `<p class="pt-answer-text">${verdict}${esc(words)}</p>` : ""}
+    // The buttons go on the figures' row (tiles).
+    return { acts, html: `<section class="pt-answer" aria-label="${esc(t("Who leads"))}">
+      ${verdict ? `<p class="pt-answer-text pt-answer-verdict"><span class="pt-verdict-lab">${esc(t("On shared keywords"))}</span>${verdict}</p>` : ""}
       ${off ? COMP.trackingNote?.(p, { short: true }) ?? "" : ""}
       ${missing.length ? `<p class="pt-answer-missing small sec">${icon("info")}<span>${esc(missing.join(" "))}</span></p>` : ""}
     </section>` };
@@ -156,6 +161,7 @@
   function panel() {
     const tab = currentTab(), p = S.p, ins = S.ins, parts = S.parts;
     if (tab === "pages") return pagesTab(p, ins);
+    if (tab === "questions") return questionsTab(p, ins);
     if (tab === "activity") return activityTab(p, ins, parts);
     if (tab === "site") return siteTab(p, ins);
     const off = p.tracking && p.tracking !== "on";
@@ -182,15 +188,21 @@
     if (!ins) return unavailable();
     const best = ins.best_pages || [];
     const sections = ins.sections || [];
-    const questions = ins.questions || [];
     const bestTable = best.length ? bestPages(p, best) : `<p class="cl-none small sec">${t("None yet: they appear after a ranking check.")}</p>`;
     const showMine = mineRead(ins);
     const sectionTable = sections.length ? sectionsBody(sections, showMine, p.host) : `<p class="cl-none small sec">${t("Sections appear once their pages are read.")}</p>`;
-    const qs = Array.isArray(questions) ? { groups: [], total: 0, related: 0, judged: false } : questions;
-    const questionList = qs.groups?.length ? questionsBody(p, qs, showMine) : `<p class="cl-none small sec">${t("No questions in their headings yet.")}</p>`;
     return `<section class="card"><div class="card-head"><h2>${t("Their strongest pages")}</h2><span class="end small muted">${t("By your keywords they rank for")}</span></div><div class="cl-section-body">${bestTable}</div></section>
-      <section class="card"><div class="card-head"><h2>${t("Where their pages are")}</h2><span class="end small muted">${t("By first folder")}</span></div><div class="cl-section-body">${sectionTable}</div></section>
-      <section class="card"><div class="card-head"><h2>${t("Questions they answer")}</h2>${COMP.info("From their headings that end in a question mark. Author, tag, category and home pages are left out: their headings are other posts' titles.")}</div><div class="cl-section-body">${questionList}</div></section>`;
+      <section class="card"><div class="card-head"><h2>${t("Where their pages are")}</h2><span class="end small muted">${t("By first folder")}</span></div><div class="cl-section-body">${sectionTable}</div></section>`;
+  }
+
+  // Questions: the questions their pages answer, one row per page of theirs, mine beside it.
+  function questionsTab(p, ins) {
+    if (!ins) return unavailable();
+    const questions = ins.questions || [];
+    const qs = Array.isArray(questions) ? { groups: [], total: 0, related: 0, judged: false } : questions;
+    const questionList = qs.groups?.length ? questionsBody(p, qs, mineRead(ins)) : `<p class="cl-none small sec">${t("No questions in their headings yet.")}</p>`;
+    const badge = qs.judged && qs.related ? `<span class="tag pt-count-tag tabular">${esc(many(qs.related, "{n} on your topics", "{n} on your topics"))}</span>` : "";
+    return `<section class="card"><div class="card-head"><h2>${t("Questions they answer")}</h2>${badge}${COMP.info("From their headings that end in a question mark. Author, tag, category and home pages are left out: their headings are other posts' titles.")}</div><div class="cl-section-body">${questionList}</div></section>`;
   }
 
   /* Their pages that rank for my keywords, in pages of 25 with a search by title or address. Keywords and Best position
@@ -215,11 +227,10 @@
         </tr>`).join("")}</tbody></table></div>${TP().footer(BEST, page, { noun: t("pages") })}`;
   }
 
-  /* One plain sentence first, then the folders. "You" only when my pages are read. "Last change" only when one is known. */
+  /* The folders, biggest first. "You" only when my pages are read. "Last change" only when one is known. */
   function sectionsBody(sections, showMine, host) {
-    const total = sections.reduce((n, x) => n + (x.pages || 0), 0);
-    const top = sections[0];
-    const lead = top ? `<p class="pt-lead">${esc(fill("Most of their pages are in {path}: {n} of {total}.", { path: top.path, n: num(top.pages), total: num(total) }))}${top.new_90d ? ` ${esc(many(top.new_90d, "{n} is new in the last 90 days.", "{n} are new in the last 90 days."))}` : ""}</p>` : "";
+    // No sentence over the table ("Most of their pages are in /: 7 of 8"): the first row says it, biggest folder first.
+    const lead = "";
     const changes = sections.some((x) => x.last_change);
     // You first, as on every table here. Their page count, New and Last change are all about them, so all three carry their colour.
     const head = `<th scope="col">${t("Folder")}</th>${showMine ? vsHead("you", COMP.site?.()?.host || S.p?.site?.host, t("Your pages")) : ""}${vsHead("them", host, t("Their pages"))}<th scope="col" class="c pt-col-them">${t("New in 90 days")}</th>${changes ? `<th scope="col" class="pt-col-them">${t("Last change")}</th>` : ""}`;
@@ -245,7 +256,7 @@
     const lead = !qs.judged
       ? `${esc(t("Grouped by the page that answers them."))}${UI().tip("Once Search Console is connected or you add keywords, the ones on your topics come first and the rest are folded away.")}`
       : related.length
-        ? `${esc(fill("{n} of their questions are on your topics, on {pages}.", { n: num(qs.related), pages: many(related.length, "{n} page", "{n} pages") }))}${UI().tip("Each row is one page of theirs: answer its questions on your site in one task.")}`
+        ? `${esc(many(related.length, "{n} page of theirs", "{n} pages of theirs"))}${UI().tip("Each row is one page of theirs: answer its questions on your site in one task.")}`
         : esc(t("None are on your topics."));
     const unread = showMine ? "" : ` ${esc(t("Your pages aren't read yet: some may already be answered."))}`;
     const row = (g) => {
@@ -352,43 +363,46 @@
     }
   }
 
-  // Activity: one sentence on how fast they publish, the months as bars with their numbers on, then the timeline.
+  /* A small You/Them table: one row per side (You first, as everywhere), one column per figure. No sentence of numbers
+     (UI critique 2026-11-12). A figure nobody measures is —, never 0. */
+  function sideTable(label, cols, rows) {
+    return `<table class="data pt-side-table" data-tt-off aria-label="${esc(label)}"><thead><tr><th scope="col"><span class="sr">${esc(t("Whose"))}</span></th>${cols.map((c) => `<th scope="col" class="c">${esc(c)}</th>`).join("")}</tr></thead>
+      <tbody>${rows.map((r) => `<tr class="pt-row-${r.who}"><th scope="row">${COMP.who(r.who, r.host)}</th>${r.cells.map((v, i) => `<td class="c tabular" data-label="${esc(cols[i])}">${v}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+  }
+
+  // Activity: what changed first (the timeline), then how fast they publish and edit, as small You/Them tables and charts.
   function activityTab(p, ins, parts) {
     const r = ins?.rhythm;
     const showMine = mineRead(ins);
     S.showMine = showMine;
     const months = r?.months || [];
     const total = months.reduce((n, m) => n + (m.theirs || 0), 0);
-    const peak = months.reduce((best, m) => ((m.theirs || 0) > (best?.theirs || 0) ? m : best), null);
     const myTotal = showMine ? months.reduce((n, m) => n + (m.mine || 0), 0) : null;
-    const said = [];
-    if (r && months.length) {
-      const year = total ? many(total, "They added {n} page in 12 months", "They added {n} pages in 12 months") + (peak && total > 1 ? ` ${fill("(most in {month}: {k})", { month: longMonth(peak.month), k: num(peak.theirs) })}` : "") : t("They added no pages in 12 months");
-      said.push(`${year}${showMine ? `; ${many(myTotal, "you added {n}", "you added {n}")}` : ""}.`);
-      const recent = r.new_30d ? many(r.new_30d, "{n} new", "{n} new") : t("nothing new");
-      const gone = r.removed_30d ? many(r.removed_30d, "{n} removed", "{n} removed") : t("nothing removed");
-      said.push(fill("Last 30 days: {recent}, {gone}.", { recent, gone }));
-      if (known(r.updated_12m?.theirs)) said.push(fill("{share} of their pages were updated in 12 months.", { share: share(r.updated_12m.theirs) }));
-    }
-    const lead = said.length ? `<p class="pt-lead">${esc(said.join(" "))}</p>` : "";
+    const myHost = COMP.site?.()?.host || p.site?.host;
+    const lead = r && months.length ? sideTable(t("New and removed pages"), [t("Added, 30 days"), t("Removed, 30 days"), t("Added, 12 months"), t("Updated, 12 months")], [
+      ...(showMine ? [{ who: "you", host: myHost, cells: [figure(r.my_new_30d), figure(r.my_removed_30d), figure(myTotal), share(r.updated_12m?.mine)] }] : []),
+      { who: "them", host: p.host, cells: [figure(r.new_30d), figure(r.removed_30d), figure(total), share(r.updated_12m?.theirs)] },
+    ]) : "";
     const busyMonths = months.filter((m) => (m.theirs || 0) + (showMine ? m.mine || 0 : 0) > 0);
-    const asWords = months.filter((m) => (m.theirs || 0) || (showMine && m.mine)).map((m) => `${esc(longMonth(m.month))}: ${num(m.theirs || 0)}${showMine ? ` (${t("you")} ${num(m.mine || 0)})` : ""}`).join(" · ");
-    // A chart needs a shape: under three months with pages, the figures are said in a line instead of an empty 12-month axis.
+    // A chart needs a shape: under three months with pages, the figures are a small You/Them table instead of an empty 12-month axis.
     const chart = !months.length ? `<p class="cl-none small sec">${t("Fills in once their pages are read.")}${UI().tip("A page's date comes from the page itself, the Wayback Machine, or the day the app first saw it.")}</p>`
-      : busyMonths.length < 3 ? (busyMonths.length ? `<p class="small sec pt-few-months">${asWords}.</p>` : "")
+      : busyMonths.length < 3 ? (busyMonths.length ? `<div class="pt-few-months">${sideTable(t("New pages each month"), busyMonths.map((m) => longMonth(m.month)), [
+        ...(showMine ? [{ who: "you", host: myHost, cells: busyMonths.map((m) => num(m.mine || 0)) }] : []),
+        { who: "them", host: p.host, cells: busyMonths.map((m) => num(m.theirs || 0)) },
+      ])}</div>` : "")
       : monthChart(months, showMine);
     const years = historyBlock(ins);
-    const edits = editsCard(r, showMine);
-    return `<section class="card"><div class="card-head"><h2>${t("How fast they publish")}</h2><span class="end small muted">${t("New pages each month")}${UI().tip("Counted from the dates on their pages.")}</span></div><div class="cl-section-body">${lead}${chart}${showMine || !months.length ? "" : notReadNote()}</div></section>
+    const edits = editsCard(r, showMine, p);
+    return `<section class="card" aria-label="${esc(t("Timeline"))}"><div class="card-head"><h2>${t("What changed")}</h2>${COMP.info("Moves only compare two checks by the same tool and place, so a tool change never shows as a move.")}</div>
+        <div class="cl-section-body" id="cl-timeline">${parts.timelineBody(p)}</div></section>
+      <section class="card"><div class="card-head"><h2>${t("How fast they publish")}</h2><span class="end small muted">${t("New pages each month")}${UI().tip("Counted from the dates on their pages.")}</span></div><div class="cl-section-body">${lead}${chart}${showMine || !months.length ? "" : notReadNote()}</div></section>
       ${edits}
-      ${years}
-      <section class="card" aria-label="${esc(t("Timeline"))}"><div class="card-head"><h2>${t("Timeline")}</h2>${COMP.info("Moves only compare two checks by the same tool and place, so a tool change never shows as a move.")}</div>
-        <div class="cl-section-body" id="cl-timeline">${parts.timelineBody(p)}</div></section>`;
+      ${years}`;
   }
 
   /* Edits to pages they already had, per month, beside mine. The app only sees edits from the day it started watching,
      so the months before that are left out instead of shown as zero. */
-  function editsCard(r, showMine) {
+  function editsCard(r, showMine, p) {
     const all = r?.edits || [];
     const since = r?.edits_since?.theirs;
     const from = since ? since.slice(0, 7) : null;
@@ -397,17 +411,21 @@
     const total = months.reduce((n, m) => n + (m.theirs || 0), 0);
     const myTotal = showMine ? months.reduce((n, m) => n + (m.mine || 0), 0) : null;
     const now = months[months.length - 1];
-    const said = [];
-    if (from) {
-      said.push(`${fill("Since {day}:", { day: longDay(since) })} ${total ? many(total, "they made {n} edit", "they made {n} edits") : t("they made no edits")}${showMine ? `, ${many(myTotal, "you made {n}", "you made {n}")}` : ""}.`);
-      if (now && months.length > 1) said.push(fill("This month: {theirs}{mine}.", { theirs: num(now.theirs || 0), mine: showMine ? `, ${t("you")} ${num(now.mine || 0)}` : "" }));
-    }
-    const lead = said.length ? `<p class="pt-lead">${esc(said.join(" "))}</p>` : "";
+    const sinceCol = sinceDay(since);
+    const cols = [sinceCol, ...(now && months.length > 1 ? [t("This month")] : [])];
+    const row = (who, host, sum, key) => ({ who, host, cells: [num(sum), ...(cols.length > 1 ? [num(now[key] || 0)] : [])] });
+    const lead = from ? sideTable(t("Edits"), cols, [...(showMine ? [row("you", COMP.site?.()?.host || p?.site?.host, myTotal, "mine")] : []), row("them", p?.host, total, "theirs")]) : "";
     const busy = months.filter((m) => (m.theirs || 0) + (showMine ? m.mine || 0 : 0) > 0);
     const chart = !from ? `<p class="cl-none small sec">${t("Fills in once the app has read their pages twice.")}</p>`
       : !busy.length ? "" : monthChart(months, showMine, "edits");
     return `<section class="card"><div class="card-head"><h2>${t("How often they edit")}</h2><span class="end small muted">${t("Edits each month")}${UI().tip("Changes the app saw on pages they already had: title, text, headings and so on. Counted from the day the app started watching.")}</span></div><div class="cl-section-body">${lead}${chart}</div></section>`;
   }
+  /* "Since 12 Nov 2026" on the day itself read wrong: today and yesterday say so. */
+  const sinceDay = (iso) => {
+    const today = new Date(), key = (d) => d.toISOString().slice(0, 10);
+    const y = new Date(today); y.setUTCDate(today.getUTCDate() - 1);
+    return iso === key(today) ? t("Since today") : iso === key(y) ? t("Since yesterday") : fill("Since {day}", { day: longDay(iso) });
+  };
   const longDay = (iso) => { try { return new Date(`${iso}T00:00:00Z`).toLocaleDateString(UI().state.lang || undefined, { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }); } catch { return iso; } };
 
   /* Bars drawn in HTML at a fixed height, so the numbers stay the same size on any screen. The key above the chart
@@ -523,7 +541,7 @@
     const side = (x, who, host, won) => {
       const v = who === "you" ? x.mine : x.theirs, most = x.bar ? Math.max(x.mine ?? 0, x.theirs ?? 0) : 0;
       const bar = most > 0 && known(x.mine) && known(x.theirs) ? `<span class="pt-side-bar" aria-hidden="true"><i style="width:${Math.max(2, Math.round(((v ?? 0) / most) * 100))}%"></i></span>` : "";
-      return `<div class="pt-side${won ? " pt-side-ahead" : ""}"><span class="pt-side-who">${host ? UI().siteLogo(host, 16) : ""}<span>${t(who === "you" ? "You" : "Them")}</span>${won ? `<span class="pt-side-flag">${t("Ahead")}</span>` : ""}</span><span class="pt-side-val tabular">${x.show(v)}</span>${x.note && known(v) ? `<span class="small sec">${esc(x.note(v))}</span>` : ""}${bar}</div>`;
+      return `<div class="pt-side pt-side-${who}${won ? " pt-side-ahead" : ""}"><span class="pt-side-who">${host ? UI().siteLogo(host, 16) : ""}<span>${t(who === "you" ? "You" : "Them")}</span>${won ? `<span class="pt-side-flag">${t("Ahead")}</span>` : ""}</span><span class="pt-side-val tabular">${x.show(v)}</span>${x.note && known(v) ? `<span class="small sec">${esc(x.note(v))}</span>` : ""}${bar}</div>`;
     };
     const duel = (x) => { const n = lead(x); return `<li class="pt-duel"><div class="pt-duel-head"><b>${esc(x.label)}</b>${x.sub ? `<span class="small muted">${esc(x.sub)}</span>` : ""}</div><div class="pt-sides${withMine ? "" : " pt-sides-one"}">${withMine ? side(x, "you", myHost, n === 1) : ""}${side(x, "them", p.host, n === -1)}</div></li>`; };
     const table = has.length ? `<ul class="pt-duels">${has.map(duel).join("")}</ul>` : "";
@@ -871,6 +889,10 @@
   });
 
   Object.assign(window.FR, {
+    "Whose": "À qui", "On shared keywords": "Sur les mots-clés communs", "New and removed pages": "Pages ajoutées et retirées",
+    "Added, 30 days": "Ajoutées, 30 jours", "Removed, 30 days": "Retirées, 30 jours", "Added, 12 months": "Ajoutées, 12 mois", "Updated, 12 months": "Mises à jour, 12 mois",
+    "Since {day}": "Depuis le {day}", "Since today": "Depuis aujourd'hui", "Since yesterday": "Depuis hier", "Edits": "Modifications",
+    "{n} on your topics": "{n} sur vos sujets", "{n} page of theirs": "{n} de leurs pages", "{n} pages of theirs": "{n} de leurs pages",
     "No keyword list yet.": "Pas encore de liste de mots-clés.",
     "Keywords not checked.": "Mots-clés non contrôlés.",
     "{them} lead {they} · {you} lead {mine}": "{them} devant sur {they} · {you} devant sur {mine}",

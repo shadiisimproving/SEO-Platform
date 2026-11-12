@@ -46,7 +46,9 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   // Since 2026-11-10 the chart only draws with pages in 3 or more months (F14 of the Fable review); fewer months are said in one sentence.
   const fewMonths = await page.evaluate(() => document.querySelector(".pt-few-months")?.textContent || "");
   if (fewMonths) {
-    check("too few months: the figures are said in a sentence, no empty 12-month axis", /\d{4}: \d/.test(fewMonths) && !chart, fewMonths.slice(0, 80));
+    const publishPlot = await page.evaluate(() => Boolean(document.querySelector('.pt-chart-wrap[data-pt-series="months"] .pt-plot')));
+    const fewTable = await page.evaluate(() => Boolean(document.querySelector(".pt-few-months table.pt-side-table tr.pt-row-them")));
+    check("too few months: the figures are a small You/Them table, no empty 12-month axis", fewTable && /\d{4}/.test(fewMonths) && !publishPlot, fewMonths.replace(/\s+/g, " ").slice(0, 80));
     // The chart's own rules still have to hold when it is drawn: made-up months on the real answer (the demo competitor has too few), then the same checks.
     const INSIGHTS = "**/api/competitors/*/insights**";
     await page.route(INSIGHTS, async (r) => { const a = await (await r.fetch()).json(); (a.rhythm?.months || []).forEach((m, i) => { m.theirs = (i % 4) + 1; }); await r.fulfill({ json: a }).catch(() => {}); });
@@ -62,14 +64,14 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
       return plot && { h: plot.getBoundingClientRect().height, font: tick ? getComputedStyle(tick).fontSize : "", legends: document.querySelectorAll(".pt-legend").length, you: document.querySelectorAll(".pt-bar-you").length, note: Boolean(document.querySelector(".pt-panel .pt-note")), months: document.querySelectorAll(".pt-month").length, tipShown: Boolean(tip) && getComputedStyle(tip).display !== "none" };
     });
     check("with months to draw, the chart is 200px tall at 1600px wide", made && Math.round(made.h) === 200, made?.h);
-    check("axis numbers stay 11px", made?.font === "11px", made?.font);
+    check("axis numbers are 12px, the floor", made?.font === "12px", made?.font);
     check("no second legend", made?.legends === 0, made?.legends);
     check("'You' bars only when my pages are read, else a note says why", (made?.you > 0) !== made?.note, `you bars ${made?.you}, note ${made?.note}`);
     check("the empty hover label stays hidden until a month is hovered (it showed as a hollow circle)", made && made.tipShown === false, JSON.stringify(made));
     await page.unroute(INSIGHTS);
   } else {
     check("the chart is 200px tall at 1600px wide", chart && Math.round(chart.h) === 200, chart?.h);
-    check("axis numbers stay 11px", chart?.font === "11px", chart?.font);
+    check("axis numbers are 12px, the floor", chart?.font === "12px", chart?.font);
     check("no second legend", chart?.legends === 0, chart?.legends);
     check("'You' bars only when my pages are read, else a note says why", (chart?.you > 0) !== chart?.note, `you bars ${chart?.you}, note ${chart?.note}`);
   }
@@ -77,7 +79,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
     await page.locator(".pt-month").nth(5).hover();
     await settle(300);
     const tip = await page.evaluate(() => {
-      const t = document.querySelector("#pt-tip"), m = document.querySelectorAll(".pt-month")[5];
+      const m = document.querySelectorAll(".pt-month")[5], t = m?.closest(".pt-chart-wrap")?.querySelector(".pt-tip");
       if (!t || t.hidden) return null;
       const a = t.getBoundingClientRect(), b = m.getBoundingClientRect();
       return { dx: Math.round(Math.abs((a.left + a.width / 2) - (b.left + b.width / 2))), text: t.textContent };
@@ -86,18 +88,19 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   }
   await page.locator(".pt-panel section.card").first().screenshot({ path: OUT + "2-activity-chart.png" });
 
-  // Pages: sections in words, questions with Show more and a Task each.
+  // Pages: the sections table with no sentence over it (2026-11-12); questions on their own tab, a Task each.
   await tab("pages");
+  const sectionsLead = await page.evaluate(() => document.querySelector(".pt-panel .pt-lead")?.textContent || "");
+  const oldDot = await page.evaluate(() => [...document.querySelectorAll(".pt-panel td")].some((td) => /\d+\s·\s\d+/.test(td.textContent)));
+  await tab("questions");
   const pages = await page.evaluate(() => ({
-    lead: document.querySelector(".pt-lead")?.textContent || "",
-    oldDot: [...document.querySelectorAll(".pt-panel td")].some((td) => /\d+\s·\s\d+/.test(td.textContent)),
     qRows: document.querySelectorAll("#pt-questions > li").length,
     qTasks: document.querySelectorAll("#pt-questions > li .pt-act button").length,
     more: Boolean(document.querySelector("[data-pt-q-more]")),
     foot: document.querySelector('[data-tp-foot="pt-q"] .tp-range')?.textContent || "",
   }));
-  check("sections start with a sentence", /Most of their pages are in/.test(pages.lead), pages.lead);
-  check("no more '157 · 0' cells", !pages.oldDot);
+  check("sections: no packed sentence over the table", !/Most of their pages are in/.test(sectionsLead), sectionsLead);
+  check("no more '157 · 0' cells", !oldDot);
   check("each page of questions has one Task button", pages.qRows > 0 && pages.qTasks === pages.qRows, `${pages.qTasks}/${pages.qRows}`);
   // Since 2026-11-10 long lists have pages (table-pages.js) instead of Show more: the footer gives the real total.
   check("questions come in pages with the total, no Show more", !pages.more && new RegExp(`^1–${pages.qRows} of \\d+ pages?$`).test(pages.foot.trim()), pages.foot);
@@ -141,21 +144,23 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   const lone = await page.evaluate(() => ({ you: document.querySelectorAll(".pt-bar-you").length, note: document.querySelector(".pt-panel .pt-note")?.textContent || "", youWord: /You\b/.test(document.querySelector(".pt-facts-row")?.textContent || "") }));
   check("not read: no 'You' bars or figures, and the note says why", lone.you === 0 && !lone.youWord && /yours are read tonight for the first time/.test(lone.note), JSON.stringify(lone));
   await page.locator(".pt-panel section.card").first().screenshot({ path: OUT + "6-activity-not-read.png" });
-  await tab("pages");
+  await tab("questions");
   // 25 pages of questions, 15 on my topics: all 15 on the first page (pages of 25), one Task each, the 10 off-topic pages folded.
-  const q = { rows: await count("#pt-questions > li"), tasks: await count("#pt-questions > li .pt-act button"), lead: await page.locator(".pt-panel section.card").nth(2).locator(".pt-lead").innerText() };
+  const q = { rows: await count("#pt-questions > li"), tasks: await count("#pt-questions > li .pt-act button"), lead: await page.locator(".pt-panel section.card").nth(0).locator(".pt-lead").innerText(), badge: await page.locator(".pt-panel .pt-count-tag").innerText().catch(() => "") };
   check("questions: the 15 pages on my topics first, one Task each", q.rows === 15 && q.tasks === 15, JSON.stringify(q));
-  check("questions: the lead counts the ones on my topics and says my pages aren't read", /on your topics, on 15 pages/.test(q.lead) && /Your pages aren't read yet/.test(q.lead), q.lead);
+  check("questions: a badge counts the ones on my topics; the lead says my pages aren't read", /^\d+ on your topics$/.test(q.badge.trim()) && /15 pages of theirs/.test(q.lead) && /Your pages aren't read yet/.test(q.lead), JSON.stringify(q));
   check("questions: a page shows 3 questions, then +n more", (await page.locator("#pt-questions > li").first().locator(".pt-qlist li").count()) === 3 && /\+2 more/.test(await page.locator("#pt-questions > li").first().innerText()));
   check("the pages footer counts the 15 pages on my topics", /1–15 of 15 pages/.test(await page.locator('[data-tp-foot="pt-q"] .tp-range').innerText()));
   check("off-topic pages are folded behind one button", (await count(".pt-qpages-other > li")) === 0 && /Show \d+ questions on other topics/.test(await page.locator("[data-pt-q-others]").innerText()));
   await page.click("[data-pt-q-others]");
   await settle(300);
   check("that button shows the 10 off-topic pages", (await count(".pt-qpages-other > li")) === 10);
-  const sec = await page.evaluate(() => ({ lead: document.querySelector(".pt-lead")?.textContent, heads: [...document.querySelectorAll(".pt-panel section:nth-of-type(2) thead th")].map((th) => th.textContent) }));
-  check("sections: answer first, no 'Your pages' or empty 'Last change' column", /157 of 248/.test(sec.lead) && !sec.heads.includes("Your pages") && !sec.heads.includes("Last change"), JSON.stringify(sec));
+  await page.locator(".pt-panel section.card").nth(0).screenshot({ path: OUT + "8-questions.png" });
+  await tab("pages");
+  const sec = await page.evaluate(() => ({ lead: document.querySelector(".pt-panel .pt-lead")?.textContent || "", first: document.querySelector(".pt-panel section:nth-of-type(2) tbody tr")?.textContent || "", heads: [...document.querySelectorAll(".pt-panel section:nth-of-type(2) thead th")].map((th) => th.textContent) }));
+  check("sections: biggest folder first, no sentence, no 'Your pages' or empty 'Last change' column", !sec.lead && /new-article/.test(sec.first) && !sec.heads.includes("Your pages") && !sec.heads.includes("Last change"), JSON.stringify(sec));
   await page.locator(".pt-panel section.card").nth(1).screenshot({ path: OUT + "7-sections-not-read.png" });
-  await page.locator(".pt-panel section.card").nth(2).screenshot({ path: OUT + "8-questions.png" });
+  await tab("questions");
   const firstTask = page.locator("#pt-questions > li .pt-act button").first();
   await firstTask.click();
   await settle(700);

@@ -29,8 +29,8 @@
       <div class="card-head"><h2>${t("Add keywords")}</h2><span class="hint-text">${esc(t(d.keywords.length ? "One per line. Kept apart from your keyword list." : "No keywords yet: type some to see which competitors rank where."))}</span></div>
       <textarea class="input kc-words" rows="4" placeholder="${esc(t("running shoes\ntrail running shoes"))}" data-kc-words aria-label="${esc(t("Keywords, one per line"))}"></textarea>
       <div class="kc-add-row">
-        <label class="kc-field">${t("Country")} <input class="input kc-code" maxlength="2" value="${esc(d.country || "")}" data-kc-country placeholder="AE"></label>
-        <label class="kc-field">${t("Language")} <input class="input kc-code" maxlength="10" value="${esc(d.language || "")}" data-kc-language placeholder="fr"></label>
+        <label class="kc-field">${t("Country")} <input class="input kc-code" maxlength="2" value="${esc(d.country || "")}" data-kc-country placeholder="AE" spellcheck="false" autocomplete="off"></label>
+        <label class="kc-field">${t("Language")} <input class="input kc-code" maxlength="10" value="${esc(d.language || "")}" data-kc-language placeholder="fr" spellcheck="false" autocomplete="off"></label>
         <button type="button" class="btn btn-main" data-kc-add ${S.adding ? "disabled" : ""}>${UI.icon("plus")}${t("Add")}</button>
       </div>
       <p class="error" role="alert" data-kc-add-error hidden></p>
@@ -104,7 +104,7 @@
     const checkedRows = page.rows.filter((k) => k.checked);
     const samePlace = page.rows.length > 1 && new Set(page.rows.map(placeOf)).size === 1;
     const sameTool = samePlace && checkedRows.length > 0 && new Set(checkedRows.map((k) => k.tool || "")).size === 1 && Boolean(checkedRows[0].tool);
-    const allRows = samePlace ? `<p class="small sec kc-all-rows">${esc(t("All rows:"))} ${placeHtml(page.rows[0])}${sameTool ? ` · ${UI.logoOnly(checkedRows[0].tool)}` : ""}</p>` : "";
+    const allRows = samePlace ? `<p class="small sec kc-all-rows">${esc(t("All rows:"))} ${placeHtml(page.rows[0])}${sameTool ? ` · ${esc(checkedRows[0].tool)}` : ""}</p>` : "";
     const head = (key, label, cls = "", who = "") => {
       const on = S.sort?.key === key;
       return `<th scope="col" class="${cls}" aria-sort="${on ? (S.sort.dir === "asc" ? "ascending" : "descending") : "none"}"><button type="button" class="th-btn" data-kc-sort="${key}">${who ? COMP.who(who, null, t(label)) : t(label)}${on ? UI.icon(S.sort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
@@ -359,5 +359,8 @@
     "Stopped early. Progress is saved; press Check to carry on.": "Arrêtée avant la fin. La progression est enregistrée ; appuyez sur Vérifier pour continuer.",
     "No search tool connected. Add one in Settings, then check again.": "Aucun outil de recherche connecté. Ajoutez-en un dans les réglages, puis vérifiez à nouveau.",
     "Progress is saved. Press Check again when a tool has free checks.": "La progression est enregistrée. Appuyez à nouveau sur Vérifier quand un outil aura des vérifications gratuites.",
+    "Progress is saved. Press Refresh when a tool has free checks.": "La progression est enregistrée. Appuyez sur Actualiser quand un outil aura des vérifications gratuites.",
+    "Press Refresh to try them again.": "Appuyez sur Actualiser pour les vérifier à nouveau.",
+    "Press Refresh when a tool has free checks.": "Appuyez sur Actualiser quand un outil aura des vérifications gratuites.", "Progress is saved.": "La progression est enregistrée.",
   });
 })();

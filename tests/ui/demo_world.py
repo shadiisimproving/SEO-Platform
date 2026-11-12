@@ -194,8 +194,9 @@ class Websites:
         path = request.url.raw_path.decode()
         host = request.url.host.removeprefix("www.")
         if path == "/icon.svg" and host not in NO_ICON:
-            # A made-up icon, different for each site.
-            hue = sum(host.encode()) * 47 % 360
+            # A made-up icon, different for each site, in the app's decorative hues only (blue, teal, indigo): a green or red
+            # tile would read as a status, and purple means a competitor (MASTER.md).
+            hue = (207, 174, 231)[sum(host.encode()) % 3]
             letter = host[0].upper()
             return httpx.Response(200, text=f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="hsl({hue},60%,45%)"/><text x="16" y="22" font-family="sans-serif" font-size="18" font-weight="700" fill="#fff" text-anchor="middle">{letter}</text></svg>', headers={"content-type": "image/svg+xml"})
         found = self.pages.get(f"{request.url.host.removeprefix('www.')}{path}")

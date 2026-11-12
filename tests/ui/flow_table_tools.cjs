@@ -115,7 +115,7 @@ const madeUpTasks = () => Array.from({ length: 300 }, (_, i) => ({
 
   // Search → Overview's own ticks.
   await page.goto("about:blank"); await page.goto(BASE + "#overview"); await settle(3000);
-  const ovBox = page.locator("td.ov-pick-col input").first();
+  const ovBox = page.locator("td.ov-pick-col input:not([disabled])").first();
   if (await ovBox.count()) { await ovBox.click(); await settle(500); check("Overview's bar has Add a note", (await page.locator(".ov-selbar [data-tt-note-own]").count()) >= 1); await shot("11-overview-bar"); }
   else console.log("note: Overview has no tick boxes in this demo world");
 

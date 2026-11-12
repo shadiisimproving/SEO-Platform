@@ -1,7 +1,8 @@
 /* A brand's logo beside its name in running text: see brands.js. The tile itself comes from .logo in mockup.css. */
 .brand-mention { white-space: nowrap; }
-/* The brand's name beside its logo: kept in the text, not shown (the logo says it), so no gap after the logo either. */
-.brand-mention .brand-logo { margin-inline-end: 0; }
+/* Logo and name: a small gap between them. Logo alone (a repeated table cell, brands.js): the name is kept in the text but not
+   shown, so no gap after the logo either. */
+.brand-mention.logo-only .brand-logo { margin-inline-end: 0; }
 .brand-name-hidden { display: inline-block; width: 0; overflow: hidden; white-space: nowrap; vertical-align: bottom; } /* inline, so the text still reads "Excel workbook" */
 .brand-logo { box-sizing: border-box; width: 1.3em; height: 1.3em; min-width: 15px; min-height: 15px; padding: 1px; margin-inline-end: .32em; vertical-align: -.3em; }
 .nav-item > .logo { width: 18px; height: 18px; }
@@ -9,4 +10,4 @@
 [data-look] img.dot-site.dot-logo, img.dot-site.dot-logo { background: #fff; border: 1px solid var(--line); padding: 2px; object-fit: contain; box-sizing: border-box; box-shadow: none; }
 /* In a tooltip the name is the point: logo and name both show there. */
 :is(.tooltip, [role="tooltip"]) .brand-name-hidden { display: inline; width: auto; overflow: visible; }
-:is(.tooltip, [role="tooltip"]) .brand-mention .brand-logo { margin-inline-end: .32em; }
+:is(.tooltip, [role="tooltip"]) .brand-mention.logo-only .brand-logo { margin-inline-end: .32em; }

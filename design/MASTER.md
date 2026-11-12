@@ -5,16 +5,17 @@ The chosen look is **Clear: white, with a few colours to tell things apart** (ow
 ## Look
 - White cards and a white, floating side menu on a very pale grey page. Soft shadows and a thin line separate things. A little frosted glass stays on the top bar, where content scrolls under it.
 - **Blue is for what you act on or where you are:** main buttons, selected filters, links, the current page, charts. Backgrounds, cards and rows carry no blue.
-- **Blue, purple, teal and indigo tell things apart:** icons on number cards and tabs, labels such as a data source. They carry no meaning of their own. Never write a raw colour in a component: use `--c-blue`, `--c-purple`, `--c-teal`, `--c-indigo` and their `-pale` versions.
+- **Blue, teal, indigo and grey tell things apart:** icons on number cards and tabs, labels such as a data source. They carry no meaning of their own. **Purple is never decorative: it only ever means a competitor** (critique, 2026-11-12). Never write a raw colour in a component: use `--c-blue`, `--c-teal`, `--c-indigo`, `--c-grey` and their `-pale` versions.
 - Status colours are reserved for status and always come with an icon and a word: good, warn, serious, crit. A decorative colour is never green, amber or red.
 - **Comparing two pages:** mine is always `--c-blue` and on the left or on top, theirs is always `--c-purple`. These only say whose it is. Facts never turn green or red, because the app doesn't say which page is better; only who ranks higher gets a status colour.
 - Dark mode is charcoal, not navy, so the colours stand out. Dark mode and language are switched at the bottom of the side menu.
 - No link to the owner's company branding: no logo or fonts. The blue and the pale surfaces follow the CRM's, at the owner's request (2026-11-05).
 - A third-party brand's logo sits beside its name every time the name appears (owner's rule, 2026-11-05). `brands.js` does this on the rendered text, in both languages, so new text gets it with nothing to remember. A new brand needs one line in `brands.js` and its real logo in `logos/`: check the file by eye, because favicons are often a parent company's or a generic icon. Words someone typed or read from another site carry `dir="auto"` and are left alone. `tests/ui/flow_brand_logos.cjs` lists any name without a logo.
+- **Logo and name, 2026-11-12:** the name shows beside the logo when the brand is the subject of a sentence, a button, an empty state or the only label on a control. The logo alone is kept only in dense table cells that repeat the brand, under a header that names it (`[data-brand="logo"]`). A generic word is never a logo ("Mac" is plain text).
 
 ## Type and numbers
 - Geist for interface and numbers, Geist Mono for URLs and keywords, self-hosted. Noto Sans Arabic for Arabic text.
-- Nothing below 12 px.
+- Nothing below 12 px: use `--fs-min`. Text contrast at least 4.5:1, status pills included, on tinted, hovered and ticked rows.
 - Numbers are centred in every table, under a centred heading (owner's rule, 2026-11-05). A cell of action buttons stays at the end of its row. On phones, where tables become cards, values sit on the right.
 - Aligned equal-width digits in tables and axes. Numbers follow the language: `1 706` in French, `1,706` in English.
 - Text from other websites, and anything someone typed, carries `dir="auto"`, so Arabic and Hebrew read correctly.
@@ -23,11 +24,14 @@ The chosen look is **Clear: white, with a few colours to tell things apart** (ow
 - One main action per screen.
 - Forms keep what was typed: closing a panel keeps a draft, and API keys are never kept in drafts.
 - Errors appear beside the field and say how to fix it.
-- Destructive actions have a confirm dialog, or Undo in the toast.
+- Destructive actions have a confirm dialog (`UI.confirmDanger`, a `.btn-danger` with icon and word, Cancel focused first), or Undo in the toast.
+- One verb for fetching again: **Refresh**. "Refresh data" is the whole-site run.
+- Summaries are a verdict badge and number rows, never a sentence packed with numbers, and never repeat the cards below.
+- A period control shows its real dates; a source that runs behind says so ("Search Console data runs 2 days behind").
 - A note can hold images and any file, up to 25 MB each. Only bytes that really are PNG, JPEG, GIF or WebP show in the browser; everything else, SVG and HTML included, can only be downloaded. The files live in `var/note-files` (or `SEO_NOTE_FILES`), which hosting must keep across deploys and back up with the database.
 - A position beyond the depth checked shows as `>10`, never as a number.
 - Unknown is unknown: never show 0 for a blank score, or "no" for something not captured.
-- Toasts sit bottom-left. Panels close with Escape. Focus returns to what opened them.
+- Toasts sit bottom-left, in the menu column on wide screens and above the Notes button on phones. Panels close with Escape. Focus returns to what opened them.
 - A menu item or tab that isn't built is muted with a "Soon" tag, and there's nothing to click.
 - A saved action never says "saved" when nothing changed: say what's missing, beside the field.
 

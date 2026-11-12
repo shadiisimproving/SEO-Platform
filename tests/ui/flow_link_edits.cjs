@@ -94,7 +94,8 @@ const check = (name, ok, extra = "") => { results.push(Boolean(ok)); console.log
     if (await gap.count()) {
       const line = await says(gap);
       check("Link gaps shows the same score", line.includes("81") && line.includes("Ahrefs"));
-      await gap.locator("[data-cg-edit]").click();
+      await gap.locator("[data-cg-menu]").click(); await settle(300); // Edit is in the row's ⋯ menu since 2026-11-12
+      await page.locator("#popover [data-cg-edit]").click();
       await settle();
       check("Link gaps can open the same panel, filled in", (await page.locator("#cg-edit-score").inputValue()) === "81");
       await page.locator("[data-discard-panel]").click();

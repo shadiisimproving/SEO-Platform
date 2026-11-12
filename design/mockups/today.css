@@ -1,7 +1,20 @@
 /* Today: the answer on top, three numbers, then what to do. Tokens come from look-clear.css. */
 .today-answer { margin: 2px 2px 14px; }
-.today-lead { font-size: 19px; font-weight: 600; letter-spacing: -.015em; line-height: 26px; }
-.today-second { font-size: 14px; color: var(--text-2); margin-top: 2px; }
+.today-lead { font-size: 19px; font-weight: 600; letter-spacing: -.015em; line-height: 26px; } /* AI search's answer line uses it */
+/* A verdict badge and the count, on one line; the numbers live in the cards below, not in a sentence here. */
+.today-verdict { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; }
+.today-verdict > .status { font-size: 13px; padding: 3px 10px 3px 8px; }
+.today-second { font-size: 14px; color: var(--text-2); }
+.today-state { font-size: 14px; color: var(--text); margin-top: 6px; }
+.content > .setup + .today-answer, .today-answer + .setup { margin-top: 0; }
+/* Why a to-do row is where it is: an icon and a word, coloured by how serious it is. */
+.rows .what .d:has(> .today-why) { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; }
+.today-why { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.today-why svg { width: 13px; height: 13px; flex: none; }
+.today-why-crit { color: var(--crit-t); } .today-why-warn { color: var(--warn-t); } .today-why-info { color: var(--text-2); }
+.rows .acts .ack { color: var(--text-2); }
+.rows .acts .ack:hover { color: var(--text); }
+.today-graph-cap { margin: 2px 0 0; }
 
 .today-nums { grid-template-columns: repeat(3, minmax(0, 1fr)); margin-bottom: 6px; }
 .today-num { padding-bottom: 8px; }

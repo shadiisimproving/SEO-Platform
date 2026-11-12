@@ -9,7 +9,7 @@
 .ov-trust > span, .ov-trust > button { display: inline-flex; align-items: center; gap: 5px; }
 .ov-trust svg { width: 14px; height: 14px; flex: none; }
 .ov-live { color: var(--good-t); font-weight: 500; }
-.ov-saved { color: var(--warn-t); font-weight: 500; }
+.ov-saved { color: var(--text-2); font-weight: 500; } /* saved numbers are normal, not a warning: only a failure is amber */
 .ov-dot { color: var(--muted); }
 .ov-match.warn { color: var(--warn-t); }
 
@@ -20,6 +20,8 @@
 .ov-ans-label { display: block; margin: 10px 0 6px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
 .ov-ans-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-width: 520px; }
 .ov-ans-list li { display: grid; grid-template-columns: minmax(0, 1fr) 120px 48px; align-items: center; gap: 10px; font-size: 14px; font-weight: 400; }
+.ov-ans-tops li { grid-template-columns: auto minmax(0, 1fr); }
+.ov-ans-tops .ov-ans-label { margin: 0; }
 .ov-ans-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ov-ans-bar { height: 8px; border-radius: 4px; background: var(--track); overflow: hidden; }
 .ov-ans-bar i { display: block; height: 100%; border-radius: 4px; }
@@ -45,16 +47,25 @@
 .ov-chart-tools svg { width: 14px; height: 14px; }
 .lv-line.ov-was { stroke-dasharray: 5 5; opacity: .5; }
 .lv-line.ov-fresh { stroke-dasharray: 2 4; opacity: .75; }
-.ov-flag line { stroke: var(--c-purple, var(--ch-2)); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; opacity: .8; }
+.ov-flag line { stroke: var(--c-indigo, var(--muted)); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; opacity: .8; }
 .ov-flag.task line { stroke: var(--good-t); }
-.ov-ylab { position: absolute; top: 10px; font-size: 11px; font-variant-numeric: tabular-nums; background: var(--glass); padding: 0 3px; border-radius: 3px; pointer-events: none; color: var(--text-2); display: inline-flex; align-items: center; gap: 4px; }
+.ov-ylab { position: absolute; top: 10px; font-size: var(--fs-min); font-variant-numeric: tabular-nums; background: var(--glass); padding: 0 3px; border-radius: 3px; pointer-events: none; color: var(--text-2); display: inline-flex; align-items: center; gap: 4px; }
 .ov-ylab-key { width: 8px; height: 8px; border-radius: 2px; flex: none; }
 .ov-ylab.left { left: 18px; } .ov-ylab.right { right: 18px; }
 .ov-ylab.bottom { top: auto; bottom: 34px; }
+/* One strip per number (overview-view.js chart): each its own scale, the days shared underneath. */
+.ov-strip { position: relative; }
+.ov-strip + .ov-strip { margin-top: 10px; }
+.ov-strip .ov-ylab { top: 0; left: 0; z-index: 1; padding-inline: 0 4px; }
+.ov-strip .ov-ylab.bottom { top: auto; bottom: 0; }
+.ov-chart.ov-multi .ov-strip svg { height: max(84px, calc(260px / var(--ov-strips, 2))); }
+.ov-chart.ov-multi .ov-strip { padding-top: 20px; }
+.ov-chart.ov-multi .ov-strip .ov-ylab:not(.bottom) { top: 20px; }
+.ov-strip-name { position: absolute; top: 0; left: 0; display: inline-flex; align-items: center; gap: 6px; font-size: var(--fs-min); font-weight: 600; color: var(--text-2); }
 .ov-key-dash, .ov-key-fresh, .ov-key-flag { display: inline-block; width: 16px; height: 0; margin-right: 6px; vertical-align: 3px; border-top: 2px dashed var(--muted); }
 .ov-key-fresh { border-top-style: dotted; }
-.ov-key-flag { width: 0; height: 12px; vertical-align: -1px; border-top: 0; border-left: 2px dashed var(--ch-2); }
-.ov-tip-was { margin-top: 4px; font-size: 11px; }
+.ov-key-flag { width: 0; height: 12px; vertical-align: -1px; border-top: 0; border-left: 2px dashed var(--c-indigo, var(--muted)); }
+.ov-tip-was { margin-top: 4px; font-size: var(--fs-min); }
 .ov-tip-note { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); max-width: 240px; white-space: normal; }
 .ov-marks { list-style: none; margin: 0; padding: 0 18px 12px; display: grid; gap: 4px; font-size: 13px; }
 .ov-marks li { display: flex; align-items: center; gap: 6px; }
@@ -189,7 +200,7 @@ table.ov-split td.ov-sn:not(.ov-share) { color: var(--text-2); }
 .ov-filter-text .input { width: 100%; padding-inline-start: 30px; margin-inline-start: -1px; border-start-start-radius: 0; border-end-start-radius: 0; }
 .ov-filter .btn svg { width: 14px; height: 14px; }
 .ov-filter .btn.is-on { border-color: var(--c-blue); color: var(--c-blue); }
-.ov-filter-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--c-blue); color: #fff; font-size: 11px; }
+.ov-filter-count { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--c-blue); color: #fff; font-size: var(--fs-min); }
 .ov-filter-more { display: flex; flex-wrap: wrap; gap: 8px 14px; flex: 1 1 100%; }
 .ov-filter-num { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); }
 .ov-filter-num .input { width: 84px; }
@@ -200,11 +211,11 @@ table.ov-split td.ov-sn:not(.ov-share) { color: var(--text-2); }
 }
 
 /* ---- Simpler screens (html[data-simple="1"], UI.simple(); overview-view.js header). Nothing here applies with the switch off. ---- */
-/* Each card's graph and top line in its own chart line's colour: card 4 is orange like the Average position line, not indigo. */
-:root[data-simple="1"] .ov .ov-cards .ncard.ov-card[data-card="clicks"] { --c: var(--ch-1); --c-pale: color-mix(in srgb, var(--ch-1) 14%, transparent); }
-:root[data-simple="1"] .ov .ov-cards .ncard.ov-card[data-card="impressions"] { --c: var(--ch-2); --c-pale: color-mix(in srgb, var(--ch-2) 14%, transparent); }
-:root[data-simple="1"] .ov .ov-cards .ncard.ov-card[data-card="click_rate"] { --c: var(--ch-3); --c-pale: color-mix(in srgb, var(--ch-3) 14%, transparent); }
-:root[data-simple="1"] .ov .ov-cards .ncard.ov-card[data-card="position"] { --c: var(--ch-5); --c-pale: color-mix(in srgb, var(--ch-5) 14%, transparent); }
+/* Each card's graph and top line in its own chart line's colour: blue, teal, indigo, grey, like the strips. */
+:root[data-simple="1"] .ov .ov-cards .ncard.ov-card[data-card="clicks"] { --c: var(--c-blue); --c-pale: var(--c-blue-pale); }
+:root[data-simple="1"] .ov .ov-cards .ncard.ov-card[data-card="impressions"] { --c: var(--c-teal); --c-pale: var(--c-teal-pale); }
+:root[data-simple="1"] .ov .ov-cards .ncard.ov-card[data-card="click_rate"] { --c: var(--c-indigo); --c-pale: var(--c-indigo-pale); }
+:root[data-simple="1"] .ov .ov-cards .ncard.ov-card[data-card="position"] { --c: var(--c-grey); --c-pale: var(--c-grey-pale); }
 :root[data-simple="1"] .ov .ov-cards { margin-bottom: 14px; }
 /* The tabbed card: underline tabs straight under the card's top edge, the count on Queries. */
 html[data-simple="1"] .ov-tabs-card.is-simple .page-tabs.in-card { padding: 4px 10px 0; }

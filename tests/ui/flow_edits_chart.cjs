@@ -22,8 +22,9 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   const edits = page.locator("section.card", { hasText: "How often they edit" });
   check("the new-pages card is there", await pages.count() === 1);
   check("the edits card is there, its own card", await edits.count() === 1);
-  const lead = await edits.locator(".pt-lead").innerText().catch(() => "");
-  check("the edits card says how many edits, and since when", /since.*edits?/i.test(lead), lead);
+  // 2026-11-12 (UI critique): a small You/Them table, not a sentence of numbers.
+  const lead = await edits.locator(".pt-side-table").innerText().catch(() => "");
+  check("the edits card says how many edits, and since when, as a Them row", /Since/i.test(lead) && (await edits.locator(".pt-side-table tr.pt-row-them").count()) === 1, lead);
   check("the edits card has bars", await edits.locator(".pt-bar-them").count() > 0);
   check("each chart has its own hover label", await page.locator(".pt-tip").count() === await page.locator(".pt-chart-wrap").count());
 

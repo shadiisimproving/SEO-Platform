@@ -230,6 +230,12 @@
     const names = [COMP.engineName(engine), tool].filter(Boolean);
     return names.length ? `<span class="comp-src">${names.map((name) => UI.logoOnly(name)).join("")}</span>` : "";
   };
+  /* The same in a sentence or as the only label: the names as words (brands.js puts each logo beside its name). Logos alone
+     are for dense table cells whose column names the tool (brand-names decision, 2026-11-12). */
+  COMP.toolWords = (engine, tool) => {
+    const e = COMP.engineName(engine);
+    return UI.esc(e && tool ? UI.t("{tool} on {engine}").replace("{tool}", tool).replace("{engine}", e) : tool || e || "");
+  };
   /* An icon that stands for words (Added by hand, Watching, Flagged by the system): the words are its tooltip and its name for screen readers. */
   COMP.iconTip = (name, words, cls = "") => `<span class="comp-ic${cls ? ` ${cls}` : ""}" role="img" title="${UI.esc(words)}" data-tip="${UI.esc(words)}" aria-label="${UI.esc(words)}">${UI.icon(name)}</span>`;
 
@@ -285,9 +291,17 @@
   /* The Competitors tab stays lit while one of its competitors is open. */
   COMP.tabLit = (x, current) => x.id === current.id || (x.id === "summary" && current.id === "list");
   COMP.canShowAll = () => COMP.sites.length >= 2;
+  /* A competitor's profile is on screen (the list tab with a competitor open). */
+  COMP.profileOpen = () => COMP.tab === "list" && Boolean(COMP.tabs.find((x) => x.id === "list")?.competitorId);
+  /* Where the site menu would be while a profile has its own site: a chip naming that site, so the side menu's All sites stays. */
+  COMP.scopeChip = () => {
+    const host = COMP.site()?.host;
+    return host ? `<span class="comp-scope" id="comp-scope">${UI.siteLogo(host, 16)}<span>${UI.esc(UI.t("For {site}").replace("{site}", host))}</span></span>` : "";
+  };
 
   /* Show a site, or ALL, here and in the side menu. Every tab loads again for it. */
   COMP.useSite = (id) => {
+    COMP.localSite = false;
     COMP.siteId = id;
     COMP.tabs.forEach((tab) => { tab.loadedFor = undefined; });
     UI.pickSite(id === ALL ? ALL : COMP.site()?.host);
@@ -343,8 +357,15 @@
     Object.assign(tab, props);
     COMP.tab = id;
     tab.loadedFor = undefined;
+    // A competitor opened while the side menu shows All sites: the profile works on that one site, and the side menu keeps
+    // All sites (UI critique 2026-11-12). The profile says which site with its own chip; Back returns to All my sites.
+    const ownScope = props.competitorId && siteId !== undefined && !UI.siteHostPicked() && COMP.canShowAll();
+    if (ownScope) {
+      if (siteId !== COMP.siteId || !COMP.localSite) { COMP.siteId = siteId; COMP.tabs.forEach((tab) => { tab.loadedFor = undefined; }); }
+      COMP.localSite = true;
+    }
     // Every tab but Summary works on one site, so it can't open at All my sites.
-    if (siteId !== undefined && siteId !== COMP.siteId) COMP.useSite(siteId);
+    else if (siteId !== undefined && siteId !== COMP.siteId) COMP.useSite(siteId);
     else if (COMP.siteId === ALL && id !== "summary") COMP.useSite(UI.preferredSite(COMP.sites)?.id ?? null);
     if (UI.state.route !== "competitors") UI.go("competitors");
     else UI.render();
@@ -398,13 +419,31 @@
     if (COMP.ready && COMP.sites.length) {
       const all = COMP.siteId === ALL;
       const allOption = COMP.canShowAll() ? `<option value="${ALL}" ${all ? "selected" : ""}>${t("All my sites")}</option>` : "";
-      line = `<span class="comp-site-pick"><select class="select comp-site-select" id="comp-site" aria-label="${esc(t("Competitors of"))}">${allOption}${COMP.sites.map((s) => `<option value="${s.id}" ${s.id === COMP.siteId ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></span><span id="cs-basis" class="cs-basis-line">${tab?.headLine?.() || ""}</span>`;
+      line = COMP.localSite ? `<span class="comp-site-pick">${COMP.scopeChip()}</span><span id="cs-basis" class="cs-basis-line">${tab?.headLine?.() || ""}</span>` : `<span class="comp-site-pick"><select class="select comp-site-select" id="comp-site" aria-label="${esc(t("Competitors of"))}">${allOption}${COMP.sites.map((s) => `<option value="${s.id}" ${s.id === COMP.siteId ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></span><span id="cs-basis" class="cs-basis-line">${tab?.headLine?.() || ""}</span>`;
       main = tab?.headMain?.() || "";
       if (tab?.headInfo) info.push(...[].concat(tab.headInfo()).filter(Boolean));
     }
     return UI.head({ title: t("Competitors"), period: false, line, info, main });
   }
   COMP.simple = () => Boolean(UI?.simple?.());
+
+  /* Simpler screens: seven tabs were too many in one row (UI critique 2026-11-12). The everyday four stay; Find competitors,
+     Keyword check and Notes sit behind More (an open one stays in the row, lit). With the switch off, all seven stay. */
+  const SIMPLE_MORE = new Set(["find", "check", "notes"]);
+  function simpleTabs(tab) {
+    const { t, esc, icon } = UI;
+    const shown = COMP.tabs.filter((x) => !x.hidden);
+    const more = shown.filter((x) => SIMPLE_MORE.has(x.id) && !COMP.tabLit(x, tab));
+    const row = shown.filter((x) => !more.includes(x));
+    const button = (x) => `<button type="button" class="page-tab" role="tab" data-comp-tab="${x.id}" aria-selected="${COMP.tabLit(x, tab)}" tabindex="${COMP.tabLit(x, tab) ? 0 : -1}">${esc(t(x.label))}${x.badge?.() ? `<span class="n-badge">${x.badge()}</span>` : ""}</button>`;
+    const moreButton = more.length ? `<button type="button" class="page-tab comp-tabs-more" id="comp-tabs-more" data-pop-toggle aria-haspopup="menu" aria-expanded="false">${esc(t("More"))}${icon("chevron-down")}</button>` : "";
+    COMP.moreTabs = more;
+    return `<div class="page-tabs comp-tabs"><div class="comp-tablist" role="tablist" aria-label="${t("Competitors")}">${row.map(button).join("")}</div>${moreButton}</div>`;
+  }
+  function openMoreTabs(anchor) {
+    if (anchor.getAttribute("aria-expanded") === "true") { UI.closePopover({ focus: true }); return; }
+    UI.popover(anchor, `<div class="cs-menu" role="menu" aria-label="${UI.esc(UI.t("More"))}">${(COMP.moreTabs || []).map((x) => `<button type="button" class="cs-menu-item" role="menuitem" data-comp-tab="${x.id}">${x.icon ? UI.icon(x.icon) : ""}${UI.esc(UI.t(x.label))}${x.badge?.() ? `<span class="n-badge">${x.badge()}</span>` : ""}</button>`).join("")}</div>`, "cs-menu-pop");
+  }
 
   function page() {
     const { t, esc, icon, topbar } = UI;
@@ -417,6 +456,12 @@
       return `${head}<div class="content page-enter"><div class="table-wrap"><div class="empty" id="comp-no-sites"><h3>${t("No sites added yet")}</h3><p>${t("Add your site, then its keyword list.")}</p><button class="btn btn-main" id="site-add">${icon("plus")}${t("Add a site")}</button></div></div></div>`;
     }
     const picked = UI.siteHostPicked();
+    // A profile on its own site (COMP.open above) ends when the profile closes, by Back or the Back button: the screen returns
+    // to what the side menu shows. A site picked in the side menu meanwhile ends it too.
+    if (COMP.localSite && (picked || !COMP.profileOpen())) {
+      COMP.localSite = false;
+      if (!picked) { COMP.siteId = ALL; COMP.tab = "summary"; COMP.tabs.forEach((tab) => { tab.loadedFor = undefined; }); }
+    }
     const match = picked && COMP.sites.find((s) => s.host === picked);
     if (match && match.id !== COMP.siteId && COMP.lastPicked !== picked) { COMP.siteId = match.id; COMP.tabs.forEach((tab) => { tab.loadedFor = undefined; }); }
     // The side menu on All sites opens All my sites. An address naming another tab, or a site still arriving, goes to one site as it asked.
@@ -436,13 +481,13 @@
     const allOption = COMP.canShowAll() ? `<option value="${ALL}" ${all ? "selected" : ""}>${t("All my sites")}</option>` : "";
     if (simple) {
       return `${head}<div class="content page-enter comp-simple">
-      ${all ? "" : `<div class="page-tabs comp-tabs" role="tablist" aria-label="${t("Competitors")}">${COMP.tabs.filter((x) => !x.hidden).map((x) => `<button type="button" class="page-tab" role="tab" data-comp-tab="${x.id}" aria-selected="${COMP.tabLit(x, tab)}" tabindex="${COMP.tabLit(x, tab) ? 0 : -1}">${esc(t(x.label))}${x.badge?.() ? `<span class="n-badge">${x.badge()}</span>` : ""}</button>`).join("")}</div>`}
+      ${all ? "" : simpleTabs(tab)}
       <div id="comp-setup">${COMP.setup?.html?.() ?? ""}</div>
       <div id="comp-body">${tab.loadedFor === COMP.siteId ? tab.body() : COMP.loading()}</div>
     </div>`;
     }
     return `${head}<div class="content page-enter">
-      <div class="comp-bar"><label class="field comp-site"><span>${t("Competitors of")}</span><select class="select" id="comp-site">${allOption}${COMP.sites.map((s) => `<option value="${s.id}" ${s.id === COMP.siteId ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></label>${UI.showingNote(COMP.site()?.host)}</div>
+      <div class="comp-bar">${COMP.localSite ? COMP.scopeChip() : `<label class="field comp-site"><span>${t("Competitors of")}</span><select class="select" id="comp-site">${allOption}${COMP.sites.map((s) => `<option value="${s.id}" ${s.id === COMP.siteId ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></label>${UI.showingNote(COMP.site()?.host)}`}</div>
       ${all ? "" : `<div class="tabs comp-tabs" role="tablist" aria-label="${t("Competitors")}">${COMP.tabs.filter((x) => !x.hidden).map((x) => `<button class="tab" role="tab" data-comp-tab="${x.id}" aria-selected="${COMP.tabLit(x, tab)}">${x.icon ? icon(x.icon) : ""}${esc(t(x.label))}${x.badge?.() ? `<span class="count">${x.badge()}</span>` : ""}</button>`).join("")}</div>`}
       <div id="comp-setup">${COMP.setup?.html?.() ?? ""}</div>
       <div id="comp-body">${tab.loadedFor === COMP.siteId ? tab.body() : COMP.loading()}</div>
@@ -483,8 +528,17 @@
           if (!COMP.ready) { COMP.loadError = null; UI.render(); } else COMP.reload();
           return;
         }
+        if (e.target.closest?.("#comp-tabs-more")) { openMoreTabs(e.target.closest("#comp-tabs-more")); return; }
         const button = e.target.closest?.("[data-comp-tab]");
         if (!button) return;
+        if (button.closest("#popover")) UI.closePopover();
+        // From a profile on its own site: the Competitors tab goes back to All my sites (page() ends the own site); any other
+        // tab works on one site, so choosing it picks the profile's site, in the side menu too. A click, never silently.
+        if (COMP.localSite && !["summary", "list"].includes(button.dataset.compTab)) {
+          COMP.useSite(COMP.siteId);
+          // Said out loud, with the way back (UI critique, 2026-11-12): the side menu now shows one site, not All sites.
+          UI.toast(UI.t("Now showing {site} across the app").replace("{site}", COMP.site()?.host || ""), { kind: "info", undo: () => { COMP.useSite(ALL); UI.render(); }, undoLabel: UI.t("Back to All sites") });
+        }
         COMP.tab = button.dataset.compTab;
         COMP.currentTab().loadedFor = undefined;
         UI.render();
@@ -511,6 +565,7 @@
     "Who ranks against you, and what they do": "Qui se classe face à vous, et ce qu'ils font",
     "Competitors of": "Concurrents de",
     "All my sites": "Tous mes sites",
+    "For {site}": "Pour {site}", "Now showing {site} across the app": "{site} est maintenant affiché partout", "Back to All sites": "Revenir à tous les sites", "{tool} on {engine}": "{tool} sur {engine}", "More": "Plus",
     "Add your site, then its keyword list.": "Ajoutez votre site, puis sa liste de mots-clés.",
     "No sites added yet": "Aucun site ajouté", "Add a site": "Ajouter un site",
     "That didn't load": "Le chargement a échoué",

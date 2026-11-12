@@ -34,6 +34,16 @@ SEEN_DROP_DAYS = 7  # a drop marked as seen comes back with the next week's numb
 # What is being lost decides the order, not only how an alert was labelled.
 LOSING_VISITORS, LOSING_RESULTS, LOST_FOR_GOOD_SOON, DATA_STOPPED, OTHER, INFORMATION = 1, 2, 3, 4, 5, 6
 _SITE_DOWN_NOW = {"start_page_down", "start_page_noindex", "robots_down", "ssl_expired", "ssl_error"}
+# A domain or certificate that ends within this many days can take the whole site offline: it is serious, and goes first.
+EXPIRY_CRIT_DAYS = 14
+_EXPIRY = ("ssl_expiry", "domain_expiry")
+
+
+def _expiring_soon(kind: str, detail: dict | None) -> bool:
+    days = (detail or {}).get("days")
+    if kind == "health_site":  # the health test says so in its own words: the certificate ends within 14 days
+        return "ssl_expiring" in ((detail or {}).get("site") or [])
+    return kind in _EXPIRY and isinstance(days, int) and days <= EXPIRY_CRIT_DAYS
 
 
 def _iso(value) -> str | None:
@@ -50,10 +60,10 @@ def _rank(kind: str, severity: str, detail: dict | None) -> int:
         return INFORMATION
     if kind == "uptime_down":
         return LOSING_VISITORS if detail.get("state") != "back" else OTHER
-    if kind in ("ssl_expiry", "domain_expiry"):
-        return LOSING_VISITORS if severity == "crit" else LOST_FOR_GOOD_SOON
-    if kind == "health_site":
-        return LOSING_VISITORS if _SITE_DOWN_NOW & set(detail.get("site") or []) else LOST_FOR_GOOD_SOON
+    if kind in _EXPIRY:
+        return LOSING_VISITORS if severity == "crit" or _expiring_soon(kind, detail) else LOST_FOR_GOOD_SOON
+    if kind == "health_site":  # a certificate ending within 14 days (ssl_expiring) can take the site offline too
+        return LOSING_VISITORS if (_SITE_DOWN_NOW | {"ssl_expiring"}) & set(detail.get("site") or []) else LOST_FOR_GOOD_SOON
     if kind in ("page_drop", "backlink_lost", "search_drop"):
         return LOSING_RESULTS
     if kind == "clarity_gap":
@@ -61,6 +71,32 @@ def _rank(kind: str, severity: str, detail: dict | None) -> int:
     if kind == ALERT_KIND:
         return DATA_STOPPED
     return OTHER
+
+
+def _reason(item: dict) -> str:
+    """Why a row is where it is in the list, as one short tag the screen words (today-view.js REASONS)."""
+    kind, rank = item["kind"], item.get("rank")
+    if item.get("reason"):
+        return item["reason"]
+    if kind in _EXPIRY:
+        return "offline" if (item.get("title") or "").endswith("has expired") else "may_go_offline"
+    if rank == LOSING_VISITORS:
+        return "offline"
+    if kind == "backlink_lost":
+        return "losing_link"
+    if rank == LOSING_RESULTS:
+        return "losing_clicks"
+    if kind == "clarity_gap":
+        return "data_lost"
+    if kind in (ALERT_KIND, "job_dead"):
+        return "data_stopped"
+    if kind == "health_site":
+        return "site_problem"
+    if rank == INFORMATION or item["severity"] == "info":
+        return "info"
+    if kind in ("search_finding", "ai_overview"):
+        return "chance"
+    return "check"
 
 
 def _link(kind: str) -> str:
@@ -83,9 +119,13 @@ def _attention(engine: Engine, site_id: int | None) -> list[dict]:
                 detail = json.loads(detail or "{}")
             kind = row["kind"]
             item = {
-                "id": f"alert-{row['id']}", "alert_ids": [row["id"]], "severity": row["severity"], "kind": kind, "host": row["host"], "title": row["title"], "rank": _rank(kind, row["severity"], detail), "site_codes": (detail or {}).get("site"),
+                "id": f"alert-{row['id']}", "alert_ids": [row["id"]], "severity": "crit" if _expiring_soon(kind, detail) else row["severity"], "kind": kind, "host": row["host"], "title": row["title"], "rank": _rank(kind, row["severity"], detail), "site_codes": (detail or {}).get("site"),
                 "detail": (detail or {}).get("error") or (detail or {}).get("detail") or "", "link": _link(kind), "created_at": _iso(row["created_at"]),
             }
+            if kind in _EXPIRY and isinstance((detail or {}).get("days"), int):
+                item["expires_in"] = detail["days"]  # the sooner one goes first
+            if kind == "health_site" and _expiring_soon(kind, detail) and not (_SITE_DOWN_NOW & set((detail or {}).get("site") or [])):
+                item["reason"] = "may_go_offline"
             stake = _SEARCH_STAKE.match(item["detail"]) if kind == ALERT_KIND_SEARCH else None
             if stake:
                 n = int(stake.group(1) or stake.group(2))
@@ -388,7 +428,9 @@ def _todo(engine: Engine, site_id: int | None, moves: list[dict]) -> tuple[list[
     rows += [_finding_row(f) for f in insights.today_rows(engine, site_id) if f["key"] not in seen and not (f["page"] and f["page"] in named and f["kind"] == "page_down")]
     rows += [row for row in _ai_overview_rows(engine, site_id) if row["seen_key"] not in seen]
     # Sorted is stable, and page drops were added in order of clicks lost.
-    rows.sort(key=lambda item: (item["rank"], SEVERITY.get(item["severity"], 3)) if item["kind"] != "page_drop" else (item["rank"], -1))
+    rows.sort(key=lambda item: (item["rank"], SEVERITY.get(item["severity"], 3), item.get("expires_in", 10**6 if item.get("reason") == "may_go_offline" else -1)) if item["kind"] != "page_drop" else (item["rank"], -1, 0))
+    for item in rows:
+        item["reason"] = _reason(item)
     return rows, {move["key"] for move in drops}
 
 

@@ -56,7 +56,7 @@
     T.key = query; T.data = data; T.summary = data.backlinks || {}; T.error = ""; T.failed = null; T.at = Date.now();
     window.ATTENTION = data.todo.map((a) => ({ id: a.id, sev: a.severity, title: say(a, "title"), detail: a.detail, host: a.host, act: "Open", key: a.kind }));
     if (Array.isArray(data.setup)) UI.setupFacts?.(data.setup);
-    if (data.results?.window?.to) UI.range?.end?.("today", data.results.window.to);
+    if (data.results?.window?.to) UI.range?.end?.("today", data.results.window.to, "Search Console");
     T.badgeLate = true; // taken in while the page draws, after the side menu: after() draws it again with the new count
   }
   // What Today shows now: the held answer for the site and period picked, asked for when there's none (one ask at a time).
@@ -88,7 +88,7 @@
       if (T.key === query) { // not when another site or range was picked, or a source changed, while this was on its way
         T.data = data; T.summary = summary || {}; T.error = ""; T.failed = null;
         window.ATTENTION = data.todo.map((a) => ({ id: a.id, sev: a.severity, title: say(a, "title"), detail: a.detail, host: a.host, act: "Open", key: a.kind }));
-        if (data.results?.window?.to) UI.range?.end?.("today", data.results.window.to);
+        if (data.results?.window?.to) UI.range?.end?.("today", data.results.window.to, "Search Console");
       }
     } catch (err) {
       if (T.key === query) { T.error = err.message; T.failed = query; }
@@ -138,23 +138,29 @@
   const todoItem = (a) => {
     const title = say(a, "title"), detail = say(a, "detail");
     return {
-      id: a.id, severity: a.severity, kind: a.kind, title, titleHtml: sayHtml(a, "title"), detail, host: a.host,
+      id: a.id, severity: a.severity, kind: a.kind, reason: a.reason, title, titleHtml: sayHtml(a, "title"), detail, host: a.host,
       seenAttr: a.alert_ids ? `data-lv-seen="${esc(a.alert_ids.join(","))}"` : a.seen_key ? `data-lv-drop="${esc(a.seen_key)}"` : "",
       mainHtml: mainButton(a),
-      find: a.kind === "search_finding" ? { title, host: a.host || null, priority: "medium", pages: a.page ? [a.page] : [], keywords: a.query ? [a.query] : [], source: { type: "search", key: a.seen_key, label: title, host: a.host || undefined, facts: detail ? [detail] : [], link: a.link } } : { title, host: a.host || null, priority: a.severity === "crit" ? "high" : "medium", ...(a.page ? { pages: [a.page] } : {}), source: { type: "alert", label: title, host: a.host || undefined, facts: detail ? [detail] : [], link: a.link, key: a.seen_key ? `drop|${a.seen_key}` : `alert|${a.kind}|${a.host || ""}|${a.title}` } },
+      find: a.kind === "search_finding" ? { title, host: a.host || null, priority: "medium", pages: a.page ? [a.page] : [], keywords: a.query ? [a.query] : [], source: { type: "search", key: a.seen_key, label: title, host: a.host || undefined, facts: detail ? [detail] : [], link: a.link } } : { title, host: a.host || null, priority: a.severity === "crit" ? "high" : "medium", ...(a.page ? { pages: [a.page] } : {}), ...(a.query ? { keywords: [a.query] } : {}), source: { type: "alert", label: title, host: a.host || undefined, facts: detail ? [detail] : [], link: a.link, key: a.seen_key ? `drop|${a.seen_key}` : `alert|${a.kind}|${a.host || ""}|${a.title}` } },
     };
   };
   const pathOf = (url) => { try { return new URL(url).pathname || "/"; } catch { return url; } };
   const siteToPick = (host) => window.SITES.find((s) => s.host === host)?.id;
 
-  const view = (d) => window.TodayView.page(vmOf(d));
+  const view = (d, setupHtml = "") => window.TodayView.page({ ...vmOf(d), setupHtml });
+  /* The sites shown that have neither Search Console nor Google Analytics, so "Connect Google" can say which site it's for. */
+  function withoutGoogle(d) {
+    const picked = UI.siteHostPicked?.() || null;
+    const hosts = picked ? [picked] : (d.sites || []).map((s) => s.host);
+    return hosts.filter((host) => !d.sources.some((s) => s.host === host && (s.source === "gsc" || s.source === "ga4")));
+  }
   function vmOf(d) {
     const stale = d.lanes.filter((l) => l.stale);
     return {
       results: d.results, googleStopped: d.google_stopped, todo: d.todo.map(todoItem), goingDown: d.going_down, goingUp: d.going_up, otherEdits: d.other_edits,
       rivals: d.rival_changes.map((c) => ({ ...c, label: t(KINDS[c.kind] || c.kind), path: pathOf(c.url), my_path: pathOf(c.my_url), when: when(c.when) })),
       followUp: T.summary.follow_up, renewals: T.summary.renewals_30d,
-      sources: { ok: d.sources.filter((s) => s.ok).length, waiting: d.sources.filter((s) => s.waiting).length, total: d.sources.length, connectAttr: 'data-lv-connect="google"', note: stale.length ? `${t("Background work")}: ${t("Last ran")} ${ago(stale[0].minutes) || t("never")}` : "" },
+      sources: { ok: d.sources.filter((s) => s.ok).length, waiting: d.sources.filter((s) => s.waiting).length, total: d.sources.length, hosts: withoutGoogle(d), connectAttr: `data-today-connect="${esc(withoutGoogle(d)[0] || "")}"`, note: stale.length ? `${t("Background work")}: ${t("Last ran")} ${ago(stale[0].minutes) || t("never")}` : "" },
       sites: d.sites.map((s) => ({ ...s, pick: siteToPick(s.host) })),
       range: UI.range?.get ? UI.range.get({ end: d.results?.window?.to, hours: false }) : null,
     };
@@ -175,7 +181,7 @@
       return `${head}<div class="content page-enter">${setup}${UI.failCard(e.error, { retry: "data-today-retry" })}</div>`;
     }
     if (e.data === undefined) return `${quickHead(null)}<div class="content page-enter">${setup}${UI.skeleton("page", { tiles: 3, chart: true })}</div>`;
-    return `${quickHead(e.data)}<div class="content page-enter">${setup}${window.TodayView.page({ ...vmOf(e.data), sourcesInHead: true })}</div>`;
+    return `${quickHead(e.data)}<div class="content page-enter">${window.TodayView.page({ ...vmOf(e.data), sourcesInHead: true, setupHtml: setup })}</div>`;
   }
 
   function page() {
@@ -191,7 +197,7 @@
       return `${head}<div class="content page-enter">${setup}${failed}</div>`;
     }
     if (!T.data) return `${head}<div class="content page-enter">${setup}${UI.skeleton ? UI.skeleton("page", { tiles: 3, chart: true }) : `<section class="card" aria-busy="true"><div class="empty"><p>${t("Loading…")}</p></div></section>`}</div>`;
-    return `${head}<div class="content page-enter">${setup}${view(T.data)}</div>`;
+    return `${head}<div class="content page-enter">${view(T.data, setup)}</div>`; // the setup line sits under the answer, not above it
   }
 
   /* The side menu's Today badge on another screen: the to-do list only, for every site (the menu filters by the site
@@ -253,6 +259,8 @@
         } catch (err) { el.disabled = false; UI.toast(err.message, { kind: "crit" }); }
       });
       document.addEventListener("click", (e) => {
+        const connect = e.target.closest?.("[data-today-connect]");
+        if (connect) { UI.state.connHost = connect.dataset.todayConnect || null; UI.openConnection("google"); return; } // the site it names is the one picked in the panel
         if (e.target.closest?.("[data-today-retry]")) {
           if (quick()) { window.SCREEN_DATA.forget(pathFor()); held = null; UI.render(); return; } // forgotten, so the draw asks again
           T.error = ""; T.failed = null; T.key = null; load(); UI.render(); return;

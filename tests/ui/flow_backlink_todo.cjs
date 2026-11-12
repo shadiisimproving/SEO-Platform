@@ -59,7 +59,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   check("two links in To do", (await tabCount("todo")) === plannedAtStart + 2, await tabCount("todo"));
   check("Done count didn't change", (await tabCount("done")) === doneBefore, await tabCount("done"));
   check("one left in consideration", (await tabCount("consideration")) === 1, await tabCount("consideration"));
-  check("DA, PA and rating came along", /DA 70 · PA 40 · Rating 5/.test(await row("alpha-blog").innerText()), (await row("alpha-blog").locator(".second").first().innerText()));
+  check("Authority, Page authority and rating came along", /Authority 70 · Page authority 40 · Rating 5/.test(await row("alpha-blog").innerText()), (await row("alpha-blog").locator(".second").first().innerText()));
   check("guest post with no article says so", (await row("alpha-blog").innerText()).includes("Needs an article"));
 
   const emptyIcons = () => page.$$eval("#main svg.i, .sections svg.i", (all) => all.filter((svg) => !svg.children.length).length);

@@ -1,6 +1,15 @@
 /* A brand's logo beside its name, everywhere the name appears on screen.
    It works on the text as rendered, so a new sentence, a translation, a toast or a tooltip gets its logo with nothing to remember.
-   Add a brand here and its logo to logos/. Longest names win, so "Google Ads" never gets the plain Google logo. */
+   Add a brand here and its logo to logos/. Longest names win, so "Google Ads" never gets the plain Google logo.
+
+   Logo and name, or logo alone (owner's decision, 2026-11-12):
+   - Logo + name whenever the brand is the subject of a sentence, a button, an empty state or the only label on a control:
+     "Connect [G] Google Analytics to see AI visits", "Running out first 214 of 250 · [logo] SerpApi".
+   - Logo alone, the name in its tooltip and for screen readers, only where it repeats down a list: a table cell that holds
+     nothing but the brand's name, or anything inside [data-brand="logo"] (an engine chip whose column header names it).
+     UI.logoOnly() draws the same thing by hand.
+   - Never a logo for a generic word: "Mac" is the computer, not a brand mention, so it has no entry here.
+   - Bright Data's logo (a blue square with an "i") reads as the app's (i) info mark, so it never stands alone beside one. */
 (() => {
   const FILES = {
     "Google Search Console": "searchconsole.png", "Search Console": "searchconsole.png",
@@ -15,7 +24,7 @@
     "Microsoft Clarity": "clarity.png", Clarity: "clarity.png",
     "Bright Data": "brightdata.png", SerpApi: "serpapi.png", HasData: "hasdata.png", Searlo: "searlo.png", SearXNG: "searxng.svg", "Open PageRank": "openpagerank.png", "Keywords Everywhere": "openpagerank.png",
     OpenRouter: "openrouter.png", Firecrawl: "firecrawl.png", Moz: "moz.png", Ahrefs: "ahrefs.png", Cloudflare: "cloudflare.png", "Common Crawl": "commoncrawl.jpg", IndexNow: "indexnow.png",
-    SEMrush: "semrush.png", Ubersuggest: "ubersuggest.svg", Excel: "excel.svg", Mac: "apple.svg",
+    SEMrush: "semrush.png", Ubersuggest: "ubersuggest.svg", Excel: "excel.svg",
     Anthropic: "anthropic.png", Claude: "anthropic.png",
   };
   const quoted = Object.keys(FILES).sort((a, b) => b.length - a.length).map((n) => n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
@@ -36,6 +45,17 @@
     return false;
   }
 
+  /* Logo alone only in a dense repeated cell: a table body cell (or a [data-brand="logo"] box) whose whole text is the name.
+     Anywhere else, or when an (i) sits right beside a Bright Data logo, the name shows too. */
+  function logoOnly(node, name) {
+    const el = node.parentElement;
+    if (!el) return false;
+    const box = el.closest('[data-brand="logo"]') || el.closest("tbody td, tbody th");
+    if (!box || node.data.trim() !== name || box.textContent.trim() !== name) return false;
+    if (name === "Bright Data" && box.querySelector(".def-i, svg.i")) return false;
+    return true;
+  }
+
   function markText(node) {
     const text = node.data;
     const out = document.createDocumentFragment();
@@ -50,14 +70,18 @@
       const img = document.createElement("img");
       img.className = "logo brand-logo";
       img.src = `logos/${file}`;
-      // The logo alone says the brand (owner, 2026-11-12): the name stays in the text for screen readers, copying and search,
-      // hidden from sight, and shows as a tooltip on hover.
-      img.alt = "";
-      brand.title = hit[0];
-      const name = document.createElement("span");
-      name.className = "brand-name-hidden";
-      name.textContent = hit[0];
-      brand.append(img, name);
+      img.width = 16; img.height = 16; // its box is known before it loads, so the line doesn't jump (CSS sizes it to the text)
+      img.alt = ""; // the name is in the text right after it, seen or not
+      if (logoOnly(node, hit[0])) {
+        // Repeated down a list: the name stays in the text for screen readers, copying and search, hidden from sight, and
+        // shows as a tooltip on hover.
+        brand.classList.add("logo-only");
+        brand.title = hit[0];
+        const name = document.createElement("span");
+        name.className = "brand-name-hidden";
+        name.textContent = hit[0];
+        brand.append(img, name);
+      } else brand.append(img, hit[0]);
       out.append(brand);
       from = hit.index + hit[0].length;
       changed = true;

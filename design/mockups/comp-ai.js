@@ -103,7 +103,7 @@
   function aiFind(c, words) {
     const host = COMP.site()?.host;
     const text = UI.t(words).replace("{keyword}", c.keyword || "").replace("{competitor}", c.competitor || "");
-    return { title: text, host, source: { type: "competitor", label: text, host, facts: [c.keyword, c.competitor].filter(Boolean), link: "#competitors/ai", key: `ai|${COMP.siteId}|${c.kind}|${c.keyword}|${c.competitor || ""}` } };
+    return { title: text, host, keywords: c.keyword ? [c.keyword] : [], source: { type: "competitor", label: text, host, facts: [c.keyword, c.competitor].filter(Boolean), link: "#competitors/ai", key: `ai|${COMP.siteId}|${c.kind}|${c.keyword}|${c.competitor || ""}` } };
   }
 
   /* Every change found by the same tool: its logo is said once, in the card's title, instead of on each line. */
@@ -201,7 +201,7 @@
       ${keywordTable(d.keywords)}
       <div class="ca-lower">
         <section class="card"><div class="card-head"><h2>${t("Over time")}</h2><div class="hint-text">${t("Share of keywords checked each day.")}${UI.tip("A share, because the number of keywords checked changes from day to day.")}</div></div>${trendBlock(d.trend)}</section>
-        <section class="card"><div class="card-head"><h2>${t("What changed")}${oneTool ? ` · ${UI.logoOnly(oneTool)}` : ""}</h2><div class="hint-text">${t("Same tool only")}${UI.tip("Changes only compare two checks by the same tool, so a change of tool never shows as a change.")}</div></div>${changesBlock(d.changes)}</section>
+        <section class="card"><div class="card-head"><h2>${t("What changed")}${oneTool ? ` · ${esc(oneTool)}` : ""}</h2><div class="hint-text">${t("Same tool only")}${UI.tip("Changes only compare two checks by the same tool, so a change of tool never shows as a change.")}</div></div>${changesBlock(d.changes)}</section>
       </div>`;
   }
 

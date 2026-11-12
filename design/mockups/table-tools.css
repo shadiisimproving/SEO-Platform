@@ -31,7 +31,7 @@ table tr.is-picked > td { background: var(--selected); }
 /* The row above a table: what's filtered, and the Filter button at its end. */
 .tt-tools { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px 8px; padding: 8px 12px; }
 .tt-filter { white-space: nowrap; }
-.tt-filter .tt-count { min-width: 16px; padding: 0 4px; border-radius: 999px; background: var(--accent-text); color: var(--panel-solid); font-size: 11px; text-align: center; }
+.tt-filter .tt-count { min-width: 16px; padding: 0 4px; border-radius: 999px; background: var(--accent-text); color: var(--panel-solid); font-size: var(--fs-min); text-align: center; }
 .tt-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 320px; padding: 2px 4px 2px 10px; border-radius: 999px; background: var(--selected); font-size: 12px; }
 .tt-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tt-chip-x { display: inline-flex; padding: 3px; border: 0; border-radius: 999px; background: none; color: inherit; cursor: pointer; }
@@ -54,11 +54,13 @@ table tr.is-picked > td { background: var(--selected); }
 
 /* ---- Quiet tables, on the simpler screens only (html[data-simple="1"], 2026-11-11) -------------------------------------
    Nothing is taken away: the whole table's tools always show (the heading's tick box, the sort marks, Filter), and a row's
-   tools show when the pointer or keyboard focus is on that row. Hidden ones keep their place, so Tab and a click reach them. */
+   tools show when the pointer or keyboard focus is on that row (tick boxes stay faintly visible). Hidden ones keep their
+   place, so Tab and a click reach them. */
 
-/* A row's tick box, the one table-tools.js adds or a screen's own: on hover or focus of its row, on a ticked or open row,
-   and on every row once one is ticked (table.tt-some). */
-html[data-simple="1"] table[data-tt-key] > tbody > tr > :is(.tt-pick, .tt-own-pick) input[type="checkbox"] { opacity: 0; transition: opacity var(--t-fast); }
+/* A row's tick box, the one table-tools.js adds or a screen's own: faint at rest, full on hover or focus of its row, on a
+   ticked or open row, and on every row once one is ticked (table.tt-some). */
+/* Never fully hidden (critique 2026-11-12): a faint box on every row says rows can be ticked before anyone hovers. */
+html[data-simple="1"] table[data-tt-key] > tbody > tr > :is(.tt-pick, .tt-own-pick) input[type="checkbox"] { opacity: .5; transition: opacity var(--t-fast); }
 html[data-simple="1"] table[data-tt-key] > tbody > tr:is(:hover, :focus-within, .is-picked, .open) > :is(.tt-pick, .tt-own-pick) input[type="checkbox"],
 html[data-simple="1"] table[data-tt-key].tt-some > tbody > tr > :is(.tt-pick, .tt-own-pick) input[type="checkbox"],
 html[data-simple="1"] table[data-tt-key] > tbody > tr > :is(.tt-pick, .tt-own-pick) input[type="checkbox"]:checked { opacity: 1; }
@@ -70,7 +72,7 @@ html[data-simple="1"] :is(tr, li):is(:hover, :focus-within, .open) .row-act,
 html[data-simple="1"] :is(tr, li) .row-act:is(:focus-within, [aria-expanded="true"]) { opacity: 1; }
 
 /* A touch screen can't hover, and on a phone each row is a card: what hover would show stays shown. */
-@media (hover: none), (max-width: 640px) {
+@media (hover: none), (pointer: coarse), (max-width: 640px) {
   html[data-simple="1"] table[data-tt-key] > tbody > tr > :is(.tt-pick, .tt-own-pick) input[type="checkbox"],
   html[data-simple="1"] :is(tr, li) .row-act { opacity: 1; }
 }
