@@ -266,7 +266,14 @@
   function renderSidebar() {
     const c = attentionCounts();
     const urgent = state.firstRun ? 0 : c.crit + c.warn;
-    const items = NAV.map((n) => {
+    // Only the sections this person has, and a group heading only when something under it is left.
+    const mine = [];
+    NAV.forEach((n) => {
+      if (n.group) { mine.push(n); return; }
+      if (!window.ACCESS || ACCESS.can(n.id)) mine.push(n);
+    });
+    for (let i = mine.length - 1; i >= 0; i -= 1) if (mine[i].group && (!mine[i + 1] || mine[i + 1].group)) mine.splice(i, 1);
+    const items = mine.map((n) => {
       if (n.group) return `<div class="nav-group">${t(n.group)}</div>`;
       const current = state.route === n.id ? 'aria-current="page"' : "";
       const healthAlerts = n.id === "health" ? (window.HealthTest?.openAlerts?.() || 0) : 0;
@@ -1818,7 +1825,7 @@
     const main = $("#main");
     const top = main.scrollTop;
     const screen = window.SCREENS?.[state.route];
-    const html = screen ? screen.page() : state.route === "keywords" ? keywordsPage() : state.route === "backlinks" ? backlinksPage() : state.route === "settings" ? settingsPage() : state.route === "health" ? healthPage() : todayPage();
+    const html = !mayOpen(state.route) ? noAccessPage() : screen ? screen.page() : state.route === "keywords" ? keywordsPage() : state.route === "backlinks" ? backlinksPage() : state.route === "settings" ? settingsPage() : state.route === "health" ? healthPage() : todayPage();
     // The simpler head is drawn again with the page: a period button or the comparison keeps the keyboard's place.
     const headFocus = state.simple ? headFocusKey() : null;
     setHTML($("#page"), html);
@@ -1949,6 +1956,8 @@
     place.call(history, null, "", location.pathname + location.search + now);
   }
   function applySite(host) {
+    // Someone given one site works on that site: there is no "All sites" for them.
+    if (!host && window.ACCESS?.limited && window.SITES.length === 1) host = window.SITES[0].host;
     if (!host) { state.site = "all"; wantedSite = null; return; }
     const found = window.SITES.find((s) => s.host === host);
     if (found) { state.site = found.id; wantedSite = null; } else wantedSite = host; // a real site joins the list a moment after loading
@@ -1986,8 +1995,18 @@
     return list.find((s) => s.host === last) || [...list].sort((a, b) => (Number(a.id) || 0) - (Number(b.id) || 0))[0] || null;
   }
 
+  // Chosen access (access.js): a section they weren't given is never drawn, whatever the address or link says.
+  const mayOpen = (route) => !window.ACCESS || ACCESS.can(route);
+  function noAccessPage() {
+    const admin = (window.BOOT?.team || [])[0];
+    return `<div class="content page-enter"><div class="card no-access" role="status">
+      <h1 class="no-access-title">${t("You don't have access to this section")}</h1>
+      <p class="sec">${admin ? esc(t("Ask {name} if you need it.").replace("{name}", admin)) : t("Ask an admin if you need it.")}</p>
+      <p><button class="btn primary" data-go="${ACCESS.first()}">${t("Go to my first section")}</button></p></div></div>`;
+  }
   function go(route, opts = {}) {
     if (!BUILT.has(route)) { toast(t("Not built yet"), { kind: "info" }); return; }
+    if (!mayOpen(route)) { toast(t("You don't have access to this section"), { kind: "info" }); return; }
     closeNav();
     closePanel();
     state.route = route;
@@ -2980,14 +2999,18 @@
 
   // ---- command bar ----------------------------------------------------------------
   function commands() {
-    const pages = [...NAV.filter((n) => BUILT.has(n.id)), { id: "settings", label: "Settings", icon: "settings" }].map((n) => ({ label: t(n.label), kind: t("Go to"), icon: n.icon, run: () => go(n.id) }));
+    const pages = [...NAV.filter((n) => BUILT.has(n.id) && mayOpen(n.id)), { id: "settings", label: "Settings", icon: "settings" }].map((n) => ({ label: t(n.label), kind: t("Go to"), icon: n.icon, run: () => go(n.id) }));
+    const may = (section, edit) => !window.ACCESS || (edit ? ACCESS.canEdit(section) : ACCESS.can(section));
     const actions = [
       { label: t("Add backlink"), kind: t("Action"), icon: "plus", run: () => { if (state.route === "backlinks") addBacklinkPanel(); else { go("backlinks"); setTimeout(() => addBacklinkPanel(), 200); } } },
       { label: t("Refresh keywords"), kind: t("Action"), icon: "refresh-cw", run: () => { const open = () => openRefresh(filtered().map((k) => k.k)); if (state.route === "keywords") open(); else { go("keywords"); setTimeout(open, 200); } } },
     ];
+    if (!may("backlinks", true)) actions.splice(0, 1);
+    if (!may("keywords", true)) actions.splice(actions.findIndex((a) => a.icon === "refresh-cw"), 1);
     const sites = window.SITES.map((s) => ({ label: s.host, kind: t("Site"), icon: "globe", run: () => { state.site = s.id; render(); } }));
+    if (!may("keywords")) return [...pages, ...actions, ...sites, ...(may("competitors") ? cmdRivals.list.map((c) => ({ label: c.display || c.host, kind: `${t("Competitor")} · ${c.site}`, icon: "crosshair", run: () => { location.hash = `#competitors/list/${c.id}?site=${encodeURIComponent(c.site)}`; } })) : [])];
     const kws = window.KEYWORDS.map((k) => ({ label: k.k, kind: t("Keyword"), icon: "key-round", run: () => { const open = () => openKeyword(k.k); if (state.route === "keywords") open(); else { go("keywords"); setTimeout(open, 200); } } }));
-    const rivals = cmdRivals.list.map((c) => ({ label: c.display || c.host, kind: `${t("Competitor")} · ${c.site}`, icon: "crosshair", run: () => { location.hash = `#competitors/list/${c.id}?site=${encodeURIComponent(c.site)}`; } }));
+    const rivals = !may("competitors") ? [] : cmdRivals.list.map((c) => ({ label: c.display || c.host, kind: `${t("Competitor")} · ${c.site}`, icon: "crosshair", run: () => { location.hash = `#competitors/list/${c.id}?site=${encodeURIComponent(c.site)}`; } }));
     return [...pages, ...actions, ...sites, ...kws, ...(window.KW_REAL?.commands?.() || []), ...rivals];
   }
   /* Competitors in ⌘K: each own site's list, asked only when the bar opens (never at load), kept a minute. A name opens
@@ -2995,6 +3018,7 @@
   const cmdRivals = { list: [], at: 0, loading: false };
   async function loadCmdRivals() {
     if (cmdRivals.loading || Date.now() - cmdRivals.at < 60000 || !(await COMP.isServer?.())) return;
+    if (window.ACCESS && !ACCESS.can("competitors")) return;
     cmdRivals.loading = true;
     try {
       const own = window.SITES.filter((x) => x.realId);
@@ -3704,7 +3728,10 @@
     if ((el = hit("[data-cmd]"))) { runCmd(Number(el.dataset.cmd)); return; }
     if (hit("#site-switch")) {
       if ($("#popover")) { closePopover(); return; }
-      popover(hit("#site-switch"), `<button data-pick-site="all">${icon("globe")}${t("All sites")}</button><hr>${window.SITES.map((s) => `<button data-pick-site="${s.id}">${siteMark(s.host)}<span class="mono small">${esc(s.host)}</span></button>`).join("")}<hr><button data-add-site>${icon("plus")}${t("Add a site")}</button>`);
+      // Chosen access: "All sites" means all of theirs, so it only shows with two or more; adding a site is for those with every site.
+      const allRow = window.ACCESS?.limited && window.SITES.length < 2 ? "" : `<button data-pick-site="all">${icon("globe")}${t("All sites")}</button><hr>`;
+      const addRow = window.ACCESS?.limited ? "" : `<hr><button data-add-site>${icon("plus")}${t("Add a site")}</button>`;
+      popover(hit("#site-switch"), `${allRow}${window.SITES.map((s) => `<button data-pick-site="${s.id}">${siteMark(s.host)}<span class="mono small">${esc(s.host)}</span></button>`).join("")}${addRow}`);
       return;
     }
     if ((el = hit("[data-pick-site]"))) { state.site = el.dataset.pickSite; closePopover(); render(); return; }
@@ -4179,6 +4206,72 @@
       .observe(document.body, { childList: true, subtree: true });
   }
 
+  // ---- View only: a section given to look at, not to change (chosen access, access.js) -----------------------------
+  /* The server refuses every change there anyway (403, and COMP.api says "View only" before even asking). This keeps the
+     screen honest: the buttons that start a change are hidden, forms in a panel are greyed, cards can't be dragged, and
+     a small tag by the title says why. Reading, filtering, sorting, paging, exporting and opening details still work. */
+  const EDIT_CONTROLS = [
+    "#add-backlink", "#bl-save", "#bulk-import", "#cg-add", "#cg-add-all", "#cg-edit-save", "#cg-todo-save", "#cg-upload", "#cl-add-open", "#cl-add-save", "#cl-run",
+    "#cl-up-save", "#cleaner-add", "#cp-add", "#cp-save", "#ht-run", "#kwr-add", "#kwr-add-save", "#kwr-refresh", "#kwr-sel-refresh", "#lc-run", "#md-add", "#md-save",
+    "#open-refresh", "#pt-qn-save", "#sel-refresh", "#site-add", "#task-save", "#td-move-save", "#td-placed-save", "#vd-budget-save", "#ai-refresh-menu",
+    "[data-cl-upload]", "[data-cl-remove]", "[data-ai-aio-check]", "[data-ov-track]", "[data-ov-check]", "[data-ov-brand-edit]", "[data-in-run]", "[data-cl-track]",
+    "[data-up-check]", "[data-note-delete]", "[data-in-undismiss]", "[data-dp-move]", "[data-cg-upload]", "[data-vd-disavow]", "[data-task-new]", "[data-task-move]",
+    "[data-ov-verify-run]", "[data-ov-track-picked]", "[data-ov-note-add]", "[data-note-status]", "[data-lv-rule-del]", "[data-kc-cancel]", "[data-in-track]",
+    "[data-in-status]", "[data-in-dismiss]", "[data-ht-check]", "[data-cs-add]", "[data-cl-remove-yes]", "[data-cl-check-yes]", "[data-cg-decide]", "[data-cg-add-domain]",
+    "[data-bell-track]", "[data-ai-rule-del]", "[data-ai-aio-cancel]", "[data-add-site]", "[data-vd-budget]", "[data-tt-note-save]", "[data-td-placed]", "[data-rs-tag-remove]",
+    "[data-recheck]", "[data-rd-cancel]", "[data-rc-dismiss]", "[data-pt-links-upload]", "[data-pt-links-add]", "[data-prospect-remove]", "[data-ov-note-save]",
+    "[data-ov-note-del]", "[data-ov-brand-del]", "[data-md-edit]", "[data-lv-resource-save]", "[data-lv-resource-del]", "[data-lv-drop]", "[data-link-remove]",
+    "[data-lc-delete]", "[data-kwr-check]", "[data-kc-track]", "[data-kc-remove]", "[data-kc-add]", "[data-found-ignore]", "[data-dp-cancel]", "[data-cs-setup-add]",
+    "[data-cs-edit]", "[data-cs-add-domain]", "[data-cp-add]", "[data-cl-restore]", "[data-cl-recheck-picked]", "[data-cl-recheck]", "[data-cl-first-new]",
+    "[data-cl-dismiss]", "[data-cl-accept]", "[data-cg-edit-rival]", "[data-cg-edit]", "[data-cg-add-all]", "[data-cg-add]", "[data-ai-chip-run]", "[data-td-sent]",
+    "[data-note-file-remove]", "[data-lv-collect]", "[data-ov-refresh]", "[data-lv-add-site]", "#bulk-open", "#gsc-open",
+  ].join(", ");
+  // Hidden with an inline style: the app's button styles would win over the hidden attribute.
+  const hideForAccess = (el) => { if (el.dataset.viewOnly) return; el.dataset.viewOnly = "1"; el.style.setProperty("display", "none", "important"); };
+  // Admin work wherever it shows (connecting Google, adding a site): never for chosen access.
+  const ADMIN_BUTTONS = "[data-lv-connect], [data-add-site], [data-lv-add-site], #site-add, [data-cs-add-site], #ht-monthly, #lc-weekly, [data-up-watch], [data-up-date], [data-up-date-clear]";
+  // Paid credits need their own tick; changes every site shares need every site (the owner's rules, 2026-11-12).
+  const SPEND_CONTROLS = "[data-rd-ask], [data-rd-go], [data-in-ai], [data-in-ai-again], [data-in-weekly], [data-change-summary], [data-lv-moz], #kwr-paid, #kwr-paid-cap, #ref-paid, #ref-paid-cap";
+  const GLOBAL_CONTROLS = "[data-cg-edit], [data-cg-edit-rival], [data-cg-add-domain], [data-cs-add-domain], #md-add, #md-save, [data-md-edit], [data-add-site], [data-lv-add-site], #site-add, [data-cl-crawl], [data-cs-add-site]";
+  function creditsAndSharedLock() {
+    if (!window.ACCESS?.limited) return;
+    // Settings is only "My account" for them: its export (the connections list) is for admins.
+    const hide = [ADMIN_BUTTONS, state.route === "settings" ? "[data-export-open]" : "", ACCESS.canSpend() ? "" : SPEND_CONTROLS, ACCESS.everySite() ? "" : GLOBAL_CONTROLS].filter(Boolean).join(", ");
+    [$("#page"), $("#panel")].filter(Boolean).forEach((scope) => scope.querySelectorAll(hide).forEach((el) => {
+      // The paid switch in a Refresh form is a label around its box: hide that whole row.
+      hideForAccess(el.closest("label") || el);
+    }));
+  }
+  const viewOnlyHere = () => Boolean(window.ACCESS?.limited) && state.route !== "settings" && mayOpen(state.route) && !ACCESS.canEdit(state.route);
+  function viewLock() {
+    if (!viewOnlyHere()) return;
+    [$("#page"), $("#panel")].filter(Boolean).forEach((scope) => {
+      scope.querySelectorAll(EDIT_CONTROLS).forEach(hideForAccess);
+      scope.querySelectorAll("[draggable=true]").forEach((el) => el.setAttribute("draggable", "false"));
+    });
+    const panel = $("#panel");
+    panel?.querySelectorAll("form input:not([type=search]), form textarea, form select").forEach((el) => { el.disabled = true; });
+    panel?.querySelectorAll("form button[type=submit], form .btn-main").forEach(hideForAccess);
+    const title = $("#page h1");
+    if (title && !title.querySelector(".view-only-tag")) title.insertAdjacentHTML("beforeend", ` <span class="view-only-tag" role="note">${icon("eye")}${t("View only")}</span>`);
+  }
+  if (window.ACCESS?.limited) {
+    // A link into a section they weren't given (Today's to-do, a finding, the bell) says so instead of opening a blank page.
+    document.addEventListener("click", (e) => {
+      const link = e.target.closest?.('a[href^="#"]');
+      const route = link ? link.getAttribute("href").replace(/^#/, "").split(/[/?]/)[0] : "";
+      if (!route || !BUILT.has(route) || mayOpen(route)) return;
+      e.preventDefault(); e.stopImmediatePropagation(); toast(t("You don't have access to this section"), { kind: "info" });
+    }, true);
+    let viewLater = 0;
+    new MutationObserver(() => { cancelAnimationFrame(viewLater); viewLater = requestAnimationFrame(() => { viewLock(); creditsAndSharedLock(); }); }).observe(document.body, { childList: true, subtree: true });
+    // A file dropped or pasted on a View only screen would only be refused: it isn't taken in at all.
+    ["drop", "paste"].forEach((kind) => document.addEventListener(kind, (e) => {
+      if (!viewOnlyHere() || (kind === "paste" && !e.clipboardData?.files?.length)) return;
+      e.preventDefault(); e.stopImmediatePropagation(); toast(t("View only: you can't change this."), { kind: "info" });
+    }, true));
+  }
+
   // ---- a session that ends while someone works: sign in again here, and nothing typed is lost --------------------
   /* auth.js asks this before sending the page to the sign-in screen. Answering true keeps the page: an open form, a half-typed
      task and the screen all stay, a small sign-in box opens on top, and after it the person presses Save again. */
@@ -4261,7 +4354,9 @@
   applyFirstRun();
 
   // ---- start -----------------------------------------------------------------------
-  applyUrl();
+  if (!applyUrl() && !mayOpen(state.route)) state.route = ACCESS.first();
+  // Someone given one site works on that site: there is no "All sites" to pick for them.
+  if (window.ACCESS?.limited && window.SITES.length === 1 && state.site === "all") state.site = window.SITES[0].id;
   const followUrl = () => {
     if (location.hash === urlNow()) return;
     following = true; closePanel(); following = false; // closing must not write the old view back over the address just opened

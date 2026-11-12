@@ -16,6 +16,7 @@ from decimal import Decimal
 from sqlalchemy import Engine, bindparam, text
 from sqlalchemy.exc import IntegrityError
 
+from seo.accounts import access
 from seo.core.errors import Conflict, NotFound, Refused
 from seo.serp import connections, store
 from seo.serp.tools import SearchFailed, TimedOut, ToolStopped, counts_for_keyword, most_cost, pages_for
@@ -648,5 +649,12 @@ def _plain(error: str | None, status: str) -> str:
 def active_runs(engine: Engine) -> list[dict]:
     _sweep(engine)
     with engine.connect() as conn:
-        ids = [row[0] for row in conn.execute(text("SELECT id FROM rank_runs WHERE status IN ('queued', 'running') ORDER BY id")).all()]
+        values: dict = {}
+        # Chosen access: runs of their sites, and runs started at All sites that check one of their sites' keywords.
+        theirs = access.site_clause("sk.site_id", values, conn)
+        mine = "" if not theirs else (
+            f" AND (r.site_id IN (SELECT sk.site_id FROM site_keywords sk WHERE 1 = 1{theirs}) OR (r.site_id IS NULL AND EXISTS ("
+            f"SELECT 1 FROM rank_run_items i JOIN site_keywords sk ON sk.keyword_id = i.keyword_id WHERE i.run_id = r.id{theirs})))"
+        )
+        ids = [row[0] for row in conn.execute(text(f"SELECT r.id FROM rank_runs r WHERE r.status IN ('queued', 'running'){mine} ORDER BY r.id"), values).all()]
     return [run_dict(engine, run_id) for run_id in ids]

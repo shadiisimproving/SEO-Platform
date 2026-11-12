@@ -515,7 +515,8 @@ def restore_note_file(file_id: int):
 
 @competitors_api.get("/connections/<tool>")
 def connection_status(tool: str):
-    return jsonify(connections.status(_engine(), tool))
+    from seo.accounts import access
+    return jsonify(access.without_key_details(connections.status(_engine(), tool)))
 
 
 @competitors_api.put("/connections/<tool>")

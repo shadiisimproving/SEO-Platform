@@ -350,31 +350,124 @@
   };
 
   // ---- Team tab ---------------------------------------------------------------------------------
+  // The menu's sections, in its order and groups (seo/accounts/access.py SECTIONS). Settings isn't one: it stays with admins.
+  const SECTIONS = [
+    ["today", "Today", ""],
+    ["channels", "Channels", "Traffic"], ["conversions", "Conversions", "Traffic"], ["content", "Content", "Traffic"],
+    ["overview", "Overview", "Search"], ["insights", "Insights", "Search"], ["keywords", "Keywords", "Search"], ["competitors", "Competitors", "Search"], ["ai", "AI search", "Search"],
+    ["ads", "Google Ads", "Ads"],
+    ["tasks", "Tasks", "Work"], ["notes", "Notes", "Work"], ["backlinks", "Backlinks", "Work"], ["resources", "Resources", "Work"],
+    ["health", "Site health", "Health"],
+  ];
+  const ownSites = () => window.BOOT.sites || [];
+  // Admin, member with full access, or member with chosen access: the server only knows admin and member, plus access.
+  const roleChoice = (u) => (u?.role === "admin" ? "admin" : u?.access ? "chosen" : "full");
+  function accessSummary(u) {
+    if (u.role === "admin") return t("Admin");
+    if (!u.access) return t("Full access");
+    // Only sites that still exist count: a site deleted since stays in the saved list until the next save drops it.
+    const s = Object.keys(u.access.sections).length, n = limited() ? u.access.sites.length : u.access.sites.filter((id) => ownSites().some((x) => x.id === id)).length;
+    const all = limited() ? Boolean(window.BOOT.every_site) : ownSites().length && ownSites().every((x) => u.access.sites.includes(x.id));
+    return [`${num(s)} ${t(s === 1 ? "section" : "sections")}`, all ? t("all sites") : `${num(n)} ${t(n === 1 ? "site" : "sites")}`, t(u.access.spend ? "can spend credits" : "no credits")].join(" · ");
+  }
   async function loadTeam() {
     try { L.team = await api("GET", "team"); } catch (err) { L.team = { error: err.message }; }
     if (UI.state.route === "settings" && L.tab === "team" && !UI.$("#panel")) UI.render();
   }
   function teamTab() {
     if (L.team === null) { loadTeam(); return UI.skeleton("table", { rows: 3 }); }
-    if (L.team.error) return `<section class="card"><div class="empty"><h3>${t("That didn't load")}</h3><p>${esc(L.team.error)}</p></div></section>`;
+    if (L.team.error) return `<section class="card"><div class="empty"><h3>${t("That didn't load")}</h3><p>${esc(t(L.team.error))}</p><button class="btn btn-small" data-lv-team-retry>${t("Try again")}</button></div></section>`;
     if (!L.team.users) return `<section class="card"><div class="card-head"><h2>${t("Team")}</h2></div><ul class="rows">${L.team.names.map((name) => `<li><div class="what"><div class="t" dir="auto">${esc(name)}</div></div></li>`).join("")}</ul><p class="help" style="padding:8px 18px">${t("Only an admin can add or change accounts.")}</p></section>`;
     const me = window.BOOT.user?.id;
     return `<section class="card"><div class="card-head"><h2>${t("Team")}</h2><span class="end"><button class="btn btn-small btn-main" data-lv-user-new>${icon("plus")}${t("Add a person")}</button></span></div>
-      <div class="table-wrap" style="box-shadow:none"><table class="data"><thead><tr><th>${t("Name")}</th><th>${t("Username or email")}</th><th>${t("Role")}</th><th>${t("Status")}</th><th></th></tr></thead><tbody>
+      <div class="table-wrap" style="box-shadow:none"><table class="data"><thead><tr><th>${t("Name")}</th><th>${t("Username or email")}</th><th>${t("Access")}</th><th>${t("Status")}</th><th></th></tr></thead><tbody>
       ${L.team.users.map((u) => `<tr style="cursor:default"><td data-label="${t("Name")}" dir="auto">${esc(u.name)}${u.id === me ? ` <span class="tag">${t("You")}</span>` : ""}</td><td data-label="${t("Username or email")}" class="mono">${esc(u.email)}</td>
-        <td data-label="${t("Role")}"><select class="select" data-lv-user-role="${u.id}" aria-label="${t("Role")}: ${esc(u.name)}"><option value="member" ${u.role === "member" ? "selected" : ""}>${t("Member")}</option><option value="admin" ${u.role === "admin" ? "selected" : ""}>${t("Admin")}</option></select></td>
+        <td data-label="${t("Access")}"><span class="ax-sum"><span class="ax-sum-t ${u.access && u.role !== "admin" ? "chosen" : ""}" data-ax-summary="${u.id}">${esc(accessSummary(u))}</span><button class="btn btn-small" data-lv-user-access="${u.id}" aria-label="${t("Edit access")}: ${esc(u.name)}">${t("Edit access")}</button></span></td>
         <td data-label="${t("Status")}">${u.disabled ? `<span class="status sec">${t("Disabled")}</span>` : u.locked ? status("warn", t("Locked for now")) : u.must_change_password ? `<span class="status sec">${t("Waiting for first login")}</span>` : status("good", t("Active"))}</td>
         <td data-label="" class="r" style="white-space:nowrap"><button class="btn btn-small" data-lv-user-reset="${u.id}">${t("Reset password")}</button> <button class="btn btn-small btn-ghost" data-lv-user-disable="${u.id}" data-now="${u.disabled ? 1 : 0}">${t(u.disabled ? "Enable" : "Disable")}</button></td></tr>`).join("")}
       </tbody></table></div></section>`;
   }
+  // The role and access choice, the same in Add a person and Edit access. Chosen access opens below its radio.
+  function accessFields(u) {
+    const choice = roleChoice(u), a = u?.access || null;
+    const sites = ownSites(), picked = new Set(a ? a.sites : sites.length === 1 ? [sites[0].id] : []);
+    const role = (value, word, hint) => `<label class="opt ax-role"><input type="radio" name="f_role" value="${value}" ${choice === value ? "checked" : ""}><span><span class="ax-role-t">${t(word)}</span><span class="help">${t(hint)}</span></span></label>`;
+    let group = null;
+    const rows = SECTIONS.map(([key, label, g]) => {
+      const level = a?.sections[key] || "none";
+      const head = g !== group ? ((group = g), g ? `<h3 class="ax-group">${t(g)}</h3>` : "") : "";
+      const opt = (value, word) => `<label><input type="radio" name="ax_${key}" value="${value}" ${level === value ? "checked" : ""}><span>${t(word)}</span></label>`;
+      return `${head}<div class="ax-row"><span class="ax-name" id="ax-l-${key}">${key === "ads" ? UI.logo("googleads", 16) : ""}${t(label)}</span><span class="ax-seg" role="radiogroup" aria-labelledby="ax-l-${key}">${opt("none", "No access")}${opt("view", "View")}${opt("edit", "Edit")}</span></div>`;
+    }).join("");
+    return `<fieldset class="scope"><legend>${t("Role")}</legend>
+        ${role("admin", "Admin", "Everything, including Settings and the team.")}
+        ${role("full", "Member: full access", "Every website and section.")}
+        ${role("chosen", "Member: chosen access", "Only the websites and sections you pick.")}
+      </fieldset>
+      <div class="ax-chosen" id="ax-chosen" ${choice === "chosen" ? "" : "hidden"}>
+        <fieldset class="scope"><legend>${t("Websites")}</legend>
+          ${sites.length ? sites.map((s) => `<label class="opt ax-site"><input type="checkbox" class="chk" style="margin:0" name="ax_site" value="${s.id}" ${picked.has(s.id) ? "checked" : ""}>${UI.siteLogo(s.host, 18)}<span class="mono" dir="ltr" translate="no">${esc(s.host)}</span></label>`).join("") : `<p class="help">${t("Add one of your websites first, in the Sites tab.")}</p>`}
+        </fieldset>
+        <fieldset class="scope"><legend>${t("Sections")}</legend>
+          <div class="ax-quick"><span class="help">${t("Set every section to")}</span><button type="button" class="link-btn" data-ax-all="view">${t("View")}</button><button type="button" class="link-btn" data-ax-all="edit">${t("Edit")}</button><button type="button" class="link-btn" data-ax-all="none">${t("No access")}</button></div>
+          ${rows}
+        </fieldset>
+        <label class="opt ax-spend"><input type="checkbox" class="chk" style="margin:0" name="ax_spend" ${a?.spend ? "checked" : ""}><span><span class="ax-role-t">${t("Can spend credits")}</span><span class="help">${t("Paid searches, Firecrawl, AI answers and Moz.")}</span></span></label>
+        <p class="note">${icon("info")}<span>${t("A person without every website can't change things all sites share (link gaps, mediators, competitor page reads).")}</span></p>
+      </div>
+      <div class="error" data-lv-form-error role="alert" hidden></div>`;
+  }
+  const accessFoot = (word, editing) => `<div class="panel-foot ax-foot"><button class="btn btn-main" data-lv-access-save>${t(word)}</button><button class="btn" data-discard-panel>${t("Cancel")}</button>
+    <p class="ax-why" id="ax-why" aria-live="polite"></p>${editing ? `<p class="help ax-signout">${t("Taking access away signs them out everywhere.")}</p>` : ""}</div>`;
   function userPanel(opener) {
     UI.openPanel(`${UI.panelHead(t("Add a person"), t("They get a temporary password, and choose their own at first login."))}
-      <form class="panel-body" id="lv-user-form" novalidate>
+      <form class="panel-body" id="lv-access-form" novalidate>
         <label class="field"><span>${t("Name")}</span><input class="input" name="f_name" dir="auto" autocomplete="off"></label>
         <label class="field"><span>${t("Username or email")}</span><input class="input" name="f_email" type="text" dir="ltr" autocapitalize="none" spellcheck="false" autocomplete="off"></label>
-        <label class="field"><span>${t("Role")}</span><select class="select" name="f_role" style="width:100%"><option value="member">${t("Member")}</option><option value="admin">${t("Admin")}</option></select></label>
-        <div class="error" data-lv-form-error role="alert" hidden></div>
-      </form><div class="panel-foot"><button class="btn btn-main" data-lv-user-save>${t("Add")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button></div>`, opener, { key: "user|new", reopen: () => userPanel(opener) });
+        ${accessFields({ role: "member", access: null })}
+      </form>${accessFoot("Add", false)}`, opener, { key: "user|new", reopen: () => userPanel(opener), after: syncAccess });
+  }
+  function accessPanel(user, opener) {
+    UI.openPanel(`${UI.panelHead(t("Access"), esc(user.name))}
+      <form class="panel-body" id="lv-access-form" data-user="${user.id}" novalidate>${accessFields(user)}</form>${accessFoot("Save", true)}`,
+    opener, { key: `access|${user.id}`, reopen: () => accessPanel(user, opener), after: syncAccess });
+  }
+  // What the form says now: the role for the server, and the access dict (null for full access).
+  function readAccess(form) {
+    const choice = form.querySelector('input[name="f_role"]:checked')?.value || "full";
+    if (choice !== "chosen") return { choice, role: choice === "admin" ? "admin" : "member", access: null };
+    const sections = {};
+    SECTIONS.forEach(([key]) => { const v = form.querySelector(`input[name="ax_${key}"]:checked`)?.value; if (v === "view" || v === "edit") sections[key] = v; });
+    const sites = [...form.querySelectorAll('input[name="ax_site"]:checked')].map((el) => +el.value);
+    return { choice, role: "member", access: { sites, sections, spend: Boolean(form.elements.ax_spend?.checked) } };
+  }
+  // Shows chosen access only when it is picked, and holds Save back with the reason while a choice is empty.
+  function syncAccess() {
+    const form = UI.$("#lv-access-form");
+    if (!form) return;
+    const now = readAccess(form);
+    UI.$("#ax-chosen").hidden = now.choice !== "chosen";
+    const noSite = now.access && !now.access.sites.length, noSection = now.access && !Object.keys(now.access.sections).length;
+    const why = noSite && noSection ? "Pick at least one website and one section." : noSite ? "Pick at least one website." : noSection ? "Pick at least one section." : "";
+    const save = UI.$("[data-lv-access-save]"), box = UI.$("#ax-why");
+    if (save) save.disabled = Boolean(why);
+    if (box && box.textContent !== t(why)) box.textContent = why ? t(why) : "";
+  }
+  // A person with chosen access gets only their own account here: the server refuses everything else in Settings for them.
+  const limited = () => Boolean(window.ACCESS?.limited);
+  function accountPage() {
+    const u = window.BOOT.user || {};
+    return `<section class="card ax-account"><div class="card-head"><h2>${t("My account")}</h2></div>
+      <dl class="ax-facts"><dt>${t("Name")}</dt><dd dir="auto">${esc(u.name || "")}</dd><dt>${t("Username or email")}</dt><dd class="mono" dir="ltr">${esc(u.email || "")}</dd>${u.access ? `<dt>${t("Access")}</dt><dd>${esc(accessSummary(u))}</dd>` : ""}</dl>
+      <form class="ax-pw" id="ax-password" novalidate>
+        <h3>${t("Change password")}</h3>
+        <input class="sr" type="text" name="f_user" autocomplete="username" value="${esc(u.email || "")}" readonly tabindex="-1" aria-hidden="true">
+        <label class="field"><span>${t("Current password")}</span><input class="input" name="f_current" type="password" autocomplete="current-password"></label>
+        <label class="field"><span>${t("New password")}</span><input class="input" name="f_new" type="password" autocomplete="new-password" aria-describedby="ax-pw-help"><span class="help" id="ax-pw-help">${t("At least 10 characters. Your other sessions are signed out.")}</span></label>
+        <div class="error" data-ax-pw-error role="alert" hidden></div>
+        <button class="btn btn-main" type="submit">${t("Change password")}</button>
+      </form>
+      <div class="ax-account-foot"><button class="btn" data-lv-signout>${icon("log-out")}${t("Sign out")}</button></div></section>`;
   }
   function showPassword(name, password) {
     UI.openPanel(`${UI.panelHead(t("Temporary password"), esc(name))}
@@ -480,14 +573,41 @@
         return;
       }
       if ((el = hit("[data-lv-user-new]"))) { take(); userPanel(el); return; }
-      if (hit("[data-lv-user-save]")) {
+      if (hit("[data-lv-team-retry]")) { take(); L.team = null; UI.render(); return; }
+      if ((el = hit("[data-lv-user-access]"))) {
         take();
-        const form = UI.$("#lv-user-form"), box = form.querySelector("[data-lv-form-error]");
+        const user = L.team?.users?.find((u) => String(u.id) === el.dataset.lvUserAccess);
+        if (user) accessPanel(user, el);
+        return;
+      }
+      if ((el = hit("[data-ax-all]"))) {
+        take();
+        const level = el.dataset.axAll;
+        document.querySelectorAll(`#lv-access-form .ax-seg input[value="${level}"]`).forEach((r) => { r.checked = true; });
+        syncAccess();
+        return;
+      }
+      if ((el = hit("[data-lv-access-save]"))) {
+        take();
+        const form = UI.$("#lv-access-form"), box = form?.querySelector("[data-lv-form-error]");
+        if (!form || el.disabled) return;
         box.hidden = true;
+        const now = readAccess(form), id = form.dataset.user;
+        const body = now.role === "admin" ? { role: "admin" } : { role: "member", access: now.access };
+        const was = el.textContent;
+        el.disabled = true; el.textContent = t(id ? "Saving…" : "Adding…");
         try {
-          const made = await api("POST", "team", { name: form.elements.f_name.value, email: form.elements.f_email.value, role: form.elements.f_role.value });
-          UI.forgetPanelForm(); UI.closePanel(); L.team = null; await loadTeam(); UI.render(); showPassword(made.user.name, made.temporary_password);
-        } catch (err) { box.textContent = t(err.message); box.hidden = false; }
+          if (id) {
+            await api("PATCH", `team/${id}`, body);
+            UI.forgetPanelForm(); UI.closePanel(); L.team = null; await loadTeam(); UI.render(); UI.toast(t("Access saved"));
+          } else {
+            const made = await api("POST", "team", { name: form.elements.f_name.value, email: form.elements.f_email.value, ...body });
+            UI.forgetPanelForm(); UI.closePanel(); L.team = null; await loadTeam(); UI.render(); showPassword(made.user.name, made.temporary_password);
+          }
+        } catch (err) {
+          box.textContent = t(err.message); box.hidden = false;
+          el.textContent = was; el.disabled = false; syncAccess();
+        }
         return;
       }
       if ((el = hit("[data-lv-user-reset]"))) {
@@ -506,14 +626,24 @@
       if (e.target.matches?.("[data-lv-site-conn]")) { e.target.dataset.touched = "1"; return; }
       if (e.target.id === "ca-file") { sendArchive(true); return; }
       if (e.target.id === "cr-file" || (e.target.id === "cr-site" && UI.$("#cr-file")?.files?.length)) { sendReports(true); return; }
-      const el = e.target.closest?.("[data-lv-user-role]");
-      if (!el) return;
-      try { await api("PATCH", `team/${el.dataset.lvUserRole}`, { role: el.value }); UI.toast(t("Saved")); } catch (err) { showError(err); }
-      L.team = null; await loadTeam(); UI.render();
+      if (e.target.closest?.("#lv-access-form")) syncAccess();
     });
     document.addEventListener("submit", async (e) => {
       const form = e.target;
       const box = form.querySelector?.("[data-lv-rule-error]");
+      if (form.id === "ax-password") {
+        e.preventDefault();
+        const err = form.querySelector("[data-ax-pw-error]"), button = form.querySelector('button[type="submit"]');
+        err.hidden = true; button.disabled = true;
+        try {
+          await window.fetch("api/auth/password", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ current: form.elements.f_current.value, new: form.elements.f_new.value }) })
+            .then(async (r) => { const d = await r.json().catch(() => ({})); if (!r.ok) throw new Error(d.error || "That didn't work. Try again."); });
+          await window.whoAmI?.again?.(); // a new session, so a new CSRF token
+          form.reset(); UI.toast(t("Password changed"));
+        } catch (x) { err.textContent = t(x.message); err.hidden = false; form.elements.f_new.focus(); }
+        button.disabled = false;
+        return;
+      }
       if (form.matches?.("[data-lv-domain-form]")) {
         e.preventDefault(); box.hidden = true;
         try { L.domains = await api("POST", "important-domains", { domain: form.elements.f_domain.value }); UI.render(); UI.$("[data-lv-domain-form] input")?.focus(); } catch (err) { box.textContent = t(err.message); box.hidden = false; }
@@ -536,9 +666,22 @@
       UI = helpers; ({ t, esc, num, icon, status } = helpers);
       bind();
       TP.on(DOMAIN_PAGES, () => UI.render());
-      firstLoad();
+      if (!limited()) firstLoad();
+    },
+    after() {
+      const form = document.getElementById("ax-password"), kept = L.typed;
+      if (!form || !kept) return;
+      form.elements.f_current.value = kept.current; form.elements.f_new.value = kept.next;
+      if (kept.focus) form.elements[kept.focus]?.focus({ preventScroll: true });
+      L.typed = null;
     },
     page() {
+      if (limited()) {
+        // The app redraws the page now and then (alerts, the tray): what's typed in the password form comes back after it.
+        const form = document.getElementById("ax-password");
+        L.typed = form ? { current: form.elements.f_current.value, next: form.elements.f_new.value, focus: form.contains(document.activeElement) ? document.activeElement.name : "" } : null;
+        return UI.topbar(t("Settings"), t("Your account"), "", false) + `<div class="content page-enter">${accountPage()}</div>`;
+      }
       const tabs = `<div class="tabs" role="tablist" aria-label="${t("Settings")}">${LIVE.tabs()}</div>`;
       if (L.tab === "connections") {
         if (L.data) return UI.settingsPage();
@@ -591,6 +734,20 @@
     "Shown once. Copy it and hand it over in person or privately. They change it at first login.": "Affiché une seule fois. Copiez-le et transmettez-le en personne ou en privé. La personne le change à sa première connexion.", "Done": "Terminé", "Reset this person's password? They'll be signed out.": "Réinitialiser le mot de passe de cette personne ? Elle sera déconnectée.", "Saved": "Enregistré",
     "Only an admin can do that.": "Seul un admin peut faire cela.", "Enter a username of at least 3 letters or numbers, or an email address.": "Saisissez un nom d'utilisateur d'au moins 3 lettres ou chiffres, ou une adresse e-mail.", "Username or email": "Nom d'utilisateur ou e-mail", "Enter a name.": "Saisissez un nom.", "There is already an account with that username or email.": "Il existe déjà un compte avec cet identifiant ou cet e-mail.", "This is the only admin. Make someone else admin first.": "C'est le seul admin. Nommez d'abord quelqu'un d'autre admin.",
     "A GA4 property is its number, such as 123456789. It isn't the G-XXXX measurement ID.": "Une propriété GA4 est son numéro, par exemple 123456789. Ce n'est pas l'ID de mesure G-XXXX.", "A Search Console property looks like sc-domain:example.com or https://example.com/.": "Une propriété Search Console ressemble à sc-domain:example.com ou https://example.com/.",
+    "My account": "Mon compte", "Your account": "Votre compte", "Change password": "Changer le mot de passe", "Current password": "Mot de passe actuel", "New password": "Nouveau mot de passe",
+    "At least 10 characters. Your other sessions are signed out.": "Au moins 10 caractères. Vos autres sessions sont déconnectées.", "Password changed": "Mot de passe changé",
+    "Wrong current password.": "Mot de passe actuel incorrect.", "Choose a different password.": "Choisissez un autre mot de passe.", "That didn't work. Try again.": "Cela n'a pas marché. Réessayez.",
+    "Access": "Accès", "Full access": "Accès complet", "Edit access": "Modifier l'accès", "Access saved": "Accès enregistré", "Saving…": "Enregistrement…", "Adding…": "Ajout…",
+    "section": "section", "sections": "sections", "site": "site", "sites": "sites", "all sites": "tous les sites", "can spend credits": "peut dépenser des crédits", "no credits": "pas de crédits",
+    "Member: full access": "Membre : accès complet", "Member: chosen access": "Membre : accès choisi",
+    "Everything, including Settings and the team.": "Tout, y compris les Réglages et l'équipe.", "Every website and section.": "Tous les sites et toutes les sections.", "Only the websites and sections you pick.": "Seulement les sites et les sections que vous choisissez.",
+    "Websites": "Sites", "Sections": "Sections", "Set every section to": "Mettre toutes les sections sur", "No access": "Pas d'accès", "View": "Voir", "Edit": "Modifier",
+    "Add one of your websites first, in the Sites tab.": "Ajoutez d'abord un de vos sites, dans l'onglet Sites.",
+    "Can spend credits": "Peut dépenser des crédits", "Paid searches, Firecrawl, AI answers and Moz.": "Recherches payantes, Firecrawl, réponses IA et Moz.",
+    "A person without every website can't change things all sites share (link gaps, mediators, competitor page reads).": "Une personne qui n'a pas tous les sites ne peut pas modifier ce que tous les sites partagent (écarts de liens, médiateurs, lectures des pages concurrentes).",
+    "Taking access away signs them out everywhere.": "Retirer un accès la déconnecte partout.",
+    "Pick at least one website and one section.": "Choisissez au moins un site et une section.", "Pick at least one website.": "Choisissez au moins un site.", "Pick at least one section.": "Choisissez au moins une section.",
+    "One of those websites isn't one of yours.": "L'un de ces sites n'est pas à vous.", "That account doesn't exist.": "Ce compte n'existe pas.", "Nothing to change.": "Rien à modifier.",
     "That isn't the whole key file. Paste everything in the file, from the first { to the last }.": "Ce n'est pas le fichier de clé complet. Collez tout le fichier, du premier { au dernier }.",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });

@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 from sqlalchemy import Engine, text
 
+from seo.accounts import access
 from seo.competitors import change_facts, gaps, profile, quality
 from seo.competitors.keywords import _iso, require_own
 from seo.links.service import OWN
@@ -27,7 +28,8 @@ def _sites(conn, site_id: int | None) -> list[dict]:
     if site_id is not None:
         site = require_own(conn, site_id)
         return [{"id": site["id"], "host": site["host"]}]
-    return [dict(r) for r in conn.execute(text("SELECT id, host FROM sites WHERE kind = :k ORDER BY id"), {"k": OWN}).mappings()]
+    visible = set(access.own_site_ids(conn))  # "all sites" is all of *their* sites: totals and "best of mine" count only those
+    return [dict(r) for r in conn.execute(text("SELECT id, host FROM sites WHERE kind = :k ORDER BY id"), {"k": OWN}).mappings() if r["id"] in visible]
 
 
 def _rivals(conn, sites: list[dict]) -> list[dict]:

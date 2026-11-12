@@ -4,12 +4,14 @@ Times come from the database, in UTC, like everywhere else in the app.
 """
 from __future__ import annotations
 
+import json
 import re
 import secrets
 
 from sqlalchemy import Engine, text
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from seo.accounts import access as access_rules
 from seo.core.errors import NotFound, Refused
 
 MAX_FAILURES = 5  # from one address
@@ -23,7 +25,7 @@ _USERNAME = re.compile(r"^[a-z0-9][a-z0-9._-]{2,59}$")
 # Checked when the email is unknown, so an unknown address takes as long to refuse as a known one.
 _DUMMY_HASH = generate_password_hash(secrets.token_urlsafe(16))
 WRONG = f"Wrong username or password, or too many tries: wait {LOCK_MINUTES} minutes."  # login.js has its French
-_PUBLIC = "id, email, name, role, must_change_password, disabled, last_login_at, created_at, locked_until > UTC_TIMESTAMP(3) AS locked"
+_PUBLIC = "id, email, name, role, access, must_change_password, disabled, last_login_at, created_at, locked_until > UTC_TIMESTAMP(3) AS locked"
 
 
 def _email(value) -> str:
@@ -64,6 +66,8 @@ def temporary_password() -> str:
 def _public(row) -> dict:
     return {
         "id": row["id"], "email": row["email"], "name": row["name"], "role": row["role"],
+        # Admins always have everything, whatever was saved before they became admin.
+        "access": None if row["role"] == "admin" else access_rules.parse(row["access"]),
         "must_change_password": bool(row["must_change_password"]), "disabled": bool(row["disabled"]), "locked": bool(row["locked"]),
         "last_login_at": row["last_login_at"].isoformat() + "Z" if row["last_login_at"] else None,
         "created_at": row["created_at"].isoformat() + "Z" if row["created_at"] else None,
@@ -75,16 +79,17 @@ def count_users(engine: Engine) -> int:
         return int(conn.execute(text("SELECT COUNT(*) FROM users")).scalar())
 
 
-def create_user(engine: Engine, email, name, role="member", password: str | None = None, must_change: bool = True) -> tuple[dict, str]:
-    """The account, and its temporary password, shown once."""
+def create_user(engine: Engine, email, name, role="member", password: str | None = None, must_change: bool = True, access=None) -> tuple[dict, str]:
+    """The account, and its temporary password, shown once. `access` None is full access; a dict chooses sites and sections."""
     email, name, role = _email(email), _name(name), _role(role)
     plain = _check_new_password(password) if password else temporary_password()
     with engine.begin() as conn:
+        chosen = None if role == "admin" else access_rules.clean(access, conn)
         if conn.execute(text("SELECT 1 FROM users WHERE email = :e"), {"e": email}).first():
             raise Refused("There is already an account with that username or email.")
         result = conn.execute(
-            text("INSERT INTO users (email, name, password_hash, role, must_change_password) VALUES (:e, :n, :p, :r, :m)"),
-            {"e": email, "n": name, "p": generate_password_hash(plain), "r": role, "m": must_change},
+            text("INSERT INTO users (email, name, password_hash, role, access, must_change_password) VALUES (:e, :n, :p, :r, :a, :m)"),
+            {"e": email, "n": name, "p": generate_password_hash(plain), "r": role, "a": json.dumps(chosen) if chosen else None, "m": must_change},
         )
         user_id = result.lastrowid
     return get(engine, user_id), plain
@@ -208,7 +213,10 @@ def _other_active_admins(conn, user_id: int) -> int:
 
 
 def update_user(engine: Engine, user_id: int, patch: dict) -> dict:
-    """Name, role, or disabled. The last working admin can't be taken away, or nobody could ever fix anything."""
+    """Name, role, disabled, or access. The last working admin can't be taken away, or nobody could ever fix anything.
+
+    Access narrowed (a site, a section, edit or credits taken away) signs the person out everywhere, so a page left
+    open can't keep showing what they no longer have. Making someone admin clears their chosen access."""
     sets, values = [], {"i": user_id}
     if "name" in patch:
         sets.append("name = :n")
@@ -222,12 +230,24 @@ def update_user(engine: Engine, user_id: int, patch: dict) -> dict:
         sets.append("disabled = :d")
         values["d"] = patch["disabled"]
         sets.append("session_version = session_version + 1")
-    if not sets:
+    if not sets and "access" not in patch:
         raise Refused("Nothing to change.")
     with engine.begin() as conn:
-        row = conn.execute(text("SELECT role, disabled FROM users WHERE id = :i FOR UPDATE"), {"i": user_id}).mappings().first()
+        row = conn.execute(text("SELECT role, disabled, access FROM users WHERE id = :i FOR UPDATE"), {"i": user_id}).mappings().first()
         if row is None:
             raise NotFound("That account doesn't exist.")
+        role_after = values.get("r", row["role"])
+        if role_after == "admin":
+            if row["access"] is not None:
+                sets.append("access = NULL")
+        elif "access" in patch:
+            before, after = access_rules.parse(row["access"]), access_rules.clean(patch["access"], conn)
+            sets.append("access = :a")
+            values["a"] = json.dumps(after) if after else None
+            if access_rules.narrower(before, after) and "session_version = session_version + 1" not in sets:
+                sets.append("session_version = session_version + 1")
+        if not sets:
+            raise Refused("Nothing to change.")
         stops_being_admin = row["role"] == "admin" and not row["disabled"] and (patch.get("role", "admin") != "admin" or patch.get("disabled") is True)
         if stops_being_admin and not _other_active_admins(conn, user_id):
             raise Refused("This is the only admin. Make someone else admin first.")

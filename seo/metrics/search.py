@@ -21,6 +21,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import Engine, bindparam, text
 
+from seo.accounts import access
 from seo.collectors import common, gsc
 from seo.collectors.http import SourceError
 from seo.core.errors import NotFound, Refused
@@ -617,8 +618,11 @@ def markers(scope: Scope) -> list[dict]:
     notes = scope.fetch("SELECT id, site_id, day, text FROM search_notes WHERE site_id IN :sites AND day BETWEEN :a AND :b ORDER BY day")
     tasks = scope.fetch("SELECT id, site_id, DATE(updated_at) day, title FROM tasks WHERE status = 'done' AND site_id IN :sites AND DATE(updated_at) BETWEEN :a AND :b ORDER BY updated_at")
     # Notes written on a day from the Notes panel. A note for all my sites shows on every site's chart.
+    # Chosen access without every site: a note for every site is the owner's, so it isn't shown to them.
+    with scope.engine.connect() as conn:
+        every_site_too = " OR site_id IS NULL" if access.sees_everything(conn) else ""
     dated = scope.fetch(
-        "SELECT id, site_id, day, body FROM notes WHERE scope = 'date' AND deleted_at IS NULL AND body <> '' AND (site_id IN :sites OR site_id IS NULL) AND day BETWEEN :a AND :b ORDER BY day"
+        f"SELECT id, site_id, day, body FROM notes WHERE scope = 'date' AND deleted_at IS NULL AND body <> '' AND (site_id IN :sites{every_site_too}) AND day BETWEEN :a AND :b ORDER BY day"
     )
     out = [{"kind": "note", "id": n["id"], "site_id": n["site_id"], "day": n["day"].isoformat(), "text": n["text"]} for n in notes]
     out += [{"kind": "task", "id": t["id"], "site_id": t["site_id"], "day": t["day"].isoformat(), "text": t["title"]} for t in tasks]

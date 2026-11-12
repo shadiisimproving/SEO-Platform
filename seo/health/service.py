@@ -19,6 +19,7 @@ from urllib.parse import urlsplit
 from sqlalchemy import Engine, text
 from sqlalchemy.exc import OperationalError
 
+from seo.accounts import access
 from seo.core import budget
 from seo.core.errors import Conflict, NotFound, NotOwnSite, Refused, UnknownSite
 from seo.crawl.extract import extract
@@ -111,7 +112,8 @@ def _site_dict(conn, row) -> dict:
 
 def sites(engine: Engine) -> list[dict]:
     with engine.connect() as conn:
-        rows = conn.execute(text("SELECT * FROM sites WHERE kind = 'own' ORDER BY host")).mappings().all()
+        values: dict = {}
+        rows = conn.execute(text(f"SELECT * FROM sites WHERE kind = 'own'{access.site_clause('id', values, conn)} ORDER BY host"), values).mappings().all()
         return [_site_dict(conn, r) for r in rows]
 
 
@@ -580,9 +582,11 @@ def stop(engine: Engine, audit_id: int) -> None:
 
 
 def alerts(engine: Engine, include_seen: bool = False) -> list[dict]:
-    clause = "" if include_seen else "WHERE a.acknowledged_at IS NULL"
+    clause = "WHERE 1 = 1" if include_seen else "WHERE a.acknowledged_at IS NULL"
     with engine.connect() as conn:
-        rows = conn.execute(text(f"SELECT a.*, s.host FROM alerts a JOIN sites s ON s.id = a.site_id {clause} ORDER BY a.severity = 'crit' DESC, a.id DESC LIMIT 100")).mappings().all()
+        values: dict = {}
+        clause += access.site_clause("a.site_id", values, conn)  # only their sites' alerts
+        rows = conn.execute(text(f"SELECT a.*, s.host FROM alerts a JOIN sites s ON s.id = a.site_id {clause} ORDER BY a.severity = 'crit' DESC, a.id DESC LIMIT 100"), values).mappings().all()
     return [
         {
             "id": r["id"], "site_id": r["site_id"], "host": r["host"], "kind": r["kind"], "severity": r["severity"], "title": r["title"],

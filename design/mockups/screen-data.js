@@ -122,6 +122,8 @@
   // ---- asking --------------------------------------------------------------------------------------
   /* The warm-up's and the hover's ask: one plain GET that never waits or tries again, so a 429 is seen at once. */
   async function quietGet(url) {
+    // Chosen access: a screen this person can't open is never warmed up.
+    if (window.ACCESS && !window.ACCESS.allows("GET", url)) throw Object.assign(new Error("You don't have access to this."), { status: 403, noAccess: true });
     quietFlying += 1;
     let reply;
     // An answer that never comes would hold the queue: past 20 s it is given up, and the warm-up stops.

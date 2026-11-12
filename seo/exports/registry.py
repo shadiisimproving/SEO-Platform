@@ -14,6 +14,7 @@ from typing import Callable
 
 from sqlalchemy import Engine, text
 
+from seo.accounts import access
 from seo.core.errors import NotFound, Refused
 from seo.exports.model import MAX_ROWS, Report, Table, Typed
 
@@ -49,6 +50,7 @@ def site_host(engine: Engine, site_id) -> str | None:
         wanted = int(site_id)
     except (TypeError, ValueError) as exc:
         raise Refused("That site isn't one of yours.") from exc
+    access.require_site(wanted)  # chosen access: one of their sites
     with engine.connect() as conn:
         row = conn.execute(text("SELECT host FROM sites WHERE id = :i AND kind = 'own'"), {"i": wanted}).first()
     if row is None:

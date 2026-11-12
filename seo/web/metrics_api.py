@@ -141,7 +141,7 @@ def today():
         answer["setup"] = service.setup_facts(_engine(), site_id)
     if "backlinks" in wanted:
         answer["backlinks"] = backlinks_live.summary(_engine(), site_id)
-    return jsonify(answer)
+    return jsonify(today_view.for_person(answer))
 
 
 @metrics_api.get("/today/attention")

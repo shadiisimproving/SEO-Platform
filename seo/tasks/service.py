@@ -13,6 +13,7 @@ from urllib.parse import urlsplit
 from sqlalchemy import Engine, text
 from sqlalchemy.exc import IntegrityError
 
+from seo.accounts import access
 from seo.competitors.keywords import _iso, require_own
 from seo.core.errors import Conflict, NotFound, Refused
 
@@ -182,6 +183,7 @@ def _clean(conn, body: dict) -> dict:
         else:
             site = require_own(conn, body["site_id"])
             values["site_id"], values["site_host"] = site["id"], site["host"]
+        access.require_site_or_every(values["site_id"], conn)  # chosen access: one of their sites, or every site only if they have them all
     return values
 
 
@@ -254,7 +256,9 @@ def _finding_now(checks: _Checks, row) -> dict | None:
 def list_tasks(engine: Engine) -> list[dict]:
     """All of them: the board filters in the browser, so a filter never loses what's being typed."""
     with engine.connect() as conn:
-        rows = conn.execute(text("SELECT * FROM tasks WHERE deleted_at IS NULL ORDER BY id DESC")).mappings().all()
+        values: dict = {}
+        mine = access.site_clause("site_id", values, conn)  # their sites only; tasks for every site are the owner's
+        rows = conn.execute(text(f"SELECT * FROM tasks WHERE deleted_at IS NULL{mine} ORDER BY id DESC"), values).mappings().all()
         checks = _Checks(conn)
         return [{**_dict(row), "finding": _finding_now(checks, row)} for row in rows]
 
@@ -269,6 +273,8 @@ def create(engine: Engine, body: dict) -> dict:
     try:
         with engine.begin() as conn:
             values = _clean(conn, body)
+            if "site_id" not in body:
+                access.require_site_or_every(None, conn)  # no site sent: a task for every site
             done = values.get("status") == "done"
             columns = {**values, "source": source, "open_source_key": None if done else key}
             names = ", ".join(columns)

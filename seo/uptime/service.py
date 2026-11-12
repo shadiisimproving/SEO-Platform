@@ -20,6 +20,7 @@ import httpx
 from cryptography import x509
 from sqlalchemy import Engine, text
 
+from seo.accounts import access
 from seo.backlinks.cleaner import registrable_domain
 from seo.core import budget
 from seo.core.errors import NotOwnSite, Refused, UnknownSite
@@ -426,7 +427,8 @@ def _site_answer(conn, site, row, today: date) -> dict:
 def sites(engine: Engine) -> dict:
     with engine.connect() as conn:
         today = conn.execute(text("SELECT UTC_DATE()")).scalar()
-        rows = conn.execute(text("SELECT * FROM sites WHERE kind = 'own' ORDER BY host")).mappings().all()
+        values: dict = {}
+        rows = conn.execute(text(f"SELECT * FROM sites WHERE kind = 'own'{access.site_clause('id', values, conn)} ORDER BY host"), values).mappings().all()
         monitors = {m["site_id"]: m for m in conn.execute(text("SELECT * FROM site_monitors")).mappings()}
         answer = [_site_answer(conn, site, monitors.get(site["id"]), today) for site in rows]
     return {"sites": answer, "every_minutes": CHECK_EVERY_MINUTES, "unknown_after_minutes": STALE_AFTER_MINUTES, "alert_days": EXPIRY_ALERT_DAYS}

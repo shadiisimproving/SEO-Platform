@@ -9,6 +9,7 @@ import json
 
 from sqlalchemy import Engine, text
 
+from seo.accounts import access
 from seo.collectors import common, ga4, gsc, others
 from seo.collectors.http import SourceError
 from seo.core.errors import NotFound
@@ -125,6 +126,8 @@ def job_states(engine: Engine, ids: list[int]) -> list[dict]:
     answer = []
     for row in rows:
         payload = row["payload"] if isinstance(row["payload"], dict) else json.loads(row["payload"] or "{}")
+        if not access.current().sees_site(payload.get("site_id")):
+            continue  # chosen access: only reads of their own sites
         status = row["status"]
         if status == "queued" and row["attempts"]:
             status = "waiting"

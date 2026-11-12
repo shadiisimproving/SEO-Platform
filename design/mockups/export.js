@@ -216,6 +216,11 @@
     const target = current();
     if (!target || busy) return;
     const U = ui();
+    // Chosen access without every site: an export is of one of their sites (the server refuses "all sites" for them).
+    if (window.ACCESS?.limited && !window.ACCESS.everySite() && target.params && !target.params.site_id) {
+      U.toast(t("Pick one of your sites first, then export."), { kind: "info" });
+      return;
+    }
     busy = true;
     document.querySelectorAll("[data-export-open]").forEach((b) => { b.setAttribute("aria-busy", "true"); b.disabled = true; });
     const waiting = t("Preparing the file…");

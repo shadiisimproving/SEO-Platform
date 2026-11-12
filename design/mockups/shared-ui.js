@@ -259,6 +259,8 @@
       const code = typeof err === "object" && err ? err.status : undefined;
       const plain = (key) => ({ words: t(key), full: "" });
       if (code === 0 || /failed to fetch|networkerror|load failed|network request failed/i.test(message)) return plain("Server unreachable. Check the connection, then try again.");
+      // Chosen access (access.js): never a fault, just not theirs.
+      if (typeof err === "object" && err && (err.noAccess || err.data?.no_access)) return plain(/^View only/.test(message) ? "View only: you can't change this." : "You don't have access to this.");
       // Busy is our own server's 429. A sentence that names who asked to slow down ("Too many requests to Anthropic…") keeps its words.
       const named = /too many requests (?:to|from|at) \S|trop de requêtes (?:chez|de|à) \S/i.test(message);
       if (!named && (code === 429 || /too many requests|^error 429$/i.test(message))) return plain("Server busy. Try again in a minute.");

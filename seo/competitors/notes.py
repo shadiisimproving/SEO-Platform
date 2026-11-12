@@ -16,6 +16,7 @@ from pathlib import Path
 from sqlalchemy import Engine, text
 
 from seo import config
+from seo.accounts import access
 from seo.competitors import pages, pairs
 from seo.competitors.keywords import _iso, require_own
 from seo.core.errors import Conflict, NotFound, Refused
@@ -217,6 +218,7 @@ def create(engine: Engine, scope, body, site_id=None, competitor_id=None, page_u
             if task is None:
                 raise NotFound("That task doesn't exist.")
             site_id = task[0]  # a task's notes belong to the task's site
+        access.require_site_or_every(site_id, conn)  # chosen access: a note for one of their sites; for every site only with every site
         note_id = conn.execute(
             text(
                 "INSERT INTO notes (scope, site_id, competitor_id, page_url, page_hash, screen, keyword, keyword_hash, day, domain, task_id, body, created_by, updated_by)"
@@ -301,6 +303,9 @@ def list_notes(
         where.append("(n.site_id = :s OR n.site_id IS NULL)")
         params["s"] = site_id
     with engine.connect() as conn:
+        mine = access.site_clause("n.site_id", params, conn)  # their sites only: notes for every site are the owner's
+        if mine:
+            where.append(mine.removeprefix(" AND "))
         rows = conn.execute(text(f"{_SELECT} WHERE {' AND '.join(where)} ORDER BY n.updated_at DESC LIMIT 500"), params).mappings().all()
         files = _files_of(conn, [r["id"] for r in rows])
     return [_dict(r, files.get(r["id"], [])) for r in rows]
@@ -375,7 +380,7 @@ def options(engine: Engine, site_id: int | None = None) -> dict:
             require_own(conn, site_id)
             sites = [site_id]
         else:
-            sites = [r[0] for r in conn.execute(text("SELECT id FROM sites WHERE kind = 'own' ORDER BY id"))]
+            sites = access.own_site_ids(conn)  # "all sites" is all of *their* sites
         words: dict[str, str] = {}
         domains: set[str] = set()
         tasks: list[dict] = []
@@ -390,8 +395,9 @@ def options(engine: Engine, site_id: int | None = None) -> dict:
             )) if r[0])
             # A task for all sites belongs to each of them too. Its site goes along: a health task's title is the check
             # alone ("Error pages"), so two sites can share one, and the picker tells them apart by site.
+            every = "" if access.sees_everything(conn) else " AND site_id IS NOT NULL"  # tasks for every site are the owner's
             tasks = [{"id": r[0], "title": r[1], "status": r[2], "site_host": r[3]} for r in conn.execute(text(
-                f"SELECT id, title, status, site_host FROM tasks WHERE deleted_at IS NULL AND (site_id IN ({marks}) OR site_id IS NULL) ORDER BY status = 'done', updated_at DESC LIMIT 500"
+                f"SELECT id, title, status, site_host FROM tasks WHERE deleted_at IS NULL AND (site_id IN ({marks}) OR site_id IS NULL){every} ORDER BY status = 'done', updated_at DESC LIMIT 500"
             ))]
     found: dict[str, str] = {}
     for one in sites:

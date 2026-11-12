@@ -6,6 +6,7 @@ import json
 
 from sqlalchemy import Engine, bindparam, text
 
+from seo.accounts import access
 from seo.core.errors import NotFound, Refused
 from seo.notifications.new_queries import SHOWN_KINDS
 
@@ -20,9 +21,11 @@ def _site(site_id) -> int | None:
     if site_id in (None, "", "all"):
         return None
     try:
-        return int(site_id)
+        wanted = int(site_id)
     except (TypeError, ValueError):
         raise Refused("site_id must be a number.") from None
+    access.require_site(wanted)  # chosen access: one of their sites
+    return wanted
 
 
 def _read_sql(user_id: int | None) -> str:
@@ -34,8 +37,8 @@ def _read_sql(user_id: int | None) -> str:
 
 def listing(engine: Engine, site_id=None, user_id: int | None = None) -> dict:
     site = _site(site_id)
-    clause = "AND n.site_id = :s" if site is not None else ""
     values = {"s": site, "kinds": list(SHOWN_KINDS), "u": user_id}
+    clause = "AND n.site_id = :s" if site is not None else access.site_clause("n.site_id", values).lstrip()  # "all sites" is all of *their* sites
     read = _read_sql(user_id)
     with engine.connect() as conn:
         rows = conn.execute(
@@ -71,8 +74,8 @@ def mark(engine: Engine, notification_id: int, read: bool = True, user_id: int |
 def mark_all(engine: Engine, site_id=None, user_id: int | None = None) -> int:
     """Only for the person who pressed it: the others still see theirs as unread."""
     site = _site(site_id)
-    clause = "AND n.site_id = :s" if site is not None else ""
     values = {"s": site, "kinds": list(SHOWN_KINDS), "u": user_id}
+    clause = "AND n.site_id = :s" if site is not None else access.site_clause("n.site_id", values).lstrip()  # "all sites" is all of *their* sites
     with engine.begin() as conn:
         if user_id is None:
             return conn.execute(

@@ -237,6 +237,7 @@
 
   function paintBar() {
     let bar = document.getElementById("tt-bar");
+    if (window.ACCESS && !window.ACCESS.canEdit("notes")) { bar?.remove(); return; } // "Add a note" needs Notes, Can edit
     if (!picked.size) { bar?.remove(); return; }
     if (!bar) { bar = document.createElement("div"); bar.id = "tt-bar"; bar.className = "selbar cg-selbar tt-bar"; bar.setAttribute("role", "region"); bar.setAttribute("aria-label", t("selected")); document.body.append(bar); }
     U().setHTML(bar, `<b class="cg-sel-count">${num(picked.size)} ${t("selected")}</b>
@@ -489,6 +490,7 @@
     });
   }
   function addTicks(table, head, rows) {
+    if (window.ACCESS && !window.ACCESS.canEdit("notes")) return; // the ticks only lead to "Add a note"
     if (!head.querySelector(":scope > .tt-pick")) {
       const th = document.createElement("th");
       th.scope = "col";

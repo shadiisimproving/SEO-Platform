@@ -72,6 +72,9 @@ def create_app(engine: Engine | None = None, url_allowed: Callable[[str], bool] 
 
     @app.errorhandler(Refused)
     def refused(error: Refused):
+        from seo.accounts.access import NoAccess
+        if isinstance(error, NoAccess):
+            return jsonify(error=str(error), no_access=True), 403
         return jsonify(error=str(error)), error.http
 
     # One answer for every error under /api/: a sentence a person can read, never Flask's HTML page or a trace (F166).
@@ -126,10 +129,13 @@ def create_app(engine: Engine | None = None, url_allowed: Callable[[str], bool] 
 
             from seo.accounts.service import team_names
             with app.config["ENGINE"].connect() as conn:
-                sites = [dict(row) for row in conn.execute(sql("SELECT id, host FROM sites WHERE kind = 'own' ORDER BY host")).mappings().all()]
+                from seo.accounts import access
+                visible = set(access.own_site_ids(conn))  # a person with chosen access only sees their sites
+                every_site = access.current().every_site(conn)  # whether changes every site shares are open to them
+                sites = [dict(row) for row in conn.execute(sql("SELECT id, host FROM sites WHERE kind = 'own' ORDER BY host")).mappings().all() if row["id"] in visible]
                 today = conn.execute(sql("SELECT UTC_DATE()")).scalar().isoformat()
                 conn_has_openrouter = conn.execute(sql("SELECT 1 FROM connections WHERE tool = 'OpenRouter'")).first()
-            data = {"served": True, "today": today, "sites": sites, "team": team_names(app.config["ENGINE"]) if auth else [], "user": g.get("user"), "summaries_on": bool(conn_has_openrouter)}
+            data = {"served": True, "today": today, "sites": sites, "team": team_names(app.config["ENGINE"]) if auth else [], "user": g.get("user"), "every_site": every_site, "summaries_on": bool(conn_has_openrouter)}
             return Response(f"window.BOOT = {json.dumps(data).replace('<', chr(92) + 'u003c')};", mimetype="text/javascript")
 
         @app.get("/login")

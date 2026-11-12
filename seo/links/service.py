@@ -21,6 +21,7 @@ from typing import Callable
 from sqlalchemy import Engine, bindparam, text
 from sqlalchemy.exc import OperationalError
 
+from seo.accounts import access
 from seo.core import budget
 from seo.core.errors import Conflict, NotFound, NotOwnSite, Refused, UnknownSite
 from seo.crawl.fetch import PoliteFetcher
@@ -133,7 +134,8 @@ _SITE_SELECT = """
 def own_sites(engine: Engine) -> list[dict]:
     """The only list the screen ever gets. Competitors are not in it."""
     with engine.connect() as conn:
-        rows = conn.execute(text(f"{_SITE_SELECT} WHERE s.kind = 'own' ORDER BY s.host")).mappings().all()
+        values: dict = {}
+        rows = conn.execute(text(f"{_SITE_SELECT} WHERE s.kind = 'own'{access.site_clause('s.id', values, conn)} ORDER BY s.host"), values).mappings().all()
         off = _steps_turned_off(conn, [r["id"] for r in rows])
     return [_site_dict(r, off[r["id"]]) for r in rows]
 

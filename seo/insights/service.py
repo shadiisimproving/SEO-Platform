@@ -6,6 +6,7 @@ from datetime import date, timedelta
 
 from sqlalchemy import Engine, bindparam, text
 
+from seo.accounts import access
 from seo.collectors.common import digest
 from seo.core.errors import NotFound, Refused
 from seo.insights import rules
@@ -18,13 +19,14 @@ LIST_ROWS = 300
 def _sites(engine: Engine, site_id) -> list[int]:
     with engine.connect() as conn:
         if site_id in (None, "", "all"):
-            return [r[0] for r in conn.execute(text("SELECT id FROM sites WHERE kind = 'own'")).all()]
+            return access.own_site_ids(conn)  # "all sites" is all of *their* sites
         try:
             wanted = int(site_id)
         except (TypeError, ValueError) as exc:
             raise Refused("That site isn't one of yours.") from exc
         if not conn.execute(text("SELECT 1 FROM sites WHERE id = :i AND kind = 'own'"), {"i": wanted}).first():
             raise Refused("That site isn't one of yours.")
+        access.require_site(wanted)  # chosen access: one of their sites
         return [wanted]
 
 

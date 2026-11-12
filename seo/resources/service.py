@@ -6,6 +6,7 @@ from urllib.parse import urlsplit
 
 from sqlalchemy import Engine, text
 
+from seo.accounts import access
 from seo.core.errors import NotFound, Refused
 
 
@@ -70,7 +71,9 @@ _SELECT = "SELECT r.*, s.host FROM resources r LEFT JOIN sites s ON s.id = r.sit
 
 def list_resources(engine: Engine) -> list[dict]:
     with engine.connect() as conn:
-        return [_row(row) for row in conn.execute(text(f"{_SELECT} WHERE r.deleted_at IS NULL ORDER BY r.created_at DESC, r.id DESC")).mappings().all()]
+        values: dict = {}
+        mine = access.site_clause("r.site_id", values, conn)  # their sites only; resources for every site are the owner's
+        return [_row(row) for row in conn.execute(text(f"{_SELECT} WHERE r.deleted_at IS NULL{mine} ORDER BY r.created_at DESC, r.id DESC"), values).mappings().all()]
 
 
 def get(engine: Engine, resource_id: int) -> dict:
@@ -84,6 +87,7 @@ def get(engine: Engine, resource_id: int) -> dict:
 def _check_site(conn, site_id) -> None:
     if site_id is not None and not conn.execute(text("SELECT 1 FROM sites WHERE id = :i AND kind = 'own'"), {"i": site_id}).first():
         raise Refused("That site isn't one of yours.")
+    access.require_site_or_every(site_id, conn)  # chosen access: one of their sites; "every site" only with every site
 
 
 def create(engine: Engine, body: dict, author: str | None = None) -> dict:

@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 
 from sqlalchemy import Engine, text
 
+from seo.accounts import access
 from seo.collectors import http
 from seo.collectors.http import SourceError
 from seo.competitors import tracking
@@ -180,6 +181,7 @@ def indexnow(engine: Engine, site_id, urls) -> dict:
     if not re.fullmatch(r"[0-9a-zA-Z-]{8,128}", key):
         raise Refused("An IndexNow key is 8 to 128 letters, digits or dashes. Paste it again in Settings.")
     with engine.connect() as conn:
+        access.require_site_or_every(site_id, conn)  # chosen access: one of their sites
         host = conn.execute(text("SELECT host FROM sites WHERE id = :i AND kind = 'own'"), {"i": site_id}).scalar()
     if not host:
         raise Refused("That site isn't one of yours.")

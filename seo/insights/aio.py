@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import Engine, bindparam, text
 
+from seo.accounts import access
 from seo.insights import rules
 from seo.insights.finding import Finding
 from seo.serp import store
@@ -28,8 +29,9 @@ def _key(keyword: str) -> str:
 
 def states(engine: Engine, site_id: int | None = None) -> dict:
     """(site_id, cleaned keyword) → the last two readable checks, newest first: [{state, cited, at, keyword, host}]."""
-    clause = "AND sk.site_id = :s" if site_id else ""
+    values: dict = {"s": site_id} if site_id else {}
     with engine.connect() as conn:
+        clause = "AND sk.site_id = :s" if site_id else access.site_clause("sk.site_id", values, conn).lstrip()  # their sites only
         rows = conn.execute(
             text(
                 "SELECT sk.site_id, s.host, k.id keyword_id, k.keyword, k.country, k.language, c.id, c.ai_state, c.real_location, c.checked_at FROM site_keywords sk "
@@ -37,7 +39,7 @@ def states(engine: Engine, site_id: int | None = None) -> dict:
                 "JOIN serp_targets t ON t.keyword_id = k.id AND t.engine = 'google' AND t.device = 'desktop' JOIN serp_checks c ON c.target_id = t.id "
                 f"WHERE c.status = 'ok' AND c.ai_state IN ('present', 'absent') {clause} ORDER BY c.id"
             ),
-            {"s": site_id} if site_id else {},
+            values,
         ).mappings().all()
         rows = [r for r in rows if same_place(r["country"], r["real_location"], r["language"])]
         cited: dict[int, list[str]] = {}

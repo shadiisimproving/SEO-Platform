@@ -113,7 +113,7 @@
       }
       if (!reply.ok) {
         const words = reply.status === 429 ? BUSY : data.error || (reply.status >= 500 ? BROKEN : `Error ${reply.status}`);
-        throw Object.assign(new Error(words), { status: reply.status, headers: data.headers, data });
+        throw Object.assign(new Error(words), { status: reply.status, headers: data.headers, data, noAccess: data.no_access === true });
       }
       return data;
     }
@@ -121,6 +121,10 @@
   COMP.api = async (method, path, body, opts = {}) => {
     if (!(await isServer())) return sampleCall(method, path, body, opts);
     method = String(method || "GET").toUpperCase();
+    // Chosen access (access.js): what this person can't do is refused here, quietly, with the server's own words.
+    if (window.ACCESS && !ACCESS.allows(method, path)) {
+      throw Object.assign(new Error(method === "GET" ? "You don't have access to this." : "View only: you can't change this."), { status: 403, noAccess: true, data: { no_access: true } });
+    }
     if (method !== "GET" || opts.fresh) return call(method, path, body, opts);
     let shared = inflight.get(path);
     if (!shared || shared.changes !== changes) {
@@ -173,7 +177,7 @@
         delay = Math.min(slowest, delay * grow);
       } catch (err) {
         running = false;
-        if (err?.status === 401 || err?.status === 404) { end("gone", err); return; }
+        if (err?.status === 401 || err?.status === 404 || err?.noAccess) { end("gone", err); return; }
         failures += 1;
         if (failures >= errors) { end("errors", err); return; }
         delay = Math.min(slowest, delay * 2);

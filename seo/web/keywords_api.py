@@ -93,7 +93,8 @@ def cancel(run_id: int):
 
 @keywords_api.get("/tools")
 def tools():
-    return jsonify(connections.tool_list(_engine()))
+    from seo.accounts import access
+    return jsonify(access.without_key_details(connections.tool_list(_engine())))
 
 
 @keywords_api.put("/tools/order")
