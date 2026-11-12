@@ -242,6 +242,21 @@
       : e.main && e.main !== "hidden" ? fill("Mostly: {what} ({n} clicks).", { what: t(PARTS[e.main][up ? 0 : 1]).toLowerCase(), n: signed(e.parts[e.main]) }) : "";
     return `${host}${head}${demand}${named ? ` ${named}` : ""}`;
   }
+  /* The same answer on screen: badges and one row per page, never one packed sentence (owner, 2026-11-12).
+     answer() stays as plain text for places that need one line. Rows only when no page lists follow below. */
+  function answerHtml(change, many) {
+    const e = change.evidence, host = many ? `<span class="in-ans-host">${esc(change.host)}</span>` : "";
+    const badge = (good, text, neutral) => `<span class="${neutral ? "sec" : good ? "good" : "crit"} d-pill">${neutral ? "" : icon(good ? "arrow-up" : "arrow-down")}${text}</span>`;
+    if (e.steady) return `<div class="ov-answer" dir="auto"><span class="ov-ans-head">${host}${badge(true, t("Steady"), true)}<span>${t("Clicks")} <b>${num(e.before.clicks)} → ${num(e.now.clicks)}</b></span></span></div>`;
+    const up = e.change > 0;
+    const imp = e.before.impressions ? Math.round((e.now.impressions - e.before.impressions) / e.before.impressions * 100) : null;
+    const head = `<span class="ov-ans-head">${host}${badge(up, `${num(Math.abs(e.percent ?? 0))}%`)}<span>${t("Clicks")} <b>${num(e.before.clicks)} → ${num(e.now.clicks)}</b></span>${imp === null ? "" : `<span class="in-ans-imp">${badge(imp >= 0, `${num(Math.abs(imp))}%`, imp === 0)}<span>${t("Impressions")}</span></span>`}</span>`;
+    const ex = many ? e.explains || [] : [];
+    const top = Math.max(1, ...ex.map((p) => Math.abs(p.change)));
+    const rows = ex.length ? `<span class="ov-ans-label">${t(up ? "Biggest gains" : "Biggest losses")}</span><ul class="ov-ans-list">${ex.map((p) => `<li><span class="ov-ans-name">${pageLink(p.page, { text: p.path })}</span><span class="ov-ans-bar" aria-hidden="true"><i class="${p.change < 0 ? "down" : "up"}" style="width:${Math.max(4, Math.round(Math.abs(p.change) / top * 100))}%"></i></span><b class="${p.change < 0 ? "down" : "up"}">${signed(p.change)}</b></li>`).join("")}</ul>` : "";
+    const cause = many && !ex.length && e.main && e.main !== "hidden" ? `<span class="in-ans-cause"><span class="ov-ans-label">${t("Main cause")}</span>${esc(t(PARTS[e.main][up ? 0 : 1]))} <b class="${e.parts[e.main] < 0 ? "down" : "up"}">${signed(e.parts[e.main])}</b></span>` : "";
+    return `<div class="ov-answer" dir="auto">${head}${rows}${cause}</div>`;
+  }
   /* Two ranked lists with bars from a centre line: lost to the left, gained to the right, so size reads at a glance. */
   function barList(rows) {
     const top = Math.max(1, ...rows.map((r) => Math.abs(r.value)));
@@ -267,9 +282,9 @@
   function topBlock(s) {
     const changes = s.changes || [];
     if (!changes.length) return "";
-    if (changes.length > 1) return `<div class="in-answer">${changes.slice(0, 3).map((c) => `<p class="ov-answer" dir="auto">${esc(answer(c, true))}</p>`).join("")}</div>`;
+    if (changes.length > 1) return `<div class="in-answer">${changes.slice(0, 3).map((c) => answerHtml(c, true)).join("")}</div>`;
     const c = changes[0], steady = c.evidence.steady;
-    return `<section class="card in-top${steady ? " steady" : ""}"><div class="in-top-lead"><div class="in-answer"><p class="ov-answer" dir="auto">${esc(answer(c, false))}</p>${weeklyBlock(c)}</div>${graph(s.days, c)}</div>${steady ? "" : moveLists(c)}</section>`;
+    return `<section class="card in-top${steady ? " steady" : ""}"><div class="in-top-lead"><div class="in-answer">${answerHtml(c, false)}${weeklyBlock(c)}</div>${graph(s.days, c)}</div>${steady ? "" : moveLists(c)}</section>`;
   }
 
   // ---- what to do: one fixed line per kind -----------------------------------------------------------
@@ -932,7 +947,7 @@
     "Another page shown": "Une autre page montrée", "Tracked, no searches": "Suivi, aucune recherche",
     "All": "Tous", "Just moved": "Vient de bouger", "Rivals ahead": "Concurrents devant", "Almost there": "Presque là", "Ranked, not clicked": "Classé, pas cliqué", "Wrong page": "Mauvaise page", "Tracking": "Suivi", "Filter findings": "Filtrer les constats",
     "Hidden searches": "Recherches masquées", "Updated just now": "Mis à jour à l'instant", "Updated {n} min ago": "Mis à jour il y a {n} min", "Updated {n} h ago": "Mis à jour il y a {n} h", "Updated yesterday": "Mis à jour hier", "Updated {n} d ago": "Mis à jour il y a {n} j",
-    "Mostly one page: {page}, {n} clicks.": "Surtout une page : {page}, {n} clics.", "Most of it: {list}.": "L'essentiel : {list}.", "Which pages moved": "Quelles pages ont bougé", "Why": "Pourquoi", "Last 28 days": "28 derniers jours", "28 days before": "28 jours d'avant",
+    "Mostly one page: {page}, {n} clicks.": "Surtout une page : {page}, {n} clics.", "Steady": "Stable", "Biggest gains": "Plus forts gains", "Biggest losses": "Plus fortes pertes", "Main cause": "Cause principale", "Most of it: {list}.": "L'essentiel : {list}.", "Which pages moved": "Quelles pages ont bougé", "Why": "Pourquoi", "Last 28 days": "28 derniers jours", "28 days before": "28 jours d'avant",
     "To recover": "À récupérer", "To win": "À gagner", "clicks a month": "clics par mois", "Fixed in 30 days": "Réglés en 30 jours", "Impressions": "Impressions", "Clicks": "Clics", "biggest findings": "plus gros constats",
     "Lost places": "Places perdues", "Moved up": "A monté", "Non-brand searches": "Recherches hors marque", "Only the home page ranks": "Seule la page d'accueil se classe", "Ranks via {page}, an off-topic page": "Se classe via {page}, une page hors sujet",
     "{n} searches at positions 11–30": "{n} recherches en positions 11–30", "{n} questions": "{n} questions", "{n} searches": "{n} recherches", "{n} addresses": "{n} adresses", "This week": "Cette semaine", "Rest of site: {c}": "Reste du site : {c}", "Over 8 weeks": "Sur 8 semaines",

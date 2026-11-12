@@ -159,12 +159,14 @@
       const top = [a.top_query ? (fr() ? `la requête qui apporte le plus est ${driverName({ dim: "query", name: a.top_query })}` : `the top query is ${driverName({ dim: "query", name: a.top_query })}`) : "", a.top_page ? (fr() ? `la page ${driverName({ dim: "page", name: a.top_page })}` : `the top page ${driverName({ dim: "page", name: a.top_page })}`) : ""].filter(Boolean);
       return fr() ? `${num(a.clicks)} clics sur ${range}${top.length ? ` ; ${top.join(", ")}` : ""}.` : `${num(a.clicks)} clicks over ${range}${top.length ? `; ${top.join(", ")}` : ""}.`;
     }
-    if (a.kind === "steady") return fr() ? `Les clics sont stables (${num(a.clicks)} ; ${num(a.before)} avant).` : `Clicks are steady (${num(a.clicks)}; ${num(a.before)} before).`;
+    if (a.kind === "steady") return `<span class="ov-ans-head">${pill(true, fr() ? "Stable" : "Steady", true)}<span>${fr() ? "Clics" : "Clicks"} <b>${num(a.before)} → ${num(a.clicks)}</b></span></span>`;
     const up = a.kind === "up";
-    const head = fr() ? `Les clics sont en ${up ? "hausse" : "baisse"} de ${num(Math.abs(a.percent))} % (${num(a.before)} → ${num(a.clicks)}).` : `Clicks ${up ? "rose" : "fell"} ${num(Math.abs(a.percent))}% (${num(a.before)} → ${num(a.clicks)}).`;
+    // A badge and the two numbers, then one row per page: easier to read than one long sentence (owner, 2026-11-12).
+    const head = `<span class="ov-ans-head">${pill(up, `${num(Math.abs(a.percent))}%`)}<span>${fr() ? "Clics" : "Clicks"} <b>${num(a.before)} → ${num(a.clicks)}</b></span></span>`;
     if (!a.drivers?.length) return head;
-    const list = a.drivers.map((d) => `${driverName(d)} ${d.change > 0 ? "+" : "−"}${num(Math.abs(d.change))}`).join(", ");
-    return `${head} ${fr() ? (up ? "Plus forts gains" : "Plus fortes pertes") : up ? "Biggest gains" : "Biggest losses"}: ${list}.`;
+    const top = Math.max(1, ...a.drivers.map((d) => Math.abs(d.change)));
+    const rows = a.drivers.map((d) => `<li><span class="ov-ans-name">${driverName(d)}</span><span class="ov-ans-bar" aria-hidden="true"><i class="${d.change < 0 ? "down" : "up"}" style="width:${Math.max(4, Math.round(Math.abs(d.change) / top * 100))}%"></i></span><b class="${d.change < 0 ? "down" : "up"}">${d.change > 0 ? "+" : "−"}${num(Math.abs(d.change))}</b></li>`).join("");
+    return `${head}<span class="ov-ans-label">${fr() ? (up ? "Plus forts gains" : "Plus fortes pertes") : up ? "Biggest gains" : "Biggest losses"}</span><ul class="ov-ans-list">${rows}</ul>`;
   }
 
   // ---- trust line ------------------------------------------------------------------------------
@@ -563,7 +565,7 @@
     const chartHead = `<div class="card-head"><h2>${t({ hour: "Hour by hour", week: "Week by week", day: "Day by day" }[d.granularity])}</h2>
       <span class="end ov-chart-tools">${d.single_site ? `<button class="link-btn" data-ov-note-add>${icon("plus")}${t("Add a note")}</button>` : ""}<button class="link-btn" data-ov-table aria-expanded="${OV.table}">${t(OV.table ? "Hide table" : "Show table")}</button></span></div>`;
     return wrap(`${trust(d)}
-      ${d.answer ? `<p class="ov-answer" dir="auto">${sentence(d.answer, d)}</p>` : ""}
+      ${d.answer ? `<div class="ov-answer" dir="auto">${sentence(d.answer, d)}</div>` : ""}
       ${cards(d)}
       <section class="card ov-chart-card">${chartHead}${chart(d)}</section>
       ${d.hourly ? `<p class="small muted ov-hint">${t("Tables below show the last 2 whole days.")}</p>` : ""}

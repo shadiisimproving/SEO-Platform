@@ -14,6 +14,20 @@
 .ov-match.warn { color: var(--warn-t); }
 
 .ov-answer { margin: 0 0 14px; font-size: 17px; line-height: 1.45; font-weight: 500; color: var(--text); max-width: 75ch; }
+/* Headline: a badge for the change, then before → now. */
+.ov-ans-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ov-ans-head b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.ov-ans-label { display: block; margin: 10px 0 6px; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.ov-ans-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; max-width: 520px; }
+.ov-ans-list li { display: grid; grid-template-columns: minmax(0, 1fr) 120px 48px; align-items: center; gap: 10px; font-size: 14px; font-weight: 400; }
+.ov-ans-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-ans-bar { height: 8px; border-radius: 4px; background: var(--track); overflow: hidden; }
+.ov-ans-bar i { display: block; height: 100%; border-radius: 4px; }
+.ov-ans-bar i.down { background: var(--crit-t); }
+.ov-ans-bar i.up { background: var(--good-t); }
+.ov-ans-list b { text-align: right; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ov-ans-list b.down { color: var(--crit-t); }
+.ov-ans-list b.up { color: var(--good-t); }
 
 /* The four numbers are switches: a coloured tick says the line is on the chart. */
 .ov-cards { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
@@ -159,6 +173,7 @@ table.ov-split td.ov-sn:not(.ov-share) { color: var(--text-2); }
   .ov-card .tile-spark, .ov-card .ico { display: none; }
   .ov-card .delta .ab { display: none; }
   .ov-answer { font-size: 15px; }
+  .ov-ans-list li { grid-template-columns: minmax(0, 1fr) 64px 44px; }
   .ov-picks { width: 100%; }
   .ov-picks .select { flex: 1 1 140px; }
   .ov-ylab.bottom { bottom: 30px; }

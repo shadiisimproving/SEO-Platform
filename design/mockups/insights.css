@@ -117,3 +117,10 @@
 @media (max-width: 640px) { .in-lists { grid-template-columns: minmax(0, 1fr); } .in-top { padding: 14px; } }
 /* Tablet widths: the number that ranks the list must stay on screen. What's dropped here is still in the row's panel. */
 @media (min-width: 641px) and (max-width: 900px) { .in-table :is(td, th).in-opt, .in-mix-table :is(td, th).in-extra { display: none; } }
+
+/* Top answer: badges, then rows (shares .ov-ans-* with Overview). */
+.in-ans-host { font-weight: 600; }
+.in-ans-imp { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 400; color: var(--muted); }
+.in-ans-cause { display: block; font-size: 14px; font-weight: 400; }
+.in-ans-cause b.down { color: var(--crit-t); }
+.in-ans-cause b.up { color: var(--good-t); }
