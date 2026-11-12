@@ -1,7 +1,23 @@
 /* Search → Overview. Search Console's numbers the way its own screen shows them, read for an SEO:
    one sentence on top, four numbers that switch lines on the chart, the chart, then one card with tabs.
    Ranges are Search Console's own and are worked out on the server (seo/metrics/search.py), because only the server knows
-   the newest day Google has. Track and Create task sit on row hover and in the side panel, never as a column of buttons. */
+   the newest day Google has. Track and Create task sit on row hover and in the side panel, never as a column of buttons.
+
+   Simpler screens (UI.simple(), ?simple=1; plan-seo-command-center-simplify-screens-like-mickaz.md, section 2). With the switch
+   off nothing below changes. With it on:
+   - the head is UI.head: dates and comparison from the app's period, then one chip "Search Console · live ✓" (or saved, or
+     differs ⚠) that opens the check panel (checkPanel: where the numbers come from, not-final days, Compare with Search
+     Console, Read those days again). The chip keeps .ov-trust as a hook. Old subtitle, not-final days, "no comparison that far
+     back" and the 24-hour note go behind the head's (i). The period line under the head goes (the head has the dates).
+   - the four numbers are UI.card switches (data-card = metric id, still .ov-card and data-ov-line), each graph in its own
+     chart line's colour (overview.css), so card 4 is orange like its line.
+   - the tabbed card: underline tabs (.page-tabs.in-card) with "Queries 7"; one controls row: Show · brand · filter box ·
+     More filters. How the text matches sits inside More filters while the box is empty, beside the box once it has text.
+     The query count, "N small ones hidden" and each opportunity's explanation go behind an (i) in that row. No table-layer
+     Filter (data-tt-filter-off): the card has its own. The footer hides while there is one page and nothing to choose.
+   - a row opens UI.rowPanel (760 px): four numbers, clicks and position over time, its pages or queries, countries; Track
+     and Create task in the foot with the same data-ov-track / data-ov-task hooks.
+   - answers come through SCREEN_DATA (5 minutes, warm-up list: overview and the table on show). */
 (() => {
   "use strict";
   let UI = null, t, esc, num, icon;
@@ -53,8 +69,16 @@
     if (site) parts.site_id = site;
     return Object.entries(parts).filter(([, v]) => v !== undefined && v !== null && v !== "").map(([k, v]) => `${k}=${encodeURIComponent(v)}`).join("&");
   }
+  const simple = () => Boolean(UI?.simple?.());
+  const shared = () => Boolean(window.SCREEN_DATA?.on?.()); // the simpler screens' 5-minute cache (screen-data.js)
   function load(path, extra = {}) {
     const key = `search/${path}?${query(extra)}`;
+    if (shared()) {
+      const ask = OV.fresh && path === "overview" ? `${key}&fresh=1` : undefined;
+      if (path === "overview") OV.fresh = false;
+      const route = UI.state.route;
+      return window.SCREEN_DATA.entry(key, { route, ask, redraw: () => redraw(route) });
+    }
     const held = OV.cache.get(key);
     if (held) return held;
     const entry = { loading: true, route: UI.state.route };
@@ -74,7 +98,7 @@
     clearTimeout(OV.later);
     OV.later = setTimeout(() => redraw(route), 400);
   }
-  const forget = () => OV.cache.clear();
+  const forget = () => { OV.cache.clear(); if (shared()) window.SCREEN_DATA.forget("search/"); };
   OV.forget = forget; // Settings calls it after a connection is saved, so Overview doesn't keep "not connected"
   /* A redraw replaces the filter box, so typing in it would lose the cursor: it is put back where it was. */
   function draw() {
@@ -171,6 +195,8 @@
 
   // ---- trust line ------------------------------------------------------------------------------
   function trust(d) {
+    // Simpler screens: the line is the head's chip; only Google's failure stays here, since it carries what to do.
+    if (simple()) return d.origin !== "live" && d.live_error ? liveErrorNote(d.live_error) : "";
     const parts = [];
     parts.push(d.origin === "live"
       ? `<span class="ov-live">${icon("circle-check")}${t("Live from Search Console")}</span>`
@@ -195,7 +221,24 @@
   }
 
   // ---- four numbers, each a switch for its line ----------------------------------------------------
+  /* Simpler screens: the shared number card (UI.card) as a switch. Its graph and its top line take the chart line's colour. */
+  const CARD_FMT = { clicks: "num", impressions: "num", click_rate: (v) => rate(v), position: (v) => dec1(v) };
+  const CARD_UNIT = { clicks: "%", impressions: "%", click_rate: "pts", position: "places" };
+  function simpleCards(d) {
+    const was = d.compare_series || [];
+    return `<section class="tiles ov-cards" aria-label="${t("Totals")}">${METRICS.map((m) => {
+      const now = d.totals?.[m.id], before = d.before?.[m.id], on = OV.lines.has(m.id);
+      return UI.card({
+        id: m.id, label: m.name, value: now ?? null, format: CARD_FMT[m.id],
+        change: before === null || before === undefined || now === null || now === undefined ? null : { now, before, unit: CARD_UNIT[m.id] },
+        spark: { now: d.series.map((p) => p[m.id]), before: was.length ? d.series.map((_, i) => was[i]?.[m.id] ?? null) : [], days: d.series.map((p) => p.day), invert: m.invert },
+        toggle: { pressed: on, color: m.color }, cls: `tile ov-card${on ? " on" : ""}`,
+        attrs: { "data-ov-line": m.id, "aria-label": `${t(m.name)}: ${fmt[m.id](now ?? null)}. ${t(on ? "Shown on the chart" : "Press to show it on the chart")}` },
+      });
+    }).join("")}</section>`;
+  }
   function cards(d) {
+    if (simple() && UI.card) return simpleCards(d);
     return `<section class="tiles ov-cards" aria-label="${t("Totals")}">${METRICS.map((m) => {
       const now = d.totals?.[m.id], before = d.before?.[m.id];
       const on = OV.lines.has(m.id);
@@ -353,7 +396,7 @@
     const perPick = list.length > PER[0] ? `<label class="ov-per"><span class="sr">${t("Rows per page")}</span><select class="select" data-ov-per>${PER.map((n) => `<option value="${n}" ${OV.per === n ? "selected" : ""}>${num(n)} ${t("per page")}</option>`).join("")}</select></label>` : "";
     // One box around the table and its footer: the footer sticks to the bottom of the screen only while the table itself is in view.
     return `<div class="ov-list"><div class="table-wrap ov-table"><table class="data"><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>${selectable ? selBar("foot") : ""}
-      <div class="lv-foot ov-foot"><span class="ov-range">${num(view.from + 1)}–${num(view.from + view.rows.length)} ${t("of")} ${num(total)}</span>${pager}${perPick}${total > list.length ? `<span class="ov-capped">${t("First %n shown. Filter to see the rest.").replace("%n", num(list.length))}</span>` : ""}</div></div>`;
+      <div class="lv-foot ov-foot${simple() && view.pages === 1 && list.length <= PER[0] && total <= list.length ? " is-quiet" : ""}"><span class="ov-range">${num(view.from + 1)}–${num(view.from + view.rows.length)} ${t("of")} ${num(total)}</span>${pager}${perPick}${total > list.length ? `<span class="ov-capped">${t("First %n shown. Filter to see the rest.").replace("%n", num(list.length))}</span>` : ""}</div></div>`;
   }
   const columnsFor = (dim, compare) => [
     { id: "name", label: { query: "Query", page: "Page", country: "Country", device: "Device" }[dim], get: (r) => r.name, html: (r) => `<div class="ov-cell">${nameCell(dim, r)}${rowActions(dim, r)}</div>` },
@@ -363,17 +406,27 @@
   ];
 
   function tabsCard(d) {
+    if (simple()) { // underline tabs, the query count on Queries, and the table layer's Filter left out: the card has its own
+      const badge = (id) => (id === "query" && d.queries !== null && d.queries !== undefined ? ` <span class="n-badge">${num(d.queries)}</span>` : "");
+      const tabs = `<div class="page-tabs in-card" role="tablist" aria-label="${t("Split by")}">${TABS.map(([id, name]) => `<button class="page-tab tab" role="tab" data-ov-tab="${id}" aria-selected="${OV.tab === id}">${t(name)}${badge(id)}</button>`).join("")}</div>`;
+      return `<section class="card ov-tabs-card is-simple" data-tt-filter-off>${tabs}${OV.tab === "opportunities" ? opportunitiesBody(d) : breakdownBody(d)}</section>`;
+    }
     const tabs = `<div class="tabs" role="tablist" aria-label="${t("Split by")}">${TABS.map(([id, name]) => `<button class="tab" role="tab" data-ov-tab="${id}" aria-selected="${OV.tab === id}">${t(name)}</button>`).join("")}</div>`;
     return `<section class="card ov-tabs-card"><div class="card-head ov-tabs-head">${tabs}</div>${OV.tab === "opportunities" ? opportunitiesBody(d) : breakdownBody(d)}</section>`;
   }
   function breakdownBody(d) {
     const compare = d.compare !== "none";
     if (!compare && !["all", "top3", "4-10", "11-20", "21+"].includes(OV.show)) OV.show = "all";
-    const entry = load("breakdown", { dim: OV.tab, show: OV.show, brand: OV.tab === "query" ? OV.brand : "all", ...filterArgs(OV.tab), ...(freshWanted() ? { include_fresh: 1 } : {}) });
+    const entry = load("breakdown", breakdownArgs());
     const counts = entry.data?.counts || {};
     const choices = SHOWS.filter(([id]) => (compare || !["gaining", "losing", "new", "lost"].includes(id)) && (OV.tab === "query" || OV.tab === "page" || ["all", "gaining", "losing"].includes(id)));
+    // Simpler screens: the query count and "small ones hidden" sit behind an (i) beside Show instead of two lines of small print.
+    const b0 = entry.data, aside = !simple() || !b0 ? "" : UI.info([
+      OV.tab === "query" && d.queries !== null && d.queries !== undefined ? `${num(d.queries)} ${t("queries with impressions")}${d.queries_before !== null && d.queries_before !== undefined ? ` · ${num(d.queries_before)} ${t("before")}` : ""}. ${t("Google leaves out rare searches, so queries never add up to the total clicks.")}` : "",
+      b0.small_hidden ? `${num(b0.small_hidden)} ${t("small ones hidden (under 3 clicks and 50 impressions).")}` : "",
+    ]);
     const controls = `<div class="ov-controls">
-      <label class="ov-show"><span>${t("Show")}</span><select class="select" data-ov-show>${choices.map(([id, name]) => `<option value="${id}" ${OV.show === id ? "selected" : ""}>${t(name)}${counts[id] !== undefined ? ` (${num(counts[id])})` : ""}</option>`).join("")}</select></label>
+      <label class="ov-show"><span>${t("Show")}</span><select class="select" data-ov-show>${choices.map(([id, name]) => `<option value="${id}" ${OV.show === id ? "selected" : ""}>${t(name)}${counts[id] !== undefined ? ` (${num(counts[id])})` : ""}</option>`).join("")}</select></label>${aside}
       ${OV.tab === "query" ? brandToggle(d) : ""}
       ${filterBar(OV.tab)}
     </div>`;
@@ -381,11 +434,13 @@
     if (entry.error) return `${controls}<div class="empty"><p>${esc(t(entry.error))}</p>${filterOn(filterOf(OV.tab)) ? `<div class="ov-empty-act"><button class="btn" data-ov-filter-clear>${t("Clear filters")}</button></div>` : ""}</div>`;
     const b = entry.data;
     const fresh = b.fresh_included?.from ? `<p class="small muted ov-hint ov-fresh-note" role="note">${icon("clock")}${t("Includes not-final days")} (${esc(b.fresh_included.from === b.fresh_included.to ? dayLabel(b.fresh_included.from) : `${dayLabel(b.fresh_included.from)} – ${dayLabel(b.fresh_included.to)}`)})</p>` : "";
-    const note = (b.small_hidden ? `<p class="small muted ov-hint">${num(b.small_hidden)} ${t("small ones hidden (under 3 clicks and 50 impressions).")}</p>` : "") + fresh;
-    const queriesLine = OV.tab === "query" && d.queries !== null ? `<p class="small muted ov-hint">${num(d.queries)} ${t("queries with impressions")}${d.queries_before !== null && d.queries_before !== undefined ? ` · ${num(d.queries_before)} ${t("before")}` : ""}. ${t("Rare searches left out.")}${UI.tip("Google leaves out rare searches, so queries never add up to the total clicks.")}</p>` : "";
+    const note = (b.small_hidden && !simple() ? `<p class="small muted ov-hint">${num(b.small_hidden)} ${t("small ones hidden (under 3 clicks and 50 impressions).")}</p>` : "") + fresh;
+    const queriesLine = OV.tab === "query" && d.queries !== null && !simple() ? `<p class="small muted ov-hint">${num(d.queries)} ${t("queries with impressions")}${d.queries_before !== null && d.queries_before !== undefined ? ` · ${num(d.queries_before)} ${t("before")}` : ""}. ${t("Rare searches left out.")}${UI.tip("Google leaves out rare searches, so queries never add up to the total clicks.")}</p>` : "";
     if (!b.rows.length && filterOn(filterOf(OV.tab))) return `${controls}<div class="empty"><p>${t(OV.tab === "page" ? "No pages match these filters." : "No queries match these filters.")}</p><div class="ov-empty-act"><button class="btn" data-ov-filter-clear>${t("Clear filters")}</button></div></div>`;
     return `${controls}${queriesLine}${note}${table(OV.tab, b.rows, { columns: columnsFor(OV.tab, compare), selectable: OV.tab === "query", total: b.total ?? b.rows.length })}`;
   }
+  /* What the table on show asks the server: also the warm-up's list (SCREEN_DATA.screen). */
+  const breakdownArgs = () => ({ dim: OV.tab, show: OV.show, brand: OV.tab === "query" ? OV.brand : "all", ...filterArgs(OV.tab), ...(freshWanted() ? { include_fresh: 1 } : {}) });
   /* One box for the text, like Search Console's own filter, and the number filters behind one button. */
   function filterBar(dim) {
     const f = filterOf(dim);
@@ -393,9 +448,13 @@
     const extra = numbersOn(f), open = OV.moreFilters || extra > 0;
     const modes = TEXT_MODES.map(([id, name]) => `<option value="${id}" ${f.q_mode === id ? "selected" : ""}>${t(name)}</option>`).join("");
     const holder = t(dim === "page" ? "Filter pages" : "Filter queries");
-    const numbers = open ? `<div class="ov-filter-more" role="group" aria-label="${t("More filters")}">${NUMBER_FILTERS.map(([id, name]) => `<label class="ov-filter-num"><span>${t(name)}</span><input class="input" type="number" inputmode="decimal" min="0" step="any" data-ov-f="${id}" value="${esc(f[id])}"></label>`).join("")}</div>` : "";
+    // Simpler screens: how the text matches waits inside More filters until the box has text, then sits beside it.
+    const modeBeside = !simple() || f.q.trim() || f.q_mode !== "contains";
+    const modeSelect = `<label class="sr" for="ov-f-mode">${t("How the text matches")}</label><select class="select" id="ov-f-mode" data-ov-f="q_mode">${modes}</select>`;
+    const modeInside = modeBeside ? "" : `<label class="ov-filter-num ov-filter-mode"><span>${t("How the text matches")}</span><select class="select" id="ov-f-mode" data-ov-f="q_mode">${modes}</select></label>`;
+    const numbers = open ? `<div class="ov-filter-more" role="group" aria-label="${t("More filters")}">${modeInside}${NUMBER_FILTERS.map(([id, name]) => `<label class="ov-filter-num"><span>${t(name)}</span><input class="input" type="number" inputmode="decimal" min="0" step="any" data-ov-f="${id}" value="${esc(f[id])}"></label>`).join("")}</div>` : "";
     return `<form class="ov-filter" id="ov-filter-form" role="search" aria-label="${esc(holder)}">
-        <span class="ov-filter-box"><label class="sr" for="ov-f-mode">${t("How the text matches")}</label><select class="select" id="ov-f-mode" data-ov-f="q_mode">${modes}</select>
+        <span class="ov-filter-box${modeBeside ? "" : " no-mode"}">${modeBeside ? modeSelect : ""}
         <span class="ov-filter-text">${icon("search")}<label class="sr" for="ov-f-q">${esc(holder)}</label><input class="input" id="ov-f-q" type="search" data-ov-f="q" value="${esc(f.q)}" placeholder="${esc(holder)}" autocomplete="off" spellcheck="false" dir="auto"></span></span>
         <button type="button" class="btn btn-small ${extra ? "is-on" : ""}" data-ov-more-filters aria-expanded="${open}">${icon("filter")}${t("More filters")}${extra ? ` <b class="ov-filter-count">${num(extra)}</b>` : ""}</button>
         ${filterOn(f) ? `<button type="button" class="link-btn" data-ov-filter-clear>${t("Clear filters")}</button>` : ""}
@@ -454,7 +513,9 @@
   function opportunitiesBody(d) {
     const [, , why, whyTip] = OPPS.find(([id]) => id === OV.opp);
     const entry = load("opportunities", { kind: OV.opp });
-    const controls = `<div class="ov-controls"><label class="ov-show"><span>${t("Show")}</span><select class="select" data-ov-opp>${OPPS.map(([id, name]) => `<option value="${id}" ${OV.opp === id ? "selected" : ""}>${t(name)}</option>`).join("")}</select></label></div><p class="small muted ov-hint">${t(why)}${UI.tip(whyTip)}</p>`;
+    const pick = `<label class="ov-show"><span>${t("Show")}</span><select class="select" data-ov-opp>${OPPS.map(([id, name]) => `<option value="${id}" ${OV.opp === id ? "selected" : ""}>${t(name)}</option>`).join("")}</select></label>`;
+    // Simpler screens: the explanation goes behind an (i) beside Show.
+    const controls = simple() ? `<div class="ov-controls">${pick}${UI.info([why, whyTip])}</div>` : `<div class="ov-controls">${pick}</div><p class="small muted ov-hint">${t(why)}${UI.tip(whyTip)}</p>`;
     if (entry.loading) return `${controls}${UI.skeleton("rows", { rows: 8 })}`;
     if (entry.error) return `${controls}<div class="empty"><p>${esc(entry.error)}</p></div>`;
     const o = entry.data;
@@ -471,8 +532,54 @@
   }
 
   // ---- side panel: one query or one page ------------------------------------------------------------
+  /* Simpler screens: the shared row panel (row-panel.js, 760 px). Search/detail has no period before, so no change pills. */
+  function rowPanel(dim, value, opener) {
+    const isQuery = dim === "query";
+    const shares = (data) => isQuery && data.split.some((p) => p.share !== null && p.share !== undefined);
+    const numberCols = [
+      { label: "Clicks", key: "clicks", num: true }, { label: "Impressions", key: "impressions", num: true },
+      { label: "Pos.", key: "position", num: true, html: (r) => esc(dec1(r.position)) },
+    ];
+    UI.rowPanel({
+      id: "ov-detail", kind: isQuery ? "Query" : "Page", title: isQuery ? value : pathOf(value), opener,
+      ...(isQuery ? {} : { page: { url: value } }),
+      load: async () => {
+        const data = await window.COMP.api("GET", `search/detail?${query({ [dim]: value })}`);
+        const tot = data.totals || null, series = data.series || [];
+        const opts = { everyDay: false };
+        return {
+          numbers: [
+            { id: "clicks", label: "Clicks", value: tot ? tot.clicks : null },
+            { id: "impressions", label: "Impressions", value: tot ? tot.impressions : null },
+            { id: "click_rate", label: "Click rate", value: tot ? tot.click_rate : null, fmt: (v) => rate(v) },
+            { id: "position", label: "Position", value: tot ? tot.position : null, fmt: (v) => dec1(v), lowerIsBetter: true },
+          ],
+          chart: [UI.rowPanel.chart(series, "clicks", null, { ...opts, label: "Clicks" }), UI.rowPanel.chart(series, "position", null, { ...opts, label: "Position", invert: true })],
+          sections: [
+            data.split?.length ? {
+              title: isQuery ? "Pages" : "Queries", rows: data.split, total: data.split.length,
+              columns: [
+                { label: isQuery ? "Page" : "Query", key: "name", html: (r) => (isQuery ? PageLink.html(r.name, { text: pathOf(r.name) }) : `<span dir="auto">${esc(r.name)}</span>`) },
+                ...(shares(data) ? [{ label: "Share", key: "share", num: true, html: (r) => (r.share === null || r.share === undefined ? "" : `${num(r.share)}${fr() ? " %" : "%"}`) }] : []),
+                ...numberCols,
+              ],
+            } : null,
+            data.countries?.length ? {
+              title: "Countries", rows: data.countries, total: data.countries.length, limit: 8,
+              columns: [{ label: "Country", key: "code", html: (r) => esc(r.code ? UI.countryName(r.code) : t("Unknown")) }, ...numberCols],
+            } : data.countries_error ? { title: "Countries", text: t("Countries: Google didn't answer.") } : null,
+          ].filter(Boolean),
+          actions: [
+            ...(isQuery ? [data.tracked ? { label: "Tracked in Keywords", icon: "check", disabled: true } : { label: "Track", main: true, icon: "plus", attrs: { "data-ov-track": value } }] : []),
+            { label: "Create task", icon: "square-check", main: !isQuery, attrs: { "data-ov-task": dim, "data-value": value } },
+          ],
+        };
+      },
+    });
+  }
   async function openDetail(dim, value, opener) {
     if (dim !== "query" && dim !== "page") return;
+    if (simple() && UI.rowPanel) { rowPanel(dim, value, opener); return; }
     const head = UI.panelHead(dim === "query" ? value : pathOf(value), dim === "query" ? t("Query") : `${t("Page")} · ${PageLink.html(value, { text: t("Open page"), title: value, cls: "page-open" })}`);
     UI.openPanel(`${head}<div class="panel-body">${UI.skeleton("panel")}</div>`, opener);
     let data;
@@ -530,6 +637,26 @@
       </form>
       <div class="panel-foot"><button class="btn btn-main" data-ov-note-save>${t("Save note")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button></div>`, opener, { key: "ov-note", reopen: () => notePanel(opener, d) });
   }
+  /* Simpler screens: the head's Search Console chip opens this. Where the numbers come from, how fresh, and the check. */
+  function checkPanel(opener) {
+    const d = current();
+    if (!d) return;
+    const v = d.verify;
+    const line = (ic, tone, words) => `<li class="${tone}">${icon(ic)}<span>${words}</span></li>`;
+    const rows = [d.origin === "live" ? line("circle-check", "good", t("Live from Search Console"))
+      : line("clock", "warn", `${t("Saved data")}${d.last_pull ? ` · ${t("last pulled")} ${esc(since(d.last_pull))}` : ""}`)];
+    if (d.fresh_from && d.fresh_from <= d.to) rows.push(line("clock", "", `${t("Days from")} ${esc(dayLabel(d.fresh_from))} ${t("aren't final yet")}`));
+    if (v && v.ok) rows.push(line("circle-check", "good", `${t("Matches Search Console")}${v.checked_at ? ` · ${t("checked")} ${esc(since(v.checked_at))}` : ""}`));
+    else if (v) rows.push(line("triangle-alert", "warn", `${t("Differs from Search Console")}${v.checked_at ? ` · ${t("checked")} ${esc(since(v.checked_at))}` : ""}`));
+    else rows.push(line("info", "", t("Not compared with Search Console yet.")));
+    const differs = v && !v.ok ? `<p>${t(v.fixable ? "Google changed some days after saving. Reading them again fixes it." : "Every day matches. Google's range totals differ from its days; a new pull can't change that.")}</p>
+      <p class="small muted">${t("Last 28 days")}. ${t("Clicks / impressions.")}</p>${diffList("Days", v.days, "Date")}${diffList("Queries", v.queries, "Query")}${diffList("Pages", v.pages, "Page")}` : "";
+    const fix = v && !v.ok && v.fixable, compare = d.single_site && d.origin === "live";
+    UI.openPanel(`${UI.panelHead(t("Search Console check"), t("Your Google results, from Search Console"))}
+      <div class="panel-body"><ul class="ov-check">${rows.join("")}</ul>${differs}</div>
+      <div class="panel-foot">${fix ? `<button class="btn btn-main" data-ov-verify-fix>${t("Read those days again")}</button>` : ""}${compare ? `<button class="btn ${fix ? "" : "btn-main"}" data-ov-verify-run>${t("Compare with Search Console")}</button>` : ""}<button class="btn" data-close-panel>${t("Close")}</button></div>`, opener);
+  }
+  const diffList = (title, rows, label) => (rows?.length ? `<h3 class="ov-h3">${t(title)}</h3><div class="table-wrap"><table class="data"><thead><tr><th>${t(label)}</th><th class="c">Search Console</th><th class="c">${t("Saved here")}</th></tr></thead><tbody>${rows.map((r) => `<tr><td dir="auto">${esc(r.day ? dayLabel(r.day, true) : r.name)}</td><td class="c">${num(r.google.clicks)} / ${num(r.google.impressions)}</td><td class="c">${num(r.saved.clicks)} / ${num(r.saved.impressions)}</td></tr>`).join("")}</tbody></table></div>` : "");
   function verifyPanel(opener, v) {
     const list = (title, rows, label) => (rows?.length ? `<h3 class="ov-h3">${t(title)}</h3><div class="table-wrap"><table class="data"><thead><tr><th>${t(label)}</th><th class="c">Search Console</th><th class="c">${t("Saved here")}</th></tr></thead><tbody>${rows.map((r) => `<tr><td dir="auto">${esc(r.day ? dayLabel(r.day, true) : r.name)}</td><td class="c">${num(r.google.clicks)} / ${num(r.google.impressions)}</td><td class="c">${num(r.saved.clicks)} / ${num(r.saved.impressions)}</td></tr>`).join("")}</tbody></table></div>` : "");
     UI.openPanel(`${UI.panelHead(t("Differs from Search Console"), `${t("Last 28 days, checked")} ${esc(since(v.checked_at))}. ${t("Clicks / impressions.")}`)}
@@ -551,12 +678,30 @@
     const none = d.compare_unavailable === "history" ? ` · ${t("No comparison: Search Console doesn't keep that far back.")}` : "";
     return `<p class="ov-span small muted" role="status">${esc(now + before)}${esc(none)}</p>`;
   }
+  /* Simpler screens: the head's one chip for where the numbers come from. It keeps .ov-trust as the flows' hook. */
+  function sourceChip(d) {
+    if (!d || (STATES[d.state] && !d.totals)) return null;
+    const v = d.verify, open = "data-ov-check";
+    if (v && !v.ok) return { word: t("Search Console · differs"), sev: "warn", open };
+    if (d.origin === "live") return { word: `${t("Search Console · live")} ✓`, open };
+    return { word: `${t("Search Console · saved data")}${d.last_pull ? ` ${since(d.last_pull)}` : ""}`, sev: d.live_error ? "warn" : "", open };
+  }
+  function simpleHead(d, main) {
+    const info = ["Your Google results, from Search Console"];
+    if (d?.fresh_from && d.to && d.fresh_from <= d.to) info.push(`${t("Days from")} ${dayLabel(d.fresh_from)} ${t("aren't final yet")}.`);
+    if (d?.compare_unavailable === "history") info.push("No comparison: Search Console doesn't keep that far back.");
+    if (d?.hourly) info.push("Tables below show the last 2 whole days.");
+    return UI.head({ title: t("Overview"), period: true, source: sourceChip(d), info, main })
+      .replace(/class="([^"]*)" data-ov-check/, 'class="$1 ov-trust" data-ov-check');
+  }
   function overviewPage() {
     const entry = load("overview");
     const d = entry.data;
     const refresh = `<button class="btn" data-ov-refresh ${OV.poll ? "disabled" : ""}>${icon("refresh-cw")}${t(OV.poll ? "Reading…" : "Refresh data")}</button>`;
-    const head = UI.topbar(t("Overview"), t("Your Google results, from Search Console"), `${d && !STATES[d.state] ? refresh : ""}`);
-    const wrap = (body) => `${head}<div class="content page-enter ov">${periodLine(d)}${body}</div>`;
+    const main = `${d && !STATES[d.state] ? refresh : ""}`;
+    const head = simple() && UI.head ? simpleHead(d, main) : UI.topbar(t("Overview"), t("Your Google results, from Search Console"), main);
+    const span = periodLine(d); // it also tells the app's period its last day, so it runs on the simpler screens too
+    const wrap = (body) => `${head}<div class="content page-enter ov">${simple() ? "" : span}${body}</div>`;
     if (entry.loading) return wrap(UI.skeleton("page"));
     if (entry.noServer) return wrap(`<section class="card"><div class="empty"><h3>${t("Needs the running app")}</h3><p>${t("Opened as a file: no real data.")}</p></div></section>`);
     if (entry.error) return wrap(UI.failCard(entry.error, { retry: "data-ov-retry" }));
@@ -568,7 +713,7 @@
       ${d.answer ? `<div class="ov-answer" dir="auto">${sentence(d.answer, d)}</div>` : ""}
       ${cards(d)}
       <section class="card ov-chart-card">${chartHead}${chart(d)}</section>
-      ${d.hourly ? `<p class="small muted ov-hint">${t("Tables below show the last 2 whole days.")}</p>` : ""}
+      ${d.hourly && !simple() ? `<p class="small muted ov-hint">${t("Tables below show the last 2 whole days.")}</p>` : ""}
       ${tabsCard(d)}`);
   }
 
@@ -589,7 +734,7 @@
   function stopPolling() { clearInterval(OV.poll); OV.poll = null; forget(); redraw(); }
 
   // ---- events ---------------------------------------------------------------------------------------
-  const current = () => OV.cache.get(`search/overview?${query()}`)?.data;
+  const current = () => (shared() ? window.SCREEN_DATA.peek(`search/overview?${query()}`) : OV.cache.get(`search/overview?${query()}`)?.data);
   const hostPicked = () => UI.siteHostPicked() || window.SITES.find((s) => s.realId)?.host || null;
   function track(queries, opener) {
     const d = current();
@@ -671,10 +816,11 @@
         try { await window.COMP.api("DELETE", `search/notes/${el.dataset.ovNoteDel}`); forget(); UI.render({ keepScroll: true }); UI.toast(t("Note deleted")); } catch (err) { UI.toast(err.message, { kind: "crit" }); }
         return;
       }
+      if (hit("[data-ov-check]")) { checkPanel(hit("[data-ov-check]")); return; }
       if (hit("[data-ov-verify-open]")) { const v = current()?.verify; if (v) verifyPanel(hit("[data-ov-verify-open]"), v); return; }
       if ((el = hit("[data-ov-verify-run]"))) {
         el.disabled = true;
-        try { const v = await window.COMP.api("POST", "search/verify", { site_id: UI.siteIdPicked() }); forget(); UI.render({ keepScroll: true }); UI.toast(t(v.ok ? "It matches Search Console." : "It differs from Search Console. See the warning."), { kind: v.ok ? "good" : "info" }); }
+        try { const v = await window.COMP.api("POST", "search/verify", { site_id: UI.siteIdPicked() }); if (el.closest("#panel")) UI.closePanel(); forget(); UI.render({ keepScroll: true }); UI.toast(t(v.ok ? "It matches Search Console." : "It differs from Search Console. See the warning."), { kind: v.ok ? "good" : "info" }); }
         catch (err) { UI.toast(err.message, { kind: "crit" }); el.disabled = false; }
         return;
       }
@@ -767,6 +913,8 @@
     init(helpers) {
       old.init?.(helpers); UI = helpers; ({ t, esc, num, icon } = helpers); bind();
       UI.range.on(() => { OV.page = 0; OV.selected.clear(); });
+      // Simpler screens: what Overview shows first, for SCREEN_DATA's warm-up and menu hover (does nothing with the switch off).
+      window.SCREEN_DATA?.screen?.("overview", () => [`search/overview?${query()}`, OV.tab === "opportunities" ? `search/opportunities?${query({ kind: OV.opp })}` : `search/breakdown?${query(breakdownArgs())}`]);
     },
     page: overviewPage,
     /* The view in the address: tab, show, brand, and the filters of Queries and Pages. */
@@ -852,6 +1000,9 @@
     "Re-reading those days. Updates here when done.": "Relecture de ces jours. Mise à jour ici une fois terminé.",
     "Already a brand word.": "Déjà un mot de marque.", "That note is already on that day.": "Cette note existe déjà ce jour-là.", "Type what the rule should match.": "Indiquez ce que la règle doit reconnaître.",
     "Type a short note, up to 300 characters.": "Saisissez une note courte, 300 caractères au plus.", "Pick one site for a note.": "Choisissez un site pour la note.",
+    // Simpler screens (2026-11-12): the head's chip and its check panel.
+    "Search Console · live": "Search Console · en direct", "Search Console · differs": "Search Console · diffère", "Search Console · saved data": "Search Console · données enregistrées",
+    "Search Console check": "Vérification Search Console", "Not compared with Search Console yet.": "Pas encore comparé avec la Search Console.",
   };
   Object.keys(words).forEach((w) => { if (window.FR[w] === undefined) window.FR[w] = words[w]; });
 })();

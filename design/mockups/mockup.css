@@ -958,8 +958,9 @@ a.lc-url:hover { color: var(--accent-text); }
   #kw-table td:has(> .dash:only-child), #kw-table td:has(> .tabular:only-child > .dash:only-child) { display: none; }
   .conn-sites { display: none; }
 }
-/* Room under the last rows, so the refresh tray never sits on them for good. */
-body:has(#tray) .main { padding-bottom: 110px; }
+/* Room under the last rows, so the refresh tray never sits on them for good. A spacer, not padding on .main: .main is the
+   scroll box, and its padding would lift every sticky footer (table pages) 110px, with rows showing under it. */
+body:has(#tray) .main::after { content: ""; display: block; height: 110px; }
 .th-sub { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
 /* Import: a column that won't be imported doesn't look like the others. */
 .map-ignored select { border-color: var(--warn-t); }
@@ -1112,6 +1113,8 @@ html[data-simple="1"] :is(.head-dates, .head-cmp) { white-space: nowrap; } /* a 
 html[data-simple="1"] .head-sep { color: var(--muted); }
 /* The comparison, and a source that opens a panel: words in the line, a dotted underline says they can be pressed. */
 html[data-simple="1"] :is(.head-cmp, .head-chip) { font-size: inherit; line-height: inherit; color: var(--text-2); font-variant-numeric: tabular-nums; text-decoration: underline dotted var(--line-2); text-underline-offset: 3px; border-radius: 4px; transition: color var(--t-fast); }
+/* A chip can hold a logo (brands.js): it stays on the line. */
+html[data-simple="1"] .head-chip { display: inline-flex; align-items: center; gap: 2px; }
 html[data-simple="1"] :is(.head-cmp, .head-chip):hover, html[data-simple="1"] .head-cmp[aria-expanded="true"] { color: var(--accent-text); text-decoration-color: currentColor; }
 html[data-simple="1"] .head-cmp.none { color: var(--muted); }
 html[data-simple="1"] .head-status { margin-left: 6px; line-height: 14px; vertical-align: 1px; }
@@ -1167,7 +1170,7 @@ html[data-simple="1"] .setup-line > .btn, html[data-simple="1"] .setup-line > .l
   html[data-simple="1"] #topbar.head .head-period button { flex: 1 0 auto; padding-left: 7px; padding-right: 7px; }
   html[data-simple="1"] .head-line { display: flex; align-items: center; }
   html[data-simple="1"] .head-text { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  html[data-simple="1"] .head-line > :not(.head-text, .head-i-all) { display: none; } /* the caveats' (i): its words are on the one below */
+  html[data-simple="1"] .head-line > :not(.head-text, .head-i-all, .head-chip, .head-status) { display: none; } /* the caveats' (i): its words are on the one below */
   html[data-simple="1"] .head-line > .head-i-all { display: inline-flex; }
 }
 @media (max-width: 760px) {

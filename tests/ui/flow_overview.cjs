@@ -114,8 +114,9 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
     // Since 2026-11-10 the dates are the app's one picker in the top bar (UI.range), not Overview's own boxes.
     const pick = async (preset) => { await page.click("#period"); await page.waitForTimeout(250); await page.click(`[data-preset="${preset}"]`); await page.waitForTimeout(2500); };
     await page.click("#period"); await page.waitForTimeout(250);
-    const wanted = ["Last 24 hours", "Last 7 days", "Last 28 days", "Last 3 months", "Last 6 months", "Last 12 months", "Last 16 months"];
-    const shown = (await texts(".dp-presets [data-preset]")).map((s) => s.trim());
+    // By id: with the simpler screens on (?simple=1) four of them are buttons in the head and the menu holds the rest.
+    const wanted = ["24h", "7d", "28d", "3m", "6m", "12m", "16m"];
+    const shown = await page.evaluate(() => [...document.querySelectorAll(".dp-presets [data-preset], .head-period [data-preset]")].map((b) => b.dataset.preset));
     check(wanted.every((w) => shown.includes(w)) && Boolean(await page.$("#dp-from")), `the same ranges as Search Console, and custom dates (${shown.join(", ")})`);
     await page.keyboard.press("Escape"); await page.waitForTimeout(200);
     await pick("6m");

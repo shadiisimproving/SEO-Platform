@@ -50,8 +50,14 @@
       const img = document.createElement("img");
       img.className = "logo brand-logo";
       img.src = `logos/${file}`;
-      img.alt = ""; // the name is right beside it
-      brand.append(img, hit[0]);
+      // The logo alone says the brand (owner, 2026-11-12): the name stays in the text for screen readers, copying and search,
+      // hidden from sight, and shows as a tooltip on hover.
+      img.alt = "";
+      brand.title = hit[0];
+      const name = document.createElement("span");
+      name.className = "brand-name-hidden";
+      name.textContent = hit[0];
+      brand.append(img, name);
       out.append(brand);
       from = hit.index + hit[0].length;
       changed = true;

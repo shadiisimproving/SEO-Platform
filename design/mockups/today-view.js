@@ -80,7 +80,45 @@
     else note = `${data.change === null ? `<span class="muted">${t("No earlier period")}</span>` : pill(data.change, unit, false)}${covers}${key === "leads" ? `<span class="muted">${t("Running total")}</span>` : ""}`;
     return `<section class="tile today-num"><a class="today-num-link" href="${withSite(href)}"><div class="lab">${t(label)}</div><div class="fig">${fig}</div></a><div class="delta">${note}</div>${data.state === "not_set_up" ? "" : graph(key, label, data.points)}</section>`;
   }
+  /* The simpler screens (UI.simple()): one number card each, through UI.card, with a tall graph of its own (owner, 2026-11-05)
+     but no axis numbers and no "Show as a table": the screen each card opens has the full chart and its table. The dates
+     and the comparison are in the head's date line, so the caption under the cards goes when the real app sends them. */
+  function simpleCard(key, label, href, data, unit, emptyWord) {
+    const points = data.points || [];
+    let spark = null;
+    if (data.state !== "not_set_up" && points.some((p) => p.now !== null)) {
+      const run = (field) => { let sum = 0; return points.map((p) => { if (p[field] === null || p[field] === undefined) return null; sum += p[field]; return key === "leads" ? sum : p[field]; }); };
+      spark = { now: run("now"), days: points.map((p) => p.day) };
+      if (points.some((p) => p.was !== null && p.was !== undefined)) spark.before = run("was");
+    }
+    const covers = data.sites && data.sites < data.of ? `${num(data.sites)} ${t("of")} ${num(data.of)} ${t("sites")}` : "";
+    let value = data.value, sub = null;
+    if (data.state === "not_set_up") { value = `<span class="today-fig-word">${t("Not set up")}</span>`; sub = esc(t("Mark forms as GA4 key events")); }
+    else if (data.value === null) sub = esc(data.source ? stateWord(data.source, key === "clicks" ? "Search Console" : "GA4") : t(emptyWord));
+    else if (data.change === null) sub = esc(t("No earlier period"));
+    else if (covers) sub = esc(covers);
+    let change = data.value === null || data.change === null || data.state === "not_set_up" ? null : { value: data.change, unit };
+    // "before → now" under the figure: the period before's total from the graph's own days, only when it gives the server's change.
+    const was = points.filter((p) => p.was !== null && p.was !== undefined);
+    if (change && was.length === points.length && typeof data.value === "number") {
+      const before = was.reduce((sum, p) => sum + p.was, 0);
+      const same = unit ? before > 0 && Math.round(((data.value - before) / before) * 100) === data.change : data.value - before === data.change;
+      if (same) change = { ...change, now: data.value, before };
+    }
+    return UI().card({ id: key, label, value, change, sub, spark, tall: true, href: withSite(href), cls: "tile today-num today-num-link", info: key === "leads" && spark ? "Graph: running total." : "" });
+  }
+  function simpleNumbers(r) {
+    const w = r.window;
+    // The plain-file sample has no dates in its head, so it keeps its one line saying what the numbers cover.
+    const caption = w ? "" : `<p class="small muted today-caption"><span>${t("Last 28 days vs the 28 before")}${r.through ? ` · ${t("Data through")} ${esc(day(r.through))}` : ""}</span></p>`;
+    return `<div class="tiles today-nums">
+        ${simpleCard("leads", "Leads", "#conversions", r.leads, "", r.leads.state === "no_ga4" ? "GA4 not connected" : "No data yet")}
+        ${simpleCard("visits", "Visits", "#channels", r.visits, "%", "GA4 not connected")}
+        ${simpleCard("clicks", "Google clicks", "#overview", r.clicks, "%", "Search Console not connected")}
+      </div>${caption}`;
+  }
   function numbers(r, range) {
+    if (UI().simple?.()) return simpleNumbers(r);
     const w = r.window, period = w?.from && w?.to ? `${day(w.from)} – ${day(w.to)}` : "";
     const against = !w ? "" : w.compare_unavailable ? t("No earlier period stored") : w.compare === "none" ? t("No comparison") : w.compare === "yoy" ? t("vs last year") : t("vs period before");
     const caption = w ? `${esc(range?.label || "")}${range?.label ? " · " : ""}${esc(period)} · ${esc(against)}` : `${t("Last 28 days vs the 28 before")}${r.through ? ` · ${t("Data through")} ${esc(day(r.through))}` : ""}`;
@@ -95,11 +133,13 @@
 
   // ---- do these first -----------------------------------------------------------------------------
   const severityIcon = (severity) => (severity === "crit" ? icon("octagon-alert", "crit") : severity === "warn" ? icon("triangle-alert", "warn") : icon("info", "sec"));
+  // A row's Task button shows on hover or keyboard focus with the simpler screens switch on (.row-act, table-tools.css).
+  const taskLook = () => (UI().simple?.() ? { label: "Task", cls: "btn btn-small row-act" } : { label: "Task" });
   const hostTag = (host, title = "") => (host && allSites() && !title.includes(host) ? ` <span class="small muted mono" dir="auto">${esc(host)}</span>` : "");
   const todoRow = (item) => `<li data-row="${esc(item.id)}"><span>${severityIcon(item.severity)}</span>
       <div class="what"><div class="t" dir="auto">${esc(item.title)}${hostTag(item.host, item.title)}</div>${item.detail ? `<div class="d" dir="auto">${esc(item.detail)}</div>` : ""}</div>
       <div class="acts">${item.seenAttr ? `<button class="icon-btn ack" ${item.seenAttr} aria-label="${t("Mark as seen")}: ${esc(item.title)}" data-tip="${t("Mark as seen")}">${icon("check")}</button>` : ""}
-        ${UI().taskButton(item.find, { label: "Task" })}${item.mainHtml}</div></li>`;
+        ${UI().taskButton(item.find, taskLook())}${item.mainHtml}</div></li>`;
   function todoCard(todo) {
     const urgent = todo.filter((item) => item.severity !== "info");
     const shown = UI().state.attentionAll ? todo : urgent.slice(0, 3);
@@ -125,7 +165,7 @@
       ? `<a class="stat-row today-sources" href="#settings"><span>${t("Data sources")}${s.note ? `<span class="small muted today-note">${esc(s.note)}</span>` : ""}</span>${UI().status(s.ok === s.total ? "good" : s.ok + (s.waiting || 0) === s.total ? "info" : "warn", `${num(s.ok)} ${t("of")} ${num(s.total)} ${t("OK")}${waiting}`)}</a>`
       : `<div class="stat-row"><span class="muted">${t("No data sources connected.")}</span><button class="btn btn-small" ${s.connectAttr}>${t("Connect Google")}</button></div>`;
     return `<section class="card"><div class="card-head"><h2>${t("My work")}</h2></div>
-        <div id="today-tasks">${tasksHtml()}</div>${count("Backlinks to follow up", vm.followUp)}${count("Renewals in 30 days", vm.renewals)}${line}</section>`;
+        <div id="today-tasks">${tasksHtml()}</div>${count("Backlinks to follow up", vm.followUp)}${count("Renewals in 30 days", vm.renewals)}${vm.sourcesInHead ? "" : line}</section>`;
   }
 
   // ---- going down, going up -----------------------------------------------------------------------
@@ -134,7 +174,7 @@
     return { title: `${move.path}: ${t("Google clicks")} ${move.was} → ${move.clicks}`, host: move.host, pages: [move.path], source: { type: "alert", label: move.path, host: move.host, facts: [`${t("Google clicks")} ${move.was} → ${move.clicks}`], link: "#content", key: `move|page|${move.host}|${move.path}` } };
   }
   function moveRow(move, down) {
-    const task = down ? `<div class="acts">${UI().taskButton(moveFind(move), { label: "Task" })}</div>` : "";
+    const task = down ? `<div class="acts">${UI().taskButton(moveFind(move), taskLook())}</div>` : "";
     if (move.type === "keyword") {
       const up = move.places > 0;
       const target = move.keyword_id ? "#keywords" : "#overview";
@@ -145,7 +185,8 @@
     return `<li><div class="what"><div class="t">${PageLink.html(move.url || move.path, { text: move.path, host: move.host, cls: "today-link mono" })}${hostTag(move.host)}</div><div class="d">${UI().logoOnly("Google", t("Google clicks"))} ${num(move.was)} → ${num(move.clicks)} ${t("clicks")}</div></div>
       <span class="chg ${up ? "good" : "crit"}">${icon(up ? "arrow-up" : "arrow-down")}${up ? "+" : "−"}${num(Math.abs(move.change))}%</span>${task}</li>`;
   }
-  const moveCard = (title, moves, down) => `<section class="card"><div class="card-head"><h2>${t(title)}</h2></div>
+  // With the switch on, "7 days" sits in each card head instead of the "Week on week" line above the pair (plan, change 4).
+  const moveCard = (title, moves, down) => `<section class="card"><div class="card-head"><h2>${t(title)}</h2>${UI().simple?.() ? `<span class="end small muted">${t("7 days")}</span>` : ""}</div>
       ${moves.length ? `<ul class="rows">${moves.map((move) => moveRow(move, down)).join("")}</ul>` : `<div class="empty today-empty"><p>${t(down ? "Nothing fell much." : "Nothing rose much.")}</p></div>`}</section>`;
 
   // ---- rivals -------------------------------------------------------------------------------------
@@ -153,7 +194,7 @@
     const find = { title: `${r.host}: ${r.label} ${r.path}`, host: r.my_host, pages: [r.my_path], source: { type: "competitor", label: `${r.host}: ${r.label}`, host: r.my_host, facts: [r.path, `${t("Your page")} ${r.my_path}`], link: `#competitors/pairs/${r.pair_id}`, key: `change|${r.id}` } };
     return `<li><div class="what"><div class="t"><span class="mono" dir="auto">${esc(r.host)}</span> · ${esc(r.label)} · ${PageLink.html(r.url || r.path, { text: r.path, host: r.host, cls: "mono" })}</div>
         <div class="d">${t("Your page")} ${PageLink.html(r.my_url || r.my_path, { text: r.my_path, host: r.my_host, cls: "mono" })}${hostTag(r.my_host)}${r.when ? ` · ${esc(r.when)}` : ""}</div>${window.ChangeSummary?.slot(r) || ""}</div>
-      <div class="acts">${UI().taskButton(find, { label: "Task" })}<button class="btn btn-small" data-today-pair="${esc(String(r.pair_id))}" data-today-site="${esc(String(r.site_id))}">${t("Compare")}</button></div></li>`;
+      <div class="acts">${UI().taskButton(find, taskLook())}<button class="btn btn-small" data-today-pair="${esc(String(r.pair_id))}" data-today-site="${esc(String(r.site_id))}">${t("Compare")}</button></div></li>`;
   }
   function rivalCard(rivals, other) {
     const word = UI().state.lang === "fr" ? `${num(other)} ${other === 1 ? "autre modification" : "autres modifications"}` : `${num(other)} other ${other === 1 ? "edit" : "edits"}`;
@@ -189,12 +230,27 @@
     return `<div class="today-answer"><p class="today-lead" dir="auto">${esc(answer(r, vm.range))}</p><p class="today-second" dir="auto">${esc(needsYou(urgent))}${stopped}</p></div>
       ${numbers(r, vm.range)}
       <div class="cols"><div>${todoCard(vm.todo)}</div><div>${workCard(vm)}</div></div>
-      ${anyMove || hasData ? `<div class="today-moves-head"><span class="small muted">${t("Week on week")}</span></div><div class="today-moves">${moveCard("Going down", vm.goingDown, true)}${moveCard("Going up", vm.goingUp, false)}</div>` : ""}
+      ${anyMove || hasData ? `${UI().simple?.() ? "" : `<div class="today-moves-head"><span class="small muted">${t("Week on week")}</span></div>`}<div class="today-moves">${moveCard("Going down", vm.goingDown, true)}${moveCard("Going up", vm.goingUp, false)}</div>` : ""}
       ${vm.rivals.length || vm.otherEdits || hasData ? rivalCard(vm.rivals, vm.otherEdits) : ""}
       ${allSites() && vm.sites.length > 1 ? sitesCard(vm.sites) : ""}`;
   }
 
-  window.TodayView = { page, tasksHtml, withSite };
+  /* The simpler head's parts for Today (today-live.js hands them to UI.head): the sources as one chip that opens Settings
+     (Connect when none is connected, a warning when one stopped), and the caveats that leave the page for the (i). */
+  function headParts(vm) {
+    const s = vm.sources, w = vm.results?.window, info = [];
+    let source;
+    if (!s.total) source = { word: t("Connect Google"), sev: "warn", open: s.connectAttr };
+    else {
+      const fine = s.ok === s.total || s.ok + (s.waiting || 0) === s.total;
+      source = { word: `${num(s.ok)} ${t("of")} ${num(s.total)} ${t("sources OK")}${s.waiting ? ` · ${num(s.waiting)} ${t("waiting for data")}` : ""}`, sev: fine ? "" : "warn", open: 'data-go="settings"' };
+    }
+    if (w?.ga4 && w.ga4.to !== w.to) info.push(t("Visits and leads: {a} – {b}, where Google Analytics' data ends.").replace("{a}", day(w.ga4.from)).replace("{b}", day(w.ga4.to)));
+    if (s.note) info.push(s.note);
+    return { source, info };
+  }
+
+  window.TodayView = { page, tasksHtml, withSite, headParts };
 
   /* Compare goes through the Competitors tab, so its list behind the pair belongs to the right site. */
   document.addEventListener("click", (e) => {
@@ -221,6 +277,7 @@
     "No rival changes in the last 7 days.": "Aucun changement des concurrents ces 7 derniers jours.", "Last 7 days": "7 derniers jours", "Week on week": "Semaine sur semaine",
     "Last 28 days vs the 28 before": "28 derniers jours vs les 28 précédents", "No data yet": "Pas encore de données",
     "Running total": "Total cumulé", "This period": "Cette période", "Period before": "Période précédente", "See page": "Voir la page", "Title changed": "Titre modifié", "Content changed": "Contenu modifié", "Restored": "Restauré",
+    "Graph: running total.": "Graphique : total cumulé.", "Connect Google": "Connecter Google", "sources OK": "sources OK", "7 days": "7 jours",
     "/loyer-a-seville/: −32% Google clicks": "/loyer-a-seville/ : −32 % de clics Google", "Week on week: 85 → 58": "Semaine sur semaine : 85 → 58",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });

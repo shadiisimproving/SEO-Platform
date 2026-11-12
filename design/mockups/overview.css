@@ -198,3 +198,29 @@ table.ov-split td.ov-sn:not(.ov-share) { color: var(--text-2); }
   .ov-filter-num { flex: 1 1 calc(50% - 7px); justify-content: space-between; }
   .ov-filter-num .input { width: 70px; }
 }
+
+/* ---- Simpler screens (html[data-simple="1"], UI.simple(); overview-view.js header). Nothing here applies with the switch off. ---- */
+/* Each card's graph and top line in its own chart line's colour: card 4 is orange like the Average position line, not indigo. */
+:root[data-simple="1"] .ov .ov-cards .ncard.ov-card[data-card="clicks"] { --c: var(--ch-1); --c-pale: color-mix(in srgb, var(--ch-1) 14%, transparent); }
+:root[data-simple="1"] .ov .ov-cards .ncard.ov-card[data-card="impressions"] { --c: var(--ch-2); --c-pale: color-mix(in srgb, var(--ch-2) 14%, transparent); }
+:root[data-simple="1"] .ov .ov-cards .ncard.ov-card[data-card="click_rate"] { --c: var(--ch-3); --c-pale: color-mix(in srgb, var(--ch-3) 14%, transparent); }
+:root[data-simple="1"] .ov .ov-cards .ncard.ov-card[data-card="position"] { --c: var(--ch-5); --c-pale: color-mix(in srgb, var(--ch-5) 14%, transparent); }
+:root[data-simple="1"] .ov .ov-cards { margin-bottom: 14px; }
+/* The tabbed card: underline tabs straight under the card's top edge, the count on Queries. */
+html[data-simple="1"] .ov-tabs-card.is-simple .page-tabs.in-card { padding: 4px 10px 0; }
+html[data-simple="1"] .ov-tabs-card .page-tab .n-badge { margin-inline-start: 0; }
+html[data-simple="1"] .ov-controls > .def-i { margin-inline-start: -8px; }
+html[data-simple="1"] .ov-filter-box.no-mode .ov-filter-text .input { margin-inline-start: 0; border-radius: var(--r-m); }
+html[data-simple="1"] .ov-filter-mode .select { min-width: 150px; }
+/* One page and nothing to choose: the footer has nothing to press, so it hides (its markup stays for the flows). */
+html[data-simple="1"] .ov-foot.is-quiet { display: none; }
+/* The check panel behind the head's Search Console chip. */
+.ov-check { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 8px; }
+.ov-check li { display: flex; align-items: center; gap: 8px; color: var(--text-2); }
+.ov-check li svg { width: 16px; height: 16px; flex: none; color: var(--muted); }
+.ov-check li.good svg { color: var(--good-t); }
+.ov-check li.warn { color: var(--warn-t); }
+.ov-check li.warn svg { color: var(--warn-t); }
+/* The head's Search Console chip: brands.js puts the logo in it, which made the button a block and broke the line. */
+html[data-simple="1"] #topbar .head-line .ov-trust { display: inline-flex; align-items: center; gap: 4px; vertical-align: top; }
+html[data-simple="1"] #topbar .head-line .ov-trust .brand-mention { display: inline-flex; }
