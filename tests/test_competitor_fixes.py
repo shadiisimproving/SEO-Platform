@@ -323,3 +323,21 @@ def test_every_sites_prospects_come_in_one_request(world):
     rows = world.client.get("/api/prospects").get_json()["prospects"]
     assert {(r["site_id"], r["domain"]) for r in rows} == {(world.own, "links-one.example"), (other_id, "links-two.example")}
     assert [r["domain"] for r in world.client.get(f"/api/prospects?site_id={world.own}").get_json()["prospects"]] == ["links-one.example"]
+
+
+def test_changing_my_page_on_a_question_row_leaves_only_the_chosen_page(world):
+    """Competitors → Questions → Change: the chosen page of mine is the only visible pair on that page of theirs."""
+    rival = add_rival(world)
+    first = world.client.post("/api/page-pairs", json={"site_id": world.own, "competitor_id": rival, "my_url": "https://me.example/old", "their_url": "https://rival.example/bank"})
+    assert first.status_code == 201
+    picked = world.client.post("/api/page-pairs/pick", json={"site_id": world.own, "competitor_id": rival, "my_url": "https://me.example/new", "their_url": "https://rival.example/bank"})
+    assert picked.status_code == 200, picked.get_json()
+    with world.engine.connect() as conn:
+        shown = conn.execute(text("SELECT my_url FROM page_pairs WHERE competitor_id = :c AND hidden = 0"), {"c": rival}).scalars().all()
+    assert shown == ["https://me.example/new"]
+    # Choosing the same page again changes nothing and refuses nothing.
+    again = world.client.post("/api/page-pairs/pick", json={"site_id": world.own, "competitor_id": rival, "my_url": "https://me.example/new", "their_url": "https://rival.example/bank"})
+    assert again.status_code == 200
+    # A page of another site is refused.
+    wrong = world.client.post("/api/page-pairs/pick", json={"site_id": world.own, "competitor_id": rival, "my_url": "https://elsewhere.example/x", "their_url": "https://rival.example/bank"})
+    assert wrong.status_code >= 400

@@ -192,8 +192,8 @@ table.ov-split td.ov-sn:not(.ov-share) { color: var(--text-2); }
 @media (prefers-reduced-motion: reduce) { .ov-acts, .ov-card { transition: none; } }
 
 /* Filters on Queries and Pages: a text box like Search Console's, and number filters behind one button. */
-.ov-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; flex: 1 1 100%; margin: 0; }
-.ov-filter-box { display: inline-flex; align-items: stretch; min-width: 0; flex: 0 1 460px; }
+.ov-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; flex: 1 1 360px; min-width: 0; margin: 0; }
+.ov-filter-box { display: inline-flex; align-items: stretch; min-width: 0; flex: 1 1 200px; max-width: 460px; }
 .ov-filter-box .select { border-start-end-radius: 0; border-end-end-radius: 0; flex: none; width: auto; }
 .ov-filter-text { position: relative; flex: 1 1 auto; min-width: 0; display: flex; }
 .ov-filter-text svg { position: absolute; inset-inline-start: 10px; top: 50%; width: 14px; height: 14px; transform: translateY(-50%); color: var(--muted); pointer-events: none; }

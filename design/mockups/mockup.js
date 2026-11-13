@@ -1025,7 +1025,7 @@
 
   function trafficCell(b) {
     if (b.label === "no-ga4") return `<span class="muted small" role="img" data-tip="${t("GA4 not connected")}" aria-label="${t("GA4 not connected")}">—</span>`;
-    if (b.label === "none") return `<span class="tabular muted" data-tip="${t("No visits yet. Links hiding their source count as Direct.")}">0<span class="sr">: ${t("No visits yet. Links hiding their source count as Direct.")}</span></span>`;
+    if (b.label === "none" || !b.visits) return `<span class="tabular muted" data-tip="${t("No visits yet. Links hiding their source count as Direct.")}">0<span class="sr">: ${t("No visits yet. Links hiding their source count as Direct.")}</span></span>`;
     const [name, why] = LABELS[b.label];
     const shown = b.label === "shared" ? `${name} · ${b.shared}` : name;
     return `<span class="cellval"><span class="tabular">${num(b.visits)}</span> <span class="tag" data-tip="${esc(t(why))}">${shown}<span class="sr">: ${esc(t(why))}</span></span></span>`;

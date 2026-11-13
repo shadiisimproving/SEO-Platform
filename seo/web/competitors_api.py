@@ -277,6 +277,13 @@ def create_pair():
     return jsonify(pairs.create_pair(_engine(), body["site_id"], body["competitor_id"], body["my_url"], body["their_url"])), 201
 
 
+@competitors_api.post("/page-pairs/pick")
+def pick_my_page():
+    """Questions → "Change": this page of mine is the one compared with that page of theirs."""
+    body = _body({"site_id", "competitor_id", "my_url", "their_url"}, ("site_id", "competitor_id", "my_url", "their_url"))
+    return jsonify(pairs.pick_my_page(_engine(), body["site_id"], body["competitor_id"], body["their_url"], body["my_url"]))
+
+
 @competitors_api.get("/page-pairs/<int:pair_id>")
 def pair_detail(pair_id: int):
     return jsonify(pairs.pair_detail(_engine(), pair_id))
