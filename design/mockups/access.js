@@ -13,7 +13,7 @@
 
    Hiding a button only keeps the screen honest: the server refuses anything not theirs whatever the screen shows. */
 (function () {
-  const ORDER = ["today", "channels", "conversions", "content", "overview", "insights", "keywords", "competitors", "ai", "ads", "tasks", "notes", "backlinks", "resources", "health"];
+  const ORDER = ["today", "channels", "conversions", "content", "overview", "pages", "insights", "keywords", "competitors", "ai", "ads", "tasks", "notes", "backlinks", "resources", "health"];
   const user = window.BOOT?.user || null;
   const chosen = user && user.role !== "admin" ? user.access || null : null;
   const level = (section) => (chosen ? chosen.sections?.[section] || null : "edit");
@@ -48,7 +48,7 @@
     ["prospects", ["competitors", "backlinks"]], ["mediators", ["backlinks"]], ["refresh/", ["keywords", "competitors", "ai"]],
     ["uptime/", ["health"]], ["health/", ["health"]], ["links/scan", ["health"]], ["notifications", ["overview", "keywords"]],
     ["notes", ["notes"]], ["note-files", ["notes"]], ["rankings", ["keywords", "competitors", "tasks", "ai", "today"]],
-    ["collective/", ["competitors"]], ["link-gaps", ["competitors"]], ["page-pairs", ["competitors"]], ["keyword-check", ["competitors"]],
+    ["collective/", ["competitors"]], ["link-gaps", ["competitors"]], ["page-pairs", ["competitors"]], ["site-pages", ["pages"]], ["tasks/options", ["tasks"]], ["keyword-check", ["competitors"]],
     ["keywords/", ["competitors"]], ["ai-watch", ["competitors", "ai"]], ["resources", ["resources"]], ["insights", ["insights", "today"]],
     ["backlinks/summary", ["backlinks", "today"]], ["backlinks", ["backlinks", "competitors"]], ["metrics/ads", ["ads", "today"]],
     ["metrics/ai", ["ai", "today"]], ["metrics/channels", TRAFFIC], ["metrics/conversions", TRAFFIC], ["metrics/content", TRAFFIC],

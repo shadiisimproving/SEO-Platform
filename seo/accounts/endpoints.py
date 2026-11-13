@@ -79,7 +79,7 @@ EXPORT_SECTIONS = {
     "link-gaps": "competitors", "ai-watch": "competitors", "competitor-notes": "competitors",
     "overview": "overview", "insights": "insights", "keywords": "keywords",
     "backlinks": "backlinks", "links": "health", "health": "health", "uptime": "health",
-    "tasks": "tasks", "notes": "notes", "resources": "resources",
+    "tasks": "tasks", "notes": "notes", "resources": "resources", "pages": "pages", "site-page": "pages",
     # "connections" is Settings: admins only, so it is left out on purpose.
 }
 
@@ -131,7 +131,7 @@ ENDPOINTS: dict[str, tuple[str, str, str]] = {
     "metrics_api.channels": (TRAFFIC, "read", "all"),
     "metrics_api.channel_detail": (TRAFFIC, "read", "all"),
     "metrics_api.referrer_detail": (TRAFFIC + " backlinks", "read", "all"),
-    "metrics_api.page_detail": (TRAFFIC + " overview", "read", "all"),
+    "metrics_api.page_detail": (TRAFFIC + " overview pages", "read", "all"),
     "metrics_api.assistant_detail": (TRAFFIC + " ai", "read", "all"),
     "metrics_api.conversions": (TRAFFIC, "read", "all"),
     "metrics_api.content": (TRAFFIC, "read", "all"),
@@ -234,6 +234,7 @@ ENDPOINTS: dict[str, tuple[str, str, str]] = {
     "competitors_api.import_gaps": ("competitors", "global", ""),  # writes competitor_referrers, shared by every site following that competitor
     "competitors_api.list_pairs": ("competitors", "read", ""),
     "competitors_api.create_pair": ("competitors", "write", ""),
+    "competitors_api.pick_my_page": ("competitors", "write", ""),  # Questions → Change: the site_id in the body is checked
     "competitors_api.pair_detail": ("competitors", "read", ""),
     "competitors_api.update_pair": ("competitors", "write", ""),
     "competitors_api.pair_automatic": ("competitors", "write", ""),
@@ -259,6 +260,11 @@ ENDPOINTS: dict[str, tuple[str, str, str]] = {
 
     # ---- Tasks ----
     "tasks_api.tasks": ("tasks today", "read", "all"),
+    "tasks_api.task_options": ("tasks", "read", ""),  # what a task can be about, for one of their sites
+    # The Pages screen: every page of their sites, with its Search Console and Analytics numbers (metrics.Scope keeps "all" to their sites).
+    # Its Search and Visits tabs read metrics_api.page_detail, which lists "pages" among its sections.
+    "pages_api.listing": ("pages", "read", "all"),
+    "pages_api.profile": ("pages", "read", ""),
     "tasks_api.create": ("tasks", "write", ""),
     "tasks_api.update": ("tasks", "write", ""),
     "tasks_api.delete": ("tasks", "write", ""),
