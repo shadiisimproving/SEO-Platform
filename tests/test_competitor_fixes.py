@@ -184,7 +184,8 @@ def test_a_page_the_reader_chokes_on_is_saved_and_the_next_one_still_read(world,
     world.drain("crawl")
     assert scalar(world.engine, "SELECT last_status FROM pages WHERE url = 'https://rival.example/bad'") == "parse_error"
     assert scalar(world.engine, "SELECT content_hash IS NOT NULL FROM pages WHERE url = 'https://rival.example/good'") == 1
-    assert profile._crawl_state(world.engine.connect(), rival)["status"] == "ok"
+    with world.engine.connect() as conn:  # closed here: left open, it kept a lock that hung the next test's table wipe
+        assert profile._crawl_state(conn, rival)["status"] == "ok"
 
 
 # ---- Firecrawl: a run whose job dies (F61), a worker killed mid-chunk (F63), the reading route (F60) --------
