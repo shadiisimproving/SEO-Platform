@@ -82,7 +82,7 @@ const level = (page, key) => page.$eval(`#lv-access-form input[name="ax_${key}"]
   await page.check('#lv-access-form input[name="ax_spend"]');
   await page.click("[data-lv-access-save]"); await page.waitForSelector("#panel", { state: "detached", timeout: 8000 }); await settle(page, 600);
   const all = sites.length === 2 ? "all sites" : "2 sites";
-  check(await summary() === `15 sections · ${all} · can spend credits`, `the row follows the change ("${await summary()}")`);
+  check(await summary() === `16 sections · ${all} · can spend credits`, `the row follows the change ("${await summary()}")`);
 
   // Back to the first choice for the sign-in below, then phone width and dark mode on the open editor.
   await (await editButton()).click(); await page.waitForSelector("#lv-access-form");
