@@ -249,7 +249,7 @@
     { group: "Traffic" },
     { id: "channels", label: "Channels", icon: "activity" }, { id: "conversions", label: "Conversions", icon: "filter" }, { id: "content", label: "Content", icon: "file-text" },
     { group: "Search" },
-    { id: "overview", label: "Overview", icon: "search" }, { id: "insights", label: "Insights", icon: "trending-up" }, { id: "keywords", label: "Keywords", icon: "key-round" }, { id: "competitors", label: "Competitors", icon: "crosshair" }, { id: "ai", label: "AI search", icon: "sparkles" },
+    { id: "overview", label: "Overview", icon: "search" }, { id: "pages", label: "Pages", icon: "layers" }, { id: "insights", label: "Insights", icon: "trending-up" }, { id: "keywords", label: "Keywords", icon: "key-round" }, { id: "competitors", label: "Competitors", icon: "crosshair" }, { id: "ai", label: "AI search", icon: "sparkles" },
     { group: "Ads" },
     { id: "ads", label: "Google Ads", icon: "megaphone", logo: "googleads" },
     { group: "Work" },
@@ -2346,6 +2346,7 @@
     openPanel(`${panelHead(linkDomain(b.src), `<span class="vd-head-line">${PageLink.html(b.src, { text: pagePath, cls: "mono" })}</span><span class="vd-head-line">→ ${b.target ? PageLink.html(b.target, { host: b.site, cls: "mono" }) : "—"}</span>`, siteLogo(linkDomain(b.src), 34))}
       <div class="panel-body">
         ${window.BacklinkSeo.panelBlocks(b, { server: bl.server, linkStatus, check, traffic: traffic + (utm ? `<table class="mini"><tbody>${utm}</tbody></table>` : ""), trafficValue, sampleEffect, details, anchor: b.anchor || b.check?.anchor })}
+        ${b.serverId ? window.UI.relatedTasks({ host: b.site || "", item: { kind: "backlink", ref: b.serverId } }) : ""}
       </div>
       <div class="panel-foot"><button class="btn btn-main" id="bl-edit" data-id="${esc(b.id)}">${icon("pencil")}${t("Edit")}</button>${window.UI.taskButton(backlinkFind(b), { cls: "btn" })}<button class="btn btn-ghost danger" id="bl-delete" data-id="${esc(b.id)}">${t("Delete")}</button></div>`, opener);
   }

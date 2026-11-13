@@ -4,7 +4,7 @@ from __future__ import annotations
 from flask import Blueprint, current_app, g, jsonify, request
 
 from seo.core.errors import Refused
-from seo.tasks import service
+from seo.tasks import options, service
 
 tasks_api = Blueprint("tasks_api", __name__, url_prefix="/api")
 
@@ -52,3 +52,12 @@ def comment(task_id: int):
     # Signed in, a comment carries the account's name, whatever was sent.
     name = g.user["name"] if g.get("user") else body.get("name")
     return jsonify(service.add_comment(_engine(), task_id, body.get("text"), name))
+
+
+@tasks_api.get("/tasks/options")
+def task_options():
+    """What a task can be about, for one of my sites."""
+    raw = request.args.get("site_id", "")
+    if not raw.isdigit():
+        raise Refused("site_id must be a number.")
+    return jsonify(options.for_site(_engine(), int(raw)))

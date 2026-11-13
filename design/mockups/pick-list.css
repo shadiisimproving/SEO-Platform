@@ -1,0 +1,44 @@
+/* The picker (pick-list.js): a box whose list opens on click, and the task panel's About section that uses it. */
+.pl { position: relative; }
+.pl-input { width: 100%; padding-right: 30px; }
+.pl-caret { position: absolute; top: 0; right: 4px; display: grid; place-items: center; width: 26px; height: 100%; color: var(--muted); cursor: pointer; }
+.pl-caret svg { width: 15px; height: 15px; }
+.pl-pop { position: absolute; z-index: 40; top: calc(100% + 4px); left: 0; right: 0; border: 1px solid var(--line-2); border-radius: var(--r-s); background: var(--panel-solid, var(--field)); box-shadow: var(--shadow-2); overflow: hidden; }
+.pl-list { max-height: 264px; margin: 0; padding: 4px; list-style: none; overflow-y: auto; overscroll-behavior: contain; }
+.pl-opt { display: flex; align-items: center; gap: 8px; min-height: 36px; padding: 5px 8px; border-radius: 6px; cursor: pointer; }
+.pl-opt[aria-selected="true"] { background: var(--selected, var(--hover)); }
+.pl-opt:hover { background: var(--hover); }
+.pl-opt > img, .pl-opt > .site-logo { flex: none; }
+.pl-main { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.pl-label { font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pl-sub { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pl-fact { flex: none; font-size: 12px; color: var(--text-2); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.pl-pos { font-weight: 600; color: var(--text); }
+.pl-bad { color: var(--serious-t, var(--warn-t)); font-weight: 600; }
+.pl-note { padding: 10px 8px; font-size: 13px; color: var(--muted); }
+.pl-foot { margin: 0; padding: 6px 12px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); }
+
+/* About, in the task panel */
+.ta { margin: 0 0 14px; padding: 0; border: 0; min-width: 0; }
+.ta > legend { padding: 0; margin-bottom: 2px; }
+.ta-help { margin: 0 0 8px; }
+.ta-kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+.ta-kind { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--field); color: var(--text-2); font: inherit; font-size: 13px; cursor: pointer; transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast); }
+.ta-kind svg.i { width: 14px; height: 14px; }
+.ta-kind:hover { background: var(--hover); color: var(--text); }
+.ta-kind[aria-pressed="true"] { border-color: var(--accent-1); background: color-mix(in srgb, var(--accent-1) 10%, transparent); color: var(--accent-text); }
+.ta-kind.is-main { font-weight: 600; }
+.ta-kind:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ta-n { min-width: 18px; padding: 0 5px; border-radius: 999px; background: var(--accent-1); color: var(--on-accent); font-size: 11px; line-height: 18px; text-align: center; }
+.ta-fields:not(:empty) { display: grid; gap: 12px; margin-top: 12px; }
+.ta-field { display: grid; gap: 6px; }
+.ta-field-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ta-field-head .lab { display: inline-flex; align-items: center; gap: 6px; margin: 0; }
+.ta-field-head .lab svg.i { width: 14px; height: 14px; color: var(--muted); }
+.ta-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.ta-chips:empty { display: none; }
+.ta-chip { gap: 5px; padding-left: 6px; }
+.ta-chip > svg.i { flex: none; width: 13px; height: 13px; color: var(--muted); }
+.ta-tag { display: inline-flex; align-items: center; gap: 4px; }
+.ta-tag svg.i { width: 12px; height: 12px; }
+.tk-about-cell { margin-top: 4px; }

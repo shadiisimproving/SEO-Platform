@@ -151,6 +151,11 @@
     overview,
     insights: () => ({ view: "insights", params: { site_id: site(), group: window.INSIGHTS?.tab, status: window.INSIGHTS?.status } }),
     keywords, competitors, backlinks, health, tasks, notes,
+    // Pages: the list for the period, or the one page on show.
+    pages: () => {
+      const open = window.SCREENS?.pages?.shown?.();
+      return open ? { view: "site-page", params: { site_id: open.siteId, url: open.url } } : { view: "pages", params: { ...period(), site_id: site() } };
+    },
     resources: () => ({ view: "resources", params: { site_id: site() }, seen: lvSeen([["resources", "resources", (r) => r.id]]), words: [...chipWords("[data-rs-filter]", "rsFilter", "Tag"), ...sortWords()] }),
     settings: () => ({ view: "connections", params: {} }),
   };

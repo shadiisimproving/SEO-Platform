@@ -46,6 +46,8 @@ def check(engine, site: int, rival: int | None) -> tuple[list, list]:
             if not rival:
                 continue
             args["competitor_id"] = str(rival)
+        if view["id"] == "site-page":
+            args["url"] = "/"
         for variant in ({}, {"site_id": None}) if view["id"] in ("today", "uptime", "tasks", "notes", "resources") else ({},):
             asked = {k: v for k, v in {**args, **variant}.items() if v is not None}
             fmt.MISSING.clear()

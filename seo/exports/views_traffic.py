@@ -187,3 +187,53 @@ def today(engine, args) -> Report:
         C("host", "Competitor", "text"), C("url", "Their page", "url"), C("kind", "What changed", "text", translate=True, get=lambda r: CHANGE_KINDS.get(r.get("kind"), str(r.get("kind") or "").replace("_", " ").capitalize())), C("when", "When", "datetime"),
     ], data.get("rival_changes") or [], empty="No competitor changed a watched page."))
     return report
+
+
+@view("pages", "Pages")
+def site_pages(engine, args) -> Report:
+    """The Pages screen's list: every page with its Google numbers and what's linked to it."""
+    from seo.pages import service
+
+    scope = _scope(engine, args)
+    data = service.listing(scope)
+    report = _report(engine, args, scope, "pages", "Pages")
+    s = data["summary"]
+    report.tiles = [Tile("Pages", s["pages"], "int"), Tile("Get clicks", s["with_clicks"], "int"), Tile("Not indexed", s["not_indexed"], "int"), Tile("Open tasks", s["open_tasks"], "int")]
+    indexed = {True: "Yes", False: "No"}
+    report.tables.append(Table("pages", "Pages", [
+        C("url", "Page", "url"), C("title", "Title", "text", width=3), C("clicks", "Google clicks", "int"), C("impressions", "Impressions", "int"),
+        C("position", "Position", "position"), C("sessions", "Visits", "int"), C("tasks_open", "Open tasks", "int"), C("notes", "Notes", "int"),
+        C("backlinks", "Backlinks", "int"), C("indexed", "Indexed", "text", get=lambda r: indexed.get(r.get("indexed"), ""), translate=True),
+    ], data["pages"], total=data["total"], key="url"))
+    return report
+
+
+@view("site-page", "Page")
+def site_page(engine, args) -> Report:
+    """One page from the Pages screen: its rankings, backlinks and technical findings."""
+    from seo.pages import service
+
+    try:
+        site_id = int(args.get("site_id"))
+    except (TypeError, ValueError):
+        from seo.core.errors import Refused
+        raise Refused("site_id must be a number.") from None
+    data = service.profile(engine, site_id, args.get("url") or "")
+    report = Report("site-page", "Page", site=data["host"], subject=data["path"])
+    g = data["google_28d"]
+    report.tiles = [Tile("Google clicks", g["clicks"], "int"), Tile("Impressions", g["impressions"], "int"), Tile("Position", g["position"], "float")]
+    ranked = [{"keyword": r["keyword"], "country": (r.get("country") or "").upper(), **{f"pos_{e}": (v.get("position") if v.get("position") is not None else v.get("own")) for e, v in r["engines"].items()}} for r in data["rankings"]]
+    engines = sorted({key for row in ranked for key in row if key.startswith("pos_")})
+    report.tables.append(Table("rankings", "Rankings", [C("keyword", "Keyword", "text", width=3), C("country", "Country", "text")]
+                               + [C(e, e[4:].capitalize(), "position") for e in engines], ranked, empty="No tracked keyword ranks with this page."))
+    report.tables.append(Table("backlinks", "Backlinks", [
+        C("source", "Linking page", "url"), C("domain", "Website", "text"), C("anchor", "Anchor", "text"), C("status", "Status", "text", translate=True), C("verdict", "Counts?", "text", translate=True),
+    ], data["backlinks"], empty="No backlink you've logged points at this page."))
+    tech = data["technical"]
+    facts = [{"what": "Health test", "found": code} for code in tech["health"]] + [{"what": "Broken link", "found": f"{x['target']} ({x.get('status') or x['category']})"} for x in tech["links"]]
+    if tech["inspection"]:
+        facts.append({"what": "Google index", "found": tech["inspection"]["coverage"] or tech["inspection"]["verdict"]})
+    for device, s in tech["speed"].items():
+        facts.append({"what": f"Speed ({device})", "found": f"{s['score']}/100"})
+    report.tables.append(Table("technical", "Technical", [C("what", "Check", "text", translate=True), C("found", "Found", "text", width=4)], facts, empty="Nothing found."))
+    return report

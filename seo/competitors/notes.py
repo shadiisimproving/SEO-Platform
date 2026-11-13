@@ -25,7 +25,7 @@ MAX_BYTES = 4_000_000  # far past any note; the column holds 16 MB
 SCOPES = ("all", "competitor", "page", "site", "screen", "keyword", "date", "domain", "section", "task")
 # The screens a note can be about: the app's menu. A name outside it would never be shown anywhere.
 SCREENS = (
-    "today", "channels", "conversions", "content", "overview", "keywords", "competitors", "ai", "ads",
+    "today", "channels", "conversions", "content", "overview", "pages", "keywords", "competitors", "ai", "ads",
     "tasks", "backlinks", "resources", "health", "settings",
 )
 WRONG_SCOPE = "That isn't something a note can go on."

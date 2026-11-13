@@ -74,7 +74,7 @@
     if (T.kind && task.kind !== T.kind) return false;
     if (T.owner === UNASSIGNED ? task.owner_label : T.owner && task.owner_label !== T.owner) return false;
     if (T.query) {
-      const hay = [task.title, task.description, task.owner_label, task.kind, task.source?.label, ...(task.pages || []), ...(task.keywords || [])].join(" ").toLowerCase();
+      const hay = [task.title, task.description, task.owner_label, task.kind, task.source?.label, ...(task.pages || []), ...(task.keywords || []), window.TaskAbout.words(task)].join(" ").toLowerCase();
       if (!hay.includes(T.query.toLowerCase())) return false;
     }
     return true;
@@ -276,13 +276,17 @@
   }
   const sameWord = (a, b) => plain(a).normalize("NFC") === plain(b).normalize("NFC");
   /* A task for one site never shows on another site's page of the same name. Open ones first. */
-  function relatedTo({ host = "", page = "", keyword = "" }) {
+  function relatedTo({ host = "", page = "", keyword = "", item = null }) { // label: how an item reads in the panel head
     const here = T.tasks.filter((task) => (!host || !task.site_host || task.site_host === host)
-      && ((keyword && (task.keywords || []).some((word) => sameWord(word, keyword))) || (page && (task.pages || []).some((link) => samePage(link, page)))));
+      && ((keyword && (task.keywords || []).some((word) => sameWord(word, keyword))) || (page && (task.pages || []).some((link) => samePage(link, page)))
+        || (item && (task.about?.items || []).some((x) => x.kind === item.kind && String(x.ref) === String(item.ref)))
+        || (keyword && (task.about?.items || []).some((x) => x.kind === "ranking" && sameWord(String(x.label).split(" · ")[0], keyword)))));
     return here.sort((a, b) => Number(!isOpen(a)) - Number(!isOpen(b)) || byDue(a, b));
   }
+  /* The status as a small coloured tag, in the board's column colours: grey To do, blue In progress, green Done. */
+  const statusTag = (key) => `<span class="tk-st tk-st-${esc(key)}">${columnWord(STATUSES.find(([k]) => k === key)?.[1] || "")}</span>`;
   const relatedRow = (task) => `<li class="${isOpen(task) ? "" : "tk-rel-done"}"><button type="button" class="tk-rel-title" data-task-open="${task.id}" dir="auto">${esc(task.title)}</button>
-      <span class="tk-rel-meta small sec">${columnWord(STATUSES.find(([key]) => key === task.status)?.[1] || "")}${task.owner_label ? ` · <span dir="auto">${esc(task.owner_label)}</span>` : ""}${isLate(task) ? ` ${status("warn", `${t("Late")} · ${shortDay(task.due)}`)}` : task.due ? ` · ${esc(shortDay(task.due))}` : ""}</span></li>`;
+      <span class="tk-rel-meta small sec">${statusTag(task.status)}${task.owner_label ? ` · <span dir="auto">${esc(task.owner_label)}</span>` : ""}${isLate(task) ? ` ${status("warn", `${t("Late")} · ${shortDay(task.due)}`)}` : task.due ? ` · ${esc(shortDay(task.due))}` : ""}</span></li>`;
   const relatedInner = (about) => {
     const list = relatedTo(about);
     return list.length ? `<h3>${t("Related tasks")} <span class="muted">${num(list.length)}</span></h3><ul class="tk-rel-list">${list.map(relatedRow).join("")}</ul>` : "";
@@ -291,7 +295,7 @@
     const n = relatedTo(about).filter(isOpen).length;
     return n ? `<button type="button" class="tk-rel-tag" data-task-related-open>${icon("square-check")}${num(n)} ${t(n === 1 ? "task" : "tasks")}</button>` : "";
   };
-  /* about: { host, page, keyword }. Empty until a task is linked, and fills in by itself when one is. */
+  /* about: { host, page, keyword, item: { kind, ref } }. Empty until a task is linked, and fills in by itself when one is. */
   const relatedTasks = (about) => `<div class="tk-related" data-task-related="${esc(JSON.stringify(about))}">${T.ready ? relatedInner(about) : ""}</div>`;
   const relatedTag = (about) => `<span data-task-related-tag="${esc(JSON.stringify(about))}">${T.ready ? relatedTagInner(about) : ""}</span>`;
   function refreshRelated() {
@@ -301,65 +305,8 @@
   function openRelated(about, opener) {
     const list = relatedTo(about).filter(isOpen);
     if (list.length === 1) { openTask({ task: list[0], opener }); return; }
-    UI.openPanel(`${UI.panelHead(t("Related tasks"), `<span class="mono">${about.page ? `<span dir="auto">${esc(about.page)}</span>` : KeywordLink.html(about.keyword || "", { host: about.host || null })}</span>`)}
+    UI.openPanel(`${UI.panelHead(t("Related tasks"), `<span class="mono">${about.page ? `<span dir="auto">${esc(about.page)}</span>` : about.item ? `<span dir="auto">${esc(about.label || about.item.ref)}</span>` : KeywordLink.html(about.keyword || "", { host: about.host || null })}</span>`)}
       <div class="panel-body">${relatedTasks(about)}</div>`, opener);
-  }
-
-  // ---- the pages and keywords field --------------------------------------------------------------
-  /* A hidden input holds the list, so drafts and the "anything typed?" check treat it like any other field. */
-  const linksField = (id, label, hint, values) => `<div class="field tk-links" data-links="${id}">
-      <label class="lab" for="${id}-add">${t(label)}</label>
-      <input type="hidden" id="${id}" value="${esc(JSON.stringify(values || []))}">
-      <div class="tk-links-box"><span class="tk-chips"></span><input class="tk-links-add" id="${id}-add" list="${id}-options" placeholder="${t(hint)}" maxlength="500" autocomplete="off" dir="auto"></div>
-      <datalist id="${id}-options"></datalist>
-    </div>`;
-  const linksOf = (id) => { try { return JSON.parse(UI.$(`#${id}`)?.value || "[]"); } catch { return []; } };
-  function setLinks(id, values) {
-    UI.$(`#${id}`).value = JSON.stringify(values);
-    drawLinks(id);
-  }
-  function drawLinks(id) {
-    const box = UI.$(`[data-links="${id}"] .tk-chips`);
-    const host = T.sites.find((s) => String(s.id) === UI.$("#task-site")?.value)?.host || null;
-    if (box) UI.setHTML(box, linksOf(id).map((value, i) => `<span class="tk-chip" dir="auto">${id === "task-pages" ? PageLink.html(value, { host }) : `<span>${KeywordLink.html(value, { host })}</span>`}<button type="button" class="tk-chip-x" data-link-remove="${i}" aria-label="${t("Remove")}: ${esc(value)}">${icon("x")}</button></span>`).join(""));
-  }
-  /* What's typed in the box joins the list. Keywords can be pasted with commas; addresses can hold commas, so only spaces split them. */
-  function commitLink(id) {
-    const input = UI.$(`#${id}-add`);
-    if (!input || !input.value.trim()) return;
-    const typed = input.value.split(id === "task-keywords" ? /[,\n]+/ : /\s+/).map((word) => word.trim()).filter(Boolean);
-    const now = linksOf(id);
-    typed.forEach((word) => { if (!now.some((have) => plain(have) === plain(word))) now.push(word); });
-    input.value = "";
-    setLinks(id, now);
-  }
-  const suggestions = new Map(); // site id: { pages, keywords }, kept while the app is open
-  async function suggestionsFor(site) {
-    if (!suggestions.has(site.id)) {
-      const asked = Promise.all([
-        COMP.api("GET", `sites/${site.id}/pages`).then((answer) => answer.pages.map((p) => p.url)).catch(() => []),
-        COMP.api("GET", `rankings?site_id=${site.id}`).then((answer) => answer.rows.map((row) => row.keyword)).catch(() => []),
-      ]).then(([pages, keywords]) => ({ pages, keywords }));
-      suggestions.set(site.id, asked);
-    }
-    return suggestions.get(site.id);
-  }
-  /* Suggestions only: anything can be typed. They follow the site chosen in the form. */
-  async function fillSuggestions() {
-    const chosen = UI.$("#task-site")?.value;
-    const sites = chosen ? T.sites.filter((s) => String(s.id) === chosen) : T.sites;
-    let pages = [], keywords = [];
-    if (UI.state.served) {
-      const found = await Promise.all(sites.map(suggestionsFor));
-      pages = found.flatMap((x) => x.pages); keywords = found.flatMap((x) => x.keywords);
-    } else {
-      const hosts = new Set(sites.map((s) => s.host));
-      const rows = (window.KEYWORDS || []).filter((row) => hosts.has(row.site));
-      pages = rows.map((row) => row.page).filter(Boolean); keywords = rows.map((row) => row.k);
-    }
-    const fill = (id, words) => { const list = UI.$(`#${id}-options`); if (list) UI.setHTML(list, [...new Set(words.filter(Boolean))].slice(0, 500).map((word) => `<option value="${esc(word)}"></option>`).join("")); };
-    fill("task-pages", pages);
-    fill("task-keywords", keywords);
   }
 
   // ---- the panel --------------------------------------------------------------------------------
@@ -401,8 +348,8 @@
   /* Who is signed in: a new task is theirs unless they change it, so it shows in their "My work" on Today. */
   const signedIn = () => window.BOOT?.user?.name?.trim() || myName();
 
-  /* task: an existing one. Otherwise prefill: { title, host, description, source, kind, owner, keywords, pages }. */
-  function openTask({ task = null, title = "", host = null, description = "", source = null, priority = "medium", pages = [], keywords = [], kind = "", owner = null, query = "", opener = null } = {}) {
+  /* task: an existing one. Otherwise prefill: { title, host, description, source, kind, owner, keywords, pages, about }. */
+  function openTask({ task = null, title = "", host = null, description = "", source = null, priority = "medium", pages = [], keywords = [], about = null, kind = "", owner = null, query = "", opener = null } = {}) {
     // The keyword a finding carries, wherever it keeps it.
     if (!task && !keywords.length) { const k = query || source?.query || source?.keyword; if (k) keywords = [k]; }
     T.base = task ? JSON.parse(JSON.stringify(task)) : null;
@@ -434,12 +381,11 @@
         </div>
         ${removedSite}
         <label class="field"><span>${t("Description")}</span><textarea class="input" id="task-description" rows="3" maxlength="20000" dir="auto">${esc(task ? given.description || "" : description)}</textarea></label>
-        ${linksField("task-pages", "Pages", "Add a page", task ? given.pages : pages)}
-        ${linksField("task-keywords", "Keywords", "Add a keyword", task ? given.keywords : keywords)}
+        ${window.TaskAbout.html(task ? { pages: given.pages, keywords: given.keywords, about: given.about } : { pages, keywords, about })}
       </form>
       ${task ? commentsBlock(task) : ""}${task && window.COMP?.notes ? `<div class="task-notes">${window.COMP.notes.block({ scope: "task", taskId: task.id, task: task.title, siteId: task.site_id ?? null, title: t("Notes on this task") })}</div>` : ""}</div>
       <div class="panel-foot"><button class="btn btn-main" id="task-save" ${task ? `data-id="${task.id}"` : ""}>${t("Save")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button>${task ? `<button class="btn btn-ghost danger" id="task-delete" data-id="${task.id}">${t("Delete")}</button>` : ""}</div>`,
-    opener, { key: draftKey, reopen: () => openTask({ task, title, host, description, source, priority, pages, keywords, kind, owner, opener }), after: () => { drawLinks("task-pages"); drawLinks("task-keywords"); fillSuggestions(); window.COMP?.notes?.mount(); } });
+    opener, { key: draftKey, reopen: () => openTask({ task, title, host, description, source, priority, pages, keywords, about, kind, owner, opener }), after: () => { window.TaskAbout.mount(); window.COMP?.notes?.mount(); } });
     pendingSource = task ? null : source;
   }
   let pendingSource = null; // what the panel on screen would be created from
@@ -455,13 +401,12 @@
     UI.setHTML(errorBox, "");
     title.classList.remove("invalid");
     if (!title.value.trim()) { title.classList.add("invalid"); title.focus(); UI.setHTML(errorBox, `<div class="error" role="alert">${icon("octagon-alert")}<span>${t("A task needs a title.")}</span></div>`); return; }
-    commitLink("task-pages");
-    commitLink("task-keywords");
+    const linked = window.TaskAbout.values();
     const rawSite = UI.$("#task-site").value;
     const body = {
       title: title.value, status: UI.$("#task-status").value, priority: UI.$("#task-priority").value, due: UI.$("#task-due").value,
       owner_label: sameOwner(UI.$("#task-owner").value), kind: sameKind(UI.$("#task-kind").value), description: UI.$("#task-description").value,
-      pages: linksOf("task-pages"), keywords: linksOf("task-keywords"),
+      pages: linked.pages, keywords: linked.keywords, about: linked.about,
       site_id: T.sites.find((s) => String(s.id) === rawSite)?.id ?? null,
     };
     const id = button.dataset.id ? Number(button.dataset.id) : null;
@@ -494,9 +439,13 @@
     setTimeout(() => { if (UI.state.route === "tasks") UI.$(`[data-task-open="${saved.id}"]`)?.focus({ preventScroll: true }); }, UI.reduceMotion() ? 10 : 160);
   }
 
-  const EDITABLE = ["title", "status", "priority", "due", "owner_label", "kind", "description", "pages", "keywords", "site_id"];
-  const sameValue = (a, b) => String(a ?? "").trim() === String(b ?? "").trim();
-  const FIELD_WORDS = { title: "Title", status: "Status", priority: "Priority", due: "Due date", owner_label: "Owner", kind: "Type", description: "Description", pages: "Pages", keywords: "Keywords", site_id: "Site" };
+  const EDITABLE = ["title", "status", "priority", "due", "owner_label", "kind", "description", "pages", "keywords", "about", "site_id"];
+  const sameValue = (a, b) => {
+    const empty = (v) => v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length) || (typeof v === "object" && !Array.isArray(v) && !v.main && !(v.items || []).length);
+    if (typeof a === "object" || typeof b === "object") return (empty(a) && empty(b)) || JSON.stringify(a) === JSON.stringify(b);
+    return String(a ?? "").trim() === String(b ?? "").trim();
+  };
+  const FIELD_WORDS = { title: "Title", status: "Status", priority: "Priority", due: "Due date", owner_label: "Owner", kind: "Type", description: "Description", pages: "Pages", keywords: "Keywords", about: "About", site_id: "Site" };
 
   /* Only what this person changed is sent, so two people can edit different things. If someone else changed the same
      thing while the panel was open, nothing is overwritten until this person has seen it and chosen. */
@@ -596,7 +545,7 @@
     const countBit = task.comments.length ? `<span class="small muted tk-count">${num(task.comments.length)} ${t(task.comments.length === 1 ? "comment" : "comments")}</span>` : "";
     return `<article class="tk-card" draggable="true" data-task-card="${task.id}">
       <button type="button" class="tk-title" data-task-open="${task.id}" dir="auto">${esc(task.title)}</button>
-      <div class="tk-tags">${task.priority === "high" ? status("serious", t("High")) : ""}${kindTag(task.kind)}${siteBit(task)}</div>
+      <div class="tk-tags">${task.priority === "high" ? status("serious", t("High")) : ""}${window.TaskAbout.tag(task)}${kindTag(task.kind)}${siteBit(task)}</div>
       <div class="tk-foot"><div class="tk-foot-start">${findingTag(task)}${dueBit(task, carried)}</div><div class="tk-foot-end">${countBit}${ownerBit}</div></div>
       ${moveSelect(task)}
     </article>`;
@@ -659,7 +608,7 @@
         ${showSite ? `<td class="mono small" data-label="${t("Site")}" dir="auto">${task.site_host ? esc(task.site_host) : `<span class="muted" style="font-family:var(--font)">${t("All sites")}</span>`}</td>` : ""}
         <td data-label="${t("Owner")}" dir="auto">${task.owner_label ? esc(task.owner_label) : `<span class="muted">—</span>`}</td>
         <td data-label="${t("Due date")}">${dueBit(task, carriedFrom(task)) || `<span class="muted">—</span>`}</td>
-        <td data-label="${t("Type")}" dir="auto">${task.kind ? esc(t(task.kind)) : `<span class="muted">—</span>`}</td>
+        <td data-label="${t("Type")}" dir="auto">${task.kind ? esc(t(task.kind)) : `<span class="muted">—</span>`}${window.TaskAbout.tag(task) ? `<div class="tk-about-cell">${window.TaskAbout.tag(task)}</div>` : ""}</td>
       </tr>`).join("")}</tbody></table></div>
       ${TP.footer(PAGES, view, { noun: t(view.total === 1 ? "task" : "tasks") })}</div>`;
   }
@@ -754,15 +703,6 @@
         return;
       }
       if ((el = hit("[data-task-related-open]"))) { openRelated(JSON.parse(el.closest("[data-task-related-tag]").dataset.taskRelatedTag), el); return; }
-      if ((el = hit("[data-link-remove]"))) {
-        const id = el.closest("[data-links]").dataset.links;
-        const now = linksOf(id);
-        now.splice(Number(el.dataset.linkRemove), 1);
-        setLinks(id, now);
-        UI.$(`#${id}-add`)?.focus();
-        return;
-      }
-      if (hit(".tk-links-box") && !hit("input")) { UI.$(`#${hit("[data-links]").dataset.links}-add`)?.focus(); return; }
       if ((el = hit("#task-save"))) { saveTask(el); return; }
       if ((el = hit("#task-delete"))) { deleteTask(Number(el.dataset.id)); return; }
       if ((el = hit("#tk-comment-send"))) { sendComment(el); return; }
@@ -811,26 +751,15 @@
       }
     });
     document.addEventListener("keydown", (e) => {
-      if (e.key === "Enter" && e.target.matches?.("#task-form input:not([type='date']):not(.tk-links-add)")) { e.preventDefault(); UI.$("#task-save")?.click(); }
+      if (e.key === "Enter" && e.target.matches?.("#task-form input:not([type='date']):not(.pl-input)")) { e.preventDefault(); UI.$("#task-save")?.click(); }
     });
     document.addEventListener("submit", (e) => { if (e.target.id === "task-form") e.preventDefault(); });
-    document.addEventListener("keydown", (e) => {
-      if (!e.target.matches?.(".tk-links-add")) return;
-      const id = e.target.closest("[data-links]").dataset.links;
-      if (e.key === "Enter" || (e.key === "," && id === "task-keywords")) { e.preventDefault(); commitLink(id); }
-      if (e.key === "Backspace" && !e.target.value) setLinks(id, linksOf(id).slice(0, -1));
-    });
-    // Leaving the box keeps what was typed. Choosing a suggestion arrives as an input with no typing behind it.
-    document.addEventListener("focusout", (e) => { if (e.target.matches?.(".tk-links-add")) commitLink(e.target.closest("[data-links]").dataset.links); });
-    document.addEventListener("input", (e) => {
-      if (e.target.matches?.(".tk-links-add") && (!e.inputType || e.inputType === "insertReplacementText")) commitLink(e.target.closest("[data-links]").dataset.links);
-    });
     document.addEventListener("input", (e) => {
       if (e.target.id === "tk-query") { T.query = e.target.value; TP.reset(PAGES); paint(); }
     });
     document.addEventListener("change", (e) => {
       const id = e.target.id;
-      if (id === "task-site") { fillSuggestions(); drawLinks("task-pages"); drawLinks("task-keywords"); return; } // the links point at the site picked
+      if (id === "task-site") { window.TaskAbout.siteChanged(); return; } // the links point at the site picked
       if (e.target.matches?.("[data-task-move]")) { moveTask(Number(e.target.dataset.taskMove), e.target.value, `#${id}`); return; }
       if (id === "tk-status") { T.status = e.target.value; TP.reset(PAGES); paint(); return; }
       if (id === "tk-kind") { T.kind = e.target.value; TP.reset(PAGES); paint(); return; }
@@ -902,6 +831,8 @@
       helpers.relatedTag = relatedTag;
       helpers.tasksDueThisWeek = dueThisWeek;
       helpers.nextTasks = nextTasks;
+      window.TASK_SITES = () => T.sites;
+      window.TaskAbout.init(helpers);
       bind();
       load().then(() => { changed(); if (UI.state.route === "tasks") UI.render(); else if (UI.state.route === "today") UI.render(); });
     },

@@ -114,3 +114,9 @@
 .tk-finding { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .tk-finding > span { flex: 1 1 200px; }
 .tk-table .status { margin-top: 4px; }
+/* A task's status as a coloured tag (Related tasks lists). */
+.tk-st { display: inline-flex; align-items: center; gap: 5px; padding: 0 8px 0 7px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 20px; white-space: nowrap; }
+.tk-st::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.tk-st-todo { background: var(--track); color: var(--text-2); }
+.tk-st-doing { background: var(--c-blue-pale, color-mix(in srgb, var(--accent-1) 14%, transparent)); color: var(--c-blue, var(--accent-text)); }
+.tk-st-done { background: color-mix(in srgb, var(--good) 16%, transparent); color: var(--good-t); }

@@ -89,32 +89,37 @@ const KW = "moulin à café", KW_FREE = "how to brew coffee";
   await settle();
   await page.locator("#task-title").fill(LINKED);
   await page.locator("#task-site").selectOption({ label: "site-one.example" });
-  await page.locator("#task-keywords-add").fill(KW);
+  await page.locator('[data-ta-kind="keyword"]').click();
+  await page.locator("#ta-pick-keyword").fill(KW);
   await page.keyboard.press("Enter");
   await settle();
-  check("Enter makes a chip and doesn't save", (await page.locator('[data-links="task-keywords"] .tk-chip').count()) === 1 && (await panelOpen()));
-  await page.locator("#task-keywords-add").fill(KW.toUpperCase());
+  check("Enter makes a chip and doesn't save", (await page.locator('[data-ta-chips="keyword"] .tk-chip').count()) === 1 && (await panelOpen()));
+  await page.locator("#ta-pick-keyword").fill(KW.toUpperCase());
   await page.keyboard.press("Enter");
-  check("the same word in capitals isn't added twice", (await page.locator('[data-links="task-keywords"] .tk-chip').count()) === 1);
-  await page.locator("#task-keywords-add").fill("visa a, visa b");
+  check("the same word in capitals isn't added twice", (await page.locator('[data-ta-chips="keyword"] .tk-chip').count()) === 1);
+  await page.locator("#ta-pick-keyword").fill("visa a, visa b");
   await page.keyboard.press("Enter");
-  check("commas make several", (await page.locator('[data-links="task-keywords"] .tk-chip').count()) === 3);
-  await page.locator('[data-links="task-keywords"] .tk-chip-x').last().click();
-  await page.locator('[data-links="task-keywords"] .tk-chip-x').last().click();
-  check("x removes one", (await page.locator('[data-links="task-keywords"] .tk-chip').count()) === 1);
+  check("commas make several", (await page.locator('[data-ta-chips="keyword"] .tk-chip').count()) === 3);
+  await page.locator('[data-ta-chips="keyword"] .tk-chip-x').last().click();
+  await page.locator('[data-ta-chips="keyword"] .tk-chip-x').last().click();
+  check("x removes one", (await page.locator('[data-ta-chips="keyword"] .tk-chip').count()) === 1);
+  await page.locator("#ta-pick-keyword").focus();
   await page.waitForTimeout(800);
-  check("suggestions follow the site", (await page.locator("#task-keywords-options option").count()) > 0, `${await page.locator("#task-keywords-options option").count()} suggestions`);
-  await page.locator("#task-pages-add").fill("https://site-one.example/moulins-guide");
+  check("the list shows the site's keywords before typing", (await page.locator("#ta-pick-keyword-list .pl-opt").count()) > 0, `${await page.locator("#ta-pick-keyword-list .pl-opt").count()} suggestions`);
+  await page.locator('[data-ta-kind="page"]').click();
+  await page.locator("#ta-pick-page").fill("https://site-one.example/moulins-guide");
+  await page.keyboard.press("Enter");
   await page.locator("#task-form").screenshot({ path: `${shots}/task-form-filled.png` });
-  // Esc mid-form keeps it all as a draft.
+  // Esc mid-form keeps it all as a draft (the first Esc closes the open list).
+  await esc();
   await esc();
   await page.locator(".topbar [data-task-new]").click();
   await settle();
-  check("Esc mid-form: the draft comes back with its chips", (await page.locator('[data-links="task-keywords"] .tk-chip').count()) === 1 && (await page.locator("#task-pages-add").inputValue()).includes("moulins-guide"));
-  // Save with the page still typed in the box.
+  check("Esc mid-form: the draft comes back with its chips", (await page.locator('[data-ta-chips="keyword"] .tk-chip').count()) === 1 && (await page.locator('[data-ta-chips="page"] .tk-chip').first().innerText()).includes("moulins-guide"));
+  // Save.
   await page.locator("#task-save").click();
   await page.waitForTimeout(800);
-  check("what's left in the box is saved too", !(await panelOpen()));
+  check("it saves", !(await panelOpen()));
 
   // It shows when the keyword is opened (the real Keywords screen, found with its search box).
   const openKeyword = async (words) => {
@@ -130,7 +135,7 @@ const KW = "moulin à café", KW_FREE = "how to brew coffee";
   await page.locator("#panel").screenshot({ path: `${shots}/keyword-panel.png` });
   await rel.locator(".tk-rel-title").filter({ hasText: LINKED }).first().click();
   await settle();
-  check("clicking it opens the task, links filled in", await panelOpen() && (await page.locator('[data-links="task-pages"] .tk-chip').first().innerText()).includes("moulins-guide"));
+  check("clicking it opens the task, links filled in", await panelOpen() && (await page.locator('[data-ta-chips="page"] .tk-chip').first().innerText()).includes("moulins-guide"));
   await page.locator("#tk-comment").fill("Started on this");
   await page.locator("#tk-comment-send").click();
   await page.waitForTimeout(800);
@@ -143,8 +148,8 @@ const KW = "moulin à café", KW_FREE = "how to brew coffee";
   // Starting from a keyword links it by itself.
   await page.locator("#panel .panel-foot [data-task-find]").click();
   await settle();
-  const pages = await page.locator('[data-links="task-pages"] .tk-chip').count();
-  check("a task made from a keyword starts linked", (await page.locator('[data-links="task-keywords"] .tk-chip').count()) === 1 && pages <= 1, `${pages} page`);
+  const pages = await page.locator('[data-ta-chips="page"] .tk-chip').count();
+  check("a task made from a keyword starts linked", (await page.locator('[data-ta-chips="keyword"] .tk-chip').count()) === 1 && pages <= 1, `${pages} page`);
   await page.locator("[data-discard-panel]").click();
   await settle();
 

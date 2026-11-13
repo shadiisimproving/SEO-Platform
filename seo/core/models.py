@@ -828,6 +828,7 @@ class Task(Base):
     # What the task is about, as lists of text, so it can show when that page or keyword is opened.
     pages: Mapped[list | None] = mapped_column(JSON, nullable=True)
     keywords: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    about: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # {main, items: [{kind, ref, label}]}: rankings, backlinks, technical issues and more
     source: Mapped[dict | None] = mapped_column(JSON, nullable=True)
     # A hash of the finding while this task is open, NULL afterwards: one open task per finding, as with Job.active_key.
     open_source_key: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
