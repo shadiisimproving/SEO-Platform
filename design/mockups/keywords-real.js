@@ -46,7 +46,7 @@
     "DuckDuckGo has no tool for site owners, so the app checks its positions by itself every day, oldest first, on free searches only. Refresh and Refresh data check them now.": "DuckDuckGo n'a pas d'outil pour les propriétaires de sites : l'app vérifie ses positions toute seule chaque jour, les plus anciennes d'abord, avec des recherches gratuites uniquement. Actualiser et Actualiser les données les vérifient tout de suite.",
     "Automatic DuckDuckGo check": "Contrôle DuckDuckGo automatique", "automatic check": "contrôle automatique",
     "Clicks": "Clics", "Click rate": "Taux de clic", "selected": "sélectionnés", "Clear selection": "Effacer la sélection", "{n} selected on this page": "{n} sélectionnés sur cette page", "Select all {n} keywords": "Sélectionner les {n} mots-clés", "All {n} keywords selected": "Les {n} mots-clés sont sélectionnés", "Create task": "Créer une tâche", "Export CSV": "Exporter en CSV", "Export ready": "Export prêt",
-    "Up": "En hausse", "Down": "En baisse", "Top 3": "Top 3", "Top 10": "Top 10", "All": "Tous", "Not ranked": "Non classés", "Cited by AI": "Cités par l'IA", "Two pages compete": "Deux pages en concurrence", "Two of your pages rank for it.": "Deux de vos pages se classent dessus.",
+    "Up": "En hausse", "Down": "En baisse", "Top 3": "Top 3", "Top 10": "Top 10", "All": "Tous", "Not ranked": "Non classés", "Cited by AI": "Cités par l'IA", "Two pages compete": "Deux pages en concurrence", "Also ranks": "Classées aussi", "Also": "Aussi", "impr.": "impr.", "Two of your pages rank for it.": "Deux de vos pages se classent dessus.",
     "Tracked": "Suivis", "Ranked": "Classés", "compared": "comparés", "Positions": "Positions", "By bucket": "Par tranche", "Queries": "Requêtes", "All engines": "Tous les moteurs", "Volume": "Volume", "Trend": "Tendance", "AI": "IA", "avg position": "position moy.",
     "No keyword matches": "Aucun mot-clé ne correspond", "Try another filter.": "Essayez un autre filtre.", "Show all": "Tout afficher", "Data through": "Données jusqu'au", "Refreshed": "Actualisé le", "Rankings from engines' own tools and scraped results": "Positions venant de l'outil de chaque moteur et de résultats scrapés",
     "in its country": "dans son pays", "No Search Console data in the keyword's country.": "Pas de données Search Console dans le pays du mot-clé.", "Search Console's average position in the keyword's own country.": "Position moyenne Search Console dans le pays du mot-clé.", "Search Console's average position across every country.": "Position moyenne Search Console dans tous les pays.", "Order for": "Ordre pour", "This tool doesn't search this engine.": "Cet outil ne couvre pas ce moteur.", "Order saved": "Ordre enregistré",
@@ -150,6 +150,13 @@
     if (minutes < 60) return `${Math.round(minutes)} min`;
     if (days < 1) return `${Math.max(1, Math.round(days * 24))} h`;
     return `${Math.round(days)} ${state.lang === "fr" ? "j" : "d"}`;
+  };
+  // Every page of yours that shows up for the keyword, under the main one: the warning alone doesn't say which.
+  const competingPages = (row) => {
+    const others = (row.pages || []).filter((p) => !row.page || p.url.replace(/\/$/, "") !== row.page.replace(/\/$/, ""));
+    if (!row.two_pages || !others.length) return "";
+    const fact = (p) => [p.position ? `#${p.position}` : "", p.impressions != null ? `${num(p.impressions)} ${t("impr.")}` : ""].filter(Boolean).join(" · ");
+    return `<ul class="kw-also" aria-label="${esc(t("Also ranks"))}">${others.map((p) => `<li data-tip="${esc(p.url)}"><span class="warn small">${t("Also")}</span>${fact(p) ? ` <span class="muted">${esc(fact(p))}</span>` : ""} ${PageLink.html(p.url, { text: shortPath(p.url), title: "" })}</li>`).join("")}</ul>`;
   };
   const shortPath = (url) => { try { const u = new URL(url); return decodeURI(u.pathname + u.search) || "/"; } catch { return url || ""; } };
   const allRows = () => { const host = UI.siteHostPicked(); return (K.data?.rows || []).filter((row) => !host || row.site === host); };
@@ -331,7 +338,7 @@
          <td class="c" data-label="${t("Change")}">${changeCell(view)}</td>
          ${state.cols.vol ? `<td class="c" data-label="${t("Impressions (28 days)")}">${impressionsOf(row) === null ? '<span class="muted dash">—</span>' : num(impressionsOf(row))}</td>` : ""}
          ${state.cols.trend ? `<td data-label="${t("Trend")}">${trend}</td>` : ""}
-         ${state.cols.page ? `<td class="url-cell mono small" data-label="${t("Page")}" ${row.page ? `data-tip="${esc(row.page)}"` : ""}>${row.page ? PageLink.html(row.page, { text: shortPath(row.page), title: "" }) : '<span class="muted dash">—</span>'}${row.two_pages ? `<span class="warn" role="img" data-tip="${esc(t("Two of your pages rank for it."))}" aria-label="${esc(t("Two pages compete"))}">${icon("triangle-alert")}</span>` : ""}</td>` : ""}
+         ${state.cols.page ? `<td class="url-cell mono small" data-label="${t("Page")}" ${row.page ? `data-tip="${esc(row.page)}"` : ""}>${row.page ? PageLink.html(row.page, { text: shortPath(row.page), title: "" }) : '<span class="muted dash">—</span>'}${row.two_pages ? `<span class="warn" role="img" data-tip="${esc(t("Two of your pages rank for it."))}" aria-label="${esc(t("Two pages compete"))}">${icon("triangle-alert")}</span>` : ""}${competingPages(row)}</td>` : ""}
          ${state.cols.ai ? `<td data-label="${t("AI")}">${aiCell(row)}</td>` : ""}`;
     // The simpler screens: the keyword is text and the whole row opens the panel (a click, or Enter once the row has focus).
     // data-kwr-open stays on the keyword, holding only its words, so a click on it and the flows that look for it still work.
