@@ -207,6 +207,9 @@
   /* find: { title, host, description, source: { type, label, facts, link, key } }. One finding, one open task:
      the button opens the task once there is one. */
   function taskButton(find, { label = "Create task", cls = "btn btn-small" } = {}) {
+    // Chosen access: no Tasks section, no task button. View only: an existing task still opens, nothing new is made.
+    if (window.ACCESS && !window.ACCESS.can("tasks")) return "";
+    if (window.ACCESS && !window.ACCESS.canEdit("tasks") && !openForKey(find.source?.key)) return "";
     const key = find.source?.key || `once|${find.title}`;
     finds.set(key, find);
     const open = openForKey(find.source?.key);
@@ -356,7 +359,8 @@
     T.openId = task ? task.id : null;
     const given = task || { owner_label: owner ?? signedIn(), kind: kind || KIND_OF_SOURCE[source?.type] || "" };
     const siteId = task ? task.site_id : (T.sites.find((s) => s.host === (host ?? hostHere()))?.id ?? "");
-    const siteOptions = `<option value="">${t("All sites")}</option>${T.sites.map((s) => `<option value="${esc(String(s.id))}" ${String(s.id) === String(siteId ?? "") ? "selected" : ""}>${esc(s.host)}</option>`).join("")}`;
+    // Chosen access without every site: a task is for one of their sites ("All sites" belongs to the owner).
+    const siteOptions = `${window.ACCESS?.limited && !window.ACCESS.everySite() ? "" : `<option value="">${t("All sites")}</option>`}${T.sites.map((s) => `<option value="${esc(String(s.id))}" ${String(s.id) === String(siteId ?? "") ? "selected" : ""}>${esc(s.host)}</option>`).join("")}`;
     const removedSite = task && !task.site_id && task.site_host ? `<p class="help" style="margin-top:-6px">${t("Site removed:")} <span class="mono" dir="auto">${esc(task.site_host)}</span></p>` : "";
     const select = (id, options, chosen) => `<select class="select" id="${id}" style="width:100%">${options.map(([value, word]) => `<option value="${value}" ${value === chosen ? "selected" : ""}>${columnWord(word)}</option>`).join("")}</select>`;
     const owners = [...new Set([...T.tasks.map((x) => x.owner_label), ...(UI.state.served ? [] : window.TEAM)].filter(Boolean))];

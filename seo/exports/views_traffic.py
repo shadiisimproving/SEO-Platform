@@ -151,7 +151,7 @@ def today(engine, args) -> Report:
         site_id = int(site) if site not in (None, "", "all") else None
     except ValueError as exc:
         raise Refused("That site isn't one of yours.") from exc
-    data = today_view.today(engine, site_id)
+    data = today_view.for_person(today_view.today(engine, site_id))  # chosen access: only their sections, as on screen
     results = data.get("results") or {}
     report = Report("today", "Today", site=registry.site_host(engine, site_id))
     through, days = fmt.as_day(results.get("through")), results.get("days")

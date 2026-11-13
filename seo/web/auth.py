@@ -72,6 +72,12 @@ def install(app, secret_key: str, https: bool = False) -> None:
             if path.startswith("/api/"):
                 return jsonify(error="Change your temporary password first.", must_change=True), 403
             return redirect("login?change=1")
+        if path.startswith("/api/"):
+            from seo.accounts.access import NoAccess, check
+            try:
+                check(_engine(), request)
+            except NoAccess as refusal:
+                return jsonify(error=str(refusal), no_access=True), 403
         return None
 
     @app.after_request
@@ -140,7 +146,7 @@ def team():
 def create_user():
     require_admin()
     body = _body()
-    user, password = service.create_user(_engine(), body.get("email"), body.get("name"), body.get("role", "member"))
+    user, password = service.create_user(_engine(), body.get("email"), body.get("name"), body.get("role", "member"), access=body.get("access"))
     return jsonify(user=user, temporary_password=password), 201
 
 

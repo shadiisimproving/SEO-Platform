@@ -27,8 +27,15 @@
     const name = COMP.notes.screenName(route);
     if (name && name !== route) list.push({ id: "screen", label: t("{name} screen").replace("{name}", name), icon: "layout-dashboard", where: { scope: "screen", screen: route, siteId: site } });
     const host = ui.siteHostPicked();
-    list.push({ id: "site", label: host || t("All my sites"), icon: "globe", where: { scope: "site", siteId: site } });
-    if (host) list.push({ id: "everywhere", label: t("All my sites"), icon: "layers", where: { scope: "site", siteId: null } });
+    // Chosen access without every site: a note is always for one of their sites (one for every site is the owner's).
+    const partial = window.ACCESS?.limited && !window.ACCESS.everySite();
+    if (partial && !host) {
+      for (let i = list.length - 1; i >= 0; i -= 1) if (list[i].where && list[i].where.siteId == null) list.splice(i, 1);
+      window.SITES.filter((s) => s.realId).forEach((s) => list.push({ id: `site-${s.realId}`, label: s.host, icon: "globe", where: { scope: "site", siteId: s.realId } }));
+    } else {
+      list.push({ id: "site", label: host || t("All my sites"), icon: "globe", where: { scope: "site", siteId: site } });
+      if (host && !partial) list.push({ id: "everywhere", label: t("All my sites"), icon: "layers", where: { scope: "site", siteId: null } });
+    }
     // Anything else: picked from a list. The page's own buttons already offer what's on screen, so these come after.
     list.push(
       { id: "pick-page", pick: "page", label: t("A page"), icon: "file-text", where: { scope: "page", pageUrl: null, siteId: site } },
@@ -73,6 +80,7 @@
   function start() {
     const ui = UI();
     if (!ui || !COMP?.notes) return;
+    if (window.ACCESS && !window.ACCESS.can("notes")) return; // no Notes section: no Notes button, no N key
     if (!document.querySelector("#main")) { setTimeout(start, 200); return; } // the sign-in screen has no app yet
     button();
     /* On a phone the round button would sit on the right of every card, where values are. It steps aside while the page

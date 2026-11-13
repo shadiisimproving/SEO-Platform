@@ -12,6 +12,7 @@ from datetime import datetime
 
 from sqlalchemy import Engine, text
 
+from seo.accounts import access
 from seo.competitors.keywords import _iso, require_own
 from seo.core.errors import NotFound
 from seo.metrics import countries
@@ -52,7 +53,8 @@ class Seen:
 def _sites(conn, site_id: int | None) -> list[dict]:
     if site_id is not None:
         return [require_own(conn, site_id)]
-    return [dict(row) for row in conn.execute(text("SELECT id, host, kind FROM sites WHERE kind = 'own' ORDER BY id")).mappings().all()]
+    visible = set(access.own_site_ids(conn))  # "all sites" is all of *their* sites
+    return [dict(row) for row in conn.execute(text("SELECT id, host, kind FROM sites WHERE kind = 'own' ORDER BY id")).mappings().all() if row["id"] in visible]
 
 
 def _load_checks(conn, keyword_ids: list[int], hosts: list[str]) -> dict[tuple[int, str], list[Seen]]:

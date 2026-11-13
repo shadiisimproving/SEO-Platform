@@ -858,6 +858,8 @@ class User(Base):
     locked_until: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
     # Raised on a password change, a reset or a disable: every session signed before it stops working.
     session_version: Mapped[int] = mapped_column(Integer, server_default="1")
+    # NULL: full access. Otherwise the websites and sections the admin chose (seo/accounts/access.py).
+    access: Mapped[str | None] = mapped_column(Text, nullable=True)
     last_login_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
     created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
 

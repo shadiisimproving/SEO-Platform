@@ -24,6 +24,7 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy import Engine, bindparam, text
 
+from seo.accounts import access
 from seo.core.errors import Refused
 from seo.links.urls import host_key
 
@@ -210,6 +211,7 @@ def import_files(engine: Engine, site_id, uploads: list[tuple[str, bytes]], user
         site_id = int(site_id)
     except (TypeError, ValueError) as exc:
         raise Refused("Pick the site this report is about.") from exc
+    access.require_site(site_id)  # chosen access: one of their sites
     if not uploads:
         raise Refused("Choose the export file first.")
     if len(uploads) > MAX_FILES:

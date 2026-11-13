@@ -18,6 +18,7 @@ from urllib.parse import unquote, urljoin, urlsplit
 from lxml import etree, html as lxml_html
 from sqlalchemy import Engine, text
 
+from seo.accounts import access
 from seo.core import budget
 from seo.core.errors import NotFound, Refused
 from seo.health import service as health_service
@@ -442,7 +443,8 @@ def history(engine: Engine, backlink_id: int, limit: int = 20) -> list[dict]:
 
 def summary(engine: Engine, site_id: int | None = None) -> dict:
     """For Today. Dates typed some other way ("le 3 mars") can't be counted here, and stay readable on the link itself."""
-    where, args = ("site_id = :s", {"s": site_id}) if site_id is not None else ("site_id IN (SELECT id FROM sites WHERE kind = 'own')", {})
+    args: dict = {}
+    where, args = ("site_id = :s", {"s": site_id}) if site_id is not None else ("site_id IN (SELECT id FROM sites WHERE kind = 'own')" + access.site_clause("site_id", args), args)
     iso = r"'^[0-9]{4}-[0-9]{2}-[0-9]{2}$'"
     with engine.connect() as conn:
         follow_up = conn.execute(text(

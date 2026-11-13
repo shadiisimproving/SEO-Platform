@@ -12,6 +12,7 @@ from urllib.parse import urlsplit
 
 from sqlalchemy import Engine, bindparam, text
 
+from seo.accounts import access
 from seo.core.errors import Refused
 
 DEFAULT_AI_DOMAINS = ("chatgpt.com", "chat.openai.com", "openai.com", "perplexity.ai", "gemini.google.com", "bard.google.com", "copilot.microsoft.com", "claude.ai", "deepseek.com", "chat.deepseek.com", "you.com", "poe.com", "mistral.ai", "chat.mistral.ai", "grok.com", "x.ai", "meta.ai")
@@ -60,7 +61,7 @@ class Scope:
         self.compare_end = parse_day(compare_end, "comparison date") if compare_end else None
         with engine.connect() as conn:
             if site in (None, "", "all"):
-                self.site_ids = [row[0] for row in conn.execute(text("SELECT id FROM sites WHERE kind = 'own'")).all()]
+                self.site_ids = access.own_site_ids(conn)  # "all sites" is all of *their* sites
             else:
                 try:
                     wanted = int(site)
@@ -68,6 +69,7 @@ class Scope:
                     raise Refused("That site isn't one of yours.") from exc
                 if not conn.execute(text("SELECT 1 FROM sites WHERE id = :i AND kind = 'own'"), {"i": wanted}).first():
                     raise Refused("That site isn't one of yours.")
+                access.require_site(wanted)
                 self.site_ids = [wanted]
 
     def fetch(self, sql: str, start: date | None = None, end: date | None = None, **values):
@@ -541,6 +543,13 @@ def add_rule(engine: Engine, kind, pattern, value=None, site_id=None) -> dict:
         raise Refused("Type the channel name.")
     named = value.strip()[:120] if isinstance(value, str) and value.strip() else None
     with engine.begin() as conn:
+        access.require_site_or_every(site_id, conn)  # a rule for every site needs every site
+        if site_id is not None:
+            if isinstance(site_id, bool) or not (isinstance(site_id, int) or (isinstance(site_id, str) and site_id.isascii() and site_id.isdigit())):
+                raise Refused("That site isn't one of yours.")
+            site_id = int(site_id)
+            if not conn.execute(text("SELECT 1 FROM sites WHERE id = :i AND kind = 'own'"), {"i": site_id}).first():
+                raise Refused("That site isn't one of yours.")
         new_id = conn.execute(
             text("INSERT INTO site_rules (site_id, kind, pattern, value) VALUES (:s, :k, :p, :v)"), {"s": site_id, "k": kind, "p": clean, "v": named}
         ).lastrowid

@@ -66,11 +66,11 @@ const check = (ok, what, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} $
   await page.waitForTimeout(14000);
   await page.click('[data-lv-tab="team"]'); await page.waitForTimeout(600);
   await shot(page, "07-team");
-  await page.click("[data-lv-user-new]"); await page.waitForSelector("#lv-user-form");
-  await page.click("[data-lv-user-save]"); await page.waitForTimeout(300);
-  check((await page.textContent("#lv-user-form [data-lv-form-error]")).trim().length > 5, "a blank person says what's missing");
-  await page.fill('#lv-user-form [name="f_name"]', "Sara"); await page.fill('#lv-user-form [name="f_email"]', "Sara@Example.com");
-  await page.click("[data-lv-user-save]"); await page.waitForSelector(".lv-secret");
+  await page.click("[data-lv-user-new]"); await page.waitForSelector("#lv-access-form");
+  await page.click("[data-lv-access-save]"); await page.waitForTimeout(300);
+  check((await page.textContent("#lv-access-form [data-lv-form-error]")).trim().length > 5, "a blank person says what's missing");
+  await page.fill('#lv-access-form [name="f_name"]', "Sara"); await page.fill('#lv-access-form [name="f_email"]', "Sara@Example.com");
+  await page.click("[data-lv-access-save]"); await page.waitForSelector(".lv-secret");
   await shot(page, "08-temp-password");
   const temp = await page.textContent(".lv-secret code");
   await page.click("[data-close-panel]"); await page.waitForTimeout(300);

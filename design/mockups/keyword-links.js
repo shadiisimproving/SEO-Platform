@@ -26,7 +26,8 @@
   function html(keyword, { id = null, host = null, cls = "", text = null } = {}) {
     const word = String(keyword ?? "").trim();
     const label = text ?? keyword ?? "";
-    if (!word) return `<span class="${esc(cls)}" dir="auto">${esc(label)}</span>`;
+    // Chosen access without Keywords: the word is plain text (a keyword's details open in Keywords).
+    if (!word || (window.ACCESS && !window.ACCESS.can("keywords"))) return `<span class="${esc(cls)}" dir="auto">${esc(label)}</span>`;
     const tip = window.UI?.t ? window.UI.t("See this keyword") : "See this keyword";
     return `<a class="kw-link ${esc(cls)}" href="${esc(href(word, host))}" data-kw-link="${esc(word)}"${id ? ` data-kw-id="${esc(id)}"` : ""}${host ? ` data-kw-host="${esc(bareHost(host))}"` : ""} dir="auto" title="${esc(tip)}">${esc(label)}</a>`;
   }

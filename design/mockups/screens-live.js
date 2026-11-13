@@ -955,7 +955,7 @@
       <form class="panel-body" id="lv-resource-form" data-id="${r.id || ""}" novalidate>
         <label class="field"><span>${t("Title")}</span><input class="input" name="f_title" dir="auto" value="${esc(r.title || "")}" autocomplete="off"></label>
         <label class="field"><span>${t("Link")}</span><input class="input mono" type="url" inputmode="url" spellcheck="false" autocapitalize="off" name="f_url" dir="ltr" value="${esc(r.url || "")}" placeholder="https://" autocomplete="off"></label>
-        <label class="field"><span>${t("Site")}</span><select class="select" name="f_site_id" style="width:100%"><option value="">${t("All sites")}</option>${window.SITES.filter((s) => s.realId).map((s) => `<option value="${s.realId}" ${(editing ? r.site_id === s.realId : picked === s.host) ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></label>
+        <label class="field"><span>${t("Site")}</span><select class="select" name="f_site_id" style="width:100%">${window.ACCESS?.limited && !window.ACCESS.everySite() ? "" : `<option value="">${t("All sites")}</option>`}${window.SITES.filter((s) => s.realId).map((s) => `<option value="${s.realId}" ${(editing ? r.site_id === s.realId : picked === s.host) ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></label>
         <div class="field"><span id="rs-tags-label">${t("Tags")}</span>
           <input type="hidden" name="f_tags" value="${esc(JSON.stringify(r.tags || []))}">
           <div class="input rs-tagbox" data-rs-tagbox><span class="rs-picked" data-rs-picked></span><input class="rs-tag-input" data-rs-tag-input dir="auto" maxlength="40" placeholder="${t("Type a tag, then Enter")}" aria-labelledby="rs-tags-label" autocomplete="off"></div>

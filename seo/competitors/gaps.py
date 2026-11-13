@@ -11,6 +11,7 @@ from urllib.parse import urlsplit
 
 from sqlalchemy import Engine, bindparam, text
 
+from seo.accounts import access
 from seo.backlinks import cleaner, logos
 from seo.backlinks import service as backlinks
 from seo.competitors import pairs, quality
@@ -540,7 +541,9 @@ def list_prospects(engine: Engine, site_id: int | None) -> list[dict]:
     """One site's prospects, or (site_id None) those of every one of my sites at once, so a page load asks once, not once per site."""
     with engine.connect() as conn:
         if site_id is None:
-            rows = conn.execute(text("SELECT p.* FROM prospects p JOIN sites s ON s.id = p.site_id WHERE s.kind = 'own' ORDER BY p.id DESC")).mappings().all()
+            values: dict = {}
+            mine = access.site_clause("p.site_id", values, conn)  # "all sites" is all of *their* sites
+            rows = conn.execute(text(f"SELECT p.* FROM prospects p JOIN sites s ON s.id = p.site_id WHERE s.kind = 'own'{mine} ORDER BY p.id DESC"), values).mappings().all()
         else:
             require_own(conn, site_id)
             rows = conn.execute(text("SELECT * FROM prospects WHERE site_id = :s ORDER BY id DESC"), {"s": site_id}).mappings().all()
