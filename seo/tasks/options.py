@@ -4,30 +4,66 @@ competitor or note can also be typed, so this only suggests."""
 from __future__ import annotations
 
 from datetime import date, timedelta
+from urllib.parse import urlsplit
 
 from sqlalchemy import Engine, text
 
-from seo.competitors import pairs
 from seo.competitors.keywords import require_own
+from seo.metrics.service import _path
 from seo.serp import rankings, store
 
 DAYS = 28
 _MAX = 2000
+_MAX_PAGES = 5000
 
 
-def _pages(conn, engine: Engine, site_id: int) -> list[dict]:
-    """Every page we know, read by the crawler, seen in a search result or in Search Console, with its Google clicks."""
+def _pages(conn, site_id: int) -> list[dict]:
+    """Every page of the site we know: read by the site reader, seen in Search Console or Google Analytics at any
+    time, or seen in a search result. Clicks are Search Console's for the last 28 days. One row per page, matched
+    by its path as on the Pages screen, so /visa, /visa/ and https://www.shop.example/visa/?x=1 are one page."""
+    host = conn.execute(text("SELECT host FROM sites WHERE id = :s"), {"s": site_id}).scalar() or ""
+    host = host.lower().removeprefix("www.")
     since = date.today() - timedelta(days=DAYS)
     found: dict[str, dict] = {}
-    for page in pairs.page_options(engine, site_id):
-        found[page["url"]] = {"url": page["url"], "title": page["title"], "clicks": 0}
-    for row in conn.execute(text(
-        "SELECT page, SUM(clicks) AS clicks FROM gsc_page WHERE site_id = :s AND day >= :d GROUP BY page_hash, page ORDER BY clicks DESC LIMIT 2000"
-    ), {"s": site_id, "d": since}).mappings():
-        url = store.canonical_url(row["page"]) or row["page"]
-        one = found.setdefault(url, {"url": url, "title": "", "clicks": 0})
-        one["clicks"] += int(row["clicks"] or 0)
-    return sorted(found.values(), key=lambda p: (-p["clicks"], p["url"]))[:_MAX]
+
+    def add(url: str, title: str = "", clicks: int = 0) -> None:
+        if not url or not _same_site(url, host):
+            return
+        path = _path(url)
+        one = found.setdefault(path, {"url": f"https://{host}{path}", "title": "", "clicks": 0})
+        one["title"] = one["title"] or (title or "")
+        one["clicks"] += clicks
+
+    for r in conn.execute(text(
+        "SELECT p.url, p.title FROM pages p JOIN domains d ON d.id = p.domain_id WHERE d.host IN (:h, :w) AND p.content_hash IS NOT NULL LIMIT :n"
+    ), {"h": host, "w": f"www.{host}", "n": _MAX_PAGES}).mappings():
+        add(r["url"], r["title"])
+    for r in conn.execute(text(
+        "SELECT MAX(page) AS page, SUM(CASE WHEN day >= :d THEN clicks ELSE 0 END) AS clicks FROM gsc_page WHERE site_id = :s "
+        "GROUP BY page_hash ORDER BY clicks DESC LIMIT :n"
+    ), {"s": site_id, "d": since, "n": _MAX_PAGES}).mappings():
+        add(r["page"], "", int(r["clicks"] or 0))
+    for r in conn.execute(text(
+        "SELECT DISTINCT url, title FROM serp_results WHERE host = :h OR host LIKE :sub LIMIT :n"
+    ), {"h": store.to_ascii_host(host), "sub": f"%.{store.to_ascii_host(host)}", "n": _MAX_PAGES}).mappings():
+        add(store.canonical_url(r["url"]) or r["url"], r["title"])
+    for r in _ga_pages(conn, site_id):
+        add(r)
+    return sorted(found.values(), key=lambda p: (-p["clicks"], p["url"]))[:_MAX_PAGES]
+
+
+def _ga_pages(conn, site_id: int) -> list[str]:
+    """Pages Google Analytics has seen, as paths ("(not set)" isn't one and is left out by _same_site)."""
+    return [r[0] for r in conn.execute(text(
+        "SELECT DISTINCT path FROM ga4_page_daily WHERE site_id = :s LIMIT :n"), {"s": site_id, "n": _MAX_PAGES}) if r[0]]
+
+
+def _same_site(url: str, host: str) -> bool:
+    """A path alone belongs to the site; a full address only when it's on the site or one of its subdomains."""
+    if "://" not in url:
+        return url.startswith("/")
+    other = (urlsplit(url).hostname or "").lower().removeprefix("www.")
+    return other == host or other.endswith(f".{host}")
 
 
 def _rankings(engine: Engine, site_id: int) -> tuple[list[dict], list[dict]]:
@@ -50,7 +86,7 @@ def _rankings(engine: Engine, site_id: int) -> tuple[list[dict], list[dict]]:
 def _backlinks(conn, site_id: int) -> list[dict]:
     rows = conn.execute(text(
         "SELECT id, domain, source_url, target_url, status, seo_verdict FROM backlinks WHERE site_id = :s "
-        "ORDER BY status = 'lost', domain LIMIT 2000"
+        "ORDER BY status = 'lost', status = 'planned', domain LIMIT 2000"
     ), {"s": site_id}).mappings()
     return [{"id": r["id"], "domain": r["domain"], "source": r["source_url"], "target": r["target_url"] or "",
              "status": r["status"], "verdict": r["seo_verdict"] or ""} for r in rows]
@@ -119,7 +155,7 @@ def _notes(conn, site_id: int) -> list[dict]:
 def for_site(engine: Engine, site_id: int) -> dict:
     with engine.connect() as conn:
         require_own(conn, site_id)
-        pages = _pages(conn, engine, site_id)
+        pages = _pages(conn, site_id)
         keywords, ranked = _rankings(engine, site_id)
         return {
             "site_id": site_id, "pages": pages, "keywords": keywords, "rankings": ranked,

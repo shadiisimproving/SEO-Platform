@@ -27,7 +27,7 @@ def tasks():
 
 @tasks_api.post("/tasks")
 def create():
-    return jsonify(service.create(_engine(), _body())), 201
+    return jsonify(service.create(_engine(), _body(), by=g.user["name"] if g.get("user") else None)), 201
 
 
 @tasks_api.patch("/tasks/<int:task_id>")

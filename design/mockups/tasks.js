@@ -363,17 +363,19 @@
     const siteOptions = `${window.ACCESS?.limited && !window.ACCESS.everySite() ? "" : `<option value="">${t("All sites")}</option>`}${T.sites.map((s) => `<option value="${esc(String(s.id))}" ${String(s.id) === String(siteId ?? "") ? "selected" : ""}>${esc(s.host)}</option>`).join("")}`;
     const removedSite = task && !task.site_id && task.site_host ? `<p class="help" style="margin-top:-6px">${t("Site removed:")} <span class="mono" dir="auto">${esc(task.site_host)}</span></p>` : "";
     const select = (id, options, chosen) => `<select class="select" id="${id}" style="width:100%">${options.map(([value, word]) => `<option value="${value}" ${value === chosen ? "selected" : ""}>${columnWord(word)}</option>`).join("")}</select>`;
-    const owners = [...new Set([...T.tasks.map((x) => x.owner_label), ...(UI.state.served ? [] : window.TEAM)].filter(Boolean))];
+    // Anyone with an account; a name from before accounts stays listed so it isn't lost on save.
+    const people = [...new Set([...(window.TEAM_NAMES || (UI.state.served ? [] : window.TEAM || [])), given.owner_label].filter(Boolean))];
+    const made = task?.created_at ? `${t("Created")} ${esc(whenWord(task.created_at))}${task.created_by ? ` ${t("by")} <span dir="auto">${esc(task.created_by)}</span>` : ""}` : "";
     const theSource = task ? task.source : source;
     const draftKey = `task|${task ? task.id : theSource?.key || "new"}`;
-    UI.openPanel(`${UI.panelHead(t(task ? "Task" : "New task"), task?.created_at ? `${t("Created")} ${esc(whenWord(task.created_at))}` : "")}
+    UI.openPanel(`${UI.panelHead(t(task ? "Task" : "New task"), made)}
       <div class="panel-body"><form id="task-form" novalidate>
         ${findingNote(task)}${sourceBlock(theSource)}
         <label class="field"><span>${t("Title")} <span class="req">*</span></span><input class="input" id="task-title" value="${esc(task ? task.title : title)}" required maxlength="300" dir="auto" data-autofocus></label>
         <div id="task-error"></div>
         <div class="field-row">
           <label class="field"><span>${t("Site")}</span><select class="select" id="task-site" style="width:100%">${siteOptions}</select></label>
-          <label class="field"><span>${t("Owner")}</span><input class="input" id="task-owner" value="${esc(given.owner_label || "")}" list="task-owners" maxlength="100" dir="auto" autocomplete="off"><datalist id="task-owners">${owners.map((name) => `<option value="${esc(name)}"></option>`).join("")}</datalist></label>
+          <label class="field"><span>${t("Assigned to")}</span><select class="select" id="task-owner" style="width:100%"><option value="">${t("Nobody")}</option>${people.map((name) => `<option value="${esc(name)}"${name === given.owner_label ? " selected" : ""}>${esc(name)}</option>`).join("")}</select></label>
         </div>
         <div class="field-row">
           <label class="field"><span>${t("Due date")}</span><input class="input" type="date" id="task-due" value="${esc(given.due || "")}"></label>
@@ -449,7 +451,7 @@
     if (typeof a === "object" || typeof b === "object") return (empty(a) && empty(b)) || JSON.stringify(a) === JSON.stringify(b);
     return String(a ?? "").trim() === String(b ?? "").trim();
   };
-  const FIELD_WORDS = { title: "Title", status: "Status", priority: "Priority", due: "Due date", owner_label: "Owner", kind: "Type", description: "Description", pages: "Pages", keywords: "Keywords", about: "About", site_id: "Site" };
+  const FIELD_WORDS = { title: "Title", status: "Status", priority: "Priority", due: "Due date", owner_label: "Assigned to", kind: "Type", description: "Description", pages: "Pages", keywords: "Keywords", about: "About", site_id: "Site" };
 
   /* Only what this person changed is sent, so two people can edit different things. If someone else changed the same
      thing while the panel was open, nothing is overwritten until this person has seen it and chosen. */
@@ -604,13 +606,13 @@
     const showSite = !hostHere();
     const view = TP.view(PAGES, rows);
     return `<div class="tk-list"><div class="table-wrap"><table class="data tk-table" id="tk-table">
-      <thead><tr>${sortHead("title", "Title")}<th scope="col">${t("Status")}</th>${sortHead("priority", "Priority")}${showSite ? `<th scope="col">${t("Site")}</th>` : ""}<th scope="col">${t("Owner")}</th>${sortHead("due", "Due date")}<th scope="col">${t("Type")}</th></tr></thead>
+      <thead><tr>${sortHead("title", "Title")}<th scope="col">${t("Status")}</th>${sortHead("priority", "Priority")}${showSite ? `<th scope="col">${t("Site")}</th>` : ""}<th scope="col">${t("Assigned to")}</th>${sortHead("due", "Due date")}<th scope="col">${t("Type")}</th></tr></thead>
       <tbody>${view.rows.map((task) => `<tr data-task-row="${task.id}">
         <td class="head-cell"><button type="button" class="kw tk-row-title" data-task-open="${task.id}" dir="auto" style="text-align:start">${esc(task.title)}</button>${sourceBit(task)}${findingTag(task)}</td>
         <td data-label="${t("Status")}">${moveSelect(task)}</td>
         <td data-label="${t("Priority")}">${task.priority === "high" ? status("serious", t("High")) : `<span class="small sec">${priorityWord(task.priority)}</span>`}</td>
         ${showSite ? `<td class="mono small" data-label="${t("Site")}" dir="auto">${task.site_host ? esc(task.site_host) : `<span class="muted" style="font-family:var(--font)">${t("All sites")}</span>`}</td>` : ""}
-        <td data-label="${t("Owner")}" dir="auto">${task.owner_label ? esc(task.owner_label) : `<span class="muted">—</span>`}</td>
+        <td data-label="${t("Assigned to")}" dir="auto">${task.owner_label ? esc(task.owner_label) : `<span class="muted">—</span>`}</td>
         <td data-label="${t("Due date")}">${dueBit(task, carriedFrom(task)) || `<span class="muted">—</span>`}</td>
         <td data-label="${t("Type")}" dir="auto">${task.kind ? esc(t(task.kind)) : `<span class="muted">—</span>`}${window.TaskAbout.tag(task) ? `<div class="tk-about-cell">${window.TaskAbout.tag(task)}</div>` : ""}</td>
       </tr>`).join("")}</tbody></table></div>
@@ -649,7 +651,7 @@
       <label class="field tk-search"><span class="sr-only">${t("Search")}</span>${icon("search")}<input class="input" type="search" id="tk-query" value="${esc(T.query)}" placeholder="${t("Search tasks")}" autocomplete="off"></label>
       ${T.view === "table" ? pick("tk-status", "Status", "All statuses", STATUSES.map(([k, w]) => [k, columnWord(w)]), T.status) : ""}
       ${pick("tk-kind", "Type", "All types", kinds.map((k) => [k, t(k)]), T.kind)}
-      ${pick("tk-owner", "Owner", "Everyone", [[UNASSIGNED, t("Unassigned")], ...people.map((p) => [p, p])], T.owner)}
+      ${pick("tk-owner", "Assigned to", "Everyone", [[UNASSIGNED, t("Unassigned")], ...people.map((p) => [p, p])], T.owner)}
     </div>`;
   }
   /* Drawn apart from the page, so typing in Search never loses the box. */
@@ -881,7 +883,7 @@
     "Who does what, where, by when": "Qui fait quoi, où, et pour quand",
     "To do": "À faire", "In progress": "En cours", "Low": "Basse", "Normal": "Normale", "High": "Haute",
     "Task": "Tâche", "New task": "Nouvelle tâche", "Create task": "Créer une tâche", "Open task": "Ouvrir la tâche", "Task created": "Tâche créée", "Task saved": "Tâche enregistrée", "Task deleted": "Tâche supprimée",
-    "Priority": "Priorité", "Status": "Statut", "Owner": "Responsable", "Type": "Type", "Description": "Description", "More details": "Plus de détails", "Hypothesis": "Hypothèse",
+    "Priority": "Priorité", "Status": "Statut", "Owner": "Responsable", "Assigned to": "Attribuée à", "Nobody": "Personne", "by": "par", "Type": "Type", "Description": "Description", "More details": "Plus de détails", "Hypothesis": "Hypothèse",
     "Business impact, 1 to 5": "Impact business, de 1 à 5", "Hours estimated": "Heures estimées", "Hours spent": "Heures passées", "Note": "Note", "Impact": "Impact",
     "Source": "Source", "Open finding": "Ouvrir le constat", "Created": "Créée", "Open": "Ouvrir", "Delete": "Supprimer",
     "Site removed:": "Site retiré :", "A task needs a title.": "Une tâche a besoin d'un titre.", "This finding already has an open task.": "Ce constat a déjà une tâche ouverte.",

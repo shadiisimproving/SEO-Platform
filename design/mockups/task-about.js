@@ -7,14 +7,15 @@
   let UI, t, esc, icon, num;
 
   const KINDS = [
+    // Five on the first line, then the link kinds side by side with Competitor and General.
     { id: "page", label: "Page", many: "Pages", icon: "file-text", hint: "Pick or type a page", typed: true },
     { id: "keyword", label: "Keyword", many: "Keywords", icon: "key-round", hint: "Pick or type a keyword", typed: true },
     { id: "ranking", label: "Ranking", many: "Rankings", icon: "trending-up", hint: "Pick a tracked keyword's position" },
-    { id: "backlink", label: "Backlink", many: "Backlinks", icon: "link-2", hint: "Pick one of your backlinks" },
-    { id: "domain", label: "Linking website", many: "Linking websites", icon: "globe", hint: "Pick or type a website", typed: true },
     { id: "technical", label: "Technical", many: "Technical issues", icon: "heart-pulse", hint: "Pick an issue the checks found" },
-    { id: "competitor", label: "Competitor", many: "Competitors", icon: "crosshair", hint: "Pick a competitor" },
     { id: "note", label: "Note", many: "Notes", icon: "sticky-note", hint: "Pick a note" },
+    { id: "backlink", label: "Backlink", many: "Backlinks", icon: "link-2", hint: "Pick one of your backlinks" },
+    { id: "domain", label: "Link to get", many: "Links to get", icon: "globe", hint: "Pick or type a website to get a link from", typed: true },
+    { id: "competitor", label: "Competitor", many: "Competitors", icon: "crosshair", hint: "Pick a competitor" },
   ];
   const GENERAL = { id: "general", label: "General", icon: "circle-dot" };
   const kindOf = (id) => KINDS.find((k) => k.id === id) || (id === "general" ? GENERAL : null);
@@ -107,7 +108,7 @@
     if (kind === "page") return data.pages.map((p) => ({ key: p.url, value: p.url, label: pathOf(p.url), sub: where(p.title), fact: p.clicks ? factNum(p.clicks, p.clicks === 1 ? "click" : "clicks") : "" }));
     if (kind === "keyword") return data.keywords.map((k) => ({ key: k.keyword, value: k.keyword, label: k.keyword, sub: where(""), fact: k.impressions ? factNum(k.impressions, "impr.") : "" }));
     if (kind === "ranking") return data.rankings.map((r) => ({ key: r.ref, value: { ref: r.ref, label: `${r.keyword} · ${ENGINES[r.engine] || r.engine} #${r.position}` }, label: r.keyword, sub: where(ENGINES[r.engine] || r.engine), fact: `<span class="pl-pos tabular">#${esc(String(r.position))}</span>` }));
-    if (kind === "backlink") return data.backlinks.map((b) => ({ key: String(b.id), value: { ref: b.id, label: b.target ? `${b.domain} → ${pathOf(b.target)}` : b.domain }, label: b.domain, sub: where(b.target ? `→ ${pathOf(b.target)}` : ""), fact: b.status === "lost" ? `<span class="pl-bad">${t("Lost")}</span>` : b.verdict ? esc(t(VERDICTS[b.verdict] || b.verdict)) : "" }));
+    if (kind === "backlink") return data.backlinks.map((b) => ({ key: String(b.id), value: { ref: b.id, label: b.target ? `${b.domain} → ${pathOf(b.target)}` : b.domain }, label: b.domain, sub: where(b.target ? `→ ${pathOf(b.target)}` : ""), fact: b.status === "lost" ? `<span class="pl-bad">${t("Lost")}</span>` : b.status === "planned" ? esc(t("To do")) : b.verdict ? esc(t(VERDICTS[b.verdict] || b.verdict)) : "" }));
     if (kind === "domain") return data.domains.map((d) => ({ key: d.domain, value: { ref: d.domain, label: d.domain }, label: d.domain, sub: where(d.where === "gap" ? `${t("Links to")} ${num(d.rivals || 1)} ${t(d.rivals === 1 ? "competitor" : "competitors")}` : t("In consideration")), fact: d.spam ? `<span class="pl-bad">${t("Spam")}</span>` : "" }));
     if (kind === "technical") return data.technical.map((x) => ({ key: x.ref, value: { ref: x.ref, label: technicalLabel(x) }, label: technicalLabel(x), sub: where(t({ health: "Health test", link: "Links check", index: "Google index", speed: "Page speed" }[x.part])), fact: x.part === "speed" ? `<span class="tabular">${num(x.count)}</span>/100` : x.count > 1 ? factNum(x.count, "pages") : "" }));
     if (kind === "competitor") return data.competitors.map((c) => ({ key: String(c.id), value: { ref: c.id, label: c.host }, label: c.host, sub: where(""), icon: UI.siteLogo ? UI.siteLogo(c.host, 16) : "" }));
@@ -306,7 +307,7 @@
 
   const fr = {
     "About": "À propos de", "What this task is about": "Ce que concerne cette tâche", "Page": "Page", "Keyword": "Mot-clé", "Ranking": "Position", "Rankings": "Positions",
-    "Backlink": "Backlink", "Backlinks": "Backlinks", "Linking website": "Site référent", "Linking websites": "Sites référents", "Technical": "Technique", "Technical issues": "Problèmes techniques",
+    "Backlink": "Backlink", "Backlinks": "Backlinks", "Link to get": "Lien à obtenir", "Links to get": "Liens à obtenir", "Pick or type a website to get a link from": "Choisissez ou saisissez un site dont obtenir un lien", "Technical": "Technique", "Technical issues": "Problèmes techniques",
     "Competitor": "Concurrent", "Competitors": "Concurrents", "Note": "Note", "Notes": "Notes", "General": "Général",
     "Pick or type a page": "Choisir ou saisir une page", "Pick or type a keyword": "Choisir ou saisir un mot-clé", "Pick a tracked keyword's position": "Choisir la position d'un mot-clé suivi",
     "Pick one of your backlinks": "Choisir un de vos backlinks", "Pick or type a website": "Choisir ou saisir un site", "Pick an issue the checks found": "Choisir un problème trouvé par les contrôles",

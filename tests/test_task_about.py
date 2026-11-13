@@ -94,3 +94,24 @@ def test_options_list_what_the_site_has(client, world):
 def test_options_refuse_a_competitor_or_bad_site(client, world):
     assert client.get(f"/api/tasks/options?site_id={world['rival']}").status_code == 400
     assert client.get("/api/tasks/options?site_id=x").status_code == 400
+
+
+def test_options_list_every_page_of_the_site(client, world, engine):
+    """Not only 500 read pages or the last 28 days: old Search Console pages, Analytics pages and www pages too."""
+    with engine.begin() as conn:
+        dom = conn.execute(text("INSERT INTO domains (host) VALUES ('www.shop.example')")).lastrowid
+        for n in range(600):
+            conn.execute(text("INSERT INTO pages (domain_id, url, url_hash, title, content_hash) VALUES (:d, :u, :u, :t, 'x')"),
+                         {"d": dom, "u": f"https://www.shop.example/p{n:03d}/", "t": f"Page {n}"})
+        conn.execute(text("INSERT INTO gsc_page (site_id, day, page_hash, page, clicks, impressions) VALUES (:s, CURDATE() - INTERVAL 200 DAY, 'old', 'https://shop.example/old-guide', 9, 90)"), {"s": world["own"]})
+        conn.execute(text("INSERT INTO gsc_page (site_id, day, page_hash, page, clicks, impressions) VALUES (:s, CURDATE(), 'h2', 'https://shop.example/visa', 3, 30)"), {"s": world["own"]})
+        conn.execute(text("INSERT INTO ga4_page_daily (site_id, day, page_hash, path, sessions, users, key_events) VALUES (:s, CURDATE(), 'g1', '/contact', 4, 4, 0)"), {"s": world["own"]})
+        conn.execute(text("INSERT INTO ga4_page_daily (site_id, day, page_hash, path, sessions, users, key_events) VALUES (:s, CURDATE(), 'g2', '(not set)', 4, 4, 0)"), {"s": world["own"]})
+    pages = client.get(f"/api/tasks/options?site_id={world['own']}").json["pages"]
+    urls = [p["url"] for p in pages]
+    assert "https://shop.example/p599/" in urls and len([u for u in urls if "/p" in u]) == 600
+    assert "https://shop.example/old-guide/" in urls  # seen in Search Console months ago
+    assert "https://shop.example/contact/" in urls and not any("not set" in u for u in urls)
+    assert urls.count("https://shop.example/visa/") == 1  # /visa and /visa/ are one page
+    assert pages[0] == {"url": "https://shop.example/visa/", "title": "", "clicks": 15}
+    assert next(p for p in pages if p["url"].endswith("/old-guide/"))["clicks"] == 0  # clicks are the last 28 days

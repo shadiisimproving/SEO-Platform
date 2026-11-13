@@ -22,7 +22,13 @@
 .ta { margin: 0 0 14px; padding: 0; border: 0; min-width: 0; }
 .ta > legend { padding: 0; margin-bottom: 2px; }
 .ta-help { margin: 0 0 8px; }
-.ta-kinds { display: flex; flex-wrap: wrap; gap: 6px; }
+.ta-kinds { display: flex; flex-wrap: wrap; gap: 6px 5px; }
+/* Nine kinds on two lines (5 + 4) wherever the panel is wide enough; a phone wraps as it needs. */
+@media (min-width: 560px) {
+  .ta-kinds::before { content: ""; flex-basis: 100%; order: 2; }
+  .ta-kinds .ta-kind { white-space: nowrap; order: 3; padding: 0 8px; font-size: 12.5px; }
+  .ta-kinds .ta-kind:nth-child(-n+5) { order: 1; }
+}
 .ta-kind { display: inline-flex; align-items: center; gap: 6px; min-height: 30px; padding: 0 10px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--field); color: var(--text-2); font: inherit; font-size: 13px; cursor: pointer; transition: background var(--t-fast), border-color var(--t-fast), color var(--t-fast); }
 .ta-kind svg.i { width: 14px; height: 14px; }
 .ta-kind:hover { background: var(--hover); color: var(--text); }

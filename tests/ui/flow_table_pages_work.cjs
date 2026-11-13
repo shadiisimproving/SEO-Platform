@@ -77,7 +77,7 @@ const madeUpTasks = () => Array.from({ length: 300 }, (_, i) => ({
   await page.selectOption("#tk-kind", "Links"); await settle();
   check("Tasks: type filter narrows it", /of \d+ tasks/.test(await range("tk")) && (await page.locator('#tk-table td[data-label="Type"]').allTextContents()).every((x) => x.trim() === "Links"), await range("tk"));
   await page.selectOption("#tk-owner", "Ben"); await settle();
-  check("Tasks: owner filter narrows it", (await page.locator('#tk-table td[data-label="Owner"]').allTextContents()).every((x) => x.trim() === "Ben"), await range("tk"));
+  check("Tasks: owner filter narrows it", (await page.locator('#tk-table td[data-label="Assigned to"]').allTextContents()).every((x) => x.trim() === "Ben"), await range("tk"));
   await page.selectOption("#tk-status", ""); await page.selectOption("#tk-kind", ""); await page.selectOption("#tk-owner", ""); await settle();
   await page.click('[data-tk-sort="due"]'); await settle();
   const dues = await page.locator('#tk-table tbody tr').evaluateAll((rows) => rows.map((r) => r.dataset.taskRow));

@@ -822,8 +822,9 @@ class Task(Base):
     hours_estimate: Mapped[float | None] = mapped_column(Float, nullable=True)
     hours_spent: Mapped[float | None] = mapped_column(Float, nullable=True)
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # A name as typed. There are no accounts yet; an account column joins this when login is built.
+    # Who the task is assigned to: an account's name, picked from the team in the panel.
     owner_label: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(100), nullable=True)  # the signed-in account, set once
     comments: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # What the task is about, as lists of text, so it can show when that page or keyword is opened.
     pages: Mapped[list | None] = mapped_column(JSON, nullable=True)

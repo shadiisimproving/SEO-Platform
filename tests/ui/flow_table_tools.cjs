@@ -32,18 +32,18 @@ const madeUpTasks = () => Array.from({ length: 300 }, (_, i) => ({
   check("every row has a tick box", (await page.locator("#tk-table tbody tr .tt-pick input").count()) === 25);
 
   // A column the screen never sorted, across all pages.
-  const owner = page.locator('#tk-table thead th button', { hasText: "Owner" });
+  const owner = page.locator('#tk-table thead th button', { hasText: "Assigned to" });
   check("Owner heading is a sort button", (await owner.count()) === 1);
   await owner.click(); await settle();
-  let owners = (await column("Owner")).map((x) => x.trim());
+  let owners = (await column("Assigned to")).map((x) => x.trim());
   check("ascending: page 1 is all Ana", owners.every((x) => x === "Ana"), [...new Set(owners)].join(","));
   check("still 300 rows", (await range()).includes("300"), await range());
-  await page.locator('#tk-table thead th button', { hasText: "Owner" }).click(); await settle();
-  owners = (await column("Owner")).map((x) => x.trim());
+  await page.locator('#tk-table thead th button', { hasText: "Assigned to" }).click(); await settle();
+  owners = (await column("Assigned to")).map((x) => x.trim());
   check("descending: page 1 is all Dee", owners.every((x) => x === "Dee"), [...new Set(owners)].join(","));
   await shot("2-sorted");
-  await page.locator('#tk-table thead th button', { hasText: "Owner" }).click(); await settle();
-  check("third click: back to the default order", (await column("Title"))[0].includes("Made-up task"), (await column("Owner"))[0]);
+  await page.locator('#tk-table thead th button', { hasText: "Assigned to" }).click(); await settle();
+  check("third click: back to the default order", (await column("Title"))[0].includes("Made-up task"), (await column("Assigned to"))[0]);
 
   // A tick never opens the row, and survives changing page.
   await page.locator("#tk-table tbody tr .tt-pick input").first().click(); await settle(300);
@@ -59,7 +59,7 @@ const madeUpTasks = () => Array.from({ length: 300 }, (_, i) => ({
   // Filter by ticking a value: the count must be of the whole list.
   await page.click('[data-tt-filter][data-tt-key="tk"]'); await settle(300);
   const options = await page.locator("[data-tt-column] option").allTextContents();
-  await page.selectOption("[data-tt-column]", { label: options.find((o) => o.startsWith("Owner")) }); await settle(300);
+  await page.selectOption("[data-tt-column]", { label: options.find((o) => o.startsWith("Assigned to")) }); await settle(300);
   await shot("4-filter-window");
   await page.locator('[data-tt-value="Ben"]').check(); await settle();
   check("filter counts across every page: 75 of Ben", /of 75/.test(await range()), await range());

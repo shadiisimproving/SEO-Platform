@@ -337,3 +337,18 @@ def test_a_comment_carries_the_signed_in_account_name_whatever_was_sent(engine):
     task = client.post("/api/tasks", json={"title": "x"}, headers=headers).json
     after = client.post(f"/api/tasks/{task['id']}/comments", json={"text": "Done", "name": "Somebody else"}, headers=headers).json
     assert after["comments"][0]["name"] == "Sara Account"
+
+
+def test_created_by_is_the_signed_in_account_and_never_changes(engine):
+    from seo.accounts import service as accounts
+
+    accounts.create_user(engine, "sara@example.com", "Sara Account", "admin", password="a-long-password-1", must_change=False)
+    client = create_app(engine=engine, auth=True, secret_key="test").test_client()
+    token = client.post("/api/auth/login", json={"email": "sara@example.com", "password": "a-long-password-1"}).json["csrf"]
+    headers = {"X-CSRF-Token": token}
+    assert client.post("/api/tasks", json={"title": "x", "created_by": "Ben"}, headers=headers).status_code == 400
+    task = client.post("/api/tasks", json={"title": "x", "owner_label": "Ben"}, headers=headers).json
+    assert (task["created_by"], task["owner_label"]) == ("Sara Account", "Ben")
+    assert client.patch(f"/api/tasks/{task['id']}", json={"created_by": "Ben"}, headers=headers).status_code == 400
+    moved = client.patch(f"/api/tasks/{task['id']}", json={"owner_label": "Nour"}, headers=headers).json
+    assert (moved["created_by"], moved["owner_label"]) == ("Sara Account", "Nour")  # reassigned, creator kept

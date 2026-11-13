@@ -30,7 +30,7 @@ _TEXT = {
     "kind": (40, "The type"),
     "hypothesis": (300, "The hypothesis"),
     "note": (20000, "The note"),
-    "owner_label": (100, "The owner's name"),
+    "owner_label": (100, "The name of who it's assigned to"),
 }
 # name: (the longest one can be, what to call one in a message). What a task is about, so it can show on those screens.
 _LISTS = {
@@ -63,6 +63,7 @@ def _dict(row) -> dict:
         "due": row["due_date"].isoformat() if row["due_date"] else "", "kind": row["kind"] or "",
         "hypothesis": row["hypothesis"] or "", "impact": row["impact"], "hours_estimate": row["hours_estimate"],
         "hours_spent": row["hours_spent"], "note": row["note"] or "", "owner_label": row["owner_label"] or "",
+        "created_by": row.get("created_by") or "",
         "pages": _load(row["pages"], []), "keywords": _load(row["keywords"], []),
         "about": _load(row.get("about"), None) or {"main": "", "items": []},
         "comments": _load(row["comments"], []), "source": source, "completed_on": row["completed_at"].date().isoformat() if row["completed_at"] else "",
@@ -325,7 +326,8 @@ def list_tasks(engine: Engine) -> list[dict]:
         return [{**_dict(row), "finding": _finding_now(checks, row)} for row in rows]
 
 
-def create(engine: Engine, body: dict) -> dict:
+def create(engine: Engine, body: dict, by: str | None = None) -> dict:
+    """`by` is the signed-in account's name: who created the task. It's never taken from the body, and never changes."""
     extra = sorted(set(body) - FIELDS - {"source"})
     if extra:
         raise Refused(f"A task can't carry: {', '.join(extra)}.")
@@ -338,7 +340,7 @@ def create(engine: Engine, body: dict) -> dict:
             if "site_id" not in body:
                 access.require_site_or_every(None, conn)  # no site sent: a task for every site
             done = values.get("status") == "done"
-            columns = {**values, "source": source, "open_source_key": None if done else key}
+            columns = {**values, "source": source, "open_source_key": None if done else key, "created_by": (by or "")[:100] or None}
             names = ", ".join(columns)
             marks = ", ".join(f":{name}" for name in columns)
             finished = ", completed_at" if done else ""
