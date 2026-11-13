@@ -193,20 +193,36 @@ def _attach(conn, checks: list[Check]) -> list[Check]:
     return checks
 
 
+def _by_main_tool(engine: Engine, checks: list[Check]) -> list[Check]:
+    """One check per target from each tool's newest. With a main tool: the first tool in the engine's order that has one (the
+    main tool first), so every screen shows the same tool's ranking as Keywords, not whichever tool checked last."""
+    from seo.serp.connections import main_tool, order_for
+
+    chosen = bool(main_tool(engine))  # no main tool: the newest check, whatever its tool, as before
+    orders: dict[str, dict[str, int]] = {}
+    best: dict[int, Check] = {}
+    for check in checks:
+        place = orders.setdefault(check.engine, {name: at for at, name in enumerate(order_for(engine, check.engine))} if chosen else {})
+        rank = lambda c: (place.get(c.tool, len(place)), -c.id)  # noqa: E731
+        if check.target_id not in best or rank(check) < rank(best[check.target_id]):
+            best[check.target_id] = check
+    return [check for check in checks if best.get(check.target_id) is check]
+
+
 def latest_checks(engine: Engine, site_id: int, engine_name: str | None = None) -> list[Check]:
-    """The newest usable check of each keyword this site tracks, one per engine and device."""
+    """The usable check of each keyword this site tracks, one per engine and device, from the main tool when it has one."""
     clause = "AND t.engine = :e" if engine_name else ""
     with engine.connect() as conn:
         rows = conn.execute(
             text(
                 f"SELECT {_CHECK_COLUMNS} FROM site_keywords sk JOIN keywords k ON k.id = sk.keyword_id "
                 f"JOIN serp_targets t ON t.keyword_id = k.id {clause} "
-                "JOIN serp_checks c ON c.id = (SELECT MAX(c2.id) FROM serp_checks c2 WHERE c2.target_id = t.id AND c2.status = 'ok') "
+                "JOIN serp_checks c ON c.target_id = t.id AND c.status = 'ok' AND c.id = (SELECT MAX(c2.id) FROM serp_checks c2 WHERE c2.target_id = t.id AND c2.tool = c.tool AND c2.status = 'ok') "
                 "WHERE sk.site_id = :s ORDER BY k.keyword"
             ),
             {"s": site_id, "e": engine_name},
         ).mappings().all()
-        return _attach(conn, [Check(**_check_args(r)) for r in rows])
+        return _attach(conn, _by_main_tool(engine, [Check(**_check_args(r)) for r in rows]))
 
 
 def history(engine: Engine, site_id: int, engine_name: str | None = None, limit: int = 3000) -> list[Check]:
@@ -238,11 +254,11 @@ def latest_checks_many(engine: Engine, site_ids: list[int]) -> list[Check]:
         rows = conn.execute(
             text(
                 f"SELECT {_CHECK_COLUMNS} FROM keywords k JOIN serp_targets t ON t.keyword_id = k.id "
-                "JOIN serp_checks c ON c.id = (SELECT MAX(c2.id) FROM serp_checks c2 WHERE c2.target_id = t.id AND c2.status = 'ok') "
+                "JOIN serp_checks c ON c.target_id = t.id AND c.status = 'ok' AND c.id = (SELECT MAX(c2.id) FROM serp_checks c2 WHERE c2.target_id = t.id AND c2.tool = c.tool AND c2.status = 'ok') "
                 f"WHERE {_keywords_of(site_ids)} ORDER BY k.keyword"
             )
         ).mappings().all()
-        return _attach(conn, [Check(**_check_args(r)) for r in rows])
+        return _attach(conn, _by_main_tool(engine, [Check(**_check_args(r)) for r in rows]))
 
 
 def history_many(engine: Engine, site_ids: list[int], limit_per_site: int = 3000) -> list[Check]:

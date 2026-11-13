@@ -48,7 +48,10 @@ DEFAULT_ORDER = {
     "bing": [BRIGHT, SERPAPI, HASDATA, SEARX, BROWSER],
     "yandex": [BRIGHT, SERPAPI, SEARX, BROWSER],
 }
-SETTINGS = {"disagree_gap": "3", "just_checked_hours": "12", "mac_country": "", "ai_first": "1"}
+SETTINGS = {"disagree_gap": "3", "just_checked_hours": "12", "mac_country": "", "ai_first": "1", "main_tool": ""}
+# The main tool (owner's ask, 2026-11-13): every ranking in the app is this tool's, on each engine it searches. It goes
+# first in every order, ahead of "ai_first" too. When it has no result for a keyword yet, the next tool's is shown, with
+# that tool's name. The other tools' results stay in a keyword's details. "" = none: the saved orders alone decide.
 # Only SerpApi reads Google's AI Overview. With "ai_first" on, a Refresh on Google tries it first while it has free searches,
 # then follows the saved order. The owner's order stays as saved; this only goes in front of it.
 AI_FIRST_WHY = "SerpApi first while it has free searches, then the order below."
@@ -237,12 +240,20 @@ def _build(engine: Engine, name: str, key_path=None):
 # ---- the order ------------------------------------------------------------------------------------
 
 def order_for(engine: Engine, search_engine: str) -> list[str]:
-    """The saved order, with any tool it doesn't name in its default place at the end."""
+    """The saved order, with any tool it doesn't name in its default place at the end, and the main tool in front."""
     default = DEFAULT_ORDER.get(search_engine, [])
     with engine.connect() as conn:
         saved = [row[0] for row in conn.execute(text("SELECT tool FROM tool_order WHERE engine = :e ORDER BY position"), {"e": search_engine}).all()]
     kept = [name for name in saved if name in default]
-    return kept + [name for name in default if name not in kept]
+    order = kept + [name for name in default if name not in kept]
+    main = main_tool(engine)
+    return [main] + [name for name in order if name != main] if main in order else order
+
+
+def main_tool(engine: Engine) -> str:
+    """The tool every ranking comes from, or "" for none."""
+    name = get_setting(engine, "main_tool")
+    return name if name in TOOLS else ""
 
 
 def set_order(engine: Engine, search_engine: str, names) -> list[str]:
@@ -266,6 +277,9 @@ def ai_first_names(engine: Engine, search_engine: str) -> list[str]:
     """The tools a Refresh puts in front of the saved order for this engine: those that read AI Overviews, on Google only."""
     if search_engine != "google" or not ai_first_on(engine):
         return []
+    main = main_tool(engine)
+    if main in DEFAULT_ORDER.get(search_engine, []) and not getattr(TOOLS[main].cls, "gives_ai", False):
+        return []  # the main tool stays first
     return [name for name in order_for(engine, search_engine) if getattr(TOOLS[name].cls, "gives_ai", False)]
 
 
@@ -282,8 +296,10 @@ def tools_for(engine: Engine, search_engine: str, include_manual: bool = False, 
         built.sort(key=lambda tool: place.get(tool.name, len(place)))  # a stable sort, so unknown names keep their order
     else:
         built = [tool for tool in (_build(engine, name) for name in order) if tool is not None]
+    main = main_tool(engine)
     if ai_first and search_engine == "google" and ai_first_on(engine):
-        built.sort(key=lambda tool: not getattr(tool, "gives_ai", False))  # stable: the rest keep the saved order
+        # Behind the main tool: an AI-reading tool would otherwise take its place on Google.
+        built.sort(key=lambda tool: (tool.name != main, not getattr(tool, "gives_ai", False)))  # stable: the rest keep the saved order
     return [tool for tool in built if include_manual or not getattr(tool, "manual_only", False)]
 
 
@@ -307,6 +323,8 @@ def save_setting(engine: Engine, name: str, value) -> str:
         text_value = text_value.upper()
         if text_value and not (len(text_value) == 2 and text_value.isalpha()):
             raise Refused("The country must be a two-letter code, such as AE.")
+    if name == "main_tool" and text_value and text_value not in TOOLS:
+        raise Refused("That tool doesn't exist.")
     if name == "ai_first" and text_value not in ("0", "1"):
         raise Refused("This one is on (1) or off (0).")
     with engine.begin() as conn:

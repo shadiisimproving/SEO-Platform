@@ -888,3 +888,20 @@ def test_an_upload_that_lost_its_job_does_not_say_checking_forever(world):
     with world.engine.begin() as conn:
         conn.execute(text("UPDATE keyword_uploads SET created_at = UTC_TIMESTAMP(3) - INTERVAL 1 HOUR WHERE id = :u"), {"u": upload})
     assert "checking" not in rankings.listing(world.engine, world.site)["rows"][0]
+
+
+def test_the_main_tool_speaks_for_every_screen_and_another_tool_fills_in_with_its_name(world):
+    from seo.serp import store
+
+    [k, only_other] = track(world, "a", "b")
+    save(world, k, tool="Bright Data", position=8)
+    save(world, k, tool="SerpApi", position=2)  # newer, but not the main tool
+    save(world, only_other, tool="SerpApi", position=4)
+    connections.save_setting(world.engine, "main_tool", "Bright Data")
+    view = row_of(world, k)
+    assert view["main"]["tool"] == "Bright Data" and [row["tool"] for row in view["others"]] == ["SerpApi"]
+    assert row_of(world, only_other)["main"]["tool"] == "SerpApi"  # Bright Data hasn't checked it: the next tool, named
+    # Competitors, AI watch and the rest read store.latest_checks: the same tool as Keywords, not the newest check.
+    latest = {c.keyword: c.tool for c in store.latest_checks(world.engine, world.site)}
+    assert latest == {"a": "Bright Data", "b": "SerpApi"}
+    assert {c.keyword: c.tool for c in store.latest_checks_many(world.engine, [world.site])} == latest

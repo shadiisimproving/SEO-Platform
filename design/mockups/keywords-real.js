@@ -46,7 +46,7 @@
     "DuckDuckGo has no tool for site owners, so the app checks its positions by itself every day, oldest first, on free searches only. Refresh and Refresh data check them now.": "DuckDuckGo n'a pas d'outil pour les propriétaires de sites : l'app vérifie ses positions toute seule chaque jour, les plus anciennes d'abord, avec des recherches gratuites uniquement. Actualiser et Actualiser les données les vérifient tout de suite.",
     "Automatic DuckDuckGo check": "Contrôle DuckDuckGo automatique", "automatic check": "contrôle automatique",
     "Clicks": "Clics", "Click rate": "Taux de clic", "selected": "sélectionnés", "Clear selection": "Effacer la sélection", "{n} selected on this page": "{n} sélectionnés sur cette page", "Select all {n} keywords": "Sélectionner les {n} mots-clés", "All {n} keywords selected": "Les {n} mots-clés sont sélectionnés", "Create task": "Créer une tâche", "Export CSV": "Exporter en CSV", "Export ready": "Export prêt",
-    "Up": "En hausse", "Down": "En baisse", "Top 3": "Top 3", "Top 10": "Top 10", "All": "Tous", "Not ranked": "Non classés", "Cited by AI": "Cités par l'IA", "Two pages compete": "Deux pages en concurrence", "Also ranks": "Classées aussi", "Also": "Aussi", "impr.": "impr.", "+{n} more": "+{n} de plus", "Show fewer": "Afficher moins", "Two of your pages rank for it.": "Deux de vos pages se classent dessus.",
+    "Up": "En hausse", "Down": "En baisse", "Top 3": "Top 3", "Top 10": "Top 10", "All": "Tous", "Not ranked": "Non classés", "Cited by AI": "Cités par l'IA", "Two pages compete": "Deux pages en concurrence", "Also ranks": "Classées aussi", "Also": "Aussi", "impr.": "impr.", "Main tool": "Outil principal", "None: the order below": "Aucun : l'ordre ci-dessous", "{tool} is the main tool": "{tool} est l'outil principal", "No main tool": "Pas d'outil principal", "Every ranking in the app comes from this tool. If it hasn't checked a keyword yet, the next tool in the order is shown, with its name. The other tools' results are in each keyword's details.": "Toutes les positions de l'app viennent de cet outil. S'il n'a pas encore vérifié un mot-clé, l'outil suivant de l'ordre est affiché, avec son nom. Les résultats des autres outils sont dans le détail de chaque mot-clé.", "+{n} more": "+{n} de plus", "Show fewer": "Afficher moins", "Two of your pages rank for it.": "Deux de vos pages se classent dessus.",
     "Tracked": "Suivis", "Ranked": "Classés", "compared": "comparés", "Positions": "Positions", "By bucket": "Par tranche", "Queries": "Requêtes", "All engines": "Tous les moteurs", "Volume": "Volume", "Trend": "Tendance", "AI": "IA", "avg position": "position moy.",
     "No keyword matches": "Aucun mot-clé ne correspond", "Try another filter.": "Essayez un autre filtre.", "Show all": "Tout afficher", "Data through": "Données jusqu'au", "Refreshed": "Actualisé le", "Rankings from engines' own tools and scraped results": "Positions venant de l'outil de chaque moteur et de résultats scrapés",
     "in its country": "dans son pays", "No Search Console data in the keyword's country.": "Pas de données Search Console dans le pays du mot-clé.", "Search Console's average position in the keyword's own country.": "Position moyenne Search Console dans le pays du mot-clé.", "Search Console's average position across every country.": "Position moyenne Search Console dans tous les pays.", "Order for": "Ordre pour", "This tool doesn't search this engine.": "Cet outil ne couvre pas ce moteur.", "Order saved": "Ordre enregistré",
@@ -184,6 +184,16 @@
     syncSettings();
     return answer;
   }
+
+  /* The main tool (owner's ask, 2026-11-13): every ranking in the app is its result; it goes first in each engine's order.
+     When it has none for a keyword yet, the next tool's shows, with its name; the others stay in the keyword's details. */
+  const mainToolPicker = () => {
+    const main = K.settings?.main_tool || "";
+    const usable = (K.tools || []).filter((tool) => tool.connected || tool.auth === "none" || tool.auth === "browser" || tool.name === main);
+    const opts = [`<option value="">${esc(t("None: the order below"))}</option>`, ...usable.map((tool) => `<option value="${esc(tool.name)}"${tool.name === main ? " selected" : ""}>${esc(tool.name)}</option>`)];
+    const tip = UI.tip(t("Every ranking in the app comes from this tool. If it hasn't checked a keyword yet, the next tool in the order is shown, with its name. The other tools' results are in each keyword's details."));
+    return `<label class="kwr-main-tool small" style="flex-basis:100%;display:flex;align-items:center;gap:8px;margin:8px 0 4px"><b>${t("Main tool")}</b><select id="kwr-main-tool" class="select" style="width:auto">${opts.join("")}</select>${tip}</label>`;
+  };
 
   /* Settings draws the search tools from window.TOOLS and window.CONNECTIONS, so the real numbers go there. */
   function syncSettings() {
@@ -1250,7 +1260,7 @@
       return `${error}<label class="opt" style="margin:0 0 4px"><input type="checkbox" class="chk" style="margin:0" id="kwr-paid-on" data-tool="${esc(tool.name)}" ${tool.paid_on ? "checked" : ""}>${t("Allow paid use")}</label><p class="help" style="margin:0 0 12px">${t("Refresh still uses free credits first; each run asks its own limit.")}</p>`;
     },
     /* The order is per engine, so the list says which engine it's showing. */
-    orderPicker: () => `<span class="seg" role="group" aria-label="${t("Order for")}" style="margin-left:auto">${ENGINES.map(([id, label]) => `<button type="button" data-kwr-order="${id}" aria-pressed="${K.orderEngine === id}">${label}</button>`).join("")}</span>${K.aiFirst?.[K.orderEngine]?.length && K.aiFirstWhy ? `<p class="small sec kwr-ai-first" style="flex-basis:100%;margin:6px 0 0">${icon("sparkles")} ${esc(t(K.aiFirstWhy))}${UI.tip("SerpApi goes first for Google while it has free searches: it is the only tool that reads AI Overviews.")}</p>` : ""}`,
+    orderPicker: () => mainToolPicker() + `<span class="seg" role="group" aria-label="${t("Order for")}" style="margin-left:auto">${ENGINES.map(([id, label]) => `<button type="button" data-kwr-order="${id}" aria-pressed="${K.orderEngine === id}">${label}</button>`).join("")}</span>${K.aiFirst?.[K.orderEngine]?.length && K.aiFirstWhy ? `<p class="small sec kwr-ai-first" style="flex-basis:100%;margin:6px 0 0">${icon("sparkles")} ${esc(t(K.aiFirstWhy))}${UI.tip("SerpApi goes first for Google while it has free searches: it is the only tool that reads AI Overviews.")}</p>` : ""}`,
     openRefresh,
     wanted: () => { if (K.stale && !K.loading) load(); },
     commands: () => { if (!K.data && !K.loading) load(); return commandRows(); },
@@ -1406,6 +1416,13 @@
 
     document.addEventListener("change", (e) => {
       const el = e.target;
+      if (el.id === "kwr-main-tool") {
+        const value = el.value;
+        api("PATCH", "tools/settings", { main_tool: value })
+          .then(async () => { await loadTools(); K.stale = true; load(); UI.toast(value ? t("{tool} is the main tool").replace("{tool}", value) : t("No main tool")); $("#kwr-main-tool")?.focus({ preventScroll: true }); })
+          .catch((err) => UI.toast(t(err.message), { kind: "crit" }));
+        return;
+      }
       if (el.matches?.("[data-kwr-select]")) { if (el.checked) K.selected.add(el.dataset.kwrSelect); else K.selected.delete(el.dataset.kwrSelect); const id = el.dataset.kwrSelect; UI.render({ keepScroll: true }); $$("[data-kwr-select]").find((x) => x.dataset.kwrSelect === id)?.focus(); return; }
       if (el.id === "kwr-select-all") { TP.view(KW_PAGES, filtered()).rows.forEach((row) => { /* the rows on this page only */ if (el.checked) K.selected.add(row.id); else K.selected.delete(row.id); }); UI.render({ keepScroll: true }); $("#kwr-select-all")?.focus(); return; }
       if (el.matches?.("[data-kwr-engine]")) { if (el.checked) K.refresh.engines.add(el.dataset.kwrEngine); else K.refresh.engines.delete(el.dataset.kwrEngine); updatePreview(); return; }

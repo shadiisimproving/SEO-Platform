@@ -190,3 +190,21 @@ def test_a_run_says_which_searches_failed_and_why(world):
     assert set(found) == {"bad", "slow"} and found["slow"]["timed_out"] and not found["bad"]["timed_out"]
     assert found["bad"]["error"].endswith(".") and found["bad"]["tool"] == "SerpApi" and found["bad"]["engine"] == "google"
     assert world.client.get(f"/api/refresh/runs/{run['id']}").get_json()["failures"][0]["keyword_id"]
+
+
+# ---- The main tool --------------------------------------------------------------------------------------
+
+def test_the_main_tool_goes_first_on_every_engine_ahead_of_the_ai_overview_tool(world):
+    bright = Paged("Bright Data", free_monthly=5000, paid_per=0.0015)
+    serp = Paged("SerpApi", free_monthly=250, gives_ai=True)
+    world.tools["google"] = [bright, serp]
+    connections.save_setting(world.engine, "main_tool", "Bright Data")
+    assert [t.name for t in connections.tools_for(world.engine, "google", ai_first=True)] == ["Bright Data", "SerpApi"]
+    assert connections.order_for(world.engine, "duckduckgo")[0] == "Bright Data"  # ahead of the free direct check
+    assert connections.tool_list(world.engine)["first_for_ai"] == {}
+    run = run_now(world, track(world, "a", "b"))
+    assert run["done"] == 2 and len(bright.calls) == 2 and serp.calls == []
+    connections.save_setting(world.engine, "main_tool", "")
+    assert [t.name for t in connections.tools_for(world.engine, "google", ai_first=True)] == ["SerpApi", "Bright Data"]
+    with pytest.raises(Refused):
+        connections.save_setting(world.engine, "main_tool", "Nobody")

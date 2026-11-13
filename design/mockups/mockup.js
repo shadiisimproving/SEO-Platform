@@ -4273,7 +4273,7 @@
   // ---- a Member sees admin settings, but can't press what only fails on Save --------------------------------------
   /* The server refuses these to a Member (require_admin). So in Settings and in a connection's panel, they are greyed with
      the reason as their tip, and one line at the top says why. Copying, folding and closing still work. */
-  const ADMIN_CONTROLS = "#conn-save, #conn-test, #conn-disconnect, [data-lv-google-test], [data-lv-google-del], [data-tool-move], [data-kwr-order], #kwr-paid-on, [data-ai-site], [data-ai-cap], [data-ai-save-cap], [data-prop], [data-prop-other], [data-lv-site-conn], [data-site-none], [data-conn-site], input[name=\"conn-scope\"], input[name=\"google-type\"], [data-key-input], #conn-json, #conn-client, #conn-secret, #conn-refresh, #conn-zone, #conn-url, #conn-country, #ca-file, #cr-file, #cr-site";
+  const ADMIN_CONTROLS = "#conn-save, #conn-test, #conn-disconnect, [data-lv-google-test], [data-lv-google-del], [data-tool-move], [data-kwr-order], #kwr-main-tool, #kwr-paid-on, [data-ai-site], [data-ai-cap], [data-ai-save-cap], [data-prop], [data-prop-other], [data-lv-site-conn], [data-site-none], [data-conn-site], input[name=\"conn-scope\"], input[name=\"google-type\"], [data-key-input], #conn-json, #conn-client, #conn-secret, #conn-refresh, #conn-zone, #conn-url, #conn-country, #ca-file, #cr-file, #cr-site";
   function memberLock(scope) {
     if (!scope || window.UI?.canAdmin?.() !== false) return;
     const why = t("Only an admin can change connections.");
