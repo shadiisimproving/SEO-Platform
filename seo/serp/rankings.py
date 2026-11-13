@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import datetime
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import Engine, text
 
@@ -18,6 +19,29 @@ from seo.core.errors import NotFound
 from seo.metrics import countries
 from seo.serp import connections, store
 from seo.serp.tools import counts_for_keyword, google_redirect, same_place
+
+# Tags Google and ad tools add to an address. The same page with one of these is still that page: Reserve with Google
+# alone gave a home page dozens of "other pages" (?rwg_token=…), one per visit.
+_TRACKING = ("rwg_token", "srsltid", "gclid", "gbraid", "wbraid", "fbclid", "msclkid", "ttclid", "yclid", "_gl", "mc_cid", "mc_eid")
+
+
+def page_address(url: str) -> str:
+    """The page an address is: no #part, no tracking tags (utm_*, hsa_* and the names above); other query parts stay."""
+    try:
+        parts = urlsplit(url)
+    except ValueError:
+        return url
+    kept = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k not in _TRACKING and not k.startswith(("utm_", "hsa_"))]
+    return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(kept), ""))
+
+
+def _fold_pages(seen: dict) -> dict:
+    """Search Console's pages for one query, tagged copies added into their page's impressions."""
+    folded: dict = {}
+    for url, shows in seen.items():
+        page = page_address(url)
+        folded[page] = folded.get(page, 0) + (shows or 0)
+    return folded
 
 ENGINES = connections.ENGINE_ORDER
 DEVICE = "desktop"  # the screen shows desktop. A mobile check is another target, so it can never be compared with these.
@@ -246,16 +270,17 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
             own_row = own["positions"].get(name, {}).get((track["site_id"], key))
             engines[name] = engine_view(checks.get((track["id"], name), []), host, track["country"], track["language"], order[name], gap, now, own_row)
         ai = _ai(checks.get((track["id"], "google"), []), host, track["country"], track["language"], now)
-        pages_seen = own["pages"].get((track["site_id"], key), {})
+        pages_seen = _fold_pages(own["pages"].get((track["site_id"], key), {}))
         latest_google = checks.get((track["id"], "google"), [])
         # Two addresses: a result whose address Google hid may be either page, so it isn't a second one.
-        scraped_two = latest_google and len({row[1] for row in latest_google[-1].rows if row[1] and store.on_host(row[2], host)}) >= 2
+        scraped_two = latest_google and len({page_address(row[1]) for row in latest_google[-1].rows if row[1] and store.on_host(row[2], host)}) >= 2
         # Which pages they are: Search Console's by impressions, then any other address the latest Google check found.
         competing = [{"url": url, "impressions": shows, "position": None} for url, shows in sorted(pages_seen.items(), key=lambda kv: -kv[1])]
         if latest_google:
             for position, url, row_host in latest_google[-1].rows:
                 if not url or not store.on_host(row_host, host):
                     continue
+                url = page_address(url)
                 known = next((item for item in competing if item["url"].rstrip("/") == url.rstrip("/")), None)
                 if known:
                     known["position"] = known["position"] or position

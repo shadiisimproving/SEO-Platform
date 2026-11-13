@@ -615,3 +615,14 @@ def test_cleanup_resets_only_site_searches_that_could_be_wrong(world):
     assert done["cleared"] == 2 and done["rebuilt"] == []  # no check changed, so no pair to rebuild
     assert index_states(world) == [(None, None), (None, None), ("indexed", "Bright Data"), ("not_found", "Bright Data")]
     assert [r["src_index_misses"] for r in rows(world, "SELECT src_index_misses FROM backlinks ORDER BY id")] == [0, 0, 2, 2]
+
+
+def test_a_tagged_copy_of_a_page_is_that_page_not_a_second_one(world):
+    """Reserve with Google adds ?rwg_token=… to a home page: dozens of "other pages" that were all the same one."""
+    one, two = track(world, "k1", "k2")
+    _check_with(world, one, [Found(1, f"https://{ME}/", "A"), Found(3, f"https://{ME}/?rwg_token=ALcMQ", "A again")])
+    _check_with(world, two, [Found(1, f"https://{ME}/a?utm_source=x", "A"), Found(4, f"https://{ME}/b?id=3", "B")])
+    listed = {r["keyword"]: r for r in rankings.listing(world.engine, world.site)["rows"]}
+    assert (listed["k1"]["two_pages"], listed["k1"]["pages"]) == (False, [])
+    assert [p["url"] for p in listed["k2"]["pages"]] == [f"https://{ME}/a", f"https://{ME}/b?id=3"]
+    assert rankings._fold_pages({f"https://{ME}/": 400, f"https://{ME}/?rwg_token=a": 1, f"https://{ME}/?rwg_token=b": 1}) == {f"https://{ME}/": 402}

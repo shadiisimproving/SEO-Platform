@@ -46,7 +46,7 @@
     "DuckDuckGo has no tool for site owners, so the app checks its positions by itself every day, oldest first, on free searches only. Refresh and Refresh data check them now.": "DuckDuckGo n'a pas d'outil pour les propriétaires de sites : l'app vérifie ses positions toute seule chaque jour, les plus anciennes d'abord, avec des recherches gratuites uniquement. Actualiser et Actualiser les données les vérifient tout de suite.",
     "Automatic DuckDuckGo check": "Contrôle DuckDuckGo automatique", "automatic check": "contrôle automatique",
     "Clicks": "Clics", "Click rate": "Taux de clic", "selected": "sélectionnés", "Clear selection": "Effacer la sélection", "{n} selected on this page": "{n} sélectionnés sur cette page", "Select all {n} keywords": "Sélectionner les {n} mots-clés", "All {n} keywords selected": "Les {n} mots-clés sont sélectionnés", "Create task": "Créer une tâche", "Export CSV": "Exporter en CSV", "Export ready": "Export prêt",
-    "Up": "En hausse", "Down": "En baisse", "Top 3": "Top 3", "Top 10": "Top 10", "All": "Tous", "Not ranked": "Non classés", "Cited by AI": "Cités par l'IA", "Two pages compete": "Deux pages en concurrence", "Also ranks": "Classées aussi", "Also": "Aussi", "impr.": "impr.", "Two of your pages rank for it.": "Deux de vos pages se classent dessus.",
+    "Up": "En hausse", "Down": "En baisse", "Top 3": "Top 3", "Top 10": "Top 10", "All": "Tous", "Not ranked": "Non classés", "Cited by AI": "Cités par l'IA", "Two pages compete": "Deux pages en concurrence", "Also ranks": "Classées aussi", "Also": "Aussi", "impr.": "impr.", "+{n} more": "+{n} de plus", "Show fewer": "Afficher moins", "Two of your pages rank for it.": "Deux de vos pages se classent dessus.",
     "Tracked": "Suivis", "Ranked": "Classés", "compared": "comparés", "Positions": "Positions", "By bucket": "Par tranche", "Queries": "Requêtes", "All engines": "Tous les moteurs", "Volume": "Volume", "Trend": "Tendance", "AI": "IA", "avg position": "position moy.",
     "No keyword matches": "Aucun mot-clé ne correspond", "Try another filter.": "Essayez un autre filtre.", "Show all": "Tout afficher", "Data through": "Données jusqu'au", "Refreshed": "Actualisé le", "Rankings from engines' own tools and scraped results": "Positions venant de l'outil de chaque moteur et de résultats scrapés",
     "in its country": "dans son pays", "No Search Console data in the keyword's country.": "Pas de données Search Console dans le pays du mot-clé.", "Search Console's average position in the keyword's own country.": "Position moyenne Search Console dans le pays du mot-clé.", "Search Console's average position across every country.": "Position moyenne Search Console dans tous les pays.", "Order for": "Ordre pour", "This tool doesn't search this engine.": "Cet outil ne couvre pas ce moteur.", "Order saved": "Ordre enregistré",
@@ -152,11 +152,15 @@
     return `${Math.round(days)} ${state.lang === "fr" ? "j" : "d"}`;
   };
   // Every page of yours that shows up for the keyword, under the main one: the warning alone doesn't say which.
+  const ALSO_SHOWN = 3;
   const competingPages = (row) => {
     const others = (row.pages || []).filter((p) => !row.page || p.url.replace(/\/$/, "") !== row.page.replace(/\/$/, ""));
     if (!row.two_pages || !others.length) return "";
     const fact = (p) => [p.position ? `#${p.position}` : "", p.impressions != null ? `${num(p.impressions)} ${t("impr.")}` : ""].filter(Boolean).join(" · ");
-    return `<ul class="kw-also" aria-label="${esc(t("Also ranks"))}">${others.map((p) => `<li data-tip="${esc(p.url)}"><span class="warn small">${t("Also")}</span>${fact(p) ? ` <span class="muted">${esc(fact(p))}</span>` : ""} ${PageLink.html(p.url, { text: shortPath(p.url), title: "" })}</li>`).join("")}</ul>`;
+    // Three at most in the row, so one keyword never fills the screen; the rest behind "+N more" (kept open across redraws).
+    const open = K.alsoOpen?.has(row.id), shown = open ? others : others.slice(0, ALSO_SHOWN), rest = others.length - ALSO_SHOWN;
+    const more = rest > 0 ? `<li><button type="button" class="link-btn small" data-kw-also="${esc(row.id)}" aria-expanded="${open}">${open ? t("Show fewer") : t("+{n} more").replace("{n}", num(rest))}</button></li>` : "";
+    return `<ul class="kw-also" aria-label="${esc(t("Also ranks"))}">${shown.map((p) => `<li data-tip="${esc(p.url)}"><span class="warn small">${t("Also")}</span>${fact(p) ? ` <span class="muted">${esc(fact(p))}</span>` : ""} ${PageLink.html(p.url, { text: shortPath(p.url), title: "" })}</li>`).join("")}${more}</ul>`;
   };
   const shortPath = (url) => { try { const u = new URL(url); return decodeURI(u.pathname + u.search) || "/"; } catch { return url || ""; } };
   const allRows = () => { const host = UI.siteHostPicked(); return (K.data?.rows || []).filter((row) => !host || row.site === host); };
@@ -1342,6 +1346,12 @@
       if (hit("#kwr-retry")) { K.stale = true; K.error = ""; load(); UI.render(); return; }
       // The simpler screens: the whole row opens its panel (not its tick box, page link or a button in it); ⋯ pins its tools.
       if (simple() && (el = hit("#kw-table tbody tr[data-kwr-row]")) && !hit("a, button, input, select, textarea, label, [data-kwr-open], .chk-cell")) { openKeyword(el.dataset.kwrRow, el); return; }
+      if ((el = hit("[data-kw-also]"))) {
+        const id = el.dataset.kwAlso; K.alsoOpen ||= new Set();
+        K.alsoOpen.has(id) ? K.alsoOpen.delete(id) : K.alsoOpen.add(id);
+        UI.render({ keepScroll: true }); $(`[data-kw-also="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
+        return;
+      }
       if (hit("#kw-filter")) { K.filterOpen = !K.filterOpen; UI.render({ keepScroll: true }); $(K.filterOpen ? "#kw-filter-panel button" : "#kw-filter")?.focus({ preventScroll: true }); return; }
       if (hit("#kw-filter-close")) { K.filterOpen = false; UI.render({ keepScroll: true }); $("#kw-filter")?.focus({ preventScroll: true }); return; }
       // Inside Filter, a chip or a view redraws the screen: the keyboard stays on what was pressed.

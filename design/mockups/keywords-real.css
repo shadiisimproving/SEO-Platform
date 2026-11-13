@@ -118,3 +118,4 @@ html[data-simple="1"] #panel.wide svg.chart { display: block; width: 100%; max-w
 .url-cell .kw-also li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .url-cell .kw-also .warn { font-family: var(--font); font-weight: 600; margin-right: 2px; }
 .url-cell .kw-also .muted { font-family: var(--font); }
+.url-cell .kw-also .link-btn { font-family: var(--font); font-weight: 600; padding: 2px 0; }
