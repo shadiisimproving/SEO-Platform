@@ -133,15 +133,30 @@ def _side_state(page: dict | None) -> str:
     return status
 
 
+class IndexedChecks(list):
+    """one_per_keyword(checks), each with its results by page (the first result of a page, as a scan would find it).
+    Page vs page lists every pair against every check: indexing once makes that pairs + checks, not pairs × checks × results
+    (2026-11-16, the live list took many seconds with 156 keywords)."""
+
+    def __init__(self, checks):
+        super().__init__()
+        for check in store.one_per_keyword(checks):
+            by_page: dict = {}
+            for r in check.results:
+                by_page.setdefault(_page_id(r.url), r)
+            self.append((check, by_page))
+
+
 def ranking_summary(checks, my_url: str, their_url: str) -> dict:
     """Who ranks higher, in the latest check of each keyword. Both positions always come from the same check."""
     my_key, their_key = _page_id(my_url), _page_id(their_url)
     my_host, their_host = store.host_and_domain(my_url)[0], store.host_and_domain(their_url)[0]
     keywords, gaps = [], []
     they_ahead = i_ahead = level = only_mine = only_theirs = not_known = 0
-    for check in store.one_per_keyword(checks):  # a keyword checked on two engines is one keyword, and its positions aren't averaged across them
-        mine = next((r for r in check.results if _page_id(r.url) == my_key), None)
-        theirs = next((r for r in check.results if _page_id(r.url) == their_key), None)
+    indexed = checks if isinstance(checks, IndexedChecks) else IndexedChecks(checks)
+    for check, by_page in indexed:  # a keyword checked on two engines is one keyword, and its positions aren't averaged across them
+        mine = by_page.get(my_key)
+        theirs = by_page.get(their_key)
         if mine is None and theirs is None:
             continue
         if (mine is None and check.unnamed_on(my_host)) or (theirs is None and check.unnamed_on(their_host)):
@@ -200,7 +215,7 @@ def _pair_dict(conn, row: dict, checks=None, loaded: dict | None = None) -> dict
 def list_pairs(engine: Engine, site_id: int, competitor_id: int | None = None, include_hidden: bool = False) -> list[dict]:
     with engine.connect() as conn:
         require_own(conn, site_id)
-    checks = store.latest_checks(engine, site_id)
+    checks = IndexedChecks(store.latest_checks(engine, site_id))
     with engine.connect() as conn:
         require_own(conn, site_id)
         clause = "AND p.competitor_id = :c" if competitor_id else ""

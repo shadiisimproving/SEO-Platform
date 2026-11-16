@@ -433,7 +433,9 @@
 
   /* Simpler screens: seven tabs were too many in one row (UI critique 2026-11-12). The everyday four stay; Find competitors,
      Keyword check and Notes sit behind More (an open one stays in the row, lit). With the switch off, all seven stay. */
-  const SIMPLE_MORE = new Set(["find", "check", "notes"]);
+  /* 2026-11-16, the owner: "remove the More section, make the tabs normally". Every tab sits in the row again; the menu
+     code stays for a tab that is ever put back behind it. */
+  const SIMPLE_MORE = new Set();
   function simpleTabs(tab) {
     const { t, esc, icon } = UI;
     const shown = COMP.tabs.filter((x) => !x.hidden);
