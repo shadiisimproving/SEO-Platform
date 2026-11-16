@@ -165,7 +165,38 @@ def create_app(engine: Engine | None = None, url_allowed: Callable[[str], bool] 
             response.headers["Cache-Control"] = "no-cache"
         return response
 
+    @app.after_request
+    def squeeze(response):
+        """Gzip text answers (2026-11-16, the owner: "the app is very slow"). Nothing was compressed, so the live site sent
+        Competitors' moves raw (5 to 8 MB a site) on every start, plus the scripts. JSON and scripts shrink by about 85 to 90%."""
+        return gzipped(response)
+
     return app
+
+
+# Text worth squeezing. Images, fonts and files people attached are already packed, or are sent as they are.
+SQUEEZED_TYPES = frozenset({"application/json", "text/javascript", "application/javascript", "text/css", "text/html", "text/plain", "text/csv", "image/svg+xml"})
+SQUEEZE_FROM = 1400  # bytes: below one network packet, gzip saves nothing
+
+
+def gzipped(response):
+    import gzip
+
+    from flask import request
+    if (
+        response.status_code != 200 or response.is_streamed and not response.direct_passthrough
+        or "Content-Encoding" in response.headers or response.mimetype not in SQUEEZED_TYPES
+        or "gzip" not in request.headers.get("Accept-Encoding", "").lower()
+    ):
+        return response
+    response.direct_passthrough = False  # a file from send_from_directory is read here, once
+    body = response.get_data()
+    if len(body) < SQUEEZE_FROM:
+        return response
+    response.set_data(gzip.compress(body, compresslevel=6))
+    response.headers["Content-Encoding"] = "gzip"
+    response.vary.add("Accept-Encoding")
+    return response
 
 
 API_ERROR_WORDS = {

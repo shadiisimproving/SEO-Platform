@@ -527,7 +527,9 @@
         const site = COMP.siteId ?? UI.preferredSite?.(COMP.sites)?.id;
         if (!COMP.ready || site === null || site === undefined) return ["links/sites"];
         const q = site === ALL ? "" : `?site_id=${site}`;
-        return ["links/sites", ...(site === ALL ? [] : [`competitors${q}`]), `collective/rivals${q}`, `collective/keywords${q}`, `collective/moves${q}`, `collective/links${q}`];
+        // Not moves or links (2026-11-16, "the app is very slow"): moves carries each changed page's whole text, 5 to 8 MB a
+        // site on live, and the warm-up fetched it on every start, whatever screen was open. Summary asks both when it opens.
+        return ["links/sites", ...(site === ALL ? [] : [`competitors${q}`]), `collective/rivals${q}`, `collective/keywords${q}`];
       });
       document.addEventListener("click", (e) => {
         if (e.target.closest?.("[data-comp-retry]")) {
