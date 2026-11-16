@@ -127,6 +127,37 @@ def _mine(conn, sites: list[dict]) -> list[dict]:
 MINE_EDITS = 200  # the newest of my own edits sent with the count; the count itself stays exact
 
 
+def _card_facts(conn, hosts: list[str]) -> dict[str, dict]:
+    """For the Competitors cards (2026-11-16, the owner's benchmark screenshot): what each site says about itself on its home
+    page (its title and meta description), and its last 30 days split into pages added and pages edited. Two queries for
+    any number of sites. A page coming or going isn't an edit (insights.EDIT_SKIP), so removed pages are counted apart."""
+    names = {f"h{n}": host.lower() for n, host in enumerate(dict.fromkeys(hosts))}
+    out = {host: {"about": None, "added_30d": 0, "edited_30d": 0, "removed_30d": 0} for host in names.values()}
+    if not names:
+        return out
+    marks = ",".join(":" + k for k in names)
+    rows = conn.execute(text(
+        "SELECT d.host, e.kind, COUNT(*) AS n FROM change_events e JOIN domains d ON d.id = e.domain_id "
+        f"WHERE d.host IN ({marks}) AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL 30 DAY GROUP BY d.host, e.kind"
+    ), names).mappings()
+    for r in rows:
+        held = out.get(str(r["host"]).lower())
+        if held is None:
+            continue
+        key = "added_30d" if r["kind"] == "new_page" else "removed_30d" if r["kind"] == "page_gone" else "edited_30d"
+        held[key] += int(r["n"])
+    # The home page is the shortest address read on that host that has a title: / beats /fr/ beats /fr/about.
+    pages = conn.execute(text(
+        "SELECT d.host, p.url, p.title, p.meta_description FROM pages p JOIN domains d ON d.id = p.domain_id "
+        f"WHERE d.host IN ({marks}) AND p.title IS NOT NULL AND p.title <> '' ORDER BY d.host, LENGTH(p.url), p.id"
+    ), names).mappings()
+    for r in pages:
+        held = out.get(str(r["host"]).lower())
+        if held is not None and held["about"] is None:
+            held["about"] = {"url": r["url"], "title": r["title"], "description": r["meta_description"] or None}
+    return out
+
+
 def rivals(engine: Engine, site_id: int | None = None) -> dict:
     with engine.connect() as conn:
         sites = _sites(conn, site_id)
@@ -135,6 +166,9 @@ def rivals(engine: Engine, site_id: int | None = None) -> dict:
         crawls = profile.crawl_states(conn, [r["id"] for r in found])
         edits = profile.edits_last_30_days(conn)
         my_sites = _mine(conn, sites)
+        cards = _card_facts(conn, [r["host"] for r in found] + [s["host"] for s in my_sites])
+    for site in my_sites:
+        site.update(cards.get(site["host"].lower(), {}))
     hosts = {s["id"]: s["host"] for s in sites}
     checks = store.one_per_keyword(store.latest_checks_many(engine, list(hosts)))
     out = []
@@ -160,7 +194,7 @@ def rivals(engine: Engine, site_id: int | None = None) -> dict:
             else:
                 level += 1
         counts = {"ranks_on": ranks_on, "they_ahead": they_ahead, "i_ahead": i_ahead, "level": level, "not_found": not_found} if compared else {"ranks_on": None, "they_ahead": None, "i_ahead": None, "level": None, "not_found": None}
-        out.append({**rival, "compared": compared, **counts, "edits_30d": int(edits.get(rival["id"], 0)), "crawl": crawls[rival["id"]]})
+        out.append({**rival, "compared": compared, **counts, "edits_30d": int(edits.get(rival["id"], 0)), "crawl": crawls[rival["id"]], **cards.get(rival["host"].lower(), {})})
     out.sort(key=lambda r: (-((r["they_ahead"] or 0) + (r["not_found"] or 0)), -(r["ranks_on"] or 0), -len(r["sites"]), r["host"]))
     return {"sites": sites, "coverage": _coverage(checks, tracked), "rivals": out, "mine": my_sites}
 

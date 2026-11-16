@@ -694,9 +694,17 @@
     const e = g.e, [ic, word, tone] = TL_KIND(e.kind), [, full] = KINDS[e.kind] || ["", e.kind];
     const isMove = e.kind.startsWith("rank_") || e.kind.startsWith("ai_");
     const title = isMove ? e.keyword : e.page?.title || "";
-    const where = isMove
-      ? `<span class="kw" dir="auto">${esc(e.keyword || "")}</span>${e.url ? `<span class="second">${COMP.link(e.url, tlPath(e.url))}</span>` : ""}`
-      : `${title ? `<span class="cl-tl-title" dir="auto">${esc(title)}</span>` : ""}${e.url ? `<span class="${title ? "second" : ""}">${COMP.link(e.url, tlPath(e.url))}</span>` : ""}`;
+    /* who.inline (the Competitors cards screen, 2026-11-16): no Competitor column. The page's title is the link, and the
+       line under it says whose page it is, by logo and site, then its path, as in the owner's benchmark screenshot. */
+    const inline = Boolean(who?.inline);
+    /* A keyword's row: the keyword opens its details like every keyword in the app, so the page's address under it is the link to the page. */
+    const path = !e.url ? "" : isMove ? COMP.link(e.url, tlPath(e.url), "cl-tl-path") : `<span class="cl-tl-path" dir="auto">${esc(tlPath(e.url))}</span>`;
+    const owner = inline ? `<span class="second cl-tl-owner">${UI.siteLogo(who.rival, 14)}<span class="cl-tl-site" dir="auto">${esc(who.display || who.rival)}</span>${path ? `<span aria-hidden="true">·</span>${path}` : ""}</span>` : "";
+    const where = inline
+      ? `${isMove ? `<span class="kw cl-tl-title cl-tl-kw" dir="auto">${window.KeywordLink ? KeywordLink.html(e.keyword || "", { id: e.keyword_id, host: who.own }) : esc(e.keyword || "")}</span>` : e.url ? COMP.link(e.url, title || tlPath(e.url), "cl-tl-title cl-tl-link") : title ? `<span class="cl-tl-title" dir="auto">${esc(title)}</span>` : ""}${owner}`
+      : isMove
+        ? `<span class="kw" dir="auto">${esc(e.keyword || "")}</span>${e.url ? `<span class="second">${COMP.link(e.url, tlPath(e.url))}</span>` : ""}`
+        : `${title ? `<span class="cl-tl-title" dir="auto">${esc(title)}</span>` : ""}${e.url ? `<span class="${title ? "second" : ""}">${COMP.link(e.url, tlPath(e.url))}</span>` : ""}`;
     const times = g.all.length > 1 ? `<span class="tag tabular cl-tl-times" data-tip="${esc(g.all.map((x) => UI.fmtDateOnly(x.at)).join(", "))}" tabindex="0">×${UI.num(g.all.length)}</span>` : "";
     const detail = isMove ? moveDetail(e, common) : e.kind === "new_page" || e.kind === "page_gone" ? "" : changeDetail(e);
     const dates = g.all.length > 1 ? `<div class="cl-dl-row"><dt>${esc(t("Dates"))}</dt><dd>${esc(g.all.map((x) => UI.fmtDateOnly(x.at)).join(" · "))}</dd></div>` : "";
@@ -704,8 +712,8 @@
     const more = `<details class="cl-more-facts cl-tl-more"><summary>${icon("chevron-right")}${t("Details")}</summary><div class="cl-tl-detail"><div class="t">${esc(t(full))}</div>${detail}${window.ChangeSummary?.slot(e) || ""}<dl class="cl-dl">${dates}${facts}</dl></div></details>`;
     return `<tr data-cl-tl-row="${esc(groupKey(e))}">
       <td class="nowrap cl-tl-date" data-label="${attr("Date")}">${COMP.ageCell(e.at)}</td>
-      ${who ? `<td class="nowrap cl-tl-rival" data-label="${attr("Competitor")}"><span class="with-logo">${UI.siteLogo(who.rival, 16)}<span class="logo-text" dir="auto">${esc(who.display || who.rival)}</span></span></td>` : ""}
-      <td class="nowrap" data-label="${esc(tag("Change|kind"))}"><span class="cl-tl-kind cl-tl-${tone}" data-tip="${esc(t(full))}">${icon(ic)}<span>${esc(tag(word))}</span></span>${times}</td>
+      ${who && !inline ? `<td class="nowrap cl-tl-rival" data-label="${attr("Competitor")}"><span class="with-logo">${UI.siteLogo(who.rival, 16)}<span class="logo-text" dir="auto">${esc(who.display || who.rival)}</span></span></td>` : ""}
+      <td class="nowrap cl-tl-kindcell" data-label="${esc(tag("Change|kind"))}"><span class="cl-tl-kind cl-tl-${tone}" data-tip="${esc(t(full))}">${icon(ic)}<span>${esc(tag(word))}</span></span>${times}</td>
       <td class="cl-tl-where" data-label="${attr(isMove ? "Keyword" : "Page")}">${where}</td>
       <td class="cl-tl-what" data-label="${attr("What changed")}"><span class="cl-tl-short">${esc(shortChange(e))}</span>${more}</td>
       <td class="r nowrap" data-label=""><span class="row-act">${UI.taskButton(timelineFind(e, full, who), { label: "Task" })}</span></td>

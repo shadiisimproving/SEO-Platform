@@ -2421,3 +2421,24 @@ def test_who_is_moving_can_look_further_back_but_only_over_the_periods_offered(w
     longer = collective.moves(world.engine, days=90)
     assert longer["total"] == 1 and longer["days"] == 90 and longer["periods"] == [7, 30, 90, 365]
     assert collective.moves(world.engine, days=5000)["days"] == 30
+
+
+def test_competitor_cards_get_their_home_page_words_and_added_edited_counts(world):
+    """The cards screen (2026-11-16): each card says what the site says about itself and splits its 30 days into pages
+    added and pages edited. A removed page is neither, and an old change counts for nothing."""
+    add_rival(world)
+    add_page_change(world, "rival.example", kind="new_page")
+    add_page_change(world, "rival.example", kind="title")
+    add_page_change(world, "rival.example", kind="meta")
+    add_page_change(world, "rival.example", kind="page_gone")
+    add_page_change(world, "rival.example", kind="h1")
+    with world.engine.begin() as conn:
+        conn.execute(text("UPDATE change_events e JOIN domains d ON d.id = e.domain_id SET e.detected_at = UTC_TIMESTAMP(3) - INTERVAL 40 DAY WHERE d.host = 'rival.example' AND e.kind = 'h1'"))
+        domain_id = conn.execute(text("SELECT id FROM domains WHERE host = 'rival.example'")).scalar_one()
+        for url, title, meta in (("https://rival.example/fr/about", "About us", "Long"), ("https://rival.example/", "Rival - Coffee club", "Beans by post.")):
+            conn.execute(text("INSERT INTO pages (domain_id, url, url_hash, title, meta_description) VALUES (:d, :u, SHA2(:u, 256), :t, :m)"), {"d": domain_id, "u": url, "t": title, "m": meta})
+    row = rival_row(collective.rivals(world.engine))
+    assert (row["added_30d"], row["edited_30d"], row["removed_30d"]) == (1, 2, 1)
+    assert row["about"] == {"url": "https://rival.example/", "title": "Rival - Coffee club", "description": "Beans by post."}  # the shortest address is the home page
+    mine = collective.rivals(world.engine)["mine"][0]
+    assert mine["about"] is None and mine["added_30d"] == 0  # no page read: nothing is made up

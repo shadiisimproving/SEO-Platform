@@ -182,3 +182,190 @@ html[data-simple="1"] .cs-panel-tools .cs-tools-end { margin-inline-start: auto;
 html[data-simple="1"] tr.cs-kw-row { cursor: pointer; }
 html[data-simple="1"] .cs-moves-note { display: flex; align-items: center; gap: 4px; margin: 6px 0; }
 @media (max-width: 640px) { html[data-simple="1"] .cs-low-panel { padding-inline: 10px; } }
+
+/* ---- The cards screen (simpler screens, 2026-11-16): competitors as cards down the left, their changes on the right ---- */
+.cs-bench { display: grid; grid-template-columns: minmax(280px, 344px) minmax(0, 1fr); gap: 24px; align-items: start; }
+.cs-bench > .cs-section { margin-bottom: 0; }
+.cs-rivals-side { position: sticky; top: 76px; max-height: calc(100vh - 92px); overflow-y: auto; overscroll-behavior: contain; padding: 2px 6px 8px 2px; margin: -2px -6px 0 -2px; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+.cs-rivals-side .cs-find { margin-bottom: 12px; }
+.cs-cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+
+/* One card, three steps down: who it is, what it did in 30 days, then one quiet last line (who leads, and Open). */
+.cs-card { position: relative; display: flex; flex-direction: column; gap: 10px; padding: 16px 16px 10px; border-radius: var(--r-m, 14px); background: var(--panel-solid); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); transition: box-shadow var(--t-fast, .15s) ease-out; }
+.cs-card:hover { box-shadow: inset 0 0 0 1px var(--line-2), var(--shadow-hover); }
+.cs-card.on, .cs-card.on:hover { box-shadow: inset 0 0 0 2px var(--accent-text), var(--shadow-hover); }
+.cs-card.paused :is(.cs-card-top, .cs-card-about) { opacity: .7; }
+/* The whole card is the filter button; what sits on it (⋯, Open, a site chip) stays pressable above it. */
+.cs-card-pick { position: absolute; inset: 0; z-index: 0; width: 100%; padding: 0; border: 0; border-radius: inherit; background: none; cursor: pointer; }
+.cs-card-pick:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.cs-card > :not(.cs-card-pick) { position: relative; z-index: 1; pointer-events: none; }
+.cs-card .cs-row-menu, .cs-card .cs-card-open, .cs-card .cs-site, .cs-card [data-tip], .cs-card a { pointer-events: auto; }
+.cs-card-you { background: var(--c-blue-pale); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--you-text) 22%, transparent); }
+.cs-card-you:hover { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--you-text) 22%, transparent); }
+.cs-card-you > * { pointer-events: auto; }
+.cs-card-top { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; }
+.cs-card-logo { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 10px; background: var(--panel-solid); box-shadow: inset 0 0 0 1px var(--line); overflow: hidden; }
+.cs-card-id { display: grid; gap: 2px; min-width: 0; }
+.cs-card-name { font-size: 15px; font-weight: 600; line-height: 1.3; color: var(--text); text-wrap: balance; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cs-card-host { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-size: 12px; line-height: 1.35; color: var(--muted); overflow-wrap: anywhere; }
+.cs-card-you .cs-card-host { color: var(--text-2); }
+.cs-card .cs-row-menu { align-self: start; margin: -6px -8px 0 0; }
+.cs-card-about { margin: 0; font-size: 13px; line-height: 1.45; color: var(--text-2); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.cs-card-counts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; font-size: 12px; }
+.cs-card-n { display: inline-flex; align-items: baseline; gap: 4px; padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 500; line-height: 18px; white-space: nowrap; }
+.cs-card-n b { font-weight: 700; }
+.cs-card-new { color: var(--good-t); background: color-mix(in srgb, var(--good-t) 11%, transparent); }
+.cs-card-edit { color: var(--warn-t); background: color-mix(in srgb, var(--warn-t) 12%, transparent); }
+.cs-card-n.zero { color: var(--muted); background: var(--c-grey-pale); }
+.cs-card-you .cs-card-n.zero { color: var(--text-2); background: color-mix(in srgb, var(--text) 7%, transparent); }
+.cs-card-pages { margin-inline-start: 2px; font-size: 12px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cs-card .cs-sites { display: flex; flex-wrap: wrap; gap: 6px; }
+/* The last line: pinned to the card's foot, so cards side by side on a phone end on the same line. */
+.cs-card-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; min-height: 32px; margin-top: auto; padding-top: 8px; border-top: 1px solid var(--line); }
+.cs-card-you .cs-card-foot { border-top-color: color-mix(in srgb, var(--you-text) 16%, transparent); }
+.cs-card-lead { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 2px 12px; font-size: 12.5px; }
+.cs-card-lead .cs-lead-side { gap: 5px; font-size: 12.5px; }
+.cs-card-lead .cs-lead-side .who { display: inline-flex; align-items: center; gap: 5px; font-weight: 600; }
+.cs-card-lead .cs-lead-side .pt-key { width: 8px; height: 8px; margin: 0; }
+.cs-card-lead .cs-lead-side b { margin: 0; color: var(--text); font-weight: 700; }
+.cs-card-lead .cs-lead-absent { color: var(--muted); }
+.cs-card-lead .cs-lead-absent b { color: var(--text-2); font-weight: 600; }
+.cs-card-open { display: inline-flex; align-items: center; gap: 4px; min-height: 28px; margin-inline-start: auto; padding: 0; font-size: 12.5px; font-weight: 600; text-decoration: none; white-space: nowrap; }
+.cs-card-open:hover { text-decoration: underline; text-underline-offset: 3px; }
+.cs-card-open:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+.cs-card-open svg.i { width: 13px; height: 13px; transition: transform var(--t-fast, .15s) ease-out; }
+.cs-card-open:hover svg.i { transform: translateX(2px); }
+[dir="rtl"] .cs-card-open svg.i { transform: scaleX(-1); }
+@media (prefers-reduced-motion: reduce) { .cs-card, .cs-card-open svg.i, .cs-low-tabs .page-tab { transition: none !important; } .cs-card-open:hover svg.i { transform: none; } }
+
+/* The right side: pill tabs over one card per tab. The tabs are the one solid blue here; what filters inside a card is quieter. */
+.cs-lower { min-width: 0; scroll-margin-top: 88px; }
+.cs-low-tabs { display: inline-flex; gap: 2px; max-width: 100%; padding: 4px; margin-bottom: 14px; border-radius: 999px; background: var(--panel-solid); box-shadow: inset 0 0 0 1px var(--line), var(--shadow); overflow-x: auto; scrollbar-width: none; }
+.cs-low-tabs::-webkit-scrollbar { display: none; }
+/* The simpler screens' own tab rules (html[data-simple="1"], screen-parts.css) are underlined tabs: these are pills. */
+html[data-simple="1"] #cs-lower .cs-low-tabs .page-tab { flex: none; display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 4px 16px; margin: 0; border: 0; border-radius: 999px; background: none; font: inherit; font-size: 13.5px; font-weight: 500; color: var(--text-2); cursor: pointer; transition: background var(--t-fast, .15s) ease-out, color var(--t-fast, .15s) ease-out; }
+html[data-simple="1"] #cs-lower .cs-low-tabs .page-tab::after { display: none; }
+html[data-simple="1"] #cs-lower .cs-low-tabs .page-tab:hover { background: var(--hover); color: var(--text); }
+html[data-simple="1"] #cs-lower .cs-low-tabs .page-tab[aria-selected="true"] { background: var(--accent-1); color: var(--on-accent); font-weight: 600; }
+html[data-simple="1"] #cs-lower .cs-low-tabs .page-tab .n-badge { margin: 0; }
+html[data-simple="1"] #cs-lower .cs-low-tabs .page-tab[aria-selected="true"] .n-badge { background: color-mix(in srgb, var(--on-accent) 22%, transparent); box-shadow: none; color: var(--on-accent); }
+html[data-simple="1"] #cs-lower .cs-low-tabs .page-tab:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 999px; }
+html[data-simple="1"] #cs-lower > .cs-low-panel#cs-moves { padding: 0; overflow: clip; }
+html[data-simple="1"] #cs-lower > .cs-low-panel:not(#cs-moves) { padding: 16px; }
+.cs-low-panel[aria-busy="true"] .cs-pages { opacity: .55; transition: opacity .2s ease-out; }
+
+/* Changes: two lines over the table. Line one says what is shown (title, count, the picked competitor) and for how long;
+   line two is the kinds of change, with the sites not watched and the table's Filter at its end. */
+.cs-mv-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 14px 16px 10px; }
+.cs-mv-head h2 { display: inline-flex; align-items: center; gap: 8px; margin: 0; font-size: 16px; font-weight: 600; line-height: 28px; }
+.cs-mv-head h2 .n-badge { margin: 0; }
+.cs-mv-head h2:focus { outline: none; }
+.cs-mv-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; padding: 0 16px 12px; }
+.cs-mv-bar:not(:has(.cs-kinds, .cs-moves-note, .tt-tools)) { display: none; }
+.cs-mv-end { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px 10px; margin-inline-start: auto; }
+.cs-mv-slot:empty { display: none; }
+html[data-simple="1"] .cs-mv-slot .tt-tools.tt-in-head { margin: 0; }
+html[data-simple="1"] .cs-mv-bar .cs-moves-note { margin: 0; }
+/* The period: a small switch on a track, the pressed one a white thumb. */
+html #cs-lower .cs-days { margin-inline-start: auto; gap: 0; padding: 3px; border-radius: 999px; background: var(--track); box-shadow: inset 0 0 0 1px var(--line); }
+html #cs-lower .cs-days button { min-height: 26px; padding: 2px 12px; border-radius: 999px; font-size: 12.5px; font-weight: 500; color: var(--text-2); }
+html #cs-lower .cs-days button:hover { background: none; color: var(--text); }
+html #cs-lower .cs-days button[aria-pressed="true"] { background: var(--chip); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0, 0, 0, .12), inset 0 0 0 1px var(--line); }
+/* The kinds of change: plain words with their counts, the pressed one tinted. No track, so the line stays light. */
+html #cs-lower .cs-kinds { flex: 0 1 auto; flex-wrap: wrap; gap: 2px; padding: 0; border-radius: 0; background: none; box-shadow: none; }
+html #cs-lower .cs-kinds button { display: inline-flex; align-items: baseline; gap: 6px; min-height: 28px; padding: 4px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 500; color: var(--text-2); }
+html #cs-lower .cs-kinds button:hover { background: var(--hover); color: var(--text); }
+html #cs-lower .cs-kinds button[aria-pressed="true"] { background: var(--c-blue-pale); color: var(--accent-text); font-weight: 600; }
+.cs-seg button:focus-visible { outline: 2px solid var(--focus); outline-offset: 1px; }
+.cs-seg-n { font-size: 11.5px; font-weight: 500; color: var(--muted); }
+.cs-kinds button[aria-pressed="true"] .cs-seg-n { color: inherit; opacity: .8; }
+.cs-mv-who { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; padding: 2px 8px 2px 6px; border: 0; border-radius: 999px; background: var(--c-purple-pale); color: var(--them-text); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; }
+.cs-mv-who svg.i { width: 13px; height: 13px; }
+.cs-mv-who:hover { box-shadow: inset 0 0 0 1px var(--them-text); }
+.cs-mv-who:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+html[data-simple="1"] #cs-moves > .cs-mv-find { display: flex; margin: 0 !important; padding: 0 16px 12px; }
+.cs-mv-find .tp-search { flex: 0 1 340px; }
+html[data-simple="1"] #cs-moves > :not(.cs-mv-head, .cs-mv-bar, .cs-mv-find, .cs-pages, .cl-moves-common) { margin-inline: 16px; }
+html[data-simple="1"] #cs-moves > .cl-moves-common { margin: 0; padding: 10px 16px 14px; border-top: 1px solid var(--line); }
+html[data-simple="1"] #cs-moves > .cs-pages:has(> .tp-foot) + .cl-moves-common { padding-top: 0; border-top: 0; }
+.cs-low-panel .cs-pages > .table-wrap { box-shadow: none; border-radius: 0; }
+.cs-low-panel .cs-pages > .tp-foot, .cs-low-panel .cs-pages > :not(.table-wrap) { padding-inline: 16px; }
+.cs-low-panel > .empty, .cs-low-panel .cs-pages > .table-wrap > .empty { margin: 16px; }
+
+/* Rows as in the screenshot: the date, a coloured word for the change, and the page title as the link with its site under
+   it. Every row is two lines: the title over its site, what changed over Details. */
+.cs-bench-table thead th, .cs-bench-table thead th * { white-space: nowrap; }
+.cs-bench-table td { padding-block: 12px; }
+html[data-simple="1"] #cs-moves .cs-bench-table :is(th, td):first-child { padding-inline-start: 16px; }
+html[data-simple="1"] #cs-moves .cs-bench-table :is(th, td):last-child { padding-inline-end: 16px; }
+.cs-bench-table .cl-tl-date { width: 1%; white-space: nowrap; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.cs-bench-table .cl-tl-kindcell { width: 1%; }
+.cs-bench-table .cl-tl-kind { padding: 2px 9px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 18px; color: var(--warn-t); background: color-mix(in srgb, var(--warn-t) 12%, transparent); }
+.cs-bench-table .cl-tl-kind svg.i { display: none; }
+.cs-bench-table .cl-tl-kind.cl-tl-up { color: var(--good-t); background: color-mix(in srgb, var(--good-t) 11%, transparent); }
+.cs-bench-table .cl-tl-kind.cl-tl-down { color: var(--crit-t); background: color-mix(in srgb, var(--crit-t) 10%, transparent); }
+.cs-bench-table .cl-tl-where { max-width: none; }
+.cs-bench-table .cl-tl-title { font-family: inherit; font-size: 14px; font-weight: 600; line-height: 1.4; color: var(--text); text-wrap: pretty; }
+.cs-bench-table .cl-tl-link { color: var(--accent-text); text-decoration: none; }
+.cs-bench-table .cl-tl-link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.cs-bench-table .cl-tl-owner { display: flex !important; align-items: center; gap: 6px; margin-top: 3px; font-size: 12px; line-height: 18px; color: var(--muted); white-space: nowrap; overflow: hidden; }
+.cs-bench-table .cl-tl-owner > :is(img, svg, .site-logo) { flex: none; }
+.cs-bench-table .cl-tl-site { flex: none; }
+.cs-bench-table .cl-tl-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; color: inherit; }
+.cs-bench-table a.cl-tl-path:hover { color: var(--accent-text); text-decoration: underline; text-underline-offset: 2px; }
+.cs-bench-table .cl-tl-what { width: 27%; min-width: 204px; max-width: none; }
+.cs-bench-table .cl-tl-short { line-height: 1.4; color: var(--text); }
+.cs-bench-table .cl-tl-more { margin-top: 3px; }
+.cs-bench-table .cl-tl-more > summary { line-height: 18px; }
+/* Details opens inside its column, so its facts stack: the name of the fact over its value. */
+.cs-bench-table .cl-tl-detail { max-width: none; }
+.cs-bench-table .cl-dl { grid-template-columns: minmax(0, 1fr); }
+.cs-bench-table .cl-dl-row > dt { padding-bottom: 0; font-size: 11.5px; color: var(--muted); }
+.cs-bench-table .cl-dl-row > dd { padding-top: 1px; border-top: 0; }
+
+@media (max-width: 1100px) {
+  .cs-bench { grid-template-columns: minmax(250px, 290px) minmax(0, 1fr); gap: 16px; }
+  .cs-bench-table .cl-tl-what { min-width: 170px; }
+}
+/* A phone or a narrow window: the cards become one row that scrolls sideways, above the changes. They stretch to one
+   height, so a short card leaves no hole under it. */
+@media (max-width: 900px) {
+  .cs-bench { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .cs-rivals-side { position: static; max-height: none; overflow: visible; margin: 0; padding: 0; }
+  .cs-cards { grid-auto-flow: column; grid-auto-columns: min(320px, 86%); align-items: stretch; gap: 10px; overflow-x: auto; scroll-snap-type: x mandatory; scroll-padding-inline: 2px; padding: 2px 2px 6px; scrollbar-width: none; }
+  .cs-cards::-webkit-scrollbar { display: none; }
+  .cs-card { scroll-snap-align: start; }
+}
+@media (max-width: 640px) {
+  .cs-mv-head { padding: 12px 12px 8px; }
+  .cs-mv-bar { padding: 0 12px 10px; }
+  html #cs-lower .cs-days { margin-inline-start: 0; max-width: 100%; }
+  html #cs-lower .cs-days button { padding-inline: 10px; }
+  /* The kinds stay on one line and scroll sideways, out to the card's edges. */
+  html #cs-lower .cs-kinds { flex: 1 1 100%; flex-wrap: nowrap; min-width: 0; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  html #cs-lower .cs-kinds::-webkit-scrollbar { display: none; }
+  html #cs-lower .cs-kinds button { flex: none; min-height: 32px; }
+  .cs-mv-end { flex: 1 1 100%; margin-inline-start: 0; }
+  html[data-simple="1"] .cs-mv-bar .cs-moves-note { margin-inline-end: auto; }
+  html[data-simple="1"] #cs-moves > .cs-mv-find { padding: 0 12px 10px; }
+  html[data-simple="1"] #cs-moves > .cl-moves-common { padding-inline: 12px; }
+  .cs-low-panel .cs-pages > .tp-foot, .cs-low-panel .cs-pages > :not(.table-wrap) { padding-inline: 12px; }
+  /* A change as a small card: its kind and age on one line, the page, then what changed. No label beside each value. */
+  html[data-simple="1"] #cs-moves .cs-bench-table tbody { display: grid; gap: 0; }
+  html[data-simple="1"] #cs-moves .cs-bench-table tbody tr { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; align-items: center; gap: 8px 10px; margin: 0; padding: 14px 12px; border-radius: 0; background: none; box-shadow: none; border-top: 1px solid var(--line); }
+  html[data-simple="1"] #cs-moves .cs-bench-table td { display: block; width: auto; padding: 0; text-align: start; }
+  html[data-simple="1"] #cs-moves .cs-bench-table td::before { content: none; }
+  html[data-simple="1"] #cs-moves .cs-bench-table td.cl-tl-kindcell { grid-area: 1 / 1; }
+  html[data-simple="1"] #cs-moves .cs-bench-table td.cl-tl-date { grid-area: 1 / 2; font-size: 12px; color: var(--muted); }
+  html[data-simple="1"] #cs-moves .cs-bench-table td:is(.tt-pick, .tt-own-pick, .chk-cell) { position: static; grid-area: 1 / 4; }
+  html[data-simple="1"] #cs-moves .cs-bench-table td.cl-tl-where { grid-area: 2 / 1 / auto / -1; }
+  html[data-simple="1"] #cs-moves .cs-bench-table td.cl-tl-what { grid-area: 3 / 1 / auto / -1; min-width: 0; }
+  html[data-simple="1"] #cs-moves .cs-bench-table td:last-child { grid-area: 1 / 3; }
+  .cs-bench-table .cl-tl-owner { white-space: nowrap; }
+}
+/* A 1280–1440 window with the sidebar open (owner's check, 2026-11-16): the table must fit without sideways scroll. */
+@media (max-width: 1440px) {
+  html[data-simple="1"] .cs-bench { grid-template-columns: minmax(250px, 290px) minmax(0, 1fr); gap: 16px; }
+  html[data-simple="1"] .cs-bench-table .cl-tl-what { min-width: 140px; }
+  html[data-simple="1"] .cs-bench-table .cl-tl-owner { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+}
