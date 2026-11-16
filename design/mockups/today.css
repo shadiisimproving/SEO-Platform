@@ -64,3 +64,8 @@ a.stat-row:hover { background: var(--hover); }
   .today-lead { font-size: 17px; line-height: 24px; }
   .rows > li:has(.acts) { flex-wrap: wrap; }
 }
+/* Going up / down: the source once in the head, a plain logo beside its name (no tile), then the period (2026-11-16). */
+.today-moves-meta { display: inline-flex; align-items: center; gap: 6px; }
+.today-moves-src { display: inline-flex; align-items: center; gap: 5px; }
+.today-moves-src .brand-logo { border: 0; box-shadow: none; background: none; padding: 0; margin: 0 4px 0 0; width: 14px; height: 14px; min-width: 14px; min-height: 14px; }
+.today-host { margin-inline-start: 4px; }

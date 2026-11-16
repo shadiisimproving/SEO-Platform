@@ -160,7 +160,7 @@
   const severityIcon = (severity) => (severity === "crit" ? icon("octagon-alert", "crit") : severity === "warn" ? icon("triangle-alert", "warn") : icon("info", "sec"));
   // A row's Task button shows on hover or keyboard focus with the simpler screens switch on (.row-act, table-tools.css).
   const taskLook = () => (UI().simple?.() ? { label: "Task", cls: "btn btn-small row-act" } : { label: "Task" });
-  const hostTag = (host, title = "") => (host && allSites() && !title.includes(host) ? ` <span class="small muted mono" dir="auto">${esc(host)}</span>` : "");
+  const hostTag = (host, title = "") => (host && allSites() && !title.includes(host) ? ` <span class="small muted today-host" dir="auto">${esc(host)}</span>` : "");
   const todoRow = (item) => `<li data-row="${esc(item.id)}"><span>${severityIcon(item.severity)}</span>
       <div class="what"><div class="t" dir="auto">${item.titleHtml || esc(item.title)}${hostTag(item.host, item.title)}</div>${item.reason || item.detail ? `<div class="d">${reasonTag(item)}${item.detail ? `<span dir="auto">${esc(item.detail)}</span>` : ""}</div>` : ""}</div>
       <div class="acts">${item.seenAttr ? `<button class="btn btn-small btn-ghost ack" ${item.seenAttr} aria-label="${t("Mark seen")}: ${esc(item.title)}" data-tip="${t("Hide it until something changes. Undo in the message.")}">${icon("eye")}<span>${t("Mark seen")}</span></button>` : ""}
@@ -207,7 +207,7 @@
     if (move.type === "keyword") {
       const up = move.places > 0;
       const target = move.keyword_id ? "#keywords" : "#overview";
-      return `<li><div class="what"><div class="t"><a class="today-link" href="${esc(window.KeywordLink ? window.KeywordLink.href(move.query, move.host) : target)}" data-today-keyword="${esc(move.query)}" data-today-host="${esc(move.host || "")}" data-today-keyword-id="${esc(move.keyword_id || "")}" data-today-range="7d" dir="auto">${esc(move.query)}</a>${hostTag(move.host)}</div><div class="d">${UI().logoOnly("Search Console", t("Search Console average position"))}</div></div>
+      return `<li><div class="what"><div class="t"><a class="today-link" href="${esc(window.KeywordLink ? window.KeywordLink.href(move.query, move.host) : target)}" data-today-keyword="${esc(move.query)}" data-today-host="${esc(move.host || "")}" data-today-keyword-id="${esc(move.keyword_id || "")}" data-today-range="7d" dir="auto">${esc(move.query)}</a>${hostTag(move.host)}</div></div>
         <span class="chg ${up ? "good" : "crit"}">${icon(up ? "arrow-up" : "arrow-down")}#${num(move.was)} → #${num(move.now)}</span>${task}</li>`;
     }
     const up = move.change > 0;
@@ -215,7 +215,9 @@
       <span class="chg ${up ? "good" : "crit"}">${icon(up ? "arrow-up" : "arrow-down")}${up ? "+" : "−"}${num(Math.abs(move.change))}%</span>${task}</li>`;
   }
   // With the switch on, "7 days" sits in each card head instead of the "Week on week" line above the pair (plan, change 4).
-  const moveCard = (title, moves, down) => `<section class="card"><div class="card-head"><h2>${t(title)}</h2>${UI().simple?.() ? `<span class="end small muted">${t("7 days")}</span>` : ""}</div>
+  // Where the positions come from is said once in the head, not as a boxed logo on every row (owner, 2026-11-16: "this logo looks bad").
+  const moveSource = (moves) => (moves.some((m) => m.type === "keyword") ? `<span class="today-moves-src" title="${esc(t("Search Console average position"))}">${t("Search Console")}</span>` : "");
+  const moveCard = (title, moves, down) => `<section class="card"><div class="card-head"><h2>${t(title)}</h2>${UI().simple?.() ? `<span class="end small muted today-moves-meta">${moveSource(moves)}${moveSource(moves) ? `<span aria-hidden="true">·</span>` : ""}<span>${t("7 days")}</span></span>` : moveSource(moves) ? `<span class="end small muted today-moves-meta">${moveSource(moves)}</span>` : ""}</div>
       ${moves.length ? `<ul class="rows">${moves.map((move) => moveRow(move, down)).join("")}</ul>` : `<div class="empty today-empty"><p>${t(down ? "Nothing fell much." : "Nothing rose much.")}</p></div>`}</section>`;
 
   // ---- rivals -------------------------------------------------------------------------------------

@@ -62,7 +62,7 @@ const visible = (page, sel) => page.$eval(sel, (el) => { let o = 1; for (let n =
   check(!(await page.$(".today-caption")), "no caption under the cards: the dates are in the head");
   check(!(await page.$(".today-moves-head")), "no Week on week line: each move card says 7 days");
   const moveHeads = await page.$$eval(".today-moves .card-head .end", (els) => els.map((x) => x.textContent.trim()));
-  check(moveHeads.length === 2 && moveHeads.every((x) => x === "7 days"), `Going down and Going up say 7 days in their heads: ${moveHeads}`);
+  check(moveHeads.length === 2 && moveHeads.every((x) => /(^|·)7 days$/.test(x)), `Going down and Going up say 7 days in their heads: ${moveHeads}`);
   const setup = await page.$(".setup-line");
   if (setup) {
     check((await setup.boundingBox()).height <= 60, "the setup card is one line");
@@ -165,7 +165,7 @@ const visible = (page, sel) => page.$eval(sel, (el) => { let o = 1; for (let n =
   // ---- French, dark, phone
   await page.goto(url("&lang=fr")); await page.waitForSelector(".today-num"); await settle(page, 1500);
   const fr = await page.evaluate(() => ({ lead: document.querySelector(".today-verdict").textContent, title: document.querySelector("#topbar h1").textContent, seven: document.querySelector('#topbar [data-preset="7d"]').textContent, label: document.querySelector('.ncard[data-card="visits"] .ncard-name').textContent, heads: [...document.querySelectorAll(".today-moves .card-head .end")].map((x) => x.textContent), rows: [...document.querySelectorAll("[data-row] .t")].map((x) => x.textContent) }));
-  check(/à traiter|Rien d'urgent|Urgent/.test(fr.lead) && fr.title === "Aujourd'hui" && fr.seven === "7 jours" && fr.label === "Visites" && fr.heads.every((x) => x === "7 jours"), `French: ${JSON.stringify({ ...fr, rows: undefined })}`);
+  check(/à traiter|Rien d'urgent|Urgent/.test(fr.lead) && fr.title === "Aujourd'hui" && fr.seven === "7 jours" && fr.label === "Visites" && fr.heads.every((x) => /(^|·)7 jours$/.test(x)), `French: ${JSON.stringify({ ...fr, rows: undefined })}`);
   check(!fr.rows.some((r) => /\b(lost|clicks|no longer|health fell)\b/i.test(r)), "the to-do rows are in French");
   await page.mouse.move(5, 5); await page.screenshot({ path: `${OUT}/2-today-1440-fr.png` });
   await page.goto(url("&theme=dark&lang=en")); await page.waitForSelector(".today-num"); await settle(page, 1500);
