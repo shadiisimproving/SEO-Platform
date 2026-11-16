@@ -511,3 +511,45 @@ def test_any_crash_while_reading_saves_unknown_and_moves_on(world, monkeypatch):
     monkeypatch.setattr(live, "read_page", read)
     world.monthly()
     assert world.link(first)["check"]["outcome"] == "unknown" and world.link(second)["check"]["outcome"] == "found"
+
+
+# ---- a link saved with only the website's address ------------------------------------------------------
+
+SITEMAP = ('<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+           + "".join(f"<url><loc>https://movida.example/{slug}/</loc></url>" for slug in ("contact", "visa-dubai", "conditions-pour-vivre-a-dubai", "golden-visa-dubai", "dubai-marina"))
+           + "</urlset>")
+
+
+def test_a_home_page_source_finds_its_article_and_keeps_it(world):
+    world.pages["movida.example/sitemap.xml"] = SITEMAP
+    world.pages["movida.example/"] = "<p>Welcome</p>"
+    world.pages["movida.example/conditions-pour-vivre-a-dubai/"] = HAS_LINK
+    backlink = world.add(source_url="movida.example", anchor="conditions pour vivre à Dubaï")
+    world.press(backlink)
+    row = world.link(backlink)
+    assert row["status"] == "live" and row["check"]["outcome"] == "found"
+    assert row["source_url"] == "https://movida.example/conditions-pour-vivre-a-dubai/"
+    assert not any("visa" in url or "marina" in url for url in world.requests)  # pages sharing no useful word aren't read
+
+
+def test_a_home_page_source_without_the_article_is_never_lost(world):
+    world.pages["movida.example/sitemap.xml"] = SITEMAP
+    world.pages["movida.example/"] = "<p>Welcome</p>"
+    backlink = world.add(source_url="https://movida.example/", anchor="conditions pour vivre à Dubaï")
+    world.press(backlink)
+    row = world.link(backlink)
+    assert row["status"] == "live" and row["check"]["outcome"] == "unknown" and row["check"]["reason"] == "home_page"
+    assert row["source_url"] == "https://movida.example/" and not world.alerts("backlink_lost")
+
+
+def test_a_home_page_with_a_sitewide_link_still_counts(world):
+    world.pages["movida.example/"] = '<footer><a href="https://shop.example/">Shop</a></footer>'
+    backlink = world.add(source_url="https://movida.example/", target_url="/")
+    world.press(backlink)
+    row = world.link(backlink)
+    assert row["check"]["outcome"] == "found" and row["source_url"] == "https://movida.example/"
+
+
+def test_article_candidates_drop_words_every_page_shares():
+    pages = [f"https://m.example/{slug}/" for slug in ("dubai-visa", "dubai-marina", "dubai-food", "vivre-a-dubai", "dubai-taxes")]
+    assert live.article_candidates(pages, ["vivre à Dubaï", "/vivre-a-dubai-reussir/"], "https://m.example/") == ["https://m.example/vivre-a-dubai/"]

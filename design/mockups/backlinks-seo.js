@@ -131,6 +131,7 @@
     if (indexBad(b.targetIndex)) return ["warn", t("Your page isn't indexed"), ""]; // its row opens below with the why and a task
     if (c.verdict === "weak") return ["warn", t("Weak link"), firstReason, firstTip];
     if (c.verdict === "counts") return ["good", t("Working"), t("Live, and Google counts it.")];
+    if (c.outcome === "unknown" && c.reason === "home_page") return ["warn", t("Article address needed"), t("Only the website's address is saved. Paste the article's address.")];
     if (c.outcome === "unknown") return ["idle", t("Couldn't check it"), t("An unreadable page never counts as a lost link.")];
     return ["idle", t("Not checked"), ""];
   }

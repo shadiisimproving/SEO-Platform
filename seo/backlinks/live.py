@@ -12,6 +12,7 @@ import json
 import logging
 import re
 import time
+import unicodedata
 from dataclasses import dataclass, field
 from urllib.parse import unquote, urljoin, urlsplit
 
@@ -19,8 +20,10 @@ from lxml import etree, html as lxml_html
 from sqlalchemy import Engine, text
 
 from seo.accounts import access
+from seo.backlinks import service
 from seo.core import budget
 from seo.core.errors import NotFound, Refused
+from seo.crawl import sitemap
 from seo.health import service as health_service
 from seo.links import service as links_service
 from seo.links.urls import host_key
@@ -48,6 +51,12 @@ NONE_REASONS = ("noindex", "robots_blocked", "page_nofollow")
 WEAK_REASONS = ("nofollow", "sponsored", "ugc", "canonical_elsewhere", "many_outbound")
 _DIRECTIVES_WITH_VALUE = ("max-snippet", "max-image-preview", "max-video-preview", "unavailable_after", "indexifembedded")
 MANY_OUTBOUND = 100  # links to other websites on one page. Past this it reads like a link list, not an article.
+# A link saved with only the website's address (movida-dubai.com) is really on one of its articles. The home page can't prove it's gone,
+# so the check looks for the article itself: the site's sitemap and home page links, ranked by the words they share with the anchor and my page.
+HOME_PAGE = "home_page"
+ARTICLE_SITEMAPS = 8  # sitemap files read while looking (a WordPress index holds posts, pages, categories...)
+ARTICLE_READS = 5  # best-matching pages read, each a polite request
+_STOP = {"pour", "les", "des", "une", "dans", "avec", "sur", "vos", "votre", "the", "and", "for", "you", "your", "with", "www", "html", "htm", "php", "com", "net", "org", "how", "comment", "est", "qui", "que", "par", "aux", "son", "ses"}
 
 
 @dataclass
@@ -82,6 +91,7 @@ class Reading:
     signals: PageSignals = field(default_factory=PageSignals)
     verdict: str | None = None
     reasons: list[str] = field(default_factory=list)
+    article: str | None = None  # the article the link was found on, when only the website's address was saved
 
 
 def clean_path(address: str | None) -> str:
@@ -228,19 +238,90 @@ def _seen(element, href: str, to_target: bool) -> LinkSeen:
     return LinkSeen(True, href[:2048], _anchor_of(element), rel[:120] or None, "nofollow" in rel.split(), to_target)
 
 
-def read_page(fetcher, source_url: str, site_host: str, target: str | None) -> Reading:
+def is_home_page(address: str | None) -> bool:
+    """Only the website was saved, not the page the link is on."""
+    return bool(address) and clean_path(address) == "/" and not urlsplit(address if "://" in address else f"https://{address}").query
+
+
+def _words(value: str | None) -> set[str]:
+    plain = unicodedata.normalize("NFKD", unquote(value or "").lower()).encode("ascii", "ignore").decode()
+    return {word for word in re.split(r"[^a-z0-9]+", plain) if len(word) >= 3 and word not in _STOP and not word.isdigit()}
+
+
+def _same_site_links(body: bytes, page_url: str) -> list[str]:
+    doc = _parse(body)
+    if doc is None:
+        return []
+    own, found = host_key(page_url), []
+    for element in doc.iterfind(".//a[@href]"):
+        try:
+            href = urljoin(page_url, (element.get("href") or "").strip()).split("#")[0]
+        except ValueError:
+            continue
+        if href.lower().startswith(("http://", "https://")) and host_key(href) == own and href not in found:
+            found.append(href)
+    return found
+
+
+def article_candidates(addresses: list[str], hints: list[str | None], home: str) -> list[str]:
+    """The pages most likely to hold the link, best first. A word on most of the site's pages ("dubai" on a Dubai blog) tells nothing, so it's left out.
+    A page sharing no word at all isn't read: reading the whole site for one link would spend the day's budget."""
+    wanted = set().union(*(_words(hint) for hint in hints)) if hints else set()
+    pages = [address for address in dict.fromkeys(addresses) if not is_home_page(address)]
+    if not wanted or not pages:
+        return []
+    words_of = {page: _words(clean_path(page)) for page in pages}
+    common = {word for word in wanted if sum(word in words for words in words_of.values()) > max(2, len(pages) // 2)}
+    useful = wanted - common
+    scored = [(len(words_of[page] & useful), page) for page in pages]
+    scored = [(score, page) for score, page in scored if score > 0]
+    scored.sort(key=lambda item: -item[0])
+    return [page for _, page in scored]
+
+
+def _look_for_article(fetcher, home: str, home_body: bytes | None, site_host: str, target: str | None, hints: list[str | None]):
+    """The page of this website that links to my target, or None. Returns the page's address, its answer and what was seen."""
+    addresses = _same_site_links(home_body, home) if home_body else []
+    try:
+        found = sitemap.discover(fetcher, home, max_pages=5000, max_sitemaps=ARTICLE_SITEMAPS)
+        addresses = [entry.url for entry in found.entries] + addresses
+    except Exception:  # noqa: BLE001 - a broken sitemap only means fewer pages to try
+        log.exception("Couldn't read the sitemap of %s", home)
+    for page in article_candidates(addresses, hints, home)[:ARTICLE_READS]:
+        answer = fetcher.get(page)
+        if answer.status != "ok" or answer.body is None:
+            continue
+        final = answer.final_url or page
+        seen = find_link(answer.body, final, site_host, target)
+        if seen.found and (seen.to_target or not target):
+            return page, answer, seen
+    return None
+
+
+def read_page(fetcher, source_url: str, site_host: str, target: str | None, anchor: str | None = None) -> Reading:
     answer = fetcher.get(source_url)
-    if answer.status == "gone":
+    home = is_home_page(source_url)
+    if answer.status == "gone" and not home:
         return Reading(PAGE_GONE, http_status=answer.http_status, final_url=answer.final_url)
-    if answer.status != "ok" or answer.body is None:
+    if answer.status not in ("ok", "gone") or (answer.status == "ok" and answer.body is None):
         return Reading(UNKNOWN, _REASONS.get(answer.status, answer.status), answer.http_status, answer.final_url)
     final = answer.final_url or source_url
-    seen = find_link(answer.body, final, site_host, target)
-    signals = page_signals(answer.body, final, getattr(answer, "x_robots_tag", None), host_key(f"https://{site_host}/"))
+    body = answer.body if answer.status == "ok" else None
+    seen = find_link(body, final, site_host, target) if body is not None else LinkSeen()
+    article = None
+    if home and not seen.to_target and (target and not is_home_page(target) or not seen.found):
+        looked = _look_for_article(fetcher, final, body, site_host, target, [anchor, target])
+        if looked is not None:
+            article, answer, seen = looked
+            final, body = answer.final_url or article, answer.body
+        elif not seen.found:
+            # Only the website's address is saved, and its home page was never where the link was: that's no proof it's gone.
+            return Reading(UNKNOWN, HOME_PAGE, answer.http_status, final)
+    signals = page_signals(body, final, getattr(answer, "x_robots_tag", None), host_key(f"https://{site_host}/"))
     allowed = fetcher.agent_may_fetch(final, GOOGLEBOT) if hasattr(fetcher, "agent_may_fetch") else None
     signals.robots_blocked = allowed is False
     verdict, reasons = judge(seen, signals)
-    return Reading(FOUND if seen.found else MISSING, http_status=answer.http_status, final_url=final, seen=seen, signals=signals, verdict=verdict, reasons=reasons)
+    return Reading(FOUND if seen.found else MISSING, http_status=answer.http_status, final_url=final, seen=seen, signals=signals, verdict=verdict, reasons=reasons, article=article)
 
 
 # ---- saving what was seen ----------------------------------------------------------------------------
@@ -295,7 +376,18 @@ def _save(engine: Engine, row, reading: Reading, trigger: str, target: dict | No
             {"o": outcome, "r": reading.reason, "f": reading.final_url, "m": misses, "st": status, "found": outcome == FOUND, "n": seen.is_nofollow, "l": seen.rel, "a": seen.anchor or "", "u": seen.href, "tf": target.get("final"), "lost": went_lost, "back": came_back, "i": row["id"],
              "v": reading.verdict, "vr": json.dumps(reading.reasons), "pl": reading.signals.lang, "ob": reading.signals.outbound, "th": target.get("http"), "tl": target.get("lang")},
         )
+        if reading.article:
+            _move_to_article(conn, row, reading.article)
     return {"lost": went_lost, "changes": changes}
+
+
+def _move_to_article(conn, row, article: str) -> None:
+    """The article replaces the website's address, so next month's check reads it straight away. Not when another logged link already is that article."""
+    key = service.source_key(article)
+    others = conn.execute(text("SELECT source_url FROM backlinks WHERE site_id = :s AND id <> :i AND domain = :d"), {"s": row["site_id"], "i": row["id"], "d": row["domain"]}).scalars().all()
+    if any(service.source_key(other) == key for other in others):
+        return
+    conn.execute(text("UPDATE backlinks SET source_url = :u WHERE id = :i"), {"u": article[:2048], "i": row["id"]})
 
 
 def _raise_alert(engine: Engine, row, kind: str, title_one: str, title_many: str) -> None:
@@ -330,7 +422,7 @@ def check_one(engine: Engine, row, fetcher, trigger: str, resolved: dict[str, di
     sent_before = fetcher.requests
     target = None
     try:
-        reading = read_page(fetcher, row["source_url"], site_host, row["target_url"])
+        reading = read_page(fetcher, row["source_url"], site_host, row["target_url"], row["anchor"])
         if reading.outcome == FOUND and reading.seen.href:
             href = reading.seen.href
             if href not in resolved:

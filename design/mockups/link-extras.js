@@ -108,7 +108,7 @@
   // ---- checking a link ------------------------------------------------------------------------------
   const REASONS = {
     robots: "Its robots.txt blocks the app.", turned_away: "The site blocked the app.", rate_limited: "The site asked the app to slow down.", network: "The site didn't answer.", server: "The server answered with an error.",
-    refused: "Not a public website.", not_html: "That address isn't a web page.", too_large: "Page too large to read.", redirects: "Too many redirects.", http_error: "The page answered with an error.",
+    home_page: "Only the website's address is saved, and the app didn't find the article with your link. Edit the link and paste the article's address.", refused: "Not a public website.", not_html: "That address isn't a web page.", too_large: "Page too large to read.", redirects: "Too many redirects.", http_error: "The page answered with an error.",
   };
 
   function sentence(b) {
@@ -116,6 +116,7 @@
     if (!c || !c.checked_at) return b.status === "planned" ? `${t("Not checked. Planned links are read only on request.")}${UI.tip("Reading a planned link never changes its status.")}` : t("Not checked. Read monthly, or when you press Check.");
     const when = esc(fmtStamp(c.checked_at));
     if (c.outcome === "found") return `${t("Checked on")} ${when}: ${t(c.is_nofollow ? "link there, nofollow." : "link there, passes value.")}`;
+    if (c.outcome === "unknown" && c.reason === "home_page") return `${t("Checked on")} ${when}. ${t(REASONS.home_page)} ${t("A home page without your link never counts as a lost link.")}`;
     if (c.outcome === "unknown") return `${t("Couldn't check on")} ${when}. ${t(REASONS[c.reason] || "That page couldn't be read.")} ${t("An unreadable page never counts as a lost link.")}`;
     const what = t(c.outcome === "page_gone" ? "page gone." : "link gone from the page.");
     if (b.status === "live" && c.misses > 0) return `${t("Checked on")} ${when}: ${what} ${t("Rechecked tomorrow before it counts as lost.")}`;
