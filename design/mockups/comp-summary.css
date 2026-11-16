@@ -186,7 +186,9 @@ html[data-simple="1"] .cs-moves-note { display: flex; align-items: center; gap: 
 /* ---- The cards screen (simpler screens, 2026-11-16): competitors as cards down the left, their changes on the right ---- */
 .cs-bench { display: grid; grid-template-columns: minmax(280px, 344px) minmax(0, 1fr); gap: 24px; align-items: start; }
 .cs-bench > .cs-section { margin-bottom: 0; }
-.cs-rivals-side { position: sticky; top: 76px; max-height: calc(100vh - 92px); overflow-y: auto; overscroll-behavior: contain; padding: 2px 6px 8px 2px; margin: -2px -6px 0 -2px; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+/* Sticks just under the top bar, whatever its height, and fits the screen below it. No overscroll lock: at the list's end the
+   wheel moves the page on, so the last card is never stuck under the bottom edge (owner, 2026-11-16). */
+.cs-rivals-side { position: sticky; top: calc(var(--topbar-h, 62px) + 14px); max-height: calc(100vh - var(--topbar-h, 62px) - 30px); overflow-y: auto; padding: 2px 6px 8px 2px; margin: -2px -6px 0 -2px; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
 .cs-rivals-side .cs-find { margin-bottom: 12px; }
 .cs-cards { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
 

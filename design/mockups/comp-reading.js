@@ -55,7 +55,8 @@
         out.push({ kind: "info", text: fill("Big sitemap: {most} pages watched, ranking pages first.", most), tip: tip("Their sitemap lists more than {most} pages. The app watches {most}: the pages that rank for your keywords first, then the rest in the sitemap's order.", most) });
       }
       if (c.days_left) {
-        out.push({ kind: "info", text: fill("First read: {tried} of ~{known} pages, {per} a day, ~{days} to go. Edits show after.", { tried: U().num(c.pages_tried || 0), known: U().num(c.pages_known || 0), per: U().num(c.per_day || 300), days: many(c.days_left, "{n} day", "{n} days") }) });
+        const bar = progress(c);
+        out.push({ kind: "info", html: `${esc(fill("First read: {per} pages a day. Edits show after.", { per: U().num(c.per_day || 300) }))}${bar ? bar.html : ""}` });
       }
       if (c.js_only) {
         out.push({ kind: "warn", text: many(c.js_only, "{n} page needs JavaScript, so its words and edits aren't seen.", "{n} pages need JavaScript, so their words and edits aren't seen."), tip: manyTip(c.js_only, "{n} page only shows its text with JavaScript, which the app can't run, so its words and edits aren't seen.", "{n} pages only show their text with JavaScript, which the app can't run, so their words and edits aren't seen."), act: f.connected ? fcButton("read", t("Read with Firecrawl"), Math.min(c.js_only, 50)) : connectHint });
@@ -207,9 +208,25 @@
     if (cancel) { const panel = cancel.closest(".rd-confirm"); panel.hidden = true; U().setHTML(panel, ""); }
   }, true);
 
-  COMP.reading = { box, follow: (c) => (c && c.status !== "blocked" ? followLine(c) : null) };
+  /* The first read's progress as a bar and its numbers, on the card and the profile (owner: "i cannot see the progress", 2026-11-16). */
+  function progress(c) {
+    if (!c || c.baseline_done || c.status === "blocked" || !c.pages_known) return null;
+    const tried = Math.min(c.pages_tried || 0, c.pages_known), known = c.pages_known;
+    const pct = Math.max(2, Math.min(100, Math.round((tried / known) * 100)));
+    const words = fill("{tried} of {known} pages read", { tried: U().num(tried), known: U().num(known) });
+    const left = c.days_left ? many(c.days_left, "~{n} day left", "~{n} days left") : "";
+    return { tried, known, pct, words, left,
+      html: `<span class="rd-prog"><span class="meter rd-prog-bar" role="progressbar" aria-valuemin="0" aria-valuemax="${known}" aria-valuenow="${tried}" aria-label="${esc(words)}"><i style="width:${pct}%"></i></span><span class="rd-prog-words small sec"><b class="tabular">${esc(U().num(tried))}</b> ${esc(fill("of {known} pages read", { known: U().num(known) }))}${left ? ` · ${esc(left)}` : ""}</span></span>` };
+  }
+
+  COMP.reading = { box, progress, follow: (c) => (c && c.status !== "blocked" ? followLine(c) : null) };
 
   Object.assign(window.FR = window.FR || {}, {
+    "First read: {per} pages a day. Edits show after.": "Première lecture : {per} pages par jour. Les modifications s'affichent ensuite.",
+    "{tried} of {known} pages read": "{tried} sur {known} pages lues",
+    "of {known} pages read": "sur {known} pages lues",
+    "~{n} day left": "encore ~{n} jour",
+    "~{n} days left": "encore ~{n} jours",
     "How well the app reads this site": "Ce que l'appli arrive à lire sur ce site",
     "Firecrawl can read it once connected in Settings.": "Firecrawl peut le lire une fois connecté dans les réglages.",
     "Open Settings": "Ouvrir les réglages",

@@ -432,7 +432,7 @@
     const c = r.crawl || {};
     if (paused) return `<span class="status sec">${UI.icon("pause")}${esc(t("Paused"))}</span>`;
     if (c.status === "blocked") return COMP.watching(c, null);
-    if (!c.baseline_done) return `<span class="sec small">${esc(t(c.status === "running" || c.status === "queued" ? "Reading its pages now" : "Not read yet"))}</span>`;
+    if (!c.baseline_done) { const bar = COMP.reading?.progress?.(c); return bar && bar.tried ? bar.html : `<span class="sec small">${esc(t(c.status === "running" || c.status === "queued" ? "Reading its pages now" : "Not read yet"))}</span>`; }
     if (firstReadOnly(r)) return `<span class="sec small" data-tip="${attr(FIRST_READ)}" tabindex="0">${esc(t("Edits show from the next read"))}</span>`;
     const pill = (n, one, many, tone) => `<span class="cs-card-n cs-card-${tone}${n ? "" : " zero"}"><b class="tabular">${UI.num(n)}</b> ${esc(t(n === 1 ? one : many))}</span>`;
     return `${pill(r.added_30d ?? 0, "added in 30 days", "added in 30 days", "new")}${pill(edits, "edited in 30 days", "edited in 30 days", "edit")}`;

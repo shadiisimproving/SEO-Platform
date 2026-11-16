@@ -26,3 +26,12 @@
 .rd-count { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); }
 .rd-count .input { width: 72px; }
 @media (max-width: 560px) { .rd-line .rd-act { width: 100%; } }
+
+/* The first read's progress: a bar and "9 of 1,988 pages read · ~7 days left", on the profile line and on the card (2026-11-16). */
+.rd-prog { display: flex; flex-direction: column; gap: 4px; width: 100%; max-width: 360px; }
+.rd-line .rd-prog { margin-top: 6px; }
+.rd-prog .rd-prog-bar { max-width: none; margin-top: 0; height: 6px; border-radius: 3px; }
+.rd-prog .rd-prog-bar i { border-radius: 3px; min-width: 4px; }
+.rd-prog-words { font-size: 12px; line-height: 1.4; }
+.rd-prog-words b { color: var(--text); font-weight: 600; }
+.cs-card-counts .rd-prog { max-width: none; }
