@@ -12,6 +12,7 @@ from sqlalchemy import Engine
 from seo import config
 from seo.core.errors import Refused
 from seo.crawl.guard import is_public_url
+from seo.web import timings
 
 
 MAX_REQUEST_BYTES = 26 * 1024 * 1024
@@ -42,6 +43,7 @@ def create_app(engine: Engine | None = None, url_allowed: Callable[[str], bool] 
     backlink_traffic.install()
     app = Flask(__name__, static_folder=None)
     app.config["ENGINE"] = engine if engine is not None else make_engine()
+    timings.install(app)  # first, so its clock starts before sign-in checks and its line is written after every other step
     app.config["URL_ALLOWED"] = url_allowed
     app.register_blueprint(links_api)
     app.register_blueprint(competitors_api)
