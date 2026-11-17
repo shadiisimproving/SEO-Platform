@@ -143,7 +143,7 @@
   // ---- do these first -----------------------------------------------------------------------------
   /* Why a row is where it is (seo/metrics/today.py _reason), so the order explains itself: an icon and a word, never colour alone. */
   const REASONS = {
-    offline: ["globe", "Site is offline", "crit"], may_go_offline: ["clock", "Site could go offline", "crit"], losing_clicks: ["arrow-down", "Losing clicks", "warn"],
+    offline: ["globe", "Site is offline", "crit"], may_go_offline: ["clock", "Site could go offline", "crit"], losing_leads: ["arrow-down", "Losing leads", "crit"], losing_clicks: ["arrow-down", "Losing clicks", "warn"],
     losing_link: ["link-2-off", "Lost a backlink", "warn"], data_lost: ["clock", "Data being lost", "warn"], data_stopped: ["ban", "Data stopped", "warn"],
     site_problem: ["heart-pulse", "Site problem", "warn"], chance: ["target", "Chance to win", "info"], info: ["info", "Good to know", "info"], check: ["info", "Worth a look", "info"],
   };
@@ -162,7 +162,7 @@
   const taskLook = () => (UI().simple?.() ? { label: "Task", cls: "btn btn-small row-act" } : { label: "Task" });
   const hostTag = (host, title = "") => (host && allSites() && !title.includes(host) ? ` <span class="small muted today-host" dir="auto">${esc(host)}</span>` : "");
   const todoRow = (item) => `<li data-row="${esc(item.id)}"><span>${severityIcon(item.severity)}</span>
-      <div class="what"><div class="t" dir="auto">${item.titleHtml || esc(item.title)}${hostTag(item.host, item.title)}</div>${item.reason || item.detail ? `<div class="d">${reasonTag(item)}${item.detail ? `<span dir="auto">${esc(item.detail)}</span>` : ""}</div>` : ""}</div>
+      <div class="what"><div class="t" dir="auto">${item.titleHtml || esc(item.title)}${hostTag(item.host, item.title)}</div>${item.reason || item.detail ? `<div class="d">${reasonTag(item)}${item.detail ? `<span dir="auto">${esc(item.detail)}</span>` : ""}</div>` : ""}${item.cause ? `<div class="d today-cause" dir="auto">${esc(item.cause)}</div>` : ""}${item.week ? `<div class="d today-cause" dir="auto">${esc(item.week)}</div>` : ""}</div>
       <div class="acts">${item.seenAttr ? `<button class="btn btn-small btn-ghost ack" ${item.seenAttr} aria-label="${t("Mark seen")}: ${esc(item.title)}" data-tip="${t("Hide it until something changes. Undo in the message.")}">${icon("eye")}<span>${t("Mark seen")}</span></button>` : ""}
         ${UI().taskButton(item.find, taskLook())}${item.mainHtml}</div></li>`;
   function todoCard(todo) {
@@ -198,8 +198,11 @@
   }
 
   // ---- going down, going up -----------------------------------------------------------------------
+  /* Search Console's average position over a week, never a rank: "avg pos 8.4 → 12.1" (daily-monitoring F8). */
+  const dec1 = (v) => (UI().dec ? UI().dec(v) : num(v));
+  const avgPos = (move) => `${t("avg pos")} ${dec1(move.was_pos ?? move.was)} → ${dec1(move.now_pos ?? move.now)}`;
   function moveFind(move) {
-    if (move.type === "keyword") return { title: `${move.query}: #${move.was} → #${move.now}`, host: move.host, keywords: [move.query], source: { type: "keyword", label: move.query, host: move.host, facts: [`#${move.was} → #${move.now}`, "Search Console"], link: "#keywords", key: `move|keyword|${move.host}|${move.query}` } };
+    if (move.type === "keyword") return { title: `${move.query}: ${avgPos(move)}`, host: move.host, keywords: [move.query], source: { type: "keyword", label: move.query, host: move.host, facts: [avgPos(move), "Search Console"], link: "#keywords", key: `move|keyword|${move.host}|${move.query}` } };
     return { title: `${move.path}: ${t("Google clicks")} ${move.was} → ${move.clicks}`, host: move.host, pages: [move.path], source: { type: "alert", label: move.path, host: move.host, facts: [`${t("Google clicks")} ${move.was} → ${move.clicks}`], link: "#content", key: `move|page|${move.host}|${move.path}` } };
   }
   function moveRow(move, down) {
@@ -208,17 +211,23 @@
       const up = move.places > 0;
       const target = move.keyword_id ? "#keywords" : "#overview";
       return `<li><div class="what"><div class="t"><a class="today-link" href="${esc(window.KeywordLink ? window.KeywordLink.href(move.query, move.host) : target)}" data-today-keyword="${esc(move.query)}" data-today-host="${esc(move.host || "")}" data-today-keyword-id="${esc(move.keyword_id || "")}" data-today-range="7d" dir="auto">${esc(move.query)}</a>${hostTag(move.host)}</div></div>
-        <span class="chg ${up ? "good" : "crit"}">${icon(up ? "arrow-up" : "arrow-down")}#${num(move.was)} → #${num(move.now)}</span>${task}</li>`;
+        <span class="chg ${up ? "good" : "crit"}">${icon(up ? "arrow-up" : "arrow-down")}${esc(avgPos(move))}</span>${task}</li>`;
     }
-    const up = move.change > 0;
+    const up = move.clicks > move.was;
+    const size = move.new || move.change === null || move.change === undefined ? t("New") : `${up ? "+" : "−"}${num(Math.abs(move.change))}%`;
     return `<li><div class="what"><div class="t">${PageLink.html(move.url || move.path, { text: move.path, host: move.host, cls: "today-link mono" })}${hostTag(move.host)}</div><div class="d">${UI().logoOnly("Google", t("Google clicks"))} ${num(move.was)} → ${num(move.clicks)} ${t("clicks")}</div></div>
-      <span class="chg ${up ? "good" : "crit"}">${icon(up ? "arrow-up" : "arrow-down")}${up ? "+" : "−"}${num(Math.abs(move.change))}%</span>${task}</li>`;
+      <span class="chg ${up ? "good" : "crit"}">${icon(up ? "arrow-up" : "arrow-down")}${size}</span>${task}</li>`;
   }
   // With the switch on, "7 days" sits in each card head instead of the "Week on week" line above the pair (plan, change 4).
   // Where the positions come from is said once in the head, not as a boxed logo on every row (owner, 2026-11-16: "this logo looks bad").
   const moveSource = (moves) => (moves.some((m) => m.type === "keyword") ? `<span class="today-moves-src" title="${esc(t("Search Console average position"))}">${t("Search Console")}</span>` : "");
-  const moveCard = (title, moves, down) => `<section class="card"><div class="card-head"><h2>${t(title)}</h2>${UI().simple?.() ? `<span class="end small muted today-moves-meta">${moveSource(moves)}${moveSource(moves) ? `<span aria-hidden="true">·</span>` : ""}<span>${t("7 days")}</span></span>` : moveSource(moves) ? `<span class="end small muted today-moves-meta">${moveSource(moves)}</span>` : ""}</div>
-      ${moves.length ? `<ul class="rows">${moves.map((move) => moveRow(move, down)).join("")}</ul>` : `<div class="empty today-empty"><p>${t(down ? "Nothing fell much." : "Nothing rose much.")}</p></div>`}</section>`;
+  /* The two weeks compared, said on the card: "14–20 Oct vs 7–13 Oct" (daily-monitoring F8). */
+  const span = (a, b) => `${day(a)} – ${day(b)}`;
+  const weeksWords = (w) => (w ? `${span(w.from, w.to)} ${t("vs")} ${span(w.before_from, w.before_to)}` : "");
+  /* Nothing moved this week, but Do these first holds longer drops: said, so "Nothing fell" never reads as all is well beside a −80%. */
+  const emptyWords = (down, drops) => (down ? (drops ? "Nothing fell this week. Longer drops are in Do these first." : "Nothing fell much this week.") : "Nothing rose much this week.");
+  const moveCard = (title, moves, down, w, drops) => `<section class="card"><div class="card-head"><h2>${t(title)}</h2>${UI().simple?.() ? `<span class="end small muted today-moves-meta">${moveSource(moves)}${moveSource(moves) ? `<span aria-hidden="true">·</span>` : ""}<span>${w ? esc(weeksWords(w)) : t("7 days")}</span></span>` : moveSource(moves) ? `<span class="end small muted today-moves-meta">${moveSource(moves)}</span>` : ""}</div>
+      ${moves.length ? `<ul class="rows">${moves.map((move) => moveRow(move, down)).join("")}</ul>` : `<div class="empty today-empty"><p>${t(emptyWords(down, drops))}</p></div>`}</section>`;
 
   // ---- rivals -------------------------------------------------------------------------------------
   function rivalRow(r) {
@@ -252,6 +261,17 @@
   }
 
   // ---- the page -----------------------------------------------------------------------------------
+  /* No number yet: why, and the one button that moves it on. Waiting: Refresh data (the button the waiting cards already
+     use, screens-live.js); stopped: Fix; nothing connected: Connect Google (ai-reports-workflow, COMPARISON lost place 4). */
+  function firstRun(r, vm) {
+    const states = [r.clicks?.source, r.visits?.source].filter(Boolean);
+    const refresh = window.LV?.refreshBtn ? window.LV.refreshBtn(true) : "";
+    if (states.includes("waiting")) return { badge: "Waiting for first data", sev: "info", line: "Google is connected. Fetch the first numbers now, or they come with the next run.", act: refresh };
+    if (states.includes("failing")) return { badge: "Data stopped", sev: "warn", line: "Google stopped answering. See Settings.", act: `<button class="btn btn-small" data-go="settings">${t("Open Settings")}</button>` };
+    if (states.includes("ok")) return null; // connected and read: an empty period is answered under the numbers
+    const s = vm.sources || {};
+    return { badge: "Not set up yet", sev: "info", line: "Connect Google to see leads, visits and clicks.", act: s.connectAttr ? `<button class="btn btn-main btn-small" ${s.connectAttr}>${t("Connect Google")}</button>` : "" };
+  }
   function page(vm) {
     const r = vm.results;
     const urgent = vm.todo.filter((item) => item.severity !== "info").length;
@@ -260,13 +280,16 @@
     const anyMove = vm.goingDown.length || vm.goingUp.length;
     // A verdict badge and the count; the numbers are in the cards below, so they aren't said again here (2026-11-12).
     const crit = vm.todo.filter((item) => item.severity === "crit").length;
-    const verdict = crit ? UI().status("crit", `${t("Urgent")}: ${num(crit)}`) : urgent ? UI().status("warn", t("To do")) : UI().status("good", t("All clear"));
-    const state = hasData ? "" : `<p class="today-state" dir="auto">${esc(answer(r, vm.range))}</p>`;
-    return `<div class="today-answer"><p class="today-verdict">${verdict} <span class="today-second" dir="auto">${esc(needsYou(urgent))}${stopped}</span></p>${state}</div>
+    // Before any number exists, "All clear" would be a false all-clear: the verdict says what's missing and the way on.
+    const before = hasData ? null : firstRun(r, vm);
+    const verdict = before ? UI().status(before.sev, t(before.badge)) : crit ? UI().status("crit", `${t("Urgent")}: ${num(crit)}`) : urgent ? UI().status("warn", t("To do")) : UI().status("good", t("All clear"));
+    const second = before ? (urgent ? needsYou(urgent) : t(before.line)) : `${needsYou(urgent)}${stopped}`;
+    const state = hasData || before ? "" : `<p class="today-state" dir="auto">${esc(answer(r, vm.range))}</p>`;
+    return `<div class="today-answer"><p class="today-verdict">${verdict} <span class="today-second" dir="auto">${esc(second)}</span></p>${state}${before?.act ? `<p class="today-first-act">${before.act}</p>` : ""}</div>
       ${vm.setupHtml || ""}
       ${numbers(r, vm.range)}
       <div class="cols"><div>${todoCard(vm.todo)}</div><div>${workCard(vm)}</div></div>
-      ${anyMove || hasData ? `${UI().simple?.() ? "" : `<div class="today-moves-head"><span class="small muted">${t("Week on week")}</span></div>`}<div class="today-moves">${moveCard("Going down", vm.goingDown, true)}${moveCard("Going up", vm.goingUp, false)}</div>` : ""}
+      ${anyMove || hasData ? `${UI().simple?.() ? "" : `<div class="today-moves-head"><span class="small muted">${t("Week on week")}${vm.movesWindow ? ` · ${esc(weeksWords(vm.movesWindow))}` : ""}</span></div>`}<div class="today-moves">${moveCard("Going down", vm.goingDown, true, vm.movesWindow, vm.todoDrops)}${moveCard("Going up", vm.goingUp, false, vm.movesWindow, 0)}</div>` : ""}
       ${vm.rivals.length || vm.otherEdits || hasData ? rivalCard(vm.rivals, vm.otherEdits) : ""}
       ${allSites() && vm.sites.length > 1 ? sitesCard(vm.sites) : ""}`;
   }
@@ -304,6 +327,11 @@
     "No earlier period stored": "Pas de période antérieure enregistrée", "No comparison": "Sans comparaison",
     "vs last year": "vs l'an dernier", "vs period before": "vs période précédente",
     "Visits and leads: {a} – {b}, where Google Analytics' data ends.": "Visites et leads : {a} – {b}, là où s'arrêtent les données de Google Analytics.",
+    "Waiting for first data": "En attente des premières données", "Not set up yet": "Pas encore configuré", "Open Settings": "Ouvrir les réglages",
+    "Google is connected. Fetch the first numbers now, or they come with the next run.": "Google est connecté. Récupérez les premiers chiffres maintenant, ou ils arrivent au prochain passage.",
+    "Losing leads": "Perd des leads", "avg pos": "pos. moy.", "New": "Nouveau", "vs": "vs",
+    "Nothing fell this week. Longer drops are in Do these first.": "Pas de baisse cette semaine. Les baisses plus longues sont dans À faire en premier.",
+    "Nothing fell much this week.": "Pas de forte baisse cette semaine.", "Nothing rose much this week.": "Pas de forte hausse cette semaine.",
     "Do these first": "À faire en premier", "Going down": "En baisse", "Going up": "En hausse", "Nothing fell much.": "Pas de forte baisse.", "Nothing rose much.": "Pas de forte hausse.",
     "Nothing needs you today.": "Rien à traiter aujourd'hui.", "Google numbers stop at": "Les chiffres Google s'arrêtent au", "No earlier period to compare with yet.": "Pas encore de période antérieure à comparer.",
     "Connect Google to see leads, visits and clicks.": "Connectez Google pour voir les leads, les visites et les clics.",

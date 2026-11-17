@@ -5,6 +5,7 @@ Numbers are worked out from the date, so a day always gives the same answer, and
 from __future__ import annotations
 
 import json
+import os
 from datetime import date
 
 import httpx
@@ -14,6 +15,13 @@ from seo.sources import credentials
 
 PROPERTIES = lambda: ["sc-domain:mine-one.test", "sc-domain:mine-two.test", "https://mine-three.test/"]  # noqa: E731
 KEYS = {"gsc_fail": False}
+
+
+def _gsc_refuses() -> bool:
+    """Search Console answers 403 while KEYS["gsc_fail"] is set, or while the file FAKE_GSC_FAIL_FILE names exists, so a
+    browser flow can make Google refuse halfway through (tests/ui/flow_today_fixes.cjs)."""
+    flag = os.environ.get("FAKE_GSC_FAIL_FILE")
+    return KEYS["gsc_fail"] or bool(flag and os.path.exists(flag))
 
 
 def _wave(day: str, base: int, salt: int = 0) -> int:
@@ -94,6 +102,8 @@ def _inspect(request: httpx.Request) -> httpx.Response:
 def _answer(request: httpx.Request) -> httpx.Response:
     url = str(request.url)
     if "searchAnalytics" in url:
+        if _gsc_refuses():
+            return httpx.Response(403, json={"error": {"code": 403, "message": "User does not have sufficient permission for site. See also: https://support.google.com/webmasters/answer/2451999.", "status": "PERMISSION_DENIED"}})
         return _gsc(request)
     if "urlInspection/index:inspect" in url:
         return _inspect(request)

@@ -491,8 +491,9 @@
       impact: "Done tasks and dated notes, before vs after.",
     }[IN.tab];
     const HINT_TIPS = { impact: "28 days before against 28 days starting a week after." };
-    // The same ranked list Today shows as "Do these first": said so, with the way there, so it isn't read as a second to-do.
-    const sameList = IN.tab === "first" ? `<p class="small muted ov-hint in-same">${icon("list-ordered")}<span>${t("The same list as Do these first on Today.")} <a href="#today">${t("Open Today")}</a></span></p>` : "";
+    // Not "the same list as Today" (it wasn't: Today also holds site, link, lead and AI Overview rows, daily-monitoring F9).
+    // Said as what it is, with the way to the full list.
+    const sameList = IN.tab === "first" ? `<p class="small muted ov-hint in-same">${icon("list-ordered")}<span>${t("Search findings only. Today's Do these first also lists site, link and lead problems.")} <a href="#today">${t("Open Today")}</a></span></p>` : "";
     if (on) {
       // The tab's hint, and any note with nothing to press, go behind the (i) beside the tabs; a note with a link stays.
       const acts = notes.filter((n) => n.includes("<a ")), quiet = notes.filter((n) => !n.includes("<a "));
@@ -1009,7 +1010,7 @@
     "No country data yet.": "Pas encore de données par pays.", "Save": "Enregistrer", "clicks": "clics", "Saved. Applies from the next Search Console read.": "Enregistré. S'applique dès la prochaine lecture de la Search Console.",
     "Counted at {p}%: an AI Overview shows on this search ({d}) and takes some clicks.": "Compté à {p} % : un AI Overview s'affiche sur cette recherche ({d}) et prend une partie des clics.",
     "Insights": "Analyses", "Worked out daily from your Search Console data": "Calculé chaque jour à partir de vos données Search Console",
-    "Clicks at stake": "Clics en jeu", "Findings": "Constats", "The same list as Do these first on Today.": "La même liste que « À faire d'abord » sur Aujourd'hui.", "Open Today": "Ouvrir Aujourd'hui",
+    "Clicks at stake": "Clics en jeu", "Findings": "Constats", "Search findings only. Today's Do these first also lists site, link and lead problems.": "Constats de recherche seulement. « À faire en premier » sur Aujourd'hui liste aussi les problèmes de site, de liens et de leads.", "Open Today": "Ouvrir Aujourd'hui",
     "To do first": "À faire d'abord", "What changed": "Ce qui a changé", "Slow decline": "Lent déclin", "Quick wins": "Gains rapides",
     "Still open": "En cours", "Went away": "Disparues", "Done": "Fait",
     "Losing clicks": "Clics en baisse", "Gaining clicks": "Clics en hausse", "Dropped out of Google": "Sortie de Google", "Odd day": "Jour inhabituel",

@@ -3388,6 +3388,8 @@
     const list = window.CONNECTIONS;
     const on = list.filter((c) => c.status === "ok" || c.status === "nokey").length;
     const failing = list.filter((c) => c.status === "failing").length;
+    // A key saved but a site linked to nothing (settings-live.js, c.unwired) needs a fix too, though nothing is failing.
+    const unlinked = list.filter((c) => c.status !== "failing" && c.unwired?.length).length;
     // Credits from different tools aren't the same thing, so they aren't added up. What matters is which runs out first.
     const lowest = window.TOOLS.filter((x) => x.connected && x.left !== null && x.left !== undefined && x.of).sort((a, b) => a.left / a.of - b.left / b.of)[0];
     const group = (key) => (key === "serp" ? window.TOOLS.map((x) => connFor(x.name)) : list.filter((c) => c.group === key));
@@ -3399,7 +3401,7 @@
         <section class="tiles" id="set-tiles">
           ${tile(t("Connected"), cnt(on), `<span class="ab">${t("of")} ${list.length}</span>`, { ic: "link-2" })}
           ${tile(t("Running out first"), lowest ? cnt(lowest.left) : "—", lowest ? `<span class="ab">${t("of")} ${num(lowest.of)} · ${esc(t(lowest.name))}</span>` : `<span class="ab">${t("No credit tools connected")}</span>`, { ic: "sparkles" })}
-          ${failing ? tile(t("Needs a fix"), `<span class="crit">${cnt(failing)}</span>`, status("crit", t("Failing")), { ic: "triangle-alert", tone: "serious" })
+          ${failing || unlinked ? tile(t("Needs a fix"), `<span class="crit">${cnt(failing + unlinked)}</span>`, failing ? status("crit", t("Failing")) : status("warn", t("Site not linked")), { ic: "triangle-alert", tone: "serious" })
             : tile(t("Needs a fix"), "0", `<span class="ab">${t("Nothing to fix")}</span>`, { ic: "circle-check", tone: "neutral" })}
         </section>
         <div class="tabs" role="tablist" aria-label="${t("Settings")}">${window.LIVE?.tabs?.() || `<button class="tab" role="tab" aria-selected="true">${t("Connections")}</button><span class="tab tab-soon" role="tab" aria-selected="false" aria-disabled="true">${t("Sites")}<span class="soon-tag">${t("Soon")}</span></span><span class="tab tab-soon" role="tab" aria-selected="false" aria-disabled="true">${t("Team")}<span class="soon-tag">${t("Soon")}</span></span>`}</div>

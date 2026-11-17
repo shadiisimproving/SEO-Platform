@@ -37,6 +37,10 @@
         if (google.props[s.id].sc || google.props[s.id].ga4) using.push(s.id);
       });
       google.sites = using.length === window.SITES.length && using.length ? "all" : using;
+      // A key saved, but a site with neither a Search Console nor a GA4 property and no "Not used" said: it reads nothing.
+      // Counted in Needs a fix, never silent (ai-reports-workflow, 2026-11-17).
+      const wired = (row) => row && (row.not_used || (row.connection_id && row.property));
+      google.unwired = data.google.length ? window.SITES.filter((s) => s.realId && !wired(rows("gsc", s.realId)) && !wired(rows("ga4", s.realId))).map((s) => s.host) : [];
       // The sites really set up: a key and a property. A failing pull elsewhere doesn't undo a site's setup step.
       google.linked = data.google.length ? using : [];
     }
@@ -271,8 +275,30 @@
       await reload();
       window.LV?.forget?.(); window.OV?.forget?.();
       UI.forgetPanelForm(); UI.closePanel(); UI.render();
-      UI.toast(t("Connection saved"));
+      if (c.id === "google") afterGoogleSaved();
+      else UI.toast(t("Connection saved"));
     } catch (err) { sayError(err.message); button.disabled = false; }
+  }
+
+  /* After Save: the sites now wired but never read get "Fetch my first numbers" (Refresh data for them, followed to the end);
+     a site left with nothing picked is named, so a green Test can't end in silence (COMPARISON lost place 4). */
+  function afterGoogleSaved() {
+    const google = conn("google") || {};
+    const fresh = window.SITES.filter((s) => s.realId && ["gsc", "ga4"].some((source) => {
+      const r = L.data.site_sources.find((x) => x.site_id === s.realId && x.source === source);
+      return r && !r.not_used && r.connection_id && r.property && !r.data_through;
+    }));
+    if (google.unwired?.length) {
+      const hosts = google.unwired.length === 1 ? google.unwired[0] : `${num(google.unwired.length)} ${t("sites")}`;
+      UI.toast(t("Connection saved. {hosts}: no Search Console or GA4 property picked, so nothing is read there.").replace("{hosts}", hosts), { kind: "info", stay: true, undo: () => UI.openConnection("google"), undoLabel: t("Pick it") });
+    }
+    if (!fresh.length) { if (!google.unwired?.length) UI.toast(t("Connection saved")); return; }
+    UI.toast(t("Connection saved. Fetch the first numbers now?"), { stay: true, undoLabel: t("Fetch my first numbers"), undo: async () => {
+      try {
+        const answers = await Promise.all(fresh.map((s) => api("POST", `sites/${s.realId}/collect`, {})));
+        if (window.LV?.watchReads) await window.LV.watchReads(answers); else UI.toast(t("Reading the latest data…"));
+      } catch (err) { UI.toast(err.message, { kind: "crit" }); }
+    } });
   }
 
   // A GA4 property has a name, not an address: "Acme Store" goes with acme-store.com. Only one clear match counts.
@@ -283,6 +309,30 @@
     return found.length === 1 ? found[0].id : "";
   }
 
+  /* The Search Console property that is this site: its domain property first, then its address with or without www and
+     http(s), then the domain it sits under (blog.acme.fr → sc-domain:acme.fr). Pre-picked after Test (COMPARISON lost place 4). */
+  function scMatch(host, options) {
+    const bare = String(host || "").toLowerCase().replace(/^www\./, "");
+    const labels = bare.split(".");
+    const parents = labels.slice(1, -1).map((_, i) => labels.slice(i + 1).join(".")).filter((d) => d.includes("."));
+    const wanted = [`sc-domain:${bare}`, ...[`https://${bare}/`, `https://www.${bare}/`, `http://${bare}/`, `http://www.${bare}/`], ...parents.map((d) => `sc-domain:${d}`)];
+    const norm = (o) => String(o).toLowerCase().replace(/\/?$/, "/").replace(/^sc-domain:(.*)\/$/, "sc-domain:$1");
+    const have = new Map(options.map((o) => [norm(o), o]));
+    for (const w of wanted) if (have.has(norm(w))) return have.get(norm(w));
+    return "";
+  }
+  /* Under a site whose property this key can't see: why, and the step that fixes it, in red. Never a silent "Not used". */
+  function missingNote(sel, site) {
+    const row = sel.closest(".prop-row");
+    row?.querySelector(`[data-prop-missing="${sel.dataset.prop}"]`)?.remove();
+    // Search Console only: a GA4 property is named, not an address, so a blank GA4 pick isn't a sign of a missing share.
+    if (!row || sel.value || sel.dataset.prop !== "sc" || !L.sc.length) return;
+    const robot = conn("google")?.robot || L.data?.google?.find((g) => g.robot_email)?.robot_email || "";
+    const words = sel.dataset.prop === "sc"
+      ? (robot ? t("{host} isn't shared with {robot} in Search Console yet. Add it as a user there, then press Test again.") : t("{host} isn't in this key's Search Console list yet. Share the property with it, then press Test again."))
+      : t("{host}: pick its GA4 property, or Not used.");
+    row.insertAdjacentHTML("beforeend", `<p class="error small prop-missing" data-prop-missing="${sel.dataset.prop}" role="alert">${icon("octagon-alert")}<span>${esc(words.replace("{host}", site.host).replace("{robot}", robot))}</span></p>`);
+  }
   function showGoogleResult(answer) {
     if (answer.search_console.ok && answer.ga4.ok) UI.$("#conn-fix")?.remove();
     const line = (name, part) => (part.ok ? status("good", `${name}: ${t("works")} · ${num(part.properties.length)} ${t(part.properties.length === 1 ? "property" : "properties")}`) : `<div class="error" style="margin:0 0 4px">${icon("octagon-alert")}${esc(name)}: ${esc(t(part.error || "It didn't work."))}</div>${fixFor(part.error, conn("google"))}`);
@@ -294,11 +344,14 @@
       const kind = sel.dataset.prop, chosen = sel.value, site = window.SITES.find((s) => s.id === sel.dataset.site);
       const options = kind === "sc" ? L.sc : L.ga.map((p) => p.id);
       const labels = kind === "ga4" ? Object.fromEntries(L.ga.map((p) => [p.id, `${p.name} (${p.id})`])) : {};
-      const match = chosen ? "" : kind === "sc" ? options.find((o) => o === `sc-domain:${site.host}` || o === `https://${site.host}/` || o === `https://www.${site.host}/`) : gaMatch(site.host);
+      // A guess the key can't see ("sc-domain:my-firm.example" before it is shared) isn't kept as if chosen: the match is.
+      const guessed = chosen && kind === "sc" && !options.includes(chosen) && !L.data?.site_sources?.some((r) => r.site_id === site.realId && r.source === "gsc" && r.property === chosen);
+      const match = chosen && !guessed ? "" : kind === "sc" ? scMatch(site.host, options) : gaMatch(site.host);
       const held = [...sel.options].filter((o) => !o.value || o.value === "__other");
-      const list = [...new Set([...options, ...(chosen && chosen !== "__other" ? [chosen] : [])])];
+      const list = [...new Set([...options, ...(chosen && chosen !== "__other" && !guessed ? [chosen] : [])])];
       sel.replaceChildren(...list.map((o) => new Option(labels[o] || o, o)), ...held);
-      sel.value = match || chosen;
+      sel.value = match || (guessed ? "" : chosen);
+      if (site) missingNote(sel, site);
     });
   }
 
@@ -694,6 +747,12 @@
   };
 
   const fr = {
+    "{host} isn't shared with {robot} in Search Console yet. Add it as a user there, then press Test again.": "{host} n'est pas encore partagé avec {robot} dans Search Console. Ajoutez-le comme utilisateur, puis cliquez de nouveau sur Tester.",
+    "{host} isn't in this key's Search Console list yet. Share the property with it, then press Test again.": "{host} n'est pas encore dans la liste Search Console de cette clé. Partagez-lui la propriété, puis cliquez de nouveau sur Tester.",
+    "{host}: pick its GA4 property, or Not used.": "{host} : choisissez sa propriété GA4, ou Non utilisé.",
+    "Connection saved. {hosts}: no Search Console or GA4 property picked, so nothing is read there.": "Connexion enregistrée. {hosts} : aucune propriété Search Console ou GA4 choisie, donc rien n'y est lu.",
+    "Pick it": "La choisir", "Connection saved. Fetch the first numbers now?": "Connexion enregistrée. Récupérer les premiers chiffres maintenant ?", "Fetch my first numbers": "Récupérer mes premiers chiffres",
+    "Site not linked": "Site non relié", "Reading the latest data…": "Lecture des dernières données…",
     "No domain matches.": "Aucun domaine ne correspond.", "Search domains": "Chercher un domaine", "domains": "domaines",
     "The stopped site is being read again; its numbers return in a few minutes.": "Le site arrêté est relu ; ses chiffres reviennent d'ici quelques minutes.",
     "The stopped sites are being read again; their numbers return in a few minutes.": "Les sites arrêtés sont relus ; leurs chiffres reviennent d'ici quelques minutes.",
