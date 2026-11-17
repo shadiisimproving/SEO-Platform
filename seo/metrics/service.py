@@ -452,7 +452,10 @@ def content(scope: Scope, limit: int = 500) -> dict:
         item = page(row["site_id"], row["path"])
         item["sessions"] = (item["sessions"] or 0) + int(row["sessions"] or 0)
         item["leads"] = (item["leads"] or 0) + float(row["leads"] or 0)
-    for row in scope.fetch("SELECT site_id, MAX(page) page, page_hash, SUM(clicks) clicks, SUM(impressions) impressions, SUM(position * impressions) w FROM gsc_page WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY site_id, page_hash"):
+    from seo.metrics import period
+
+    gsc, gsc_window = period.search_scope(scope)  # Search Console's numbers on the shared period, as Today and Overview
+    for row in gsc.fetch("SELECT site_id, MAX(page) page, page_hash, SUM(clicks) clicks, SUM(impressions) impressions, SUM(position * impressions) w FROM gsc_page WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY site_id, page_hash"):
         item = page(row["site_id"], row["page"])
         item["clicks"] = (item["clicks"] or 0) + int(row["clicks"] or 0)
         item["impressions"] = (item["impressions"] or 0) + int(row["impressions"] or 0)
@@ -485,7 +488,7 @@ def content(scope: Scope, limit: int = 500) -> dict:
         "ga4": ga4_state, "gsc": gsc_state, "state": "ok" if rows else (ga4_state["state"] if ga4_state["state"] != "ok" else gsc_state["state"]),
         "pages": rows[:limit], "total_pages": len(rows),
         "social": [{**item, "sources": sorted(item["sources"])} for item in sorted(social.values(), key=lambda item: (-item["sessions"], item["source"]))],
-        "hid_rows": _hidden(scope),
+        "hid_rows": _hidden(scope), "gsc_window": gsc_window,
     }
 
 
@@ -733,6 +736,22 @@ def _page_window(scope: Scope, table: str) -> dict:
     return window
 
 
+def _gsc_window(scope: Scope) -> dict:
+    """Search Console's side of a page, in the same shape: the shared period (seo/metrics/period.py), so a page's clicks
+    are the ones Today, Overview and the Pages list give. No earlier page data stored: no comparison, never a made-up gain."""
+    from seo.metrics import period
+
+    gsc, window = period.search_scope(scope)
+    compared = period.rows_compared(gsc, "page")
+    return {"a": gsc.start, "b": gsc.end, "to": gsc.end, "trimmed": gsc.end < scope.end, "compare": compared,
+            "ca": gsc.compare_start if compared else _NO_DAY, "cb": gsc.compare_end if compared else _NO_DAY, "window": window}
+
+
+def search_args(args) -> dict:
+    """The shared range a screen sent beside its dates (UI.range.days adds it), for the Search Console side of the answer."""
+    return {key: args.get(key) for key in ("range", "compare", "from", "to") if args.get(key)} if args and args.get("range") else {}
+
+
 def _window_words(window: dict) -> dict:
     return {
         "from": window["a"].isoformat(), "to": window["to"].isoformat(), "trimmed": window["trimmed"],
@@ -762,7 +781,7 @@ def page_detail(scope: Scope, path, host=None) -> dict:
     site_id = ids[0]
     one = _copy(scope, [site_id])
     wanted = _path(raw)
-    ga4w, gscw = _page_window(one, "ga4_page_daily"), _page_window(one, "gsc_page")
+    ga4w, gscw = _page_window(one, "ga4_page_daily"), _gsc_window(one)
 
     def both(window: dict) -> dict:
         return {"ca": window["ca"], "cb": window["cb"]}

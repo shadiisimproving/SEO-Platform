@@ -5,7 +5,7 @@ Content screen (metrics.service._path). Tasks and notes are counted here too, so
 from __future__ import annotations
 
 import json
-from datetime import date, timedelta
+from datetime import date
 from urllib.parse import urlsplit
 
 from sqlalchemy import Engine, text
@@ -14,6 +14,7 @@ from seo.competitors import pages as page_store
 from seo.competitors import pairs
 from seo.competitors.keywords import _iso, require_own
 from seo.core.errors import Refused
+from seo.metrics import period
 from seo.metrics import service as metrics
 from seo.metrics.service import _path
 from seo.serp import rankings
@@ -97,10 +98,13 @@ def listing(scope: metrics.Scope) -> dict:
                 row = row_for(site, _path(page["url"]))
                 row["read"] = True
                 row["title"] = row["title"] or (page["title"] or "")
-        if scope.compare_start and scope.compare_end:
+        # The earlier period of the shared rule, and only when the page table itself reaches back that far: a page table that
+        # starts later would make every page look like a gain.
+        window = content["gsc_window"]
+        if window.get("compare_from") and (window.get("rows_compare") or {}).get("page"):
             for item in scope.fetch(
                 "SELECT site_id, MAX(page) page, SUM(clicks) clicks FROM gsc_page WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY site_id, page_hash",
-                scope.compare_start, scope.compare_end,
+                date.fromisoformat(window["compare_from"]), date.fromisoformat(window["compare_to"]),
             ):
                 key = (item["site_id"], _path(item["page"]))
                 if key in rows:
@@ -118,7 +122,7 @@ def listing(scope: metrics.Scope) -> dict:
             "pages": len(listed), "with_clicks": sum(1 for r in listed if r["clicks"]),
             "not_indexed": sum(1 for r in listed if r["indexed"] is False), "open_tasks": sum(1 for r in listed if r["tasks_open"]),
         },
-        "gsc": content["gsc"], "ga4": content["ga4"],
+        "gsc": content["gsc"], "ga4": content["ga4"], "gsc_window": content["gsc_window"],
     }
 
 
@@ -185,10 +189,11 @@ def profile(engine: Engine, site_id: int, page: str) -> dict:
                 listed = _load(r["pages"], [])
                 if any(isinstance(u, str) and _same_site(u, host) and _path(u) == path for u in listed):
                     broken.append({"category": r["category"], "target": r["target_url"], "status": r["status_code"], "reason": r["reason"]})
-        since = date.today() - timedelta(days=28)
+        # The shared 28 days (seo/metrics/period.py): ending on Google's last final day, as Today and Overview.
+        _scope, window = period.for_site(engine, site_id, 28)
         gsc = conn.execute(text(
-            "SELECT page, SUM(clicks) c, SUM(impressions) i, SUM(position * impressions) w FROM gsc_page WHERE site_id = :s AND day >= :d GROUP BY page_hash, page"
-        ), {"s": site_id, "d": since}).mappings().all()
+            "SELECT page, SUM(clicks) c, SUM(impressions) i, SUM(position * impressions) w FROM gsc_page WHERE site_id = :s AND day BETWEEN :a AND :b GROUP BY page_hash, page"
+        ), {"s": site_id, "a": window["from"], "b": window["to"]}).mappings().all()
         clicks = impressions = 0
         weight = 0.0
         for r in gsc:
@@ -208,7 +213,7 @@ def profile(engine: Engine, site_id: int, page: str) -> dict:
         ranked.append({"keyword_id": row["keyword_id"], "keyword": row["keyword"], "country": row["country"], "engines": engines, "impressions": row.get("impressions")})
     return {
         "site_id": site_id, "host": host, "path": path, "url": url, "title": (read or {}).get("title", ""),
-        "google_28d": {"clicks": clicks, "impressions": impressions, "position": round(weight / impressions, 1) if impressions else None},
+        "google_28d": {"clicks": clicks, "impressions": impressions, "position": round(weight / impressions, 1) if impressions else None, "from": window["from"], "to": window["to"]},
         "read": read, "edits": edits, "rankings": ranked, "backlinks": links, "linked": linked,
         "technical": {
             "inspection": inspection, "speed": speed, "health": health, "health_at": _iso(audit["created_at"]) if audit else None,

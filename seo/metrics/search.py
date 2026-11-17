@@ -16,7 +16,6 @@ import re
 import statistics
 import time
 import unicodedata
-from calendar import monthrange
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import Engine, bindparam, text
@@ -25,17 +24,14 @@ from seo.accounts import access
 from seo.collectors import common, gsc
 from seo.collectors.http import SourceError
 from seo.core.errors import NotFound, Refused
-from seo.metrics import countries
-from seo.metrics.service import Scope, _sources_state, parse_day
+from seo.metrics import countries, period
+from seo.metrics.service import Scope, _sources_state
 from seo.serp import store
 from seo.sources import credentials
 
-RANGES = {"24h": ("hours", 24), "7d": ("days", 7), "28d": ("days", 28), "3m": ("months", 3), "6m": ("months", 6), "12m": ("months", 12), "16m": ("months", 16)}
-DEFAULT_RANGE = "28d"
-COMPARES = ("prev", "yoy", "none")
-YOY_RULE = "calendar"  # same dates a year earlier. To be confirmed on a real Search Console screen (plan, Step 0).
+RANGES, DEFAULT_RANGE, COMPARES, WEEKLY_AFTER_DAYS = period.RANGES, period.DEFAULT_RANGE, period.COMPARES, period.WEEKLY_AFTER_DAYS
+YOY_DAYS = period.YOY_DAYS  # "vs last year" is 52 weeks back, the same weekdays (it was calendar dates, while the browser showed 364 days)
 LIVE_SECONDS = 600
-WEEKLY_AFTER_DAYS = 92
 STEADY_PERCENT, STEADY_CLICKS = 10, 20
 SMALL_CLICKS, SMALL_IMPRESSIONS = 3, 50  # New and Lost leave out rows below both
 ALMOST_BAND, ALMOST_MIN_IMPRESSIONS = (11, 20), 20
@@ -58,108 +54,9 @@ _live_cache: dict = {}
 # ---- Ranges --------------------------------------------------------------------------------------
 
 
-def _months_back(end: date, months: int) -> date:
-    """Search Console's "Last 3 months" ending 7 Nov starts 8 Aug: calendar months back, then the next day."""
-    year, month = divmod(end.year * 12 + end.month - 1 - months, 12)
-    return date(year, month + 1, min(end.day, monthrange(year, month + 1)[1])) + timedelta(days=1)
-
-
-def _year_before(day: date) -> date:
-    return day.replace(year=day.year - 1) if not (day.month == 2 and day.day == 29) else date(day.year - 1, 2, 28)
-
-
-def _newest(scope: Scope) -> tuple[date, date | None]:
-    """The newest day Google has for these sites, fresh or final, and the first day that isn't final yet."""
-    row = scope.fetch("SELECT MAX(COALESCE(fresh_through, data_through)) newest, MIN(fresh_from) fresh FROM site_sources WHERE site_id IN :sites AND source = 'gsc' AND NOT not_used")
-    newest = row[0]["newest"] if row else None
-    # Daily totals come in one call for every day, so they can be a step ahead of the day-by-day tables' data_through.
-    found = scope.fetch("SELECT MAX(day) d FROM gsc_daily WHERE site_id IN :sites")
-    stored = found[0]["d"] if found and found[0]["d"] else None
-    newest = max(day for day in (newest, stored) if day) if (newest or stored) else common.google_today(scope.engine) - timedelta(days=3)
-    return newest, (row[0]["fresh"] if row else None)
-
-
-def final_day(newest: date, fresh_from: date | None) -> date:
-    """The last final day: the day before the first one Google calls not final, never past the newest day it has."""
-    return min(newest, fresh_from - timedelta(days=1)) if fresh_from else newest
-
-
-def _history_from(scope: Scope) -> date:
-    """The first day stored for every site asked about (the latest of their first days). Before it, a period can't be
-    compared fairly: it would be part empty. Search Console keeps 16 months, so that's the floor."""
-    row = scope.fetch("SELECT MAX(f) d FROM (SELECT MIN(day) f FROM gsc_daily WHERE site_id IN :sites GROUP BY site_id) firsts")
-    found = row[0]["d"] if row else None
-    return found or common.google_today(scope.engine) - timedelta(days=gsc.HISTORY_DAYS - 1)
-
-
-def resolve(scope: Scope, range_key: str | None, compare: str | None, start=None, end=None) -> dict:
-    """One definition of a period for every Search Console number in the app (Overview, Today, Insights' links).
-
-    Every preset ends on the last FINAL day, so its total and its sentence never count the low, still-moving fresh days
-    (code review F9), and Today's number for a period is the one Overview opens with. The fresh days after it are only
-    drawn, as not final (`fresh_to`). A custom period that runs into them is cut back to the last final day, unless it is
-    all fresh days. A comparison whose earlier period isn't stored in full is left out, with the reason (F8).
-    """
-    range_key = range_key or DEFAULT_RANGE
-    compare = compare or "prev"
-    if compare not in COMPARES:
-        raise Refused("That comparison isn't one Search Console offers.")
-    newest, fresh_from = _newest(scope)
-    final = final_day(newest, fresh_from)
-    hourly = False
-    if range_key == "custom":
-        first, last = parse_day(start, "start date"), parse_day(end, "end date")
-        if first > last:
-            raise Refused("The start date is after the end date.")
-        if (last - first).days > 16 * 31:
-            raise Refused("Search Console keeps 16 months.")
-        if first <= final < last:
-            last = final
-    elif range_key == "tm":
-        first, last = final.replace(day=1), final
-    elif range_key == "lm":
-        last = final.replace(day=1) - timedelta(days=1)
-        first = last.replace(day=1)
-    elif range_key in RANGES:
-        unit, size = RANGES[range_key]
-        last = final
-        if unit == "hours":
-            hourly, last, first = True, newest, newest - timedelta(days=1)
-        elif unit == "days":
-            first = final - timedelta(days=size - 1)
-        else:
-            first = _months_back(final, size)
-    else:
-        raise Refused("That range isn't one Search Console offers.")
-    length = (last - first).days + 1
-    if compare == "prev":
-        compare_to = first - timedelta(days=1)
-        compare_from = compare_to - timedelta(days=length - 1)
-    elif compare == "yoy":
-        compare_from, compare_to = _year_before(first), _year_before(last)
-    else:
-        compare_from = compare_to = None
-    unavailable = None
-    if compare_from and not hourly and compare_from < _history_from(scope):
-        compare_from = compare_to = None
-        unavailable = "history"
-    return {
-        "range": range_key, "compare": compare, "from": first.isoformat(), "to": last.isoformat(), "hourly": hourly,
-        "compare_from": compare_from.isoformat() if compare_from else None, "compare_to": compare_to.isoformat() if compare_to else None,
-        "compare_unavailable": unavailable, "fresh_from": fresh_from.isoformat() if fresh_from else None, "newest": newest.isoformat(),
-        "final_through": final.isoformat(), "fresh_to": newest.isoformat() if not hourly and last < newest and last == final else None,
-    }
-
-
-def scope_for(engine: Engine, args) -> tuple[Scope, dict]:
-    """The sites asked about and the resolved range, as both the scope and what the screen is told."""
-    today = common.google_today(engine).isoformat()
-    scope = Scope(engine, args.get("site_id"), today, today)
-    window = resolve(scope, args.get("range"), args.get("compare"), args.get("from"), args.get("to"))
-    scope.start, scope.end = date.fromisoformat(window["from"]), date.fromisoformat(window["to"])
-    scope.compare_start = date.fromisoformat(window["compare_from"]) if window["compare_from"] else None
-    scope.compare_end = date.fromisoformat(window["compare_to"]) if window["compare_to"] else None
-    return scope, window
+# One period rule for the whole app lives in seo/metrics/period.py. These names stay for the code that calls them here.
+_months_back, _year_before, _newest, final_day = period.months_back, period.year_before, period.newest, period.final_day
+resolve, scope_for, rows_compared = period.resolve, period.scope_for, period.rows_compared
 
 
 # ---- Talking to Google live ----------------------------------------------------------------------
@@ -232,22 +129,6 @@ def _totals(points: list[dict]) -> dict | None:
     shown = sum(p["impressions"] for p in points)
     weighted = sum(p["position"] * p["impressions"] for p in points if p["position"] is not None)
     return {k: v for k, v in _point("", clicks, shown, weighted if shown else None).items() if k != "day"}
-
-
-def _group(points: list[dict], start: date, end: date, size: int) -> list[dict]:
-    """Weeks counted from the range's first day, so the comparison lines up week for week."""
-    if size == 1:
-        return points
-    out = []
-    by_day = {p["day"]: p for p in points}
-    current = start
-    while current <= end:
-        chunk = [by_day[d.isoformat()] for d in (current + timedelta(days=n) for n in range(size)) if d <= end and d.isoformat() in by_day]
-        if chunk:
-            totals = _totals(chunk)
-            out.append({"day": current.isoformat(), **totals, "days": len(chunk)})
-        current += timedelta(days=size)
-    return out
 
 
 def _hours_window(points: list[dict]) -> tuple[list[dict], list[dict]]:
@@ -442,19 +323,22 @@ def breakdown(scope: Scope, dim: str, show: str = "all", brand: str = "all", fil
         raise Refused("That isn't a choice of rows.")
     if show in ("gaining", "losing", "new", "lost") and not scope.has_compare:
         raise Refused("Pick a comparison to see that.")
+    # One "is there earlier data?" check per table: page and search tables can start later than the daily totals.
+    compared = rows_compared(scope, dim)
+    rows_from = (getattr(scope, "rows_from", None) or {}).get(dim)
     exact = bool(filters and filters.get("q") and filters.get("q_mode") == "exact" and dim in ("query", "page"))
     fresh_included = None
     end = scope.end
     if fresh_to and exact and fresh_to > scope.end:
         end = fresh_to
         fresh_included = {"from": (scope.end + timedelta(days=1)).isoformat(), "to": fresh_to.isoformat()}
-    rows = _rows(scope, dim, scope.start, end, scope.compare_start, scope.compare_end)
+    rows = _rows(scope, dim, scope.start, end, scope.compare_start if compared else None, scope.compare_end if compared else None)
     words = brand_words(scope) if dim == "query" else []
     if dim == "query" and brand in ("brand", "non_brand") and words:
         rows = [r for r in rows if is_brand(r["name"], words) == (brand == "brand")]
     if dim in ("query", "page"):
         rows = _filtered(rows, filters)
-    counts = {name: sum(1 for r in rows if _shows(r, name)) for name in SHOWS if scope.has_compare or name not in ("gaining", "losing", "new", "lost")}
+    counts = {name: sum(1 for r in rows if _shows(r, name)) for name in SHOWS if compared or name not in ("gaining", "losing", "new", "lost")}
     hidden = sum(1 for r in rows if show in ("new", "lost") and _kind(r) == show and _small(r, before=(show == "lost")))
     picked = [r for r in rows if _shows(r, show)]
     if show == "gaining":
@@ -470,7 +354,8 @@ def breakdown(scope: Scope, dim: str, show: str = "all", brand: str = "all", fil
         if dim == "query":
             r["tracked"] = _match(r["name"]) in marks
             r["brand"] = is_brand(r["name"], words) if words else None
-    return {"dim": dim, "show": show, "brand": brand, "has_brand": bool(words), "counts": counts, "small_hidden": hidden, "total": len(picked), "rows": picked[:limit], "fresh_included": fresh_included}
+    return {"dim": dim, "show": show, "brand": brand, "has_brand": bool(words), "counts": counts, "small_hidden": hidden, "total": len(picked), "rows": picked[:limit], "fresh_included": fresh_included,
+            "compare_unavailable": None if compared or not scope.has_compare else "rows_history", "rows_from": rows_from}
 
 
 # ---- Opportunities -------------------------------------------------------------------------------
@@ -772,6 +657,8 @@ def _answer(totals: dict | None, before: dict | None, scope: Scope, drivers_too:
         return {"kind": "steady", "clicks": totals["clicks"], "before": before["clicks"]}
     drivers = []
     for dim in ("page", "query") if drivers_too else ():
+        if not rows_compared(scope, dim):
+            continue  # this table doesn't reach back to the earlier period: every row would look like a gain
         rows = _rows(scope, dim, scope.start, scope.end, scope.compare_start, scope.compare_end)
         moves = sorted(rows, key=lambda r: (r["clicks"] - r["clicks_before"]) * (1 if change > 0 else -1), reverse=True)
         drivers += [{"dim": dim, "name": r["name"], "change": r["clicks"] - r["clicks_before"]} for r in moves[:2] if (r["clicks"] - r["clicks_before"]) * change > 0]
@@ -819,10 +706,10 @@ def overview(scope: Scope, window: dict, fresh: bool = False) -> dict:
         now_points = [p for p in now_points if p["day"] <= last_counted]
     totals, before = _totals(now_points), _totals(before_points) if before_points is not None else None
     size = 7 if not hourly and (scope.end - scope.start).days + 1 > WEEKLY_AFTER_DAYS else 1
-    series = _group(now_points, scope.start, scope.end, size) if not hourly else now_points
+    series, left_out = period.weeks(now_points, scope.start, scope.end, size, _totals) if not hourly else (now_points, None)
     compare_series = None
     if before_points is not None:
-        compare_series = _group(before_points, scope.compare_start, scope.compare_end, size) if not hourly else before_points
+        compare_series = period.weeks(before_points, scope.compare_start, scope.compare_end, size, _totals)[0] if not hourly else before_points
     fresh_from = window["fresh_from"]
     for point in series:  # a week is "not final" when any of its days is
         last_day = min(date.fromisoformat(point["day"][:10]) + timedelta(days=size - 1), scope.end).isoformat()
@@ -834,8 +721,8 @@ def overview(scope: Scope, window: dict, fresh: bool = False) -> dict:
         **status, **window, "origin": origin, "live_error": live_error, "hourly": hourly,
         "granularity": "hour" if hourly else "week" if size == 7 else "day",
         "totals": totals, "before": before if scope.has_compare or (hourly and before) else None,
-        "series": series, "compare_series": compare_series,
-        "queries": _counts(scope, scope.start, scope.end), "queries_before": _counts(scope, scope.compare_start, scope.compare_end),
+        "series": series, "compare_series": compare_series, "week_left_out": left_out,
+        "queries": _counts(scope, scope.start, scope.end), "queries_before": _counts(scope, scope.compare_start, scope.compare_end) if rows_compared(scope, "query") else None,
         # Hours have no query or page split, so the sentence for 24 hours names no drivers.
         "answer": _answer(totals, before, scope, drivers_too=False) if hourly else _answer(totals, before if scope.has_compare else None, scope),
         "markers": markers(scope), "verify": last_verdict(scope), "has_brand": bool(brand_words(scope)),

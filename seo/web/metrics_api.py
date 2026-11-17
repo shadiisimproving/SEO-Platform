@@ -27,7 +27,9 @@ def _body() -> dict:
 
 def _scope() -> service.Scope:
     args = request.args
-    return service.Scope(_engine(), args.get("site_id"), args.get("from"), args.get("to"), args.get("compare_from"), args.get("compare_to"))
+    scope = service.Scope(_engine(), args.get("site_id"), args.get("from"), args.get("to"), args.get("compare_from"), args.get("compare_to"))
+    scope.search_args = service.search_args(args)  # the Search Console side ends on Google's last final day (seo/metrics/period.py)
+    return scope
 
 
 def _include(*allowed: str) -> set[str]:

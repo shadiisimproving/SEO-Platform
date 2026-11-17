@@ -69,7 +69,10 @@ def breakdown(ctx: Ctx) -> Result:
             "now": now, "before": before, "change": change, "percent": percent, "steady": steady, "main": main,
             "parts": {name: round(value) for name, value in parts.items()}, "movers": top, "pages": pages, "explains": explains,
             "from": ctx.start.isoformat(), "to": ctx.end.isoformat(), "before_from": ctx.before_start.isoformat(), "before_to": ctx.before_end.isoformat(),
-            "days": ctx.days_in(ctx.start, ctx.end), "curve": "own" if ctx.curve.own else "generic",
+            # Totals count every day (as Today and Overview); a day Google's row limit cut short is only left out of the
+            # per-search split, with its twin, and what that leaves lands in "hidden".
+            "days": (ctx.end - ctx.start).days + 1, "split_left_out": [d.isoformat() for d in ctx.skip if ctx.before_start <= d <= ctx.end],
+            "curve": "own" if ctx.curve.own else "generic",
         },
     ).settle())
     return out

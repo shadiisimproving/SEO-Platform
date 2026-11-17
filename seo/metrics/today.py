@@ -597,7 +597,7 @@ def _results(strip: list[dict], clicks: dict, sources_state: dict) -> dict:
     states = {row["leads_state"] for row in strip}
     known = [row for row in strip if row["clicks"] is not None]
     ga4_window = next((row.get("_ga4") for row in strip if row.get("_ga4")), None)
-    window = {**{k: clicks["window"][k] for k in ("range", "compare", "from", "to", "compare_from", "compare_to", "compare_unavailable", "final_through")}, "ga4": ga4_window}
+    window = {**{k: clicks["window"][k] for k in ("range", "compare", "from", "to", "compare_from", "compare_to", "compare_unavailable", "history_from", "final_through")}, "ga4": ga4_window}
     return {
         "leads": {**_total(strip, "leads", absolute=True), "points": _points(strip, "leads", length), "state": "ok" if "ok" in states else "not_set_up" if "not_set_up" in states else "no_ga4", "source": sources_state["ga4"]},
         "visits": {**_total(strip, "visits"), "points": _points(strip, "visits", length), "source": sources_state["ga4"]},

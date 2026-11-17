@@ -195,6 +195,7 @@ def test_a_page_panel_lists_the_searches_that_bring_it(engine, site):
     _search(engine, site, D2, "spain visa", "https://mine.example/visa/", 2, 40, 8)
     _search(engine, site, D1, "contact us", "https://mine.example/contact/", 9, 90, 1)  # another page
     _search(engine, site, B1, "visa seville", "https://mine.example/visa/", 4, 40, 4)  # the period before
+    _shown(engine, site, B1, "https://mine.example/visa/", 4, 40, 4)  # the page table reaches back to it too
     queries = service.page_detail(_scope(engine), "https://mine.example/visa/")["queries"]
     assert [(q["query"], q["clicks"], q["impressions"]) for q in queries] == [("visa seville", 6, 60), ("spain visa", 2, 40)]
     assert queries[0]["position"] == 4.0 and queries[0]["clicks_before"] == 4 and queries[0]["change"] == 2

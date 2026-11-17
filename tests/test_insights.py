@@ -129,7 +129,10 @@ def test_fresh_days_are_never_read_and_a_partial_day_takes_its_twin_out(engine, 
     assert ctx.end == END
     assert set(ctx.skip) == {END - timedelta(days=2), END - timedelta(days=30)}
     found = movement.breakdown(ctx).findings[0]
-    assert found.evidence["now"]["clicks"] == found.evidence["before"]["clicks"] == 270  # 27 days each: the partial one and its twin left out
+    # The site's totals count every day, as Today and Overview do (one period rule); only the per-search split leaves the
+    # row-limited day and its twin out, and says which.
+    assert found.evidence["now"]["clicks"] == found.evidence["before"]["clicks"] == 280
+    assert found.evidence["days"] == 28 and found.evidence["split_left_out"] == sorted(d.isoformat() for d in ctx.skip)
     assert not movement.odd_days(ctx).findings
 
 
