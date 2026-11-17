@@ -55,17 +55,35 @@ def final_day(last: date, fresh_from: date | None) -> date:
     return min(last, fresh_from - timedelta(days=1)) if fresh_from else last
 
 
+# The coverage line that says a day-by-day table's day was read. Countries and devices have their own: the general read
+# had marked 16 months as read before their tables existed, so its line would date their history 16 months back while
+# they held 13 days (expert review 2026-11-17, 3.1).
+COVERAGE = {"gsc_query": "gsc", "gsc_page": "gsc", "gsc_country": gsc.DIMS_SOURCE, "gsc_device": gsc.DIMS_SOURCE}
+
+
 def _first_day(scope: Scope, table: str) -> date | None:
     """The first day stored for every site asked about that has any (the latest of their first days): before it, a
-    period would be part empty for one of them. None: nothing stored. A day-by-day table also counts the days its read
-    covered (coverage), so a quiet day with no rows at all doesn't move its start."""
+    period would be part empty for one of them. None: nothing stored.
+
+    A day-by-day table also counts the days its own read covered (its coverage line), so a quiet day with no rows at all
+    doesn't move its start. Never a covered day before the site's first daily total: Google had nothing then, so a read
+    of those days says nothing about the table (site 2: read from 2025-07-19, data from 2026-07-15)."""
     if table == "gsc_daily":
         sql = "SELECT MAX(f) d FROM (SELECT MIN(day) f FROM gsc_daily WHERE site_id IN :sites GROUP BY site_id) firsts"
-    else:
-        sql = (f"SELECT MAX(f) d FROM (SELECT site_id, MIN(f) f FROM (SELECT site_id, MIN(day) f FROM {table} WHERE site_id IN :sites GROUP BY site_id "
-               "UNION ALL SELECT site_id, MIN(day) f FROM coverage WHERE site_id IN :sites AND source = 'gsc' GROUP BY site_id) starts GROUP BY site_id) firsts")
-    row = scope.fetch(sql)
-    return row[0]["d"] if row else None
+        row = scope.fetch(sql)
+        return row[0]["d"] if row else None
+    daily = {r["site_id"]: r["f"] for r in scope.fetch("SELECT site_id, MIN(day) f FROM gsc_daily WHERE site_id IN :sites GROUP BY site_id")}
+    firsts: dict[int, date] = {}
+    sources = (
+        (f"SELECT site_id, MIN(day) f FROM {table} WHERE site_id IN :sites GROUP BY site_id", {}),
+        ("SELECT site_id, MIN(day) f FROM coverage WHERE site_id IN :sites AND source = :c GROUP BY site_id", {"c": COVERAGE[table]}),
+    )
+    for sql, values in sources:
+        for r in scope.fetch(sql, **values):
+            if r["f"] is not None:
+                firsts[r["site_id"]] = min(firsts.get(r["site_id"], r["f"]), r["f"])
+    found = [max(day, daily[site]) if daily.get(site) else day for site, day in firsts.items()]
+    return max(found) if found else None
 
 
 def history(scope: Scope) -> dict[str, date | None]:

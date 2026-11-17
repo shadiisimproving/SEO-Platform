@@ -34,6 +34,14 @@ MAX_COUNTRIES = 3
 AUTO_COUNTRIES, AUTO_SECOND_SHARE = 2, 0.25  # none chosen: the top country by clicks, and the second if it has a quarter of its clicks
 AUTO_DAYS = 28
 
+# Countries and devices have their own line in coverage. Their tables came on 2026-11-09, after the general read had
+# already marked 16 months as read, so they only held the days read since (expert review 2026-11-17, 3.1). The general
+# read marks the days it reads under both names; the days it never read for countries and devices are filled in by a
+# backfill: newest first, a batch each hourly run, so it never takes the run's whole share and starts again where it was.
+# Not "gsc_country": that name is the queries-per-country report's (COUNTRY_SOURCE above).
+DIMS_SOURCE = "gsc_dims"
+DIMS_DAYS_PER_RUN = 60  # two calls a day (country, device): 120 calls a run, against Google's 1,200 a minute per site
+
 
 def _query(token: str, prop: str, start: date, end: date, dimensions: list[str], limit: int, data_state: str = "all", extra: dict | None = None) -> dict:
     reply = http.request(
@@ -100,6 +108,34 @@ def _one_day(engine: Engine, site_id: int, token: str, prop: str, day: date) -> 
                 conn.execute(text(sql), rows)
         count = sum(len(rows) for rows in reports.values())
         common.save_coverage(conn, site_id, "gsc", day, count, "partial" if full else "ok", note=f"Google's limit of {ROW_LIMIT} rows a report was reached for this day." if full else None)
+        common.save_coverage(conn, site_id, DIMS_SOURCE, day, len(reports["country"]) + len(reports["device"]))
+
+
+def _dims_day(engine: Engine, site_id: int, token: str, prop: str, day: date) -> None:
+    """One day's countries and devices alone, replaced whole: the backfill of the days the general read had already done."""
+    reports = {dim: _query(token, prop, day, day, [dim], ROW_LIMIT).get("rows", []) for dim in ("country", "device")}
+    with engine.begin() as conn:
+        for dim in reports:
+            conn.execute(text(f"DELETE FROM gsc_{dim} WHERE site_id = :s AND day = :d"), {"s": site_id, "d": day})
+            rows = _rows(site_id, day, reports[dim], ("k",), None)
+            if rows:
+                conn.execute(text(f"INSERT INTO gsc_{dim} (site_id, day, {dim}, clicks, impressions, position) VALUES (:s, :d, :k, :c, :i, :p)"), rows)
+        common.save_coverage(conn, site_id, DIMS_SOURCE, day, sum(len(rows) for rows in reports.values()))
+
+
+def _dims_backfill(engine: Engine, site_id: int, token: str, prop: str, newest: date, oldest: date, deadline: float) -> None:
+    """Countries and devices for the days never read for them, newest first, at most DIMS_DAYS_PER_RUN a run. Never before
+    Google's first day for the site: there is nothing to read there. It asks coverage what's missing, so a stopped run goes
+    on where it was and a finished one reads nothing (recent days are the general read's)."""
+    with engine.connect() as conn:
+        first = conn.execute(text("SELECT MIN(day) FROM gsc_daily WHERE site_id = :s"), {"s": site_id}).scalar()
+    if first is None:
+        return
+    days = common.pending_days(engine, site_id, DIMS_SOURCE, newest, max(oldest, first), 0)
+    for day in days[:DIMS_DAYS_PER_RUN]:
+        if time.monotonic() >= deadline:
+            return  # the next hourly run carries on: a backfill never asks the lane to run again at once
+        _dims_day(engine, site_id, token, prop, day)
 
 
 def _prune(engine: Engine, site_id: int, oldest: date) -> None:
@@ -107,7 +143,7 @@ def _prune(engine: Engine, site_id: int, oldest: date) -> None:
     with engine.begin() as conn:
         for table in ("gsc_daily", *DAY_TABLES):
             conn.execute(text(f"DELETE FROM {table} WHERE site_id = :s AND day < :o"), {"s": site_id, "o": oldest})
-        conn.execute(text("DELETE FROM coverage WHERE site_id = :s AND source = 'gsc' AND day < :o"), {"s": site_id, "o": oldest})
+        conn.execute(text("DELETE FROM coverage WHERE site_id = :s AND source IN ('gsc', :g) AND day < :o"), {"s": site_id, "g": DIMS_SOURCE, "o": oldest})
 
 
 def _save_fresh(engine: Engine, site_id: int, fresh_from: date | None, fresh_through: date | None) -> None:
@@ -219,4 +255,7 @@ def collect(engine: Engine, site_id: int, budget_seconds: float = 40) -> bool:
                 _save_fresh(engine, site_id, hot_from, newest if hot_from else None)
         common.succeeded(engine, site_id, "gsc", day if day <= final else None)
     common.succeeded(engine, site_id, "gsc", final)
-    return _countries(engine, site_id, token, src["property"], newest, hot_from, reread, deadline)
+    if not _countries(engine, site_id, token, src["property"], newest, hot_from, reread, deadline):
+        return False
+    _dims_backfill(engine, site_id, token, src["property"], newest, oldest, deadline)
+    return True

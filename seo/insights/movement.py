@@ -347,8 +347,14 @@ def segments(ctx: Ctx) -> Result:
     if not ctx.has_before:
         out.needs["segment"] = "history"
         return out
-    out.ran.add("segment")
+    out.ran.add("segment")  # it ran, so a finding made before a table reached back goes away
     for dim, (table, column) in SEGMENTS.items():
+        # One "is there earlier data?" check per table: countries and devices can start long after pages and searches
+        # (their tables came on 2026-11-09). Before then, every country would be "+85 (0 before)".
+        starts = ctx.rows_from.get(dim)
+        if not starts or date.fromisoformat(starts) > ctx.before_start:
+            out.needs[f"segment_{dim}"] = starts or "history"
+            continue
         rows = ctx.fetch(
             f"SELECT {column} k, SUM(IF(day BETWEEN :a AND :b, clicks, 0)) c, SUM(IF(day BETWEEN :ca AND :cb, clicks, 0)) pc, "
             f"SUM(IF(day BETWEEN :a AND :b, impressions, 0)) i, SUM(IF(day BETWEEN :ca AND :cb, impressions, 0)) pi "
