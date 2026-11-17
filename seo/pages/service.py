@@ -16,7 +16,7 @@ from seo.competitors.keywords import _iso, require_own
 from seo.core.errors import Refused
 from seo.metrics import period
 from seo.metrics import service as metrics
-from seo.metrics.service import _path
+from seo.metrics.service import Spelling, _path, spelled_path
 from seo.serp import rankings
 
 _MAX_ROWS = 5000
@@ -81,16 +81,21 @@ def listing(scope: metrics.Scope) -> dict:
         def row_for(site: int, path: str) -> dict:
             return rows.setdefault((site, path), {
                 "site_id": site, "host": sites[site], "path": path, "title": "", "clicks": None, "impressions": None,
-                "position": None, "sessions": None, "leads": None, "ai": None, "clicks_before": None, "read": False,
+                "position": None, "sessions": None, "leads": None, "ai": None, "clicks_before": None, "change": None, "read": False,
             })
 
+        # Shown as Google or the site spells it (content() already picked Search Console's, else Google Analytics'); the
+        # page reader's spelling comes before Google Analytics'. Rows are still matched on _path().
+        spelling = Spelling()
         for item in content["pages"]:
             site = site_of_host.get(item["host"])
             if site is None or item.get("unknown"):
                 continue
-            row = row_for(site, item["path"])
+            key = _path(item.get("key") or item["path"])
+            row = row_for(site, key)
             for name in ("clicks", "impressions", "position", "sessions", "leads", "ai"):
                 row[name] = item[name]
+            spelling.offer((site, key), item["path"], 0 if item["clicks"] is not None else 2)
         for site, host in sites.items():
             for page in conn.execute(text(
                 "SELECT p.url, p.title FROM pages p JOIN domains d ON d.id = p.domain_id WHERE d.host IN (:h, :w) AND p.content_hash IS NOT NULL LIMIT 5000"
@@ -98,21 +103,33 @@ def listing(scope: metrics.Scope) -> dict:
                 row = row_for(site, _path(page["url"]))
                 row["read"] = True
                 row["title"] = row["title"] or (page["title"] or "")
-        # The earlier period of the shared rule, and only when the page table itself reaches back that far: a page table that
-        # starts later would make every page look like a gain.
+                spelling.offer((site, _path(page["url"])), page["url"], 1)
+        # The earlier period of the shared rule, per site, only where Search Console's page table covers it from its first
+        # day: a page table that starts later would turn missing history into gains (expert review 2026-11-17). There, a
+        # page with no row before had no clicks before (0); elsewhere nothing is compared (None).
         window = content["gsc_window"]
+        compared: set[int] = set()
         if window.get("compare_from") and (window.get("rows_compare") or {}).get("page"):
+            start = date.fromisoformat(window["compare_from"])
+            compared = {r["site_id"] for r in scope.fetch("SELECT site_id, MIN(day) first FROM gsc_page WHERE site_id IN :sites GROUP BY site_id") if r["first"] and r["first"] <= start}
             for item in scope.fetch(
                 "SELECT site_id, MAX(page) page, SUM(clicks) clicks FROM gsc_page WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY site_id, page_hash",
                 date.fromisoformat(window["compare_from"]), date.fromisoformat(window["compare_to"]),
             ):
                 key = (item["site_id"], _path(item["page"]))
-                if key in rows:
+                if key in rows and item["site_id"] in compared:
                     rows[key]["clicks_before"] = (rows[key]["clicks_before"] or 0) + int(item["clicks"] or 0)
+        for (site, _), row in rows.items():
+            if site in compared:
+                row["clicks_before"] = row["clicks_before"] or 0
+                row["change"] = (row["clicks"] or 0) - row["clicks_before"]
+            else:
+                row["change"] = None
         counts = _counts(conn, sites)
     listed = []
     for key, row in rows.items():
         row.update(counts.get(key, {"tasks_open": 0, "notes": 0, "backlinks": 0, "indexed": None}))
+        row["path"] = spelling.get(key, row["path"])
         row["url"] = f"https://{row['host']}{row['path']}"
         listed.append(row)
     listed.sort(key=lambda r: (-(r["clicks"] or 0), -(r["sessions"] or 0), r["host"], r["path"]))
@@ -121,7 +138,9 @@ def listing(scope: metrics.Scope) -> dict:
         "summary": {
             "pages": len(listed), "with_clicks": sum(1 for r in listed if r["clicks"]),
             "not_indexed": sum(1 for r in listed if r["indexed"] is False), "open_tasks": sum(1 for r in listed if r["tasks_open"]),
+            "losing": sum(1 for r in listed if (r["change"] or 0) < 0),
         },
+        "compared": bool(compared),  # False: no Search Console page data for the whole period before, so no Change
         "gsc": content["gsc"], "ga4": content["ga4"], "gsc_window": content["gsc_window"],
     }
 
@@ -148,8 +167,11 @@ def profile(engine: Engine, site_id: int, page: str) -> dict:
         if not _same_site(page, host):
             raise Refused("That page isn't on this site.")
         path = _path(page.strip())
-        url = f"https://{host}{path}"
         read, page_id = _read(conn, host, path)
+        spelling = Spelling()  # shown as Search Console has it, else as the page reader found it, else as asked
+        spelling.offer(path, page.strip(), 3)
+        if read and read.get("url"):
+            spelling.offer(path, read["url"], 1)
         edits = []
         if page_id is not None:
             edits = [{"kind": r["kind"], "before": (r["before_value"] or "")[:300], "after": (r["after_value"] or "")[:300], "at": _iso(r["detected_at"]), "words": r["changed_words"]}
@@ -172,9 +194,10 @@ def profile(engine: Engine, site_id: int, page: str) -> dict:
             if _path(r["url"]) == path
         ), None)
         speed: dict[str, dict] = {}
-        for r in conn.execute(text("SELECT url, strategy, performance, lcp_ms, inp_ms, cls, field_data, ran_at FROM cwv_runs WHERE site_id = :s ORDER BY id DESC LIMIT 3000"), {"s": site_id}).mappings():
+        for r in conn.execute(text("SELECT url, strategy, performance, lcp_ms, inp_ms, cls, field_data, field_origin, ran_at FROM cwv_runs WHERE site_id = :s ORDER BY id DESC LIMIT 3000"), {"s": site_id}).mappings():
             if r["strategy"] not in speed and _same_site(r["url"], host) and _path(r["url"]) == path:
-                speed[r["strategy"]] = {"score": r["performance"], "lcp_ms": r["lcp_ms"], "inp_ms": r["inp_ms"], "cls": r["cls"], "field": bool(r["field_data"]), "at": _iso(r["ran_at"])}
+                run = metrics.speed_run(r)
+                speed[r["strategy"]] = {"score": run["performance"], "lcp_ms": run["lcp_ms"], "inp_ms": run["inp_ms"], "cls": run["cls"], "field": run["field"], "passed": run["passed"], "at": _iso(r["ran_at"])}
         health = []
         audit = conn.execute(text("SELECT id, created_at FROM health_audits WHERE site_id = :s AND status = 'complete' ORDER BY id DESC LIMIT 1"), {"s": site_id}).mappings().first()
         if audit:
@@ -198,6 +221,7 @@ def profile(engine: Engine, site_id: int, page: str) -> dict:
         weight = 0.0
         for r in gsc:
             if _same_site(r["page"], host) and _path(r["page"]) == path:
+                spelling.offer(path, r["page"], 0, int(r["c"] or 0) * 1_000_000 + int(r["i"] or 0))
                 clicks += int(r["c"] or 0)
                 impressions += int(r["i"] or 0)
                 weight += float(r["w"] or 0)
@@ -211,8 +235,9 @@ def profile(engine: Engine, site_id: int, page: str) -> dict:
             if main.get("p") is not None or view.get("own") is not None:
                 engines[name] = {"position": main.get("p"), "own": round(view["own"], 1) if view.get("own") is not None else None, "change": view.get("change")}
         ranked.append({"keyword_id": row["keyword_id"], "keyword": row["keyword"], "country": row["country"], "engines": engines, "impressions": row.get("impressions")})
+    shown = spelling.get(path, path)
     return {
-        "site_id": site_id, "host": host, "path": path, "url": url, "title": (read or {}).get("title", ""),
+        "site_id": site_id, "host": host, "path": shown, "url": f"https://{host}{shown}", "title": (read or {}).get("title", ""),
         "google_28d": {"clicks": clicks, "impressions": impressions, "position": round(weight / impressions, 1) if impressions else None, "from": window["from"], "to": window["to"]},
         "read": read, "edits": edits, "rankings": ranked, "backlinks": links, "linked": linked,
         "technical": {

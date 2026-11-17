@@ -229,12 +229,15 @@ def extract(body: bytes, url: str, charset: str | None = None) -> PageFields:
         title = root.find(".//title")
     page.title = _clean(title.text_content()) if title is not None else ""
     page.lang = _clean(root.get("lang"))[:20]
+    googlebot = ""  # <meta name="googlebot">: a rule for Google alone, kept in extras for the health test
     for meta in root.iterfind(".//meta[@name]"):
         name = (meta.get("name") or "").lower()
         if name == "description" and not page.meta_description:
             page.meta_description = _clean(meta.get("content"))
         elif name == "robots" and not page.robots_meta:
             page.robots_meta = _clean(meta.get("content"))
+        elif name == "googlebot" and not googlebot:
+            googlebot = _clean(meta.get("content"))
     for link in root.iterfind(".//link[@rel]"):
         if "canonical" in (link.get("rel") or "").lower().split():
             page.canonical = _clean(link.get("href"))
@@ -242,6 +245,8 @@ def extract(body: bytes, url: str, charset: str | None = None) -> PageFields:
 
     page.schema_types = _schema_types(root)
     page.extras = _extras(root)
+    if googlebot:
+        page.extras["googlebot"] = googlebot[:255]
     page.internal_links, page.external_links = _count_links(root, url)
     has_app_root = any((el.get("id") or "") in APP_ROOT_IDS for el in root.iter() if isinstance(el.tag, str))
 

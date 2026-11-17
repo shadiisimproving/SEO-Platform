@@ -406,6 +406,8 @@
           { title: "Sources", rows: d.sources, total: d.sources_total, columns: [{ label: "Source", key: "source", html: (r) => withLogo(r.source) }, ...visitsAndLeads, { label: "Change", key: "change", num: true, html: changeCell }] },
           { title: "Mediums", rows: d.mediums, total: d.mediums_total, columns: [{ label: "Medium", key: "medium", html: (r) => `<span dir="auto">${esc(r.medium)}</span>` }, ...visitsAndLeads, { label: "Change", key: "change", num: true, html: changeCell }] },
         ],
+        // AI assistants is AI search's own count, by its rules: the way there (expert review 2026-11-17, #22).
+        actions: key === "AI assistants" ? [{ label: "Open AI search", icon: "sparkles", attrs: { "data-rp-ai": "1" }, onClick: (e, panel) => { panel.close(); UI.go("ai"); } }] : [],
         task: { title: `${t("Look into a channel")}: ${t(key)}`, host: UI.siteHostPicked(), priority: "medium", source: { type: "other", label: t(key), host: UI.siteHostPicked() || undefined, facts: facts(d), link: "#channels", key: `channel|${UI.siteHostPicked() || ""}|${key}` } },
         note: true,
       }),

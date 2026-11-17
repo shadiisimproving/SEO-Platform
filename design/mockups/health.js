@@ -16,7 +16,7 @@
     noindex: "Hidden from search engines", canonical_elsewhere: "Canonical points elsewhere", no_title: "No title",
     duplicate_title: "Duplicate titles", no_h1: "No main heading (H1)", many_h1: "Several main headings",
     no_meta: "No meta description", duplicate_meta: "Duplicate meta descriptions", images_no_alt: "Images missing alt text",
-    almost_no_text: "Almost no text", redirect_chains: "More than 2 redirects", slow_pages: "Slower than 5 seconds",
+    almost_no_text: "Almost no text", redirect_chains: "More than 2 redirects", slow_pages: "Slower than 5 seconds", robots_blocked: "Blocked by robots.txt",
   };
   const SITE_WORDS = {
     start_page_down: "Start page didn't load", start_page_noindex: "Start page hidden from search engines", ssl_expired: "Certificate expired",
@@ -392,6 +392,7 @@
     almost_no_text: "Add useful text, or noindex these pages.",
     redirect_chains: "Link straight to the final address.",
     slow_pages: "Check images and scripts, then hosting.",
+    robots_blocked: "Search engines can't read these. If one should be found, remove its Disallow line in robots.txt. Not scored.",
     start_page_down: "Check the hosting first.",
     start_page_noindex: "Remove its noindex, unless the site should stay hidden.",
     robots_down: "Have robots.txt fixed.",
@@ -881,6 +882,8 @@
     "Almost no text": "Presque pas de texte",
     "More than 2 redirects": "Plus de 2 redirections",
     "Slower than 5 seconds": "Plus de 5 secondes",
+    "Blocked by robots.txt": "Bloquées par robots.txt",
+    "Search engines can't read these. If one should be found, remove its Disallow line in robots.txt. Not scored.": "Les moteurs ne peuvent pas les lire. Si une doit être trouvée, retirez sa ligne Disallow dans robots.txt. Sans effet sur le score.",
     "Start page didn't load": "La page de départ n'a pas chargé",
     "Start page hidden from search engines": "Page de départ cachée aux moteurs de recherche",
     "Certificate expired": "Certificat expiré",

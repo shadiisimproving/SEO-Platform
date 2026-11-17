@@ -100,6 +100,33 @@ def _path(url_or_path: str) -> str:
     return path.rstrip("/") + "/" if path.rstrip("/") else "/"
 
 
+def spelled_path(url_or_path: str) -> str:
+    """A page's address as Google or the site wrote it: no domain, query or fragment, but its trailing slash kept or left
+    out as given. Shown and linked; _path() stays the key pages are matched on (expert review 2026-11-17, #19)."""
+    value = url_or_path or ""
+    path = urlsplit(value).path if "://" in value else value.split("?", 1)[0].split("#", 1)[0]
+    return path or "/"
+
+
+class Spelling:
+    """The spelling to show for each page key: Search Console's (rank 0) beats the page reader's (1) beats Google
+    Analytics' (2); between two of the same rank, the one with more clicks and impressions."""
+
+    def __init__(self) -> None:
+        self.best: dict = {}
+
+    def offer(self, key, url_or_path: str, rank: int, weight: float = 0) -> None:
+        if not url_or_path:
+            return
+        held = self.best.get(key)
+        if held is None or (rank, -weight) < held[0]:
+            self.best[key] = ((rank, -weight), spelled_path(url_or_path))
+
+    def get(self, key, fallback: str) -> str:
+        held = self.best.get(key)
+        return held[1] if held else fallback
+
+
 def _unknown_page(path: str) -> bool:
     """GA4's "(not set)" written as a page ("(not set)/" once it has its slash): shown last, never as a link."""
     return str(path or "").strip("/").strip().lower() in UNKNOWN_PAGES
@@ -215,15 +242,28 @@ def _compile(pattern: str):
     return re.compile(re.escape(pattern).replace(r"\*", ".*"), re.I)
 
 
-def _channel_namer(engine: Engine, site_ids: list[int]):
-    """A rule's pattern is source/medium with * as a wildcard: chatgpt.com/* or */newsletter. The first match wins, and the rest stay GA4's grouping."""
+AI_CHANNEL = "AI assistants"  # the one channel AI visits are shown in on Channels and Conversions
+
+
+def _channel_namer(engine: Engine, site_ids: list[int], ai: bool = False):
+    """A rule's pattern is source/medium with * as a wildcard: chatgpt.com/* or */newsletter. The first match wins, and the rest stay GA4's grouping.
+
+    ai=True (Channels, Conversions and their panels): a visit AI search counts (the AI list, or GA4's own AI grouping) is
+    in AI_CHANNEL rather than hidden in Referral or Unassigned (expert review 2026-11-17, #22). A rule still wins."""
     compiled = [(_compile(rule["pattern"]), rule["value"]) for rule in rules(engine, "channel", site_ids) if rule["value"]]
+    domains = _ai_domains(engine, site_ids) if ai else None
+    if ai:
+        from seo.metrics.ai_search import is_ai_channel  # noqa: PLC0415 - ai_search imports this module
+    else:
+        is_ai_channel = None
 
     def name(channel: str, source: str, medium: str) -> str:
         pair = f"{source}/{medium}"
         for pattern, value in compiled:
             if pattern.fullmatch(pair):
                 return value
+        if domains is not None and (_is_ai((source or "").strip().lower(), domains) or is_ai_channel(channel)):
+            return AI_CHANNEL
         return channel
     return name
 
@@ -297,7 +337,7 @@ def _day_rows(days: dict) -> list[dict]:
 def channels(scope: Scope) -> dict:
     status = _sources_state(scope, "ga4")
     period = _trim_to_data(scope)
-    namer = _channel_namer(scope.engine, scope.site_ids)
+    namer = _channel_namer(scope.engine, scope.site_ids, ai=True)
     totals: dict[str, dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0})
     per_day: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     referrers: dict[str, dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0})
@@ -376,7 +416,7 @@ def _hosts(scope: Scope) -> dict[int, str]:
 
 def conversions(scope: Scope) -> dict:
     status = _sources_state(scope, "ga4")
-    namer = _channel_namer(scope.engine, scope.site_ids)
+    namer = _channel_namer(scope.engine, scope.site_ids, ai=True)
     by_channel: dict[str, dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0})
     daily = _days()
     for row in _ga4_rows(scope, scope.start, scope.end):
@@ -448,15 +488,18 @@ def content(scope: Scope, limit: int = 500) -> dict:
         key = _path(path)
         return pages.setdefault((site_id, key), {"host": hosts.get(site_id, ""), "path": key, "sessions": None, "leads": None, "clicks": None, "impressions": None, "w": 0.0, "ai": None})
 
+    spelling = Spelling()
     for row in _page_rows(scope):
         item = page(row["site_id"], row["path"])
         item["sessions"] = (item["sessions"] or 0) + int(row["sessions"] or 0)
         item["leads"] = (item["leads"] or 0) + float(row["leads"] or 0)
+        spelling.offer((row["site_id"], _path(row["path"])), row["path"], 2, int(row["sessions"] or 0))
     from seo.metrics import period
 
     gsc, gsc_window = period.search_scope(scope)  # Search Console's numbers on the shared period, as Today and Overview
     for row in gsc.fetch("SELECT site_id, MAX(page) page, page_hash, SUM(clicks) clicks, SUM(impressions) impressions, SUM(position * impressions) w FROM gsc_page WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY site_id, page_hash"):
         item = page(row["site_id"], row["page"])
+        spelling.offer((row["site_id"], _path(row["page"])), row["page"], 0, int(row["clicks"] or 0) * 1_000_000 + int(row["impressions"] or 0))
         item["clicks"] = (item["clicks"] or 0) + int(row["clicks"] or 0)
         item["impressions"] = (item["impressions"] or 0) + int(row["impressions"] or 0)
         item["w"] += float(row["w"] or 0)
@@ -468,11 +511,11 @@ def content(scope: Scope, limit: int = 500) -> dict:
     categorise = _categorise(scope.engine, scope.site_ids)
     rows = [
         {
-            "host": item["host"], "path": item["path"], "category": categorise(item["path"]), "sessions": item["sessions"], "leads": round(item["leads"], 2) if item["leads"] is not None else None,
+            "host": item["host"], "path": spelling.get(key, item["path"]), "key": item["path"], "category": categorise(item["path"]), "sessions": item["sessions"], "leads": round(item["leads"], 2) if item["leads"] is not None else None,
             "clicks": item["clicks"], "impressions": item["impressions"], "position": round(item["w"] / item["impressions"], 1) if item["impressions"] else None, "ai": item["ai"],
             "unknown": _unknown_page(item["path"]),
         }
-        for item in pages.values()
+        for key, item in pages.items()
     ]
     # GA4's "(not set)" isn't a page of the site: it goes last, marked, so it is never read as a real page (owner, 2026-11-12).
     rows.sort(key=lambda r: (r["unknown"], -((r["sessions"] or 0) + (r["clicks"] or 0))))
@@ -567,13 +610,39 @@ def delete_rule(engine: Engine, rule_id: int) -> None:
 # ---- Page speed and Clarity, shown beside the traffic they explain ----------------------------------
 
 
+# Google's "good" limits for Core Web Vitals, at the 75th percentile of real visitors (web.dev/articles/vitals).
+CWV_GOOD = {"lcp_ms": 2500, "inp_ms": 200, "cls": 0.1}
+
+
+def cwv_verdict(lcp_ms, inp_ms, cls, field: bool) -> bool | None:
+    """Core Web Vitals passed or failed, as PageSpeed Insights says it: only from real visitors, on the metrics Google has.
+    A lab test never passes or fails: None."""
+    if not field:
+        return None
+    known = [(value, CWV_GOOD[name]) for name, value in (("lcp_ms", lcp_ms), ("inp_ms", inp_ms), ("cls", cls)) if value is not None]
+    if not known:
+        return None
+    return all(value <= limit for value, limit in known)
+
+
+def speed_run(row) -> dict:
+    """One PageSpeed run as every screen shows it. The score is always the lab test's. `field` says whose real visitors the
+    timings are: "page", "site" (Google had too few on the page and gave the whole site's), or None (lab test timings)."""
+    field = ("site" if row.get("field_origin") else "page") if row.get("field_data") else None
+    return {
+        "performance": row["performance"], "lcp_ms": row["lcp_ms"], "inp_ms": row["inp_ms"], "cls": row["cls"],
+        "field_data": bool(row.get("field_data")), "field": field, "passed": cwv_verdict(row["lcp_ms"], row["inp_ms"], row["cls"], bool(field)),
+        "ran_at": row["ran_at"].isoformat() + "Z" if row.get("ran_at") else None,
+    }
+
+
 def page_speed(scope: Scope) -> list[dict]:
-    """Newest run per site and device. Real visitors' numbers when Google has them, and it says which."""
+    """Newest run per site and device. Real visitors' numbers when Google has them, and it says whose."""
     rows = scope.fetch(
-        "SELECT r.site_id, s.host, r.url, r.strategy, r.performance, r.lcp_ms, r.inp_ms, r.cls, r.field_data, r.ran_at FROM cwv_runs r JOIN sites s ON s.id = r.site_id "
+        "SELECT r.site_id, s.host, r.url, r.strategy, r.performance, r.lcp_ms, r.inp_ms, r.cls, r.field_data, r.field_origin, r.ran_at FROM cwv_runs r JOIN sites s ON s.id = r.site_id "
         "JOIN (SELECT site_id, strategy, MAX(id) id FROM cwv_runs WHERE site_id IN :sites GROUP BY site_id, strategy) latest ON latest.id = r.id ORDER BY s.host, r.strategy"
     )
-    return [{**{key: row[key] for key in ("host", "url", "strategy", "performance", "lcp_ms", "inp_ms", "cls")}, "field_data": bool(row["field_data"]), "ran_at": row["ran_at"].isoformat() + "Z"} for row in rows]
+    return [{"host": row["host"], "url": row["url"], "strategy": row["strategy"], **speed_run(row)} for row in rows]
 
 
 def clarity(scope: Scope) -> dict:
@@ -635,7 +704,7 @@ def channel_detail(scope: Scope, name) -> dict:
     name = _named(name, "channel")
     status = _sources_state(scope, "ga4")
     period = _trim_to_data(scope)
-    namer = _channel_namer(scope.engine, scope.site_ids)
+    namer = _channel_namer(scope.engine, scope.site_ids, ai=True)
 
     def gather(start, end) -> dict:
         days, sources, mediums = {}, _days(), _days()

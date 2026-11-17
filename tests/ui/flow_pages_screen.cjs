@@ -24,7 +24,7 @@ const check = (name, ok, extra = "") => { results.push(ok); console.log(`${ok ? 
   check("Pages is in the side menu and opens the list", (await page.locator("h1").innerText()).includes("Pages"));
   const rows = await page.locator("#pg-table tbody tr").count();
   check("one row per page", rows >= 5, `${rows} rows`);
-  check("most clicks first", (await page.locator("#pg-table tbody tr").first().locator(".second").innerText()).includes("/abonnement/"));
+  check("most clicks first", (await page.locator("#pg-table tbody tr").first().locator(".second").innerText()).includes("/abonnement"));
   await page.screenshot({ path: `${shots}/list.png` });
 
   await page.locator('[data-pg-filter="clicks"]').click();
@@ -48,7 +48,7 @@ const check = (name, ok, extra = "") => { results.push(ok); console.log(`${ok ? 
   await page.locator("#pg-table tbody tr").first().locator("td").nth(2).click();
   await page.waitForSelector("#pg-tab-search");
   check("a row opens its page", /abonnement/i.test(await page.locator("h1").innerText()));
-  check("the address names the page", page.url().includes("page=https://site-one.example/abonnement/"));
+  check("the address names the page", page.url().includes("page=https://site-one.example/abonnement"));
   await settle(1200);
   check("the numbers lead: clicks shown", (await page.locator(".pg-num").first().innerText()).includes("154"));
   const tabs = ["search", "visits", "rankings", "backlinks", "tasks", "notes", "technical", "content"];

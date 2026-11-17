@@ -114,12 +114,31 @@ def test_channel_totals_add_up_and_shares_are_right(engine, site):
 
 
 def test_a_channel_rule_applies_to_past_days(engine, site):
-    _ga4(engine, site, D1, "Referral", "chatgpt.com", "referral", 7)
+    _ga4(engine, site, D1, "Referral", "news.example", "referral", 7)
     assert service.channels(_scope(engine))["channels"][0]["channel"] == "Referral"
-    rule = service.add_rule(engine, "channel", "chatgpt.com/*", "AI assistants")
-    assert service.channels(_scope(engine))["channels"][0]["channel"] == "AI assistants"
+    rule = service.add_rule(engine, "channel", "news.example/*", "Newsletter")
+    assert service.channels(_scope(engine))["channels"][0]["channel"] == "Newsletter"
     service.delete_rule(engine, rule["id"])
     assert service.channels(_scope(engine))["channels"][0]["channel"] == "Referral"
+
+
+def test_ai_assistants_are_a_channel_of_their_own_with_the_ai_search_total(engine, site):
+    """Expert review 2026-11-17, #22: GA4 puts chatgpt.com in Referral and tagged AI visits in Unassigned, so Channels hid them.
+    They now make one "AI assistants" row, by AI search's own rule, so the two screens agree."""
+    _ga4(engine, site, D1, "Referral", "chatgpt.com", "referral", 30, 2)
+    _ga4(engine, site, D1, "Unassigned", "perplexity.ai", "(not set)", 12)
+    _ga4(engine, site, D1, "AI Assistant", "gemini.google.com", "referral", 3)  # GA4's own AI grouping joins the same row
+    _ga4(engine, site, D1, "Referral", "news.example", "referral", 10)
+    _ga4(engine, site, D1, "Unassigned", "(not set)", "(not set)", 5)
+    channels = {r["channel"]: r for r in service.channels(_scope(engine))["channels"]}
+    assert channels["AI assistants"]["sessions"] == 45 and channels["AI assistants"]["leads"] == 2
+    assert (channels["Referral"]["sessions"], channels["Unassigned"]["sessions"]) == (10, 5)
+    assert "AI Assistant" not in channels
+    assert service.ai_search(_scope(engine))["sessions"] == 45
+    funnel = {r["channel"]: r["sessions"] for r in service.conversions(_scope(engine))["funnel"]}
+    assert funnel["AI assistants"] == 45
+    panel = service.channel_detail(_scope(engine), "AI assistants")
+    assert panel["totals"]["sessions"] == 45 and {r["source"] for r in panel["sources"]} == {"chatgpt.com", "perplexity.ai", "gemini.google.com"}
 
 
 def test_more_than_five_channels_fold_into_other_and_totals_stay_right(engine, site):
@@ -155,7 +174,7 @@ def test_content_puts_not_set_last_and_marks_it(engine, site):
         for h, path, sessions in (("a", "(not set)", 900), ("b", "/visa/", 30), ("c", "/", 20)):
             conn.execute(text("INSERT INTO ga4_page_daily (site_id, day, page_hash, path, sessions, users, key_events) VALUES (:s, :d, :h, :p, :x, :x, 1)"), {"s": site, "d": D1, "h": h, "p": path, "x": sessions})
     rows = service.content(_scope(engine))["pages"]
-    assert [r["path"] for r in rows] == ["/visa/", "/", "(not set)/"]
+    assert [r["path"] for r in rows] == ["/visa/", "/", "(not set)"]  # as Google Analytics wrote them
     assert [r["unknown"] for r in rows] == [False, False, True]
     pages = service.conversions(_scope(engine))["pages"]
     assert pages[-1]["unknown"] and not pages[0]["unknown"]

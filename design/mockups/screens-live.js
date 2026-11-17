@@ -378,6 +378,23 @@
       ${speedCard()}${ideasCard()}`);
   }
 
+  /* PageSpeed columns, the same on every screen (expert review 2026-11-17): the score is always Google's lab test, so it says
+     so; the timings are real visitors' when Google has them, and the last column says whose (this page or the whole site)
+     with Google's own verdict, Passed or Failed. A run with no real visitors says "Lab test only". */
+  const speedVerdict = (r) => {
+    if (!r.field) return `<span class="muted">${t("Lab test only")}</span>`;
+    const whose = t(r.field === "site" ? "whole site" : "this page");
+    const verdict = r.passed === true ? `<span class="good">${t("Passed")}</span>` : r.passed === false ? `<span class="crit">${t("Failed")}</span>` : "—";
+    return `${verdict} <span class="small muted">${esc(whose)}</span>`;
+  };
+  const speedColumns = (ms) => [
+    { key: "performance", label: "Lab score", num: true },
+    { key: "lcp_ms", label: "Largest content (s)", num: true, get: (r) => ms(r.lcp_ms), html: (r) => (r.lcp_ms === null ? `<span class="muted">—</span>` : decimal(ms(r.lcp_ms))) },
+    { key: "inp_ms", label: "Response (ms)", num: true },
+    { key: "cls", label: "Layout shift", num: true, html: (r) => (r.cls === null ? `<span class="muted">—</span>` : decimal(Math.round(r.cls * 100) / 100)) },
+    { key: "field", label: "Real visitors", get: (r) => (r.field ? `${r.passed === true ? t("Passed") : r.passed === false ? t("Failed") : ""} ${t(r.field === "site" ? "whole site" : "this page")}` : t("Lab test only")), html: speedVerdict },
+  ];
+
   function speedCard() {
     const entry = load("metrics/speed");
     if (entry.loading || entry.error || !entry.data.runs.length) return "";
@@ -385,11 +402,7 @@
     return `<section class="card" style="margin-top:14px"><div class="card-head"><h2>${t("Page speed")}</h2><span class="end small muted">${t("Home page")}</span></div>${dataTable("speed", [
       { key: "host", label: "Site", html: (r) => `<span class="mono" dir="auto">${esc(r.host)}</span>` },
       { key: "strategy", label: "Device", get: (r) => t(r.strategy === "mobile" ? "Phone" : "Computer") },
-      { key: "performance", label: "Score", num: true },
-      { key: "lcp_ms", label: "Largest content (s)", num: true, get: (r) => ms(r.lcp_ms), html: (r) => (r.lcp_ms === null ? `<span class="muted">—</span>` : decimal(ms(r.lcp_ms))) },
-      { key: "inp_ms", label: "Response (ms)", num: true },
-      { key: "cls", label: "Layout shift", num: true, html: (r) => (r.cls === null ? `<span class="muted">—</span>` : decimal(Math.round(r.cls * 100) / 100)) },
-      { key: "field_data", label: "Measured on", get: (r) => t(r.field_data ? "Real visitors" : "Test run") },
+      ...speedColumns(ms),
     ], entry.data.runs, { csv: false })}</section>`;
   }
 
@@ -434,6 +447,10 @@
       <form class="lv-rule-form" data-lv-rule-form="${kind}"><input class="input mono" spellcheck="false" autocapitalize="off" name="f_pattern" placeholder="${esc(patternHint)}" aria-label="${t("Matches")}" autocomplete="off">${valueHint ? `<input class="input" name="f_value" placeholder="${esc(t(valueHint))}" aria-label="${t(valueHint)}" autocomplete="off">` : ""}<button class="btn btn-small" type="submit">${t("Add rule")}</button><span class="error" data-lv-rule-error hidden></span></form></section>`;
   }
 
+  /* AI visits are their own channel, counted by AI search's rules (seo/metrics/service.py AI_CHANNEL): its row links there. */
+  const AI_CHANNEL = "AI assistants";
+  const aiLink = (name) => (name === AI_CHANNEL ? ` <a class="small lv-ai-link" href="#ai">${t("AI search")} →</a>` : "");
+
   function channelsPage() {
     if (simple()) return channelsSimple();
     const entry = load("metrics/channels");
@@ -444,7 +461,7 @@
     if (!d.channels.length) return page(head, emptyCard(t("No data in this period."), `${t("Google Analytics has data through")} ${esc(d.through ? shortDay(d.through) : "—")}.`));
     const days = d.series.map((r) => r.day);
     const series = d.series_names.map((name) => ({ name, color: colourOf(name), values: Object.fromEntries(d.series.map((r) => [r.day, r.values[name] ?? 0])) }));
-    const swatch = (name) => `<i class="lv-key" style="background:${colourOf(name)}"></i>${esc(t(name))}`;
+    const swatch = (name) => `<i class="lv-key" style="background:${colourOf(name)}"></i>${esc(t(name))}${aiLink(name)}`;
     // The server starts fetching these sites' icons when this data is asked for, so look for them once per list.
     const referrerList = d.referrers.map((r) => r.domain).join(",");
     if (referrerList !== LV.referrersWatched) { LV.referrersWatched = referrerList; window.COMP?.refreshLogos?.({ watch: true }); }
@@ -679,7 +696,7 @@
         ${UI.card({ id: "rate", label: "Lead rate", value: ratePct(d.total), format: "pct", change: { now: ratePct(d.total), before: ratePct(before), unit: "pts" }, spark: daySpark(d, ratePct) })}
         ${UI.card({ id: "channels", label: "Channels", value: d.channels.length, sub: top ? esc(fillIn(t("Most visits: {name}"), { name: t(top.channel) })) : "" })}
       </section>`;
-    const swatch = (name) => `<i class="lv-key" style="background:${colourOf(name)}"></i>${esc(t(name))}`;
+    const swatch = (name) => `<i class="lv-key" style="background:${colourOf(name)}"></i>${esc(t(name))}${aiLink(name)}`;
     const days = d.series.map((r) => r.day);
     const series = d.series_names.map((name) => ({ name, color: colourOf(name), values: Object.fromEntries(d.series.map((r) => [r.day, r.values[name] ?? 0])) }));
     return page(head, `${cards}
@@ -802,11 +819,7 @@
     const tests = runs.length ? dataTable("speed", [
       { key: "host", label: "Site", html: (r) => `<span class="mono" dir="auto">${esc(r.host)}</span>` },
       { key: "strategy", label: "Device", get: (r) => t(r.strategy === "mobile" ? "Phone" : "Computer") },
-      { key: "performance", label: "Score", num: true },
-      { key: "lcp_ms", label: "Largest content (s)", num: true, get: (r) => ms(r.lcp_ms), html: (r) => (r.lcp_ms === null ? `<span class="muted">—</span>` : decimal(ms(r.lcp_ms))) },
-      { key: "inp_ms", label: "Response (ms)", num: true },
-      { key: "cls", label: "Layout shift", num: true, html: (r) => (r.cls === null ? `<span class="muted">—</span>` : decimal(Math.round(r.cls * 100) / 100)) },
-      { key: "field_data", label: "Measured on", get: (r) => t(r.field_data ? "Real visitors" : "Test run") },
+      ...speedColumns(ms),
     ], runs) : `<div class="empty"><p>${t("No speed test yet. Refresh data runs one.")}</p></div>`;
     const one = downloads.length === 1 && UI.siteIdPicked() ? downloads[0].dashboard : null, perf = one?.performance || null;
     const real = perf && Object.values(perf).some(known) ? `<section class="card"><div class="card-head"><h2>${t("Page speed, real visitors")}</h2><span class="end small muted">${esc(t("Clarity download"))} · ${spanOf(one)}</span></div>
@@ -1191,6 +1204,8 @@
     "Tags are a list of words.": "Les étiquettes sont une liste de mots.", "A tag is 40 characters at most.": "Une étiquette fait 40 caractères au plus.", "A resource takes 20 tags at most.": "Une ressource prend 20 étiquettes au plus.", "Resource saved": "Ressource enregistrée", "Resource deleted": "Ressource supprimée",
     "A resource needs a title.": "Une ressource a besoin d'un titre.", "A link starts with https://.": "Un lien commence par https://.",
     "Page speed": "Vitesse des pages", "Device": "Appareil", "Phone": "Téléphone", "Computer": "Ordinateur", "Score": "Score", "Largest content (s)": "Plus grand contenu (s)", "Response (ms)": "Réactivité (ms)", "Layout shift": "Décalage visuel", "Measured on": "Mesuré sur", "Real visitors": "Vrais visiteurs", "Test run": "Test",
+    "AI assistants": "Assistants IA", "AI search": "Recherche IA", "Open AI search": "Ouvrir Recherche IA",
+    "Lab score": "Score labo", "Lab test only": "Test labo seulement", "Passed": "Réussi", "Failed": "Échoué", "whole site": "site entier", "this page": "cette page",
     "Keyword ideas": "Idées de mots-clés", "From Google's suggestions": "D'après les suggestions de Google", "A word or two": "Un ou deux mots", "Find ideas": "Trouver des idées", "Any language": "Toutes les langues", "Already tracked": "Déjà suivi", "Add": "Ajouter", "Add all": "Tout ajouter", "ideas": "idées", "Add to my keywords": "Ajouter à mes mots-clés",
     "Country and language start on the ones this site's keywords use most.": "Pays et langue partent de ceux que les mots-clés du site utilisent le plus.", "The country and language of these ideas.": "Le pays et la langue de ces idées.","No suggestions.": "Aucune suggestion.", "Type a word or two first.": "Saisissez d'abord un ou deux mots.",
     "Your SERP API's name, such as serp_api1.": "Le nom de votre SERP API, par exemple serp_api1.", "My zones": "Mes zones",

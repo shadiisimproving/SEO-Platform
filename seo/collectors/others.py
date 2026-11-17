@@ -182,11 +182,13 @@ def _pagespeed_run(url: str, strategy: str, key: str | None) -> dict:
     has_field = pick("LARGEST_CONTENTFUL_PAINT_MS") is not None
     cls = pick("CUMULATIVE_LAYOUT_SHIFT_SCORE")
     return {
-        "performance": round(score * 100) if isinstance(score, (int, float)) else None,
+        "performance": round(score * 100) if isinstance(score, (int, float)) else None,  # always the lab test's score
         "lcp": pick("LARGEST_CONTENTFUL_PAINT_MS") if has_field else (round(lab("largest-contentful-paint")) if lab("largest-contentful-paint") is not None else None),
-        "inp": pick("INTERACTION_TO_NEXT_PAINT"),
+        "inp": pick("INTERACTION_TO_NEXT_PAINT") if has_field else None,
         "cls": (cls / 100 if cls is not None else None) if has_field else lab("cumulative-layout-shift"),
         "field": has_field,
+        # Too few visitors on the page: Google answers with the whole site's and says so. Kept apart, never as the page's.
+        "origin": has_field and bool((body.get("loadingExperience") or {}).get("origin_fallback")),
     }
 
 
@@ -199,8 +201,8 @@ def collect_pagespeed(engine: Engine, site_id: int) -> bool:
         run = _pagespeed_run(url, strategy, key)
         with engine.begin() as conn:
             conn.execute(
-                text("INSERT INTO cwv_runs (site_id, url, strategy, performance, lcp_ms, inp_ms, cls, field_data) VALUES (:s, :u, :t, :p, :l, :i, :c, :f)"),
-                {"s": site_id, "u": url, "t": strategy, "p": run["performance"], "l": run["lcp"], "i": run["inp"], "c": run["cls"], "f": run["field"]},
+                text("INSERT INTO cwv_runs (site_id, url, strategy, performance, lcp_ms, inp_ms, cls, field_data, field_origin) VALUES (:s, :u, :t, :p, :l, :i, :c, :f, :o)"),
+                {"s": site_id, "u": url, "t": strategy, "p": run["performance"], "l": run["lcp"], "i": run["inp"], "c": run["cls"], "f": run["field"], "o": run["origin"]},
             )
     if key:
         service.note_app_key(engine, "pagespeed", None)

@@ -197,9 +197,10 @@ def _copilot(scope, today: date, hosts: dict[int, str]) -> dict:
         per_site[row["site_id"]].append({**dict(row), "data": data})
     sites = []
     for site_id, uploads in per_site.items():
-        latest, earlier = uploads[0], uploads[1] if len(uploads) > 1 else None
+        latest = uploads[0]
         data, host = latest["data"], hosts.get(site_id, "")
         start, end = latest["period_start"], latest["period_end"]
+        earlier, no_before = _copilot_before(uploads[1:], start, end)
         visits = _copilot_visits(scope, site_id, start, end)
         pages: dict[str, dict] = {}
         for page in data.get("pages") or []:  # /a and https://site/a/?x=1 are one page
@@ -221,6 +222,7 @@ def _copilot(scope, today: date, hosts: dict[int, str]) -> dict:
             "citations": data.get("citations"), "share": data.get("share_of_authority"), "ai_referral_sessions": data.get("ai_referral_sessions"),
             "copilot_visits": None if visits is None else sum(visits.values()),
             "before": {"citations": earlier["data"].get("citations"), "share": earlier["data"].get("share_of_authority"), "period_start": earlier["period_start"].isoformat(), "period_end": earlier["period_end"].isoformat()} if earlier else None,
+            "no_before": no_before,
             "pages": sorted(pages.values(), key=lambda p: (-p["citations"], p["path"])), "queries": queries,
             "old": (today - end).days > DOWNLOAD_OLD_DAYS, "age_days": (today - end).days,
         })
@@ -231,6 +233,19 @@ def _copilot(scope, today: date, hosts: dict[int, str]) -> dict:
         "citations": sum(s["citations"] for s in known) if known else None,
         "share": sites[0]["share"] if len(sites) == 1 else None,  # shares of different sites can't be added
     }
+
+
+def _copilot_before(earlier: list[dict], start: date, end: date) -> tuple[dict | None, str | None]:
+    """The file a Copilot download is compared with: the newest earlier one that ends before it starts and covers as many
+    days. Citations are counts over the file's days, so a longer file, or one overlapping this one, isn't a "before"
+    (expert review 2026-11-17, #21). No such file: None, and why: "overlap", "length", or None when there's no other file."""
+    days = (end - start).days + 1
+    for row in earlier:
+        if row["period_end"] < start and (row["period_end"] - row["period_start"]).days + 1 == days:
+            return row, None
+    if not earlier:
+        return None, None
+    return None, "overlap" if earlier[0]["period_end"] >= start else "length"  # said about the newest earlier file
 
 
 def _copilot_visits(scope, site_id: int, start: date, end: date) -> dict[str, int] | None:
