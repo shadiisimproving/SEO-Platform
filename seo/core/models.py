@@ -1202,6 +1202,7 @@ class CwvRun(Base):
     inp_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     cls: Mapped[float | None] = mapped_column(Float, nullable=True)
     field_data: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))  # real visitors' numbers, not a lab run
+    field_origin: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))  # those visitors are the whole site's: Google had too few on the page
     ran_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
 
 

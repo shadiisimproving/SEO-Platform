@@ -168,9 +168,10 @@ def profile(engine: Engine, site_id: int, page: str) -> dict:
             if _path(r["url"]) == path
         ), None)
         speed: dict[str, dict] = {}
-        for r in conn.execute(text("SELECT url, strategy, performance, lcp_ms, inp_ms, cls, field_data, ran_at FROM cwv_runs WHERE site_id = :s ORDER BY id DESC LIMIT 3000"), {"s": site_id}).mappings():
+        for r in conn.execute(text("SELECT url, strategy, performance, lcp_ms, inp_ms, cls, field_data, field_origin, ran_at FROM cwv_runs WHERE site_id = :s ORDER BY id DESC LIMIT 3000"), {"s": site_id}).mappings():
             if r["strategy"] not in speed and _same_site(r["url"], host) and _path(r["url"]) == path:
-                speed[r["strategy"]] = {"score": r["performance"], "lcp_ms": r["lcp_ms"], "inp_ms": r["inp_ms"], "cls": r["cls"], "field": bool(r["field_data"]), "at": _iso(r["ran_at"])}
+                run = metrics.speed_run(r)
+                speed[r["strategy"]] = {"score": run["performance"], "lcp_ms": run["lcp_ms"], "inp_ms": run["inp_ms"], "cls": run["cls"], "field": run["field"], "passed": run["passed"], "at": _iso(r["ran_at"])}
         health = []
         audit = conn.execute(text("SELECT id, created_at FROM health_audits WHERE site_id = :s AND status = 'complete' ORDER BY id DESC LIMIT 1"), {"s": site_id}).mappings().first()
         if audit:

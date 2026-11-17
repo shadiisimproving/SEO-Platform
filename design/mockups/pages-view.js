@@ -112,10 +112,17 @@
       ${tile("Position", tot ? dec1(tot.position) : loading, tot && before ? cellChange(tot.position, before.position, true) : "")}
       ${tile("Visits", tot ? (tot.sessions === null ? "—" : num(tot.sessions)) : loading, tot && before ? cellChange(tot.sessions, before.sessions) : "")}
       ${tile("Indexed", indexed, "", ins?.coverage && ins.verdict !== "PASS" ? esc(ins.coverage) : "")}
-      ${tile("Speed", !p ? loading : speed ? `<span class="${speed.score >= 90 ? "pg-good" : speed.score < 50 ? "pg-bad" : ""}">${num(speed.score)}</span><span class="muted">/100</span>` : `<span class="muted">—</span>`)}
+      ${!p || speed ? tile("Lab speed", !p ? loading : `<span class="${speed.score >= 90 ? "pg-good" : speed.score < 50 ? "pg-bad" : ""}">${num(speed.score)}</span><span class="muted">/100</span>`, "", speed ? realVisitors(speed) : "") : ""}
       ${tile("Open tasks", num(tasks))}
     </div>`;
   }
+  /* The speed score is Google's lab test. Real visitors say Passed or Failed, and whose they are: this page, or the whole
+     site when Google has too few visitors on the page (expert review 2026-11-17). */
+  const realVisitors = (s) => {
+    if (!s.field) return `<span class="muted">${t("No real-visitor data")}</span>`;
+    const verdict = s.passed === true ? `<span class="pg-good">${t("Passed")}</span>` : s.passed === false ? `<span class="pg-bad">${t("Failed")}</span>` : "";
+    return `${t("Real visitors")}: ${verdict} <span class="muted">${t(s.field === "site" ? "whole site" : "this page")}</span>`;
+  };
   const relatedOpen = () => {
     const box = document.createElement("div");
     UI.setHTML(box, UI.relatedTasks({ host: P.open.host, page: P.open.url }));
@@ -200,7 +207,7 @@
       const x = p.technical;
       const row = (label, value) => `<div class="pg-fact"><dt>${t(label)}</dt><dd>${value}</dd></div>`;
       const ins = x.inspection;
-      const speedLine = (s) => (s ? `<b class="tabular">${num(s.score)}</b>/100${s.lcp_ms ? ` · LCP ${UI.dec ? UI.dec(Math.round(s.lcp_ms / 100) / 10) : s.lcp_ms / 1000} s` : ""}` : `<span class="muted">${t("Not measured")}</span>`);
+      const speedLine = (s) => (s ? `<b class="tabular">${num(s.score)}</b>/100 <span class="small muted">${t("lab test")}</span>${s.lcp_ms ? ` · LCP ${UI.dec ? UI.dec(Math.round(s.lcp_ms / 100) / 10) : s.lcp_ms / 1000} s` : ""}<div class="small">${realVisitors(s)}</div>` : `<span class="muted">${t("Not measured")}</span>`);
       const health = x.health.length ? `<ul class="pg-list">${x.health.map((code) => `<li>${icon("triangle-alert", "warn")}<span>${esc(t(window.HealthTest?.checkWord?.(code) || code))}</span></li>`).join("")}</ul>` : `<span class="muted">${x.health_at ? t("Nothing found") : t("No health test yet")}</span>`;
       const links = x.links.length ? `<ul class="pg-list">${x.links.map((l) => `<li>${icon("link-2-off", "warn")}<span class="mono small" dir="auto">${PageLink.html(l.target)}</span><span class="end small sec">${l.status ? esc(String(l.status)) : esc(t(l.category))}</span></li>`).join("")}</ul>` : `<span class="muted">${x.links_at ? t("No broken links") : t("No links check yet")}</span>`;
       return `<dl class="pg-facts">
@@ -334,7 +341,8 @@
     "Open Settings": "Ouvrir les réglages", "Search pages": "Chercher une page", "No page matches.": "Aucune page ne correspond.", "page": "page", "pages": "pages",
     "Add a note": "Ajouter une note", "New task about this page": "Nouvelle tâche sur cette page", "All pages": "Toutes les pages", "About this page": "À propos de cette page",
     "Search": "Recherche", "Visits": "Visites", "Rankings": "Positions", "Backlinks": "Backlinks", "Tasks": "Tâches", "Notes": "Notes", "Technical": "Technique", "Content": "Contenu",
-    "Indexed": "Indexée", "Speed": "Vitesse", "Not checked": "Pas vérifié", "Yes": "Oui", "No": "Non",
+    "Indexed": "Indexée", "Speed": "Vitesse", "Lab speed": "Vitesse (labo)", "lab test": "test labo", "No real-visitor data": "Pas de données de vrais visiteurs",
+    "Real visitors": "Vrais visiteurs", "Passed": "Réussi", "Failed": "Échoué", "whole site": "site entier", "this page": "cette page", "Not checked": "Pas vérifié", "Yes": "Oui", "No": "Non",
     "The numbers didn't load.": "Les chiffres n'ont pas chargé.", "Google shows no clicks or impressions for this page in this period.": "Google n'indique ni clic ni impression pour cette page sur cette période.",
     "Connect Search Console to see this page's searches.": "Connectez Search Console pour voir les recherches de cette page.", "No visits to this page in this period.": "Aucune visite sur cette page pendant cette période.",
     "Connect Google Analytics to see this page's visits.": "Connectez Google Analytics pour voir les visites de cette page.", "Clicks": "Clics", "Impressions": "Impressions", "Leads": "Leads",

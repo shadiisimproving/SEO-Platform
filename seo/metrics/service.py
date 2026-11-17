@@ -564,13 +564,39 @@ def delete_rule(engine: Engine, rule_id: int) -> None:
 # ---- Page speed and Clarity, shown beside the traffic they explain ----------------------------------
 
 
+# Google's "good" limits for Core Web Vitals, at the 75th percentile of real visitors (web.dev/articles/vitals).
+CWV_GOOD = {"lcp_ms": 2500, "inp_ms": 200, "cls": 0.1}
+
+
+def cwv_verdict(lcp_ms, inp_ms, cls, field: bool) -> bool | None:
+    """Core Web Vitals passed or failed, as PageSpeed Insights says it: only from real visitors, on the metrics Google has.
+    A lab test never passes or fails: None."""
+    if not field:
+        return None
+    known = [(value, CWV_GOOD[name]) for name, value in (("lcp_ms", lcp_ms), ("inp_ms", inp_ms), ("cls", cls)) if value is not None]
+    if not known:
+        return None
+    return all(value <= limit for value, limit in known)
+
+
+def speed_run(row) -> dict:
+    """One PageSpeed run as every screen shows it. The score is always the lab test's. `field` says whose real visitors the
+    timings are: "page", "site" (Google had too few on the page and gave the whole site's), or None (lab test timings)."""
+    field = ("site" if row.get("field_origin") else "page") if row.get("field_data") else None
+    return {
+        "performance": row["performance"], "lcp_ms": row["lcp_ms"], "inp_ms": row["inp_ms"], "cls": row["cls"],
+        "field_data": bool(row.get("field_data")), "field": field, "passed": cwv_verdict(row["lcp_ms"], row["inp_ms"], row["cls"], bool(field)),
+        "ran_at": row["ran_at"].isoformat() + "Z" if row.get("ran_at") else None,
+    }
+
+
 def page_speed(scope: Scope) -> list[dict]:
-    """Newest run per site and device. Real visitors' numbers when Google has them, and it says which."""
+    """Newest run per site and device. Real visitors' numbers when Google has them, and it says whose."""
     rows = scope.fetch(
-        "SELECT r.site_id, s.host, r.url, r.strategy, r.performance, r.lcp_ms, r.inp_ms, r.cls, r.field_data, r.ran_at FROM cwv_runs r JOIN sites s ON s.id = r.site_id "
+        "SELECT r.site_id, s.host, r.url, r.strategy, r.performance, r.lcp_ms, r.inp_ms, r.cls, r.field_data, r.field_origin, r.ran_at FROM cwv_runs r JOIN sites s ON s.id = r.site_id "
         "JOIN (SELECT site_id, strategy, MAX(id) id FROM cwv_runs WHERE site_id IN :sites GROUP BY site_id, strategy) latest ON latest.id = r.id ORDER BY s.host, r.strategy"
     )
-    return [{**{key: row[key] for key in ("host", "url", "strategy", "performance", "lcp_ms", "inp_ms", "cls")}, "field_data": bool(row["field_data"]), "ran_at": row["ran_at"].isoformat() + "Z"} for row in rows]
+    return [{"host": row["host"], "url": row["url"], "strategy": row["strategy"], **speed_run(row)} for row in rows]
 
 
 def clarity(scope: Scope) -> dict:

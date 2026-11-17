@@ -393,3 +393,13 @@ def test_the_panel_routes_answer_and_refuse_what_they_cannot(engine, site):
     for address in ("channel?x=1", "referrer?x=1", "page?host=mine.example", "assistant?x=1", "page?path=/visa/&host=nobody.example", f"channel?name={'x' * 191}"):
         assert client.get(f"/api/metrics/{address}&{query}").status_code == 400, address
     assert client.get("/api/metrics/channel?name=Direct&from=nope&to=2026-10-01").status_code == 400
+
+
+def test_page_speed_says_whose_real_visitor_data_it_is(engine, site):
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO cwv_runs (site_id, url, strategy, performance, lcp_ms, inp_ms, cls, field_data, field_origin) VALUES (:s, 'https://mine.example/', 'mobile', 82, 2600, 150, 0.05, 1, 1)"), {"s": site})
+        conn.execute(text("INSERT INTO cwv_runs (site_id, url, strategy, performance, lcp_ms, inp_ms, cls, field_data, field_origin) VALUES (:s, 'https://mine.example/', 'desktop', 97, 1234, NULL, 0.01, 0, 0)"), {"s": site})
+    client, query = _client(engine), f"from={D1}&to={D2}&site_id={site}"
+    runs = {r["strategy"]: r for r in client.get(f"/api/metrics/speed?{query}").get_json()["runs"]}
+    assert (runs["mobile"]["performance"], runs["mobile"]["field"], runs["mobile"]["passed"]) == (82, "site", False)  # LCP 2.6 s is over 2.5 s
+    assert (runs["desktop"]["field"], runs["desktop"]["passed"]) == (None, None)

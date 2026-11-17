@@ -567,3 +567,30 @@ def test_search_console_is_due_every_hourly_run(world):
     with world.engine.begin() as conn:
         conn.execute(text("UPDATE site_sources SET last_attempt_at = UTC_TIMESTAMP(3) - INTERVAL 55 MINUTE WHERE source = 'gsc'"))
     assert (world.site, "gsc") in jobs.enqueue_due(world.engine)
+
+
+def test_pagespeed_keeps_whole_site_data_apart_from_the_pages_own(world):
+    """When Google has too few visitors on the page, PageSpeed answers with the whole site's (origin_fallback). That is kept
+    as whole-site data, never passed off as the page's own. With no real-visitor data, the timings are the lab test's."""
+    with world.engine.begin() as conn:
+        conn.execute(text("INSERT INTO site_sources (site_id, source) VALUES (:s, 'pagespeed')"), {"s": world.site})
+    origin = {"LARGEST_CONTENTFUL_PAINT_MS": {"percentile": 2600}, "INTERACTION_TO_NEXT_PAINT": {"percentile": 150}, "CUMULATIVE_LAYOUT_SHIFT_SCORE": {"percentile": 5}}
+    answers = iter([
+        {"lighthouseResult": {"categories": {"performance": {"score": 0.82}}}, "loadingExperience": {"metrics": origin, "origin_fallback": True}, "originLoadingExperience": {"metrics": origin}},
+        {"lighthouseResult": {"categories": {"performance": {"score": 0.97}}, "audits": {"largest-contentful-paint": {"numericValue": 1234.4}, "cumulative-layout-shift": {"numericValue": 0.01}}}, "loadingExperience": {}},
+    ])
+    world.answers["pagespeedonline"] = lambda request: httpx.Response(200, json=next(answers))
+    others.collect_pagespeed(world.engine, world.site)
+    with world.engine.connect() as conn:
+        rows = conn.execute(text("SELECT strategy, performance, lcp_ms, inp_ms, cls, field_data, field_origin FROM cwv_runs ORDER BY strategy")).all()
+    assert rows[1] == ("mobile", 82, 2600, 150, 0.05, 1, 1)  # real visitors, but the whole site's
+    assert rows[0] == ("desktop", 97, 1234, None, 0.01, 0, 0)  # lab test only
+
+
+def test_core_web_vitals_verdict_reads_real_visitors_only():
+    from seo.metrics.service import cwv_verdict
+    assert cwv_verdict(2500, 200, 0.1, True) is True  # every limit is "good" up to and including it
+    assert cwv_verdict(2501, 120, 0.02, True) is False
+    assert cwv_verdict(1800, None, 0.02, True) is True  # INP missing: judged on what Google has
+    assert cwv_verdict(1800, 120, 0.02, False) is None  # a lab test never passes or fails Core Web Vitals
+    assert cwv_verdict(None, None, None, True) is None
