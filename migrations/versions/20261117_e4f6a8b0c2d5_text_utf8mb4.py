@@ -7,7 +7,9 @@ columns are left as they are. It first checks that no index would grow past Inno
 It rebuilds most tables, so on the live server it runs only when the owner says so, after a backup:
     SEO_CONVERT_UTF8MB4=yes  (in .env or the environment) while migrating, or later: python -m scripts.convert_utf8mb4
 Without it, this step only prints that it was skipped; the script can be run at any time and skips what is done.
-Test databases (name ending in _test) are always converted, so tests run on the real target format.
+Test databases (name ending in _test) and a new install (no site yet) are always converted, so tests and a fresh install
+run on the real target format. Every text column ends on one collation, utf8mb4_unicode_ci (JSON apart): two collations
+can't be joined.
 
 Downgrade does nothing on purpose: going back to latin1 would turn every Arabic letter and emoji into "?" again.
 
@@ -32,7 +34,9 @@ def upgrade() -> None:
     conn = op.get_bind()
     database = conn.execute(text("SELECT DATABASE()")).scalar() or ""
     wanted = (os.environ.get("SEO_CONVERT_UTF8MB4") or config.get("SEO_CONVERT_UTF8MB4", "") or "").lower() == "yes"
-    if not (wanted or database.endswith("_test")):
+    # A new install has nothing to lose and nothing to lock: it is converted at once, so it matches a converted live one.
+    fresh = not conn.execute(text("SELECT 1 FROM sites LIMIT 1")).first()
+    if not (wanted or fresh or database.endswith("_test")):
         print("utf8mb4: skipped. Back up, then run python -m scripts.convert_utf8mb4 (or migrate with SEO_CONVERT_UTF8MB4=yes).")
         return
     done = charset.convert(conn, log=print)
