@@ -149,11 +149,11 @@
   }
   /* Copilot counts cover a download's own days, not the screen's period: the card says which days, and when there is no
      earlier file of the same length that doesn't overlap, that it wasn't compared, and why (expert review 2026-11-17, #21). */
-  const NO_BEFORE = { overlap: "Not compared: the last file overlaps this one", length: "Not compared: the last file covers a different number of days" };
+  const NO_BEFORE = { overlap: "The earlier download overlaps this one, so the counts can't be compared.", length: "The earlier download covers a different number of days, so the counts can't be compared." };
   function copilotSpan(one) {
     if (!one) return "";
     const days = `<span class="small muted nowrap">${esc(UI.fmtRange ? UI.fmtRange(one.period_start, one.period_end) : `${one.period_start} – ${one.period_end}`)}</span>`;
-    return one.no_before && NO_BEFORE[one.no_before] ? `${days}<br><span class="small muted">${esc(t(NO_BEFORE[one.no_before]))}</span>` : days;
+    return one.no_before && NO_BEFORE[one.no_before] ? `${days}<br><span class="small muted">${t("Not compared")}${UI.tip(NO_BEFORE[one.no_before])}</span>` : days;
   }
   function tiles(d) {
     if (simple() && UI.card) return cards(d);
@@ -695,8 +695,9 @@
 
   const fr = {
     "Compare with your other channels": "Comparer avec vos autres canaux",
-    "Not compared: the last file overlaps this one": "Pas comparé : le fichier précédent chevauche celui-ci",
-    "Not compared: the last file covers a different number of days": "Pas comparé : le fichier précédent couvre un autre nombre de jours",
+    "Not compared": "Pas comparé",
+    "The earlier download overlaps this one, so the counts can't be compared.": "Le téléchargement précédent chevauche celui-ci : les nombres ne se comparent pas.",
+    "The earlier download covers a different number of days, so the counts can't be compared.": "Le téléchargement précédent couvre un autre nombre de jours : les nombres ne se comparent pas.",
     "Google Analytics": "Google Analytics", "Clarity live": "Clarity en direct", "Clarity download": "Export Clarity", "{n} of {m} sites": "{n} sites sur {m}",
     "not connected": "non connecté", "not used": "non utilisé", "no keywords checked": "aucun mot-clé relevé", "nothing uploaded": "rien d'importé",
     "waiting for data": "en attente de données", "retrying": "nouvel essai", "reading…": "lecture…", "queued": "en file", "stopped working": "ne fonctionne plus",

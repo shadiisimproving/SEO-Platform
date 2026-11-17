@@ -71,7 +71,7 @@
     if (r.change === null || r.change === undefined) return `<span class="muted" title="${esc(t(compared ? "No earlier data for this page" : "No comparison period"))}">—</span>`;
     if (r.change === 0) return `<span class="muted tabular">0</span>`;
     const pct = r.clicks_before ? Math.round((r.change / r.clicks_before) * 100) : null;
-    return `<span class="ov-d ${r.change > 0 ? "good" : "crit"} tabular" title="${esc(`${num(r.clicks_before)} → ${num(r.clicks || 0)}`)}">${r.change > 0 ? "+" : "−"}${num(Math.abs(r.change))}</span>${pct === null ? "" : ` <span class="small muted tabular">${pct > 0 ? "+" : pct < 0 ? "−" : ""}${num(Math.abs(pct))}%</span>`}`;
+    return `<span class="nowrap"><span class="ov-d ${r.change > 0 ? "good" : "crit"} tabular" title="${esc(`${num(r.clicks_before)} → ${num(r.clicks || 0)}`)}">${r.change > 0 ? "+" : "−"}${num(Math.abs(r.change))}</span>${pct === null ? "" : ` <span class="small muted tabular">${pct > 0 ? "+" : pct < 0 ? "−" : ""}${num(Math.abs(pct))}%</span>`}</span>`;
   };
   const passes = (r) => (PASS[P.filter] ? PASS[P.filter](r) : true);
 
@@ -218,7 +218,7 @@
       const x = p.technical;
       const row = (label, value) => `<div class="pg-fact"><dt>${t(label)}</dt><dd>${value}</dd></div>`;
       const ins = x.inspection;
-      const speedLine = (s) => (s ? `<b class="tabular">${num(s.score)}</b>/100 <span class="small muted">${t("lab test")}</span>${s.lcp_ms ? ` · LCP ${UI.dec ? UI.dec(Math.round(s.lcp_ms / 100) / 10) : s.lcp_ms / 1000} s` : ""}<div class="small">${realVisitors(s)}</div>` : `<span class="muted">${t("Not measured")}</span>`);
+      const speedLine = (s) => (s ? `<span><b class="tabular">${num(s.score)}</b>/100 <span class="muted">${t("lab test")}</span>${s.lcp_ms ? ` · LCP ${UI.dec ? UI.dec(Math.round(s.lcp_ms / 100) / 10) : s.lcp_ms / 1000} s` : ""}</span><span class="small">${realVisitors(s)}</span>` : `<span class="muted">${t("Not measured")}</span>`);
       const health = x.health.length ? `<ul class="pg-list">${x.health.map((code) => `<li>${icon("triangle-alert", "warn")}<span>${esc(t(window.HealthTest?.checkWord?.(code) || code))}</span></li>`).join("")}</ul>` : `<span class="muted">${x.health_at ? t("Nothing found") : t("No health test yet")}</span>`;
       const links = x.links.length ? `<ul class="pg-list">${x.links.map((l) => `<li>${icon("link-2-off", "warn")}<span class="mono small" dir="auto">${PageLink.html(l.target)}</span><span class="end small sec">${l.status ? esc(String(l.status)) : esc(t(l.category))}</span></li>`).join("")}</ul>` : `<span class="muted">${x.links_at ? t("No broken links") : t("No links check yet")}</span>`;
       return `<dl class="pg-facts">
