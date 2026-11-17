@@ -162,7 +162,7 @@ class Websites:
             p["rival-one.example/old-promo"] = 404
         for path, html in rival.items():
             p[f"rival-one.example{path}"] = html
-        p["rival-one.example/sitemap.xml"] = _sitemap("rival-one.example", {path: ("2026-11-02" if edited and path in ("/subscription", "/guide/brew", "/gift-subscriptions") else "2026-09-01") for path in rival} | ({"/old-promo": "2026-09-01"} if edited else {}))
+        p["rival-one.example/sitemap.xml"] = _sitemap("rival-one.example", {path: (date.today().isoformat() if edited and path == "/gift-subscriptions" else "2026-11-02" if edited and path in ("/subscription", "/guide/brew") else "2026-09-01") for path in rival} | ({"/old-promo": "2026-09-01"} if edited else {}))
 
         two = {
             "/": page_html("Rival Two", "Beans and plans.", "Rival Two", ("Plans",)),

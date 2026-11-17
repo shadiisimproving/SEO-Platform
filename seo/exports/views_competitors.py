@@ -13,7 +13,7 @@ TRACKING = {"on": "On", "pages": "Pages only", "off": "Off"}
 
 
 # As the competitor screens name them (comp-list.js KINDS). The ranking and AI ones are followed by the keyword, in its own column.
-MOVE_KINDS = {'title': 'Title changed', 'meta': 'Meta description changed', 'h1': 'Main heading changed', 'headings': 'Subheadings changed', 'canonical': 'Canonical changed', 'robots': 'Indexing changed', 'schema': 'Structured data changed', 'content': 'Content changed', 'search_title': 'Search title changed', 'new_page': 'New page', 'page_gone': 'Page removed', 'rank_new': 'Started ranking for', 'rank_lost': 'Stopped ranking for', 'rank_up': 'Moved up on', 'rank_down': 'Moved down on', 'ai_cited': 'Cited in AI Overview for', 'ai_dropped': 'Dropped from AI Overview for'}
+MOVE_KINDS = {'title': 'Title changed', 'meta': 'Meta description changed', 'h1': 'Main heading changed', 'headings': 'Subheadings changed', 'canonical': 'Canonical changed', 'robots': 'Indexing changed', 'schema': 'Structured data changed', 'content': 'Content changed', 'search_title': 'Search title changed', 'new_page': 'New page', 'page_gone': 'Page removed', 'redirect': 'Moved to another address', 'rank_new': 'Started ranking for', 'rank_lost': 'Stopped ranking for', 'rank_up': 'Moved up on', 'rank_down': 'Moved down on', 'ai_cited': 'Cited in AI Overview for', 'ai_dropped': 'Dropped from AI Overview for'}
 
 
 def _site(args) -> int:

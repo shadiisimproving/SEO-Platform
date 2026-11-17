@@ -184,7 +184,7 @@ def profile(engine: Engine, site_id: int, page: str) -> dict:
         edits = []
         if page_id is not None:
             edits = [{"kind": r["kind"], "before": (r["before_value"] or "")[:300], "after": (r["after_value"] or "")[:300], "at": _iso(r["detected_at"]), "words": r["changed_words"]}
-                     for r in conn.execute(text("SELECT kind, before_value, after_value, detected_at, changed_words FROM change_events WHERE page_id = :p ORDER BY detected_at DESC LIMIT 30"), {"p": page_id}).mappings()]
+                     for r in conn.execute(text("SELECT kind, before_value, after_value, detected_at, changed_words FROM change_events WHERE page_id = :p AND hidden = 0 ORDER BY detected_at DESC LIMIT 30"), {"p": page_id}).mappings()]
         links = [
             {"id": r["id"], "domain": r["domain"], "source": r["source_url"], "status": r["status"], "verdict": r["seo_verdict"] or "", "anchor": r["anchor"] or "", "authority": r["authority"], "nofollow": r["is_nofollow"]}
             for r in conn.execute(text(

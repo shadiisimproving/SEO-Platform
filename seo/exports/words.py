@@ -57,7 +57,7 @@ FR: dict[str, str] = {
     "No page is clearly going down.": "Aucune page n'est nettement en baisse.", "Competitor changes": "Changements chez les concurrents", "Competitor": "Concurrent", "Their page": "Leur page",
     "When": "Quand", "No competitor changed a watched page.": "Aucun concurrent n'a modifié une page suivie.",
     "Meta": "Méta", "Title": "Titre", "New page": "Nouvelle page", "Page gone": "Page disparue", "AI cited": "Cité par l'IA", "Rank down": "Recul au classement", "Rank up": "Progrès au classement",
-    "Page removed": "Page retirée", "Title changed": "Titre modifié", "Meta description changed": "Meta description modifiée", "Main heading changed": "Titre principal modifié", "Headings changed": "Titres modifiés",
+    "Page removed": "Page retirée", "Moved to another address": "Déplacée vers une autre adresse", "Title changed": "Titre modifié", "Meta description changed": "Meta description modifiée", "Main heading changed": "Titre principal modifié", "Headings changed": "Titres modifiés",
     "Content changed": "Contenu modifié", "Canonical changed": "Canonique modifiée", "Structured data changed": "Données structurées modifiées", "Links changed": "Liens modifiés", "Redirect changed": "Redirection modifiée",
     "Status changed": "Statut modifié", "Indexing changed": "Indexation modifiée",
     # Backlinks

@@ -6,7 +6,7 @@
   // at: when the last answer landed (not when it was asked), so a slow server isn't asked again the moment it answers (F5).
   // busy: one load at a time. failed: the query that failed, so it isn't asked again until Try again or something changes.
   const T = { key: null, data: null, error: "", summary: {}, at: 0, busy: false, failed: null };
-  const KINDS = { new_page: "New page", page_gone: "Page removed", title: "Title changed", search_title: "Search title changed", meta: "Meta description changed", h1: "Main heading changed", headings: "Headings changed", content: "Content changed", canonical: "Canonical changed", schema: "Structured data changed", links: "Links changed", redirect: "Redirect changed", status: "Status changed", robots: "Indexing changed" };
+  const KINDS = { new_page: "New page", page_gone: "Page removed", title: "Title changed", search_title: "Search title changed", meta: "Meta description changed", h1: "Main heading changed", headings: "Headings changed", content: "Content changed", canonical: "Canonical changed", schema: "Structured data changed", links: "Links changed", redirect: "Moved to another address", status: "Status changed", robots: "Indexing changed" };
 
   const words = (title) => {
     if (UI.state.lang !== "fr") return title;
@@ -320,7 +320,7 @@
     "“{keyword}”: the AI Overview has gone": "« {keyword} » : l'AI Overview a disparu", "Last two AI Overview checks": "Deux derniers relevés de l'AI Overview",
     "Mobile": "Mobile", "Desktop": "Ordinateur", "Tablet": "Tablette",
     "Background work": "Tâches de fond", "Last ran": "Dernier passage", "never": "jamais", "Marked as seen": "Marqué comme vu",
-    "New page": "Nouvelle page", "Page removed": "Page retirée", "Title changed": "Titre modifié", "Search title changed": "Titre dans les résultats modifié", "Meta description changed": "Méta description modifiée", "Main heading changed": "Titre principal modifié", "Headings changed": "Titres modifiés", "Content changed": "Contenu modifié", "Canonical changed": "Canonique modifiée", "Structured data changed": "Données structurées modifiées", "Links changed": "Liens modifiés", "Redirect changed": "Redirection modifiée", "Status changed": "Statut modifié", "Indexing changed": "Indexation modifiée",
+    "New page": "Nouvelle page", "Page removed": "Page retirée", "Moved to another address": "Déplacée vers une autre adresse", "Title changed": "Titre modifié", "Search title changed": "Titre dans les résultats modifié", "Meta description changed": "Méta description modifiée", "Main heading changed": "Titre principal modifié", "Headings changed": "Titres modifiés", "Content changed": "Contenu modifié", "Canonical changed": "Canonique modifiée", "Structured data changed": "Données structurées modifiées", "Links changed": "Liens modifiés", "Redirect changed": "Redirection modifiée", "Status changed": "Statut modifié", "Indexing changed": "Indexation modifiée",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 })();

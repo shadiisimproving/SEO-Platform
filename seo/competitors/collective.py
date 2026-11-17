@@ -114,7 +114,7 @@ def _mine(conn, sites: list[dict]) -> list[dict]:
     rows = conn.execute(text(
         "SELECT s.id AS site_id, e.id, e.kind, e.detected_at, e.before_value, e.after_value, e.changed_words, p.url FROM sites s "
         "JOIN domains d ON d.host = s.host JOIN change_events e ON e.domain_id = d.id JOIN pages p ON p.id = e.page_id "
-        f"WHERE s.id IN ({marks}) AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL 30 DAY ORDER BY e.detected_at DESC, e.id DESC"
+        f"WHERE s.id IN ({marks}) AND e.hidden = 0 AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL 30 DAY ORDER BY e.detected_at DESC, e.id DESC"
     )).mappings().all()
     for r in rows:
         held = recent.setdefault(r["site_id"], [])
@@ -140,7 +140,7 @@ def _card_facts(conn, hosts: list[str]) -> dict[str, dict]:
     what = "CASE e.kind WHEN 'new_page' THEN 'added_30d' WHEN 'page_gone' THEN 'removed_30d' ELSE 'edited_30d' END"
     rows = conn.execute(text(
         f"SELECT d.host, {what} AS what, COUNT(DISTINCT e.page_id) AS n FROM change_events e JOIN domains d ON d.id = e.domain_id "
-        f"WHERE d.host IN ({marks}) AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL 30 DAY GROUP BY d.host, {what}"
+        f"WHERE d.host IN ({marks}) AND e.hidden = 0 AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL 30 DAY GROUP BY d.host, {what}"
     ), names).mappings()
     for r in rows:
         held = out.get(str(r["host"]).lower())
@@ -257,7 +257,7 @@ def moves(engine: Engine, site_id: int | None = None, days: int = MOVE_DAYS) -> 
             recent = {**names, "days": days}
             where = (
                 "FROM change_events e JOIN pages p ON p.id = e.page_id JOIN domains d ON d.id = e.domain_id "
-                f"WHERE d.host IN ({','.join(':' + k for k in names)}) AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL :days DAY"
+                f"WHERE d.host IN ({','.join(':' + k for k in names)}) AND e.hidden = 0 AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL :days DAY"
             )
             page_changes = conn.execute(text(f"SELECT COUNT(*) {where}"), recent).scalar_one()
             changes = conn.execute(text(f"SELECT e.id, e.page_id, e.kind, e.before_value, e.after_value, e.changed_words, e.detected_at, e.summaries, p.url, d.host {where} ORDER BY e.detected_at DESC, e.id DESC LIMIT :n"), {**recent, "n": MOVE_ROWS}).mappings().all()

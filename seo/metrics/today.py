@@ -207,23 +207,38 @@ def _one_row_per_failing_source(items: list[dict]) -> list[dict]:
     return merged
 
 
-def _changes(engine: Engine, site_id: int | None) -> list[dict]:
-    """What competitors changed in the last 7 days, newest first. Only competitors of this site, when one site is picked."""
+RIVAL_KINDS_LEFT_OUT = ("new_page",)  # a page paired with mine was there before; hidden events are the noise rules' (seo.crawl.noise)
+
+
+def _changes(engine: Engine, site_id: int | None, paired: set[str]) -> tuple[list[dict], int]:
+    """What competitors changed in the last 7 days on pages paired with mine, newest first, and how many other changes
+    they made. Only competitors of this site, when one site is picked. The pairing is applied in SQL before the cap: the
+    newest 500 of all changes were mostly other pages, so a paired page's edit was cut before it was looked at (W0)."""
     # Paused competitors are left out. With all my sites, a rival counts while any site still reads its pages.
     join = "JOIN site_competitors c ON c.competitor_id = s.id AND c.site_id = :s AND c.tracking <> 'off' " if site_id else ""
     values: dict = {"s": site_id} if site_id else {}
     with engine.connect() as conn:
         # With all sites: rivals of *their* sites only.
         join = join or f"JOIN (SELECT DISTINCT competitor_id FROM site_competitors WHERE tracking <> 'off'{access.site_clause('site_id', values, conn)}) c ON c.competitor_id = s.id "
-        rows = conn.execute(
-            text(
-                "SELECT DISTINCT e.id, e.kind, e.detected_at, e.summaries, p.url, s.host FROM change_events e JOIN pages p ON p.id = e.page_id "
-                f"JOIN domains d ON d.id = e.domain_id JOIN sites s ON s.host = d.host AND s.kind = 'competitor' {join}"
-                "WHERE e.detected_at > UTC_TIMESTAMP(3) - INTERVAL 7 DAY ORDER BY e.detected_at DESC LIMIT 500"
-            ),
-            values,
-        ).mappings().all()
-    return [{"id": row["id"], "kind": row["kind"], "host": row["host"], "url": row["url"], "when": _iso(row["detected_at"]), "summaries": json.loads(row["summaries"]) if isinstance(row["summaries"], str) else row["summaries"]} for row in rows]
+        source = (
+            "FROM change_events e JOIN pages p ON p.id = e.page_id "
+            f"JOIN domains d ON d.id = e.domain_id JOIN sites s ON s.host = d.host AND s.kind = 'competitor' {join}"
+            f"WHERE e.detected_at > UTC_TIMESTAMP(3) - INTERVAL 7 DAY AND e.hidden = 0 AND e.kind NOT IN ({', '.join(repr(k) for k in RIVAL_KINDS_LEFT_OUT)}) "
+        )
+        touched = conn.execute(text(f"SELECT p.id, p.url, COUNT(DISTINCT e.id) AS n {source}GROUP BY p.id, p.url"), values).mappings().all()
+        ids = [int(r["id"]) for r in touched if _page_id(r["url"]) in paired]
+        other = sum(int(r["n"]) for r in touched if _page_id(r["url"]) not in paired)
+        rows = []
+        if ids:
+            rows = conn.execute(
+                text(
+                    f"SELECT DISTINCT e.id, e.kind, e.detected_at, e.summaries, p.url, s.host {source}"
+                    f"AND e.page_id IN ({','.join(str(i) for i in ids)}) ORDER BY e.detected_at DESC LIMIT 500"
+                ),
+                values,
+            ).mappings().all()
+    changes = [{"id": row["id"], "kind": row["kind"], "host": row["host"], "url": row["url"], "when": _iso(row["detected_at"]), "summaries": json.loads(row["summaries"]) if isinstance(row["summaries"], str) else row["summaries"]} for row in rows]
+    return changes, other
 
 
 def _rival_changes(engine: Engine, site_id: int | None) -> tuple[list[dict], int]:
@@ -238,8 +253,9 @@ def _rival_changes(engine: Engine, site_id: int | None) -> tuple[list[dict], int
     beside: dict[str, dict] = {}
     for pair in pairs:
         beside.setdefault(_page_id(pair["their_url"]), pair)  # the pair sharing the most keywords speaks for that page
-    rows, shown_pages, other = [], set(), 0
-    for change in _changes(engine, site_id):
+    changes, other = _changes(engine, site_id, set(beside))
+    rows, shown_pages = [], set()
+    for change in changes:
         page = _page_id(change["url"])
         pair = beside.get(page)
         if pair is None:

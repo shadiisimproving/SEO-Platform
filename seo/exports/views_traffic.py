@@ -138,7 +138,7 @@ def ads(engine, args) -> Report:
 
 # As Today names them on screen (today-live.js KINDS).
 CHANGE_KINDS = {"new_page": "New page", "page_gone": "Page removed", "title": "Title changed", "meta": "Meta description changed", "h1": "Main heading changed", "headings": "Headings changed",
-                "content": "Content changed", "canonical": "Canonical changed", "schema": "Structured data changed", "links": "Links changed", "redirect": "Redirect changed",
+                "content": "Content changed", "canonical": "Canonical changed", "schema": "Structured data changed", "links": "Links changed", "redirect": "Moved to another address",
                 "status": "Status changed", "robots": "Indexing changed"}
 
 

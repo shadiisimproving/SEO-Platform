@@ -400,7 +400,7 @@
   }
 
   // ---- The profile ---------------------------------------------------------------------------------
-  const EDIT_KINDS = ["title", "meta", "h1", "headings", "canonical", "robots", "schema", "content", "search_title"];
+  const EDIT_KINDS = ["title", "meta", "h1", "headings", "canonical", "robots", "schema", "content", "search_title", "redirect"];
   const TIMELINE_FILTERS = [
     ["all", "All", null], ["edits", "Page edits", EDIT_KINDS], ["new", "New pages", ["new_page"]], ["gone", "Removed|pages", ["page_gone"]],
     ["rank", "Ranking moves", ["rank_new", "rank_lost", "rank_up", "rank_down"]], ["ai", "AI Overview", ["ai_cited", "ai_dropped"]],
@@ -409,7 +409,7 @@
     title: ["pencil", "Title changed"], meta: ["pencil", "Meta description changed"], h1: ["pencil", "Main heading changed"], headings: ["pencil", "Subheadings changed"],
     canonical: ["pencil", "Canonical changed"], robots: ["pencil", "Indexing changed"], schema: ["pencil", "Structured data changed"], content: ["file-text", "Content changed"],
     search_title: ["search", "Search title changed"], // as Today names it (today-live.js KINDS)
-    new_page: ["plus", "New page"], page_gone: ["minus", "Page removed"],
+    new_page: ["plus", "New page"], page_gone: ["minus", "Page removed"], redirect: ["arrow-right", "Moved to another address"],
     rank_new: ["trending-up", "Started ranking for"], rank_lost: ["arrow-down", "Stopped ranking for"], rank_up: ["arrow-up", "Moved up on"], rank_down: ["arrow-down", "Moved down on"],
     ai_cited: ["sparkles", "Cited in AI Overview for"], ai_dropped: ["sparkles", "Dropped from AI Overview for"],
   };
@@ -658,6 +658,7 @@
      Who is moving (comp-summary.js) keeps COMP.timelineRow: this only changes the profile. */
   const TL_PERIODS = [[7, "7 days"], [30, "30 days"], [0, "All"]];
   const TL_KIND = (kind) => (kind === "new_page" ? ["plus", "Added|change", "up"] : kind === "page_gone" ? ["minus", "Removed|change", "down"]
+    : kind === "redirect" ? ["arrow-right", "Moved|change", "edit"] // the address now sends visitors to another page (SEO review W6)
     : kind.startsWith("rank_") ? [KINDS[kind]?.[0] || "arrow-up", ["rank_new", "rank_up"].includes(kind) ? "Moved up|change" : "Moved down|change", ["rank_new", "rank_up"].includes(kind) ? "up" : "down"]
     : kind.startsWith("ai_") ? ["sparkles", kind === "ai_cited" ? "Cited by AI|change" : "Dropped by AI|change", kind === "ai_cited" ? "up" : "down"]
     : [KINDS[kind]?.[0] || "pencil", "Changed|change", "edit"]);
@@ -680,6 +681,7 @@
     if (e.kind.startsWith("rank_")) return `${e.kind === "rank_new" ? `>${UI.num(e.depth || 10)}` : `#${UI.num(e.from)}`} → ${e.kind === "rank_lost" ? `>${UI.num(e.depth || 10)}` : `#${UI.num(e.to)}`}`;
     if (e.kind.startsWith("ai_")) return t(e.kind === "ai_cited" ? "Now cited in the AI Overview" : "No longer cited in the AI Overview");
     if (e.kind === "new_page" || e.kind === "page_gone") return e.page?.words ? many(e.page.words, "{n} word", "{n} words") : "";
+    if (e.kind === "redirect" && e.after) return `→ ${esc(tlPath(e.after))}`; // the address now sends visitors to this page
     return t(KINDS[e.kind]?.[1] || e.kind); // title, meta, canonical…: the kind says it; before and after are in Details
   }
   const groupKey = (e) => `${e.kind.startsWith("rank_") || e.kind.startsWith("ai_") ? `k:${e.keyword}` : `u:${e.url || ""}`}|${e.kind}`;
@@ -1999,7 +2001,7 @@
 
   // ---- French ------------------------------------------------------------------------------------------------------
   Object.assign(window.FR, {
-    "Added|change": "Ajoutée", "Removed|change": "Retirée", "Changed|change": "Modifiée", "Moved up|change": "Monte", "Moved down|change": "Descend",
+    "Added|change": "Ajoutée", "Removed|change": "Retirée", "Changed|change": "Modifiée", "Moved|change": "Déplacée", "Moved up|change": "Monte", "Moved down|change": "Descend",
     "Now cited in the AI Overview": "Désormais cité dans l'aperçu IA", "No longer cited in the AI Overview": "Plus cité dans l'aperçu IA",
     "Cited by AI|change": "Citée par l'IA", "Dropped by AI|change": "Plus citée par l'IA", "Change|kind": "Changement", "rows": "lignes",
     "{n} words|delta": "{n} mots", "~{n} changed": "~{n} modifiés", "{n} structured data type": "{n} type de données structurées", "{n} structured data types": "{n} types de données structurées",
@@ -2148,6 +2150,7 @@
     "Content changed": "Contenu modifié",
     "New page": "Nouvelle page",
     "Page removed": "Page retirée",
+    "Moved to another address": "Déplacée vers une autre adresse",
     "Started ranking for": "A commencé à se classer sur",
     "Stopped ranking for": "Ne se classe plus sur",
     "Moved up on": "A gagné des places sur",

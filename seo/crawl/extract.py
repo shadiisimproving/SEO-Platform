@@ -13,12 +13,15 @@ from urllib.parse import urljoin, urlsplit
 
 from lxml import etree, html as lxml_html
 
+from seo.crawl.noise import BLOCK_SEP, TEXT_FORMAT
+
 SCRIPTED = ("script", "style", "noscript", "template", "svg", "iframe")
 CHROME = ("nav", "footer", "aside")
 BLOCK = {
     "p", "div", "li", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6", "br", "tr", "td", "th", "table", "section",
     "article", "blockquote", "pre", "dd", "dt", "dl", "figure", "figcaption", "address", "hr", "main", "header",
 }
+_BLOCK_MARK = "\ue000"  # a private-use character: where a block starts or ends, before the text is split into blocks
 APP_ROOT_IDS = {"root", "app", "__next", "__nuxt", "app-root"}
 JS_ONLY_WORDS = 50
 _META_CHARSET = re.compile(rb"""<meta[^>]+charset=["']?\s*([a-zA-Z0-9_\-]+)""", re.I)
@@ -67,7 +70,13 @@ class PageFields:
     def as_dict(self) -> dict:
         data = asdict(self)
         data.pop("text")
+        data["text_format"] = TEXT_FORMAT
         return data
+
+    @property
+    def flat_text(self) -> str:
+        """The main text on one line, as it was hashed and counted before blocks were kept."""
+        return self.text.replace(BLOCK_SEP, " ")
 
 
 def _clean(value: str | None) -> str:
@@ -205,9 +214,10 @@ def _main_text(root) -> str:
     for element in scope.iter():
         if isinstance(element.tag, str) and element.tag in BLOCK:
             # Cleaned again here: the parser turns &#11; into the real character, which lxml then refuses to write back (F97).
-            element.text = " " + _NOT_XML.sub(" ", element.text or "")
-            element.tail = " " + _NOT_XML.sub(" ", element.tail or "")
-    return _clean(scope.text_content())
+            element.text = _BLOCK_MARK + _NOT_XML.sub(" ", (element.text or "").replace(_BLOCK_MARK, " "))
+            element.tail = _BLOCK_MARK + _NOT_XML.sub(" ", (element.tail or "").replace(_BLOCK_MARK, " "))
+    # One block a line (seo.crawl.noise): joined with spaces it's exactly the text this used to return, so its hash is the same.
+    return BLOCK_SEP.join(block for block in (_clean(part) for part in scope.text_content().split(_BLOCK_MARK)) if block)
 
 
 def extract(body: bytes, url: str, charset: str | None = None) -> PageFields:
@@ -266,6 +276,6 @@ def extract(body: bytes, url: str, charset: str | None = None) -> PageFields:
     page.word_count = count_words(page.text)
     page.extras["characters"] = len(page.text)
     page.extras["questions"] = [text for _, text in page.headings if text.endswith(_QUESTION_END)][:50]
-    page.content_hash = hashlib.sha256(page.text.encode("utf-8")).hexdigest()
+    page.content_hash = hashlib.sha256(page.flat_text.encode("utf-8")).hexdigest()
     page.js_only = page.word_count < JS_ONLY_WORDS and has_app_root
     return page

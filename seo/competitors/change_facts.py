@@ -55,7 +55,7 @@ def page_facts(conn, page_ids) -> dict[int, dict]:
         "http_status, last_status, read_with, js_only, extras, sitemap_lastmod, first_archived, first_seen_at, last_checked_at, last_changed_at "
         f"FROM pages WHERE id IN ({marks})"
     )).mappings().all()
-    edits = {r[0]: int(r[1]) for r in conn.execute(text(f"SELECT page_id, COUNT(*) FROM change_events WHERE page_id IN ({marks}) AND kind <> 'new_page' GROUP BY page_id"))}
+    edits = {r[0]: int(r[1]) for r in conn.execute(text(f"SELECT page_id, COUNT(*) FROM change_events WHERE page_id IN ({marks}) AND kind <> 'new_page' AND hidden = 0 GROUP BY page_id"))}
     out: dict[int, dict] = {}
     for row in rows:
         page = dict(row)
