@@ -693,7 +693,7 @@
   /* No comparison, and why, in the screen's words: Google's own 16 months, or the app's stored data starting later. */
   function noCompareWhy(d) {
     if (d?.compare_unavailable === "google") return t("No comparison: Google keeps 16 months of data.");
-    if (d?.compare_unavailable === "history") return d.history_from ? t("No comparison: stored data starts on {day}.").replace("{day}", dayLabel(d.history_from, true)) : t("No comparison: the earlier period isn't stored yet.");
+    if (d?.compare_unavailable === "history" || d?.compare_unavailable === "rows_history") return d.history_from ? t("No comparison: stored data starts on {day}.").replace("{day}", dayLabel(d.history_from, true)) : t("No comparison: the earlier period isn't stored yet.");
     return "";
   }
   function simpleHead(d, main) {

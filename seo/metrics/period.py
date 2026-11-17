@@ -174,7 +174,12 @@ def for_site(engine, site_id: int, days: int = 28) -> tuple[Scope, dict]:
     """Insights' and a page's own "last 28 days vs the 28 before": the very period Today and Overview open with."""
     today = common.google_today(engine).isoformat()
     scope = Scope(engine, site_id, today, today)
-    window = resolve(scope, f"{days}d" if f"{days}d" in RANGES else "custom", "prev")
+    if f"{days}d" in RANGES:
+        window = resolve(scope, f"{days}d", "prev")
+    else:  # any other length: the same days ending on the last final day, as a custom period
+        final = final_day(*newest(scope))
+        window = resolve(scope, "custom", "prev", (final - timedelta(days=days - 1)).isoformat(), final.isoformat())
+        window["range"] = f"{days}d"
     return apply(scope, window), window
 
 
@@ -210,28 +215,64 @@ def search_scope(scope: Scope) -> tuple[Scope, dict]:
     return apply(other, window), window
 
 
-def weeks(points: list[dict], start: date, end: date, size: int, totals) -> tuple[list[dict], dict | None]:
-    """Points in buckets of `size` days counted back from the last day, so the newest bucket is always whole. A first bucket
-    with fewer days isn't drawn (it would look like a fall); it is returned as `left_out`, still counted in the totals."""
-    if size == 1:
-        return points, None
+def _buckets(points: list[dict], start: date, end: date, size: int, totals) -> tuple[list[dict], dict | None]:
+    """Whole buckets of `size` days counted back from the last day, oldest first, each with how many of its days hold data
+    ("days", 0 for none), and the short first bucket (fewer than `size` days in the period), if any."""
     by_day = {p["day"]: p for p in points}
-    out, left_out = [], None
+    out, short = [], None
     bucket_end = end
     while bucket_end >= start:
         first = max(start, bucket_end - timedelta(days=size - 1))
-        chunk = [by_day[d.isoformat()] for d in (first + timedelta(days=n) for n in range((bucket_end - first).days + 1)) if d.isoformat() in by_day]
-        whole = (bucket_end - first).days + 1 == size
-        if not whole:
-            left_out = {"from": first.isoformat(), "to": bucket_end.isoformat(), "days": (bucket_end - first).days + 1}
-        elif chunk:
-            out.append({"day": first.isoformat(), **totals(chunk), "days": len(chunk)})
+        length = (bucket_end - first).days + 1
+        if length < size:
+            short = {"from": first.isoformat(), "to": bucket_end.isoformat(), "days": length}
+        else:
+            chunk = [by_day[d.isoformat()] for d in (first + timedelta(days=n) for n in range(length)) if d.isoformat() in by_day]
+            out.append({"day": first.isoformat(), **(totals(chunk) if chunk else {}), "days": len(chunk)})
         bucket_end = first - timedelta(days=1)
     out.reverse()
-    # Weeks before the stored data starts hold only some of their days: they'd draw as a false rise, so they wait too.
-    while out and out[0]["days"] < size:
-        dropped = out.pop(0)
+    return out, short
+
+
+def _leading_short(buckets: list[dict], size: int) -> int:
+    """How many first buckets hold only some of their days: before the stored data starts, they'd draw as a false rise."""
+    n = 0
+    while n < len(buckets) and buckets[n]["days"] < size:
+        n += 1
+    return n
+
+
+def _drawn(buckets: list[dict], short: dict | None, size: int, skip: int) -> tuple[list[dict], dict | None]:
+    """The buckets after the first `skip`, with no empty ones; the ones left out join `left_out` (counted, not drawn)."""
+    left_out = short
+    for dropped in buckets[:skip]:
+        if not dropped["days"] and not left_out:
+            continue  # nothing stored there: nothing to say was left out
         start_left = left_out["from"] if left_out else dropped["day"]
-        left_out = {"from": start_left, "to": (date.fromisoformat(dropped["day"]) + timedelta(days=size - 1)).isoformat(),
-                    "days": (date.fromisoformat(dropped["day"]) + timedelta(days=size) - date.fromisoformat(start_left)).days}
-    return out, left_out
+        last = date.fromisoformat(dropped["day"]) + timedelta(days=size - 1)
+        left_out = {"from": start_left, "to": last.isoformat(), "days": (last - date.fromisoformat(start_left)).days + 1}
+    return [b for b in buckets[skip:] if b["days"]], left_out
+
+
+def weeks(points: list[dict], start: date, end: date, size: int, totals) -> tuple[list[dict], dict | None]:
+    """Points in buckets of `size` days counted back from the last day, so the newest bucket is always whole. A first bucket
+    with fewer days isn't drawn (it would look like a fall); it is returned as `left_out`, still counted in the totals.
+    First weeks before the stored data starts hold only some of their days: they wait too."""
+    if size == 1:
+        return points, None
+    buckets, short = _buckets(points, start, end, size, totals)
+    return _drawn(buckets, short, size, _leading_short(buckets, size))
+
+
+def weeks_pair(points: list[dict], before: list[dict], start: date, end: date, before_start: date, before_end: date, size: int, totals) -> tuple[list[dict], dict | None, list[dict]]:
+    """Both chart lines in weeks, leaving out the same first weeks on each side: when only one side is short of stored
+    data, the two lines would otherwise be drawn a week apart. Returns the period's weeks, what it leaves out, and the
+    earlier period's weeks."""
+    if size == 1:
+        return points, None, before
+    now_b, now_short = _buckets(points, start, end, size, totals)
+    was_b, was_short = _buckets(before, before_start, before_end, size, totals)
+    skip = max(_leading_short(now_b, size), _leading_short(was_b, size))
+    series, left_out = _drawn(now_b, now_short, size, skip)
+    compare, _ = _drawn(was_b, was_short, size, skip)
+    return series, left_out, compare

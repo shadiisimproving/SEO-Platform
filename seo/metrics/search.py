@@ -707,6 +707,7 @@ def overview(scope: Scope, window: dict, fresh: bool = False, page: str | None =
         page = None
     page_filter = [{"dimension": "page", "operator": "equals", "expression": page}] if page else None
     now_points = before_points = None
+    page_short = False
     # The days after the period that aren't final yet: drawn after it, never counted (see resolve).
     tail_to = date.fromisoformat(window["fresh_to"]) if window.get("fresh_to") else None
     drawn_to = tail_to or scope.end
@@ -726,7 +727,10 @@ def overview(scope: Scope, window: dict, fresh: bool = False, page: str | None =
     if origin == "saved":
         hourly = False  # hours are only ever read live
         now_points = _saved_series(scope, scope.start, drawn_to, page)
-        before_points = _saved_series(scope, scope.compare_start, scope.compare_end, page) if scope.has_compare else None
+        # One page's earlier days come from the page table, which can start after the daily totals do: it is compared
+        # only when its own stored days reach back (period.rows_compared), never with gains made from missing days.
+        page_short = bool(page) and scope.has_compare and not rows_compared(scope, "page")
+        before_points = _saved_series(scope, scope.compare_start, scope.compare_end, page) if scope.has_compare and not page_short else None
     tail = []
     if not hourly:
         last_counted = scope.end.isoformat()
@@ -734,10 +738,14 @@ def overview(scope: Scope, window: dict, fresh: bool = False, page: str | None =
         now_points = [p for p in now_points if p["day"] <= last_counted]
     totals, before = _totals(now_points), _totals(before_points) if before_points is not None else None
     size = 7 if not hourly and (scope.end - scope.start).days + 1 > WEEKLY_AFTER_DAYS else 1
-    series, left_out = period.weeks(now_points, scope.start, scope.end, size, _totals) if not hourly else (now_points, None)
     compare_series = None
-    if before_points is not None:
-        compare_series = period.weeks(before_points, scope.compare_start, scope.compare_end, size, _totals)[0] if not hourly else before_points
+    if hourly:
+        series, left_out = now_points, None
+        compare_series = before_points
+    elif before_points is not None:  # both lines leave out the same short first weeks, so week 3 is drawn against week 3
+        series, left_out, compare_series = period.weeks_pair(now_points, before_points, scope.start, scope.end, scope.compare_start, scope.compare_end, size, _totals)
+    else:
+        series, left_out = period.weeks(now_points, scope.start, scope.end, size, _totals)
     fresh_from = window["fresh_from"]
     for point in series:  # a week is "not final" when any of its days is
         last_day = min(date.fromisoformat(point["day"][:10]) + timedelta(days=size - 1), scope.end).isoformat()
@@ -745,14 +753,18 @@ def overview(scope: Scope, window: dict, fresh: bool = False, page: str | None =
     if size == 1:
         series = series + [{**p, "fresh": True, "counted": False} for p in tail]
     last_ok = scope.fetch("SELECT MAX(last_ok_at) t FROM site_sources WHERE site_id IN :sites AND source = 'gsc'")
+    if page_short:  # said like every other "no comparison": the head reads why, and from which day data is stored
+        window = {**window, "compare_from": None, "compare_to": None, "compare_unavailable": "rows_history",
+                  "history_from": (window.get("rows_from") or {}).get("page")}
+    compared = scope.has_compare and not page_short
     return {
         **status, **window, "origin": origin, "live_error": live_error, "hourly": hourly,
         "granularity": "hour" if hourly else "week" if size == 7 else "day",
-        "totals": totals, "before": before if scope.has_compare or (hourly and before) else None,
+        "totals": totals, "before": before if compared or (hourly and before) else None,
         "series": series, "compare_series": compare_series, "week_left_out": left_out,
         "queries": _counts(scope, scope.start, scope.end), "queries_before": _counts(scope, scope.compare_start, scope.compare_end) if rows_compared(scope, "query") else None,
         # Hours have no query or page split, so the sentence for 24 hours names no drivers.
-        "answer": _answer(totals, before, scope, drivers_too=False) if hourly or page else _answer(totals, before if scope.has_compare else None, scope),
+        "answer": _answer(totals, before, scope, drivers_too=False) if hourly or page else _answer(totals, before if compared else None, scope),
         "page": page,
         "markers": markers(scope), "verify": last_verdict(scope), "has_brand": bool(brand_words(scope)),
         "last_pull": last_ok[0]["t"].isoformat() + "Z" if last_ok and last_ok[0]["t"] else None,
