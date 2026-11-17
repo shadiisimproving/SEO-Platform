@@ -57,7 +57,7 @@
      Reading or retrying counts as not ready only while no site has any data. */
   const notReady = (src) => src.state === "waiting" || (["reading", "retrying"].includes(src.state) && !(src.sites || []).some((x) => x.through || x.last_ok_at));
   const waitWords = () => `${t("Connected. Waiting for data")}. ${t("Arrives after the next run. Refresh data starts one now.")}`;
-  const waitCard = () => `<div class="empty"><p>${esc(waitWords())}</p>${LVx()?.refreshBtn ? `<div style="margin-top:10px">${LVx().refreshBtn(true)}</div>` : ""}</div>`;
+  const waitCard = (button = true) => `<div class="empty"><p>${esc(waitWords())}</p>${button && LVx()?.refreshBtn ? `<div style="margin-top:10px">${LVx().refreshBtn(true)}</div>` : ""}</div>`;
   /* The site a chip speaks for: the worst one, so All sites never hides a failing site behind a good one. */
   const worstSite = (src) => src.sites.find((s) => s.state === src.state) || src.sites[0] || {};
   const nameOf = (src) => (src.id === "serp" ? src.name : t(SRC[src.id]));
@@ -117,7 +117,7 @@
   function answer(d) {
     const ga4 = stateOf(d, "ga4"), lines = [];
     if (["not_connected", "not_used", "no_sites"].includes(ga4.state)) lines.push(esc(t("Connect Google Analytics to see AI visits and leads.")));
-    else if (notReady(ga4)) lines.push(esc(waitWords()));
+    else if (notReady(ga4)) lines.push(`${esc(t("Connected. Waiting for data"))}.`); // the chart card under it says the rest, with Refresh data
     else if (!d.sessions) lines.push(esc(t("No AI visits in this period.")));
     else {
       const top = d.sources[0]?.source;
@@ -346,7 +346,7 @@
   function assistantsTab(d) {
     const ga4 = stateOf(d, "ga4");
     if (["not_connected", "not_used", "no_sites"].includes(ga4.state)) return notSet(t("Connect Google Analytics to see which assistants send visits."), `<button class="btn btn-main" data-lv-connect="google">${t("Connect")}</button>`);
-    if (notReady(ga4)) return waitCard();
+    if (notReady(ga4)) return waitCard(false);
     if (!d.sources.length) return notSet(`${t("No AI visits in this period: a real zero.")}${UI.tip("Google Analytics has data, and none of it came from the assistants on the AI list.")}`);
     const rateCell = (r) => (r.rate !== null ? pct(r.rate) : `<span class="muted" data-tip="${esc(tf("needs {need} AI visits, {n} so far", { need: num(d.limits.lead_rate_min_visits), n: num(r.sessions) }))}">—</span>`);
     const columns = [
@@ -360,7 +360,7 @@
   function pagesTab(d) {
     const ga4 = stateOf(d, "ga4");
     if (["not_connected", "not_used", "no_sites"].includes(ga4.state)) return notSet(t("Connect Google Analytics to see AI landing pages."), `<button class="btn btn-main" data-lv-connect="google">${t("Connect")}</button>`);
-    if (notReady(ga4)) return waitCard();
+    if (notReady(ga4)) return waitCard(false);
     const min = d.limits.cta_min_visits;
     const none = d.pages.filter((p) => !p.leads).length;
     const action = (r) => rowAct(d.key_events_set_up && !r.leads && r.sessions >= min ? UI.taskButton(taskFind({ kind: "cta", host: r.host, path: r.path, visits: r.sessions, key: `ai|cta|${r.host}|${r.path}` }, actionText({ kind: "cta", host: r.host, path: r.path, visits: r.sessions })), { label: "Task" }) : "");
