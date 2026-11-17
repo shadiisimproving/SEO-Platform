@@ -179,6 +179,20 @@ def _edits_by_month(conn, host: str, keys: list[str]) -> tuple[list[int], str | 
     return [counts.get(key, 0) for key in keys], first.date().isoformat() if first else None, int(pages or 0)
 
 
+DATED_SHARE = 0.1  # under this share of pages with an update date (and under 5 pages), the share says nothing
+DATED_MIN = 5
+
+
+def updated_share_of(pages: list[dict], since: date) -> float | None:
+    """Among pages with an update date, the share updated since `since`. A page with none isn't "not updated": nobody
+    knows. When few pages carry a date, the share isn't shown: meyranpartners.fr gives no dates, and the 3 pages the app
+    saw edited made "Updated, 12 months" read 100% of 486 (SEO review 2026-11-17, W11)."""
+    dated = [p for p in pages if p["updated"]]
+    if not dated or len(dated) < max(DATED_MIN, DATED_SHARE * len(pages)):
+        return None
+    return round(sum(1 for p in dated if p["updated"] >= since) / len(dated), 3)
+
+
 def _rhythm(conn, host: str, my_host: str, theirs: list[dict], mine: list[dict], by_year: dict) -> dict:
     today = datetime.now(timezone.utc).date()
     keys = []
@@ -203,9 +217,7 @@ def _rhythm(conn, host: str, my_host: str, theirs: list[dict], mine: list[dict],
     year_ago = today - timedelta(days=365)
 
     def updated_share(pages):
-        # Among pages with an update date. A page with none isn't "not updated": nobody knows.
-        dated = [p for p in pages if p["updated"]]
-        return round(sum(1 for p in dated if p["updated"] >= year_ago) / len(dated), 3) if dated else None
+        return updated_share_of(pages, year_ago)
 
     return {
         "months": [{"month": key, "theirs": t, "mine": m} for key, t, m in zip(keys, their_months, my_months)],

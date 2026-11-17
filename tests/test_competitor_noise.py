@@ -348,3 +348,11 @@ def test_stored_events_are_hidden_by_the_rules_and_real_edits_stay(engine):
     assert result["hidden"] == {"template": 1, "same_text": 1, "redirect": 2, "found_later": 1} and result["redirects"] == 1
     assert again["hidden"] == {} and again["redirects"] == 0  # safe to run again
     assert scalar(engine, "SELECT final_url FROM pages WHERE id = :p", p=ids[3]) == "https://rival.example/p4"
+
+
+def test_updated_in_12_months_is_not_shown_when_few_pages_carry_a_date():
+    year_ago = date.today() - timedelta(days=365)
+    recent, old, none = {"updated": date.today()}, {"updated": date(2020, 1, 1)}, {"updated": None}
+    assert insights.updated_share_of([recent] * 3 + [none] * 483, year_ago) is None  # meyranpartners.fr: 3 of 486 dated
+    assert insights.updated_share_of([recent] * 6 + [old] * 4 + [none] * 10, year_ago) == 0.6
+    assert insights.updated_share_of([none] * 4, year_ago) is None
