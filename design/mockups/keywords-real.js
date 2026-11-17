@@ -94,7 +94,8 @@
     "Checked {age} ago.": "Contrôlé il y a {age}.", "{tool}'s check is {age} old, so this newer one is shown.": "Le contrôle de {tool} date de {age} : ce contrôle plus récent est affiché.",
     "Google only": "Google uniquement", "Bing Webmaster": "Bing Webmaster", "Yandex Webmaster": "Yandex Webmaster",
     "{engine} isn't checked: no tool can search it.": "{engine} n'est pas contrôlé : aucun outil ne peut y chercher.", "Connect one in Settings, then press Refresh.": "Connectez-en un dans les réglages, puis appuyez sur Actualiser.",
-    "It will be skipped.": "Il sera ignoré.", "includes {n} spellings": "inclut {n} orthographes",
+    "It will be skipped.": "Il sera ignoré.", "Includes other spellings of it, such as without accents.": "Inclut d'autres orthographes, par exemple sans accents.",
+    "You already track “{kw}”.": "Vous suivez déjà « {kw} ».", "Track this spelling too": "Suivre aussi cette orthographe",
     "No tool can search Yandex, so it was skipped.": "Aucun outil ne peut chercher sur Yandex : il a été ignoré.", "No tool can search Bing, so it was skipped.": "Aucun outil ne peut chercher sur Bing : il a été ignoré.",
     "No tool can search DuckDuckGo, so it was skipped.": "Aucun outil ne peut chercher sur DuckDuckGo : il a été ignoré.", "No tool can search Google, so it was skipped.": "Aucun outil ne peut chercher sur Google : il a été ignoré.",
   };
@@ -198,8 +199,8 @@
   };
   const ideasCard = () => {
     if (!window.LV?.ideasCard) return "";
-    const keys = new Set(allRows().map((r) => kwKey(r.keyword)));
-    return window.LV.ideasCard({ tracked: { has: (word) => keys.has(kwKey(word)) }, market: mostUsed() }); // any case, any accent
+    // The exact spelling (any case): another spelling of a tracked keyword can still be added, Google ranks them apart.
+    return window.LV.ideasCard({ tracked: new Set(allRows().map((r) => r.keyword.toLowerCase())), market: mostUsed() });
   };
 
   // ---- loading --------------------------------------------------------------------------------
@@ -408,7 +409,7 @@
          ${K.worldCol ? `<td class="c" data-label="${t("All countries")}">${worldCell(view)}</td>` : ""}
          <td data-label="${t("Our check")}">${scrapedCell(row, e)}</td>
          <td class="c" data-label="${t("Change")}">${changeCell(view)}</td>
-         ${showCol("vol", e) ? `<td class="c" data-label="${t("Impressions (28 days)")}">${impressionsOf(row, e) === null ? '<span class="muted dash">—</span>' : e === "google" && row.spellings > 1 ? `<span class="tabular" data-tip="${esc(t("includes {n} spellings").replace("{n}", row.spellings))}">${num(impressionsOf(row, e))}<sup class="kw-spell" aria-hidden="true">${row.spellings}</sup><span class="sr"> (${esc(t("includes {n} spellings").replace("{n}", row.spellings))})</span></span>` : num(impressionsOf(row, e))}</td>` : ""}
+         ${showCol("vol", e) ? `<td class="c" data-label="${t("Impressions (28 days)")}">${impressionsOf(row, e) === null ? '<span class="muted dash">—</span>' : e === "google" && row.other_spellings ? `<span class="tabular" data-tip="${esc(t("Includes other spellings of it, such as without accents."))}">${num(impressionsOf(row, e))}<sup class="kw-spell" aria-hidden="true">*</sup><span class="sr"> (${esc(t("Includes other spellings of it, such as without accents."))})</span></span>` : num(impressionsOf(row, e))}</td>` : ""}
          ${state.cols.trend ? `<td data-label="${t("Trend")}">${trend}</td>` : ""}
          ${state.cols.page ? pageCell(row, e) : ""}
          ${showCol("ai", e) ? `<td data-label="${t("AI")}">${aiCell(row)}</td>` : ""}`;
@@ -496,7 +497,15 @@
       const words = e === "google" ? ["No Search Console data yet", "Connect it in Settings; queries appear within 3 days."] : [e === "bing" ? "No Bing Webmaster data yet" : "No Yandex Webmaster data yet", "Connect it in Settings; queries appear here."];
       return `<div class="table-wrap"><div class="empty"><h3>${t(words[0])}</h3><p>${t(words[1])}</p><button class="btn" data-go="settings">${t("Open Settings")}</button></div></div>`;
     }
-    const tracked = new Set(allRows().map((row) => `${row.site}|${kwKey(row.keyword)}`)); // "cafe" is tracked when "café" is
+    // Exact spellings tracked (any case), and the spelling tracked for each accent-free key: "cafe" isn't "café", but Track on
+    // "cafe" first says "You already track café" and offers to track this spelling too (Google ranks them apart).
+    const exact = new Set(allRows().map((row) => `${row.site}|${row.keyword.toLowerCase()}`));
+    const twins = new Map(allRows().map((row) => [`${row.site}|${kwKey(row.keyword)}`, row.keyword]));
+    const trackCell = (row) => {
+      if (exact.has(`${row.site}|${row.query.toLowerCase()}`)) return "";
+      const twin = twins.get(`${row.site}|${kwKey(row.query)}`);
+      return `<button class="btn btn-small" data-kwr-follow="${esc(row.query)}" data-site-host="${esc(row.site)}" ${twin ? `data-twin="${esc(twin)}"` : ""}>${t("Track")}</button>`;
+    };
     const found = sortedQueries(rows.filter((row) => TP.matches(Q_PAGES, row.query, state.site === "all" ? row.site : "")));
     const tools = `<div class="kw-find">${TP.search(Q_PAGES, t("Search queries"))}</div>`;
     if (!found.length) return `${tools}<div class="table-wrap"><div class="empty"><h3>${t("No query matches.")}</h3><p dir="auto">${esc(TP.state(Q_PAGES).q.trim())}</p><button class="btn" data-kwq-search-clear>${t("Clear search")}</button></div></div>`;
@@ -506,7 +515,7 @@
       return `<th scope="col" class="c" aria-sort="${on ? (K.qsort.dir === "asc" ? "ascending" : "descending") : "none"}"><button type="button" class="th-btn" data-kwq-sort="${id}">${label}${on ? icon(K.qsort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
     };
     return `${tools}<div class="ov-list"><div class="table-wrap"><table class="data" id="kwq-table"><thead><tr><th scope="col">${t("Keyword")}</th>${head("clicks", t("Clicks"))}${head("impressions", "Impressions")}${head("ctr", t("Click rate"))}${head("position", t("Position"))}<th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
-      <tbody>${view.rows.map((row) => `<tr style="cursor:default"><td class="head-cell kw">${KeywordLink.html(row.query, { host: row.site })}${state.site === "all" ? `<span class="second mono">${esc(row.site)}</span>` : ""}</td><td class="c" data-label="${t("Clicks")}">${num(row.clicks)}</td><td class="c" data-label="Impressions">${num(row.impressions)}</td><td class="c" data-label="${t("Click rate")}">${row.impressions ? `${dec(Math.round((row.clicks / row.impressions) * 1000) / 10)}%` : "—"}</td><td class="c" data-label="${t("Position")}">${row.position === null ? "—" : dec(Math.round(row.position * 10) / 10)}</td><td class="r">${tracked.has(`${row.site}|${kwKey(row.query)}`) ? "" : `<button class="btn btn-small" data-kwr-follow="${esc(row.query)}" data-site-host="${esc(row.site)}">${t("Track")}</button>`}</td></tr>`).join("")}</tbody></table></div>
+      <tbody>${view.rows.map((row) => `<tr style="cursor:default"><td class="head-cell kw">${KeywordLink.html(row.query, { host: row.site })}${state.site === "all" ? `<span class="second mono">${esc(row.site)}</span>` : ""}</td><td class="c" data-label="${t("Clicks")}">${num(row.clicks)}</td><td class="c" data-label="Impressions">${num(row.impressions)}</td><td class="c" data-label="${t("Click rate")}">${row.impressions ? `${dec(Math.round((row.clicks / row.impressions) * 1000) / 10)}%` : "—"}</td><td class="c" data-label="${t("Position")}">${row.position === null ? "—" : dec(Math.round(row.position * 10) / 10)}</td><td class="r">${trackCell(row)}</td></tr>`).join("")}</tbody></table></div>
       ${TP.footer(Q_PAGES, view, { noun: t(view.total === 1 ? "query" : "queries") })}</div>`;
   }
   /* The Queries table keeps the server's order (most clicks first) until a heading is pressed. Numbers go biggest first,
@@ -1469,7 +1478,16 @@
       }
       if (hit("#kwr-add, #kwr-add-phone")) { addPanel(hit("#kwr-add, #kwr-add-phone")); return; }
       if ((el = hit("#kwr-add-save"))) { saveKeywords(el); return; }
-      if ((el = hit("[data-kwr-follow]"))) { addPanel(el, el.dataset.kwrFollow, el.dataset.siteHost); return; }
+      if ((el = hit("[data-kwr-follow]"))) {
+        if (el.dataset.twin && !el.dataset.sure) { // another spelling is tracked: say so first, never block, never duplicate silently
+          const cell = el.parentElement;
+          UI.setHTML(cell, `<span class="kw-twin small" role="status" dir="auto">${esc(t("You already track “{kw}”.").replace("{kw}", el.dataset.twin))}</span> <button class="btn btn-small" data-kwr-follow="${esc(el.dataset.kwrFollow)}" data-site-host="${esc(el.dataset.siteHost)}" data-twin="${esc(el.dataset.twin)}" data-sure="1">${t("Track this spelling too")}</button>`);
+          $("[data-sure]", cell)?.focus();
+          return;
+        }
+        addPanel(el, el.dataset.kwrFollow, el.dataset.siteHost);
+        return;
+      }
       if ((el = hit("[data-kwr-open]"))) { openKeyword(el.dataset.kwrOpen, el); return; }
       if ((el = hit("[data-kwr-deeper]"))) { checkDeeper(rowById(el.dataset.kwrDeeper), el.dataset.engineId); return; }
       if (hit("#kwr-deeper-all") && K.refresh?.deeper) { K.refresh.deeper.all = true; renderRefresh(); ($("#kwr-tool-list .chk:checked") || $("#kwr-tool-list .chk"))?.focus(); return; }

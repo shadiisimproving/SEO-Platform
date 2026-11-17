@@ -90,7 +90,8 @@ READ_STEPS = (10, 20, 30, 50)  # the depths a Refresh offers (refresh.DEPTHS): a
 def depth_read(asked: int, read: int) -> int:
     """The depth one page of results really answers. DuckDuckGo has no page 2 here (its next page needs a token from this
     one), so a Top 30 asked for and one page of about 10 read answers Top 10, never ">30". Rounded down to a depth the app
-    offers, so checks stay comparable with each other. A page with fewer than 10 results is the whole list: Top 10."""
+    offers, so checks stay comparable with each other. A page with fewer than 10 results is the whole list: Top 10.
+    The results kept are cut to the same depth, so a #23 is never saved inside a "Top 20" check."""
     steps = [step for step in READ_STEPS if step <= min(int(asked), max(int(read), 10))]
     return steps[-1] if steps else int(asked)
 
@@ -237,7 +238,8 @@ class DuckDuckGoDirect:
                 raise ToolStopped(self.BOT_CHECK, bot_check=True)
             if not says_none:  # a page we can't read must not pass as "nobody ranks"
                 raise SearchFailed("DuckDuckGo's page had no results the app could read.")
-        return Answer(self.name, region, depth_read(depth, len(every)) if every else depth, results, NOT_CAPTURED, [], 0)
+        saved = depth_read(depth, len(every)) if every else depth
+        return Answer(self.name, region, saved, results[:saved], NOT_CAPTURED, [], 0)  # position and depth always agree
 
 
 # ---- SerpApi: all four engines, AI Overview on Google. Written from its documentation: no key has been tried yet --------
@@ -313,7 +315,7 @@ class SerpApi:
         location = country.upper() if engine == "bing" and country else ddg_region(country, language) if engine == "duckduckgo" else ""
         # DuckDuckGo read one page only: the depth saved is what that page answers. An empty list is the end of the results.
         read = depth_read(depth, len(found)) if engine == "duckduckgo" and found else depth
-        return Answer(self.name, location, read, found[:depth], NOT_CAPTURED, [], charged)
+        return Answer(self.name, location, read, found[:read], NOT_CAPTURED, [], charged)  # nothing kept past the depth saved
 
     def search(self, keyword: str, engine: str, country: str, language: str, device: str, depth: int) -> Answer:
         if engine != "google":
@@ -598,7 +600,8 @@ class BrightData:
             failed = SearchFailed("Bright Data's DuckDuckGo page had no results the app could read.")
             failed.charged = 1
             raise failed
-        return Answer(self.name, ddg_region(country, language), depth_read(depth, len(every)) if every else depth, results, NOT_CAPTURED, [], 1)
+        saved = depth_read(depth, len(every)) if every else depth
+        return Answer(self.name, ddg_region(country, language), saved, results[:saved], NOT_CAPTURED, [], 1)  # position and depth agree
 
     def search(self, keyword: str, engine: str, country: str, language: str, device: str, depth: int) -> Answer:
         if engine == "duckduckgo":

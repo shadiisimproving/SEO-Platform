@@ -254,13 +254,12 @@ def test_a_query_already_tracked_says_so_whatever_its_market(engine, site):
     assert rows == {"Sofa  Delivery": True, "sofa repair": False}
 
 
-def test_a_keyword_tracked_with_accents_marks_both_spellings_tracked(engine, site):
-    """One key for a keyword whatever its accents (store.keyword_key, 2026-11-17): "café moulu" tracked means "cafe moulu"
-    is tracked too, so it's never suggested as Worth tracking, and Track can't add it twice."""
+def test_a_keyword_tracked_with_and_without_accents_counts_both_spellings(engine, site):
+    """The keywords table compares without accents, so asking it for DISTINCT names would fold the two into one."""
     _row(engine, site, "gsc_query", END, "cafe moulu", 3, 30, 4.0)
     _row(engine, site, "gsc_query", END, "café moulu", 2, 30, 4.0)
     with engine.begin() as conn:
-        for words in ("café moulu",):
+        for words in ("café moulu", "cafe moulu"):
             keyword_id = conn.execute(text("INSERT INTO keywords (keyword, keyword_hash, country, language) VALUES (:w, :h, 'fr', 'fr')"), {"w": words, "h": store.keyword_hash(words)}).lastrowid
             conn.execute(text("INSERT INTO site_keywords (site_id, keyword_id) VALUES (:s, :k)"), {"s": site, "k": keyword_id})
     rows = {r["name"]: r["tracked"] for r in search.breakdown(_scope(engine, site)[0], "query")["rows"]}

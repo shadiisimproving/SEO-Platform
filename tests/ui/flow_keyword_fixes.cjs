@@ -30,6 +30,8 @@ async function run(width, lang) {
   check(jp.includes(fr ? "Toujours hors" : "Still out"), `${tag}: out twice says Still out`);
   const best = await rowText(page, "best coffee beans");
   check(best.includes("120"), `${tag}: the passed-over main tool's age shows on the row`);
+  const grains = await page.locator("#kw-table tbody tr", { hasText: "café en grains" }).first().locator(".kw-spell").count();
+  check(grains === 1, `${tag}: café en grains (tracked once) marks its impressions as including other spellings`);
   const tile = await page.locator('[data-card="kw-top10"]').innerText();
   console.log("   top10 tile:", tile.replace(/\s+/g, " "));
   await page.screenshot({ path: `${out}/${tag}-google.png`, fullPage: true });
@@ -38,6 +40,19 @@ async function run(width, lang) {
   const down = await page.locator('[data-filter="down"]').innerText();
   check(/3/.test(down), `${tag}: the Down chip counts 3 (two places lost + one dropped out): ${down.replace(/\s+/g, " ")}`);
   await page.click("#kw-filter-close").catch(() => {}); await settle(page);
+  // Queries: Track on "abonnement cafe" when "abonnement café" is tracked says so first, then offers this spelling too
+  await page.click("#kw-filter"); await page.click('[data-view="queries"]'); await settle(page, 1500);
+  const track = page.locator('[data-kwr-follow="abonnement cafe"]');
+  check(await track.count() === 1, `${tag}: Track is offered on the unaccented spelling`);
+  if (await track.count()) {
+    await track.click(); await settle(page);
+    const said = await page.locator(".kw-twin").innerText().catch(() => "");
+    check(said.includes("abonnement café"), `${tag}: Track first says "${said}"`);
+    check(await page.locator('[data-kwr-follow="abonnement cafe"][data-sure]').count() === 1, `${tag}: and offers Track this spelling too`);
+    await page.screenshot({ path: `${out}/${tag}-track-twin.png`, fullPage: false });
+  }
+  await page.evaluate(() => { window.UI.state.view = "positions"; window.UI.render(); }); await settle(page, 900);
+  if (await page.locator("#kw-filter-close").count()) { await page.click("#kw-filter-close"); await settle(page); }
   // Bing tab: no Google impressions or AI column
   await page.click('[data-engine="bing"]'); await settle(page, 900);
   const bingHead = await page.locator("#kw-table thead").innerText().catch(() => "");
