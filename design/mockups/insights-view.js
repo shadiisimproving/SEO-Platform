@@ -777,7 +777,7 @@
   }
 
   // ---- AI, on a click only ------------------------------------------------------------------------
-  const AI_ASK = { explain: "Explain", titles: "Suggest titles", brief: "Write a brief", faq: "Write an FAQ", compete: "Which page to keep", weekly: "AI summary" };
+  const AI_ASK = { explain: "Explain", why_dropped: "Explain with AI", titles: "Suggest titles", brief: "Write a brief", faq: "Write an FAQ", compete: "Which page to keep", weekly: "AI summary" };
   const MODEL_NAMES = { "claude-haiku-5-5": "Claude Haiku 5.5", "claude-sonnet-5-5": "Claude Sonnet 5.5" };
   const aiReady = (provider) => Boolean(IN.ai?.keys?.[provider]);
   // Headings a brief marks with ## or ### show bold, without the marks; every line is escaped like everything else.
@@ -786,25 +786,26 @@
     return m ? `<b class="in-ai-h${m[1].length}">${esc(m[2])}</b>` : esc(line);
   }).join("\n");
   function aiAnswer(purpose, answer) {
+    if (purpose === "why_dropped" && answer.parsed) return whyAnswer(answer);
     const by = answer.provider === "claude" ? MODEL_NAMES[answer.model] || answer.model : t("a free model");
     const digits = answer.cost < 0.01 ? 4 : 2;
     const cost = answer.cost ? ` · ${esc(new Intl.NumberFormat(UI.locale(), { style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(answer.cost))}` : "";
-    return `<div class="in-ai-answer" data-in-ai-box="${purpose}"><p class="in-ai-label">${icon("sparkles")}${t("Written by AI")} · ${esc(by)}${cost}</p>
+    return `<div class="in-ai-answer" data-in-ai-box="${purpose}"><p class="in-ai-label">${icon("sparkles")}${t("Written by AI")} · ${esc(by)}${cost}${weakerTag(answer)}</p>
       <div class="in-ai-text" dir="auto">${aiText(answer.text)}</div>
       <div class="in-ai-acts"><button class="link-btn" data-in-ai-copy="${purpose}">${t("Copy")}</button><button class="link-btn" data-in-ai="${purpose}" data-in-ai-again="1">${t("Ask again")}</button></div></div>`;
   }
   const aiBlock = (f) => (f.ai?.purposes?.length ? `<section class="in-ai-wrap" data-in-ai-wrap>${aiInner(f)}</section>` : "");
-  function aiInner(f, withButtons = true) { // withButtons false: the row panel has them in its foot
+  function aiInner(f, withButtons = true, withHead = true) { // withButtons false: the row panel has them in its foot; withHead false: its section says "With AI"
     const info = f.ai;
     const lang = UI.state.lang === "fr" ? "fr" : "en";
     const kept = info.kept?.[lang] || {};
     if (info.provider === "none") return `<h3 class="ov-h3">${t("With AI")}</h3><p class="small muted">${t("No AI chosen yet, so nothing is sent. Pick one in Settings → AI.")} <a href="#settings">${t("Open Settings")}</a></p>`;
     const ready = aiReady(info.provider);
-    const head = `<h3 class="ov-h3">${t("With AI")} <span class="muted small">${t(info.provider === "claude" ? "Claude (Anthropic key)" : "Free models (OpenRouter)")}</span></h3>`;
+    const head = withHead ? `<h3 class="ov-h3">${t("With AI")} <span class="muted small">${t(info.provider === "claude" ? "Claude (Anthropic key)" : "Free models (OpenRouter)")}</span></h3>` : "";
     if (!ready && !Object.keys(kept).length) return `${head}<p class="small muted">${t(info.provider === "claude" ? "Paste an Anthropic key in Settings to use Claude here." : "Connect OpenRouter in Settings, or pick Claude for this site.")} <a href="#settings">${t("Open Settings")}</a></p>`;
     const buttons = !withButtons ? "" : info.purposes.filter((p) => !kept[p]).map((p) => `<button class="btn btn-small" data-in-ai="${p}" ${ready ? "" : "disabled"}>${icon("sparkles")}${t(AI_ASK[p])}</button>`).join("");
     return `${head}<div class="in-ai">${info.purposes.filter((p) => kept[p]).map((p) => aiAnswer(p, kept[p])).join("")}${buttons ? `<div class="in-ai-buttons">${buttons}</div>` : ""}
-      <p class="small muted">${t("Sends only the numbers above and the page's title and headings.")}${UI.tip("AI never changes what's found or how it's ranked.")}</p></div>`;
+      <p class="small muted">${t(info.purposes.includes("why_dropped") ? "Sends only the facts on this panel, the page's title and headings, and what the sites above you changed." : "Sends only the numbers above and the page's title and headings.")}${UI.tip("AI never changes what's found or how it's ranked.")}</p></div>`;
   }
   async function askAI(button) {
     const purpose = button.dataset.inAi, again = Boolean(button.dataset.inAiAgain), f = IN.current;
@@ -843,6 +844,130 @@
     const held = IN.weekly && IN.weekly.id === change.id && IN.weekly.lang === (UI.state.lang === "fr" ? "fr" : "en") ? IN.weekly.answer : null;
     if (held) return `<div class="in-weekly">${aiAnswer("weekly", held).replace('data-in-ai="weekly"', `data-in-weekly="${change.id}"`)}</div>`;
     return `<button class="link-btn in-weekly-btn" data-in-weekly="${change.id}">${icon("sparkles")}${t("AI summary")}</button>`;
+  }
+
+  // ---- "Explain with AI" (why_dropped, 2026-11-17): the cause first, its proof, three steps each a task, how sure --------
+  const SURE = { sure: ["good", "Sure"], likely: ["sec", "Likely"], guess: ["warn", "A guess"] };
+  const weakerTag = (answer) => (answer.provider === "openrouter" || answer.weaker ? ` <span class="in-weaker" tabindex="0" data-tip="${esc(t("Free models are weaker than Claude: check what it says."))}">${t("Weaker")}</span>` : "");
+  function whyAnswer(answer) {
+    const p = answer.parsed, by = answer.provider === "claude" ? MODEL_NAMES[answer.model] || answer.model : t("a free model");
+    const digits = answer.cost < 0.01 ? 4 : 2;
+    const cost = answer.cost ? ` · ${esc(new Intl.NumberFormat(UI.locale(), { style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(answer.cost))}` : "";
+    const sure = SURE[p.sure] || SURE.guess;
+    return `<div class="in-ai-answer in-why" data-in-ai-box="why_dropped"><p class="in-ai-label">${icon("sparkles")}${t("Written by AI")} · ${esc(by)}${cost}${weakerTag(answer)}</p>
+      <div class="in-why-top"><p class="in-why-cause" dir="auto">${esc(p.cause)}</p><span class="${sure[0]} d-pill in-sure" title="${esc(t("How sure"))}"><span class="sr">${t("How sure")}: </span>${esc(t(sure[1]))}</span></div>
+      ${p.proof.length ? `<h4 class="in-why-h">${t("Proof")}</h4><ul class="in-why-proof">${p.proof.map((x) => `<li dir="auto">${esc(x)}</li>`).join("")}</ul>` : ""}
+      <h4 class="in-why-h">${t("Do this")}</h4><ol class="in-why-do">${p.do.map((x, i) => `<li><span class="in-why-n" aria-hidden="true">${num(i + 1)}</span><span class="in-why-step" dir="auto">${esc(x)}</span><button type="button" class="btn btn-small in-why-task" data-in-why-task="${i}">${icon("square-check")}${t("Make it a task")}</button></li>`).join("")}</ol>
+      <div class="in-ai-acts"><button class="link-btn" data-in-ai-copy="why_dropped">${t("Copy")}</button><button class="link-btn" data-in-ai="why_dropped" data-in-ai-again="1">${t("Ask again")}</button></div>
+      <div class="in-ai-text" hidden>${esc(answer.text)}</div></div>`;
+  }
+  function whyTask(f, index, opener) {
+    const lang = fr() ? "fr" : "en", answer = f.ai?.kept?.[lang]?.why_dropped, p = answer?.parsed;
+    const step = p?.do?.[index];
+    if (!step) return;
+    // Its own key per step, so each step can be a task beside the finding's own one (one open task per key).
+    taskFor(f, opener, { title: step, key: `${f.key}#step${index + 1}`, description: [step, "", `${t("Cause")}: ${p.cause}`, ...(p.proof || []).map((x) => `- ${x}`)].join("\n"), facts: [p.cause] });
+  }
+
+  // ---- "Who passed you" (2026-11-17): the followed sites' pages now above mine, what each changed, my page beside -------
+  const RV_FIELD = { title: "Title", meta: "Description", h1: "Main heading", headings: "Headings", words: "Words", years: "Years named", questions: "FAQ questions", sections: "Text",
+    schema: "Structured data", modified: "Updated date", published: "Published date", internal_links: "Links to own pages", external_links: "Links out" };
+  const RV_POLLS = 8;
+  const rvList = (v) => (Array.isArray(v) ? v.join(", ") : v);
+  const rvPlain = (v) => (v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length) ? "—" : typeof v === "number" ? num(v) : esc(cut(rvList(v))));
+  const rvDay = (v) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v) ? new Intl.DateTimeFormat(UI.locale(), { day: "numeric", month: "short", year: "numeric" }).format(new Date(`${v.slice(0, 10)}T00:00:00`)) : v);
+  function rvValue(r) {
+    if (r.field === "modified" || r.field === "published") r = { ...r, before: rvDay(r.before), after: rvDay(r.after), mine: rvDay(r.mine) };
+    const plus = (list) => (list || []).slice(0, 3).map((x) => `<li dir="auto"><span class="in-rv-add" aria-hidden="true">+</span>${esc(cut(x, 80))}</li>`).join("");
+    const minus = (list) => (list || []).slice(0, 2).map((x) => `<li dir="auto"><span class="in-rv-del" aria-hidden="true">−</span><span class="in-was">${esc(cut(x, 80))}</span></li>`).join("");
+    if (r.field === "headings" || r.field === "questions") {
+      if (!Array.isArray(r.added) && !Array.isArray(r.removed)) return rvPlain(r.after); // what they have now
+      const counts = known(r.before) && known(r.after) ? `<span class="in-ba-r">${num(r.before)} → ${num(r.after)}</span>` : "";
+      return `${counts}<ul class="in-rv-items">${plus(r.added)}${minus(r.removed)}</ul>`;
+    }
+    if (r.field === "schema") return Array.isArray(r.added) || Array.isArray(r.removed) ? `<ul class="in-rv-items">${plus(r.added)}${minus(r.removed)}</ul>` : rvPlain(r.after);
+    if (r.field === "sections") {
+      const n = fill("{a} sentences added, {r} removed", { a: num(r.added_count ?? (r.added || []).length), r: num(r.removed_count ?? (r.removed || []).length) });
+      return `<span>${esc(n)}</span><ul class="in-rv-items">${plus((r.added || []).slice(0, 2))}</ul>`;
+    }
+    if (r.before === null || r.before === undefined) return `<span dir="auto">${rvPlain(r.after)}</span>`;
+    return `<span class="in-was" dir="auto">${rvPlain(r.before)}</span> → <span dir="auto">${rvPlain(r.after)}</span>`;
+  }
+  function rvRow(r, host) {
+    if (r.field === "modified" || r.field === "published") r = { ...r, mine: rvDay(r.mine) };
+    const mine = r.field === "sections" ? "" : `<div class="in-rv-me">${window.COMP?.who ? COMP.who("you", null, t("You")) : `<b>${t("You")}</b>`}<span dir="auto">${rvPlain(r.mine)}</span></div>`;
+    return `<li><div class="in-rv-f">${esc(tw(RV_FIELD[r.field] || r.field))}</div><div class="in-rv-v">${rvValue(r)}</div>${mine}</li>`;
+  }
+  function rvWhen(c) {
+    if (!c.read) return t("Not read yet");
+    if (c.unreadable) return t("Couldn't read their page");
+    const source = { stored: "Our stored copy", wayback: "From the Wayback Machine" }[c.before_source];
+    if (!source) return t("No earlier copy: what they have now");
+    const day = (iso) => (iso ? new Intl.DateTimeFormat(UI.locale(), { day: "numeric", month: "short", year: iso.slice(0, 4) === String(new Date().getFullYear()) ? undefined : "numeric" }).format(new Date(iso)) : "");
+    return `${fill(c.changed ? "Changed since {d}" : "No change since {d}", { d: day(c.before_at) })} · ${t(source)}`;
+  }
+  const rvPos = (pos) => (known(pos.before) ? `<span class="in-was">${num(pos.before)}</span> → <b>${num(pos.now)}</b>` : `<b>${num(pos.now)}</b>`);
+  function rvCard(c, f, i) {
+    const open = IN.rvOpen?.has(`${f.rivals.finding_id}:${i}`);
+    const rows = c.rows.map((r) => rvRow(r, f.host)).join("");
+    const extra = (c.extra || []).map((r) => rvRow(r, f.host)).join("");
+    const id = `in-rv-more-${f.rivals.finding_id}-${i}`;
+    return `<li class="in-rv"><div class="in-rv-head"><span class="in-rv-who">${UI.siteLogo ? UI.siteLogo(c.host, 20) : ""}<span class="in-rv-host" dir="ltr" translate="no">${esc(c.host)}</span>${c.passed ? `<span class="in-qtag q-places">${t("Passed you")}</span>` : ""}</span>
+        <span class="in-rv-pos"><span class="sr">${t("Position")} </span>${rvPos(c.position)}</span></div>
+      <p class="in-rv-url small">${pageLink(c.url, { text: pathOf(c.url) || c.url, host: c.host })}</p>
+      <p class="in-rv-when small muted">${esc(rvWhen(c))}</p>
+      ${rows ? `<ul class="in-rv-rows">${rows}${extra ? `<li class="in-rv-extra" id="${id}"${open ? "" : " hidden"}><ul class="in-rv-rows">${extra}</ul></li>` : ""}</ul>` : ""}
+      ${extra ? `<button type="button" class="link-btn in-rv-more" data-in-rv-more="${i}" aria-expanded="${open ? "true" : "false"}" aria-controls="${id}">${esc(open ? t("Show less") : fill("+{n} more", { n: num(c.more) }))}</button>` : ""}</li>`;
+  }
+  function rvNotFollowed(list, f) {
+    if (!list.length) return "";
+    const can = !window.ACCESS || ACCESS.canEdit("competitors");
+    return `<h4 class="in-why-h">${t("Above you, not followed")}</h4><ul class="rows ov-split in-rv-nf">${list.map((n) => `<li><div class="what"><div class="t in-rv-who">${UI.siteLogo ? UI.siteLogo(n.host, 16) : ""}${pageLink(n.url, { text: n.host, host: n.host })}</div><div class="s muted">${t("pos.")} ${num(n.position.now)}${n.tracking === "off" ? ` · ${t("Paused")}` : ""}</div></div>
+      ${can ? `<button type="button" class="btn btn-small" data-in-rv-follow="${esc(n.host)}" data-in-rv-id="${n.competitor_id ?? ""}">${icon("plus")}${t(n.tracking === "off" ? "Follow again" : "Follow")}</button>` : ""}</li>`).join("")}</ul>
+      <p class="small muted">${t("Followed sites' pages are read and compared. Others are only listed.")}</p>`;
+  }
+  function rivalsHtml(f) {
+    const r = f.rivals;
+    if (r === undefined) return `<p class="small muted" aria-busy="true">${t("Loading…")}</p>`;
+    if (r === null) return `<p class="small muted">${t("Couldn't load who passed you.")} <button type="button" class="link-btn" data-in-rv-retry>${t("Try again")}</button></p>`;
+    const cards = r.cards.length ? `<ul class="in-rv-list">${r.cards.map((c, i) => rvCard(c, f, i)).join("")}</ul>` : "";
+    const lead = !r.cards.length ? `<p class="small">${t(r.not_followed.length ? "No site you follow is above you on this search." : "Nobody passed you on this search's last check.")}</p>`
+      : r.status === "reading" ? `<p class="small in-rv-state" role="status"><span class="in-rv-spin" aria-hidden="true"></span>${t("Reading their pages now. This takes a minute.")}</p>`
+        : r.status === "waiting" ? `<p class="small in-rv-state" role="status">${t("Today's page reads are used up. The rest are read tomorrow.")}</p>` : "";
+    const keyword = r.keyword ? `<p class="small muted in-rv-kw">${t("On")} ${KeywordLink.html(r.keyword, { host: f.host })} · ${window.COMP?.who ? COMP.who("you", f.host, t("You")) : t("You")} ${known(r.me.before) ? `<span class="in-was">${num(r.me.before)}</span> → ` : ""}<b>${known(r.me.now) ? num(r.me.now) : "—"}</b>${r.me.url ? ` · ${pageLink(r.me.url, { text: pathOf(r.me.url), host: f.host })}` : ""}</p>` : "";
+    return `${keyword}${lead}${cards}${rvNotFollowed(r.not_followed, f)}`;
+  }
+  const rivalsBox = (f) => `<div class="in-rivals" data-in-rivals="${f.rivals_from}" aria-live="polite"><div data-in-rivals-body>${rivalsHtml(f)}</div></div>`;
+  const rivalsSection = (f) => (f.rivals_from ? `<section class="in-pblock"><h3 class="ov-h3">${t("Who passed you")}</h3>${rivalsBox(f)}</section>` : "");
+  function drawRivals(f) {
+    const box = UI.$(`#panel [data-in-rivals="${f.rivals_from}"] [data-in-rivals-body]`);
+    if (box && IN.current === f) UI.setHTML(box, rivalsHtml(f));
+  }
+  async function loadRivals(f, polls = 0) {
+    if (!f.rivals_from || IN.current !== f) return;
+    try { f.rivals = await window.COMP.api("GET", `insights/${f.rivals_from}/rivals`); }
+    catch { f.rivals = f.rivals || null; }
+    drawRivals(f);
+    if (f.rivals?.status === "reading" && polls < RV_POLLS) setTimeout(() => loadRivals(f, polls + 1), 3000 + polls * 1000); // the crawl lane reads them
+  }
+  async function followRival(button) {
+    const f = IN.current, host = button.dataset.inRvFollow, id = Number(button.dataset.inRvId) || null;
+    if (!f) return;
+    button.disabled = true;
+    const was = button.innerHTML;
+    button.textContent = t("Following…");
+    try {
+      const site = f.site_id ?? UI.siteIdPicked();
+      if (id) await window.COMP.api("PUT", `competitors/${id}/tracking`, { site_id: site, tracking: "on" });
+      else await window.COMP.api("POST", "competitors", { site_id: site, address: host });
+      f.rivals = await window.COMP.api("POST", `insights/${f.rivals_from}/rivals`);
+      drawRivals(f);
+      UI.toast(fill("Following {h}. Its page is read now.", { h: host }));
+      if (f.rivals?.status === "reading") setTimeout(() => loadRivals(f, 1), 3000);
+    } catch (err) {
+      UI.toast(t(err.message), { kind: "crit" });
+      if (button.isConnected) { button.disabled = false; button.innerHTML = was; }
+    }
   }
 
   // ---- one finding, in the side panel ---------------------------------------------------------------
@@ -997,13 +1122,19 @@
     const site = f.site_id ?? UI.siteIdPicked();
     const note = change ? null : [f.query ? { label: f.query, where: { scope: "keyword", keyword: f.query, siteId: site } } : null, f.page ? { label: pathOf(f.page), where: { scope: "page", pageUrl: f.page, siteId: site } } : null].filter(Boolean);
     const sub = change ? answer(f, false) : [kindName(f), !UI.siteIdPicked() ? f.host : "", f.task ? t(f.task === "done" ? "Task done" : "Task open") : ""].filter(Boolean).join(" · ");
+    const keptWhy = Boolean(kept.why_dropped);
+    const rivals = f.rivals_from ? { title: "Who passed you", html: rivalsBox(f) } : null;
+    const base = pageView ? pageBlocks(f, todo) : [change ? null : { title: "What to do", html: todo }, rivals, { title: change ? "Why" : "The facts behind it", html: evidenceList(f) }].filter(Boolean);
+    if (pageView && rivals) base.splice(2, 0, rivals);
+    const blocks = keptWhy ? [{ title: "With AI", html: `<div class="in-ai-wrap" data-in-ai-wrap>${aiInner(f, false, false)}</div>` }, ...base] : base;
     return {
       id: "insight", kind: "Insight", period: false, title: change ? t("Change breakdown") : titleOf(f), sub,
       page: onPage ? { url: f.page, host: f.host } : undefined,
       numbers: findingNumbers(f), chart: findingChart(f),
-      // A page row: Why and its searches first, then Google, my edit, last year, what to do and Search Console below.
-      sections: pageView ? pageBlocks(f, todo).slice(0, 2) : [change ? null : { title: "What to do", html: todo }, { title: change ? "Why" : "The facts behind it", html: evidenceList(f) }],
-      html: `${pageView ? blocksHtml(pageBlocks(f, todo).slice(2)) : ""}${ai ? `<section class="in-ai-wrap" data-in-ai-wrap>${aiInner(f, false)}</section>` : ""}${f.status === "dismissed" ? `<p class="small muted">${t("Hidden as not useful. Comes back if it doubles.")}</p>` : ""}`,
+      // Answer first: an "Explain with AI" answer once asked, then (a page row) Why and its searches, or What to do and Who
+      // passed you; Google, my edit, last year, Search Console and the facts behind it below. The row panel shows two sections.
+      sections: blocks.slice(0, 2),
+      html: `${keptWhy || !ai ? "" : `<section class="in-ai-wrap" data-in-ai-wrap>${aiInner(f, false)}</section>`}${blocksHtml(blocks.slice(2))}${f.status === "dismissed" ? `<p class="small muted">${t("Hidden as not useful. Comes back if it doubles.")}</p>` : ""}`,
       actions, note: note?.length ? note : undefined,
     };
   }
@@ -1016,7 +1147,7 @@
       load: async () => {
         const [f] = await Promise.all([window.COMP.api("GET", `insights/${id}`), aiFetch()]);
         IN.current = f;
-        setTimeout(markPanel, 0);
+        setTimeout(() => { markPanel(); loadRivals(f); }, 0);
         return findingSpec(f);
       },
     });
@@ -1041,20 +1172,21 @@
       ${f.status === "dismissed" ? `<button class="btn btn-ghost" data-in-undismiss="${f.id}">${t("Bring it back")}</button>` : f.status === "open" ? `<button class="btn btn-ghost" data-in-dismiss="${f.id}">${t("Not useful")}</button>` : ""}
     </div>`;
     const where = (f.query ? `<p class="small">${KeywordLink.html(f.query, { id: f.evidence?.keyword_id, host: f.host })}</p>` : "") + (f.page ? `<p class="small">${pageLink(f.page, { text: pathOf(f.page), host: f.host })}</p>` : "");
-    UI.openPanel(`${UI.panelHead(title, sub)}<div class="panel-body">${stakeBlock(f)}${where}${f.kind !== "change" ? `<p class="small" dir="auto">${esc(reasonOf(f))}${f.kind === "no_demand" ? UI.tip("It may be too rare for Google to report.") : ""}</p>` : ""}${doBlock(f)}${chart}${evidenceList(f)}${aiBlock(f)}
+    UI.openPanel(`${UI.panelHead(title, sub)}<div class="panel-body">${stakeBlock(f)}${where}${f.kind !== "change" ? `<p class="small" dir="auto">${esc(reasonOf(f))}${f.kind === "no_demand" ? UI.tip("It may be too rare for Google to report.") : ""}</p>` : ""}${doBlock(f)}${aiBlock(f)}${rivalsSection(f)}${chart}${evidenceList(f)}
       ${f.status === "dismissed" ? `<p class="small muted">${t("Hidden as not useful. Comes back if it doubles.")}</p>` : ""}${actions}</div>`, opener);
     IN.current = f;
+    loadRivals(f);
   }
 
   // ---- events ---------------------------------------------------------------------------------------
-  function taskFor(f, opener) {
+  function taskFor(f, opener, step = null) { // step: one "Do this" of Explain with AI, its title and words in place of the finding's
     const e = f.evidence || {};
     UI.openTask?.({
-      title: titleOf(f), host: f.host, opener, priority: f.severity === "big" ? "high" : "medium",
+      title: step ? cut(step.title, 140) : titleOf(f), host: f.host, opener, priority: f.severity === "big" ? "high" : "medium",
       // The finding's own search, else the searches behind it (a page's or a topic's), so the task lists them from the start.
       keywords: f.query ? [f.query] : (e.queries || []).map((q) => q.query).filter(Boolean).slice(0, 5), pages: f.page ? [f.page] : [],
-      source: { type: "search", key: f.key, label: `${t("Search insights")}: ${kindName(f)}`, facts: [reasonOf(f), f.at_stake >= 1 ? `${num(Math.round(f.at_stake))} ${t("clicks a month at stake")}` : ""].filter(Boolean), link: `#insights/${f.id}`, host: f.host },
-      description: [e.path ? f.page : "", onPageLine(f), doLine(f)].filter(Boolean).join("\n"),
+      source: { type: "search", key: step?.key || f.key, label: `${t("Search insights")}: ${kindName(f)}`, facts: [...(step?.facts || []), reasonOf(f), f.at_stake >= 1 ? `${num(Math.round(f.at_stake))} ${t("clicks a month at stake")}` : ""].filter(Boolean), link: `#insights/${f.id}`, host: f.host },
+      description: step ? step.description : [e.path ? f.page : "", onPageLine(f), doLine(f)].filter(Boolean).join("\n"),
     });
   }
   function bind() {
@@ -1083,6 +1215,18 @@
         return;
       }
       if ((el = hit("[data-in-task]"))) { if (IN.current) taskFor(IN.current, el); return; }
+      if ((el = hit("[data-in-why-task]"))) { if (IN.current) whyTask(IN.current, Number(el.dataset.inWhyTask), el); return; }
+      if ((el = hit("[data-in-rv-follow]"))) { followRival(el); return; }
+      if ((el = hit("[data-in-rv-retry]"))) { if (IN.current) { IN.current.rivals = undefined; drawRivals(IN.current); loadRivals(IN.current); } return; }
+      if ((el = hit("[data-in-rv-more]"))) {
+        const f = IN.current, key = `${f?.rivals?.finding_id}:${el.dataset.inRvMore}`;
+        if (!f) return;
+        IN.rvOpen = IN.rvOpen || new Set();
+        if (IN.rvOpen.has(key)) IN.rvOpen.delete(key); else IN.rvOpen.add(key);
+        drawRivals(f);
+        UI.$(`#panel [data-in-rv-more="${el.dataset.inRvMore}"]`)?.focus({ preventScroll: true });
+        return;
+      }
       if ((el = hit("[data-in-track]"))) {
         if (!window.KW) { UI.toast(t("Add it in Keywords."), { kind: "info" }); return; }
         window.KW.track([el.dataset.inTrack], IN.current?.host || UI.siteHostPicked(), el, {});
@@ -1346,6 +1490,24 @@
     "Open in Search Console": "Ouvrir dans la Search Console", "This page, last 28 days against the 28 before.": "Cette page, 28 derniers jours contre les 28 précédents.",
     "Searches behind it": "Les recherches derrière", "Did my page change?": "Ma page a-t-elle changé ?", "Same weeks last year": "Mêmes semaines l'an dernier",
     "Position {a} → {b} is the average of all its searches.": "La position {a} → {b} est la moyenne de toutes ses recherches.",
+    // Explain with AI and Who passed you (2026-11-17)
+    "Explain with AI": "Expliquer avec l'IA", "Proof": "Preuves", "Do this": "À faire", "Make it a task": "En faire une tâche", "How sure": "Certitude", "Cause": "Cause",
+    "Sure": "Sûr", "Likely": "Probable", "A guess": "Hypothèse", "Weaker": "Moins fiable", "Free models are weaker than Claude: check what it says.": "Les modèles gratuits sont moins fiables que Claude : vérifiez ce qu'il dit.",
+    "Sends only the facts on this panel, the page's title and headings, and what the sites above you changed.": "N'envoie que les faits de ce panneau, le titre et les intertitres de la page, et ce qu'ont changé les sites au-dessus de vous.",
+    "Who passed you": "Qui vous a dépassé", "Passed you": "Vous a dépassé", "On": "Sur", "You": "Vous", "Position {a} → {b}": "Position {a} → {b}",
+    "Not read yet": "Pas encore lue", "Couldn't read their page": "Leur page n'a pas pu être lue", "Our stored copy": "Notre copie enregistrée", "From the Wayback Machine": "D'après la Wayback Machine",
+    "No earlier copy: what they have now": "Pas de copie plus ancienne : ce qu'ils ont aujourd'hui", "Changed since {d}": "Changée depuis le {d}", "No change since {d}": "Aucun changement depuis le {d}",
+    "+{n} more": "+{n} de plus", "Show less": "Voir moins", "{a} sentences added, {r} removed": "{a} phrases ajoutées, {r} retirées",
+    "Title": "Titre", "Description": "Description", "Words": "Mots", "Years named": "Années citées", "FAQ questions": "Questions de FAQ", "Structured data": "Données structurées",
+    "Updated date": "Date de mise à jour", "Published date": "Date de publication", "Links to own pages": "Liens vers ses pages", "Links out": "Liens sortants",
+    "Above you, not followed": "Au-dessus de vous, non suivis", "Paused": "En pause", "Follow": "Suivre", "Follow again": "Suivre à nouveau", "Following…": "Ajout…",
+    "Followed sites' pages are read and compared. Others are only listed.": "Les pages des sites suivis sont lues et comparées. Les autres sont seulement listées.",
+    "Following {h}. Its page is read now.": "{h} est suivi. Sa page est lue maintenant.",
+    "No site you follow is above you on this search.": "Aucun site que vous suivez n'est au-dessus de vous sur cette recherche.",
+    "Nobody passed you on this search's last check.": "Personne ne vous a dépassé au dernier relevé de cette recherche.",
+    "Reading their pages now. This takes a minute.": "Lecture de leurs pages en cours. Cela prend une minute.",
+    "Today's page reads are used up. The rest are read tomorrow.": "Les lectures de pages du jour sont épuisées. Les autres seront lues demain.",
+    "Couldn't load who passed you.": "Impossible de charger qui vous a dépassé.", "Try again": "Réessayer", "Loading…": "Chargement…",
   };
   Object.keys(words).forEach((w) => { if (window.FR[w] === undefined) window.FR[w] = words[w]; });
 })();

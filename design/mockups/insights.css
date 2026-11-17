@@ -195,3 +195,60 @@ html[data-simple="1"] #panel .in-ai-wrap { margin-top: 4px; }
   .in-fold-btn { width: 100%; justify-content: flex-start; flex-wrap: wrap; min-height: 44px; }
   .in-fold-act { margin-left: auto; }
 }
+
+/* ---- Explain with AI (why_dropped, 2026-11-17): the cause as a headline, How sure beside it, proof rows, three steps
+   each with "Make it a task". The answer keeps the AI box's pale blue so it always reads as written by AI. */
+.in-why-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.in-why-cause { margin: 0; font-size: 15px; font-weight: 600; line-height: 1.4; color: var(--text); text-wrap: pretty; overflow-wrap: anywhere; }
+.in-sure { flex: none; font-size: var(--fs-min); line-height: 20px; margin-top: 1px; }
+.in-why-h { margin: 12px 0 4px; font-size: 13px; font-weight: 600; color: var(--text-2); }
+.in-why-proof { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.in-why-proof li { position: relative; padding-inline-start: 14px; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.in-why-proof li::before { content: ""; position: absolute; inset-inline-start: 2px; top: .62em; width: 5px; height: 5px; border-radius: 50%; background: var(--c-blue); }
+.in-why-do { margin: 0; padding: 0; list-style: none; display: grid; gap: 6px; }
+.in-why-do li { display: grid; grid-template-columns: 22px 1fr auto; align-items: center; gap: 8px; padding: 6px 0; border-top: 1px solid color-mix(in srgb, var(--c-blue) 18%, transparent); }
+.in-why-do li:first-child { border-top: 0; }
+.in-why-n { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; font-size: 12px; font-weight: 600; color: var(--c-blue); background: color-mix(in srgb, var(--c-blue) 14%, transparent); font-variant-numeric: tabular-nums; }
+.in-why-step { font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+.in-why-task { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.in-why-task svg { width: 14px; height: 14px; }
+.in-weaker:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.in-weaker { display: inline-flex; cursor: help; margin-inline-start: 6px; font-size: var(--fs-min); font-weight: 600; line-height: 17px; padding: 0 7px; border-radius: 999px; color: var(--warn-t); background: color-mix(in srgb, var(--warn-t) 12%, transparent); letter-spacing: 0; }
+
+/* ---- Who passed you (2026-11-17): one card per followed page above mine, its place before → now, what it changed and
+   my page's value beside each change. Theirs in plain text; mine marked with the app's blue "You" (COMP.who). */
+.in-rivals .in-rv-kw { margin: 0 0 8px; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.in-rv-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+.in-rv { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; background: var(--glass, transparent); }
+.in-rv-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.in-rv-who { display: inline-flex; align-items: center; gap: 6px; min-width: 0; flex-wrap: wrap; }
+.in-rv-host { font-weight: 600; overflow-wrap: anywhere; }
+.in-rv-pos { flex: none; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.in-rv-url, .in-rv-when { margin: 2px 0 0; overflow-wrap: anywhere; }
+.in-rv-rows { margin: 8px 0 0; padding: 0; list-style: none; }
+.in-rv-rows > li { display: grid; grid-template-columns: minmax(84px, 30%) 1fr; gap: 2px 10px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.in-rv-rows > li.in-rv-extra { display: block; padding: 0; border-top: 0; }
+.in-rv-rows > li.in-rv-extra[hidden] { display: none; }
+.in-rv-extra .in-rv-rows { margin: 0; }
+.in-rv-f { color: var(--text-2); font-weight: 500; }
+.in-rv-v { min-width: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.in-rv-me { grid-column: 2; display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; font-size: 12px; color: var(--text-2); overflow-wrap: anywhere; }
+.in-rv-me .who { font-size: 12px; }
+.in-rv-items { margin: 2px 0 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.in-rv-add, .in-rv-del { display: inline-block; width: 1em; font-weight: 600; }
+.in-rv-add { color: var(--good-t); }
+.in-rv-del { color: var(--crit-t); }
+.in-rv-more { margin-top: 6px; min-height: 32px; }
+.in-rv-state { display: flex; align-items: center; gap: 8px; }
+.in-rv-spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--line-2); border-top-color: var(--accent-text); animation: in-rv-spin .9s linear infinite; flex: none; }
+@keyframes in-rv-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .in-rv-spin { animation: none; } }
+.in-rv-nf .in-rv-who a { font-weight: 500; }
+.in-rv-nf .btn svg { width: 14px; height: 14px; }
+@media (max-width: 640px) {
+  .in-why-do li { grid-template-columns: 22px 1fr; }
+  .in-why-task { grid-column: 2; justify-self: start; min-height: 40px; }
+  .in-rv-rows > li { grid-template-columns: 1fr; }
+  .in-rv-me { grid-column: 1; }
+  .in-rv-more { min-height: 44px; }
+}

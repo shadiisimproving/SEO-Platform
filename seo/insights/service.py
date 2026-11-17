@@ -208,7 +208,17 @@ def one(engine: Engine, finding_id: int) -> dict:
     row["ai"] = _ai(engine, row)
     if row["kind"] in PAGE_DETAIL_KINDS and row["page"]:
         row["detail"] = page_detail(engine, row)
+    row["rivals_from"] = _rivals_from(engine, row)
     return row
+
+
+def _rivals_from(engine: Engine, row: dict) -> int | None:
+    """The finding whose "Who passed you" block the panel shows (itself, or the rival finding on one of its searches), else None."""
+    from seo.competitors import rival_changes
+
+    if row["kind"] not in rival_changes.KINDS and row["kind"] not in ("page_down", "query_down"):
+        return None
+    return rival_changes.related(engine, row)
 
 
 # A page row's panel (What changed): Google's indexing answer, my own last edit, the AI Overview on its searches, a link

@@ -388,19 +388,20 @@ def run_job(job, engine: Engine) -> None:
 def _card(target: dict, row: dict | None) -> dict:
     card = {k: target[k] for k in ("host", "url", "competitor_id", "tracking", "position", "passed")}
     if row is None:
-        return {**card, "read": False, "before_source": None, "before_at": None, "after_at": None, "changed": None, "rows": [], "more": 0}
+        return {**card, "read": False, "before_source": None, "before_at": None, "after_at": None, "changed": None, "rows": [], "more": 0, "extra": []}
     record = row["diff"] if isinstance(row["diff"], dict) else json.loads(row["diff"] or "{}")
     mine = row["mine"] if isinstance(row["mine"], dict) else (json.loads(row["mine"]) if row["mine"] else None)
     changes = record.get("changes")
     if changes is not None:
-        shown, more = diff.rows(changes, mine, ROWS_SHOWN)
+        every, _ = diff.rows(changes, mine, 99)
         changed = bool(changes.get("changed"))
     else:
-        shown, more = diff.now_rows(record.get("now"), mine, ROWS_SHOWN)
+        every, _ = diff.now_rows(record.get("now"), mine, 99)
         changed = None  # no earlier copy: nothing to say about a change
+    shown, extra = every[:ROWS_SHOWN], every[ROWS_SHOWN:]  # the rest behind the card's "+N more"
     return {
         **card, "read": True, "before_source": row["before_source"], "before_at": _iso(row["before_at"]), "after_at": _iso(row["after_at"]),
-        "changed": changed, "unreadable": record.get("unreadable"), "note": record.get("note"), "rows": shown, "more": more,
+        "changed": changed, "unreadable": record.get("unreadable"), "note": record.get("note"), "rows": shown, "more": len(extra), "extra": extra,
     }
 
 
@@ -435,3 +436,35 @@ def for_finding(engine: Engine, finding_id: int) -> dict:
     else:
         out["status"] = "reading" if reading else "waiting"
     return out
+
+
+def related(engine: Engine, finding: dict) -> int | None:
+    """The finding whose "Who passed you" block this one shows: itself for rival_passed and rank_drop, else (a page or a search
+    that fell) the open page-1 rival_passed or rank_drop finding on its own search or one of the searches behind it."""
+    evidence = finding["evidence"] if isinstance(finding.get("evidence"), dict) else json.loads(finding.get("evidence") or "{}")
+    if finding["kind"] in KINDS:
+        return finding["id"] if applies(finding["kind"], evidence) else None
+    if finding["kind"] not in ("page_down", "query_down"):
+        return None
+    searches = [finding.get("query")] + [q.get("query") for q in evidence.get("queries") or [] if isinstance(q, dict)]
+    searches = list(dict.fromkeys(q for q in searches if q))[:20]
+    if not searches:
+        return None
+    from sqlalchemy import bindparam
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT id, kind, evidence FROM search_findings WHERE site_id = :s AND status = 'open' AND kind = 'rival_passed' AND query IN :q ORDER BY at_stake DESC, id")
+            .bindparams(bindparam("q", expanding=True)), {"s": finding["site_id"], "q": searches},
+        ).mappings().all()
+    return next((r["id"] for r in rows if applies(r["kind"], _evidence(r))), None)
+
+
+def look_again(engine: Engine, finding_id: int) -> dict:
+    """After following a site from the block: queue a look for the finding's site now, and say what the block shows."""
+    with engine.connect() as conn:
+        site_id = conn.execute(text("SELECT site_id FROM search_findings WHERE id = :i"), {"i": finding_id}).scalar()
+        if site_id is None or site_id not in access.own_site_ids(conn):
+            raise NotFound("That insight doesn't exist any more.")
+    enqueue_for_site(engine, site_id)
+    return for_finding(engine, finding_id)

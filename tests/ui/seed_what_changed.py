@@ -38,7 +38,8 @@ def _sha(url: str) -> str:
     return hashlib.sha256(url.encode("utf-8")).hexdigest()
 
 
-def seed(engine) -> dict:
+def seed(engine, extra=None) -> dict:
+    """extra(engine, site_id, world): more days and rows added before the days are saved (seed_who_passed.py)."""
     assert engine.url.database.endswith("_test"), "test databases only"
     from seo.serp import store
     from seo.serp.tools import Answer, Found
@@ -75,6 +76,8 @@ def seed(engine) -> dict:
     w.spread(BEFORE[0] - timedelta(days=60), NOW[1], "red shoes", HOME + "red", 3, 120, 6)  # steady
     for page, query in (("pricing/", "dubai prices"), ("free-zone/", "free zones uae"), ("setup/", "start a business uae")):
         w.spread(BEFORE[0], NOW[1], query, HOME + page, 12, 200, 2)  # each search's page holds steady overall: the search is said alone
+    if extra:
+        extra(engine, site_id, w)
     w.save()
     with engine.begin() as conn:
         domain = conn.execute(text("INSERT INTO domains (host) VALUES (:h) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)"), {"h": HOST}).lastrowid

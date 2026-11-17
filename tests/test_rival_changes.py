@@ -334,7 +334,7 @@ def test_the_route_gives_the_panel_its_cards(engine, site, net):
     assert set(got) == {"finding_id", "kind", "keyword", "applies", "me", "status", "cards", "not_followed"}
     assert got["me"] == {"url": MY_URL, "before": 3, "now": 5} and got["status"] == "ready" and got["keyword"] == "company setup"
     card = got["cards"][0]
-    assert set(card) == {"host", "url", "competitor_id", "tracking", "position", "passed", "read", "before_source", "before_at", "after_at", "changed", "unreadable", "note", "rows", "more"}
+    assert set(card) == {"host", "url", "competitor_id", "tracking", "position", "passed", "read", "before_source", "before_at", "after_at", "changed", "unreadable", "note", "rows", "more", "extra"}
     assert card["before_source"] == "wayback" and card["before_at"] == "2025-10-20T12:00:00Z" and card["after_at"].endswith("Z")
     assert 1 <= len(card["rows"]) <= 6 and all("mine" in r for r in card["rows"])
     assert client.get("/api/insights/999999/rivals").status_code == 404
