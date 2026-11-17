@@ -24,7 +24,7 @@ CURVE_KINDS = frozenset({"almost", "top3", "no_click", "low_ctr", "compete", "no
 
 
 def _key(keyword: str) -> str:
-    return store.clean_keyword(keyword).casefold()
+    return store.keyword_key(keyword)
 
 
 def states(engine: Engine, site_id: int | None = None) -> dict:

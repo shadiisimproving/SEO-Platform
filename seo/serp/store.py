@@ -9,6 +9,7 @@ import hashlib
 import re
 import unicodedata
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from functools import lru_cache
 from urllib.parse import quote, urlsplit, urlunsplit
 
@@ -31,8 +32,26 @@ def clean_keyword(value: str) -> str:
     return _SPACE.sub(" ", _INVISIBLE.sub("", unicodedata.normalize("NFKC", value or ""))).strip()
 
 
+_LIGATURES = str.maketrans({"œ": "oe", "æ": "ae"})
+
+
+def _latin_bare(ch: str) -> str:
+    """A Latin letter without its accent (é → e). Other scripts keep their marks: in Japanese or Hindi they change the word."""
+    if ch.isascii() or not ("\u00c0" <= ch <= "\u024f" or "\u1e00" <= ch <= "\u1eff"):
+        return ch
+    return "".join(part for part in unicodedata.normalize("NFKD", ch) if not unicodedata.combining(part))
+
+
+def keyword_key(value: str) -> str:
+    """The one key a keyword is matched on everywhere: cleaned, any case, any accent. French searchers mostly type without
+    accents, so "Café en grains", "cafe en grains" and "CAFÉ EN GRAINS" are one search: one tracked keyword, one Search
+    Console row. The text shown stays as typed (clean_keyword)."""
+    folded = unicodedata.normalize("NFC", clean_keyword(value).casefold())
+    return "".join(_latin_bare(ch) for ch in folded).translate(_LIGATURES)
+
+
 def keyword_hash(value: str) -> str:
-    return hashlib.sha256(clean_keyword(value).casefold().encode("utf-8")).hexdigest()
+    return hashlib.sha256(keyword_key(value).encode("utf-8")).hexdigest()
 
 
 @lru_cache(maxsize=4096)
@@ -193,19 +212,44 @@ def _attach(conn, checks: list[Check]) -> list[Check]:
     return checks
 
 
+MAIN_MAX_AGE_DAYS = 14  # like MIX_FRESH_DAYS: past this, the main tool's result gives way to a newer one from another tool
+
+
+def pick_main(candidates: list, place: dict, now, *, tool, ident, at):
+    """Which tool's newest result speaks for a keyword: (chosen, passed_over).
+
+    The owner's rule (2026-11-13): the first tool in the order that has a result, the main tool first. With an age limit
+    (2026-11-17): when that result is older than MAIN_MAX_AGE_DAYS and another tool has a newer one, the newest of those
+    wins instead, and passed_over is the main tool's old result, so the screen can say "Bright Data's check is 120 days old".
+    `candidates` holds one result per tool.
+    """
+    if not candidates:
+        return None, None
+    first = min(candidates, key=lambda c: (place.get(tool(c), len(place)), -ident(c)))
+    if now is None or (now - at(first)).total_seconds() <= MAIN_MAX_AGE_DAYS * 86400:
+        return first, None
+    newer = [c for c in candidates if c is not first and at(c) > at(first)]
+    if not newer:
+        return first, None
+    return max(newer, key=lambda c: (at(c), ident(c))), first
+
+
 def _by_main_tool(engine: Engine, checks: list[Check]) -> list[Check]:
     """One check per target from each tool's newest. With a main tool: the first tool in the engine's order that has one (the
-    main tool first), so every screen shows the same tool's ranking as Keywords, not whichever tool checked last."""
+    main tool first), so every screen shows the same tool's ranking as Keywords, not whichever tool checked last. The same
+    age limit as Keywords (pick_main): a main-tool result older than MAIN_MAX_AGE_DAYS gives way to a newer one."""
     from seo.serp.connections import main_tool, order_for
 
     chosen = bool(main_tool(engine))  # no main tool: the newest check, whatever its tool, as before
     orders: dict[str, dict[str, int]] = {}
-    best: dict[int, Check] = {}
+    by_target: dict[int, list[Check]] = {}
     for check in checks:
-        place = orders.setdefault(check.engine, {name: at for at, name in enumerate(order_for(engine, check.engine))} if chosen else {})
-        rank = lambda c: (place.get(c.tool, len(place)), -c.id)  # noqa: E731
-        if check.target_id not in best or rank(check) < rank(best[check.target_id]):
-            best[check.target_id] = check
+        by_target.setdefault(check.target_id, []).append(check)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)  # every session is UTC, and checked_at is stored in UTC
+    best: dict[int, Check] = {}
+    for target_id, group in by_target.items():
+        place = orders.setdefault(group[0].engine, {name: at for at, name in enumerate(order_for(engine, group[0].engine))} if chosen else {})
+        best[target_id], _ = pick_main(group, place, now if chosen else None, tool=lambda c: c.tool, ident=lambda c: c.id, at=lambda c: c.checked_at)
     return [check for check in checks if best.get(check.target_id) is check]
 
 
