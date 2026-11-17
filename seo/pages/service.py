@@ -80,7 +80,7 @@ def listing(scope: metrics.Scope) -> dict:
         def row_for(site: int, path: str) -> dict:
             return rows.setdefault((site, path), {
                 "site_id": site, "host": sites[site], "path": path, "title": "", "clicks": None, "impressions": None,
-                "position": None, "sessions": None, "leads": None, "ai": None, "clicks_before": None, "read": False,
+                "position": None, "sessions": None, "leads": None, "ai": None, "clicks_before": None, "change": None, "read": False,
             })
 
         # Shown as Google or the site spells it (content() already picked Search Console's, else Google Analytics'); the
@@ -103,14 +103,25 @@ def listing(scope: metrics.Scope) -> dict:
                 row["read"] = True
                 row["title"] = row["title"] or (page["title"] or "")
                 spelling.offer((site, _path(page["url"])), page["url"], 1)
+        # The period before, per site, only where Search Console's page table covers it from its first day: a page table
+        # that starts later would turn missing history into gains (expert review 2026-11-17). There, a page with no row
+        # before had no clicks before (0); elsewhere nothing is compared (None).
+        compared: set[int] = set()
         if scope.compare_start and scope.compare_end:
+            compared = {r["site_id"] for r in scope.fetch("SELECT site_id, MIN(day) first FROM gsc_page WHERE site_id IN :sites GROUP BY site_id") if r["first"] and r["first"] <= scope.compare_start}
             for item in scope.fetch(
                 "SELECT site_id, MAX(page) page, SUM(clicks) clicks FROM gsc_page WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY site_id, page_hash",
                 scope.compare_start, scope.compare_end,
             ):
                 key = (item["site_id"], _path(item["page"]))
-                if key in rows:
+                if key in rows and item["site_id"] in compared:
                     rows[key]["clicks_before"] = (rows[key]["clicks_before"] or 0) + int(item["clicks"] or 0)
+        for (site, _), row in rows.items():
+            if site in compared:
+                row["clicks_before"] = row["clicks_before"] or 0
+                row["change"] = (row["clicks"] or 0) - row["clicks_before"]
+            else:
+                row["change"] = None
         counts = _counts(conn, sites)
     listed = []
     for key, row in rows.items():
@@ -124,7 +135,9 @@ def listing(scope: metrics.Scope) -> dict:
         "summary": {
             "pages": len(listed), "with_clicks": sum(1 for r in listed if r["clicks"]),
             "not_indexed": sum(1 for r in listed if r["indexed"] is False), "open_tasks": sum(1 for r in listed if r["tasks_open"]),
+            "losing": sum(1 for r in listed if (r["change"] or 0) < 0),
         },
+        "compared": bool(compared),  # False: no Search Console page data for the whole period before, so no Change
         "gsc": content["gsc"], "ga4": content["ga4"],
     }
 

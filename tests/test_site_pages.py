@@ -49,7 +49,8 @@ def test_list_joins_every_source(client, site):
     assert (visa["clicks"], visa["tasks_open"], visa["notes"], visa["backlinks"]) == (40, 1, 1, 1)
     assert (tax["backlinks"], tax["indexed"], tax["tasks_open"]) == (0, False, 0)  # a lost link doesn't count
     assert data["pages"][0]["path"] == "/visa/"  # most clicks first
-    assert data["summary"] == {"pages": 2, "with_clicks": 2, "not_indexed": 1, "open_tasks": 1}
+    assert data["summary"] == {"pages": 2, "with_clicks": 2, "not_indexed": 1, "open_tasks": 1, "losing": 0}
+    assert data["compared"] is False and visa["change"] is None  # no period before asked: nothing compared
 
 
 def test_profile_gathers_the_page(client, site):
@@ -90,3 +91,27 @@ def test_addresses_are_spelled_as_google_and_the_site_give_them(client, engine, 
         data = client.get(f"/api/site-pages/profile?site_id={site}&url={asked}").json
         assert (data["path"], data["url"]) == ("/tax", "https://shop.example/tax"), asked
     assert client.get(f"/api/site-pages/profile?site_id={site}&url=/contact/").json["url"] == "https://shop.example/contact"  # the reader's spelling
+
+
+def test_change_is_clicks_against_the_28_days_before_and_only_where_page_data_covers_them(client, engine):
+    """28 days ending 16 Nov (20 Oct - 16 Nov) vs the 28 before (21 Sept - 18 Oct): /a 50 -> 20 is -30, /b 5 -> 12 is +7,
+    /new had no row before but the page table covers the period before, so 0 -> 9 is +9. Another site whose page table
+    starts inside the period before gets no Change at all, never a made-up gain."""
+    with engine.begin() as conn:
+        one = conn.execute(text("INSERT INTO sites (host, start_url, kind) VALUES ('one.example', 'https://one.example/', 'own')")).lastrowid
+        two = conn.execute(text("INSERT INTO sites (host, start_url, kind) VALUES ('two.example', 'https://two.example/', 'own')")).lastrowid
+        rows = [
+            (one, "2026-09-21", "a", "https://one.example/a", 30), (one, "2026-10-18", "a", "https://one.example/a", 20), (one, "2026-11-16", "a", "https://one.example/a", 20),
+            (one, "2026-10-01", "b", "https://one.example/b", 5), (one, "2026-11-01", "b", "https://one.example/b", 12),
+            (one, "2026-11-10", "n", "https://one.example/new", 9),
+            (one, "2026-09-20", "a", "https://one.example/a", 999),  # the day before the period before: never counted
+            (two, "2026-10-10", "x", "https://two.example/x", 40), (two, "2026-11-10", "x", "https://two.example/x", 60),
+        ]
+        for site_id, day, h, page, clicks in rows:
+            conn.execute(text("INSERT INTO gsc_page (site_id, day, page_hash, page, clicks, impressions, position) VALUES (:s, :d, :h, :p, :c, :c, 5)"), {"s": site_id, "d": day, "h": h, "p": page, "c": clicks})
+    reply = client.get("/api/site-pages?from=2026-10-20&to=2026-11-16&compare_from=2026-09-21&compare_to=2026-10-18").json
+    by = {r["url"]: r for r in reply["pages"]}
+    assert (by["https://one.example/a"]["clicks"], by["https://one.example/a"]["clicks_before"], by["https://one.example/a"]["change"]) == (20, 50, -30)
+    assert by["https://one.example/b"]["change"] == 7 and by["https://one.example/new"]["change"] == 9
+    assert by["https://two.example/x"]["change"] is None and by["https://two.example/x"]["clicks_before"] is None
+    assert reply["summary"]["losing"] == 1 and reply["compared"] is True
