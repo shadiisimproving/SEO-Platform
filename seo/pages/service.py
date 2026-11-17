@@ -118,8 +118,16 @@ def listing(scope: metrics.Scope) -> dict:
                 date.fromisoformat(window["compare_from"]), date.fromisoformat(window["compare_to"]),
             ):
                 key = (item["site_id"], _path(item["page"]))
-                if key in rows and item["site_id"] in compared:
-                    rows[key]["clicks_before"] = (rows[key]["clicks_before"] or 0) + int(item["clicks"] or 0)
+                if item["site_id"] not in compared or item["site_id"] not in sites:
+                    continue
+                if key not in rows:
+                    # A page that had clicks before and none now (deindexed, a 404) is the biggest loser: it gets its row
+                    # even when nothing else knows it, with 0 clicks now (code review 2026-11-17).
+                    if not int(item["clicks"] or 0) or not _same_site(item["page"], sites[item["site_id"]]):
+                        continue
+                    row_for(*key)["clicks"] = 0
+                    spelling.offer(key, item["page"], 0)
+                rows[key]["clicks_before"] = (rows[key]["clicks_before"] or 0) + int(item["clicks"] or 0)
         for (site, _), row in rows.items():
             if site in compared:
                 row["clicks_before"] = row["clicks_before"] or 0
