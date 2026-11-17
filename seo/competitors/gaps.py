@@ -47,22 +47,42 @@ def import_referrers(engine: Engine, site_id: int, competitor_id: int, data: byt
     # A link the file marks lost is gone: it's no gap to chase (SEO review 2026-11-17, #13). Nofollow, sponsored and ugc
     # links stay, and the domain says whether any of its links is followed, so Link gaps can show followed ones first.
     links = cleaner.link_rows(data)
-    lost_urls = {link["source_url"] for link in links if link["lost"]}
     follows: dict[str, list[str | None]] = {}
     for link in links:
         if not link["lost"]:
             follows.setdefault(store.to_ascii_host(link["domain"]), []).append(link["rel"])
+    # Lost is said per link, not per page: one forum page can hold a lost link and a live one to the same competitor.
+    # Both readers skip the same rows (no usable address), so a file's rows and its links line up one for one.
+    if len(links) == len(result.rows):
+        lost_rows = [bool(link["lost"]) for link in links]
+    else:  # a file with only a domain column has no links: nothing in it says lost
+        live_urls = {link["source_url"] for link in links if not link["lost"]}
+        lost_urls = {link["source_url"] for link in links if link["lost"]} - live_urls
+        lost_rows = [row.url in lost_urls for row in result.rows]
     dropped_lost = 0
     domains: dict[str, cleaner.KeptRow] = {}
-    for row in result.rows:
-        if row.url in lost_urls:
+    lost_domains: set[str] = set()
+    for row, lost in zip(result.rows, lost_rows):
+        if lost:
             dropped_lost += 1
+            lost_domains.add(store.to_ascii_host(row.domain)[:190])
             continue
         domain = store.to_ascii_host(row.domain)
         current = domains.get(domain)
         if current is None or _rank(row.authority) > _rank(current.authority):
             domains[domain] = row
+    # A domain this file lists with only lost links no longer links to them: the row an earlier file left goes, or
+    # (still in Common Crawl, or added by hand) loses the numbers that file gave it.
+    gone = sorted(lost_domains - {domain[:190] for domain in domains})
     with engine.begin() as conn:
+        if gone:
+            conn.execute(text(
+                "DELETE FROM competitor_referrers WHERE competitor_id = :c AND domain IN :gone AND source_label NOT IN ('Common Crawl', :hand) AND in_common_crawl = 0"
+            ).bindparams(bindparam("gone", expanding=True)), {"c": competitor_id, "gone": gone, "hand": BY_HAND})
+            conn.execute(text(
+                "UPDATE competitor_referrers SET sample_url = NULL, authority = NULL, authority_label = NULL, spam_score = NULL, followed = NULL, "
+                "source_label = IF(in_common_crawl = 1, 'Common Crawl', source_label) WHERE competitor_id = :c AND domain IN :gone AND source_label NOT IN ('Common Crawl', :hand)"
+            ).bindparams(bindparam("gone", expanding=True)), {"c": competitor_id, "gone": gone, "hand": BY_HAND})
         for domain, row in domains.items():
             conn.execute(
                 text(
