@@ -100,6 +100,33 @@ def _path(url_or_path: str) -> str:
     return path.rstrip("/") + "/" if path.rstrip("/") else "/"
 
 
+def spelled_path(url_or_path: str) -> str:
+    """A page's address as Google or the site wrote it: no domain, query or fragment, but its trailing slash kept or left
+    out as given. Shown and linked; _path() stays the key pages are matched on (expert review 2026-11-17, #19)."""
+    value = url_or_path or ""
+    path = urlsplit(value).path if "://" in value else value.split("?", 1)[0].split("#", 1)[0]
+    return path or "/"
+
+
+class Spelling:
+    """The spelling to show for each page key: Search Console's (rank 0) beats the page reader's (1) beats Google
+    Analytics' (2); between two of the same rank, the one with more clicks and impressions."""
+
+    def __init__(self) -> None:
+        self.best: dict = {}
+
+    def offer(self, key, url_or_path: str, rank: int, weight: float = 0) -> None:
+        if not url_or_path:
+            return
+        held = self.best.get(key)
+        if held is None or (rank, -weight) < held[0]:
+            self.best[key] = ((rank, -weight), spelled_path(url_or_path))
+
+    def get(self, key, fallback: str) -> str:
+        held = self.best.get(key)
+        return held[1] if held else fallback
+
+
 def _unknown_page(path: str) -> bool:
     """GA4's "(not set)" written as a page ("(not set)/" once it has its slash): shown last, never as a link."""
     return str(path or "").strip("/").strip().lower() in UNKNOWN_PAGES
@@ -448,12 +475,15 @@ def content(scope: Scope, limit: int = 500) -> dict:
         key = _path(path)
         return pages.setdefault((site_id, key), {"host": hosts.get(site_id, ""), "path": key, "sessions": None, "leads": None, "clicks": None, "impressions": None, "w": 0.0, "ai": None})
 
+    spelling = Spelling()
     for row in _page_rows(scope):
         item = page(row["site_id"], row["path"])
         item["sessions"] = (item["sessions"] or 0) + int(row["sessions"] or 0)
         item["leads"] = (item["leads"] or 0) + float(row["leads"] or 0)
+        spelling.offer((row["site_id"], _path(row["path"])), row["path"], 2, int(row["sessions"] or 0))
     for row in scope.fetch("SELECT site_id, MAX(page) page, page_hash, SUM(clicks) clicks, SUM(impressions) impressions, SUM(position * impressions) w FROM gsc_page WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY site_id, page_hash"):
         item = page(row["site_id"], row["page"])
+        spelling.offer((row["site_id"], _path(row["page"])), row["page"], 0, int(row["clicks"] or 0) * 1_000_000 + int(row["impressions"] or 0))
         item["clicks"] = (item["clicks"] or 0) + int(row["clicks"] or 0)
         item["impressions"] = (item["impressions"] or 0) + int(row["impressions"] or 0)
         item["w"] += float(row["w"] or 0)
@@ -465,11 +495,11 @@ def content(scope: Scope, limit: int = 500) -> dict:
     categorise = _categorise(scope.engine, scope.site_ids)
     rows = [
         {
-            "host": item["host"], "path": item["path"], "category": categorise(item["path"]), "sessions": item["sessions"], "leads": round(item["leads"], 2) if item["leads"] is not None else None,
+            "host": item["host"], "path": spelling.get(key, item["path"]), "key": item["path"], "category": categorise(item["path"]), "sessions": item["sessions"], "leads": round(item["leads"], 2) if item["leads"] is not None else None,
             "clicks": item["clicks"], "impressions": item["impressions"], "position": round(item["w"] / item["impressions"], 1) if item["impressions"] else None, "ai": item["ai"],
             "unknown": _unknown_page(item["path"]),
         }
-        for item in pages.values()
+        for key, item in pages.items()
     ]
     # GA4's "(not set)" isn't a page of the site: it goes last, marked, so it is never read as a real page (owner, 2026-11-12).
     rows.sort(key=lambda r: (r["unknown"], -((r["sessions"] or 0) + (r["clicks"] or 0))))

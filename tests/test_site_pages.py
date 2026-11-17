@@ -4,6 +4,7 @@ from datetime import date, timedelta
 import pytest
 from sqlalchemy import text
 
+from seo.competitors.pages import url_hash
 from seo.web import create_app
 
 
@@ -42,8 +43,9 @@ def test_list_joins_every_source(client, site):
     assert reply.status_code == 200, reply.json
     data = reply.json
     rows = {row["path"]: row for row in data["pages"]}
-    assert set(rows) == {"/visa/", "/tax/"}
-    visa, tax = rows["/visa/"], rows["/tax/"]
+    assert set(rows) == {"/visa/", "/tax"}  # each as Search Console has it: no slash invented, none taken away
+    visa, tax = rows["/visa/"], rows["/tax"]
+    assert tax["url"] == "https://shop.example/tax"
     assert (visa["clicks"], visa["tasks_open"], visa["notes"], visa["backlinks"]) == (40, 1, 1, 1)
     assert (tax["backlinks"], tax["indexed"], tax["tasks_open"]) == (0, False, 0)  # a lost link doesn't count
     assert data["pages"][0]["path"] == "/visa/"  # most clicks first
@@ -67,3 +69,24 @@ def test_profile_gathers_the_page(client, site):
 def test_profile_refuses_other_sites_and_empty(client, site):
     assert client.get(f"/api/site-pages/profile?site_id={site}&url=https://elsewhere.example/visa/").status_code == 400
     assert client.get(f"/api/site-pages/profile?site_id={site}&url=").status_code == 400
+
+
+def test_addresses_are_spelled_as_google_and_the_site_give_them(client, engine, site):
+    """A site that serves /abonnement must never be shown, linked, exported or given tasks as /abonnement/ (expert review
+    2026-11-17, #19). Matching still folds the spellings together, so tasks and links find the page either way."""
+    today = date.today().isoformat()
+    with engine.begin() as conn:
+        domain = conn.execute(text("INSERT INTO domains (host) VALUES ('shop.example')")).lastrowid
+        for url, title in (("https://shop.example/contact", "Contact"), ("https://shop.example/tax", "Tax")):
+            conn.execute(text("INSERT INTO pages (domain_id, url, url_hash, title, content_hash, last_status) VALUES (:d, :u, :h, :t, 'h', 'ok')"), {"d": domain, "u": url, "h": url_hash(url), "t": title})
+        conn.execute(text("INSERT INTO ga4_page_daily (site_id, day, page_hash, path, sessions, key_events) VALUES (:s, :d, 'g1', '/abonnement', 7, 0)"), {"s": site, "d": today})
+    rows = {row["url"]: row for row in client.get(f"/api/site-pages?{period(site)}").json["pages"]}
+    assert set(rows) == {"https://shop.example/visa/", "https://shop.example/tax", "https://shop.example/contact", "https://shop.example/abonnement"}
+    assert rows["https://shop.example/tax"]["title"] == "Tax"  # the reader's page and Google's are one row
+    content = {row["path"] for row in client.get(f"/api/metrics/content?{period(site)}").json["pages"]}
+    assert content == {"/visa/", "/tax", "/abonnement"}
+    # The page view keeps Google's spelling, whichever way it was asked for.
+    for asked in ("/tax/", "/tax", "https://shop.example/tax/"):
+        data = client.get(f"/api/site-pages/profile?site_id={site}&url={asked}").json
+        assert (data["path"], data["url"]) == ("/tax", "https://shop.example/tax"), asked
+    assert client.get(f"/api/site-pages/profile?site_id={site}&url=/contact/").json["url"] == "https://shop.example/contact"  # the reader's spelling

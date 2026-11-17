@@ -144,8 +144,16 @@
     const c = d.copilot, one = c.sites.length === 1 ? c.sites[0] : null, cited = has(c.citations);
     const cite = UI.card({ id: "ai-citations", label: "Copilot citations", value: cited ? c.citations : null,
       change: cited && one?.before && has(one.before.citations) ? { now: c.citations, before: one.before.citations, unit: "" } : null,
-      sub: !cited ? `<button class="link-btn" data-lv-connect="clarity">${t("Upload a Clarity AI download")}</button>` : has(c.share) ? `<span class="nowrap">${esc(t("share"))} ${share(c.share)}</span>` : null, cls: "tile" });
+      sub: !cited ? `<button class="link-btn" data-lv-connect="clarity">${t("Upload a Clarity AI download")}</button>` : [has(c.share) ? `<span class="nowrap">${esc(t("share"))} ${share(c.share)}</span>` : "", copilotSpan(one)].filter(Boolean).join("<br>") || null, cls: "tile" });
     return `<section class="tiles ai-tiles">${visits}${leads}${rate}${cite}</section>`;
+  }
+  /* Copilot counts cover a download's own days, not the screen's period: the card says which days, and when there is no
+     earlier file of the same length that doesn't overlap, that it wasn't compared, and why (expert review 2026-11-17, #21). */
+  const NO_BEFORE = { overlap: "Not compared: the last file overlaps this one", length: "Not compared: the last file covers a different number of days" };
+  function copilotSpan(one) {
+    if (!one) return "";
+    const days = `<span class="small muted nowrap">${esc(UI.fmtRange ? UI.fmtRange(one.period_start, one.period_end) : `${one.period_start} – ${one.period_end}`)}</span>`;
+    return one.no_before && NO_BEFORE[one.no_before] ? `${days}<br><span class="small muted">${esc(t(NO_BEFORE[one.no_before]))}</span>` : days;
   }
   function tiles(d) {
     if (simple() && UI.card) return cards(d);
@@ -170,6 +178,7 @@
         const diff = c.citations - one.before.citations;
         bits.push(`<span class="${diff > 0 ? "good" : diff < 0 ? "crit" : "sec"} d-pill">${diff > 0 ? "+" : diff < 0 ? "−" : "±"}${num(Math.abs(diff))}</span> ${t("since the last upload")}`);
       }
+      if (one) bits.push(copilotSpan(one));
       if (c.share !== null && c.share !== undefined) {
         const was = one?.before?.share, pts = was === null || was === undefined ? null : Math.round((c.share - was) * 10) / 10;
         bits.push(`<span class="nowrap">${t("share")} ${share(c.share)}${pts === null ? "" : ` (${pts > 0 ? "+" : pts < 0 ? "−" : "±"}${UI.dec(Math.abs(pts))} ${t("pts")})`}</span>`);
@@ -683,6 +692,8 @@
   };
 
   const fr = {
+    "Not compared: the last file overlaps this one": "Pas comparé : le fichier précédent chevauche celui-ci",
+    "Not compared: the last file covers a different number of days": "Pas comparé : le fichier précédent couvre un autre nombre de jours",
     "Google Analytics": "Google Analytics", "Clarity live": "Clarity en direct", "Clarity download": "Export Clarity", "{n} of {m} sites": "{n} sites sur {m}",
     "not connected": "non connecté", "not used": "non utilisé", "no keywords checked": "aucun mot-clé relevé", "nothing uploaded": "rien d'importé",
     "waiting for data": "en attente de données", "retrying": "nouvel essai", "reading…": "lecture…", "queued": "en file", "stopped working": "ne fonctionne plus",

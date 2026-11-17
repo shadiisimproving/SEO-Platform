@@ -155,7 +155,7 @@ def test_content_puts_not_set_last_and_marks_it(engine, site):
         for h, path, sessions in (("a", "(not set)", 900), ("b", "/visa/", 30), ("c", "/", 20)):
             conn.execute(text("INSERT INTO ga4_page_daily (site_id, day, page_hash, path, sessions, users, key_events) VALUES (:s, :d, :h, :p, :x, :x, 1)"), {"s": site, "d": D1, "h": h, "p": path, "x": sessions})
     rows = service.content(_scope(engine))["pages"]
-    assert [r["path"] for r in rows] == ["/visa/", "/", "(not set)/"]
+    assert [r["path"] for r in rows] == ["/visa/", "/", "(not set)"]  # as Google Analytics wrote them
     assert [r["unknown"] for r in rows] == [False, False, True]
     pages = service.conversions(_scope(engine))["pages"]
     assert pages[-1]["unknown"] and not pages[0]["unknown"]
