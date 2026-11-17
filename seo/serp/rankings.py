@@ -216,14 +216,14 @@ def _ai(checks: list[Seen], host: str, country: str, language: str, now: datetim
     return {"state": state, "tool": seen.tool, "age_days": round((now - seen.at).total_seconds() / 86400, 2)}
 
 
-def _add_own(table: dict, key, clicks, impressions, position) -> None:
-    """Spellings with the same key (store.keyword_key: "café", "cafe", "Café") are one search: clicks and impressions add
-    up, and the position is weighted by impressions."""
-    slot = table.setdefault(key, {"clicks": 0, "impressions": 0, "_weighted": 0.0, "_shown": 0, "_plain": None, "spellings": 0})
+def _add_own(table: dict, key, query: str, clicks, impressions, position) -> None:
+    """Queries with the same matching key (store.match_key) count for one tracked keyword: clicks and impressions add up,
+    and the position is weighted by impressions. Which spellings went in is kept, so the screen can say so."""
+    slot = table.setdefault(key, {"clicks": 0, "impressions": 0, "_weighted": 0.0, "_shown": 0, "_plain": None, "_queries": set()})
     shown = int(impressions or 0)
     slot["clicks"] += int(clicks or 0)
     slot["impressions"] += shown
-    slot["spellings"] += 1
+    slot["_queries"].add(store.clean_keyword(query).casefold())
     if position is not None:
         if shown:
             slot["_weighted"] += float(position) * shown
@@ -240,13 +240,34 @@ def _settle_own(table: dict) -> dict:
     return table
 
 
-def _own_tools(conn, site_ids: list[int]) -> dict:
-    """Search Console, Bing's and Yandex's own numbers for my sites, by the keyword's key (store.keyword_key). Empty until each is connected."""
+def _public(slot: dict | None) -> dict | None:
+    return {k: v for k, v in slot.items() if not k.startswith("_")} if slot else None
+
+
+def tracked_spellings(conn, site_ids: list[int]) -> dict[int, frozenset]:
+    """Per site, the matching keys tracked under two or more spellings (store.shared_keys)."""
+    if not site_ids:
+        return {}
+    marks = ",".join(str(int(i)) for i in site_ids)
+    words: dict[int, list] = defaultdict(list)
+    for row in conn.execute(text(f"SELECT sk.site_id, k.keyword FROM site_keywords sk JOIN keywords k ON k.id = sk.keyword_id WHERE sk.site_id IN ({marks})")).mappings():
+        words[row["site_id"]].append(row["keyword"])
+    return {site_id: store.shared_keys(found) for site_id, found in words.items()}
+
+
+def _own_tools(conn, site_ids: list[int], shared: dict[int, frozenset] | None = None) -> dict:
+    """Search Console, Bing's and Yandex's own numbers for my sites, by matching key (store.match_key): every spelling of a
+    keyword tracked once, or only its exact query when the site tracks two spellings of it. Empty until each is connected."""
+    shared = shared or {}
     tables: dict[str, dict] = {"google": {}, "bing": {}, "yandex": {}, "google_country": {}}
     pages: dict = defaultdict(dict)
     through = {}
     if not site_ids:
         return {"positions": tables, "pages": pages, "through": through}
+
+    def key(site_id, query):
+        return store.match_key(query, shared.get(site_id, frozenset()))
+
     marks = ",".join(str(int(i)) for i in site_ids)
     for row in conn.execute(text(f"SELECT site_id, MAX(day) AS last FROM gsc_query WHERE site_id IN ({marks}) GROUP BY site_id")).mappings():
         through[row["site_id"]] = row["last"]
@@ -258,12 +279,12 @@ def _own_tools(conn, site_ids: list[int]) -> dict:
             ),
             {"s": site_id, "last": last},
         ).mappings():
-            _add_own(tables["google"], (site_id, store.keyword_key(row["query"])), row["clicks"], row["impressions"], row["position"])
+            _add_own(tables["google"], (site_id, key(site_id, row["query"])), row["query"], row["clicks"], row["impressions"], row["position"])
         for row in conn.execute(
             text(f"SELECT query, page, SUM(impressions) AS impressions FROM gsc_query_page WHERE site_id = :s AND day > :last - INTERVAL {OWN_DAYS} DAY GROUP BY pair_hash, query, page"),
             {"s": site_id, "last": last},
         ).mappings():
-            seen = pages[(site_id, store.keyword_key(row["query"]))]
+            seen = pages[(site_id, key(site_id, row["query"]))]
             seen[row["page"]] = seen.get(row["page"], 0) + int(row["impressions"] or 0)
         # The same, in each country the site's queries are read for: a keyword's own country, not a world average.
         for row in conn.execute(
@@ -273,11 +294,11 @@ def _own_tools(conn, site_ids: list[int]) -> dict:
             ),
             {"s": site_id, "last": last},
         ).mappings():
-            _add_own(tables["google_country"], (site_id, row["country"], store.keyword_key(row["query"])), row["clicks"], row["impressions"], row["position"])
+            _add_own(tables["google_country"], (site_id, row["country"], key(site_id, row["query"])), row["query"], row["clicks"], row["impressions"], row["position"])
     for row in conn.execute(text(f"SELECT site_id, query, clicks, impressions, position FROM bing_query WHERE site_id IN ({marks})")).mappings():
-        _add_own(tables["bing"], (row["site_id"], store.keyword_key(row["query"])), row["clicks"], row["impressions"], row["position"])
+        _add_own(tables["bing"], (row["site_id"], key(row["site_id"], row["query"])), row["query"], row["clicks"], row["impressions"], row["position"])
     for row in conn.execute(text(f"SELECT site_id, query, clicks, shows, position FROM yandex_query WHERE site_id IN ({marks})")).mappings():
-        _add_own(tables["yandex"], (row["site_id"], store.keyword_key(row["query"])), row["clicks"], row["shows"], row["position"])
+        _add_own(tables["yandex"], (row["site_id"], key(row["site_id"], row["query"])), row["query"], row["clicks"], row["shows"], row["position"])
     for table in tables.values():
         _settle_own(table)
     return {"positions": tables, "pages": pages, "through": through}
@@ -298,7 +319,8 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
                 {"k": keyword_id},
             ).mappings().all()
         checks = _load_checks(conn, list({row["id"] for row in tracked}), list(hosts.values()))
-        own = _own_tools(conn, site_ids)
+        shared = tracked_spellings(conn, site_ids)  # all of each site's keywords, even when one keyword is asked for
+        own = _own_tools(conn, site_ids, shared)
         # Whichever button pressed it: this screen's Refresh, or Check again in Competitors.
         finished = [
             conn.execute(text("SELECT MAX(finished_at) FROM rank_runs")).scalar(),
@@ -309,11 +331,11 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
     gap = int(connections.get_setting(engine, "disagree_gap"))
     rows = []
     for track in tracked:
-        host, key = hosts[track["site_id"]], store.keyword_key(track["keyword"])
+        host, key = hosts[track["site_id"]], store.match_key(track["keyword"], shared.get(track["site_id"], frozenset()))
         engines = {}
         for name in ENGINES:
             own_row = own["positions"].get(name, {}).get((track["site_id"], key))
-            engines[name] = engine_view(checks.get((track["id"], name), []), host, track["country"], track["language"], order[name], gap, now, own_row)
+            engines[name] = engine_view(checks.get((track["id"], name), []), host, track["country"], track["language"], order[name], gap, now, _public(own_row))
         ai = _ai(checks.get((track["id"], "google"), []), host, track["country"], track["language"], now)
         pages_seen = _fold_pages(own["pages"].get((track["site_id"], key), {}))
         latest_google = checks.get((track["id"], "google"), [])
@@ -342,14 +364,16 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
         rows.append({
             "id": f"{track['site_id']}:{track['id']}", "keyword_id": track["id"], "site_id": track["site_id"], "site": host, "keyword": track["keyword"],
             "country": track["country"], "language": track["language"], "engines": engines, "ai": ai, "page": page,
-            "ranking_url": main_url, "gsc_page": gsc_page, "spellings": google_own["spellings"] if google_own else 0,
+            "ranking_url": main_url, "gsc_page": gsc_page,
+            # Search Console's numbers include other spellings of it ("cafe" for "café"): only when the site tracks one spelling.
+            "other_spellings": bool(google_own and google_own["_queries"] - {store.clean_keyword(track["keyword"]).casefold()}),
             "two_pages": len(pages_seen) >= 2 or bool(scraped_two),
             "pages": competing if len(pages_seen) >= 2 or scraped_two else [],
             # "volume" is kept for older readers: it was never search volume, only our own impressions over 28 days.
             "volume": google_own["impressions"] if google_own else None, "impressions": google_own["impressions"] if google_own else None,
             # Search Console in the keyword's own country, when the site's queries are read for it (None otherwise; the
             # world average stays in engines.google.own).
-            "own_country": {"country": track["country"].upper(), **{k: (round(v, 1) if k == "position" and v is not None else v) for k, v in local.items() if k != "spellings"}} if local else None,
+            "own_country": {"country": track["country"].upper(), **{k: (round(v, 1) if k == "position" and v is not None else v) for k, v in local.items() if not k.startswith("_")}} if local else None,
         })
     return {"rows": rows, "through": own["through"], "last_refresh": last_run, "now": now, "order": order, "gap": gap}
 

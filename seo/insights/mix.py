@@ -60,8 +60,9 @@ class Keyword:
         return self.local or self.world
 
 
-def _key(words: str) -> str:
-    return store.keyword_key(words)
+def _key(words: str, shared=frozenset()) -> tuple:
+    """The same matching as Keywords (store.match_key): every spelling of a keyword tracked once, its exact query when two are."""
+    return store.match_key(words, shared)
 
 
 def _add(table: dict, key, clicks: int, shown: int, weighted: float | None) -> None:
@@ -76,20 +77,20 @@ def _settle(table: dict) -> dict:
     return {key: {"clicks": s["clicks"], "impressions": s["impressions"], "position": s["weighted"] / s["impressions"] if s["impressions"] else None} for key, s in table.items()}
 
 
-def _search_console(ctx: Ctx) -> tuple[dict, dict, dict]:
+def _search_console(ctx: Ctx, shared=frozenset()) -> tuple[dict, dict, dict]:
     world: dict = {}
     for r in split(ctx, "query", ctx.start, ctx.end):
-        _add(world, _key(r["name"]), r["clicks"], r["impressions"], r["position"] * r["impressions"] if r["position"] is not None else None)
+        _add(world, _key(r["name"], shared), r["clicks"], r["impressions"], r["position"] * r["impressions"] if r["position"] is not None else None)
     local: dict = {}
     for r in ctx.fetch(
         "SELECT country, MAX(query) q, SUM(clicks) c, SUM(impressions) i, SUM(position * impressions) w FROM gsc_query_country "
         "WHERE site_id = :s AND day BETWEEN :a AND :b AND day NOT IN :skip GROUP BY country, query_hash",
         a=ctx.start, b=ctx.end,
     ):
-        _add(local, (r["country"], _key(r["q"])), int(r["c"] or 0), int(r["i"] or 0), float(r["w"]) if r["w"] is not None else None)
+        _add(local, (r["country"], _key(r["q"], shared)), int(r["c"] or 0), int(r["i"] or 0), float(r["w"]) if r["w"] is not None else None)
     pages: dict = {}
     for r in split(ctx, "pair", ctx.start, ctx.end):
-        slot = pages.setdefault(_key(r["query"]), {})
+        slot = pages.setdefault(_key(r["query"], shared), {})
         slot[r["page"]] = slot.get(r["page"], 0) + r["clicks"]
     return _settle(world), _settle(local), pages
 
@@ -133,16 +134,18 @@ def _rivals(ctx: Ctx) -> list[str]:
 def _load(ctx: Ctx) -> list[Keyword]:
     from seo.serp import rankings  # imported here: rankings reads the competitors code, which reads this package's neighbours
 
-    rows = [r for r in rankings.rows_of_site(ctx.engine, ctx.site_id) if (r["engines"]["google"]["main"] or {}).get("status") == "ok"]
+    every = rankings.rows_of_site(ctx.engine, ctx.site_id)
+    shared = store.shared_keys(r["keyword"] for r in every)  # spellings tracked side by side each keep their own numbers
+    rows = [r for r in every if (r["engines"]["google"]["main"] or {}).get("status") == "ok"]
     if not rows:
         return []
-    world, local, pages = _search_console(ctx)
+    world, local, pages = _search_console(ctx, shared)
     main_ids = [r["engines"]["google"]["main"]["check_id"] for r in rows]
     previous = _previous(ctx, main_ids)
     results = _results(ctx, main_ids + list(previous.values()))
     found = []
     for r in rows:
-        main, key = r["engines"]["google"]["main"], _key(r["keyword"])
+        main, key = r["engines"]["google"]["main"], _key(r["keyword"], shared)
         code3 = countries.alpha3(main["location"]) or countries.alpha3(r["country"])
         numbers = local.get((code3, key)) if code3 else None
         before_id = previous.get(main["check_id"])

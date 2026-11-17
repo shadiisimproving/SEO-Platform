@@ -133,3 +133,4 @@ html[data-simple="1"] #panel.wide svg.chart { display: block; width: 100%; max-w
 .kw-engine-empty { margin-top: 4px; }
 .kw-google-only { font-weight: 400; }
 .kw-spell { margin-inline-start: 2px; font-size: 10px; color: var(--text-2); }
+.kw-twin { color: var(--text-2); margin-inline-end: 6px; }

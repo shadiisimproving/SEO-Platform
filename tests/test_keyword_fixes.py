@@ -2,7 +2,6 @@
 
 Every number here is worked out by hand in the test, so a wrong rule can't pass by agreeing with itself.
 """
-import hashlib
 import importlib.util
 import pathlib
 
@@ -144,93 +143,95 @@ def test_a_ranking_url_swap_between_two_like_for_like_checks_is_marked(world):
     assert view["change"] == 1 and view["url_changed"] is True
 
 
-# ---- #6 accents and case: one key ---------------------------------------------------------------------------------------
+# ---- #6 accents: folded to match Search Console, never to merge keywords -----------------------------------------------
+# Google ranks "créer société dubai" and "creer societe dubai" differently (live, 2026-11-17: 46 against 7), and the owner
+# tracks both on purpose. So a keyword's identity keeps its accents; only the matching of engine numbers folds them.
 
 
-def test_the_keyword_key_folds_latin_accents_and_case_but_not_other_scripts():
+def test_the_matching_key_folds_latin_accents_and_case_but_the_identity_keeps_accents():
     assert store.keyword_key("Café  en Grains") == store.keyword_key("cafe en grains") == "cafe en grains"
     assert store.keyword_key("Création société Dubaï") == "creation societe dubai"
     assert store.keyword_key("bœuf") == "boeuf"
     assert store.keyword_key("がっこう") != store.keyword_key("かっこう")  # Japanese marks change the word: kept
-    assert store.keyword_hash("café") == store.keyword_hash("CAFE")
-    assert store.clean_keyword("Café  en Grains") == "Café en Grains"  # the text shown stays as typed
+    assert store.keyword_hash("café") != store.keyword_hash("cafe")  # two spellings, two keywords
+    assert store.keyword_hash("CAFÉ") == store.keyword_hash("café")  # case and spacing still don't split one
+    assert store.clean_keyword("Café  en Grains") == "Café en Grains"
 
 
-def test_search_console_spellings_add_up_under_the_tracked_keyword(world):
-    [k] = track(world, "café en grains")
+def _two_spellings_in_search_console(world):
     with world.engine.begin() as conn:
         conn.execute(text(
             "INSERT INTO gsc_query (site_id, day, query_hash, query, clicks, impressions, position) VALUES "
             "(:s, UTC_DATE(), 'a', 'cafe en grains', 20, 560, 6.5), (:s, UTC_DATE(), 'b', 'café en grains', 2, 40, 8.0)"
         ), {"s": world.site})
-    row = next(r for r in rankings.listing(world.engine, world.site)["rows"] if r["keyword_id"] == k)
-    google = row["engines"]["google"]
-    assert google["impressions"] == 600 and google["clicks"] == 22
-    assert google["own"] == pytest.approx((6.5 * 560 + 8.0 * 40) / 600)  # 6.6, weighted by impressions
-    assert row["spellings"] == 2
 
 
-def test_track_on_an_unaccented_query_does_not_make_a_second_keyword(world):
+def _rows(world):
+    return {r["keyword"]: r for r in rankings.listing(world.engine, world.site)["rows"]}
+
+
+def test_one_spelling_tracked_gets_every_spelling_added_up_and_says_so(world):
     track(world, "café en grains")
-    answer = keyword_lists.upload(world.engine, world.site, "cafe en grains\nCAFÉ EN GRAINS", country="FR", language="fr")
-    assert answer["total"] == 1  # the two spellings in the list are one keyword
-    with world.engine.connect() as conn:
-        assert conn.execute(text("SELECT COUNT(*) FROM keywords")).scalar() == 1
-        assert conn.execute(text("SELECT keyword FROM keywords")).scalar() == "café en grains"
+    _two_spellings_in_search_console(world)
+    row = _rows(world)["café en grains"]
+    google = row["engines"]["google"]
+    assert google["impressions"] == 560 + 40 == 600 and google["clicks"] == 22
+    assert google["own"] == pytest.approx((6.5 * 560 + 8.0 * 40) / 600)  # 6.6, weighted by impressions
+    assert row["other_spellings"] is True
 
 
-def test_queries_and_rank_and_clicks_know_the_unaccented_spelling_is_tracked():
+def test_both_spellings_tracked_each_gets_only_its_own_query_and_nothing_counts_twice(world):
+    track(world, "café en grains", "cafe en grains")
+    _two_spellings_in_search_console(world)
+    rows = _rows(world)
+    assert (rows["cafe en grains"]["impressions"], rows["cafe en grains"]["engines"]["google"]["own"]) == (560, 6.5)
+    assert (rows["café en grains"]["impressions"], rows["café en grains"]["engines"]["google"]["own"]) == (40, 8.0)
+    assert rows["cafe en grains"]["other_spellings"] is False and rows["café en grains"]["other_spellings"] is False
+    # The keyword panel asks for one keyword: it still knows the site tracks both spellings.
+    k = rows["café en grains"]["keyword_id"]
+    assert rankings.detail(world.engine, world.site, k, "google")["row"]["impressions"] == 40
+
+
+def test_rank_and_clicks_follows_the_same_rule():
+    shared = store.shared_keys(["café en grains", "cafe en grains", "moulin à café"])
+    assert shared == {"cafe en grains"}
+    assert mix._key("CAFE en grains", shared) == mix._key("cafe en grains", shared) != mix._key("café en grains", shared)
+    assert mix._key("moulin a cafe", shared) == mix._key("moulin à café", shared)  # tracked once: spellings join
+
+
+def test_worth_tracking_never_suggests_a_spelling_of_a_tracked_keyword():
     assert search._match("abonnement cafe") == search._match("Abonnement Café")
-    assert mix._key("moulin à café") == "moulin a cafe"
 
 
-# ---- the migration that merges stored twins ---------------------------------------------------------------------------
+def test_tracking_another_spelling_on_purpose_keeps_both_with_their_own_history(world):
+    track(world, "café en grains")
+    keyword_lists.upload(world.engine, world.site, "cafe en grains", country="FR", language="fr")
+    with world.engine.connect() as conn:
+        assert sorted(conn.execute(text("SELECT keyword FROM keywords")).scalars().all()) == ["cafe en grains", "café en grains"]
+    assert keyword_lists.parse_keywords("café en grains\ncafe en grains\nCAFE EN GRAINS") == ["café en grains", "cafe en grains"]
 
 
-def _migration():
-    path = next(pathlib.Path(__file__).parent.parent.joinpath("migrations", "versions").glob("*_keywords_one_key_for_accents.py"))
-    spec = importlib.util.spec_from_file_location("one_key_migration", path)
+def test_the_kept_no_op_migration_upgrades_cleanly_and_changes_nothing(world):
+    from seo.core.schema import upgrade_to_head
+
+    track(world, "café en grains", "cafe en grains")
+    with world.engine.begin() as conn:
+        head = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+        conn.execute(text("UPDATE alembic_version SET version_num = 'a7b1c2d3e4f5'"))
+    try:
+        upgrade_to_head(world.engine)
+    finally:
+        with world.engine.begin() as conn:
+            now = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
+            conn.execute(text("UPDATE alembic_version SET version_num = :h"), {"h": head})
+    assert now == head
+    with world.engine.connect() as conn:
+        assert conn.execute(text("SELECT COUNT(*) FROM keywords")).scalar() == 2
+    path = next(pathlib.Path(__file__).parent.parent.joinpath("migrations", "versions").glob("*_c5e7a9b1d3f2_*.py"))
+    spec = importlib.util.spec_from_file_location("kept_migration", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module
-
-
-def _old_hash(words):
-    return hashlib.sha256(store.clean_keyword(words).casefold().encode("utf-8")).hexdigest()
-
-
-def test_the_migration_merges_accent_twins_without_losing_a_check_and_is_safe_twice(world):
-    other = world.client.application  # noqa: F841 - the app is built; only the database matters here
-    with world.engine.begin() as conn:
-        for words in ("café en grains", "cafe en grains", "moulin"):
-            conn.execute(text("INSERT INTO keywords (keyword, keyword_hash, country, language) VALUES (:k, :h, 'FR', 'fr')"), {"k": words, "h": _old_hash(words)})
-        ids = dict(conn.execute(text("SELECT keyword, id FROM keywords")).all())
-        for words in ("café en grains", "cafe en grains"):
-            conn.execute(text("INSERT INTO site_keywords (site_id, keyword_id) VALUES (:s, :k)"), {"s": world.site, "k": ids[words]})
-        conn.execute(text("INSERT INTO notes (scope, site_id, keyword, keyword_hash, body) VALUES ('keyword', :s, 'Café en grains', :h, 'n')"), {"s": world.site, "h": _old_hash("Café en grains")})
-    keep, gone = ids["café en grains"], ids["cafe en grains"]
-    save(world, keep, position=5)
-    save(world, gone, position=4)
-    save(world, gone, position=3, name="bing")
-    with world.engine.begin() as conn:
-        conn.execute(text("INSERT INTO credit_ledger (tool, amount, keyword_id) VALUES ('SerpApi', 1, :k)"), {"k": gone})
-        conn.execute(text("INSERT INTO tasks (title, about) VALUES ('t', :a)"), {"a": f'{{"items": [{{"kind": "ranking", "ref": "{gone}:google", "label": "x"}}]}}'})
-    migration = _migration()
-    with world.engine.begin() as conn:
-        done = migration.merge_spellings(conn)
-    assert done == {"merged": 1, "notes": 1}
-    with world.engine.connect() as conn:
-        assert dict(conn.execute(text("SELECT keyword, keyword_hash FROM keywords")).all()) == {"café en grains": store.keyword_hash("cafe en grains"), "moulin": store.keyword_hash("moulin")}
-        assert conn.execute(text("SELECT keyword_id FROM site_keywords")).scalars().all() == [keep]
-        assert conn.execute(text("SELECT COUNT(*) FROM serp_targets WHERE keyword_id = :k"), {"k": keep}).scalar() == 2  # google + bing
-        assert conn.execute(text("SELECT COUNT(*) FROM serp_checks c JOIN serp_targets t ON t.id = c.target_id WHERE t.keyword_id = :k"), {"k": keep}).scalar() == 3
-        assert conn.execute(text("SELECT keyword_id FROM credit_ledger")).scalar() == keep
-        assert f'"{keep}:google"' in conn.execute(text("SELECT about FROM tasks")).scalar()
-        assert conn.execute(text("SELECT keyword_hash FROM notes")).scalar() == store.keyword_hash("cafe en grains")
-    view = row_of(world, keep)
-    assert view["move"] == "up" and view["change"] == 1  # both histories on one line: 5, then 4
-    with world.engine.begin() as conn:
-        assert migration.merge_spellings(conn) == {"merged": 0, "notes": 0}
+    assert (module.revision, module.down_revision) == ("c5e7a9b1d3f2", "a7b1c2d3e4f5")
 
 
 # ---- #10 DuckDuckGo saves the depth it really read ---------------------------------------------------------------------
@@ -249,6 +250,21 @@ def test_duckduckgo_direct_asked_for_top_30_with_one_page_of_10_saves_top_10():
     tool = DuckDuckGoDirect(client=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, content=_ddg_html(10)))), sleep=lambda s: None)
     answer = tool.search("cafe", "duckduckgo", "FR", "fr", "desktop", 30)
     assert len(answer.results) == 10 and answer.depth == 10
+
+
+@pytest.mark.parametrize("which", ["direct", "serpapi"])
+def test_top_30_asked_25_read_saves_top_20_and_never_a_position_past_it(which):
+    """Review case: 25 results read, my site at #23. Saved depth 20, so #23 must not be kept: it reads as ">20"."""
+    if which == "direct":
+        html = _ddg_html(25).replace(b"https://site22.example/", b"https://me.example/")
+        tool = DuckDuckGoDirect(client=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, content=html))), sleep=lambda s: None)
+    else:
+        page = {"organic_results": [{"position": i + 1, "link": "https://me.example/" if i == 22 else f"https://site{i}.example/", "title": "T"} for i in range(25)]}
+        tool = SerpApi("k", client=httpx.Client(transport=httpx.MockTransport(lambda r: httpx.Response(200, json=page))))
+    answer = tool.search("cafe", "duckduckgo", "FR", "fr", "desktop", 30)
+    assert answer.depth == 20 and len(answer.results) == 20
+    assert all(found.position <= answer.depth for found in answer.results)
+    assert not any("me.example" in found.url for found in answer.results)
 
 
 def test_serpapi_duckduckgo_reads_one_page_and_saves_what_it_read():

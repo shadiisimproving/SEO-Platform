@@ -99,7 +99,7 @@ def parse_keywords(data: bytes | str) -> list[str]:
         keyword = store.clean_keyword(cell)
         if not keyword or len(keyword) > MAX_LENGTH:
             continue
-        key = store.keyword_key(keyword)  # "café" and "cafe" in one list are one keyword
+        key = keyword.casefold()
         if key not in seen:
             seen.add(key)
             keywords.append(keyword)

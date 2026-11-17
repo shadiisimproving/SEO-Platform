@@ -43,15 +43,32 @@ def _latin_bare(ch: str) -> str:
 
 
 def keyword_key(value: str) -> str:
-    """The one key a keyword is matched on everywhere: cleaned, any case, any accent. French searchers mostly type without
-    accents, so "Café en grains", "cafe en grains" and "CAFÉ EN GRAINS" are one search: one tracked keyword, one Search
-    Console row. The text shown stays as typed (clean_keyword)."""
+    """For matching only: cleaned, any case, any Latin accent ("Café en grains" = "cafe en grains" = "CAFÉ EN GRAINS").
+    Never the keyword's identity: Google ranks "créer société dubai" and "creer societe dubai" differently (live checks,
+    2026-11-17), so each spelling the owner tracks stays its own keyword with its own history (keyword_hash)."""
     folded = unicodedata.normalize("NFC", clean_keyword(value).casefold())
     return "".join(_latin_bare(ch) for ch in folded).translate(_LIGATURES)
 
 
+def shared_keys(tracked_words) -> frozenset:
+    """The matching keys (keyword_key) that a site tracks under two or more spellings, such as "café" and "cafe"."""
+    spellings: dict[str, set] = {}
+    for words in tracked_words:
+        spellings.setdefault(keyword_key(words), set()).add(clean_keyword(words).casefold())
+    return frozenset(key for key, seen in spellings.items() if len(seen) > 1)
+
+
+def match_key(value: str, shared=frozenset()) -> tuple:
+    """Which tracked keyword a search engine's query counts for. A keyword tracked under one spelling gets every spelling
+    of it (French searchers mostly drop accents), so their numbers add up. When the owner tracks two spellings, each one
+    gets only its own exact query (any case), so nothing is counted twice."""
+    folded = keyword_key(value)
+    return ("exact", clean_keyword(value).casefold()) if folded in shared else ("any", folded)
+
+
 def keyword_hash(value: str) -> str:
-    return hashlib.sha256(keyword_key(value).encode("utf-8")).hexdigest()
+    """A keyword's identity: its exact cleaned text, any case. Accents count (see keyword_key)."""
+    return hashlib.sha256(clean_keyword(value).casefold().encode("utf-8")).hexdigest()
 
 
 @lru_cache(maxsize=4096)

@@ -20,7 +20,7 @@ from seo.accounts import access
 from seo.competitors import pages, pairs
 from seo.competitors.keywords import _iso, require_own
 from seo.core.errors import Conflict, NotFound, Refused
-from seo.serp.store import canonical_url, clean_keyword, keyword_hash, keyword_key, to_ascii_host
+from seo.serp.store import canonical_url, clean_keyword, keyword_hash, to_ascii_host
 
 MAX_BYTES = 4_000_000  # far past any note; the column holds 16 MB
 SCOPES = ("all", "competitor", "page", "site", "screen", "keyword", "date", "domain", "section", "task")
@@ -387,7 +387,7 @@ def options(engine: Engine, site_id: int | None = None) -> dict:
         if sites:
             marks = ", ".join(str(int(s)) for s in sites)
             for (word,) in conn.execute(text(f"SELECT DISTINCT k.keyword FROM site_keywords sk JOIN keywords k ON k.id = sk.keyword_id WHERE sk.site_id IN ({marks}) ORDER BY k.keyword LIMIT 2000")):
-                words.setdefault(keyword_key(word), clean_keyword(word))
+                words.setdefault(clean_keyword(word).casefold(), clean_keyword(word))
             for table in ("backlinks", "prospects"):
                 domains.update(r[0] for r in conn.execute(text(f"SELECT DISTINCT domain FROM {table} WHERE site_id IN ({marks}) LIMIT 3000")) if r[0])
             domains.update(r[0] for r in conn.execute(text(
