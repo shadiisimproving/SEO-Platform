@@ -546,16 +546,17 @@ def test_only_another_location_means_no_position_for_this_country(world):
     assert rankings.listing(world.engine, world.site)["tiles"]["google"]["ranked"] == 0
 
 
-def test_beyond_the_depth_is_not_a_drop(world):
+def test_beyond_the_depth_is_out_of_the_top_n_a_drop_with_no_made_up_number(world):
+    """Was "not a drop" until 2026-11-17: a keyword that fell off the page was never Down (expert review F1)."""
     [k] = track(world, "a")
     save(world, k, position=4)
     save(world, k, position=None)
     view = row_of(world, k)
     assert view["main"]["p"] is None and view["main"]["depth"] == 10
-    assert view["change"] is None  # left out of Change
+    assert view["change"] is None and view["move"] == "lost"  # no invented number of places, but a drop
     assert [point["p"] for point in view["trend"]] == [4]
     tile = rankings.listing(world.engine, world.site)["tiles"]["google"]
-    assert tile["down"] == 0 and tile["not_ranked"] == 1
+    assert tile["down"] == 1 and tile["not_ranked"] == 1
 
 
 def test_suspect_results_stay_visible_and_stay_out_of_trends(world):

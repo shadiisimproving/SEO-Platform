@@ -191,8 +191,8 @@ def is_brand(query: str, words: list[str]) -> bool:
 
 
 def _match(query: str) -> str:
-    """The same matching as Keywords' own Search Console column (rankings._own_tools): cleaned text, any case, any market."""
-    return store.clean_keyword(query).casefold()
+    """The same matching as Keywords' own Search Console column (rankings._own_tools): cleaned text, any case, any accent, any market."""
+    return store.keyword_key(query)
 
 
 def tracked(scope: Scope) -> set[str]:

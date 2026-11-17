@@ -61,7 +61,7 @@ class Keyword:
 
 
 def _key(words: str) -> str:
-    return store.clean_keyword(words).casefold()
+    return store.keyword_key(words)
 
 
 def _add(table: dict, key, clicks: int, shown: int, weighted: float | None) -> None:
