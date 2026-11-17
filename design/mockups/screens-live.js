@@ -431,6 +431,10 @@
       <form class="lv-rule-form" data-lv-rule-form="${kind}"><input class="input mono" spellcheck="false" autocapitalize="off" name="f_pattern" placeholder="${esc(patternHint)}" aria-label="${t("Matches")}" autocomplete="off">${valueHint ? `<input class="input" name="f_value" placeholder="${esc(t(valueHint))}" aria-label="${t(valueHint)}" autocomplete="off">` : ""}<button class="btn btn-small" type="submit">${t("Add rule")}</button><span class="error" data-lv-rule-error hidden></span></form></section>`;
   }
 
+  /* AI visits are their own channel, counted by AI search's rules (seo/metrics/service.py AI_CHANNEL): its row links there. */
+  const AI_CHANNEL = "AI assistants";
+  const aiLink = (name) => (name === AI_CHANNEL ? ` <a class="small lv-ai-link" href="#ai">${t("AI search")} →</a>` : "");
+
   function channelsPage() {
     if (simple()) return channelsSimple();
     const entry = load("metrics/channels");
@@ -441,7 +445,7 @@
     if (!d.channels.length) return page(head, emptyCard(t("No data in this period."), `${t("Google Analytics has data through")} ${esc(d.through ? shortDay(d.through) : "—")}.`));
     const days = d.series.map((r) => r.day);
     const series = d.series_names.map((name) => ({ name, color: colourOf(name), values: Object.fromEntries(d.series.map((r) => [r.day, r.values[name] ?? 0])) }));
-    const swatch = (name) => `<i class="lv-key" style="background:${colourOf(name)}"></i>${esc(t(name))}`;
+    const swatch = (name) => `<i class="lv-key" style="background:${colourOf(name)}"></i>${esc(t(name))}${aiLink(name)}`;
     // The server starts fetching these sites' icons when this data is asked for, so look for them once per list.
     const referrerList = d.referrers.map((r) => r.domain).join(",");
     if (referrerList !== LV.referrersWatched) { LV.referrersWatched = referrerList; window.COMP?.refreshLogos?.({ watch: true }); }
@@ -676,7 +680,7 @@
         ${UI.card({ id: "rate", label: "Lead rate", value: ratePct(d.total), format: "pct", change: { now: ratePct(d.total), before: ratePct(before), unit: "pts" }, spark: daySpark(d, ratePct) })}
         ${UI.card({ id: "channels", label: "Channels", value: d.channels.length, sub: top ? esc(fillIn(t("Most visits: {name}"), { name: t(top.channel) })) : "" })}
       </section>`;
-    const swatch = (name) => `<i class="lv-key" style="background:${colourOf(name)}"></i>${esc(t(name))}`;
+    const swatch = (name) => `<i class="lv-key" style="background:${colourOf(name)}"></i>${esc(t(name))}${aiLink(name)}`;
     const days = d.series.map((r) => r.day);
     const series = d.series_names.map((name) => ({ name, color: colourOf(name), values: Object.fromEntries(d.series.map((r) => [r.day, r.values[name] ?? 0])) }));
     return page(head, `${cards}
@@ -1182,6 +1186,7 @@
     "Tags are a list of words.": "Les étiquettes sont une liste de mots.", "A tag is 40 characters at most.": "Une étiquette fait 40 caractères au plus.", "A resource takes 20 tags at most.": "Une ressource prend 20 étiquettes au plus.", "Resource saved": "Ressource enregistrée", "Resource deleted": "Ressource supprimée",
     "A resource needs a title.": "Une ressource a besoin d'un titre.", "A link starts with https://.": "Un lien commence par https://.",
     "Page speed": "Vitesse des pages", "Device": "Appareil", "Phone": "Téléphone", "Computer": "Ordinateur", "Score": "Score", "Largest content (s)": "Plus grand contenu (s)", "Response (ms)": "Réactivité (ms)", "Layout shift": "Décalage visuel", "Measured on": "Mesuré sur", "Real visitors": "Vrais visiteurs", "Test run": "Test",
+    "AI assistants": "Assistants IA", "AI search": "Recherche IA", "Open AI search": "Ouvrir Recherche IA",
     "Lab score": "Score labo", "Lab test only": "Test labo seulement", "Passed": "Réussi", "Failed": "Échoué", "whole site": "site entier", "this page": "cette page",
     "Keyword ideas": "Idées de mots-clés", "From Google's suggestions": "D'après les suggestions de Google", "A word or two": "Un ou deux mots", "Find ideas": "Trouver des idées", "Any language": "Toutes les langues", "Already tracked": "Déjà suivi", "Add": "Ajouter", "Add all": "Tout ajouter", "ideas": "idées", "Add to my keywords": "Ajouter à mes mots-clés",
     "Country and language start on the ones this site's keywords use most.": "Pays et langue partent de ceux que les mots-clés du site utilisent le plus.", "The country and language of these ideas.": "Le pays et la langue de ces idées.","No suggestions.": "Aucune suggestion.", "Type a word or two first.": "Saisissez d'abord un ou deux mots.",

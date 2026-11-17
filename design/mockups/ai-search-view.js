@@ -353,7 +353,9 @@
       ...(d.key_events_set_up ? [{ key: "leads", label: "Leads", num: true }, { key: "rate", label: "Lead rate", num: true, html: rateCell }] : []),
     ];
     const small = d.sources.filter((r) => r.rate === null).length;
-    return `${small && d.key_events_set_up ? lead(`${esc(tf("Lead rate shows from {n} AI visits.", { n: num(d.limits.lead_rate_min_visits) }))}${UI.tip("Below that, one lead more or less swings it too far.")}`) : ""}${rowsOpen(LVx().dataTable("ai-assistants", columns, d.sources, { pageSize: 10 }))}`;
+    // The same visits are the "AI assistants" row on Channels (expert review 2026-11-17, #22): the way there.
+    const channels = `<p class="small muted ai-on-channels"><a href="#channels">${t("Compare with your other channels")} →</a></p>`;
+    return `${small && d.key_events_set_up ? lead(`${esc(tf("Lead rate shows from {n} AI visits.", { n: num(d.limits.lead_rate_min_visits) }))}${UI.tip("Below that, one lead more or less swings it too far.")}`) : ""}${rowsOpen(LVx().dataTable("ai-assistants", columns, d.sources, { pageSize: 10 }))}${channels}`;
   }
   function pagesTab(d) {
     const ga4 = stateOf(d, "ga4");
@@ -692,6 +694,7 @@
   };
 
   const fr = {
+    "Compare with your other channels": "Comparer avec vos autres canaux",
     "Not compared: the last file overlaps this one": "Pas comparé : le fichier précédent chevauche celui-ci",
     "Not compared: the last file covers a different number of days": "Pas comparé : le fichier précédent couvre un autre nombre de jours",
     "Google Analytics": "Google Analytics", "Clarity live": "Clarity en direct", "Clarity download": "Export Clarity", "{n} of {m} sites": "{n} sites sur {m}",

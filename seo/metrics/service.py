@@ -242,15 +242,28 @@ def _compile(pattern: str):
     return re.compile(re.escape(pattern).replace(r"\*", ".*"), re.I)
 
 
-def _channel_namer(engine: Engine, site_ids: list[int]):
-    """A rule's pattern is source/medium with * as a wildcard: chatgpt.com/* or */newsletter. The first match wins, and the rest stay GA4's grouping."""
+AI_CHANNEL = "AI assistants"  # the one channel AI visits are shown in on Channels and Conversions
+
+
+def _channel_namer(engine: Engine, site_ids: list[int], ai: bool = False):
+    """A rule's pattern is source/medium with * as a wildcard: chatgpt.com/* or */newsletter. The first match wins, and the rest stay GA4's grouping.
+
+    ai=True (Channels, Conversions and their panels): a visit AI search counts (the AI list, or GA4's own AI grouping) is
+    in AI_CHANNEL rather than hidden in Referral or Unassigned (expert review 2026-11-17, #22). A rule still wins."""
     compiled = [(_compile(rule["pattern"]), rule["value"]) for rule in rules(engine, "channel", site_ids) if rule["value"]]
+    domains = _ai_domains(engine, site_ids) if ai else None
+    if ai:
+        from seo.metrics.ai_search import is_ai_channel  # noqa: PLC0415 - ai_search imports this module
+    else:
+        is_ai_channel = None
 
     def name(channel: str, source: str, medium: str) -> str:
         pair = f"{source}/{medium}"
         for pattern, value in compiled:
             if pattern.fullmatch(pair):
                 return value
+        if domains is not None and (_is_ai((source or "").strip().lower(), domains) or is_ai_channel(channel)):
+            return AI_CHANNEL
         return channel
     return name
 
@@ -324,7 +337,7 @@ def _day_rows(days: dict) -> list[dict]:
 def channels(scope: Scope) -> dict:
     status = _sources_state(scope, "ga4")
     period = _trim_to_data(scope)
-    namer = _channel_namer(scope.engine, scope.site_ids)
+    namer = _channel_namer(scope.engine, scope.site_ids, ai=True)
     totals: dict[str, dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0})
     per_day: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     referrers: dict[str, dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0})
@@ -403,7 +416,7 @@ def _hosts(scope: Scope) -> dict[int, str]:
 
 def conversions(scope: Scope) -> dict:
     status = _sources_state(scope, "ga4")
-    namer = _channel_namer(scope.engine, scope.site_ids)
+    namer = _channel_namer(scope.engine, scope.site_ids, ai=True)
     by_channel: dict[str, dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0})
     daily = _days()
     for row in _ga4_rows(scope, scope.start, scope.end):
@@ -688,7 +701,7 @@ def channel_detail(scope: Scope, name) -> dict:
     name = _named(name, "channel")
     status = _sources_state(scope, "ga4")
     period = _trim_to_data(scope)
-    namer = _channel_namer(scope.engine, scope.site_ids)
+    namer = _channel_namer(scope.engine, scope.site_ids, ai=True)
 
     def gather(start, end) -> dict:
         days, sources, mediums = {}, _days(), _days()
