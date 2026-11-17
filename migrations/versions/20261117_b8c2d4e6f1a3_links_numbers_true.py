@@ -8,13 +8,13 @@
   year. It now means an edit was seen: pages with no recorded edit lose the first-read date.
 
 Revision ID: b8c2d4e6f1a3
-Revises: a7b1c2d3e4f5
+Revises: c5e7a9b1d3f2
 """
 import sqlalchemy as sa
 from alembic import op
 
 revision = "b8c2d4e6f1a3"
-down_revision = "a7b1c2d3e4f5"
+down_revision = "c5e7a9b1d3f2"
 branch_labels = None
 depends_on = None
 
