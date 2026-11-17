@@ -34,7 +34,7 @@ Migration `migrations/versions/20261117_c5e7a9b1d3f2_keywords_one_key_for_accent
 
 ## Tests run
 
-- `DB_NAME_TEST=test_fix_keywords_test .venv/bin/pytest`: all green (, every one passed). Two older tests asserted the old rules and were updated: `test_search.py` (two keywords differing only by accents can no longer both exist) and `test_search_countries.py` (own-country numbers keep their three fields).
+- `DB_NAME_TEST=test_fix_keywords_test .venv/bin/pytest`: all green, no failures (full suite, run after the last code change). Two older tests asserted the old rules and were updated: `test_search.py` (two keywords differing only by accents can no longer both exist) and `test_search_countries.py` (own-country numbers keep their three fields).
 - `tests/test_refresh.py::test_beyond_the_depth_is_not_a_drop` asserted the old wrong rule; renamed to `test_beyond_the_depth_is_out_of_the_top_n_a_drop_with_no_made_up_number` and now asserts the drop.
 - `node --test tests/js`: the three files there are helpers called by pytest, not node tests; they run inside the pytest suite.
 - Playwright, on the demo world plus a seed (one #2 → out, one out → #7, a 120-day-old Bright Data check with Bright Data as main tool, a Search Console page differing from the ranking page): `tests/ui/flow_keyword_fixes.cjs` (1440/390 × en/fr, 14 checks each) and `tests/ui/flow_keyword_refresh_skip.cjs` (en/fr). All checks passed; the only console error is the harness's known `/api/auth/me` 404.
