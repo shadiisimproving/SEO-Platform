@@ -40,7 +40,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   check("panel keeps the proof folded", (await page.locator("#panel details.vd-q[data-vd-row='google'][open]").count()) === 0);
   await openRows();
   const panel = await page.locator("#panel").innerText();
-  check("panel asks: does Google count it", /Counted by\s+Google\s*\?/.test(panel));
+  check("panel asks: does it pass value (the app's check, no Google name: SEO review #12)", /Does it pass value\?/.test(panel) && !/Counted by/.test(panel));
   check("panel gives the sponsored reason", panel.includes("Marked sponsored"));
   check("panel shows Before and after from Search Console", panel.includes("Before and after"));
   const siteId = await page.evaluate(async () => (await (await fetch("api/links/sites")).json()).sites.find((s) => s.host === "site-one.example").id);

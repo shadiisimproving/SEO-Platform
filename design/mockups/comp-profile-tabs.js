@@ -378,8 +378,9 @@
     const showMine = mineRead(ins);
     S.showMine = showMine;
     const months = r?.months || [];
-    const total = months.reduce((n, m) => n + (m.theirs || 0), 0);
-    const myTotal = showMine ? months.reduce((n, m) => n + (m.mine || 0), 0) : null;
+    // Different pages edited, from the server: a page edited in two months is still one page (SEO review #11).
+    const total = r?.edited_pages?.theirs ?? months.reduce((n, m) => n + (m.theirs || 0), 0);
+    const myTotal = showMine ? r?.edited_pages?.mine ?? months.reduce((n, m) => n + (m.mine || 0), 0) : null;
     const myHost = COMP.site?.()?.host || p.site?.host;
     const lead = r && months.length ? sideTable(t("New and removed pages"), [t("Added, 30 days"), t("Removed, 30 days"), t("Added, 12 months"), t("Updated, 12 months")], [
       ...(showMine ? [{ who: "you", host: myHost, cells: [figure(r.my_new_30d), figure(r.my_removed_30d), figure(myTotal), share(r.updated_12m?.mine)] }] : []),
@@ -410,17 +411,18 @@
     const from = since ? since.slice(0, 7) : null;
     const months = from ? all.filter((m) => m.month >= from) : [];
     S.editMonths = months; // the hover label reads the same months the bars were drawn from
-    const total = months.reduce((n, m) => n + (m.theirs || 0), 0);
-    const myTotal = showMine ? months.reduce((n, m) => n + (m.mine || 0), 0) : null;
+    // Different pages edited, from the server: a page edited in two months is still one page (SEO review #11).
+    const total = r?.edited_pages?.theirs ?? months.reduce((n, m) => n + (m.theirs || 0), 0);
+    const myTotal = showMine ? r?.edited_pages?.mine ?? months.reduce((n, m) => n + (m.mine || 0), 0) : null;
     const now = months[months.length - 1];
     const sinceCol = sinceDay(since);
     const cols = [sinceCol, ...(now && months.length > 1 ? [t("This month")] : [])];
     const row = (who, host, sum, key) => ({ who, host, cells: [num(sum), ...(cols.length > 1 ? [num(now[key] || 0)] : [])] });
-    const lead = from ? sideTable(t("Edits"), cols, [...(showMine ? [row("you", COMP.site?.()?.host || p?.site?.host, myTotal, "mine")] : []), row("them", p?.host, total, "theirs")]) : "";
+    const lead = from ? sideTable(t("Pages edited"), cols, [...(showMine ? [row("you", COMP.site?.()?.host || p?.site?.host, myTotal, "mine")] : []), row("them", p?.host, total, "theirs")]) : "";
     const busy = months.filter((m) => (m.theirs || 0) + (showMine ? m.mine || 0 : 0) > 0);
     const chart = !from ? `<p class="cl-none small sec">${t("Fills in once the app has read their pages twice.")}</p>`
       : !busy.length ? "" : monthChart(months, showMine, "edits");
-    return `<section class="card"><div class="card-head"><h2>${t("How often they edit")}</h2><span class="end small muted">${t("Edits each month")}${UI().tip("Changes the app saw on pages they already had: title, text, headings and so on. Counted from the day the app started watching.")}</span></div><div class="cl-section-body">${lead}${chart}</div></section>`;
+    return `<section class="card"><div class="card-head"><h2>${t("How often they edit")}</h2><span class="end small muted">${t("Pages edited each month")}${UI().tip("Pages they already had where the app saw a change: title, text, headings and so on. A page counts once, however many things changed. Counted from the day the app started watching.")}</span></div><div class="cl-section-body">${lead}${chart}</div></section>`;
   }
   /* "Since 12 Nov 2026" on the day itself read wrong: today and yesterday say so. */
   const sinceDay = (iso) => {
@@ -520,13 +522,20 @@
   function strengthBody(p, f, l, row) {
     const myHost = COMP.site?.()?.host || p.site?.host || "";
     const mozWait = !known(f.da) && !known(f.my_da);
-    const theirLinks = known(l.linking_domains) ? l.linking_domains : f.moz_links;
-    const myLinks = known(l.my_linking_domains) ? l.my_linking_domains : f.my_moz_links;
-    const linkSource = known(l.linking_domains) ? t("from Link gaps") : known(f.moz_links) ? t("from Moz") : "";
+    /* Linking sites compare like with like (SEO review 2026-11-17, #11): Moz's count for both sides when Moz has both. Otherwise
+       theirs come from their link files and mine from my Backlinks list, two different sources: each side names its source and
+       nobody is called Ahead. Spam domains never count; they're said apart as "+5 flagged". */
+    const bothMoz = known(f.moz_links) && known(f.my_moz_links);
+    const fromFiles = !bothMoz && known(l.linking_domains);
+    const theirLinks = bothMoz ? f.moz_links : known(l.linking_domains) ? l.linking_domains : f.moz_links;
+    const myLinks = bothMoz ? f.my_moz_links : known(l.my_linking_domains) ? l.my_linking_domains : f.my_moz_links;
+    const linkSource = bothMoz ? t("from Moz") : fromFiles ? t("Different sources: no winner") : known(f.moz_links) ? t("from Moz") : "";
+    const theirSrc = fromFiles ? [fill("from {source}", { source: (l.linking_sources || []).join(", ") || t("Link gaps") }), l.linking_flagged ? fill("+{n} flagged as spam", { n: num(l.linking_flagged) }) : ""].filter(Boolean).join(" · ") : "";
+    const mySrc = fromFiles && known(myLinks) ? t("from your Backlinks list") : "";
     const h = f.history?.status;
     const items = [
       { label: t("Moz Domain Authority"), mine: f.my_da, theirs: f.da, show: figure, why: "moz", bar: true, better: (a, b) => a - b },
-      { label: t("Linking sites"), sub: linkSource, mine: myLinks, theirs: theirLinks, show: figure, why: "links", needTheirs: true, bar: true, better: (a, b) => a - b },
+      { label: t("Linking sites"), sub: linkSource, mine: myLinks, theirs: theirLinks, show: figure, why: "links", needTheirs: true, bar: !fromFiles, noWinner: fromFiles, srcMine: mySrc, srcTheirs: theirSrc, better: (a, b) => a - b },
       { label: t("Popularity"), sub: t("from Cloudflare"), mine: f.my_popularity, theirs: f.popularity, show: (v) => (v ? esc(popularityWords(v)) : dash), why: "moz", better: (a, b) => popularityRank(b) - popularityRank(a) },
       { label: t("Registered"), mine: f.my_registered_on, theirs: f.registered_on, show: (v) => (v ? esc(monthYear(v)) : dash), note: ageWords, why: "registry", better: (a, b) => (a < b ? 1 : a > b ? -1 : 0) },
     ];
@@ -537,13 +546,13 @@
     // "You" only when at least one of my figures is known: a side of dashes says nothing.
     const withMine = has.some((x) => known(x.mine));
     /* Who is ahead on a figure: 1 you, -1 them, 0 level or not comparable. */
-    const lead = (x) => { if (!known(x.mine) || !known(x.theirs)) return null; const n = x.better(x.mine, x.theirs); return n > 0 ? 1 : n < 0 ? -1 : 0; };
+    const lead = (x) => { if (x.noWinner || !known(x.mine) || !known(x.theirs)) return null; const n = x.better(x.mine, x.theirs); return n > 0 ? 1 : n < 0 ? -1 : 0; };
     const compared = has.map(lead).filter((n) => n !== null), mineWon = compared.filter((n) => n > 0).length, theirsWon = compared.filter((n) => n < 0).length;
     const verdict = !compared.length ? "" : `<p class="pt-verdict">${esc(mineWon === theirsWon ? (mineWon ? fill("You're level: each ahead on {n} of {total}.", { n: num(mineWon), total: num(compared.length) }) : t("Level on everything known.")) : fill(theirsWon > mineWon ? "They're ahead on {n} of {total}." : "You're ahead on {n} of {total}.", { n: num(Math.max(mineWon, theirsWon)), total: num(compared.length) }))}</p>`;
     const side = (x, who, host, won) => {
       const v = who === "you" ? x.mine : x.theirs, most = x.bar ? Math.max(x.mine ?? 0, x.theirs ?? 0) : 0;
       const bar = most > 0 && known(x.mine) && known(x.theirs) ? `<span class="pt-side-bar" aria-hidden="true"><i style="width:${Math.max(2, Math.round(((v ?? 0) / most) * 100))}%"></i></span>` : "";
-      return `<div class="pt-side pt-side-${who}${won ? " pt-side-ahead" : ""}"><span class="pt-side-who">${host ? UI().siteLogo(host, 16) : ""}<span>${t(who === "you" ? "You" : "Them")}</span>${won ? `<span class="pt-side-flag">${t("Ahead")}</span>` : ""}</span><span class="pt-side-val tabular">${x.show(v)}</span>${x.note && known(v) ? `<span class="small sec">${esc(x.note(v))}</span>` : ""}${bar}</div>`;
+      return `<div class="pt-side pt-side-${who}${won ? " pt-side-ahead" : ""}"><span class="pt-side-who">${host ? UI().siteLogo(host, 16) : ""}<span>${t(who === "you" ? "You" : "Them")}</span>${won ? `<span class="pt-side-flag">${t("Ahead")}</span>` : ""}</span><span class="pt-side-val tabular">${x.show(v)}</span>${x.note && known(v) ? `<span class="small sec">${esc(x.note(v))}</span>` : ""}${(who === "you" ? x.srcMine : x.srcTheirs) ? `<span class="small sec">${esc(who === "you" ? x.srcMine : x.srcTheirs)}</span>` : ""}${bar}</div>`;
     };
     const duel = (x) => { const n = lead(x); return `<li class="pt-duel"><div class="pt-duel-head"><b>${esc(x.label)}</b>${x.sub ? `<span class="small muted">${esc(x.sub)}</span>` : ""}</div><div class="pt-sides${withMine ? "" : " pt-sides-one"}">${withMine ? side(x, "you", myHost, n === 1) : ""}${side(x, "them", p.host, n === -1)}</div></li>`; };
     const table = has.length ? `<ul class="pt-duels">${has.map(duel).join("")}</ul>` : "";
@@ -909,6 +918,10 @@
     "{share} of their pages were updated in 12 months.": "{share} de leurs pages ont été mises à jour en 12 mois.",
     "How fast they publish": "À quel rythme ils publient",
     "How often they edit": "À quelle fréquence ils modifient", "Edits each month": "Modifications par mois",
+    "Pages edited each month": "Pages modifiées par mois", "Pages edited": "Pages modifiées",
+    "Different sources: no winner": "Sources différentes : pas de gagnant", "from {source}": "d'après {source}", "+{n} flagged as spam": "+{n} signalés comme spam",
+    "from your Backlinks list": "d'après votre liste de backlinks",
+    "Pages they already had where the app saw a change: title, text, headings and so on. A page counts once, however many things changed. Counted from the day the app started watching.": "Pages qu'ils avaient déjà et où l'app a vu un changement : titre, texte, intertitres, etc. Une page compte une fois, quel que soit le nombre de changements. Compté depuis le jour où l'app a commencé à les suivre.",
     "Edits each month, them against you": "Modifications par mois, eux face à vous", "Their edits each month": "Leurs modifications par mois",
     "they made {n} edit": "ils ont fait {n} modification", "they made {n} edits": "ils ont fait {n} modifications", "they made no edits": "ils n'ont fait aucune modification",
     "you made {n}": "vous {n}", "Since {day}:": "Depuis le {day} :", "This month: {theirs}{mine}.": "Ce mois-ci : {theirs}{mine}.",

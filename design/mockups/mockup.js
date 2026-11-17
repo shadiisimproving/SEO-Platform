@@ -1116,7 +1116,7 @@
       return `<tr id="prospect-${p.id}" style="cursor:default">
         <td class="pr-tick" data-label=""><input type="checkbox" class="chk" style="margin:0" data-prospect-pick="${p.id}" aria-label="${t("Select")}: ${esc(p.domain)}" ${prPicked.has(p.id) ? "checked" : ""}></td>
         <td class="head-cell url-cell"><span class="with-logo">${siteLogo(p.domain)}<span class="logo-text"><span class="nb-inline"><a class="kw mono small" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer nofollow" data-tip="${esc(p.url)}">${esc(p.url.replace(/^https?:\/\//, ""))}</a>${window.COMP?.notes?.badge ? window.COMP.notes.badge({ scope: "domain", domain: p.domain, siteId: window.UI.siteIdPicked?.() ?? null }, p.domain) : ""}</span>${notes}</span></span></td>
-        <td class="r" data-label="${t("Authority")}" ${p.authorityLabel ? `data-tip="${esc(p.authorityLabel)}"` : ""}>${numberOrDash(p.authority)}</td>
+        <td class="r" data-label="${t("Authority")}">${p.authority === null || p.authority === undefined ? numberOrDash(p.authority) : window.BacklinkSeo.scoreCell({ value: p.authority, label: p.authorityLabel })}</td>
         <td class="r" data-label="${t("Page authority")}">${numberOrDash(p.pageAuthority)}</td>
         <td class="r" data-label="${t("Spam score")}">${spamText(p.spam)}</td>
         <td data-label="${t("Rating")}"><select class="select pr-rating" data-prospect-rating="${p.id}" aria-label="${t("Rating")}: ${esc(p.domain)}">${ratingOptions(p.rating, "—")}</select></td>
@@ -1196,11 +1196,11 @@
   const BL_PAGES = "bl-links", FOUND_PAGES = "bl-found", PR_PAGES = "bl-prospects";
   let blSort = null, foundSort = null, prSort = null, blPagedFor;
   const bareUrl = (url) => String(url || "").replace(/^https?:\/\/(www\.)?/, "");
-  const BL_SORTS = { src: (b) => bareUrl(b.src), authority: (b) => b.auth || b.opr, visits: (b) => b.visits, leads: (b) => b.leads };
+  const BL_SORTS = { src: (b) => bareUrl(b.src), authority: window.BacklinkSeo.authorityOf, visits: (b) => b.visits, leads: (b) => b.leads };
   const blSearched = (list) => list.filter((b) => window.TP.matches(BL_PAGES, b.src, b.anchor, b.check?.anchor, b.target, b.keyword, b.mediator, b.site));
   const foundSearched = (list) => list.filter(([f]) => window.TP.matches(FOUND_PAGES, f.src, f.target, f.site));
   const prSearched = (list) => list.filter((p) => window.TP.matches(PR_PAGES, p.url, p.domain, p.file, p.owner));
-  const PR_SORTS = { domain: (p) => bareUrl(p.url), da: (p) => p.authority, pa: (p) => p.pageAuthority, spam: (p) => p.spam };
+  const PR_SORTS = { domain: (p) => bareUrl(p.url), da: window.BacklinkSeo.authoritySort((p) => (p.authority === null || p.authority === undefined ? null : { value: p.authority, label: p.authorityLabel })), pa: (p) => p.pageAuthority, spam: (p) => p.spam };
   /* In consideration as filtered, searched and sorted: what the table pages through, and what Export takes. */
   const prospectList = () => window.BacklinkSeo.sortRows(prSearched(prospectsForSite().filter(prospectMatches)), prSort, PR_SORTS);
   /* Another site picked in the side menu starts every Backlinks table again at page 1, unsorted, with no search. */
@@ -1209,7 +1209,7 @@
     blSort = null; foundSort = null; prSort = null;
     window.BacklinkSeo.resetPages();
   }
-  [["Search websites", "Rechercher un site"], ["No link matches", "Aucun lien ne correspond"], ["Change the search.", "Modifiez la recherche."],
+  [["Find prospects", "Trouver des prospects"], ["Link gaps: find link prospects", "Liens manquants : trouver des prospects"], ["Sites linking to your competitors, not to you", "Sites qui font un lien vers vos concurrents, pas vers vous"], ["Search websites", "Rechercher un site"], ["No link matches", "Aucun lien ne correspond"], ["Change the search.", "Modifiez la recherche."],
     ["Search links", "Rechercher un lien"], ["link checks", "contrôles de liens"], ["No link matches.", "Aucun lien ne correspond."]]
     .forEach(([en, fr]) => { if (window.FR[en] === undefined) window.FR[en] = fr; });
   window.TP.on(BL_PAGES, () => render());
@@ -1219,7 +1219,9 @@
   function backlinksPage() {
     const section = state.blSection;
     if (blPagedFor !== state.site) { if (blPagedFor !== undefined) resetBacklinkPages(); blPagedFor = state.site; }
-    const main = section === "done" ? `<button class="btn btn-main" id="add-backlink">${icon("plus")}${t("Add backlink")}</button>` : "";
+    // Find prospects: Link gaps, the sites that link to competitors and not to me (COMPARISON 2026-11-17, place 3).
+    const findProspects = !window.ACCESS || ACCESS.can("competitors") ? `<a class="btn" id="bl-find-prospects" href="#competitors/gaps" style="text-decoration:none" data-tip="${esc(t("Sites linking to your competitors, not to you"))}">${icon("link-2-off")}${t("Find prospects")}</a>` : "";
+    const main = findProspects + (section === "done" ? `<button class="btn btn-main" id="add-backlink">${icon("plus")}${t("Add backlink")}</button>` : "");
     const title = t("Backlinks"), sub = t("Links built and what they brought");
     if (!bl.ready) return topbar(title, sub) + `<div class="content page-enter">${window.UI.skeleton("page", { tiles: 6, chart: false })}</div>`;
     if (bl.error) return topbar(title, sub) + `<div class="content page-enter">${window.UI.failCard(bl.error, { onRetry: () => { bl.error = ""; bl.ready = false; bl.asked = false; render(); } })}</div>`;
@@ -3123,6 +3125,8 @@
     if (!may("backlinks", true)) actions.splice(0, 1);
     if (!may("keywords", true)) actions.splice(actions.findIndex((a) => a.icon === "refresh-cw"), 1);
     const sites = window.SITES.map((s) => ({ label: s.host, kind: t("Site"), icon: "globe", run: () => { state.site = s.id; render(); } }));
+    // Link gaps under the words people search with (COMPARISON 2026-11-17, place 3): link gaps, link prospects, backlink gap.
+    if (may("competitors")) pages.push({ label: t("Link gaps: find link prospects"), words: "link gaps link prospects backlink gap find prospects liens manquants prospects", kind: t("Go to"), icon: "link-2-off", run: () => { location.hash = "#competitors/gaps"; } });
     if (!may("keywords")) return [...pages, ...actions, ...sites, ...(may("competitors") ? cmdRivals.list.map((c) => ({ label: c.display || c.host, kind: `${t("Competitor")} · ${c.site}`, icon: "crosshair", run: () => { location.hash = `#competitors/list/${c.id}?site=${encodeURIComponent(c.site)}`; } })) : [])];
     const kws = window.KEYWORDS.map((k) => ({ label: k.k, kind: t("Keyword"), icon: "key-round", run: () => { const open = () => openKeyword(k.k); if (state.route === "keywords") open(); else { go("keywords"); setTimeout(open, 200); } } }));
     const rivals = !may("competitors") ? [] : cmdRivals.list.map((c) => ({ label: c.display || c.host, kind: `${t("Competitor")} · ${c.site}`, icon: "crosshair", run: () => { location.hash = `#competitors/list/${c.id}?site=${encodeURIComponent(c.site)}`; } }));
@@ -3145,7 +3149,7 @@
   let cmdList = [], cmdIndex = 0;
   function renderCmdList(query = "") {
     const q = query.trim().toLowerCase();
-    cmdList = commands().filter((c) => !q || c.label.toLowerCase().includes(q)).slice(0, 9);
+    cmdList = commands().filter((c) => !q || `${c.label} ${c.words || ""}`.toLowerCase().includes(q)).slice(0, 9);
     cmdIndex = Math.min(cmdIndex, Math.max(0, cmdList.length - 1));
     setHTML($("#cmd-list"), cmdList.length
       ? cmdList.map((c, i) => `<li><button data-cmd="${i}" class="${i === cmdIndex ? "on" : ""}" dir="auto">${icon(c.icon, "muted")}<span>${esc(c.label)}</span><span class="kind">${esc(c.kind)}</span></button></li>`).join("")

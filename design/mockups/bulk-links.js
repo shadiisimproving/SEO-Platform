@@ -95,6 +95,7 @@
     ["exact", "exact"], ["exact keyword", "exact"], ["exact match", "exact"], ["optimisee", "exact"], ["optimise", "exact"], ["mot cle exact", "exact"],
     ["partial", "partial"], ["partial keyword", "partial"], ["partial match", "partial"], ["semi optimisee", "partial"], ["semi optimise", "partial"], ["partielle", "partial"],
     ["generic", "generic"], ["generique", "generic"], ["other", "other"], ["autre", "other"],
+    ["brand kw", "brand_kw"], ["brand keyword", "brand_kw"], ["exact match domain", "brand_kw"], ["marque mot cle", "brand_kw"],
   ]);
   /* "brand", "exact"... null to work it out, undefined when the word isn't known. */
   const anchorKindOf = (word) => ANCHOR_WORDS.get(plain(word));
@@ -224,7 +225,7 @@
       if (!site) return answer("bad", "Add your own website first");
       if (!status) return answer("bad", "Unknown status", record.status, "Use Live, Lost or Planned.");
       const anchorKind = anchorKindOf(record.anchor_kind);
-      if (anchorKind === undefined) return answer("bad", "Unknown anchor type", record.anchor_kind, "Use Brand, Bare URL, Exact keyword, Partial keyword, Generic or Other.");
+      if (anchorKind === undefined) return answer("bad", "Unknown anchor type", record.anchor_kind, "Use Brand, Brand + keyword, Bare URL, Exact keyword, Partial keyword, Generic or Other.");
       record.anchor_kind = anchorKind || "";
       if (src.length > MAX_ADDRESS) return answer("bad", "Too long", "Source page");
       const tooLong = Object.keys(LIMITS).find((field) => (record[field] || "").length > LIMITS[field]);
@@ -275,7 +276,7 @@
       "Site for rows without one": "Site des lignes qui n'en ont pas",
       "Example row: delete it": "Ligne d'exemple : supprimez-la", "Not one of your sites": "Pas un de vos sites", "Add your own website first": "Ajoutez d'abord votre site",
       "Unknown status": "Statut inconnu", "Unknown anchor type": "Type d'ancre inconnu",
-      "Use Brand, Bare URL, Exact keyword, Partial keyword, Generic or Other.": "Utilisez Marque, URL nue, Mot-clé exact, Mot-clé partiel, Générique ou Autre.",
+      "Use Brand, Brand + keyword, Bare URL, Exact keyword, Partial keyword, Generic or Other.": "Utilisez Marque, Marque + mot-clé, URL nue, Mot-clé exact, Mot-clé partiel, Générique ou Autre.",
       "Keyword": "Mot-clé", "Anchor type": "Type d'ancre", "Use Live, Lost or Planned.": "Utilisez Actif, Perdu ou Prévu.", "Too long": "Trop long",
       "Skipped, already there": "Ignorés, déjà présents", "and": "et", "more": "de plus", "Nothing new": "Rien de nouveau", "Already logged. Removed from In consideration.": "Déjà enregistré. Retiré de « À l'étude ».",
       "Nothing found yet": "Rien de trouvé pour l'instant", "Links found by other tools show here until logged.": "Les liens trouvés par d'autres outils s'affichent ici jusqu'à leur saisie.",

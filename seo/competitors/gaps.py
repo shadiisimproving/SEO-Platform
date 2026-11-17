@@ -44,8 +44,20 @@ def import_referrers(engine: Engine, site_id: int, competitor_id: int, data: byt
         return {"total": len(rows), "kept": len(rows), "removed": 0, "removed_spam": 0, "removed_no_url": 0, "domains": len(rows), "source_label": "Common Crawl", "unknown_spam": len(rows), "flagged": report["filtered"], **report}
     # Spam rows stay, marked by their score, so the screen can show what went and why. They can never be added.
     result = cleaner.clean_csv(data, need_spam=False, keep_spam=True)
+    # A link the file marks lost is gone: it's no gap to chase (SEO review 2026-11-17, #13). Nofollow, sponsored and ugc
+    # links stay, and the domain says whether any of its links is followed, so Link gaps can show followed ones first.
+    links = cleaner.link_rows(data)
+    lost_urls = {link["source_url"] for link in links if link["lost"]}
+    follows: dict[str, list[str | None]] = {}
+    for link in links:
+        if not link["lost"]:
+            follows.setdefault(store.to_ascii_host(link["domain"]), []).append(link["rel"])
+    dropped_lost = 0
     domains: dict[str, cleaner.KeptRow] = {}
     for row in result.rows:
+        if row.url in lost_urls:
+            dropped_lost += 1
+            continue
         domain = store.to_ascii_host(row.domain)
         current = domains.get(domain)
         if current is None or _rank(row.authority) > _rank(current.authority):
@@ -54,12 +66,13 @@ def import_referrers(engine: Engine, site_id: int, competitor_id: int, data: byt
         for domain, row in domains.items():
             conn.execute(
                 text(
-                    "INSERT INTO competitor_referrers (competitor_id, domain, sample_url, authority, authority_label, spam_score, source_file, source_label) "
-                    "VALUES (:c, :d, :u, :a, :l, :sp, :f, :sl) ON DUPLICATE KEY UPDATE sample_url = VALUES(sample_url), authority = VALUES(authority), "
+                    "INSERT INTO competitor_referrers (competitor_id, domain, sample_url, authority, authority_label, spam_score, source_file, source_label, followed) "
+                    "VALUES (:c, :d, :u, :a, :l, :sp, :f, :sl, :fo) ON DUPLICATE KEY UPDATE sample_url = VALUES(sample_url), authority = VALUES(authority), "
                     "authority_label = VALUES(authority_label), spam_score = VALUES(spam_score), source_file = VALUES(source_file), source_label = VALUES(source_label), "
-                    "last_seen_at = UTC_TIMESTAMP(3)"
+                    "followed = VALUES(followed), last_seen_at = UTC_TIMESTAMP(3)"
                 ),
-                {"c": competitor_id, "d": domain[:190], "u": row.url, "a": row.authority, "l": result.authority_label, "sp": row.spam_score, "f": file_name[:255], "sl": result.source_label},
+                {"c": competitor_id, "d": domain[:190], "u": row.url, "a": row.authority, "l": result.authority_label, "sp": row.spam_score, "f": file_name[:255], "sl": result.source_label,
+                 "fo": followed_of(follows.get(domain, []))},
             )
     _save_links(engine, competitor_id, data, file_name, result.source_label)
     quality.note_domains(engine, [{"domain": domain} for domain in domains])
@@ -73,8 +86,17 @@ def import_referrers(engine: Engine, site_id: int, competitor_id: int, data: byt
     quality.queue_checks(engine)
     return {
         "total": result.total, "kept": result.kept - result.removed_spam, "removed": result.removed, "removed_spam": result.removed_spam, "removed_no_url": result.removed_no_url,
-        "domains": len(domains), "flagged": flagged, "source_label": result.source_label, "unknown_spam": result.unknown_spam,
+        "domains": len(domains), "flagged": flagged, "source_label": result.source_label, "unknown_spam": result.unknown_spam, "lost": dropped_lost,
     }
+
+
+def followed_of(rels: list[str | None]) -> bool | None:
+    """True when any link is followed, False when the file says every one is nofollow, sponsored or ugc, None when it doesn't say."""
+    if any(rel == "follow" for rel in rels):
+        return True
+    if rels and all(rel is not None for rel in rels):
+        return False
+    return None
 
 
 MAX_LINKS_PER_DOMAIN = 50  # the row lists the strongest; a forum can carry hundreds of links to one competitor
@@ -88,18 +110,22 @@ def _link_hash(link: dict) -> str:
 def _save_links(engine: Engine, competitor_id: int, data: bytes, file_name: str, source_label: str) -> int:
     """Every link in the file, with its anchor text and Page Authority. A link already saved gets the file's newer scores and dates."""
     links = cleaner.link_rows(data)
+    gone = [_link_hash(link) for link in links if link["lost"]]  # a link the file says is lost is no longer theirs
     rows = [
         {**link, "c": competitor_id, "d": store.to_ascii_host(link["domain"])[:190], "h": _link_hash(link), "f": file_name[:255], "sl": source_label}
-        for link in links
+        for link in links if not link["lost"]
     ]
+    if gone:
+        with engine.begin() as conn:
+            conn.execute(text("DELETE FROM competitor_referrer_links WHERE competitor_id = :c AND link_hash IN :h").bindparams(bindparam("h", expanding=True)), {"c": competitor_id, "h": gone})
     if not rows:
         return 0
     with engine.begin() as conn:
         conn.execute(
             text(
                 "INSERT INTO competitor_referrer_links (competitor_id, domain, link_hash, source_url, source_title, target_url, anchor, authority, page_authority, spam_score, "
-                "first_seen, last_seen, source_file, source_label) VALUES (:c, :d, :h, :source_url, :source_title, :target_url, :anchor, :authority, :page_authority, :spam_score, "
-                ":first_seen, :last_seen, :f, :sl) ON DUPLICATE KEY UPDATE source_title = COALESCE(VALUES(source_title), source_title), authority = VALUES(authority), "
+                "first_seen, last_seen, source_file, source_label, rel) VALUES (:c, :d, :h, :source_url, :source_title, :target_url, :anchor, :authority, :page_authority, :spam_score, "
+                ":first_seen, :last_seen, :f, :sl, :rel) ON DUPLICATE KEY UPDATE rel = VALUES(rel), source_title = COALESCE(VALUES(source_title), source_title), authority = VALUES(authority), "
                 "page_authority = VALUES(page_authority), spam_score = VALUES(spam_score), first_seen = COALESCE(LEAST(first_seen, VALUES(first_seen)), VALUES(first_seen), first_seen), "
                 "last_seen = COALESCE(GREATEST(last_seen, VALUES(last_seen)), VALUES(last_seen), last_seen), source_file = VALUES(source_file), source_label = VALUES(source_label)"
             ),
@@ -122,7 +148,7 @@ def _links_by_domain(conn, site_id: int, removed: dict[str, list[int]]) -> dict[
             continue
         found.setdefault(row["domain"], []).append({
             "competitor_id": row["competitor_id"], "host": row["host"], "source_url": row["source_url"], "source_title": row["source_title"], "target_url": row["target_url"],
-            "anchor": row["anchor"], "page_authority": row["page_authority"], "spam_score": row["spam_score"],
+            "anchor": row["anchor"], "page_authority": row["page_authority"], "spam_score": row["spam_score"], "rel": row["rel"],
             "first_seen": row["first_seen"].isoformat() if row["first_seen"] else None, "last_seen": row["last_seen"].isoformat() if row["last_seen"] else None,
         })
     for links in found.values():
@@ -250,14 +276,15 @@ def _all_gaps(engine: Engine, site_id: int) -> dict:
             "sources": set(), "first_seen": row["first_seen_at"], "in_consideration": domain in prospects, "in_todo": domain in planned, "lost_link": domain in lost, "is_competitor": domain in own_rivals,
             "system_quality": row["quality"], "system_reason": row["reason"], "kept": decision == "keep",
             "page_note": row["page_note"], "title": row["page_title"], "top_percent": _top_percent(row["cc_rank"], row["cc_total"]), "cc_rank": row["cc_rank"], "outlinks": row["cc_outlinks"],
-            "added_by_hand": [],
+            "added_by_hand": [], "follows": [],
         })
+        entry["follows"].append(row["followed"])
         entry["competitors"].append({"id": row["competitor_id"], "host": row["host"]})
         entry["sample_url"] = entry["sample_url"] or row["sample_url"]
         if row["source_label"] == BY_HAND and not row["in_common_crawl"]:
             entry["added_by_hand"].append(row["competitor_id"])
-        if row["authority"] is not None and (entry["authority"] is None or row["authority"] > entry["authority"]):
-            entry["authority"], entry["authority_label"] = row["authority"], row["authority_label"]
+        if row["authority"] is not None:
+            entry.setdefault("scores", []).append((row["authority"], row["authority_label"]))
         if row["spam_score"] is not None:
             entry["spam_score"] = max(entry["spam_score"] or 0, row["spam_score"])
         if row["source_label"]:
@@ -265,6 +292,7 @@ def _all_gaps(engine: Engine, site_id: int) -> dict:
         if row["in_common_crawl"]:
             entry["sources"].add("Common Crawl")
         entry["first_seen"] = min(entry["first_seen"], row["first_seen_at"])
+    pick_scores(by_domain.values())
     for domain, entry in by_domain.items():
         # A person's decision beats every rule, then the uploaded file's spam score, then the app's own checks (quality.verdict).
         state, reason, flagged_by = quality.verdict(entry["spam_score"], entry.pop("system_quality"), entry.pop("system_reason"), decisions.get(domain))
@@ -273,11 +301,11 @@ def _all_gaps(engine: Engine, site_id: int) -> dict:
             state = GOOD
         entry.update(quality=state, reason=reason, flagged_by=flagged_by, reason_words=quality.reason_words(reason) if state == SPAM else None)
     everything = [
-        _with_edit({**entry, "sources": sorted(entry["sources"]), "first_seen": _iso(entry["first_seen"]), "competitor_count": len(entry["competitors"]), **_link_fields(links.get(entry["domain"], []))}, edits.get(entry["domain"]), removed.get(entry["domain"], []))
+        _with_edit({**entry, "sources": sorted(entry["sources"]), "first_seen": _iso(entry["first_seen"]), "competitor_count": len(entry["competitors"]),
+                    "followed": merge_followed(entry.pop("follows")), **_link_fields(links.get(entry["domain"], []))}, edits.get(entry["domain"]), removed.get(entry["domain"], []))
         for entry in by_domain.values()
     ]
-    # Most competitors first, then the best authority. Common Crawl's rank only orders those with no score from a file.
-    everything.sort(key=lambda g: (-g["competitor_count"], -(g["authority"] if g["authority"] is not None else -1), g["cc_rank"] or 10**12, g["domain"]))
+    scale = order_by_scale(everything, "competitor_count")
     return {
         "competitors": [
             {
@@ -290,7 +318,45 @@ def _all_gaps(engine: Engine, site_id: int) -> dict:
         ],
         "already_linking": len(already),
         "everything": everything,
+        "score_scale": scale,
     }
+
+
+def merge_followed(values: list[bool | None]) -> bool | None:
+    """Any competitor's file shows a followed link: True. Every file says nofollow, sponsored or ugc: False. Else not known."""
+    if any(v for v in values):
+        return True
+    if values and all(v is False or v == 0 for v in values):
+        return False
+    return None
+
+
+def pick_scores(rows) -> None:
+    """A row scored by several tools shows the one of the tool most rows use, never just the biggest number of any tool."""
+    rows = list(rows)
+    ranks = cleaner.scale_ranks(label for row in rows for label in {cleaner.scale_of(l): l for _, l in row.get("scores", [])}.values())
+    for row in rows:
+        scores = row.pop("scores", [])
+        if scores:
+            row["authority"], row["authority_label"] = min(scores, key=lambda s: (ranks[cleaner.scale_of(s[1])], -s[0]))
+
+
+def order_by_scale(rows: list[dict], count_key: str) -> str | None:
+    """Most competitors first, then the score, but only scores of one tool against each other (SEO review 2026-11-17, #7).
+
+    The tool most rows are scored with leads. Rows scored by another tool follow, still on their own scale, grouped by tool.
+    Common Crawl's rank only orders rows with no score at all. Each row gets `scale_rank` (0 the leading tool, None no score),
+    which the screens sort on too. Returns the leading scale's label, for the screen to name.
+    """
+    scored = [row for row in rows if row["authority"] is not None]
+    ranks = cleaner.scale_ranks(row["authority_label"] for row in scored)
+    lead = next((row["authority_label"] for row in scored if ranks[cleaner.scale_of(row["authority_label"])] == 0), None)
+    for row in rows:
+        row["scale_rank"] = ranks[cleaner.scale_of(row["authority_label"])] if row["authority"] is not None else None
+    rows.sort(key=lambda g: (
+        -g[count_key], g["scale_rank"] if g["scale_rank"] is not None else 10**6, -(g["authority"] if g["authority"] is not None else -1), g["cc_rank"] or 10**12, g["domain"],
+    ))
+    return lead
 
 
 def _link_fields(links: list[dict]) -> dict:
@@ -311,7 +377,8 @@ def link_gaps(engine: Engine, site_id: int) -> dict:
         **report,
         "gaps": good[:MAX_LISTED],
         "filtered": spam[:MAX_FILTERED_LISTED],
-        "funnel": {"found": len(everything), "filtered": len(spam), "checking": sum(1 for g in everything if g["quality"] == quality.PENDING), "good": len(good)},
+        "funnel": {"found": len(everything), "filtered": len(spam), "checking": sum(1 for g in everything if g["quality"] == quality.PENDING), "good": len(good),
+                   "not_followed": sum(1 for g in good if g["followed"] is False)},
     }
 
 

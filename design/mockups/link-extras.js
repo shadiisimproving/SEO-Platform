@@ -113,7 +113,7 @@
 
   function sentence(b) {
     const { t, esc, fmtStamp } = UI, c = b.check;
-    if (!c || !c.checked_at) return b.status === "planned" ? `${t("Not checked. Planned links are read only on request.")}${UI.tip("Reading a planned link never changes its status.")}` : t("Not checked. Read monthly, or when you press Check.");
+    if (!c || !c.checked_at) return b.status === "planned" ? `${t("Not checked. Planned links are read only on request.")}${UI.tip("Reading a planned link never changes its status.")}` : t(c?.every_days === 7 ? "Not checked. Paid links are read weekly, or when you press Check." : "Not checked. Read monthly, or when you press Check.");
     const when = esc(fmtStamp(c.checked_at));
     if (c.outcome === "found") return `${t("Checked on")} ${when}: ${t(c.is_nofollow ? "link there, nofollow." : "link there, passes value.")}`;
     if (c.outcome === "unknown" && c.reason === "home_page") return `${t("Checked on")} ${when}. ${t(REASONS.home_page)} ${t("A home page without your link never counts as a lost link.")}`;
@@ -147,6 +147,7 @@
   function changeWords(change) {
     const { t, esc } = UI;
     if (change.what === "nofollow") return t(change.after ? "Now nofollow." : "No longer nofollow.");
+    if (change.what === "target") return `${t("Now points to another page:")} <span dir="auto">${esc(change.before)}</span> → <span dir="auto">${esc(change.after)}</span>`;
     return `${t("Anchor changed:")} <span dir="auto">${esc(change.before)}</span> → <span dir="auto">${esc(change.after)}</span>`;
   }
 
@@ -274,7 +275,7 @@
     "Its robots.txt blocks the app.": "Son robots.txt bloque l'application.", "The site blocked the app.": "Le site a bloqué l'application.", "The site asked the app to slow down.": "Le site a demandé à l'application de ralentir.", "The site didn't answer.": "Le site n'a pas répondu.",
     "Not a public website.": "Ce n'est pas un site public.", "That address isn't a web page.": "Cette adresse n'est pas une page web.", "Page too large to read.": "Page trop volumineuse pour être lue.", "Too many redirects.": "Trop de redirections.", "The page answered with an error.": "La page a répondu par une erreur.",
     "Anchor on the page": "Ancre sur la page", "Link attributes": "Attributs du lien", "Points to": "Pointe vers", "Page moved to": "Page déplacée vers", "Your page redirects to": "Votre page redirige vers",
-    "Links to your site, not to the logged target page.": "Pointe vers votre site, mais pas vers la page cible enregistrée.", "Now nofollow.": "Passé en nofollow.", "No longer nofollow.": "Plus en nofollow.", "Anchor changed:": "Ancre changée :",
+    "Links to your site, not to the logged target page.": "Pointe vers votre site, mais pas vers la page cible enregistrée.", "Now nofollow.": "Passé en nofollow.", "Now points to another page:": "Pointe maintenant vers une autre page :", "Not checked. Paid links are read weekly, or when you press Check.": "Non contrôlé. Les liens payants sont lus chaque semaine, ou quand vous cliquez sur Vérifier.", "No longer nofollow.": "Plus en nofollow.", "Anchor changed:": "Ancre changée :",
     "Past checks": "Contrôles passés", "Link found": "Lien trouvé", "Link not found": "Lien introuvable", "Couldn't check": "Contrôle impossible", "by hand": "à la main", "Missed once": "Absent une fois", "Link there, nofollow.": "Lien présent, nofollow.",
     "Log this link before checking it.": "Enregistrez ce lien avant de le contrôler.", "That backlink doesn't exist.": "Ce backlink n'existe pas.", "Still waiting. Come back soon.": "Toujours en attente. Revenez bientôt.",
     "lost this week": "perdus cette semaine", "1 lost this week": "1 perdu cette semaine", "Choose your site first": "Choisissez d'abord votre site", "That target page isn't a web address": "Cette page cible n'est pas une adresse web", "A tagged link must point at your own site.": "Un lien balisé doit pointer vers votre propre site.",

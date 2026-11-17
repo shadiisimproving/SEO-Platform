@@ -52,7 +52,7 @@ STATUS_WORDS = {
 }
 # An anchor type set by hand, in the words people use, English or French. Empty or "automatic" lets the app work it out from the anchor text.
 # design/mockups/bulk-links.js has the browser's copy.
-ANCHOR_KINDS = (anchors.BRAND, anchors.URL, anchors.EXACT, anchors.PARTIAL, anchors.GENERIC, anchors.OTHER)
+ANCHOR_KINDS = (anchors.BRAND, anchors.BRAND_KW, anchors.URL, anchors.EXACT, anchors.PARTIAL, anchors.GENERIC, anchors.OTHER)
 ANCHOR_WORDS = {
     "": None, "auto": None, "automatic": None, "automatique": None,
     "brand": anchors.BRAND, "branding": anchors.BRAND, "brand name": anchors.BRAND, "marque": anchors.BRAND, "nom de marque": anchors.BRAND,
@@ -61,7 +61,10 @@ ANCHOR_WORDS = {
     "partial": anchors.PARTIAL, "partial keyword": anchors.PARTIAL, "partial match": anchors.PARTIAL, "semi optimisee": anchors.PARTIAL, "semi optimise": anchors.PARTIAL, "partielle": anchors.PARTIAL,
     "generic": anchors.GENERIC, "generique": anchors.GENERIC,
     "other": anchors.OTHER, "autre": anchors.OTHER,
+    "brand kw": anchors.BRAND_KW, "brand keyword": anchors.BRAND_KW, "exact match domain": anchors.BRAND_KW, "marque mot cle": anchors.BRAND_KW,
 }
+# How often the links check reads a live link (seo/backlinks/live.py): weekly when someone pays for it, else monthly (links F2).
+CHECK_EVERY_DAYS, PAID_CHECK_EVERY_DAYS = 30, 7
 ROW_FIELDS = {"site_id", "source_url", "status", "cost", "anchor_kind", *LIMITS}
 # The two rows in templates/backlinks-template.csv. Left in by mistake, they must never count as real links.
 EXAMPLE_SOURCES = ("https://example-blog.example/article", "https://example-directory.example/listing/123")
@@ -176,7 +179,7 @@ def _clean_row(row) -> dict:
         raise Refused(f"{name}: The status {_short(row.get('status'))} isn't known. Use Live, Lost or Planned.")
     anchor_kind = anchor_kind_of(row.get("anchor_kind"))
     if anchor_kind is False:
-        raise Refused(f"{name}: The anchor type {_short(row.get('anchor_kind'))} isn't known. Use Brand, Bare URL, Exact keyword, Partial keyword, Generic or Other.")
+        raise Refused(f"{name}: The anchor type {_short(row.get('anchor_kind'))} isn't known. Use Brand, Brand + keyword, Bare URL, Exact keyword, Partial keyword, Generic or Other.")
     clean = {"site_id": site_id, "source_url": address, "domain": domain, "status": status, "key": key, "anchor_kind": anchor_kind}
     clean.update({field: _as_text(row, field, name) for field in LIMITS})
     clean["cost"] = _cost_of(row, clean["price_text"], name)
@@ -314,6 +317,10 @@ def _as_dict(row) -> dict:
             "final_url": row["final_url"], "target_final_url": row["target_final_url"], "lost_at": _iso(row["lost_at"]),
             "verdict": row["seo_verdict"], "reasons": _json_list(row["seo_reasons"]), "page_lang": row["page_lang"], "target_lang": row["target_lang"],
             "outbound_links": row["outbound_links"], "target_http": row["target_http"],
+            # False: the last reading found the link on another page of my site than the logged target (links F3).
+            "to_target": None if row["to_target"] is None else bool(row["to_target"]),
+            # Paid links (a price, a mediator, a renewal date) are read weekly, the others monthly (links F2).
+            "every_days": PAID_CHECK_EVERY_DAYS if row["status"] == "live" and (row["cost"] or row["price_text"] or row["mediator"] or row["renewal"]) else CHECK_EVERY_DAYS,
         },
         "found_by": row["found_by"], "gsc": {"seen": row["gsc_seen"], "seen_at": _iso(row["gsc_seen_at"]), "crawled": row["gsc_crawled"]}, "disavow": bool(row["disavow"]),
     }
@@ -450,7 +457,7 @@ def _forget_what_was_read(conn, backlink_id: int) -> None:
     conn.execute(
         text(
             "UPDATE backlinks SET checked_at = NULL, check_outcome = NULL, check_reason = NULL, is_nofollow = NULL, seen_rel = NULL, seen_anchor = NULL, "
-            "seen_href = NULL, final_url = NULL, target_final_url = NULL, miss_count = 0, seo_verdict = NULL, seo_reasons = NULL, page_lang = NULL, target_lang = NULL, "
+            "seen_href = NULL, to_target = NULL, final_url = NULL, target_final_url = NULL, miss_count = 0, seo_verdict = NULL, seo_reasons = NULL, page_lang = NULL, target_lang = NULL, "
             "outbound_links = NULL, target_http = NULL, gsc_seen = NULL, gsc_seen_at = NULL, gsc_crawled = NULL, "
             "src_index = NULL, src_index_via = NULL, src_index_at = NULL, src_index_misses = 0 WHERE id = :i"
         ),

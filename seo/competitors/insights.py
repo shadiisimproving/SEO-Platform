@@ -162,21 +162,28 @@ def _date_iso(value) -> str | None:
 EDIT_SKIP = ("new_page", "page_gone")  # a page coming or going isn't an edit
 
 
-def _edits_by_month(conn, host: str, keys: list[str]) -> tuple[list[int], str | None]:
-    """Edits per month over the chart's months, and the day the app first saw any change on that site."""
+def _edits_by_month(conn, host: str, keys: list[str]) -> tuple[list[int], str | None, int]:
+    """Pages edited per month over the chart's months, the day the app first saw any change on that site, and how many
+    different pages were edited over those months. Pages, not change rows: one rewrite saves a title, a meta and a text
+    change, and is still one page edited (SEO review 2026-11-17, #11)."""
+    where = "WHERE d.host IN (:h, :w) AND e.kind NOT IN :skip AND e.detected_at >= :start"
+    args = {"h": host, "w": f"www.{host}", "skip": list(EDIT_SKIP), "start": f"{keys[0]}-01"}
     rows = conn.execute(
         text(
-            "SELECT DATE_FORMAT(e.detected_at, '%Y-%m') AS ym, COUNT(*) AS n FROM change_events e JOIN domains d ON d.id = e.domain_id "
-            "WHERE d.host IN (:h, :w) AND e.kind NOT IN :skip AND e.detected_at >= :start GROUP BY ym"
+            "SELECT DATE_FORMAT(e.detected_at, '%Y-%m') AS ym, COUNT(DISTINCT e.page_id) AS n FROM change_events e JOIN domains d ON d.id = e.domain_id "
+            f"{where} GROUP BY ym"
         ).bindparams(bindparam("skip", expanding=True)),
-        {"h": host, "w": f"www.{host}", "skip": list(EDIT_SKIP), "start": f"{keys[0]}-01"},
+        args,
     ).all()
+    pages = conn.execute(
+        text(f"SELECT COUNT(DISTINCT e.page_id) FROM change_events e JOIN domains d ON d.id = e.domain_id {where}").bindparams(bindparam("skip", expanding=True)), args,
+    ).scalar()
     counts = {ym: int(n) for ym, n in rows}
     first = conn.execute(
         text("SELECT MIN(e.detected_at) FROM change_events e JOIN domains d ON d.id = e.domain_id WHERE d.host IN (:h, :w)"),
         {"h": host, "w": f"www.{host}"},
     ).scalar()
-    return [counts.get(key, 0) for key in keys], first.date().isoformat() if first else None
+    return [counts.get(key, 0) for key in keys], first.date().isoformat() if first else None, int(pages or 0)
 
 
 def _rhythm(conn, host: str, my_host: str, theirs: list[dict], mine: list[dict], by_year: dict) -> dict:
@@ -193,8 +200,8 @@ def _rhythm(conn, host: str, my_host: str, theirs: list[dict], mine: list[dict],
         return [counts.get(key, 0) for key in keys]
 
     their_months, my_months = per_month(theirs), per_month(mine) if mine else [None] * MONTHS
-    their_edits, edits_since = _edits_by_month(conn, host, keys)
-    my_edits, my_edits_since = _edits_by_month(conn, my_host, keys) if mine else ([None] * MONTHS, None)
+    their_edits, edits_since, their_pages = _edits_by_month(conn, host, keys)
+    my_edits, my_edits_since, my_pages = _edits_by_month(conn, my_host, keys) if mine else ([None] * MONTHS, None, None)
     new_urls = _events(conn, host, "new_page", 30)
     sections = Counter(_section(url) for url in new_urls)
     year_ago = today - timedelta(days=365)
@@ -209,6 +216,7 @@ def _rhythm(conn, host: str, my_host: str, theirs: list[dict], mine: list[dict],
         # Edits to pages they already had, by the month the app saw them. Only counted since the app started watching.
         "edits": [{"month": key, "theirs": t, "mine": m} for key, t, m in zip(keys, their_edits, my_edits)],
         "edits_since": {"theirs": edits_since, "mine": my_edits_since},
+        "edited_pages": {"theirs": their_pages, "mine": my_pages},  # different pages, so a page edited in two months counts once
         "new_30d": len(new_urls),
         # My site's pages are read when paired, not every day, so nothing reports its new or removed pages yet.
         "my_new_30d": None,
@@ -458,7 +466,8 @@ def _links(conn, site_id: int, competitor_id: int, host: str) -> dict:
     decisions = dict(conn.execute(text("SELECT domain, decision FROM link_gap_overrides WHERE site_id = :s"), {"s": site_id}).all())
     rows = conn.execute(
         text(
-            "SELECT r.domain, r.authority, r.authority_label, r.spam_score, d.quality, d.reason FROM competitor_referrers r LEFT JOIN link_domains d ON d.domain = r.domain "
+            "SELECT r.domain, r.authority, r.authority_label, r.spam_score, r.source_label, r.in_common_crawl, d.quality, d.reason FROM competitor_referrers r "
+            "LEFT JOIN link_domains d ON d.domain = r.domain "
             "WHERE r.competitor_id = :c AND r.removed_by_hand = 0"
         ),
         {"c": competitor_id},
@@ -471,9 +480,18 @@ def _links(conn, site_id: int, competitor_id: int, host: str) -> dict:
         return quality.verdict(row["spam_score"], row["quality"], row["reason"], decisions.get(row["domain"]))[0] == quality.SPAM
 
     top = sorted(rows, key=lambda r: (spam(r), -(r["authority"] if r["authority"] is not None else -1), r["domain"]))[:TOP_LINKS]
+    flagged = sum(1 for r in rows if spam(r))
+    sources = sorted({"Common Crawl" if r["in_common_crawl"] and not r["source_label"] else r["source_label"] or "Common Crawl" for r in rows})
+    # Spam never counts: five spam domains made a rival "Ahead" (SEO review 2026-11-17, #11). It's said apart, as "+5 flagged".
+    # My number comes from my Backlinks list, theirs from their files or Common Crawl: two sources, so the screen names both and
+    # calls no winner (`same_source` false).
     return {
-        "linking_domains": len(rows) if rows else None,
+        "linking_domains": len(rows) - flagged if rows else None,
+        "linking_flagged": flagged,
+        "linking_sources": sources,
         "my_linking_domains": len(linking_me) if logged else None,
+        "my_linking_source": "Backlinks",
+        "same_source": False,
         "not_to_me": sum(1 for r in rows if r["domain"] not in linking_me and not spam(r)),
         "top": [{"domain": r["domain"], "authority": r["authority"], "authority_label": r["authority_label"], "spam": spam(r)} for r in top],
     }
@@ -550,7 +568,7 @@ def insights(engine: Engine, site_id: int, competitor_id: int) -> dict:
         past = history.state(conn, host) or {}
         rhythm = _rhythm(conn, host, my_host, theirs, mine, past.get("pages_by_year"))
         questions = _questions(conn, site_id, theirs, mine)
-        links = _links(conn, site_id, competitor_id, host) if setting != tracking.OFF else {"linking_domains": None, "my_linking_domains": None, "not_to_me": 0, "top": []}
+        links = _links(conn, site_id, competitor_id, host) if setting != tracking.OFF else {"linking_domains": None, "linking_flagged": 0, "linking_sources": [], "my_linking_domains": None, "my_linking_source": "Backlinks", "same_source": False, "not_to_me": 0, "top": []}
         best, cannibal = [], {}
         if setting == tracking.ON:  # keyword numbers only for a competitor that's followed
             best = _best_pages(conn, site_id, competitor_id, my_host, host, store.latest_checks(engine, site_id), theirs)

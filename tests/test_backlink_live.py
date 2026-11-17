@@ -553,3 +553,34 @@ def test_a_home_page_with_a_sitewide_link_still_counts(world):
 def test_article_candidates_drop_words_every_page_shares():
     pages = [f"https://m.example/{slug}/" for slug in ("dubai-visa", "dubai-marina", "dubai-food", "vivre-a-dubai", "dubai-taxes")]
     assert live.article_candidates(pages, ["vivre à Dubaï", "/vivre-a-dubai-reussir/"], "https://m.example/") == ["https://m.example/vivre-a-dubai/"]
+
+
+# ---- SEO review 2026-11-17: a moved link and a paid link ---------------------------------------------------------
+
+def test_a_link_moved_to_another_page_of_my_site_is_a_change_with_an_alert_and_a_flag(world):
+    """Links F3: the agency swaps the paid link to the home page. Before, it stayed Useful with nothing outside the panel."""
+    world.pages["shop.example/"] = "<p>home</p>"
+    backlink = world.add()
+    world.press(backlink)
+    assert world.link(backlink)["check"]["to_target"] is True and world.alerts("backlink_changed") == []
+    world.pages["blog.example/post"] = '<p>Read <a href="https://shop.example/">our site</a></p>'
+    world.press(backlink)
+    row = world.link(backlink)
+    assert row["status"] == "live" and row["check"]["to_target"] is False
+    changes = world.client.get(f"/api/backlinks/{backlink}/checks").get_json()["checks"][0]["changes"]
+    assert {c["what"] for c in changes} >= {"target"}
+    assert next(c for c in changes if c["what"] == "target")["after"] == "https://shop.example/"
+    assert len(world.alerts("backlink_changed")) == 1
+
+
+def test_a_paid_link_is_read_weekly_and_a_free_one_monthly(world):
+    """Links F2: a paid link removed the day after its check was found ~31 days later. Known answer: 8 days after the last
+    check, the paid link is due and the free one isn't."""
+    paid = world.add(price_text="150 EUR")
+    world.pages["other.example/free"] = HAS_LINK
+    free = service.save_many(world.engine, [{"site_id": world.own, "source_url": "https://other.example/free", "target_url": "/page/"}])["saved"][0]["id"]
+    with world.engine.begin() as conn:
+        conn.execute(text("UPDATE backlinks SET checked_at = UTC_TIMESTAMP(3) - INTERVAL 8 DAY, check_outcome = 'found'"))
+        due = [r["id"] for r in conn.execute(text(live._DUE), {"s": world.own, **live._DUE_ARGS}).mappings()]
+    assert due == [paid] and free not in due
+    assert world.link(paid)["check"]["every_days"] == 7 and world.link(free)["check"]["every_days"] == 30

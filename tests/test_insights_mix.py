@@ -138,7 +138,7 @@ def test_a_followed_rival_that_passed_me(engine, site):
     check(engine, k, [(3, HOME + "page"), (5, "https://rival.test/a")], ago=10)
     check(engine, k, [(2, "https://rival.test/a"), (4, HOME + "page")], ago=1)
     found = mix.signals(data.load(engine, site)).findings[0]
-    assert found.kind == "rival_passed" and found.evidence["passed"] == [{"host": "rival.test", "position": 2, "before": 5}]
+    assert found.kind == "rival_passed" and found.evidence["passed"] == [{"host": "rival.test", "position": 2, "before": 5, "you_fell": False}]
 
 
 def test_a_rival_that_was_already_above_did_not_pass_me(engine, site):
@@ -311,3 +311,34 @@ def test_summary_has_the_days_for_the_graph(engine, site):
     insights.run(engine, site)
     s = service.summary(engine, [site])
     assert len(s["days"]) == 56 and s["days"][-1]["day"] == END.isoformat()
+
+
+# ---- SEO review 2026-11-17: "Rival passed you" -------------------------------------------------------------------
+
+def test_a_one_place_swap_is_not_a_rival_passing_me(engine, site):
+    k = keyword(engine, site, "blue shoes")
+    rival(engine, site)
+    search_console(engine, site, "blue shoes", position=4.0)
+    check(engine, k, [(3, HOME + "page"), (4, "https://rival.test/a")], ago=10)
+    check(engine, k, [(3, "https://rival.test/a"), (4, HOME + "page")], ago=1)
+    assert "rival_passed" not in signals(engine, site)[0]
+
+
+def test_when_only_i_fell_it_says_i_fell_below_the_rival(engine, site):
+    """I drop from #3 to #8, the rival stays at #5: it didn't pass me, I fell below it."""
+    k = keyword(engine, site, "blue shoes")
+    rival(engine, site)
+    search_console(engine, site, "blue shoes", position=4.0)
+    check(engine, k, [(3, HOME + "page"), (5, "https://rival.test/a")], ago=10)
+    check(engine, k, [(5, "https://rival.test/a"), (8, HOME + "page")], ago=1)
+    f = signals(engine, site)[0]["rival_passed"]
+    assert f.evidence["passed"] == [{"host": "rival.test", "position": 5, "before": 5, "you_fell": True}]
+
+
+def test_a_search_nobody_makes_raises_no_rival_passed(engine, site):
+    k = keyword(engine, site, "blue shoes")
+    rival(engine, site)
+    search_console(engine, site, "blue shoes", shown=1, clicks=0, position=4.0)  # 28 impressions in 28 days
+    check(engine, k, [(3, HOME + "page"), (9, "https://rival.test/a")], ago=10)
+    check(engine, k, [(2, "https://rival.test/a"), (4, HOME + "page")], ago=1)
+    assert "rival_passed" not in signals(engine, site)[0]
