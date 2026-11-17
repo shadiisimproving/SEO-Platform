@@ -300,9 +300,7 @@
           <span class="ov-ylab left">${shown.length > 1 ? "" : key}${esc(fmt[m.id](top))}</span><span class="ov-ylab left bottom">${esc(fmt[m.id](bottom))}</span>
         </div>`;
     };
-    const every = Math.max(1, Math.floor(pts.length / 6));
-    const inner = pts.map((p, i) => [p, i]).filter(([, i]) => i > 0 && i % every === 0 && i < pts.length - every / 2).slice(0, 5);
-    const ticks = [[pts[0], 0], ...inner, ...(pts.length > 1 ? [[pts[pts.length - 1], pts.length - 1]] : [])]; // the last day always shows
+    const ticks = window.LV?.axisTicks ? window.LV.axisTicks(pts.length).map((i) => [pts[i], i]) : [[pts[0], 0]];
     window.OV.chart = { pts, was: d.compare_series || [], shown, marks };
     const legend = `<div class="lv-legend">${shown.length === 1 ? `<span><i class="lv-key" style="background:${shown[0].color}"></i>${esc(t(shown[0].name))}</span>` : ""}
       ${d.compare_series ? `<span><i class="ov-key-dash" aria-hidden="true"></i>${t("Period before")}</span>` : ""}
@@ -311,7 +309,7 @@
     return `<div class="lv-chart ov-chart${shown.length > 1 ? " ov-multi" : ""}" style="--ov-strips:${shown.length}" data-ov-chart tabindex="0" role="img" aria-label="${t("Chart")}: ${esc(shown.map((m) => t(m.name)).join(", "))}. ${t("Use the arrow keys to read each day.")}">
         ${shown.map(strip).join("")}
         <div class="lv-tip" hidden></div>
-        <div class="lv-axis" aria-hidden="true">${ticks.map(([p]) => `<span>${esc(dayLabel(p.day))}</span>`).join("")}</div>
+        ${window.LV?.axisHtml ? window.LV.axisHtml(ticks.map(([p, i]) => [i, dayLabel(p.day)]), pts.length) : `<div class="lv-axis" aria-hidden="true">${ticks.map(([p]) => `<span>${esc(dayLabel(p.day))}</span>`).join("")}</div>`}
       </div>${legend}
       ${marks.length ? `<ul class="ov-marks">${marks.map((m) => `<li>${icon(m.kind === "task" ? "circle-check" : "pencil")}<span class="muted">${esc(dayLabel(m.day))}</span> ${m.kind === "dated" ? `<button class="link-btn" dir="auto" data-notes-open="${esc(JSON.stringify([{ label: dayLabel(m.day), icon: "calendar-days", where: { scope: "date", day: m.day, siteId: m.site_id } }]))}">${esc(m.text)}</button>` : `<span dir="auto">${esc(m.text)}</span>`}${m.kind === "note" ? `<button class="icon-btn ov-mark-del" data-ov-note-del="${m.id}" aria-label="${t("Delete the note")}">${icon("x")}</button>` : ""}</li>`).join("")}</ul>` : ""}
       ${OV.table ? chartTable(d) : ""}`;
@@ -415,7 +413,9 @@
     return `<section class="card ov-tabs-card"><div class="card-head ov-tabs-head">${tabs}</div>${OV.tab === "opportunities" ? opportunitiesBody(d) : breakdownBody(d)}</section>`;
   }
   function breakdownBody(d) {
-    const compare = d.compare !== "none";
+    // One "is there earlier data?" check per table: page and search tables can start after the daily totals.
+    const rowsFrom = d.rows_from?.[OV.tab] || null, rowsShort = Boolean(d.compare_from) && d.rows_compare && d.rows_compare[OV.tab] === false;
+    const compare = d.compare !== "none" && Boolean(d.compare_from) && !rowsShort;
     if (!compare && !["all", "top3", "4-10", "11-20", "21+"].includes(OV.show)) OV.show = "all";
     const entry = load("breakdown", breakdownArgs());
     const counts = entry.data?.counts || {};
@@ -437,7 +437,8 @@
     const note = (b.small_hidden && !simple() ? `<p class="small muted ov-hint">${num(b.small_hidden)} ${t("small ones hidden (under 3 clicks and 50 impressions).")}</p>` : "") + fresh;
     const queriesLine = OV.tab === "query" && d.queries !== null && !simple() ? `<p class="small muted ov-hint">${num(d.queries)} ${t("queries with impressions")}${d.queries_before !== null && d.queries_before !== undefined ? ` · ${num(d.queries_before)} ${t("before")}` : ""}. ${t("Rare searches left out.")}${UI.tip("Google leaves out rare searches, so queries never add up to the total clicks.")}</p>` : "";
     if (!b.rows.length && filterOn(filterOf(OV.tab))) return `${controls}<div class="empty"><p>${t(OV.tab === "page" ? "No pages match these filters." : "No queries match these filters.")}</p><div class="ov-empty-act"><button class="btn" data-ov-filter-clear>${t("Clear filters")}</button></div></div>`;
-    return `${controls}${queriesLine}${note}${table(OV.tab, b.rows, { columns: columnsFor(OV.tab, compare), selectable: OV.tab === "query", total: b.total ?? b.rows.length })}`;
+    const short = rowsShort ? `<p class="small muted ov-hint" role="note">${icon("clock")}${esc(rowsFrom ? t(OV.tab === "page" ? "Page data starts on {day}: too soon to compare pages." : "Detail starts on {day}: too soon to compare these rows.").replace("{day}", dayLabel(rowsFrom, true)) : t("Not stored far enough back to compare these rows."))}</p>` : "";
+    return `${controls}${queriesLine}${note}${short}${table(OV.tab, b.rows, { columns: columnsFor(OV.tab, compare), selectable: OV.tab === "query", total: b.total ?? b.rows.length })}`;
   }
   /* What the table on show asks the server: also the warm-up's list (SCREEN_DATA.screen). */
   const breakdownArgs = () => ({ dim: OV.tab, show: OV.show, brand: OV.tab === "query" ? OV.brand : "all", ...filterArgs(OV.tab), ...(freshWanted() ? { include_fresh: 1 } : {}) });
@@ -673,9 +674,11 @@
   function periodLine(d) {
     if (!d || !d.from) return "";
     if (d.final_through || d.to) UI.range.end("overview", d.final_through || d.to, "Search Console");
+    UI.range.served?.("overview", d);
     const now = d.hourly ? t("Last 24 hours") : `${dayLabel(d.from)} – ${dayLabel(d.to, true)}`;
     const before = d.compare_from && d.compare_to ? ` ${t("vs")} ${dayLabel(d.compare_from)} – ${dayLabel(d.compare_to, true)}` : "";
-    const none = d.compare_unavailable === "history" ? ` · ${t("No comparison: Search Console doesn't keep that far back.")}` : "";
+    const why = noCompareWhy(d);
+    const none = why ? ` · ${why}` : "";
     return `<p class="ov-span small muted" role="status">${esc(now + before)}${esc(none)}</p>`;
   }
   /* Simpler screens: the head's one chip for where the numbers come from. It keeps .ov-trust as the flows' hook. */
@@ -686,10 +689,18 @@
     if (d.origin === "live") return { word: `${t("Search Console · live")} ✓`, open };
     return { word: `${t("Search Console · saved data")}${d.last_pull ? ` ${since(d.last_pull)}` : ""}`, sev: d.live_error ? "warn" : "", open };
   }
+  /* No comparison, and why, in the screen's words: Google's own 16 months, or the app's stored data starting later. */
+  function noCompareWhy(d) {
+    if (d?.compare_unavailable === "google") return t("No comparison: Google keeps 16 months of data.");
+    if (d?.compare_unavailable === "history") return d.history_from ? t("No comparison: stored data starts on {day}.").replace("{day}", dayLabel(d.history_from, true)) : t("No comparison: the earlier period isn't stored yet.");
+    return "";
+  }
   function simpleHead(d, main) {
+    if (d?.from) UI.range.served?.("overview", d);
     const info = ["Your Google results, from Search Console"];
     if (d?.fresh_from && d.to && d.fresh_from <= d.to) info.push(`${t("Days from")} ${dayLabel(d.fresh_from)} ${t("aren't final yet")}.`);
-    if (d?.compare_unavailable === "history") info.push("No comparison: Search Console doesn't keep that far back.");
+    if (noCompareWhy(d)) info.push(noCompareWhy(d));
+    if (d?.week_left_out) info.push(t("Drawn in whole weeks ending on the last day. The first {n} days are counted in the totals, not drawn.").replace("{n}", num(d.week_left_out.days)));
     if (d?.hourly) info.push("Tables below show the last 2 whole days.");
     return UI.head({ title: t("Overview"), period: true, source: sourceChip(d), info, main })
       .replace(/class="([^"]*)" data-ov-check/, 'class="$1 ov-trust" data-ov-check');
@@ -1004,6 +1015,14 @@
     // Simpler screens (2026-11-12): the head's chip and its check panel.
     "Search Console · live": "Search Console · en direct", "Search Console · differs": "Search Console · diffère", "Search Console · saved data": "Search Console · données enregistrées",
     "Search Console check": "Vérification Search Console", "Not compared with Search Console yet.": "Pas encore comparé avec la Search Console.",
+    // One period rule (2026-11-17)
+    "No comparison: Google keeps 16 months of data.": "Sans comparaison : Google garde 16 mois de données.",
+    "No comparison: stored data starts on {day}.": "Sans comparaison : les données enregistrées commencent le {day}.",
+    "No comparison: the earlier period isn't stored yet.": "Sans comparaison : la période antérieure n'est pas encore enregistrée.",
+    "Drawn in whole weeks ending on the last day. The first {n} days are counted in the totals, not drawn.": "Dessiné en semaines entières finissant le dernier jour. Les {n} premiers jours sont comptés dans les totaux, pas dessinés.",
+    "Page data starts on {day}: too soon to compare pages.": "Les données des pages commencent le {day} : trop tôt pour comparer les pages.",
+    "Detail starts on {day}: too soon to compare these rows.": "Le détail commence le {day} : trop tôt pour comparer ces lignes.",
+    "Not stored far enough back to compare these rows.": "Pas enregistré assez loin pour comparer ces lignes.",
   };
   Object.keys(words).forEach((w) => { if (window.FR[w] === undefined) window.FR[w] = words[w]; });
 })();

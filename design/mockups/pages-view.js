@@ -236,6 +236,8 @@
   function page() {
     if (P.open) { loadPage(); return pageView(); }
     loadList();
+    // Clicks and the period before are Search Console's, on the app's one period rule: the head prints those very days.
+    if (P.list?.gsc_window) UI.range.served?.("pages", P.list.gsc_window);
     const head = UI.topbar(t("Pages"), t("Every page of your site, with what's linked to it"), "", true);
     return `${head}<div class="content page-enter">${listBody()}</div>`;
   }

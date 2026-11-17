@@ -154,7 +154,7 @@
     return out;
   }
   state.rng = cleanRange((() => { try { return JSON.parse(store.get("range") || "{}"); } catch { return {}; } })());
-  const rangeEnds = {}, rangeSources = {}, rangeListeners = new Set();
+  const rangeEnds = {}, rangeSources = {}, rangeServed = {}, rangeListeners = new Set();
   /* The same "28 days" ends on different days: Search Console runs 2 to 3 days behind, Google Analytics 1. Each period control
      shows its real dates, and this sentence says why when this screen's data ends before yesterday. */
   function rangeBehind(route = state.route) {
@@ -192,14 +192,26 @@
       case "custom": from = r.from; to = r.to; break;
       default: from = addDays(last, -27);
     }
-    const days = dayCount(from, to);
+    let days = dayCount(from, to);
     let compareFrom = null, compareTo = null;
     if (r.compare === "prev") { compareTo = addDays(from, -1); compareFrom = addDays(compareTo, -(days - 1)); }
     if (r.compare === "yoy") { compareFrom = addDays(from, -364); compareTo = addDays(to, -364); }
+    /* The server's own period (seo/metrics/period.py), once a screen has it for this choice: the head prints the days really
+       counted and compared, never its own sum, and no "vs …" when nothing was compared. */
+    const served = rangeServed[state.route];
+    let unavailable = null, historyFrom = null;
+    if (served && served.site === state.site && served.preset === r.preset && served.compare === r.compare && !validDay(end) && (r.preset !== "custom" || (served.asked === `${r.from}|${r.to}`))) {
+      if (validDay(served.from) && validDay(served.to)) { from = served.from; to = served.to; }
+      compareFrom = validDay(served.compare_from) ? served.compare_from : null;
+      compareTo = validDay(served.compare_to) ? served.compare_to : null;
+      unavailable = served.compare_unavailable || null;
+      historyFrom = served.history_from || null;
+    }
     const name = RANGE_PRESETS.find(([id]) => id === r.preset)?.[1];
     const label = r.preset === "custom" ? fmtRange(from, to) : r.preset === "24h" && !hours ? fmtDay(to) : t(name);
-    const compareLabel = r.compare === "none" ? t("No comparison") : `${t("vs")} ${fmtRange(compareFrom, compareTo)}`;
-    return { preset: r.preset, from, to, compare: r.compare, compareFrom, compareTo, days, label, compareLabel, hours: r.preset === "24h" && hours };
+    days = dayCount(from, to);
+    const compareLabel = r.compare === "none" || !compareFrom ? t("No comparison") : `${t("vs")} ${fmtRange(compareFrom, compareTo)}`;
+    return { preset: r.preset, from, to, compare: r.compare, compareFrom, compareTo, days, label, compareLabel, hours: r.preset === "24h" && hours, unavailable, historyFrom };
   }
   function rangeSet(partial = {}) {
     const next = cleanRange({ ...state.rng, ...partial, ...(partial.from || partial.to ? { preset: "custom" } : {}) });
@@ -226,6 +238,21 @@
         if (picks) picks.replaceWith(fragment(datePicks()));
       }, 0);
     },
+    /* A screen hands over the period its server answer used (from, to, compare_from, compare_to, compare_unavailable,
+       history_from): the head then prints exactly that. */
+    served(route, w) {
+      if (!w || !validDay(w.from) || !validDay(w.to)) return;
+      const r = state.rng, next = { site: state.site, preset: r.preset, compare: r.compare, asked: `${r.from}|${r.to}`, from: w.from, to: w.to, compare_from: w.compare_from || null, compare_to: w.compare_to || null, compare_unavailable: w.compare_unavailable || null, history_from: w.history_from || null };
+      if (JSON.stringify(rangeServed[route]) === JSON.stringify(next)) return;
+      rangeServed[route] = next;
+      setTimeout(() => { if (state.route === route && !$("#popover")) { if (state.simple) redrawHeadRange(); else { const picks = $(".range-picks"); if (picks) picks.replaceWith(fragment(datePicks())); } } }, 0);
+    },
+    /* Why there is no comparison, in words, or "" when there is one. */
+    noCompareWhy(w = rangeGet()) {
+      if (w.unavailable === "google") return t("Google keeps 16 months");
+      if (w.unavailable === "history" || w.unavailable === "rows_history") return w.historyFrom ? headWords("data from {day}", { day: fmtShort(w.historyFrom) }) : t("not stored that far back yet");
+      return "";
+    },
     search() {
       const r = state.rng, parts = [`range=${r.preset}`, `compare=${r.compare}`];
       if (r.preset === "custom") parts.push(`from=${r.from}`, `to=${r.to}`);
@@ -234,6 +261,8 @@
     days(opts = {}) {
       const g = rangeGet({ end: opts.end || DATA_END, hours: false }), parts = [`from=${g.from}`, `to=${g.to}`];
       if (g.compareFrom) parts.push(`compare_from=${g.compareFrom}`, `compare_to=${g.compareTo}`);
+      // The shared range too, so the Search Console side of the answer ends on Google's last final day (seo/metrics/period.py).
+      parts.push(`range=${state.rng.preset === "24h" ? "7d" : state.rng.preset}`, `compare=${state.rng.compare}`);
       return parts.join("&");
     },
     behind: rangeBehind,
@@ -360,7 +389,8 @@
   const HEAD_PRESETS = [["7d", "7 days"], ["28d", "28 days"], ["3m", "3 months"], ["12m", "12 months"]];
   const HEAD_SEP = '<span class="head-sep"> · </span>';
   [["7 days", "7 jours"], ["28 days", "28 jours"], ["3 months", "3 mois"], ["12 months", "12 mois"], ["More", "Plus"], ["More periods", "Autres périodes"],
-    ["vs {range}", "par rapport au {range}"], ["no comparison", "sans comparaison"], ["vs the 24 hours before", "par rapport aux 24 heures d'avant"],
+    ["vs {range}", "par rapport au {range}"], ["no comparison", "sans comparaison"], ["no comparison: {why}", "sans comparaison : {why}"],
+    ["Google keeps 16 months", "Google garde 16 mois"], ["data from {day}", "données depuis le {day}"], ["not stored that far back yet", "pas encore enregistré si loin"], ["vs the 24 hours before", "par rapport aux 24 heures d'avant"],
     ["vs same days last year", "vs mêmes jours l'an dernier"], ["through {day}", "jusqu'au {day}"], ["{a} and {b}", "{a} et {b}"],
     ["Open the checklist", "Ouvrir la liste"], ["Set up {host}: {done} of {all} done", "Configurer {host} : {done} sur {all} faits"]]
     .forEach(([en, fr]) => { if (window.FR[en] === undefined) window.FR[en] = fr; });
@@ -395,7 +425,8 @@
   // The dates and the comparison phrase: the part UI.range.end draws again once a screen knows its last day.
   function headRange() {
     const g = rangeGet(), none = g.compare === "none" || !g.compareFrom;
-    const phrase = none ? t("no comparison") : g.hours && g.compare === "prev" ? t("vs the 24 hours before") : headWords("vs {range}", { range: compareDates(g) });
+    const why = none && g.compare !== "none" ? UIRange.noCompareWhy(g) : ""; // said in words, not hidden in a tooltip
+    const phrase = none ? (why ? headWords("no comparison: {why}", { why }) : t("no comparison")) : g.hours && g.compare === "prev" ? t("vs the 24 hours before") : headWords("vs {range}", { range: compareDates(g) });
     const cmpName = t(g.compare === "yoy" ? "vs same days last year" : RANGE_COMPARES.find(([id]) => id === g.compare)[1]);
     return `<span class="head-range"><span class="head-dates">${esc(g.hours ? t("Last 24 hours") : fmtRange(g.from, g.to))}</span>${behindMark()}${HEAD_SEP}<button type="button" class="head-cmp ${none ? "none" : ""}" id="compare" aria-haspopup="menu" aria-expanded="false" data-tip="${esc(`${t("Compare with")}: ${cmpName}`)}">${esc(phrase)}</button></span>`;
   }

@@ -171,6 +171,24 @@
 
   // ---- line chart: one axis, gaps stay gaps, hover and keyboard read-out, and a table view --------
   LV.lineChart = lineChart;
+  /* Which points get a date under them: evenly spaced, counted back from the last point so it always has its date, at most
+     `most` of them. Each date then sits under its own point (axisHtml), never spread evenly whatever the gaps. */
+  LV.axisTicks = (count, most = 6) => {
+    if (count <= 0) return [];
+    if (count === 1) return [0];
+    const step = Math.max(1, Math.ceil((count - 1) / (most - 1)));
+    const out = [];
+    for (let i = count - 1; i >= 0; i -= step) out.unshift(i);
+    return out;
+  };
+  /* ticks: [[index, words]]. Placed at index / (count − 1) of the width, as the line's own points are; the first and last
+     are held inside the chart. */
+  LV.axisHtml = (ticks, count) => `<div class="lv-axis lv-axis-placed" aria-hidden="true">${ticks.map(([i, words]) => {
+    const at = count <= 1 ? 0.5 : i / (count - 1);
+    const edge = at <= 0.04 ? " first" : at >= 0.96 ? " last" : "";
+    const safe = String(words ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+    return `<span class="lv-tick${edge}" style="left:${(at * 100).toFixed(2)}%">${safe}</span>`;
+  }).join("")}</div>`;
   /* marks: { day: count } draws a dot on the first line for those days, such as a lead in that week; markName names it in the
      read-out. dayLabel: how a day reads in the read-out and the table, such as "Week to 9 Nov". */
   function lineChart(id, days, series, { invert = false, unit = "", legend = true, marks = null, markName = "Leads", dayLabel = null } = {}) {
@@ -199,9 +217,7 @@
     const dots = marks ? days.map((day, i) => (marks[day] && series[0]?.values[day] !== null && series[0]?.values[day] !== undefined ? `<span class="lv-mark" aria-hidden="true" style="left:calc(18px + ${(x(i) / W).toFixed(4)} * (100% - 36px));top:calc(14px + ${(y(series[0].values[day]) / H).toFixed(4)} * var(--lv-h, 220px))"></span>` : "")).join("") : "";
     const label = (v) => `${num(top >= 20 ? Math.round(v) : Math.round(v * 10) / 10)}${unit}`;
     const labels = invert ? [[0, low], [100, top]] : [[0, top], [50, top / 2], [100, 0]];
-    const every = Math.max(1, Math.floor(days.length / 5));
-    const picked = days.filter((_, i) => i === 0 || i === days.length - 1 || (i % every === 0 && i < days.length - every / 2));
-    const ticks = picked.length > 6 ? [...picked.slice(0, 5), days[days.length - 1]] : picked; // the last day always has its date
+    const ticks = LV.axisTicks(days.length); // indexes: each date under its own point (2 and 9 Nov used to vanish)
     LV.chartData.set(id, { days, series, W, unit, marks, markName, dayLabel });
     const dayName = (day) => (dayLabel ? dayLabel(day) : shortDay(day));
     const open = LV.tables.get(id);
@@ -213,7 +229,7 @@
         <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${grid}${paths}<line class="lv-cross" x1="0" x2="0" y1="0" y2="${H}" hidden/></svg>${dots}
         ${labels.map(([pos, v]) => `<span class="lv-ylab" style="top:calc(14px + ${pos / 100} * var(--lv-h, 220px))">${label(v)}</span>`).join("")}
         <div class="lv-tip" hidden></div>
-        <div class="lv-axis" aria-hidden="true">${ticks.map((d) => `<span>${esc(shortDay(d))}</span>`).join("")}</div>
+        ${LV.axisHtml(ticks.map((i) => [i, shortDay(days[i])]), days.length)}
       </div>
       ${series.length > 1 && legend ? `<div class="lv-legend">${series.map((s) => `<span><i class="lv-key" style="background:${s.color}"></i>${esc(t(s.name))}</span>`).join("")}</div>` : ""}
       <div class="lv-foot"><button class="link-btn" data-lv-table="${id}" aria-expanded="${open ? "true" : "false"}">${t(open ? "Hide table" : "Show table")}</button></div>
@@ -751,7 +767,9 @@
     const ok = (s) => s?.state === "ok";
     const sources = d ? [ok(d.ga4) && { name: "Google Analytics", through: d.ga4.through }, ok(d.gsc) && { name: "Search Console", through: d.gsc.through }].filter(Boolean) : null;
     const status = d ? sourceStatus(d.ga4?.state, "Google Analytics") || sourceStatus(d.gsc?.state, "Search Console") : null;
-    const head = simpleHead("Content", entry, { source: sources?.length ? sources : null, status, info: ["Every page and its results", d?.hid_rows && HID_TIP] });
+    // Google clicks follow the app's one period rule (they end on Search Console's last final day); visits run to GA4's last day.
+    const gw = d?.gsc_window, clicksDays = gw?.from && gw?.to && gw.to !== UI.range.get().to ? fillIn(t("Google clicks: {a} – {b}."), { a: shortDay(gw.from), b: shortDay(gw.to) }) : "";
+    const head = simpleHead("Content", entry, { source: sources?.length ? sources : null, status, info: ["Every page and its results", d?.hid_rows && HID_TIP, clicksDays] });
     if (entry.loading || entry.error || entry.noServer) return page(head, stateCard(entry, "ga4"));
     const heat = d.clarity, reports = d.clarity_reports, runs = d.speed?.runs || [];
     const downloads = (reports?.sites || []).filter((s) => s.dashboard);
@@ -1209,7 +1227,7 @@
   Object.assign(fr, { // Content's fixes and the simpler Channels, Conversions and Content (2026-11-12)
     "Unknown page (not set)": "Page inconnue (not set)",
     "Google Analytics couldn't tell which page these visits landed on, often visits that left before the page loaded.": "Google Analytics n'a pas pu dire sur quelle page ces visites sont arrivées, souvent des visites parties avant le chargement de la page.",
-    "Google Analytics and Search Console": "Google Analytics et Search Console", "Most visits: {name}": "Le plus de visites : {name}", "No rules yet.": "Pas encore de règle.",
+    "Google Analytics and Search Console": "Google Analytics et Search Console", "Most visits: {name}": "Le plus de visites : {name}", "Google clicks: {a} – {b}.": "Clics Google : {a} – {b}.", "No rules yet.": "Pas encore de règle.",
     "From visit to lead, by channel and by page.": "De la visite au lead, par canal et par page.",
     "Counts only: no personal data comes into this app.": "Des chiffres seulement : aucune donnée personnelle n'entre dans cette application.",
     "Google Analytics hid some rows with few visits, so small numbers may be missing. A longer period may show them.": "Google Analytics a masqué des lignes à faibles visites : de petits nombres peuvent manquer. Une période plus longue peut les montrer.",

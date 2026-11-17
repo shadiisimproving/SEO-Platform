@@ -8,6 +8,11 @@
 .lv-line { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
 .lv-line.lv-lone { stroke-width: 8; }
 .lv-axis { display: flex; justify-content: space-between; gap: 8px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; margin-top: 6px; }
+/* Dates placed under their own points (LV.axisHtml): left is the point's share of the width. */
+.lv-axis.lv-axis-placed { display: block; position: relative; height: 1.4em; }
+.lv-axis-placed .lv-tick { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+.lv-axis-placed .lv-tick.first { transform: none; }
+.lv-axis-placed .lv-tick.last { transform: translateX(-100%); }
 .lv-ylab { position: absolute; left: 18px; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; pointer-events: none; background: var(--glass); padding: 0 3px; border-radius: 3px; transform: translateY(-50%); }
 .lv-cross { stroke: var(--line-2); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .lv-cross[hidden] { display: none; }

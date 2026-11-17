@@ -57,6 +57,7 @@
     window.ATTENTION = data.todo.map((a) => ({ id: a.id, sev: a.severity, title: say(a, "title"), detail: a.detail, host: a.host, act: "Open", key: a.kind }));
     if (Array.isArray(data.setup)) UI.setupFacts?.(data.setup);
     if (data.results?.window?.to) UI.range?.end?.("today", data.results.window.to, "Search Console");
+    if (data.results?.window) UI.range?.served?.("today", data.results.window); // the head prints the period really compared
     T.badgeLate = true; // taken in while the page draws, after the side menu: after() draws it again with the new count
   }
   // What Today shows now: the held answer for the site and period picked, asked for when there's none (one ask at a time).

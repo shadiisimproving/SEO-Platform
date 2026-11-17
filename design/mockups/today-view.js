@@ -92,7 +92,7 @@
   /* The simpler screens (UI.simple()): one number card each, through UI.card, with a tall graph of its own (owner, 2026-11-05)
      but no axis numbers and no "Show as a table": the screen each card opens has the full chart and its table. The dates
      and the comparison are in the head's date line, so the caption under the cards goes when the real app sends them. */
-  function simpleCard(key, label, href, data, unit, emptyWord) {
+  function simpleCard(key, label, href, data, unit, emptyWord, dates = "") {
     const points = data.points || [];
     let spark = null;
     if (data.state !== "not_set_up" && points.some((p) => p.now !== null)) {
@@ -106,6 +106,8 @@
     else if (data.value === null) sub = esc(data.source ? stateWord(data.source, key === "clicks" ? "Search Console" : "GA4") : t(emptyWord));
     else if (data.change === null) sub = esc(t("No earlier period"));
     else if (covers) sub = esc(covers);
+    // Each card's own days when the sources end on different days (GA4 runs ahead of Search Console): said under it.
+    if (dates && data.value !== null && data.state !== "not_set_up") sub = sub ? `${sub} · ${esc(dates)}` : esc(dates);
     let change = data.value === null || data.change === null || data.state === "not_set_up" ? null : { value: data.change, unit };
     // "before → now" under the figure: the period before's total from the graph's own days, only when it gives the server's change.
     const was = points.filter((p) => p.was !== null && p.was !== undefined);
@@ -120,16 +122,18 @@
     const w = r.window;
     // The plain-file sample has no dates in its head, so it keeps its one line saying what the numbers cover.
     const caption = w ? "" : `<p class="small muted today-caption"><span>${t("Last 28 days vs the 28 before")}${r.through ? ` · ${t("Data through")} ${esc(day(r.through))}` : ""}</span></p>`;
+    const split = w?.ga4 && w.from && w.ga4.to !== w.to;
+    const ga4Dates = split ? `${day(w.ga4.from)} – ${day(w.ga4.to)}` : "", gscDates = split ? `${day(w.from)} – ${day(w.to)}` : "";
     return `<div class="tiles today-nums">
-        ${simpleCard("leads", "Leads", "#conversions", r.leads, "", r.leads.state === "no_ga4" ? "GA4 not connected" : "No data yet")}
-        ${simpleCard("visits", "Visits", "#channels", r.visits, "%", "GA4 not connected")}
-        ${simpleCard("clicks", "Google clicks", "#overview", r.clicks, "%", "Search Console not connected")}
+        ${simpleCard("leads", "Leads", "#conversions", r.leads, "", r.leads.state === "no_ga4" ? "GA4 not connected" : "No data yet", ga4Dates)}
+        ${simpleCard("visits", "Visits", "#channels", r.visits, "%", "GA4 not connected", ga4Dates)}
+        ${simpleCard("clicks", "Google clicks", "#overview", r.clicks, "%", "Search Console not connected", gscDates)}
       </div>${caption}`;
   }
   function numbers(r, range) {
     if (UI().simple?.()) return simpleNumbers(r);
     const w = r.window, period = w?.from && w?.to ? `${day(w.from)} – ${day(w.to)}` : "";
-    const against = !w ? "" : w.compare_unavailable ? t("No earlier period stored") : w.compare === "none" ? t("No comparison") : w.compare === "yoy" ? t("vs last year") : t("vs period before");
+    const against = !w ? "" : w.compare_unavailable === "google" ? t("No comparison: Google keeps 16 months of data.") : w.compare_unavailable ? (w.history_from ? t("No comparison: stored data starts on {day}.").replace("{day}", day(w.history_from)) : t("No earlier period stored")) : w.compare === "none" ? t("No comparison") : w.compare === "yoy" ? t("vs last year") : t("vs period before");
     const caption = w ? `${esc(range?.label || "")}${range?.label ? " · " : ""}${esc(period)} · ${esc(against)}` : `${t("Last 28 days vs the 28 before")}${r.through ? ` · ${t("Data through")} ${esc(day(r.through))}` : ""}`;
     const drawn = [r.leads, r.visits, r.clicks].some((x) => x.points?.some((p) => p.now !== null));
     const key = drawn ? `<span class="today-legend"><span><i class="today-key"></i>${t("This period")}</span><span><i class="today-key was"></i>${t("Period before")}</span></span>` : "";
