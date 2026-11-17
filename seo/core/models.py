@@ -174,6 +174,8 @@ class Page(Base):
     first_seen_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
     last_checked_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
     last_changed_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+    final_url: Mapped[str | None] = mapped_column(Text, nullable=True)  # set while this address redirects to another page of the site
+    blocks: Mapped[list | None] = mapped_column(JSON, nullable=True)  # short hashes of the main text's blocks, to find a site's template
 
 
 class PageVersion(Base):
@@ -202,6 +204,22 @@ class ChangeEvent(Base):
     detected_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
     summaries: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # optional AI summaries per language, kept so a request is never used twice
     changed_words: Mapped[int | None] = mapped_column(Integer, nullable=True)  # a text edit: about how many words changed, so a small one says so
+    # Kept but not shown: an event the noise rules say nobody made (seo.crawl.noise). hidden_reason says which rule.
+    hidden: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))
+    hidden_reason: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+
+class SiteBoilerplate(Base):
+    """Blocks of text a site repeats on many pages or changes on every request: left out when looking for an edit."""
+
+    __tablename__ = "site_boilerplate"
+
+    domain_id: Mapped[int] = mapped_column(ForeignKey("domains.id", ondelete="CASCADE"), primary_key=True)
+    block_hash: Mapped[str] = mapped_column(String(16), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(10))  # repeated: on many pages; unstable: two reads of one page disagreed
+    pages: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sample: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    learned_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
 
 
 class Keyword(Base):

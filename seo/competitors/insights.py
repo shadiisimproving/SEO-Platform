@@ -21,6 +21,7 @@ from seo.competitors import history, pairs, quality, tracking
 from seo.competitors.keywords import _iso, require_own
 from seo.competitors.pages import fold
 from seo.competitors.suggest import domain_of, my_domains
+from seo.crawl import pagedates
 from seo.insights import words as topic_words
 from seo.serp import store
 
@@ -54,24 +55,16 @@ def _json(value):
 
 
 def _day(value) -> date | None:
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    if isinstance(value, str) and len(value) >= 10:
-        try:
-            return date.fromisoformat(value[:10])
-        except ValueError:
-            return None
-    return None
+    """ISO and the other forms sites write ("May 26, 2020, 11:26:50 AM", "26 mai 2020"): one reader, seo.crawl.pagedates (W7)."""
+    return pagedates.page_day(value)
 
 
 def _pages(conn, host: str) -> list[dict]:
     """Pages read and still there. A page that's gone isn't one of theirs any more."""
     rows = conn.execute(
         text(
-            f"SELECT {_PAGE_COLUMNS}, (SELECT MIN(e.detected_at) FROM change_events e WHERE e.page_id = p.id AND e.kind = 'new_page') AS reported_new "
-            "FROM pages p JOIN domains d ON d.id = p.domain_id WHERE d.host IN (:h, :w) AND p.content_hash IS NOT NULL AND (p.last_status IS NULL OR p.last_status <> 'gone')"
+            f"SELECT {_PAGE_COLUMNS}, (SELECT MIN(e.detected_at) FROM change_events e WHERE e.page_id = p.id AND e.kind = 'new_page' AND e.hidden = 0) AS reported_new "
+            "FROM pages p JOIN domains d ON d.id = p.domain_id WHERE d.host IN (:h, :w) AND p.content_hash IS NOT NULL AND (p.last_status IS NULL OR p.last_status NOT IN ('gone', 'moved'))"
         ),
         {"h": host, "w": f"www.{host}"},
     ).mappings().all()
@@ -108,7 +101,7 @@ def _events(conn, host: str, kind: str, days: int) -> list[str]:
         for row in conn.execute(
             text(
                 "SELECT p.url FROM change_events e JOIN domains d ON d.id = e.domain_id JOIN pages p ON p.id = e.page_id "
-                f"WHERE d.host IN (:h, :w) AND e.kind = :k AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL {int(days)} DAY"
+                f"WHERE d.host IN (:h, :w) AND e.kind = :k AND e.hidden = 0 AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL {int(days)} DAY"
             ),
             {"h": host, "w": f"www.{host}", "k": kind},
         )
@@ -166,7 +159,7 @@ def _edits_by_month(conn, host: str, keys: list[str]) -> tuple[list[int], str | 
     """Pages edited per month over the chart's months, the day the app first saw any change on that site, and how many
     different pages were edited over those months. Pages, not change rows: one rewrite saves a title, a meta and a text
     change, and is still one page edited (SEO review 2026-11-17, #11)."""
-    where = "WHERE d.host IN (:h, :w) AND e.kind NOT IN :skip AND e.detected_at >= :start"
+    where = "WHERE d.host IN (:h, :w) AND e.hidden = 0 AND e.kind NOT IN :skip AND e.detected_at >= :start"
     args = {"h": host, "w": f"www.{host}", "skip": list(EDIT_SKIP), "start": f"{keys[0]}-01"}
     rows = conn.execute(
         text(
@@ -180,7 +173,7 @@ def _edits_by_month(conn, host: str, keys: list[str]) -> tuple[list[int], str | 
     ).scalar()
     counts = {ym: int(n) for ym, n in rows}
     first = conn.execute(
-        text("SELECT MIN(e.detected_at) FROM change_events e JOIN domains d ON d.id = e.domain_id WHERE d.host IN (:h, :w)"),
+        text("SELECT MIN(e.detected_at) FROM change_events e JOIN domains d ON d.id = e.domain_id WHERE d.host IN (:h, :w) AND e.hidden = 0"),
         {"h": host, "w": f"www.{host}"},
     ).scalar()
     return [counts.get(key, 0) for key in keys], first.date().isoformat() if first else None, int(pages or 0)
@@ -202,7 +195,10 @@ def _rhythm(conn, host: str, my_host: str, theirs: list[dict], mine: list[dict],
     their_months, my_months = per_month(theirs), per_month(mine) if mine else [None] * MONTHS
     their_edits, edits_since, their_pages = _edits_by_month(conn, host, keys)
     my_edits, my_edits_since, my_pages = _edits_by_month(conn, my_host, keys) if mine else ([None] * MONTHS, None, None)
-    new_urls = _events(conn, host, "new_page", 30)
+    # Published in the last 30 days by the pages' own dates, else the day the app reported them new (W10): "They
+    # published N pages in 30 days" counted only pages seen new since watching began.
+    month_ago = today - timedelta(days=30)
+    new_urls = [p["url"] for p in theirs if p["appeared"] and p["appeared"] >= month_ago]
     sections = Counter(_section(url) for url in new_urls)
     year_ago = today - timedelta(days=365)
 

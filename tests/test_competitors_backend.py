@@ -1,6 +1,7 @@
 """The competitors backend, on the real test database and worker. A fake search tool and websites held in memory."""
 import io
 import re
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import httpx
@@ -1239,7 +1240,8 @@ def test_after_the_first_pass_new_removed_and_edited_pages_are_events(world):
     world.pages["rival.example/new"] = page_html("Brand new")
     world.pages["rival.example/b"] = 404
     del world.pages["rival.example/c"]  # gone, and no longer listed either
-    world.pages["rival.example/sitemap.xml"] = sitemap_xml(("/a", "/b", "/new"))
+    # Dated today: a page found later counts as new only when its own date is after watching began (W2, 2026-11-17).
+    world.pages["rival.example/sitemap.xml"] = sitemap_xml(("/a", "/b", "/new"), date=datetime.now(timezone.utc).date().isoformat())
     age_pages(world)
     suggest.queue_crawl(world.engine, rival)
     world.drain("crawl")

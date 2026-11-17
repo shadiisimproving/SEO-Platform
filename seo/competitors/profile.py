@@ -56,8 +56,10 @@ def reading_state(engine: Engine, site_id: int, competitor_id: int) -> dict:
 def edits_last_30_days(conn, kind: str = "competitor") -> dict[int, int]:
     """By site of that kind. A competitor's count belongs to the competitor, not to one of my sites: never add it up across sites."""
     return dict(conn.execute(text(
-        "SELECT s.id, COUNT(*) FROM sites s JOIN domains d ON d.host = s.host JOIN change_events e ON e.domain_id = d.id "
-        "WHERE s.kind = :kind AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL 30 DAY GROUP BY s.id"
+        # Pages edited, as the cards count them (SEO review 2026-11-17, W5): a new or removed page isn't an edit, and a
+        # rewrite saving a title, a meta and a text change is one page edited.
+        "SELECT s.id, COUNT(DISTINCT e.page_id) FROM sites s JOIN domains d ON d.host = s.host JOIN change_events e ON e.domain_id = d.id "
+        "WHERE s.kind = :kind AND e.hidden = 0 AND e.kind NOT IN ('new_page', 'page_gone') AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL 30 DAY GROUP BY s.id"
     ), {"kind": kind}).all())
 
 
@@ -171,7 +173,7 @@ def profile(engine: Engine, site_id: int, competitor_id: int) -> dict:
         changes = conn.execute(
             text(
                 "SELECT e.id, e.page_id, e.kind, e.before_value, e.after_value, e.changed_words, e.detected_at, e.summaries, p.url FROM change_events e JOIN pages p ON p.id = e.page_id "
-                "JOIN domains d ON d.id = e.domain_id WHERE d.host = :h ORDER BY e.id DESC LIMIT :n"
+                "JOIN domains d ON d.id = e.domain_id WHERE d.host = :h AND e.hidden = 0 ORDER BY e.id DESC LIMIT :n"
             ),
             {"h": host, "n": TIMELINE_LIMIT},
         ).mappings().all()
@@ -185,7 +187,7 @@ def profile(engine: Engine, site_id: int, competitor_id: int) -> dict:
                 text(
                     # New pages are the ones the timeline calls new. A first read finds every page, and none of those is new.
                     "SELECT COUNT(*) AS pages, AVG(p.word_count) AS words, "
-                    "(SELECT COUNT(*) FROM change_events e WHERE e.domain_id = MAX(d.id) AND e.kind = 'new_page' AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL 30 DAY) AS new_pages, "
+                    "(SELECT COUNT(*) FROM change_events e WHERE e.domain_id = MAX(d.id) AND e.kind = 'new_page' AND e.hidden = 0 AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL 30 DAY) AS new_pages, "
                     "MAX(p.last_changed_at) AS last_changed FROM pages p JOIN domains d ON d.id = p.domain_id WHERE d.host = :h AND p.content_hash IS NOT NULL"
                 ),
                 {"h": value},

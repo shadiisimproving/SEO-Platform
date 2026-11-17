@@ -10,6 +10,7 @@ import re
 from sqlalchemy import Engine, func, insert, select, text, update
 
 from seo.core.models import ChangeEvent, Domain, Page, PageVersion
+from seo.crawl import noise
 from seo.crawl.extract import PageFields
 from seo.crawl.fetch import FetchResult
 
@@ -67,9 +68,24 @@ def changed_words(before: str, after: str) -> int | None:
     return sum(max(i2 - i1, j2 - j1) for tag, i1, i2, j1, j2 in matcher.get_opcodes() if tag != "equal")
 
 
+def _last_version(conn, page_id: int) -> tuple[str | None, bool]:
+    """The last saved text, and whether it was saved one block a line (older versions are one line)."""
+    row = conn.execute(text("SELECT text_gz, fields FROM page_versions WHERE page_id = :p ORDER BY id DESC LIMIT 1"), {"p": page_id}).first()
+    if not row or not row[0]:
+        return None, False
+    saved = row[1] if isinstance(row[1], dict) else (json.loads(row[1]) if row[1] else {})
+    return gzip.decompress(row[0]).decode("utf-8", "replace"), bool(saved and saved.get("text_format") == noise.TEXT_FORMAT)
+
+
+def _old_format(conn, page_id: int) -> bool:
+    saved = conn.execute(
+        text("SELECT JSON_VALUE(fields, '$.text_format') FROM page_versions WHERE page_id = :p ORDER BY id DESC LIMIT 1"), {"p": page_id}
+    ).first()
+    return saved is not None and str(saved[0] or "") != str(noise.TEXT_FORMAT)
+
+
 def _last_text(conn, page_id: int) -> str | None:
-    blob = conn.execute(text("SELECT text_gz FROM page_versions WHERE page_id = :p ORDER BY id DESC LIMIT 1"), {"p": page_id}).scalar()
-    return gzip.decompress(blob).decode("utf-8", "replace") if blob else None
+    return _last_version(conn, page_id)[0]
 
 
 def _url_hash(url: str) -> str:
@@ -112,6 +128,8 @@ def _page_values(fields: PageFields, result: FetchResult) -> dict:
         "content_hash": fields.content_hash,
         "js_only": fields.js_only,
         "extras": fields.extras,
+        "blocks": noise.page_keys(fields.text, fields.headings, fields.h1),
+        "final_url": None,
         "last_checked_at": NOW,
     }
     for name, limit in LIMITS.items():
@@ -127,8 +145,103 @@ def _add_version(conn, page_id: int, fields: PageFields) -> None:
     )
 
 
-def save_fetch(engine: Engine, domain_id: int, url: str, result: FetchResult, fields: PageFields | None) -> str:
-    """Returns baseline, changed, unchanged, or the fetch status when no page was read."""
+def _changes(conn, current, values: dict, fields: PageFields, url: str, domain_id: int) -> tuple[list[dict], bool]:
+    """The events a new read makes against the stored page, and whether its text must be saved as the new starting point.
+
+    Never an event whose before and after say the same (a "?" saved by a latin1 table included), nor a text or heading
+    change that is only the site's template (seo.crawl.noise), the order of blocks, or numbers. A list of posts
+    (category, tag, /page/2) changes whenever anything is published, so its text and headings changes are kept hidden.
+    """
+    if not current.content_hash:
+        return [], False
+    skip = noise.skip_set(conn, domain_id)
+    listing = noise.is_listing(url)
+    events = []
+    for name, kind in WATCHED.items():
+        before, after = getattr(current, name), values[name]
+        if noise.same_value(before, after):
+            continue
+        if kind == "headings" and noise.steady_headings(_json_list(before), skip) == noise.steady_headings(after, skip):
+            continue
+        event = dict(kind=kind, before_value=_text_value(before), after_value=_text_value(after))
+        if kind == "headings" and listing:
+            event["hidden"], event["hidden_reason"] = True, noise.LISTING
+        events.append(event)
+    if current.content_hash == fields.content_hash:
+        # A text saved before blocks were kept is saved again, once, block by block, so its next edit can be compared.
+        return events, _old_format(conn, current.id)
+    rebase = False
+    if current.content_hash != fields.content_hash:
+        before_text, blocks_kept = _last_version(conn, current.id)
+        if before_text is not None and not blocks_kept:
+            # Saved before blocks were kept: the template can't be told apart, so this read is the new starting point.
+            return [e for e in events if e["kind"] != "headings"], True
+        touched = None
+        if before_text is not None:
+            if noise.steady_blocks(before_text, skip) == noise.steady_blocks(fields.text, skip):
+                touched = 0  # only the template, the order of blocks, or numbers moved
+            else:
+                touched = changed_words(noise.steady_text(before_text, skip), noise.steady_text(fields.text, skip))
+        if touched != 0:  # 0: only dates, times, counters or the template moved, which nobody edited
+            event = dict(kind="content", before_value=f"{current.word_count} words", after_value=f"{fields.word_count} words", changed_words=touched)
+            if listing:
+                event["hidden"], event["hidden_reason"] = True, noise.LISTING
+            events.append(event)
+    return events, rebase
+
+
+def _json_list(value):
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except ValueError:
+            return []
+    return value
+
+
+def would_record(engine: Engine, domain_id: int, url: str, fields: PageFields) -> bool:
+    """Whether this read would record a visible edit: then the page is read a second time before anything is saved."""
+    with engine.connect() as conn:
+        current = conn.execute(select(Page.__table__).where(Page.url_hash == _url_hash(url))).first()
+        if current is None or not current.content_hash:
+            return False
+        events, _rebase = _changes(conn, current, _page_values(fields, FetchResult(url=url, status="ok")), fields, url, domain_id)
+    return any(not e.get("hidden") for e in events)
+
+
+def _agrees(first: dict, second: dict, earlier: PageFields, fields: PageFields, skip: set[str]) -> bool:
+    if first["kind"] != second["kind"]:
+        return False
+    if first["kind"] == "content":
+        return noise.steady_blocks(earlier.text, skip) == noise.steady_blocks(fields.text, skip)
+    return noise.same_value(first.get("after_value"), second.get("after_value"))
+
+
+def save_moved(engine: Engine, domain_id: int, url: str, final_url: str, result: FetchResult) -> str:
+    """The address redirects to another page of the site. That page's text is never saved under this address: one
+    "redirect" event says where it went, once, and only for a page that was read before (SEO review W6)."""
+    url_hash = _url_hash(url)
+    values = {"last_status": "moved", "http_status": result.http_status, "final_url": final_url, "last_checked_at": NOW}
+    with engine.begin() as conn:
+        current = conn.execute(select(Page.__table__).where(Page.url_hash == url_hash).with_for_update()).first()
+        if not current:
+            conn.execute(insert(Page).values(domain_id=domain_id, url=url, url_hash=url_hash, **values))
+            return "moved"
+        conn.execute(update(Page).where(Page.id == current.id).values(**values))
+        if current.content_hash and (current.final_url or "") != final_url:
+            conn.execute(insert(ChangeEvent).values(page_id=current.id, domain_id=domain_id, kind="redirect", before_value=url, after_value=final_url))
+    return "moved"
+
+
+def save_fetch(
+    engine: Engine, domain_id: int, url: str, result: FetchResult, fields: PageFields | None, earlier: PageFields | None = None, unsettled: bool = False
+) -> str:
+    """Returns baseline, changed, unchanged, or the fetch status when no page was read.
+
+    `earlier`: a first read of the same page a few seconds before this one. An event is then recorded only when both
+    reads show it, so text that changes on every request is never an edit. `unsettled`: the two reads' text differed, so
+    the page has blocks that change on every request and weren't all known yet; its text and headings aren't compared
+    this time (the blocks just learned count from the next read)."""
     url_hash = _url_hash(url)
     with engine.begin() as conn:
         current = conn.execute(select(Page.__table__).where(Page.url_hash == url_hash).with_for_update()).first()
@@ -149,34 +262,23 @@ def save_fetch(engine: Engine, domain_id: int, url: str, result: FetchResult, fi
             _add_version(conn, page_id, fields)
             return "baseline"
 
-        events = []
-        for name, kind in WATCHED.items():
-            before = getattr(current, name)
-            after = values[name]
-            if current.content_hash and before != after:
-                events.append(dict(kind=kind, before_value=_text_value(before), after_value=_text_value(after)))
-        if current.content_hash and current.content_hash != fields.content_hash:
-            before_text = _last_text(conn, current.id)
-            touched = changed_words(before_text, fields.text) if before_text is not None else None
-            if touched != 0:  # 0: only dates, times or counters moved, which nobody edited
-                events.append(
-                    dict(
-                        kind="content",
-                        before_value=f"{current.word_count} words",
-                        after_value=f"{fields.word_count} words",
-                        changed_words=touched,
-                    )
-                )
+        events, rebase = _changes(conn, current, values, fields, url, domain_id)
+        if earlier is not None and events:
+            first, _ = _changes(conn, current, _page_values(earlier, result), earlier, url, domain_id)
+            skip = noise.skip_set(conn, domain_id)
+            events = [e for e in events if any(_agrees(f, e, earlier, fields, skip) for f in first)]
+        if unsettled:
+            events, rebase = [e for e in events if e["kind"] not in ("content", "headings")], False
 
         first_real_read = current.content_hash is None
-        if events:
+        if any(not e.get("hidden") for e in events):
             # Only an edit the app saw. The first reading is no edit: counting it made "Updated, 12 months" read 100% (SEO review #11).
             values["last_changed_at"] = NOW
-        if events or first_real_read:
+        if events or first_real_read or rebase:
             _add_version(conn, current.id, fields)
         conn.execute(update(Page).where(Page.id == current.id).values(**values))
         for event in events:
             conn.execute(insert(ChangeEvent).values(page_id=current.id, domain_id=domain_id, **event))
         if first_real_read:
             return "baseline"
-        return "changed" if events else "unchanged"
+        return "changed" if any(not e.get("hidden") for e in events) else "unchanged"

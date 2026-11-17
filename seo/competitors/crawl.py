@@ -22,7 +22,7 @@ from sqlalchemy import Engine, text
 
 from seo.competitors import pages, tracking
 from seo.core import budget
-from seo.crawl import sitemap, store as crawl_store
+from seo.crawl import noise, pagedates, sitemap, store as crawl_store
 from seo.crawl.fetch import FetchResult
 from seo.links import service as links_service
 from seo.links.checker import extract_links
@@ -106,7 +106,8 @@ def _finish(engine: Engine, competitor_id: int, status: str, message: str | None
 
 def _discover(fetcher, start_url: str, host: str, charge) -> tuple[dict[str, str | None], str, bool, str, bool]:
     """What the site lists itself. Returns address -> sitemap date, how the start page answered, whether a sitemap listed
-    everything, where the list came from (sitemap, feed or links), and whether the sitemap had more than MAX_DISCOVERED pages."""
+    everything, where the list came from (sitemap, feed or links), and whether the sitemap had more than MAX_DISCOVERED pages.
+    A sitemap file that failed or was too large means the list isn't whole today (SEO review 2026-11-17, W2)."""
 
     def stay_on(url: str) -> bool:
         return on_host(host_and_domain(url)[0], host)
@@ -118,7 +119,7 @@ def _discover(fetcher, start_url: str, host: str, charge) -> tuple[dict[str, str
         normal = canonical_url(entry.url)
         if normal:
             urls[normal] = entry.lastmod
-    complete_list = bool(urls) and not found.capped
+    complete_list = bool(urls) and not found.capped and not getattr(found, "cut", False)
     source = "sitemap" if urls else "links"
     front = fetcher.get(start_url, stay_on=stay_on)
     charge()
@@ -374,7 +375,7 @@ def _plan(engine: Engine, competitor_id: int, site, baseline_done: bool, fetcher
         url, lastmod = listed.get(key) or (ranking_by_key[key], None)
         row = known.get(key)
         if row is None:
-            new.append([url, key in listed, ""])  # a page only seen in search results isn't new, it's newly noticed
+            new.append([url, key in listed, "", lastmod])  # a page only seen in search results isn't new, it's newly noticed
             continue
         if row["today"] or row["read_with"] == "firecrawl":
             continue  # read already, or only Firecrawl can read it (its weekly check, when the owner said yes)
@@ -417,10 +418,16 @@ def _plan(engine: Engine, competitor_id: int, site, baseline_done: bool, fetcher
     keep = min(len(others), after_new // OTHERS_SHARE) if len(due) + len(others) > after_new else len(others)
     todo = new + due[: after_new - keep] + others[:keep]
     todo += [entry for entry in due[after_new - keep:] + others[keep:]][: max(0, room - len(todo))]
+    with engine.begin() as conn:
+        noise.refresh_repeated(conn, domain_id)  # the site's template, from its own pages, once a day
+        watch_start = conn.execute(text("SELECT MIN(first_seen_at) FROM pages WHERE domain_id = :d"), {"d": domain_id}).scalar()
     return {
         "part": 0,
         "todo": todo[:room],
-        "first_pass_ends": not baseline_done and len(new) <= room,
+        # The first read ends only once the whole list has been read: a sitemap file that failed today (W2) leaves pages
+        # out of the list, and they'd all be reported as new tomorrow. A list from a feed or links is never "whole".
+        "first_pass_ends": not baseline_done and len(new) <= room and (complete_list or source != "sitemap" or capped),
+        "watch_start": (watch_start or _now()).isoformat(),
         "start_page_readable": start_page_readable,
         "known": len(listed),
         "read": 0,
@@ -436,6 +443,35 @@ def _report_event(engine: Engine, url: str, domain_id: int, kind: str) -> None:
         page_id = conn.execute(text("SELECT id FROM pages WHERE url_hash = :h"), {"h": pages.url_hash(url)}).scalar()
         if page_id:
             conn.execute(text(f"INSERT INTO change_events (page_id, domain_id, kind, {column}) VALUES (:p, :d, :k, :v)"), {"p": page_id, "d": domain_id, "k": kind, "v": url})
+
+
+def own_day(extras: dict | None, sitemap_date=None, first_archived=None):
+    """The day a page says it was published, else the earliest of its sitemap date and first Wayback copy."""
+    published = pagedates.page_day((extras or {}).get("published"))
+    if published:
+        return published
+    others = [d for d in (pagedates.page_day(sitemap_date), pagedates.page_day(first_archived)) if d]
+    return min(others) if others else None
+
+
+def _report_new(engine: Engine, url: str, domain_id: int, lastmod, watch_start) -> None:
+    """A page found after the first read is new only when its own date (or, with none, the day it was found) is after
+    watching began. An older page the app found late is kept as "found later", not shown (SEO review 2026-11-17, W2)."""
+    with engine.begin() as conn:
+        row = conn.execute(text("SELECT id, extras, first_archived FROM pages WHERE url_hash = :h"), {"h": pages.url_hash(url)}).mappings().first()
+        if not row:
+            return
+        day = _lastmod(lastmod)
+        if day is not None:
+            conn.execute(text("UPDATE pages SET sitemap_lastmod = :d WHERE id = :i"), {"d": day.date() if isinstance(day, datetime) else day, "i": row["id"]})
+        extras = json.loads(row["extras"]) if isinstance(row["extras"], str) else row["extras"]
+        stated = own_day(extras, day, row["first_archived"])
+        start = pagedates.page_day(watch_start)
+        old = stated is not None and start is not None and stated < start - timedelta(days=1)
+        conn.execute(
+            text("INSERT INTO change_events (page_id, domain_id, kind, after_value, hidden, hidden_reason) VALUES (:p, :d, 'new_page', :v, :h, :r)"),
+            {"p": row["id"], "d": domain_id, "v": url, "h": old, "r": noise.FOUND_LATER if old else None},
+        )
 
 
 def _read_pages(engine: Engine, competitor_id: int, site, plan: dict, baseline_done: bool, fetcher, meter) -> None:
@@ -454,6 +490,7 @@ def _read_pages(engine: Engine, competitor_id: int, site, plan: dict, baseline_d
             break
         entry = todo.pop(0)
         url, can_be_new, why = entry[0], entry[1], entry[2] if len(entry) > 2 else ""
+        lastmod = entry[3] if len(entry) > 3 else None
         with engine.connect() as conn:
             before = conn.execute(text("SELECT content_hash, last_status FROM pages WHERE url_hash = :h"), {"h": pages.url_hash(url)}).mappings().first()
         try:
@@ -465,7 +502,7 @@ def _read_pages(engine: Engine, competitor_id: int, site, plan: dict, baseline_d
         read_now += 1
         plan["read"] += 1
         if (before is None or not before["content_hash"]) and can_be_new and baseline_done and outcome == "baseline":  # a row with no text yet is new too (F69)
-            _report_event(engine, url, domain_id, "new_page")
+            _report_new(engine, url, domain_id, lastmod, plan.get("watch_start"))
         elif before is not None and before["content_hash"] and before["last_status"] != "gone" and outcome == "gone":
             _report_event(engine, url, domain_id, "page_gone")
         if outcome == "changed" and why in (DATE, QUIET):  # an edit found: had the site's own date said so?
@@ -475,7 +512,7 @@ def _read_pages(engine: Engine, competitor_id: int, site, plan: dict, baseline_d
         _set(engine, competitor_id, pages_read=plan["read"], pages_known=plan["known"])
 
         plan["robots"] += outcome == "robots"
-        plan["good"] += outcome in ("baseline", "changed", "unchanged", "not_modified", "firecrawl")
+        plan["good"] += outcome in ("baseline", "changed", "unchanged", "not_modified", "firecrawl", "moved", pages.UNCONFIRMED)
         plan["failures"] = plan["failures"] + 1 if outcome in ("blocked", "network_error", "server_error") else 0
         if outcome == "rate_limited":
             stop = ("ok", SLOW_DOWN_TEXT)
@@ -485,6 +522,11 @@ def _read_pages(engine: Engine, competitor_id: int, site, plan: dict, baseline_d
             break
 
     totals = {"pages_read": plan["read"], "pages_known": plan["known"]}
+    with engine.begin() as conn:
+        # The day's reads are in: what the site shows on many pages today is its template, and an edit recorded before
+        # that was known (a widget label changed on every page) is hidden now (SEO review 2026-11-17, W1).
+        noise.refresh_repeated(conn, domain_id)
+        noise.recheck_events(conn, domain_id)
     if stop:  # stopped early: what's left is for tomorrow, and a first pass isn't finished
         _finish(engine, competitor_id, stop[0], stop[1], **totals)
     elif plan["robots"] and not plan["good"] and not plan["start_page_readable"]:  # only a few allowed files, and no pages
