@@ -84,6 +84,17 @@ def pages_for(depth: int) -> int:
     return max(1, (int(depth) + 9) // 10)
 
 
+READ_STEPS = (10, 20, 30, 50)  # the depths a Refresh offers (refresh.DEPTHS): a saved depth is always one of them
+
+
+def depth_read(asked: int, read: int) -> int:
+    """The depth one page of results really answers. DuckDuckGo has no page 2 here (its next page needs a token from this
+    one), so a Top 30 asked for and one page of about 10 read answers Top 10, never ">30". Rounded down to a depth the app
+    offers, so checks stay comparable with each other. A page with fewer than 10 results is the whole list: Top 10."""
+    steps = [step for step in READ_STEPS if step <= min(int(asked), max(int(read), 10))]
+    return steps[-1] if steps else int(asked)
+
+
 def most_cost(tool, depth: int = 10) -> int:
     """The most credits one search at this depth can use. A tool with no credits to run out of costs nothing."""
     if getattr(tool, "free_monthly", None) is None and getattr(tool, "free_once", None) is None and getattr(tool, "paid_per", None) is None:
@@ -217,7 +228,8 @@ class DuckDuckGoDirect:
             raise ToolStopped("DuckDuckGo asked us to slow down, so this tool stopped.")
         if reply.status_code != 200:
             raise SearchFailed(f"DuckDuckGo answered {reply.status_code}")
-        results = parse_ddg(reply.content)[:depth]
+        every = parse_ddg(reply.content)
+        results = every[:depth]
         if not results:
             # The word alone proves nothing on a page of results: "anomaly detection" is a fine keyword.
             says_none = b"no-results" in reply.content
@@ -225,7 +237,7 @@ class DuckDuckGoDirect:
                 raise ToolStopped(self.BOT_CHECK, bot_check=True)
             if not says_none:  # a page we can't read must not pass as "nobody ranks"
                 raise SearchFailed("DuckDuckGo's page had no results the app could read.")
-        return Answer(self.name, region, depth, results, NOT_CAPTURED, [], 0)
+        return Answer(self.name, region, depth_read(depth, len(every)) if every else depth, results, NOT_CAPTURED, [], 0)
 
 
 # ---- SerpApi: all four engines, AI Overview on Google. Written from its documentation: no key has been tried yet --------
@@ -299,7 +311,9 @@ class SerpApi:
             if not rows or engine == "duckduckgo":  # its next page needs a token from this one, so it stops at the first page
                 break
         location = country.upper() if engine == "bing" and country else ddg_region(country, language) if engine == "duckduckgo" else ""
-        return Answer(self.name, location, depth, found[:depth], NOT_CAPTURED, [], charged)
+        # DuckDuckGo read one page only: the depth saved is what that page answers. An empty list is the end of the results.
+        read = depth_read(depth, len(found)) if engine == "duckduckgo" and found else depth
+        return Answer(self.name, location, read, found[:depth], NOT_CAPTURED, [], charged)
 
     def search(self, keyword: str, engine: str, country: str, language: str, device: str, depth: int) -> Answer:
         if engine != "google":
@@ -578,12 +592,13 @@ class BrightData:
                 raise ToolStopped(f"Bright Data can't read DuckDuckGo with this zone: {reply.headers.get('x-brd-error') or refused}.")
         body = reply.content
         text = body.decode("utf-8", "replace")
-        results = (parse_ddg_markdown(text) or parse_ddg(body))[:depth]  # an HTML page, should the zone ever send one
+        every = parse_ddg_markdown(text) or parse_ddg(body)  # an HTML page, should the zone ever send one
+        results = every[:depth]
         if not results and b"no-results" not in body and "No results found" not in text:
             failed = SearchFailed("Bright Data's DuckDuckGo page had no results the app could read.")
             failed.charged = 1
             raise failed
-        return Answer(self.name, ddg_region(country, language), depth, results, NOT_CAPTURED, [], 1)
+        return Answer(self.name, ddg_region(country, language), depth_read(depth, len(every)) if every else depth, results, NOT_CAPTURED, [], 1)
 
     def search(self, keyword: str, engine: str, country: str, language: str, device: str, depth: int) -> Answer:
         if engine == "duckduckgo":
