@@ -212,19 +212,24 @@ def test_tracking_another_spelling_on_purpose_keeps_both_with_their_own_history(
 
 
 def test_the_kept_no_op_migration_upgrades_cleanly_and_changes_nothing(world):
-    from seo.core.schema import upgrade_to_head
+    from alembic import command
+
+    from seo.core.schema import _alembic_config
 
     track(world, "café en grains", "cafe en grains")
     with world.engine.begin() as conn:
         head = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
         conn.execute(text("UPDATE alembic_version SET version_num = 'a7b1c2d3e4f5'"))
     try:
-        upgrade_to_head(world.engine)
+        # Only this one step: later migrations (links, page speed) add columns the test schema already has.
+        cfg = _alembic_config()
+        cfg.attributes["engine"] = world.engine
+        command.upgrade(cfg, "c5e7a9b1d3f2")
     finally:
         with world.engine.begin() as conn:
             now = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
             conn.execute(text("UPDATE alembic_version SET version_num = :h"), {"h": head})
-    assert now == head
+    assert now == "c5e7a9b1d3f2"
     with world.engine.connect() as conn:
         assert conn.execute(text("SELECT COUNT(*) FROM keywords")).scalar() == 2
     path = next(pathlib.Path(__file__).parent.parent.joinpath("migrations", "versions").glob("*_c5e7a9b1d3f2_*.py"))
