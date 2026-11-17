@@ -573,3 +573,21 @@ def test_one_website_ahrefs_refuses_does_not_stop_the_others(ahrefs_api, monkeyp
     monkeypatch.setattr(source_http, "transport", httpx.MockTransport(fake))
     ahrefs_api.collect()
     assert ahrefs_api.link(second)["site_traffic"] == 51578 and ahrefs_api.link(first)["site_traffic"] is None
+
+
+def test_an_exact_match_domain_does_not_hide_money_anchors_as_brand():
+    """creer-societe-dubai.fr tracks "créer société dubai": that anchor is an exact-match keyword, not a safe brand anchor (links F8)."""
+    from seo.backlinks import anchors
+    brand = [anchors.clean("creer-societe-dubai")]
+    keywords = [anchors.clean("créer société dubai"), anchors.clean("societe dubai")]
+    assert anchors.kind("Créer société Dubai", brand, keywords) == anchors.BRAND_KW
+    assert anchors.kind("créer société dubai pas cher", brand, keywords) == anchors.BRAND_KW
+    assert anchors.BRAND_KW in anchors.EXACT_LIKE and anchors.EXACT in anchors.EXACT_LIKE
+    # A brand with no keyword in it stays Brand, even beside an exact-match one.
+    assert anchors.kind("Café Corner", ["cafe corner"] + brand, keywords) == anchors.BRAND
+    assert anchors.kind("www.creer-societe-dubai.fr", brand, keywords) == anchors.URL
+
+
+def test_brand_plus_keyword_can_be_set_by_hand():
+    from seo.backlinks import service
+    assert service.anchor_kind_of("Brand keyword") == "brand_kw" and service.anchor_kind_of("marque + mot-clé") == "brand_kw"
