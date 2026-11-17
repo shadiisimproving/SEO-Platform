@@ -437,7 +437,16 @@
     const note = (b.small_hidden && !simple() ? `<p class="small muted ov-hint">${num(b.small_hidden)} ${t("small ones hidden (under 3 clicks and 50 impressions).")}</p>` : "") + fresh;
     const queriesLine = OV.tab === "query" && d.queries !== null && !simple() ? `<p class="small muted ov-hint">${num(d.queries)} ${t("queries with impressions")}${d.queries_before !== null && d.queries_before !== undefined ? ` · ${num(d.queries_before)} ${t("before")}` : ""}. ${t("Rare searches left out.")}${UI.tip("Google leaves out rare searches, so queries never add up to the total clicks.")}</p>` : "";
     if (!b.rows.length && filterOn(filterOf(OV.tab))) return `${controls}<div class="empty"><p>${t(OV.tab === "page" ? "No pages match these filters." : "No queries match these filters.")}</p><div class="ov-empty-act"><button class="btn" data-ov-filter-clear>${t("Clear filters")}</button></div></div>`;
-    const short = rowsShort ? `<p class="small muted ov-hint" role="note">${icon("clock")}${esc(rowsFrom ? t(OV.tab === "page" ? "Page data starts on {day}: too soon to compare pages." : "Detail starts on {day}: too soon to compare these rows.").replace("{day}", dayLabel(rowsFrom, true)) : t("Not stored far enough back to compare these rows."))}</p>` : "";
+    // Countries and devices are stored from their own first day (their tables came later, then fill in from Google): a
+    // period that starts before it counts only the days after, and says so, even with no comparison.
+    const own = { page: "Page data starts on {day}: too soon to compare pages.", country: "Country data starts on {day}: too soon to compare countries.", device: "Device data starts on {day}: too soon to compare devices." }[OV.tab];
+    const partWords = { country: "Country data starts on {day}: days before aren't counted.", device: "Device data starts on {day}: days before aren't counted." }[OV.tab];
+    // When the period itself starts before it, that is the bigger truth (its numbers are part of the period), said first.
+    // Before the site's first daily total Google had nothing, so nothing is missing there.
+    const dataFrom = d.history_from && d.history_from > d.from ? d.history_from : d.from;
+    const rowsPart = Boolean(partWords && rowsFrom && dataFrom && !d.hourly && rowsFrom > dataFrom);
+    const short = rowsPart ? `<p class="small muted ov-hint" role="note">${icon("clock")}${esc(t(partWords).replace("{day}", dayLabel(rowsFrom, true)))}</p>`
+      : rowsShort ? `<p class="small muted ov-hint" role="note">${icon("clock")}${esc(rowsFrom ? t(own || "Detail starts on {day}: too soon to compare these rows.").replace("{day}", dayLabel(rowsFrom, true)) : t("Not stored far enough back to compare these rows."))}</p>` : "";
     return `${controls}${queriesLine}${note}${short}${table(OV.tab, b.rows, { columns: columnsFor(OV.tab, compare), selectable: OV.tab === "query", total: b.total ?? b.rows.length })}`;
   }
   /* What the table on show asks the server: also the warm-up's list (SCREEN_DATA.screen). */
@@ -1039,6 +1048,10 @@
     "Drawn in whole weeks ending on the last day. The first {n} days are counted in the totals, not drawn.": "Dessiné en semaines entières finissant le dernier jour. Les {n} premiers jours sont comptés dans les totaux, pas dessinés.",
     "Page data starts on {day}: too soon to compare pages.": "Les données des pages commencent le {day} : trop tôt pour comparer les pages.",
     "Detail starts on {day}: too soon to compare these rows.": "Le détail commence le {day} : trop tôt pour comparer ces lignes.",
+    "Country data starts on {day}: too soon to compare countries.": "Les données par pays commencent le {day} : trop tôt pour comparer les pays.",
+    "Device data starts on {day}: too soon to compare devices.": "Les données par appareil commencent le {day} : trop tôt pour comparer les appareils.",
+    "Country data starts on {day}: days before aren't counted.": "Les données par pays commencent le {day} : les jours d'avant ne sont pas comptés.",
+    "Device data starts on {day}: days before aren't counted.": "Les données par appareil commencent le {day} : les jours d'avant ne sont pas comptés.",
     "Not stored far enough back to compare these rows.": "Pas enregistré assez loin pour comparer ces lignes.",
   };
   Object.keys(words).forEach((w) => { if (window.FR[w] === undefined) window.FR[w] = words[w]; });

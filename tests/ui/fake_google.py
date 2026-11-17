@@ -61,7 +61,18 @@ def _gsc(request: httpx.Request) -> httpx.Response:
     countries = [("fra", 70, 6.0), ("esp", 20, 9.5), ("bel", 8, 7.1), ("che", 4, 8.0)]
     devices = [("MOBILE", 60, 7.2), ("DESKTOP", 40, 5.9), ("TABLET", 3, 8.4)]
     table = {"page": pages, "query": queries, "country": countries, "device": devices}.get(dims[0] if len(dims) == 1 else "", queries)
-    if len(dims) == 1 and dims[0] in ("page", "query", "country", "device"):
+    if dims in (["country"], ["device"]):
+        # Like Google: a day's countries, and its devices, add up to its total (the daily answer above).
+        total, shown = _wave(start, 120), _wave(start, 120) * 22
+        shares = {"country": (0.62, 0.22, 0.1), "device": (0.6, 0.37)}[dims[0]]
+        rows, left_c, left_i = [], total, shown
+        for n, (key, _base, pos) in enumerate(table):
+            c, i = (int(total * shares[n]), int(shown * shares[n])) if n < len(shares) else (left_c, left_i)
+            left_c, left_i = left_c - c, left_i - i
+            rows.append({"keys": [key], "clicks": c, "impressions": i, "position": pos})
+            if n >= len(shares):
+                break
+    elif len(dims) == 1 and dims[0] in ("page", "query", "country", "device"):
         rows = [{"keys": [key], "clicks": _wave(start, base, n), "impressions": _wave(start, base, n) * 20, "position": pos} for n, (key, base, pos) in enumerate(table)]
     else:
         rows = [{"keys": [text, pages[n % len(pages)][0]], "clicks": _wave(start, base, n), "impressions": _wave(start, base, n) * 20, "position": pos} for n, (text, base, pos) in enumerate(queries)]

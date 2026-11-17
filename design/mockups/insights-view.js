@@ -484,6 +484,13 @@
     const notes = [];
     if (IN.tab === "wins" && needs.low_ctr === "brand_words") notes.push(`${t("Low click rates need your brand words.")}${UI.tip("Brand searches are clicked far more and would make every other query look weak.")} <a href="#overview">${t("Add them on Overview")}</a>`);
     if ((IN.tab === "decline" && needs.decay) || (IN.tab === "changed" && needs.page_down)) notes.push(t("Needs more history: 16 weeks for slow decline, 8 for changes."));
+    // One country or device carrying the change waits for that table's own history (expert review 2026-11-17, 3.1).
+    const segDay = (dim) => (/^\d{4}-\d{2}-\d{2}$/.test(needs[`segment_${dim}`] || "") ? needs[`segment_${dim}`] : null);
+    const cDay = segDay("country"), dDay = segDay("device");
+    if (IN.tab === "changed" && !needs.page_down && (cDay || dDay)) {
+      const words = cDay && dDay && cDay === dDay ? "Country and device data start on {day}: too soon to compare them." : cDay ? "Country data starts on {day}: too soon to compare countries." : "Device data starts on {day}: too soon to compare devices.";
+      notes.push(esc(fill(words, { day: dayLabel(cDay || dDay) })));
+    }
     if (IN.tab === "leads" && needs.lead_page === "key_events") notes.push(t("No GA4 key events yet: mark your form or call event as one."));
     // Technical lists only pages Google showed this week: what the health test and URL Inspection found on the others is
     // said here, with the way to it, so the tab never reads as "all clear" beside a 404 (expert review 2026-11-17).
@@ -1045,7 +1052,7 @@
     "They run daily on their own. Run them now to see the first ones.": "Elles tournent seules chaque jour. Lancez-les pour voir les premières.",
     "Clicks a month at stake": "Clics par mois en jeu", "Fixed or gone in 30 days": "Réglés ou disparus en 30 jours", "Worked out": "Calculé", "Final days only, last 28 days vs the 28 before": "Jours définitifs seulement, 28 derniers jours vs les 28 précédents",
     "Low click rates need your brand words.": "Les taux de clic faibles demandent vos mots de marque.",
-    "Add them on Overview": "Ajoutez-les dans Vue d'ensemble", "Needs more history: 16 weeks for slow decline, 8 for changes.": "Il faut plus d'historique : 16 semaines pour le lent déclin, 8 pour les changements.",
+    "Add them on Overview": "Ajoutez-les dans Vue d'ensemble", "Country and device data start on {day}: too soon to compare them.": "Les données par pays et par appareil commencent le {day} : trop tôt pour les comparer.", "Country data starts on {day}: too soon to compare countries.": "Les données par pays commencent le {day} : trop tôt pour comparer les pays.", "Device data starts on {day}: too soon to compare devices.": "Les données par appareil commencent le {day} : trop tôt pour comparer les appareils.", "Needs more history: 16 weeks for slow decline, 8 for changes.": "Il faut plus d'historique : 16 semaines pour le lent déclin, 8 pour les changements.",
     "Biggest findings, one row per query or page.": "Les plus gros constats, une ligne par requête ou page.", "Last 28 days vs the 28 before, plus odd days this week.": "28 derniers jours vs les 28 précédents, plus les jours inhabituels de la semaine.",
     "Pages sliding a little every week for 16 weeks.": "Pages qui reculent un peu chaque semaine depuis 16 semaines.", "Queries a small push would pay for, using this site's own click rates.": "Requêtes pour lesquelles un petit effort paierait, d'après les taux de clic du site.",
     "Nothing here. Good news.": "Rien ici. Bonne nouvelle.", "Nothing here.": "Rien ici.",
