@@ -109,7 +109,8 @@ def listing(scope: metrics.Scope) -> dict:
         # page with no row before had no clicks before (0); elsewhere nothing is compared (None).
         window = content["gsc_window"]
         compared: set[int] = set()
-        if window.get("compare_from") and (window.get("rows_compare") or {}).get("page"):
+        # Per site, not the whole scope's rows_compare: one site whose page table starts late must not blank the others.
+        if window.get("compare_from"):
             start = date.fromisoformat(window["compare_from"])
             compared = {r["site_id"] for r in scope.fetch("SELECT site_id, MIN(day) first FROM gsc_page WHERE site_id IN :sites GROUP BY site_id") if r["first"] and r["first"] <= start}
             for item in scope.fetch(
