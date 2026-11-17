@@ -193,7 +193,10 @@
     : `<div class="cs-head"><h2 tabindex="-1">${esc(t(title))}${info ? COMP.info(info) : ""}</h2>${sub ? `<p class="small sec">${esc(sub)}${subTip ? UI.tip(subTip) : ""}</p>` : ""}</div>`;
   /* Every competitor in view, so a link can be ticked for one a domain isn't listed under yet. */
   const rivalsInView = (d) => [...new Map([...(d.rivals || []), ...[...d.gaps, ...d.flagged].flatMap((row) => row.rivals)].map((r) => [r.id, r])).values()].sort((a, b) => a.host.localeCompare(b.host));
-  const linksHead = (title, sub, d) => `<div class="cs-head-row">${sectionHead(title, sub, "Spam is flagged, never removed, and only good domains can be added.")}${rivalsInView(d).length ? `<button class="btn btn-small" data-cs-add-domain>${UI.icon("plus")}${t("Add a domain")}</button>` : ""}</div>`;
+  /* Open Link gaps always sits in the head (COMPARISON 2026-11-17, place 3): it used to show only when something was spam.
+     At All my sites it opens the first site. */
+  const reviewSiteId = () => (COMP.siteId === COMP.ALL ? (UI.preferredSite(COMP.sites)?.id ?? "") : COMP.siteId);
+  const linksHead = (title, sub, d) => `<div class="cs-head-row">${sectionHead(title, sub, "Spam is flagged, never removed, and only good domains can be added.")}<span class="cs-head-acts">${rivalsInView(d).length ? `<button class="btn btn-small" data-cs-add-domain>${UI.icon("plus")}${t("Add a domain")}</button>` : ""}<button class="btn btn-small" data-cs-review="${reviewSiteId()}" data-tip="${attr("Sites linking to your competitors, not to you")}">${UI.icon("link-2-off")}${t("Open Link gaps")}</button></span></div>`;
   const loadingCard = (title) => `${sectionHead(title)}${COMP.loading()}`;
   const failedCard = (part, title) => `${sectionHead(title)}<div class="table-wrap"><div class="empty"><h3>${t("That didn't load")}</h3><p>${esc(t(S.errors[part]))}</p><button class="btn" data-cs-retry="${part}">${UI.icon("refresh-cw")}${t("Try again")}</button></div></div>`;
   const limitOf = (part) => S.limit[part] || FIRST_ROWS[part] || 25;
@@ -215,6 +218,8 @@
     return [...list].sort((a, b) => {
       const x = value(a), y = value(b);
       if (x === null || x === undefined || y === null || y === undefined) return (x === null || x === undefined) - (y === null || y === undefined);
+      const scored = window.BacklinkCleaner.compareScored(x, y, up);
+      if (scored !== null) return scored;
       return (typeof x === "number" ? x - y : String(x).localeCompare(String(y), UI.state.lang)) * up;
     });
   }
@@ -744,7 +749,8 @@
       <thead><tr>${linkHead("domain", "Domain")}<th scope="col">${t("Links to")}</th>${linkHead("count", "How many", "c")}${linkHead("authority", "Authority", "c")}<th scope="col">${t("Your sites")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
       <tbody>${page.rows.map((g) => linkRow(g, inFold)).join("")}</tbody>
     </table></div>${TP.footer(key, page, { noun, capped })}</div>`;
-  const LN_SORTS = { domain: (g) => g.display || g.domain, count: (g) => g.rival_count, authority: (g) => g.authority ?? null };
+  // Authority sorts one tool's scores together, the leading tool first (SEO review #7): the server gives each row its scale_rank.
+  const LN_SORTS = { domain: (g) => g.display || g.domain, count: (g) => g.rival_count, authority: (g) => (g.authority === null || g.authority === undefined ? null : [g.scale_rank ?? 0, g.authority]) };
   const LN_FIRST = { domain: "up", count: "down", authority: "down" };
 
   function linksHtml() {
@@ -753,7 +759,7 @@
     const d = S.data.links;
     if (!d) return loadingCard(title);
     const f = d.funnel;
-    if (!f.found) return `${linksHead(title, "", d)}${COMP.empty(t("No link data yet"), t("Upload a competitor's link file in Link gaps."), `<button class="btn" data-cs-review="${COMP.siteId === COMP.ALL ? (UI.preferredSite(COMP.sites)?.id ?? "") : COMP.siteId}">${UI.icon("link-2-off")}${t("Open Link gaps")}</button>`)}`;
+    if (!f.found) return `${linksHead(title, "", d)}${COMP.empty(t("No link data yet"), t("Upload a competitor's link file in Link gaps."))}`;
     // One search for both lists. A new search starts the flagged list on its first page too.
     const q = TP.state(PAGES.links).q;
     if (q !== S.linkQ) { S.linkQ = q; TP.reset(PAGES.flagged); }
@@ -768,9 +774,7 @@
     ].filter(Boolean).join(" · ");
     const capped = (sent, total) => (total > sent ? fill("{sent} of {total}, most competitors first", { sent: UI.num(sent), total: UI.num(total) }) : null);
     const flaggedBody = flaggedRows.length ? linkTable("cs-flagged-table", PAGES.flagged, flaggedPage, t("domains"), capped(d.flagged.length, f.flagged), true) : `<p class="small sec cs-find-count">${esc(fill("No domain matches “{text}”.", { text: q }))}</p>`;
-    // Open Link gaps once, on the fold's line (outside the summary, so it's its own button). At All my sites it opens the first site, as the empty card's does.
-    const reviewSite = COMP.siteId === COMP.ALL ? (UI.preferredSite(COMP.sites)?.id ?? "") : COMP.siteId;
-    const flagged = d.flagged.length ? `<div class="cs-flagged-wrap"><details class="fold cs-flagged" ${S.flaggedOpen ? "open" : ""}><summary>${UI.icon("chevron-right")}${esc(plural(f.flagged, "{n} flagged as spam", "{n} flagged as spam"))}</summary>${flaggedBody}</details><button class="btn btn-small cs-flagged-open" data-cs-review="${reviewSite}">${UI.icon("link-2-off")}${t("Open Link gaps")}</button></div>` : "";
+    const flagged = d.flagged.length ? `<div class="cs-flagged-wrap"><details class="fold cs-flagged" ${S.flaggedOpen ? "open" : ""}><summary>${UI.icon("chevron-right")}${esc(plural(f.flagged, "{n} flagged as spam", "{n} flagged as spam"))}</summary>${flaggedBody}</details></div>` : "";
     const good = goodRows.length ? linkTable("cs-links-table", PAGES.links, page, t("domains"), capped(d.gaps.length, f.good))
       : q && d.gaps.length ? noneFound(fill("No domain matches “{text}”.", { text: q }), PAGES.links)
         : COMP.empty(t("No good domains yet"), t("No domain has passed the spam check yet."));
@@ -1163,7 +1167,7 @@
     "Changes and moves show here as found.": "Les changements et mouvements s'affichent ici dès qu'ils sont repérés.",
     "Can't see page changes for {hosts}: they block bots.": "Changements de pages invisibles pour {hosts} : ces sites bloquent les robots.",
     "Not watched yet: {hosts}.": "Pas encore surveillés : {hosts}.",
-    "Links many competitors share": "Liens communs à plusieurs concurrents",
+    "Links many competitors share": "Liens communs à plusieurs concurrents", "Sites linking to your competitors, not to you": "Sites qui font un lien vers vos concurrents, pas vers vous",
     "Add {domain} for {site}": "Ajouter {domain} pour {site}",
     "Open Link gaps": "Ouvrir Liens manquants",
     "No link data yet": "Pas encore de données de liens",

@@ -577,7 +577,8 @@
       factRow("Sitemap date", plain(aDate(p.sitemap_date))),
       factRow("First archived", plain(aDate(p.first_archived))),
       factRow("First found", plain(aDate(p.first_seen))),
-      factRow("Last changed", plain(aDate(p.last_changed))),
+      // An edit the app saw, never the first reading (SEO review #11): a page never edited says so.
+      factRow("Last edit seen", known(p.last_changed) ? plain(aDate(p.last_changed)) : p.last_read ? esc(t("None since the first read")) : ""),
       factRow("Last read", plain(aDate(p.last_read))),
       factRow("Changes seen", known(p.edits) ? count(p.edits) : ""),
       factRow("Read with", plain(reader)),
@@ -2019,7 +2020,7 @@
     "Internal links": "Liens internes", "External links": "Liens externes", "Structured data": "Données structurées", "Language": "Langue",
     "Languages (hreflang)": "Langues (hreflang)", "Preferred address (canonical)": "Adresse préférée (canonique)", "Instructions to search engines": "Instructions aux moteurs de recherche",
     "Answer code": "Code de réponse", "Published (page says)": "Publiée (selon la page)", "Updated (page says)": "Mise à jour (selon la page)", "Sitemap date": "Date du sitemap",
-    "First archived": "Première archive", "First found": "Première détection", "Last changed": "Dernière modification", "Last read": "Dernière lecture",
+    "First archived": "Première archive", "First found": "Première détection", "Last changed": "Dernière modification", "Last edit seen": "Dernière modification vue", "None since the first read": "Aucune depuis la première lecture", "Last read": "Dernière lecture",
     "Changes seen": "Changements vus", "Read with": "Lue avec",
     "Mobile": "Mobile", "Desktop": "Ordinateur", "top {n} checked": "top {n} vérifié", "Your best position, same check": "Votre meilleure position, même vérification",
     "Keyword": "Mot-clé", "Their page": "Leur page", "Title in results": "Titre dans les résultats", "Was": "Avant", "Now": "Maintenant", "Your position": "Votre position",

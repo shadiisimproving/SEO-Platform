@@ -153,7 +153,8 @@
       case "shown_broken": return `${fill("Shown {i} times this week", { i: num(e.impressions) })} · ${e.causes.map(cause).join(", ")}`;
       case "data_gaps": return [e.partial?.length ? fill("{n} days partly read", { n: num(e.partial.length) }) : "", e.verify ? fill("{n} days differ from Search Console", { n: num(e.verify.days) }) : ""].filter(Boolean).join(" · ");
       case "rank_drop": case "rank_rise": return fill("Search Console average {a}, last check {b}", { a: dec1(e.position), b: scrapedWord(e) });
-      case "rival_passed": return (e.passed || []).map((r) => fill("{host} is now at position {p}, above you", { host: r.host, p: num(r.position) })).join(" · ");
+      // Only I moved: "You fell below", never "passed you" (SEO review 2026-11-17).
+      case "rival_passed": return (e.passed || []).map((r) => fill(r.you_fell ? "You fell below {host}, still at position {p}" : "{host} is now at position {p}, above you", { host: r.host, p: num(r.position) })).join(" · ");
       case "rival_gap": return fill("{host} at position {p}; you: {me}", { host: e.rivals?.[0]?.host || "", p: num(e.rivals?.[0]?.position ?? 0), me: scrapedWord(e) });
       case "striking": return fill("Search Console average {a}, last check {b}", { a: dec1(e.position), b: scrapedWord(e) });
       case "rank_no_click": return `${fill("{r}% click rate at position {p}; usual {u}%", { r: UI.dec(e.click_rate ?? 0), p: dec1(e.position), u: UI.dec(e.expected_rate ?? 0) })} · ${t(AI_WORDS[e.ai] || AI_WORDS["not-captured"])}`;
@@ -227,7 +228,8 @@
       default: return reasonOf(f);
     }
   }
-  const kindName = (f) => t(KIND[f.kind]?.name || f.kind);
+  const fellOnly = (f) => f.kind === "rival_passed" && (f.evidence?.passed || []).length > 0 && f.evidence.passed.every((r) => r.you_fell);
+  const kindName = (f) => t(fellOnly(f) ? "You fell below a rival" : KIND[f.kind]?.name || f.kind);
   /* The kind's tag has one colour per family, so kinds read apart at a glance (owner, 2026-11-12; cc36dc2 had made it grey):
      loss red, opportunity blue, gain or result teal, technical amber, plain information grey. insights.css draws them. */
   const FAMILY = {
@@ -1119,7 +1121,7 @@
     "Addresses, broken pages and missing days, from Search Console.": "Adresses, pages cassées et jours manquants, d'après la Search Console.",
     "Done tasks and dated notes, before vs after.": "Tâches faites et notes datées, avant contre après.",
     "Rank and clicks": "Positions et clics", "Rank checks beside Search Console: what neither shows alone.": "Vos relevés de position à côté de la Search Console : ce qu'aucun ne montre seul.",
-    "Just dropped": "Vient de chuter", "Just climbed": "Vient de monter", "Rival passed you": "Dépassé par un concurrent", "Rivals lead, people search it": "Concurrents devant, recherche réelle", "Almost there, both agree": "Presque là, les deux sources d'accord",
+    "Just dropped": "Vient de chuter", "Just climbed": "Vient de monter", "Rival passed you": "Dépassé par un concurrent", "You fell below a rival": "Passé sous un concurrent", "You fell below {host}, still at position {p}": "Vous êtes passé sous {host}, toujours en position {p}", "Rivals lead, people search it": "Concurrents devant, recherche réelle", "Almost there, both agree": "Presque là, les deux sources d'accord",
     "Another page shown": "Une autre page montrée", "Tracked, no searches": "Suivi, aucune recherche",
     "All": "Tous", "Just moved": "Vient de bouger", "Rivals ahead": "Concurrents devant", "Almost there": "Presque là", "Ranked, not clicked": "Classé, pas cliqué", "Wrong page": "Mauvaise page", "Tracking": "Suivi", "Filter findings": "Filtrer les constats",
     "Hidden searches": "Recherches masquées", "Updated just now": "Mis à jour à l'instant", "Updated {n} min ago": "Mis à jour il y a {n} min", "Updated {n} h ago": "Mis à jour il y a {n} h", "Updated yesterday": "Mis à jour hier", "Updated {n} d ago": "Mis à jour il y a {n} j",

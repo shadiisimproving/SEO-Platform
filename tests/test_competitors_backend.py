@@ -2438,7 +2438,8 @@ def test_competitor_cards_get_their_home_page_words_and_added_edited_counts(worl
         for url, title, meta in (("https://rival.example/fr/about", "About us", "Long"), ("https://rival.example/", "Rival - Coffee club", "Beans by post.")):
             conn.execute(text("INSERT INTO pages (domain_id, url, url_hash, title, meta_description) VALUES (:d, :u, SHA2(:u, 256), :t, :m)"), {"d": domain_id, "u": url, "t": title, "m": meta})
     row = rival_row(collective.rivals(world.engine))
-    assert (row["added_30d"], row["edited_30d"], row["removed_30d"]) == (1, 2, 1)
+    # Pages, not change rows (SEO review 2026-11-17, #11): the title and meta edits are on one page, so 1 page edited.
+    assert (row["added_30d"], row["edited_30d"], row["removed_30d"]) == (1, 1, 1)
     assert row["about"] == {"url": "https://rival.example/", "title": "Rival - Coffee club", "description": "Beans by post."}  # the shortest address is the home page
     mine = collective.rivals(world.engine)["mine"][0]
     assert mine["about"] is None and mine["added_30d"] == 0  # no page read: nothing is made up

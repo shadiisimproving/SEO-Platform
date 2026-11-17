@@ -35,7 +35,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   check("your site's card comes first", cards[0]?.you && /Your site/.test(cards[0].host), JSON.stringify(cards[0]));
   const one = cards.find((c) => /rival-one/.test(c.host || ""));
   check("a competitor's card is named by its home page and says what it does", one && one.name === "Rival One" && /Coffee club/.test(one.about), JSON.stringify(one));
-  check("the card splits its 30 days into added and edited, with its pages", one && /1 added in 30 days/.test(one.counts) && /3 edited in 30 days/.test(one.counts) && /9 pages/.test(one.counts), one?.counts);
+  check("the card splits its 30 days into added and edited pages (3 edits on 2 pages: 2), with its pages", one && /1 added in 30 days/.test(one.counts) && /2 edited in 30 days/.test(one.counts) && /9 pages/.test(one.counts), one?.counts);
   const blocked = cards.find((c) => /cafe-monde/.test(c.host || ""));
   check("a site that blocks bots says so, and shows no 0s", blocked && /Blocked/.test(blocked.counts) && !/0 added/.test(blocked.counts), blocked?.counts);
   check("every card has a logo", cards.every((c) => c.logo), cards.filter((c) => !c.logo).map((c) => c.host).join(", "));
@@ -128,6 +128,9 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   });
   check("on a phone the page doesn't scroll sideways, the cards do", !phone.pageWide && phone.strip, JSON.stringify(phone));
   check("on a phone the filter buttons fit the screen", phone.segsInside);
+  // SEO review 2026-11-17, competitors 3: the 1440 px rule kept two columns on a phone and gave Changes about 60 px.
+  const lower = await page.evaluate(() => document.querySelector("#cs-lower")?.getBoundingClientRect().width || 0);
+  check("on a phone Changes sits under the cards at the screen's width", lower > 300, lower);
   await page.screenshot({ path: OUT + "4-phone.png", fullPage: true });
 
   const real = problems.filter((p) => !/status of 404/.test(p)); // /api/auth/me answers 404 without --login

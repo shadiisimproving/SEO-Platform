@@ -169,8 +169,10 @@ def save_fetch(engine: Engine, domain_id: int, url: str, result: FetchResult, fi
                 )
 
         first_real_read = current.content_hash is None
-        if events or first_real_read:
+        if events:
+            # Only an edit the app saw. The first reading is no edit: counting it made "Updated, 12 months" read 100% (SEO review #11).
             values["last_changed_at"] = NOW
+        if events or first_real_read:
             _add_version(conn, current.id, fields)
         conn.execute(update(Page).where(Page.id == current.id).values(**values))
         for event in events:

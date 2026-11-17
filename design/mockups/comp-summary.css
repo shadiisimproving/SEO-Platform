@@ -69,6 +69,7 @@
 .cs-head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px 14px; flex-wrap: wrap; }
 .cs-head-row .cs-head { flex: 1 1 280px; min-width: 0; }
 .cs-head-row > .btn { flex: none; }
+.cs-head-row > .cs-head-acts { display: flex; flex: none; flex-wrap: wrap; gap: 8px; align-self: flex-start; }
 
 /* The competitor's name opens its profile: it looks like the name, and says it's a link on hover. */
 .cs-rival-open { display: inline-flex; align-items: center; gap: 8px; color: var(--text); text-align: start; border-radius: var(--r-s); }
@@ -365,8 +366,10 @@ html[data-simple="1"] #cs-moves .cs-bench-table :is(th, td):last-child { padding
   html[data-simple="1"] #cs-moves .cs-bench-table td:last-child { grid-area: 1 / 3; }
   .cs-bench-table .cl-tl-owner { white-space: nowrap; }
 }
-/* A 1280–1440 window with the sidebar open (owner's check, 2026-11-16): the table must fit without sideways scroll. */
-@media (max-width: 1440px) {
+/* A 1280–1440 window with the sidebar open (owner's check, 2026-11-16): the table must fit without sideways scroll.
+   Only above 900 px: below it the cards stack over the changes (the rule above). Without the floor this rule, coming later and
+   more specific, kept two columns on a phone and gave Changes about 60 px (SEO review 2026-11-17, competitors 3). */
+@media (min-width: 901px) and (max-width: 1440px) {
   html[data-simple="1"] .cs-bench { grid-template-columns: minmax(250px, 290px) minmax(0, 1fr); gap: 16px; }
   html[data-simple="1"] .cs-bench-table .cl-tl-what { min-width: 140px; }
   html[data-simple="1"] .cs-bench-table .cl-tl-owner { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }

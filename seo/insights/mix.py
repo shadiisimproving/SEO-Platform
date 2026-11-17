@@ -206,16 +206,32 @@ def _moved(ctx: Ctx, k: Keyword, rivals: list[str]) -> Finding | None:
 
 
 def _rival_passed(ctx: Ctx, k: Keyword, rivals: list[str]) -> Finding | None:
+    """A followed rival now above me that was below me on the previous like-for-like check.
+
+    Not a one-place swap (3 and 4 trading places is noise between two checks): the rival climbed or I fell by at least
+    MIX_PASS_PLACES. Not on a search nobody makes (MIX_MIN_IMPRESSIONS). When the rival didn't climb and only I fell, the
+    row says so ("you_fell"), so the screen says "You fell below" rather than "passed you" (SEO review 2026-11-17).
+    """
     if k.before is None or k.age > rules.MIX_FRESH_DAYS:
         return None
     was = _on(k.before, ctx.host)
     if was is None:
         return None
-    passed = [r for r in _rival_rows(k, rivals) if r["before"] is None or r["before"] > was]
+    shown = (k.demand or {}).get("impressions") or 0
+    if shown < rules.MIX_MIN_IMPRESSIONS:
+        return None
+    now_place = k.p if k.p is not None else k.depth + 1
+    fell = now_place - was
+    passed = []
+    for r in _rival_rows(k, rivals):
+        if r["before"] is not None and r["before"] <= was:
+            continue  # it was already above me
+        climbed = (k.depth + 1 if r["before"] is None else r["before"]) - r["position"]
+        if max(climbed, fell) < rules.MIX_PASS_PLACES:
+            continue
+        passed.append({**r, "you_fell": climbed <= 0})
     if not passed:
         return None
-    shown = (k.demand or {}).get("impressions") or 0
-    now_place = k.p if k.p is not None else k.depth + 1
     stake = shown * rules.MONTH * max(0.0, ctx.curve.rate(was) - ctx.curve.rate(now_place))
     return _finding(ctx, k, "rival_passed", rivals, stake, was=was, passed=passed[:3])
 
