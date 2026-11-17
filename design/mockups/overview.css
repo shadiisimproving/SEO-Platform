@@ -235,3 +235,7 @@ html[data-simple="1"] .ov-foot.is-quiet { display: none; }
 /* The head's Search Console chip: brands.js puts the logo in it, which made the button a block and broke the line. */
 html[data-simple="1"] #topbar .head-line .ov-trust { display: inline-flex; align-items: center; gap: 4px; vertical-align: top; }
 html[data-simple="1"] #topbar .head-line .ov-trust .brand-mention { display: inline-flex; }
+
+/* Today's See page: the numbers and chart are for one page, said above them with the way back (2026-11-17). */
+.note.ov-only-page { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin: 0 0 12px; }
+.note.ov-only-page .btn { margin-left: auto; }

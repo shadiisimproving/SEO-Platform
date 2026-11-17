@@ -417,12 +417,13 @@ def test_today_splits_big_drops_from_smaller_moves_and_never_shows_one_twice(eng
     _page_clicks(engine, site, "mine.example", "dipped", END, 100, 75)  # under 30%: only Going down
     _page_clicks(engine, site, "mine.example", "small", END, 40, 10)  # under 50 clicks before: only Going down
     _page_clicks(engine, site, "mine.example", "same", END, 100, 95)  # barely moved
-    _page_clicks(engine, site, "mine.example", "tiny", END, 5, 50)  # too small before to mean anything
+    _page_clicks(engine, site, "mine.example", "tiny", END, 5, 50)  # small before, but up 45 clicks: newly winning (F10, 2026-11-17)
     _page_clicks(engine, site, "mine.example", "rose", END, 50, 80)
+    _page_clicks(engine, site, "mine.example", "wobble", END, 25, 20)  # −20%, but 5 clicks: under this site's floor of 8
     data = today_view.today(engine)
     assert [item["page"] for item in data["todo"]] == ["https://mine.example/fell/"]
     assert {move["path"] for move in data["going_down"]} == {"/dipped/", "/small/"}
-    assert [move["path"] for move in data["going_up"]] == ["/rose/"]
+    assert [move["path"] for move in data["going_up"]] == ["/tiny/", "/rose/"]
 
 
 def test_today_a_site_whose_data_stopped_does_not_look_like_it_fell(engine, site):

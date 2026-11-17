@@ -53,6 +53,11 @@
   const TONE = { ok: "ok", old: "warn", failing: "crit", retrying: "busy", reading: "busy", waiting: "busy", not_connected: "off", not_set_up: "off", not_used: "off", no_sites: "off" };
   const ICON = { ok: "", warn: "triangle-alert", crit: "octagon-alert", busy: "refresh-cw", off: "" };
   const stateOf = (d, id) => d.source_states.find((s) => s.id === id) || { id, state: "no_sites", sites: [] };
+  /* Connected, but nothing read yet: its zeros aren't real zeros and it isn't "up to date" (ai-reports-workflow, 2026-11-17).
+     Reading or retrying counts as not ready only while no site has any data. */
+  const notReady = (src) => src.state === "waiting" || (["reading", "retrying"].includes(src.state) && !(src.sites || []).some((x) => x.through || x.last_ok_at));
+  const waitWords = () => `${t("Connected. Waiting for data")}. ${t("Arrives after the next run. Refresh data starts one now.")}`;
+  const waitCard = (button = true) => `<div class="empty"><p>${esc(waitWords())}</p>${button && LVx()?.refreshBtn ? `<div style="margin-top:10px">${LVx().refreshBtn(true)}</div>` : ""}</div>`;
   /* The site a chip speaks for: the worst one, so All sites never hides a failing site behind a good one. */
   const worstSite = (src) => src.sites.find((s) => s.state === src.state) || src.sites[0] || {};
   const nameOf = (src) => (src.id === "serp" ? src.name : t(SRC[src.id]));
@@ -83,8 +88,10 @@
   }
   /* One line under the answer instead of a big error card: what needs you, then "Sources ›". */
   function sourcesLine(d) {
-    const all = d.source_states, bad = all.filter((s) => ["failing", "old"].includes(s.state));
-    const wide = bad.length ? bad.map((s) => chip(s)).join("") : `<span class="ai-chip ok">${icon("circle-check")}<span>${(() => { const n = all.filter((s) => !["not_connected", "not_set_up", "not_used"].includes(s.state)).length; return n === 1 ? t("Source up to date") : tf("All {n} sources up to date", { n: num(n) }); })()}</span></span>`;
+    const all = d.source_states, bad = all.filter((s) => ["failing", "old"].includes(s.state)), waiting = all.filter(notReady);
+    // Only sources that were read count as up to date; one still waiting for its first read gets its own chip.
+    const fine = () => { const n = all.filter((s) => s.state === "ok").length; return n === 1 ? t("Source up to date") : tf("All {n} sources up to date", { n: num(n) }); };
+    const wide = bad.length || waiting.length ? [...bad, ...waiting].map((s) => chip(s)).join("") : `<span class="ai-chip ok">${icon("circle-check")}<span>${fine()}</span></span>`;
     const narrow = `<button class="ai-chip ${bad.length ? "warn" : "ok"} ai-only-narrow" data-ai-sources>${tf(bad.length ? "{n} sources · {m} need you ›" : "{n} sources ›", { n: num(all.length), m: num(bad.length) })}</button>`;
     return `<div class="ai-sources-line"><span class="ai-only-wide">${wide}</span>${narrow}<button class="link-btn ai-only-wide" data-ai-sources>${t("Sources")} ›</button></div>`;
   }
@@ -97,7 +104,8 @@
      the Sources panel (data-ai-sources, handled below). */
   function headSources(d) {
     const all = d.source_states, bad = all.filter((s) => ["failing", "old"].includes(s.state));
-    const used = all.filter((s) => !["not_connected", "not_set_up", "not_used"].includes(s.state)).length;
+    const used = all.filter((s) => s.state === "ok").length, waiting = all.filter(notReady);
+    if (!bad.length && waiting.length) return { word: waiting.length === 1 ? chipWords(waiting[0], true) : tf("{n} sources waiting for data", { n: num(waiting.length) }), open: "data-ai-sources" };
     if (!bad.length) return { word: used === 1 ? t("Source up to date") : tf("{n} sources up to date", { n: num(used) }), open: "data-ai-sources" };
     const one = bad.length === 1 ? bad[0] : null;
     const word = !one ? tf("{n} sources need you", { n: num(bad.length) }) : one.state === "failing" ? `${nameOf(one)} ${t("stopped working")}` : chipWords(one, true);
@@ -109,6 +117,7 @@
   function answer(d) {
     const ga4 = stateOf(d, "ga4"), lines = [];
     if (["not_connected", "not_used", "no_sites"].includes(ga4.state)) lines.push(esc(t("Connect Google Analytics to see AI visits and leads.")));
+    else if (notReady(ga4)) lines.push(`${esc(t("Connected. Waiting for data"))}.`); // the chart card under it says the rest, with Refresh data
     else if (!d.sessions) lines.push(esc(t("No AI visits in this period.")));
     else {
       const top = d.sources[0]?.source;
@@ -130,11 +139,11 @@
   // ---- four numbers ------------------------------------------------------------------------------
   /* The simpler screens' four cards (UI.card): each says one fact under its figure, and AI visits carries its weekly graph. */
   function cards(d) {
-    const ga4 = stateOf(d, "ga4"), off = ["not_connected", "not_used", "no_sites"].includes(ga4.state);
+    const ga4 = stateOf(d, "ga4"), wait = notReady(ga4), off = ["not_connected", "not_used", "no_sites"].includes(ga4.state) || wait;
     const has = (v) => v !== null && v !== undefined;
     const weeks = d.weekly.map((w) => w.sessions).filter((v) => v !== null);
     const visits = UI.card({ id: "ai-visits", label: "AI visits", value: off ? null : d.sessions, change: off ? null : { now: d.sessions, before: d.before },
-      sub: off ? esc(t("Google Analytics not connected")) : null, spark: !off && weeks.length > 1 ? weeks : null, cls: "tile" });
+      sub: wait ? esc(t("Waiting for data")) : off ? esc(t("Google Analytics not connected")) : null, spark: !off && weeks.length > 1 ? weeks : null, cls: "tile" });
     const leads = UI.card({ id: "ai-leads", label: "Leads", value: off ? null : d.key_events_set_up ? d.leads : `<span class="today-fig-word">${esc(t("Not set up"))}</span>`,
       change: !off && d.key_events_set_up && has(d.before_leads) ? { now: d.leads, before: d.before_leads, unit: "" } : null,
       sub: off ? "" : !d.key_events_set_up ? esc(t("Mark forms as GA4 key events")) : null, cls: "tile" });
@@ -149,9 +158,9 @@
   }
   function tiles(d) {
     if (simple() && UI.card) return cards(d);
-    const ga4 = stateOf(d, "ga4"), off = ["not_connected", "not_used", "no_sites"].includes(ga4.state);
+    const ga4 = stateOf(d, "ga4"), wait = notReady(ga4), off = ["not_connected", "not_used", "no_sites"].includes(ga4.state) || wait;
     const weeks = d.weekly.map((w) => w.sessions).filter((v) => v !== null);
-    const visits = UI.tile(t("AI visits"), off ? "—" : UI.cnt(d.sessions), off ? `<span class="ab">${t("Google Analytics not connected")}</span>` : LVx().change(d.sessions, d.before), { ic: "sparkles", line: !off && weeks.length > 1 ? weeks : null });
+    const visits = UI.tile(t("AI visits"), off ? "—" : UI.cnt(d.sessions), off ? `<span class="ab">${t(wait ? "Waiting for data" : "Google Analytics not connected")}</span>` : LVx().change(d.sessions, d.before), { ic: "sparkles", line: !off && weeks.length > 1 ? weeks : null });
     const leadsFig = off ? "—" : d.key_events_set_up ? num(d.leads) : `<span class="today-fig-word">${t("Not set up")}</span>`;
     const leadsNote = off ? "" : !d.key_events_set_up ? `<span class="ab">${t("Mark forms as GA4 key events")}</span>` : d.before_leads !== null && d.before_leads !== undefined ? `<span class="ab">${num(d.before_leads)} → ${num(d.leads)}</span>` : "";
     const leads = UI.tile(t("Leads"), leadsFig, leadsNote, { ic: "filter" });
@@ -194,6 +203,7 @@
     const weekOf = Object.fromEntries(weeks.map((w) => [w.end, w]));
     const off = NOT_ON.includes(ga4.state), any = weeks.some((w) => w.sessions);
     const body = off ? `<div class="empty"><p>${t("Connect Google Analytics to see AI visits.")}</p><div style="margin-top:10px"><button class="btn btn-main" data-lv-connect="google">${t("Connect")}</button></div></div>`
+      : notReady(ga4) ? waitCard()
       : !any ? `<div class="empty"><p>${t("No AI visits in these weeks.")}</p></div>`
       : LVx().lineChart("ai-weeks", days, [{ name: "AI visits", color: "var(--ch-1)", values }], { marks, markName: "Leads", dayLabel: (end) => weekWords(weekOf[end]) });
     const legend = !off && any && marks && Object.keys(marks).length ? `<div class="ai-half-foot"><span class="ai-legend"><i class="ai-dot"></i>${t("a week with a lead")}</span></div>` : "";
@@ -336,6 +346,7 @@
   function assistantsTab(d) {
     const ga4 = stateOf(d, "ga4");
     if (["not_connected", "not_used", "no_sites"].includes(ga4.state)) return notSet(t("Connect Google Analytics to see which assistants send visits."), `<button class="btn btn-main" data-lv-connect="google">${t("Connect")}</button>`);
+    if (notReady(ga4)) return waitCard(false);
     if (!d.sources.length) return notSet(`${t("No AI visits in this period: a real zero.")}${UI.tip("Google Analytics has data, and none of it came from the assistants on the AI list.")}`);
     const rateCell = (r) => (r.rate !== null ? pct(r.rate) : `<span class="muted" data-tip="${esc(tf("needs {need} AI visits, {n} so far", { need: num(d.limits.lead_rate_min_visits), n: num(r.sessions) }))}">—</span>`);
     const columns = [
@@ -349,6 +360,7 @@
   function pagesTab(d) {
     const ga4 = stateOf(d, "ga4");
     if (["not_connected", "not_used", "no_sites"].includes(ga4.state)) return notSet(t("Connect Google Analytics to see AI landing pages."), `<button class="btn btn-main" data-lv-connect="google">${t("Connect")}</button>`);
+    if (notReady(ga4)) return waitCard(false);
     const min = d.limits.cta_min_visits;
     const none = d.pages.filter((p) => !p.leads).length;
     const action = (r) => rowAct(d.key_events_set_up && !r.leads && r.sessions >= min ? UI.taskButton(taskFind({ kind: "cta", host: r.host, path: r.path, visits: r.sessions, key: `ai|cta|${r.host}|${r.path}` }, actionText({ kind: "cta", host: r.host, path: r.path, visits: r.sessions })), { label: "Task" }) : "");
@@ -407,7 +419,7 @@
     tabInfo = [];
     const body = A.tab === "report" ? window.GoogleAIReport.tab() : { assistants: assistantsTab, pages: pagesTab, cited: citedTab, questions: questionsTab }[A.tab](d);
     // Each tab's count is its badge (the table then needs no "1–5 of 5" under it: data-tt-own-count).
-    const ga4On = !NOT_ON.includes(stateOf(d, "ga4").state), c = d.copilot;
+    const ga4On = !NOT_ON.includes(stateOf(d, "ga4").state) && !notReady(stateOf(d, "ga4")), c = d.copilot;
     const counts = { assistants: ga4On ? d.sources.length : null, pages: ga4On ? d.pages.length : null, cited: c.sites.length ? c.sites.reduce((n, x) => n + x.pages.length, 0) : null, questions: c.sites.some((x) => x.queries) ? c.sites.reduce((n, x) => n + (x.queries?.length || 0), 0) : null };
     const badge = (id) => (counts[id] ? ` <span class="n-badge">${num(counts[id])}</span>` : "");
     const info = A.tab === "report" ? tabInfo : ["Some AI visits show as Direct or Organic Search.", "AI apps often send no referrer, so their visits show as Direct. Clicks from Google's AI Overviews count as Organic Search.", ...tabInfo];
@@ -685,7 +697,8 @@
   const fr = {
     "Google Analytics": "Google Analytics", "Clarity live": "Clarity en direct", "Clarity download": "Export Clarity", "{n} of {m} sites": "{n} sites sur {m}",
     "not connected": "non connecté", "not used": "non utilisé", "no keywords checked": "aucun mot-clé relevé", "nothing uploaded": "rien d'importé",
-    "waiting for data": "en attente de données", "retrying": "nouvel essai", "reading…": "lecture…", "queued": "en file", "stopped working": "ne fonctionne plus",
+    "waiting for data": "en attente de données", "Waiting for data": "En attente de données", "{n} sources waiting for data": "{n} sources en attente de données",
+    "Connected. Waiting for data": "Connecté. En attente de données", "Arrives after the next run. Refresh data starts one now.": "Arrive après le prochain passage. Actualiser les données en lance un tout de suite.", "retrying": "nouvel essai", "reading…": "lecture…", "queued": "en file", "stopped working": "ne fonctionne plus",
     "last good": "dernière réussite", "not updating": "ne se met plus à jour", "tried": "essai", "{n} days behind": "{n} jours de retard", "through": "jusqu'au", "read": "lu", "data lost in {n} h": "données perdues dans {n} h",
     "uploaded": "importé", "checked": "relevé", "old": "ancien", "Fix": "Corriger", "Upload": "Importer",
     "All {n} sources up to date": "Les {n} sources sont à jour", "Source up to date": "Source à jour", "{n} sources · {m} need you ›": "{n} sources · {m} à traiter ›", "{n} sources ›": "{n} sources ›", "Sources": "Sources",

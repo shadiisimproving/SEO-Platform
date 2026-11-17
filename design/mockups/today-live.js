@@ -112,6 +112,7 @@
   function shownValue(a, k, v) {
     let shown = typeof v === "number" ? UI.num(v) : String(v ?? "");
     if (k === "segment" && a.words.segment_dim === "device") shown = t(DEVICE_WORDS[String(v).toUpperCase()] || shown);
+    if (["a", "b", "was", "now"].includes(k) && typeof v === "number" && !Number.isInteger(v) && UI.dec) shown = UI.dec(v); // avg pos 4,2 in French
     if (k === "day" && /^\d{4}-\d{2}-\d{2}$/.test(shown)) shown = new Intl.DateTimeFormat(UI.locale(), { day: "numeric", month: "long" }).format(new Date(`${shown}T00:00:00`));
     return shown;
   }
@@ -130,7 +131,7 @@
     });
     return out.replace(/\u0000(\d+)\u0000/g, (_, i) => marks[Number(i)]);
   }
-  const MAIN_WORD = { source_failing: "Fix", backlink_lost: "Review", backlink_changed: "Review", page_drop: "See page", search_finding: "See why", ai_overview: "See it" };
+  const MAIN_WORD = { leads_drop: "See leads", source_failing: "Fix", backlink_lost: "Review", backlink_changed: "Review", page_drop: "See page", search_finding: "See why", ai_overview: "See it" };
   const mainButton = (a) => {
     if (a.kind === "page_drop" && a.open?.page) return `<button class="btn btn-small" data-today-page="${esc(a.open.page)}" data-today-host="${esc(a.host || "")}" data-today-range="${esc(a.open.range || "")}">${t("See page")}</button>`;
     const link = a.host && a.link && !a.link.includes("?") ? `${a.link}?site=${encodeURIComponent(a.host)}` : a.link;
@@ -140,6 +141,8 @@
     const title = say(a, "title"), detail = say(a, "detail");
     return {
       id: a.id, severity: a.severity, kind: a.kind, reason: a.reason, title, titleHtml: sayHtml(a, "title"), detail, host: a.host,
+      // One short line of likely cause on a drop, and what the same search did this week (seo/metrics/today.py).
+      cause: a.words?.cause ? say(a, "cause") : "", week: a.words?.week ? say(a, "week") : "",
       seenAttr: a.alert_ids ? `data-lv-seen="${esc(a.alert_ids.join(","))}"` : a.seen_key ? `data-lv-drop="${esc(a.seen_key)}"` : "",
       mainHtml: mainButton(a),
       find: a.kind === "search_finding" ? { title, host: a.host || null, priority: "medium", pages: a.page ? [a.page] : [], keywords: a.query ? [a.query] : [], source: { type: "search", key: a.seen_key, label: title, host: a.host || undefined, facts: detail ? [detail] : [], link: a.link } } : { title, host: a.host || null, priority: a.severity === "crit" ? "high" : "medium", ...(a.page ? { pages: [a.page] } : {}), ...(a.query ? { keywords: [a.query] } : {}), source: { type: "alert", label: title, host: a.host || undefined, facts: detail ? [detail] : [], link: a.link, key: a.seen_key ? `drop|${a.seen_key}` : `alert|${a.kind}|${a.host || ""}|${a.title}` } },
@@ -159,6 +162,7 @@
     const stale = d.lanes.filter((l) => l.stale);
     return {
       results: d.results, googleStopped: d.google_stopped, todo: d.todo.map(todoItem), goingDown: d.going_down, goingUp: d.going_up, otherEdits: d.other_edits,
+      movesWindow: d.moves_window || null, todoDrops: d.todo_drops || 0,
       rivals: d.rival_changes.map((c) => ({ ...c, label: t(KINDS[c.kind] || c.kind), path: pathOf(c.url), my_path: pathOf(c.my_url), when: when(c.when) })),
       followUp: T.summary.follow_up, renewals: T.summary.renewals_30d,
       sources: { ok: d.sources.filter((s) => s.ok).length, waiting: d.sources.filter((s) => s.waiting).length, total: d.sources.length, hosts: withoutGoogle(d), connectAttr: `data-today-connect="${esc(withoutGoogle(d)[0] || "")}"`, note: stale.length ? `${t("Background work")}: ${t("Last ran")} ${ago(stale[0].minutes) || t("never")}` : "" },
@@ -296,7 +300,12 @@
     "Clarity data lost in {n} h": "Données Clarity perdues dans {n} h", "Clarity data is being lost": "Des données Clarity sont en train d'être perdues",
     "Clarity keeps only 3 days of data.": "Clarity ne garde que 3 jours de données.",
     "{path}: −{percent}% Google clicks": "{path} : −{percent} % de clics Google", "Week on week: {was} → {now}": "Semaine sur semaine : {was} → {now}",
-    "~{n} clicks/month at stake": "~{n} clics/mois en jeu",
+    "~{n} clicks/month at stake": "~{n} clics/mois en jeu", "See leads": "Voir les leads",
+    "Leads fell {percent}%: {was} → {now}": "Les leads ont baissé de {percent} % : {was} → {now}", "Last 28 days vs the 28 before": "28 derniers jours vs les 28 précédents",
+    "Likely cause: lost places, avg pos {a} → {b}": "Cause probable : places perdues, pos. moy. {a} → {b}",
+    "Likely cause: fewer searches, {a} → {b} impressions": "Cause probable : moins de recherches, {a} → {b} impressions",
+    "Likely cause: lower click rate at the same place": "Cause probable : taux de clic plus bas à la même place",
+    "This week: avg pos {was} → {now}": "Cette semaine : pos. moy. {was} → {now}",
     "{path} dropped out of Google": "{path} est sortie de Google", "{path} is slowly losing clicks": "{path} perd lentement des clics",
     "“{query}” is almost on page 1": "« {query} » est presque en page 1", "“{query}” is close to the top 3": "« {query} » est proche du top 3",
     "“{query}” is clicked less than usual": "« {query} » est moins cliquée que d'habitude", "“{query}” is seen but never clicked": "« {query} » est vue mais jamais cliquée",

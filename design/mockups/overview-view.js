@@ -503,6 +503,7 @@
     OV.tab = "page"; OV.show = "all"; OV.page = 0; OV.sort = null; OV.moreFilters = false;
     OV.filters.page = { ...blankFilter(), q: page || "", q_mode: "exact" };
     OV.includeFresh = (page || "").trim() ? { dim: "page", q: page.trim() } : null;
+    OV.onlyPage = (page || "").trim() ? { page: page.trim(), host: host || UI.siteHostPicked?.() || null } : null;
     OV.toTable = true;
     UI.go("overview");
     setTimeout(scrollToTable, 0);
@@ -705,8 +706,13 @@
     return UI.head({ title: t("Overview"), period: true, source: sourceChip(d), info, main })
       .replace(/class="([^"]*)" data-ov-check/, 'class="$1 ov-trust" data-ov-check');
   }
+  /* Today's "See page": the four numbers, the chart and the sentence count that page only (COMPARISON lost place 1), for as
+     long as its site stays picked. The server says which page it counted (d.page); "Show the whole site" goes back. */
+  const onlyPage = () => (OV.onlyPage && OV.onlyPage.host === (UI.siteHostPicked?.() || null) ? OV.onlyPage.page : null);
+  const ovArgs = () => (onlyPage() ? { only_page: onlyPage() } : {});
+  const onlyPageNote = (d) => (d?.page ? `<p class="note ov-only-page" role="status">${icon("filter")}<span>${t("Numbers and chart for this page only:")} ${window.PageLink ? PageLink.html(d.page, { text: (() => { try { return new URL(d.page).pathname || "/"; } catch { return d.page; } })(), host: UI.siteHostPicked?.() || null, cls: "mono" }) : `<span class="mono">${esc(d.page)}</span>`}</span><button class="btn btn-small" data-ov-only-clear>${t("Show the whole site")}</button></p>` : "");
   function overviewPage() {
-    const entry = load("overview");
+    const entry = load("overview", ovArgs());
     const d = entry.data;
     const refresh = `<button class="btn" data-ov-refresh ${OV.poll ? "disabled" : ""}>${icon("refresh-cw")}${t(OV.poll ? "Reading…" : "Refresh data")}</button>`;
     const main = `${d && !STATES[d.state] ? refresh : ""}`;
@@ -720,7 +726,7 @@
     if (!d.totals) return wrap(`${trust(d)}<section class="card"><div class="empty"><h3>${t("No data in this period.")}</h3><p>${t("Pick a longer or earlier period.")}</p>${UI.longerPeriodButton ? `<div style="margin-top:12px">${UI.longerPeriodButton()}</div>` : ""}</div></section>`);
     const chartHead = `<div class="card-head"><h2>${t({ hour: "Hour by hour", week: "Week by week", day: "Day by day" }[d.granularity])}</h2>
       <span class="end ov-chart-tools">${d.single_site ? `<button class="link-btn" data-ov-note-add>${icon("plus")}${t("Add a note")}</button>` : ""}<button class="link-btn" data-ov-table aria-expanded="${OV.table}">${t(OV.table ? "Hide table" : "Show table")}</button></span></div>`;
-    return wrap(`${trust(d)}
+    return wrap(`${trust(d)}${onlyPageNote(d)}
       ${(() => { const said = sentence(d.answer); return said ? `<div class="ov-answer" dir="auto">${said}</div>` : ""; })()}
       ${cards(d)}
       <section class="card ov-chart-card">${chartHead}${chart(d)}</section>
@@ -734,18 +740,19 @@
     const started = Date.now();
     OV.poll = setInterval(async () => {
       if (document.hidden || UI.state.route !== "overview") return;
-      if (Date.now() - started > 120000) { stopPolling(); return; }
+      // Never silent: running out of time or failing says so where the button was pressed (daily-monitoring F4).
+      if (Date.now() - started > 120000) { stopPolling(); UI.toast(t("Still reading. Numbers update here when it's done."), { kind: "info" }); return; }
       try {
-        const now = await window.COMP.api("GET", `search/overview?${query()}`);
+        const now = await window.COMP.api("GET", `search/overview?${query(ovArgs())}`);
         if (now.last_pull && now.last_pull !== before) { stopPolling(); UI.toast(t("Search Console data updated.")); }
-      } catch { stopPolling(); }
+      } catch (err) { stopPolling(); UI.toast(err.message, { kind: "crit" }); }
     }, 5000);
     UI.render({ keepScroll: true });
   }
   function stopPolling() { clearInterval(OV.poll); OV.poll = null; forget(); redraw(); }
 
   // ---- events ---------------------------------------------------------------------------------------
-  const current = () => (shared() ? window.SCREEN_DATA.peek(`search/overview?${query()}`) : OV.cache.get(`search/overview?${query()}`)?.data);
+  const current = () => (shared() ? window.SCREEN_DATA.peek(`search/overview?${query(ovArgs())}`) : OV.cache.get(`search/overview?${query(ovArgs())}`)?.data);
   const hostPicked = () => UI.siteHostPicked() || window.SITES.find((s) => s.realId)?.host || null;
   function track(queries, opener) {
     const d = current();
@@ -774,7 +781,9 @@
         (OV.moreFilters ? UI.$('[data-ov-f="min_clicks"]') : UI.$("[data-ov-more-filters]"))?.focus({ preventScroll: true });
         return;
       }
+      if (hit("[data-ov-only-clear]")) { OV.onlyPage = null; OV.filters.page = blankFilter(); OV.includeFresh = null; UI.render({ keepScroll: true }); return; }
       if (hit("[data-ov-filter-clear]")) {
+        if (OV.tab === "page") OV.onlyPage = null;
         OV.filters[OV.tab] = blankFilter(); OV.moreFilters = false; OV.page = 0; OV.selected.clear();
         UI.render({ keepScroll: true }); UI.$("#ov-f-q")?.focus({ preventScroll: true });
         return;
@@ -846,9 +855,16 @@
         el.disabled = true;
         try {
           const answers = await Promise.all(ids.map((id) => window.COMP.api("POST", `sites/${id}/collect`, {})));
+          OV.fresh = true; forget();
+          if (window.LV?.watchReads) {
+            // Follow the reads themselves, as Refresh data does everywhere else: a refused read says which source and why,
+            // with Fix it, at once; a slow one says it's still reading. Then Google is asked again, not the kept answer (F4).
+            OV.poll = true; UI.render({ keepScroll: true });
+            try { await window.LV.watchReads(answers, { redraw: false }); } finally { OV.poll = null; OV.fresh = true; forget(); redraw(); }
+            return;
+          }
           if (answers.some((a) => a.pages) && window.LV?.PAGES_NOTE) UI.toast(t(window.LV.PAGES_NOTE), { kind: "info" }); // my pages are read too (2026-11-10)
           if (answers.some((a) => a.rankings) && window.LV?.DDG_NOTE) UI.toast(t(window.LV.DDG_NOTE), { kind: "info" }); // and DuckDuckGo positions (2026-11-11)
-          OV.fresh = true; forget();
           startPolling(before);
         } catch (err) { UI.toast(err.message, { kind: "crit" }); el.disabled = false; }
       }
@@ -926,7 +942,7 @@
       old.init?.(helpers); UI = helpers; ({ t, esc, num, icon } = helpers); bind();
       UI.range.on(() => { OV.page = 0; OV.selected.clear(); });
       // Simpler screens: what Overview shows first, for SCREEN_DATA's warm-up and menu hover (does nothing with the switch off).
-      window.SCREEN_DATA?.screen?.("overview", () => [`search/overview?${query()}`, OV.tab === "opportunities" ? `search/opportunities?${query({ kind: OV.opp })}` : `search/breakdown?${query(breakdownArgs())}`]);
+      window.SCREEN_DATA?.screen?.("overview", () => [`search/overview?${query(ovArgs())}`, OV.tab === "opportunities" ? `search/opportunities?${query({ kind: OV.opp })}` : `search/breakdown?${query(breakdownArgs())}`]);
     },
     page: overviewPage,
     /* The view in the address: tab, show, brand, and the filters of Queries and Pages. */
@@ -1010,7 +1026,8 @@
     "Search Console data updated.": "Données Search Console à jour.", "Add it in Keywords.": "Ajoutez-le dans Mots-clés.",
     "It matches Search Console.": "C'est identique à la Search Console.", "It differs from Search Console. See the warning.": "Cela diffère de la Search Console. Voir l'alerte.",
     "Re-reading those days. Updates here when done.": "Relecture de ces jours. Mise à jour ici une fois terminé.",
-    "Already a brand word.": "Déjà un mot de marque.", "That note is already on that day.": "Cette note existe déjà ce jour-là.", "Type what the rule should match.": "Indiquez ce que la règle doit reconnaître.",
+    "Already a brand word.": "Déjà un mot de marque.", "Numbers and chart for this page only:": "Chiffres et graphique pour cette page seulement :", "Show the whole site": "Voir tout le site",
+    "Still reading. Numbers update here when it's done.": "Lecture en cours. Les chiffres se mettent à jour ici une fois terminé.", "That note is already on that day.": "Cette note existe déjà ce jour-là.", "Type what the rule should match.": "Indiquez ce que la règle doit reconnaître.",
     "Type a short note, up to 300 characters.": "Saisissez une note courte, 300 caractères au plus.", "Pick one site for a note.": "Choisissez un site pour la note.",
     // Simpler screens (2026-11-12): the head's chip and its check panel.
     "Search Console · live": "Search Console · en direct", "Search Console · differs": "Search Console · diffère", "Search Console · saved data": "Search Console · données enregistrées",

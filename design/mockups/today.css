@@ -6,6 +6,9 @@
 .today-verdict > .status { font-size: 13px; padding: 3px 10px 3px 8px; }
 .today-second { font-size: 14px; color: var(--text-2); }
 .today-state { font-size: 14px; color: var(--text); margin-top: 6px; }
+.today-first-act { margin-top: 10px; }
+/* A drop's likely cause, and the same search this week: one short grey line each under the row. */
+.rows .what .today-cause { font-size: 12px; color: var(--text-2); margin-top: 2px; }
 .content > .setup + .today-answer, .today-answer + .setup { margin-top: 0; }
 /* Why a to-do row is where it is: an icon and a word, coloured by how serious it is. */
 .rows .what .d:has(> .today-why) { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; }
