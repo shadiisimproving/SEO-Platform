@@ -446,6 +446,8 @@ class CompetitorReferrer(Base):
     source_file: Mapped[str | None] = mapped_column(String(255), nullable=True)
     source_label: Mapped[str | None] = mapped_column(String(60), nullable=True)
     in_common_crawl: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))
+    # From the file's Nofollow / Sponsored / UGC columns: any followed link (1), only ones that pass little (0), not said (NULL).
+    followed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     # Someone said this competitor has no such link. Kept rather than deleted, so a later upload can't bring it back.
     removed_by_hand: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))
     first_seen_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
@@ -476,6 +478,7 @@ class CompetitorReferrerLink(Base):
     last_seen: Mapped[date | None] = mapped_column(Date, nullable=True)
     source_file: Mapped[str | None] = mapped_column(String(255), nullable=True)
     source_label: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    rel: Mapped[str | None] = mapped_column(String(40), nullable=True)  # "follow", "nofollow ugc"...; NULL when the file doesn't say
     imported_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
 
 
@@ -589,6 +592,8 @@ class Backlink(Base):
     seen_rel: Mapped[str | None] = mapped_column(String(120), nullable=True)
     seen_anchor: Mapped[str | None] = mapped_column(Text, nullable=True)
     seen_href: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Did the last reading find the link pointing at the logged target page? 0: it moved to another page of my site.
+    to_target: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     final_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     target_final_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     lost_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)

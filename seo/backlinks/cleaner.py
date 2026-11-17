@@ -420,6 +420,51 @@ def clean_csv(data: bytes, known: Mapping[str, str] | None = None, *, need_spam:
     )
 
 
+def scale_of(label: str | None) -> str:
+    """Whose scale a score is on, as one key: "Authority Score (SEMrush)" and a typed "SEMrush" are both "semrush".
+
+    A plain CSV says nothing about its tool, so its column name ("DR (CSV)") is the scale. Scores of two scales never sort
+    as one (SEO review 2026-11-17, #7): Ubersuggest's DA runs higher than SEMrush's Authority Score for the same site.
+    design/mockups/cleaner.js has the browser's copy.
+    """
+    raw = (label or "").strip()
+    match = re.search(r"\(([^)]+)\)", raw)
+    tool = match.group(1).strip() if match and match.group(1).strip().lower() != "csv" else raw
+    return " ".join(tool.lower().split())
+
+
+def scale_ranks(labels) -> dict[str, int]:
+    """Each scale's place in a sort: the one most rows are scored on first (0), then the others, ties A to Z."""
+    counts: dict[str, int] = {}
+    for label in labels:
+        key = scale_of(label)
+        counts[key] = counts.get(key, 0) + 1
+    return {key: at for at, key in enumerate(sorted(counts, key=lambda k: (-counts[k], k)))}
+
+
+_TRUE_WORDS = {"true", "1", "yes", "y", "x", "oui", "vrai", "lost", "removed"}
+_LIVE_WORDS = {"", "false", "0", "no", "n", "non", "faux", "-", "n/a", "none", "live", "active"}
+
+
+def _flag(raw: str) -> bool | None:
+    value = " ".join(raw.strip().lower().split())
+    if value in _LIVE_WORDS:
+        return False if value else None
+    return True if value in _TRUE_WORDS or value else None
+
+
+def _rel_of(flags: dict[str, bool | None], link_type: str) -> str | None:
+    """"follow", or the attributes that make a link pass little ("nofollow ugc"), or None when the file doesn't say."""
+    kinds = [name for name in ("nofollow", "sponsored", "ugc") if flags.get(name)]
+    words = set(re.split(r"[^a-z]+", link_type.lower()))
+    kinds += [name for name in ("nofollow", "sponsored", "ugc") if name in words and name not in kinds]
+    if kinds:
+        return " ".join(kinds)
+    if any(flags.get(name) is False for name in ("nofollow", "sponsored", "ugc")) or words & {"dofollow", "follow"}:
+        return "follow"
+    return None
+
+
 # Only read for competitors' files (Link gaps). clean_csv and its browser copy don't use them.
 DETAIL_ALIASES: dict[str, list[str]] = {
     "anchor": ["anchor text", "anchor", "link anchor", "anchor_text"],
@@ -427,6 +472,12 @@ DETAIL_ALIASES: dict[str, list[str]] = {
     "source_title": ["source page title", "source title", "referring page title", "page title", "title"],
     "first_seen": ["first seen", "first_seen", "first seen date"],
     "last_seen": ["last seen", "last_seen", "last seen date"],
+    # SEMrush and Ahrefs exports say whether a link is followed and still there (SEO review 2026-11-17, #13).
+    "nofollow": ["nofollow", "no follow", "is nofollow"],
+    "sponsored": ["sponsored", "is sponsored"],
+    "ugc": ["ugc", "is ugc"],
+    "lost": ["lost link", "lost", "lost status", "is lost", "lost date"],
+    "link_type": ["link type", "rel", "link attributes", "attributes"],
 }
 _ISO_DAY = re.compile(r"^(\d{4})-(\d{2})-(\d{2})")
 
@@ -480,5 +531,7 @@ def link_rows(data: bytes) -> list[dict]:
             "spam_score": parse_spam(cell(r, "spam_score")),
             "first_seen": _day(cell(r, "first_seen")),
             "last_seen": _day(cell(r, "last_seen")),
+            "rel": _rel_of({name: _flag(cell(r, name)) if name in mapping else None for name in ("nofollow", "sponsored", "ugc")}, cell(r, "link_type")),
+            "lost": _flag(cell(r, "lost")) if "lost" in mapping else None,
         })
     return found

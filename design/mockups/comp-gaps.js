@@ -3,13 +3,14 @@
 (() => {
   "use strict";
   let UI = null;
-  const S = { site: null, data: null, filter: "", hide: false, quality: "all", reason: "", reach: "any", pa: "", sort: null, picked: new Set(), adding: false, openLink: null, linkSort: null };
+  const S = { site: null, data: null, filter: "", hide: false, followed: true, quality: "all", reason: "", reach: "any", pa: "", sort: null, picked: new Set(), adding: false, openLink: null, linkSort: null };
   const PAGES = "cg"; // the table's pages and search (table-pages.js), like every long table in the app
   const LINK_PAGES = "cg-links"; // the same for the links of the one domain that is open
   let sync = Promise.resolve(); // calls caused by the Backlinks page, kept in the order they happened
 
   const t = (s) => UI.t(s);
   const esc = (v) => UI.esc(v);
+  const fill = (words, values) => Object.entries(values).reduce((out, [key, value]) => out.split(`{${key}}`).join(value), t(words));
   const onScreen = () => UI.state.route === "competitors" && COMP.tab === "gaps";
   // An empty state with the short line on screen and the reason behind an (i) right after it.
   const emptyTip = (title, text, tip, action = "") => COMP.empty(title, text, action).replace("</p>", () => `${UI.tip(tip)}</p>`);
@@ -130,7 +131,11 @@
   const isFlagged = (gap) => gap.quality === "spam";
   /* One competitor, or all of them together; "2 or more" keeps the domains that link to several, the strongest gaps. */
   /* The search finds a domain by its name, its title, or the anchor text and pages of its links. */
-  const searched = () => allRows().filter((g) => TP.matches(PAGES, g.domain, g.display, g.title, ...(g.links || []).flatMap((l) => [l.anchor, l.source_title, l.source_url, l.target_url])) && !(S.hide && (inConsideration(g) || g.in_todo)));
+  const searched = () => allRows().filter((g) => TP.matches(PAGES, g.domain, g.display, g.title, ...(g.links || []).flatMap((l) => [l.anchor, l.source_title, l.source_url, l.target_url])) && !(S.hide && (inConsideration(g) || g.in_todo)) && !(S.followed && g.followed === false));
+  /* Followed links only, on by default (SEO review 2026-11-17, #13): a domain whose file says every link is nofollow, sponsored
+     or ugc passes little, so it waits behind one tick. A file that doesn't say (followed unknown) always shows. */
+  const notFollowed = () => allRows().filter((g) => g.followed === false && TP.matches(PAGES, g.domain, g.display, g.title)).length;
+  const followedBox = () => `<label class="opt"><input type="checkbox" class="chk" id="cg-followed" style="margin:0" ${S.followed ? "checked" : ""}>${t("Followed links only")}${UI.tip("Leaves out domains whose file says every link is nofollow, sponsored or ugc. Lost links in a file are never listed.")}</label>`;
   /* "any", "1" for exactly one competitor, or a number for that many or more. */
   const reachOk = (g, reach) => reach === "any" || (reach === "1" ? g.competitor_count === 1 : g.competitor_count >= Number(reach));
   const reaches = (g) => reachOk(g, S.reach);
@@ -150,7 +155,7 @@
   /* Status sorts by how far along a domain is: To do, In consideration, a lost link, nothing yet, then spam. */
   const statusRank = (g) => (g.in_todo ? 3 : inConsideration(g) ? 2 : g.lost_link ? 1 : isFlagged(g) ? -1 : 0);
   const SORTS = {
-    domain: (g) => g.display || g.domain, links: (g) => g.competitor_count, authority: (g) => g.authority, spam: (g) => g.spam_score, pa: bestPa, anchor: (g) => topLink(g)?.anchor || null, count: (g) => (linksOf(g).length ? linkTotal(g, linksOf(g)) : null), status: statusRank,
+    domain: (g) => g.display || g.domain, links: (g) => g.competitor_count, authority: (g) => (isSet(g.authority) ? [g.scale_rank ?? 0, g.authority] : null), spam: (g) => g.spam_score, pa: bestPa, anchor: (g) => topLink(g)?.anchor || null, count: (g) => (linksOf(g).length ? linkTotal(g, linksOf(g)) : null), status: statusRank,
   };
   const LINK_SORTS = { anchor: (l) => l.anchor || null, pa: (l) => l.page_authority, from: (l) => l.source_url, to: (l) => l.target_url || null };
   const PA_STEPS = [10, 20, 30, 40, 50];
@@ -160,6 +165,8 @@
     return list.map((item) => [get(item), item]).sort(([x], [y]) => {
       if (!isSet(x)) return isSet(y) ? 1 : 0;
       if (!isSet(y)) return -1;
+      const scored = window.BacklinkCleaner.compareScored(x, y, dir); // one tool's scores against each other (#7)
+      if (scored !== null) return scored;
       return (typeof x === "number" ? x - y : String(x).localeCompare(String(y))) * dir;
     }).map(([, item]) => item);
   }
@@ -378,7 +385,7 @@
           ${PA_STEPS.map((n) => `<option value="${n}" ${String(n) === S.pa ? "selected" : ""}>${esc(t("{n} or more").replace("{n}", UI.num(n)))}</option>`).join("")}
         </select></label>`;
   const hideBox = () => `<label class="opt"><input type="checkbox" class="chk" id="cg-hide" style="margin:0" ${S.hide ? "checked" : ""}>${t("Hide added ones")}</label>`;
-  const filterPop = () => `<div class="cg-filter-pop-body" role="group" aria-label="${t("Filter")}">${reachField()}${paField()}<div class="field"><span>${t("Spam filter")}</span>${qualityChips()}</div>${hideBox()}${filtersOn() ? `<button type="button" class="link-btn" data-cg-unfilter>${t("Clear filters")}</button>` : ""}</div>`;
+  const filterPop = () => `<div class="cg-filter-pop-body" role="group" aria-label="${t("Filter")}">${reachField()}${paField()}<div class="field"><span>${t("Spam filter")}</span>${qualityChips()}</div>${hideBox()}${followedBox()}${filtersOn() ? `<button type="button" class="link-btn" data-cg-unfilter>${t("Clear filters")}</button>` : ""}</div>`;
   function openFilters(anchor) {
     if (anchor.getAttribute("aria-expanded") === "true") { UI.closePopover({ focus: true }); return; }
     UI.popover(anchor, filterPop(), "cg-filter-pop");
@@ -400,7 +407,11 @@
       return emptyTip(t("No competitors yet"), t("Add a competitor first."), "Link gaps show who links to your competitors but not to you.", `<button class="btn btn-main" data-cg-find>${UI.icon("search")}${t("Find competitors")}</button>`);
     }
     const strip = summaryLine(d);
-    const left = d.already_linking ? `<p class="help cg-left">${esc(leftOutWords(d.already_linking))}</p>` : "";
+    const hiddenNf = S.followed ? notFollowed() : 0;
+    // Scores of different tools never sort as one (#7): the leading tool's come first, the others after, each on its own scale.
+    const scales = new Set(allRows().filter((g) => isSet(g.scale_rank)).map((g) => g.scale_rank));
+    const scaleNote = scales.size > 1 && d.score_scale ? `<p class="help cg-left">${esc(fill("Strength: {tool} scores are compared first; other tools' scores come after, on their own scale.", { tool: scaleOf(d.score_scale) }))}</p>` : "";
+    const left = `${d.already_linking ? `<p class="help cg-left">${esc(leftOutWords(d.already_linking))}</p>` : ""}${scaleNote}${hiddenNf ? `<p class="help cg-left">${esc(hiddenNf === 1 ? t("1 domain with only nofollow, sponsored or ugc links is hidden.") : fill("{n} domains with only nofollow, sponsored or ugc links are hidden.", { n: UI.num(hiddenNf) }))} <button type="button" class="link-btn" data-cg-show-nofollow>${t("Show them")}</button></p>` : ""}`;
     if (!d.competitors.some((c) => c.has_data)) {
       return `${strip}${emptyTip(t("No links yet"), t("Upload a CSV of a competitor's links, or add a domain."), "Export the CSV from a free SEMrush or Ubersuggest account. Domains that don't link to you appear here, with spam flagged.", `<button class="btn btn-main" id="cg-up-empty" data-cg-upload="${d.competitors[0].id}">${UI.icon("list-plus")}${t("Upload a CSV")}</button><button class="btn" data-cg-add-domain>${UI.icon("plus")}${t("Add a domain")}</button>`)}`;
     }
@@ -447,6 +458,7 @@
         ${paField()}
         ${qualityChips()}
         ${hideBox()}
+        ${followedBox()}
         <span class="cg-picktools">
           ${uploadButton(d)}
           <button class="btn btn-small" data-cg-add-domain>${UI.icon("plus")}${t("Add a domain")}</button>
@@ -927,6 +939,7 @@
       }
       if ((el = hit("[data-cg-quality]"))) { S.quality = el.dataset.cgQuality; S.reason = ""; refilter(`[data-cg-quality="${S.quality}"]`); return; }
       if ((el = hit("#cg-filters"))) { openFilters(el); return; }
+      if (hit("[data-cg-show-nofollow]")) { S.followed = false; refilter(); return; }
       if (hit("[data-cg-unfilter]")) { Object.assign(S, { reach: "any", pa: "", quality: "all", hide: false, reason: "" }); refilter("#cg-reach"); return; }
       if ((el = hit("[data-cg-sort]"))) {
         const id = el.dataset.cgSort, first = id === "domain" || id === "anchor" ? "asc" : "desc"; // words A to Z, numbers biggest first
@@ -974,6 +987,7 @@
       if (id === "cg-reach") { S.reach = e.target.value; refilter("#cg-reach"); return; }
       if (id === "cg-pa") { S.pa = e.target.value; refilter("#cg-pa"); return; }
       if (id === "cg-hide") { S.hide = e.target.checked; refilter("#cg-hide"); return; }
+      if (id === "cg-followed") { S.followed = e.target.checked; refilter("#cg-followed"); return; }
       if (id === "cg-up-file") {
         UI.$("#cg-up-error")?.replaceChildren();
         const send = UI.$("#cg-up-send");
@@ -1002,7 +1016,7 @@
     },
     async load() {
       const siteId = COMP.siteId;
-      if (S.site !== siteId) { S.site = siteId; S.filter = ""; S.hide = false; S.quality = "all"; S.reason = ""; S.reach = "any"; S.sort = null; S.openLink = null; S.linkSort = null; TP.state(PAGES).q = ""; TP.reset(PAGES); S.picked.clear(); }
+      if (S.site !== siteId) { S.site = siteId; S.filter = ""; S.hide = false; S.followed = true; S.quality = "all"; S.reason = ""; S.reach = "any"; S.sort = null; S.openLink = null; S.linkSort = null; TP.state(PAGES).q = ""; TP.reset(PAGES); S.picked.clear(); }
       await sync; // anything the Backlinks page just changed is on the server before reading it back
       const [answer, competitors] = await Promise.all([COMP.api("GET", `link-gaps?site_id=${siteId}`), COMP.api("GET", `competitors?site_id=${siteId}`)]);
       if (siteId !== COMP.siteId) return; // another site was picked while this was on its way
@@ -1017,6 +1031,8 @@
     /* Simpler screens: the two ways to bring in domains sit in the head, so the bar over the table is only search and filters. */
     headMain: () => (S.data?.competitors?.length ? `<span class="cg-head-acts" data-comp-main="gaps"><button class="btn" id="cg-upload-head" data-cg-upload="${uploadTarget(S.data)}">${UI.icon("list-plus")}${t("Upload links")}</button><button class="btn" id="cg-add-domain-head" data-cg-add-domain>${UI.icon("plus")}${t("Add a domain")}</button></span>` : ""),
     headInfo: () => [INTRO],
+    // Say what the list is in its head (COMPARISON, place 3): sites that link to competitors and not to me.
+    headLine: () => `<span class="cg-head-line">${esc(t("Sites linking to your competitors, not to you"))}</span>`,
     after() {
       const all = UI.$("#cg-all");
       if (all) all.indeterminate = all.dataset.indeterminate === "true";
@@ -1346,7 +1362,14 @@
     "Upload a CSV of links to one of your competitors, and the domains that don't link to you appear here.": "Importez un CSV des liens vers un de vos concurrents : les domaines qui ne pointent pas vers vous apparaîtront ici.",
     "No gaps in your files": "Aucun lien manquant dans vos fichiers",
     "Every domain in your files already links to you, or is one of your own.": "Tous les domaines de vos fichiers pointent déjà vers vous, ou sont les vôtres.",
-    "Hide added ones": "Masquer les ajoutés", "Why they're flagged": "Pourquoi ils sont signalés",
+    "Hide added ones": "Masquer les ajoutés", "Followed links only": "Liens suivis seulement",
+    "Leaves out domains whose file says every link is nofollow, sponsored or ugc. Lost links in a file are never listed.": "Écarte les domaines dont le fichier indique que tous les liens sont nofollow, sponsored ou ugc. Les liens perdus d'un fichier ne sont jamais listés.",
+    "1 domain with only nofollow, sponsored or ugc links is hidden.": "1 domaine qui n'a que des liens nofollow, sponsored ou ugc est masqué.",
+    "{n} domains with only nofollow, sponsored or ugc links are hidden.": "{n} domaines qui n'ont que des liens nofollow, sponsored ou ugc sont masqués.",
+    "Show them": "Les afficher",
+    "Strength: {tool} scores are compared first; other tools' scores come after, on their own scale.": "Force : les scores {tool} sont comparés d'abord ; ceux des autres outils viennent après, sur leur propre échelle.",
+    "Sites linking to your competitors, not to you": "Sites qui font un lien vers vos concurrents, pas vers vous",
+    "Why they're flagged": "Pourquoi ils sont signalés",
     "Search domains": "Chercher un domaine", "Competitor": "Concurrent", "All competitors": "Tous les concurrents",
     "Any number": "Un ou plusieurs", "Only 1": "Un seul", "domains": "domaines",
     "Select all shown": "Tout sélectionner à l'écran",

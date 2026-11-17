@@ -136,16 +136,17 @@ def _card_facts(conn, hosts: list[str]) -> dict[str, dict]:
     if not names:
         return out
     marks = ",".join(":" + k for k in names)
+    # Pages, not change rows: a rewrite saves a title, a meta and a text change and is still one page edited (SEO review #11).
+    what = "CASE e.kind WHEN 'new_page' THEN 'added_30d' WHEN 'page_gone' THEN 'removed_30d' ELSE 'edited_30d' END"
     rows = conn.execute(text(
-        "SELECT d.host, e.kind, COUNT(*) AS n FROM change_events e JOIN domains d ON d.id = e.domain_id "
-        f"WHERE d.host IN ({marks}) AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL 30 DAY GROUP BY d.host, e.kind"
+        f"SELECT d.host, {what} AS what, COUNT(DISTINCT e.page_id) AS n FROM change_events e JOIN domains d ON d.id = e.domain_id "
+        f"WHERE d.host IN ({marks}) AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL 30 DAY GROUP BY d.host, {what}"
     ), names).mappings()
     for r in rows:
         held = out.get(str(r["host"]).lower())
         if held is None:
             continue
-        key = "added_30d" if r["kind"] == "new_page" else "removed_30d" if r["kind"] == "page_gone" else "edited_30d"
-        held[key] += int(r["n"])
+        held[r["what"]] += int(r["n"])
     # The home page is the shortest address read on that host that has a title: / beats /fr/ beats /fr/about.
     pages = conn.execute(text(
         "SELECT d.host, p.url, p.title, p.meta_description FROM pages p JOIN domains d ON d.id = p.domain_id "
@@ -302,24 +303,28 @@ def links(engine: Engine, site_id: int | None = None) -> dict:
             })
             for competitor in gap["competitors"]:
                 entry["rivals"][competitor["id"]] = {"id": competitor["id"], "host": competitor["host"]}
-            if gap["authority"] is not None and (entry["authority"] is None or gap["authority"] > entry["authority"]):
-                entry["authority"], entry["authority_label"] = gap["authority"], gap["authority_label"]
+            if gap["authority"] is not None:
+                entry.setdefault("scores", []).append((gap["authority"], gap["authority_label"]))
+            entry.setdefault("follows", []).append(gap["followed"])
             entry["sources"].update(gap["sources"])
             entry["is_competitor"] = entry["is_competitor"] or gap["is_competitor"]
             entry["sites"].append({
                 "id": site["id"], "host": site["host"], "quality": gap["quality"], "reason_words": gap["reason_words"], "flagged_by": gap["flagged_by"],
                 "in_consideration": gap["in_consideration"], "lost_link": gap["lost_link"], "kept": gap["kept"],
             })
+    gaps.pick_scores(merged.values())  # one tool's score per domain, never the biggest number of any tool (SEO review #7)
+    for entry in merged.values():
+        entry["followed"] = gaps.merge_followed(entry.pop("follows", []))
     everything = [
         {**entry, "rivals": sorted(entry["rivals"].values(), key=lambda r: r["host"]), "rival_count": len(entry["rivals"]), "sources": sorted(entry["sources"])}
         for entry in merged.values()
     ]
-    everything.sort(key=lambda g: (-g["rival_count"], -(g["authority"] if g["authority"] is not None else -1), g["cc_rank"] or 10**12, g["domain"]))
+    scale = gaps.order_by_scale(everything, "rival_count")
     has = lambda gap, state: any(s["quality"] == state for s in gap["sites"])  # noqa: E731
     good = [g for g in everything if has(g, quality.GOOD)]
     flagged = [g for g in everything if not has(g, quality.GOOD) and has(g, quality.SPAM)]
     return {
         "sites": sites, "gaps": good[:LINK_ROWS], "flagged": flagged[:LINK_ROWS],
         "funnel": {"found": len(everything), "good": len(good), "flagged": len(flagged), "checking": len(everything) - len(good) - len(flagged), "shared": sum(1 for g in good if g["rival_count"] >= 2)},
-        "rivals_total": len(rival_ids), "rivals_with_data": len(with_data), "rivals": sorted(every_rival.values(), key=lambda r: r["host"]),
+        "score_scale": scale, "rivals_total": len(rival_ids), "rivals_with_data": len(with_data), "rivals": sorted(every_rival.values(), key=lambda r: r["host"]),
     }
