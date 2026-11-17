@@ -246,7 +246,8 @@ def dropped_out(ctx: Ctx) -> Result:
 
 
 def _known_problems(ctx: Ctx) -> dict[str, list]:
-    """What the last health test and Links Checker said about each page, by path: noindex, an error, a redirect."""
+    """What the last health test, Links Checker and URL Inspection said about each page, by path: noindex, an error, a
+    redirect, not on Google."""
     found: dict[str, list] = {}
 
     def add(url, code):
@@ -269,6 +270,9 @@ def _known_problems(ctx: Ctx) -> dict[str, list]:
         "WHERE i.category IN ('broken', 'redirect')"
     ):
         add(row["target_url"], f"link_{row['category']}")
+    # URL Inspection: Google says the page isn't indexed (expert review 2026-11-17: a dropped page raised nothing here).
+    for row in ctx.fetch("SELECT url FROM gsc_inspections WHERE site_id = :s AND verdict IS NOT NULL AND verdict <> 'PASS' AND error IS NULL"):
+        add(row["url"], "not_indexed")
     return found
 
 

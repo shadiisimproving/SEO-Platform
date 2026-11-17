@@ -207,6 +207,7 @@ EVERY_CHECK = [
     ("images_no_alt", {"/a": good("Page A", body='<img src="/x.png"><img src="/y.png" alt="y">')}, {"images_no_alt": ["/a"]}),
     ("almost_no_text", {"/a": good("Page A", text_="Short.")}, {"almost_no_text": ["/a"]}),
     ("redirect_chains", {"/c1": (301, "/c2"), "/c2": (301, "/c3"), "/c3": (301, "/a")}, {"redirect_chains": ["/c1"]}),
+    ("robots_blocked", {"/private/x": good("Private")}, {"robots_blocked": ["/private/x"]}),  # listed, never scored
 ]
 
 
@@ -225,7 +226,7 @@ def test_each_check_finds_its_problem_and_nothing_else(world, code, changes, exp
     assert data["audit"]["status"] == "complete"
     assert findings(data) == expected
     assert data["audit"]["counts"] == {check: len(pages) for check, pages in expected.items()}
-    assert data["audit"]["score"] < 100
+    assert data["audit"]["score"] < 100 or not audit.CHECKS[code][1]  # a check that weighs nothing is only listed
     assert data["audit"]["site_problems"] == []
 
 
@@ -262,7 +263,7 @@ def test_pages_the_crawl_could_not_judge_lower_nothing(world):
     result = data["audit"]
     assert result["status"] == "complete"
     assert result["score"] == 100
-    assert result["counts"] == {}
+    assert result["counts"] == {"robots_blocked": 1}  # listed so it can be found, but it lowers nothing
     assert result["skipped_robots"] == 1
     assert result["pages_seen"] == 5
     assert not [u for u in world.site.requests if "/private" in u]

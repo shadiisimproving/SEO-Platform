@@ -191,10 +191,41 @@ def summary(engine: Engine, sites: list[int]) -> dict:
     serious = _stake_rows(engine, sites, "AND severity <> 'info'")
     to_recover, to_win = recover_and_win(serious)
     return {
+        "technical_elsewhere": technical_elsewhere(engine, sites),
         "changes": changes, "open": int(row["n"]), "at_stake": round(stake_total(serious)), "fixed": int(row["fixed"] or 0), "to_recover": to_recover, "to_win": to_win,
         "days": _days(engine, changes[0]) if len(changes) == 1 and changes[0]["evidence"].get("before_from") else [],
         "ran_at": row["ran_at"].isoformat() + "Z" if row["ran_at"] else None, "needs": needs, "sites": len(sites),
     }
+
+
+# Health test checks that make a page broken for a searcher, as Insights → Technical reads them (technical.BROKEN).
+_ELSEWHERE_CODES = ("broken_pages", "server_errors", "noindex", "canonical_elsewhere", "broken_links")
+
+
+def technical_elsewhere(engine: Engine, sites: list[int]) -> dict:
+    """What Insights → Technical leaves out because Google didn't show those pages this week: pages the last health test
+    flags, and pages URL Inspection says aren't on Google. So the tab never says "Good news" beside a 404, a 500 and a
+    noindex page (expert review 2026-11-17). Counts distinct pages."""
+    if not sites:
+        return {"pages": 0, "critical": 0, "not_indexed": 0}
+    flagged: set[str] = set()
+    critical: set[str] = set()
+    with engine.connect() as conn:
+        rows = conn.execute(text(
+            "SELECT i.code, i.pages FROM health_issues i JOIN (SELECT MAX(id) id FROM health_audits WHERE site_id IN :sites AND status = 'complete' GROUP BY site_id) last "
+            "ON last.id = i.audit_id WHERE i.code IN :codes AND i.page_count > 0"
+        ).bindparams(bindparam("sites", expanding=True), bindparam("codes", expanding=True)), {"sites": sites, "codes": list(_ELSEWHERE_CODES)}).mappings().all()
+        not_indexed = conn.execute(text(
+            "SELECT COUNT(*) FROM gsc_inspections WHERE site_id IN :sites AND verdict IS NOT NULL AND verdict <> 'PASS' AND error IS NULL"
+        ).bindparams(bindparam("sites", expanding=True)), {"sites": sites}).scalar() or 0
+    for r in rows:
+        pages = r["pages"] if isinstance(r["pages"], list) else json.loads(r["pages"] or "[]")
+        for url in pages:
+            if isinstance(url, str):
+                flagged.add(url)
+                if r["code"] in ("broken_pages", "server_errors", "broken_links"):
+                    critical.add(url)
+    return {"pages": len(flagged), "critical": len(critical), "not_indexed": int(not_indexed)}
 
 
 def one(engine: Engine, finding_id: int) -> dict:

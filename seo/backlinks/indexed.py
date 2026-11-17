@@ -131,14 +131,36 @@ def inspect(token: str, prop: str, url: str) -> dict:
     }
 
 
+DROPPED_KIND = "page_dropped"  # the bell: Google had this page indexed and no longer has
+
+
 def _save(engine: Engine, site_id: int, url: str, found: dict) -> None:
     with engine.begin() as conn:
+        was = conn.execute(text("SELECT verdict FROM gsc_inspections WHERE site_id = :s AND url_hash = :h"), {"s": site_id, "h": url_hash(url)}).scalar()
+        if was == "PASS" and found.get("verdict") and found["verdict"] != "PASS":
+            _ring_dropped(conn, site_id, url, found)
         conn.execute(text(
             "INSERT INTO gsc_inspections (site_id, url_hash, url, verdict, coverage, indexing, robots, fetch_state, google_canonical, user_canonical, last_crawl, error, inspected_at) "
             "VALUES (:s, :h, :u, :verdict, :coverage, :indexing, :robots, :fetch_state, :google_canonical, :user_canonical, :last_crawl, :error, UTC_TIMESTAMP(3)) "
             "ON DUPLICATE KEY UPDATE verdict = :verdict, coverage = :coverage, indexing = :indexing, robots = :robots, fetch_state = :fetch_state, "
             "google_canonical = :google_canonical, user_canonical = :user_canonical, last_crawl = :last_crawl, error = :error, inspected_at = UTC_TIMESTAMP(3)"
         ), {"s": site_id, "h": url_hash(url), "u": url, **found})
+
+
+def _ring_dropped(conn, site_id: int, url: str, found: dict) -> None:
+    """One bell notification when Google drops a page it had indexed, with Google's reason (expert review 2026-11-17).
+    An error answer isn't a drop: only a real verdict other than PASS. One per page per day."""
+    import json
+
+    host = conn.execute(text("SELECT host FROM sites WHERE id = :s"), {"s": site_id}).scalar() or ""
+    path = urlsplit(url).path or "/"
+    detail = {"url": url, "path": path, "host": host, "coverage": found.get("coverage") or "", "verdict": found.get("verdict"),
+              "day": conn.execute(text("SELECT UTC_DATE()")).scalar().isoformat()}
+    conn.execute(
+        text("INSERT IGNORE INTO notifications (site_id, kind, subject_key, title, detail) VALUES (:s, :k, :key, :t, :d)"),
+        {"s": site_id, "k": DROPPED_KIND, "key": common.digest("page-dropped", url, detail["day"]), "t": f"Google dropped {path} from its index"[:300],
+         "d": json.dumps(detail, ensure_ascii=False)},
+    )
 
 
 @handler(JOB_KIND)

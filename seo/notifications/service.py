@@ -8,7 +8,9 @@ from sqlalchemy import Engine, bindparam, text
 
 from seo.accounts import access
 from seo.core.errors import NotFound, Refused
-from seo.notifications.new_queries import SHOWN_KINDS
+from seo.notifications.new_queries import SHOWN_KINDS as QUERY_KINDS
+
+SHOWN_KINDS = (*QUERY_KINDS, "page_dropped")  # page_dropped: seo/backlinks/indexed.py, when Google drops an indexed page
 
 SHOWN = 60
 

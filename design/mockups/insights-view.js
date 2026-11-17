@@ -177,7 +177,7 @@
   const COUNTRIES = { fra: "FR", bel: "BE", che: "CH", can: "CA", are: "AE", gbr: "GB", usa: "US", esp: "ES", deu: "DE", ita: "IT", mar: "MA", dza: "DZ", tun: "TN", lux: "LU", nld: "NL", prt: "PT", sau: "SA", ind: "IN", pak: "PK", irl: "IE", aus: "AU", egy: "EG", qat: "QA", kwt: "KW", omn: "OM", bhr: "BH", sen: "SN", civ: "CI", cmr: "CM", rus: "RU", tur: "TR", pol: "PL", swe: "SE", nor: "NO", dnk: "DK", aut: "AT", grc: "GR", rou: "RO", bra: "BR", mex: "MX", chn: "CN", jpn: "JP", kor: "KR", sgp: "SG", phl: "PH", nga: "NG", zaf: "ZA", ken: "KE", lbn: "LB", jor: "JO", isr: "IL" };
   const verdictWord = (v) => t({ better: "Better", worse: "Worse", same: "About the same" }[v] || v);
   const leadsLine = (e) => (e.leads_at_stake >= 0.1 ? fill("≈ {n} leads a month", { n: UI.dec(Math.round(e.leads_at_stake * 10) / 10) }) : "");
-  const cause = (code) => t({ noindex: "set to noindex", broken_pages: "answers with an error", server_errors: "server error", canonical_elsewhere: "points to another page", almost_no_text: "almost no text", link_broken: "broken link to it", link_redirect: "redirects" }[code] || code);
+  const cause = (code) => t({ noindex: "set to noindex", broken_pages: "answers with an error", server_errors: "server error", canonical_elsewhere: "points to another page", almost_no_text: "almost no text", link_broken: "broken link to it", link_redirect: "redirects", not_indexed: "not on Google" }[code] || code);
   const AI_WORDS = { overview: "AI Overview doesn't cite you", cited: "AI Overview cites you", none: "No AI Overview", "not-captured": "AI Overview not read" };
   // Under the "AI Overview" column, which names it once. French here, not in the dictionary: other screens already give these
   // short words a feminine French ("Citée", "Non lue") for other things, and an AI Overview is masculine.
@@ -483,6 +483,11 @@
     if (IN.tab === "wins" && needs.low_ctr === "brand_words") notes.push(`${t("Low click rates need your brand words.")}${UI.tip("Brand searches are clicked far more and would make every other query look weak.")} <a href="#overview">${t("Add them on Overview")}</a>`);
     if ((IN.tab === "decline" && needs.decay) || (IN.tab === "changed" && needs.page_down)) notes.push(t("Needs more history: 16 weeks for slow decline, 8 for changes."));
     if (IN.tab === "leads" && needs.lead_page === "key_events") notes.push(t("No GA4 key events yet: mark your form or call event as one."));
+    // Technical lists only pages Google showed this week: what the health test and URL Inspection found on the others is
+    // said here, with the way to it, so the tab never reads as "all clear" beside a 404 (expert review 2026-11-17).
+    const away = d.summary.technical_elsewhere || {};
+    const awayPages = (away.pages || 0) + (away.not_indexed || 0);
+    if (IN.tab === "technical" && awayPages) notes.push(`${esc(fill(awayPages === 1 ? "1 problem on a page Google didn't show this week." : "{n} problems on pages Google didn't show this week.", { n: num(awayPages) }))} <a href="#health">${t("See Site health")}</a>`);
     if (IN.tab === "changed" && needs.brand_split === "brand_words") notes.push(`${t("Add brand words to see when brand hides a loss.")} <a href="#overview">${t("Add them on Overview")}</a>`);
     const hint = {
       first: "Biggest findings, one row per query or page.", mix: "Rank checks beside Search Console: what neither shows alone.", changed: "Last 28 days vs the 28 before, plus odd days this week.",
@@ -498,14 +503,14 @@
       const acts = notes.filter((n) => n.includes("<a ")), quiet = notes.filter((n) => !n.includes("<a "));
       const info = UI.info([t(hint), HINT_TIPS[IN.tab] ? t(HINT_TIPS[IN.tab]) : "", ...quiet].filter(Boolean));
       return `<section class="card ov-tabs-card in-tabs-card" aria-labelledby="in-findings-h"><h2 class="sr" id="in-findings-h">${t("Findings")}</h2><div class="card-head ov-tabs-head in-tabs-head">${tabs}<span class="in-tabs-i">${info}</span></div>${controls}
-        ${sameList}${acts.map((n) => `<p class="small ov-hint in-need">${n}</p>`).join("")}${IN.tab === "mix" ? mixTab(d) : table(d.rows)}</section>`;
+        ${sameList}${acts.map((n) => `<p class="small ov-hint in-need">${n}</p>`).join("")}${IN.tab === "mix" ? mixTab(d) : table(d.rows, awayPages)}</section>`;
     }
     return `<section class="card ov-tabs-card" aria-labelledby="in-findings-h"><h2 class="sr" id="in-findings-h">${t("Findings")}</h2><div class="card-head ov-tabs-head">${tabs}</div>${controls}
-      <p class="small muted ov-hint">${t(hint)}${UI.tip(HINT_TIPS[IN.tab] || "")}</p>${sameList}${notes.map((n) => `<p class="small ov-hint in-need">${n}</p>`).join("")}${IN.tab === "mix" ? mixTab(d) : table(d.rows)}</section>`;
+      <p class="small muted ov-hint">${t(hint)}${UI.tip(HINT_TIPS[IN.tab] || "")}</p>${sameList}${notes.map((n) => `<p class="small ov-hint in-need">${n}</p>`).join("")}${IN.tab === "mix" ? mixTab(d) : table(d.rows, awayPages)}</section>`;
   }
 
-  function table(all) {
-    if (!all.length) return `<div class="empty"><p>${t(IN.status === "open" ? "Nothing here. Good news." : "Nothing here.")}</p></div>`;
+  function table(all, away = 0) {
+    if (!all.length) return `<div class="empty"><p>${t(IN.status !== "open" ? "Nothing here." : IN.tab === "technical" && away ? "No problem on pages Google showed this week." : "Nothing here. Good news.")}</p></div>`;
     const many = !UI.siteIdPicked();
     // The server ranks by clicks a month at stake, biggest first; the heading turns it round.
     const found = all.filter((f) => TP.matches(PAGES, titleOf(f), reasonOf(f), kindName(f), many ? f.host : ""));
@@ -1041,6 +1046,10 @@
     "Biggest findings, one row per query or page.": "Les plus gros constats, une ligne par requête ou page.", "Last 28 days vs the 28 before, plus odd days this week.": "28 derniers jours vs les 28 précédents, plus les jours inhabituels de la semaine.",
     "Pages sliding a little every week for 16 weeks.": "Pages qui reculent un peu chaque semaine depuis 16 semaines.", "Queries a small push would pay for, using this site's own click rates.": "Requêtes pour lesquelles un petit effort paierait, d'après les taux de clic du site.",
     "Nothing here. Good news.": "Rien ici. Bonne nouvelle.", "Nothing here.": "Rien ici.",
+    "No problem on pages Google showed this week.": "Aucun problème sur les pages que Google a montrées cette semaine.",
+    "1 problem on a page Google didn't show this week.": "1 problème sur une page que Google n'a pas montrée cette semaine.",
+    "{n} problems on pages Google didn't show this week.": "{n} problèmes sur des pages que Google n'a pas montrées cette semaine.", "See Site health": "Voir Santé du site",
+    "not on Google": "absente de Google",
     "What": "Quoi", "Clicks a month": "Clics par mois", "Key number": "Chiffre clé", "Task done": "Tâche faite", "Task open": "Tâche ouverte",
     "Insight": "Analyse", "Queries behind it": "Requêtes derrière", "Usual at position {p}": "Habituel en position {p}", "Best 4 weeks, a week": "4 meilleures semaines, par semaine", "Last 4 weeks, a week": "4 dernières semaines, par semaine",
     "Usual that weekday": "Habituel ce jour de la semaine", "Last seen on Google": "Vue pour la dernière fois sur Google", "The last health test or Links Checker saw": "Le dernier test de santé ou le Links Checker a vu",
