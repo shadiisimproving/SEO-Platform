@@ -62,7 +62,7 @@ Confirmed: up to 6 dates picked by index, then spread with `space-between`.
 - Screens: `06-ai-*.png` (2 Nov and 16 Nov under their points), `01-overview-28d-phone-en.png`.
 
 ## Tests run
-- `DB_NAME_TEST=test_fix_periods_test .venv/bin/pytest`: see the result line at the end of this file.
+- `DB_NAME_TEST=test_fix_periods_test .venv/bin/pytest`: full suite green (no failures, no errors). The affected files were run again after the last change (whole-week drawing): green.
 - New: `tests/test_one_period.py` (9 tests, golden numbers worked out by hand), `tests/js/chart_axis.test.cjs` (`node --test tests/js`: 2 pass).
 - Updated to the new rule (each says why in the test): `test_search.py` (yoy 364 days; the fixture records that the day-by-day tables were read back far enough), `test_insights.py` (totals count the row-limited day: 280, the split still leaves it out), `test_numbers_audit.py` (16 months / 12 months prev now say "google"), `test_metrics_detail.py` (the page table reaches back to the earlier period).
 - Playwright: `tests/ui/flow_one_period.cjs`, 1440 and 390 wide, English and French, on port 8291 (demo world + `seed_ai_search.py normal`): all ok. Screenshots in `reports/seo-expert-2026-11-17/fixes/periods-shots/` (not in git: `reports/` is ignored).
@@ -74,3 +74,6 @@ Confirmed: up to 6 dates picked by index, then spread with `space-between`.
 - **"vs last year" is now 364 days** (same weekdays) everywhere, as the review recommended; it was calendar dates on the server and 364 days in the head. Say if you want calendar dates instead: it is one constant, `period.YOY_DAYS`.
 - Insights waits ("needs history") while page and search tables are still being read after a new connection, instead of showing causes made up from empty days. Overview still shows the site's total change at once.
 - Demo-only, not a bug: `seed_ai_search.py` marks site-one's Search Console as through 16 Nov while its daily totals stop on 14 Nov, so Today shows 26 days of clicks in a 28-day window after that seed.
+
+## Commits
+4c7f766 (shared period, Insights, Pages, Content, per-table check, weeks), 8427f34 (exports and units), 5909e40 (head, Today cards, chart dates, flows), and this report.
