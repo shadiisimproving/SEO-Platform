@@ -166,7 +166,7 @@ def scope_for(engine: Engine, args) -> tuple[Scope, dict]:
 
 
 def _usable_sites(scope: Scope) -> list[dict]:
-    rows = scope.fetch("SELECT site_id, connection_id, property FROM site_sources WHERE site_id IN :sites AND source = 'gsc' AND NOT not_used AND connection_id IS NOT NULL AND property IS NOT NULL")
+    rows = scope.fetch("SELECT site_id, connection_id, property, last_error IS NOT NULL failing FROM site_sources WHERE site_id IN :sites AND source = 'gsc' AND NOT not_used AND connection_id IS NOT NULL AND property IS NOT NULL")
     return [dict(row) for row in rows]
 
 
@@ -174,7 +174,10 @@ def live(engine: Engine, source: dict, start: date, end: date, dims: list[str], 
     """One Search Console request, kept 10 minutes. fresh skips the cache (the Refresh button)."""
     key = (source["site_id"], source["property"], start, end, tuple(dims), limit, data_state, json.dumps(filters, sort_keys=True))
     hit = _live_cache.get(key)
-    if hit and not fresh and time.monotonic() - hit[0] < LIVE_SECONDS:
+    # A site whose last pull was refused isn't served a kept answer: Google is asked again, so "Live from Search Console"
+    # can't stay on screen for 10 minutes after Google started refusing (daily-monitoring F4). The worker that saw the
+    # refusal runs in another process, so the database's last_error is what says so.
+    if hit and not fresh and not source.get("failing") and time.monotonic() - hit[0] < LIVE_SECONDS:
         return hit[1]
     token = credentials.access_token(engine, source["connection_id"])
     extra = {"dimensionFilterGroups": [{"filters": filters}]} if filters else None
@@ -207,17 +210,23 @@ def _merge(rows_by_site: list[list[dict]]) -> dict[str, list]:
     return merged
 
 
-def _live_series(engine: Engine, sources: list[dict], start: date, end: date, hourly: bool, fresh: bool) -> list[dict]:
+def _live_series(engine: Engine, sources: list[dict], start: date, end: date, hourly: bool, fresh: bool, filters: list | None = None) -> list[dict]:
     if hourly:
         answers = [live(engine, s, start - timedelta(days=1), end, ["hour"], 1000, "hourly_all", fresh=fresh) for s in sources]
     else:
-        answers = [live(engine, s, start, end, ["date"], 25000, fresh=fresh) for s in sources]
+        answers = [live(engine, s, start, end, ["date"], 25000, fresh=fresh, filters=filters) for s in sources]
     merged = _merge([answer.get("rows", []) for answer in answers])
     looks_right = (lambda key: len(key) > 10 and key[4] == "-" and "T" in key) if hourly else (lambda key: len(key) == 10 and key[4] == "-")
     return [_point(key, v[0], v[1], v[2] if v[3] else None) for key, v in sorted(merged.items()) if looks_right(key)]
 
 
-def _saved_series(scope: Scope, start: date, end: date) -> list[dict]:
+def _saved_series(scope: Scope, start: date, end: date, page: str | None = None) -> list[dict]:
+    if page:  # one page's own days (Today's "See page"): its row in the page table, not the site's totals
+        rows = scope.fetch(
+            "SELECT day, SUM(clicks) c, SUM(impressions) i, SUM(position * impressions) w FROM gsc_page WHERE site_id IN :sites AND page_hash = :h AND day BETWEEN :a AND :b GROUP BY day ORDER BY day",
+            start, end, h=common.digest(page),
+        )
+        return [_point(row["day"].isoformat(), int(row["c"] or 0), int(row["i"] or 0), float(row["w"]) if row["w"] is not None else None) for row in rows]
     rows = scope.fetch(
         "SELECT day, SUM(clicks) c, SUM(impressions) i, SUM(position * impressions) w FROM gsc_daily WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY day ORDER BY day",
         start, end,
@@ -282,9 +291,22 @@ def brand_words(scope: Scope) -> list[str]:
     return sorted({_fold(row["pattern"]) for row in rows if _fold(row["pattern"])})
 
 
+_WORDS = re.compile(r"[^\W_]+")
+
+
+def _word_list(folded: str) -> list[str]:
+    return _WORDS.findall(folded)
+
+
 def is_brand(query: str, words: list[str]) -> bool:
-    folded = _fold(query)
-    return any(word in folded for word in words)
+    """Whole words only, case and accents ignored: "dubai" marks "créer société Dubaï" but not "dubaihomes", and a brand of
+    two words ("always improving") needs both, side by side (daily-monitoring F24)."""
+    have = _word_list(_fold(query))
+    for word in words:
+        want = _word_list(word)
+        if want and any(have[i:i + len(want)] == want for i in range(len(have) - len(want) + 1)):
+            return True
+    return False
 
 
 def _match(query: str) -> str:
@@ -786,11 +808,17 @@ def _counts(scope: Scope, start: date | None, end: date | None) -> int | None:
     return int(row[0]["n"] or 0) if row else 0
 
 
-def overview(scope: Scope, window: dict, fresh: bool = False) -> dict:
+def overview(scope: Scope, window: dict, fresh: bool = False, page: str | None = None) -> dict:
+    """page: one page's address (Today's "See page"): the four numbers, the chart and the sentence are that page's alone,
+    so a drop isn't hidden in the site's total. Hours have no page split here, so 24 hours stays the whole site."""
     status = _sources_state(scope, "gsc")
     sources = _usable_sites(scope)
     origin, live_error = "saved", None
     hourly = window["hourly"]
+    page = (page or "").strip()[:2000] or None
+    if hourly or len(scope.site_ids) != 1:
+        page = None
+    page_filter = [{"dimension": "page", "operator": "equals", "expression": page}] if page else None
     now_points = before_points = None
     # The days after the period that aren't final yet: drawn after it, never counted (see resolve).
     tail_to = date.fromisoformat(window["fresh_to"]) if window.get("fresh_to") else None
@@ -803,15 +831,15 @@ def overview(scope: Scope, window: dict, fresh: bool = False) -> dict:
                 if window["compare"] == "none":
                     before_points = None
             else:
-                now_points = _live_series(scope.engine, sources, scope.start, drawn_to, False, fresh)
-                before_points = _live_series(scope.engine, sources, scope.compare_start, scope.compare_end, False, fresh) if scope.has_compare else None
+                now_points = _live_series(scope.engine, sources, scope.start, drawn_to, False, fresh, page_filter)
+                before_points = _live_series(scope.engine, sources, scope.compare_start, scope.compare_end, False, fresh, page_filter) if scope.has_compare else None
             origin = "live"
         except (SourceError, ConnectionError, credentials.CredentialsFailed, NotFound) as exc:
             live_error = str(exc)
     if origin == "saved":
         hourly = False  # hours are only ever read live
-        now_points = _saved_series(scope, scope.start, drawn_to)
-        before_points = _saved_series(scope, scope.compare_start, scope.compare_end) if scope.has_compare else None
+        now_points = _saved_series(scope, scope.start, drawn_to, page)
+        before_points = _saved_series(scope, scope.compare_start, scope.compare_end, page) if scope.has_compare else None
     tail = []
     if not hourly:
         last_counted = scope.end.isoformat()
@@ -837,7 +865,8 @@ def overview(scope: Scope, window: dict, fresh: bool = False) -> dict:
         "series": series, "compare_series": compare_series,
         "queries": _counts(scope, scope.start, scope.end), "queries_before": _counts(scope, scope.compare_start, scope.compare_end),
         # Hours have no query or page split, so the sentence for 24 hours names no drivers.
-        "answer": _answer(totals, before, scope, drivers_too=False) if hourly else _answer(totals, before if scope.has_compare else None, scope),
+        "answer": _answer(totals, before, scope, drivers_too=False) if hourly or page else _answer(totals, before if scope.has_compare else None, scope),
+        "page": page,
         "markers": markers(scope), "verify": last_verdict(scope), "has_brand": bool(brand_words(scope)),
         "last_pull": last_ok[0]["t"].isoformat() + "Z" if last_ok and last_ok[0]["t"] else None,
         "single_site": len(scope.site_ids) == 1, "market": market(scope),

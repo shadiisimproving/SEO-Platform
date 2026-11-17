@@ -27,7 +27,7 @@ def _site_id(value) -> int:
 @search_api.get("/overview")
 def overview():
     scope, window = search.scope_for(_engine(), request.args)
-    return jsonify(search.overview(scope, window, fresh=request.args.get("fresh") == "1"))
+    return jsonify(search.overview(scope, window, fresh=request.args.get("fresh") == "1", page=request.args.get("only_page") or None))
 
 
 @search_api.get("/breakdown")
