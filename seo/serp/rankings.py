@@ -122,6 +122,18 @@ def _view(seen: Seen, host: str, now: datetime, home: bool, verdict: str | None 
     }
 
 
+def movement(now_p: int | None, then_p: int | None) -> str:
+    """How a keyword moved between two like-for-like checks (same tool, location and depth). Beyond the depth is a real
+    state, "out of the top N": found → out is "lost" (a drop), out → found is "new" (a gain), out → out is "out"."""
+    if now_p is not None and then_p is not None:
+        return "up" if now_p < then_p else "down" if now_p > then_p else "same"
+    if then_p is not None:
+        return "lost"
+    if now_p is not None:
+        return "new"
+    return "out"
+
+
 def engine_view(checks: list[Seen], host: str, country: str, language: str, order: list[str], gap: int, now: datetime, own: dict | None = None) -> dict:
     """One keyword on one engine. `checks` are oldest first."""
     home, away = [], []
@@ -133,24 +145,27 @@ def engine_view(checks: list[Seen], host: str, country: str, language: str, orde
     for seen in good:
         latest_by_tool[seen.tool] = seen
     place = {name: at for at, name in enumerate(order)}
-    main = None
+    main, passed_over = None, None
     if latest_by_tool:
-        # The first tool in your order that has a result, however fresh another tool's is.
-        first = min(latest_by_tool, key=lambda name: (place.get(name, len(place)), -latest_by_tool[name].check_id))
-        main = latest_by_tool[first]
+        # The first tool in your order that has a result (the owner's rule), unless its result is older than
+        # store.MAIN_MAX_AGE_DAYS and another tool has a newer one: then the newer one, and the row says why.
+        main, passed_over = store.pick_main(list(latest_by_tool.values()), place, now, tool=lambda c: c.tool, ident=lambda c: c.check_id, at=lambda c: c.at)
     flagged_only = False
     if main is None and home:  # only suspect results: shown as such, and counted as nothing
         main, flagged_only = home[-1], True
 
-    change, change_note, trend = None, None, []
+    change, change_note, trend, move, was, url_changed = None, None, [], None, None, False
     if main is not None and not flagged_only:
         same = [seen for seen in good if seen.kind() == main.kind()]
         before = [seen for seen in same if seen.check_id < main.check_id]
         trend = [{"at": _iso(seen.at), "p": seen.position(host)} for seen in same if seen.position(host) is not None]
         if before:
             now_p, then_p = main.position(host), before[-1].position(host)
+            move, was = movement(now_p, then_p), then_p
             if now_p is not None and then_p is not None:
                 change = then_p - now_p  # a smaller position is better, so up is positive
+                now_url, then_url = (main.own(host) or (None, None))[1], (before[-1].own(host) or (None, None))[1]
+                url_changed = bool(now_url and then_url and page_address(now_url).rstrip("/") != page_address(then_url).rstrip("/"))
         else:
             earlier = [seen for seen in good if seen.check_id < main.check_id]
             if earlier:
@@ -177,9 +192,14 @@ def engine_view(checks: list[Seen], host: str, country: str, language: str, orde
     for seen in away:
         latest_away[(seen.tool, seen.location)] = seen
     suspects = [_view(seen, host, now, True) for seen in home if seen.status == "suspect" and (main is None or seen.check_id > main.check_id)]
+    main_view = _view(main, host, now, True, verdict) if main else None
+    if main_view and passed_over is not None:
+        main_view["passed_over"] = {"tool": passed_over.tool, "age_days": round((now - passed_over.at).total_seconds() / 86400, 2)}
+    if main_view:
+        main_view["old"] = main_view["age_days"] > store.MAIN_MAX_AGE_DAYS  # the row's amber age badge
     return {
-        "main": _view(main, host, now, True, verdict) if main else None,
-        "change": change, "change_note": change_note, "trend": trend, "others": others, "suspects": suspects, "disagree": disagree,
+        "main": main_view,
+        "change": change, "change_note": change_note, "move": move, "was": was, "url_changed": url_changed, "trend": trend, "others": others, "suspects": suspects, "disagree": disagree,
         "away": [_view(seen, host, now, False) for seen in latest_away.values()],
         "never": not checks,
         "own": own.get("position") if own else None, "impressions": own.get("impressions") if own else None, "clicks": own.get("clicks") if own else None,
@@ -196,9 +216,33 @@ def _ai(checks: list[Seen], host: str, country: str, language: str, now: datetim
     return {"state": state, "tool": seen.tool, "age_days": round((now - seen.at).total_seconds() / 86400, 2)}
 
 
+def _add_own(table: dict, key, clicks, impressions, position) -> None:
+    """Spellings with the same key (store.keyword_key: "café", "cafe", "Café") are one search: clicks and impressions add
+    up, and the position is weighted by impressions."""
+    slot = table.setdefault(key, {"clicks": 0, "impressions": 0, "_weighted": 0.0, "_shown": 0, "_plain": None, "spellings": 0})
+    shown = int(impressions or 0)
+    slot["clicks"] += int(clicks or 0)
+    slot["impressions"] += shown
+    slot["spellings"] += 1
+    if position is not None:
+        if shown:
+            slot["_weighted"] += float(position) * shown
+            slot["_shown"] += shown
+        elif slot["_plain"] is None:
+            slot["_plain"] = float(position)
+
+
+def _settle_own(table: dict) -> dict:
+    for slot in table.values():
+        slot["position"] = slot["_weighted"] / slot["_shown"] if slot["_shown"] else slot["_plain"]
+        for name in ("_weighted", "_shown", "_plain"):
+            slot.pop(name, None)
+    return table
+
+
 def _own_tools(conn, site_ids: list[int]) -> dict:
-    """Search Console, Bing's and Yandex's own numbers for my sites, by the keyword's cleaned text. Empty until each is connected."""
-    tables: dict[str, dict] = {"google": {}, "bing": {}, "yandex": {}}
+    """Search Console, Bing's and Yandex's own numbers for my sites, by the keyword's key (store.keyword_key). Empty until each is connected."""
+    tables: dict[str, dict] = {"google": {}, "bing": {}, "yandex": {}, "google_country": {}}
     pages: dict = defaultdict(dict)
     through = {}
     if not site_ids:
@@ -214,12 +258,13 @@ def _own_tools(conn, site_ids: list[int]) -> dict:
             ),
             {"s": site_id, "last": last},
         ).mappings():
-            tables["google"][(site_id, store.clean_keyword(row["query"]).casefold())] = {"position": float(row["position"]) if row["position"] is not None else None, "impressions": int(row["impressions"] or 0), "clicks": int(row["clicks"] or 0)}
+            _add_own(tables["google"], (site_id, store.keyword_key(row["query"])), row["clicks"], row["impressions"], row["position"])
         for row in conn.execute(
             text(f"SELECT query, page, SUM(impressions) AS impressions FROM gsc_query_page WHERE site_id = :s AND day > :last - INTERVAL {OWN_DAYS} DAY GROUP BY pair_hash, query, page"),
             {"s": site_id, "last": last},
         ).mappings():
-            pages[(site_id, store.clean_keyword(row["query"]).casefold())].setdefault(row["page"], int(row["impressions"] or 0))
+            seen = pages[(site_id, store.keyword_key(row["query"]))]
+            seen[row["page"]] = seen.get(row["page"], 0) + int(row["impressions"] or 0)
         # The same, in each country the site's queries are read for: a keyword's own country, not a world average.
         for row in conn.execute(
             text(
@@ -228,13 +273,13 @@ def _own_tools(conn, site_ids: list[int]) -> dict:
             ),
             {"s": site_id, "last": last},
         ).mappings():
-            tables.setdefault("google_country", {})[(site_id, row["country"], store.clean_keyword(row["query"]).casefold())] = {
-                "position": float(row["position"]) if row["position"] is not None else None, "impressions": int(row["impressions"] or 0), "clicks": int(row["clicks"] or 0),
-            }
+            _add_own(tables["google_country"], (site_id, row["country"], store.keyword_key(row["query"])), row["clicks"], row["impressions"], row["position"])
     for row in conn.execute(text(f"SELECT site_id, query, clicks, impressions, position FROM bing_query WHERE site_id IN ({marks})")).mappings():
-        tables["bing"][(row["site_id"], store.clean_keyword(row["query"]).casefold())] = {"position": row["position"], "impressions": row["impressions"], "clicks": row["clicks"]}
+        _add_own(tables["bing"], (row["site_id"], store.keyword_key(row["query"])), row["clicks"], row["impressions"], row["position"])
     for row in conn.execute(text(f"SELECT site_id, query, clicks, shows, position FROM yandex_query WHERE site_id IN ({marks})")).mappings():
-        tables["yandex"][(row["site_id"], store.clean_keyword(row["query"]).casefold())] = {"position": row["position"], "impressions": row["shows"], "clicks": row["clicks"]}
+        _add_own(tables["yandex"], (row["site_id"], store.keyword_key(row["query"])), row["clicks"], row["shows"], row["position"])
+    for table in tables.values():
+        _settle_own(table)
     return {"positions": tables, "pages": pages, "through": through}
 
 
@@ -264,7 +309,7 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
     gap = int(connections.get_setting(engine, "disagree_gap"))
     rows = []
     for track in tracked:
-        host, key = hosts[track["site_id"]], store.clean_keyword(track["keyword"]).casefold()
+        host, key = hosts[track["site_id"]], store.keyword_key(track["keyword"])
         engines = {}
         for name in ENGINES:
             own_row = own["positions"].get(name, {}).get((track["site_id"], key))
@@ -286,14 +331,18 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
                     known["position"] = known["position"] or position
                 else:
                     competing.append({"url": url, "impressions": None, "position": position})
+        # The page that ranked: the URL our newest check found (Google first). Search Console's most-shown page over 28 days is
+        # another fact, kept apart and named as such on screen ("Most shown in Search Console"), never passed off as the ranking URL.
         main_url = next((view["main"]["url"] for view in engines.values() if view["main"] and view["main"]["url"]), None)
-        page = max(pages_seen, key=pages_seen.get) if pages_seen else main_url
+        gsc_page = max(pages_seen, key=pages_seen.get) if pages_seen else None
+        page = main_url or gsc_page
         google_own = own["positions"]["google"].get((track["site_id"], key))
         code3 = countries.alpha3(track["country"]) if track["country"] else None
         local = own["positions"].get("google_country", {}).get((track["site_id"], code3, key)) if code3 else None
         rows.append({
             "id": f"{track['site_id']}:{track['id']}", "keyword_id": track["id"], "site_id": track["site_id"], "site": host, "keyword": track["keyword"],
             "country": track["country"], "language": track["language"], "engines": engines, "ai": ai, "page": page,
+            "ranking_url": main_url, "gsc_page": gsc_page, "spellings": google_own["spellings"] if google_own else 0,
             "two_pages": len(pages_seen) >= 2 or bool(scraped_two),
             "pages": competing if len(pages_seen) >= 2 or scraped_two else [],
             # "volume" is kept for older readers: it was never search volume, only our own impressions over 28 days.
@@ -305,10 +354,27 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
     return {"rows": rows, "through": own["through"], "last_refresh": last_run, "now": now, "order": order, "gap": gap}
 
 
+GAINS, DROPS = ("up", "new"), ("down", "lost")
+
+
+def top10_step(view: dict) -> int:
+    """+1 when a like-for-like pair entered the top 10, −1 when it left it, 0 otherwise. Dropping out of the depth checked
+    (at depth 10, the top 10 itself) is leaving it; coming in from beyond it is entering."""
+    move, main = view.get("move"), view.get("main") or {}
+    if move is None:
+        return 0
+    now_p, was = main.get("p"), view.get("was")
+    inside_now = now_p is not None and now_p <= 10
+    inside_then = was is not None and was <= 10
+    return (1 if inside_now and not inside_then else 0) - (1 if inside_then and not inside_now else 0)
+
+
 def tiles(rows: list[dict], engine_name: str) -> dict:
-    """Top 10 here always means scraped results. It's never added to Search Console's, and its change only counts like-for-like pairs."""
+    """Top 10 here always means scraped results. It's never added to Search Console's, and its change only counts like-for-like pairs.
+    A keyword that left the depth checked counts as Down ("lost"), one that came in as Up ("new")."""
     tracked = len(rows)
-    ranked = top10 = up = down = compared = moved_in = moved_out = none = cited = 0
+    ranked = top10 = up = down = compared = lost = new = none = cited = 0
+    top10_change = 0
     for row in rows:
         view = row["engines"][engine_name]
         main = view["main"]
@@ -320,18 +386,18 @@ def tiles(rows: list[dict], engine_name: str) -> dict:
                 top10 += 1
         elif usable:  # checked, and not found. A keyword nobody has checked yet isn't "not ranked": nothing is known.
             none += 1
-        change = view["change"]
-        if change is not None:
+        move = view.get("move")
+        if move is not None:
             compared += 1
-            up += change > 0
-            down += change < 0
-            was = position + change
-            moved_in += position <= 10 < was
-            moved_out += was <= 10 < position
+            up += move in GAINS
+            down += move in DROPS
+            lost += move == "lost"
+            new += move == "new"
+            top10_change += top10_step(view)
         cited += row["ai"]["state"] == "cited"
     return {
-        "tracked": tracked, "ranked": ranked, "not_ranked": none, "top10": top10, "top10_source": "scraped", "up": up, "down": down,
-        "top10_change": (moved_in - moved_out) if compared else None, "compared": compared, "cited": cited,
+        "tracked": tracked, "ranked": ranked, "not_ranked": none, "top10": top10, "top10_source": "scraped", "up": up, "down": down, "lost": lost, "new": new,
+        "top10_change": top10_change if compared else None, "compared": compared, "cited": cited,
     }
 
 
@@ -398,9 +464,11 @@ def detail(engine: Engine, site_id: int, keyword_id: int, engine_name: str) -> d
         ).mappings().all() if target else []
         marks = ",".join(str(int(check["id"])) for check in every) or "0"
         own_rows: dict[int, int] = {}
-        for result in conn.execute(text(f"SELECT check_id, position, host FROM serp_results WHERE check_id IN ({marks}) ORDER BY position")).mappings():
+        own_urls: dict[int, str | None] = {}  # the page of mine each check found: the ranking URL, check by check
+        for result in conn.execute(text(f"SELECT check_id, position, url, host FROM serp_results WHERE check_id IN ({marks}) ORDER BY position")).mappings():
             if result["check_id"] not in own_rows and store.on_host(result["host"], host):
                 own_rows[result["check_id"]] = result["position"]
+                own_urls[result["check_id"]] = page_address(result["url"]) if result["url"] else None
         main = view["main"]
         competitors = []
         if main:
@@ -432,7 +500,7 @@ def detail(engine: Engine, site_id: int, keyword_id: int, engine_name: str) -> d
     return {
         "row": {**row, "engines": {engine_name: view}}, "engine": engine_name, "lines": list(lines.values()), "competitors": competitors,
         "checks": [
-            {"id": check["id"], "tool": check["tool"], "location": check["real_location"], "depth": check["depth"], "status": check["status"], "error": check["error"], "p": own_rows.get(check["id"]), "checked_at": _iso(check["checked_at"])}
+            {"id": check["id"], "tool": check["tool"], "location": check["real_location"], "depth": check["depth"], "status": check["status"], "error": check["error"], "p": own_rows.get(check["id"]), "url": own_urls.get(check["id"]), "checked_at": _iso(check["checked_at"])}
             for check in every
         ],
         "tools": [tool for tool in listed["tools"] if engine_name in tool["engines"] or tool["name"] in connections.DEFAULT_ORDER.get(engine_name, [])],

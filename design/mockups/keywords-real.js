@@ -85,6 +85,18 @@
     "Any language": "Toutes les langues", "Choose a file": "Choisir un fichier", "No file chosen": "Aucun fichier choisi", "Filter": "Filtrer", "Show": "Afficher", "View": "Vue", "Rows": "Lignes", "Columns": "Colonnes", "Compact rows": "Lignes compactes",
     "By column": "Par colonne", "Close filters": "Fermer les filtres", "Impressions (28 days)": "Impressions (28 jours)", "Trend": "Tendance", "Page": "Page", "AI": "IA",
     "Search Console average position": "Position moyenne Search Console", "Phone actions": "Actions",
+    // Expert review fixes (2026-11-17): drops out of the depth are moves, the page that ranked, each engine's own numbers, old checks
+    "Dropped out": "Sorti", "Was #{was}, now not in the top {n}.": "Était #{was}, maintenant hors du top {n}.", "New": "Nouveau", "Wasn't in the top {n} last check.": "N'était pas dans le top {n} au dernier contrôle.",
+    "Still out": "Toujours hors", "Not in the top {n} on the last two checks.": "Hors du top {n} aux deux derniers contrôles.",
+    "{n} dropped out of top 10": "{n} sortis du top 10", "Ranking now": "Classée maintenant", "Most shown in Search Console": "La plus affichée dans Search Console",
+    "The page our check found. Search Console's most-shown page over 28 days is another one.": "La page trouvée par notre contrôle. La page la plus affichée par Search Console sur 28 jours en est une autre.",
+    "The ranking page changed since the last check.": "La page classée a changé depuis le dernier contrôle.", "URL changed": "URL changée", "URL": "URL",
+    "Checked {age} ago.": "Contrôlé il y a {age}.", "{tool}'s check is {age} old, so this newer one is shown.": "Le contrôle de {tool} date de {age} : ce contrôle plus récent est affiché.",
+    "Google only": "Google uniquement", "Bing Webmaster": "Bing Webmaster", "Yandex Webmaster": "Yandex Webmaster",
+    "{engine} isn't checked: no tool can search it.": "{engine} n'est pas contrôlé : aucun outil ne peut y chercher.", "Connect one in Settings, then press Refresh.": "Connectez-en un dans les réglages, puis appuyez sur Actualiser.",
+    "It will be skipped.": "Il sera ignoré.", "includes {n} spellings": "inclut {n} orthographes",
+    "No tool can search Yandex, so it was skipped.": "Aucun outil ne peut chercher sur Yandex : il a été ignoré.", "No tool can search Bing, so it was skipped.": "Aucun outil ne peut chercher sur Bing : il a été ignoré.",
+    "No tool can search DuckDuckGo, so it was skipped.": "Aucun outil ne peut chercher sur DuckDuckGo : il a été ignoré.", "No tool can search Google, so it was skipped.": "Aucun outil ne peut chercher sur Google : il a été ignoré.",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 
@@ -106,6 +118,19 @@
     allPages: false, shownList: null, // picks kept on every page after "Select all N keywords"; the list the table last drew
   };
   const fill = (words, n) => t(words).replace("{n}", n);
+  /* The keyword key, as the server's store.keyword_key: any case, any spacing, any Latin accent. "cafe" is "café". */
+  const kwKey = (value) => TP.fold(String(value ?? "").normalize("NFKC")).replace(/œ/g, "oe").replace(/æ/g, "ae").replace(/\s+/g, " ").trim();
+  /* How a keyword moved between two like-for-like checks (rankings.movement): up, down, same, lost (fell out of the depth
+     checked), new (came into it), out (out both times), or null when there's nothing to compare. */
+  const GAINS = ["up", "new"], DROPS = ["down", "lost"];
+  const goesUp = (view) => GAINS.includes(view?.move), goesDown = (view) => DROPS.includes(view?.move);
+  // +1 entered the top 10, −1 left it: the server's rankings.top10_step, on the rows this screen shows.
+  const top10Step = (view) => {
+    if (!view?.move) return 0;
+    const now = view.main?.p, was = view.was, inNow = Boolean(now) && now <= 10, inThen = was !== null && was !== undefined && was <= 10;
+    return (inNow && !inThen ? 1 : 0) - (inThen && !inNow ? 1 : 0);
+  };
+  const OLD_DAYS = 14; // store.MAIN_MAX_AGE_DAYS
   /* The simpler screens (plan-seo-command-center-simplify-screens-like-mickaz.md, section 2, Keywords), only with ?simple=1:
      - the head: "Search Console, through 10 Nov · Last check 29 min with SerpApi", the screen's sentence behind its (i);
      - the engine tabs (page tabs) with Positions · By bucket · Queries at their end, above the four number cards (UI.card),
@@ -173,7 +198,8 @@
   };
   const ideasCard = () => {
     if (!window.LV?.ideasCard) return "";
-    return window.LV.ideasCard({ tracked: new Set(allRows().map((r) => r.keyword.toLowerCase())), market: mostUsed() });
+    const keys = new Set(allRows().map((r) => kwKey(r.keyword)));
+    return window.LV.ideasCard({ tracked: { has: (word) => keys.has(kwKey(word)) }, market: mostUsed() }); // any case, any accent
   };
 
   // ---- loading --------------------------------------------------------------------------------
@@ -266,10 +292,10 @@
     const differs = view.disagree ? `<span class="warn" role="img" data-tip="${esc(t("Tools disagree"))}: ${esc(view.disagree.tools.map((x) => t(x)).join(" / "))}, ${view.disagree.diff}" aria-label="${esc(t("Tools disagree"))}: ${esc(view.disagree.tools.map((x) => t(x)).join(" / "))}, ${view.disagree.diff}">${icon("triangle-alert")}</span>` : "";
     // The simpler screens: the badge only (and its warnings). The tool's logo stays when the rows don't all share one tool;
     // the age, the other tools and Check deeper are in the panel, and the ages are said once under the table.
-    if (simple()) return `<span class="res"><span class="res-line">${K.oneTool ? "" : logoMark(view.main.tool, t(view.main.tool))}${posBadge(view.main)}${flagged(view.main)}${differs}</span></span>`;
+    if (simple()) return `<span class="res"><span class="res-line">${K.oneTool ? "" : logoMark(view.main.tool, t(view.main.tool))}${posBadge(view.main)}${flagged(view.main)}${differs}${oldMark(view.main)}</span></span>`;
     const rest = [...view.suspects.slice(-1), ...view.others].slice(0, 2).map((x) => line(x)).join("");
     const deeper = view.main.p || view.main.status !== "ok" ? "" : `<button class="link-btn" data-kwr-deeper="${esc(row.id)}" data-engine-id="${e}">${t("Check deeper")}</button>`;
-    return `<span class="res">${line(view.main, differs)}${rest}${deeper}</span>`;
+    return `<span class="res">${line(view.main, differs + oldMark(view.main))}${rest}${deeper}</span>`;
   }
 
   /* A keyword just added, before its first result: which tool is on it, so the row isn't a line of dashes (rankings.py _first_checks). */
@@ -280,6 +306,11 @@
     if (c === null || c === undefined) {
       if (view.change_note) return `<span class="cellval"><span class="muted">—</span><span class="second" data-tip="${esc(t(CHANGE_WHY[view.change_note]))}">${esc(t(view.change_note))}<span class="sr">: ${esc(t(CHANGE_WHY[view.change_note]))}</span></span></span>`;
       if (!view.main) return `<span class="muted small kw-unchecked">${t("Not checked")}</span>`;
+      const depth = view.main.depth;
+      const said = (cls, word, tip, mark = "") => `<span class="${cls}" data-tip="${esc(tip)}" aria-label="${esc(`${word}: ${tip}`)}">${mark}<span class="small">${esc(word)}</span></span>`;
+      if (view.move === "lost") return said("chg crit kw-move", t("Dropped out"), t("Was #{was}, now not in the top {n}.").replace("{was}", view.was).replace("{n}", depth), icon("arrow-down"));
+      if (view.move === "new") return said("chg good kw-move", t("New"), t("Wasn't in the top {n} last check.").replace("{n}", depth), icon("arrow-up"));
+      if (view.move === "out") return said("muted kw-move", t("Still out"), t("Not in the top {n} on the last two checks.").replace("{n}", depth));
       return `<span class="muted small" data-tip="${esc(t("Only one check so far: nothing to compare yet."))}">${t("First check")}</span>`;
     }
     if (c === 0) return `<span class="kw-same" aria-label="${esc(t("No change"))}"><span aria-hidden="true">=</span><span class="small">${t("No change")}</span></span>`;
@@ -304,14 +335,41 @@
   };
   const worldCell = (view) => (view.own === null || view.own === undefined ? `<span class="muted dash">—</span>` : `<span class="tabular">${dec(Math.round(view.own * 10) / 10)}</span>`);
 
-  const impressionsOf = (row) => row.impressions ?? row.volume ?? null;
+  /* Each engine's own numbers only (2026-11-17): Google's impressions are Search Console's, Bing's and Yandex's their own
+     webmaster tools', and DuckDuckGo has none. The AI column and Search Console's pages are Google's, so other tabs leave them out. */
+  const impressionsOf = (row, e = "google") => (e === "google" ? row.impressions ?? row.volume ?? null : OWN_TOOL[e] ? row.engines[e]?.impressions ?? null : null);
+  const hasImpressions = (e) => Boolean(OWN_TOOL[e]);
+  const googleOnly = (e) => e === "google";
+  const showCol = (key, e) => state.cols[key] && (key === "vol" ? hasImpressions(e) : key === "ai" ? googleOnly(e) : true);
+  /* The page that ranked: this engine's newest check. On Google, Search Console's most-shown page is said apart when it differs. */
+  function pageCell(row, e) {
+    const view = row.engines[e], url = view.main?.url || null;
+    const gsc = e === "google" && row.gsc_page && (!url || row.gsc_page.replace(/\/$/, "") !== url.replace(/\/$/, "")) ? row.gsc_page : null;
+    const changed = view.url_changed ? `<span class="kw-url-changed" data-tip="${esc(t("The ranking page changed since the last check."))}">${esc(t("URL changed"))}</span>` : "";
+    const main = url ? PageLink.html(url, { text: shortPath(url), title: "" }) : '<span class="muted dash">—</span>';
+    const most = gsc ? `<span class="second kw-gsc-page" data-tip="${esc(`${t("Most shown in Search Console")}: ${gsc}`)}"><span class="sr">${esc(t("Most shown in Search Console"))}: </span>${brandLabel("Search Console")} ${PageLink.html(gsc, { text: shortPath(gsc), title: "" })}</span>` : "";
+    const two = e === "google" && row.two_pages ? `<span class="warn" role="img" data-tip="${esc(t("Two of your pages rank for it."))}" aria-label="${esc(t("Two pages compete"))}">${icon("triangle-alert")}</span>${competingPages(row)}` : "";
+    return `<td class="url-cell mono small" data-label="${t("Page")}" ${url ? `data-tip="${esc(url)}"` : ""}>${main}${changed}${two}${most}</td>`;
+  }
+  /* A row's check is old: amber, with its age, in simple mode too. When the main tool's check was too old and a newer one
+     from another tool is shown, the badge says so (store.pick_main). */
+  function oldMark(m) {
+    if (!m) return "";
+    if (m.passed_over) {
+      const words = t("{tool}'s check is {age} old, so this newer one is shown.").replace("{tool}", t(m.passed_over.tool)).replace("{age}", age(m.passed_over.age_days));
+      return `<span class="kw-age kw-age-old" role="img" data-tip="${esc(words)}" aria-label="${esc(words)}">${icon("clock")}${esc(age(m.passed_over.age_days))}</span>`;
+    }
+    if (!(m.old || m.age_days > OLD_DAYS)) return "";
+    const words = t("Checked {age} ago.").replace("{age}", age(m.age_days));
+    return `<span class="kw-age kw-age-old" role="img" data-tip="${esc(words)}" aria-label="${esc(words)}">${icon("clock")}${esc(age(m.age_days))}</span>`;
+  }
   function passes(row, e) {
     const view = row.engines[e], p = view.main?.status === "ok" ? view.main.p : null;
     switch (state.filter) {
       case "top3": return p && p <= 3;
       case "top10": return p && p <= 10;
-      case "up": return view.change > 0;
-      case "down": return view.change < 0;
+      case "up": return goesUp(view);
+      case "down": return goesDown(view);
       case "none": return notRanked(view);
       case "cited": return row.ai.state === "cited";
       case "two": return row.two_pages;
@@ -324,7 +382,7 @@
   function filtered() {
     const e = engineOf();
     K.worldCol = state.engine !== "all" && e === "google" && allRows().some((row) => localOf(row, e)); // read by ownCell, rowHtml and table
-    const value = (row) => { const v = row.engines[e]; return { k: row.keyword, own: K.worldCol ? localOf(row, e)?.position ?? null : v.own, world: v.own, pos: v.main?.status === "ok" ? v.main.p : null, chg: v.change, vol: impressionsOf(row) }[state.sort.key]; };
+    const value = (row) => { const v = row.engines[e]; return { k: row.keyword, own: K.worldCol ? localOf(row, e)?.position ?? null : v.own, world: v.own, pos: v.main?.status === "ok" ? v.main.p : null, chg: v.move === "lost" ? -1000 : v.move === "new" ? 1000 : v.change, vol: impressionsOf(row, e) }[state.sort.key]; };
     const sign = state.sort.dir === "ascending" ? 1 : -1;
     return searched(allRows()).filter((row) => passes(row, e)).sort((a, b) => {
       const x = value(a), y = value(b);
@@ -350,10 +408,10 @@
          ${K.worldCol ? `<td class="c" data-label="${t("All countries")}">${worldCell(view)}</td>` : ""}
          <td data-label="${t("Our check")}">${scrapedCell(row, e)}</td>
          <td class="c" data-label="${t("Change")}">${changeCell(view)}</td>
-         ${state.cols.vol ? `<td class="c" data-label="${t("Impressions (28 days)")}">${impressionsOf(row) === null ? '<span class="muted dash">—</span>' : num(impressionsOf(row))}</td>` : ""}
+         ${showCol("vol", e) ? `<td class="c" data-label="${t("Impressions (28 days)")}">${impressionsOf(row, e) === null ? '<span class="muted dash">—</span>' : e === "google" && row.spellings > 1 ? `<span class="tabular" data-tip="${esc(t("includes {n} spellings").replace("{n}", row.spellings))}">${num(impressionsOf(row, e))}<sup class="kw-spell" aria-hidden="true">${row.spellings}</sup><span class="sr"> (${esc(t("includes {n} spellings").replace("{n}", row.spellings))})</span></span>` : num(impressionsOf(row, e))}</td>` : ""}
          ${state.cols.trend ? `<td data-label="${t("Trend")}">${trend}</td>` : ""}
-         ${state.cols.page ? `<td class="url-cell mono small" data-label="${t("Page")}" ${row.page ? `data-tip="${esc(row.page)}"` : ""}>${row.page ? PageLink.html(row.page, { text: shortPath(row.page), title: "" }) : '<span class="muted dash">—</span>'}${row.two_pages ? `<span class="warn" role="img" data-tip="${esc(t("Two of your pages rank for it."))}" aria-label="${esc(t("Two pages compete"))}">${icon("triangle-alert")}</span>` : ""}${competingPages(row)}</td>` : ""}
-         ${state.cols.ai ? `<td data-label="${t("AI")}">${aiCell(row)}</td>` : ""}`;
+         ${state.cols.page ? pageCell(row, e) : ""}
+         ${showCol("ai", e) ? `<td data-label="${t("AI")}">${aiCell(row)}</td>` : ""}`;
     // The simpler screens: the keyword is text and the whole row opens the panel (a click, or Enter once the row has focus).
     // data-kwr-open stays on the keyword, holding only its words, so a click on it and the flows that look for it still work.
     const kwName = simple()
@@ -381,8 +439,8 @@
       : `${OWN_TOOL[e] ? sortHeader("own", OWN_TOOL[e], "c", t(K.worldCol ? "in its country" : "avg position"), K.worldCol ? t("Search Console's average position in the keyword's own country.") : "", true) : ""}
          ${K.worldCol ? sortHeader("world", t("All countries"), "c", t("avg position"), t("Search Console's average position across every country.")) : ""}
          ${sortHeader("pos", t("Our check"), "", "", UI.def?.(UI.defKey?.("Scraped results")) || "")}${sortHeader("chg", t("Change"), "c", t("vs last check"))}
-         ${state.cols.vol ? sortHeader("vol", t("Impressions"), "c", t("28 days"), t("Search Console impressions, last 28 days. Exact volume isn't available for free.")) : ""}
-         ${state.cols.trend ? `<th scope="col">${t("Trend")}</th>` : ""}${state.cols.page ? `<th scope="col">${t("Page")}</th>` : ""}${state.cols.ai ? `<th scope="col">${t("AI")}</th>` : ""}`;
+         ${showCol("vol", e) ? sortHeader("vol", t("Impressions"), "c", e === "google" ? t("28 days") : t(OWN_TOOL[e]), e === "google" ? t("Search Console impressions, last 28 days. Exact volume isn't available for free.") : "") : ""}
+         ${state.cols.trend ? `<th scope="col">${t("Trend")}</th>` : ""}${state.cols.page ? `<th scope="col"><span data-tip="${esc(t("The page our check found. Search Console's most-shown page over 28 days is another one."))}">${t("Page")}</span></th>` : ""}${showCol("ai", e) ? `<th scope="col">${t("AI")}</th>` : ""}`;
     const every = rows.length > 0 && rows.every((row) => K.selected.has(row.id));
     K.shownList = { total: view.total, pageFull: every };
     const quiet = simple(), source = quiet ? sourceLine(rows) : "";
@@ -438,7 +496,7 @@
       const words = e === "google" ? ["No Search Console data yet", "Connect it in Settings; queries appear within 3 days."] : [e === "bing" ? "No Bing Webmaster data yet" : "No Yandex Webmaster data yet", "Connect it in Settings; queries appear here."];
       return `<div class="table-wrap"><div class="empty"><h3>${t(words[0])}</h3><p>${t(words[1])}</p><button class="btn" data-go="settings">${t("Open Settings")}</button></div></div>`;
     }
-    const tracked = new Set(allRows().map((row) => `${row.site}|${row.keyword.toLowerCase()}`));
+    const tracked = new Set(allRows().map((row) => `${row.site}|${kwKey(row.keyword)}`)); // "cafe" is tracked when "café" is
     const found = sortedQueries(rows.filter((row) => TP.matches(Q_PAGES, row.query, state.site === "all" ? row.site : "")));
     const tools = `<div class="kw-find">${TP.search(Q_PAGES, t("Search queries"))}</div>`;
     if (!found.length) return `${tools}<div class="table-wrap"><div class="empty"><h3>${t("No query matches.")}</h3><p dir="auto">${esc(TP.state(Q_PAGES).q.trim())}</p><button class="btn" data-kwq-search-clear>${t("Clear search")}</button></div></div>`;
@@ -448,7 +506,7 @@
       return `<th scope="col" class="c" aria-sort="${on ? (K.qsort.dir === "asc" ? "ascending" : "descending") : "none"}"><button type="button" class="th-btn" data-kwq-sort="${id}">${label}${on ? icon(K.qsort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
     };
     return `${tools}<div class="ov-list"><div class="table-wrap"><table class="data" id="kwq-table"><thead><tr><th scope="col">${t("Keyword")}</th>${head("clicks", t("Clicks"))}${head("impressions", "Impressions")}${head("ctr", t("Click rate"))}${head("position", t("Position"))}<th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
-      <tbody>${view.rows.map((row) => `<tr style="cursor:default"><td class="head-cell kw">${KeywordLink.html(row.query, { host: row.site })}${state.site === "all" ? `<span class="second mono">${esc(row.site)}</span>` : ""}</td><td class="c" data-label="${t("Clicks")}">${num(row.clicks)}</td><td class="c" data-label="Impressions">${num(row.impressions)}</td><td class="c" data-label="${t("Click rate")}">${row.impressions ? `${dec(Math.round((row.clicks / row.impressions) * 1000) / 10)}%` : "—"}</td><td class="c" data-label="${t("Position")}">${row.position === null ? "—" : dec(Math.round(row.position * 10) / 10)}</td><td class="r">${tracked.has(`${row.site}|${row.query.toLowerCase()}`) ? "" : `<button class="btn btn-small" data-kwr-follow="${esc(row.query)}" data-site-host="${esc(row.site)}">${t("Track")}</button>`}</td></tr>`).join("")}</tbody></table></div>
+      <tbody>${view.rows.map((row) => `<tr style="cursor:default"><td class="head-cell kw">${KeywordLink.html(row.query, { host: row.site })}${state.site === "all" ? `<span class="second mono">${esc(row.site)}</span>` : ""}</td><td class="c" data-label="${t("Clicks")}">${num(row.clicks)}</td><td class="c" data-label="Impressions">${num(row.impressions)}</td><td class="c" data-label="${t("Click rate")}">${row.impressions ? `${dec(Math.round((row.clicks / row.impressions) * 1000) / 10)}%` : "—"}</td><td class="c" data-label="${t("Position")}">${row.position === null ? "—" : dec(Math.round(row.position * 10) / 10)}</td><td class="r">${tracked.has(`${row.site}|${kwKey(row.query)}`) ? "" : `<button class="btn btn-small" data-kwr-follow="${esc(row.query)}" data-site-host="${esc(row.site)}">${t("Track")}</button>`}</td></tr>`).join("")}</tbody></table></div>
       ${TP.footer(Q_PAGES, view, { noun: t(view.total === 1 ? "query" : "queries") })}</div>`;
   }
   /* The Queries table keeps the server's order (most clicks first) until a heading is pressed. Numbers go biggest first,
@@ -468,6 +526,15 @@
     });
   }
 
+  /* An engine no connected tool can search, with nothing checked on it and no webmaster numbers: one card instead of a table
+     of "Not checked" rows (2026-11-17). Its own webmaster tool's numbers, when there are some, keep the table. */
+  function noToolCard(rows) {
+    const e = state.engine;
+    if (e === "all" || !K.tools) return "";
+    if (K.tools.some((tool) => tool.connected && (tool.engines || []).includes(e))) return "";
+    if (rows.some((row) => row.engines[e]?.main || row.engines[e]?.away?.length || (row.engines[e]?.own !== null && row.engines[e]?.own !== undefined))) return "";
+    return `<div class="table-wrap kw-engine-empty"><div class="empty"><h3>${esc(t("{engine} isn't checked: no tool can search it.").replace("{engine}", name(e)))}</h3><p>${t("Connect one in Settings, then press Refresh.")}</p><button class="btn" data-go="settings">${t("Open Settings")}</button></div></div>`;
+  }
   /* When every connected tool for this engine has no free checks left, Keywords says so where the unchecked rows are. */
   function outOfChecks(rows) {
     const e = engineOf();
@@ -481,7 +548,8 @@
   /* The newest check on screen, whether a Refresh made it or the first check after adding: the header and the rows agree. */
   function lastCheckWords(rows) {
     let newest = null;
-    rows.forEach((row) => ENGINES.forEach(([e]) => { const a = row.engines[e]?.main?.age_days; if (a !== null && a !== undefined && (newest === null || a < newest)) newest = a; }));
+    const only = state.engine === "all" ? ENGINES : ENGINES.filter(([e]) => e === state.engine); // this tab's engine only
+    rows.forEach((row) => only.forEach(([e]) => { const a = row.engines[e]?.main?.age_days; if (a !== null && a !== undefined && (newest === null || a < newest)) newest = a; }));
     const refreshAge = K.data.last_refresh ? (Date.now() - new Date(K.data.last_refresh).getTime()) / 864e5 : null;
     if (refreshAge !== null && (newest === null || refreshAge <= newest + 1 / 1440)) return `${t("Refreshed")} ${esc(UI.fmtStamp(K.data.last_refresh))}`;
     if (newest === null) return t("No check yet");
@@ -506,10 +574,10 @@
     const e = engineOf();
     const local = K.data.tiles[e], view = (row) => row.engines[e], good = (row) => (view(row).main?.status === "ok" ? view(row).main.p : null);
     const found = searched(all);
-    const counts = { all: found.length, top3: found.filter((r) => good(r) && good(r) <= 3).length, top10: found.filter((r) => good(r) && good(r) <= 10).length, up: found.filter((r) => view(r).change > 0).length, down: found.filter((r) => view(r).change < 0).length, none: found.filter((r) => notRanked(view(r))).length, cited: found.filter((r) => r.ai.state === "cited").length, two: found.filter((r) => r.two_pages).length };
+    const counts = { all: found.length, top3: found.filter((r) => good(r) && good(r) <= 3).length, top10: found.filter((r) => good(r) && good(r) <= 10).length, up: found.filter((r) => goesUp(view(r))).length, down: found.filter((r) => goesDown(view(r))).length, none: found.filter((r) => notRanked(view(r))).length, cited: found.filter((r) => r.ai.state === "cited").length, two: found.filter((r) => r.two_pages).length };
     const moved = (() => { // the same rule as the server's tile, on the rows this site shows
       let change = 0, compared = 0;
-      all.forEach((r) => { const c = view(r).change, p = good(r); if (c === null || c === undefined || !p) return; compared += 1; const was = p + c; change += (p <= 10 && was > 10 ? 1 : 0) - (was <= 10 && p > 10 ? 1 : 0); });
+      all.forEach((r) => { if (!view(r).move) return; compared += 1; change += top10Step(view(r)); });
       return { change, compared };
     })();
     const chips = [["all", "All"], ["top3", "Top 3"], ["top10", "Top 10"], ["up", "Up"], ["down", "Down"], ["none", "Not ranked"], ["cited", "Cited by AI"], ["two", "Two pages compete"], ...(K.runFilter?.size ? [["run", "This Refresh"]] : [])];
@@ -527,7 +595,7 @@
       </div>
       ${state.engine === "duckduckgo" ? `<p class="note">${UI.tip("DuckDuckGo has no tool for site owners, so the app checks its positions by itself every day, oldest first, on free searches only. Refresh and Refresh data check them now.").trim()}<span>${t("Checked daily by itself, on free searches.")}</span></p>` : ""}
       ${outOfChecks(all)}
-      ${table(shown)}${selectionBar()}`;
+      ${noToolCard(all) || `${table(shown)}${selectionBar()}`}`;
     const sub = [K.data.data_through ? `${t("Data through")} ${UI.fmtDateOnly(K.data.data_through)}` : "", lastCheckWords(all)].filter(Boolean).join(" · ");
     const phone = phoneActions();
     const main = `${addButton}<button class="btn ${K.selected.size ? "" : "btn-main"}" id="kwr-refresh">${icon("refresh-cw")}${t("Refresh")}</button>`;
@@ -537,8 +605,8 @@
         <section class="tiles" id="kw-tiles">
           ${UI.tile(t("Tracked"), num(all.length), "", { ic: "key-round" })}
           ${UI.tile(t("Ranked"), num(all.filter((r) => good(r)).length), `<span class="ab">${t("of")} ${num(all.length)} · ${brandLabel(name(e))}</span>`, { ic: "list-ordered" })}
-          ${UI.tile(`${t("Top 10")} <span class="muted">· ${t("our checks")}</span>`, num(all.filter((r) => good(r) && good(r) <= 10).length), moved.compared ? `${moved.change ? UI.delta(moved.change, { noWord: false }) : ""}<span class="ab">${num(moved.compared)} ${t("compared")}</span>` : "", { ic: "target" })}
-          ${UI.tile(t("Cited by AI"), num(all.filter((r) => r.ai.state === "cited").length), `<span class="ab">${t("of")} ${num(all.length)}</span>`, { ic: "sparkles" })}
+          ${UI.tile(`${t("Top 10")} <span class="muted">· ${t(state.engine === "all" ? "Google only" : "our checks")}</span>`, num(all.filter((r) => good(r) && good(r) <= 10).length), moved.compared ? `${moved.change ? UI.delta(moved.change, { noWord: false }) : ""}<span class="ab">${num(moved.compared)} ${t("compared")}</span>` : "", { ic: "target" })}
+          ${googleOnly(state.engine) || state.engine === "all" ? UI.tile(`${t("Cited by AI")}${state.engine === "all" ? ` <span class="muted kw-google-only">· ${t("Google only")}</span>` : ""}`, num(all.filter((r) => r.ai.state === "cited").length), `<span class="ab">${t("of")} ${num(all.length)}</span>`, { ic: "sparkles" }) : ""}
         </section>
         <div class="tabs-row">
           <div class="tabs" role="tablist" aria-label="${t("Engines")}">
@@ -559,13 +627,17 @@
   // The tool of the newest check on screen, for the head's "Last check 29 min with SerpApi".
   function newestTool(rows) {
     let best = null;
-    rows.forEach((row) => ENGINES.forEach(([e]) => { const m = row.engines[e]?.main; if (m && m.age_days !== null && m.age_days !== undefined && (!best || m.age_days < best.age_days)) best = m; }));
+    const only = state.engine === "all" ? ENGINES : ENGINES.filter(([e]) => e === state.engine); // this tab's engine only
+    rows.forEach((row) => only.forEach(([e]) => { const m = row.engines[e]?.main; if (m && m.age_days !== null && m.age_days !== undefined && (!best || m.age_days < best.age_days)) best = m; }));
     return best?.tool || "";
   }
   // The head's line: where the engines' own numbers come from and how fresh, then the last check and its tool.
   function headLine(all) {
-    const day = String(K.data.data_through || "").slice(0, 10);
-    const own = /^\d{4}-\d{2}-\d{2}$/.test(day) ? `<span class="head-src">${brandLabel("Search Console")}, ${esc(t("through {day}").replace("{day}", UI.fmtDay(day, { day: "numeric", month: "short" })))}</span>` : "";
+    const day = String(K.data.data_through || "").slice(0, 10), e = state.engine;
+    // Search Console's date is Google's: said on the Google and All engines tabs. Bing's and Yandex's tabs name their own tool.
+    const own = e === "google" || e === "all"
+      ? (/^\d{4}-\d{2}-\d{2}$/.test(day) ? `<span class="head-src">${brandLabel("Search Console")}, ${esc(t("through {day}").replace("{day}", UI.fmtDay(day, { day: "numeric", month: "short" })))}</span>` : "")
+      : OWN_TOOL[e] && all.some((row) => row.engines[e]?.own !== null && row.engines[e]?.own !== undefined) ? `<span class="head-src">${brandLabel(OWN_TOOL[e])}</span>` : "";
     const tool = newestTool(all);
     const last = `<span class="head-src">${lastCheckWords(all)}${tool ? ` ${esc(t("with {tool}").split("{tool}")[0])}${brandLabel(tool)}${esc(t("with {tool}").split("{tool}")[1] || "")}` : ""}</span>`;
     return [own, last].filter(Boolean).join('<span class="head-sep"> · </span>');
@@ -588,7 +660,7 @@
     const bar = `<div class="kw-bar">${positions ? `<div class="kw-find">${TP.search(KW_PAGES, t("Search keywords"))}</div>` : ""}<span class="kw-bar-end">${filterButton}</span></div>${panel}`;
     const body = state.view === "bucket" ? bar + bucketView(all) : state.view === "queries" ? bar + queriesView() : `${bar}
       ${outOfChecks(all)}
-      ${table(shown)}${selectionBar()}`;
+      ${noToolCard(all) || `${table(shown)}${selectionBar()}`}`;
     const main = `${addButton}<button class="btn ${K.selected.size ? "" : "btn-main"}" id="kwr-refresh">${icon("refresh-cw")}${t("Refresh")}</button>`;
     const head = UI.head({ title, period: false, line: headLine(all), info: ["Rankings from engines' own tools and our own checks"], main });
     return head + `
@@ -603,8 +675,8 @@
         <section class="tiles" id="kw-tiles">
           ${UI.card({ id: "kw-tracked", label: t("Tracked"), value: all.length, cls: "tile" })}
           ${UI.card({ id: "kw-ranked", label: t("Ranked"), value: ranked, sub: `${t("of")} ${num(all.length)} · ${brandLabel(name(e))}`, cls: "tile" })}
-          ${UI.card({ id: "kw-top10", label: `${t("Top 10")} <span class="muted">· ${t("our checks")}</span>`, def: "Top 10", value: top10, change: moved.compared ? { value: moved.change, unit: "" } : null, sub: moved.compared ? `${num(moved.compared)} ${t("compared")}` : "", cls: "tile" })}
-          ${UI.card({ id: "kw-cited", label: t("Cited by AI"), value: cited, sub: `${t("of")} ${num(all.length)}`, cls: "tile" })}
+          ${UI.card({ id: "kw-top10", label: `${t("Top 10")} <span class="muted">· ${t(state.engine === "all" ? "Google only" : "our checks")}</span>`, def: "Top 10", value: top10, change: moved.compared ? { value: moved.change, unit: "" } : null, sub: moved.compared ? `${num(moved.compared)} ${t("compared")}` : "", cls: "tile" })}
+          ${googleOnly(state.engine) || state.engine === "all" ? UI.card({ id: "kw-cited", label: `${t("Cited by AI")}${state.engine === "all" ? ` <span class="muted kw-google-only">· ${t("Google only")}</span>` : ""}`, value: cited, sub: `${t("of")} ${num(all.length)}`, cls: "tile" }) : ""}
         </section>
         ${body}
       </div>`;
@@ -790,7 +862,7 @@
     paintToolRows(answer);
     const plural = (n, one, many) => `${num(n)} ${t(n === 1 ? one : many)}`;
     const notes = [];
-    if (answer.no_tools_for.length) notes.push(`<p class="note warn" style="margin:10px 0 0">${icon("triangle-alert")}<span>${t("No tool can search")} ${esc(answer.no_tools_for.map(name).join(", "))}. ${t("Connect one in Settings.")}</span></p>`);
+    if (answer.no_tools_for.length) notes.push(`<p class="note warn" style="margin:10px 0 0">${icon("triangle-alert")}<span>${t("No tool can search")} ${esc(answer.no_tools_for.map(name).join(", "))}. ${t("It will be skipped.")} ${t("Connect one in Settings.")}</span></p>`);
     if (r.mode === "pick") (answer.blocked || []).filter((b) => r.picked.has(b.name)).forEach((b) => {
       const tool = K.tools.find((x) => x.name === b.name), covers = [...r.engines].filter((e) => tool?.engines.includes(e));
       const others = K.tools.filter((x) => x.name !== b.name && x.connected && !x.manual_only && covers.some((e) => x.engines.includes(e)) && !answer.blocked.some((y) => y.name === x.name)).map((x) => t(x.name));
@@ -888,16 +960,18 @@
   }
   /* Up, down (the app's own Change, same tool only) and new in the top 10, on the keywords this Refresh checked. */
   function movesOf(info) {
-    const out = { up: [], down: [], top10: [], rows: new Set() };
+    const out = { up: [], down: [], top10: [], left10: [], rows: new Set() };
     (K.data?.rows || []).forEach((row) => {
       if (!info.ids.has(row.keyword_id)) return;
       info.engines.forEach((e) => {
         const view = row.engines[e], m = view?.main;
         if (!m || m.status !== "ok" || m.age_days === null || m.age_days * 864e5 > Date.now() - info.started + 120000) return; // not checked by this run
-        const was = info.before.get(`${row.id}|${e}`);
-        if (view.change > 0) { out.up.push(row.id); out.rows.add(row.id); }
-        if (view.change < 0) { out.down.push(row.id); out.rows.add(row.id); }
-        if (m.p && m.p <= 10 && !(was && was <= 10)) { out.top10.push(row.id); out.rows.add(row.id); }
+        // The same like-for-like rule as Change (view.move, view.was), never the last result of any tool.
+        if (goesUp(view)) { out.up.push(row.id); out.rows.add(row.id); }
+        if (goesDown(view)) { out.down.push(row.id); out.rows.add(row.id); }
+        const step = top10Step(view);
+        if (step > 0) { out.top10.push(row.id); out.rows.add(row.id); }
+        if (step < 0) { out.left10.push(row.id); out.rows.add(row.id); }
       });
     });
     return out;
@@ -907,6 +981,7 @@
     if (moves.up.length) bits.push(fill("{n} up", num(moves.up.length)));
     if (moves.down.length) bits.push(fill("{n} down", num(moves.down.length)));
     if (moves.top10.length) bits.push(state.lang === "fr" && moves.top10.length === 1 ? "1 nouveau dans le top 10" : fill("{n} new in top 10", num(moves.top10.length)));
+    if (moves.left10.length) bits.push(state.lang === "fr" && moves.left10.length === 1 ? "1 sorti du top 10" : fill("{n} dropped out of top 10", num(moves.left10.length)));
     return bits.join(" · ");
   }
   /* One tray, one block per Refresh: a second Refresh (another keyword, Check deeper, a panel Refresh) can start while the
@@ -999,17 +1074,18 @@
       if (K.panel) loadPanel(K.panel);
       if (!block?.isConnected) return;
       // What moved, with a button that shows just those keywords. A result with something in it stays until it's closed.
-      const moves = info && run.status === "done" ? movesOf(info) : null;
+      // Any run that saved checks says what moved, a stopped one too: its saved results are as real as a finished run's.
+      const moves = info && run.done > 0 ? movesOf(info) : null;
       if (moves?.rows.size) {
         K.runFilter = moves.rows;
-        UI.setHTML($(".top", block), `${run.failed ? icon("triangle-alert", "warn") : icon("circle-check", "good")}<span class="tray-title">${esc(`${t("Finished")} · ${movedWords(moves)}${run.failed ? ` · ${num(run.failed)} ${t("failed")}` : ""}`)}</span>`);
-        if (!run.failed) $(".tray-msg", block).textContent = `${num(run.done)} ${t("saved")}`;
+        UI.setHTML($(".top", block), `${run.failed ? icon("triangle-alert", "warn") : icon("circle-check", "good")}<span class="tray-title">${esc(`${t(run.status === "done" ? "Finished" : "Stopped")} · ${movedWords(moves)}${run.failed ? ` · ${num(run.failed)} ${t("failed")}` : ""}`)}</span>`);
+        if (!run.failed && !run.stop_reason) $(".tray-msg", block).textContent = `${num(run.done)} ${t("saved")}`;
         const rest = $(".tray-actions", block).innerHTML; // a Refresh of the failed ones, when there are some, stays
         UI.setHTML($(".tray-actions", block), `<button class="btn btn-small btn-main kwr-tray-moved" data-engines="${esc(info.engines.join(","))}">${t("Show them")}</button> ${rest.includes("kwr-tray-close") ? rest.replace("btn-main ", "") : `${rest}<button class="btn btn-small kwr-tray-close">${t("Close")}</button>`}`);
         if (state.route === "keywords") UI.render({ keepScroll: true }); // the This Refresh chip
         return;
       }
-      if (info && run.status === "done" && !run.failed) $(".tray-msg", block).textContent = t("Nothing moved");
+      if (info && run.status === "done" && !run.failed && !run.stop_reason) $(".tray-msg", block).textContent = t("Nothing moved");
       if (run.status !== "stopped" && !run.failed) {
         // Alone in the tray, it shrinks to a pill first; beside other runs, it just goes.
         setTimeout(() => { const tray = block.closest("#tray"); if (tray && tray.querySelectorAll(".kwr-run").length === 1) tray.classList.add("pill"); }, 5000);
@@ -1167,7 +1243,7 @@
       ? `<table class="mini"><thead><tr><th scope="col">${t("Position")}</th><th scope="col">${t("Site")}</th><th scope="col" class="r">${t("Change")}</th></tr></thead><tbody>${detail.competitors.slice(0, 20).map((c) => `<tr><td class="pos" style="width:40px">#${c.position}</td><td class="mono small" dir="auto">${c.hidden ? `<span class="muted">${t("Hidden by Google")}</span>` : c.mine ? `<b>${esc(c.host)}</b> <span class="who who-you"><i class="pt-key pt-key-you" aria-hidden="true"></i><span>${t("You")}</span></span>` : esc(c.host)}${c.rival ? ` <span class="who who-them"><i class="pt-key pt-key-them" aria-hidden="true"></i><span>${t("Competitor")}</span></span>` : ""}</td><td class="r">${c.change ? `<span class="chg ${c.change > 0 ? "good" : "crit"}">${icon(c.change > 0 ? "arrow-up" : "arrow-down")}${Math.abs(c.change)}</span>` : '<span class="muted">—</span>'}</td></tr>`).join("")}</tbody></table>`
       : `<p class="small muted">${t("None yet")}</p>`;
     const checks = detail.checks.length
-      ? `<table class="mini"><thead><tr><th>${t("Date")}</th><th>${t("Tool")}</th><th>${t("Position")}</th><th>${t("Status")}</th></tr></thead><tbody>${detail.checks.slice(0, 30).map((c) => `<tr><td class="nowrap small">${esc(UI.fmtDateOnly(c.checked_at.slice(0, 10)))}</td><td class="small">${logoMark(c.tool, t(c.tool))}<span class="second">${esc(c.location || "—")} · ${t("Top")} ${c.depth}</span></td><td>${c.status === "failed" ? "—" : c.p ? `#${c.p}` : c.status === "suspect" ? `<span data-tip="${esc(t(UNSURE))}" role="img" aria-label="${esc(t(UNSURE))}">?</span>` : `&gt;${c.depth}`}</td><td>${c.status === "failed" ? `<span class="crit small" data-tip="${esc(c.error || "")}">${icon("octagon-alert")}${t("Failed")}${c.error ? `<span class="sr">: ${esc(c.error)}</span>` : ""}</span>` : c.status === "suspect" ? status("warn", t("Suspect result")) : okMark()}</td></tr>`).join("")}</tbody></table>`
+      ? `<table class="mini"><thead><tr><th>${t("Date")}</th><th>${t("Tool")}</th><th>${t("Position")}</th><th>${t("URL")}</th><th>${t("Status")}</th></tr></thead><tbody>${detail.checks.slice(0, 30).map((c) => `<tr><td class="nowrap small">${esc(UI.fmtDateOnly(c.checked_at.slice(0, 10)))}</td><td class="small">${brandLabel(c.tool)}<span class="second">${esc(c.location || "—")} · ${t("Top")} ${c.depth}</span></td><td>${c.status === "failed" ? "—" : c.p ? `#${c.p}` : c.status === "suspect" ? `<span data-tip="${esc(t(UNSURE))}" role="img" aria-label="${esc(t(UNSURE))}">?</span>` : `&gt;${c.depth}`}</td><td class="mono small kw-page-url" dir="auto">${c.url ? PageLink.html(c.url, { text: shortPath(c.url), title: "" }) : '<span class="muted">—</span>'}</td><td>${c.status === "failed" ? `<span class="crit small" data-tip="${esc(c.error || "")}">${icon("octagon-alert")}${t("Failed")}${c.error ? `<span class="sr">: ${esc(c.error)}</span>` : ""}</span>` : c.status === "suspect" ? status("warn", t("Suspect result")) : okMark()}</td></tr>`).join("")}</tbody></table>`
       : `<p class="small muted">${t("Not checked")}</p>`;
     const own = OWN_TOOL[e];
     const task = UI.taskButton ? UI.taskButton(findOf(row, e, view), { cls: "btn" }) : "";
@@ -1176,7 +1252,8 @@
       <div class="panel-body">
         <div class="kv">
           ${own ? `<div><div class="k">${brandLabel(own)}</div><div class="v">${view.own === null || view.own === undefined ? '<span class="muted">—</span>' : `${dec(Math.round(view.own * 10) / 10)} <span class="small muted" style="font-weight:400">${t("average")}</span>`}</div></div>` : ""}
-          <div><div class="k">${t("Page")}</div><div class="mono small kw-page-url" style="margin-top:6px" dir="auto">${row.page ? pageAddress(row.page) : "—"}</div></div>
+          <div><div class="k">${t("Ranking now")}</div><div class="mono small kw-page-url" style="margin-top:6px" dir="auto">${view.main?.url ? pageAddress(view.main.url) : "—"}</div></div>
+          ${e === "google" && row.gsc_page ? `<div><div class="k">${t("Most shown in Search Console")}</div><div class="mono small kw-page-url" style="margin-top:6px" dir="auto">${pageAddress(row.gsc_page)}</div></div>` : ""}
         </div>
         <h3>${t("Results")} · ${esc(place)}</h3>
         <table class="mini" id="tool-table"><thead><tr><th>${t("Tool")}</th><th>${t("Position")}</th><th>${t("Checked")}</th><th>${t("Status")}</th><th><span class="sr">${t("Action")}</span></th></tr></thead><tbody>${toolRows}${suspects}</tbody></table>
