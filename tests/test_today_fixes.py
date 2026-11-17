@@ -36,6 +36,8 @@ def _page_week(engine, site_id, name, was, now, shown=(100, 100), position=(5.0,
         for day, clicks, imp, pos in ((END - timedelta(days=10), was, shown[0], position[0]), (END, now, shown[1], position[1])):
             conn.execute(text("INSERT INTO gsc_page (site_id, day, page_hash, page, clicks, impressions, position) VALUES (:s, :d, :h, :p, :c, :i, :o)"),
                          {"s": site_id, "d": day, "h": common.digest(page), "p": page, "c": clicks, "i": imp, "o": pos})
+        for back in range(14):  # both weeks were read (Today compares only full weeks of the page table)
+            common.save_coverage(conn, site_id, "gsc", END - timedelta(days=back), 1)
 
 
 def _query(engine, site_id, day, query, clicks, shown, position):

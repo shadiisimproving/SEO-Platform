@@ -330,6 +330,15 @@ def _page_moves(engine: Engine, site_id: int | None, windows: list | None = None
             days = conn.execute(text("SELECT COUNT(DISTINCT IF(day >= :nf, day, NULL)) now_d, COUNT(DISTINCT IF(day <= :bt, day, NULL)) was_d, SUM(IF(day >= :nf, clicks, 0)) now_c, SUM(IF(day <= :bt, clicks, 0)) was_c FROM gsc_page WHERE site_id = :s AND day BETWEEN :bf AND :e"), bounds).mappings().first()
             if days["now_d"] < days["was_d"]:
                 continue
+            # Only full weeks: the page table is read a day at a time, newest first, so after a new connection the week
+            # before is missing or partly stored. Compared, that makes every page "New" or a made-up gain. The period rule's
+            # own check (period._first_day: stored rows or days read, so a quiet day counts) must reach the week before.
+            first = conn.execute(text(
+                "SELECT LEAST(COALESCE((SELECT MIN(day) FROM gsc_page WHERE site_id = :s), '9999-12-31'), "
+                "COALESCE((SELECT MIN(day) FROM coverage WHERE site_id = :s AND source = 'gsc'), '9999-12-31'))"
+            ), {"s": site["id"]}).scalar()
+            if first is None or str(first) > before_from.isoformat():
+                continue
             if windows is not None:
                 windows.append(_week_bounds(end))
             floor = move_floor(max(int(days["now_c"] or 0), int(days["was_c"] or 0)))
@@ -520,12 +529,12 @@ def _ai_overview_rows(engine: Engine, site_id: int | None) -> list[dict]:
 
 def _order(item: dict) -> tuple:
     """What is being lost first, then how serious, then how much: within one kind of loss, more clicks at stake a month go
-    first, so a 463-click drop is never under a 58-click one (daily-monitoring F6). Leads lost go above clicks lost."""
+    first, so a 463-click drop is never under a 58-click one (daily-monitoring F6). Leads lost have their own place at the
+    top of what is being lost, whatever their severity: a lead is worth more than any number of clicks, and clicks and
+    leads can't be weighed on one scale (code review 2026-11-17)."""
     expires = item.get("expires_in", 10**6 if item.get("reason") == "may_go_offline" else -1)
-    stake = item.get("stake") or 0
-    if item["kind"] == "leads_drop":
-        stake = 10**9
-    return (item["rank"], SEVERITY.get(item["severity"], 3), -stake, expires)
+    leads_first = 0 if item["kind"] == "leads_drop" else 1
+    return (item["rank"], leads_first, SEVERITY.get(item["severity"], 3), -(item.get("stake") or 0), expires)
 
 
 def _below_chance(now: int, was: int) -> bool:
@@ -557,7 +566,9 @@ def _leads_drops(engine: Engine, site_id: int | None) -> list[dict]:
             if not _below_chance(now, was):
                 continue
             percent = round((was - now) / was * 100)
-            key = digest("leads", str(site["id"]), end.isoformat())
+            # One key per site, as a page drop has one per page: GA4's newest day moves daily, so a key holding it brought
+            # a drop marked as seen back the next day. Seen, it stays hidden for SEEN_DROP_DAYS, then comes back if still there.
+            key = digest("leads", str(site["id"]))
             values = {"percent": percent, "was": was, "now": now}
             rows.append({
                 "id": f"leads-{key}", "seen_key": key, "kind": "leads_drop", "severity": "crit" if percent >= 50 else "warn", "rank": LOSING_RESULTS, "host": site["host"],
@@ -830,6 +841,10 @@ def for_person(answer: dict) -> dict:
         answer["going_down"], answer["going_up"] = [], []
     if not who.can("competitors"):
         answer["rival_changes"], answer["other_edits"] = [], 0
+    # Counts over what they may see only, so they never tell of drops in sections they weren't given.
+    answer["todo_drops"] = sum(1 for row in answer["todo"] if row.get("reason") in ("losing_clicks", "losing_leads"))
+    if not (answer.get("going_down") or answer.get("going_up")):
+        answer["moves_window"] = None
 
     if not who.can("backlinks"):
         answer.pop("backlinks", None)

@@ -338,6 +338,8 @@ def _page_clicks(engine, site_id, host, name, end, was, now):
     with engine.begin() as conn:
         for day, clicks in ((end - timedelta(days=10), was), (end, now)):
             conn.execute(text("INSERT INTO gsc_page (site_id, day, page_hash, page, clicks, impressions, position) VALUES (:s, :d, :h, :p, :c, 100, 5)"), {"s": site_id, "d": day, "h": common.digest(page), "p": page, "c": clicks})
+        for back in range(14):  # both weeks were read (Today compares only full weeks of the page table)
+            common.save_coverage(conn, site_id, "gsc", end - timedelta(days=back), 1)
 
 
 END = date(2026, 10, 20)
