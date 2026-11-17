@@ -488,8 +488,8 @@
     // Technical lists only pages Google showed this week: what the health test and URL Inspection found on the others is
     // said here, with the way to it, so the tab never reads as "all clear" beside a 404 (expert review 2026-11-17).
     const away = d.summary.technical_elsewhere || {};
-    const awayPages = (away.pages || 0) + (away.not_indexed || 0);
-    if (IN.tab === "technical" && awayPages) notes.push(`${esc(fill(awayPages === 1 ? "1 problem on a page Google didn't show this week." : "{n} problems on pages Google didn't show this week.", { n: num(awayPages) }))} <a href="#health">${t("See Site health")}</a>`);
+    const awayPages = away.pages || 0; // pages not listed here, each counted once (the server takes the union)
+    if (IN.tab === "technical" && awayPages) notes.push(`${esc(fill(awayPages === 1 ? "1 page Google didn't show this week has a problem." : "{n} pages Google didn't show this week have a problem.", { n: num(awayPages) }))} <a href="#health">${t("See Site health")}</a>`);
     if (IN.tab === "changed" && needs.brand_split === "brand_words") notes.push(`${t("Add brand words to see when brand hides a loss.")} <a href="#overview">${t("Add them on Overview")}</a>`);
     const hint = {
       first: "Biggest findings, one row per query or page.", mix: "Rank checks beside Search Console: what neither shows alone.", changed: "Last 28 days vs the 28 before, plus odd days this week.",
@@ -1050,8 +1050,8 @@
     "Pages sliding a little every week for 16 weeks.": "Pages qui reculent un peu chaque semaine depuis 16 semaines.", "Queries a small push would pay for, using this site's own click rates.": "Requêtes pour lesquelles un petit effort paierait, d'après les taux de clic du site.",
     "Nothing here. Good news.": "Rien ici. Bonne nouvelle.", "Nothing here.": "Rien ici.",
     "No problem on pages Google showed this week.": "Aucun problème sur les pages que Google a montrées cette semaine.",
-    "1 problem on a page Google didn't show this week.": "1 problème sur une page que Google n'a pas montrée cette semaine.",
-    "{n} problems on pages Google didn't show this week.": "{n} problèmes sur des pages que Google n'a pas montrées cette semaine.", "See Site health": "Voir Santé du site",
+    "1 page Google didn't show this week has a problem.": "1 page que Google n'a pas montrée cette semaine a un problème.",
+    "{n} pages Google didn't show this week have a problem.": "{n} pages que Google n'a pas montrées cette semaine ont un problème.", "See Site health": "Voir Santé du site",
     "not on Google": "absente de Google",
     "What": "Quoi", "Clicks a month": "Clics par mois", "Key number": "Chiffre clé", "Task done": "Tâche faite", "Task open": "Tâche ouverte",
     "Insight": "Analyse", "Queries behind it": "Requêtes derrière", "Usual at position {p}": "Habituel en position {p}", "Best 4 weeks, a week": "4 meilleures semaines, par semaine", "Last 4 weeks, a week": "4 dernières semaines, par semaine",

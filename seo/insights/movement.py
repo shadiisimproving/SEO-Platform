@@ -248,6 +248,14 @@ def dropped_out(ctx: Ctx) -> Result:
     return out
 
 
+# URL Inspection says the page isn't on Google. "Excluded" (NEUTRAL) counts: crawled or discovered but not indexed, a
+# noindex, a 404. Two exclusions are on purpose and no problem: an alternate page with its canonical, and a redirect.
+NOT_ON_GOOGLE = (
+    "verdict IS NOT NULL AND verdict NOT IN ('PASS', 'PARTIAL') AND error IS NULL "
+    "AND COALESCE(coverage, '') NOT LIKE 'Alternate page with proper canonical%' AND COALESCE(coverage, '') NOT LIKE 'Page with redirect%'"
+)
+
+
 def _known_problems(ctx: Ctx) -> dict[str, list]:
     """What the last health test, Links Checker and URL Inspection said about each page, by path: noindex, an error, a
     redirect, not on Google."""
@@ -274,7 +282,7 @@ def _known_problems(ctx: Ctx) -> dict[str, list]:
     ):
         add(row["target_url"], f"link_{row['category']}")
     # URL Inspection: Google says the page isn't indexed (expert review 2026-11-17: a dropped page raised nothing here).
-    for row in ctx.fetch("SELECT url FROM gsc_inspections WHERE site_id = :s AND verdict IS NOT NULL AND verdict <> 'PASS' AND error IS NULL"):
+    for row in ctx.fetch(f"SELECT url FROM gsc_inspections WHERE site_id = :s AND {NOT_ON_GOOGLE}"):
         add(row["url"], "not_indexed")
     return found
 

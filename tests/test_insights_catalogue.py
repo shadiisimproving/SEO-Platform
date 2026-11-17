@@ -390,4 +390,5 @@ def test_technical_says_what_it_leaves_out_on_pages_google_did_not_show(engine, 
         for code, pages in (("broken_pages", ["/old-offer"]), ("server_errors", ["/down"]), ("noindex", ["/decafeine", "/down"]), ("no_title", ["/moulins"])):
             conn.execute(text("INSERT INTO health_issues (audit_id, code, page_count, pages) VALUES (:a, :c, :n, :p)"), {"a": audit, "c": code, "n": len(pages), "p": json.dumps([HOME.rstrip("/") + p for p in pages])})
         conn.execute(text("INSERT INTO gsc_inspections (site_id, url_hash, url, verdict) VALUES (:s, 'z', :u, 'NEUTRAL')"), {"s": site, "u": HOME + "subscription"})
-    assert service.summary(engine, [site])["technical_elsewhere"] == {"pages": 3, "critical": 2, "not_indexed": 1}
+    # 3 flagged pages and 1 not indexed, none shown this week: 4 pages, each once (code review 2026-11-17)
+    assert service.summary(engine, [site])["technical_elsewhere"] == {"pages": 4, "critical": 2, "not_indexed": 1}
