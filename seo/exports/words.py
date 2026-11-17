@@ -4,6 +4,8 @@ English is the key, as on the screens. A word with no entry here stays in Englis
 when a view uses a label that has none.
 """
 FR: dict[str, str] = {
+    # One period rule, units carried with each change (2026-11-17)
+    "Pages and searches going up": "Pages et recherches en hausse", "Pages and searches going down": "Pages et recherches en baisse", "Same place": "Même place",
     # Pages screen (2026-11-12)
     "Get clicks": "Reçoivent des clics", "Indexed": "Indexée", "Not indexed": "Non indexées", "Open tasks": "Tâches ouvertes", "Rankings": "Positions",
     "Anchor": "Ancre", "Counts?": "Compte ?", "Website": "Site", "Nothing found.": "Rien trouvé.",

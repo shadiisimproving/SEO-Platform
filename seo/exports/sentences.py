@@ -97,6 +97,10 @@ _PATTERNS: list[tuple[str, str | Callable[[re.Match], str | None]]] = [
     (r"^Took (\d+)\.(\d) s to answer$", "A mis {1},{2} s à répondre"),
     (r"^The site answered (\d+)$", "Le site a répondu {1}"),
     (r"^The request failed: (.+)$", "La requête a échoué : {1}"),  # {1} is the network library's own words, in English
+    # Today's export: Google Analytics' own days, under Search Console's period (seo/exports/views_traffic.py today)
+    (r"^Visits and leads: (\d{4}-\d\d-\d\d) – (\d{4}-\d\d-\d\d), where Google Analytics' data ends\.$", lambda m: f"Visites et demandes : {_day(m.group(1))} – {_day(m.group(2))}, là où s'arrêtent les données de Google Analytics."),
+    # Overview's export: a long period drawn in whole weeks
+    (r"^The first (\d+) days are counted in the totals, not drawn: a short week would look like a fall\.$", "Les {1} premiers jours sont comptés dans les totaux, pas dessinés : une semaine incomplète ressemblerait à une chute."),
     # filters in the file's header: how a typed text is matched
     (r"^(contains|doesn't contain|is exactly|matches) “(.*)”$", lambda m: f"{_MATCH[m.group(1)]} « {m.group(2)} »"),
     # whole-site health problems, several in one title; and the same alert on several sites

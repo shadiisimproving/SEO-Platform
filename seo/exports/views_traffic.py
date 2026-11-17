@@ -1,9 +1,8 @@
 """Traffic: Today, Channels, Conversions, Content, AI search and Google Ads."""
 from __future__ import annotations
 
-from datetime import timedelta
 
-from seo.exports import fmt, registry
+from seo.exports import registry
 from seo.exports.build import C, change, page_address
 from seo.exports.model import Chart, Report, Series, Table, Tile
 from seo.exports.registry import view
@@ -12,7 +11,9 @@ from seo.exports.registry import view
 def _scope(engine, args):
     from seo.metrics import service
 
-    return service.Scope(engine, args.get("site_id"), args.get("from"), args.get("to"), args.get("compare_from"), args.get("compare_to"))
+    scope = service.Scope(engine, args.get("site_id"), args.get("from"), args.get("to"), args.get("compare_from"), args.get("compare_to"))
+    scope.search_args = service.search_args(args)  # as the screen: Search Console on the shared period
+    return scope
 
 
 def _report(engine, args, scope, view_id: str, title: str) -> Report:
@@ -151,15 +152,24 @@ def today(engine, args) -> Report:
         site_id = int(site) if site not in (None, "", "all") else None
     except ValueError as exc:
         raise Refused("That site isn't one of yours.") from exc
-    data = today_view.for_person(today_view.today(engine, site_id))  # chosen access: only their sections, as on screen
+    # The period on screen (range, compare, from, to), so the file holds the screen's numbers (it used to be 28 days always).
+    picked = {key: args.get(key) for key in ("range", "compare", "from", "to") if args.get(key)}
+    data = today_view.for_person(today_view.today(engine, site_id, picked))  # chosen access: only their sections, as on screen
     results = data.get("results") or {}
     report = Report("today", "Today", site=registry.site_host(engine, site_id))
-    through, days = fmt.as_day(results.get("through")), results.get("days")
-    if through and isinstance(days, int) and days > 0:
-        report.period = (through - timedelta(days=days - 1), through)
+    window = results.get("window") or {}
+    # The header is the shared Search Console period, the one the screen's head prints. GA4's own days are said in a note.
+    if window.get("from") and window.get("to"):
+        report.period = registry.days(window["from"], window["to"])
+        if window.get("compare_from") and window.get("compare_to"):
+            report.compare = registry.days(window["compare_from"], window["compare_to"])
+    ga4 = window.get("ga4") or {}
+    if ga4.get("from") and ga4.get("to") and ga4.get("to") != window.get("to"):
+        report.notes.append(f"Visits and leads: {ga4['from']} – {ga4['to']}, where Google Analytics' data ends.")
     for key, label in (("clicks", "Google clicks"), ("visits", "Visits"), ("leads", "Leads")):
         item = results.get(key) or {}
-        report.tiles.append(Tile(label, item.get("value"), "int", item.get("change")))
+        # Leads change is a count (+2 leads), the others a percentage: the unit goes with the value.
+        report.tiles.append(Tile(label, item.get("value"), "int", item.get("change"), change_kind="delta" if key == "leads" else "change"))
         points = item.get("points") or []
         points = [p for p in points if isinstance(p, dict)]
         if key != "leads" and any(p.get("now") is not None for p in points):
@@ -173,7 +183,7 @@ def today(engine, args) -> Report:
     if site_id is None:
         report.tables.append(Table("sites", "Sites", [
             C("host", "Site", "text"), C("clicks", "Google clicks", "int"), C("clicks_change", "Change", "change"), C("visits", "Visits", "int"), C("visits_change", "Visits change", "change"),
-            C("leads", "Leads", "int"), C("leads_change", "Leads change", "change"), C("alerts", "Alerts", "int"),
+            C("leads", "Leads", "int"), C("leads_change", "Leads change", "delta"), C("alerts", "Alerts", "int"),
         ], data.get("sites") or []))
     moves = [
         C("what", "Page or keyword", "url", get=lambda r: r.get("page") or r.get("query")),
@@ -181,8 +191,8 @@ def today(engine, args) -> Report:
         C("now", "Now", "int", get=lambda r: r.get("now") if r.get("type") == "keyword" else r.get("clicks")), C("was", "Before", "int"),
         C("change", "Change", "change"), C("places", "Places gained", "delta", get=lambda r: (r.get("was") - r.get("now")) if r.get("type") == "keyword" and r.get("was") is not None and r.get("now") is not None else None),
     ]
-    report.tables.append(Table("going_up", "Pages going up", moves, data.get("going_up") or [], empty="No page is clearly going up."))
-    report.tables.append(Table("going_down", "Pages going down", moves, data.get("going_down") or [], empty="No page is clearly going down."))
+    report.tables.append(Table("going_up", "Pages and searches going up", moves, data.get("going_up") or [], empty="No page is clearly going up."))
+    report.tables.append(Table("going_down", "Pages and searches going down", moves, data.get("going_down") or [], empty="No page is clearly going down."))
     report.tables.append(Table("rival_changes", "Competitor changes", [
         C("host", "Competitor", "text"), C("url", "Their page", "url"), C("kind", "What changed", "text", translate=True, get=lambda r: CHANGE_KINDS.get(r.get("kind"), str(r.get("kind") or "").replace("_", " ").capitalize())), C("when", "When", "datetime"),
     ], data.get("rival_changes") or [], empty="No competitor changed a watched page."))

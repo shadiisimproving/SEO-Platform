@@ -43,9 +43,12 @@ def overview(engine, args) -> Report:
     report.tiles = [
         Tile("Clicks", totals.get("clicks"), "int", change(totals.get("clicks"), before.get("clicks"))),
         Tile("Impressions", totals.get("impressions"), "int", change(totals.get("impressions"), before.get("impressions"))),
-        Tile("Click rate", totals.get("click_rate"), "pct100", change(totals.get("click_rate"), before.get("click_rate"))),
-        Tile("Average position", totals.get("position"), "position", change(totals.get("position"), before.get("position")), lower_is_better=True),
+        # As on screen: a click rate moves in percentage points, a position in places (lower is better), never in %.
+        Tile("Click rate", totals.get("click_rate"), "pct100", diff(totals.get("click_rate"), before.get("click_rate")), change_kind="points"),
+        Tile("Average position", totals.get("position"), "position", diff(totals.get("position"), before.get("position")), lower_is_better=True, change_kind="places"),
     ]
+    if data.get("week_left_out"):
+        report.notes.append(f"The first {data['week_left_out']['days']} days are counted in the totals, not drawn: a short week would look like a fall.")
     series, compared = data.get("series") or [], data.get("compare_series") or []
     labels = [_short_day(p.get("day")) for p in series]
     for key, title in (("clicks", "Clicks"), ("impressions", "Impressions")):

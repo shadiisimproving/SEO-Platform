@@ -143,7 +143,7 @@ class Tiles(Flowable):
             if tile.change is not None:
                 tone = fmt.tone(tile.change, "delta_low" if tile.lower_is_better else "change")
                 c.setFillColor(_tone_colour(tone) or MUTED)
-                below = fmt.cell(lang, tile.change, "change", trim=True)
+                below = fmt.change_words(lang, tile.change, tile.change_kind)
                 used = glyphs.draw(c, x + 12, y + 7.5, below, glyphs.MEDIUM, 8.5)
                 if tile.hint:
                     c.setFillColor(MUTED)

@@ -116,6 +116,26 @@ def signed(lang: str, value: float, digits: int = 0, suffix: str = "", trim: boo
     return f"{'+' if value > 0 else MINUS}{body}{suffix}"
 
 
+def change_words(lang: str, value, kind: str = "change") -> str:
+    """A headline's change in its own unit (Tile.change_kind): +5 %, +2 (a count), +1.5 pts (a click rate), or a position's
+    places, which say better or worse because a lower position is the better one."""
+    n = as_number(value)
+    if n is None:
+        return ""
+    if kind == "delta":
+        return signed(lang, n, 0 if float(n).is_integer() else 1)
+    if kind == "points":
+        return signed(lang, n, 1, f"{NBSP}pts")
+    if kind == "places":
+        size = _trim(lang, abs(n), 1)
+        if round(n, 1) == 0:
+            return tr(lang, "Same place")
+        if lang == "fr":
+            return f"{'recul' if n > 0 else 'gain'} de {size} place{'s' if abs(n) >= 2 else ''}"
+        return f"{size} place{'s' if abs(n) != 1 else ''} {'worse' if n > 0 else 'better'}"
+    return signed(lang, n, 1, f"{NBSP if lang == 'fr' else ''}%", trim=True)
+
+
 def filter_value(lang: str, value) -> str:
     """A filter's value in the file's header: a day as a day, the app's own words in French, and anything typed or
     picked on screen (already in the screen's language) as it is."""
