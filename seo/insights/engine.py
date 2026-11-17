@@ -46,11 +46,12 @@ def detect(ctx: data.Ctx) -> Result:
     lost = movement.queries_down(ctx)
     take(lost)
     take(movement.segments(ctx))
-    take(movement.unstable(ctx))
     # B. Slow decline
     take(decline.decay(ctx))
-    take(decline.slide(ctx, {f.query for f in lost.findings}))  # a query that already lost 3 places is said once, as that
-    # C. Quick wins
+    # A query that already lost 3 places (or is one of the alike searches of one that did) is said once, as that.
+    take(decline.slide(ctx, {q for f in lost.findings for q in (f.query, *(a["query"] for a in f.evidence.get("alike", [])))}))
+    # C. Quick wins. Unstable ranking is one: a chance to win if it settled at its better days (it was under What changed).
+    take(movement.unstable(ctx))
     take(wins.wins(ctx))
     take(wins.page_near(ctx))
     take(wins.no_page(ctx))

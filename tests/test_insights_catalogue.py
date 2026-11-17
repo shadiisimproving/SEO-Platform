@@ -91,8 +91,8 @@ def test_a_query_jumping_between_places_is_unstable_and_a_steady_one_is_not(engi
     day = NOW[0]
     n = 0
     while day <= NOW[1]:
-        w.add(day, "jumpy", HOME + "jumpy", 0, 10, 2 if n % 2 else 12)
-        w.add(day, "steady", HOME + "steady", 1, 10, 5)
+        w.add(day, "jumpy", HOME + "jumpy", 1, 12, 2 if n % 2 else 12)  # 336 views, 12 a day: enough (rework 2026-11-17)
+        w.add(day, "steady", HOME + "steady", 1, 12, 5)
         day += timedelta(days=1)
         n += 1
     w.save()

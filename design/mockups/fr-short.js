@@ -2,6 +2,11 @@
    rename in place. Loaded after every screen file, so its French wins. */
 window.FR = window.FR || {};
 Object.assign(window.FR, {
+ // Insights → What changed (2026-11-17): the (i) tips
+ "Too few clicks to be sure: a change this size happens by chance.": "Trop peu de clics pour être sûr : un écart de cette taille arrive par hasard.",
+ "Average of all its searches, weighted by impressions.": "Moyenne de toutes ses recherches, pondérée par les impressions.",
+ "Clicks a month at stake on the open findings that lost clicks, in every tab. Drops that could be chance are left out.": "Clics par mois en jeu sur les constats ouverts qui ont perdu des clics, dans tous les onglets. Les baisses qui peuvent être le hasard sont écartées.",
+ "Clicks a month at stake on the open chances to win, in every tab, not counting a query or page already counted as a loss.": "Clics par mois en jeu sur les occasions ouvertes, dans tous les onglets, sans compter une requête ou une page déjà comptée comme perte.",
  "Usual click rate at this position": "Taux de clic habituel à cette position",
  "Queries at positions 11 to 20 with real impressions. A small push brings them onto page 1.": "Requêtes en positions 11 à 20 avec de vraies impressions. Un petit effort les amène en page 1.",
  "Non-brand queries clicked far less than this site's own queries at the same position. Rewrite the title and description.": "Requêtes hors marque bien moins cliquées que les autres requêtes du site à la même position. Réécrivez le titre et la description.",
@@ -754,6 +759,7 @@ Object.assign(window.FR, {
  "Too large together. Upload fewer at once.": "Trop volumineux ensemble. Envoyez-en moins à la fois.",
  "Write the due date as YYYY-MM-DD.": "Écrivez l'échéance au format AAAA-MM-JJ.",
  "Swings between position {a} and {b}, usually {p}": "Oscille entre la position {a} et {b}, d'habitude {p}",
+ "Half its days between position {a} and {b}, usually {p}": "La moitié de ses jours entre la position {a} et {b}, d'habitude {p}",
  "Blocked by robots.txt.": "Bloquée par robots.txt.",
  "No pay-as-you-go price: paid use unavailable.": "Pas de prix à l'usage : usage payant indisponible.",
  "Progress is saved. Reload to see it.": "La progression est enregistrée. Rechargez pour la voir.",
@@ -1133,6 +1139,7 @@ Object.assign(window.FR, {
  "keywords stay Not checked.": "mots-clés restent Non contrôlés.",
  "Monthly cap: Settings → AI": "Plafond mensuel : Réglages → IA",
  "Lower click rate": "Taux de clic en baisse",
+ "Fewer clicks at the same position": "Moins de clics à la même position",
  "Higher click rate": "Taux de clic en hausse",
  "No free checks left.": "Plus de contrôles gratuits.",
  "Only one ranks": "Un seul se classe",

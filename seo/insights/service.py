@@ -14,6 +14,7 @@ from seo.insights import rules
 GROUPS = ("first", "changed", "decline", "wins", "leads", "technical", "impact", "mix")
 FIRST_SHOWN = 15
 LIST_ROWS = 300
+UNCERTAIN_SQL = "COALESCE(JSON_VALUE(f.evidence, '$.uncertain'), 'false') = 'true'"
 
 
 def _sites(engine: Engine, site_id) -> list[int]:
@@ -84,7 +85,8 @@ def listing(engine: Engine, site_id, group: str = "first", status: str = "open")
     elif group != "first":
         where += "AND f.grp = :g "
         values["g"] = group
-    rows = _fetch(engine, where + f"ORDER BY f.at_stake DESC, f.id LIMIT {LIST_ROWS}", values)
+    # A drop that could be chance comes last, whatever its clicks at stake.
+    rows = _fetch(engine, where + f"ORDER BY {UNCERTAIN_SQL}, f.at_stake DESC, f.id LIMIT {LIST_ROWS}", values)
     if group == "first":
         rows = _one_per_subject(rows)[:FIRST_SHOWN]
     found = {"group": group, "status": status, "rows": rows, "counts": counts(engine, sites), "summary": summary(engine, sites)}
@@ -142,7 +144,7 @@ def _stake_rows(engine: Engine, sites: list[int], where: str) -> list[dict]:
 
 
 # Findings about clicks already lost; the rest are clicks that could be won.
-LOSS_KINDS = frozenset({"page_down", "dropped_out", "query_down", "decay", "slide", "shown_broken", "lead_page", "rank_drop", "rival_passed", "page_switch"})
+LOSS_KINDS = frozenset({"page_down", "dropped_out", "query_down", "ctr_drop", "decay", "slide", "shown_broken", "lead_page", "rank_drop", "rival_passed", "page_switch"})
 
 
 def recover_and_win(rows: list[dict]) -> tuple[int, int]:
@@ -204,7 +206,99 @@ def one(engine: Engine, finding_id: int) -> dict:
     row = rows[0]
     row["series"] = _series(engine, row)
     row["ai"] = _ai(engine, row)
+    if row["kind"] in PAGE_DETAIL_KINDS and row["page"]:
+        row["detail"] = page_detail(engine, row)
     return row
+
+
+# A page row's panel (What changed): Google's indexing answer, my own last edit, the AI Overview on its searches, a link
+# to the same view in Search Console. Read fresh when the panel opens, not kept on the finding.
+PAGE_DETAIL_KINDS = frozenset({"page_down", "page_up", "dropped_out"})
+
+
+def page_detail(engine: Engine, row: dict) -> dict:
+    from seo.backlinks import indexed
+
+    e = row["evidence"]
+    with engine.connect() as conn:
+        answer = conn.execute(text("SELECT * FROM gsc_inspections WHERE site_id = :s AND url_hash = :h"), {"s": row["site_id"], "h": indexed.url_hash(row["page"])}).mappings().first()
+        prop = conn.execute(text("SELECT property FROM site_sources WHERE site_id = :s AND source = 'gsc'"), {"s": row["site_id"]}).scalar()
+    google = indexed.as_shown(answer) if answer else None
+    return {
+        "google": google, "edit": own_edit(engine, row["page"], e.get("since") or row["data_through"]),
+        "aio": _aio_queries(engine, row["site_id"], [q.get("query") for q in e.get("queries") or []]),
+        "console": console_link(prop, row["host"], row["page"], e, row["data_through"]),
+    }
+
+
+def _url_tries(url: str) -> list[str]:
+    """The spellings of one address the page reader may have kept it under."""
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(url)
+    host, path = (parts.hostname or "").lower(), parts.path or "/"
+    bare = host[4:] if host.startswith("www.") else host
+    paths = dict.fromkeys([path, path.rstrip("/") or "/", path if path.endswith("/") else path + "/"])
+    return list(dict.fromkeys([url, *(f"{scheme}://{h}{p}" for scheme in ("https", "http") for h in (bare, f"www.{bare}") for p in paths)]))
+
+
+def own_edit(engine: Engine, page: str, since: str | None) -> dict:
+    """My own page's last edit the page reader saw in the 14 days before the fall started (change_events), with what changed.
+    read: whether the reader knows the page at all, so "no edit seen" is only said when it could have seen one."""
+    from seo.competitors import pages
+
+    hashes = [pages.url_hash(u) for u in _url_tries(page)]
+    with engine.connect() as conn:
+        page_id = conn.execute(text("SELECT id FROM pages WHERE url_hash IN :h ORDER BY last_checked_at DESC LIMIT 1").bindparams(bindparam("h", expanding=True)), {"h": hashes}).scalar()
+        if page_id is None or not since:
+            return {"read": page_id is not None, "since": since, "events": []}
+        until = date.fromisoformat(since[:10]) + timedelta(days=1)
+        rows = conn.execute(
+            text(
+                "SELECT kind, before_value, after_value, detected_at, changed_words FROM change_events WHERE page_id = :p AND detected_at >= :a AND detected_at < :b "
+                "ORDER BY detected_at DESC LIMIT 6"
+            ),
+            {"p": page_id, "a": until - timedelta(days=rules.EDIT_BEFORE_DAYS + 1), "b": until},
+        ).mappings().all()
+    if rows:  # the last edit: every change seen on that same day
+        day = rows[0]["detected_at"].date()
+        rows = [r for r in rows if r["detected_at"].date() == day]
+    return {
+        "read": True, "since": since, "days": rules.EDIT_BEFORE_DAYS,
+        "events": [{"kind": r["kind"], "before": (r["before_value"] or "")[:200], "after": (r["after_value"] or "")[:200], "at": r["detected_at"].date().isoformat(), "words": r["changed_words"]} for r in rows],
+    }
+
+
+def _aio_queries(engine: Engine, site_id: int, queries: list) -> dict:
+    """The searches behind a page that are tracked keywords and whose last readable check saw an AI Overview (aio.py)."""
+    from seo.insights import aio
+
+    wanted = [q for q in queries if q]
+    if not wanted:
+        return {}
+    seen = aio.states(engine, site_id)
+    out = {}
+    for q in wanted:
+        latest = seen.get((site_id, aio._key(q)))
+        if latest and latest[0]["state"] == "present":
+            out[q] = {"cited": latest[0]["cited"], "checked": latest[0]["at"].date().isoformat()}
+    return out
+
+
+def console_link(prop: str | None, host: str, page: str, e: dict, through: str | None) -> str:
+    """Search Console's Performance report on this page, last 28 days against the 28 before, like the finding."""
+    from urllib.parse import quote
+
+    resource = prop or f"sc-domain:{host}"
+    params = [f"resource_id={quote(resource, safe='')}", f"page=!{quote(page, safe='')}"]
+    if through:
+        end = date.fromisoformat(through)
+        start = end - timedelta(days=rules.PERIOD_DAYS - 1)
+        before_end = start - timedelta(days=1)
+        before_start = before_end - timedelta(days=rules.PERIOD_DAYS - 1)
+        day = lambda d: d.strftime("%Y%m%d")  # noqa: E731
+        params += [f"start_date={day(start)}", f"end_date={day(end)}", f"compare_start_date={day(before_start)}", f"compare_end_date={day(before_end)}"]
+    return "https://search.google.com/search-console/performance/search-analytics?" + "&".join(params)
 
 
 def _ai(engine: Engine, row: dict) -> dict:

@@ -58,7 +58,7 @@ def _basics(w: World) -> None:
 def _catalogue(engine, site_id: int, w: World) -> None:
     day, n = NOW[0], 0
     while day <= NOW[1]:
-        w.add(day, "jumpy search", HOME + "jumpy", 0, 10, 2 if n % 2 else 12)
+        w.add(day, "jumpy search", HOME + "jumpy", 1, 12, 2 if n % 2 else 12)  # 336 views: over the 2026-11-17 floor
         day += timedelta(days=1)
         n += 1
     w.spread(*BEFORE, "shopone shoes", HOME + "brand", 2, 20, 1)

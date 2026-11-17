@@ -146,3 +146,52 @@ html[data-simple="1"] #panel .in-ai-wrap { margin-top: 4px; }
 @media (max-width: 860px) { html[data-simple="1"] .in-cards { grid-template-columns: 1fr; gap: 8px; } }
 .in-answer .ov-answer + .ov-answer { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
 .in-same { display: flex; align-items: center; gap: 6px; } .in-same svg.i { width: 14px; height: 14px; flex: none; }
+
+/* ---- What changed (2026-11-17): Pages, then Searches, then the whole site; gains and the small or uncertain ones folded.
+   A row: its name, a cause badge and "Since 3 Nov" under it, Clicks −21% with 58 → 46 under it, Lost / month. */
+.in-wc { display: grid; gap: 4px; padding-bottom: 6px; }
+.in-block + .in-block, .in-wc > .in-inside + .in-block { margin-top: 14px; }
+.in-block-head { display: flex; align-items: center; gap: 8px; padding: 10px 18px 6px; }
+.in-block-h { margin: 0; font-size: 15px; font-weight: 600; color: var(--text); }
+.in-block > .in-inside, .in-wc > .in-inside { margin: 0; padding: 0 18px 6px; }
+.in-under { margin: 4px 0 0; }
+.in-cause { display: inline-flex; align-items: center; gap: 4px; font-size: var(--fs-min); font-weight: 600; line-height: 18px; padding: 0 8px; border-radius: 999px; color: var(--text-2); background: var(--track); }
+.in-cause svg { width: 12px; height: 12px; }
+.in-cause.c-not_indexed { color: var(--warn-t); background: color-mix(in srgb, var(--warn-t) 14%, transparent); }
+.in-since { font-size: var(--fs-min); color: var(--text-2); font-variant-numeric: tabular-nums; }
+.in-chance, .in-alike { font-size: var(--fs-min); line-height: 18px; padding: 0 7px; border-radius: 999px; color: var(--text-2); box-shadow: inset 0 0 0 1px var(--line); cursor: help; }
+.in-chance:focus-visible, .in-alike:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.in-clicks .d-pill { font-size: 13px; }
+.in-ba { margin-top: 2px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.in-ba-r { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.in-wc-table td.ov-n { vertical-align: top; }
+.in-wc-none { padding-block: 18px 6px; }
+.in-fold { margin: 14px 18px 4px; }
+.in-fold-btn { display: inline-flex; align-items: center; gap: 8px; min-height: 40px; }
+.in-fold-btn svg { width: 15px; height: 15px; }
+.in-fold-act { color: var(--accent-text); font-weight: 600; }
+#in-folded .in-block-head { padding-inline: 0; }
+#in-folded .in-block > .in-inside { padding-inline: 0; }
+/* The page panel's blocks, and the tags on its searches. */
+.in-pblock { margin-top: 18px; }
+.in-pblock .ov-h3 { margin: 0 0 8px; }
+.in-why-head { margin-bottom: 10px; }
+.in-why-note { margin: 8px 0 0; }
+.in-behind .s, .in-google .s, .in-edits .s { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin-top: 2px; overflow-wrap: anywhere; }
+.in-qtags { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.in-qtag { display: inline-flex; align-items: center; gap: 3px; font-size: var(--fs-min); line-height: 17px; padding: 0 7px; border-radius: 999px; color: var(--text-2); background: var(--track); }
+.in-qtag svg { width: 11px; height: 11px; }
+.in-qtag.q-places, .in-qtag.q-gone { color: var(--crit-t); background: color-mix(in srgb, var(--crit-t) 10%, transparent); }
+.in-qtag.q-other_page { color: var(--warn-t); background: color-mix(in srgb, var(--warn-t) 12%, transparent); }
+.in-qtag.q-aio { color: var(--c-blue); background: var(--c-blue-pale); }
+.in-was { color: var(--muted); text-decoration: line-through; text-decoration-color: color-mix(in srgb, var(--muted) 60%, transparent); }
+.in-console { display: inline-flex; align-items: center; gap: 6px; }
+.in-console svg { width: 14px; height: 14px; }
+.in-console + p { margin: 6px 0 0; }
+@media (max-width: 640px) {
+  .in-block-head { padding-inline: 14px; }
+  .in-block > .in-inside, .in-wc > .in-inside { padding-inline: 14px; }
+  .in-fold { margin-inline: 14px; }
+  .in-fold-btn { width: 100%; justify-content: flex-start; flex-wrap: wrap; min-height: 44px; }
+  .in-fold-act { margin-left: auto; }
+}
