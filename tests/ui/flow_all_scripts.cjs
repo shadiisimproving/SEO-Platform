@@ -83,8 +83,7 @@ async function shoot(page, name, label) {
       await page.waitForTimeout(2500);
       const activity = await page.$('[role="tab"]:has-text("Activity"), [role="tab"]:has-text("Activité"), button:has-text("Activity"), button:has-text("Activité")');
       if (activity) { await activity.click(); await page.waitForTimeout(2000); }
-      const changesList = await page.$('text=/Changes|Changements|Modifications/');
-      if (changesList) await changesList.scrollIntoViewIfNeeded().catch(() => {});
+      await page.evaluate(() => [...document.querySelectorAll("tr")].find((r) => r.textContent.includes("/gift-subscriptions-2026/"))?.scrollIntoView({ block: "center" }));
       await shoot(page, name("competitor-profile"), `${tag} ${lang} competitor profile`);
       const profileMoved = await page.evaluate(() => document.body.innerText.includes("/gift-subscriptions-2026/"));
       check(`${tag} ${lang}: the profile's changes show where the page moved`, profileMoved);
