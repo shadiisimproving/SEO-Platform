@@ -42,6 +42,7 @@ class Keyword:
     pages: dict = field(default_factory=dict)  # page → clicks, last 28 days
     results: list = field(default_factory=list)  # (position, url, host), best first
     before: list | None = None  # the same, from the previous like-for-like check; None when there isn't one
+    before_at: object = None  # when that previous check ran
 
     @property
     def p(self) -> int | None:
@@ -126,6 +127,14 @@ def _results(ctx: Ctx, check_ids: list[int]) -> dict[int, list]:
     return found
 
 
+def _checked_at(ctx: Ctx, check_ids: list[int]) -> dict[int, object]:
+    if not check_ids:
+        return {}
+    statement = text("SELECT id, checked_at FROM serp_checks WHERE id IN :ids").bindparams(bindparam("ids", expanding=True))
+    with ctx.engine.connect() as conn:
+        return {r["id"]: r["checked_at"] for r in conn.execute(statement, {"ids": check_ids}).mappings().all()}
+
+
 def _rivals(ctx: Ctx) -> list[str]:
     return [r["host"] for r in ctx.fetch("SELECT c.host FROM site_competitors sc JOIN sites c ON c.id = sc.competitor_id WHERE sc.site_id = :s AND sc.tracking = 'on'")]
 
@@ -140,6 +149,7 @@ def _load(ctx: Ctx) -> list[Keyword]:
     main_ids = [r["engines"]["google"]["main"]["check_id"] for r in rows]
     previous = _previous(ctx, main_ids)
     results = _results(ctx, main_ids + list(previous.values()))
+    previous_at = _checked_at(ctx, list(previous.values()))
     found = []
     for r in rows:
         main, key = r["engines"]["google"]["main"], _key(r["keyword"])
@@ -148,7 +158,7 @@ def _load(ctx: Ctx) -> list[Keyword]:
         before_id = previous.get(main["check_id"])
         found.append(Keyword(
             r["keyword"], r["keyword_id"], main, r["ai"], code3, numbers if numbers and numbers["position"] is not None else None, world.get(key), pages.get(key, {}),
-            results.get(main["check_id"], []), results.get(before_id, []) if before_id else None,
+            results.get(main["check_id"], []), results.get(before_id, []) if before_id else None, previous_at.get(before_id),
         ))
     return found
 
@@ -177,6 +187,38 @@ def _evidence(ctx: Ctx, k: Keyword, rivals: list[str], **extra) -> dict:
         "scraped": k.p, "depth": k.depth, "tool": k.main["tool"], "location": k.main["location"], "checked": k.main["checked_at"], "age_days": round(k.age, 1),
         "same_country": k.local is not None, "ai": k.ai.get("state"), "rivals": _rival_rows(k, rivals)[:5], "results": kept, **extra,
     }
+
+
+# ---- who passed me (seo/competitors/rival_changes.py reads their pages) -------------------------------
+# Only for this step, a competitor followed for its pages only counts too: its pages are read, its keyword numbers aren't
+# shown. The findings above still use competitors that are On, so which findings appear doesn't change.
+PASSED_KINDS = frozenset({"rival_passed", "rank_drop"})
+
+
+def _page_rivals(ctx: Ctx) -> list[str]:
+    from seo.competitors.tracking import PAGES_SQL  # imported here: the competitors code reads this package's neighbours
+
+    return [r["host"] for r in ctx.fetch(f"SELECT c.host FROM site_competitors sc JOIN sites c ON c.id = sc.competitor_id WHERE sc.site_id = :s AND {PAGES_SQL}")]
+
+
+def _above(ctx: Ctx, k: Keyword, followed: list[str]) -> list[dict]:
+    """Every result above my page on this check, with where it was on the previous one and whether its site is followed."""
+    mine = k.p if k.p is not None else k.depth + 1
+    out = []
+    for position, url, host in k.results:
+        if position >= mine or store.on_host(host, ctx.host):
+            continue
+        before = next((p for p, u, _ in (k.before or []) if u == url), None)
+        out.append({"position": position, "url": url, "host": host, "before": before, "followed": any(store.on_host(host, rival) for rival in followed)})
+    return out[:TOP_SHOWN]
+
+
+def _add_passed(ctx: Ctx, k: Keyword, f: Finding, followed: list[str]) -> None:
+    if f.kind not in PASSED_KINDS:
+        return
+    f.evidence["above"] = _above(ctx, k, followed)
+    f.evidence["before_checked"] = k.before_at.strftime("%Y-%m-%dT%H:%M:%SZ") if k.before_at is not None else None
+    f.evidence["my_url"] = next((u for _, u, h in k.results if store.on_host(h, ctx.host)), None) or k.main["url"] or None
 
 
 def _finding(ctx: Ctx, k: Keyword, kind: str, rivals: list[str], at_stake: float = 0.0, severity: str = "normal", page: str | None = None, **extra) -> Finding:
@@ -285,6 +327,7 @@ def signals(ctx: Ctx) -> Result:
         out.needs[GROUP] = "checks"
         return out
     rivals = _rivals(ctx)
+    followed = _page_rivals(ctx)
     picked = []
     for k in keywords:
         found = [f for check in CHECKS if (f := check(ctx, k, rivals))]
@@ -293,6 +336,7 @@ def signals(ctx: Ctx) -> Result:
         # What just happened comes before where a keyword has long stood, whatever each is worth.
         found.sort(key=lambda f: (f.severity == "info", f.kind not in JUST_HAPPENED, -f.at_stake, _ORDER[f.kind]))
         found[0].evidence["also"] = [f.kind for f in found[1:]]
+        _add_passed(ctx, k, found[0], followed)
         picked.append(found[0])
     picked.sort(key=lambda f: -f.at_stake)
     out.findings += picked[: rules.MIX_KEPT]

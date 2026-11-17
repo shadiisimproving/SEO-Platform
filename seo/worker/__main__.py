@@ -6,7 +6,7 @@ import sys
 
 from seo.backlinks import ahrefs as backlink_ahrefs, indexed as backlink_indexed, live as backlink_checks, logos, reclaim as backlink_reclaim, source_index as backlink_source_index  # noqa: F401 - register their job handlers
 from seo.uptime import service as uptime_service  # registers the uptime check's job handler
-from seo.competitors import crawl as competitor_crawl, firecrawl, history, keywords, pages, probe, quality  # noqa: F401 - register their job handlers
+from seo.competitors import crawl as competitor_crawl, firecrawl, history, keywords, pages, probe, quality, rival_changes  # noqa: F401 - register their job handlers
 from seo.collectors import jobs as collector_jobs
 from seo.extras import auto as extras_auto  # registers its job handler
 from seo.core.db import make_engine

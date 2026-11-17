@@ -1658,3 +1658,38 @@ class GscAiReport(Base):
     data: Mapped[dict] = mapped_column(JSON)
     uploaded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     uploaded_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
+class RivalPageChange(Base):
+    """A followed competitor's page that now ranks above mine on a page-1 search, read again and compared with an earlier copy
+    of it: the newest one we stored before my drop, or the Wayback Machine's, or none. Only the comparison is kept here, never
+    the Wayback copy itself. Their page text is someone else's words: shown escaped, and given to AI only as data."""
+
+    __tablename__ = "rival_page_changes"
+    __table_args__ = (
+        UniqueConstraint("finding_id", "rival_url_hash", name="uq_rival_page_changes_finding_url"),
+        CheckConstraint("before_source IN ('stored', 'wayback', 'none')", name="ck_rival_page_changes_source"),
+        Index("ix_rival_page_changes_site_read", "site_id", "read_at"),
+        Index("ix_rival_page_changes_url_wanted", "rival_url_hash", "wanted_before"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    finding_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("search_findings.id", ondelete="CASCADE"))
+    keyword_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("keywords.id", ondelete="SET NULL"), nullable=True)
+    rival_url: Mapped[str] = mapped_column(Text)
+    rival_url_hash: Mapped[str] = mapped_column(String(64))  # Text can't hold a unique key, its hash can
+    host: Mapped[str] = mapped_column(String(190))
+    my_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    position_before: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    position_now: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    wanted_before: Mapped[date | None] = mapped_column(Date, nullable=True)  # the day an earlier copy was looked for: Wayback is asked once per page and day
+    before_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+    before_source: Mapped[str] = mapped_column(String(8), server_default="none")
+    after_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+    read_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)  # the last day this step read a page for it
+    read_count: Mapped[int] = mapped_column(Integer, server_default="0")  # pages it read that day, for the daily limit
+    diff: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    mine: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+    updated_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)

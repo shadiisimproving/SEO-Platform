@@ -24,6 +24,14 @@ def one(finding_id: int):
     return jsonify(service.one(_engine(), finding_id))
 
 
+@insights_api.get("/<int:finding_id>/rivals")
+def rivals(finding_id: int):
+    """Who passed me and what they changed: one card per followed page above mine (seo/competitors/rival_changes.py)."""
+    from seo.competitors import rival_changes
+
+    return jsonify(rival_changes.for_finding(_engine(), finding_id))
+
+
 @insights_api.post("/<int:finding_id>/dismiss")
 def dismiss(finding_id: int):
     body = request.get_json(silent=True) or {}

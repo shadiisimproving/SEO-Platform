@@ -10,11 +10,14 @@ address. Asking for only the first copy of each address, whatever it was, lost e
 redirect (an old http:// address, a missing slash) and gave a "first archived" date years too late (2026-11-10).
 When the archive is too slow to filter, it's asked for every copy instead, and the good ones are picked out here.
 An address with ?something is the same page.
+
+It also reads one page as the archive last saw it before a day (read_capture), for "who passed me and what they changed".
 """
 from __future__ import annotations
 
 import json
 from collections import Counter
+from dataclasses import dataclass
 from datetime import date, datetime
 from typing import Callable
 
@@ -22,6 +25,7 @@ import httpx
 from sqlalchemy import Engine, text
 
 from seo.backlinks.cleaner import registrable_domain
+from seo.crawl.extract import PageFields, extract
 from seo.crawl.fetch import USER_AGENT
 from seo.crawl.guard import is_public_url
 from seo.serp.store import to_ascii_host
@@ -100,10 +104,80 @@ def read_cdx(host: str) -> Rows:
     return _rows(_ask([*fields.items(), ("limit", str(CDX_ALL_LIMIT))]), CDX_ALL_LIMIT)
 
 
+# ---- one page as it was (for "who passed me and what they changed") -------------------------------
+#
+# The archive's copy of one address, closest before a day, read with the same extract() as any page we read. It's kept
+# in memory only: the caller stores what changed, never the copy (seo/competitors/rival_changes.py).
+
+ARCHIVE_URL = "https://web.archive.org/web/"
+CAPTURE_TIMEOUT = 30.0
+CAPTURE_MAX_BYTES = 3_000_000
+CAPTURE_HOPS = 3  # id_ answers with a redirect to the nearest copy's own timestamp
+
+
+@dataclass
+class Capture:
+    url: str  # the address as the archive holds it
+    taken_at: datetime
+    fields: PageFields
+
+
+def closest_before(url: str, day: date) -> tuple[str, str] | None:
+    """(timestamp, address) of the archive's last good HTML copy of this page on or before this day, or None."""
+    params = [
+        ("url", url), ("to", day.strftime("%Y%m%d")), ("fl", "timestamp,original"),
+        ("filter", "statuscode:200"), ("filter", "mimetype:text/html"), ("limit", "-1"),  # -1: the last one, the closest before
+    ]
+    rows = [line.split(" ") for line in _ask(params, CAPTURE_TIMEOUT).decode("utf-8", "replace").splitlines()]
+    rows = [r for r in rows if len(r) == 2 and r[0].isdigit() and len(r[0]) >= 8]
+    return (rows[-1][0], rows[-1][1]) if rows else None
+
+
+def _get_capture(address: str) -> tuple[bytes, str | None]:
+    """The archived bytes as the page sent them (id_: no archive toolbar), following the archive's own redirects only."""
+    with httpx.Client(timeout=CAPTURE_TIMEOUT, transport=transport, follow_redirects=False, trust_env=False, headers={"User-Agent": USER_AGENT}) as client:
+        for _ in range(CAPTURE_HOPS + 1):
+            if not address.startswith(ARCHIVE_URL) or not is_allowed(address):
+                raise HistoryFailed("refused")
+            body = b""
+            try:
+                with client.stream("GET", address) as reply:
+                    if reply.status_code in (301, 302, 303, 307, 308):
+                        address = str(httpx.URL(address).join(reply.headers.get("location", "")))
+                        continue
+                    if reply.status_code != 200:
+                        raise HistoryFailed(f"http_{reply.status_code}")
+                    for chunk in reply.iter_bytes():
+                        body += chunk
+                        if len(body) > CAPTURE_MAX_BYTES:
+                            raise HistoryFailed("too_large")
+                    return body, reply.charset_encoding
+            except httpx.TimeoutException as exc:
+                raise HistoryFailed("timeout") from exc
+            except httpx.HTTPError as exc:
+                raise HistoryFailed("network") from exc
+    raise HistoryFailed("too_many_redirects")
+
+
+def read_capture(url: str, day: date) -> Capture | None:
+    """The page as the archive last saw it on or before this day, or None when it holds no copy. Raises HistoryFailed."""
+    found = closest_before(url, day)
+    if found is None:
+        return None
+    stamp, original = found
+    body, charset = _get_capture(f"{ARCHIVE_URL}{stamp}id_/{original}")
+    try:
+        taken = datetime.strptime(stamp[:14].ljust(14, "0"), "%Y%m%d%H%M%S")
+    except ValueError as exc:
+        raise HistoryFailed("bad_timestamp") from exc
+    return Capture(original, taken, extract(body, original, charset=charset))
+
+
 # Tests and the local harness replace these to run on a fake internet.
 is_allowed: Callable[[str], bool] = is_public_url
 transport: httpx.BaseTransport | None = None
 cdx_lookup: Callable[[str], list[tuple[str, str, str, str]]] = read_cdx
+capture_lookup: Callable[[str, date], Capture | None] = read_capture
 
 
 def _capture_date(stamp: str) -> date | None:

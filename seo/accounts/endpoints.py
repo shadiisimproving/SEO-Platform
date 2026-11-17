@@ -176,6 +176,7 @@ ENDPOINTS: dict[str, tuple[str, str, str]] = {
     # ---- Insights ----
     "insights_api.listing": ("insights today", "read", "all"),
     "insights_api.one": ("insights today", "read", ""),
+    "insights_api.rivals": ("insights today", "read", ""),
     "insights_api.dismiss": ("insights", "write", ""),
     "insights_api.run": ("insights", "write", "all"),
     "insights_api.ask_ai": ("insights", "spend", ""),
