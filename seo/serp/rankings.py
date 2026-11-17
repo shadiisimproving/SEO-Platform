@@ -349,7 +349,7 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
             "volume": google_own["impressions"] if google_own else None, "impressions": google_own["impressions"] if google_own else None,
             # Search Console in the keyword's own country, when the site's queries are read for it (None otherwise; the
             # world average stays in engines.google.own).
-            "own_country": {"country": track["country"].upper(), **{k: (round(v, 1) if k == "position" and v is not None else v) for k, v in local.items()}} if local else None,
+            "own_country": {"country": track["country"].upper(), **{k: (round(v, 1) if k == "position" and v is not None else v) for k, v in local.items() if k != "spellings"}} if local else None,
         })
     return {"rows": rows, "through": own["through"], "last_refresh": last_run, "now": now, "order": order, "gap": gap}
 
