@@ -2,6 +2,7 @@
 
     python -m scripts.convert_utf8mb4            converts the database in .env (DB_NAME)
     python -m scripts.convert_utf8mb4 --check    only lists what would change and any index that would be too long
+    python -m scripts.convert_utf8mb4 --pending  reads only: exit code 3 while anything is left to convert (deploy.sh asks)
     python -m scripts.convert_utf8mb4 --test     works on DB_NAME_TEST instead
 
 Prints the row count of every table before and after, so nothing else changed can be seen.
@@ -25,6 +26,10 @@ def main(argv: list[str]) -> int:
     engine = make_engine(test="--test" in argv)
     with engine.connect() as conn:
         print(f"Database: {engine.url.database}")
+        if "--pending" in argv:  # only reads, and fast: deploy.sh asks it after every upload
+            left = charset.columns_to_convert(conn)
+            print(f"{len(left)} text columns still to convert to utf8mb4" if left else "Already in utf8mb4.")
+            return 3 if left else 0
         todo, long_ones = charset.tables_to_convert(conn), charset.too_long_indexes(conn)
         print(f"{len(todo)} tables and {len(charset.columns_to_convert(conn))} columns to convert")
         for name in long_ones:

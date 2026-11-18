@@ -78,8 +78,33 @@ Check these before the first upload that carries them:
   key events by name, 30 days a run, one run an hour (`seo/collectors/ga4.py`, `BACKLOG_DAYS_PER_RUN`), so about 15 hours
   for a full history. It shares the property's hourly quota with Looker Studio and GA4 Explorations; a quota stop only
   pauses it for an hour and isn't shown as a failure. Settings shows the days left.
-- **Stored competitor events.** `scripts/reclassify_competitor_events.py` (dry run first, then `--apply`) hides old
-  noise events; it works one competitor at a time, each in its own transaction.
+- **Stored competitor events and rank checks: automatic.** Every release runs `scripts/reclassify_competitor_events.py --apply`
+  (hides old noise events, one competitor at a time, each in its own transaction) and `scripts/mark_contradicted_checks.py --apply`
+  (marks rank checks every other tool contradicts) after its migrations, before the switch, and writes their counts to the
+  screen and to `var/logs/release-data-steps.log`. Both only change what is left to change, so later releases do nothing
+  with them. If one fails, the old version stays live and the next upload runs it again.
+
+## After an upload: the owner's steps, in this order
+
+`deploy.sh --go` ends by asking the server (reading only) whether the database is in utf8mb4 yet, and prints these commands
+while it isn't. On the server, `$VENV` as above:
+
+1. **Back up.** `cd ~/seo-platform && $VENV/bin/python -m scripts.backup_db`
+2. **Look first.** `$VENV/bin/python -m scripts.convert_utf8mb4 --check` lists the tables and columns, and stops on any index
+   that would be too long.
+3. **Convert to utf8mb4.** `$VENV/bin/python -m scripts.convert_utf8mb4`. It prints every table's rows before and after; they
+   must be equal. Do it soon after the upload: until then Arabic, Russian and emoji in new reads (competitor pages, the
+   Google Analytics history being read again) are still saved as "?".
+4. **Read Search Console's text again.** Queries and pages saved as "?" before step 3 come back only from a new read:
+   ```bash
+   cd ~/seo-platform && until $VENV/bin/python -m scripts.reread_gsc_text --apply; [ $? -ne 3 ]; do sleep 60; done
+   ```
+   Without `--apply` it only says how many days each site has left. Each run reads 60 days per site (3 calls a day, half a
+   second apart), so about 200 calls a run, far under Google's 1,200 a minute. It only reads days whose stored text holds
+   a "?" (`--all` reads every stored day), records each day it read, and refuses to run before step 3. Stop it at any time:
+   the next run carries on where it was. Exit code 3 means days are left; the loop above stops at 0.
+5. **Pick the lead events** in Settings → Sites → Leads from Google Analytics, once the Google Analytics history has been
+   read again (Settings shows the days left). Until then the screens count every key event and say so.
 
 ## Going back to an older version
 
