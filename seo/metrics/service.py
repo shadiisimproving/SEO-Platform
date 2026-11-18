@@ -81,18 +81,31 @@ class Scope:
         """`sql` uses :sites, :a and :b, and {leads} / {conv} for the lead columns (seo/metrics/leads.py)."""
         if not self.site_ids:
             return []
-        if "{leads}" in sql or "{conv}" in sql:
-            sql = sql.replace("{leads}", lead_rules.count_sql(self.lead_kind)).replace("{conv}", lead_rules.converted_sql(self.lead_kind))
+        sql = self.lead_sql(sql)
         statement = text(sql).bindparams(bindparam("sites", expanding=True))
         with self.engine.connect() as conn:
             return conn.execute(statement, {"sites": self.site_ids, "a": start or self.start, "b": end or self.end, **values}).mappings().all()
 
     @property
     def lead_kind(self) -> str:
-        """"leads" once a site of the scope has picked its lead events, else "key_events"."""
+        """"leads" when every site of the scope has picked its lead events, "key_events" when none has, else "mixed":
+        each site then counts by its own rule, as on Today (seo/metrics/leads.py)."""
         if "_lead_kind" not in self.__dict__:
             self.__dict__["_lead_kind"] = lead_rules.kind(self.engine, self.site_ids)
         return self.__dict__["_lead_kind"]
+
+    @property
+    def lead_picked(self) -> list[int]:
+        """The sites of the scope that picked their lead events."""
+        if "_lead_picked" not in self.__dict__:
+            self.__dict__["_lead_picked"] = lead_rules.lead_sites(self.engine, self.site_ids)
+        return self.__dict__["_lead_picked"]
+
+    def lead_sql(self, sql: str) -> str:
+        """{leads} and {conv} filled in for this scope's sites. The SQL must read one GA4 table, unaliased (site_id)."""
+        if "{leads}" in sql or "{conv}" in sql:
+            sql = sql.replace("{leads}", lead_rules.count_sql(self.lead_kind, self.lead_picked)).replace("{conv}", lead_rules.converted_sql(self.lead_kind, self.lead_picked))
+        return sql
 
     @property
     def has_compare(self) -> bool:
@@ -336,6 +349,7 @@ def _copy(scope: Scope, site_ids: list[int] | None = None) -> Scope:
     if site_ids is not None:
         other.site_ids = list(site_ids)
         other.__dict__.pop("_lead_kind", None)
+        other.__dict__.pop("_lead_picked", None)
     return other
 
 
@@ -371,7 +385,11 @@ def lead_words(scope: Scope, start: date, end: date, compare_start: date | None 
 
     check = ga4_checks.lead_check(scope.engine, scope.site_ids, scope.lead_kind, start, end, compare_start)
     rereading = sum(collector.days_to_reread(scope.engine, site_id) for site_id in scope.site_ids)
-    return {"lead_kind": scope.lead_kind, "lead_check": check, "reread_days": rereading}
+    unpicked = []
+    if scope.lead_kind == lead_rules.MIXED:  # the sites still counting every key event, for the note under the numbers
+        hosts = _hosts(scope)
+        unpicked = sorted(hosts[s] for s in scope.site_ids if s not in scope.lead_picked and s in hosts)
+    return {"lead_kind": scope.lead_kind, "lead_check": check, "reread_days": rereading, "key_event_hosts": unpicked}
 
 
 def visits_words(scope: Scope) -> dict:
@@ -488,7 +506,8 @@ def conversions(scope: Scope) -> dict:
     sessions = sum(item["sessions"] for item in by_channel.values())
     leads = sum(item["leads"] for item in by_channel.values())
     converted = sum(item["conv"] for item in by_channel.values())
-    has_leads_set_up = bool(scope.fetch("SELECT 1 x FROM ga4_source_daily WHERE site_id IN :sites AND {leads} > 0 LIMIT 1"))
+    # Set up once a site picked its lead events (even if none fired in the period), or GA4 has key events (#smaller).
+    has_leads_set_up = bool(scope.lead_picked) or bool(scope.fetch("SELECT 1 x FROM ga4_source_daily WHERE site_id IN :sites AND {leads} > 0 LIMIT 1"))
     return {
         **status,
         "sessions": sessions,
@@ -753,7 +772,7 @@ def _fetch_lists(scope: Scope, sql: str, start, end, lists: dict, **values):
     """Scope.fetch with lists besides :sites, each written :name in the SQL. An empty list matches nothing."""
     if not scope.site_ids or any(not items for items in lists.values()):
         return []
-    sql = sql.replace("{leads}", lead_rules.count_sql(scope.lead_kind)).replace("{conv}", lead_rules.converted_sql(scope.lead_kind))
+    sql = scope.lead_sql(sql)
     statement = text(sql).bindparams(bindparam("sites", expanding=True), *(bindparam(name, expanding=True) for name in lists))
     with scope.engine.connect() as conn:
         return conn.execute(statement, {"sites": scope.site_ids, "a": start, "b": end, **lists, **values}).mappings().all()

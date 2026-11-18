@@ -158,3 +158,41 @@ def test_the_assistant_row_and_panel_give_the_same_rate(engine, site):
     row = next(r for r in ai_search.build(_scope(engine, site, d0, END))["sources"] if r["source"] == "chatgpt.com")
     panel = service.assistant_detail(_scope(engine, site, d0, END), "chatgpt.com")
     assert row["rate"] == panel["totals"]["rate"] == 0.5  # 30 of 60 visits; both said 1.0
+
+
+# ---- 4: one lead rule per site on every screen -------------------------------------------------------------------------
+
+
+def test_all_sites_count_the_same_leads_on_today_and_channels_when_only_one_site_picked(engine, site):
+    from seo.metrics import today as today_view
+
+    with engine.begin() as conn:
+        other = conn.execute(text("INSERT INTO sites (host, start_url, kind) VALUES ('other.example', 'https://other.example/', 'own')")).lastrowid
+        conn.execute(text("INSERT INTO site_sources (site_id, source, connection_id, property, data_through) VALUES (:s, 'ga4', 1, '2', :d)"), {"s": other, "d": END})
+    start = END - timedelta(days=27)
+    for n in range(56):
+        day = start - timedelta(days=28) + timedelta(days=n)
+        _day(engine, site, day, 10, key_events=5.0, lead_visits=2)  # picked: 2 leads a day (5 key events)
+        _day(engine, other, day, 10, key_events=4.0)  # not picked: its 4 key events a day
+    leads.set_events(engine, site, ["generate_lead"])
+    with engine.begin() as conn:  # set_events works leads out from stored events: put the day's 2 back
+        conn.execute(text("UPDATE ga4_source_daily SET leads = 2 WHERE site_id = :s"), {"s": site})
+    channels = service.channels(service.Scope(engine, "all", start.isoformat(), END.isoformat()))
+    assert channels["lead_kind"] == "mixed" and channels["key_event_hosts"] == ["other.example"]
+    assert channels["total"]["leads"] == 28 * (2 + 4)  # was 28 x 2: the other site counted no lead
+    assert channels["total"]["converted"] == 28 * (2 + 4)
+    shown = today_view.today(engine, None, {"range": "28d"})["results"]["leads"]
+    assert shown["value"] == 28 * (2 + 4) and shown["kind"] == "mixed" and shown["key_event_hosts"] == ["other.example"]
+    one = service.channels(_scope(engine, site, start, END))
+    assert one["lead_kind"] == "leads" and one["total"]["leads"] == 56
+
+
+def test_ticked_events_that_did_not_fire_say_no_leads_not_not_set_up(engine, site):
+    from seo.metrics import ai_search
+
+    _day(engine, site, END, 30, key_events=0.0, channel="Referral", source="chatgpt.com", medium="referral")
+    assert ai_search.build(_scope(engine, site, END, END))["key_events_set_up"] is False
+    leads.set_events(engine, site, ["generate_lead"])
+    answer = ai_search.build(_scope(engine, site, END, END))
+    assert answer["key_events_set_up"] is True and answer["leads"] == 0  # the screen says "No leads in this period"
+    assert service.conversions(_scope(engine, site, END, END))["key_events_set_up"] is True

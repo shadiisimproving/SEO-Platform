@@ -143,7 +143,8 @@ def lead_check(engine: Engine, site_ids: list[int], lead_kind: str, start: date,
     found = []
     hosts = _hosts(engine, site_ids)
     for site_id in site_ids:
-        for change in crossing(tracking_changes(engine, site_id, lead_kind), first, end):
+        own = lead_kind if lead_kind != lead_rules.MIXED else lead_rules.kind(engine, [site_id])  # each site by its own rule
+        for change in crossing(tracking_changes(engine, site_id, own), first, end):
             found.append({**change, "site_id": site_id, "host": hosts.get(site_id, "")})
     found.sort(key=lambda c: c["day"])
     return {"changes": found, "blank": bool(found) and compare_start is not None}

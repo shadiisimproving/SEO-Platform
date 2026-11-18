@@ -21,7 +21,7 @@ from seo.core.errors import Refused
 RULE = "key_event"
 TABLES = {"source": ("ga4_source_daily", "row_hash"), "page": ("ga4_page_daily", "page_hash"), "referral": ("ga4_referral_daily", "row_hash"), "campaign": ("ga4_campaign_daily", "row_hash")}
 LIST_DAYS = 365  # Settings lists the key events seen in this many days
-LEADS, KEY_EVENTS = "leads", "key_events"
+LEADS, KEY_EVENTS, MIXED = "leads", "key_events", "mixed"  # mixed: some sites of the screen picked lead events, some didn't
 
 
 def ticked(engine: Engine, site_id: int) -> list[str]:
@@ -43,17 +43,31 @@ def lead_sites(engine: Engine, site_ids: list[int]) -> list[int]:
 
 
 def kind(engine: Engine, site_ids: list[int]) -> str:
-    """"leads" when any of these sites has picked its lead events (a site that hasn't counts no lead), else "key_events"."""
-    return LEADS if lead_sites(engine, site_ids) else KEY_EVENTS
+    """"leads" when every one of these sites has picked its lead events, "key_events" when none has, "mixed" otherwise.
+    Each site counts by its own rule everywhere (Today and the other screens alike): its leads once picked, else its key
+    events, so "All sites" adds up the same total on every screen (code review 2026-11-18, #4)."""
+    picked = lead_sites(engine, site_ids)
+    if not picked:
+        return KEY_EVENTS
+    return LEADS if set(picked) >= set(site_ids) else MIXED
 
 
-def count_sql(lead_kind: str) -> str:
-    """The column a screen adds up as its leads (or key events)."""
+def _per_site(picked: list[int], lead_column: str, other: str) -> str:
+    marks = ",".join(str(int(i)) for i in picked)
+    return f"IF(site_id IN ({marks}), {lead_column}, {other})"
+
+
+def count_sql(lead_kind: str, picked: list[int] | None = None) -> str:
+    """The column a screen adds up as its leads (or key events). Mixed: per site, by `picked` (the sites with ticks)."""
+    if lead_kind == MIXED and picked:
+        return _per_site(picked, "leads", "key_events")
     return "leads" if lead_kind == LEADS else "key_events"
 
 
-def converted_sql(lead_kind: str) -> str:
+def converted_sql(lead_kind: str, picked: list[int] | None = None) -> str:
     """Visits that became a lead (or had a key event): never more than the row's visits, so a rate stays at or under 100%."""
+    if lead_kind == MIXED and picked:
+        return _per_site(picked, "leads", "LEAST(key_events, sessions)")
     return "leads" if lead_kind == LEADS else "LEAST(key_events, sessions)"
 
 

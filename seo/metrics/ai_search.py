@@ -529,7 +529,9 @@ def build(scope) -> dict:
     sessions = sum(item["sessions"] for item in per_source.values())
     leads = round(sum(item["leads"] for item in per_source.values()), 2)
     converted = sum(item["conv"] for item in per_source.values())
-    leads_set_up = bool(scope.fetch("SELECT 1 x FROM ga4_source_daily WHERE site_id IN :sites AND {leads} > 0 LIMIT 1"))
+    # Set up once a site picked its lead events, even when none fired in the period: then it says "No leads in this
+    # period", not "Not set up" (code review 2026-11-18).
+    leads_set_up = bool(scope.lead_picked) or bool(scope.fetch("SELECT 1 x FROM ga4_source_daily WHERE site_id IN :sites AND {leads} > 0 LIMIT 1"))
 
     landing = _landing_rows(scope, scope.start, scope.end, lambda d: base._is_ai(_domain(d), domains))
     pages = sorted(
