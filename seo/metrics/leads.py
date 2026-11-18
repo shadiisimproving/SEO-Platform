@@ -57,20 +57,31 @@ def converted_sql(lead_kind: str) -> str:
     return "leads" if lead_kind == LEADS else "LEAST(key_events, sessions)"
 
 
-def recompute(engine: Engine, site_id: int) -> None:
-    """Every stored row's leads, from the site's ticks."""
-    hashes = sorted(ticked_hashes(engine, site_id))
+def recompute(engine: Engine, site_id: int, day: date | None = None) -> None:
+    """Every stored row's leads (or one day's), from the site's ticks. A visit counts once however many ticked events it
+    had: with two or more ticks, the day's "any ticked event" sessions GA4 gave for this set (collectors/ga4.py); on a day
+    not read for this set yet, the biggest ticked event's sessions, which is never more than the truth (code review
+    2026-11-18, #1). Never more than the row's visits."""
+    from seo.collectors import ga4  # noqa: PLC0415 - the collector imports this module too
+
+    names = ticked(engine, site_id)
+    hashes = sorted({common.digest(name) for name in names})
+    one_day = "AND t.day = :day" if day is not None else ""
     with engine.begin() as conn:
         for report, (table, key) in TABLES.items():
             if not hashes:
-                conn.execute(text(f"UPDATE {table} SET leads = 0 WHERE site_id = :s AND leads <> 0"), {"s": site_id})
+                conn.execute(text(f"UPDATE {table} t SET leads = 0 WHERE site_id = :s AND leads <> 0 {one_day}"), {"s": site_id, "day": day})
                 continue
             statement = text(
-                f"UPDATE {table} t LEFT JOIN (SELECT day, row_hash, SUM(sessions) x FROM ga4_key_event_daily "
+                f"UPDATE {table} t LEFT JOIN (SELECT day, row_hash, MAX(sessions) x FROM ga4_key_event_daily "
                 "WHERE site_id = :s AND report = :r AND event_hash IN :h GROUP BY day, row_hash) e "
-                f"ON e.day = t.day AND e.row_hash = t.{key} SET t.leads = LEAST(t.sessions, COALESCE(e.x, 0)) WHERE t.site_id = :s"
+                f"ON e.day = t.day AND e.row_hash = t.{key} "
+                "LEFT JOIN (SELECT day, row_hash, sessions x FROM ga4_key_event_daily WHERE site_id = :s AND report = :u AND event_hash = :m) a "
+                f"ON a.day = t.day AND a.row_hash = t.{key} "
+                "LEFT JOIN coverage c ON c.site_id = t.site_id AND c.source = :lc AND c.day = t.day AND c.note = :m "
+                f"SET t.leads = LEAST(t.sessions, IF(c.day IS NOT NULL, COALESCE(a.x, 0), COALESCE(e.x, 0))) WHERE t.site_id = :s {one_day}"
             ).bindparams(bindparam("h", expanding=True))
-            conn.execute(statement, {"s": site_id, "r": report, "h": hashes})
+            conn.execute(statement, {"s": site_id, "r": report, "h": hashes, "u": ga4.UNION + report, "m": ga4.set_hash(names), "lc": ga4.LEADS_LAYOUT, "day": day})
 
 
 def events(engine: Engine, site_id: int, today: date | None = None) -> dict:
