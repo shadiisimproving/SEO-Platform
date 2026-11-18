@@ -627,7 +627,7 @@ def test_top_10_tile_is_scraped_only_and_never_adds_search_console(world):
     [one, two] = track(world, "one", "two")
     save(world, one, position=3)
     with world.engine.begin() as conn:
-        conn.execute(text("INSERT INTO gsc_query (site_id, day, query_hash, query, clicks, impressions, position) VALUES (:s, UTC_DATE(), 'x', 'two', 5, 100, 2.5)"), {"s": world.site})
+        conn.execute(text("INSERT INTO gsc_query (site_id, day, query_hash, query, clicks, impressions, position) VALUES (:s, UTC_DATE() - INTERVAL 5 DAY, 'x', 'two', 5, 100, 2.5)"), {"s": world.site})
     listed = rankings.listing(world.engine, world.site)
     tile = listed["tiles"]["google"]
     assert tile["top10"] == 1 and tile["top10_source"] == "scraped"

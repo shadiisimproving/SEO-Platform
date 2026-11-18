@@ -333,6 +333,10 @@ def _own_tools(conn, site_ids: list[int], shared: dict[int, frozenset] | None = 
 
 
 def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) -> dict:
+    # The shared period is read before this connection opens: a route never holds two connections at once (test_db_pool).
+    with engine.connect() as conn:
+        wanted = [site["id"] for site in _sites(conn, site_id)]
+    windows = search_windows(engine, wanted)
     with engine.connect() as conn:
         sites = _sites(conn, site_id)
         site_ids = [site["id"] for site in sites]
@@ -348,7 +352,7 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
             ).mappings().all()
         checks = _load_checks(conn, list({row["id"] for row in tracked}), list(hosts.values()))
         shared = tracked_spellings(conn, site_ids)  # all of each site's keywords, even when one keyword is asked for
-        own = _own_tools(conn, site_ids, shared, search_windows(engine, site_ids))
+        own = _own_tools(conn, site_ids, shared, windows)
         # Whichever button pressed it: this screen's Refresh, or Check again in Competitors.
         finished = [
             conn.execute(text("SELECT MAX(finished_at) FROM rank_runs")).scalar(),
@@ -568,12 +572,14 @@ def queries(engine: Engine, site_id: int | None, engine_name: str) -> dict:
     """What each engine's own tool says, keyword or not. Bing updates weekly, and the others lag a few days."""
     with engine.connect() as conn:
         sites = _sites(conn, site_id)
+    windows = search_windows(engine, [site["id"] for site in sites]) if engine_name == "google" else {}
+    with engine.connect() as conn:
         rows = []
         for site in sites:
             if engine_name == "google":
                 if not conn.execute(text("SELECT 1 FROM gsc_query WHERE site_id = :s LIMIT 1"), {"s": site["id"]}).first():
                     continue
-                first, last = search_windows(engine, [site["id"]])[site["id"]]
+                first, last = windows[site["id"]]
                 found = conn.execute(
                     text(
                         "SELECT query, SUM(clicks) AS clicks, SUM(impressions) AS impressions, SUM(position * impressions) / NULLIF(SUM(impressions), 0) AS position "

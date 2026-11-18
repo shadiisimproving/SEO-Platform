@@ -124,9 +124,9 @@ def test_the_page_column_is_the_ranking_url_and_search_consoles_page_is_named_ap
     [k] = track(world, "moulin")
     save(world, k, position=4)  # the check found https://me.example/page
     with world.engine.begin() as conn:
-        conn.execute(text("INSERT INTO gsc_query (site_id, day, query_hash, query, clicks, impressions, position) VALUES (:s, UTC_DATE(), 'q', 'moulin', 3, 90, 4.0)"), {"s": world.site})
+        conn.execute(text("INSERT INTO gsc_query (site_id, day, query_hash, query, clicks, impressions, position) VALUES (:s, UTC_DATE() - INTERVAL 5 DAY, 'q', 'moulin', 3, 90, 4.0)"), {"s": world.site})
         conn.execute(text(
-            "INSERT INTO gsc_query_page (site_id, day, pair_hash, query, page, clicks, impressions, position) VALUES (:s, UTC_DATE(), 'p1', 'moulin', :u, 3, 90, 4.0)"
+            "INSERT INTO gsc_query_page (site_id, day, pair_hash, query, page, clicks, impressions, position) VALUES (:s, UTC_DATE() - INTERVAL 5 DAY, 'p1', 'moulin', :u, 3, 90, 4.0)"
         ), {"s": world.site, "u": f"https://{ME}/other"})
     row = next(r for r in rankings.listing(world.engine, world.site)["rows"] if r["keyword_id"] == k)
     assert row["ranking_url"] == f"https://{ME}/page" and row["page"] == f"https://{ME}/page"
@@ -162,7 +162,7 @@ def _two_spellings_in_search_console(world):
     with world.engine.begin() as conn:
         conn.execute(text(
             "INSERT INTO gsc_query (site_id, day, query_hash, query, clicks, impressions, position) VALUES "
-            "(:s, UTC_DATE(), 'a', 'cafe en grains', 20, 560, 6.5), (:s, UTC_DATE(), 'b', 'café en grains', 2, 40, 8.0)"
+            "(:s, UTC_DATE() - INTERVAL 5 DAY, 'a', 'cafe en grains', 20, 560, 6.5), (:s, UTC_DATE() - INTERVAL 5 DAY, 'b', 'café en grains', 2, 40, 8.0)"
         ), {"s": world.site})
 
 
