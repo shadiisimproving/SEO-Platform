@@ -17,6 +17,12 @@
     duplicate_title: "Duplicate titles", no_h1: "No main heading (H1)", many_h1: "Several main headings",
     no_meta: "No meta description", duplicate_meta: "Duplicate meta descriptions", images_no_alt: "Images missing alt text",
     almost_no_text: "Almost no text", redirect_chains: "More than 2 redirects", slow_pages: "Slower than 5 seconds", robots_blocked: "Blocked by robots.txt",
+    // The sitemap checks (seo/health/audit.py SITEMAP_CHECKS), shown in their own card
+    sitemap_missing: "No sitemap found", sitemap_unreachable: "Sitemap can't be reached", sitemap_invalid: "Sitemap isn't valid XML",
+    sitemap_too_big: "Sitemap over 50,000 pages or 50 MB", sitemap_not_in_robots: "Sitemap not named in robots.txt",
+    listed_broken: "Listed pages that give an error", listed_redirect: "Listed pages that redirect", listed_noindex: "Listed pages hidden from search engines",
+    listed_blocked: "Listed pages blocked by robots.txt", listed_canonical: "Listed pages whose canonical points elsewhere",
+    sitemap_missing_pages: "Important pages missing from the sitemap", lastmod_future: "Dates in the future", lastmod_same: "Every page has the same date",
   };
   const SITE_WORDS = {
     start_page_down: "Start page didn't load", start_page_noindex: "Start page hidden from search engines", ssl_expired: "Certificate expired",
@@ -32,6 +38,9 @@
   };
   /* The tables' pages and search (table-pages.js), like every long table in the app (2026-11-10). */
   const PAGES = { index: "ht-not-indexed", few: "ht-few-links", linksIn: "ht-links-in", history: "ht-history" };
+  const SM_CODES = ["sitemap_missing", "sitemap_unreachable", "sitemap_invalid", "sitemap_too_big", "sitemap_not_in_robots", "listed_broken", "listed_redirect",
+    "listed_noindex", "listed_blocked", "listed_canonical", "sitemap_missing_pages", "lastmod_future", "lastmod_same"];
+  const smKey = (code) => `ht-sm-${code}`; // each problem's list has its own pages and search (table-pages.js)
   const isActive = (a) => a.status === "queued" || a.status === "running";
   const isPartial = (a) => a.status === "stopped";
   const site = () => ht.sites.find((s) => String(s.id) === String(ht.siteId)) || null;
@@ -399,6 +408,19 @@
     ssl_expired: "Renew the certificate now.",
     ssl_expiring: "Renew it, or check auto-renewal is on.",
     ssl_error: "Have the host check the certificate.",
+    sitemap_missing: "Create a sitemap, then name it in robots.txt.",
+    sitemap_unreachable: "Make the sitemap address answer, or fix it in robots.txt.",
+    sitemap_invalid: "Have the sitemap rebuilt by the site or its SEO plugin.",
+    sitemap_too_big: "Split it into smaller sitemaps under one index file.",
+    sitemap_not_in_robots: "Add a Sitemap: line to robots.txt. Not scored.",
+    listed_broken: "Take them out of the sitemap, or bring the pages back.",
+    listed_redirect: "List the address each one goes to instead.",
+    listed_noindex: "Take them out of the sitemap, or remove noindex.",
+    listed_blocked: "Take them out of the sitemap, or allow them in robots.txt.",
+    listed_canonical: "List the canonical address instead.",
+    sitemap_missing_pages: "Add these pages to the sitemap.",
+    lastmod_future: "Each date should be when its page last changed. Not scored.",
+    lastmod_same: "Give each page the date it last changed. Not scored.",
   };
   // The who and the why behind a fix, one hover away (UI.tip).
   const FIX_TIPS = {
@@ -534,6 +556,84 @@
       <div style="padding:10px 18px 14px"><button type="button" class="btn btn-small" data-ht-links-all aria-expanded="${Boolean(ht.linksAll)}">${t(ht.linksAll ? "Show less" : "Show all pages")}</button></div>${all}</section>`;
   }
 
+  /* The sitemap (2026-11-18): the answer first, the problems with their counts, each opening its list. The files read stay
+     behind one button. A test from before these checks says so instead of claiming a clean sitemap. */
+  const SM_FILE_CODES = new Set(["sitemap_missing", "sitemap_unreachable", "sitemap_invalid", "sitemap_too_big", "sitemap_not_in_robots"]);
+  const SM_WHY = { gone: "Not found", server_error: "Server error", network_error: "No answer", robots: "Blocked by robots.txt", blocked: "Refused us",
+    http_error: "Error answer", too_many_redirects: "Too many redirects", left_scope: "Goes to another site", refused: "Not allowed", redirect: "Redirects", not_modified: "No content" };
+  // The one column that differs per problem: [heading, cell]. Pages alone need none.
+  function smColumn(code) {
+    const { t, num, esc } = UI;
+    if (code === "listed_broken") return ["Answer", (r) => `<td class="r tabular" data-label="${t("Answer")}">${esc(r.code ?? "—")}</td>`];
+    if (code === "listed_redirect" || code === "listed_canonical") return ["Goes to", (r) => `<td data-label="${t("Goes to")}">${r.to ? COMP.link(r.to, pathOnly(r.to)) : "—"}</td>`];
+    if (code === "sitemap_missing_pages") return ["Clicks", (r) => `<td class="r tabular" data-label="${t("Clicks")}" data-sort="${r.clicks || 0}">${r.clicks ? num(r.clicks) : '<span class="muted">—</span>'}</td>`];
+    if (code === "lastmod_future") return ["Date", (r) => `<td class="r tabular" data-label="${t("Date")}">${esc(r.lastmod || "—")}</td>`];
+    if (code === "sitemap_unreachable") return ["Answer", (r) => `<td data-label="${t("Answer")}">${esc(t(SM_WHY[r.why] || r.why || "—"))}</td>`];
+    if (code === "sitemap_too_big") return ["Pages", (r) => `<td class="r tabular" data-label="${t("Pages")}">${r.urls ? num(r.urls) : "—"}</td>`];
+    return null;
+  }
+  function smCountWords(p) {
+    const { t, num } = UI;
+    if (p.code === "sitemap_missing") return "";
+    const files = SM_FILE_CODES.has(p.code);
+    return `${num(p.count)}<span class="ht-count-word" aria-hidden="true"> ${t(files ? (p.count === 1 ? "file" : "files") : (p.count === 1 ? "page" : "pages"))}</span>`;
+  }
+  function smRow(p, d) {
+    const { t, esc, icon, num, status } = UI;
+    const sev = p.severity === "crit" ? "crit" : p.severity === "warn" ? "warn" : "info";
+    const key = smKey(p.code), rows = p.rows || [], col = smColumn(p.code);
+    const found = rows.filter((r) => TP.matches(key, pathOnly(r.url), r.to ? pathOnly(r.to) : ""));
+    const page = TP.view(key, found);
+    const files = SM_FILE_CODES.has(p.code);
+    const search = wantsSearch(key, rows.length) ? `<div class="chips ht-find">${TP.search(key, t("Search pages"))}</div>` : "";
+    const cut = p.count > rows.length ? t("{sent} of {total}").replace("{sent}", num(rows.length)).replace("{total}", num(p.count)) : null;
+    const list = p.code === "lastmod_same" ? `<p class="small sec ht-sm-line">${t("Every listed page says")} <span class="tabular">${esc(p.date || "")}</span>.</p>`
+      : !rows.length ? "" : !found.length ? `${search}<p class="lc-none small sec">${t("No page matches.")}</p>`
+      : `${search}<div class="ht-list"><div class="table-wrap"><table class="data lc-table" id="${key}"><thead><tr><th scope="col">${t(files ? "File" : "Page")}</th>${col ? `<th scope="col"${col[0] === "Goes to" || col[0] === "Answer" && files ? "" : ' class="r"'}>${t(col[0])}</th>` : ""}</tr></thead><tbody>
+        ${page.rows.map((r) => `<tr style="cursor:default"><td class="head-cell">${COMP.link(r.url, files ? r.url : pathOnly(r.url))}</td>${col ? col[1](r) : ""}</tr>`).join("")}</tbody></table></div>
+        ${TP.footer(key, page, { noun: t(files ? "files" : "pages"), capped: cut })}</div>`;
+    const facts = [p.code === "sitemap_missing" ? "" : `${num(p.count)} ${t(files ? (p.count === 1 ? "file" : "files") : (p.count === 1 ? "page" : "pages"))}`,
+      ...rows.slice(0, 10).map((r) => r.url), p.count > 10 ? `${t("and")} ${num(p.count - Math.min(10, rows.length))} ${t("more")}` : "",
+      d.audit?.created_at ? `${t("Test of")} ${UI.fmtDateOnly(d.audit.created_at)}` : ""];
+    return `<details class="ht-check ht-sm-check" data-ht-check="sm-${esc(p.code)}" ${ht.openChecks.has(`sm-${p.code}`) ? "open" : ""}>
+      <summary><span class="ht-check-what">${icon("chevron-right", "ht-chev")}<span>${esc(t(p.meaning))}</span></span>
+        <span class="ht-check-sev">${status(sev, t(SEVERITY[sev]))}</span>
+        <span class="ht-check-count tabular">${smCountWords(p)}</span></summary>
+      <div class="ht-check-act">
+        ${FIX_WORDS[p.code] ? `<p class="small sec">${t(FIX_WORDS[p.code])}</p>` : ""}
+        ${UI.taskButton(healthFind(p.code, p.meaning, facts))}
+      </div>
+      ${list}
+    </details>`;
+  }
+
+  function sitemapCard(d) {
+    const { t, num, status, esc, icon } = UI;
+    const r = d.sitemap, a = d.audit;
+    if (a.status !== "complete") return ""; // a stopped or failed test never got to the sitemap
+    const head = (end) => `<div class="card-head"><h2>${t("Sitemap")}</h2><span class="end">${end}</span></div>`;
+    if (!r) return `<section class="card ht-sitemap">${head("")}<p class="ht-answer lc-none">${t("Not checked in this test.")}</p><p class="small sec ht-sm-line">${t("Press Refresh to check the sitemap.")}</p></section>`;
+    const problems = r.problems || [];
+    const real = problems.filter((p) => p.severity !== "info");
+    const worst = real.some((p) => p.severity === "crit") ? "crit" : "warn";
+    const badge = real.length ? status(worst, `${num(real.length)} ${t(real.length === 1 ? "problem" : "problems")}`) : status("good", t("OK"));
+    // The head says the verdict ("Sitemap · 3 problems", "Sitemap · OK"); the first line says how big it is, or that there is none.
+    const answer = !r.found ? t(problems.some((p) => p.code === "sitemap_missing") ? "No sitemap found." : "The sitemap couldn't be read.")
+      : `${num(r.listed)} ${t(r.listed === 1 ? "page listed" : "pages listed")} · ${num((r.files || []).length)} ${t((r.files || []).length === 1 ? "file" : "files")}`;
+    const facts = "";
+    const notes = [];
+    if (r.held_back?.length) notes.push(["info", `${t("The site asked us to slow down, so part of the sitemap wasn't read.")} ${t("The next test tries again.")}`]);
+    else if (r.missing_not_judged) notes.push(["info", t("Part of the sitemap couldn't be read, so missing pages aren't listed.")]);
+    if (r.unchecked) notes.push(["info", `${num(r.unchecked)} ${t(r.unchecked === 1 ? "listed page wasn't checked this time." : "listed pages weren't checked this time.")}`]);
+    const filesList = ht.smFiles ? `<ul class="ht-pages ht-sm-files">${(r.files || []).map((f) => `<li>${COMP.link(f.url, f.url)} <span class="small muted tabular">${f.kind === "index" ? t("index") : f.kind === "urlset" ? `${num(f.urls)} ${t(f.urls === 1 ? "page" : "pages")}` : esc(t(SM_WHY[f.kind] || f.kind))}</span></li>`).join("")}</ul>` : "";
+    return `<section class="card ht-sitemap" aria-label="${t("Sitemap")}">${head(badge)}
+      <p class="ht-answer lc-none">${answer}</p>${facts}
+      ${notes.map(noticeHtml).join("")}
+      ${problems.length ? `<div class="ht-check-heads ht-sm-heads small muted" aria-hidden="true"><span>${t("Problem")}</span><span>${t("Severity")}</span><span>${t("Count")}</span></div>${problems.map((p) => smRow(p, d)).join("")}` : ""}
+      ${(r.files || []).length ? `<div class="ht-sm-more"><button type="button" class="btn btn-small" data-ht-sm-files aria-expanded="${Boolean(ht.smFiles)}">${icon(ht.smFiles ? "chevron-up" : "chevron-down")}${t(ht.smFiles ? "Hide the files" : "Show the files read")}</button></div>${filesList}` : ""}
+    </section>`;
+  }
+
   function resultWord(a) {
     const { t } = UI;
     if (a.status === "complete") return t("Complete");
@@ -568,8 +668,8 @@
     }
     const s = site();
     const a = ht.open?.audit;
-    if (ht.pagedSite !== ht.siteId) { ht.pagedSite = ht.siteId; ht.pagedTest = a?.id; resetPages(); } // another site: every table at page 1
-    else if (a && ht.pagedTest !== a.id) { ht.pagedTest = a.id; resetPages([PAGES.few, PAGES.linksIn]); } // another test: its tables at page 1
+    if (ht.pagedSite !== ht.siteId) { ht.pagedSite = ht.siteId; ht.pagedTest = a?.id; resetPages([...Object.values(PAGES), ...SM_CODES.map(smKey)]); } // another site: every table at page 1
+    else if (a && ht.pagedTest !== a.id) { ht.pagedTest = a.id; resetPages([PAGES.few, PAGES.linksIn, ...SM_CODES.map(smKey)]); } // another test: its tables at page 1
     const latest = ht.audits.find((x) => !isActive(x));
     const past = a && latest && a.id !== latest.id;
     const alerts = openAlerts().filter((x) => isTestAlert(x) && sameId(x.site_id, s.id) && !UI.state.seen.has(`alert-${x.id}`));
@@ -581,6 +681,7 @@
       ${a ? notices(a).map(noticeHtml).join("") : ""}
       ${ht.open ? wholeSiteCard(ht.open) : ""}
       ${ht.open?.checks ? checksCard(ht.open) : ""}
+      ${ht.open?.audit ? sitemapCard(ht.open) : ""}
       ${ht.server ? indexingCard() : ""}
       ${ht.open?.internal_links ? linksCard(ht.open) : ""}
       ${historyCard()}`;
@@ -665,6 +766,7 @@
         paint(); UI.$(`[data-ht-sort="${table}"][data-ht-sort-by="${id}"]`)?.focus();
         return;
       }
+      if (target.closest?.("[data-ht-sm-files]")) { ht.smFiles = !ht.smFiles; paint(); UI.$("[data-ht-sm-files]")?.focus(); return; }
       if (target.closest?.("[data-ht-links-all]")) { ht.linksAll = !ht.linksAll; paint(); UI.$("[data-ht-links-all]")?.focus(); return; }
       if (target.closest?.("#ht-run")) { runTest(); return; }
       if ((el = target.closest?.("#ht-stop"))) { stopTest(el); return; }
@@ -722,7 +824,7 @@
       UI = helpers;
       bindEvents();
       TP.on(PAGES.index, () => { const box = UI.$("#ht-indexing"); if (box) UI.setHTML(box, indexingInner()); }); // only its card, as it loads on its own
-      [PAGES.few, PAGES.linksIn, PAGES.history].forEach((key) => TP.on(key, paint));
+      [PAGES.few, PAGES.linksIn, PAGES.history, ...SM_CODES.map(smKey)].forEach((key) => TP.on(key, paint));
       COMP.isServer().then((server) => {
         ht.server = server;
         ht.firstRun = UI.state.firstRun;
@@ -974,5 +1076,37 @@
     "That test doesn't exist.": "Ce test n'existe pas.",
     "That alert doesn't exist.": "Cette alerte n'existe pas.",
     "The health test only runs on your own websites.": "Le test de santé ne s'exécute que sur vos propres sites.",
+    // The Sitemap card
+    "Sitemap": "Sitemap", "The sitemap couldn't be read.": "Le sitemap n'a pas pu être lu.", "problem": "problème", "problems": "problèmes", "OK": "OK",
+    "page listed": "page listée", "pages listed": "pages listées", "file": "fichier", "files": "fichiers", "Count": "Nombre", "File": "Fichier",
+    "Not checked in this test.": "Pas vérifié dans ce test.", "Press Refresh to check the sitemap.": "Appuyez sur Actualiser pour vérifier le sitemap.",
+    "The site asked us to slow down, so part of the sitemap wasn't read.": "Le site nous a demandé de ralentir : une partie du sitemap n'a pas été lue.",
+    "The next test tries again.": "Le prochain test réessaiera.",
+    "Part of the sitemap couldn't be read, so missing pages aren't listed.": "Une partie du sitemap n'a pas pu être lue : les pages absentes ne sont donc pas listées.",
+    "listed page wasn't checked this time.": "page listée n'a pas été vérifiée cette fois.", "listed pages weren't checked this time.": "pages listées n'ont pas été vérifiées cette fois.",
+    "Show the files read": "Afficher les fichiers lus", "Hide the files": "Masquer les fichiers", "index": "index",
+    "Every listed page says": "Chaque page listée indique", "Answer": "Réponse", "Goes to": "Va vers", "Date": "Date", "Clicks": "Clics",
+    "{sent} of {total}": "{sent} sur {total}",
+    "Not found": "Introuvable", "No answer": "Pas de réponse", "Refused us": "Nous a refusés", "Error answer": "Réponse en erreur",
+    "Too many redirects": "Trop de redirections", "Goes to another site": "Va vers un autre site", "Redirects": "Redirige", "No content": "Pas de contenu",
+    "No sitemap found": "Aucun sitemap trouvé", "Sitemap can't be reached": "Sitemap inaccessible", "Sitemap isn't valid XML": "Le sitemap n'est pas un XML valide",
+    "Sitemap over 50,000 pages or 50 MB": "Sitemap de plus de 50 000 pages ou 50 Mo", "Sitemap not named in robots.txt": "Sitemap absent du robots.txt",
+    "Listed pages that give an error": "Pages listées en erreur", "Listed pages that redirect": "Pages listées qui redirigent",
+    "Listed pages hidden from search engines": "Pages listées cachées aux moteurs de recherche", "Listed pages blocked by robots.txt": "Pages listées bloquées par robots.txt",
+    "Listed pages whose canonical points elsewhere": "Pages listées dont la canonique pointe ailleurs", "Important pages missing from the sitemap": "Pages importantes absentes du sitemap",
+    "Dates in the future": "Dates dans le futur", "Every page has the same date": "Toutes les pages ont la même date",
+    "Create a sitemap, then name it in robots.txt.": "Créez un sitemap, puis indiquez-le dans robots.txt.",
+    "Make the sitemap address answer, or fix it in robots.txt.": "Faites répondre l'adresse du sitemap, ou corrigez-la dans robots.txt.",
+    "Have the sitemap rebuilt by the site or its SEO plugin.": "Faites régénérer le sitemap par le site ou son extension SEO.",
+    "Split it into smaller sitemaps under one index file.": "Découpez-le en sitemaps plus petits, réunis par un fichier index.",
+    "Add a Sitemap: line to robots.txt. Not scored.": "Ajoutez une ligne Sitemap: dans robots.txt. Sans effet sur le score.",
+    "Take them out of the sitemap, or bring the pages back.": "Retirez-les du sitemap, ou remettez les pages en ligne.",
+    "List the address each one goes to instead.": "Listez plutôt l'adresse vers laquelle chacune redirige.",
+    "Take them out of the sitemap, or remove noindex.": "Retirez-les du sitemap, ou enlevez le noindex.",
+    "Take them out of the sitemap, or allow them in robots.txt.": "Retirez-les du sitemap, ou autorisez-les dans robots.txt.",
+    "List the canonical address instead.": "Listez plutôt l'adresse canonique.",
+    "Add these pages to the sitemap.": "Ajoutez ces pages au sitemap.",
+    "Each date should be when its page last changed. Not scored.": "Chaque date doit être celle de la dernière modification de sa page. Sans effet sur le score.",
+    "Give each page the date it last changed. Not scored.": "Donnez à chaque page la date de sa dernière modification. Sans effet sur le score.",
   });
 })();
