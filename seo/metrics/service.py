@@ -388,7 +388,7 @@ def lead_words(scope: Scope, start: date, end: date, compare_start: date | None 
     unpicked = []
     if scope.lead_kind == lead_rules.MIXED:  # the sites still counting every key event, for the note under the numbers
         hosts = _hosts(scope)
-        unpicked = sorted(hosts[s] for s in scope.site_ids if s not in scope.lead_picked and s in hosts)
+        unpicked = sorted(hosts[s] for s in lead_rules.with_ga4(scope.engine, scope.site_ids) if s not in scope.lead_picked and s in hosts)
     return {"lead_kind": scope.lead_kind, "lead_check": check, "reread_days": rereading, "key_event_hosts": unpicked}
 
 

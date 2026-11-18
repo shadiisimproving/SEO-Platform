@@ -49,7 +49,16 @@ def kind(engine: Engine, site_ids: list[int]) -> str:
     picked = lead_sites(engine, site_ids)
     if not picked:
         return KEY_EVENTS
-    return LEADS if set(picked) >= set(site_ids) else MIXED
+    return LEADS if set(picked) >= set(with_ga4(engine, site_ids)) else MIXED
+
+
+def with_ga4(engine: Engine, site_ids: list[int]) -> list[int]:
+    """The sites with Google Analytics rows: a site with none counts nothing either way, so it doesn't make a mix."""
+    if not site_ids:
+        return []
+    statement = text("SELECT DISTINCT site_id FROM ga4_source_daily WHERE site_id IN :s").bindparams(bindparam("s", expanding=True))
+    with engine.connect() as conn:
+        return [row[0] for row in conn.execute(statement, {"s": list(site_ids)})]
 
 
 def _per_site(picked: list[int], lead_column: str, other: str) -> str:

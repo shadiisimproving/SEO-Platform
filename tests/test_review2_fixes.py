@@ -321,3 +321,17 @@ def test_the_reclassify_run_keeps_each_sites_work_in_its_own_transaction(engine,
     with pytest.raises(RuntimeError):
         reclassify.run(engine, apply=True, log=None)
     assert _shown(engine, one) == [] and len(_shown(engine, two)) == 1  # the first site's work was kept on its own
+
+
+def test_a_site_without_google_analytics_does_not_make_the_total_mixed(engine, site):
+    from seo.metrics import today as today_view
+
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO sites (host, start_url, kind) VALUES ('no-ga.example', 'https://no-ga.example/', 'own')"))
+    for n in range(56):
+        _day(engine, site, END - timedelta(days=n), 10, key_events=5.0)
+    leads.set_events(engine, site, ["generate_lead"])
+    start = END - timedelta(days=27)
+    answer = service.channels(service.Scope(engine, "all", start.isoformat(), END.isoformat()))
+    assert answer["lead_kind"] == "leads" and answer["key_event_hosts"] == []
+    assert today_view.today(engine, None, {"range": "28d"})["results"]["leads"]["kind"] == "leads"

@@ -809,7 +809,7 @@ def _results(strip: list[dict], clicks: dict, sources_state: dict) -> dict:
     known = [row for row in strip if row["clicks"] is not None]
     ga4_window = next((row.get("_ga4") for row in strip if row.get("_ga4")), None)
     window = {**{k: clicks["window"][k] for k in ("range", "compare", "from", "to", "compare_from", "compare_to", "compare_unavailable", "history_from", "final_through")}, "ga4": ga4_window}
-    kinds = {row["lead_kind"] for row in strip}  # each site by its own rule, as the other screens (code review 2026-11-18, #4)
+    kinds = {row["lead_kind"] for row in strip if row["leads_state"] != "no_ga4"}  # each site by its own rule, as the other screens (code review 2026-11-18, #4)
     lead_kind = lead_rules.KEY_EVENTS if lead_rules.LEADS not in kinds else lead_rules.LEADS if kinds == {lead_rules.LEADS} else lead_rules.MIXED
     lead_changes = sorted(({**c, "host": row["host"]} for row in strip for c in row["lead_changes"]), key=lambda c: c["day"])
     visits = {**_total(strip, "visits"), "points": _points(strip, "visits", length), "source": sources_state["ga4"], "unusual": _unusual_total(strip)}
@@ -818,7 +818,7 @@ def _results(strip: list[dict], clicks: dict, sources_state: dict) -> dict:
     return {
         "leads": {**_total(strip, "leads", absolute=True), "points": _points(strip, "leads", length), "state": "ok" if "ok" in states else "not_set_up" if "not_set_up" in states else "no_ga4", "source": sources_state["ga4"],
                   "kind": lead_kind, "changes": lead_changes, "blank": bool(lead_changes),
-                  "key_event_hosts": sorted(row["host"] for row in strip if row["lead_kind"] != lead_rules.LEADS) if lead_kind == lead_rules.MIXED else []},
+                  "key_event_hosts": sorted(row["host"] for row in strip if row["lead_kind"] != lead_rules.LEADS and row["leads_state"] != "no_ga4") if lead_kind == lead_rules.MIXED else []},
         "visits": visits,
         "other_hosts": [{"site_id": row["id"], "host": row["host"], "hosts": row["other_hosts"]} for row in strip if row["other_hosts"]],
         "clicks": {"value": clicks["value"], "change": clicks["change"], "sites": len(known), "of": len(strip), "points": clicks["points"], "source": sources_state["gsc"]},
