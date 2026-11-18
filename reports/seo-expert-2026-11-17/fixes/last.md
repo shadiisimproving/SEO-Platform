@@ -1,0 +1,35 @@
+# Last fixes before the deploy (2026-11-18)
+
+Branch `fix-last-2026-11-18` (worktree `seo-cc-fix-last`), from fix-all-2026-11-17 1584a3a. Not pushed, merged or deployed.
+Screenshots: `fixes/last-shots/` (flow_last_fixes.cjs, 1440 and 390, EN and FR).
+
+## Per item
+
+| # | Item | Result | Commit | Proof |
+|---|---|---|---|---|
+| 1 | AI Overview watch says "Connect SerpApi" while SerpApi is connected | **Fixed.** The watch's summary now carries `ai_tools` (connected Google tools that see AI Overviews) and `not_checked_ids`. No such tool: Connect SerpApi, as before. One connected: "Not checked yet: 4 keywords" (FR "Pas encore contrôlés : 4 mots-clés", the tile's own word) and **Check them**, which opens the usual Refresh dialog for those keywords with that tool ticked (credits and cost shown before anything runs, "Refresh them too" for ones just checked). The watch reads itself again when the Refresh ends (`seocc:refresh-done`). | 968d381 | `tests/test_last_fixes.py::test_watch_with_no_ai_tool_connected_asks_to_connect_one`, `::test_watch_with_serpapi_connected_lists_the_keywords_it_has_not_checked`; flow (incl. the no-tool case by changing the answer); `ai-watch-*.png`, `ai-watch-check-dialog-*.png` |
+| 2 | A Today drop row doesn't name the rival change behind it | **Fixed.** `today._add_rival_changes`: for page drops (week-on-week, Insights page findings, big-drop alerts) the page's pairs; for keyword drops (Going down, Insights query findings) the competitor ranking just above me in the keyword's newest Google check. Real change events only (`hidden = 0`, not `new_page`), from 14 days before the drop's first day to its last day; the one nearest the start wins. One line under the cause, with the rival's logo: "Rival changed /subscription 2 days before" / "... during the drop" (FR "Un concurrent a changé /subscription 2 jours avant" / "pendant la baisse"); the path opens Page vs page (or the competitor when there is no pair). Nothing when none. | f07af97 | Golden tests with known dates: drop week 14–20 Oct, real change 12 Oct → "2 days before", a nearer hidden one ignored, one 19 days before ignored, a paired page with only noise gets nothing; a change on 16 Oct → "during", one after the drop ignored; keyword drop names the rival just above (not the one at #1), 3 days before. Flow; `today-rival-row-*.png`, `today-*.png`, `today-rival-opens-pair-*.png` |
+| 3 | "See page" view not kept in the address | **Fixed.** Overview's address gets `only=1` beside `tab=page&q=…&qm=exact`; reading it back restores the page-only view. Reload, a link opened in another browser and Forward reopen it; Back goes to Today; Show the whole site clears it (and a reload stays whole-site). Show the whole site replaces the address like Overview's other filters (the app's rule: changes inside a screen are not Back steps). | ce3acc1 | flow checks (4 runs); `overview-only-page-reloaded-*.png` |
+| 4 | "Leads et événements clés" cut on a 390 px phone | **Fixed.** The mixed total's card says "Leads + key events" / "Leads + évts clés"; the full name is the first line of the card's tip (and its screen-reader description). | af297a6 (the card call is in f07af97) | flow: no card label cut at 1440/390 EN/FR with the mixed total; `today-cards-*.png` |
+| 5 | Browser flows that failed last run | **All three green.** Each failure was run on origin/main d7ac5ad in a temporary worktree: it failed there too, and none was an app bug. See below. | 97c3836 | runs below |
+
+### Item 5, per flow
+- `flow_today_numbers.cjs` (1 fail, "Insights … Run, not Run again"): same fail on d7ac5ad. Insights' re-run button was renamed **Refresh** in a2a0fb8 (2026-11-13); the flow still looked for "Run again". The check now reads the `[data-in-run]` button: Run before any run, Refresh after. Green.
+- `flow_row_panels.cjs` (6 fails): on a fresh harness it fails 14 times on main and here (one channel only); after `seed_ga4.py` it fails the same 6 on main and here. Causes, all in the flow: (a) the page panel's foot starts with **All about this page** since eb80720 (Pages screen) – expected order now `pages,task,note,open`; (b) the French section title is "Recherches qui y mènent" (shorter-text pass), not "Les recherches…"; (c) the Google clicks chart was checked on the page with AI visits, a GA4-seeded address Search Console has no rows for (the harness's GSC pages are other addresses), so there was nothing to draw – the chart is now checked on a page whose panel shows Google clicks (/abonnement), and it draws. Green.
+- `flow_review2_fixes.cjs` (never clean): its two states were set by hand last time. New `tests/ui/seed_review2.py` (after `seed_ga4.py`) makes them: 12 days of site-one's GA4 history to read again, and rival-one's sitemap cut. Green, EN/FR, 1440/390.
+
+## Tests
+- `DB_NAME_TEST=test_fix_last_test pytest` (all but the known `tests/test_text_all_scripts.py`): exit 0, no failure.
+- New: `tests/test_last_fixes.py` (5 tests); each failed before its fix.
+- `node --test tests/js`: pass.
+- Browser (port 8307, fresh harness, then `seed_ga4.py` + `seed_review2.py`): `flow_last_fixes.cjs` (new) all passed; `flow_today_fixes.cjs`, `flow_today.cjs`, `flow_today_numbers.cjs`, `flow_row_panels.cjs`, `flow_review2_fixes.cjs` all passed.
+- `flow_today_fixes.cjs` needed two date/wording updates (not in the three asked for): its weeks were hard-coded to 8–14 Nov (now read from Today's own `moves_window`), and its leads row can say "Key events fell 50%" once the harness worker has read the fake GA4. Committed with this report.
+- `flow_competitors_simple.cjs` stops at `#cs-rivals-table` in simple mode: the Competitors summary became cards (881caaa); that screen is not touched here, left as is.
+- Impeccable detector on the changed UI files: only two pre-existing `side-tab` notes in `comp-compare.css` (`.cp-side-mine/.cp-side-theirs`), not from this work. Impeccable ran without PRODUCT.md/DESIGN.md (scoped fixes on the existing look, per `design/MASTER.md`).
+
+## Files touched
+`seo/competitors/ai_watch.py`, `seo/metrics/today.py`, `design/mockups/comp-ai.js`, `comp-compare.css`, `keywords-real.js` (Refresh dialog opened from another screen: `KW_REAL.checkWith`; `seocc:refresh-done` event), `today-view.js`, `today-live.js`, `today.css`, `overview-view.js`, `ga4-words.js`, `tests/test_last_fixes.py`, `tests/ui/flow_last_fixes.cjs`, `tests/ui/seed_review2.py`, `tests/ui/flow_today_numbers.cjs`, `flow_row_panels.cjs`, `flow_review2_fixes.cjs`, `flow_today_fixes.cjs`.
+
+## For the owner
+- In the demo, SerpApi had checked the "not checked" keywords within 12 hours without reading an overview, so Check them's dialog first says they were just checked, with "Refresh them too". That is the Refresh dialog's normal rule; with real SerpApi, an overview that can't be read is rare.
+- Today's to-do rows now carry `window` (the days a drop covers) and big-drop alerts carry the finding's `page`, used for the rival line; a task made from such an alert now names that page.
