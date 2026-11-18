@@ -356,3 +356,56 @@ def test_updated_in_12_months_is_not_shown_when_few_pages_carry_a_date():
     assert insights.updated_share_of([recent] * 3 + [none] * 483, year_ago) is None  # meyranpartners.fr: 3 of 486 dated
     assert insights.updated_share_of([recent] * 6 + [old] * 4 + [none] * 10, year_ago) == 0.6
     assert insights.updated_share_of([none] * 4, year_ago) is None
+
+
+def _index(pages, children):
+    pages["rival.example/robots.txt"] = "User-agent: *\nSitemap: https://rival.example/sitemap_index.xml\n"
+    pages["rival.example/sitemap_index.xml"] = (
+        '<?xml version="1.0"?><sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">'
+        + "".join(f"<sitemap><loc>https://rival.example/{name}</loc></sitemap>" for name in children) + "</sitemapindex>"
+    )
+
+
+def test_a_sitemap_file_that_keeps_failing_ends_the_first_read_after_a_few_days_and_says_why(world):
+    """Code review 2026-11-18, #6: a dead sitemap file named every day used to hold the first read open for ever, so the
+    rival's new pages were never reported."""
+    from seo.competitors import crawl, profile
+
+    pages = live_pages(world)
+    pages["rival.example/"] = article("Accueil", "Bienvenue")
+    for n in range(2):
+        pages[f"rival.example/a{n}"] = article(f"A{n}", f"Texte {n}")
+    _index(pages, ["s1.xml", "dead.xml"])
+    pages["rival.example/s1.xml"] = sitemap_xml(["/a0", "/a1"])
+    pages["rival.example/dead.xml"] = 404  # gone for good
+    rival = first_read(world)
+    def state():
+        with world.engine.connect() as conn:
+            return profile.crawl_states(conn, [rival])[rival]
+
+    assert not state()["baseline_done"] and state()["sitemap_cut"] == "waiting"
+    next_day(world, rival)
+    assert not state()["baseline_done"]  # a day later it may still load
+    with world.engine.begin() as conn:  # the first page was seen FIRST_PASS_WAIT_DAYS + 1 days ago
+        conn.execute(text("UPDATE pages SET first_seen_at = first_seen_at - INTERVAL :n DAY"), {"n": crawl.FIRST_PASS_WAIT_DAYS + 1})
+    next_day(world, rival)
+    assert state()["baseline_done"] and state()["sitemap_cut"] == "cut" and state()["message"] == crawl.CUT_TEXT
+    pages["rival.example/new-guide/"] = article("Nouveau", "Un nouveau guide", published=(date.today() + timedelta(days=1)).isoformat() + "T09:00:00+00:00")
+    pages["rival.example/s1.xml"] = sitemap_xml(["/a0", "/a1", "/new-guide/"])
+    next_day(world, rival)
+    assert ("new_page", "/new-guide/") in visible(world)  # new pages are reported again
+
+
+def test_more_sitemap_files_than_the_app_reads_does_not_hold_the_first_read(world):
+    from seo.crawl import sitemap
+
+    pages = live_pages(world)
+    pages["rival.example/"] = article("Accueil", "Bienvenue")
+    names = [f"post-sitemap{n}.xml" for n in range(sitemap.MAX_SITEMAPS + 2)]  # a big Yoast site
+    for n, name in enumerate(names):
+        pages[f"rival.example/{name}"] = sitemap_xml([f"/p{n}"])
+        pages[f"rival.example/p{n}"] = article(f"P{n}", f"Texte {n}")
+    _index(pages, names)
+    rival = first_read(world)
+    assert scalar(world.engine, "SELECT baseline_done FROM competitor_crawls WHERE competitor_id = :c", c=rival)  # was never
+    assert scalar(world.engine, "SELECT message FROM competitor_crawls WHERE competitor_id = :c", c=rival) == "Sitemap incomplete: new pages may be missed."

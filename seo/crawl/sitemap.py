@@ -56,6 +56,7 @@ class SitemapResult:
     errors: list[str] = field(default_factory=list)  # sitemap files that couldn't be read: unreadable XML, too large, an error answer
     capped: bool = False  # stopped at max_pages
     cut: bool = False  # the list is not the whole sitemap: a file was too large or failed, or there were more files than MAX_SITEMAPS
+    too_many_files: bool = False  # cut (also) because there were more sitemap files than max_sitemaps: the same every day
     problems: dict[str, str] = field(default_factory=dict)  # sitemap file -> why it wasn't read
 
 
@@ -117,6 +118,7 @@ def discover(fetcher, base_url: str, max_pages: int = 5000, max_sitemaps: int = 
                 continue
             if len(visited) >= max_sitemaps:
                 result.cut = True  # said, not dropped without a word
+                result.too_many_files = True
                 continue
             visited.add(url)
             response = fetcher.get(url, any_type=True, max_bytes=MAX_SITEMAP_BYTES)

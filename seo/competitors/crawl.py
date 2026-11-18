@@ -48,6 +48,11 @@ TODAY_DONE_TEXT = "This site has had its reads for today. It carries on tomorrow
 SLOW_DOWN_TEXT = "The site asked the app to slow down, so it stopped for today. It carries on tomorrow."
 DOWN_TEXT = "The site isn't answering properly right now. The app tries again tomorrow."
 LEFT_TEXT = "This address now redirects to another website, so nothing was read."
+# A sitemap that is cut (a file failed or too many files, seo/crawl/sitemap.py) no longer holds the first read forever:
+# it waits up to FIRST_PASS_WAIT_DAYS for the whole list, then ends and says so (code review 2026-11-18, #6).
+FIRST_PASS_WAIT_DAYS = 3
+CUT_TEXT = "Sitemap incomplete: new pages may be missed."
+CUT_WAIT_TEXT = "Part of the sitemap didn't load. The first read waits a few days for the whole list."
 
 
 def feed_links(body: bytes, base_url: str) -> list[str]:
@@ -104,10 +109,11 @@ def _finish(engine: Engine, competitor_id: int, status: str, message: str | None
         conn.execute(text(f"UPDATE competitor_crawls SET {clause}, finished_at = UTC_TIMESTAMP(3) WHERE competitor_id = :c"), {**values, "c": competitor_id})
 
 
-def _discover(fetcher, start_url: str, host: str, charge) -> tuple[dict[str, str | None], str, bool, str, bool]:
+def _discover(fetcher, start_url: str, host: str, charge) -> tuple[dict[str, str | None], str, bool, str, bool, str | None]:
     """What the site lists itself. Returns address -> sitemap date, how the start page answered, whether a sitemap listed
-    everything, where the list came from (sitemap, feed or links), and whether the sitemap had more than MAX_DISCOVERED pages.
-    A sitemap file that failed or was too large means the list isn't whole today (SEO review 2026-11-17, W2)."""
+    everything, where the list came from (sitemap, feed or links), whether the sitemap had more than MAX_DISCOVERED pages,
+    and why a sitemap list was cut: "files" (more sitemap files than MAX_SITEMAPS, the same every day) or "failed" (a file
+    failed or was too large today), else None. A cut list isn't whole today (SEO review 2026-11-17, W2)."""
 
     def stay_on(url: str) -> bool:
         return on_host(host_and_domain(url)[0], host)
@@ -141,7 +147,10 @@ def _discover(fetcher, start_url: str, host: str, charge) -> tuple[dict[str, str
                 if normal and stay_on(normal):
                     urls.setdefault(normal, None)
     urls.setdefault(canonical_url(start_url), None)
-    return urls, front.status, complete_list, source, bool(found.capped)
+    cut = None
+    if getattr(found, "cut", False) and source == "sitemap":
+        cut = "failed" if found.problems or found.errors or not getattr(found, "too_many_files", False) else "files"
+    return urls, front.status, complete_list, source, bool(found.capped), cut
 
 
 # How each site is followed (2026-11-10, plan-seo-command-center-competitor-update-detection.md): the site's size and
@@ -295,7 +304,7 @@ def _plan(engine: Engine, competitor_id: int, site, baseline_done: bool, fetcher
     if room <= 0:
         _finish(engine, competitor_id, "ok", TODAY_DONE_TEXT)
         return None
-    urls, front_status, complete_list, source, capped = _discover(fetcher, start_url, host, charge)
+    urls, front_status, complete_list, source, capped, cut = _discover(fetcher, start_url, host, charge)
     start_page_readable = front_status in READABLE_STATUSES
     if start_page_readable or len(urls) > 1:  # a blocked site's empty list says nothing about how it lists its pages
         _set(engine, competitor_id, list_source=source, list_capped=capped)
@@ -421,12 +430,19 @@ def _plan(engine: Engine, competitor_id: int, site, baseline_done: bool, fetcher
     with engine.begin() as conn:
         noise.refresh_repeated(conn, domain_id)  # the site's template, from its own pages, once a day
         watch_start = conn.execute(text("SELECT MIN(first_seen_at) FROM pages WHERE domain_id = :d"), {"d": domain_id}).scalar()
+        waited = bool(conn.execute(text("SELECT :w < UTC_TIMESTAMP(3) - INTERVAL :n DAY"), {"w": watch_start, "n": FIRST_PASS_WAIT_DAYS}).scalar()) if watch_start else False
+    listed_all = len(new) <= room
+    # Too many sitemap files is the same every day, like a capped list; a failed file may load tomorrow, so the first read
+    # waits for it, but only FIRST_PASS_WAIT_DAYS from the first page seen, never for ever (#6).
+    whole = complete_list or source != "sitemap" or capped or cut == "files" or waited
     return {
         "part": 0,
         "todo": todo[:room],
         # The first read ends only once the whole list has been read: a sitemap file that failed today (W2) leaves pages
         # out of the list, and they'd all be reported as new tomorrow. A list from a feed or links is never "whole".
-        "first_pass_ends": not baseline_done and len(new) <= room and (complete_list or source != "sitemap" or capped),
+        "first_pass_ends": not baseline_done and listed_all and whole,
+        "cut": cut if not complete_list and not capped else None,
+        "waits_for_list": not baseline_done and listed_all and not whole,
         "watch_start": (watch_start or _now()).isoformat(),
         "start_page_readable": start_page_readable,
         "known": len(listed),
@@ -532,7 +548,9 @@ def _read_pages(engine: Engine, competitor_id: int, site, plan: dict, baseline_d
     elif plan["robots"] and not plan["good"] and not plan["start_page_readable"]:  # only a few allowed files, and no pages
         _finish(engine, competitor_id, "blocked", BLOCKED_TEXT, **totals)
     elif plan["first_pass_ends"] or baseline_done:
-        _finish(engine, competitor_id, "ok", None, baseline_done=True, **totals)
+        _finish(engine, competitor_id, "ok", CUT_TEXT if plan.get("cut") else None, baseline_done=True, **totals)
+    elif plan.get("waits_for_list"):
+        _finish(engine, competitor_id, "ok", CUT_WAIT_TEXT, **totals)
     else:
         _finish(engine, competitor_id, "ok", f"First read of this site: {plan['read']} pages today, of about {plan['known']}. It carries on tomorrow, up to {PAGES_PER_DAY} pages a day.", **totals)
 
