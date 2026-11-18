@@ -158,14 +158,22 @@ def link_gaps(engine, args) -> Report:
     data = gaps.link_gaps(engine, site_id)
     funnel = data.get("funnel") or {}
     report = Report("link-gaps", "Link gaps", site=registry.site_host(engine, site_id))
+    # The same counts as the screen, where old links are left out of the good ones (final re-check 2026-11-18, 3.5): they get
+    # a table of their own, after the good ones.
+    listed = data.get("gaps") or []
+    current, old = [g for g in listed if not g.get("old_link")], [g for g in listed if g.get("old_link")]
+    good_now = funnel.get("current", (funnel.get("good") or 0) - (funnel.get("old") or 0))
     report.tiles = [
-        Tile("Sites found", funnel.get("found"), "int"), Tile("Worth a look", funnel.get("good"), "int"),
+        Tile("Sites found", funnel.get("found"), "int"), Tile("Worth a look", good_now, "int"),
         Tile("Filtered out", funnel.get("filtered"), "int"), Tile("Already link to me", data.get("already_linking"), "int"),
-        Tile("App flagged", funnel.get("app_flagged"), "int"), Tile("Old links", funnel.get("old"), "int"),
+        Tile("App flagged", funnel.get("app_flagged_current", funnel.get("app_flagged")), "int"), Tile("Old links, left out", funnel.get("old"), "int"),
     ]
     columns = _gap_columns()
     flag_only = ("app_flag", "app_flag_to", "app_flag_at", "old_link")
-    report.tables.append(Table("gaps", "Linking to competitors, not me", [c for c in columns if c.key not in ("reason_words", "flagged_by")], data.get("gaps") or [], total=funnel.get("good"), empty="No link gaps found yet."))
+    good_columns = [c for c in columns if c.key not in ("reason_words", "flagged_by", "old_link")]
+    report.tables.append(Table("gaps", "Linking to competitors, not me", good_columns, current, total=good_now, empty="No link gaps found yet."))
+    if old:
+        report.tables.append(Table("old", "Old links, left out", good_columns + [c for c in columns if c.key == "old_link"], old, total=funnel.get("old")))
     report.tables.append(Table("filtered", "Filtered out", [c for c in columns if c.key != "in_consideration" and c.key not in flag_only], data.get("filtered") or [], total=funnel.get("filtered"), empty="Nothing was filtered out."))
     return report
 

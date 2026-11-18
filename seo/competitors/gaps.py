@@ -425,16 +425,22 @@ def link_gaps(engine: Engine, site_id: int) -> dict:
     everything = report.pop("everything")
     good = [g for g in everything if g["quality"] == GOOD]
     spam = [g for g in everything if g["quality"] == SPAM]
+    # The screen leaves old links out until asked (B1), so the cap fills with current ones first: the first MAX_LISTED current
+    # domains, plus the old ones among the first MAX_LISTED of all, in the server's order (final re-check 2026-11-18, 3.5).
+    current = {id(g) for g in [g for g in good if not g["old_link"]][:MAX_LISTED]}
+    listed = [g for at, g in enumerate(good) if id(g) in current or (g["old_link"] and at < MAX_LISTED)]
     # Every domain on the list, and every competitor it links to, gets its icon, flagged or not. Ones listed before this was added catch up here.
-    logos.queue_missing(engine, [g["domain"] for g in good[:MAX_LISTED] + spam[:MAX_FILTERED_LISTED]] + [c["host"] for c in report["competitors"]])
+    logos.queue_missing(engine, [g["domain"] for g in listed + spam[:MAX_FILTERED_LISTED]] + [c["host"] for c in report["competitors"]])
     return {
         **report,
-        "gaps": good[:MAX_LISTED],
+        "gaps": listed,
         "filtered": spam[:MAX_FILTERED_LISTED],
         "funnel": {"found": len(everything), "filtered": len(spam), "checking": sum(1 for g in everything if g["quality"] == quality.PENDING), "good": len(good),
                    "not_followed": sum(1 for g in good if g["followed"] is False), "follow_unknown": sum(1 for g in good if g["followed"] is None),
                    "app_flagged": sum(1 for g in good if g["app_flag"]), "app_flagged_weak": sum(1 for g in good if g["app_flag"] and g["app_flag"]["weak"]),
-                   "old": sum(1 for g in good if g["old_link"])},
+                   "old": sum(1 for g in good if g["old_link"]),
+                   # The same, among the good ones the screen shows while old links are left out: the header and the export say these.
+                   "current": sum(1 for g in good if not g["old_link"]), "app_flagged_current": sum(1 for g in good if g["app_flag"] and not g["old_link"])},
     }
 
 

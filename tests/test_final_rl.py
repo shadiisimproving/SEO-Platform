@@ -169,3 +169,60 @@ def test_a_stored_check_with_repeats_reads_its_place_without_them(world):
     assert row_of(world, k)["main"]["p"] == 33
     with world.engine.begin() as conn:
         assert _migration().remove_repeats(conn) == 0  # once
+
+
+# ---- 3-4. old links: out of Shared links' and a profile's good ones, and Link gaps' counts match what is shown ---------
+from seo.competitors import collective, gaps, insights  # noqa: E402
+from seo.exports import registry  # noqa: E402
+from tests.test_competitors_backend import add_rival, world as cworld  # noqa: E402, F401
+from tests.test_links2_fixes import _checked, _file  # noqa: E402
+
+# The file (tests/test_links2_fixes.py): old.example (only link last seen 2025-01-02), fresh, moved, down and thirty (score 30,
+# not spam), each good once the app's check says so. Uploaded today, so old.example's link is 22 months older than its file.
+
+
+def test_shared_links_leave_old_links_out_of_good_and_count_them_apart(cworld):  # noqa: F811
+    rival = add_rival(cworld)
+    gaps.import_referrers(cworld.engine, cworld.own, rival, _file(), "ubersuggest.csv")
+    _checked(cworld, {})
+    answer = collective.links(cworld.engine, cworld.own)
+    assert answer["funnel"]["good"] == 4 and answer["funnel"]["old"] == 1 and answer["funnel"]["checking"] == 0
+    assert sorted(g["domain"] for g in answer["gaps"]) == ["down.example", "fresh.example", "moved.example", "thirty.example"]
+    [old] = answer["old"]
+    assert old["domain"] == "old.example" and old["sites"][0]["old_link"] == {"last_seen": "2025-01-02"}
+
+
+def test_a_competitor_profile_counts_old_links_apart(cworld):  # noqa: F811
+    """5 good domains link to the rival, 1 of them only through an old link: 4 linking sites, +1 old, 4 don't link to me."""
+    rival = add_rival(cworld)
+    gaps.import_referrers(cworld.engine, cworld.own, rival, _file(), "ubersuggest.csv")
+    _checked(cworld, {})
+    with cworld.engine.connect() as conn:
+        links = insights._links(conn, cworld.own, rival, "rival.example")
+    assert (links["linking_domains"], links["linking_old"], links["linking_flagged"], links["not_to_me"]) == (4, 1, 0, 4)
+    assert [d["domain"] for d in links["top"]][-1] == "old.example" and links["top"][-1]["old"] is True
+
+
+def test_link_gaps_app_flagged_and_the_cap_count_current_rows_and_the_export_matches_the_screen(cworld, monkeypatch):  # noqa: F811
+    """The app flags old.example and fresh.example (site down), the file keeps both: App flagged on screen = 1 (fresh), not 2.
+    With a cap of 3: the 3 first current domains are sent, plus old.example (inside the first 3 of all), never 3 including it.
+    The export says Worth a look 4 (5 good - 1 old), App flagged 1, and lists old.example in its own table."""
+    rival = add_rival(cworld)
+    gaps.import_referrers(cworld.engine, cworld.own, rival, _file(), "ubersuggest.csv")
+    _checked(cworld, {"old.example": ("site_down", None), "fresh.example": ("site_down", None)})
+    answer = gaps.link_gaps(cworld.engine, cworld.own)
+    f = answer["funnel"]
+    assert (f["good"], f["old"], f["current"], f["app_flagged"], f["app_flagged_current"]) == (5, 1, 4, 2, 1)
+    order = [g["domain"] for g in answer["gaps"]]
+    monkeypatch.setattr(gaps, "MAX_LISTED", 3)
+    capped = gaps.link_gaps(cworld.engine, cworld.own)
+    sent = [g["domain"] for g in capped["gaps"]]
+    current = [d for d in order if d != "old.example"]
+    assert [d for d in sent if d != "old.example"] == current[:3]
+    assert ("old.example" in sent) == (order.index("old.example") < 3)
+    report = registry.build(cworld.engine, "link-gaps", {"site_id": str(cworld.own)})
+    tiles = {tile.label: tile.value for tile in report.tiles}
+    assert tiles["Worth a look"] == 4 and tiles["App flagged"] == 1 and tiles["Old links, left out"] == 1
+    tables = {table.id: table for table in report.tables}
+    assert "old.example" not in [r["domain"] for r in tables["gaps"].rows] and tables["gaps"].total == 4
+    assert [r["domain"] for r in tables["old"].rows] == ["old.example"]

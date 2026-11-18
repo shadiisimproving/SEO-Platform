@@ -113,7 +113,7 @@ FR: dict[str, str] = {
     "Linking to competitors, not me": "Pointent vers les concurrents, pas vers moi", "Name": "Nom", "Competitors it links to": "Concurrents visés", "Which ones": "Lesquels",
     "A page with a link": "Une page avec un lien", "Why filtered out": "Pourquoi retiré", "No link gaps found yet.": "Aucun lien manquant trouvé pour l'instant.", "Nothing was filtered out.": "Rien n'a été retiré.",
     "File spam score above 30": "Score de spam du fichier supérieur à 30", "Flagged by": "Signalé par",
-    "The app saw": "L'appli a vu", "Leads to": "Mène à", "Old link, last seen": "Ancien lien, vu le", "App flagged": "Signalés par l'appli", "Old links": "Anciens liens",
+    "The app saw": "L'appli a vu", "Leads to": "Mène à", "Old link, last seen": "Ancien lien, vu le", "App flagged": "Signalés par l'appli", "Old links": "Anciens liens", "Old links, left out": "Anciens liens, écartés",
     "Uploaded file": "Fichier importé", "System": "Système", "You": "Vous", "No home page": "Pas de page d'accueil", "Home page mostly outside links": "Page d'accueil surtout faite de liens sortants",
     "Link farm: links to thousands of sites": "Ferme de liens : pointe vers des milliers de sites", "Parked or for sale": "Parqué ou à vendre", "Spam words in name": "Mots de spam dans le nom",
     "Spam words on home page": "Mots de spam sur la page d'accueil", "Link farm: thousands of subdomains": "Ferme de liens : des milliers de sous-domaines",
