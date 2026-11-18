@@ -382,7 +382,7 @@
     const total = r?.edited_pages?.theirs ?? months.reduce((n, m) => n + (m.theirs || 0), 0);
     const myTotal = showMine ? r?.edited_pages?.mine ?? months.reduce((n, m) => n + (m.mine || 0), 0) : null;
     const myHost = COMP.site?.()?.host || p.site?.host;
-    const lead = r && months.length ? sideTable(t("New and removed pages"), [t("Added, 30 days"), t("Removed, 30 days"), t("Added, 12 months"), t("Updated, 12 months")], [
+    const lead = r && months.length ? sideTable(t("New and removed pages"), [t("Added in 30 days"), t("Removed, 30 days"), t("Added, 12 months"), t("Updated, 12 months")], [
       ...(showMine ? [{ who: "you", host: myHost, cells: [figure(r.my_new_30d), figure(r.my_removed_30d), figure(myTotal), share(r.updated_12m?.mine)] }] : []),
       { who: "them", host: p.host, cells: [figure(r.new_30d), figure(r.removed_30d), figure(total), share(r.updated_12m?.theirs)] },
     ]) : "";
@@ -951,7 +951,7 @@
 
   Object.assign(window.FR, {
     "Whose": "À qui", "On shared keywords": "Sur les mots-clés communs", "New and removed pages": "Pages ajoutées et retirées",
-    "Added, 30 days": "Ajoutées, 30 jours", "Removed, 30 days": "Retirées, 30 jours", "Added, 12 months": "Ajoutées, 12 mois", "Updated, 12 months": "Mises à jour, 12 mois",
+    "Added in 30 days": "Ajoutées en 30 j", "Removed, 30 days": "Retirées, 30 jours", "Added, 12 months": "Ajoutées, 12 mois", "Updated, 12 months": "Mises à jour, 12 mois",
     "Since {day}": "Depuis le {day}", "Since today": "Depuis aujourd'hui", "Since yesterday": "Depuis hier", "Edits": "Modifications",
     "{n} on your topics": "{n} sur vos sujets", "{n} page of theirs": "{n} de leurs pages", "{n} pages of theirs": "{n} de leurs pages",
     "No keyword list yet.": "Pas encore de liste de mots-clés.",

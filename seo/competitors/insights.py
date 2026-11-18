@@ -83,9 +83,80 @@ def _add_dates(pages: list[dict]) -> None:
     lastmods = Counter(p["sitemap_lastmod"] for p in pages if p["sitemap_lastmod"])
     honest = bool(lastmods) and lastmods.most_common(1)[0][1] < SITEMAP_SAME_DATE * len(pages)
     for page in pages:
-        page["appeared"] = _day(page["extras"].get("published")) or page["first_archived"] or _day(page["reported_new"])
+        page["appeared"] = appeared_day(page["extras"].get("published"), page["first_archived"], page["reported_new"])
+        page["reported"] = page["appeared"] is not None and page["appeared"] == _day(page["reported_new"]) and appeared_day(page["extras"].get("published"), page["first_archived"]) is None
         updated = [_day(page["extras"].get("modified")), _day(page["last_changed_at"]), page["sitemap_lastmod"] if honest else None]
         page["updated"] = max((d for d in updated if d), default=None)
+
+
+def appeared_day(published, first_archived=None, reported_new=None, today: date | None = None) -> date | None:
+    """When a page appeared: the day it says it was published (never a day after today, N6), else its first Wayback
+    copy, else the day the daily read reported it new."""
+    today = today or datetime.now(timezone.utc).date()
+    for value in (pagedates.published_day(published, today), _day(first_archived), _day(reported_new)):
+        if value is not None and value <= today:
+            return value
+    return None
+
+
+ADDED_DAYS = 30
+
+
+def added_since(pages: list[dict], watch_start, days: int = ADDED_DAYS, today: date | None = None) -> list[dict]:
+    """The one meaning of "added in 30 days", on the cards and the profile alike (SEO review 2026-11-18, N1): pages whose
+    own date (else the day the app reported them new) is in the last `days` days and not before watching began. A page
+    published after watching began but found while the first read was still going counts too."""
+    today = today or datetime.now(timezone.utc).date()
+    start = _day(watch_start)
+    since = today - timedelta(days=days)
+    if start is not None:
+        since = max(since, start)
+    month = today - timedelta(days=days)
+    # A page the daily read reported new was found after watching began by definition; only a page's own date is held to it.
+    return [p for p in pages if p.get("appeared") and (month if p.get("reported") else since) <= p["appeared"] <= today]
+
+
+def watch_starts(conn, hosts: list[str]) -> dict[str, date]:
+    """The day the app first read each site (www or not), by host as asked."""
+    out = {}
+    for host in hosts:
+        found = conn.execute(text("SELECT MIN(p.first_seen_at) FROM pages p JOIN domains d ON d.id = p.domain_id WHERE d.host IN (:h, :w)"), {"h": host, "w": f"www.{host}"}).scalar()
+        if found:
+            out[host] = found.date()
+    return out
+
+
+def added_counts(conn, hosts: list[str], days: int = ADDED_DAYS) -> dict[str, int]:
+    """"Added in 30 days" for many sites at once, by the rule of added_since, in two queries whatever the number of
+    sites. Only the columns the dates need are read."""
+    if not hosts:
+        return {}
+    owner = {}
+    for host in hosts:
+        owner[host.lower()] = host
+        owner[f"www.{host}".lower()] = host
+    names = sorted(owner)
+    starts: dict[str, date] = {}
+    for found_host, first in conn.execute(text(
+        "SELECT d.host, MIN(p.first_seen_at) FROM pages p JOIN domains d ON d.id = p.domain_id WHERE d.host IN :hosts GROUP BY d.host"
+    ).bindparams(bindparam("hosts", expanding=True)), {"hosts": names}):
+        host = owner.get(str(found_host).lower())
+        if host and first and (host not in starts or first.date() < starts[host]):
+            starts[host] = first.date()
+    pages: dict[str, list] = {host: [] for host in hosts}
+    for r in conn.execute(text(
+        "SELECT d.host, JSON_UNQUOTE(JSON_EXTRACT(p.extras, '$.published')) AS published, p.first_archived, n.reported_new "
+        "FROM pages p JOIN domains d ON d.id = p.domain_id "
+        "LEFT JOIN (SELECT page_id, MIN(detected_at) AS reported_new FROM change_events WHERE kind = 'new_page' AND hidden = 0 GROUP BY page_id) n ON n.page_id = p.id "
+        "WHERE d.host IN :hosts AND p.content_hash IS NOT NULL AND (p.last_status IS NULL OR p.last_status NOT IN ('gone', 'moved'))"
+    ).bindparams(bindparam("hosts", expanding=True)), {"hosts": names}).mappings():
+        host = owner.get(str(r["host"]).lower())
+        if host is None:
+            continue
+        published = r["published"] if r["published"] not in (None, "null") else None
+        own = appeared_day(published, r["first_archived"])
+        pages[host].append({"appeared": own or appeared_day(None, None, r["reported_new"]), "reported": own is None})
+    return {host: len(added_since(found, starts.get(host), days)) for host, found in pages.items()}
 
 
 def _section(url: str) -> str:
@@ -152,7 +223,7 @@ def _date_iso(value) -> str | None:
 
 # ---- activity -------------------------------------------------------------------------------------
 
-EDIT_SKIP = ("new_page", "page_gone")  # a page coming or going isn't an edit
+EDIT_SKIP = ("new_page", "page_gone", "redirect")  # a page coming, going or moving to another address isn't an edit (N3)
 
 
 def _edits_by_month(conn, host: str, keys: list[str]) -> tuple[list[int], str | None, int]:
@@ -211,8 +282,7 @@ def _rhythm(conn, host: str, my_host: str, theirs: list[dict], mine: list[dict],
     my_edits, my_edits_since, my_pages = _edits_by_month(conn, my_host, keys) if mine else ([None] * MONTHS, None, None)
     # Published in the last 30 days by the pages' own dates, else the day the app reported them new (W10): "They
     # published N pages in 30 days" counted only pages seen new since watching began.
-    month_ago = today - timedelta(days=30)
-    new_urls = [p["url"] for p in theirs if p["appeared"] and p["appeared"] >= month_ago]
+    new_urls = [p["url"] for p in added_since(theirs, watch_starts(conn, [host]).get(host), today=today)]
     sections = Counter(_section(url) for url in new_urls)
     year_ago = today - timedelta(days=365)
 

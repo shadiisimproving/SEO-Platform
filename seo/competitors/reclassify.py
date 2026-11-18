@@ -12,7 +12,12 @@ Rules, in order:
   moment (at least one other event of the page within 5 s): the address redirects and the target's page was read. Those
   events become one "redirect" event, and the page is marked moved only when nothing was read of it since. A canonical
   change alone stays shown: it is a real edit;
-- template: only the order of blocks, numbers, or words the site shows on many pages changed;
+- duplicate: the page named another page as its canonical before and after: the text read was that page's;
+- redirect (after a move): an edit of a page already recorded as moved is the target's, never the old address's;
+- template: only the order of blocks, numbers, or words the site shows on many pages changed, or words found in other
+  pages' titles ("see also" teasers), or headings that showed on a page for one read only, or a few words that were on
+  the page before and came back (a rotating office list), or a few words in a slot the site changes on many reads (a
+  form field whose label is picked at random);
 - found_later / first_read: a "new page" whose own date is before watching began, or one with no date found while the
   site's first read was still going (its list came in a few hundred pages a day).
 
@@ -42,6 +47,10 @@ COMMON_PAGES = 3  # a run of RUN words on this many of the site's pages (the pag
 SMALL_MOVE_WORDS = 15  # a change this small made only of words already on the page is labels moving, not writing
 TEMPLATE_SHARE = 0.9  # this share of the changed words sit in runs the site shows on many pages: the change is the template
 BACKLOG_SHARE = 0.8  # a day that found this share of a day's reads as new pages was still the site's first read
+SLOT_WORDS = 3  # a change of at most this many words on each side, between the same words before and after, is in a slot
+SLOT_CONTEXT = 3  # words each side of a slot that say where it is
+ROTATING_SLOT = 3  # a slot changed this many times across the site's reads is a label picked at random, not writing
+BLIP_DAYS = 7  # a heading on a page for one read only, between two reads this close, came and went by itself
 _DIGITS = re.compile(r"\d+")
 
 
@@ -66,6 +75,40 @@ def _unzip(blob) -> str:
     return gzip.decompress(blob).decode("utf-8", "replace") if blob else ""
 
 
+def _slots(a: list[str], b: list[str]) -> tuple[list[int], bool]:
+    """Where two texts differ, as slots (the words around each small change), and whether every change is that small."""
+    out, small = [], True
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
+        if tag == "equal":
+            continue
+        if i2 - i1 > SLOT_WORDS or j2 - j1 > SLOT_WORDS:
+            small = False
+            continue
+        out.append(hash((tuple(a[max(0, i1 - SLOT_CONTEXT):i1]), tuple(a[i2:i2 + SLOT_CONTEXT]))))
+    return out, small
+
+
+def _came_and_went(seen: list[tuple[object, set[str]]]) -> set[str]:
+    """Keys present for a run of reads with reads without them on both sides (or the other way round), the reads either
+    side no more than BLIP_DAYS apart."""
+    out: set[str] = set()
+    for key in set().union(*(keys for _when, keys in seen)) if seen else ():
+        marks = [key in keys for _when, keys in seen]
+        k = 1
+        while k < len(marks):
+            if marks[k] != marks[k - 1]:
+                end = k
+                while end < len(marks) and marks[end] == marks[k]:
+                    end += 1
+                if end < len(marks) and (seen[end][0] - seen[k - 1][0]).days <= BLIP_DAYS:
+                    out.add(key)
+                    break
+                k = end
+            else:
+                k += 1
+    return out
+
+
 class _Site:
     """What a site's own stored pages say is its template."""
 
@@ -74,20 +117,38 @@ class _Site:
         self.pages = {
             r["id"]: dict(r)
             for r in conn.execute(
-                text("SELECT id, url, title, h1, headings, extras, sitemap_lastmod, first_archived, first_seen_at FROM pages WHERE domain_id = :d"), {"d": domain_id}
+                text("SELECT id, url, title, h1, headings, canonical, extras, sitemap_lastmod, first_archived, first_seen_at FROM pages WHERE domain_id = :d"), {"d": domain_id}
             ).mappings()
         }
         # Every saved version, each page counted once: a block picked at random on every request shows on many pages
         # across their versions (meyranpartners.fr: teasers of 3-6 other articles on each page, a new pick each read).
         grams: dict[int, set[int]] = defaultdict(set)
         heads: dict[int, set[str]] = defaultdict(set)
-        for page_id, blob, fields in conn.execute(
-            text("SELECT v.page_id, v.text_gz, v.fields FROM page_versions v JOIN pages p ON p.id = v.page_id WHERE p.domain_id = :d"), {"d": domain_id}
+        heads_seen: dict[int, list] = defaultdict(list)  # per page, each version's time and headings, oldest first
+        self.first_seen: dict[int, dict[str, object]] = defaultdict(dict)  # per page, when each word first showed on it
+        self.slots: Counter = Counter()
+        last: tuple[int, list[str]] | None = None
+        for page_id, blob, fields, taken in conn.execute(
+            text("SELECT v.page_id, v.text_gz, v.fields, v.taken_at FROM page_versions v JOIN pages p ON p.id = v.page_id WHERE p.domain_id = :d ORDER BY v.page_id, v.taken_at, v.id"),
+            {"d": domain_id},
         ):
-            grams[page_id] |= _runs(_norm(steady_words(_unzip(blob).replace(noise.BLOCK_SEP, " "))))
+            words = steady_words(_unzip(blob).replace(noise.BLOCK_SEP, " "))
+            normal = _norm(words)
+            grams[page_id] |= _runs(normal)
+            seen = self.first_seen[page_id]
+            for word in {w.casefold() for w in words}:
+                seen.setdefault(word, taken)
+            # The slots this read changed against the page's read before (a form label picked at random each time).
+            if last is not None and last[0] == page_id and last[1] != normal and abs(len(last[1]) - len(normal)) <= 2 * SLOT_WORDS * 4:
+                self.slots.update(set(_slots(last[1], normal)[0]))
+            last = (page_id, normal)
+            keys = set()
             for h in (_json(fields) or {}).get("headings") or []:
                 if isinstance(h, list) and len(h) > 1:
-                    heads[page_id].add(noise.block_key(h[1]))
+                    keys.add(noise.block_key(h[1]))
+            heads[page_id] |= keys
+            heads_seen[page_id].append((taken, keys))
+        self.version_times = {page_id: [when for when, _keys in seen] for page_id, seen in heads_seen.items()}
         for page in self.pages.values():
             heads[page["id"]] |= {noise.block_key(h[1]) for h in (_json(page["headings"]) or []) if isinstance(h, list) and len(h) > 1}
         self.df: Counter = Counter()
@@ -99,19 +160,50 @@ class _Site:
         for found in heads.values():
             heading_df.update(found)
         self.common_headings = {key for key, n in heading_df.items() if n >= self.floor}
-        # A heading that is another page's title or main heading is a link to that page ("see also" teasers).
+        # A heading that is another page's title (with or without the site's name) or main heading is a link to that
+        # page ("see also" teasers); so are those words inside a text.
+        self.extra_runs: set[int] = set()
         for page in self.pages.values():
             self.common_headings.add(noise.block_key(page["title"] or ""))
-            self.common_headings |= {noise.block_key(h) for h in (_json(page["h1"]) or []) if isinstance(h, str)}
+            h1 = [h for h in (_json(page["h1"]) or []) if isinstance(h, str)]
+            self.common_headings |= {noise.block_key(h) for h in h1} | noise.title_keys(page["title"], h1)
+            for words in [noise._TITLE_TAIL.sub("", page["title"] or "")] + h1:
+                if len(words.split()) >= RUN:
+                    self.extra_runs |= _runs(_norm(steady_words(words)))
+        # A heading that came onto a page and went again (or went and came back) within a few days: a block the page
+        # picks by itself (meyranpartners.fr's random reference boxes), learned as unstable on the whole site.
+        for seen in heads_seen.values():
+            self.common_headings |= _came_and_went(seen)
 
     def _common_positions(self, words: list[str]) -> list[bool]:
         """For each word, whether a run of RUN words around it is on COMMON_PAGES of the site's pages or more."""
         common = [False] * len(words)
         for i in range(len(words) - RUN + 1):
-            if self.df[hash(tuple(words[i:i + RUN]))] >= self.floor:
+            run = hash(tuple(words[i:i + RUN]))
+            if self.df[run] >= self.floor or run in self.extra_runs:
                 for k in range(i, i + RUN):
                     common[k] = True
         return common
+
+    def came_back(self, page_id: int, before: str, after: str, before_at) -> bool:
+        """A few words changed, and every word that came was on this page in a read before: a list rotating through the
+        same items (meyranpartners.fr's offices on its home page: Monaco, Montréal, Genève, picked anew each day)."""
+        times = self.version_times.get(page_id) or []
+        if not any(when < before_at for when in times):
+            return False  # no read before the one compared with: nothing could come back
+        a = [w.casefold() for w in steady_words(before.replace(noise.BLOCK_SEP, " "))]
+        b = [w.casefold() for w in steady_words(after.replace(noise.BLOCK_SEP, " "))]
+        removed, added = Counter(a) - Counter(b), Counter(b) - Counter(a)
+        if not added or sum(removed.values()) + sum(added.values()) > SMALL_MOVE_WORDS:
+            return False
+        seen = self.first_seen.get(page_id) or {}
+        return all(word in seen and seen[word] <= before_at for word in added)
+
+    def in_rotating_slots(self, before: str, after: str) -> bool:
+        """Every change is a word or three in a slot the site changes on many reads: a form field's label picked at random
+        (clemenceaugroup.com: Phone, Company, URL, X/Twitter)."""
+        found, small = _slots(_norm(steady_words(before.replace(noise.BLOCK_SEP, " "))), _norm(steady_words(after.replace(noise.BLOCK_SEP, " "))))
+        return small and bool(found) and all(self.slots[slot] >= ROTATING_SLOT for slot in found)
 
     def text_change_is_template(self, before: str, after: str) -> bool:
         """Every changed word sits in a run of three the site shows on many pages, in the text it's in. Words are
@@ -138,13 +230,17 @@ class _Site:
         return changed > 0 and covered >= TEMPLATE_SHARE * changed
 
 
-def _versions_around(conn: Connection, page_id: int, when) -> tuple[str | None, str | None]:
+def _versions_around(conn: Connection, page_id: int, when, full: bool = False):
+    """The text saved with an event and the one before it; with full, also when the one before was read and both reads'
+    fields."""
     found = conn.execute(
-        text("SELECT text_gz FROM page_versions WHERE page_id = :p AND taken_at <= :t + INTERVAL 2 SECOND ORDER BY taken_at DESC, id DESC LIMIT 2"),
+        text("SELECT text_gz, taken_at, fields FROM page_versions WHERE page_id = :p AND taken_at <= :t + INTERVAL 2 SECOND ORDER BY taken_at DESC, id DESC LIMIT 2"),
         {"p": page_id, "t": when},
     ).all()
     if len(found) < 2:
-        return None, None
+        return (None, None, None, None, None) if full else (None, None)
+    if full:
+        return _unzip(found[1][0]), _unzip(found[0][0]), found[1][1], _json(found[1][2]) or {}, _json(found[0][2]) or {}
     return _unzip(found[1][0]), _unzip(found[0][0])
 
 
@@ -173,6 +269,10 @@ def classify(conn: Connection, domain_id: int) -> dict:
     redirects: dict[tuple[int, object], str] = {}
     watch_start = min((p["first_seen_at"] for p in site.pages.values() if p["first_seen_at"]), default=None)
     backlog_until = _first_read_until(conn, domain_id)
+    # A page recorded as moved: what's read at its address afterwards is the target's page (SEO review 2026-11-18, W6).
+    moved_at: dict[int, object] = {}
+    for row in conn.execute(text("SELECT page_id, MIN(detected_at) FROM change_events WHERE domain_id = :d AND kind = 'redirect' AND hidden = 0 GROUP BY page_id"), {"d": domain_id}):
+        moved_at[row[0]] = row[1]
     for e in events:
         page = site.pages.get(e["page_id"]) or {}
         url, kind, before, after = page.get("url") or "", e["kind"], e["before_value"], e["after_value"]
@@ -180,7 +280,17 @@ def classify(conn: Connection, domain_id: int) -> dict:
             if noise.same_value(before, after) or html.unescape(before or "").strip() == html.unescape(after or "").strip():
                 reasons[e["id"]] = noise.SAME
                 continue
-        if kind in ("headings", "content") and noise.is_listing(url):
+        if kind not in ("new_page", "page_gone", "redirect", "canonical"):
+            moved = moved_at.get(e["page_id"])
+            if moved is not None and (e["detected_at"] - moved).total_seconds() > 5:
+                reasons[e["id"]] = noise.REDIRECT
+                continue
+            if noise.canonical_elsewhere(url, page.get("canonical")):
+                _old, _new, _at, was, now = _versions_around(conn, e["page_id"], e["detected_at"], full=True)
+                if was is not None and noise.canonical_elsewhere(url, was.get("canonical")) and noise.canonical_elsewhere(url, now.get("canonical")):
+                    reasons[e["id"]] = noise.DUPLICATE
+                    continue
+        if kind in ("headings", "content") and noise.is_listing(url, page.get("title")):
             reasons[e["id"]] = noise.LISTING
             continue
         if kind == "canonical" and after and page_key(after) != page_key(url) and (not before or page_key(before) == page_key(url)):
@@ -201,10 +311,11 @@ def classify(conn: Connection, domain_id: int) -> dict:
                     reasons[e["id"]] = noise.TEMPLATE
             continue
         if kind == "content":
-            old, new = _versions_around(conn, e["page_id"], e["detected_at"])
+            old, new, old_at, _was, _now = _versions_around(conn, e["page_id"], e["detected_at"], full=True)
             if old is None:
                 continue
-            if changed_words(old.replace(noise.BLOCK_SEP, " "), new.replace(noise.BLOCK_SEP, " ")) == 0 or site.text_change_is_template(old, new):
+            if (changed_words(old.replace(noise.BLOCK_SEP, " "), new.replace(noise.BLOCK_SEP, " ")) == 0 or site.text_change_is_template(old, new)
+                    or site.came_back(e["page_id"], old, new, old_at) or site.in_rotating_slots(old, new)):
                 reasons[e["id"]] = noise.TEMPLATE
             continue
         if kind == "new_page" and watch_start is not None:
@@ -219,8 +330,8 @@ def classify(conn: Connection, domain_id: int) -> dict:
     moments = defaultdict(list)
     for page_id, when in redirects:
         moments[page_id].append(when)
-    for e in events:  # saved by one read: the same page within a few seconds
-        if e["kind"] not in ("new_page", "page_gone") and any(abs((e["detected_at"] - when).total_seconds()) <= 5 for when in moments.get(e["page_id"], ())):
+    for e in events:  # saved by one read: the same page within a few seconds, and anything read at the old address after
+        if e["kind"] not in ("new_page", "page_gone", "redirect") and any((e["detected_at"] - when).total_seconds() >= -5 for when in moments.get(e["page_id"], ())):
             reasons[e["id"]] = noise.REDIRECT
     by_reason: Counter = Counter()
     for event_id, reason in reasons.items():
@@ -258,12 +369,13 @@ def _newest_day(conn: Connection):
 
 
 def counts(conn: Connection, domain_id: int | None = None) -> dict[str, dict]:
-    """Per site: shown edit events, pages edited, and new pages, over every stored event (or one site's)."""
+    """Per site: shown edit events, pages edited, and new pages, over every stored event (or one site's). A move to
+    another address isn't an edit (N3)."""
     out: dict[str, dict] = defaultdict(lambda: {"edit_events": 0, "edited_pages": 0, "new_pages": 0})
     one = "AND e.domain_id = :d" if domain_id is not None else ""
     for r in conn.execute(
         text(
-            "SELECT d.host, SUM(e.kind NOT IN ('new_page', 'page_gone')) AS ev, COUNT(DISTINCT CASE WHEN e.kind NOT IN ('new_page', 'page_gone') THEN e.page_id END) AS pg, "
+            f"SELECT d.host, SUM(e.kind NOT IN {noise.NOT_EDITS}) AS ev, COUNT(DISTINCT CASE WHEN e.kind NOT IN {noise.NOT_EDITS} THEN e.page_id END) AS pg, "
             f"SUM(e.kind = 'new_page') AS np FROM change_events e JOIN domains d ON d.id = e.domain_id WHERE e.hidden = 0 {one} GROUP BY d.host"
         ), {"d": domain_id}
     ).mappings():

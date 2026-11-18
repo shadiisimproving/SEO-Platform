@@ -83,7 +83,7 @@ const all = (page, sel, fn) => page.locator(sel).evaluateAll(fn);
       await visit(page, "#today?site=site-one.example", lang);
       await page.waitForSelector(".today-num", { timeout: 30000 }).catch(() => {});
       const lines = await all(page, ".today-rival", (els) => els.map((el) => el.textContent.replace(/\s+/g, " ").trim()));
-      const want = fr ? /^Un concurrent a changé \/subscription (pendant la baisse|\d+ jours? avant)$/ : /^Rival changed \/subscription (during the drop|\d+ days? before)$/;
+      const want = fr ? /^Un concurrent a changé \/subscription(,? vu)? (pendant la baisse|\d+ jours? avant)$/ : /^Rival changed \/subscription(, seen)? (during the drop|\d+ days? before)$/;  // "seen" when the page gives no modified date (N8)
       check(lines.length >= 1 && lines.every((l) => want.test(l)), `${name}: drop rows say which rival page changed`, lines.join(" | "));
       const perRow = await all(page, ".rows > li", (els) => els.map((li) => li.querySelectorAll(".today-rival").length));
       check(perRow.every((n) => n <= 1), `${name}: at most one rival line per row`);

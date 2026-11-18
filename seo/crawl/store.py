@@ -35,7 +35,10 @@ WATCHED = {
 _MONTHS = (
     "janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre|"
     "january|february|march|april|may|june|july|august|september|october|november|december|"
-    "jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|janv|févr|avr|juil|déc"
+    "jan|feb|mar|apr|jun|jul|aug|sep|sept|oct|nov|dec|janv|févr|avr|juil|déc|"
+    # Arabic: an "updated on 29 أكتوبر" stamp on takweenadvisory.ae's Arabic posts (SEO review 2026-11-18, N5).
+    "يناير|فبراير|مارس|أبريل|ابريل|إبريل|مايو|يونيو|يوليو|أغسطس|اغسطس|سبتمبر|أكتوبر|اكتوبر|نوفمبر|ديسمبر|"
+    "كانون الثاني|شباط|آذار|نيسان|أيار|حزيران|تموز|آب|أيلول|تشرين الأول|تشرين الثاني|كانون الأول"
 )
 _UNITS = "secondes?|minutes?|min|heures?|h|jours?|semaines?|mois|ans?|seconds?|hours?|days?|weeks?|months?|years?"
 _COUNTERS = "commentaires?|comments?|vues|views|partages|shares|likes|j'aime|réponses|replies|avis|reviews|lectures|reads"
@@ -45,16 +48,24 @@ _VOLATILE = re.compile(
     rf"|\b(?:{_MONTHS})\.?\s+\d{{1,2}}(?:st|nd|rd|th)?,?(?:\s+\d{{4}})?\b"  # November 10, 2026
     rf"|\b\d{{1,2}}\s*[:h]\s*\d{{2}}(?::\d{{2}})?\b"  # 14:30, 14h30
     rf"|\bil y a\s+\d+\s*(?:{_UNITS})\b|\b\d+\s*(?:{_UNITS})\s+ago\b"  # il y a 3 heures, 3 hours ago
-    rf"|\b\d[\d\s.,]*\s*(?:{_COUNTERS})\b",  # 12 commentaires, 1.2k views
+    rf"|\b\d[\d\s.,]*\s*(?:{_COUNTERS})\b"  # 12 commentaires, 1.2k views
+    # A price glued to a short word ("à partir de306"): an affiliate widget's spans with no space between them, never
+    # writing (bonjourdubai.fr /legoland/: "de306" -> "de311" on 17 Nov). Only the number goes, the word stays.
+    rf"|(?<=\b[a-zà-ÿ]{{2}})\d[\d.,]*\b|(?<=\b[a-zà-ÿ]{{3}})\d[\d.,]*\b",
     re.IGNORECASE,
 )
 SMALL_EDIT_WORDS = 15  # a text edit touching fewer words than this is shown as a small edit
 _DIFF_MOST_WORDS = 30_000  # past this, counting changed words would take too long; the edit still counts
 
 
+_EDGE_MARKS = "".join(chr(c) for c in range(0x21, 0x7F) if not chr(c).isalnum()) + "«»“”‘’…–—•·،؛؟"
+
+
 def steady_words(value: str) -> list[str]:
-    """A page's words with the parts that change by themselves taken out."""
-    return _VOLATILE.sub(" ", value or "").split()
+    """A page's words with the parts that change by themselves taken out. Punctuation at a word's edges isn't a word: a
+    full stop gone or a stray "<" left by the page's code changes nothing (takweenadvisory.ae, SEO review 2026-11-18)."""
+    words = (w.strip(_EDGE_MARKS) for w in _VOLATILE.sub(" ", value or "").split())
+    return [w for w in words if w]
 
 
 def changed_words(before: str, after: str) -> int | None:
@@ -145,49 +156,92 @@ def _add_version(conn, page_id: int, fields: PageFields) -> None:
     )
 
 
-def _changes(conn, current, values: dict, fields: PageFields, url: str, domain_id: int) -> tuple[list[dict], bool]:
+def _changes(conn, current, values: dict, fields: PageFields, url: str, domain_id: int, learned: dict | None = None) -> tuple[list[dict], bool]:
     """The events a new read makes against the stored page, and whether its text must be saved as the new starting point.
 
     Never an event whose before and after say the same (a "?" saved by a latin1 table included), nor a text or heading
-    change that is only the site's template (seo.crawl.noise), the order of blocks, or numbers. A list of posts
-    (category, tag, /page/2) changes whenever anything is published, so its text and headings changes are kept hidden.
+    change that is only the site's template (seo.crawl.noise: repeated blocks, blocks that differ between two reads, other
+    pages' titles), the order of blocks, or numbers, nor blocks or headings that come back after leaving (a rotating
+    list). A list of posts (category, tag, /page/2, the blog's index) changes whenever anything is published, so its text
+    and headings changes are kept hidden, as are the edits of a page that names another as its canonical: the text read
+    is that page's (SEO review 2026-11-18, W6). `learned` collects the blocks found rotating, to be kept as unstable.
     """
     if not current.content_hash:
         return [], False
     skip = noise.skip_set(conn, domain_id)
-    listing = noise.is_listing(url)
+    listing = noise.is_listing(url, values.get("title") or current.title)
+    duplicate = noise.canonical_elsewhere(url, values.get("canonical")) and noise.canonical_elsewhere(url, current.canonical)
+    earlier: set[str] | None = None
+
+    def rotating(added: dict[str, str], removed: dict[str, str]) -> bool:
+        """`added` holds every block that came, known template included: one known to rotate coming back says the
+        blocks that left with it rotate too."""
+        nonlocal earlier
+        if not added:
+            return False
+        if earlier is None:
+            earlier = noise.earlier_keys(conn, current.id)
+        if not noise.came_back(added, earlier | skip):
+            return False
+        added = {k: v for k, v in added.items() if k not in skip}
+        if learned is not None:
+            learned.update(added)
+            learned.update(removed)
+        return True
+
     events = []
     for name, kind in WATCHED.items():
         before, after = getattr(current, name), values[name]
         if noise.same_value(before, after):
             continue
-        if kind == "headings" and noise.steady_headings(_json_list(before), skip) == noise.steady_headings(after, skip):
-            continue
+        if kind == "headings":
+            was, now = noise.steady_headings(_json_list(before), skip), noise.steady_headings(after, skip)
+            if was == now:
+                continue
+            keyed = lambda items: {noise.block_key(h[1] if isinstance(h, (list, tuple)) else h): (h[1] if isinstance(h, (list, tuple)) else h) for h in items}  # noqa: E731
+            old_heads, new_heads = keyed(was), keyed(now)
+            raw_old, raw_new = keyed(_json_list(before) or []), keyed(after or [])
+            if rotating({k: v for k, v in raw_new.items() if k not in raw_old}, {k: v for k, v in old_heads.items() if k not in new_heads}):
+                continue
         event = dict(kind=kind, before_value=_text_value(before), after_value=_text_value(after))
         if kind == "headings" and listing:
             event["hidden"], event["hidden_reason"] = True, noise.LISTING
         events.append(event)
     if current.content_hash == fields.content_hash:
         # A text saved before blocks were kept is saved again, once, block by block, so its next edit can be compared.
-        return events, _old_format(conn, current.id)
+        return _duplicate(events, duplicate), _old_format(conn, current.id)
     rebase = False
     if current.content_hash != fields.content_hash:
         before_text, blocks_kept = _last_version(conn, current.id)
         if before_text is not None and not blocks_kept:
             # Saved before blocks were kept: the template can't be told apart, so this read is the new starting point.
-            return [e for e in events if e["kind"] != "headings"], True
+            return _duplicate([e for e in events if e["kind"] != "headings"], duplicate), True
         touched = None
         if before_text is not None:
             if noise.steady_blocks(before_text, skip) == noise.steady_blocks(fields.text, skip):
                 touched = 0  # only the template, the order of blocks, or numbers moved
             else:
-                touched = changed_words(noise.steady_text(before_text, skip), noise.steady_text(fields.text, skip))
+                old_blocks = {noise.block_key(b): b for b in noise.blocks_of(before_text)}
+                new_blocks = {noise.block_key(b): b for b in noise.blocks_of(fields.text)}
+                if rotating({k: v for k, v in new_blocks.items() if k not in old_blocks}, {k: v for k, v in old_blocks.items() if k not in new_blocks and k not in skip}):
+                    touched = 0  # the blocks that came were on the page before: a list rotating, nobody wrote them
+                else:
+                    touched = changed_words(noise.steady_text(before_text, skip), noise.steady_text(fields.text, skip))
         if touched != 0:  # 0: only dates, times, counters or the template moved, which nobody edited
             event = dict(kind="content", before_value=f"{current.word_count} words", after_value=f"{fields.word_count} words", changed_words=touched)
             if listing:
                 event["hidden"], event["hidden_reason"] = True, noise.LISTING
             events.append(event)
-    return events, rebase
+    return _duplicate(events, duplicate), rebase
+
+
+def _duplicate(events: list[dict], duplicate: bool) -> list[dict]:
+    """A page naming another page as its canonical, before and after: what was read is that page, so it's that page's edit."""
+    if duplicate:
+        for event in events:
+            if event["kind"] != "canonical" and not event.get("hidden"):
+                event["hidden"], event["hidden_reason"] = True, noise.DUPLICATE
+    return events
 
 
 def _json_list(value):
@@ -203,7 +257,7 @@ def would_record(engine: Engine, domain_id: int, url: str, fields: PageFields) -
     """Whether this read would record a visible edit: then the page is read a second time before anything is saved."""
     with engine.connect() as conn:
         current = conn.execute(select(Page.__table__).where(Page.url_hash == _url_hash(url))).first()
-        if current is None or not current.content_hash:
+        if current is None or not current.content_hash or current.last_status == "moved":
             return False
         events, _rebase = _changes(conn, current, _page_values(fields, FetchResult(url=url, status="ok")), fields, url, domain_id)
     return any(not e.get("hidden") for e in events)
@@ -228,7 +282,12 @@ def save_moved(engine: Engine, domain_id: int, url: str, final_url: str, result:
             conn.execute(insert(Page).values(domain_id=domain_id, url=url, url_hash=url_hash, **values))
             return "moved"
         conn.execute(update(Page).where(Page.id == current.id).values(**values))
-        if current.content_hash and (current.final_url or "") != final_url:
+        # Once per move: a redirect already recorded to the same page (by the reclassify script, which may leave final_url
+        # empty) isn't recorded again on the next read (SEO review 2026-11-18, N9).
+        said = conn.execute(
+            text("SELECT after_value FROM change_events WHERE page_id = :p AND kind = 'redirect' ORDER BY detected_at DESC, id DESC LIMIT 1"), {"p": current.id}
+        ).scalar()
+        if current.content_hash and not noise.same_page(current.final_url, final_url) and not noise.same_page(said, final_url):
             conn.execute(insert(ChangeEvent).values(page_id=current.id, domain_id=domain_id, kind="redirect", before_value=url, after_value=final_url))
     return "moved"
 
@@ -262,7 +321,16 @@ def save_fetch(
             _add_version(conn, page_id, fields)
             return "baseline"
 
-        events, rebase = _changes(conn, current, values, fields, url, domain_id)
+        if current.last_status == "moved" and current.content_hash:
+            # Its address redirected last time, and now it answers itself: a new starting point, never a rewrite of the
+            # page it redirected to (SEO review 2026-11-18, W6).
+            _add_version(conn, current.id, fields)
+            conn.execute(update(Page).where(Page.id == current.id).values(**values))
+            return "unchanged"
+        learned: dict[str, str] = {}
+        events, rebase = _changes(conn, current, values, fields, url, domain_id, learned)
+        if learned:
+            noise.learn(conn, domain_id, learned)
         if earlier is not None and events:
             first, _ = _changes(conn, current, _page_values(earlier, result), earlier, url, domain_id)
             skip = noise.skip_set(conn, domain_id)
@@ -274,7 +342,7 @@ def save_fetch(
         if any(not e.get("hidden") for e in events):
             # Only an edit the app saw. The first reading is no edit: counting it made "Updated, 12 months" read 100% (SEO review #11).
             values["last_changed_at"] = NOW
-        if events or first_real_read or rebase:
+        if events or first_real_read or rebase or learned:  # a rotation found: this read is the one to compare with next
             _add_version(conn, current.id, fields)
         conn.execute(update(Page).where(Page.id == current.id).values(**values))
         for event in events:

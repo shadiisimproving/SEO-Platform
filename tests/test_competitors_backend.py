@@ -2436,6 +2436,8 @@ def test_competitor_cards_get_their_home_page_words_and_added_edited_counts(worl
     add_page_change(world, "rival.example", kind="h1")
     with world.engine.begin() as conn:
         conn.execute(text("UPDATE change_events e JOIN domains d ON d.id = e.domain_id SET e.detected_at = UTC_TIMESTAMP(3) - INTERVAL 40 DAY WHERE d.host = 'rival.example' AND e.kind = 'h1'"))
+        # "Added" is a read page whose own date, else the day it was reported new, is in the 30 days (N1, 2026-11-18).
+        conn.execute(text("UPDATE pages SET content_hash = 'h' WHERE url = 'https://rival.example/page'"))
         domain_id = conn.execute(text("SELECT id FROM domains WHERE host = 'rival.example'")).scalar_one()
         for url, title, meta in (("https://rival.example/fr/about", "About us", "Long"), ("https://rival.example/", "Rival - Coffee club", "Beans by post.")):
             conn.execute(text("INSERT INTO pages (domain_id, url, url_hash, title, meta_description) VALUES (:d, :u, SHA2(:u, 256), :t, :m)"), {"d": domain_id, "u": url, "t": title, "m": meta})

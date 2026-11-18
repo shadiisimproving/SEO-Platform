@@ -21,6 +21,9 @@ TEXT_FORMAT = 2  # page_versions.fields["text_format"]: 2 = one block a line. Ol
 REPEAT_MIN_PAGES = 3
 REPEAT_SHARE = 0.02  # a block on at least 2% of the site's read pages (and on 3) is the site's template
 REPEATED, UNSTABLE = "repeated", "unstable"
+TITLE = "title"  # another page's title or main heading: a "see also" teaser links to that page, nobody wrote it here
+TITLE_MIN_WORDS = 3  # "Contact" or "Blog" alone is too short to say a block is a link to that page
+LOOK_BACK_VERSIONS = 10  # a block that comes back is looked for in this many earlier versions of the page
 SAMPLE_CHARS = 300
 
 _NUMBER = re.compile(r"\d+(?:[.,\s]\d+)*")
@@ -29,6 +32,19 @@ _LISTING_PATH = re.compile(
     r"/(author|auteur|autor|tag|tags|etiquette|category|categorie|categories|page|search|recherche|feed)(/|$)|/(19|20)\d{2}(/\d{1,2})?/?$", re.I
 )
 _LISTING_QUERY = re.compile(r"(^|[?&])(s|q|page|paged|cat|tag)=", re.I)
+LANGUAGES = ("ar", "en", "fr", "de", "es", "it", "pt", "ru", "zh", "ja", "ko", "nl", "tr", "fa", "ur", "hi", "pl", "sv", "he", "id", "ms", "th", "vi", "bn")
+# The index of a site's posts, its archive and its full list of services, alone or under a language (/en/blog, /ar/blog,
+# /insights, /services/all, /blog.php), and a language's home page (/ar, /en/): each shows the newest posts, so it changes
+# whenever anything is published (SEO review 2026-11-18, N4: takweenadvisory.ae, dmcc.ae).
+_INDEX_PATH = re.compile(
+    r"^/(?:[a-z]{2}(?:[-_][a-z]{2,4})?/)?(?:blogs?|news|insights|articles|actualites|actualités|actus?|magazine|journal|posts|"
+    r"resources|ressources|archives?|all|services/all|(?:blogs?|news|insights|articles)/all)(?:\.(?:php|html?|aspx))?/?$"
+    rf"|^/(?:{'|'.join(LANGUAGES)})(?:[-_][a-z]{{2,4}})?/?$",
+    re.I,
+)
+# A WordPress category or archive without /category/ in its address: "Entrepreneurship Archives - Virtuzone",
+# "Archives des actualités", "أرشيف".
+_LISTING_TITLE = re.compile(r"\barchives?\b|أرشيف", re.I)
 
 # Why an event is kept but not shown (change_events.hidden_reason).
 SAME = "same_text"  # before = after, or only a "?" where the other side has a letter latin1 couldn't hold
@@ -37,6 +53,8 @@ LISTING = "listing"  # a list of posts (category, tag, author, /page/2): it chan
 REDIRECT = "redirect"  # the address redirects: the text read was another page's
 FOUND_LATER = "found_later"  # a page found after the first read, but its own date is before watching began
 FIRST_READ = "first_read"  # found while the first read of the site was still going
+DUPLICATE = "duplicate"  # the page names another page as its canonical: what was read is that page's text (W6)
+_TITLE_TAIL = re.compile(r"\s+[-|–—·]\s+[^-|–—·]*$")  # " - Meyran Partners", " | EZONE": the site's name after the title
 
 
 def block_key(block: str) -> str:
@@ -55,6 +73,28 @@ def page_keys(page_text: str, headings=None, h1=None) -> list[str]:
     keys |= {block_key(h[1] if isinstance(h, (list, tuple)) else h) for h in (headings or []) if h}
     keys |= {block_key(h) for h in (h1 or []) if h}
     return sorted(keys)
+
+
+def title_keys(title: str | None, h1=None) -> set[str]:
+    """The keys a block or heading has when it is this page's title (with or without the site's name after it) or its
+    main heading: on another page, it's a teaser linking here (meyranpartners.fr, SEO review 2026-11-18, W0/W1)."""
+    texts = []
+    whole = (title or "").strip()
+    if whole:
+        texts += [whole, _TITLE_TAIL.sub("", whole)]
+    texts += [h for h in (h1 or []) if isinstance(h, str)]
+    return {block_key(t) for t in texts if len(t.split()) >= TITLE_MIN_WORDS}
+
+
+def same_page(a: str | None, b: str | None) -> bool:
+    from seo.links.urls import page_key  # here: seo.links imports the crawler
+
+    return bool(a and b) and page_key(a).rstrip("/") == page_key(b).rstrip("/")
+
+
+def canonical_elsewhere(url: str, canonical: str | None) -> bool:
+    """The page names another page as the one to index: its text is that page's, so its edits belong there (W6)."""
+    return bool(canonical) and not same_page(url, canonical)
 
 
 def lossy(value: str) -> str:
@@ -94,15 +134,53 @@ def steady_headings(headings, skip: set[str]) -> list:
     return out
 
 
-def is_listing(url: str) -> bool:
-    """A list of posts rather than a page: category, tag, author, search, /page/2, a year or month archive."""
+def is_listing(url: str, title: str | None = None) -> bool:
+    """A list of posts rather than a page: category, tag, author, search, /page/2, a year or month archive, the blog's or
+    the services' index, a language's home page, or a page titled as an archive."""
     rest = (url or "").split("://", 1)[-1]
     path, _, query = rest.partition("/")[2].partition("?")
-    return bool(_LISTING_PATH.search("/" + path) or (query and _LISTING_QUERY.search("?" + query)))
+    path = "/" + path.split("#", 1)[0]
+    if _LISTING_PATH.search(path) or (query and _LISTING_QUERY.search("?" + query)) or _INDEX_PATH.search(path):
+        return True
+    return bool(title and _LISTING_TITLE.search(title))
 
 
 def skip_set(conn: Connection, domain_id: int) -> set[str]:
     return {r[0] for r in conn.execute(text("SELECT block_hash FROM site_boilerplate WHERE domain_id = :d"), {"d": domain_id})}
+
+
+def learn(conn: Connection, domain_id: int, samples: dict[str, str], kind: str = UNSTABLE) -> None:
+    for key, sample in samples.items():
+        conn.execute(
+            text(
+                "INSERT INTO site_boilerplate (domain_id, block_hash, kind, sample) VALUES (:d, :h, :k, :s) "
+                "ON DUPLICATE KEY UPDATE kind = :k, learned_at = UTC_TIMESTAMP(3)"
+            ),
+            {"d": domain_id, "h": key, "k": kind, "s": (sample or "")[:SAMPLE_CHARS]},
+        )
+
+
+def earlier_keys(conn: Connection, page_id: int) -> set[str]:
+    """The keys of the blocks and headings in the page's earlier saved versions (the newest is the one compared with)."""
+    import gzip
+
+    keys: set[str] = set()
+    found = conn.execute(
+        text("SELECT text_gz, fields FROM page_versions WHERE page_id = :p ORDER BY id DESC LIMIT :n OFFSET 1"), {"p": page_id, "n": LOOK_BACK_VERSIONS}
+    ).all()
+    for blob, fields in found:
+        saved = fields if isinstance(fields, dict) else (json.loads(fields) if fields else {})
+        if not saved or saved.get("text_format") != TEXT_FORMAT:
+            continue  # one line: its blocks can't be told apart
+        keys |= {block_key(b) for b in blocks_of(gzip.decompress(blob).decode("utf-8", "replace") if blob else "")}
+        keys |= {block_key(h[1]) for h in saved.get("headings") or [] if isinstance(h, (list, tuple)) and len(h) > 1}
+    return keys
+
+
+def came_back(added: dict[str, str], earlier: set[str]) -> bool:
+    """Every block that showed up was on this page before and had gone: a list rotating through the same few items
+    (meyranpartners.fr's offices on its home page), not writing. Nothing showing up is a deletion, which is an edit."""
+    return bool(added) and set(added) <= earlier
 
 
 def learn_unstable(conn: Connection, domain_id: int, first_text: str, second_text: str) -> int:
@@ -112,14 +190,7 @@ def learn_unstable(conn: Connection, domain_id: int, first_text: str, second_tex
     two = {block_key(b): b for b in blocks_of(second_text)}
     known = skip_set(conn, domain_id)
     differ = {k: one.get(k) or two.get(k) for k in (set(one) ^ set(two)) - known}  # only blocks not known yet: a new one is news
-    for key, sample in differ.items():
-        conn.execute(
-            text(
-                "INSERT INTO site_boilerplate (domain_id, block_hash, kind, sample) VALUES (:d, :h, :k, :s) "
-                "ON DUPLICATE KEY UPDATE kind = :k, learned_at = UTC_TIMESTAMP(3)"
-            ),
-            {"d": domain_id, "h": key, "k": UNSTABLE, "s": (sample or "")[:SAMPLE_CHARS]},
-        )
+    learn(conn, domain_id, differ)
     return len(differ)
 
 
@@ -127,11 +198,20 @@ def refresh_repeated(conn: Connection, domain_id: int) -> int:
     """Blocks found on many of the site's pages become its template. Counted from pages.blocks, which every read fills."""
     counts: Counter = Counter()
     read = 0
-    for (value,) in conn.execute(text("SELECT blocks FROM pages WHERE domain_id = :d AND blocks IS NOT NULL"), {"d": domain_id}):
+    titles: dict[str, str] = {}
+    for value, title, h1 in conn.execute(text("SELECT blocks, title, h1 FROM pages WHERE domain_id = :d AND (blocks IS NOT NULL OR title IS NOT NULL)"), {"d": domain_id}):
         keys = json.loads(value) if isinstance(value, str) else value
         if isinstance(keys, list):
             read += 1
             counts.update(set(keys))
+        heads = json.loads(h1) if isinstance(h1, str) else h1
+        for key in title_keys(title, heads if isinstance(heads, list) else []):
+            titles.setdefault(key, title or "")
+    # Another page's title, as a block or a heading, is a link to it: kept as the site's template too, without taking the
+    # place of a block already known as repeated or unstable.
+    title_rows = [{"d": domain_id, "h": key, "k": TITLE, "s": sample[:SAMPLE_CHARS]} for key, sample in titles.items()]
+    for start in range(0, len(title_rows), 500):
+        conn.execute(text("INSERT IGNORE INTO site_boilerplate (domain_id, block_hash, kind, sample) VALUES (:d, :h, :k, :s)"), title_rows[start:start + 500])
     floor = max(REPEAT_MIN_PAGES, int(REPEAT_SHARE * read + 0.999))
     common = {key: n for key, n in counts.items() if n >= floor}
     # Kept once learned, even when no page shows it any more: an edit recorded while it was still on the pages is
@@ -146,6 +226,9 @@ def refresh_repeated(conn: Connection, domain_id: int) -> int:
 
 
 RECHECK_KINDS = ("content", "headings")
+# A page coming, going or moving to another address isn't an edit of it (SEO review 2026-11-18, N3).
+NOT_EDIT_KINDS = ("new_page", "page_gone", "redirect")
+NOT_EDITS = "(" + ", ".join(f"'{k}'" for k in NOT_EDIT_KINDS) + ")"
 
 
 def _versions_around(conn, page_id: int, when) -> tuple[str | None, str | None, bool]:
@@ -210,7 +293,7 @@ def last_edit_dates(conn: Connection, page_ids) -> None:
         conn.execute(
             text(
                 "UPDATE pages SET last_changed_at = (SELECT MAX(detected_at) FROM change_events WHERE page_id = :p AND hidden = 0 "
-                "AND kind NOT IN ('new_page', 'page_gone')) WHERE id = :p"
+                f"AND kind NOT IN {NOT_EDITS}) WHERE id = :p"
             ),
             {"p": page_id},
         )

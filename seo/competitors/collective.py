@@ -132,21 +132,27 @@ def _card_facts(conn, hosts: list[str]) -> dict[str, dict]:
     page (its title and meta description), and its last 30 days split into pages added and pages edited. Two queries for
     any number of sites. A page coming or going isn't an edit (insights.EDIT_SKIP), so removed pages are counted apart."""
     names = {f"h{n}": host.lower() for n, host in enumerate(dict.fromkeys(hosts))}
-    out = {host: {"about": None, "added_30d": 0, "edited_30d": 0, "removed_30d": 0} for host in names.values()}
+    out = {host: {"about": None, "added_30d": 0, "edited_30d": 0, "removed_30d": 0, "moved_30d": 0} for host in names.values()}
     if not names:
         return out
     marks = ",".join(":" + k for k in names)
     # Pages, not change rows: a rewrite saves a title, a meta and a text change and is still one page edited (SEO review #11).
-    what = "CASE e.kind WHEN 'new_page' THEN 'added_30d' WHEN 'page_gone' THEN 'removed_30d' ELSE 'edited_30d' END"
+    # A move to another address is counted apart, never as an edit (N3). "Added" isn't counted from the events: it's the
+    # profile's rule, by the pages' own dates (insights.added_counts, N1).
+    what = "CASE e.kind WHEN 'new_page' THEN 'new_events' WHEN 'page_gone' THEN 'removed_30d' WHEN 'redirect' THEN 'moved_30d' ELSE 'edited_30d' END"
     rows = conn.execute(text(
         f"SELECT d.host, {what} AS what, COUNT(DISTINCT e.page_id) AS n FROM change_events e JOIN domains d ON d.id = e.domain_id "
         f"WHERE d.host IN ({marks}) AND e.hidden = 0 AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL 30 DAY GROUP BY d.host, {what}"
     ), names).mappings()
     for r in rows:
         held = out.get(str(r["host"]).lower())
-        if held is None:
+        if held is None or r["what"] == "new_events":
             continue
         held[r["what"]] += int(r["n"])
+    from seo.competitors import insights  # here: insights imports this module's neighbours
+
+    for host, n in insights.added_counts(conn, list(names.values())).items():
+        out[host]["added_30d"] = n
     # The home page is the shortest address read on that host that has a title: / beats /fr/ beats /fr/about.
     pages = conn.execute(text(
         "SELECT d.host, p.url, p.title, p.meta_description FROM pages p JOIN domains d ON d.id = p.domain_id "
