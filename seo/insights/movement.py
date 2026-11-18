@@ -62,6 +62,11 @@ def breakdown(ctx: Ctx) -> Result:
     # The cause named first: the biggest part pulling the same way as the change.
     # "hidden" is only what's left after the named searches, so it can't be acted on and is never the cause named.
     main = max((n for n in parts if n != "hidden" and parts[n] * direction > 0), key=lambda n: abs(parts[n]), default=None)
+    # When the searches Google doesn't list carry more than half of the change, no listed part is "the cause": naming
+    # "lower click rate (−24)" for a −90 fall that is −80 hidden misleads (expert review 2026-11-17, 3.6). The screen
+    # then lists hidden first, and the pages that moved say where it happened.
+    if change and abs(parts["hidden"]) > abs(change) / 2:
+        main = None
     pages, explains = _page_moves(ctx, change)
     out.findings.append(Finding(
         "change", "changed", "site", at_stake=-change * rules.MONTH, severity="info" if steady else "big" if big else "normal",
