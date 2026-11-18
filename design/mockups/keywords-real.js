@@ -1241,6 +1241,9 @@
     const latest = {};
     if (view.main) latest[view.main.tool] = view.main;
     view.others.forEach((x) => { latest[x.tool] = x; });
+    // A tool whose newest checks are all suspect still checked: its row shows the newest of them, greyed, never "never".
+    const onlySuspect = new Set();
+    view.suspects.forEach((x) => { if (!latest[x.tool] || onlySuspect.has(x.tool)) { latest[x.tool] = x; onlySuspect.add(x.tool); } });
     const listed = (detail.order || []).map((tool) => detail.tools.find((x) => x.name === tool)).filter((tool) => tool && (tool.connected || latest[tool.name]));
     const statusOf = (x) => (x.verdict === "suspect" || x.status === "suspect" ? suspectMark(x) : x.verdict === "unverifiable" ? `<span class="small sec" data-tip="${esc(t("First check with this tool, and nothing to compare it with yet."))}">${t("Not confirmed yet")}<span class="sr">: ${esc(t("First check with this tool, and nothing to compare it with yet."))}</span></span>` : okMark());
     const toolRows = listed.map((tool) => {
@@ -1250,9 +1253,9 @@
       const empty = tool.left !== null && tool.left < Math.max(1, tool.credits_per_search) && !tool.paid_on;
       const elsewhere = !x && view.away.find((a) => a.tool === tool.name);
       const button = !canRun ? `<span class="small muted">${t("Not connected")}</span>` : `<button class="btn btn-small" data-kwr-check="${esc(tool.name)}" data-low="${low ? tool.left : ""}" ${empty ? "disabled" : ""} ${empty ? `data-tip="${esc(t("No free checks left."))}"` : ""}>${t("Refresh")}</button>${tool.left === null ? "" : `<span class="second">${num(tool.left)} ${t("left")}</span>`}`;
-      return `<tr><td class="nowrap">${logo(tool.name, 16)} ${esc(t(tool.name))}</td><td>${x ? posBadge(x) : '<span class="muted">—</span>'}</td><td class="sec small nowrap">${x ? age(x.age_days) : elsewhere ? age(elsewhere.age_days) : t("never")}</td><td>${x ? statusOf(x) : elsewhere ? `<span class="small sec">${t("Another location")}</span>` : ""}</td><td class="r">${button}</td></tr>`;
+      return `<tr${onlySuspect.has(tool.name) ? ' class="kw-row-suspect"' : ""}><td class="nowrap">${logo(tool.name, 16)} ${esc(t(tool.name))}</td><td>${x ? posBadge(x) : '<span class="muted">—</span>'}</td><td class="sec small nowrap">${x ? age(x.age_days) : elsewhere ? age(elsewhere.age_days) : t("never")}</td><td>${x ? statusOf(x) : elsewhere ? `<span class="small sec">${t("Another location")}</span>` : ""}</td><td class="r">${button}</td></tr>`;
     }).join("");
-    const suspects = view.suspects.map((x) => `<tr class="kw-row-suspect"><td class="nowrap">${logo(x.tool, 16)} ${esc(t(x.tool))}</td><td>${posBadge(x)}</td><td class="sec small nowrap">${age(x.age_days)}</td><td>${suspectMark(x)}</td><td></td></tr>`).join("");
+    const suspects = view.suspects.filter((x) => latest[x.tool] !== x).map((x) => `<tr class="kw-row-suspect"><td class="nowrap">${logo(x.tool, 16)} ${esc(t(x.tool))}</td><td>${posBadge(x)}</td><td class="sec small nowrap">${age(x.age_days)}</td><td>${suspectMark(x)}</td><td></td></tr>`).join("");
     const away = view.away.length
       ? `<table class="mini"><tbody>${view.away.map((x) => `<tr><td>${logoMark(x.tool, t(x.tool))} ${esc(UI.countryName(x.location) || x.location || "?")}</td><td>${posBadge(x)}</td><td class="sec small nowrap">${age(x.age_days)}</td></tr>`).join("")}</tbody></table>`
       : `<p class="small muted">${t("None yet")}</p>`;
