@@ -21,6 +21,20 @@ def _report(engine, args, scope, view_id: str, title: str) -> Report:
                   compare=(scope.compare_start, scope.compare_end) if scope.has_compare else None)
 
 
+def _google_days(report: Report, scope, data: dict) -> None:
+    """Search Console's numbers run on the shared period (to Google's last final day), Google Analytics' on the dates
+    picked: when the two differ, the header says Google's own days too, so no click is read against the wrong days
+    (expert review 2026-11-17, 3.8 and W13)."""
+    from datetime import date
+
+    window = data.get("gsc_window") or {}
+    if not (window.get("from") and window.get("to")):
+        return
+    google = (date.fromisoformat(window["from"]), date.fromisoformat(window["to"]))
+    if google != (scope.start, scope.end):
+        report.filters.append(("Google numbers", google))
+
+
 def _day(value) -> str:
     text = str(value or "")
     return text[:10]  # the PDF writes it in words (pdf_out.day_label)
@@ -88,8 +102,9 @@ def content(engine, args) -> Report:
     ]
     report.tables.append(Table("pages", "Pages", [
         C("page", "Page", "url", get=page_address), C("category", "Kind of page", "text", translate=True, width=1.8), C("clicks", "Google clicks", "int"), C("impressions", "Impressions", "int"),
-        C("position", "Position", "position"), C("sessions", "Visits", "int"), C("leads", "Leads", "float"), C("ai", "AI visits", "int"),
+        C("position", "Position", "position"), C("jump_impressions", "Jump-link impressions", "int"), C("sessions", "Visits", "int"), C("leads", "Leads", "float"), C("ai", "AI visits", "int"),
     ], pages, total=data.get("total_pages"), key=lambda r: f"{r.get('host') or ''}|{r.get('path') or ''}"))
+    _google_days(report, scope, data)
     report.tables.append(Table("social", "Social networks", [C("source", "Network", "text"), C("sessions", "Visits", "int")], data.get("social") or [], empty="No visits from social networks in this period."))
     _hidden(report, data)
     return report
@@ -211,10 +226,12 @@ def site_pages(engine, args) -> Report:
     report.tiles = [Tile("Pages", s["pages"], "int"), Tile("Get clicks", s["with_clicks"], "int"), Tile("Not indexed", s["not_indexed"], "int"), Tile("Open tasks", s["open_tasks"], "int")]
     indexed = {True: "Yes", False: "No"}
     report.tables.append(Table("pages", "Pages", [
-        C("url", "Page", "url"), C("title", "Title", "text", width=3), C("clicks", "Google clicks", "int"), C("impressions", "Impressions", "int"),
-        C("position", "Position", "position"), C("sessions", "Visits", "int"), C("tasks_open", "Open tasks", "int"), C("notes", "Notes", "int"),
+        C("url", "Page", "url"), C("title", "Title", "text", width=3), C("clicks", "Google clicks", "int"),
+        *([C("clicks_before", "Clicks before", "int"), C("change", "Change", "delta")] if data.get("compared") else []),  # as the screen's Change column
+        C("impressions", "Impressions", "int"), C("position", "Position", "position"), C("jump_impressions", "Jump-link impressions", "int"), C("sessions", "Visits", "int"), C("tasks_open", "Open tasks", "int"), C("notes", "Notes", "int"),
         C("backlinks", "Backlinks", "int"), C("indexed", "Indexed", "text", get=lambda r: indexed.get(r.get("indexed"), ""), translate=True),
     ], data["pages"], total=data["total"], key="url"))
+    _google_days(report, scope, data)
     return report
 
 
@@ -232,6 +249,8 @@ def site_page(engine, args) -> Report:
     report = Report("site-page", "Page", site=data["host"], subject=data["path"])
     g = data["google_28d"]
     report.tiles = [Tile("Google clicks", g["clicks"], "int"), Tile("Impressions", g["impressions"], "int"), Tile("Position", g["position"], "float")]
+    if g.get("jump_impressions"):
+        report.tiles.append(Tile("Jump-link impressions", g["jump_impressions"], "int"))
     ranked = [{"keyword": r["keyword"], "country": (r.get("country") or "").upper(), **{f"pos_{e}": (v.get("position") if v.get("position") is not None else v.get("own")) for e, v in r["engines"].items()}} for r in data["rankings"]]
     engines = sorted({key for row in ranked for key in row if key.startswith("pos_")})
     report.tables.append(Table("rankings", "Rankings", [C("keyword", "Keyword", "text", width=3), C("country", "Country", "text")]

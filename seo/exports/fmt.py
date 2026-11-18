@@ -141,6 +141,8 @@ def filter_value(lang: str, value) -> str:
     picked on screen (already in the screen's language) as it is."""
     if isinstance(value, (date, datetime)):
         return day(lang, value)
+    if isinstance(value, tuple) and len(value) == 2 and all(isinstance(v, date) for v in value):
+        return period(lang, *value)  # a span of days, such as Google's own period beside the one picked
     words = str(value or "")
     if lang != "fr" or not words or isinstance(value, Typed):
         return words

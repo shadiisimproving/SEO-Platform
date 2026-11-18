@@ -21,7 +21,7 @@ FR: dict[str, str] = {
     # Search overview
     "Search overview": "Vue d'ensemble de la recherche", "Clicks": "Clics", "Impressions": "Impressions", "Click rate": "Taux de clic", "Average position": "Position moyenne",
     "Queries": "Requêtes", "Pages": "Pages", "Countries": "Pays", "Devices": "Appareils", "Query": "Requête", "Country": "Pays", "Device": "Appareil",
-    "Clicks before": "Clics avant", "Position": "Position", "Position before": "Position avant", "Brand": "Marque", "Brand only": "Marque seulement", "Without brand": "Hors marque",
+    "Clicks before": "Clics avant", "Google numbers": "Chiffres Google", "Jump-link impressions": "Impressions des liens vers une section", "Position": "Position", "Position before": "Position avant", "Brand": "Marque", "Brand only": "Marque seulement", "Without brand": "Hors marque",
     "Gaining": "En hausse", "Losing": "En baisse", "New": "Nouveau", "Lost": "Perdu", "Top 3": "Top 3", "Positions 4–10": "Positions 4–10", "Positions 11–20": "Positions 11–20",
     "Positions 21+": "Positions 21+", "Min clicks": "Clics minimum", "Min impressions": "Impressions minimum", "Position from": "Position à partir de", "Position to": "Position jusqu'à",
     "Opportunities": "Opportunités", "Almost on page 1": "Presque en page 1", "Low click rate": "Taux de clic faible", "Two pages compete": "Deux pages en concurrence", "Lost queries": "Requêtes perdues",
