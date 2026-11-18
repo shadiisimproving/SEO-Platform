@@ -311,7 +311,7 @@
 .cg-example-link { width: 22px; height: 22px; vertical-align: middle; margin-left: 2px; color: var(--muted); }
 .cg-example-link svg.i { width: 13px; height: 13px; }
 /* AI Overview watch: the caveats behind an (i), the one action beside it. */
-.ca-note-line { display: flex; align-items: center; gap: 8px; margin: -4px 0 10px; }
+.ca-note-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin: -4px 0 10px; }
 /* 2026-11-10: on a wide screen the Status column was taking the room while a domain's name broke after its hyphen. */
 @media (min-width: 1000px) { #cg-table .head-cell { min-width: 300px; } }
 /* 2026-11-10, after the screenshot review. A status chip and a competitor's pill never break inside a word ("Spa / m" on a phone),

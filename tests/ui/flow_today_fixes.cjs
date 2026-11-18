@@ -43,15 +43,20 @@ async function today(page, lang = "en", width = 1440) {
     const body = await text(page);
     const todo = await page.$$eval(".rows li[data-row] .what .t", (e) => e.map((x) => x.textContent.trim()));
     if (lang === "en") {
-      check(/Leads fell 50%: 28 → 14/.test(body), `${tag}: leads halving is a to-do`);
-      check(todo[0]?.startsWith("Leads fell"), `${tag}: lost leads come first`, todo[0]);
+      // "Key events" once the harness's worker has read the fake Google Analytics, whose sites count every key event.
+      check(/(Leads|Key events) fell 50%: 28 → 14/.test(body), `${tag}: leads halving is a to-do`);
+      check(/^(Leads|Key events) fell/.test(todo[0] || ""), `${tag}: lost leads come first`, todo[0]);
       check(/Likely cause: lower click rate at the same place/.test(body), `${tag}: a drop row says its likely cause`);
       check(/This week: avg pos 8 → 12/.test(body), `${tag}: "close to the top 3" says the search fell this week`);
       check(/avg pos 4 → 9/.test(body) && !/#4 → #9/.test(body), `${tag}: Going down says avg pos, not a rank`);
-      check(/8 Nov – 14 Nov vs 1 Nov – 7 Nov/.test(body), `${tag}: the moves cards say their two weeks`);
+      // The two weeks are the harness's own (its data ends the day before yesterday), said as the card says them.
+      const w = await page.evaluate(() => fetch("/api/today?site_id=1").then((r) => r.json()).then((d) => d.moves_window));
+      const d = (iso) => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short" }).format(new Date(`${iso}T00:00:00`));
+      const weeks = w ? `${d(w.from)} – ${d(w.to)} vs ${d(w.before_from)} – ${d(w.before_to)}` : "(no window)";
+      check(body.includes(weeks), `${tag}: the moves cards say their two weeks`, weeks);
       check(!/All clear/.test(body), `${tag}: with to-dos, no All clear`);
     } else {
-      check(/Les leads ont baissé de 50 % : 28 → 14/.test(body), `${tag}: leads halving in French`);
+      check(/Les (leads|événements clés) ont baissé de 50 % : 28 → 14/.test(body), `${tag}: leads halving in French`);
       check(/Cause probable : taux de clic plus bas/.test(body), `${tag}: likely cause in French`);
       check(/Cette semaine : pos\. moy\. 8 → 12/.test(body), `${tag}: this week in French`);
       check(/pos\. moy\. 4 → 9/.test(body), `${tag}: avg pos in French`);

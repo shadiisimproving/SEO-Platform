@@ -94,7 +94,7 @@
      but no axis numbers and no "Show as a table": the screen each card opens has the full chart and its table. The dates
      and the comparison are in the head's date line, so the caption under the cards goes when the real app sends them. */
   const shiftDay = (iso, by) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + by); return d.toISOString().slice(0, 10); };
-  function simpleCard(key, label, href, data, unit, emptyWord, dates = "") {
+  function simpleCard(key, label, href, data, unit, emptyWord, dates = "", full = "") {
     const points = data.points || [];
     let spark = null;
     if (data.state !== "not_set_up" && points.some((p) => p.now !== null)) {
@@ -122,7 +122,7 @@
       const same = unit ? before > 0 && Math.round(((data.value - before) / before) * 100) === data.change : data.value - before === data.change;
       if (same) change = { ...change, now: data.value, before };
     }
-    return UI().card({ id: key, label, value, change, sub, spark, tall: true, href: withSite(href), cls: "tile today-num today-num-link", info: key === "leads" && spark ? "Graph: running total." : "" });
+    return UI().card({ id: key, label, value, change, sub, spark, tall: true, href: withSite(href), cls: "tile today-num today-num-link", info: [full && full !== label ? `${full}.` : "", key === "leads" && spark ? "Graph: running total." : ""].filter(Boolean) });
   }
   function simpleNumbers(r) {
     const w = r.window;
@@ -132,7 +132,7 @@
     const ga4Dates = split ? `${day(w.ga4.from)} – ${day(w.ga4.to)}` : "", gscDates = split ? `${day(w.from)} – ${day(w.to)}` : "";
     const visits = { ...r.visits, compareFrom: w?.ga4?.compare_from || null };
     return `<div class="tiles today-nums">
-        ${simpleCard("leads", window.GA4W.word("Leads", r.leads), "#conversions", r.leads, "", r.leads.state === "no_ga4" ? "GA4 not connected" : "No data yet", ga4Dates)}
+        ${simpleCard("leads", window.GA4W.short("Leads", r.leads), "#conversions", r.leads, "", r.leads.state === "no_ga4" ? "GA4 not connected" : "No data yet", ga4Dates, window.GA4W.word("Leads", r.leads))}
         ${simpleCard("visits", "Visits", "#channels", visits, "%", "GA4 not connected", ga4Dates)}
         ${simpleCard("clicks", "Google clicks", "#overview", r.clicks, "%", "Search Console not connected", gscDates)}
       </div>${caption}${ga4Notes(r)}`;
@@ -180,8 +180,20 @@
   // A row's Task button shows on hover or keyboard focus with the simpler screens switch on (.row-act, table-tools.css).
   const taskLook = () => (UI().simple?.() ? { label: "Task", cls: "btn btn-small row-act" } : { label: "Task" });
   const hostTag = (host, title = "") => (host && allSites() && !title.includes(host) ? ` <span class="small muted today-host" dir="auto">${esc(host)}</span>` : "");
+  /* The rival change behind a drop, in one short line (seo/metrics/today.py _add_rival_changes): the rival's logo, then
+     "Rival changed /abonnement/ 2 days before" with the path a button to that Page vs page (or the competitor when unpaired). */
+  function rivalLine(rival, words) {
+    if (!rival || !words) return "";
+    const [key, values] = words;
+    const said = t(key).split("{n}").join(num(values?.n ?? 0));
+    const attrs = rival.pair_id ? `data-today-pair="${esc(String(rival.pair_id))}" data-today-site="${esc(String(rival.site_id))}"` : `data-today-rival="${esc(String(rival.competitor_id))}" data-today-site="${esc(String(rival.site_id))}"`;
+    const tip = `${rival.host}${rival.path} · ${day(rival.day)}${rival.pair_id ? ` · ${t("Compare")}` : ""}`;
+    const link = `<button type="button" class="link-btn mono today-rival-path" ${attrs} data-tip="${esc(tip)}" dir="ltr">${esc(rival.path)}</button>`;
+    const [a, b = ""] = said.split("{path}");
+    return `<div class="d today-cause today-rival">${UI().siteLogo ? UI().siteLogo(rival.host, 14) : ""}<span dir="auto">${esc(a)}${link}${esc(b)}</span></div>`;
+  }
   const todoRow = (item) => `<li data-row="${esc(item.id)}"><span>${severityIcon(item.severity)}</span>
-      <div class="what"><div class="t" dir="auto">${item.titleHtml || esc(item.title)}${hostTag(item.host, item.title)}</div>${item.reason || item.detail ? `<div class="d">${reasonTag(item)}${item.detail ? `<span dir="auto">${esc(item.detail)}</span>` : ""}</div>` : ""}${item.cause ? `<div class="d today-cause" dir="auto">${esc(item.cause)}</div>` : ""}${item.week ? `<div class="d today-cause" dir="auto">${esc(item.week)}</div>` : ""}</div>
+      <div class="what"><div class="t" dir="auto">${item.titleHtml || esc(item.title)}${hostTag(item.host, item.title)}</div>${item.reason || item.detail ? `<div class="d">${reasonTag(item)}${item.detail ? `<span dir="auto">${esc(item.detail)}</span>` : ""}</div>` : ""}${item.cause ? `<div class="d today-cause" dir="auto">${esc(item.cause)}</div>` : ""}${item.week ? `<div class="d today-cause" dir="auto">${esc(item.week)}</div>` : ""}${rivalLine(item.rival, item.rivalWords)}</div>
       <div class="acts">${item.seenAttr ? `<button class="btn btn-small btn-ghost ack" ${item.seenAttr} aria-label="${t("Mark seen")}: ${esc(item.title)}" data-tip="${t("Hide it until something changes. Undo in the message.")}">${icon("eye")}<span>${t("Mark seen")}</span></button>` : ""}
         ${UI().taskButton(item.find, taskLook())}${item.mainHtml}</div></li>`;
   function todoCard(todo) {
@@ -229,12 +241,12 @@
     if (move.type === "keyword") {
       const up = move.places > 0;
       const target = move.keyword_id ? "#keywords" : "#overview";
-      return `<li><div class="what"><div class="t"><a class="today-link" href="${esc(window.KeywordLink ? window.KeywordLink.href(move.query, move.host) : target)}" data-today-keyword="${esc(move.query)}" data-today-host="${esc(move.host || "")}" data-today-keyword-id="${esc(move.keyword_id || "")}" data-today-range="7d" dir="auto">${esc(move.query)}</a>${hostTag(move.host)}</div></div>
+      return `<li><div class="what"><div class="t"><a class="today-link" href="${esc(window.KeywordLink ? window.KeywordLink.href(move.query, move.host) : target)}" data-today-keyword="${esc(move.query)}" data-today-host="${esc(move.host || "")}" data-today-keyword-id="${esc(move.keyword_id || "")}" data-today-range="7d" dir="auto">${esc(move.query)}</a>${hostTag(move.host)}</div>${down ? rivalLine(move.rival, move.words?.rival) : ""}</div>
         <span class="chg ${up ? "good" : "crit"}">${icon(up ? "arrow-up" : "arrow-down")}${esc(avgPos(move))}</span>${task}</li>`;
     }
     const up = move.clicks > move.was;
     const size = move.new || move.change === null || move.change === undefined ? t("New") : `${up ? "+" : "−"}${num(Math.abs(move.change))}%`;
-    return `<li><div class="what"><div class="t">${PageLink.html(move.url || move.path, { text: move.path, host: move.host, cls: "today-link mono" })}${hostTag(move.host)}</div><div class="d">${UI().logoOnly("Google", t("Google clicks"))} ${num(move.was)} → ${num(move.clicks)} ${t("clicks")}</div></div>
+    return `<li><div class="what"><div class="t">${PageLink.html(move.url || move.path, { text: move.path, host: move.host, cls: "today-link mono" })}${hostTag(move.host)}</div><div class="d">${UI().logoOnly("Google", t("Google clicks"))} ${num(move.was)} → ${num(move.clicks)} ${t("clicks")}</div>${down ? rivalLine(move.rival, move.words?.rival) : ""}</div>
       <span class="chg ${up ? "good" : "crit"}">${icon(up ? "arrow-up" : "arrow-down")}${size}</span>${task}</li>`;
   }
   // With the switch on, "7 days" sits in each card head instead of the "Week on week" line above the pair (plan, change 4).
@@ -338,8 +350,16 @@
     const site = Number(el.dataset.todaySite);
     window.COMP.open("pairs", { openPairId: Number(el.dataset.todayPair) }, site);
   });
+  // A rival change on a page with no pair: that competitor's profile, for the right site.
+  document.addEventListener("click", (e) => {
+    const el = e.target.closest?.("[data-today-rival]");
+    if (!el) return;
+    window.COMP.open("list", { competitorId: Number(el.dataset.todayRival) }, Number(el.dataset.todaySite));
+  });
 
   const fr = {
+    "Rival changed {path} {n} days before": "Un concurrent a changé {path} {n} jours avant", "Rival changed {path} 1 day before": "Un concurrent a changé {path} 1 jour avant",
+    "Rival changed {path} during the drop": "Un concurrent a changé {path} pendant la baisse",
     "Google connected. First numbers after the next run.": "Google connecté. Premiers chiffres après le prochain passage.",
     "Google stopped answering. See Settings.": "Google ne répond plus. Voir les réglages.",
     "Connected. Waiting for data": "Connecté. En attente de données", "stopped working": "ne fonctionne plus", "not used": "non utilisé", "not connected": "non connecté",

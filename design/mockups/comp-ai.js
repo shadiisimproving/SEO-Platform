@@ -28,11 +28,19 @@
     </section>`;
   }
 
-  /* The caveats sit behind an (i) beside the filters. Only the one action stays in view, and only while something isn't captured.
-     The button names SerpApi; hovering it says any tool that sees AI Overviews will do (one (i) on the line is enough). */
+  /* The caveats sit behind an (i) beside the filters. Only the one action stays in view, and only while something isn't checked:
+     with no tool that sees AI Overviews connected, Connect SerpApi; with one connected, how many keywords it hasn't checked yet
+     and Check them, which opens the usual Refresh dialog (its tools, credits and cost) for those keywords with that tool. */
   function plainNote(s) {
     const words = `${t("Updates with each check; never spends credits itself. Google only.")} ${t("Not checked: no tool that sees AI Overviews (SerpApi) has checked the keyword yet. One may exist.")}`;
-    return `<div class="ca-note-line">${COMP.info(words)}${s.not_captured ? `<button class="btn btn-small" data-ca-connect data-tip="${esc(t("Connect a tool that sees AI Overviews, such as SerpApi."))}">${t("Connect SerpApi")}</button>` : ""}</div>`;
+    const tools = s.ai_tools || [];
+    let act = "";
+    if (s.not_captured && !tools.length) act = `<button class="btn btn-small" data-ca-connect data-tip="${esc(t("Connect a tool that sees AI Overviews, such as SerpApi."))}">${t("Connect SerpApi")}</button>`;
+    else if (s.not_captured) {
+      act = `<span class="small sec ca-unchecked">${esc(fill(t(s.not_captured === 1 ? "Not checked yet: {n} keyword" : "Not checked yet: {n} keywords"), { n: UI.num(s.not_captured) }))}</span>`
+        + `<button class="btn btn-small" data-ca-check data-tip="${esc(fill(t("Checks them with {tool}. Shows the cost first."), { tool: tools.join(", ") }))}">${UI.icon("refresh-cw")}${t("Check them")}</button>`;
+    }
+    return `<div class="ca-note-line">${COMP.info(words)}${act}</div>`;
   }
 
   // ---- the table --------------------------------------------------------------------------------
@@ -224,6 +232,11 @@
         }
         if ((el = hit("[data-ca-rival]"))) { COMP.open("list", { competitorId: Number(el.dataset.caRival) }); return; }
         if (hit("[data-ca-connect]")) { UI.openConnection("serpapi"); return; }
+        if (hit("[data-ca-check]")) {
+          const sum = S.data?.summary;
+          if (sum?.not_checked_ids?.length) window.KW_REAL?.checkWith(sum.not_checked_ids, ["google"], sum.ai_tools || []);
+          return;
+        }
         if (hit("[data-ca-find]")) { COMP.open("find"); return; }
         if (hit("[data-ca-all-changes]")) { S.allChanges = true; COMP.paint(); }
       });
@@ -234,6 +247,8 @@
         COMP.paint();
         UI.$("#ca-rival")?.focus();
       });
+      // A Refresh that ends (here or on Keywords) may have checked these keywords: the watch reads them again.
+      document.addEventListener("seocc:refresh-done", () => { if (S.data && UI.state.route === "competitors" && COMP.currentTab()?.id === "ai") COMP.reload({ quiet: true }); });
       TP.on(PAGES, () => COMP.paint()); // another page, another size or a search; the helper keeps the focus
       window.addEventListener("resize", () => {
         cancelAnimationFrame(resizeFrame);
@@ -271,6 +286,8 @@
     "Updates with each check; never spends credits itself. Google only.": "Se met à jour à chaque relevé ; ne dépense jamais de crédits seul. Google uniquement.",
     "Not captured: the tool can't see AI Overviews. One may still exist.": "Non capté : l'outil ne voit pas les AI Overviews. Il peut y en avoir un.",
     "Connect a tool that can": "Connecter un outil qui les voit", "Connect SerpApi": "Connecter SerpApi",
+    "Not checked yet: {n} keyword": "Pas encore contrôlé : {n} mot-clé", "Not checked yet: {n} keywords": "Pas encore contrôlés : {n} mots-clés",
+    "Check them": "Les contrôler", "Checks them with {tool}. Shows the cost first.": "Les contrôle avec {tool}. Affiche le coût d'abord.",
     "AI Overview": "AI Overview",
     "You're cited": "Vous êtes cité",
     "You're not cited": "Vous n'êtes pas cité",

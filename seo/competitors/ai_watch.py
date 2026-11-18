@@ -11,7 +11,7 @@ from sqlalchemy import Engine, text
 
 from seo.competitors.keywords import _iso, require_own
 from seo.competitors.suggest import tracked_competitors
-from seo.serp import store
+from seo.serp import connections, store
 from seo.serp.tools import ABSENT, NOT_CAPTURED, PRESENT
 
 ENGINE = "google"
@@ -19,6 +19,15 @@ ENGINE = "google"
 
 def _cited_domains(check: store.Check) -> list[str]:
     return list(dict.fromkeys(row.domain for row in check.citations))
+
+
+def ai_tools(engine: Engine) -> list[str]:
+    """Names of the connected Google tools that see AI Overviews (SerpApi today), in the saved order."""
+    try:
+        tools = connections.tools_for(engine, "google", include_manual=True)
+    except Exception:  # noqa: BLE001 - a tool that can't be built must not take the watch down; it just isn't offered
+        return []
+    return list(dict.fromkeys(tool.name for tool in tools if getattr(tool, "gives_ai", False)))
 
 
 def watch(engine: Engine, site_id: int) -> dict:
@@ -97,6 +106,10 @@ def watch(engine: Engine, site_id: int) -> dict:
             "cited_me": sum(1 for c in with_overview if c.cites(site["host"])),
             "rivals": [{"host": host, "keywords": n} for host, n in rival_counts.most_common()],
             "tools": sorted({c.tool for c in latest}),  # who looked: the screen names them
+            # The connected tools that can see AI Overviews: none -> the screen asks to connect one; some -> it offers to
+            # check the keywords none of them has checked yet (not_checked_ids), through the usual Refresh preview and cost.
+            "ai_tools": ai_tools(engine),
+            "not_checked_ids": [r["keyword_id"] for r in rows if r["not_checked"]],
             "checked_at": _iso(max((c.checked_at for c in latest), default=None)),
         },
         "changes": changes[:200],

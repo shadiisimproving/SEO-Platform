@@ -102,7 +102,9 @@ const digits = (s) => Number(String(s || "").replace(/[^\d]/g, "")) || null;
   // ---- Insights: first run, then a finding's What to do ----
   await page.goto(BASE + "#insights?site=site-one.example"); await page.waitForTimeout(2000);
   const first = await page.textContent("#main"), ran = (await call("insights?site_id=1")).summary?.ran_at;
-  check("Insights before any run says Run, not Run again", ran ? /Run again/.test(first) : /\bRun\b/.test(first) && !/Run again/.test(first), ran ? "already ran" : "never ran");
+  // Before any run the one button says Run; after one it says Refresh (renamed from "Run again" in a2a0fb8, 2026-11-13).
+  const runWord = ((await page.textContent("[data-in-run]").catch(() => "")) || "").trim();
+  check("Insights says Run before any run, Refresh after one", ran ? runWord === "Refresh" : runWord === "Run" && !/Run again/.test(first), `${ran ? "already ran" : "never ran"}: ${runWord}`);
   await page.screenshot({ path: OUT + "7-insights-first.png" });
   await page.evaluate((u) => fetch(u, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ site_id: 1 }) }), BASE + "api/insights/run");
   await page.goto("about:blank"); await page.goto(BASE + "#insights?site=site-one.example"); await page.waitForTimeout(2500);

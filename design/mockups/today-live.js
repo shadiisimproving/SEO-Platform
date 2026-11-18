@@ -143,6 +143,7 @@
       id: a.id, severity: a.severity, kind: a.kind, reason: a.reason, title, titleHtml: sayHtml(a, "title"), detail, host: a.host,
       // One short line of likely cause on a drop, and what the same search did this week (seo/metrics/today.py).
       cause: a.words?.cause ? say(a, "cause") : "", week: a.words?.week ? say(a, "week") : "",
+      rival: a.rival || null, rivalWords: a.words?.rival || null, // the rival change behind a drop: its line is drawn with its link
       seenAttr: a.alert_ids ? `data-lv-seen="${esc(a.alert_ids.join(","))}"` : a.seen_key ? `data-lv-drop="${esc(a.seen_key)}"` : "",
       mainHtml: mainButton(a),
       find: a.kind === "search_finding" ? { title, host: a.host || null, priority: "medium", pages: a.page ? [a.page] : [], keywords: a.query ? [a.query] : [], source: { type: "search", key: a.seen_key, label: title, host: a.host || undefined, facts: detail ? [detail] : [], link: a.link } } : { title, host: a.host || null, priority: a.severity === "crit" ? "high" : "medium", ...(a.page ? { pages: [a.page] } : {}), ...(a.query ? { keywords: [a.query] } : {}), source: { type: "alert", label: title, host: a.host || undefined, facts: detail ? [detail] : [], link: a.link, key: a.seen_key ? `drop|${a.seen_key}` : `alert|${a.kind}|${a.host || ""}|${a.title}` } },
