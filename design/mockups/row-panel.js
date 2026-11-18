@@ -430,7 +430,8 @@
       url: (key, o) => `metrics/page?path=${enc(key)}${o.host ? `&host=${enc(o.host)}` : ""}&${asked()}`,
       spec: (d) => ({
         period: d.period, page: { path: d.path, host: d.host },
-        sub: [t(d.category), UI.siteHostPicked() ? "" : d.host].filter(Boolean).join(" · "),
+        // Google's #section jump links are said apart: the page's clicks and position are its own address's (review 3.3).
+        sub: [t(d.category), UI.siteHostPicked() ? "" : d.host, d.jump?.impressions ? t("Jump links: {n} impressions").replace("{n}", num(d.jump.impressions)) : ""].filter(Boolean).join(" · "),
         numbers: [
           { id: "visits", label: "Visits", value: d.totals?.sessions ?? null, before: d.before?.sessions, sub: d.ga4?.state === "not_connected" ? "Google Analytics not connected" : undefined },
           { id: "leads", label: "Leads", value: d.totals?.leads ?? null, before: d.before?.leads },
@@ -527,7 +528,7 @@
     "Channel": "Canal", "Page": "Page", "Assistant": "Assistant", "Referring site": "Site référent", "Keyword": "Mot-clé",
     "Sources": "Sources", "Source": "Source", "Mediums": "Supports", "Medium": "Support", "Share": "Part", "Share of all visits": "Part des visites",
     "Landing pages": "Pages d'arrivée", "Open site": "Ouvrir le site", "Open page": "Ouvrir la page", "All about this page": "Tout sur cette page", "Add a note": "Ajouter une note", "Task": "Tâche",
-    "Searches that bring it": "Les recherches qui y mènent", "Where AI visits come from": "D'où viennent les visites IA", "Share of AI visits": "Part des visites IA",
+    "Searches that bring it": "Les recherches qui y mènent", "Jump links: {n} impressions": "Liens vers une section : {n} impressions", "Where AI visits come from": "D'où viennent les visites IA", "Share of AI visits": "Part des visites IA",
     "AI visits per week": "Visites IA par semaine", "Week to": "Semaine au", "Needs {n} visits": "Il faut {n} visites",
     "No searches in this period.": "Aucune recherche sur cette période.", "No AI visits in this period.": "Aucune visite IA sur cette période.",
     "No landing pages in this period.": "Aucune page d'arrivée sur cette période.",

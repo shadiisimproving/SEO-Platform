@@ -16,7 +16,7 @@ from seo.competitors.keywords import _iso, require_own
 from seo.core.errors import Refused
 from seo.metrics import period
 from seo.metrics import service as metrics
-from seo.metrics.service import Spelling, _path, spelled_path
+from seo.metrics.service import Spelling, _path, is_jump_link, spelled_path
 from seo.serp import rankings
 
 _MAX_ROWS = 5000
@@ -81,7 +81,7 @@ def listing(scope: metrics.Scope) -> dict:
         def row_for(site: int, path: str) -> dict:
             return rows.setdefault((site, path), {
                 "site_id": site, "host": sites[site], "path": path, "title": "", "clicks": None, "impressions": None,
-                "position": None, "sessions": None, "leads": None, "ai": None, "clicks_before": None, "change": None, "read": False,
+                "position": None, "sessions": None, "leads": None, "ai": None, "jump_impressions": None, "clicks_before": None, "change": None, "read": False,
             })
 
         # Shown as Google or the site spells it (content() already picked Search Console's, else Google Analytics'); the
@@ -93,7 +93,7 @@ def listing(scope: metrics.Scope) -> dict:
                 continue
             key = _path(item.get("key") or item["path"])
             row = row_for(site, key)
-            for name in ("clicks", "impressions", "position", "sessions", "leads", "ai"):
+            for name in ("clicks", "impressions", "position", "sessions", "leads", "ai", "jump_impressions"):
                 row[name] = item[name]
             spelling.offer((site, key), item["path"], 0 if item["clicks"] is not None else 2)
         for site, host in sites.items():
@@ -118,7 +118,7 @@ def listing(scope: metrics.Scope) -> dict:
                 date.fromisoformat(window["compare_from"]), date.fromisoformat(window["compare_to"]),
             ):
                 key = (item["site_id"], _path(item["page"]))
-                if item["site_id"] not in compared or item["site_id"] not in sites:
+                if item["site_id"] not in compared or item["site_id"] not in sites or is_jump_link(item["page"]):  # as the clicks now
                     continue
                 if key not in rows:
                     # A page that had clicks before and none now (deindexed, a 404) is the biggest loser: it gets its row
@@ -226,10 +226,13 @@ def profile(engine: Engine, site_id: int, page: str) -> dict:
         gsc = conn.execute(text(
             "SELECT page, SUM(clicks) c, SUM(impressions) i, SUM(position * impressions) w FROM gsc_page WHERE site_id = :s AND day BETWEEN :a AND :b GROUP BY page_hash, page"
         ), {"s": site_id, "a": window["from"], "b": window["to"]}).mappings().all()
-        clicks = impressions = 0
+        clicks = impressions = jump_impressions = 0
         weight = 0.0
         for r in gsc:
             if _same_site(r["page"], host) and _path(r["page"]) == path:
+                if is_jump_link(r["page"]):  # the page's own address only; its #section jump links are said apart
+                    jump_impressions += int(r["i"] or 0)
+                    continue
                 spelling.offer(path, r["page"], 0, int(r["c"] or 0) * 1_000_000 + int(r["i"] or 0))
                 clicks += int(r["c"] or 0)
                 impressions += int(r["i"] or 0)
@@ -247,7 +250,8 @@ def profile(engine: Engine, site_id: int, page: str) -> dict:
     shown = spelling.get(path, path)
     return {
         "site_id": site_id, "host": host, "path": shown, "url": f"https://{host}{shown}", "title": (read or {}).get("title", ""),
-        "google_28d": {"clicks": clicks, "impressions": impressions, "position": round(weight / impressions, 1) if impressions else None, "from": window["from"], "to": window["to"]},
+        "google_28d": {"clicks": clicks, "impressions": impressions, "position": round(weight / impressions, 1) if impressions else None, "from": window["from"], "to": window["to"],
+                       "jump_impressions": jump_impressions or None},
         "read": read, "edits": edits, "rankings": ranked, "backlinks": links, "linked": linked,
         "technical": {
             "inspection": inspection, "speed": speed, "health": health, "health_at": _iso(audit["created_at"]) if audit else None,

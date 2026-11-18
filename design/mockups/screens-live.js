@@ -554,7 +554,7 @@
     return page(head, `
       ${missing ? `<p class="note lv-note">${icon("info")}<span>${t(missing)}</span></p>` : ""}${hiddenNote(d.hid_rows)}${clarityReportCard("dashboard")}${clarityCard}
       <section class="card"><div class="card-head"><h2>${t("All pages")}</h2><span class="end small muted">${num(d.total_pages)} ${t(d.total_pages === 1 ? "page" : "pages")} · ${sourceAndDays("Google Analytics and Search Console")}</span></div>${dataTable("content", [
-        { key: "path", label: "Page", get: pageName, html: (r) => (r.unknown ? unknownPage(r) : `<div class="mono lv-url">${PageLink.html(r.path, { host: r.host })}</div>${siteOfPage(r)}<div class="lv-cat" dir="auto">${esc(t(r.category))}</div>${UI.relatedTag?.({ host: r.host || UI.siteHostPicked() || "", page: r.path }) || ""}`) },
+        { key: "path", label: "Page", get: pageName, html: (r) => (r.unknown ? unknownPage(r) : `<div class="mono lv-url">${PageLink.html(r.path, { host: r.host })}</div>${siteOfPage(r)}${jumpLine(r)}<div class="lv-cat" dir="auto">${esc(t(r.category))}</div>${UI.relatedTag?.({ host: r.host || UI.siteHostPicked() || "", page: r.path }) || ""}`) },
         { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }, { key: "clicks", label: "Google clicks", num: true },
         { key: "position", label: "Position", num: true, html: (r) => decimal(r.position) }, { key: "ai", label: "AI visits", num: true },
       ], d.pages, { search: "Search pages", rowAttrs: (r) => (r.unknown || !window.SCREENS?.pages ? 'style="cursor:default"' : `data-pg-goto="${esc(`https://${r.host || UI.siteHostPicked() || ""}${r.path}`)}" tabindex="0" title="${esc(t("All about this page"))}"`) })}</section>
@@ -671,7 +671,10 @@
   // Rows that open their side panel (row-panel.js): a click, or Enter on the focused row.
   const opensPanel = (kind, key, host = "") => `data-rp-open="${kind}" data-rp-key="${esc(key)}"${host ? ` data-rp-host="${esc(host)}"` : ""} tabindex="0"`;
   const pageRow = (r) => (r.unknown ? 'style="cursor:default"' : opensPanel("page", r.path, r.host || UI.siteHostPicked() || ""));
-  const pageCell = (r) => (r.unknown ? unknownPage(r) : `<div class="mono lv-url">${PageLink.html(r.path, { host: r.host })}</div>${siteOfPage(r)}`);
+  /* Google's #section jump links for the page, said apart: the page's clicks, click rate and position are its own address's
+     (expert review 2026-11-17, 3.3). */
+  const jumpLine = (r) => (r.jump_impressions ? `<div class="lv-cat lv-jump">${esc(t("Jump links: {n} impressions").replace("{n}", num(r.jump_impressions)))}</div>` : "");
+  const pageCell = (r) => (r.unknown ? unknownPage(r) : `<div class="mono lv-url">${PageLink.html(r.path, { host: r.host })}</div>${siteOfPage(r)}${jumpLine(r)}`);
 
   // ---- Channels: cards, every channel (rules in a panel), then the chart beside the referring sites
   function channelsSimple() {
@@ -1240,7 +1243,7 @@
     "Up to date.": "À jour.", "Updated: {names}.": "Mis à jour : {names}.",
   });
   Object.assign(fr, { // Content's fixes and the simpler Channels, Conversions and Content (2026-11-12)
-    "Unknown page (not set)": "Page inconnue (not set)",
+    "Unknown page (not set)": "Page inconnue (not set)", "Jump links: {n} impressions": "Liens vers une section : {n} impressions",
     "Google Analytics couldn't tell which page these visits landed on, often visits that left before the page loaded.": "Google Analytics n'a pas pu dire sur quelle page ces visites sont arrivées, souvent des visites parties avant le chargement de la page.",
     "Google Analytics and Search Console": "Google Analytics et Search Console", "Most visits: {name}": "Le plus de visites : {name}", "Google clicks: {a} – {b}.": "Clics Google : {a} – {b}.", "No rules yet.": "Pas encore de règle.",
     "From visit to lead, by channel and by page.": "De la visite au lead, par canal et par page.",

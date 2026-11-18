@@ -100,6 +100,14 @@ def _path(url_or_path: str) -> str:
     return path.rstrip("/") + "/" if path.rstrip("/") else "/"
 
 
+def is_jump_link(url_or_path: str) -> bool:
+    """A #section address (Google's jump link to a part of the page). Search Console lists it as its own URL with its own
+    impressions, nearly never a click and a worse position: added into the page, it halved the page's click rate and
+    pulled its position down (expert review 2026-11-17, 3.3). A page's numbers come from its own address; jump-link
+    impressions are said apart."""
+    return "#" in (url_or_path or "")
+
+
 def spelled_path(url_or_path: str) -> str:
     """A page's address as Google or the site wrote it: no domain, query or fragment, but its trailing slash kept or left
     out as given. Shown and linked; _path() stays the key pages are matched on (expert review 2026-11-17, #19)."""
@@ -486,7 +494,7 @@ def content(scope: Scope, limit: int = 500) -> dict:
 
     def page(site_id: int, path: str) -> dict:
         key = _path(path)
-        return pages.setdefault((site_id, key), {"host": hosts.get(site_id, ""), "path": key, "sessions": None, "leads": None, "clicks": None, "impressions": None, "w": 0.0, "ai": None})
+        return pages.setdefault((site_id, key), {"host": hosts.get(site_id, ""), "path": key, "sessions": None, "leads": None, "clicks": None, "impressions": None, "w": 0.0, "ai": None, "jump_impressions": None, "jump_clicks": None})
 
     spelling = Spelling()
     for row in _page_rows(scope):
@@ -499,6 +507,10 @@ def content(scope: Scope, limit: int = 500) -> dict:
     gsc, gsc_window = period.search_scope(scope)  # Search Console's numbers on the shared period, as Today and Overview
     for row in gsc.fetch("SELECT site_id, MAX(page) page, page_hash, SUM(clicks) clicks, SUM(impressions) impressions, SUM(position * impressions) w FROM gsc_page WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY site_id, page_hash"):
         item = page(row["site_id"], row["page"])
+        if is_jump_link(row["page"]):  # said apart, never in the page's own clicks, click rate or position
+            item["jump_impressions"] = (item["jump_impressions"] or 0) + int(row["impressions"] or 0)
+            item["jump_clicks"] = (item["jump_clicks"] or 0) + int(row["clicks"] or 0)
+            continue
         spelling.offer((row["site_id"], _path(row["page"])), row["page"], 0, int(row["clicks"] or 0) * 1_000_000 + int(row["impressions"] or 0))
         item["clicks"] = (item["clicks"] or 0) + int(row["clicks"] or 0)
         item["impressions"] = (item["impressions"] or 0) + int(row["impressions"] or 0)
@@ -513,6 +525,7 @@ def content(scope: Scope, limit: int = 500) -> dict:
         {
             "host": item["host"], "path": spelling.get(key, item["path"]), "key": item["path"], "category": categorise(item["path"]), "sessions": item["sessions"], "leads": round(item["leads"], 2) if item["leads"] is not None else None,
             "clicks": item["clicks"], "impressions": item["impressions"], "position": round(item["w"] / item["impressions"], 1) if item["impressions"] else None, "ai": item["ai"],
+            "jump_impressions": item["jump_impressions"], "jump_clicks": item["jump_clicks"],
             "unknown": _unknown_page(item["path"]),
         }
         for key, item in pages.items()
@@ -866,7 +879,14 @@ def page_detail(scope: Scope, path, host=None) -> dict:
     ga4_days = {r["day"]: r for r in _fetch_lists(one, f"SELECT day, SUM(sessions) s, SUM(key_events) k FROM ga4_page_daily WHERE site_id IN :sites AND page_hash IN :hashes AND {_BOTH} GROUP BY day", ga4w["a"], ga4w["b"], {"hashes": hashes}, **both(ga4w))}
     ga4_seen = {r["day"] for r in one.fetch(f"SELECT DISTINCT day FROM ga4_page_daily WHERE site_id IN :sites AND {_BOTH}", ga4w["a"], ga4w["b"], **both(ga4w))}
     # Search Console: every address Google showed for it (http or https, with a query string or not).
-    shown_as = [(r["h"], r["page"]) for r in one.fetch(f"SELECT page_hash h, MAX(page) page FROM gsc_page WHERE site_id IN :sites AND {_BOTH} GROUP BY page_hash", gscw["a"], gscw["b"], **both(gscw)) if _path(r["page"]) == wanted]
+    every_address = [(r["h"], r["page"]) for r in one.fetch(f"SELECT page_hash h, MAX(page) page FROM gsc_page WHERE site_id IN :sites AND {_BOTH} GROUP BY page_hash", gscw["a"], gscw["b"], **both(gscw)) if _path(r["page"]) == wanted]
+    # Its own addresses only: #section jump links are counted apart (is_jump_link), as on the Content row.
+    shown_as = [(h, page) for h, page in every_address if not is_jump_link(page)]
+    jumps = [h for h, page in every_address if is_jump_link(page)]
+    jump = None
+    if jumps:
+        found = _fetch_lists(one, "SELECT SUM(clicks) c, SUM(impressions) i FROM gsc_page WHERE site_id IN :sites AND page_hash IN :hashes AND day BETWEEN :a AND :b", gscw["a"], gscw["b"], {"hashes": jumps})
+        jump = {"impressions": int(found[0]["i"] or 0), "clicks": int(found[0]["c"] or 0)} if found and found[0]["i"] else None
     gsc_days = {r["day"]: r for r in _fetch_lists(one, f"SELECT day, SUM(clicks) c, SUM(impressions) i, SUM(position * impressions) w FROM gsc_page WHERE site_id IN :sites AND page_hash IN :hashes AND {_BOTH} GROUP BY day", gscw["a"], gscw["b"], {"hashes": [h for h, _ in shown_as]}, **both(gscw))}
     gsc_seen = {r["day"] for r in one.fetch(f"SELECT DISTINCT day FROM gsc_page WHERE site_id IN :sites AND {_BOTH}", gscw["a"], gscw["b"], **both(gscw))}
 
@@ -960,6 +980,7 @@ def page_detail(scope: Scope, path, host=None) -> dict:
         "kind": "page", "host": name, "path": wanted, "url": f"https://{name}{wanted}", "category": _categorise(scope.engine, scope.site_ids)(wanted),
         "found": bool(hashes or shown_as or assistants),
         "addresses": sorted({page for _, page in shown_as})[:20],  # as Search Console writes it, for Overview's exact filter
+        "jump": jump,  # the #section jump links' impressions in the period, counted apart from the page's own numbers
         "ga4": _sources_state(one, "ga4"), "gsc": _sources_state(one, "gsc"),
         "period": _window_words(ga4w), "periods": {"ga4": _window_words(ga4w), "gsc": _window_words(gscw)},
         "totals": totals(now_of(ga4w), now_of(gscw), ai_now),
