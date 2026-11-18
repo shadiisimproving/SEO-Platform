@@ -11,14 +11,14 @@
 (() => {
   "use strict";
   const KEY_EVENT_WORDS = {
-    Leads: "Key events", leads: "key events", "Lead rate": "Key event rate", "Pages that bring leads": "Pages with key events",
+    Leads: "Key events", leads: "key events", "Lead rate": "Key event rate, at most", "Pages that bring leads": "Pages with key events",
     "From visit to lead, by channel": "From visit to key event, by channel", "{n} visits didn't become a lead": "{n} visits had no key event",
     "No page brought a lead in this period.": "No page had a key event in this period.", "without a lead": "without a key event",
     "No leads in this period": "No key events in this period",
   };
   // Some sites of the answer picked their lead events and some didn't: each counts by its own rule, so the total is both
   // (code review 2026-11-18, #4).
-  const MIXED_WORDS = { Leads: "Leads and key events", leads: "leads and key events", "No leads in this period": "No leads or key events in this period" };
+  const MIXED_WORDS = { "Lead rate": "Lead rate, at most", Leads: "Leads and key events", leads: "leads and key events", "No leads in this period": "No leads or key events in this period" };
   const U = () => window.UI;
   const t = (s) => U().t(s);
   const esc = (s) => U().esc(s);
@@ -63,6 +63,16 @@
       changes.slice(0, 3).forEach((c) => out.push(line("warn", `${esc(fill(t(CHANGE[c.kind] || CHANGE.rose), { day: day(c.day), host: many && c.host ? ` (${c.host})` : "" }))} ${esc(t("So no change is shown."))}`)));
     }
     if (visits && (d.little_before || d.note === "little_before")) out.push(line("info", esc(t("Too little data before to compare visits."))));
+    // Some sites have too little data before: the change covers the others only, and says which were left out (N1, N3).
+    const left = (d.little_hosts || []).filter(Boolean), kept = d.compared_count ?? (d.compared_sites || []).length;
+    if (visits && left.length && !d.little_before && kept) {
+      out.push(line("info", `${esc(fill(t("Visits change on {n} of {m} sites: too little data before on"), { n: num(kept), m: num(kept + left.length) }))} <span dir="auto">${left.slice(0, 3).map(esc).join(", ")}</span>.`));
+    }
+    // A site that records no lead or key event has no lead rate: its visits stay out of the rate, and it is named (W2b).
+    const silent = (d.no_lead_hosts || []).filter(Boolean);
+    if (leads && silent.length) {
+      out.push(line("info", `${esc(t(keyEvents(d) ? "Left out of the rate, no key events recorded:" : "Left out of the rate, no leads or key events recorded:"))} <span dir="auto">${silent.slice(0, 3).map(esc).join(", ")}</span>.`));
+    }
     const unusual = d.unusual;
     if (visits && unusual) {
       [...(unusual.runs || []), ...(unusual.runs_before || [])].slice(0, 2).forEach((r) => {
@@ -85,7 +95,7 @@
   window.GA4W = { word, short, notes, hostsNote, keyEvents, mixed };
   window.FR = window.FR || {};
   Object.assign(window.FR, {
-    "Key events": "Événements clés", "key events": "événements clés", "Key event rate": "Taux d'événements clés", "Pages with key events": "Pages avec des événements clés",
+    "Key events": "Événements clés", "key events": "événements clés", "Key event rate": "Taux d'événements clés", "Key event rate, at most": "Taux évts clés (max)", "Lead rate, at most": "Taux de lead, au plus", "Pages with key events": "Pages avec des événements clés",
     "From visit to key event, by channel": "De la visite à l'événement clé, par canal", "{n} visits had no key event": "{n} visites sans événement clé",
     "No page had a key event in this period.": "Aucune page n'a eu d'événement clé sur cette période.", "without a key event": "sans événement clé",
     "No leads in this period": "Aucun lead sur cette période", "No key events in this period": "Aucun événement clé sur cette période",
@@ -106,5 +116,8 @@
     "Google Analytics history is being read again with key events by name: {n} days left.": "L'historique Google Analytics est relu avec les événements clés par nom : {n} jours restants.",
     "This Google Analytics property also records {hosts}: check its data streams. Those visits are left out.": "Cette propriété Google Analytics enregistre aussi {hosts} : vérifiez ses flux de données. Ces visites sont écartées.",
     "Too little data before": "Trop peu de données avant",
+    "Visits change on {n} of {m} sites: too little data before on": "Évolution des visites sur {n} des {m} sites : trop peu de données avant sur",
+    "Left out of the rate, no key events recorded:": "Exclus du taux, aucun événement clé enregistré :",
+    "Left out of the rate, no leads or key events recorded:": "Exclus du taux, aucun lead ni événement clé enregistré :",
   });
 })();

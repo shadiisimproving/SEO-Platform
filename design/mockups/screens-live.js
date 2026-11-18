@@ -468,8 +468,8 @@
     return page(head, `
       <p class="small muted" style="margin:0 0 12px">${throughNote(d.through, "", d)}</p>${hiddenNote(d.hid_rows)}
       <section class="tiles">
-        ${UI.tile(t("Visits"), UI.cnt(d.total.sessions), change(d.total.sessions, d.before?.sessions), { ic: "activity" })}
-        ${UI.tile(t(W("Leads", d)), num(d.total.leads), change(d.total.leads, d.before?.leads), { ic: "filter" })}
+        ${UI.tile(t("Visits"), UI.cnt(d.total.sessions), change((d.compared || d.total).sessions, d.before?.sessions), { ic: "activity" })}
+        ${UI.tile(t(W("Leads", d)), num(d.total.leads), change((d.compared || d.total).leads, d.before?.leads), { ic: "filter" })}
         ${UI.tile(t(W("Lead rate", d)), pct(ratePct(d.total) === null ? null : ratePct(d.total) / 100), "", { ic: "percent" })}
         ${UI.tile(t("Channels"), UI.cnt(d.channels.length), "", { ic: "layers" })}
       </section>
@@ -667,10 +667,18 @@
   // The days both periods reported, for a card's graph: this period solid, the period before dashed (UI.card).
   const daySpark = (d, pick) => (d?.days?.length > 1 ? { days: d.days.map((r) => r.day), now: d.days.map(pick), before: (d.days_before || []).map(pick) } : null);
   // Visits that became a lead (or had a key event) out of all visits, never over 100% (W8). A blank count stays blank.
+  // Out of the visits of the sites that record leads or key events ("rated"), when the server says it (W2b).
   const ratePct = (r) => {
     const top = r ? (r.converted !== undefined ? r.converted : r.leads) : null;
-    return r && r.sessions && top !== null && top !== undefined ? Math.min(top, r.sessions) / r.sessions * 100 : null;
+    const base = r ? (r.rated !== undefined && r.rated !== null ? r.rated : r.sessions) : null;
+    return r && base && top !== null && top !== undefined ? Math.min(top, base) / base * 100 : null;
   };
+  /* A card's change. When only some sites had a fair period before, the server sends their totals now ("compared"):
+     the change sets them against the period before, so like is compared with like (final review N1). */
+  const versus = (d, pick) => (d.compared ? pick(d.compared) : null);
+  /* While key events are counted, a rate counts each key event as a visit with one, up to the visits: an upper bound of
+     Google Analytics' own rate, which counts visits with at least one key event (final review N4). */
+  const rateInfo = (d) => (window.GA4W.keyEvents(d) || window.GA4W.mixed(d) ? ["Key event rate, at most: each key event counts as one visit, never more than the visits. Google Analytics' own rate counts visits with at least one key event, so it can be lower."] : "");
   const W = (english, d) => window.GA4W.word(english, d);
   const known = (v) => v !== null && v !== undefined;
   // Rows that open their side panel (row-panel.js): a click, or Enter on the focused row.
@@ -699,9 +707,9 @@
     }
     const before = d.before, top = d.channels[0];
     const cards = `<section class="tiles lv-cards">
-        ${UI.card({ id: "visits", label: "Visits", value: d.total.sessions, change: { now: d.total.sessions, before: before?.sessions }, spark: daySpark(d, (r) => r.sessions) })}
-        ${UI.card({ id: "leads", label: W("Leads", d), value: d.total.leads, change: { now: d.total.leads, before: before?.leads }, spark: daySpark(d, (r) => r.leads) })}
-        ${UI.card({ id: "rate", label: W("Lead rate", d), value: ratePct(d.total), format: "pct", change: { now: ratePct(d.total), before: ratePct(before), unit: "pts" }, spark: daySpark(d, ratePct) })}
+        ${UI.card({ id: "visits", label: "Visits", value: d.total.sessions, change: { now: versus(d, (c) => c.sessions) ?? d.total.sessions, before: before?.sessions }, spark: daySpark(d, (r) => r.sessions) })}
+        ${UI.card({ id: "leads", label: W("Leads", d), value: d.total.leads, change: { now: versus(d, (c) => c.leads) ?? d.total.leads, before: before?.leads }, spark: daySpark(d, (r) => r.leads) })}
+        ${UI.card({ id: "rate", label: W("Lead rate", d), value: ratePct(d.total), format: "pct", change: { now: versus(d, ratePct) ?? ratePct(d.total), before: ratePct(before), unit: "pts" }, spark: daySpark(d, ratePct), info: rateInfo(d) })}
         ${UI.card({ id: "channels", label: "Channels", value: d.channels.length, sub: top ? esc(fillIn(t("Most visits: {name}"), { name: t(top.channel) })) : "" })}
       </section>${window.GA4W.notes(d)}`;
     const swatch = (name) => `<i class="lv-key" style="background:${colourOf(name)}"></i>${esc(t(name))}${aiLink(name)}`;
@@ -761,9 +769,9 @@
     // A line that carries an action stays on screen: without key events there are no leads to count.
     const setUp = set || d.lead_kind === "leads" ? "" : `<p class="note warn lv-note">${icon("triangle-alert")}<span>${t("No key events. Mark your forms as key events in GA4.")}</span></p>`;
     const cards = `<section class="tiles lv-cards">
-        ${UI.card({ id: "visits", label: "Visits", value: d.sessions, change: { now: d.sessions, before: was?.sessions }, spark: daySpark(d, (r) => r.sessions) })}
-        ${UI.card({ id: "leads", label: W("Leads", d), value: set ? d.leads : null, sub: set ? null : esc(t("Not set up")), change: set ? { now: d.leads, before: was?.leads } : null, spark: set ? daySpark(d, (r) => r.leads) : null })}
-        ${UI.card({ id: "rate", label: W("Lead rate", d), value: set && known(d.rate) ? d.rate * 100 : null, format: "pct", sub: set ? null : esc(t("Not set up")), change: set && known(d.rate) ? { now: d.rate * 100, before: known(was?.rate) ? was.rate * 100 : null, unit: "pts" } : null, spark: set ? daySpark(d, ratePct) : null })}
+        ${UI.card({ id: "visits", label: "Visits", value: d.sessions, change: { now: versus(d, (c) => c.sessions) ?? d.sessions, before: was?.sessions }, spark: daySpark(d, (r) => r.sessions) })}
+        ${UI.card({ id: "leads", label: W("Leads", d), value: set ? d.leads : null, sub: set ? null : esc(t("Not set up")), change: set ? { now: versus(d, (c) => c.leads) ?? d.leads, before: was?.leads } : null, spark: set ? daySpark(d, (r) => r.leads) : null })}
+        ${UI.card({ id: "rate", label: W("Lead rate", d), value: set && known(d.rate) ? d.rate * 100 : null, format: "pct", sub: set ? null : esc(t("Not set up")), change: set && known(d.rate) ? { now: (versus(d, (c) => c.rate) ?? d.rate) * 100, before: known(was?.rate) ? was.rate * 100 : null, unit: "pts" } : null, spark: set ? daySpark(d, ratePct) : null, info: rateInfo(d) })}
       </section>${set ? window.GA4W.notes(d) : ""}`;
     const max = Math.max(...d.funnel.map((x) => x.sessions), 1);
     // One line per channel; the visits that didn't become a lead are the bar's tip.
@@ -1184,6 +1192,7 @@
     "Last 12 months": "12 derniers mois", "Query": "Requête", "Change": "Évolution", "Queries gaining clicks": "Requêtes qui gagnent des clics", "Queries losing clicks": "Requêtes qui perdent des clics",
     "Pick a comparison above.": "Choisissez une comparaison en haut.", "No query gained clicks.": "Aucune requête n'a gagné de clics.", "No query lost clicks.": "Aucune requête n'a perdu de clics.", "Queries by position": "Requêtes par position",
     "Lags 2–3 days": "2 à 3 jours de retard",
+    "Key event rate, at most: each key event counts as one visit, never more than the visits. Google Analytics' own rate counts visits with at least one key event, so it can be lower.": "Taux d'événements clés, au plus : chaque événement clé compte pour une visite, jamais plus que les visites. Le taux de Google Analytics compte les visites avec au moins un événement clé : il peut être plus bas.",
     "Visit and lead sources, from Google Analytics": "Sources des visites et des leads, d'après Google Analytics", "Visits": "Visites", "Leads": "Leads", "Lead rate": "Taux de lead", "Channels": "Canaux",
     "Visits by channel": "Visites par canal", "Every channel": "Tous les canaux", "Channel": "Canal", "Share": "Part", "Referring sites": "Sites référents", "Site": "Site", "No referring sites in this period.": "Aucun site référent sur cette période.",
     "Channel rules": "Règles de canaux", "Rename channels by source/medium (* = anything). Past days change too.": "Renommez les canaux par source/support (* = n'importe quoi). Les jours passés changent aussi.",

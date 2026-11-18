@@ -232,9 +232,14 @@
     end(route, day, source = "") {
       if (source) rangeSources[route] = source;
       if (!validDay(day) || rangeEnds[route] === day) return;
+      const asked = rangeGet().from;
       rangeEnds[route] = day;
       setTimeout(() => {
         if (state.route !== route || $("#popover")) return;
+        // The dates moved (GA4 ends a day earlier than the picker guessed): the screen asks again for the dates now shown,
+        // or its head would say 20 Oct – 16 Nov over the numbers of 21 Oct – 16 Nov (final review 2026-11-18). Drawn
+        // again, it calls this with the same day, which stops here.
+        if (rangeGet().from !== asked) { render(); return; }
         if (state.simple) { redrawHeadRange(); return; } // the simpler head: only its dates and comparison phrase
         const picks = $(".range-picks");
         if (picks) picks.replaceWith(fragment(datePicks()));
@@ -261,7 +266,9 @@
       return parts.join("&");
     },
     days(opts = {}) {
-      const g = rangeGet({ end: opts.end || DATA_END, hours: false }), parts = [`from=${g.from}`, `to=${g.to}`];
+      // The screen's own last day once its answer said it (UI.range.end): GA4 ends a day or two before yesterday, and a
+      // period asked through yesterday came back one day short under a head that said the whole 28 (final review N1).
+      const g = rangeGet({ end: opts.end || rangeEnds[state.route] || DATA_END, hours: false }), parts = [`from=${g.from}`, `to=${g.to}`];
       if (g.compareFrom) parts.push(`compare_from=${g.compareFrom}`, `compare_to=${g.compareTo}`);
       // The shared range too, so the Search Console side of the answer ends on Google's last final day (seo/metrics/period.py).
       parts.push(`range=${state.rng.preset === "24h" ? "7d" : state.rng.preset}`, `compare=${state.rng.compare}`);

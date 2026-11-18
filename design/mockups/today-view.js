@@ -81,7 +81,10 @@
     return data.value - before === data.change ? `<span class="muted">${esc(t("{n} in the period before").replace("{n}", num(before)))}</span>` : "";
   }
   function figure(key, label, href, data, unit, emptyWord) {
-    const covers = data.sites && data.sites < data.of ? `<span class="muted">${num(data.sites)} ${t("of")} ${num(data.of)} ${t("sites")}</span>` : "";
+    // The change can cover fewer sites than the sum (one has too little data before): said under it (final review N3).
+    const fewer = data.change !== null && data.compared && data.compared < data.sites;
+    const covers = fewer ? `<span class="muted">${esc(t("Change on {n} of {m} sites").replace("{n}", num(data.compared)).replace("{m}", num(data.sites)))}</span>`
+      : data.sites && data.sites < data.of ? `<span class="muted">${num(data.sites)} ${t("of")} ${num(data.of)} ${t("sites")}</span>` : "";
     let fig = esc(data.value === null ? "—" : num(data.value)), note;
     if (data.state === "not_set_up") { fig = `<span class="today-fig-word">${t("Not set up")}</span>`; note = `<span class="muted">${t("Mark forms as GA4 key events")}</span>`; }
     else if (data.value === null) note = `<span class="muted">${data.source ? esc(stateWord(data.source, key === "clicks" ? "Search Console" : "GA4")) : t(emptyWord)}</span>`;
@@ -106,7 +109,9 @@
       if (odd?.days?.length) spark.marks = points.map((p) => odd.days.includes(p.day));
       if (odd?.days_before?.length && data.compareFrom) spark.marksBefore = points.map((_, i) => odd.days_before.includes(shiftDay(data.compareFrom, i)));
     }
-    const covers = data.sites && data.sites < data.of ? `${num(data.sites)} ${t("of")} ${num(data.of)} ${t("sites")}` : "";
+    const fewer = data.change !== null && data.change !== undefined && data.compared && data.compared < data.sites;
+    const covers = fewer ? t("Change on {n} of {m} sites").replace("{n}", num(data.compared)).replace("{m}", num(data.sites))
+      : data.sites && data.sites < data.of ? `${num(data.sites)} ${t("of")} ${num(data.of)} ${t("sites")}` : "";
     let value = data.value, sub = null;
     if (data.state === "not_set_up") { value = `<span class="today-fig-word">${t("Not set up")}</span>`; sub = esc(t("Mark forms as GA4 key events")); }
     else if (data.value === null) sub = esc(data.source ? stateWord(data.source, key === "clicks" ? "Search Console" : "GA4") : t(emptyWord));
@@ -141,7 +146,8 @@
      too little data before, unusual days, and a property that also records another website. */
   function ga4Notes(r) {
     if (!window.GA4W || r.leads?.state === "no_ga4") return "";
-    const said = window.GA4W.notes({ kind: r.leads.state === "not_set_up" ? null : r.leads.kind, key_event_hosts: r.leads.key_event_hosts, changes: r.leads.changes, note: r.visits.note, unusual: r.visits.unusual });
+    const leftOut = r.visits.change !== null && r.visits.change !== undefined ? (r.visits.left_out || []).map((x) => x.host) : [];
+    const said = window.GA4W.notes({ kind: r.leads.state === "not_set_up" ? null : r.leads.kind, key_event_hosts: r.leads.key_event_hosts, changes: r.leads.changes, note: r.visits.note, unusual: r.visits.unusual, little_hosts: leftOut, compared_count: r.visits.compared });
     const hosts = window.GA4W.hostsNote(r.other_hosts);
     return said || hosts ? `<div class="ga4-notes">${hosts}${said.replace(/^<div class="ga4-notes">|<\/div>$/g, "")}</div>` : "";
   }
@@ -377,7 +383,7 @@
     "Nothing needs you today.": "Rien à traiter aujourd'hui.", "Google numbers stop at": "Les chiffres Google s'arrêtent au", "No earlier period to compare with yet.": "Pas encore de période antérieure à comparer.",
     "Connect Google to see leads, visits and clicks.": "Connectez Google pour voir les leads, les visites et les clics.",
     "Not set up": "Non configuré", "Mark forms as GA4 key events": "Marquez vos formulaires comme événements clés GA4", "GA4 not connected": "GA4 non connecté", "Search Console not connected": "Search Console non connecté",
-    "No earlier period": "Pas de période antérieure", "sites": "sites", "Google clicks": "Clics Google", "Search Console average": "Moyenne Search Console", "Search Console average position": "Position moyenne Search Console", "clicks": "clics", "Late": "En retard", "No date": "Sans date",
+    "No earlier period": "Pas de période antérieure", "Change on {n} of {m} sites": "Évolution sur {n} des {m} sites", "sites": "sites", "Google clicks": "Clics Google", "Search Console average": "Moyenne Search Console", "Search Console average position": "Position moyenne Search Console", "clicks": "clics", "Late": "En retard", "No date": "Sans date",
     "No open tasks for you.": "Aucune tâche ouverte pour vous.", "View all tasks": "Voir toutes les tâches", "Your page": "Votre page", "Compare": "Comparer", "Rival changes on competing pages": "Changements des concurrents sur les pages rivales",
     "No rival changes in the last 7 days.": "Aucun changement des concurrents ces 7 derniers jours.", "Last 7 days": "7 derniers jours", "Week on week": "Semaine sur semaine",
     "Last 28 days vs the 28 before": "28 derniers jours vs les 28 précédents", "No data yet": "Pas encore de données",
