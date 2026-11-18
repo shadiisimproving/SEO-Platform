@@ -248,3 +248,103 @@ def test_stored_noise_left_after_the_first_rules_is_hidden_and_real_edits_stay(e
     assert site.classify()["hidden"] == {}  # safe to run again
     counted = reclassify.counts(engine.connect(), site.domain)["rival.example"]
     assert counted == {"edit_events": 4, "edited_pages": 3, "new_pages": 0}  # the move isn't an edit (N3)
+
+
+# ---- dates, added, moved -----------------------------------------------------------------------------------------------
+
+
+def test_page_dates_in_more_forms_and_never_in_the_future():
+    # N6: commitbiz.com writes 21-05-2019; French and Arabic month names; Arabic-Indic digits.
+    assert pagedates.page_day("21-05-2019") == date(2019, 5, 21)
+    assert pagedates.page_day("17 novembre 2026") == date(2026, 11, 17)
+    assert pagedates.page_day("1er décembre 2025") == date(2025, 12, 1)
+    assert pagedates.page_day("17 نوفمبر 2026") == date(2026, 11, 17)
+    assert pagedates.page_day("١٧/١١/٢٠٢٦") == date(2026, 11, 17)
+    assert pagedates.page_day("2026-11-16T07:10:55+04:00") == date(2026, 11, 16)
+    # daftime: two pages dated May 2027 are not published yet.
+    assert pagedates.published_day("2027-05-01", today=date(2026, 11, 18)) is None
+    assert pagedates.published_day("2026-11-17", today=date(2026, 11, 18)) == date(2026, 11, 17)
+    assert insights.appeared_day("2027-05-01", None, None, today=date(2026, 11, 18)) is None
+    assert insights.appeared_day("2027-05-01", None, datetime(2026, 11, 12, 3), today=date(2026, 11, 18)) == date(2026, 11, 12)
+
+
+def _read_page(conn, domain, path, published=None, first_seen=None, status="ok"):
+    url = f"https://rival.example{path}"
+    extras = json.dumps({"published": published} if published else {})
+    conn.execute(text("INSERT INTO pages (domain_id, url, url_hash, content_hash, extras, first_seen_at, last_status) VALUES (:d, :u, SHA2(:u, 256), 'h', :e, :f, :s)"),
+                 {"d": domain, "u": url, "e": extras, "f": first_seen, "s": status})
+    return conn.execute(text("SELECT id FROM pages WHERE url = :u"), {"u": url}).scalar()
+
+
+def test_added_in_30_days_is_one_number_on_the_card_and_the_profile(world):
+    # N1: watching began 12 days ago. Known answer, by hand:
+    #   /old         dated 2019, read in the first read             -> no
+    #   /before      dated 20 days ago (before watching began)      -> no (the profile counted it, the card didn't)
+    #   /first-read  dated 5 days ago, found while the first read went on (no new_page event) -> yes (the card missed it)
+    #   /reported    no date, reported new 3 days ago               -> yes
+    #   /future      dated next year                                -> no
+    #   /gone-new    dated 2 days ago, but gone since               -> no
+    # = 2 on the card, the profile's Activity tab and its "New pages in 30 days".
+    rival = add_rival(world)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    day = lambda n: (now - timedelta(days=n)).date().isoformat()  # noqa: E731
+    domain = store.get_or_create_domain(world.engine, "rival.example")
+    with world.engine.begin() as conn:
+        _read_page(conn, domain, "/", first_seen=now - timedelta(days=12))
+        _read_page(conn, domain, "/old", "2019-03-01", now - timedelta(days=12))
+        _read_page(conn, domain, "/before", day(20), now - timedelta(days=11))
+        _read_page(conn, domain, "/first-read", day(5), now - timedelta(days=5))
+        reported = _read_page(conn, domain, "/reported", None, now - timedelta(days=3))
+        conn.execute(text("INSERT INTO change_events (page_id, domain_id, kind, after_value, detected_at) VALUES (:p, :d, 'new_page', 'x', :t)"),
+                     {"p": reported, "d": domain, "t": now - timedelta(days=3)})
+        _read_page(conn, domain, "/future", f"{now.year + 1}-05-01", now - timedelta(days=4))
+        _read_page(conn, domain, "/gone-new", day(2), now - timedelta(days=2), status="gone")
+    card = next(r for r in collective.rivals(world.engine)["rivals"] if r["host"] == "rival.example")
+    with world.engine.connect() as conn:
+        theirs = insights._pages(conn, "rival.example")
+        rhythm = insights._rhythm(conn, "rival.example", "me.example", theirs, [], {})
+    prof = profile.profile(world.engine, world.own, rival)
+    assert card["added_30d"] == 2
+    assert rhythm["new_30d"] == 2
+    assert prof["compare"]["pages"]["theirs"]["new_pages_30d"] == 2
+
+
+def test_a_move_is_not_an_edit_on_the_cards_the_list_or_your_edits(world):
+    # N3: business-setup-dubai.com "Your edits" 131 held 9 moved category pages. Known answer: /a rewritten (title and
+    # text, one page), /b and /c moved: 1 page edited, 2 moved.
+    rival = add_rival(world)
+    domain = store.get_or_create_domain(world.engine, "rival.example")
+    mine = store.get_or_create_domain(world.engine, "me.example")
+    now = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(days=1)
+    with world.engine.begin() as conn:
+        for host_domain, host in ((domain, "rival.example"), (mine, "me.example")):
+            ids = {}
+            for path in ("/a", "/b", "/c"):
+                url = f"https://{host}{path}"
+                conn.execute(text("INSERT INTO pages (domain_id, url, url_hash, content_hash, first_seen_at) VALUES (:d, :u, SHA2(:u, 256), 'h', :f)"), {"d": host_domain, "u": url, "f": now - timedelta(days=5)})
+                ids[path] = conn.execute(text("SELECT id FROM pages WHERE url = :u"), {"u": url}).scalar()
+            for path, kind in (("/a", "title"), ("/a", "content"), ("/b", "redirect"), ("/c", "redirect")):
+                conn.execute(text("INSERT INTO change_events (page_id, domain_id, kind, before_value, after_value, detected_at) VALUES (:p, :d, :k, 'x', 'y', :t)"),
+                             {"p": ids[path], "d": host_domain, "k": kind, "t": now})
+    answer = collective.rivals(world.engine)
+    card = next(r for r in answer["rivals"] if r["host"] == "rival.example")
+    you = answer["mine"][0]
+    assert (card["edited_30d"], card["moved_30d"], card["edits_30d"]) == (1, 2, 1)
+    assert (you["edited_30d"], you["edits_30d"]) == (1, 1)
+    with world.engine.connect() as conn:
+        assert profile.edits_last_30_days(conn)[rival] == 1
+        _months, _since, pages = insights._edits_by_month(conn, "rival.example", [now.strftime("%Y-%m")])
+    assert pages == 1
+
+
+def test_todays_rival_line_says_seen_unless_the_page_dates_its_change():
+    # N8: well-tax.com /about-us/ was edited on 11 Nov (its dateModified) and seen on 17 Nov. A drop starting 18 Nov:
+    # with the page's date, 7 days before; without, the day the app saw it, said as "seen", 1 day before.
+    seen = datetime(2026, 11, 17, 3, 0)
+    assert today._change_day({"detected_at": seen, "extras": json.dumps({"modified": "2026-11-11T10:00:00+04:00"})}) == (date(2026, 11, 11), True)
+    assert today._change_day({"detected_at": seen, "extras": "{}"}) == (date(2026, 11, 17), False)
+    # A modified date after the day seen is a later edit: it says nothing about this one.
+    assert today._change_day({"detected_at": seen, "extras": {"modified": "2026-11-18"}}) == (date(2026, 11, 17), False)
+    assert today._rival_words("/about-us/", 7, True) == ["Rival changed {path} {n} days before", {"path": "/about-us/", "n": 7}]
+    assert today._rival_words("/about-us/", 1, False) == ["Rival changed {path}, seen 1 day before", {"path": "/about-us/"}]
+    assert today._rival_words("/about-us/", 0, False) == ["Rival changed {path}, seen during the drop", {"path": "/about-us/"}]

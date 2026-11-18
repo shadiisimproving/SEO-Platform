@@ -438,7 +438,7 @@
       ${compareTile(t("Only one ranks"), figure(c.mine_only), figure(c.theirs_only), { note: t("The other isn't in the results checked.") })}
       ${compareTile(t("Pages known"), figure(c.pages?.mine?.pages), blocked ? dash : figure(c.pages?.theirs?.pages), { note: theirPages })}
       ${compareTile(t("Words per page"), figure(c.pages?.mine?.average_words), blocked ? dash : figure(c.pages?.theirs?.average_words), { note: theirPages })}
-      ${compareTile(t("New pages in 30 days"), figure(c.pages?.mine?.new_pages_30d), blocked ? dash : figure(c.pages?.theirs?.new_pages_30d), { note: theirPages })}
+      ${compareTile(t("Added in 30 days"), figure(c.pages?.mine?.new_pages_30d), blocked ? dash : figure(c.pages?.theirs?.new_pages_30d), { note: theirPages })}
       ${compareTile(t("AI Overview citations"), figure(c.ai_cited_me), figure(c.ai_cited_them), { verdict: c.ai_overviews ? verdict(c.ai_cited_me, c.ai_cited_them) : "", note: c.ai_overviews ? many(c.ai_overviews, "Of {n} AI Overview seen.", "Of {n} AI Overviews seen.") : t("No AI Overview seen yet.") })}
     </section>`;
   }
@@ -2126,7 +2126,7 @@
     "The other isn't in the results checked.": "L'autre est absent des résultats vérifiés.",
     "Pages known": "Pages connues",
     "Words per page": "Mots par page",
-    "New pages in 30 days": "Nouvelles pages en 30 jours",
+    "New pages in 30 days": "Nouvelles pages en 30 jours", "Added in 30 days": "Ajoutées en 30 j",
     "Their pages can't be read.": "Leurs pages ne peuvent pas être lues.",
     "AI Overview citations": "Citations dans les AI Overviews",
     "Of {n} AI Overview seen.": "Sur {n} AI Overview vu.",

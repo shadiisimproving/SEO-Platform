@@ -562,12 +562,36 @@ def _rival_above(conn, keyword_id: int, my_host: str, rivals: dict[str, int]) ->
     return above[-1]["url"] if above else None
 
 
-def _rival_words(path: str, days_before: int) -> list:
+def _rival_words(path: str, days_before: int, dated: bool = True) -> list:
+    """`dated`: the day is the page's own "modified" date. Otherwise it's the day the app saw the change, which can be days
+    after it was made on a page read rarely, so the line says "seen" (SEO review 2026-11-18, N8)."""
+    if not dated:
+        if days_before <= 0:
+            return ["Rival changed {path}, seen during the drop", {"path": path}]
+        if days_before == 1:
+            return ["Rival changed {path}, seen 1 day before", {"path": path}]
+        return ["Rival changed {path}, seen {n} days before", {"path": path, "n": days_before}]
     if days_before <= 0:
         return ["Rival changed {path} during the drop", {"path": path}]
     if days_before == 1:
         return ["Rival changed {path} 1 day before", {"path": path}]
     return ["Rival changed {path} {n} days before", {"path": path, "n": days_before}]
+
+
+def _change_day(event) -> tuple[date, bool]:
+    """The day a rival's change was made: the page's own modified date when it says one on or before the day the app saw
+    the change, else the day the app saw it. True when it's the page's own date."""
+    from seo.crawl import pagedates
+
+    seen = event["detected_at"].date()
+    extras = event.get("extras")
+    if isinstance(extras, str):
+        try:
+            extras = json.loads(extras)
+        except ValueError:
+            extras = None
+    own = pagedates.page_day((extras or {}).get("modified")) if isinstance(extras, dict) else None
+    return (own, True) if own is not None and own <= seen else (seen, False)
 
 
 def _add_rival_changes(engine: Engine, rows: list[dict]) -> None:
@@ -625,7 +649,7 @@ def _add_rival_changes(engine: Engine, rows: list[dict]) -> None:
         last = max(date.fromisoformat(_window(row)["to"]) for row, _, _ in wanted)
         hosts = sorted({h for _, _, c in wanted for url, _, _ in c for h in (_host_of(url), f"www.{_host_of(url)}")})
         events = conn.execute(text(
-            "SELECT e.id, e.detected_at, p.url FROM change_events e JOIN pages p ON p.id = e.page_id JOIN domains d ON d.id = e.domain_id "
+            "SELECT e.id, e.detected_at, p.url, p.extras FROM change_events e JOIN pages p ON p.id = e.page_id JOIN domains d ON d.id = e.domain_id "
             f"WHERE e.hidden = 0 AND e.kind NOT IN ({', '.join(repr(k) for k in RIVAL_KINDS_LEFT_OUT)}) AND d.host IN :hosts "
             "AND e.detected_at >= :a AND e.detected_at < :b ORDER BY e.detected_at, e.id"
         ).bindparams(bindparam("hosts", expanding=True)), {"hosts": hosts, "a": first, "b": last + timedelta(days=1)}).mappings().all()
@@ -638,7 +662,7 @@ def _add_rival_changes(engine: Engine, rows: list[dict]) -> None:
         best = None
         for url, competitor_id, pair_id in candidates:
             for event in by_page.get(_page_id(url), []):
-                day = event["detected_at"].date()
+                day, dated = _change_day(event)
                 if not (start - timedelta(days=RIVAL_LOOKBACK_DAYS) <= day <= end):
                     continue
                 before = max(0, (start - day).days)
@@ -646,10 +670,10 @@ def _add_rival_changes(engine: Engine, rows: list[dict]) -> None:
                 rank = (before if before else (day - start).days, 0 if before else 1)
                 if best is None or rank < best[0]:
                     best = (rank, {"event_id": event["id"], "host": hosts_of.get(competitor_id, _host_of(url)), "url": url, "path": _path(url), "day": day.isoformat(),
-                                   "days_before": before, "pair_id": pair_id, "competitor_id": competitor_id, "site_id": site_id})
+                                   "days_before": before, "pair_id": pair_id, "competitor_id": competitor_id, "site_id": site_id, "dated": dated})
         if best:
             row["rival"] = best[1]
-            row.setdefault("words", {})["rival"] = _rival_words(best[1]["path"], best[1]["days_before"])
+            row.setdefault("words", {})["rival"] = _rival_words(best[1]["path"], best[1]["days_before"], best[1]["dated"])
 
 
 def _host_of(url: str) -> str:

@@ -4,9 +4,10 @@ from __future__ import annotations
 import json
 from sqlalchemy import Engine, text
 
-from seo.competitors import change_facts, pairs, reading
+from seo.competitors import change_facts, insights, pairs, reading
 from seo.competitors.keywords import _iso, require_own
 from seo.competitors.suggest import domain_of, tracked_competitors
+from seo.crawl import noise
 from seo.serp import store
 
 MOVE_AT_LEAST = 2  # smaller moves are mostly noise
@@ -59,7 +60,7 @@ def edits_last_30_days(conn, kind: str = "competitor") -> dict[int, int]:
         # Pages edited, as the cards count them (SEO review 2026-11-17, W5): a new or removed page isn't an edit, and a
         # rewrite saving a title, a meta and a text change is one page edited.
         "SELECT s.id, COUNT(DISTINCT e.page_id) FROM sites s JOIN domains d ON d.host = s.host JOIN change_events e ON e.domain_id = d.id "
-        "WHERE s.kind = :kind AND e.hidden = 0 AND e.kind NOT IN ('new_page', 'page_gone') AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL 30 DAY GROUP BY s.id"
+        f"WHERE s.kind = :kind AND e.hidden = 0 AND e.kind NOT IN {noise.NOT_EDITS} AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL 30 DAY GROUP BY s.id"
     ), {"kind": kind}).all())
 
 
@@ -194,7 +195,8 @@ def profile(engine: Engine, site_id: int, competitor_id: int) -> dict:
             ).mappings().first()
             page_stats[name] = {
                 "pages": int(row["pages"] or 0), "average_words": round(float(row["words"])) if row["words"] else None,
-                "new_pages_30d": int(row["new_pages"] or 0), "last_changed": _iso(row["last_changed"]),
+                # The cards' and the Activity tab's rule (N1), so "New pages in 30 days" is the same number everywhere.
+                "new_pages_30d": insights.added_counts(conn, [value])[value], "last_changed": _iso(row["last_changed"]),
             }
     checks = store.latest_checks(engine, site_id)
     past_checks = store.history(engine, site_id)

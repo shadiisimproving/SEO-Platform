@@ -360,6 +360,8 @@
   const fr = {
     "Rival changed {path} {n} days before": "Un concurrent a changé {path} {n} jours avant", "Rival changed {path} 1 day before": "Un concurrent a changé {path} 1 jour avant",
     "Rival changed {path} during the drop": "Un concurrent a changé {path} pendant la baisse",
+    "Rival changed {path}, seen {n} days before": "Un concurrent a changé {path}, vu {n} jours avant", "Rival changed {path}, seen 1 day before": "Un concurrent a changé {path}, vu 1 jour avant",
+    "Rival changed {path}, seen during the drop": "Un concurrent a changé {path}, vu pendant la baisse",
     "Google connected. First numbers after the next run.": "Google connecté. Premiers chiffres après le prochain passage.",
     "Google stopped answering. See Settings.": "Google ne répond plus. Voir les réglages.",
     "Connected. Waiting for data": "Connecté. En attente de données", "stopped working": "ne fonctionne plus", "not used": "non utilisé", "not connected": "non connecté",

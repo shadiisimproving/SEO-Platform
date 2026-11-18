@@ -465,7 +465,7 @@ def own_day(extras: dict | None, sitemap_date=None, first_archived=None):
     """The day a page says it was published, else the earliest of its sitemap date and first Wayback copy."""
     published = pagedates.page_day((extras or {}).get("published"))
     if published:
-        return published
+        return min(published, date.today())  # a page dated next year is new today at the earliest, never older (N6)
     others = [d for d in (pagedates.page_day(sitemap_date), pagedates.page_day(first_archived)) if d]
     return min(others) if others else None
 
