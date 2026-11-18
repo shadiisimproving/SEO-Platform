@@ -399,8 +399,44 @@
     return `<section class="card"><div class="card-head"><h2>${t("Your sites")}</h2><span class="end"><button class="btn btn-small" data-lv-add-site>${icon("plus")}${t("Add a site")}</button></span></div>
       <div class="table-wrap" style="box-shadow:none"><table class="data"><thead><tr><th>${t("Site")}</th>${SOURCES.map(([, name]) => `<th>${esc(t(name))}</th>`).join("")}<th></th></tr></thead><tbody>
       ${window.SITES.map((s) => `<tr style="cursor:default"><td data-label="${t("Site")}"><span class="mono" dir="auto">${esc(s.host)}</span></td>${SOURCES.map(([id, name]) => `<td data-label="${esc(t(name))}">${sourceWord(s, id)}</td>`).join("")}<td data-label="" class="r" style="white-space:nowrap"><button class="btn btn-small" data-setup-panel="${esc(s.host)}">${t("Set up")}</button> <button class="btn btn-small" data-lv-site-collect="${s.realId}">${t("Refresh data")}</button></td></tr>`).join("")}
-      </tbody></table></div></section>`;
+      </tbody></table></div></section>${keyEventsCard()}`;
   };
+
+  // ---- Leads from Google Analytics: which key events are enquiries (SEO review 2026-11-17, W1, W2) -------------
+  // GA4 counts every key event of every kind; a site's leads are only the ones ticked here (seo/metrics/leads.py).
+  const gaSet = (s) => { const r = L.data?.site_sources.find((x) => x.site_id === s.realId && x.source === "ga4"); return Boolean(r && !r.not_used && r.connection_id && r.property); };
+  async function loadKeyEvents() {
+    L.keyEvents = L.keyEvents || {};
+    const sites = window.SITES.filter((s) => s.realId && gaSet(s) && !L.keyEvents[s.realId]);
+    if (!sites.length) return;
+    sites.forEach((s) => { L.keyEvents[s.realId] = { loading: true }; });
+    await Promise.all(sites.map(async (s) => {
+      try { L.keyEvents[s.realId] = await api("GET", `ga4/key-events?site_id=${s.realId}`); } catch (err) { L.keyEvents[s.realId] = { error: err.message }; }
+    }));
+    if (UI.state.route === "settings" && L.tab === "sites" && !UI.$("#panel")) UI.render();
+  }
+  function keyEventsCard() {
+    const sites = window.SITES.filter((s) => s.realId && gaSet(s));
+    if (!sites.length || !L.data) return "";
+    loadKeyEvents();
+    const day = (iso) => new Intl.DateTimeFormat(UI.locale(), { day: "numeric", month: "short" }).format(new Date(`${iso}T00:00:00`));
+    const block = (s) => {
+      const k = L.keyEvents?.[s.realId];
+      const head = `<h3 class="ke-host"><span class="mono" dir="auto">${esc(s.host)}</span>${k?.kind === "leads" ? ` <span class="status good">${t("Leads picked")}</span>` : k?.events ? ` <span class="status sec">${t("Counting every key event")}</span>` : ""}</h3>`;
+      if (!k || k.loading) return `<div class="ke-site">${head}${UI.skeleton("rows", { rows: 2 })}</div>`;
+      if (k.error) return `<div class="ke-site">${head}<p class="error">${esc(t(k.error))}</p></div>`;
+      const hosts = k.other_hosts?.length ? `<p class="note warn lv-note">${icon("triangle-alert")}<span>${esc(t("This Google Analytics property also records {hosts}: check its data streams. Those visits are left out.").replace("{hosts}", k.other_hosts.map((h) => h.host).join(", ")))}</span></p>` : "";
+      const reread = k.reread_days ? `<p class="small muted">${esc(t("Google Analytics history is being read again with key events by name: {n} days left.").replace("{n}", num(k.reread_days)))}</p>` : "";
+      const list = k.events.length
+        ? `<form class="ke-form" data-lv-key-events="${s.realId}"><fieldset class="ke-list"><legend class="sr">${esc(t("Counts as a lead"))}</legend>${k.events.map((e) => `<label class="ke-row"><input type="checkbox" name="f_event" value="${esc(e.name)}" ${e.lead ? "checked" : ""} ${isAdmin() ? "" : "disabled"}><span class="mono" dir="auto">${esc(e.name)}</span><span class="small muted">${e.last_day ? `${num(e.key_events)} ${t("in 12 months")} · ${t("last")} ${esc(day(e.last_day))}` : t("not sent any more")}</span></label>`).join("")}</fieldset>
+          <div class="ke-act"><button class="btn btn-small btn-main" type="submit" ${isAdmin() ? "" : UI.adminOnly?.() || "disabled"}>${t("Save")}</button><span class="small muted">${t("Ticked: counts as a lead. Past days change too.")}</span><span class="error" data-lv-rule-error hidden></span></div></form>`
+        : `<p class="small muted">${t("No key event read yet. They appear here once Google Analytics has been read again.")}</p>`;
+      return `<div class="ke-site">${head}${hosts}${list}${reread}</div>`;
+    };
+    return `<section class="card" style="margin-top:14px" id="lead-events"><div class="card-head"><h2>${t("Leads from Google Analytics")}</h2><span class="end small muted">${t("Tick the key events that are real enquiries")}</span></div>
+      <p class="help" style="padding:10px 18px 2px;margin:0">${t("Google Analytics counts every key event, such as a booking page view. Until you tick some, screens say Key events, not Leads.")}</p>
+      ${sites.map(block).join("")}</section>`;
+  }
 
   // ---- Team tab ---------------------------------------------------------------------------------
   // The menu's sections, in its order and groups (seo/accounts/access.py SECTIONS). Settings isn't one: it stays with admins.
@@ -570,6 +606,7 @@
       const take = () => { e.stopPropagation(); e.preventDefault(); };
       let el;
       if (hit("[data-lv-signout]")) { take(); window.signOut(); return; }
+      if ((el = hit("[data-settings-tab]"))) { L.tab = el.dataset.settingsTab; return; } // a screen's "Pick which are leads" link: the hash change opens Settings on that tab
       if (hit("[data-lv-sources-retry]")) { take(); L.failed = ""; UI.render(); firstLoad(); return; }
       if (hit("#ca-import")) { take(); sendArchive(false); return; }
       if (hit("#cr-import")) { take(); sendReports(false); return; }
@@ -697,6 +734,19 @@
         button.disabled = false;
         return;
       }
+      if (form.matches?.("[data-lv-key-events]")) {
+        e.preventDefault(); box.hidden = true;
+        const siteId = Number(form.dataset.lvKeyEvents), names = [...form.querySelectorAll('input[name="f_event"]:checked')].map((x) => x.value);
+        const button = form.querySelector('button[type="submit"]');
+        button.disabled = true;
+        try {
+          const answer = await api("PUT", "ga4/key-events", { site_id: siteId, names });
+          L.keyEvents[siteId] = { ...L.keyEvents[siteId], ...answer };
+          window.LV?.forget?.();
+          UI.render(); UI.toast(t(names.length ? "Saved: these key events are your leads" : "Saved: every key event is counted, as Key events"));
+        } catch (err) { box.textContent = t(err.message); box.hidden = false; button.disabled = false; }
+        return;
+      }
       if (form.matches?.("[data-lv-domain-form]")) {
         e.preventDefault(); box.hidden = true;
         try { L.domains = await api("POST", "important-domains", { domain: form.elements.f_domain.value }); UI.render(); UI.$("[data-lv-domain-form] input")?.focus(); } catch (err) { box.textContent = t(err.message); box.hidden = false; }
@@ -751,6 +801,13 @@
     "{host} isn't in this key's Search Console list yet. Share the property with it, then press Test again.": "{host} n'est pas encore dans la liste Search Console de cette clé. Partagez-lui la propriété, puis cliquez de nouveau sur Tester.",
     "{host}: pick its GA4 property, or Not used.": "{host} : choisissez sa propriété GA4, ou Non utilisé.",
     "Connection saved. {hosts}: no Search Console or GA4 property picked, so nothing is read there.": "Connexion enregistrée. {hosts} : aucune propriété Search Console ou GA4 choisie, donc rien n'y est lu.",
+    "Leads from Google Analytics": "Leads depuis Google Analytics", "Tick the key events that are real enquiries": "Cochez les événements clés qui sont de vraies demandes",
+    "Google Analytics counts every key event, such as a booking page view. Until you tick some, screens say Key events, not Leads.": "Google Analytics compte chaque événement clé, par exemple la vue d'une page de réservation. Tant que vous n'en cochez aucun, les écrans affichent Événements clés, pas Leads.",
+    "Counts as a lead": "Compte comme lead", "Leads picked": "Leads choisis", "Counting every key event": "Tous les événements clés comptés",
+    "in 12 months": "en 12 mois", "last": "dernier", "not sent any more": "plus envoyé", "Ticked: counts as a lead. Past days change too.": "Coché : compte comme lead. Les jours passés changent aussi.",
+    "No key event read yet. They appear here once Google Analytics has been read again.": "Aucun événement clé lu pour l'instant. Ils apparaissent ici une fois Google Analytics relu.",
+    "Saved: these key events are your leads": "Enregistré : ces événements clés sont vos leads", "Saved: every key event is counted, as Key events": "Enregistré : tous les événements clés sont comptés, comme Événements clés",
+    "Pick key events from the list.": "Choisissez des événements clés dans la liste.",
     "Pick it": "La choisir", "Connection saved. Fetch the first numbers now?": "Connexion enregistrée. Récupérer les premiers chiffres maintenant ?", "Fetch my first numbers": "Récupérer mes premiers chiffres",
     "Site not linked": "Site non relié", "Reading the latest data…": "Lecture des dernières données…",
     "No domain matches.": "Aucun domaine ne correspond.", "Search domains": "Chercher un domaine", "domains": "domaines",

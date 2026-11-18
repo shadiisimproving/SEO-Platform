@@ -274,7 +274,7 @@ def test_leads_rank_a_lead_page_first_and_find_clicks_without_leads(engine, site
     result = value.leads(ctx, drops)
     lead = _kinds(result, "lead_page")
     assert len(lead) == 1 and lead[0].page == HOME + "quote/" and lead[0].grp == "leads"
-    assert lead[0].evidence["lead_rate"] == {"rate": 10.0, "basis": "page"}
+    assert lead[0].evidence["lead_rate"] == {"rate": 10.0, "basis": "page", "kind": "key_events"}  # no lead event picked: key events
     assert drops[0].evidence["leads_at_stake"] == pytest.approx(drops[0].at_stake * 0.1, abs=0.01)
     assert lead[0].severity == "big"  # 168 clicks a month × 10% = 16.8 leads a month
     quiet = _kinds(result, "no_leads")

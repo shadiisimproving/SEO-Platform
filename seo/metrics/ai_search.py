@@ -22,7 +22,7 @@ from datetime import date, datetime, timedelta
 
 from sqlalchemy import bindparam, text
 
-from seo.collectors.ga4 import NOT_SET
+from seo.collectors.ga4 import LAYOUT, NO_CAMPAIGN, NOT_SET
 from seo.metrics import service as base
 from seo.serp.tools import NOT_CAPTURED, PRESENT
 
@@ -37,7 +37,10 @@ GA4_BEHIND_DAYS = 2
 CLARITY_LIVE_OLD_HOURS, CLARITY_LIVE_LOST_HOURS = 48, 72  # Clarity's API only gives the last 3 days
 DOWNLOAD_OLD_DAYS = 14
 SERP_OLD_DAYS = 30
-COPILOT_DOMAINS = {"copilot.microsoft.com", "copilot.cloud.microsoft", "bing.com"}  # where a click on a Copilot citation comes from
+# A click on a Copilot citation comes from Copilot; GA4 writes it copilot.microsoft.com, or copilot.com from a UTM tag.
+COPILOT_DOMAINS = {"copilot.microsoft.com", "copilot.cloud.microsoft", "copilot.com", "copilot"}
+# Bing search is shown apart: GA4 writes it "bing" (organic), and most of it is plain search, not Copilot (W5).
+BING_DOMAINS = {"bing", "bing.com", "cn.bing.com"}
 # A site that hasn't set a source up is a choice, not a problem: on All sites, one working site makes the source "ok".
 _WORST = ("failing", "old", "retrying", "reading", "waiting", "ok", "not_connected", "not_set_up", "not_used", "no_sites")
 _STOP = set(
@@ -80,7 +83,7 @@ def _iso(value) -> str | None:
 
 def _rate(leads: float, visits: int) -> dict:
     """A lead rate only from LEAD_RATE_MIN_VISITS visits, always with its counts."""
-    return {"value": base._ratio(leads, visits) if visits >= LEAD_RATE_MIN_VISITS else None, "visits": visits, "leads": round(leads, 2), "needs": LEAD_RATE_MIN_VISITS}
+    return {"value": base._ratio(min(leads, visits), visits) if visits >= LEAD_RATE_MIN_VISITS else None, "visits": visits, "leads": round(leads, 2), "needs": LEAD_RATE_MIN_VISITS}
 
 
 def _now(scope) -> datetime:
@@ -93,7 +96,7 @@ def _now(scope) -> datetime:
 
 def _ga4_site_rows(scope, start: date, end: date):
     return scope.fetch(
-        "SELECT site_id, day, channel, source, medium, SUM(sessions) sessions, SUM(key_events) leads FROM ga4_source_daily "
+        "SELECT site_id, day, channel, source, medium, SUM(sessions) sessions, SUM({leads}) leads, SUM({conv}) conv FROM ga4_source_daily "
         "WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY site_id, day, channel, source, medium",
         start, end,
     )
@@ -101,10 +104,15 @@ def _ga4_site_rows(scope, start: date, end: date):
 
 def _landing_rows(scope, start: date, end: date, wanted):
     """AI landing pages: the referral table, plus tagged visits it leaves out (utm_source=chatgpt.com has no medium, so it's
-    not a referral). A tagged referral with no campaign is in both tables, so it's taken from the referral side only."""
+    not a referral). A referral with no campaign is in both tables, so it's taken from the referral side only, on the days
+    read with the referral fix (coverage LAYOUT) or that have referral rows. On days read before it, the referral table is empty, so those come
+    from the campaign table (SEO review 2026-11-17, W3)."""
     found: dict[tuple[int, str], dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0})
+    fixed = {(row["site_id"], row["day"]) for row in scope.fetch(
+        f"SELECT site_id, day FROM coverage WHERE site_id IN :sites AND source = '{LAYOUT}' AND day BETWEEN :a AND :b "
+        "UNION SELECT DISTINCT site_id, day FROM ga4_referral_daily WHERE site_id IN :sites AND day BETWEEN :a AND :b", start, end)}
     for row in scope.fetch(
-        "SELECT site_id, day, MAX(domain) domain, MAX(path) path, SUM(sessions) sessions, SUM(key_events) leads FROM ga4_referral_daily "
+        "SELECT site_id, day, MAX(domain) domain, MAX(path) path, SUM(sessions) sessions, SUM({leads}) leads FROM ga4_referral_daily "
         "WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY site_id, day, row_hash", start, end,
     ):
         if wanted(row["domain"]):
@@ -112,12 +120,12 @@ def _landing_rows(scope, start: date, end: date, wanted):
             item["sessions"] += int(row["sessions"] or 0)
             item["leads"] += float(row["leads"] or 0)
     for row in scope.fetch(
-        "SELECT site_id, MAX(source) source, MAX(medium) medium, MAX(campaign) campaign, MAX(path) path, SUM(sessions) sessions, SUM(key_events) leads "
-        "FROM ga4_campaign_daily WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY site_id, row_hash", start, end,
+        "SELECT site_id, day, MAX(source) source, MAX(medium) medium, MAX(campaign) campaign, MAX(path) path, SUM(sessions) sessions, SUM({leads}) leads "
+        "FROM ga4_campaign_daily WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY site_id, day, row_hash", start, end,
     ):
         if not wanted(row["source"]):
             continue
-        if (row["medium"] or "").lower() == "referral" and (row["campaign"] or "") in NOT_SET:
+        if (row["medium"] or "").lower() == "referral" and (row["campaign"] or "") in NO_CAMPAIGN and (row["site_id"], row["day"]) in fixed:
             continue
         item = found[(row["site_id"], base._path(row["path"]))]
         item["sessions"] += int(row["sessions"] or 0)
@@ -205,7 +213,7 @@ def _copilot(scope, today: date, hosts: dict[int, str]) -> dict:
         pages: dict[str, dict] = {}
         for page in data.get("pages") or []:  # /a and https://site/a/?x=1 are one page
             path = base._path(page["url"])
-            held = pages.setdefault(path, {"url": page["url"], "path": path, "citations": 0, "visits": None if visits is None else visits.get(path, 0)})
+            held = pages.setdefault(path, {"url": page["url"], "path": path, "citations": 0, "visits": None if visits is None else visits["copilot"].get(path, 0), "bing_visits": None if visits is None else visits["bing"].get(path, 0)})
             held["citations"] += page.get("citations") or 0
         queries = None
         if "queries" in data:
@@ -220,7 +228,8 @@ def _copilot(scope, today: date, hosts: dict[int, str]) -> dict:
         sites.append({
             "site_id": site_id, "host": host, "period_start": start.isoformat(), "period_end": end.isoformat(), "uploaded_at": _iso(latest["uploaded_at"]),
             "citations": data.get("citations"), "share": data.get("share_of_authority"), "ai_referral_sessions": data.get("ai_referral_sessions"),
-            "copilot_visits": None if visits is None else sum(visits.values()),
+            "copilot_visits": None if visits is None else sum(visits["copilot"].values()),
+            "bing_visits": None if visits is None else sum(visits["bing"].values()),
             "before": {"citations": earlier["data"].get("citations"), "share": earlier["data"].get("share_of_authority"), "period_start": earlier["period_start"].isoformat(), "period_end": earlier["period_end"].isoformat()} if earlier else None,
             "no_before": no_before,
             "pages": sorted(pages.values(), key=lambda p: (-p["citations"], p["path"])), "queries": queries,
@@ -248,8 +257,10 @@ def _copilot_before(earlier: list[dict], start: date, end: date) -> tuple[dict |
     return None, "overlap" if earlier[0]["period_end"] >= start else "length"  # said about the newest earlier file
 
 
-def _copilot_visits(scope, site_id: int, start: date, end: date) -> dict[str, int] | None:
-    """GA4 visits from Copilot and Bing per page, on the download's own days. None when GA4 has none of those days."""
+def _copilot_visits(scope, site_id: int, start: date, end: date) -> dict[str, dict[str, int]] | None:
+    """GA4 visits per page on the download's own days, from Copilot and, apart, from Bing search: {copilot: {path: n},
+    bing: {path: n}}. Bing's organic visits come from the campaign table (GA4 fills their manual source too). None when GA4 has
+    none of those days."""
     with scope.engine.connect() as conn:
         has_days = conn.execute(text("SELECT 1 FROM ga4_source_daily WHERE site_id = :s AND day BETWEEN :a AND :b LIMIT 1"), {"s": site_id, "a": start, "b": end}).first()
     if not has_days:
@@ -257,7 +268,8 @@ def _copilot_visits(scope, site_id: int, start: date, end: date) -> dict[str, in
     one = base.Scope.__new__(base.Scope)  # the same fetch, for one site and the download's days
     one.engine, one.site_ids, one.start, one.end = scope.engine, [site_id], start, end
     found = _landing_rows(one, start, end, lambda d: base._is_ai(_domain(d), COPILOT_DOMAINS))
-    return {path: item["sessions"] for (_, path), item in found.items()}
+    bing = _landing_rows(one, start, end, lambda d: base._is_ai(_domain(d), BING_DOMAINS))  # organic rows are in the campaign table
+    return {"copilot": {path: item["sessions"] for (_, path), item in found.items()}, "bing": {path: item["sessions"] for (_, path), item in bing.items()}}
 
 
 # ---- Clarity live: its own weeks, and a second opinion ---------------------------------------------------------
@@ -443,7 +455,7 @@ def next_actions(pages: list[dict], leads_set_up: bool, copilot: dict, aio: dict
             if q["share"] is not None and q["share"] < FAQ_SHARE_BELOW:
                 kinds["faq"].append({"kind": "faq", "host": site["host"], "query": q["query"], "share": q["share"], "citations": q["citations"], "page": q["page"], "key": f"ai|faq|{site['host']}|{q['query'].lower()}"})
         for p in site["pages"]:
-            if p["citations"] >= CLICK_MIN_CITATIONS and p["visits"] == 0:
+            if p["citations"] >= CLICK_MIN_CITATIONS and p["visits"] == 0 and not p.get("bing_visits"):
                 kinds["click"].append({"kind": "click", "host": site["host"], "path": p["path"], "url": p["url"], "citations": p["citations"], "key": f"ai|click|{site['host']}|{p['path']}"})
     for row in aio["rivals_only"]:
         kinds["compare"].append({"kind": "compare", "host": row["host"], "site_id": row["site_id"], "keyword": row["keyword"], "keyword_id": row.get("keyword_id"), "rivals": row["rivals"], "key": f"ai|aio|{row['host']}|{row['keyword'].lower()}"})
@@ -511,7 +523,7 @@ def build(scope) -> dict:
         before_leads = round(sum(float(r["leads"] or 0) for r in past), 2)
     sessions = sum(item["sessions"] for item in per_source.values())
     leads = round(sum(item["leads"] for item in per_source.values()), 2)
-    leads_set_up = bool(scope.fetch("SELECT 1 x FROM ga4_source_daily WHERE site_id IN :sites AND key_events > 0 LIMIT 1"))
+    leads_set_up = bool(scope.fetch("SELECT 1 x FROM ga4_source_daily WHERE site_id IN :sites AND {leads} > 0 LIMIT 1"))
 
     landing = _landing_rows(scope, scope.start, scope.end, lambda d: base._is_ai(_domain(d), domains))
     pages = sorted(
@@ -534,7 +546,7 @@ def build(scope) -> dict:
         "default_domains": sorted(base.DEFAULT_AI_DOMAINS),
         "sessions": sessions, "leads": leads, "share": base._ratio(sessions, everything), "before": before, "before_leads": before_leads,
         "change": base._pct_change(sessions, before) if before else None,
-        "key_events_set_up": leads_set_up,
+        "key_events_set_up": leads_set_up, "lead_kind": scope.lead_kind,
         "rate": _rate(leads, sessions), "organic": _rate(organic["leads"], organic["sessions"]),
         "sources": [
             {"source": name, "sessions": item["sessions"], "leads": round(item["leads"], 2), "rate": _rate(item["leads"], item["sessions"])["value"]}

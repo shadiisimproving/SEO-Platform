@@ -301,7 +301,7 @@
     "Clarity keeps only 3 days of data.": "Clarity ne garde que 3 jours de données.",
     "{path}: −{percent}% Google clicks": "{path} : −{percent} % de clics Google", "Week on week: {was} → {now}": "Semaine sur semaine : {was} → {now}",
     "~{n} clicks/month at stake": "~{n} clics/mois en jeu", "See leads": "Voir les leads",
-    "Leads fell {percent}%: {was} → {now}": "Les leads ont baissé de {percent} % : {was} → {now}", "Last 28 days vs the 28 before": "28 derniers jours vs les 28 précédents",
+    "Leads fell {percent}%: {was} → {now}": "Les leads ont baissé de {percent} % : {was} → {now}", "Key events fell {percent}%: {was} → {now}": "Les événements clés ont baissé de {percent} % : {was} → {now}", "Last 28 days vs the 28 before": "28 derniers jours vs les 28 précédents",
     "Likely cause: lost places, avg pos {a} → {b}": "Cause probable : places perdues, pos. moy. {a} → {b}",
     "Likely cause: fewer searches, {a} → {b} impressions": "Cause probable : moins de recherches, {a} → {b} impressions",
     "Likely cause: lower click rate at the same place": "Cause probable : taux de clic plus bas à la même place",

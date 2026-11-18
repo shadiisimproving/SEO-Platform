@@ -175,3 +175,15 @@ html[data-simple="1"] #panel .lv-rule { padding: 8px 0; }
 .ax-pw .error { margin: 0 0 10px; }
 .ax-account-foot { padding: 12px 18px 16px; border-top: 1px solid var(--line); margin-top: 14px; }
 @media (max-width: 640px) { .ax-facts { grid-template-columns: 1fr; gap: 2px; } .ax-facts dd { margin-bottom: 8px; } }
+
+/* Settings → Sites: which Google Analytics key events are leads (SEO review 2026-11-17, W1) */
+.ke-site { padding: 12px 18px 14px; border-top: 1px solid var(--line); }
+.ke-site:first-of-type { border-top: 0; }
+.ke-host { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 0 8px; font-size: 14px; }
+.ke-list { display: grid; gap: 2px; margin: 0; padding: 0; border: 0; }
+.ke-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 40px; padding: 4px 6px; border-radius: 8px; cursor: pointer; }
+.ke-row:hover { background: var(--hover, rgba(0,0,0,.03)); }
+.ke-row input { width: 18px; height: 18px; margin: 0; }
+.ke-row .mono { overflow-wrap: anywhere; }
+.ke-act { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 10px; }
+@media (max-width: 640px) { .ke-row { grid-template-columns: auto minmax(0, 1fr); } .ke-row .small { grid-column: 2; } }

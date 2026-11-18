@@ -38,7 +38,8 @@
                                  that unit) when there's no `before`, as Today's server gives it. lowerIsBetter: down is better.
      sub     "of 10 · Google"    HTML for the sub line instead of "before → now": one short fact, the reason a number is
                                  unknown, or one .link-btn. A link, button or switch card holds no other control: text only there.
-     spark   { now: [...], before: [...], days: ["2026-10-12", ...], invert }   or just [...] (this period only)
+     spark   { now: [...], before: [...], days: ["2026-10-12", ...], invert, marks, marksBefore }   or just [...] (this period only)
+             marks / marksBefore: [true, false, ...] per day: a dot on that day of the line (an unusual day)
                                  the card's own graph: this period in the card's colour, the period before dashed grey, on one
                                  scale. null in a list leaves a gap. invert: lower is better (position). Under 2 points: no
                                  graph. Hover, a tap or the arrow keys read one day in the sub line ("12 Oct · 325 · before
@@ -399,10 +400,13 @@
       const heights = (list) => Array.from({ length: n }, (_, i) => (list[i] === null || list[i] === undefined ? null : Math.round((y(list[i]) / H) * 1000) / 10));
       const words = `${plain(name)}: ${t(hasWas ? "Graph of this period, with the period before dashed. The arrow keys read each day." : "Graph of this period. The arrow keys read each day.")}`;
       const focus = own ? `tabindex="0" role="img" aria-label="${esc(words)}"` : 'aria-hidden="true"';
+      // marks / marksBefore: true on the days to flag (an unusual day, W11), drawn as dots on the line they belong to.
+      const dots = (flags, list, cls) => (Array.isArray(flags) ? flags : []).map((on, i) => (on && list[i] !== null && list[i] !== undefined ? `<i class="ncard-mark ${cls}" style="left:${x(i).toFixed(2)}%;top:${((y(list[i]) / H) * 100).toFixed(1)}%"></i>` : "")).join("");
+      const marked = dots(s.marks, now, "now") + (hasWas ? dots(s.marksBefore, was, "was") : "");
       const ends = tall && days.length ? `<span class="ncard-days" aria-hidden="true"><span>${esc(dayWords(days[0]))}</span><span>${esc(dayWords(days[Math.min(n, days.length) - 1]))}</span></span>` : "";
       return `<span class="ncard-graph" ${focus} data-read="${esc(JSON.stringify(read))}" data-ny="${esc(JSON.stringify(heights(now)))}"${hasWas ? ` data-wy="${esc(JSON.stringify(heights(was)))}"` : ""}>`
         + `<span class="ncard-plot"><svg class="ncard-spark" viewBox="0 0 100 ${H}" preserveAspectRatio="none" aria-hidden="true">${area ? `<path class="area" d="${area}"/>` : ""}${hasWas ? `<path class="was" d="${lines(was)}"/>` : ""}<path class="now" d="${lines(now)}"/></svg>`
-        + `<i class="ncard-cursor"></i><i class="ncard-pt was" hidden></i><i class="ncard-pt now" hidden></i></span>${ends}</span>`;
+        + `${marked}<i class="ncard-cursor"></i><i class="ncard-pt was" hidden></i><i class="ncard-pt now" hidden></i></span>${ends}</span>`;
     }
 
     let cardSeq = 0;

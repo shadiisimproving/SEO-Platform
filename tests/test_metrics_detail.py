@@ -351,7 +351,7 @@ def test_today_folds_the_setup_facts_and_the_backlinks_numbers(engine, site, oth
 
 def test_content_folds_clarity_speed_and_the_clarity_downloads_as_their_own_routes_answer(engine, site):
     with engine.begin() as conn:
-        conn.execute(text("INSERT INTO clarity_daily (site_id, day, sessions, scroll_depth, rage_clicks, dead_clicks) VALUES (:s, :d, 40, 55.5, 2, 3)"), {"s": site, "d": D1})
+        conn.execute(text("INSERT INTO clarity_daily (site_id, day, sessions, scroll_depth, rage_clicks, dead_clicks) VALUES (:s, :d, 40, 55.5, 2, 3)"), {"s": site, "d": D2})  # read on D2: covers D1
         conn.execute(text("INSERT INTO cwv_runs (site_id, url, strategy, performance, lcp_ms, inp_ms, cls) VALUES (:s, 'https://mine.example/', 'mobile', 91, 1800, 120, 0.02)"), {"s": site})
     client, query = _client(engine), f"from={D1}&to={D2}&site_id={site}"
     folded = client.get(f"/api/metrics/content?{query}&include=clarity,speed,clarity_reports").get_json()

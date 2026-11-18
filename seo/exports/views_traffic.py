@@ -40,6 +40,36 @@ def _day(value) -> str:
     return text[:10]  # the PDF writes it in words (pdf_out.day_label)
 
 
+KEY_EVENT_WORDS = {"Leads": "Key events", "Lead rate": "Key event rate", "Leads by channel": "Key events by channel", "Leads change": "Key events change"}
+
+
+def _lead_words(report: Report, data: dict, kind: str | None = None) -> None:
+    """A site that hasn't picked its lead events counts every GA4 key event: the file says "Key events", as the screen
+    does, and says when GA4 changed how it counts them or when the visits change leaves out unusual days."""
+    kind = kind or data.get("lead_kind")
+    if kind == "key_events":
+        for tile in report.tiles:
+            tile.label = KEY_EVENT_WORDS.get(tile.label, tile.label)
+        for table in report.tables:
+            for column in table.columns:
+                column.label = KEY_EVENT_WORDS.get(column.label, column.label)
+        for chart in report.charts:
+            chart.title = KEY_EVENT_WORDS.get(chart.title, chart.title)
+            for series in chart.series:
+                series.name = KEY_EVENT_WORDS.get(series.name, series.name)
+        report.notes.append("Key events: every Google Analytics key event. Pick which ones are leads in Settings → Google Analytics.")
+    changes = (data.get("lead_check") or {}).get("changes") or data.get("lead_changes") or []
+    for c in changes:
+        report.notes.append(f"Google Analytics changed how it counts key events on {c['day']} ({c.get('host') or ''}): the change in leads is left out.")
+    if data.get("little_before"):
+        report.notes.append("Too little Google Analytics data in the period before to compare visits.")
+    unusual = data.get("unusual")
+    for run in (unusual or {}).get("runs", []) + (unusual or {}).get("runs_before", []):
+        report.notes.append(f"Unusual days {run['from']} – {run['to']} ({run['host']}): {run['visits']} visits, about {run['usual']} a day usually.")
+    if unusual and unusual.get("change") is not None:
+        report.notes.append(f"Visits change without the unusual days: {unusual['change']:+.1f}%.")
+
+
 def _hidden(report: Report, data: dict) -> None:
     if data.get("hid_rows"):
         report.notes.append("Google Analytics left out some small rows, so totals can exceed the rows' sum.")
@@ -66,6 +96,7 @@ def channels(engine, args) -> Report:
         C("change", "Change", "change"), C("leads", "Leads", "float"), C("rate", "Lead rate", "pct"),
     ], data.get("channels") or [], key="channel"))
     report.tables.append(Table("referrers", "Referring sites", [C("domain", "Site", "text"), C("sessions", "Visits", "int"), C("leads", "Leads", "float")], data.get("referrers") or [], empty="No visits from other sites in this period.", key="domain"))
+    _lead_words(report, data)
     _hidden(report, data)
     return report
 
@@ -84,6 +115,7 @@ def conversions(engine, args) -> Report:
     report.tables.append(Table("channels", "By channel", [C("channel", "Channel", "text", translate=True), C("sessions", "Visits", "int"), C("leads", "Leads", "float"), C("rate", "Lead rate", "pct")], funnel))
     report.tables.append(Table("page_types", "By kind of page", [C("type", "Kind of page", "text", translate=True), C("pages", "Pages", "int"), C("sessions", "Visits", "int"), C("leads", "Leads", "float"), C("rate", "Lead rate", "pct")], data.get("page_types") or [], key="type"))
     report.tables.append(Table("pages", "Landing pages", [C("page", "Page", "url", get=page_address), C("sessions", "Visits", "int"), C("leads", "Leads", "float"), C("rate", "Lead rate", "pct")], data.get("pages") or [], key=lambda r: f"{r.get('host') or ''}|{r.get('path') or ''}"))
+    _lead_words(report, data)
     _hidden(report, data)
     return report
 
@@ -106,6 +138,7 @@ def content(engine, args) -> Report:
     ], pages, total=data.get("total_pages"), key=lambda r: f"{r.get('host') or ''}|{r.get('path') or ''}"))
     _google_days(report, scope, data)
     report.tables.append(Table("social", "Social networks", [C("source", "Network", "text"), C("sessions", "Visits", "int")], data.get("social") or [], empty="No visits from social networks in this period."))
+    _lead_words(report, data)
     _hidden(report, data)
     return report
 
@@ -127,6 +160,7 @@ def ai_search(engine, args) -> Report:
         report.charts.append(Chart("AI visits", [_day(p.get("day")) for p in series], [Series("Visits", [p.get("sessions") for p in series])]))
     report.tables.append(Table("sources", "Assistants", [C("source", "Assistant", "text"), C("sessions", "Visits", "int"), C("leads", "Leads", "float")], data.get("sources") or [], empty="No AI visits in this period.", key="source"))
     report.tables.append(Table("pages", "Landing pages", [C("page", "Page", "url", get=page_address), C("sessions", "Visits", "int"), C("leads", "Leads", "float")], data.get("pages") or [], empty="No AI visits in this period.", key=lambda r: f"{r.get('host') or ''}|{r.get('path') or ''}"))
+    _lead_words(report, data)
     _hidden(report, data)
     return report
 
@@ -211,6 +245,8 @@ def today(engine, args) -> Report:
     report.tables.append(Table("rival_changes", "Competitor changes", [
         C("host", "Competitor", "text"), C("url", "Their page", "url"), C("kind", "What changed", "text", translate=True, get=lambda r: CHANGE_KINDS.get(r.get("kind"), str(r.get("kind") or "").replace("_", " ").capitalize())), C("when", "When", "datetime"),
     ], data.get("rival_changes") or [], empty="No competitor changed a watched page."))
+    leads, visits = results.get("leads") or {}, results.get("visits") or {}
+    _lead_words(report, {"lead_changes": leads.get("changes"), "unusual": visits.get("unusual"), "little_before": visits.get("note") == "little_before"}, leads.get("kind"))
     return report
 
 

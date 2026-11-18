@@ -8,13 +8,13 @@
   stops saying "not in the top 20/30" and they compare with the newer Top 10 checks. Their results are not touched.
 
 Revision ID: f2a4c6e8b0d1
-Revises: e4f6a8b0c2d5
+Revises: f7a9b1c3d5e7
 """
 import sqlalchemy as sa
 from alembic import op
 
 revision = "f2a4c6e8b0d1"
-down_revision = "e4f6a8b0c2d5"
+down_revision = "f7a9b1c3d5e7"
 branch_labels = None
 depends_on = None
 

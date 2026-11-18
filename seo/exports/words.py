@@ -52,6 +52,9 @@ FR: dict[str, str] = {
     # Today
     "Today": "Aujourd'hui", "To do": "À faire", "What": "Quoi", "Detail": "Détail", "Nothing to do today.": "Rien à faire aujourd'hui.", "Sites": "Sites", "Visits change": "Évolution des visites",
     "Last two AI Overview checks": "Deux derniers relevés de l'AI Overview",  # an AI Overview row's detail (seo/metrics/today.py)
+    "Key events": "Événements clés", "Key event rate": "Taux d'événements clés", "Key events by channel": "Événements clés par canal", "Key events change": "Évolution des événements clés",
+    "Key events: every Google Analytics key event. Pick which ones are leads in Settings → Google Analytics.": "Événements clés : tous les événements clés de Google Analytics. Choisissez ceux qui sont des demandes dans Réglages → Google Analytics.",
+    "Too little Google Analytics data in the period before to compare visits.": "Trop peu de données Google Analytics sur la période précédente pour comparer les visites.",
     "Leads change": "Évolution des demandes", "Alerts": "Alertes", "Pages going up": "Pages en hausse", "Pages going down": "Pages en baisse", "Page or keyword": "Page ou mot-clé",
     "Measured in": "Mesuré en", "Now": "Maintenant", "Places gained": "Places gagnées", "No page is clearly going up.": "Aucune page n'est nettement en hausse.",
     "No page is clearly going down.": "Aucune page n'est nettement en baisse.", "Competitor changes": "Changements chez les concurrents", "Competitor": "Concurrent", "Their page": "Leur page",

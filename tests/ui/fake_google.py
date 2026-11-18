@@ -80,24 +80,43 @@ def _gsc(request: httpx.Request) -> httpx.Response:
 
 
 def _ga4(request: httpx.Request) -> httpx.Response:
+    """Visit groups for the day (tests/ga4_fake.py answers any report from them). Key events by name: generate_lead is an
+    enquiry, page_view_booking fires on every booking page view. Visits are on host "(not set)", which counts as the
+    site's own. Property 444555666 also records other-site.example's visits, as a property with a second data stream
+    would, so Settings and Today show the warning."""
+    from tests import ga4_fake
+
     body = json.loads(request.content)
     if not body.get("dimensions"):  # Test's small check that the Data API is on
         return httpx.Response(200, json={"rows": [{"metricValues": [{"value": "42"}]}], "rowCount": 1})
-    names = [d["name"] for d in body["dimensions"]]
     day = body["dateRanges"][0]["startDate"]
-    w = lambda base, salt=0: str(_wave(day, base, salt))  # noqa: E731
-    if names[0] == "sessionDefaultChannelGroup":
-        table = [["Organic Search", "google", "organic", w(140), w(120), w(5, 1)], ["Direct", "(direct)", "(none)", w(60, 2), w(50, 2), w(3, 2)], ["Referral", "blog-expat.test", "referral", w(22, 3), w(20, 3), w(2, 3)], ["Referral", "chatgpt.com", "referral", w(12, 4), w(11, 4), w(1, 4)], ["Organic Social", "facebook.com", "social", w(18, 5), w(16, 5), "0"], ["Paid Search", "google", "cpc", w(30, 6), w(28, 6), w(2, 6)], ["Email", "newsletter", "email", w(8, 7), w(8, 7), "0"]]
-    elif names[0] == "landingPage":
-        table = [["/visa/", w(90), w(80), w(4, 1)], ["/creer-societe/", w(60, 2), w(50, 2), w(5, 2)], ["/", w(40, 3), w(35, 3), "0"], ["/blog/zone-franche-seville/", w(25, 4), w(22, 4), w(1, 4)], ["/contact/", w(10, 5), w(10, 5), w(3, 5)]]
-    elif names[0] == "sessionSource":
-        table = [["blog-expat.test", "referral", "/visa/", "(not set)", w(12, 1), w(1, 1)], ["blog-expat.test", "referral", "/visa/", "bl-1", w(3, 2), "0"], ["chatgpt.com", "referral", "/creer-societe/", "(not set)", w(12, 3), w(1, 3)], ["google", "organic", "/visa/", "(not set)", w(90, 4), w(3, 4)]]
-    elif names[0] == "sessionManualSource":
-        table = [["blog-expat", "backlink", "bl-1", "/visa/", w(4, 1), w(1, 1)], ["(not set)", "(not set)", "(not set)", "/visa/", w(90, 2), w(3, 2)]]
-    else:
-        table = [["Brand FR", w(14, 1), w(30, 1), w(14, 1), w(1, 1)], ["Visa UAE", w(9, 2), w(22, 2), w(9, 2), w(1, 2)]]
-    cut = len(names)
-    return httpx.Response(200, json={"rows": [{"dimensionValues": [{"value": v} for v in row[:cut]], "metricValues": [{"value": v} for v in row[cut:]]} for row in table], "rowCount": len(table), "metadata": {"currencyCode": "EUR", "subjectToThresholding": date.fromisoformat(day).toordinal() % 11 == 0}})
+    w = lambda base, salt=0: _wave(day, base, salt)  # noqa: E731
+    prop = str(request.url).split("properties/")[1].split(":")[0]
+    host = "(not set)"
+
+    def g(channel, source, medium, page, sessions, events=None, manual=None, campaign=None, on=None):
+        manual_source, manual_medium = manual or (source, medium)
+        default = {"organic": "(organic)", "referral": "(referral)", "(none)": "(direct)"}.get(medium, "(not set)")
+        return {"channel": channel, "source": source, "medium": medium, "manual_source": manual_source, "manual_medium": manual_medium,
+                "campaign": campaign or default, "page": page, "host": on or host, "sessions": sessions, "users": max(0, sessions - 2), "events": events or {}}
+
+    groups = [
+        g("Organic Search", "google", "organic", "/visa/", w(90), {"generate_lead": (w(3, 1), w(3, 1)), "page_view_booking": (w(6, 1), w(5, 1))}),
+        g("Organic Search", "google", "organic", "/creer-societe/", w(50, 2), {"generate_lead": (w(2, 2), w(2, 2))}),
+        g("Direct", "(direct)", "(none)", "/", w(40, 3), {"page_view_booking": (w(4, 3), w(3, 3))}),
+        g("Direct", "(direct)", "(none)", "/contact/", w(20, 9), {"generate_lead": (w(2, 5), w(2, 5))}),
+        g("Referral", "blog-expat.test", "referral", "/visa/", w(12, 1), {"generate_lead": (w(1, 1), w(1, 1))}),
+        g("Referral", "blog-expat.test", "referral", "/visa/", w(3, 2), manual=("blog-expat", "backlink"), campaign="bl-1"),
+        g("Referral", "chatgpt.com", "referral", "/creer-societe/", w(12, 3), {"generate_lead": (w(1, 3), w(1, 3))}),
+        g("Organic Social", "facebook.com", "social", "/blog/zone-franche-seville/", w(18, 5)),
+        g("Paid Search", "google", "cpc", "/visa/", w(30, 6), {"page_view_booking": (w(2, 6), w(2, 6))}),
+        g("Email", "newsletter", "email", "/", w(8, 7)),
+        g("Organic Search", "bing", "organic", "/visa/", w(9, 8)),
+    ]
+    if prop == "444555666":
+        groups.append(g("Direct", "(direct)", "(none)", "/rdv/", w(60, 4), on="other-site.example"))
+    ads = [["Brand FR", str(w(14, 1)), str(w(30, 1)), str(w(14, 1)), str(w(1, 1))], ["Visa UAE", str(w(9, 2)), str(w(22, 2)), str(w(9, 2)), str(w(1, 2))]]
+    return ga4_fake.answer(request, groups, ads=ads, thresholded=date.fromisoformat(day).toordinal() % 11 == 0)
 
 
 def _inspect(request: httpx.Request) -> httpx.Response:

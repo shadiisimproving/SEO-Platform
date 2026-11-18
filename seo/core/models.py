@@ -1086,6 +1086,7 @@ class Ga4SourceDaily(Base):
     sessions: Mapped[int] = mapped_column(Integer, server_default="0")
     users: Mapped[int] = mapped_column(Integer, server_default="0")
     key_events: Mapped[float] = mapped_column(Float, server_default="0")
+    leads: Mapped[float] = mapped_column(Float, server_default="0")  # visits with a key event ticked as a lead (seo/metrics/leads.py)
 
 
 class Ga4PageDaily(Base):
@@ -1099,6 +1100,7 @@ class Ga4PageDaily(Base):
     sessions: Mapped[int] = mapped_column(Integer, server_default="0")
     users: Mapped[int] = mapped_column(Integer, server_default="0")
     key_events: Mapped[float] = mapped_column(Float, server_default="0")
+    leads: Mapped[float] = mapped_column(Float, server_default="0")  # visits with a key event ticked as a lead (seo/metrics/leads.py)
 
 
 class Ga4ReferralDaily(Base):
@@ -1114,6 +1116,7 @@ class Ga4ReferralDaily(Base):
     path: Mapped[str] = mapped_column(Text)
     sessions: Mapped[int] = mapped_column(Integer, server_default="0")
     key_events: Mapped[float] = mapped_column(Float, server_default="0")
+    leads: Mapped[float] = mapped_column(Float, server_default="0")  # visits with a key event ticked as a lead (seo/metrics/leads.py)
 
 
 class Ga4CampaignDaily(Base):
@@ -1129,6 +1132,36 @@ class Ga4CampaignDaily(Base):
     path: Mapped[str] = mapped_column(Text)
     sessions: Mapped[int] = mapped_column(Integer, server_default="0")
     key_events: Mapped[float] = mapped_column(Float, server_default="0")
+    leads: Mapped[float] = mapped_column(Float, server_default="0")  # visits with a key event ticked as a lead (seo/metrics/leads.py)
+
+
+class Ga4KeyEventDaily(Base):
+    """Each key event by its name, for one row of the source, page, referral or campaign table (report + row_hash)."""
+
+    __tablename__ = "ga4_key_event_daily"
+    __table_args__ = (Index("ix_ga4_key_event_name", "site_id", "event_hash", "day"),)
+
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    report: Mapped[str] = mapped_column(String(10, collation="ascii_bin"), primary_key=True)  # source, page, referral, campaign
+    row_hash: Mapped[str] = mapped_column(String(32, collation="ascii_bin"), primary_key=True)
+    event_hash: Mapped[str] = mapped_column(String(32, collation="ascii_bin"), primary_key=True)
+    event_name: Mapped[str] = mapped_column(String(120))
+    key_events: Mapped[float] = mapped_column(Float, server_default="0")
+    sessions: Mapped[int] = mapped_column(Integer, server_default="0")  # sessions the event happened in
+
+
+class Ga4HostDaily(Base):
+    """Every host a property recorded visits on. Rows on another site's host stay out of the other GA4 tables."""
+
+    __tablename__ = "ga4_host_daily"
+
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    host_hash: Mapped[str] = mapped_column(String(32, collation="ascii_bin"), primary_key=True)
+    host: Mapped[str] = mapped_column(String(190))
+    own: Mapped[bool] = mapped_column(Boolean, server_default=text("1"))
+    sessions: Mapped[int] = mapped_column(Integer, server_default="0")
 
 
 class Ga4AdsDaily(Base):

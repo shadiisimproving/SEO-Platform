@@ -469,8 +469,8 @@
       <p class="small muted" style="margin:0 0 12px">${throughNote(d.through, "", d)}</p>${hiddenNote(d.hid_rows)}
       <section class="tiles">
         ${UI.tile(t("Visits"), UI.cnt(d.total.sessions), change(d.total.sessions, d.before?.sessions), { ic: "activity" })}
-        ${UI.tile(t("Leads"), num(d.total.leads), change(d.total.leads, d.before?.leads), { ic: "filter" })}
-        ${UI.tile(t("Lead rate"), pct(d.total.sessions ? d.total.leads / d.total.sessions : null), "", { ic: "percent" })}
+        ${UI.tile(t(W("Leads", d)), num(d.total.leads), change(d.total.leads, d.before?.leads), { ic: "filter" })}
+        ${UI.tile(t(W("Lead rate", d)), pct(ratePct(d.total) === null ? null : ratePct(d.total) / 100), "", { ic: "percent" })}
         ${UI.tile(t("Channels"), UI.cnt(d.channels.length), "", { ic: "layers" })}
       </section>
       <section class="card"><div class="card-head"><h2>${t("Visits by channel")}</h2></div>${lineChart("channels", days, series)}</section>
@@ -478,14 +478,14 @@
         { key: "channel", label: "Channel", html: (r) => swatch(r.channel) },
         { key: "sessions", label: "Visits", num: true },
         { key: "share", label: "Share", num: true, get: (r) => r.share, html: (r) => pct(r.share) },
-        { key: "leads", label: "Leads", num: true },
-        { key: "rate", label: "Lead rate", num: true, get: (r) => r.rate, html: rateCell },
+        { key: "leads", label: W("Leads", d), num: true },
+        { key: "rate", label: W("Lead rate", d), num: true, get: (r) => r.rate, html: rateCell },
         { key: "change", label: "Change", num: true, html: (r) => (r.change === null ? `<span class="muted">—</span>` : `<span class="${r.change >= 0 ? "good" : "crit"} d-pill">${r.change >= 0 ? "+" : "−"}${num(Math.abs(r.change))}%</span>`) },
       ], d.channels)}</section>
       <section class="card" style="margin-top:14px"><div class="card-head"><h2>${t("Referring sites")}</h2></div>${dataTable("referrers", [
         { key: "domain", label: "Site", html: (r) => `<span class="with-logo">${UI.siteLogo(r.domain, 16)}<span class="logo-text mono" dir="auto">${esc(r.domain)}</span></span>` },
         { key: "sessions", label: "Visits", num: true },
-        { key: "leads", label: "Leads", num: true },
+        { key: "leads", label: W("Leads", d), num: true },
       ], d.referrers, { empty: "No referring sites in this period.", search: "Search sites" })}</section>
       ${rulesCard("channel", "Channel rules", "Rename channels by source/medium (* = anything). Past days change too.", "chatgpt.com/*", "Channel name", d.rules)}`);
   }
@@ -512,19 +512,19 @@
       <p class="small muted" style="margin:0 0 12px">${throughNote(d.through, "", d)}</p>${hiddenNote(d.hid_rows)}${setUp}
       <section class="tiles">
         ${UI.tile(t("Visits"), UI.cnt(d.sessions), "", { ic: "activity" })}
-        ${UI.tile(t("Leads"), d.key_events_set_up ? num(d.leads) : "—", d.key_events_set_up ? "" : `<span class="ab">${t("Not set up")}</span>`, { ic: "filter" })}
-        ${UI.tile(t("Lead rate"), d.key_events_set_up ? pct(d.rate) : "—", "", { ic: "percent" })}
+        ${UI.tile(t(W("Leads", d)), d.key_events_set_up ? num(d.leads) : "—", d.key_events_set_up ? "" : `<span class="ab">${t("Not set up")}</span>`, { ic: "filter" })}
+        ${UI.tile(t(W("Lead rate", d)), d.key_events_set_up ? pct(d.rate) : "—", "", { ic: "percent" })}
       </section>
       <section class="card"><div class="card-head"><h2>${t("From visit to lead, by channel")}</h2>${funnelKey}</div><div class="lv-funnel">${funnel}</div></section>
       <div class="lv-two" style="margin-top:14px">
         <section class="card"><div class="card-head"><h2>${t("Page types")}</h2></div>${dataTable("types", [
           { key: "type", label: "Type", get: (r) => t(r.type), html: (r) => `<span dir="auto">${esc(t(r.type))}</span>` },
-          { key: "pages", label: "Pages", num: true }, { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true },
-          { key: "rate", label: "Lead rate", num: true, html: rateCell },
+          { key: "pages", label: "Pages", num: true }, { key: "sessions", label: "Visits", num: true }, { key: "leads", label: W("Leads", d), num: true },
+          { key: "rate", label: W("Lead rate", d), num: true, html: rateCell },
         ], d.page_types, { csv: false })}</section>
         <section class="card"><div class="card-head"><h2>${t("Pages that bring leads")}</h2></div>${dataTable("converting", [
           { key: "path", label: "Page", get: pageName, html: (r) => (r.unknown ? unknownPage(r) : `${PageLink.html(r.path, { host: r.host, cls: "mono lv-url" })}${siteOfPage(r)}`) },
-          { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }, { key: "rate", label: "Lead rate", num: true, html: rateCell },
+          { key: "sessions", label: "Visits", num: true }, { key: "leads", label: W("Leads", d), num: true }, { key: "rate", label: W("Lead rate", d), num: true, html: rateCell },
         ], d.pages, { csv: false, empty: "No page brought a lead in this period.", search: "Search pages" })}</section>
       </div>`);
   }
@@ -555,7 +555,7 @@
       ${missing ? `<p class="note lv-note">${icon("info")}<span>${t(missing)}</span></p>` : ""}${hiddenNote(d.hid_rows)}${clarityReportCard("dashboard")}${clarityCard}
       <section class="card"><div class="card-head"><h2>${t("All pages")}</h2><span class="end small muted">${num(d.total_pages)} ${t(d.total_pages === 1 ? "page" : "pages")} · ${sourceAndDays("Google Analytics and Search Console")}</span></div>${dataTable("content", [
         { key: "path", label: "Page", get: pageName, html: (r) => (r.unknown ? unknownPage(r) : `<div class="mono lv-url">${PageLink.html(r.path, { host: r.host })}</div>${siteOfPage(r)}${jumpLine(r)}<div class="lv-cat" dir="auto">${esc(t(r.category))}</div>${UI.relatedTag?.({ host: r.host || UI.siteHostPicked() || "", page: r.path }) || ""}`) },
-        { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }, { key: "clicks", label: "Google clicks", num: true },
+        { key: "sessions", label: "Visits", num: true }, { key: "leads", label: W("Leads", d), num: true }, { key: "clicks", label: "Google clicks", num: true },
         { key: "position", label: "Position", num: true, html: (r) => decimal(r.position) }, { key: "ai", label: "AI visits", num: true },
       ], d.pages, { search: "Search pages", rowAttrs: (r) => (r.unknown || !window.SCREENS?.pages ? 'style="cursor:default"' : `data-pg-goto="${esc(`https://${r.host || UI.siteHostPicked() || ""}${r.path}`)}" tabindex="0" title="${esc(t("All about this page"))}"`) })}</section>
       <section class="card" style="margin-top:14px"><div class="card-head"><h2>${t("Social networks")}</h2><span class="end small muted">${sourceAndDays("Google Analytics")}</span></div>${d.social.length ? socialBars(d.social) : `<div class="empty"><p>${t("No visits from social networks in this period.")}</p></div>`}</section>
@@ -666,7 +666,12 @@
   const pickTab = (group, tabs) => { if (!tabs.some(([id]) => id === TABS[group])) TABS[group] = tabs[0]?.[0] || ""; };
   // The days both periods reported, for a card's graph: this period solid, the period before dashed (UI.card).
   const daySpark = (d, pick) => (d?.days?.length > 1 ? { days: d.days.map((r) => r.day), now: d.days.map(pick), before: (d.days_before || []).map(pick) } : null);
-  const ratePct = (r) => (r && r.sessions ? (r.leads / r.sessions) * 100 : null);
+  // Visits that became a lead (or had a key event) out of all visits, never over 100% (W8). A blank count stays blank.
+  const ratePct = (r) => {
+    const top = r ? (r.converted !== undefined ? r.converted : r.leads) : null;
+    return r && r.sessions && top !== null && top !== undefined ? Math.min(top, r.sessions) / r.sessions * 100 : null;
+  };
+  const W = (english, d) => window.GA4W.word(english, d);
   const known = (v) => v !== null && v !== undefined;
   // Rows that open their side panel (row-panel.js): a click, or Enter on the focused row.
   const opensPanel = (kind, key, host = "") => `data-rp-open="${kind}" data-rp-key="${esc(key)}"${host ? ` data-rp-host="${esc(host)}"` : ""} tabindex="0"`;
@@ -695,10 +700,10 @@
     const before = d.before, top = d.channels[0];
     const cards = `<section class="tiles lv-cards">
         ${UI.card({ id: "visits", label: "Visits", value: d.total.sessions, change: { now: d.total.sessions, before: before?.sessions }, spark: daySpark(d, (r) => r.sessions) })}
-        ${UI.card({ id: "leads", label: "Leads", value: d.total.leads, change: { now: d.total.leads, before: before?.leads }, spark: daySpark(d, (r) => r.leads) })}
-        ${UI.card({ id: "rate", label: "Lead rate", value: ratePct(d.total), format: "pct", change: { now: ratePct(d.total), before: ratePct(before), unit: "pts" }, spark: daySpark(d, ratePct) })}
+        ${UI.card({ id: "leads", label: W("Leads", d), value: d.total.leads, change: { now: d.total.leads, before: before?.leads }, spark: daySpark(d, (r) => r.leads) })}
+        ${UI.card({ id: "rate", label: W("Lead rate", d), value: ratePct(d.total), format: "pct", change: { now: ratePct(d.total), before: ratePct(before), unit: "pts" }, spark: daySpark(d, ratePct) })}
         ${UI.card({ id: "channels", label: "Channels", value: d.channels.length, sub: top ? esc(fillIn(t("Most visits: {name}"), { name: t(top.channel) })) : "" })}
-      </section>`;
+      </section>${window.GA4W.notes(d)}`;
     const swatch = (name) => `<i class="lv-key" style="background:${colourOf(name)}"></i>${esc(t(name))}${aiLink(name)}`;
     const days = d.series.map((r) => r.day);
     const series = d.series_names.map((name) => ({ name, color: colourOf(name), values: Object.fromEntries(d.series.map((r) => [r.day, r.values[name] ?? 0])) }));
@@ -707,16 +712,16 @@
         { key: "channel", label: "Channel", html: (r) => swatch(r.channel) },
         { key: "sessions", label: "Visits", num: true },
         { key: "share", label: "Share", num: true, get: (r) => r.share, html: (r) => pct(r.share) },
-        { key: "leads", label: "Leads", num: true },
-        { key: "rate", label: "Lead rate", num: true, get: (r) => r.rate, html: rateCell },
+        { key: "leads", label: W("Leads", d), num: true },
+        { key: "rate", label: W("Lead rate", d), num: true, get: (r) => r.rate, html: rateCell },
         { key: "change", label: "Change", num: true, html: (r) => (r.change === null ? `<span class="muted">—</span>` : `<span class="${r.change >= 0 ? "good" : "crit"} d-pill">${icon(r.change >= 0 ? "arrow-up" : "arrow-down")}${r.change >= 0 ? "+" : "−"}${num(Math.abs(r.change))}%</span>`) },
       ], d.channels, { rowAttrs: (r) => opensPanel("channel", r.channel) })}</section>
       <div class="lv-two lv-pair">
-        <section class="card"><div class="card-head"><h2>${t("Visits by channel")}</h2></div><div class="lv-chart-sm">${lineChart("channels", days, series)}</div></section>
+        <section class="card"><div class="card-head"><h2>${t("Visits by channel")}</h2></div><div class="lv-chart-sm">${lineChart("channels", days, series, d.unusual?.days && Object.keys(d.unusual.days).length ? { marks: Object.fromEntries(Object.keys(d.unusual.days).map((k) => [k, 1])), markName: "Unusual day" } : {})}</div></section>
         <section class="card"><div class="card-head"><h2>${t("Referring sites")}</h2></div>${dataTable("referrers", [
           { key: "domain", label: "Site", html: (r) => `<span class="with-logo">${UI.siteLogo(r.domain, 16)}<span class="logo-text mono" dir="auto">${esc(r.domain)}</span></span>` },
           { key: "sessions", label: "Visits", num: true },
-          { key: "leads", label: "Leads", num: true },
+          { key: "leads", label: W("Leads", d), num: true },
         ], d.referrers, { empty: "No referring sites in this period.", search: "Search sites", rowAttrs: (r) => opensPanel("referrer", r.domain) })}</section>
       </div>`);
   }
@@ -754,29 +759,29 @@
     if (!d.sessions) return page(head, emptyCard(t("No data in this period."), `${t("Google Analytics has data through")} ${esc(d.through ? shortDay(d.through) : "—")}.`));
     const set = d.key_events_set_up, was = d.before;
     // A line that carries an action stays on screen: without key events there are no leads to count.
-    const setUp = set ? "" : `<p class="note warn lv-note">${icon("triangle-alert")}<span>${t("No key events. Mark your forms as key events in GA4.")}</span></p>`;
+    const setUp = set || d.lead_kind === "leads" ? "" : `<p class="note warn lv-note">${icon("triangle-alert")}<span>${t("No key events. Mark your forms as key events in GA4.")}</span></p>`;
     const cards = `<section class="tiles lv-cards">
         ${UI.card({ id: "visits", label: "Visits", value: d.sessions, change: { now: d.sessions, before: was?.sessions }, spark: daySpark(d, (r) => r.sessions) })}
-        ${UI.card({ id: "leads", label: "Leads", value: set ? d.leads : null, sub: set ? null : esc(t("Not set up")), change: set ? { now: d.leads, before: was?.leads } : null, spark: set ? daySpark(d, (r) => r.leads) : null })}
-        ${UI.card({ id: "rate", label: "Lead rate", value: set && known(d.rate) ? d.rate * 100 : null, format: "pct", sub: set ? null : esc(t("Not set up")), change: set && known(d.rate) ? { now: d.rate * 100, before: known(was?.rate) ? was.rate * 100 : null, unit: "pts" } : null, spark: set ? daySpark(d, ratePct) : null })}
-      </section>`;
+        ${UI.card({ id: "leads", label: W("Leads", d), value: set ? d.leads : null, sub: set ? null : esc(t("Not set up")), change: set ? { now: d.leads, before: was?.leads } : null, spark: set ? daySpark(d, (r) => r.leads) : null })}
+        ${UI.card({ id: "rate", label: W("Lead rate", d), value: set && known(d.rate) ? d.rate * 100 : null, format: "pct", sub: set ? null : esc(t("Not set up")), change: set && known(d.rate) ? { now: d.rate * 100, before: known(was?.rate) ? was.rate * 100 : null, unit: "pts" } : null, spark: set ? daySpark(d, ratePct) : null })}
+      </section>${set ? window.GA4W.notes(d) : ""}`;
     const max = Math.max(...d.funnel.map((x) => x.sessions), 1);
     // One line per channel; the visits that didn't become a lead are the bar's tip.
-    const funnel = d.funnel.map((r) => `<div class="lv-bar lv-fline"><span class="lab" dir="auto">${esc(t(r.channel))}</span><span class="track" data-tip="${esc(fillIn(t("{n} visits didn't become a lead"), { n: num(r.lost) }))}"><i style="width:${Math.max(r.sessions ? 2 : 0, (r.sessions / max) * 100)}%"></i></span><span class="val">${num(r.sessions)} ${t("visits")} → ${num(r.leads)} ${t("leads")} · ${pct(r.rate)}<span class="sr"> · ${num(r.lost)} ${t("without a lead")}</span></span></div>`).join("");
-    const tabs = [["pages", t("Pages that bring leads"), d.pages.length], ["types", t("Page types"), d.page_types.length]];
+    const funnel = d.funnel.map((r) => `<div class="lv-bar lv-fline"><span class="lab" dir="auto">${esc(t(r.channel))}</span><span class="track" data-tip="${esc(fillIn(t(W("{n} visits didn't become a lead", d)), { n: num(r.lost) }))}"><i style="width:${Math.max(r.sessions ? 2 : 0, (r.sessions / max) * 100)}%"></i></span><span class="val">${num(r.sessions)} ${t("visits")} → ${num(r.leads)} ${t(W("leads", d))} · ${pct(r.rate)}<span class="sr"> · ${num(r.lost)} ${t(W("without a lead", d))}</span></span></div>`).join("");
+    const tabs = [["pages", t(W("Pages that bring leads", d)), d.pages.length], ["types", t("Page types"), d.page_types.length]];
     pickTab("conversions", tabs);
     const table = TABS.conversions === "types"
       ? dataTable("types", [
         { key: "type", label: "Type", get: (r) => t(r.type), html: (r) => `<span dir="auto">${esc(t(r.type))}</span>` },
-        { key: "pages", label: "Pages", num: true }, { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true },
-        { key: "rate", label: "Lead rate", num: true, html: rateCell },
+        { key: "pages", label: "Pages", num: true }, { key: "sessions", label: "Visits", num: true }, { key: "leads", label: W("Leads", d), num: true },
+        { key: "rate", label: W("Lead rate", d), num: true, html: rateCell },
       ], d.page_types, { wrapAttrs: "data-tt-own-count" })
       : dataTable("converting", [
         { key: "path", label: "Page", get: pageName, html: (r) => (r.unknown ? unknownPage(r) : `${PageLink.html(r.path, { host: r.host, cls: "mono lv-url" })}${siteOfPage(r)}`) },
-        { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }, { key: "rate", label: "Lead rate", num: true, html: rateCell },
-      ], d.pages, { empty: "No page brought a lead in this period.", search: "Search pages", rowAttrs: pageRow, wrapAttrs: "data-tt-own-count" });
+        { key: "sessions", label: "Visits", num: true }, { key: "leads", label: W("Leads", d), num: true }, { key: "rate", label: W("Lead rate", d), num: true, html: rateCell },
+      ], d.pages, { empty: W("No page brought a lead in this period.", d), search: "Search pages", rowAttrs: pageRow, wrapAttrs: "data-tt-own-count" });
     return page(head, `${setUp}${cards}
-      <section class="card"><div class="card-head"><h2>${t("From visit to lead, by channel")}</h2></div><div class="lv-bars lv-funnel-lines">${funnel}</div></section>
+      <section class="card"><div class="card-head"><h2>${t(W("From visit to lead, by channel", d))}</h2></div><div class="lv-bars lv-funnel-lines">${funnel}</div></section>
       <section class="card lv-tab-card"><div class="lv-tabbar">${pageTabs("conversions", tabs, "Pages", true)}<span class="lv-tab-tools" data-tt-slot></span></div>${table}</section>`);
   }
 
@@ -810,7 +815,7 @@
     } else {
       body = `<section class="card"><div class="card-head"><h2>${t("All pages")}</h2><span class="end small muted">${sourceAndDays("Google Analytics and Search Console")}</span></div>${dataTable("content", [
         { key: "path", label: "Page", get: pageName, html: (r) => `${pageCell(r)}${r.unknown ? "" : `<div class="lv-cat" dir="auto">${esc(t(r.category))}</div>${UI.relatedTag?.({ host: r.host || UI.siteHostPicked() || "", page: r.path }) || ""}`}` },
-        { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }, { key: "clicks", label: "Google clicks", num: true },
+        { key: "sessions", label: "Visits", num: true }, { key: "leads", label: W("Leads", d), num: true }, { key: "clicks", label: "Google clicks", num: true },
         { key: "position", label: "Position", num: true, html: (r) => decimal(r.position) }, { key: "ai", label: "AI visits", num: true },
       ], d.pages, { search: "Search pages", rowAttrs: pageRow })}</section>`;
     }
@@ -912,13 +917,13 @@
       <section class="tiles">
         ${d.costs.length ? d.costs.map((c) => UI.tile(`${t("Cost")}${d.costs.length > 1 ? ` · ${esc(c.currency || "")}` : ""}`, esc(money(c.cost, c.currency)), d.costs.length > 1 ? `<span class="ab">${t("Currencies aren't added together")}</span>` : "", { ic: "megaphone" })).join("") : UI.tile(t("Cost"), "—", "", { ic: "megaphone" })}
         ${UI.tile(t("Clicks"), UI.cnt(d.clicks), "", { ic: "mouse-pointer-click" })}
-        ${UI.tile(t("Leads"), num(d.leads), "", { ic: "filter" })}
+        ${UI.tile(t(W("Leads", d)), num(d.leads), "", { ic: "filter" })}
       </section>
       <section class="card"><div class="card-head"><h2>${t("Clicks")}</h2></div>${lineChart("ads", d.series.map((r) => r.day), [{ name: "Clicks", color: "var(--ch-1)", values: Object.fromEntries(d.series.map((r) => [r.day, r.clicks])) }])}</section>
       <section class="card" style="margin-top:14px"><div class="card-head"><h2>${t("Campaigns")}</h2></div>${dataTable("campaigns", [
         { key: "campaign", label: "Campaign", html: (r) => `<span dir="auto">${esc(r.campaign)}</span>` },
         { key: "cost", label: "Cost", num: true, html: (r) => esc(money(r.cost, r.currency)) },
-        { key: "clicks", label: "Clicks", num: true }, { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true },
+        { key: "clicks", label: "Clicks", num: true }, { key: "sessions", label: "Visits", num: true }, { key: "leads", label: W("Leads", d), num: true },
       ], d.campaigns, { empty: "No campaigns in this period.", search: "Search campaigns" })}</section>
       <p class="note lv-note" style="margin-top:14px">${icon("info")}<span>${t("Exact Google Ads API data needs an approved developer token: not built.")}</span></p>`);
   }

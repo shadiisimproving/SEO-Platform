@@ -23,7 +23,8 @@
     const byDays = !r.window || ["7d", "28d"].includes(r.window.range);
     const parts = [];
     const add = (figure, name, unit) => { if (parts.length < 2 && figure.value !== null && figure.change !== null) parts.push(clause(name, figure.change, unit, !parts.length)); };
-    add(r.leads, fr ? ["Leads", "leads"] : ["Leads", "leads"], false);
+    const keyEvents = r.leads?.kind === "key_events";
+    add(r.leads, keyEvents ? (fr ? ["Événements clés", "événements clés"] : ["Key events", "key events"]) : ["Leads", "leads"], false);
     add(r.visits, fr ? ["Visites", "visites"] : ["Visits", "visits"], true);
     add(r.clicks, fr ? ["Clics Google", "clics Google"] : ["Google clicks", "Google clicks"], true);
     if (parts.length && !byDays) return fr ? `${parts.join(" et ")} sur cette période (${range?.label || ""}).` : `${parts.join(" and ")} over this period (${range?.label || ""}).`;
@@ -92,6 +93,7 @@
   /* The simpler screens (UI.simple()): one number card each, through UI.card, with a tall graph of its own (owner, 2026-11-05)
      but no axis numbers and no "Show as a table": the screen each card opens has the full chart and its table. The dates
      and the comparison are in the head's date line, so the caption under the cards goes when the real app sends them. */
+  const shiftDay = (iso, by) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + by); return d.toISOString().slice(0, 10); };
   function simpleCard(key, label, href, data, unit, emptyWord, dates = "") {
     const points = data.points || [];
     let spark = null;
@@ -99,12 +101,16 @@
       const run = (field) => { let sum = 0; return points.map((p) => { if (p[field] === null || p[field] === undefined) return null; sum += p[field]; return key === "leads" ? sum : p[field]; }); };
       spark = { now: run("now"), days: points.map((p) => p.day) };
       if (points.some((p) => p.was !== null && p.was !== undefined)) spark.before = run("was");
+      // Unusual days (a burst of visits) get a dot on their line: this period's by its day, the period before's by its place.
+      const odd = data.unusual;
+      if (odd?.days?.length) spark.marks = points.map((p) => odd.days.includes(p.day));
+      if (odd?.days_before?.length && data.compareFrom) spark.marksBefore = points.map((_, i) => odd.days_before.includes(shiftDay(data.compareFrom, i)));
     }
     const covers = data.sites && data.sites < data.of ? `${num(data.sites)} ${t("of")} ${num(data.of)} ${t("sites")}` : "";
     let value = data.value, sub = null;
     if (data.state === "not_set_up") { value = `<span class="today-fig-word">${t("Not set up")}</span>`; sub = esc(t("Mark forms as GA4 key events")); }
     else if (data.value === null) sub = esc(data.source ? stateWord(data.source, key === "clicks" ? "Search Console" : "GA4") : t(emptyWord));
-    else if (data.change === null) sub = esc(t("No earlier period"));
+    else if (data.change === null) sub = esc(t(data.blank ? "Counting changed" : data.note === "little_before" ? "Too little data before" : "No earlier period"));
     else if (covers) sub = esc(covers);
     // Each card's own days when the sources end on different days (GA4 runs ahead of Search Console): said under it.
     if (dates && data.value !== null && data.state !== "not_set_up") sub = sub ? `${sub} · ${esc(dates)}` : esc(dates);
@@ -124,11 +130,20 @@
     const caption = w ? "" : `<p class="small muted today-caption"><span>${t("Last 28 days vs the 28 before")}${r.through ? ` · ${t("Data through")} ${esc(day(r.through))}` : ""}</span></p>`;
     const split = w?.ga4 && w.from && w.ga4.to !== w.to;
     const ga4Dates = split ? `${day(w.ga4.from)} – ${day(w.ga4.to)}` : "", gscDates = split ? `${day(w.from)} – ${day(w.to)}` : "";
+    const visits = { ...r.visits, compareFrom: w?.ga4?.compare_from || null };
     return `<div class="tiles today-nums">
-        ${simpleCard("leads", "Leads", "#conversions", r.leads, "", r.leads.state === "no_ga4" ? "GA4 not connected" : "No data yet", ga4Dates)}
-        ${simpleCard("visits", "Visits", "#channels", r.visits, "%", "GA4 not connected", ga4Dates)}
+        ${simpleCard("leads", window.GA4W.word("Leads", r.leads), "#conversions", r.leads, "", r.leads.state === "no_ga4" ? "GA4 not connected" : "No data yet", ga4Dates)}
+        ${simpleCard("visits", "Visits", "#channels", visits, "%", "GA4 not connected", ga4Dates)}
         ${simpleCard("clicks", "Google clicks", "#overview", r.clicks, "%", "Search Console not connected", gscDates)}
-      </div>${caption}`;
+      </div>${caption}${ga4Notes(r)}`;
+  }
+  /* What Today says about its Google Analytics numbers (ga4-words.js): lead events to pick, a change in how GA4 counts,
+     too little data before, unusual days, and a property that also records another website. */
+  function ga4Notes(r) {
+    if (!window.GA4W || r.leads?.state === "no_ga4") return "";
+    const said = window.GA4W.notes({ kind: r.leads.state === "not_set_up" ? null : r.leads.kind, changes: r.leads.changes, note: r.visits.note, unusual: r.visits.unusual });
+    const hosts = window.GA4W.hostsNote(r.other_hosts);
+    return said || hosts ? `<div class="ga4-notes">${hosts}${said.replace(/^<div class="ga4-notes">|<\/div>$/g, "")}</div>` : "";
   }
   function numbers(r, range) {
     if (UI().simple?.()) return simpleNumbers(r);
@@ -138,10 +153,10 @@
     const drawn = [r.leads, r.visits, r.clicks].some((x) => x.points?.some((p) => p.now !== null));
     const key = drawn ? `<span class="today-legend"><span><i class="today-key"></i>${t("This period")}</span><span><i class="today-key was"></i>${t("Period before")}</span></span>` : "";
     return `<div class="tiles today-nums">
-        ${figure("leads", "Leads", "#conversions", r.leads, "", r.leads.state === "no_ga4" ? "GA4 not connected" : "No data yet")}
+        ${figure("leads", window.GA4W.word("Leads", r.leads), "#conversions", r.leads, "", r.leads.state === "no_ga4" ? "GA4 not connected" : "No data yet")}
         ${figure("visits", "Visits", "#channels", r.visits, "%", "GA4 not connected")}
         ${figure("clicks", "Google clicks", "#overview", r.clicks, "%", "Search Console not connected")}
-      </div><p class="small muted today-caption"><span>${caption}</span>${key}</p>${w?.ga4 && w.ga4.to !== w.to ? `<p class="small muted today-caption">${esc(t("Visits and leads: {a} – {b}, where Google Analytics' data ends.").replace("{a}", day(w.ga4.from)).replace("{b}", day(w.ga4.to)))}</p>` : ""}`;
+      </div><p class="small muted today-caption"><span>${caption}</span>${key}</p>${w?.ga4 && w.ga4.to !== w.to ? `<p class="small muted today-caption">${esc(t("Visits and leads: {a} – {b}, where Google Analytics' data ends.").replace("{a}", day(w.ga4.from)).replace("{b}", day(w.ga4.to)))}</p>` : ""}${ga4Notes(r)}`;
   }
 
   // ---- do these first -----------------------------------------------------------------------------
@@ -250,6 +265,7 @@
 
   // ---- sites --------------------------------------------------------------------------------------
   function sitesCard(sites) {
+    const leadWord = sites.some((s) => s.lead_kind === "leads") ? "Leads" : "Key events";
     const cell = (value, change, unit) => (value === null || value === undefined ? `<span class="muted" title="${t("No data yet")}">—</span>` : `<span class="today-cell">${num(value)}${change === null || change === undefined ? "" : pill(change, unit, false)}</span>`);
     // The date most rows share is said once in the card head; only a row whose data stops on another day keeps its own.
     const tally = {};
@@ -258,10 +274,10 @@
     const row = (s) => {
       const sub = [s.alerts ? `${num(s.alerts)} ${t(s.alerts === 1 ? "warning" : "warnings")}` : "", s.through && s.through !== through ? `${t("Data through")} ${esc(day(s.through))}` : ""].filter(Boolean).join(" · ");
       return `<tr style="cursor:default"><td data-label="${t("Site")}">${s.pick ? `<button class="today-link mono" data-site="${esc(s.pick)}" dir="auto">${esc(s.host)}</button>` : `<span class="mono" dir="auto">${esc(s.host)}</span>`}${sub ? `<div class="small muted">${sub}</div>` : ""}</td>
-        <td class="c" data-label="${t("Leads")}">${s.leads_state === "not_set_up" ? `<span class="muted">${t("Not set up")}</span>` : cell(s.leads, s.leads_change, "")}</td><td class="c" data-label="${t("Visits")}"><span class="today-cell">${cell(s.visits, s.visits_change, "%")}${s.trend?.length > 1 ? UI().spark(s.trend, { w: 64, h: 22 }) : ""}</span></td><td class="c" data-label="${t("Google clicks")}">${cell(s.clicks, s.clicks_change, "%")}</td></tr>`;
+        <td class="c" data-label="${t(leadWord)}">${s.leads_state === "not_set_up" ? `<span class="muted">${t("Not set up")}</span>` : cell(s.leads, s.leads_change, "")}</td><td class="c" data-label="${t("Visits")}"><span class="today-cell">${cell(s.visits, s.visits_change, "%")}${s.visits_note === "little_before" ? `<span class="small muted" title="${esc(t("Too little data before to compare visits."))}">${t("too little before")}</span>` : ""}${s.trend?.length > 1 ? UI().spark(s.trend, { w: 64, h: 22 }) : ""}</span></td><td class="c" data-label="${t("Google clicks")}">${cell(s.clicks, s.clicks_change, "%")}</td></tr>`;
     };
     return `<section class="card"><div class="card-head"><h2>${t("Sites")}</h2><span class="end small muted">${t("Last 28 days vs the 28 before")}${through ? ` · ${t("Data through")} ${esc(day(through))}` : ""}</span></div>
-      <div class="table-wrap" style="box-shadow:none"><table class="data"><thead><tr><th>${t("Site")}</th><th class="c">${t("Leads")}</th><th class="c">${t("Visits")}</th><th class="c">${t("Google clicks")}</th></tr></thead><tbody>${sites.map(row).join("")}</tbody></table></div></section>`;
+      <div class="table-wrap" style="box-shadow:none"><table class="data"><thead><tr><th>${t("Site")}</th><th class="c">${t(leadWord)}</th><th class="c">${t("Visits")}</th><th class="c">${t("Google clicks")}</th></tr></thead><tbody>${sites.map(row).join("")}</tbody></table></div></section>`;
   }
 
   // ---- the page -----------------------------------------------------------------------------------
@@ -330,6 +346,7 @@
     "No data in this period": "Pas de données sur cette période", "waiting for data": "en attente de données",
     "No earlier period stored": "Pas de période antérieure enregistrée", "No comparison": "Sans comparaison",
     "vs last year": "vs l'an dernier", "vs period before": "vs période précédente",
+    "Counting changed": "Comptage changé", "too little before": "trop peu avant",
     "Visits and leads: {a} – {b}, where Google Analytics' data ends.": "Visites et leads : {a} – {b}, là où s'arrêtent les données de Google Analytics.",
     "Waiting for first data": "En attente des premières données", "Not set up yet": "Pas encore configuré", "Open Settings": "Ouvrir les réglages",
     "Google is connected. Fetch the first numbers now, or they come with the next run.": "Google est connecté. Récupérez les premiers chiffres maintenant, ou ils arrivent au prochain passage.",

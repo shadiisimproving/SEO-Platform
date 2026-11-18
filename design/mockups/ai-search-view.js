@@ -122,7 +122,7 @@
     else {
       const top = d.sources[0]?.source;
       const change = d.change === null || d.change === undefined ? "" : ` (${d.change > 0 ? "+" : d.change < 0 ? "−" : "±"}${UI.dec(Math.abs(Math.round(d.change)))}${unit()})`;
-      const said = d.key_events_set_up ? tf("AI assistants sent {v} and {l}{c}, most from", { v: plural(d.sessions, "{n} visit", "{n} visits"), l: plural(d.leads, "{n} lead", "{n} leads"), c: change }) : tf("AI assistants sent {v}{c}, most from", { v: plural(d.sessions, "{n} visit", "{n} visits"), c: change });
+      const said = d.key_events_set_up ? tf("AI assistants sent {v} and {l}{c}, most from", { v: plural(d.sessions, "{n} visit", "{n} visits"), l: window.GA4W?.keyEvents(d) ? plural(d.leads, "{n} key event", "{n} key events") : plural(d.leads, "{n} lead", "{n} leads"), c: change }) : tf("AI assistants sent {v}{c}, most from", { v: plural(d.sessions, "{n} visit", "{n} visits"), c: change });
       lines.push(`${esc(said)} ${top ? mark(top) : ""}.`);
     }
     const c = d.copilot;
@@ -144,11 +144,11 @@
     const weeks = d.weekly.map((w) => w.sessions).filter((v) => v !== null);
     const visits = UI.card({ id: "ai-visits", label: "AI visits", value: off ? null : d.sessions, change: off ? null : { now: d.sessions, before: d.before },
       sub: wait ? esc(t("Waiting for data")) : off ? esc(t("Google Analytics not connected")) : null, spark: !off && weeks.length > 1 ? weeks : null, cls: "tile" });
-    const leads = UI.card({ id: "ai-leads", label: "Leads", value: off ? null : d.key_events_set_up ? d.leads : `<span class="today-fig-word">${esc(t("Not set up"))}</span>`,
+    const leads = UI.card({ id: "ai-leads", label: window.GA4W.word("Leads", d), value: off ? null : d.key_events_set_up ? d.leads : `<span class="today-fig-word">${esc(t("Not set up"))}</span>`,
       change: !off && d.key_events_set_up && has(d.before_leads) ? { now: d.leads, before: d.before_leads, unit: "" } : null,
       sub: off ? "" : !d.key_events_set_up ? esc(t("Mark forms as GA4 key events")) : null, cls: "tile" });
     const r = d.rate, o = d.organic, rateOff = off || !d.key_events_set_up;
-    const rate = UI.card({ id: "ai-rate", label: "Lead rate", def: "AI lead rate", value: rateOff || r.value === null ? null : pct(r.value),
+    const rate = UI.card({ id: "ai-rate", label: window.GA4W.word("Lead rate", d), def: "AI lead rate", value: rateOff || r.value === null ? null : pct(r.value),
       sub: rateOff ? "" : r.value === null ? esc(tf("needs {need} AI visits, {n} so far", { need: num(r.needs), n: num(r.visits) })) : o.value === null ? "" : `<span class="nowrap">${esc(t("organic search"))} ${pct(o.value)}</span>`, cls: "tile" });
     const c = d.copilot, one = c.sites.length === 1 ? c.sites[0] : null, cited = has(c.citations);
     const cite = UI.card({ id: "ai-citations", label: "Copilot citations", value: cited ? c.citations : null,
@@ -366,7 +366,7 @@
     const columns = [
       { key: "source", label: "Assistant", html: (r) => `${rowMark("assistant", r.source)}${mark(r.source)}` },
       { key: "sessions", label: "Visits", num: true },
-      ...(d.key_events_set_up ? [{ key: "leads", label: "Leads", num: true }, { key: "rate", label: "Lead rate", num: true, html: rateCell }] : []),
+      ...(d.key_events_set_up ? [{ key: "leads", label: window.GA4W.word("Leads", d), num: true }, { key: "rate", label: window.GA4W.word("Lead rate", d), num: true, html: rateCell }] : []),
     ];
     const small = d.sources.filter((r) => r.rate === null).length;
     // The same visits are the "AI assistants" row on Channels (expert review 2026-11-17, #22): the way there.
@@ -383,7 +383,7 @@
     const columns = [
       { key: "path", label: "Page", get: LVx().pageName, html: pageCell },
       { key: "sessions", label: "Visits", num: true },
-      ...(d.key_events_set_up ? [{ key: "leads", label: "Leads", num: true }, { key: "action", label: "Action", get: () => null, html: action }] : []),
+      ...(d.key_events_set_up ? [{ key: "leads", label: window.GA4W.word("Leads", d), num: true }, { key: "action", label: "Action", get: () => null, html: action }] : []),
     ];
     const said = !d.pages.length ? "" : d.key_events_set_up ? lead(esc(tf("{n} of {m} pages: AI visits, no lead. Task button from {min} visits.", { n: num(none), m: num(d.pages.length), min: num(min) }))) : lead(esc(t("Leads aren't tracked: mark your forms as key events in GA4.")), { keep: true });
     return said + folded("ai-pages", columns, d.pages, { test: (r) => r.sessions === 1, word: "{n} pages with one AI visit each", allWord: "{n} pages got one AI visit each; none stands out yet.", empty: "No AI landing pages in this period." });
@@ -394,18 +394,20 @@
     if (!c.sites.length) return notSet(t("See which pages Copilot cites: in Clarity, AI visibility → Export, then upload it."), uploadAi());
     const rows = c.sites.flatMap((s) => s.pages.map((p) => ({ ...p, host: s.host })));
     const min = d.limits.click_min_citations;
-    const noVisit = (r) => r.visits === 0 && r.citations >= min;
+    const noVisit = (r) => r.visits === 0 && !r.bing_visits && r.citations >= min;
     const flag = `<span class="ai-cnv" role="img" title="${esc(t("Cited, no visit"))}" aria-label="${esc(t("Cited, no visit"))}">${icon("triangle-alert", "warn")}</span>`;
     const columns = [
       { key: "path", label: "Page", get: LVx().pageName, html: pageCell },
       { key: "citations", label: "Citations", num: true },
-      { key: "visits", label: "Copilot and Bing visits", num: true, html: (r) => (r.visits === null ? `<span class="muted" data-tip="${esc(t("Google Analytics has none of the download's days."))}">—</span>` : `${num(r.visits)}${noVisit(r) ? ` ${flag}` : ""}`) },
+      // Copilot and Bing search apart (SEO review 2026-11-17, W5): GA4 writes Bing "bing", and most of it is plain search.
+      { key: "visits", label: "Copilot visits", num: true, html: (r) => (r.visits === null ? `<span class="muted" data-tip="${esc(t("Google Analytics has none of the download's days."))}">—</span>` : `${num(r.visits)}${noVisit(r) ? ` ${flag}` : ""}`) },
+      { key: "bing_visits", label: "Bing search visits", num: true, html: (r) => (r.bing_visits === null || r.bing_visits === undefined ? `<span class="muted">—</span>` : num(r.bing_visits)) },
     ];
     const flagged = rows.filter(noVisit).length;
     const flagLine = flagged ? `<p class="ai-tab-lead ai-cnv-line">${icon("triangle-alert", "warn")}<span>${esc(flagged === 1 ? t("1 page cited, no visit") : tf("{n} pages cited, no visit", { n: num(flagged) }))}</span></p>` : "";
     const one = c.sites.length === 1 ? c.sites[0] : null;
     const allOnes = foldRows(rows, (r) => r.citations === 1).all && !A.fold.has("ai-cited"); // then the table is one sentence, with nothing to explain
-    const said = one && !allOnes ? lead(esc(tf("Visits: Google Analytics, from Copilot and Bing, {a} – {b}.", { a: day(one.period_start), b: day(one.period_end) }))) : "";
+    const said = one && !allOnes ? lead(esc(tf("Visits: Google Analytics, from Copilot, and from Bing search apart, {a} – {b}.", { a: day(one.period_start), b: day(one.period_end) }))) : "";
     return said + flagLine + folded("ai-cited", columns, rows, { test: (r) => r.citations === 1, word: "{n} pages cited once each", allWord: "Copilot cited {n} pages once each; none stands out yet.", empty: "No cited pages in this download." });
   }
   function questionsTab(d) {
@@ -722,11 +724,13 @@
     "last good": "dernière réussite", "not updating": "ne se met plus à jour", "tried": "essai", "{n} days behind": "{n} jours de retard", "through": "jusqu'au", "read": "lu", "data lost in {n} h": "données perdues dans {n} h",
     "uploaded": "importé", "checked": "relevé", "old": "ancien", "Fix": "Corriger", "Upload": "Importer",
     "All {n} sources up to date": "Les {n} sources sont à jour", "Source up to date": "Source à jour", "{n} sources · {m} need you ›": "{n} sources · {m} à traiter ›", "{n} sources ›": "{n} sources ›", "Sources": "Sources",
+    "Copilot visits": "Visites Copilot", "Bing search visits": "Visites recherche Bing",
+    "Visits: Google Analytics, from Copilot, and from Bing search apart, {a} – {b}.": "Visites : Google Analytics, depuis Copilot, et à part depuis la recherche Bing, {a} – {b}.",
     "Connect Google Analytics to see AI visits and leads.": "Connectez Google Analytics pour voir les visites et leads IA.",
     "No AI visits in this period.": "Aucune visite IA sur cette période.",
     "AI assistants sent {v} and {l}{c}, most from": "Les assistants IA ont envoyé {v} et {l}{c}, surtout depuis",
     "AI assistants sent {v}{c}, most from": "Les assistants IA ont envoyé {v}{c}, surtout depuis",
-    "{n} visit": "{n} visite", "{n} visits": "{n} visites", "{n} lead": "{n} lead", "{n} leads": "{n} leads", "{n} time": "{n} fois", "{n} times": "{n} fois",
+    "{n} visit": "{n} visite", "{n} visits": "{n} visites", "{n} lead": "{n} lead", "{n} leads": "{n} leads", "{n} key event": "{n} événement clé", "{n} key events": "{n} événements clés", "{n} time": "{n} fois", "{n} times": "{n} fois",
     "Copilot cited you {n}, but others win most of its answers ({s} share).": "Copilot vous a cité {n}, mais d'autres remportent la plupart de ses réponses ({s} de part).",
     "Copilot cited you {n}, with a {s} share of its answers.": "Copilot vous a cité {n}, avec {s} de ses réponses.", "Copilot cited your sites {n}.": "Copilot a cité vos sites {n}.",
     "AI Overviews on {o} of {c} keywords checked; you're cited in {m}.": "AI Overviews sur {o} des {c} mots-clés relevés ; vous êtes cité dans {m}.",
