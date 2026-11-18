@@ -195,8 +195,9 @@ def test_today_export_uses_the_period_on_screen_and_leads_change_is_a_count(engi
     assert report.compare == (end - timedelta(days=13), end - timedelta(days=7))
     tiles = {t.label: t for t in report.tiles}
     assert tiles["Google clicks"].value == 70 and tiles["Google clicks"].change == 0 and tiles["Google clicks"].change_kind == "change"
-    assert tiles["Leads"].change == 2 and tiles["Leads"].change_kind == "delta"
-    assert fmt.change_words("en", tiles["Leads"].change, tiles["Leads"].change_kind) == "+2"  # it printed "+2%"
+    # No lead event picked: the file says Key events, as the screen does (SEO review 2026-11-17, W1).
+    assert tiles["Key events"].change == 2 and tiles["Key events"].change_kind == "delta"
+    assert fmt.change_words("en", tiles["Key events"].change, tiles["Key events"].change_kind) == "+2"  # it printed "+2%"
     assert any("Visits and leads" in note for note in report.notes)  # GA4 ends 2 days later: said, never hidden
     assert [t.title for t in report.tables if t.id == "going_up"] == ["Pages and searches going up"]
 

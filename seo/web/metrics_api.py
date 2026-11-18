@@ -177,6 +177,39 @@ def delete_rule(rule_id: int):
     return jsonify(ok=True)
 
 
+def _site_id(value) -> int:
+    from seo.accounts import access
+
+    try:
+        site_id = int(value)
+    except (TypeError, ValueError) as exc:
+        raise Refused("Pick a site.") from exc
+    access.require_site(site_id)
+    return site_id
+
+
+@metrics_api.get("/ga4/key-events")
+def ga4_key_events():
+    """Settings: a site's GA4 key events, which count as leads, other websites its property records, and the days of
+    history still to be read again."""
+    from seo.collectors import ga4
+    from seo.metrics import ga4_checks, leads
+
+    site_id = _site_id(request.args.get("site_id"))
+    return jsonify({**leads.events(_engine(), site_id), "other_hosts": ga4_checks.other_hosts(_engine(), site_id), "reread_days": ga4.days_to_reread(_engine(), site_id)})
+
+
+@metrics_api.put("/ga4/key-events")
+def ga4_set_key_events():
+    from seo.metrics import leads
+    from seo.web.auth import require_admin
+
+    require_admin()
+    body = _body()
+    site_id = _site_id(body.get("site_id"))
+    return jsonify(leads.set_events(_engine(), site_id, body.get("names")))
+
+
 @metrics_api.get("/backlinks/traffic")
 def backlink_visits():
     args = request.args

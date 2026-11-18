@@ -162,7 +162,8 @@ def test_f13_leads_28_to_14_raise_a_to_do_above_lost_clicks(engine, site):
     _alert(engine, site, "search_drop", "crit", "/big/: −80% Google clicks", {"finding_key": "b", "detail": "~463 clicks/month at stake"})
     todo = today.today(engine, site)["todo"]
     assert todo[0]["kind"] == "leads_drop" and todo[0]["reason"] == "losing_leads"
-    assert todo[0]["words"]["title"] == ["Leads fell {percent}%: {was} → {now}", {"percent": 50, "was": 28, "now": 14}]
+    # No lead event picked: "Key events fell" (SEO review 2026-11-17, W1).
+    assert todo[0]["words"]["title"] == ["Key events fell {percent}%: {was} → {now}", {"percent": 50, "was": 28, "now": 14}]
     assert todo[0]["severity"] == "crit" and todo[0]["link"] == "#conversions"
     assert any(row["kind"] == "leads_drop" for row in today.attention(engine, site))  # the side menu's badge counts it too
 

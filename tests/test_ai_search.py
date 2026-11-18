@@ -120,7 +120,8 @@ def test_copilot_citations_are_set_against_copilot_and_bing_visits_only_on_the_f
     s = copilot["sites"][0]
     assert copilot["citations"] == 26 and copilot["share"] == 14.0
     assert s["before"]["citations"] == 20 and s["before"]["share"] == 18.0 and s["no_before"] is None
-    assert s["pages"][0] == {"url": "https://mine.example/visa/", "path": "/visa/", "citations": 9, "visits": 3}
+    # Copilot and Bing search apart (SEO review 2026-11-17, W5): 2 from Copilot, 1 from Bing.
+    assert s["pages"][0] == {"url": "https://mine.example/visa/", "path": "/visa/", "citations": 9, "visits": 2, "bing_visits": 1}
     assert s["pages"][1]["visits"] == 0 and s["queries"] is None
 
 

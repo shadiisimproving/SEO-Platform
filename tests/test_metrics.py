@@ -109,7 +109,7 @@ def test_channel_totals_add_up_and_shares_are_right(engine, site):
     _ga4(engine, site, D1, "Organic Search", "google", "organic", 80, 4)
     _ga4(engine, site, D1, "Direct", "(direct)", "(none)", 20, 1)
     answer = service.channels(_scope(engine))
-    assert answer["total"] == {"sessions": 100, "leads": 5.0}
+    assert answer["total"] == {"sessions": 100, "leads": 5.0, "converted": 5.0}  # converted: visits with a key event, for the rate
     assert answer["channels"][0]["channel"] == "Organic Search" and answer["channels"][0]["share"] == 0.8 and answer["channels"][0]["rate"] == 0.05
 
 

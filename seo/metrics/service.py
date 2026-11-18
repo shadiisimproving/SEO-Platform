@@ -1,7 +1,9 @@
 """The numbers behind Overview, Channels, Conversions, Content, AI search and Google Ads.
 
 Everything is worked out when asked, from what collectors stored, so a rule changed today applies to past days too.
-A missing day is a gap, never a zero: series only hold days a source really reported. Leads are GA4 key events: counts only.
+A missing day is a gap, never a zero: series only hold days a source really reported. Leads are the visits with a key event
+the owner ticked as a lead (seo/metrics/leads.py); until a site has ticked one, screens count GA4's key events and say so.
+SQL here writes {leads} for the column a screen adds up and {conv} for the visits that converted; Scope.fetch fills them in.
 """
 from __future__ import annotations
 
@@ -14,8 +16,11 @@ from sqlalchemy import Engine, bindparam, text
 
 from seo.accounts import access
 from seo.core.errors import Refused
+from seo.metrics import ga4_checks
+from seo.metrics import leads as lead_rules
 
-DEFAULT_AI_DOMAINS = ("chatgpt.com", "chat.openai.com", "openai.com", "perplexity.ai", "gemini.google.com", "bard.google.com", "copilot.microsoft.com", "claude.ai", "deepseek.com", "chat.deepseek.com", "you.com", "poe.com", "mistral.ai", "chat.mistral.ai", "grok.com", "x.ai", "meta.ai")
+# GA4 also writes some without their ending, from a UTM tag: "perplexity", "copilot.com", "gemini" (SEO review 2026-11-17, W9).
+DEFAULT_AI_DOMAINS = ("chatgpt.com", "chat.openai.com", "openai.com", "perplexity.ai", "perplexity", "gemini.google.com", "gemini", "bard.google.com", "copilot.microsoft.com", "copilot.com", "copilot", "claude.ai", "deepseek.com", "chat.deepseek.com", "you.com", "poe.com", "mistral.ai", "chat.mistral.ai", "grok.com", "x.ai", "meta.ai")
 SOCIAL_CHANNELS = {"organic social", "paid social"}
 # Content's Social networks, one row per network (owner, 2026-11-12): GA4 writes one network many ways (m.facebook.com,
 # l.facebook.com, facebook.com, "meta"; Linkedin and linkedin.com). A source is matched by its words, then by its domain.
@@ -73,12 +78,21 @@ class Scope:
                 self.site_ids = [wanted]
 
     def fetch(self, sql: str, start: date | None = None, end: date | None = None, **values):
-        """`sql` uses :sites, :a and :b."""
+        """`sql` uses :sites, :a and :b, and {leads} / {conv} for the lead columns (seo/metrics/leads.py)."""
         if not self.site_ids:
             return []
+        if "{leads}" in sql or "{conv}" in sql:
+            sql = sql.replace("{leads}", lead_rules.count_sql(self.lead_kind)).replace("{conv}", lead_rules.converted_sql(self.lead_kind))
         statement = text(sql).bindparams(bindparam("sites", expanding=True))
         with self.engine.connect() as conn:
             return conn.execute(statement, {"sites": self.site_ids, "a": start or self.start, "b": end or self.end, **values}).mappings().all()
+
+    @property
+    def lead_kind(self) -> str:
+        """"leads" once a site of the scope has picked its lead events, else "key_events"."""
+        if "_lead_kind" not in self.__dict__:
+            self.__dict__["_lead_kind"] = lead_rules.kind(self.engine, self.site_ids)
+        return self.__dict__["_lead_kind"]
 
     @property
     def has_compare(self) -> bool:
@@ -281,7 +295,7 @@ def _is_ai(source: str, domains: set[str]) -> bool:
 
 def _ga4_rows(scope: Scope, start, end):
     return scope.fetch(
-        "SELECT day, channel, source, medium, SUM(sessions) sessions, SUM(users) users, SUM(key_events) leads FROM ga4_source_daily WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY day, channel, source, medium",
+        "SELECT day, channel, source, medium, SUM(sessions) sessions, SUM(users) users, SUM({leads}) leads, SUM({conv}) conv FROM ga4_source_daily WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY day, channel, source, medium",
         start, end,
     )
 
@@ -313,22 +327,51 @@ def _copy(scope: Scope, site_ids: list[int] | None = None) -> Scope:
     other.__dict__.update(scope.__dict__)
     if site_ids is not None:
         other.site_ids = list(site_ids)
+        other.__dict__.pop("_lead_kind", None)
     return other
 
 
 def _days() -> dict:
-    return defaultdict(lambda: {"sessions": 0, "leads": 0.0})
+    return defaultdict(lambda: {"sessions": 0, "leads": 0.0, "conv": 0.0})
+
+
+def _add(item: dict, row) -> None:
+    item["sessions"] += int(row["sessions"] or 0)
+    item["leads"] += float(row["leads"] or 0)
+    item["conv"] = item.get("conv", 0.0) + float(row.get("conv") or 0)
 
 
 def _add_day(days: dict, row) -> None:
-    item = days[row["day"].isoformat()]
-    item["sessions"] += int(row["sessions"] or 0)
-    item["leads"] += float(row["leads"] or 0)
+    _add(days[row["day"].isoformat()], row)
+
+
+def _conv_rate(item: dict) -> float | None:
+    """Visits that became a lead (or had a key event) out of all visits: never over 100%."""
+    return _ratio(min(item.get("conv", item["leads"]), item["sessions"]), item["sessions"])
 
 
 def _day_rows(days: dict) -> list[dict]:
     """Only the days the source reported: a missing day is a gap for the graph, never a zero."""
     return [{"day": day, "sessions": item["sessions"], "leads": round(item["leads"], 2)} for day, item in sorted(days.items())]
+
+
+def lead_words(scope: Scope, start: date, end: date, compare_start: date | None = None) -> dict:
+    """What a GA4 screen says about its leads: whether they are leads or key events (lead_kind), the days GA4 changed how
+    it counts them inside the period or across the comparison (lead_check; its change is then blank), and the sites still
+    being read again with key events by name."""
+    from seo.collectors import ga4 as collector
+
+    check = ga4_checks.lead_check(scope.engine, scope.site_ids, scope.lead_kind, start, end, compare_start)
+    rereading = sum(collector.days_to_reread(scope.engine, site_id) for site_id in scope.site_ids)
+    return {"lead_kind": scope.lead_kind, "lead_check": check, "reread_days": rereading}
+
+
+def visits_words(scope: Scope) -> dict:
+    """What a GA4 screen says about its visits change: too little data in the period before (no change), and the unusual
+    days of both periods with the change without them (SEO review 2026-11-17, W6 and W11)."""
+    little = bool(scope.has_compare and scope.site_ids and all(ga4_checks.little_before(scope.engine, s, scope.compare_start, scope.compare_end, scope.start, scope.end) for s in scope.site_ids))
+    unusual = ga4_checks.unusual_change(scope.engine, scope.site_ids, scope.start, scope.end, scope.compare_start if scope.has_compare else None, scope.compare_end if scope.has_compare else None)
+    return {"little_before": little, "unusual": unusual}
 
 
 # ---- Channels ------------------------------------------------------------------------------------
@@ -338,25 +381,22 @@ def channels(scope: Scope) -> dict:
     status = _sources_state(scope, "ga4")
     period = _trim_to_data(scope)
     namer = _channel_namer(scope.engine, scope.site_ids, ai=True)
-    totals: dict[str, dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0})
+    totals: dict[str, dict] = _days()
     per_day: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
-    referrers: dict[str, dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0})
+    referrers: dict[str, dict] = _days()
     daily, daily_before = _days(), _days()  # every channel together, for the number cards' graphs (simpler screens)
     for row in _ga4_rows(scope, scope.start, scope.end):
         name = namer(row["channel"], row["source"], row["medium"])
-        totals[name]["sessions"] += int(row["sessions"] or 0)
-        totals[name]["leads"] += float(row["leads"] or 0)
+        _add(totals[name], row)
         per_day[row["day"].isoformat()][name] += int(row["sessions"] or 0)
         _add_day(daily, row)
         if row["medium"] == "referral":
-            referrers[row["source"]]["sessions"] += int(row["sessions"] or 0)
-            referrers[row["source"]]["leads"] += float(row["leads"] or 0)
-    past: dict[str, dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0})
+            _add(referrers[row["source"]], row)
+    past: dict[str, dict] = _days()
     if scope.has_compare:
         for row in _ga4_rows(scope, scope.compare_start, scope.compare_end):
             name = namer(row["channel"], row["source"], row["medium"])
-            past[name]["sessions"] += int(row["sessions"] or 0)
-            past[name]["leads"] += float(row["leads"] or 0)
+            _add(past[name], row)
             _add_day(daily_before, row)
     all_sessions = sum(item["sessions"] for item in totals.values())
     order = sorted(totals, key=lambda name: -totals[name]["sessions"])
@@ -368,14 +408,21 @@ def channels(scope: Scope) -> dict:
         if other:
             values["Other"] = other
         series.append({"day": day, "values": values})
+    leads_said = lead_words(scope, scope.start, scope.end, scope.compare_start if scope.has_compare else None)
+    visits_said = visits_words(scope)
+    before = {"sessions": sum(item["sessions"] for item in past.values()), "leads": round(sum(item["leads"] for item in past.values()), 2), "converted": round(sum(item["conv"] for item in past.values()), 2)} if scope.has_compare and past else None
+    if before and leads_said["lead_check"]["blank"]:
+        before.update(leads=None, converted=None)  # GA4 counted them another way then: no change (W1)
+    if before and visits_said["little_before"]:
+        before = None  # too little data before to compare with (W6)
     return {
-        **status,
-        "total": {"sessions": all_sessions, "leads": round(sum(item["leads"] for item in totals.values()), 2)},
-        "before": {"sessions": sum(item["sessions"] for item in past.values()), "leads": round(sum(item["leads"] for item in past.values()), 2)} if scope.has_compare and past else None,
+        **status, **leads_said, **visits_said,
+        "total": {"sessions": all_sessions, "leads": round(sum(item["leads"] for item in totals.values()), 2), "converted": round(sum(item["conv"] for item in totals.values()), 2)},
+        "before": before,
         "channels": [
             {
-                "channel": name, "sessions": totals[name]["sessions"], "leads": round(totals[name]["leads"], 2), "rate": _ratio(totals[name]["leads"], totals[name]["sessions"]),
-                "share": _ratio(totals[name]["sessions"], all_sessions), "change": _pct_change(totals[name]["sessions"], past[name]["sessions"]) if scope.has_compare and name in past else None,
+                "channel": name, "sessions": totals[name]["sessions"], "leads": round(totals[name]["leads"], 2), "rate": _conv_rate(totals[name]),
+                "share": _ratio(totals[name]["sessions"], all_sessions), "change": _pct_change(totals[name]["sessions"], past[name]["sessions"]) if scope.has_compare and name in past and before else None,
             }
             for name in order
         ],
@@ -406,7 +453,7 @@ def _categorise(engine: Engine, site_ids: list[int]):
 def _page_rows(scope: Scope):
     """One row per page of each site: /contact/ on two sites is two pages."""
     return scope.fetch(
-        "SELECT site_id, MAX(path) path, page_hash, SUM(sessions) sessions, SUM(key_events) leads FROM ga4_page_daily WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY site_id, page_hash"
+        "SELECT site_id, MAX(path) path, page_hash, SUM(sessions) sessions, SUM({leads}) leads, SUM({conv}) conv FROM ga4_page_daily WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY site_id, page_hash"
     )
 
 
@@ -417,40 +464,40 @@ def _hosts(scope: Scope) -> dict[int, str]:
 def conversions(scope: Scope) -> dict:
     status = _sources_state(scope, "ga4")
     namer = _channel_namer(scope.engine, scope.site_ids, ai=True)
-    by_channel: dict[str, dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0})
+    by_channel: dict[str, dict] = _days()
     daily = _days()
     for row in _ga4_rows(scope, scope.start, scope.end):
-        item = by_channel[namer(row["channel"], row["source"], row["medium"])]
-        item["sessions"] += int(row["sessions"] or 0)
-        item["leads"] += float(row["leads"] or 0)
+        _add(by_channel[namer(row["channel"], row["source"], row["medium"])], row)
         _add_day(daily, row)
     pages = _page_rows(scope)
     hosts = _hosts(scope)
     categorise = _categorise(scope.engine, scope.site_ids)
-    types: dict[str, dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0, "pages": 0})
+    types: dict[str, dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0, "conv": 0.0, "pages": 0})
     for row in pages:
         item = types[categorise(row["path"])]
-        item["sessions"] += int(row["sessions"] or 0)
-        item["leads"] += float(row["leads"] or 0)
+        _add(item, row)
         item["pages"] += 1
     sessions = sum(item["sessions"] for item in by_channel.values())
     leads = sum(item["leads"] for item in by_channel.values())
-    has_leads_set_up = bool(scope.fetch("SELECT 1 x FROM ga4_source_daily WHERE site_id IN :sites AND key_events > 0 LIMIT 1"))
+    converted = sum(item["conv"] for item in by_channel.values())
+    has_leads_set_up = bool(scope.fetch("SELECT 1 x FROM ga4_source_daily WHERE site_id IN :sites AND {leads} > 0 LIMIT 1"))
     return {
         **status,
         "sessions": sessions,
         "leads": round(leads, 2),
-        "rate": _ratio(leads, sessions),
+        "converted": round(converted, 2),
+        "rate": _ratio(min(converted, sessions), sessions),
         "key_events_set_up": has_leads_set_up,
-        "funnel": [{"channel": name, "sessions": item["sessions"], "leads": round(item["leads"], 2), "rate": _ratio(item["leads"], item["sessions"]), "lost": item["sessions"] - round(item["leads"])} for name, item in sorted(by_channel.items(), key=lambda pair: -pair[1]["sessions"])],
-        "page_types": [{"type": name, "pages": item["pages"], "sessions": item["sessions"], "leads": round(item["leads"], 2), "rate": _ratio(item["leads"], item["sessions"])} for name, item in sorted(types.items(), key=lambda pair: -pair[1]["sessions"])],
-        "pages": [{"host": hosts.get(row["site_id"], ""), "path": row["path"], "sessions": int(row["sessions"] or 0), "leads": round(float(row["leads"] or 0), 2), "rate": _ratio(float(row["leads"] or 0), int(row["sessions"] or 0)), "unknown": _unknown_page(row["path"])} for row in sorted(pages, key=lambda r: (_unknown_page(r["path"]), -float(r["leads"] or 0))) if float(row["leads"] or 0) > 0][:25],
+        # Visits that didn't become a lead: visits less the visits with one, never below 0 (W8).
+        "funnel": [{"channel": name, "sessions": item["sessions"], "leads": round(item["leads"], 2), "rate": _conv_rate(item), "lost": max(0, item["sessions"] - round(item["conv"]))} for name, item in sorted(by_channel.items(), key=lambda pair: -pair[1]["sessions"])],
+        "page_types": [{"type": name, "pages": item["pages"], "sessions": item["sessions"], "leads": round(item["leads"], 2), "rate": _conv_rate(item)} for name, item in sorted(types.items(), key=lambda pair: -pair[1]["sessions"])],
+        "pages": [{"host": hosts.get(row["site_id"], ""), "path": row["path"], "sessions": int(row["sessions"] or 0), "leads": round(float(row["leads"] or 0), 2), "rate": _conv_rate({"sessions": int(row["sessions"] or 0), "leads": float(row["leads"] or 0), "conv": float(row["conv"] or 0)}), "unknown": _unknown_page(row["path"])} for row in sorted(pages, key=lambda r: (_unknown_page(r["path"]), -float(r["leads"] or 0))) if float(row["leads"] or 0) > 0][:25],
         "hid_rows": _hidden(scope),
-        **_conversions_before(scope, daily, sessions, leads),
+        **_conversions_before(scope, daily, sessions, converted),
     }
 
 
-def _conversions_before(scope: Scope, daily: dict, sessions: int, leads: float) -> dict:
+def _conversions_before(scope: Scope, daily: dict, sessions: int, converted: float) -> dict:
     """The period before, for Conversions' number cards (simpler screens): its totals, the changes, and both periods day by
     day. The comparison is cut to as many days as the period really has, as Channels does (F112), on a copy of the scope,
     so the totals above stay exactly what they were. No comparison, or no data in it: before is None, never zeros."""
@@ -464,16 +511,24 @@ def _conversions_before(scope: Scope, daily: dict, sessions: int, leads: float) 
         if daily_before:
             was_sessions = sum(item["sessions"] for item in daily_before.values())
             was_leads = round(sum(item["leads"] for item in daily_before.values()), 2)
-            before = {"sessions": was_sessions, "leads": was_leads, "rate": _ratio(was_leads, was_sessions)}
-    now_leads, now_rate = round(leads, 2), _ratio(leads, sessions)
+            was_conv = sum(item["conv"] for item in daily_before.values())
+            before = {"sessions": was_sessions, "leads": was_leads, "rate": _ratio(min(was_conv, was_sessions), was_sessions)}
+    now_leads = round(sum(item["leads"] for item in daily.values()), 2)
+    now_rate = _ratio(min(converted, sessions), sessions)
+    leads_said = lead_words(window, window.start, window.end, window.compare_start if window.has_compare else None)
+    visits_said = visits_words(window)
+    if before and visits_said["little_before"]:
+        before = None  # too little data before to compare with (W6)
+    if before and leads_said["lead_check"]["blank"]:
+        before.update(leads=None, rate=None)  # GA4 counted them another way then: no change (W1)
     changes = {}
     if before:
         # Counts change in %, the lead rate in points, as the number cards show them.
         changes = {
-            "sessions": _pct_change(sessions, before["sessions"]), "leads": _pct_change(now_leads, before["leads"]),
+            "sessions": _pct_change(sessions, before["sessions"]), "leads": _pct_change(now_leads, before["leads"]) if before["leads"] is not None else None,
             "rate_points": round((now_rate - before["rate"]) * 100, 2) if now_rate is not None and before["rate"] is not None else None,
         }
-    return {"period": period, "before": before, "changes": changes, "days": _day_rows(daily), "days_before": _day_rows(daily_before) if daily_before is not None else None}
+    return {**leads_said, **visits_said, "period": period, "before": before, "changes": changes, "days": _day_rows(daily), "days_before": _day_rows(daily_before) if daily_before is not None else None}
 
 
 # ---- Content -------------------------------------------------------------------------------------
@@ -531,7 +586,7 @@ def content(scope: Scope, limit: int = 500) -> dict:
         "ga4": ga4_state, "gsc": gsc_state, "state": "ok" if rows else (ga4_state["state"] if ga4_state["state"] != "ok" else gsc_state["state"]),
         "pages": rows[:limit], "total_pages": len(rows),
         "social": [{**item, "sources": sorted(item["sources"])} for item in sorted(social.values(), key=lambda item: (-item["sessions"], item["source"]))],
-        "hid_rows": _hidden(scope), "gsc_window": gsc_window,
+        "hid_rows": _hidden(scope), "gsc_window": gsc_window, "lead_kind": scope.lead_kind,
     }
 
 
@@ -596,15 +651,22 @@ def add_rule(engine: Engine, kind, pattern, value=None, site_id=None) -> dict:
             site_id = int(site_id)
             if not conn.execute(text("SELECT 1 FROM sites WHERE id = :i AND kind = 'own'"), {"i": site_id}).first():
                 raise Refused("That site isn't one of yours.")
+        if kind == "key_event" and site_id is None:
+            raise Refused("Pick the site whose key event this is.")
         new_id = conn.execute(
             text("INSERT INTO site_rules (site_id, kind, pattern, value) VALUES (:s, :k, :p, :v)"), {"s": site_id, "k": kind, "p": clean, "v": named}
         ).lastrowid
+    if kind == "key_event":
+        lead_rules.recompute(engine, site_id)
     return {"id": new_id, "site_id": site_id, "kind": kind, "pattern": clean, "value": named}
 
 
 def delete_rule(engine: Engine, rule_id: int) -> None:
     with engine.begin() as conn:
+        held = conn.execute(text("SELECT kind, site_id FROM site_rules WHERE id = :i"), {"i": rule_id}).first()
         conn.execute(text("DELETE FROM site_rules WHERE id = :i"), {"i": rule_id})
+    if held and held[0] == "key_event" and held[1]:
+        lead_rules.recompute(engine, held[1])
 
 
 # ---- Page speed and Clarity, shown beside the traffic they explain ----------------------------------
@@ -646,7 +708,9 @@ def page_speed(scope: Scope) -> list[dict]:
 
 
 def clarity(scope: Scope) -> dict:
-    rows = scope.fetch("SELECT SUM(sessions) s, SUM(rage_clicks) r, SUM(dead_clicks) d, SUM(scroll_depth * sessions) w, SUM(IF(scroll_depth IS NULL, 0, sessions)) n, COUNT(*) c, SUM(rage_clicks IS NULL) o, MAX(day) last_day FROM clarity_daily WHERE site_id IN :sites AND day BETWEEN :a AND :b")
+    """Clarity's read on day D covers the 24 hours before it, so the period's days are read one day on, as AI search
+    reads them (SEO review 2026-11-17, W10), and "through" is the last day covered."""
+    rows = scope.fetch("SELECT SUM(sessions) s, SUM(rage_clicks) r, SUM(dead_clicks) d, SUM(scroll_depth * sessions) w, SUM(IF(scroll_depth IS NULL, 0, sessions)) n, COUNT(*) c, SUM(rage_clicks IS NULL) o, MAX(day) - INTERVAL 1 DAY last_day FROM clarity_daily WHERE site_id IN :sites AND day BETWEEN :a AND :b", scope.start + timedelta(days=1), scope.end + timedelta(days=1))
     row = rows[0] if rows else None
     if not row or not row["c"]:
         return {"has_data": False}
@@ -676,6 +740,7 @@ def _fetch_lists(scope: Scope, sql: str, start, end, lists: dict, **values):
     """Scope.fetch with lists besides :sites, each written :name in the SQL. An empty list matches nothing."""
     if not scope.site_ids or any(not items for items in lists.values()):
         return []
+    sql = sql.replace("{leads}", lead_rules.count_sql(scope.lead_kind)).replace("{conv}", lead_rules.converted_sql(scope.lead_kind))
     statement = text(sql).bindparams(bindparam("sites", expanding=True), *(bindparam(name, expanding=True) for name in lists))
     with scope.engine.connect() as conn:
         return conn.execute(statement, {"sites": scope.site_ids, "a": start, "b": end, **lists, **values}).mappings().all()
@@ -687,7 +752,7 @@ def _listed(now: dict, past: dict | None, label: str) -> list[dict]:
     for key, item in now.items():
         was = past.get(key) if past is not None else None
         rows.append({
-            label: key, "sessions": item["sessions"], "leads": round(item["leads"], 2), "rate": _ratio(item["leads"], item["sessions"]),
+            label: key, "sessions": item["sessions"], "leads": round(item["leads"], 2), "rate": _conv_rate(item),
             "before": was["sessions"] if was else None, "change": _pct_change(item["sessions"], was["sessions"]) if was else None,
         })
     rows.sort(key=lambda r: (-r["sessions"], -r["leads"], str(r[label])))
@@ -727,12 +792,12 @@ def channel_detail(scope: Scope, name) -> dict:
     before = None
     if past and past["found"]:  # as the row: no change when the channel had no visits in the period before
         was_sessions, was_leads = _summed(past["days"])
-        before = {"sessions": was_sessions, "leads": was_leads, "rate": _ratio(was_leads, was_sessions)}
+        before = {"sessions": was_sessions, "leads": was_leads, "rate": _conv_rate({"sessions": was_sessions, "leads": was_leads})}
     sources = _listed(now["sources"], past["sources"] if past else None, "source")
     mediums = _listed(now["mediums"], past["mediums"] if past else None, "medium")
     return {
-        **status, "kind": "channel", "name": name, "found": now["found"] or bool(past and past["found"]), "period": period,
-        "totals": {"sessions": sessions, "leads": leads, "rate": _ratio(leads, sessions), "share": _ratio(sessions, now["everything"])} if now["days"] else None,
+        **status, "kind": "channel", "name": name, "lead_kind": scope.lead_kind, "found": now["found"] or bool(past and past["found"]), "period": period,
+        "totals": {"sessions": sessions, "leads": leads, "rate": _conv_rate({"sessions": sessions, "leads": leads}), "share": _ratio(sessions, now["everything"])} if now["days"] else None,
         "before": before, "change": _pct_change(sessions, before["sessions"]) if before else None,
         "days": _day_rows(now["days"]), "days_before": _day_rows(past["days"]) if past else None,
         "sources": sources[:PANEL_ROWS], "sources_total": len(sources),
@@ -766,11 +831,11 @@ def referrer_detail(scope: Scope, domain) -> dict:
     before = None
     if found_before:
         was_sessions, was_leads = _summed(past)
-        before = {"sessions": was_sessions, "leads": was_leads, "rate": _ratio(was_leads, was_sessions)}
+        before = {"sessions": was_sessions, "leads": was_leads, "rate": _conv_rate({"sessions": was_sessions, "leads": was_leads})}
     hosts = _hosts(scope)
     landing: dict[tuple[int, str], dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0})
     for row in scope.fetch(
-        "SELECT site_id, MAX(path) path, SUM(sessions) sessions, SUM(key_events) leads FROM ga4_referral_daily "
+        "SELECT site_id, MAX(path) path, SUM(sessions) sessions, SUM({leads}) leads FROM ga4_referral_daily "
         "WHERE site_id IN :sites AND domain = :d AND day BETWEEN :a AND :b GROUP BY site_id, row_hash", d=domain.lower(),
     ):
         item = landing[(row["site_id"], _path(row["path"]))]
@@ -781,8 +846,8 @@ def referrer_detail(scope: Scope, domain) -> dict:
         key=lambda p: (-p["sessions"], p["host"], p["path"]),
     )
     return {
-        **status, "kind": "referrer", "domain": domain, "found": found or found_before, "period": period,
-        "totals": {"sessions": sessions, "leads": leads, "rate": _ratio(leads, sessions)} if days else None,
+        **status, "kind": "referrer", "domain": domain, "lead_kind": scope.lead_kind, "found": found or found_before, "period": period,
+        "totals": {"sessions": sessions, "leads": leads, "rate": _conv_rate({"sessions": sessions, "leads": leads})} if days else None,
         "before": before, "change": _pct_change(sessions, before["sessions"]) if before else None,
         "days": _day_rows(days), "days_before": _day_rows(past) if past is not None else None,
         "pages": pages[:PANEL_ROWS], "pages_total": len(pages),
@@ -863,7 +928,7 @@ def page_detail(scope: Scope, path, host=None) -> dict:
 
     # GA4 writes a page as /a or /a/: every spelling of this one, found the way content() finds them.
     hashes = [r["h"] for r in one.fetch(f"SELECT page_hash h, MAX(path) path FROM ga4_page_daily WHERE site_id IN :sites AND {_BOTH} GROUP BY page_hash", ga4w["a"], ga4w["b"], **both(ga4w)) if _path(r["path"]) == wanted]
-    ga4_days = {r["day"]: r for r in _fetch_lists(one, f"SELECT day, SUM(sessions) s, SUM(key_events) k FROM ga4_page_daily WHERE site_id IN :sites AND page_hash IN :hashes AND {_BOTH} GROUP BY day", ga4w["a"], ga4w["b"], {"hashes": hashes}, **both(ga4w))}
+    ga4_days = {r["day"]: r for r in _fetch_lists(one, f"SELECT day, SUM(sessions) s, SUM({{leads}}) k, SUM({{conv}}) v FROM ga4_page_daily WHERE site_id IN :sites AND page_hash IN :hashes AND {_BOTH} GROUP BY day", ga4w["a"], ga4w["b"], {"hashes": hashes}, **both(ga4w))}
     ga4_seen = {r["day"] for r in one.fetch(f"SELECT DISTINCT day FROM ga4_page_daily WHERE site_id IN :sites AND {_BOTH}", ga4w["a"], ga4w["b"], **both(ga4w))}
     # Search Console: every address Google showed for it (http or https, with a query string or not).
     shown_as = [(r["h"], r["page"]) for r in one.fetch(f"SELECT page_hash h, MAX(page) page FROM gsc_page WHERE site_id IN :sites AND {_BOTH} GROUP BY page_hash", gscw["a"], gscw["b"], **both(gscw)) if _path(r["page"]) == wanted]
@@ -902,7 +967,7 @@ def page_detail(scope: Scope, path, host=None) -> dict:
     domains = _ai_domains(scope.engine, scope.site_ids)
     assistants: dict[str, dict] = {}
     for r in one.fetch(
-        "SELECT MAX(domain) domain, MAX(path) path, SUM(IF(day BETWEEN :a AND :b, sessions, 0)) s, SUM(IF(day BETWEEN :a AND :b, key_events, 0)) k, "
+        "SELECT MAX(domain) domain, MAX(path) path, SUM(IF(day BETWEEN :a AND :b, sessions, 0)) s, SUM(IF(day BETWEEN :a AND :b, {leads}, 0)) k, "
         f"SUM(day BETWEEN :a AND :b) n, SUM(IF(day BETWEEN :ca AND :cb, sessions, 0)) ps, SUM(day BETWEEN :ca AND :cb) pn FROM ga4_referral_daily WHERE site_id IN :sites AND {_BOTH} GROUP BY row_hash",
         ga4w["a"], ga4w["b"], **both(ga4w),
     ):
@@ -932,7 +997,7 @@ def page_detail(scope: Scope, path, host=None) -> dict:
         shown = sum(int(r["i"] or 0) for r in gs) if gs else None
         weighted = sum(float(r["w"] or 0) for r in gs)
         return {
-            "sessions": sessions, "leads": leads, "rate": _ratio(leads, sessions) if ga else None,
+            "sessions": sessions, "leads": leads, "rate": _conv_rate({"sessions": sessions, "leads": leads}) if ga else None,
             "clicks": clicks, "impressions": shown, "click_rate": _ratio(clicks, shown) if gs else None,
             "position": round(weighted / shown, 1) if shown else None, "ai": ai_visits,
         }
@@ -957,7 +1022,7 @@ def page_detail(scope: Scope, path, host=None) -> dict:
 
     name = hosts[site_id]
     return {
-        "kind": "page", "host": name, "path": wanted, "url": f"https://{name}{wanted}", "category": _categorise(scope.engine, scope.site_ids)(wanted),
+        "kind": "page", "host": name, "path": wanted, "lead_kind": one.lead_kind, "url": f"https://{name}{wanted}", "category": _categorise(scope.engine, scope.site_ids)(wanted),
         "found": bool(hashes or shown_as or assistants),
         "addresses": sorted({page for _, page in shown_as})[:20],  # as Search Console writes it, for Overview's exact filter
         "ga4": _sources_state(one, "ga4"), "gsc": _sources_state(one, "gsc"),
@@ -1029,7 +1094,7 @@ def assistant_detail(scope: Scope, source) -> dict:
         )
     sessions, leads = _summed(days)
     return {
-        **status, "kind": "assistant", "source": wanted, "found": found, "period": period,
+        **status, "kind": "assistant", "source": wanted, "lead_kind": scope.lead_kind, "found": found, "period": period,
         "totals": {"sessions": sessions, "leads": leads, "rate": ai._rate(leads, sessions)["value"], "rate_needs": ai.LEAD_RATE_MIN_VISITS, "share": _ratio(sessions, every_ai)} if days else None,
         "before": before, "change": _pct_change(sessions, before["sessions"]) if before else None,
         "days": _day_rows(days), "days_before": _day_rows(days_before) if days_before is not None else None,

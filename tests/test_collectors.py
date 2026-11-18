@@ -68,22 +68,20 @@ def _gsc_answer(request):
     return httpx.Response(200, json={"rows": [{"keys": ["créer société", "https://mine.example/a/"], "clicks": 4, "impressions": 40, "position": 3.2}]})
 
 
-def _ga4_answer(request, thresholded=False):
-    import json
-    body = json.loads(request.content)
-    names = [d["name"] for d in body["dimensions"]]
-    rows = {
-        "sessionDefaultChannelGroup": [["Organic Search", "google", "organic", "50", "40", "2"], ["Referral", "blog.example", "referral", "7", "6", "1"]],
-        "landingPage": [["/a/", "30", "25", "2"]],
-        "sessionManualSource": [["blog", "backlink", "bl-1", "/a/", "3", "1"], ["(not set)", "(not set)", "(not set)", "/a/", "99", "9"]],
-        "sessionGoogleAdsCampaignName": [["Brand", "12", "34.5", "12", "1"]],
-    }
-    if names[0] == "sessionSource":
-        table = [["blog.example", "referral", "/a/", "(not set)", "4", "1"], ["blog.example", "referral", "/a/", "bl-1", "3", "1"], ["google", "organic", "/a/", "(not set)", "9", "0"]]
-    else:
-        table = rows[names[0]]
-    cut = len(names)
-    return httpx.Response(200, json={"rows": [{"dimensionValues": [{"value": v} for v in r[:cut]], "metricValues": [{"value": v} for v in r[cut:]]} for r in table], "rowCount": len(table), "metadata": {"currencyCode": "EUR", "subjectToThresholding": thresholded}})
+# One day of a GA4 property, as visit groups (tests/ga4_fake.py). Group 5 is another website the property also records.
+GA4_GROUPS = [
+    {"channel": "Organic Search", "source": "google", "medium": "organic", "manual_source": "google", "manual_medium": "organic", "campaign": "(organic)", "page": "/a/", "host": "mine.example", "sessions": 9, "users": 8, "events": {}},
+    {"channel": "Organic Search", "source": "google", "medium": "organic", "manual_source": "google", "manual_medium": "organic", "campaign": "(organic)", "page": "/b/", "host": "www.mine.example", "sessions": 41, "users": 32, "events": {"generate_lead": (2, 2)}},
+    # A plain referral: GA4 writes "(referral)" as its campaign (expert review 2026-11-17, W3).
+    {"channel": "Referral", "source": "blog.example", "medium": "referral", "manual_source": "blog.example", "manual_medium": "referral", "campaign": "(referral)", "page": "/a/", "host": "mine.example", "sessions": 4, "users": 4, "events": {"generate_lead": (1, 1)}},
+    {"channel": "Referral", "source": "blog.example", "medium": "referral", "manual_source": "blog", "manual_medium": "backlink", "campaign": "bl-1", "page": "/a/", "host": "mine.example", "sessions": 3, "users": 2, "events": {"page_view_booking": (5, 3)}},
+    {"channel": "Direct", "source": "(direct)", "medium": "(none)", "manual_source": "(direct)", "manual_medium": "(none)", "campaign": "(direct)", "page": "/other/", "host": "other-site.example", "sessions": 20, "users": 20, "events": {"generate_lead": (4, 4)}},
+]
+
+
+def _ga4_answer(request, thresholded=False, groups=None):
+    from tests import ga4_fake
+    return ga4_fake.answer(request, GA4_GROUPS if groups is None else groups, ads=[["Brand", "12", "34.5", "12", "1"]], thresholded=thresholded)
 
 
 def test_a_key_is_checked_whole_before_it_is_saved(world):
@@ -209,7 +207,7 @@ def test_ga4_never_counts_a_utm_session_by_domain_too(world):
     ga4._one_day(world.engine, world.site, "t", src["property"], day)
     with world.engine.connect() as conn:
         assert conn.execute(text("SELECT domain, path, sessions FROM ga4_referral_daily")).all() == [("blog.example", "/a/", 4)]
-        assert conn.execute(text("SELECT source, medium, campaign, sessions FROM ga4_campaign_daily")).all() == [("blog", "backlink", "bl-1", 3)]
+        assert conn.execute(text("SELECT source, medium, campaign, sessions FROM ga4_campaign_daily WHERE campaign = 'bl-1'")).all() == [("blog", "backlink", "bl-1", 3)]
         assert conn.execute(text("SELECT SUM(sessions) FROM ga4_source_daily")).scalar() == 57
         assert conn.execute(text("SELECT campaign, clicks, cost, currency FROM ga4_ads_daily")).one()[:2] == ("Brand", 12)
         assert conn.execute(text("SELECT currency FROM ga4_ads_daily")).scalar() == "EUR"
@@ -399,15 +397,11 @@ def test_real_token_exchange_success_gives_a_token_and_caches_it(world, monkeypa
 
 
 def test_ga4_keeps_utm_rows_that_have_no_campaign(world):
-    import json
-
-    def answer(request):
-        if json.loads(request.content)["dimensions"][0]["name"] != "sessionManualSource":
-            return _ga4_answer(request)
-        table = [["blog-expat", "backlink", "(not set)", "/a/", "12", "1"], ["(not set)", "(not set)", "(not set)", "/a/", "99", "9"]]
-        return httpx.Response(200, json={"rows": [{"dimensionValues": [{"value": v} for v in r[:4]], "metricValues": [{"value": v} for v in r[4:]]} for r in table], "rowCount": 2, "metadata": {}})
-
-    world.answers["runReport"] = answer
+    groups = [
+        {"channel": "Referral", "source": "blog-expat", "medium": "backlink", "manual_source": "blog-expat", "manual_medium": "backlink", "campaign": "(not set)", "page": "/a/", "host": "mine.example", "sessions": 12, "events": {"lead": (1, 1)}},
+        {"channel": "Direct", "source": "(direct)", "medium": "(none)", "manual_source": "(not set)", "manual_medium": "(not set)", "campaign": "(not set)", "page": "/a/", "host": "mine.example", "sessions": 99, "events": {}},
+    ]
+    world.answers["runReport"] = lambda request: _ga4_answer(request, groups=groups)
     ga4._one_day(world.engine, world.site, "t", "123456", common.today(world.engine) - timedelta(days=1))
     with world.engine.connect() as conn:
         assert conn.execute(text("SELECT source, medium, campaign, sessions FROM ga4_campaign_daily")).all() == [("blog-expat", "backlink", "(not set)", 12)]

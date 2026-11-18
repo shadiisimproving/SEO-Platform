@@ -14,7 +14,8 @@ from seo.collectors.common import digest
 from seo.collectors.jobs import ALERT_KIND, NAMES
 from seo.competitors.pairs import _page_id
 from seo.core.errors import Refused
-from seo.metrics import search
+from seo.metrics import ga4_checks, search
+from seo.metrics import leads as lead_rules
 from seo.metrics.service import Scope
 
 CLARITY_LIMIT_HOURS = 72
@@ -567,30 +568,36 @@ def _leads_drops(engine: Engine, site_id: int | None) -> list[dict]:
     rows = []
     with engine.connect() as conn:
         for site in _own_sites(conn, site_id):
-            ga4 = conn.execute(text("SELECT MIN(day) a, MAX(day) b, SUM(key_events > 0) leads_rows FROM ga4_source_daily WHERE site_id = :s"), {"s": site["id"]}).mappings().first()
+            kind = lead_rules.kind(engine, [site["id"]])
+            col = lead_rules.count_sql(kind)
+            ga4 = conn.execute(text(f"SELECT MIN(day) a, MAX(day) b, SUM({col} > 0) leads_rows FROM ga4_source_daily WHERE site_id = :s"), {"s": site["id"]}).mappings().first()
             if not ga4["b"] or not ga4["leads_rows"]:
                 continue
             end = ga4["b"]
             start, before_start = end - timedelta(days=LEADS_DAYS - 1), end - timedelta(days=2 * LEADS_DAYS - 1)
             if ga4["a"] > before_start:
                 continue  # no full period before to compare with
+            if any(c["kind"] in ("rose", "fell") for c in ga4_checks.crossing(ga4_checks.tracking_changes(engine, site["id"], kind), before_start, end)):
+                continue  # GA4 counted them another way in one of the periods: not a fall in leads (W1). Key events that
+                # stopped altogether still raise it: a broken form and a broken tag both need the owner.
             found = conn.execute(
-                text("SELECT SUM(IF(day >= :a, key_events, 0)) now_l, SUM(IF(day < :a, key_events, 0)) was_l FROM ga4_source_daily WHERE site_id = :s AND day BETWEEN :ba AND :b"),
+                text(f"SELECT SUM(IF(day >= :a, {col}, 0)) now_l, SUM(IF(day < :a, {col}, 0)) was_l FROM ga4_source_daily WHERE site_id = :s AND day BETWEEN :ba AND :b"),
                 {"s": site["id"], "a": start, "ba": before_start, "b": end},
             ).mappings().first()
             now, was = round(float(found["now_l"] or 0)), round(float(found["was_l"] or 0))
             if not _below_chance(now, was):
                 continue
             percent = round((was - now) / was * 100)
+            word = "Leads" if kind == lead_rules.LEADS else "Key events"
             # One key per site, as a page drop has one per page: GA4's newest day moves daily, so a key holding it brought
             # a drop marked as seen back the next day. Seen, it stays hidden for SEEN_DROP_DAYS, then comes back if still there.
             key = digest("leads", str(site["id"]))
             values = {"percent": percent, "was": was, "now": now}
             rows.append({
                 "id": f"leads-{key}", "seen_key": key, "kind": "leads_drop", "severity": "crit" if percent >= 50 else "warn", "rank": LOSING_RESULTS, "host": site["host"],
-                "title": f"Leads fell {percent}%: {was} → {now}", "detail": "Last 28 days vs the 28 before", "link": "#conversions", "created_at": None,
-                "leads": now, "leads_was": was, "from": start.isoformat(), "to": end.isoformat(),
-                "words": {"title": ["Leads fell {percent}%: {was} → {now}", values], "detail": ["Last 28 days vs the 28 before", {}]},
+                "title": f"{word} fell {percent}%: {was} → {now}", "detail": "Last 28 days vs the 28 before", "link": "#conversions", "created_at": None,
+                "leads": now, "leads_was": was, "from": start.isoformat(), "to": end.isoformat(), "lead_kind": kind,
+                "words": {"title": [word + " fell {percent}%: {was} → {now}", values], "detail": ["Last 28 days vs the 28 before", {}]},
             })
     return rows
 
@@ -697,20 +704,27 @@ def _site_strip(engine: Engine, site_id: int | None, args: dict, length: int) ->
     with engine.connect() as conn:
         sites = _own_sites(conn, site_id)
     for site in sites:
-        row = {"id": site["id"], "host": site["host"], "visits": None, "visits_was": None, "visits_change": None, "leads": None, "leads_was": None, "leads_change": None, "leads_state": "no_ga4", "clicks": None, "clicks_was": None, "clicks_change": None, "through": None, "visits_through": None, "trend": [], "_daily": {"visits": {}, "leads": {}}}
+        kind = lead_rules.kind(engine, [site["id"]])
+        col = lead_rules.count_sql(kind)
+        row = {"id": site["id"], "host": site["host"], "visits": None, "visits_was": None, "visits_change": None, "visits_note": None, "unusual": None, "leads": None, "leads_was": None, "leads_change": None, "leads_state": "no_ga4", "lead_kind": kind, "lead_changes": [], "other_hosts": [], "clicks": None, "clicks_was": None, "clicks_change": None, "through": None, "visits_through": None, "trend": [], "_daily": {"visits": {}, "leads": {}}}
         with engine.connect() as conn:
             row["alerts"] = int(conn.execute(text("SELECT COUNT(*) FROM alerts WHERE site_id = :s AND acknowledged_at IS NULL"), {"s": site["id"]}).scalar() or 0)
-            ga4 = conn.execute(text("SELECT MIN(day) first_day, MAX(day) last_day, SUM(key_events > 0) leads_rows FROM ga4_source_daily WHERE site_id = :s"), {"s": site["id"]}).mappings().first()
+            ga4 = conn.execute(text(f"SELECT MIN(day) first_day, MAX(day) last_day, SUM({col} > 0) leads_rows FROM ga4_source_daily WHERE site_id = :s"), {"s": site["id"]}).mappings().first()
             if ga4["last_day"]:
                 a, b, ca, cb = _ga4_windows(ga4["last_day"], length, compare)
                 values = {"s": site["id"], "a": a, "b": b, "ca": ca or date(1900, 1, 1), "cb": cb or date(1900, 1, 1)}
                 found = conn.execute(
-                    text("SELECT SUM(IF(day BETWEEN :a AND :b, sessions, 0)) now_v, SUM(IF(day BETWEEN :ca AND :cb, sessions, 0)) was_v, SUM(IF(day BETWEEN :a AND :b, key_events, 0)) now_l, SUM(IF(day BETWEEN :ca AND :cb, key_events, 0)) was_l FROM ga4_source_daily WHERE site_id = :s AND (day BETWEEN :a AND :b OR day BETWEEN :ca AND :cb)"),
+                    text(f"SELECT SUM(IF(day BETWEEN :a AND :b, sessions, 0)) now_v, SUM(IF(day BETWEEN :ca AND :cb, sessions, 0)) was_v, SUM(IF(day BETWEEN :a AND :b, {col}, 0)) now_l, SUM(IF(day BETWEEN :ca AND :cb, {col}, 0)) was_l FROM ga4_source_daily WHERE site_id = :s AND (day BETWEEN :a AND :b OR day BETWEEN :ca AND :cb)"),
                     values,
                 ).mappings().first()
                 compared = ca is not None and ga4["first_day"] <= ca
+                if ca is not None and (compared or int(found["was_v"] or 0)) and ga4_checks.little_before(engine, site["id"], ca, cb, a, b):
+                    compared, row["visits_note"] = False, "little_before"  # GA4 recorded almost nothing then (W6)
+                row["lead_changes"] = ga4_checks.crossing(ga4_checks.tracking_changes(engine, site["id"], kind), ca or a, b)
+                row["unusual"] = ga4_checks.unusual_change(engine, [site["id"]], a, b, ca if compared else None, cb if compared else None)
+                row["other_hosts"] = ga4_checks.other_hosts(engine, site["id"])
                 row.update(visits=int(found["now_v"] or 0), visits_through=ga4["last_day"].isoformat(), _ga4={"from": a.isoformat(), "to": b.isoformat(), "compare_from": ca.isoformat() if ca else None, "compare_to": cb.isoformat() if cb else None})
-                for found_day in conn.execute(text("SELECT day, SUM(sessions) v, SUM(key_events) l FROM ga4_source_daily WHERE site_id = :s AND (day BETWEEN :a AND :b OR day BETWEEN :ca AND :cb) GROUP BY day"), values).mappings().all():
+                for found_day in conn.execute(text(f"SELECT day, SUM(sessions) v, SUM({col}) l FROM ga4_source_daily WHERE site_id = :s AND (day BETWEEN :a AND :b OR day BETWEEN :ca AND :cb) GROUP BY day"), values).mappings().all():
                     day = found_day["day"]
                     slot = ("now", (day - a).days) if a <= day <= b else ("was", (day - ca).days)
                     row["_daily"]["visits"][slot] = int(found_day["v"] or 0)
@@ -722,7 +736,7 @@ def _site_strip(engine: Engine, site_id: int | None, args: dict, length: int) ->
                     row.update(visits_was=int(found["was_v"] or 0), visits_change=_percent(int(found["now_v"] or 0), int(found["was_v"] or 0)))
                 if ga4["leads_rows"]:
                     row["leads"] = round(float(found["now_l"] or 0))
-                    if compared:
+                    if compared and not row["lead_changes"]:  # a change across a change in how GA4 counts is left out (W1)
                         row.update(leads_was=round(float(found["was_l"] or 0)), leads_change=row["leads"] - round(float(found["was_l"] or 0)))
         clicks = _clicks(engine, site["id"], args)
         if clicks["value"] is not None:
@@ -759,6 +773,21 @@ def _points(strip: list[dict], field: str, length: int) -> list[dict]:
     return [{"day": (end - timedelta(days=length - 1 - n)).isoformat(), "now": total(known, ("now", n)), "was": total(compared, ("was", n))} for n in range(length)]
 
 
+def _unusual_total(strip: list[dict]) -> dict | None:
+    """Every site's unusual days, and the visits change of the sites compared, without them (W11)."""
+    rows = [row for row in strip if row.get("unusual")]
+    if not rows:
+        return None
+    runs = [run for row in rows for run in row["unusual"]["runs"]]
+    runs_before = [run for row in rows for run in row["unusual"]["runs_before"]]
+    compared = [row for row in strip if row["visits_was"] is not None]
+    now = sum((row["unusual"]["visits"] if row.get("unusual") else row["visits"]) for row in compared)
+    was = sum((row["unusual"]["visits_before"] if row.get("unusual") and row["unusual"]["visits_before"] is not None else row["visits_was"]) for row in compared)
+    days = sorted({day for row in rows for day in row["unusual"]["days"]})
+    days_before = sorted({day for row in rows for day in row["unusual"]["days_before"]})
+    return {"runs": runs, "runs_before": runs_before, "days": days, "days_before": days_before, "change": _percent(now, was) if compared and was else None}
+
+
 def _results(strip: list[dict], clicks: dict, sources_state: dict) -> dict:
     """The three numbers. Google clicks for the whole choice of sites come from one period (as Overview), the GA4 ones add
     up each site's own. Each says the state of its source, in Channels' words: not connected, waiting, stopped, ok."""
@@ -768,9 +797,16 @@ def _results(strip: list[dict], clicks: dict, sources_state: dict) -> dict:
     known = [row for row in strip if row["clicks"] is not None]
     ga4_window = next((row.get("_ga4") for row in strip if row.get("_ga4")), None)
     window = {**{k: clicks["window"][k] for k in ("range", "compare", "from", "to", "compare_from", "compare_to", "compare_unavailable", "history_from", "final_through")}, "ga4": ga4_window}
+    lead_kind = lead_rules.LEADS if any(row["lead_kind"] == lead_rules.LEADS for row in strip) else lead_rules.KEY_EVENTS
+    lead_changes = sorted(({**c, "host": row["host"]} for row in strip for c in row["lead_changes"]), key=lambda c: c["day"])
+    visits = {**_total(strip, "visits"), "points": _points(strip, "visits", length), "source": sources_state["ga4"], "unusual": _unusual_total(strip)}
+    if visits["change"] is None and any(row["visits_note"] == "little_before" for row in strip if row["visits"] is not None):
+        visits["note"] = "little_before"
     return {
-        "leads": {**_total(strip, "leads", absolute=True), "points": _points(strip, "leads", length), "state": "ok" if "ok" in states else "not_set_up" if "not_set_up" in states else "no_ga4", "source": sources_state["ga4"]},
-        "visits": {**_total(strip, "visits"), "points": _points(strip, "visits", length), "source": sources_state["ga4"]},
+        "leads": {**_total(strip, "leads", absolute=True), "points": _points(strip, "leads", length), "state": "ok" if "ok" in states else "not_set_up" if "not_set_up" in states else "no_ga4", "source": sources_state["ga4"],
+                  "kind": lead_kind, "changes": lead_changes, "blank": bool(lead_changes)},
+        "visits": visits,
+        "other_hosts": [{"site_id": row["id"], "host": row["host"], "hosts": row["other_hosts"]} for row in strip if row["other_hosts"]],
         "clicks": {"value": clicks["value"], "change": clicks["change"], "sites": len(known), "of": len(strip), "points": clicks["points"], "source": sources_state["gsc"]},
         "through": min(days) if days else None, "days": length, "window": window,
     }

@@ -14,6 +14,7 @@ from seo.backlinks import service as backlink_service
 from seo.backlinks.cleaner import root_domain
 from seo.backlinks.live import traffic_targets
 from seo.collectors.ga4 import NOT_SET
+from seo.metrics import leads as lead_rules
 from seo.metrics.service import _path, _pct_change, parse_day
 
 
@@ -29,11 +30,12 @@ def traffic(engine: Engine, site_id: int, start, end) -> dict:
     """{backlink id: {visits, leads, basis, shared_by, pages}}. basis is utm or domain. Once GA4 has data, a link it never saw has 0 visits. Before that, nothing is known."""
     first, last = parse_day(start, "start date"), parse_day(end, "end date")
     values = {"s": site_id, "a": first, "b": last}
+    col = lead_rules.count_sql(lead_rules.kind(engine, [site_id]))  # leads once the site picked them, else key events
     with engine.connect() as conn:
         has_data = conn.execute(text("SELECT 1 FROM coverage WHERE site_id = :s AND source = 'ga4' AND day BETWEEN :a AND :b LIMIT 1"), values).first()
         hid = conn.execute(text("SELECT MAX(hid_rows) FROM coverage WHERE site_id = :s AND source = 'ga4' AND day BETWEEN :a AND :b"), values).scalar()
-        campaigns = conn.execute(text("SELECT MAX(source) source, MAX(medium) medium, MAX(campaign) campaign, MAX(path) path, SUM(sessions) sessions, SUM(key_events) leads FROM ga4_campaign_daily WHERE site_id = :s AND day BETWEEN :a AND :b GROUP BY row_hash"), values).mappings().all()
-        referrals = conn.execute(text("SELECT MAX(domain) domain, MAX(path) path, SUM(sessions) sessions, SUM(key_events) leads FROM ga4_referral_daily WHERE site_id = :s AND day BETWEEN :a AND :b GROUP BY row_hash"), values).mappings().all()
+        campaigns = conn.execute(text(f"SELECT MAX(source) source, MAX(medium) medium, MAX(campaign) campaign, MAX(path) path, SUM(sessions) sessions, SUM({col}) leads FROM ga4_campaign_daily WHERE site_id = :s AND day BETWEEN :a AND :b GROUP BY row_hash"), values).mappings().all()
+        referrals = conn.execute(text(f"SELECT MAX(domain) domain, MAX(path) path, SUM(sessions) sessions, SUM({col}) leads FROM ga4_referral_daily WHERE site_id = :s AND day BETWEEN :a AND :b GROUP BY row_hash"), values).mappings().all()
     if not has_data:
         return {"has_data": False, "hid_rows": False, "links": {}}
     by_domain: dict[tuple[str, str], dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0})
