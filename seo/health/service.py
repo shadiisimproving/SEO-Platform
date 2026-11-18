@@ -23,7 +23,7 @@ from seo.accounts import access
 from seo.core import budget
 from seo.core.errors import Conflict, NotFound, NotOwnSite, Refused, UnknownSite
 from seo.crawl.extract import extract
-from seo.health import audit
+from seo.health import audit, sitemaps
 from seo.links import saved_state, service as links_service
 from seo.crawl import sitemap
 from seo.links.checker import CrawlState, ScanResult, extract_links, run_scan
@@ -253,7 +253,10 @@ def _stop_from_saved(engine: Engine, row) -> None:
 LINKS_IN_CODE = "links_in"  # a health_issues row that holds the internal links report, not a check: page_count stays 0
 
 
-def _end_with_results(engine: Engine, audit_id: int, row, found: audit.Findings, scan: ScanResult, used: int | None = None, listed: sitemap.SitemapResult | None = None) -> str:
+def _end_with_results(
+    engine: Engine, audit_id: int, row, found: audit.Findings, scan: ScanResult, used: int | None = None, listed: sitemap.SitemapResult | None = None,
+    sitemap_report: dict | None = None,
+) -> str:
     """The score, the issues, the test's end and the end of its saved state, in one go, so a kill can't leave half of them. Returns the status it ended with.
 
     A crawl that looked at nothing at all has nothing to score, and 100 would be a lie.
@@ -261,6 +264,8 @@ def _end_with_results(engine: Engine, audit_id: int, row, found: audit.Findings,
     host, start_url = row["host"], row["start_url"]
     audit.add_link_results(found, scan, lambda url: host_key(url) == host)
     issues = audit.finish(found)
+    if sitemap_report and not scan.stopped:  # its problems are kept as the other checks are, for Pages, tasks and the history
+        issues.update(sitemaps.issue_pages(sitemap_report))
     site_codes = list(dict.fromkeys(found.site_codes))
     scored = bool(found.pages_seen or site_codes)
     if scored and not scan.stopped:  # a test that stops says what it found by then: it doesn't start asking the website while someone waits
@@ -269,6 +274,9 @@ def _end_with_results(engine: Engine, audit_id: int, row, found: audit.Findings,
             site_codes.append(problem)
     status, reason, error = ("stopped", "user", None) if scan.stopped else ("complete", None, None) if scored else ("failed", None, f"No page could be read: {_why_nothing_was_read(scan)}"[:500])
     counts = {"pages_seen": found.pages_seen, "issues": {code: len(urls) for code, urls in issues.items()}, "site": site_codes}
+    if sitemap_report and not scan.stopped:
+        counts["issues"].update(sitemap_report["counts"])  # the real count, not only the rows kept
+        counts["sitemap"] = sitemaps.summary(sitemap_report)
     with engine.begin() as conn:
         ended = conn.execute(text(f"UPDATE health_audits SET {_ENDED} WHERE id = :i AND status IN ('queued', 'running')"), {"st": status, "r": reason, "e": error, "i": audit_id}).rowcount
         if not ended:
@@ -278,7 +286,7 @@ def _end_with_results(engine: Engine, audit_id: int, row, found: audit.Findings,
                 "UPDATE health_audits SET score = :sc, pages_read = :p, skipped_robots = :r, pages_not_read = :n, stopped_at_limit = :l, requests_used = COALESCE(:u, requests_used), counts = :c WHERE id = :i"
             ),
             {
-                "sc": audit.score(issues, site_codes, found.pages_seen) if scored else None, "p": scan.pages_read, "r": scan.skipped_robots, "n": scan.pages_not_read,
+                "sc": audit.score(issues, site_codes, found.pages_seen, sitemaps.score_input(sitemap_report) if not scan.stopped else None) if scored else None, "p": scan.pages_read, "r": scan.skipped_robots, "n": scan.pages_not_read,
                 "l": scan.stopped_at_limit, "u": used, "c": json.dumps(counts), "i": audit_id,
             },
         )
@@ -286,7 +294,12 @@ def _end_with_results(engine: Engine, audit_id: int, row, found: audit.Findings,
         for code, urls in issues.items():
             conn.execute(
                 text("INSERT INTO health_issues (audit_id, code, page_count, pages) VALUES (:a, :c, :n, :p)"),
-                {"a": audit_id, "c": code, "n": len(urls), "p": json.dumps(urls[:audit.MAX_PAGES_LISTED], ensure_ascii=False)},
+                {"a": audit_id, "c": code, "n": counts["issues"].get(code, len(urls)), "p": json.dumps(urls[:audit.MAX_PAGES_LISTED], ensure_ascii=False)},
+            )
+        if sitemap_report and status == "complete":
+            conn.execute(
+                text("INSERT INTO health_issues (audit_id, code, page_count, pages) VALUES (:a, :c, 0, :p)"),
+                {"a": audit_id, "c": sitemaps.REPORT_CODE, "p": json.dumps(sitemap_report, ensure_ascii=False)},
             )
         if found.linked_from and status == "complete":
             report = audit.internal_links(found, [e.url for e in listed.entries] if listed else [], start_url, cut=bool(listed and (listed.cut or listed.capped)))
@@ -308,7 +321,7 @@ def _why_nothing_was_read(scan: ScanResult) -> str:
     return "the start page isn't a readable web page"
 
 
-def _save_chunk(engine: Engine, audit_id: int, site_id: int, state: CrawlState, found: audit.Findings, scan: ScanResult, used: int) -> None:
+def _save_chunk(engine: Engine, audit_id: int, site_id: int, state: CrawlState, found: audit.Findings, scan: ScanResult, used: int, sitemap_progress: dict | None = None) -> None:
     """The crawl and what it found, at the same moment, so a chunk repeated after a kill can't count a page twice."""
     with engine.begin() as conn:
         if conn.execute(text("SELECT 1 FROM health_audits WHERE id = :i AND status = 'running' FOR UPDATE"), {"i": audit_id}).first():  # or it's over, with nothing to carry on
@@ -316,7 +329,10 @@ def _save_chunk(engine: Engine, audit_id: int, site_id: int, state: CrawlState, 
                 text("UPDATE health_audits SET pages_read = :p, skipped_robots = :r, pages_not_read = :n, requests_used = :u WHERE id = :i"),
                 {"p": scan.pages_read, "r": scan.skipped_robots, "n": scan.pages_not_read, "u": used, "i": audit_id},
             )
-            saved_state.save(conn, KIND, audit_id, site_id, {"crawl": state.to_json(), "findings": found.to_json()})
+            data = {"crawl": state.to_json(), "findings": found.to_json()}
+            if sitemap_progress:  # the crawl is done and the sitemap step is under way: it carries on from here
+                data["sitemap"] = sitemap_progress
+            saved_state.save(conn, KIND, audit_id, site_id, data)
 
 
 @handler(JOB_KIND)
@@ -377,6 +393,7 @@ def run_audit(job, engine: Engine) -> None:
             except (ValueError, RecursionError):  # one page the reader can't take must not end the whole test (F97)
                 fields = None
         audit.look_at_page(found, url, result, fields, start_url)
+        audit.note_status(found, url, result, fields)  # what it answered, so the sitemap checks needn't ask again
 
     fetcher = None
     try:
@@ -387,24 +404,23 @@ def run_audit(job, engine: Engine) -> None:
             conn.execute(text("UPDATE health_audits SET status = 'running', started_at = COALESCE(started_at, UTC_TIMESTAMP(3)), paused_until = NULL WHERE id = :i"), {"i": audit_id})
         links_service.keep_the_gap(engine, row["site_id"], state)
         fetcher = links_service.fetcher_factory()
+        time_up = links_service.time_up_factory()
         # Links to other websites are the links checker's job: this test stays on my own site.
         scan = run_scan(
             start_url, host, fetcher, max_pages=row["max_pages"], check_external=False, should_stop=should_stop,
             budget_allows=lambda: budget.has_room(engine), charge=charge, on_progress=on_progress, on_page=on_page,
-            state=state, time_up=links_service.time_up_factory(),
+            state=state, time_up=time_up,
         )
         if scan.paused:
             _save_chunk(engine, audit_id, row["site_id"], state, found, scan, used)
         else:
-            listed = None
-            if found.linked_from and not scan.stopped:  # the sitemap, for the orphan pages: in it, but linked from nowhere
-                try:
-                    before = fetcher.requests
-                    listed = sitemap.discover(fetcher, start_url, max_pages=200_000)
-                    charge(fetcher.requests - before)
-                except Exception:  # noqa: BLE001 - no orphan list is better than no test result
-                    listed = None
-            status = _end_with_results(engine, audit_id, row, found, scan, used, listed)
+            listed, report, progress = None, None, None
+            if found.linked_from and not scan.stopped:  # the sitemap: its own checks, and the orphan pages (in it, but linked from nowhere)
+                listed, report, progress = _sitemap_step(engine, row, fetcher, found, saved, scan, should_stop, time_up, charge)
+            if scan.paused:
+                _save_chunk(engine, audit_id, row["site_id"], state, found, scan, used, progress)
+            else:
+                status = _end_with_results(engine, audit_id, row, found, scan, used, listed, report)
     except OperationalError as exc:  # the database, not the test: what's saved is safe, so this chunk is simply tried again
         raise Retry(f"The database failed: {exc.orig}", links_service.DATABASE_RETRY_SECONDS) from exc
     except Exception as exc:  # noqa: BLE001 - a test that crashes must say so, not stay running
@@ -420,6 +436,69 @@ def run_audit(job, engine: Engine) -> None:
         _alert_failed(engine, row["site_id"], audit_id, f"{host}: the health test couldn't read any page", f"No page could be read: {_why_nothing_was_read(scan)}"[:500])
     elif status == "complete":
         raise_alerts(engine, row["site_id"], audit_id)
+        ring_sitemap(engine, row["site_id"], audit_id)
+
+
+def _sitemap_step(engine: Engine, row, fetcher, found: audit.Findings, saved: dict | None, scan: ScanResult, should_stop, time_up, charge):
+    """The sitemap checks, after the crawl. Returns (sitemap read, report, progress to save). Out of time or budget, it sets
+    scan.paused and hands back what it has learned, so the next chunk carries on; Stop ends the test as stopped."""
+    def can_continue() -> str | None:
+        if should_stop():
+            return "stop"
+        if not budget.has_room(engine):
+            return "budget"
+        return "time" if time_up() else None
+
+    try:
+        outcome = sitemaps.run(engine, row["site_id"], row["host"], row["start_url"], fetcher, found, (saved or {}).get("sitemap"), can_continue, charge)
+    except OperationalError:
+        raise
+    except Exception:  # noqa: BLE001 - no sitemap checks are better than no test result
+        return None, None, None
+    if outcome.stopped:
+        scan.stopped = True
+    elif outcome.paused:
+        scan.paused = True
+        scan.budget_out = outcome.paused == "budget"
+        scan.wait_seconds = 0
+    return outcome.listed, outcome.report, outcome.progress
+
+
+SITEMAP_KIND = "sitemap_problem"  # the bell: a sitemap that could be read no longer can, or more listed pages give an error
+
+
+def ring_sitemap(engine: Engine, site_id: int, audit_id: int) -> str | None:
+    """One bell notification when, since the last test that read the sitemap, it can no longer be read, or more of its
+    listed pages give an error. A first test has nothing to compare with, so the Sitemap card says it and the bell stays quiet."""
+    with engine.connect() as conn:
+        now = conn.execute(text("SELECT a.counts, s.host FROM health_audits a JOIN sites s ON s.id = a.site_id WHERE a.id = :i"), {"i": audit_id}).mappings().first()
+        if now is None:
+            return None
+        after = _counts(now["counts"]).get("sitemap")
+        if not after:
+            return None
+        earlier = conn.execute(
+            text("SELECT counts FROM health_audits WHERE site_id = :s AND status = 'complete' AND id < :i ORDER BY id DESC LIMIT :n"), {"s": site_id, "i": audit_id, "n": LOOK_BACK}
+        ).scalars().all()
+        before = next((c["sitemap"] for c in map(_counts, earlier) if c.get("sitemap")), None)
+        if before is None:
+            return None
+        if after["bad_file"] and not before["bad_file"]:
+            state, title = "unreachable", f"{now['host']}: the sitemap can't be read any more"
+        elif after["broken"] > before["broken"]:
+            state, title = "broken_up", f"{now['host']}: {after['broken']} listed pages give an error, up from {before['broken']}"
+        else:
+            return None
+        detail = {"state": state, "before": before["broken"], "after": after["broken"], "host": now["host"], "audit_id": audit_id,
+                  "day": conn.execute(text("SELECT UTC_DATE()")).scalar().isoformat()}
+    from seo.collectors.common import digest  # noqa: PLC0415 - only the bell needs it
+
+    with engine.begin() as conn:
+        conn.execute(
+            text("INSERT IGNORE INTO notifications (site_id, kind, subject_key, title, detail) VALUES (:s, :k, :key, :t, :d)"),
+            {"s": site_id, "k": SITEMAP_KIND, "key": digest("sitemap", str(audit_id)), "t": title[:300], "d": json.dumps(detail, ensure_ascii=False)},
+        )
+    return state
 
 
 def _alert(engine: Engine, site_id: int, audit_id: int | None, kind: str, severity: str, title: str, detail: dict) -> None:
@@ -541,6 +620,7 @@ def detail(engine: Engine, audit_id: int) -> dict:
             raise NotFound("That test doesn't exist.")
         issues = conn.execute(text("SELECT code, page_count, pages FROM health_issues WHERE audit_id = :i"), {"i": audit_id}).mappings().all()
         links_row = next((i for i in issues if i["code"] == LINKS_IN_CODE), None)
+        sitemap_row = next((i for i in issues if i["code"] == sitemaps.REPORT_CODE), None)
         before = _comparable_before(conn, row) if row["status"] == "complete" else None  # the same comparison the alerts made
     previous = _counts(before["counts"]).get("issues", {}) if before else {}
     found = {i["code"]: i for i in issues}
@@ -560,7 +640,23 @@ def detail(engine: Engine, audit_id: int) -> dict:
         "checks": checks,
         "site_problems": [{"code": code, "meaning": audit.SITE_CHECKS[code][0]} for code in _counts(row["counts"]).get("site", [])],
         "internal_links": internal_links_report(engine, row["site_id"], links_row),
+        "sitemap": sitemap_report(sitemap_row),
     }
+
+
+def sitemap_report(row) -> dict | None:
+    """The Sitemap card: the report as the test wrote it, with each problem's words and level. None for a test from before it."""
+    if row is None:
+        return None
+    data = row["pages"] if isinstance(row["pages"], dict) else json.loads(row["pages"] or "{}")
+    order = list(audit.SITEMAP_CHECKS)
+    problems = [
+        {"code": code, "meaning": audit.SITEMAP_CHECKS[code][0], "severity": audit.SITEMAP_CHECKS[code][2], **group}
+        for code, group in (data.get("groups") or {}).items() if code in audit.SITEMAP_CHECKS
+    ]
+    rank = {audit.CRIT: 0, audit.WARN: 1, audit.INFO: 2}
+    problems.sort(key=lambda p: (rank[p["severity"]], order.index(p["code"])))
+    return {k: v for k, v in data.items() if k not in ("groups", "counts")} | {"problems": problems}
 
 
 def stop(engine: Engine, audit_id: int) -> None:

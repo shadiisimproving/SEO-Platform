@@ -58,6 +58,9 @@ class SitemapResult:
     cut: bool = False  # the list is not the whole sitemap: a file was too large or failed, or there were more files than MAX_SITEMAPS
     too_many_files: bool = False  # cut (also) because there were more sitemap files than max_sitemaps: the same every day
     problems: dict[str, str] = field(default_factory=dict)  # sitemap file -> why it wasn't read
+    # What the health test's sitemap checks need (seo/health/sitemaps.py): where the list came from, and each file read.
+    from_robots: bool = False  # robots.txt named the sitemaps; otherwise the common addresses were tried
+    files: dict[str, dict] = field(default_factory=dict)  # file -> {"kind": index|urlset|error|unknown, "urls": <loc> rows in it, "guess": a common address, "html": a web page, not XML}
 
 
 def parse_sitemap(xml: bytes) -> dict:
@@ -102,10 +105,18 @@ def _unzip(body: bytes) -> bytes | None:
     return None if len(data) > MAX_UNZIPPED_BYTES else data
 
 
-def discover(fetcher, base_url: str, max_pages: int = 5000, max_sitemaps: int = MAX_SITEMAPS) -> SitemapResult:
+def _looks_like_html(body: bytes | None) -> bool:
+    """A common address that answers with a web page (often the home page, or a "not found" page sent with 200) has no sitemap."""
+    head = (body or b"")[:1024].lstrip().lower()
+    return head.startswith((b"<!doctype html", b"<html")) or (b"<html" in head and b"<urlset" not in head and b"<sitemapindex" not in head)
+
+
+def discover(fetcher, base_url: str, max_pages: int = 5000, max_sitemaps: int = MAX_SITEMAPS, max_bytes: int = MAX_SITEMAP_BYTES) -> SitemapResult:
+    """max_bytes: one file as sent. The health test reads up to Google's own 50 MB, so a file over it can be said to be."""
     result = SitemapResult()
     own_host = _bare_host(base_url)
     listed = list(fetcher.sitemaps_from_robots(base_url))
+    result.from_robots = bool(listed)
     candidates = listed or [urljoin(base_url, path) for path in COMMON_PATHS]
     seen_urls: set[str] = set()
     visited: set[str] = set()
@@ -121,13 +132,17 @@ def discover(fetcher, base_url: str, max_pages: int = 5000, max_sitemaps: int = 
                 result.too_many_files = True
                 continue
             visited.add(url)
-            response = fetcher.get(url, any_type=True, max_bytes=MAX_SITEMAP_BYTES)
+            response = fetcher.get(url, any_type=True, max_bytes=max_bytes)
+            guess = url == top and not listed
             if response.status != "ok" or response.body is None:
-                if url != top or listed:  # a common path that isn't there is only a guess that missed
+                if not guess:  # a common path that isn't there is only a guess that missed
                     _problem(result, url, response.status)
+                    result.files[url] = {"kind": response.status, "urls": 0, "guess": False, "html": False}
                 continue
             body = _unzip(response.body)
             parsed = parse_sitemap(body) if body is not None else {"type": "error", "entries": []}
+            result.files[url] = {"kind": parsed["type"] if body is not None else "too_large", "urls": len(parsed["entries"]), "guess": guess,
+                                 "html": body is not None and parsed["type"] in ("error", "unknown") and _looks_like_html(body)}
             if parsed["type"] in ("error", "unknown"):
                 result.errors.append(url)
                 result.problems[url] = "unreadable" if body is not None else "too_large"

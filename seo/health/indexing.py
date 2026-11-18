@@ -45,23 +45,37 @@ def path_of(url: str) -> str:
     return path.rstrip("/") or "/"
 
 
-def importance(engine: Engine, site_id: int) -> dict[str, tuple[int, int]]:
-    """{path: (clicks, impressions)} over the last 28 days, read through the Search Console screens' own function.
-
-    Empty when Search Console has nothing for the site, or can't be read: then pages go newest first."""
+def _page_rows(engine: Engine, site_id: int) -> list[dict]:
+    """Search Console's pages over the last 28 days, read through the Search Console screens' own function. [] when it can't be read."""
     try:
         from seo.metrics import search  # noqa: PLC0415 - the metrics package is large, and only this needs it
 
         scope, _ = search.scope_for(engine, {"site_id": str(site_id), "range": "28d"})
-        rows = search.breakdown(scope, "page", limit=100_000)["rows"]
+        return search.breakdown(scope, "page", limit=100_000)["rows"]
     except Exception:  # noqa: BLE001 - no Search Console numbers is not a reason to stop
-        return {}
+        return []
+
+
+def importance(engine: Engine, site_id: int) -> dict[str, tuple[int, int]]:
+    """{path: (clicks, impressions)} over the last 28 days.
+
+    Empty when Search Console has nothing for the site, or can't be read: then pages go newest first."""
     found: dict[str, tuple[int, int]] = {}
-    for row in rows:
+    for row in _page_rows(engine, site_id):
         key = path_of(str(row.get("name") or row.get("key") or ""))
         clicks, shown = found.get(key, (0, 0))
         found[key] = (clicks + int(row.get("clicks") or 0), shown + int(row.get("impressions") or 0))
     return found
+
+
+def clicked_pages(engine: Engine, site_id: int) -> list[tuple[str, int]]:
+    """(address, clicks) for each page Search Console gives clicks to over the last 28 days, as Google spells the address."""
+    totals: dict[str, int] = {}
+    for row in _page_rows(engine, site_id):
+        url = str(row.get("name") or row.get("key") or "")
+        if url.startswith(("http://", "https://")):
+            totals[url] = totals.get(url, 0) + int(row.get("clicks") or 0)
+    return [(url, clicks) for url, clicks in totals.items() if clicks > 0]
 
 
 def site_pages(conn, site_id: int) -> list[dict]:

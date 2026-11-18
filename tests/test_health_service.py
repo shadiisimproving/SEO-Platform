@@ -37,10 +37,17 @@ def good(name: str, title=None, description=None, h1=None, text_=TEXT, links_=()
     )
 
 
+def urlset(*paths, lastmod=None) -> str:
+    rows = "".join(f"<url><loc>{HOME.rstrip('/')}{p}</loc>{f'<lastmod>{lastmod}</lastmod>' if lastmod else ''}</url>" for p in paths)
+    return f'<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">{rows}</urlset>'
+
+
 def healthy_pages(*extra_links) -> dict:
+    """A healthy site has a sitemap listing its pages (the sitemap checks, 2026-11-18)."""
     return {
         "/": good("Home", links_=("/a", "/b", "/c", "/d", *extra_links)),
         "/a": good("Page A"), "/b": good("Page B"), "/c": good("Page C"), "/d": good("Page D"),
+        "/sitemap.xml": urlset("/", "/a", "/b", "/c", "/d"),
     }
 
 
@@ -49,7 +56,7 @@ class FakeSite:
 
     def __init__(self):
         self.pages = healthy_pages()
-        self.robots = "User-agent: *\nDisallow: /private\n"
+        self.robots = f"User-agent: *\nDisallow: /private\nSitemap: {HOME}sitemap.xml\n"
         self.seconds = {}  # path -> how long the answer "took"
         self.requests = []
         self.on_request = None
@@ -74,6 +81,8 @@ class FakeSite:
             return httpx.Response(answer[0], headers={"location": answer[1]})
         if isinstance(answer, bytes):
             return httpx.Response(200, content=answer, headers={"content-type": "application/pdf"})
+        if answer.startswith("<?xml"):
+            return httpx.Response(200, text=answer, headers={"content-type": "application/xml"})
         return httpx.Response(200, html=answer)
 
 
@@ -225,7 +234,8 @@ def test_each_check_finds_its_problem_and_nothing_else(world, code, changes, exp
     data = world.run_test()
     assert data["audit"]["status"] == "complete"
     assert findings(data) == expected
-    assert data["audit"]["counts"] == {check: len(pages) for check, pages in expected.items()}
+    # Only the page checks: a page the sitemap lists that turns noindex is also a sitemap problem (tested in test_health_sitemap.py)
+    assert {c: n for c, n in data["audit"]["counts"].items() if c in audit.CHECKS} == {check: len(pages) for check, pages in expected.items()}
     assert data["audit"]["score"] < 100 or not audit.CHECKS[code][1]  # a check that weighs nothing is only listed
     assert data["audit"]["site_problems"] == []
 
@@ -262,8 +272,8 @@ def test_pages_the_crawl_could_not_judge_lower_nothing(world):
     data = world.run_test()
     result = data["audit"]
     assert result["status"] == "complete"
-    assert result["score"] == 100
     assert result["counts"] == {"robots_blocked": 1}  # listed so it can be found, but it lowers nothing
+    assert result["score"] == 100
     assert result["skipped_robots"] == 1
     assert result["pages_seen"] == 5
     assert not [u for u in world.site.requests if "/private" in u]
@@ -278,8 +288,8 @@ def test_one_unusable_link_on_a_page_does_not_end_the_test(world):
 
 def test_requests_count_inside_the_daily_budget(world):
     data = world.run_test()
-    # robots.txt, 5 pages, and the 4 usual sitemap addresses asked for the orphan pages (none here)
-    assert budget.used_today(world.engine) == len(world.site.requests) == data["audit"]["requests_used"] == 10
+    # robots.txt, 5 pages, and the sitemap robots.txt names. Every page it lists was read by the crawl, so none is asked again.
+    assert budget.used_today(world.engine) == len(world.site.requests) == data["audit"]["requests_used"] == 7
 
 
 def test_a_test_has_no_limit(world):
@@ -311,8 +321,9 @@ def test_a_job_run_twice_does_not_double_the_issues(world):
     health.run_audit(job, world.engine)
     world.sql("UPDATE health_audits SET status = 'running' WHERE id = :i", i=audit_id)
     health.run_audit(job, world.engine)
-    assert world.value("SELECT COUNT(*) FROM health_issues WHERE audit_id = :i AND code <> 'links_in'", i=audit_id) == 1
+    assert world.value("SELECT COUNT(*) FROM health_issues WHERE audit_id = :i AND code NOT IN ('links_in', 'sitemap')", i=audit_id) == 1
     assert world.value("SELECT COUNT(*) FROM health_issues WHERE audit_id = :i AND code = 'links_in'", i=audit_id) == 1
+    assert world.value("SELECT COUNT(*) FROM health_issues WHERE audit_id = :i AND code = 'sitemap'", i=audit_id) == 1
 
 
 def test_the_job_of_a_finished_test_does_nothing(world):
@@ -1237,7 +1248,7 @@ def test_the_whole_story_through_the_worker(world):
     alerts = world.alerts()
     assert [a["kind"] for a in alerts] == ["health_drop"]
     worse = {w["code"]: (w["before"], w["after"]) for w in alerts[0]["detail"]["worse"]}
-    assert worse == {"broken_pages": (0, 1), "broken_links": (0, 1), "no_title": (0, 1)}
+    assert worse == {"broken_pages": (0, 1), "broken_links": (0, 1), "no_title": (0, 1), "listed_broken": (0, 1)}  # the sitemap still lists /a
     row = world.site_row()
     assert row["open_alerts"] == 1
     assert row["last_score"] == alerts[0]["detail"]["after"] < 95
@@ -1469,9 +1480,12 @@ LANGUAGES = {
 
 
 def site_in(lang: str) -> dict:
+    from urllib.parse import quote
+
     words, name, path = LANGUAGES[lang]
     other = path + "-2"
     return {
+        "/sitemap.xml": urlset("/", quote(path), quote(other)),  # percent-encoded, as sitemaps must be: the same pages as the links
         "/": good(name + " 1", description=name + " 1", text_=words, lang=lang, links_=(path, other)),
         path: good(name + " 2", description=name + " 2", text_=words, lang=lang),
         other: good(name + " 3", description=name + " 3", text_=words, lang=lang),
@@ -1505,7 +1519,8 @@ def test_one_page_linked_in_two_spellings_is_read_once_in_any_language(world, la
     from urllib.parse import quote
 
     words, name, path = LANGUAGES[lang]
-    world.site.pages = {"/": good(name + " 1", description=name + " 1", text_=words, lang=lang, links_=(path, quote(path))), path: good(name + " 2", description=name + " 2", text_=words, lang=lang)}
+    world.site.pages = {"/": good(name + " 1", description=name + " 1", text_=words, lang=lang, links_=(path, quote(path))), path: good(name + " 2", description=name + " 2", text_=words, lang=lang),
+                        "/sitemap.xml": urlset("/", path)}
     result = world.run_test()["audit"]
     assert result["pages_read"] == 2
     assert result["counts"] == {}
