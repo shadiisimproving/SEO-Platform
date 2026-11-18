@@ -227,3 +227,97 @@ def test_a_member_cannot_change_lead_events_through_the_rules_route(engine):
     boss, headers = _signed_in(app, "boss@example.com")
     assert boss.post("/api/rules", json={"kind": "key_event", "site_id": one, "pattern": "form_submit"}, headers=headers).status_code == 201
     assert leads.ticked(engine, one) == ["generate_lead", "form_submit"]
+
+
+# ---- 7, 8, 12: stored competitor events looked at again ----------------------------------------------------------------
+
+
+def _rival_pages(engine, host="rival.example", n=5):
+    import gzip
+
+    from seo.crawl import store
+
+    domain = store.get_or_create_domain(engine, host)
+    footer = "copyright {y} rival cabinet de conseil tous droits réservés mentions légales"
+    ids = []
+    with engine.begin() as conn:
+        for k in range(n):
+            url = f"https://{host}/p{k}"
+            conn.execute(text("INSERT INTO pages (domain_id, url, url_hash, title, content_hash, first_seen_at, extras) VALUES (:d, :u, SHA2(:u, 256), 'T', 'h', UTC_TIMESTAMP(3) - INTERVAL 90 DAY, '{}')"), {"d": domain, "u": url})
+            ids.append(conn.execute(text("SELECT id FROM pages WHERE url = :u"), {"u": url}).scalar())
+
+    def version(page, words, minutes_ago):
+        with engine.begin() as conn:
+            conn.execute(text("INSERT INTO page_versions (page_id, fields, text_gz, taken_at) VALUES (:p, '{}', :t, UTC_TIMESTAMP(3) - INTERVAL :m MINUTE)"),
+                         {"p": page, "t": gzip.compress(words.encode()), "m": minutes_ago})
+
+    def event(page, kind, before=None, after=None, minutes_ago=0):
+        with engine.begin() as conn:
+            conn.execute(text("INSERT INTO change_events (page_id, domain_id, kind, before_value, after_value, detected_at) VALUES (:p, :d, :k, :b, :a, UTC_TIMESTAMP(3) - INTERVAL :m MINUTE)"),
+                         {"p": page, "d": domain, "k": kind, "b": before, "a": after, "m": minutes_ago})
+    return domain, ids, footer, version, event
+
+
+def _shown(engine, domain):
+    with engine.connect() as conn:
+        return [tuple(r) for r in conn.execute(text("SELECT e.kind, p.url FROM change_events e JOIN pages p ON p.id = e.page_id WHERE e.domain_id = :d AND e.hidden = 0 ORDER BY e.id"), {"d": domain})]
+
+
+def test_a_price_moving_in_the_article_stays_an_edit_and_a_year_in_the_template_doesnt(engine):
+    from seo.competitors import reclassify
+
+    domain, ids, footer, version, event = _rival_pages(engine)
+    words = ["licence commerciale en zone franche", "visa de résident pour investisseur", "compte bancaire pour une entreprise", "bureau virtuel avec adresse", "comptabilité et déclaration fiscale"]
+    tails = ["délai trois semaines environ", "dossier complet sous dix jours", "rendez-vous avec la banque inclus", "courrier scanné chaque matin", "bilan annuel préparé par nos experts"]
+    article = lambda k, price: f"notre offre {words[k]} {price} {tails[k]}"  # noqa: E731 - each page's own text, its own price
+    for k, page in enumerate(ids):
+        version(page, f"{article(k, '12,500')} {footer.format(y=2025)}", 60)
+    version(ids[0], f"{article(0, '9,900')} {footer.format(y=2025)}", 10)
+    event(ids[0], "content", "a", "b", minutes_ago=10)  # the price in the article: an edit
+    version(ids[1], f"{article(1, '12,500')} {footer.format(y=2026)}", 5)
+    event(ids[1], "content", "a", "b", minutes_ago=5)  # only the year in the footer every page shows
+    with engine.begin() as conn:
+        result = reclassify.classify(conn, domain)
+    assert _shown(engine, domain) == [("content", "https://rival.example/p0")]  # was hidden as template too
+    assert result["hidden"] == {"template": 1}
+
+
+def test_a_canonical_change_alone_is_an_edit_and_an_old_redirect_does_not_mark_the_page_moved_now(engine):
+    from seo.competitors import reclassify
+
+    domain, ids, footer, version, event = _rival_pages(engine)
+    for page in ids:
+        version(page, f"texte {footer.format(y=2025)}", 60 * 24 * 100)
+    event(ids[0], "canonical", "https://rival.example/p0", "https://rival.example/p4", minutes_ago=60 * 24 * 60)  # consolidated: a real edit
+    event(ids[1], "canonical", "https://rival.example/p1", "https://rival.example/p3", minutes_ago=60 * 24 * 60)  # a redirect, 60 days ago:
+    event(ids[1], "title", "T", "Target title", minutes_ago=60 * 24 * 60)  # its title moved with it
+    version(ids[1], f"texte revenu {footer.format(y=2025)}", 60 * 24 * 10)  # read again 10 days ago, back to normal
+    with engine.begin() as conn:
+        result = reclassify.classify(conn, domain)
+    assert result["redirects"] == 1
+    assert _shown(engine, domain) == [("canonical", "https://rival.example/p0"), ("redirect", "https://rival.example/p1")]
+    with engine.connect() as conn:
+        status = dict(conn.execute(text("SELECT id, last_status FROM pages WHERE id IN :i").bindparams(__import__("sqlalchemy").bindparam("i", expanding=True)), {"i": ids[:2]}).all())
+    assert status[ids[0]] != "moved" and status[ids[1]] != "moved"  # p1 was "moved" now, 60 days on
+
+
+def test_the_reclassify_run_keeps_each_sites_work_in_its_own_transaction(engine, monkeypatch):
+    from seo.competitors import reclassify
+
+    one, ids, _, _, event = _rival_pages(engine, "one.example", 1)
+    two, ids2, _, _, event2 = _rival_pages(engine, "two.example", 1)
+    event(ids[0], "title", "Même", "Même")
+    event2(ids2[0], "title", "Pareil", "Pareil")
+    before, report, after = reclassify.run(engine, apply=False, log=None)  # dry run: says what, keeps nothing
+    assert before["one.example"]["edit_events"] == 1 and after.get("one.example", {}).get("edit_events", 0) == 0 and len(_shown(engine, one)) == 1
+    real = reclassify.classify
+
+    def second_fails(conn, domain_id):
+        if domain_id == two:
+            raise RuntimeError("stopped")
+        return real(conn, domain_id)
+
+    monkeypatch.setattr(reclassify, "classify", second_fails)
+    with pytest.raises(RuntimeError):
+        reclassify.run(engine, apply=True, log=None)
+    assert _shown(engine, one) == [] and len(_shown(engine, two)) == 1  # the first site's work was kept on its own
