@@ -382,17 +382,18 @@
   const changeCell = (r) => (!isNum(r.change) ? `<span class="muted">—</span>` : r.change === 0 ? `<span class="sec">0%</span>`
     : `<span class="${r.change > 0 ? "good" : "crit"} d-pill">${icon(r.change > 0 ? "arrow-up" : "arrow-down")}${r.change > 0 ? "+" : "−"}${num(Math.abs(r.change))}%</span>`);
   const learn = (d) => { (d.logos || []).forEach((n) => window.LOGOS_KNOWN?.add?.(n)); return d; };
+  const LW = (english, d) => (window.GA4W ? window.GA4W.word(english, d) : english); // "Key events" until lead events are picked
   const visitsAndLeads = [{ label: "Visits", key: "sessions", num: true }, { label: "Leads", key: "leads", num: true }];
   const facts = (d) => [d.totals && isNum(d.totals.sessions) ? `${t("Visits")}: ${num(d.totals.sessions)}` : "", d.period ? periodWords(d.period).join(" ") : ""].filter(Boolean);
   const where = (scope, extra) => ({ scope, siteId: UI.siteIdPicked(), ...extra });
   const trafficNumbers = (d, first = "Visits") => [
     { id: "visits", label: first, value: d.totals?.sessions ?? null, before: d.before?.sessions },
-    { id: "leads", label: "Leads", value: d.totals?.leads ?? null, before: d.before?.leads },
-    { id: "rate", label: "Lead rate", fmt: "pct", value: d.totals?.rate ?? null, before: d.before?.rate },
+    { id: "leads", label: LW("Leads", d), value: d.totals?.leads ?? null, before: d.before?.leads },
+    { id: "rate", label: LW("Lead rate", d), fmt: "pct", value: d.totals?.rate ?? null, before: d.before?.rate },
   ];
   const trafficCharts = (d, first = "Visits") => [
     rowPanel.chart(d.days, "sessions", d.days_before, { label: first, period: d.period }),
-    rowPanel.chart(d.days, "leads", d.days_before, { label: "Leads", period: d.period }),
+    rowPanel.chart(d.days, "leads", d.days_before, { label: LW("Leads", d), period: d.period }),
   ];
   const KINDS = {
     channel: {
@@ -433,8 +434,8 @@
         sub: [t(d.category), UI.siteHostPicked() ? "" : d.host].filter(Boolean).join(" · "),
         numbers: [
           { id: "visits", label: "Visits", value: d.totals?.sessions ?? null, before: d.before?.sessions, sub: d.ga4?.state === "not_connected" ? "Google Analytics not connected" : undefined },
-          { id: "leads", label: "Leads", value: d.totals?.leads ?? null, before: d.before?.leads },
-          { id: "rate", label: "Lead rate", fmt: "pct", value: d.totals?.rate ?? null, before: d.before?.rate },
+          { id: "leads", label: LW("Leads", d), value: d.totals?.leads ?? null, before: d.before?.leads },
+          { id: "rate", label: LW("Lead rate", d), fmt: "pct", value: d.totals?.rate ?? null, before: d.before?.rate },
           { id: "clicks", label: "Google clicks", value: d.totals?.clicks ?? null, before: d.before?.clicks, def: "Clicks", sub: d.gsc?.state === "not_connected" ? "Search Console not connected" : undefined },
           { id: "position", label: "Position", fmt: "pos", value: d.totals?.position ?? null, before: d.before?.position },
           { id: "ai", label: "AI visits", value: d.totals?.ai ?? null, before: d.before?.ai },
@@ -473,8 +474,8 @@
           period: d.period,
           numbers: [
             { id: "visits", label: "AI visits", value: d.totals?.sessions ?? null, before: d.before?.sessions },
-            { id: "leads", label: "Leads", value: d.totals?.leads ?? null, before: d.before?.leads },
-            { id: "rate", label: "Lead rate", fmt: "pct", value: d.totals?.rate ?? null, before: d.before?.rate, sub: rateNeeds ? t("Needs {n} visits").replace("{n}", num(d.totals.rate_needs)) : undefined },
+            { id: "leads", label: LW("Leads", d), value: d.totals?.leads ?? null, before: d.before?.leads },
+            { id: "rate", label: LW("Lead rate", d), fmt: "pct", value: d.totals?.rate ?? null, before: d.before?.rate, sub: rateNeeds ? t("Needs {n} visits").replace("{n}", num(d.totals.rate_needs)) : undefined },
             { id: "share", label: "Share of AI visits", fmt: "pct", value: d.totals?.share ?? null },
           ],
           chart: { ...rowPanel.chart(weeks, "sessions", null, { label: "AI visits per week", everyDay: false }), dayLabel: (end) => `${t("Week to")} ${shortDay(end)}` },
