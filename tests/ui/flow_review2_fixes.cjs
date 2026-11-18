@@ -1,6 +1,6 @@
 // Code review round 2 (2026-11-18): Settings warns while GA4 history is read again, a competitor's cut sitemap says so,
 // Overview's week-by-week left axis fits on a phone. EN/FR, 1440 and 390.
-//   DB_NAME_TEST=test_fix_ui_rv2_test .venv/bin/python tests/ui/app_server.py --port 8306   (then tests/ui/seed_ga4.py)
+//   DB_NAME_TEST=test_fix_ui_rv2_test .venv/bin/python tests/ui/app_server.py --port 8306   (then tests/ui/seed_ga4.py, then tests/ui/seed_review2.py)
 //   OUT=<folder> BASE=http://127.0.0.1:8306 SEOCC_REAL_DEFAULT=1 node tests/ui/flow_review2_fixes.cjs
 const fs = require("fs");
 const { open } = require("./pw.cjs");
