@@ -309,11 +309,24 @@
      "Site down" can be stale, so it carries the day it was seen and is the weaker kind. */
   function appFlagNote(gap) {
     const f = gap.app_flag;
-    if (!f || isFlagged(gap)) return "";
+    if (!f || gap.kept) return "";
+    if (isFlagged(gap)) return overruledNote(gap);
     const seen = f.reason === "leads_elsewhere" && f.to ? fill("redirects to {site}", { site: f.to }) : t(f.words || "Flagged as spam").toLowerCase();
     const day = f.at ? UI.fmtDateOnly(f.at) : "";
     const words = f.weak && day ? fill("The app saw: {what} on {day}", { what: seen, day }) : fill("The app saw: {what}", { what: seen });
     return `<span class="second cg-app-flag ${f.weak ? "weak" : ""}" ${day ? `data-tip="${esc(fill("Checked on {day}. The file's spam score keeps it in Good ones.", { day }))}" tabindex="0"` : ""}>${UI.icon(f.weak ? "clock" : "triangle-alert")}<span dir="auto">${esc(words)}</span></span>`;
+  }
+
+  /* A redirect, a parked domain or no home page beats the file's spam score (owner, 2026-11-18): the row is under Flagged, and
+     says what the app saw (where it leads) and the score it overruled. Shown in every view: the reasons line above the table
+     only gives the general reason. */
+  function overruledNote(gap) {
+    const f = gap.app_flag;
+    if (!f || f.over_file === null || f.over_file === undefined) return "";
+    const seen = f.reason === "leads_elsewhere" && f.to ? fill("Redirects to {site}", { site: f.to }) : t(f.words || "Flagged as spam");
+    const day = f.at ? UI.fmtDateOnly(f.at) : "";
+    const tip = t("A redirect, a parked domain or no home page beats the file's spam score. Not spam puts it back in Good ones.");
+    return `<span class="second cg-why cg-overruled" tabindex="0" data-tip="${esc(day ? `${fill("Checked on {day}.", { day })} ${tip}` : tip)}">${COMP.iconTip("settings", t("Flagged by the system"), "comp-ic-system")}<span dir="auto">${esc(seen)}</span><span class="sec"> · ${esc(fill("file score {score} overruled", { score: UI.num(f.over_file) }))}</span></span>`;
   }
 
   /* Spam and In consideration never show together: a domain in consideration (or in To do) is the user's choice, which beats
@@ -330,10 +343,12 @@
       isOld(gap) ? `<span class="tag cg-old">${UI.icon("calendar-days")}${esc(fill("Old link (last seen {day})", { day: UI.fmtDateOnly(gap.old_link.last_seen) }))}</span>` : "",
     ].filter(Boolean).join(" ");
     // With Flagged as spam on, the reasons are said once above the table, so a row keeps only its tag (the reason in its tooltip).
-    const why = flagged && S.quality !== "spam" ? `<span class="second cg-why">${COMP.spamWhyHtml(gap)}</span>` : appFlagNote(gap);
+    const why = flagged && overruledNote(gap) ? overruledNote(gap) : flagged && S.quality !== "spam" ? `<span class="second cg-why">${COMP.spamWhyHtml(gap)}</span>` : appFlagNote(gap);
     const word = gap.reason === "my_choice" ? "Undo" : "Not spam";
     // A flagged row keeps its one-click way back; Edit and Mark as spam are in the row's ⋯ menu (and Mark as spam in the picked bar).
-    const back = flagged ? `<button class="btn btn-small" data-cg-decide="${gap.reason === "my_choice" ? "auto" : "keep"}" data-domain="${esc(gap.domain)}" aria-label="${t(word)}: ${esc(gap.display || gap.domain)}">${t(word)}</button>` : "";
+    // On a row the app flagged, the tip says a person's choice beats the app's check (owner, 2026-11-18).
+    const backTip = gap.flagged_by === "system" ? ` data-tip="${esc(t("Overrides the app's check: back to Good ones."))}"` : "";
+    const back = flagged ? `<button class="btn btn-small" data-cg-decide="${gap.reason === "my_choice" ? "auto" : "keep"}" data-domain="${esc(gap.domain)}" aria-label="${t(word)}: ${esc(gap.display || gap.domain)}"${backTip}>${t(word)}</button>` : "";
     const menu = `<button type="button" class="icon-btn cg-row-menu" data-pop-toggle data-cg-menu="${esc(gap.domain)}" aria-haspopup="menu" aria-expanded="false" aria-label="${esc(t("More for {domain}").replace("{domain}", gap.display || gap.domain))}" data-tip="${t(flagged || gap.in_todo ? "Edit" : "Edit and Mark as spam")}">${UI.icon("ellipsis")}</button>`;
     const open = S.openLink === gap.domain && linksOf(gap).length > 0;
     const off = considered || isFlagged(gap);
@@ -1405,6 +1420,9 @@
     "The file's spam score keeps them, but the app's own check flagged them. Each row says what it saw.": "Le score de spam du fichier les garde, mais le contrôle de l'appli les a signalés. Chaque ligne dit ce qu'il a vu.",
     "The app saw: {what}": "L'appli a vu : {what}", "The app saw: {what} on {day}": "L'appli a vu : {what} le {day}", "redirects to {site}": "redirige vers {site}",
     "Checked on {day}. The file's spam score keeps it in Good ones.": "Contrôlé le {day}. Le score de spam du fichier le garde parmi les bons.",
+    "Redirects to {site}": "Redirige vers {site}", "file score {score} overruled": "score du fichier ({score}) écarté", "Checked on {day}.": "Contrôlé le {day}.",
+    "A redirect, a parked domain or no home page beats the file's spam score. Not spam puts it back in Good ones.": "Une redirection, un domaine parqué ou l'absence de page d'accueil passe avant le score de spam du fichier. Pas du spam le remet parmi les bons.",
+    "Overrides the app's check: back to Good ones.": "Passe avant le contrôle de l'appli : retour parmi les bons.",
     "Leaves out domains whose file says every link is nofollow, sponsored or ugc. Lost links in a file are never listed.": "Écarte les domaines dont le fichier indique que tous les liens sont nofollow, sponsored ou ugc. Les liens perdus d'un fichier ne sont jamais listés.",
     "1 domain with only nofollow, sponsored or ugc links is hidden.": "1 domaine qui n'a que des liens nofollow, sponsored ou ugc est masqué.",
     "{n} domains with only nofollow, sponsored or ugc links are hidden.": "{n} domaines qui n'ont que des liens nofollow, sponsored ou ugc sont masqués.",
