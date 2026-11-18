@@ -14,7 +14,9 @@
     "A captcha didn't clear, so the browser backup stopped.": "Un captcha n'a pas disparu : la sauvegarde par navigateur s'est arrêtée.", "The app won't bypass captchas.": "L'application ne contourne pas les captchas.",
     "DuckDuckGo stopped at a bot check.": "DuckDuckGo a demandé une vérification anti-robot : cet outil s'est arrêté.", "The app won't bypass it.": "L'application ne cherche pas à la contourner.", "Not in top": "Hors du top", "just now": "à l'instant", "today": "aujourd'hui", "Search Console impressions, last 28 days. Exact volume isn't available for free.": "Impressions Search Console, 28 derniers jours. Le volume exact n'est pas disponible gratuitement.",
     "Not connected for this site, or no data for this keyword.": "Non connecté pour ce site, ou pas de donnée pour ce mot-clé.",
-    "Needs 2 checks, same tool": "Il faut 2 contrôles avec le même outil", "Tools disagree": "Les outils ne sont pas d'accord", "Suspect result": "Résultat suspect", "Can't verify yet": "Vérification impossible pour l'instant",
+    "Needs 2 checks, same tool": "Il faut 2 contrôles avec le même outil", "Tools disagree": "Les outils ne sont pas d'accord", "Suspect result": "Résultat suspect",
+    "Other tools saw other sites: fewer than {n} of its top 10 in common with {tool} ({day}).": "Les autres outils ont vu d'autres sites : moins de {n} de son top 10 en commun avec {tool} ({day}).",
+    "Its page showed results for \u201c{query}\u201d, not for this keyword.": "Sa page montrait les résultats pour « {query} », pas pour ce mot-clé.", "Can't verify yet": "Vérification impossible pour l'instant",
     "No Refresh yet": "Aucune actualisation", "Add keywords": "Ajouter des mots-clés", "No keywords yet": "Pas encore de mots-clés", "Add the keywords to follow.": "Ajoutez les mots-clés à suivre.",
     "Add a site first": "Ajoutez d'abord un site", "Keywords belong to a site.": "Les mots-clés appartiennent à un site.", "Open Settings": "Ouvrir les réglages",
     "Keywords, one per line": "Mots-clés, un par ligne", "Or upload a file": "Ou importez un fichier", "Country": "Pays", "Language": "Langue", "Any country": "Tous les pays", "Optional, such as fr": "Facultatif, par exemple fr", "Most used by this site's keywords.": "Les plus utilisés par les mots-clés de ce site.",
@@ -268,12 +270,26 @@
 
   // ---- table cells ----------------------------------------------------------------------------
   const UNSURE = "This check couldn't read every result, so it can't say whether you're there";
+  /* Why a check is suspect (store.suspect_why): another tool's page backed by a third check, or a page about another query.
+     Such a check never gives the shown position; it stays in the panel, greyed, with this reason. */
+  const whyText = (why) => {
+    if (!why) return "";
+    if (why.kind === "cross") return t("Other tools saw other sites: fewer than {n} of its top 10 in common with {tool} ({day}).").replace("{n}", why.sites).replace("{tool}", t(why.tool)).replace("{day}", UI.fmtDateOnly(why.day));
+    if (why.kind === "query") return t("Its page showed results for \u201c{query}\u201d, not for this keyword.").replace("{query}", why.query);
+    return "";
+  };
+  const suspectMark = (x) => {
+    const why = whyText(x.why);
+    return `${status("warn", t("Suspect result"))}${why ? `<span class="second kw-why">${esc(why)}</span>` : ""}`;
+  };
   /* "Not ranked" is a check that read every result and didn't find you: never a keyword not checked yet, or one whose only check is suspect. */
   const notRanked = (view) => view.main?.status === "ok" && !view.main.p;
   function posBadge(view) {
+    // A suspect check's position is greyed: it was found there, but on a page the other tools didn't see.
+    if (view.p && view.status === "suspect") return `<span class="pos pos-suspect" role="img" data-tip="${esc(whyText(view.why) || t("Suspect result"))}" aria-label="#${view.p}, ${esc(t("Suspect result"))}">#${view.p}</span>`;
     if (view.p) return `<span class="pos ${view.p <= 3 ? "pos-top3" : view.p <= 10 ? "pos-top10" : ""}">#${view.p}</span>`;
     if (view.status === "suspect") { // it couldn't read every result, so it never says "not in the top 10"
-      const unsure = t(UNSURE);
+      const unsure = whyText(view.why) || t(UNSURE);
       return `<span class="pos pos-none" role="img" data-tip="${esc(unsure)}" aria-label="${esc(unsure)}">?</span>`;
     }
     const words = `${t("Not in top")} ${view.depth}`;
@@ -1226,7 +1242,7 @@
     if (view.main) latest[view.main.tool] = view.main;
     view.others.forEach((x) => { latest[x.tool] = x; });
     const listed = (detail.order || []).map((tool) => detail.tools.find((x) => x.name === tool)).filter((tool) => tool && (tool.connected || latest[tool.name]));
-    const statusOf = (x) => (x.verdict === "suspect" || x.status === "suspect" ? status("warn", t("Suspect result")) : x.verdict === "unverifiable" ? `<span class="small sec" data-tip="${esc(t("First check with this tool, and nothing to compare it with yet."))}">${t("Not confirmed yet")}<span class="sr">: ${esc(t("First check with this tool, and nothing to compare it with yet."))}</span></span>` : okMark());
+    const statusOf = (x) => (x.verdict === "suspect" || x.status === "suspect" ? suspectMark(x) : x.verdict === "unverifiable" ? `<span class="small sec" data-tip="${esc(t("First check with this tool, and nothing to compare it with yet."))}">${t("Not confirmed yet")}<span class="sr">: ${esc(t("First check with this tool, and nothing to compare it with yet."))}</span></span>` : okMark());
     const toolRows = listed.map((tool) => {
       const x = latest[tool.name];
       const low = tool.left !== null && tool.left < 10;
@@ -1236,7 +1252,7 @@
       const button = !canRun ? `<span class="small muted">${t("Not connected")}</span>` : `<button class="btn btn-small" data-kwr-check="${esc(tool.name)}" data-low="${low ? tool.left : ""}" ${empty ? "disabled" : ""} ${empty ? `data-tip="${esc(t("No free checks left."))}"` : ""}>${t("Refresh")}</button>${tool.left === null ? "" : `<span class="second">${num(tool.left)} ${t("left")}</span>`}`;
       return `<tr><td class="nowrap">${logo(tool.name, 16)} ${esc(t(tool.name))}</td><td>${x ? posBadge(x) : '<span class="muted">—</span>'}</td><td class="sec small nowrap">${x ? age(x.age_days) : elsewhere ? age(elsewhere.age_days) : t("never")}</td><td>${x ? statusOf(x) : elsewhere ? `<span class="small sec">${t("Another location")}</span>` : ""}</td><td class="r">${button}</td></tr>`;
     }).join("");
-    const suspects = view.suspects.map((x) => `<tr><td class="nowrap">${logo(x.tool, 16)} ${esc(t(x.tool))}</td><td>${posBadge(x)}</td><td class="sec small nowrap">${age(x.age_days)}</td><td>${status("warn", t("Suspect result"))}</td><td></td></tr>`).join("");
+    const suspects = view.suspects.map((x) => `<tr class="kw-row-suspect"><td class="nowrap">${logo(x.tool, 16)} ${esc(t(x.tool))}</td><td>${posBadge(x)}</td><td class="sec small nowrap">${age(x.age_days)}</td><td>${suspectMark(x)}</td><td></td></tr>`).join("");
     const away = view.away.length
       ? `<table class="mini"><tbody>${view.away.map((x) => `<tr><td>${logoMark(x.tool, t(x.tool))} ${esc(UI.countryName(x.location) || x.location || "?")}</td><td>${posBadge(x)}</td><td class="sec small nowrap">${age(x.age_days)}</td></tr>`).join("")}</tbody></table>`
       : `<p class="small muted">${t("None yet")}</p>`;
@@ -1252,7 +1268,7 @@
       ? `<table class="mini"><thead><tr><th scope="col">${t("Position")}</th><th scope="col">${t("Site")}</th><th scope="col" class="r">${t("Change")}</th></tr></thead><tbody>${detail.competitors.slice(0, 20).map((c) => `<tr><td class="pos" style="width:40px">#${c.position}</td><td class="mono small" dir="auto">${c.hidden ? `<span class="muted">${t("Hidden by Google")}</span>` : c.mine ? `<b>${esc(c.host)}</b> <span class="who who-you"><i class="pt-key pt-key-you" aria-hidden="true"></i><span>${t("You")}</span></span>` : esc(c.host)}${c.rival ? ` <span class="who who-them"><i class="pt-key pt-key-them" aria-hidden="true"></i><span>${t("Competitor")}</span></span>` : ""}</td><td class="r">${c.change ? `<span class="chg ${c.change > 0 ? "good" : "crit"}">${icon(c.change > 0 ? "arrow-up" : "arrow-down")}${Math.abs(c.change)}</span>` : '<span class="muted">—</span>'}</td></tr>`).join("")}</tbody></table>`
       : `<p class="small muted">${t("None yet")}</p>`;
     const checks = detail.checks.length
-      ? `<table class="mini"><thead><tr><th>${t("Date")}</th><th>${t("Tool")}</th><th>${t("Position")}</th><th>${t("URL")}</th><th>${t("Status")}</th></tr></thead><tbody>${detail.checks.slice(0, 30).map((c) => `<tr><td class="nowrap small">${esc(UI.fmtDateOnly(c.checked_at.slice(0, 10)))}</td><td class="small">${brandLabel(c.tool)}<span class="second">${esc(c.location || "—")} · ${t("Top")} ${c.depth}</span></td><td>${c.status === "failed" ? "—" : c.p ? `#${c.p}` : c.status === "suspect" ? `<span data-tip="${esc(t(UNSURE))}" role="img" aria-label="${esc(t(UNSURE))}">?</span>` : `&gt;${c.depth}`}</td><td class="mono small kw-page-url" dir="auto">${c.url ? PageLink.html(c.url, { text: shortPath(c.url), title: "" }) : '<span class="muted">—</span>'}</td><td>${c.status === "failed" ? `<span class="crit small" data-tip="${esc(c.error || "")}">${icon("octagon-alert")}${t("Failed")}${c.error ? `<span class="sr">: ${esc(c.error)}</span>` : ""}</span>` : c.status === "suspect" ? status("warn", t("Suspect result")) : okMark()}</td></tr>`).join("")}</tbody></table>`
+      ? `<table class="mini"><thead><tr><th>${t("Date")}</th><th>${t("Tool")}</th><th>${t("Position")}</th><th>${t("URL")}</th><th>${t("Status")}</th></tr></thead><tbody>${detail.checks.slice(0, 30).map((c) => `<tr${c.status === "suspect" ? ' class="kw-row-suspect"' : ""}><td class="nowrap small">${esc(UI.fmtDateOnly(c.checked_at.slice(0, 10)))}</td><td class="small">${brandLabel(c.tool)}<span class="second">${esc(c.location || "—")} · ${t("Top")} ${c.depth}</span></td><td>${c.status === "failed" ? "—" : c.p ? `#${c.p}` : c.status === "suspect" ? `<span data-tip="${esc(t(UNSURE))}" role="img" aria-label="${esc(t(UNSURE))}">?</span>` : `&gt;${c.depth}`}</td><td class="mono small kw-page-url" dir="auto">${c.url ? PageLink.html(c.url, { text: shortPath(c.url), title: "" }) : '<span class="muted">—</span>'}</td><td>${c.status === "failed" ? `<span class="crit small" data-tip="${esc(c.error || "")}">${icon("octagon-alert")}${t("Failed")}${c.error ? `<span class="sr">: ${esc(c.error)}</span>` : ""}</span>` : c.status === "suspect" ? suspectMark(c) : okMark()}</td></tr>`).join("")}</tbody></table>`
       : `<p class="small muted">${t("Not checked")}</p>`;
     const own = OWN_TOOL[e];
     const task = UI.taskButton ? UI.taskButton(findOf(row, e, view), { cls: "btn" }) : "";

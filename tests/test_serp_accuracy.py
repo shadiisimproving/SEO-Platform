@@ -244,3 +244,59 @@ def test_old_duckduckgo_checks_that_read_one_page_answer_top_10(world):
     assert depths == {one_page: 10, deep: 20}
     view = row_of(world, k, "duckduckgo")
     assert [(o["tool"], o["depth"]) for o in [view["main"], *view["others"]]] == [("SerpApi", 20), ("Bright Data", 10)]
+
+
+# ---- 5. Keywords' Search Console columns count Google's final days, the shared period ----------------------------------
+
+
+def test_keywords_search_console_columns_count_the_last_28_final_days_world_and_france(world):
+    """30 final days of 10 clicks / 100 impressions (France: 2 / 20) ending on END, then 2 fresh days of 1 click.
+    Truth: the 28 days ending on END, 280 / 2,800 world and 56 / 560 France; never the fresh days (old code: 262)."""
+    from datetime import timedelta
+
+    from seo.collectors import common
+    from seo.serp import rankings
+
+    end = common.google_today(world.engine) - timedelta(days=3)
+    [k] = track(world, "cafe")
+    with world.engine.begin() as conn:
+        conn.execute(text("INSERT INTO site_sources (site_id, source, data_through, fresh_from, fresh_through) VALUES (:s, 'gsc', :d, :f, :t)"),
+                     {"s": world.site, "d": end, "f": end + timedelta(days=1), "t": end + timedelta(days=2)})
+        for n in range(-2, 30):
+            day, fresh = end - timedelta(days=n), n < 0
+            conn.execute(text("INSERT INTO gsc_daily (site_id, day, clicks, impressions, position) VALUES (:s, :d, 10, 100, 5)"), {"s": world.site, "d": day})
+            conn.execute(text("INSERT INTO gsc_query (site_id, day, query_hash, query, clicks, impressions, position) VALUES (:s, :d, :h, 'cafe', :c, 100, 4)"),
+                         {"s": world.site, "d": day, "h": common.digest("cafe"), "c": 1 if fresh else 10})
+            conn.execute(text("INSERT INTO gsc_query_country (site_id, day, country, query_hash, query, clicks, impressions, position) VALUES (:s, :d, 'fra', :h, 'cafe', :c, 20, 3)"),
+                         {"s": world.site, "d": day, "h": common.digest("cafe"), "c": 1 if fresh else 2})
+    listed = rankings.listing(world.engine, world.site)
+    row = next(r for r in listed["rows"] if r["keyword_id"] == k)
+    google = row["engines"]["google"]
+    assert (google["clicks"], google["impressions"]) == (280, 2800)
+    assert (row["own_country"]["clicks"], row["own_country"]["impressions"]) == (56, 560)
+    assert listed["data_through"] == str(end)
+    queries = rankings.queries(world.engine, world.site, "google")["rows"]
+    assert [(q["clicks"], q["impressions"]) for q in queries] == [(280, 2800)]
+
+
+# ---- 7. "Two pages compete" only when the second page has a real share -----------------------------------------------
+
+
+def test_two_pages_compete_only_with_a_real_second_page_or_both_ranked(world):
+    """a: 41 / 1 impressions (2%) → no. b: 60 / 20 (25%) → yes. c: 99 / 1, but both pages ranked in the shown check → yes."""
+    from seo.collectors import common
+    from seo.serp import rankings
+
+    a, b, c = track(world, "a", "b", "c")
+    with world.engine.begin() as conn:
+        for words, page, shows in (("a", "/", 41), ("a", "/x/", 1), ("b", "/", 60), ("b", "/y/", 20), ("c", "/", 99), ("c", "/z/", 1)):
+            url = f"https://{ME}{page}"
+            conn.execute(text("INSERT INTO gsc_query_page (site_id, day, pair_hash, query, page, clicks, impressions, position) VALUES (:s, CURDATE() - INTERVAL 5 DAY, :h, :q, :p, 0, :n, 5)"),
+                         {"s": world.site, "h": common.digest(words + url), "q": words, "p": url, "n": shows})
+        conn.execute(text("INSERT INTO gsc_query (site_id, day, query_hash, query, clicks, impressions, position) VALUES (:s, CURDATE() - INTERVAL 5 DAY, :h, 'a', 0, 1, 5)"),
+                     {"s": world.site, "h": common.digest("a")})
+    rows = [Found(i + 1, url, "T") for i, url in enumerate(HONEST)]
+    rows[0], rows[4] = Found(1, f"https://{ME}/", "M"), Found(5, f"https://{ME}/z/", "M2")
+    store.save_check(world.engine, c, "google", Answer("Searlo", "FR", 10, rows, "not_captured", [], 1))
+    two = {r["keyword"]: r["two_pages"] for r in rankings.listing(world.engine, world.site)["rows"]}
+    assert two == {"a": False, "b": True, "c": True}

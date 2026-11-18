@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import Engine, text
@@ -33,6 +33,17 @@ def page_address(url: str) -> str:
         return url
     kept = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True) if k not in _TRACKING and not k.startswith(("utm_", "hsa_"))]
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(kept), ""))
+
+
+TWO_PAGES_SHARE = 0.2  # a second page with fewer of the impressions is a stray showing, not a page competing
+
+
+def second_page_counts(pages_seen: dict) -> bool:
+    """Two of my pages compete in Search Console when the second one holds a real share of the keyword's impressions
+    (at least TWO_PAGES_SHARE of them), not when it showed once (rankings review 3.8: 41 against 1)."""
+    shows = sorted((n or 0 for n in pages_seen.values()), reverse=True)
+    total = sum(shows)
+    return len(shows) >= 2 and total > 0 and shows[1] / total >= TWO_PAGES_SHARE
 
 
 def _fold_pages(seen: dict) -> dict:
@@ -62,6 +73,7 @@ class Seen:
     at: datetime
     rows: list = field(default_factory=list)  # (position, url, host) of pages on any of my sites
     cited: list = field(default_factory=list)  # hosts of my sites this check's AI Overview cites
+    why: str | None = None  # a suspect check's reason (serp_checks.error)
 
     def own(self, host: str):
         return next((row for row in self.rows if store.on_host(row[2], host)), None)
@@ -90,11 +102,11 @@ def _load_checks(conn, keyword_ids: list[int], hosts: list[str]) -> dict[tuple[i
         marks = ",".join(str(int(i)) for i in keyword_ids[start:start + 1000])
         for row in conn.execute(
             text(
-                f"SELECT c.id, t.keyword_id, t.engine, c.tool, c.real_location, c.depth, c.status, c.ai_state, c.checked_at FROM serp_targets t JOIN serp_checks c ON c.target_id = t.id "
+                f"SELECT c.id, t.keyword_id, t.engine, c.tool, c.real_location, c.depth, c.status, c.ai_state, c.checked_at, c.error FROM serp_targets t JOIN serp_checks c ON c.target_id = t.id "
                 f"WHERE t.device = '{DEVICE}' AND t.keyword_id IN ({marks}) AND c.status IN ('ok', 'suspect') ORDER BY c.id"
             )
         ).mappings():
-            seen = Seen(row["id"], row["keyword_id"], row["engine"], row["tool"], row["real_location"], row["depth"], row["status"], row["ai_state"], row["checked_at"])
+            seen = Seen(row["id"], row["keyword_id"], row["engine"], row["tool"], row["real_location"], row["depth"], row["status"], row["ai_state"], row["checked_at"], why=row["error"] if row["status"] == "suspect" else None)
             by_target[(seen.keyword_id, seen.engine)].append(seen)
             by_id[seen.check_id] = seen
     ascii_hosts = [store.to_ascii_host(host) for host in hosts]
@@ -119,6 +131,7 @@ def _view(seen: Seen, host: str, now: datetime, home: bool, verdict: str | None 
     return {
         "check_id": seen.check_id, "tool": seen.tool, "p": best[0] if best else None, "url": best[1] if best else None, "depth": seen.depth, "location": seen.location,
         "checked_at": _iso(seen.at), "age_days": round((now - seen.at).total_seconds() / 86400, 2), "status": seen.status, "home": home, "verdict": verdict or seen.status,
+        "why": store.suspect_why(seen.why),
     }
 
 
@@ -254,7 +267,18 @@ def tracked_spellings(conn, site_ids: list[int]) -> dict[int, frozenset]:
     return {site_id: store.shared_keys(found) for site_id, found in words.items()}
 
 
-def _own_tools(conn, site_ids: list[int], shared: dict[int, frozenset] | None = None) -> dict:
+def search_windows(engine: Engine, site_ids: list[int]) -> dict:
+    """Per site, (first, last) day of Search Console's shared 28 days (period.for_site): Google's final days only."""
+    from seo.metrics import period
+
+    windows = {}
+    for site_id in site_ids:
+        scope, _ = period.for_site(engine, site_id, OWN_DAYS)
+        windows[site_id] = (scope.start, scope.end)
+    return windows
+
+
+def _own_tools(conn, site_ids: list[int], shared: dict[int, frozenset] | None = None, windows: dict | None = None) -> dict:
     """Search Console, Bing's and Yandex's own numbers for my sites, by matching key (store.match_key): every spelling of a
     keyword tracked once, or only its exact query when the site tracks two spellings of it. Empty until each is connected."""
     shared = shared or {}
@@ -268,20 +292,25 @@ def _own_tools(conn, site_ids: list[int], shared: dict[int, frozenset] | None = 
         return store.match_key(query, shared.get(site_id, frozenset()))
 
     marks = ",".join(str(int(i)) for i in site_ids)
+    # The shared period (seo.metrics.period): the last 28 of Google's final days, as Overview and Insights count them.
+    # Google's fresh days (the last two or three, still changing) never count.
+    windows = windows or {}
     for row in conn.execute(text(f"SELECT site_id, MAX(day) AS last FROM gsc_query WHERE site_id IN ({marks}) GROUP BY site_id")).mappings():
-        through[row["site_id"]] = row["last"]
-    for site_id, last in through.items():
+        if row["last"] is not None:
+            through[row["site_id"]] = windows.get(row["site_id"], (row["last"] - timedelta(days=OWN_DAYS - 1), row["last"]))[1]
+    for site_id in list(through):
+        first, last = windows.get(site_id, (through[site_id] - timedelta(days=OWN_DAYS - 1), through[site_id]))
         for row in conn.execute(
             text(
                 "SELECT query, SUM(clicks) AS clicks, SUM(impressions) AS impressions, SUM(position * impressions) / NULLIF(SUM(impressions), 0) AS position "
-                f"FROM gsc_query WHERE site_id = :s AND day > :last - INTERVAL {OWN_DAYS} DAY GROUP BY query_hash, query"
+                "FROM gsc_query WHERE site_id = :s AND day BETWEEN :first AND :last GROUP BY query_hash, query"
             ),
-            {"s": site_id, "last": last},
+            {"s": site_id, "first": first, "last": last},
         ).mappings():
             _add_own(tables["google"], (site_id, key(site_id, row["query"])), row["query"], row["clicks"], row["impressions"], row["position"])
         for row in conn.execute(
-            text(f"SELECT query, page, SUM(impressions) AS impressions FROM gsc_query_page WHERE site_id = :s AND day > :last - INTERVAL {OWN_DAYS} DAY GROUP BY pair_hash, query, page"),
-            {"s": site_id, "last": last},
+            text("SELECT query, page, SUM(impressions) AS impressions FROM gsc_query_page WHERE site_id = :s AND day BETWEEN :first AND :last GROUP BY pair_hash, query, page"),
+            {"s": site_id, "first": first, "last": last},
         ).mappings():
             seen = pages[(site_id, key(site_id, row["query"]))]
             seen[row["page"]] = seen.get(row["page"], 0) + int(row["impressions"] or 0)
@@ -289,9 +318,9 @@ def _own_tools(conn, site_ids: list[int], shared: dict[int, frozenset] | None = 
         for row in conn.execute(
             text(
                 "SELECT country, query, SUM(clicks) AS clicks, SUM(impressions) AS impressions, SUM(position * impressions) / NULLIF(SUM(impressions), 0) AS position "
-                f"FROM gsc_query_country WHERE site_id = :s AND day > :last - INTERVAL {OWN_DAYS} DAY AND day <= :last GROUP BY country, query_hash, query"
+                "FROM gsc_query_country WHERE site_id = :s AND day BETWEEN :first AND :last GROUP BY country, query_hash, query"
             ),
-            {"s": site_id, "last": last},
+            {"s": site_id, "first": first, "last": last},
         ).mappings():
             _add_own(tables["google_country"], (site_id, row["country"], key(site_id, row["query"])), row["query"], row["clicks"], row["impressions"], row["position"])
     for row in conn.execute(text(f"SELECT site_id, query, clicks, impressions, position FROM bing_query WHERE site_id IN ({marks})")).mappings():
@@ -319,7 +348,7 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
             ).mappings().all()
         checks = _load_checks(conn, list({row["id"] for row in tracked}), list(hosts.values()))
         shared = tracked_spellings(conn, site_ids)  # all of each site's keywords, even when one keyword is asked for
-        own = _own_tools(conn, site_ids, shared)
+        own = _own_tools(conn, site_ids, shared, search_windows(engine, site_ids))
         # Whichever button pressed it: this screen's Refresh, or Check again in Competitors.
         finished = [
             conn.execute(text("SELECT MAX(finished_at) FROM rank_runs")).scalar(),
@@ -338,13 +367,16 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
             engines[name] = engine_view(checks.get((track["id"], name), []), host, track["country"], track["language"], order[name], gap, now, _public(own_row), chosen_tool)
         ai = _ai(checks.get((track["id"], "google"), []), host, track["country"], track["language"], now)
         pages_seen = _fold_pages(own["pages"].get((track["site_id"], key), {}))
-        latest_google = checks.get((track["id"], "google"), [])
+        # The check shown on Google (pick_main), not whichever check came last: a suspect or far-away one says nothing here.
+        shown_id = (engines["google"]["main"] or {}).get("check_id")
+        shown_check = next((seen for seen in checks.get((track["id"], "google"), []) if seen.check_id == shown_id), None)
         # Two addresses: a result whose address Google hid may be either page, so it isn't a second one.
-        scraped_two = latest_google and len({page_address(row[1]) for row in latest_google[-1].rows if row[1] and store.on_host(row[2], host)}) >= 2
-        # Which pages they are: Search Console's by impressions, then any other address the latest Google check found.
+        scraped_two = bool(shown_check) and len({page_address(row[1]) for row in shown_check.rows if row[1] and store.on_host(row[2], host)}) >= 2
+        two_pages = scraped_two or second_page_counts(pages_seen)
+        # Which pages they are: Search Console's by impressions, then any other address the shown check found.
         competing = [{"url": url, "impressions": shows, "position": None} for url, shows in sorted(pages_seen.items(), key=lambda kv: -kv[1])]
-        if latest_google:
-            for position, url, row_host in latest_google[-1].rows:
+        if shown_check:
+            for position, url, row_host in shown_check.rows:
                 if not url or not store.on_host(row_host, host):
                     continue
                 url = page_address(url)
@@ -367,8 +399,8 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
             "ranking_url": main_url, "gsc_page": gsc_page,
             # Search Console's numbers include other spellings of it ("cafe" for "café"): only when the site tracks one spelling.
             "other_spellings": bool(google_own and google_own["_queries"] - {store.clean_keyword(track["keyword"]).casefold()}),
-            "two_pages": len(pages_seen) >= 2 or bool(scraped_two),
-            "pages": competing if len(pages_seen) >= 2 or scraped_two else [],
+            "two_pages": two_pages,
+            "pages": competing if two_pages else [],
             # "volume" is kept for older readers: it was never search volume, only our own impressions over 28 days.
             "volume": google_own["impressions"] if google_own else None, "impressions": google_own["impressions"] if google_own else None,
             # Search Console in the keyword's own country, when the site's queries are read for it (None otherwise; the
@@ -524,7 +556,7 @@ def detail(engine: Engine, site_id: int, keyword_id: int, engine_name: str) -> d
     return {
         "row": {**row, "engines": {engine_name: view}}, "engine": engine_name, "lines": list(lines.values()), "competitors": competitors,
         "checks": [
-            {"id": check["id"], "tool": check["tool"], "location": check["real_location"], "depth": check["depth"], "status": check["status"], "error": check["error"], "p": own_rows.get(check["id"]), "url": own_urls.get(check["id"]), "checked_at": _iso(check["checked_at"])}
+            {"id": check["id"], "tool": check["tool"], "location": check["real_location"], "depth": check["depth"], "status": check["status"], "error": check["error"], "why": store.suspect_why(check["error"]) if check["status"] == "suspect" else None, "p": own_rows.get(check["id"]), "url": own_urls.get(check["id"]), "checked_at": _iso(check["checked_at"])}
             for check in every
         ],
         "tools": [tool for tool in listed["tools"] if engine_name in tool["engines"] or tool["name"] in connections.DEFAULT_ORDER.get(engine_name, [])],
@@ -539,15 +571,15 @@ def queries(engine: Engine, site_id: int | None, engine_name: str) -> dict:
         rows = []
         for site in sites:
             if engine_name == "google":
-                last = conn.execute(text("SELECT MAX(day) FROM gsc_query WHERE site_id = :s"), {"s": site["id"]}).scalar()
-                if not last:
+                if not conn.execute(text("SELECT 1 FROM gsc_query WHERE site_id = :s LIMIT 1"), {"s": site["id"]}).first():
                     continue
+                first, last = search_windows(engine, [site["id"]])[site["id"]]
                 found = conn.execute(
                     text(
                         "SELECT query, SUM(clicks) AS clicks, SUM(impressions) AS impressions, SUM(position * impressions) / NULLIF(SUM(impressions), 0) AS position "
-                        f"FROM gsc_query WHERE site_id = :s AND day > :last - INTERVAL {OWN_DAYS} DAY GROUP BY query_hash, query ORDER BY clicks DESC, impressions DESC LIMIT 500"
+                        "FROM gsc_query WHERE site_id = :s AND day BETWEEN :first AND :last GROUP BY query_hash, query ORDER BY clicks DESC, impressions DESC LIMIT 500"
                     ),
-                    {"s": site["id"], "last": last},
+                    {"s": site["id"], "first": first, "last": last},
                 ).mappings().all()
             elif engine_name == "bing":
                 found = conn.execute(text("SELECT query, clicks, impressions, position FROM bing_query WHERE site_id = :s ORDER BY clicks DESC, impressions DESC LIMIT 500"), {"s": site["id"]}).mappings().all()

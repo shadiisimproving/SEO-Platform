@@ -236,7 +236,7 @@ def odd_one_out(check: "_Judged", pool: list) -> "_Judged | None":
 
 
 def cross_reason(other_tool: str, other_at) -> str:
-    day = other_at.strftime("%d %b") if hasattr(other_at, "strftime") else str(other_at)[:10]
+    day = other_at.strftime("%Y-%m-%d") if hasattr(other_at, "strftime") else str(other_at)[:10]
     return f"Shares fewer than {AGREE_SITES} of its top 10 sites with {other_tool}'s check of {day}, which another check backs."
 
 
@@ -278,6 +278,22 @@ def _pool(conn, targets: list[int], start=None, end=None) -> list:
         if domain and not domain.startswith("google."):
             sites[check_id].add(domain)
     return [_Judged(row[0], row[1], row[2], row[3] or "", row[4], sites[row[0]]) for row in checks]
+
+
+_CROSS_WHY = re.compile(r"^Shares fewer than (?P<n>\d+) of its top 10 sites with (?P<tool>.+?)'s check of (?P<day>\d{4}-\d{2}-\d{2}), which another check backs\.$")
+_QUERY_WHY = re.compile(r"^(?P<tool>.+?)'s page showed results for \u201c(?P<query>.*)\u201d, not for this keyword\.$", re.DOTALL)
+
+
+def suspect_why(error: str | None) -> dict | None:
+    """Why a check is suspect, for the screen to say in the reader's language: the cross-tool rule or another query.
+    Other reasons (older marks) give None: the screen then says "Suspect result" alone."""
+    hit = _CROSS_WHY.match(error or "")
+    if hit:
+        return {"kind": "cross", "tool": hit["tool"], "day": hit["day"], "sites": int(hit["n"])}
+    hit = _QUERY_WHY.match(error or "")
+    if hit:
+        return {"kind": "query", "tool": hit["tool"], "query": hit["query"]}
+    return None
 
 
 def judge_target(conn, target: int, around_id: int | None = None, apply: bool = True, marked_before: set | None = None) -> list[tuple[int, str]]:
