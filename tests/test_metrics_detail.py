@@ -35,6 +35,11 @@ def other(engine, site):
         return conn.execute(text("INSERT INTO sites (host, start_url, kind) VALUES ('other.example', 'https://other.example/', 'own')")).lastrowid
 
 
+def _dsl(days):
+    """Day, visits and leads of each day row: what these tests pin. converted and rated (the rate's parts, W2b) are pinned in test_final_ga."""
+    return [{k: d[k] for k in ("day", "sessions", "leads")} for d in days]
+
+
 def _ga4(engine, site_id, day, channel, source, medium, sessions, leads=0):
     with engine.begin() as conn:
         conn.execute(
@@ -97,8 +102,8 @@ def test_a_channel_panel_adds_up_to_its_row(engine, site):
     assert panel["before"] == {"sessions": 40, "leads": 1.0, "rate": 0.025}
     assert [(s["source"], s["sessions"], s["before"], s["change"]) for s in panel["sources"]] == [("google", 60, 40, 50.0), ("bing", 20, None, None)]
     assert [(m["medium"], m["sessions"]) for m in panel["mediums"]] == [("organic", 80)] and panel["sources_total"] == 2
-    assert panel["days"] == [{"day": "2026-10-01", "sessions": 60, "leads": 3.0}, {"day": "2026-10-02", "sessions": 20, "leads": 1.0}]
-    assert panel["days_before"] == [{"day": "2026-09-29", "sessions": 40, "leads": 1.0}]
+    assert _dsl(panel["days"]) == [{"day": "2026-10-01", "sessions": 60, "leads": 3.0}, {"day": "2026-10-02", "sessions": 20, "leads": 1.0}]
+    assert _dsl(panel["days_before"]) == [{"day": "2026-09-29", "sessions": 40, "leads": 1.0}]
     assert panel["period"] == service.channels(_scope(engine))["period"]
 
 
@@ -106,7 +111,7 @@ def test_a_day_ga4_reported_counts_at_zero_and_a_day_it_did_not_is_a_gap(engine,
     _ga4(engine, site, D1, "Direct", "(direct)", "(none)", 5)
     _ga4(engine, site, D3, "Referral", "blog.example", "referral", 7)  # nothing at all on D2
     days = service.channel_detail(_scope(engine, end=D3, before=None), "Referral")["days"]
-    assert days == [{"day": "2026-10-01", "sessions": 0, "leads": 0.0}, {"day": "2026-10-03", "sessions": 7, "leads": 0.0}]
+    assert _dsl(days) == [{"day": "2026-10-01", "sessions": 0, "leads": 0.0}, {"day": "2026-10-03", "sessions": 7, "leads": 0.0}]
 
 
 def test_a_channel_rule_decides_which_panel_a_visit_is_in(engine, site):
@@ -283,8 +288,8 @@ def test_conversions_compares_with_the_period_before(engine, site):
     assert answer["sessions"] == 100 and answer["leads"] == 5 and answer["rate"] == 0.05  # as before
     assert answer["before"] == {"sessions": 50, "leads": 2.0, "rate": 0.04}
     assert answer["changes"] == {"sessions": 100.0, "leads": 150.0, "rate_points": 1.0}
-    assert answer["days"] == [{"day": "2026-10-01", "sessions": 80, "leads": 4.0}, {"day": "2026-10-02", "sessions": 20, "leads": 1.0}]
-    assert answer["days_before"] == [{"day": "2026-09-29", "sessions": 50, "leads": 2.0}]
+    assert _dsl(answer["days"]) == [{"day": "2026-10-01", "sessions": 80, "leads": 4.0}, {"day": "2026-10-02", "sessions": 20, "leads": 1.0}]
+    assert _dsl(answer["days_before"]) == [{"day": "2026-09-29", "sessions": 50, "leads": 2.0}]
     assert answer["period"]["from"] == "2026-10-01" and answer["period"]["compare_from"] == "2026-09-29"
 
 
@@ -303,7 +308,7 @@ def test_channels_days_add_up_to_the_totals(engine, site):
     answer = service.channels(_scope(engine))
     assert sum(d["sessions"] for d in answer["days"]) == answer["total"]["sessions"] == 100
     assert sum(d["leads"] for d in answer["days"]) == answer["total"]["leads"] == 5
-    assert answer["days_before"] == [{"day": "2026-09-30", "sessions": 9, "leads": 0.0}]
+    assert _dsl(answer["days_before"]) == [{"day": "2026-09-30", "sessions": 9, "leads": 0.0}]
     assert service.channels(_scope(engine, before=None))["days_before"] is None
 
 

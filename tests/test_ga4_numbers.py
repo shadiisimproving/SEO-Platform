@@ -74,7 +74,7 @@ def test_ticked_key_events_are_the_leads_on_every_table_and_past_days(world):
         assert dict(conn.execute(text("SELECT path, leads FROM ga4_page_daily")).all()) == {"/a/": 1.0, "/b/": 2.0}
         assert conn.execute(text("SELECT leads FROM ga4_referral_daily")).scalar() == 1.0
     answer = service.channels(_scope(world.engine, world.site, day, day))
-    assert answer["lead_kind"] == "leads" and answer["total"] == {"sessions": 57, "leads": 3.0, "converted": 3.0}
+    assert answer["lead_kind"] == "leads" and answer["total"] == {"sessions": 57, "leads": 3.0, "converted": 3.0, "rated": 57}
     # A day read later gets its leads at once.
     ga4._one_day(world.engine, world.site, "t", "123456", day - timedelta(days=1))
     with world.engine.connect() as conn:

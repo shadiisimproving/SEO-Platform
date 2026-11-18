@@ -3,7 +3,7 @@
 - tracking_changes: the days a site's key events (or leads) per visit jumped or stopped, such as GA4 counting about one key
   event per visit from 2 Mar to 18 Jun 2026, or none from 19 Jan to 1 Mar. A change across one of those days compares two
   different ways of counting, so screens leave it blank and say why.
-- little_before: the earlier period has data on fewer than half its days (a tag that only started recently). A change
+- little_before: the earlier period has data on fewer than half of its own days (a tag that only started recently). A change
   against it would read "+24,100%", so screens say "too little data before" instead.
 - unusual_days: days far above the site's usual level (a bot burst: 1,164 Direct visits a day against about 10). Screens
   mark them and give the change without them too.
@@ -159,14 +159,15 @@ def _hosts(engine: Engine, site_ids: list[int]) -> dict[int, str]:
 
 
 def little_before(engine: Engine, site_id: int, compare_start: date, compare_end: date, start: date | None = None, end: date | None = None) -> bool:
-    """The earlier period has GA4 data on fewer than half as many days as the period itself (or, without the period, as
-    its own days): a tag that only started recently."""
+    """The earlier period has GA4 data on fewer than half of its own days: a tag that only started recently.
+
+    Judged by the period's length, never by the days with data now: a site whose tag started 12 days before a 3-month
+    period has 12 days then and about as few now, and "12 against 12" passed, giving +838.5% (final review 2026-11-18,
+    N1). start and end are kept for the callers; they don't change the answer."""
+    length = (compare_end - compare_start).days + 1
     with engine.connect() as conn:
-        def days(a, b):
-            return conn.execute(text("SELECT COUNT(DISTINCT day) FROM ga4_source_daily WHERE site_id = :s AND sessions > 0 AND day BETWEEN :a AND :b"), {"s": site_id, "a": a, "b": b}).scalar() or 0
-        before = days(compare_start, compare_end)
-        now = days(start, end) if start and end else (compare_end - compare_start).days + 1
-    return before < now * LITTLE_SHARE
+        before = conn.execute(text("SELECT COUNT(DISTINCT day) FROM ga4_source_daily WHERE site_id = :s AND sessions > 0 AND day BETWEEN :a AND :b"), {"s": site_id, "a": compare_start, "b": compare_end}).scalar() or 0
+    return before < length * LITTLE_SHARE
 
 
 def unusual_days(engine: Engine, site_ids: list[int], start: date, end: date) -> dict:

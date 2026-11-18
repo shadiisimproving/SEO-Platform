@@ -109,7 +109,7 @@ def test_channel_totals_add_up_and_shares_are_right(engine, site):
     _ga4(engine, site, D1, "Organic Search", "google", "organic", 80, 4)
     _ga4(engine, site, D1, "Direct", "(direct)", "(none)", 20, 1)
     answer = service.channels(_scope(engine))
-    assert answer["total"] == {"sessions": 100, "leads": 5.0, "converted": 5.0}  # converted: visits with a key event, for the rate
+    assert answer["total"] == {"sessions": 100, "leads": 5.0, "converted": 5.0, "rated": 100}  # converted: visits with a key event, for the rate
     assert answer["channels"][0]["channel"] == "Organic Search" and answer["channels"][0]["share"] == 0.8 and answer["channels"][0]["rate"] == 0.05
 
 
@@ -500,8 +500,9 @@ def test_today_results_count_back_from_where_each_source_ends_not_from_today(eng
         _ga4(engine, site, end - timedelta(days=back), "Organic", "google", "organic", 50, leads=2)
     results = today_view.today(engine)["results"]
     assert results["clicks"]["value"] == 100 and results["clicks"]["change"] == -50
-    assert results["visits"]["value"] == 50 and results["visits"]["change"] == -50
-    assert results["leads"]["value"] == 2 and results["leads"]["change"] == -2 and results["leads"]["state"] == "ok"
+    # GA4 has 2 days of the 28 before: too little to compare (final review N1), so the visits and leads changes are blank.
+    assert results["visits"]["value"] == 50 and results["visits"]["change"] is None and results["visits"]["note"] == "little_before"
+    assert results["leads"]["value"] == 2 and results["leads"]["change"] is None and results["leads"]["state"] == "ok"
     assert results["through"] == (end - timedelta(days=1)).isoformat()
 
 

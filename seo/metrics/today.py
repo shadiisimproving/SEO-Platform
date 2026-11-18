@@ -901,7 +901,9 @@ def _total(strip: list[dict], field: str, absolute: bool = False) -> dict:
     change = None
     if compared:
         change = now - was if absolute else _percent(now, was)
-    return {"value": sum(row[field] for row in known) if known else None, "change": change, "sites": len(known), "of": len(strip)}
+    # The sites with a value but no change, and why: the card says the change covers fewer sites (final review N3).
+    left_out = [{"host": row["host"], "why": row.get(f"{field}_note") or "no_before"} for row in known if row[f"{field}_was"] is None] if compared else []
+    return {"value": sum(row[field] for row in known) if known else None, "change": change, "sites": len(known), "of": len(strip), "compared": len(compared), "left_out": left_out}
 
 
 def _points(strip: list[dict], field: str, length: int) -> list[dict]:

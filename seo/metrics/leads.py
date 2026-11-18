@@ -61,6 +61,28 @@ def with_ga4(engine: Engine, site_ids: list[int]) -> list[int]:
         return [row[0] for row in conn.execute(statement, {"s": list(site_ids)})]
 
 
+def recording(engine: Engine, site_ids: list[int]) -> list[int]:
+    """The sites that record what their rate counts: a stored lead (sites with ticks) or key event (sites without) on any
+    day. A site with Google Analytics but none at all can't have a lead rate, so its visits stay out of the rate's visits,
+    or two sites without forms would pull "All sites" from 11.3% down to 4.4% (final review 2026-11-18, W2b)."""
+    if not site_ids:
+        return []
+    picked = lead_sites(engine, site_ids)
+    statement = text(f"SELECT DISTINCT site_id FROM ga4_source_daily WHERE site_id IN :s AND {count_sql(MIXED, picked) if picked else 'key_events'} > 0").bindparams(bindparam("s", expanding=True))
+    with engine.connect() as conn:
+        return sorted(row[0] for row in conn.execute(statement, {"s": list(site_ids)}))
+
+
+def rated_sql(site_ids: list[int], recorded: list[int]) -> str:
+    """The visits a lead rate is worked out on: every visit of the sites that record leads or key events, none of the
+    others' (recording)."""
+    if set(site_ids) <= set(recorded):
+        return "sessions"
+    if not recorded:
+        return "0"
+    return f"IF(site_id IN ({','.join(str(int(i)) for i in recorded)}), sessions, 0)"
+
+
 def _per_site(picked: list[int], lead_column: str, other: str) -> str:
     marks = ",".join(str(int(i)) for i in picked)
     return f"IF(site_id IN ({marks}), {lead_column}, {other})"
