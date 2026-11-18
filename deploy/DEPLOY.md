@@ -65,6 +65,22 @@ It uploads the last commit only, and that commit must be on GitHub. Database cop
 
 **If a migration fails halfway,** the old version stays live, but every later upload stops on the same step, because MariaDB can't undo the table changes already made ("table already exists"). To recover, look at what that migration created, then either remove those tables so it can run again, or, if everything in it is already there, run `alembic stamp <its revision>` in the staging folder. Restore a database copy if in doubt.
 
+### One-time costs of the November 2026 accuracy fixes (fix-all-2026-11-17)
+
+Check these before the first upload that carries them:
+
+- **Free disk space.** The first competitor read after the upload saves every tracked page's text once more in the new
+  one-block-a-line format (`seo/crawl/store.py`, an old-format version is rebased): about one extra gzip text per
+  tracked page in the first days, a few KB each. Check free space first (`df -h ~` and `du -sh ~/seo-platform/var` on
+  the server, or the cPanel disk gauge), and take a database copy, since the DuckDuckGo depth rewrite migration has no
+  way back.
+- **Google Analytics history read again.** Every GA4 day already stored (up to 425 days) is read again with hosts and
+  key events by name, 30 days a run, one run an hour (`seo/collectors/ga4.py`, `BACKLOG_DAYS_PER_RUN`), so about 15 hours
+  for a full history. It shares the property's hourly quota with Looker Studio and GA4 Explorations; a quota stop only
+  pauses it for an hour and isn't shown as a failure. Settings shows the days left.
+- **Stored competitor events.** `scripts/reclassify_competitor_events.py` (dry run first, then `--apply`) hides old
+  noise events; it works one competitor at a time, each in its own transaction.
+
 ## Going back to an older version
 
 When a new version is broken, put the last good one back. **Mac:**
