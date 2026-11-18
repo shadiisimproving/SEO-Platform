@@ -11,6 +11,7 @@ import re
 from typing import Callable
 
 _WHAT = {"security certificate": "certificat de sécurité", "domain name": "nom de domaine"}
+_DIM_FR = {"Page": "des pages", "Query": "des requêtes", "Country": "par pays", "Device": "par appareil"}
 _MATCH = {"contains": "contient", "doesn't contain": "ne contient pas", "is exactly": "est exactement", "matches": "correspond à"}
 # seo/health/audit.py SITE_CHECKS in lower case, as seo/health/service.py joins them in an alert's title. The first six are
 # the wording since 2026-11-11; the others stay for alerts saved before.
@@ -99,6 +100,14 @@ _PATTERNS: list[tuple[str, str | Callable[[re.Match], str | None]]] = [
     (r"^The request failed: (.+)$", "La requête a échoué : {1}"),  # {1} is the network library's own words, in English
     # Today's export: Google Analytics' own days, under Search Console's period (seo/exports/views_traffic.py today)
     (r"^Visits and leads: (\d{4}-\d\d-\d\d) – (\d{4}-\d\d-\d\d), where Google Analytics' data ends\.$", lambda m: f"Visites et demandes : {_day(m.group(1))} – {_day(m.group(2))}, là où s'arrêtent les données de Google Analytics."),
+    # Google Analytics exports: sites left out of a rate or of a change (final review 2026-11-18, W2b, N1, N3)
+    (r"^Left out of the rate, no leads or key events recorded: (.+)\.$", "Exclus du taux, aucune demande ni aucun événement clé enregistré : {1}."),
+    (r"^Visits change on (\d+) of (\d+) sites: too little data before on (.+)\.$", "Évolution des visites sur {1} des {2} sites : trop peu de données avant sur {3}."),
+    # Overview's export: country and device tables that start after the period (final review N2), no comparison
+    (r"^Country data starts on (\d{4}-\d\d-\d\d): days before aren't counted\.$", lambda m: f"Les données par pays commencent le {_day(m.group(1))} : les jours d'avant ne sont pas comptés."),
+    (r"^Device data starts on (\d{4}-\d\d-\d\d): days before aren't counted\.$", lambda m: f"Les données par appareil commencent le {_day(m.group(1))} : les jours d'avant ne sont pas comptés."),
+    (r"^(Page|Query|Country|Device) data starts on (\d{4}-\d\d-\d\d): too soon to compare these rows\.$", lambda m: f"Les données {_DIM_FR[m.group(1)]} commencent le {_day(m.group(2))} : trop tôt pour comparer ces lignes."),
+    (r"^No comparison: stored data starts on (\d{4}-\d\d-\d\d)\.$", lambda m: f"Sans comparaison : les données enregistrées commencent le {_day(m.group(1))}."),
     # Overview's export: a long period drawn in whole weeks
     (r"^The first (\d+) days are counted in the totals, not drawn: a short week would look like a fall\.$", "Les {1} premiers jours sont comptés dans les totaux, pas dessinés : une semaine incomplète ressemblerait à une chute."),
     (r"^The last (\d+) days aren't final yet in Google: they are left out of the charts and totals\.$", "Les {1} derniers jours ne sont pas encore définitifs chez Google : ils sont exclus des graphiques et des totaux."),

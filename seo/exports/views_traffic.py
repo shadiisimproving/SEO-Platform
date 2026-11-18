@@ -23,16 +23,19 @@ def _report(engine, args, scope, view_id: str, title: str) -> Report:
 
 def _google_days(report: Report, scope, data: dict) -> None:
     """Search Console's numbers run on the shared period (to Google's last final day), Google Analytics' on the dates
-    picked: when the two differ, the header says Google's own days too, so no click is read against the wrong days
-    (expert review 2026-11-17, 3.8 and W13)."""
+    picked: when the two differ, the header says Google's own days too, and the days its "before" numbers come from, so
+    no click is read against the wrong days (expert review 2026-11-17, 3.8 and W13; final review N7)."""
     from datetime import date
 
     window = data.get("gsc_window") or {}
     if not (window.get("from") and window.get("to")):
         return
     google = (date.fromisoformat(window["from"]), date.fromisoformat(window["to"]))
+    google_before = (date.fromisoformat(window["compare_from"]), date.fromisoformat(window["compare_to"])) if window.get("compare_from") and window.get("compare_to") else None
     if google != (scope.start, scope.end):
         report.filters.append(("Google numbers", google))
+    if google_before and scope.has_compare and google_before != (scope.compare_start, scope.compare_end):
+        report.filters.append(("Google numbers before", google_before))
 
 
 def _day(value) -> str:
@@ -40,34 +43,53 @@ def _day(value) -> str:
     return text[:10]  # the PDF writes it in words (pdf_out.day_label)
 
 
-MIXED_WORDS = {"Leads": "Leads and key events"}
-KEY_EVENT_WORDS = {"Leads": "Key events", "Lead rate": "Key event rate", "Leads by channel": "Key events by channel", "Leads change": "Key events change"}
+MIXED_WORDS = {"Leads": "Leads and key events", "Lead rate": "Lead rate, at most"}
+KEY_EVENT_WORDS = {"Leads": "Key events", "Lead rate": "Key event rate, at most", "Leads by channel": "Key events by channel", "Leads change": "Key events change"}
+# While key events are counted, a rate is an upper bound of Google Analytics' own (final review N4).
+AT_MOST = "Key event rate, at most: each key event counts as one visit, never more than the visits. Google Analytics' own rate counts visits with at least one key event, so it can be lower."
+
+
+def _relabel(report: Report, words: dict) -> None:
+    for tile in report.tiles:
+        tile.label = words.get(tile.label, tile.label)
+    for table in report.tables:
+        for column in table.columns:
+            column.label = words.get(column.label, column.label)
+    for chart in report.charts:
+        chart.title = words.get(chart.title, chart.title)
+        for series in chart.series:
+            series.name = words.get(series.name, series.name)
+
+
+def _has_rate(report: Report) -> bool:
+    return any(t.label == "Lead rate" for t in report.tiles) or any(c.label == "Lead rate" for tb in report.tables for c in tb.columns)
 
 
 def _lead_words(report: Report, data: dict, kind: str | None = None) -> None:
     """A site that hasn't picked its lead events counts every GA4 key event: the file says "Key events", as the screen
     does, and says when GA4 changed how it counts them or when the visits change leaves out unusual days."""
     kind = kind or data.get("lead_kind")
+    rate = _has_rate(report)
     if kind == "key_events":
-        for tile in report.tiles:
-            tile.label = KEY_EVENT_WORDS.get(tile.label, tile.label)
-        for table in report.tables:
-            for column in table.columns:
-                column.label = KEY_EVENT_WORDS.get(column.label, column.label)
-        for chart in report.charts:
-            chart.title = KEY_EVENT_WORDS.get(chart.title, chart.title)
-            for series in chart.series:
-                series.name = KEY_EVENT_WORDS.get(series.name, series.name)
-        report.notes.append("Key events: every Google Analytics key event. Pick which ones are leads in Settings → Google Analytics.")
+        _relabel(report, KEY_EVENT_WORDS)
+        report.notes.append("Key events: every Google Analytics key event. Pick which ones are leads in Settings → Sites.")
     elif kind == "mixed":  # some sites picked their lead events, some didn't: each counts by its own rule (code review 2026-11-18, #4)
-        for tile in report.tiles:
-            tile.label = MIXED_WORDS.get(tile.label, tile.label)
-        report.notes.append("Leads and key events: sites without lead events picked count every key event. Pick them in Settings → Google Analytics.")
+        _relabel(report, MIXED_WORDS)
+        report.notes.append("Leads and key events: sites without lead events picked count every key event. Pick them in Settings → Sites.")
+    if rate and kind in ("key_events", "mixed"):
+        report.notes.append(AT_MOST)
+    silent = [h for h in data.get("no_lead_hosts") or [] if h]
+    if silent and rate:  # their visits are left out of the rate (W2b)
+        report.notes.append(f"Left out of the rate, no leads or key events recorded: {', '.join(silent)}.")
     changes = (data.get("lead_check") or {}).get("changes") or data.get("lead_changes") or []
     for c in changes:
         report.notes.append(f"Google Analytics changed how it counts key events on {c['day']} ({c.get('host') or ''}): the change in leads is left out.")
     if data.get("little_before"):
         report.notes.append("Too little Google Analytics data in the period before to compare visits.")
+    left = [h for h in data.get("little_hosts") or [] if h]
+    kept = data.get("compared_count") if data.get("compared_count") is not None else len(data.get("compared_sites") or [])
+    if left and not data.get("little_before") and kept:  # the change covers the other sites only (N1, N3)
+        report.notes.append(f"Visits change on {kept} of {kept + len(left)} sites: too little data before on {', '.join(left)}.")
     unusual = data.get("unusual")
     for run in (unusual or {}).get("runs", []) + (unusual or {}).get("runs_before", []):
         report.notes.append(f"Unusual days {run['from']} – {run['to']} ({run['host']}): {run['visits']} visits, about {run['usual']} a day usually.")
@@ -88,9 +110,10 @@ def channels(engine, args) -> Report:
     data = service.channels(scope)
     report = _report(engine, args, scope, "channels", "Channels")
     total, before = data.get("total") or {}, data.get("before") or {}
+    now = data.get("compared") or total  # only some sites had a fair period before: their totals against theirs (N1)
     report.tiles = [
-        Tile("Visits", total.get("sessions"), "int", change(total.get("sessions"), before.get("sessions")) if scope.has_compare else None),
-        Tile("Leads", total.get("leads"), "float", change(total.get("leads"), before.get("leads")) if scope.has_compare else None),
+        Tile("Visits", total.get("sessions"), "int", change(now.get("sessions"), before.get("sessions")) if scope.has_compare else None),
+        Tile("Leads", total.get("leads"), "float", change(now.get("leads"), before.get("leads")) if scope.has_compare else None),
         Tile("Channels", len(data.get("channels") or []), "int"),
     ]
     names, series = data.get("series_names") or [], data.get("series") or []
@@ -251,7 +274,9 @@ def today(engine, args) -> Report:
         C("host", "Competitor", "text"), C("url", "Their page", "url"), C("kind", "What changed", "text", translate=True, get=lambda r: CHANGE_KINDS.get(r.get("kind"), str(r.get("kind") or "").replace("_", " ").capitalize())), C("when", "When", "datetime"),
     ], data.get("rival_changes") or [], empty="No competitor changed a watched page."))
     leads, visits = results.get("leads") or {}, results.get("visits") or {}
-    _lead_words(report, {"lead_changes": leads.get("changes"), "unusual": visits.get("unusual"), "little_before": visits.get("note") == "little_before"}, leads.get("kind"))
+    left = [x.get("host") for x in visits.get("left_out") or []] if visits.get("change") is not None else []
+    _lead_words(report, {"lead_changes": leads.get("changes"), "unusual": visits.get("unusual"), "little_before": visits.get("note") == "little_before",
+                         "little_hosts": left, "compared_count": visits.get("compared")}, leads.get("kind"))
     return report
 
 

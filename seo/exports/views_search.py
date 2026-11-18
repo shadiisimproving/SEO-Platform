@@ -62,6 +62,7 @@ def overview(engine, args) -> Report:
             lines.append(Series("Before", [p.get(key) for p in compared][: len(series)], dashed=True))
         report.charts.append(Chart(title, labels, lines))
 
+    _period_notes(report, window)
     picked = args.get("dim", "query")
     show, brand = args.get("show", "all"), args.get("brand", "all")
     filters = search.filter_from(args)
@@ -69,6 +70,9 @@ def overview(engine, args) -> Report:
         mine = dim == picked
         # The chips and filters on screen belong to the table being looked at; the other tables come whole.
         report.tables.append(_breakdown_table(search, scope, dim, show if mine else "all", brand if mine and dim == "query" else "all", filters if mine else None, compare))
+    for table in report.tables:
+        if table.id in DIM_TITLES:
+            table.note = _rows_note(window, table.id)
     if picked == "opportunities":
         report.tables.insert(0, _opportunities_table(search, scope, args.get("kind", "almost")))
         report.filters.append(("Opportunities", OPP_TITLES.get(args.get("kind", "almost"), "")))
@@ -86,6 +90,30 @@ def overview(engine, args) -> Report:
                 if filters.get(key) is not None:
                     report.filters.append((label, f"{filters[key]:g}"))
     return report
+
+
+DIM_WORDS = {"query": "Query", "page": "Page", "country": "Country", "device": "Device"}
+
+
+def _period_notes(report: Report, window: dict) -> None:
+    """As the screen's head: no comparison, and why (Google's own 16 months, or the app's stored days starting later)."""
+    if window.get("compare_unavailable") == "google":
+        report.notes.append("No comparison: Google keeps 16 months of data.")
+    elif window.get("compare_unavailable") == "history":
+        report.notes.append(f"No comparison: stored data starts on {window['history_from']}." if window.get("history_from") else "No earlier period stored")
+
+
+def _rows_note(window: dict, dim: str) -> str | None:
+    """The screen's line above a table whose own stored days start later than the period (countries and devices came on
+    9 Nov 2026 and fill in from Google): its rows count only the days after, or can't be compared (final review N2)."""
+    rows_from = (window.get("rows_from") or {}).get(dim)
+    start = window.get("from")
+    data_from = window["history_from"] if window.get("history_from") and window["history_from"] > (start or "") else start
+    if dim in ("country", "device") and rows_from and data_from and not window.get("hourly") and rows_from > data_from:
+        return f"{DIM_WORDS[dim]} data starts on {rows_from}: days before aren't counted."
+    if window.get("compare_from") and (window.get("rows_compare") or {}).get(dim) is False and rows_from:
+        return f"{DIM_WORDS[dim]} data starts on {rows_from}: too soon to compare these rows."
+    return None
 
 
 OPP_TITLES = {"almost": "Almost on page 1", "low_ctr": "Low click rate", "compete": "Two pages compete", "lost": "Lost queries"}
