@@ -136,6 +136,8 @@ html[data-simple="1"] #panel.wide svg.chart { display: block; width: 100%; max-w
 .kw-twin { color: var(--text-2); margin-inline-end: 6px; }
 
 /* A suspect check (store.suspect_why): kept in the panel, greyed, with its reason under the status. */
+.pos-also { display: inline-flex; align-items: center; gap: 4px; }
+.pos-also .pos-sep { color: var(--muted); margin: 0 1px; }
 .pos.pos-suspect { color: var(--text-2); background: transparent; box-shadow: inset 0 0 0 1px var(--line); font-weight: 500; }
 .kw-row-suspect td { color: var(--text-2); }
 .kw-row-suspect .kw-why { display: block; max-width: 34ch; white-space: normal; font-size: 12px; line-height: 1.35; margin-top: 2px; }

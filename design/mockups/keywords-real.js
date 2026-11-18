@@ -14,7 +14,7 @@
     "A captcha didn't clear, so the browser backup stopped.": "Un captcha n'a pas disparu : la sauvegarde par navigateur s'est arrêtée.", "The app won't bypass captchas.": "L'application ne contourne pas les captchas.",
     "DuckDuckGo stopped at a bot check.": "DuckDuckGo a demandé une vérification anti-robot : cet outil s'est arrêté.", "The app won't bypass it.": "L'application ne cherche pas à la contourner.", "Not in top": "Hors du top", "just now": "à l'instant", "today": "aujourd'hui", "Search Console impressions, last 28 days. Exact volume isn't available for free.": "Impressions Search Console, 28 derniers jours. Le volume exact n'est pas disponible gratuitement.",
     "Not connected for this site, or no data for this keyword.": "Non connecté pour ce site, ou pas de donnée pour ce mot-clé.",
-    "Needs 2 checks, same tool": "Il faut 2 contrôles avec le même outil", "Tools disagree": "Les outils ne sont pas d'accord", "Suspect result": "Résultat suspect",
+    "Needs 2 checks, same tool": "Il faut 2 contrôles avec le même outil", "Tools disagree": "Les outils ne sont pas d'accord", "{tool} sides with the one shown.": "{tool} va dans le sens de celui affiché.", "No third tool to settle it: both answers shown.": "Aucun troisième outil pour trancher : les deux réponses sont affichées.", "Suspect result": "Résultat suspect",
     "Other tools saw other sites: fewer than {n} of its top 10 in common with {tool} ({day}).": "Les autres outils ont vu d'autres sites : moins de {n} de son top 10 en commun avec {tool} ({day}).",
     "Its page showed results for \u201c{query}\u201d, not for this keyword.": "Sa page montrait les résultats pour « {query} », pas pour ce mot-clé.", "Can't verify yet": "Vérification impossible pour l'instant",
     "No Refresh yet": "Aucune actualisation", "Add keywords": "Ajouter des mots-clés", "No keywords yet": "Pas encore de mots-clés", "Add the keywords to follow.": "Ajoutez les mots-clés à suivre.",
@@ -298,6 +298,16 @@
   const flagged = (view) => (view.status === "suspect" ? `<span class="warn" role="img" data-tip="${t("Suspect result")}" aria-label="${t("Suspect result")}">${icon("shield-question")}</span>` : "");
   const line = (view, extra = "") => `<span class="res-line">${logoMark(view.tool, t(view.tool))}${posBadge(view)}${flagged(view)}${extra}<span class="res-meta">· ${age(view.age_days)}</span></span>`;
 
+  /* "Tools disagree", and what settled it: a third tool siding with the one shown, or nothing (both answers are then shown). */
+  function disagreeMark(view) {
+    const d = view.disagree;
+    if (!d) return "";
+    const said = `${t("Tools disagree")}: ${d.tools.map((x) => t(x)).join(" / ")}, ${d.diff}`;
+    const why = d.backed_by?.length ? t("{tool} sides with the one shown.").replace("{tool}", d.backed_by.map((x) => t(x)).join(", ")) : d.also ? t("No third tool to settle it: both answers shown.") : "";
+    const words = why ? `${said}. ${why}` : said;
+    return `<span class="warn" role="img" data-tip="${esc(words)}" aria-label="${esc(words)}">${icon("triangle-alert")}</span>`;
+  }
+
   function scrapedCell(row, e) {
     const view = row.engines[e];
     if (!view.main) {
@@ -306,13 +316,16 @@
       if (row.checking?.engine === e) return checkingCell(row);
       return `<span class="muted small kw-unchecked">${t("Not checked")}</span>`;
     }
-    const differs = view.disagree ? `<span class="warn" role="img" data-tip="${esc(t("Tools disagree"))}: ${esc(view.disagree.tools.map((x) => t(x)).join(" / "))}, ${view.disagree.diff}" aria-label="${esc(t("Tools disagree"))}: ${esc(view.disagree.tools.map((x) => t(x)).join(" / "))}, ${view.disagree.diff}">${icon("triangle-alert")}</span>` : "";
+    const differs = disagreeMark(view);
+    // Tools that disagree with no third tool to settle it (rankings.engine_view, store.settle): both answers, side by side.
+    const also = view.disagree?.also ? `<span class="pos-also"><span class="pos-sep" aria-hidden="true">/</span>${K.oneTool ? "" : logoMark(view.disagree.also.tool, t(view.disagree.also.tool))}${posBadge({ ...view.disagree.also, status: "ok" })}</span>` : "";
     // The simpler screens: the badge only (and its warnings). The tool's logo stays when the rows don't all share one tool;
     // the age, the other tools and Check deeper are in the panel, and the ages are said once under the table.
-    if (simple()) return `<span class="res"><span class="res-line">${K.oneTool ? "" : logoMark(view.main.tool, t(view.main.tool))}${posBadge(view.main)}${flagged(view.main)}${differs}${oldMark(view.main)}</span></span>`;
-    const rest = [...view.suspects.slice(-1), ...view.others].slice(0, 2).map((x) => line(x)).join("");
-    const deeper = view.main.p || view.main.status !== "ok" ? "" : `<button class="link-btn" data-kwr-deeper="${esc(row.id)}" data-engine-id="${e}">${t("Check deeper")}</button>`;
-    return `<span class="res">${line(view.main, differs + oldMark(view.main))}${rest}${deeper}</span>`;
+    if (simple()) return `<span class="res"><span class="res-line">${K.oneTool && !also ? "" : logoMark(view.main.tool, t(view.main.tool))}${posBadge(view.main)}${flagged(view.main)}${also}${differs}${oldMark(view.main)}</span></span>`;
+    const shownAlso = view.disagree?.also?.check_id;
+    const rest = [...view.suspects.slice(-1), ...view.others.filter((x) => x.check_id !== shownAlso)].slice(0, 2).map((x) => line(x)).join("");
+    const deeper = view.main.p || view.main.status !== "ok" || also ? "" : `<button class="link-btn" data-kwr-deeper="${esc(row.id)}" data-engine-id="${e}">${t("Check deeper")}</button>`;
+    return `<span class="res">${line(view.main, also + differs + oldMark(view.main))}${rest}${deeper}</span>`;
   }
 
   /* A keyword just added, before its first result: which tool is on it, so the row isn't a line of dashes (rankings.py _first_checks). */
