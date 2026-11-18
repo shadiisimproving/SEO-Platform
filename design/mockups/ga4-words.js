@@ -14,7 +14,11 @@
     Leads: "Key events", leads: "key events", "Lead rate": "Key event rate", "Pages that bring leads": "Pages with key events",
     "From visit to lead, by channel": "From visit to key event, by channel", "{n} visits didn't become a lead": "{n} visits had no key event",
     "No page brought a lead in this period.": "No page had a key event in this period.", "without a lead": "without a key event",
+    "No leads in this period": "No key events in this period",
   };
+  // Some sites of the answer picked their lead events and some didn't: each counts by its own rule, so the total is both
+  // (code review 2026-11-18, #4).
+  const MIXED_WORDS = { Leads: "Leads and key events", leads: "leads and key events", "No leads in this period": "No leads or key events in this period" };
   const U = () => window.UI;
   const t = (s) => U().t(s);
   const esc = (s) => U().esc(s);
@@ -22,8 +26,10 @@
   const num = (n) => new Intl.NumberFormat(U().locale()).format(n);
   const fill = (text, values) => Object.entries(values).reduce((s, [k, v]) => s.split(`{${k}}`).join(v), text);
   const keyEvents = (d) => d?.lead_kind === "key_events" || d?.kind === "key_events";
+  const mixed = (d) => d?.lead_kind === "mixed" || d?.kind === "mixed";
 
   function word(english, d) {
+    if (mixed(d)) return MIXED_WORDS[english] || english;
     return keyEvents(d) ? KEY_EVENT_WORDS[english] || english : english;
   }
 
@@ -40,6 +46,10 @@
     const out = [];
     if (leads && keyEvents(d)) {
       out.push(line("info", `${esc(t("Counting every Google Analytics key event, not only enquiries."))} <a href="#settings" data-settings-tab="sites">${esc(t("Pick which are leads in Settings → Sites."))}</a>`));
+    }
+    if (leads && mixed(d)) {
+      const hosts = (d.key_event_hosts || []).slice(0, 3).map(esc).join(", ");
+      out.push(line("info", `${esc(t("Sites without lead events picked count every key event"))}${hosts ? ` (<span dir="auto">${hosts}</span>)` : ""}. <a href="#settings" data-settings-tab="sites">${esc(t("Pick which are leads in Settings → Sites."))}</a>`));
     }
     const changes = (d.lead_check?.changes || d.changes || []);
     if (leads && changes.length) {
@@ -66,12 +76,16 @@
     return list.map((item) => line("warn", esc(fill(t("This Google Analytics property also records {hosts}: check its data streams. Those visits are left out."), { hosts: item.hosts.map((h) => h.host).join(", ") })) + (item.host ? ` <span class="muted">(${esc(item.host)})</span>` : ""))).join("");
   }
 
-  window.GA4W = { word, notes, hostsNote, keyEvents };
+  window.GA4W = { word, notes, hostsNote, keyEvents, mixed };
   window.FR = window.FR || {};
   Object.assign(window.FR, {
     "Key events": "Événements clés", "key events": "événements clés", "Key event rate": "Taux d'événements clés", "Pages with key events": "Pages avec des événements clés",
     "From visit to key event, by channel": "De la visite à l'événement clé, par canal", "{n} visits had no key event": "{n} visites sans événement clé",
     "No page had a key event in this period.": "Aucune page n'a eu d'événement clé sur cette période.", "without a key event": "sans événement clé",
+    "No leads in this period": "Aucun lead sur cette période", "No key events in this period": "Aucun événement clé sur cette période",
+    "No leads or key events in this period": "Aucun lead ni événement clé sur cette période",
+    "Leads and key events": "Leads et événements clés", "leads and key events": "leads et événements clés",
+    "Sites without lead events picked count every key event": "Les sites sans leads choisis comptent tous leurs événements clés",
     "Counting every Google Analytics key event, not only enquiries.": "Tous les événements clés de Google Analytics sont comptés, pas seulement les demandes.",
     "Pick which are leads in Settings → Sites.": "Choisissez ceux qui sont des leads dans Réglages → Sites.",
     "Google Analytics recorded no key event from {day}{host}.": "Google Analytics n'a enregistré aucun événement clé à partir du {day}{host}.",

@@ -3,7 +3,9 @@ asked for and adds up the metrics. With eventName in the dimensions, each key ev
 keyEvents / sessions are that event's count and the sessions it happened in. A report is only rows with a metric above 0.
 
 A visit group: {channel, source, medium, manual_source, manual_medium, campaign, page, host, sessions, users,
-events: {name: (count, sessions)}}.
+events: {name: (count, sessions)}, visits_with: [set of event names, one per visit that had a key event]}.
+A report filtered on eventName (inListFilter) without eventName in its dimensions counts each session once: the visits
+of visits_with that had any of the names (without visits_with, the events' sessions added up, at most the group's).
 """
 from __future__ import annotations
 
@@ -38,6 +40,7 @@ def answer(request: httpx.Request, groups: list[dict], ads: list[list[str]] | No
         rows = ads or []
         return httpx.Response(200, json={"rows": [{"dimensionValues": [{"value": r[0]}], "metricValues": [{"value": v} for v in r[1:]]} for r in rows], "rowCount": len(rows), "metadata": meta})
     by_event = "eventName" in dims
+    wanted = _event_list(body.get("dimensionFilter"))
     totals: dict[tuple, dict] = defaultdict(lambda: defaultdict(float))
     for group in groups:
         events = group.get("events") or {}
@@ -46,6 +49,12 @@ def answer(request: httpx.Request, groups: list[dict], ads: list[list[str]] | No
                 key = tuple(_value(group, d, name) for d in dims)
                 totals[key]["keyEvents"] += count
                 totals[key]["sessions"] += sessions
+        elif wanted is not None:
+            key = tuple(_value(group, d, None) for d in dims)
+            if "visits_with" in group:
+                totals[key]["sessions"] += sum(1 for visit in group["visits_with"] if set(visit) & wanted)
+            else:
+                totals[key]["sessions"] += min(group.get("sessions", 0), sum(s for name, (_, s) in events.items() if name in wanted))
         else:
             key = tuple(_value(group, d, None) for d in dims)
             totals[key]["sessions"] += group.get("sessions", 0)
@@ -56,3 +65,17 @@ def answer(request: httpx.Request, groups: list[dict], ads: list[list[str]] | No
         for key, values in totals.items() if any(values[m] for m in metrics)
     ]
     return httpx.Response(200, json={"rows": rows, "rowCount": len(rows), "metadata": meta})
+
+
+def _event_list(node) -> set[str] | None:
+    """The event names of an eventName inListFilter anywhere in a dimensionFilter, else None."""
+    if not isinstance(node, dict):
+        return None
+    found = node.get("filter")
+    if isinstance(found, dict) and found.get("fieldName") == "eventName" and "inListFilter" in found:
+        return set(found["inListFilter"]["values"])
+    for part in (node.get("andGroup") or {}).get("expressions") or []:
+        hit = _event_list(part)
+        if hit is not None:
+            return hit
+    return None

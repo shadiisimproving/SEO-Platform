@@ -19,12 +19,7 @@ def main(argv: list[str]) -> int:
     engine = make_engine(test="--test" in argv)
     apply = "--apply" in argv
     started = time.monotonic()
-    with engine.connect() as conn:
-        trans = conn.begin()
-        before = reclassify.counts(conn)
-        report = reclassify.run(conn, log=None)
-        after = reclassify.counts(conn)
-        (trans.commit if apply else trans.rollback)()
+    before, report, after = reclassify.run(engine, apply=apply, log=None)  # one site at a time, each its own transaction
     print(f"Database: {engine.url.database}  ({'applied' if apply else 'dry run, nothing kept'}, {time.monotonic() - started:.1f} s)")
     print(f"{'site':<28}{'edit events':>18}{'pages edited':>18}{'new pages':>16}  hidden by rule")
     for host in sorted(set(before) | set(after), key=lambda h: -before.get(h, {}).get("edit_events", 0)):

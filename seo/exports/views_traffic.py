@@ -40,6 +40,7 @@ def _day(value) -> str:
     return text[:10]  # the PDF writes it in words (pdf_out.day_label)
 
 
+MIXED_WORDS = {"Leads": "Leads and key events"}
 KEY_EVENT_WORDS = {"Leads": "Key events", "Lead rate": "Key event rate", "Leads by channel": "Key events by channel", "Leads change": "Key events change"}
 
 
@@ -58,6 +59,10 @@ def _lead_words(report: Report, data: dict, kind: str | None = None) -> None:
             for series in chart.series:
                 series.name = KEY_EVENT_WORDS.get(series.name, series.name)
         report.notes.append("Key events: every Google Analytics key event. Pick which ones are leads in Settings → Google Analytics.")
+    elif kind == "mixed":  # some sites picked their lead events, some didn't: each counts by its own rule (code review 2026-11-18, #4)
+        for tile in report.tiles:
+            tile.label = MIXED_WORDS.get(tile.label, tile.label)
+        report.notes.append("Leads and key events: sites without lead events picked count every key event. Pick them in Settings → Google Analytics.")
     changes = (data.get("lead_check") or {}).get("changes") or data.get("lead_changes") or []
     for c in changes:
         report.notes.append(f"Google Analytics changed how it counts key events on {c['day']} ({c.get('host') or ''}): the change in leads is left out.")

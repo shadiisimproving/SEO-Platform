@@ -426,12 +426,13 @@
       if (!k || k.loading) return `<div class="ke-site">${head}${UI.skeleton("rows", { rows: 2 })}</div>`;
       if (k.error) return `<div class="ke-site">${head}<p class="error">${esc(t(k.error))}</p></div>`;
       const hosts = k.other_hosts?.length ? `<p class="note warn lv-note">${icon("triangle-alert")}<span>${esc(t("This Google Analytics property also records {hosts}: check its data streams. Those visits are left out.").replace("{hosts}", k.other_hosts.map((h) => h.host).join(", ")))}</span></p>` : "";
-      const reread = k.reread_days ? `<p class="small muted">${esc(t("Google Analytics history is being read again with key events by name: {n} days left.").replace("{n}", num(k.reread_days)))}</p>` : "";
+      // Ticking before the history is read again leaves its older days at 0 leads until then: said where the ticks are.
+      const reread = k.reread_days ? `<p class="note warn lv-note">${icon("triangle-alert")}<span>${esc(t("History still being read: {n} days left. Until then, leads on those days show as 0.").replace("{n}", num(k.reread_days)))}</span></p>` : "";
       const list = k.events.length
         ? `<form class="ke-form" data-lv-key-events="${s.realId}"><fieldset class="ke-list"><legend class="sr">${esc(t("Counts as a lead"))}</legend>${k.events.map((e) => `<label class="ke-row"><input type="checkbox" name="f_event" value="${esc(e.name)}" ${e.lead ? "checked" : ""} ${isAdmin() ? "" : "disabled"}><span class="mono" dir="auto">${esc(e.name)}</span><span class="small muted">${e.last_day ? `${num(e.key_events)} ${t("in 12 months")} · ${t("last")} ${esc(day(e.last_day))}` : t("not sent any more")}</span></label>`).join("")}</fieldset>
           <div class="ke-act"><button class="btn btn-small btn-main" type="submit" ${isAdmin() ? "" : UI.adminOnly?.() || "disabled"}>${t("Save")}</button><span class="small muted">${t("Ticked: counts as a lead. Past days change too.")}</span><span class="error" data-lv-rule-error hidden></span></div></form>`
         : `<p class="small muted">${t("No key event read yet. They appear here once Google Analytics has been read again.")}</p>`;
-      return `<div class="ke-site">${head}${hosts}${list}${reread}</div>`;
+      return `<div class="ke-site">${head}${hosts}${reread}${list}</div>`;
     };
     return `<section class="card" style="margin-top:14px" id="lead-events"><div class="card-head"><h2>${t("Leads from Google Analytics")}</h2><span class="end small muted">${t("Tick the key events that are real enquiries")}</span></div>
       <p class="help" style="padding:10px 18px 2px;margin:0">${t("Google Analytics counts every key event, such as a booking page view. Until you tick some, screens say Key events, not Leads.")}</p>
@@ -864,6 +865,7 @@
     "Can spend credits": "Peut dépenser des crédits", "Paid searches, Firecrawl, AI answers and Moz.": "Recherches payantes, Firecrawl, réponses IA et Moz.",
     "A person without every website can't change things all sites share (link gaps, mediators, competitor page reads).": "Une personne qui n'a pas tous les sites ne peut pas modifier ce que tous les sites partagent (écarts de liens, médiateurs, lectures des pages concurrentes).",
     "Taking access away signs them out everywhere.": "Retirer un accès la déconnecte partout.",
+    "History still being read: {n} days left. Until then, leads on those days show as 0.": "Historique encore en lecture : {n} jours restants. D'ici là, les leads de ces jours restent à 0.",
     "Pick at least one website and one section.": "Choisissez au moins un site et une section.", "Pick at least one website.": "Choisissez au moins un site.", "Pick at least one section.": "Choisissez au moins une section.",
     "One of those websites isn't one of yours.": "L'un de ces sites n'est pas à vous.", "That account doesn't exist.": "Ce compte n'existe pas.", "Nothing to change.": "Rien à modifier.",
     "That isn't the whole key file. Paste everything in the file, from the first { to the last }.": "Ce n'est pas le fichier de clé complet. Collez tout le fichier, du premier { au dernier }.",

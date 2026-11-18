@@ -141,7 +141,7 @@
      too little data before, unusual days, and a property that also records another website. */
   function ga4Notes(r) {
     if (!window.GA4W || r.leads?.state === "no_ga4") return "";
-    const said = window.GA4W.notes({ kind: r.leads.state === "not_set_up" ? null : r.leads.kind, changes: r.leads.changes, note: r.visits.note, unusual: r.visits.unusual });
+    const said = window.GA4W.notes({ kind: r.leads.state === "not_set_up" ? null : r.leads.kind, key_event_hosts: r.leads.key_event_hosts, changes: r.leads.changes, note: r.visits.note, unusual: r.visits.unusual });
     const hosts = window.GA4W.hostsNote(r.other_hosts);
     return said || hosts ? `<div class="ga4-notes">${hosts}${said.replace(/^<div class="ga4-notes">|<\/div>$/g, "")}</div>` : "";
   }

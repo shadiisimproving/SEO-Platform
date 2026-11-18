@@ -95,7 +95,11 @@ def test_old_days_are_read_again_newest_first_and_empty_ones_are_skipped(world):
     ga4._skip_empty_days(world.engine, world.site, newest - timedelta(days=ga4.REREAD_DAYS))
     pending = common.pending_days(world.engine, world.site, ga4.LAYOUT, newest, newest - timedelta(days=ga4.HISTORY_DAYS), ga4.REREAD_DAYS)
     assert pending[0] == newest and len(pending) == 101  # the 101 days with data, newest first; the empty ones are done
-    assert ga4.collect(world.engine, world.site, budget_seconds=60) is True
+    # A batch a run (code review 2026-11-18, #11): 4 recent days, then 30 old ones per run, until none is left.
+    runs = 0
+    while (done := ga4.collect(world.engine, world.site, budget_seconds=60)) == ga4.LATER:
+        runs += 1
+    assert done is True and runs == 3  # 97 old days: 30 + 30 + 30, and the last 7 in the fourth run
     assert ga4.days_to_reread(world.engine, world.site) == 0
 
 
@@ -189,10 +193,11 @@ def test_a_burst_of_visits_is_marked_and_the_change_is_given_without_it(engine, 
         day += timedelta(days=1)
     found = ga4_checks.unusual_change(engine, [site], date(2026, 8, 1), date(2026, 8, 31), date(2026, 7, 1), date(2026, 7, 31))
     assert [(r["from"], r["to"], r["visits"], r["usual"]) for r in found["runs"]] == [("2026-08-01", "2026-08-05", 5000, 10)]
-    # Without 1-5 Aug: 26 days x 10 = 260 against July's 310: -16.1%.
-    assert found["visits"] == 260 and found["visits_before"] == 310 and found["change"] == -16.1
+    # Without 1-5 Aug: 26 days x 10 = 260 against July's 310, but a day each: 10 against 10, so 0% (code review
+    # 2026-11-18, #2: it said -16.1%, only from the five days left out).
+    assert found["visits"] == 260 and found["visits_before"] == 310 and found["change"] == 0.0
     answer = service.channels(_scope(engine, site, date(2026, 8, 1), date(2026, 8, 31), date(2026, 7, 1), date(2026, 7, 31)))
-    assert answer["unusual"]["change"] == -16.1 and sorted(answer["unusual"]["days"]) == [f"2026-08-0{n}" for n in range(1, 6)]
+    assert answer["unusual"]["change"] == 0.0 and sorted(answer["unusual"]["days"]) == [f"2026-08-0{n}" for n in range(1, 6)]
 
 
 # ---- Clarity's day (W10) -------------------------------------------------------------------------------------------

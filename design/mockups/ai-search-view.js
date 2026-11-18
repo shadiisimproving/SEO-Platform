@@ -146,7 +146,7 @@
       sub: wait ? esc(t("Waiting for data")) : off ? esc(t("Google Analytics not connected")) : null, spark: !off && weeks.length > 1 ? weeks : null, cls: "tile" });
     const leads = UI.card({ id: "ai-leads", label: window.GA4W.word("Leads", d), value: off ? null : d.key_events_set_up ? d.leads : `<span class="today-fig-word">${esc(t("Not set up"))}</span>`,
       change: !off && d.key_events_set_up && has(d.before_leads) ? { now: d.leads, before: d.before_leads, unit: "" } : null,
-      sub: off ? "" : !d.key_events_set_up ? esc(t("Mark forms as GA4 key events")) : null, cls: "tile" });
+      sub: off ? "" : !d.key_events_set_up ? esc(t("Mark forms as GA4 key events")) : !d.leads && !d.before_leads ? esc(t(window.GA4W.word("No leads in this period", d))) : null, cls: "tile" });
     const r = d.rate, o = d.organic, rateOff = off || !d.key_events_set_up;
     const rate = UI.card({ id: "ai-rate", label: window.GA4W.word("Lead rate", d), def: "AI lead rate", value: rateOff || r.value === null ? null : pct(r.value),
       sub: rateOff ? "" : r.value === null ? esc(tf("needs {need} AI visits, {n} so far", { need: num(r.needs), n: num(r.visits) })) : o.value === null ? "" : `<span class="nowrap">${esc(t("organic search"))} ${pct(o.value)}</span>`, cls: "tile" });
@@ -170,7 +170,7 @@
     const weeks = d.weekly.map((w) => w.sessions).filter((v) => v !== null);
     const visits = UI.tile(t("AI visits"), off ? "—" : UI.cnt(d.sessions), off ? `<span class="ab">${t(wait ? "Waiting for data" : "Google Analytics not connected")}</span>` : LVx().change(d.sessions, d.before), { ic: "sparkles", line: !off && weeks.length > 1 ? weeks : null });
     const leadsFig = off ? "—" : d.key_events_set_up ? num(d.leads) : `<span class="today-fig-word">${t("Not set up")}</span>`;
-    const leadsNote = off ? "" : !d.key_events_set_up ? `<span class="ab">${t("Mark forms as GA4 key events")}</span>` : d.before_leads !== null && d.before_leads !== undefined ? `<span class="ab">${num(d.before_leads)} → ${num(d.leads)}</span>` : "";
+    const leadsNote = off ? "" : !d.key_events_set_up ? `<span class="ab">${t("Mark forms as GA4 key events")}</span>` : !d.leads && !d.before_leads ? `<span class="ab">${esc(t(window.GA4W.word("No leads in this period", d)))}</span>` : d.before_leads !== null && d.before_leads !== undefined ? `<span class="ab">${num(d.before_leads)} → ${num(d.leads)}</span>` : "";
     const leads = UI.tile(t("Leads"), leadsFig, leadsNote, { ic: "filter" });
     const r = d.rate, o = d.organic;
     const rateFig = off || !d.key_events_set_up ? "—" : r.value === null ? "—" : pct(r.value);

@@ -9,7 +9,9 @@ Rules, in order:
 - same_text: before = after as stored, an HTML entity apart, or a "?" where the other side has a letter latin1 lost;
 - listing: a text or heading change on a list of posts (category, tag, author, /page/2);
 - redirect: the page's canonical moved from itself to another of its pages, with its title, text and the rest at the same
-  moment: the address redirects and the target's page was read. Those events become one "redirect" event;
+  moment (at least one other event of the page within 5 s): the address redirects and the target's page was read. Those
+  events become one "redirect" event, and the page is marked moved only when nothing was read of it since. A canonical
+  change alone stays shown: it is a real edit;
 - template: only the order of blocks, numbers, or words the site shows on many pages changed;
 - found_later / first_read: a "new page" whose own date is before watching began, or one with no date found while the
   site's first read was still going (its list came in a few hundred pages a day).
@@ -115,10 +117,14 @@ class _Site:
         """Every changed word sits in a run of three the site shows on many pages, in the text it's in. Words are
         judged where they stand, so a list of links in a new random order still reads as the template, while a sentence
         added to the article doesn't."""
-        a, b = _norm(steady_words(before.replace(noise.BLOCK_SEP, " "))), _norm(steady_words(after.replace(noise.BLOCK_SEP, " ")))
+        # Words are compared with their numbers: a price or a year moving in the article is an edit, as the live rule says
+        # (noise.steady_blocks). Numbers are only set aside to find the runs the site shows on many pages (its template),
+        # so a counter inside the template still changes nothing (code review 2026-11-18, #7).
+        a = [w.casefold() for w in steady_words(before.replace(noise.BLOCK_SEP, " "))]
+        b = [w.casefold() for w in steady_words(after.replace(noise.BLOCK_SEP, " "))]
         if Counter(a) == Counter(b):
             return True  # the same words in another order: a shuffled list
-        common_a, common_b = self._common_positions(a), self._common_positions(b)
+        common_a, common_b = self._common_positions(_norm(a)), self._common_positions(_norm(b))
         removed, added = Counter(a) - Counter(b), Counter(b) - Counter(a)
         if removed and added and sum(removed.values()) + sum(added.values()) <= SMALL_MOVE_WORDS and set(added) <= set(a) and set(removed) <= set(b):
             return True  # a few labels moved around (a form's fields, an office list): no word was written that wasn't there
@@ -178,8 +184,11 @@ def classify(conn: Connection, domain_id: int) -> dict:
             reasons[e["id"]] = noise.LISTING
             continue
         if kind == "canonical" and after and page_key(after) != page_key(url) and (not before or page_key(before) == page_key(url)):
-            redirects[(e["page_id"], e["detected_at"])] = after
-            continue
+            moved_with = [o for o in events if o["page_id"] == e["page_id"] and o["id"] != e["id"] and o["kind"] not in ("canonical", "new_page", "page_gone")
+                          and abs((o["detected_at"] - e["detected_at"]).total_seconds()) <= 5]
+            if moved_with:  # the title, text or the rest moved with it: the address redirects (code review 2026-11-18, #8)
+                redirects[(e["page_id"], e["detected_at"])] = after
+            continue  # a canonical change alone is a real SEO edit (pages consolidated): it stays shown
         if kind in ("h1", "headings", "schema"):
             was, now = _json(before) or [], _json(after) or []
             label = lambda items: Counter(json.dumps(x, ensure_ascii=False) for x in items)  # noqa: E731
@@ -227,7 +236,13 @@ def classify(conn: Connection, domain_id: int) -> dict:
                 {"p": page_id, "d": domain_id, "b": url, "a": target, "t": when},
             )
             added += 1
-        conn.execute(text("UPDATE pages SET final_url = :a, last_status = 'moved' WHERE id = :p"), {"a": target, "p": page_id})
+        # The page is "moved" now only if nothing was read of it since: an old redirect the page came back from isn't.
+        later = conn.execute(text(
+            "SELECT 1 FROM page_versions WHERE page_id = :p AND taken_at > :t + INTERVAL 5 SECOND "
+            "UNION ALL SELECT 1 FROM change_events WHERE page_id = :p AND detected_at > :t + INTERVAL 5 SECOND LIMIT 1"
+        ), {"p": page_id, "t": when}).first()
+        if not later:
+            conn.execute(text("UPDATE pages SET final_url = :a, last_status = 'moved' WHERE id = :p"), {"a": target, "p": page_id})
     noise.last_edit_dates(conn, {e["page_id"] for e in events if e["id"] in reasons})
     # A site whose first read is still taking in its backlog isn't past its first read: new pages it finds aren't news.
     busy_days = [day for day, n in conn.execute(text("SELECT DATE(first_seen_at), COUNT(*) FROM pages WHERE domain_id = :d GROUP BY DATE(first_seen_at)"), {"d": domain_id}) if n >= BACKLOG_SHARE * PAGES_PER_DAY]
@@ -242,25 +257,39 @@ def _newest_day(conn: Connection):
     return newest.date() if newest else pagedates.page_day("1970-01-01")
 
 
-def counts(conn: Connection) -> dict[str, dict]:
-    """Per site: shown edit events, pages edited, and new pages, over every stored event."""
+def counts(conn: Connection, domain_id: int | None = None) -> dict[str, dict]:
+    """Per site: shown edit events, pages edited, and new pages, over every stored event (or one site's)."""
     out: dict[str, dict] = defaultdict(lambda: {"edit_events": 0, "edited_pages": 0, "new_pages": 0})
+    one = "AND e.domain_id = :d" if domain_id is not None else ""
     for r in conn.execute(
         text(
             "SELECT d.host, SUM(e.kind NOT IN ('new_page', 'page_gone')) AS ev, COUNT(DISTINCT CASE WHEN e.kind NOT IN ('new_page', 'page_gone') THEN e.page_id END) AS pg, "
-            "SUM(e.kind = 'new_page') AS np FROM change_events e JOIN domains d ON d.id = e.domain_id WHERE e.hidden = 0 GROUP BY d.host"
-        )
+            f"SUM(e.kind = 'new_page') AS np FROM change_events e JOIN domains d ON d.id = e.domain_id WHERE e.hidden = 0 {one} GROUP BY d.host"
+        ), {"d": domain_id}
     ).mappings():
         out[r["host"]] = {"edit_events": int(r["ev"] or 0), "edited_pages": int(r["pg"] or 0), "new_pages": int(r["np"] or 0)}
     return dict(out)
 
 
-def run(conn: Connection, log=print) -> dict:
-    domains = [r[0] for r in conn.execute(text("SELECT DISTINCT domain_id FROM change_events ORDER BY domain_id"))]
-    report = {}
+def run(engine, apply: bool = False, log=print) -> tuple[dict, dict, dict]:
+    """Every site with events, one transaction each: kept with apply, else rolled back at once. One site's locks are held
+    only while that site is looked at, never across all of them, so the crawler writing pages meanwhile doesn't wait on
+    the whole run (code review 2026-11-18, #12). Returns (before, report, after), per host."""
+    with engine.connect() as conn:
+        domains = [r[0] for r in conn.execute(text("SELECT DISTINCT domain_id FROM change_events ORDER BY domain_id"))]
+    before, report, after = {}, {}, {}
     for domain_id in domains:
-        host = conn.execute(text("SELECT host FROM domains WHERE id = :d"), {"d": domain_id}).scalar()
-        report[host] = classify(conn, domain_id)
+        with engine.connect() as conn:
+            trans = conn.begin()
+            try:
+                host = conn.execute(text("SELECT host FROM domains WHERE id = :d"), {"d": domain_id}).scalar()
+                before.update(counts(conn, domain_id))
+                report[host] = classify(conn, domain_id)
+                after.update(counts(conn, domain_id))
+            except BaseException:
+                trans.rollback()
+                raise
+            (trans.commit if apply else trans.rollback)()
         if log:
             log(f"{host}: {report[host]}")
-    return report
+    return before, report, after

@@ -81,9 +81,12 @@ def _iso(value) -> str | None:
     return None
 
 
-def _rate(leads: float, visits: int) -> dict:
-    """A lead rate only from LEAD_RATE_MIN_VISITS visits, always with its counts."""
-    return {"value": base._ratio(min(leads, visits), visits) if visits >= LEAD_RATE_MIN_VISITS else None, "visits": visits, "leads": round(leads, 2), "needs": LEAD_RATE_MIN_VISITS}
+def _rate(leads: float, visits: int, conv: float | None = None) -> dict:
+    """A lead rate only from LEAD_RATE_MIN_VISITS visits, always with its counts. conv: the visits that converted, added
+    up row by row as Channels does (at most one per visit), so a row and its panel give the same rate (code review
+    2026-11-18, #3). Without it, the leads."""
+    top = leads if conv is None else conv
+    return {"value": base._ratio(min(top, visits), visits) if visits >= LEAD_RATE_MIN_VISITS else None, "visits": visits, "leads": round(leads, 2), "needs": LEAD_RATE_MIN_VISITS}
 
 
 def _now(scope) -> datetime:
@@ -484,15 +487,15 @@ def build(scope) -> dict:
     weeks = _weeks(scope.end, scope.start)
     first = min(scope.start, weeks[0][0])
 
-    per_source: dict[str, dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0})
+    per_source: dict[str, dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0, "conv": 0.0})
     per_day: dict[str, int] = defaultdict(int)
     ai_by_site_day: dict[tuple[int, date], int] = defaultdict(int)
     week_sessions: dict[int, int] = defaultdict(int)
     week_leads: dict[int, float] = defaultdict(float)
     ga4_days: set[tuple[int, date]] = set()
-    everything, organic = 0, {"sessions": 0, "leads": 0.0}
+    everything, organic = 0, {"sessions": 0, "leads": 0.0, "conv": 0.0}
     for row in _ga4_site_rows(scope, first, scope.end):
-        day, sessions, leads = row["day"], int(row["sessions"] or 0), float(row["leads"] or 0)
+        day, sessions, leads, conv = row["day"], int(row["sessions"] or 0), float(row["leads"] or 0), float(row["conv"] or 0)
         ga4_days.add((row["site_id"], day))
         assistant = ai_source(row, domains, namer)
         if assistant:
@@ -507,9 +510,11 @@ def build(scope) -> dict:
         if row["channel"] == "Organic Search":
             organic["sessions"] += sessions
             organic["leads"] += leads
+            organic["conv"] += conv
         if assistant:
             per_source[assistant]["sessions"] += sessions
             per_source[assistant]["leads"] += leads
+            per_source[assistant]["conv"] += conv
             per_day[day.isoformat()] += sessions
     data_days = {d for _, d in ga4_days}
     weekly = [
@@ -523,7 +528,10 @@ def build(scope) -> dict:
         before_leads = round(sum(float(r["leads"] or 0) for r in past), 2)
     sessions = sum(item["sessions"] for item in per_source.values())
     leads = round(sum(item["leads"] for item in per_source.values()), 2)
-    leads_set_up = bool(scope.fetch("SELECT 1 x FROM ga4_source_daily WHERE site_id IN :sites AND {leads} > 0 LIMIT 1"))
+    converted = sum(item["conv"] for item in per_source.values())
+    # Set up once a site picked its lead events, even when none fired in the period: then it says "No leads in this
+    # period", not "Not set up" (code review 2026-11-18).
+    leads_set_up = bool(scope.lead_picked) or bool(scope.fetch("SELECT 1 x FROM ga4_source_daily WHERE site_id IN :sites AND {leads} > 0 LIMIT 1"))
 
     landing = _landing_rows(scope, scope.start, scope.end, lambda d: base._is_ai(_domain(d), domains))
     pages = sorted(
@@ -547,9 +555,9 @@ def build(scope) -> dict:
         "sessions": sessions, "leads": leads, "share": base._ratio(sessions, everything), "before": before, "before_leads": before_leads,
         "change": base._pct_change(sessions, before) if before else None,
         "key_events_set_up": leads_set_up, "lead_kind": scope.lead_kind,
-        "rate": _rate(leads, sessions), "organic": _rate(organic["leads"], organic["sessions"]),
+        "rate": _rate(leads, sessions, converted), "organic": _rate(organic["leads"], organic["sessions"], organic["conv"]),
         "sources": [
-            {"source": name, "sessions": item["sessions"], "leads": round(item["leads"], 2), "rate": _rate(item["leads"], item["sessions"])["value"]}
+            {"source": name, "sessions": item["sessions"], "leads": round(item["leads"], 2), "rate": _rate(item["leads"], item["sessions"], item["conv"])["value"]}
             for name, item in sorted(per_source.items(), key=lambda pair: (-pair[1]["sessions"], pair[0]))
         ],
         "series": [{"day": day, "sessions": per_day[day]} for day in sorted(per_day)],

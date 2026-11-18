@@ -54,6 +54,10 @@
         const most = { most: U().num(c.list_most || 5000) };
         out.push({ kind: "info", text: fill("Big sitemap: {most} pages watched, ranking pages first.", most), tip: tip("Their sitemap lists more than {most} pages. The app watches {most}: the pages that rank for your keywords first, then the rest in the sitemap's order.", most) });
       }
+      if (c.sitemap_cut) { // a sitemap file failed or there are too many: new pages listed only there can be missed (code review 2026-11-18, #6)
+        out.push({ kind: "warn", text: t(c.sitemap_cut === "waiting" ? "Part of the sitemap didn't load. The first read waits a few days for the whole list." : "Sitemap incomplete: new pages may be missed."),
+          tip: tip("Part of the site's sitemap didn't load, or it has more sitemap files than the app reads. Pages listed only there aren't watched, so some new pages may not be reported.") });
+      }
       if (c.days_left) {
         const bar = progress(c);
         out.push({ kind: "info", html: `${esc(fill("First read: {per} pages a day. Edits show after.", { per: U().num(c.per_day || 300) }))}${bar ? bar.html : ""}` });
@@ -244,6 +248,9 @@
     "No sitemap: only the {n} page linked from its home page is watched.": "Pas de sitemap : seule {n} page liée depuis sa page d'accueil est suivie.",
     "No sitemap: only the {n} pages linked from its home page are watched.": "Pas de sitemap : seules les {n} pages liées depuis sa page d'accueil sont suivies.",
     "No sitemap: only its home page and recent posts are watched.": "Pas de sitemap : seules sa page d'accueil et ses publications récentes sont suivies.",
+    "Sitemap incomplete: new pages may be missed.": "Sitemap incomplet : de nouvelles pages peuvent passer inaperçues.",
+    "Part of the sitemap didn't load. The first read waits a few days for the whole list.": "Une partie du sitemap ne s'est pas chargée. La première lecture attend quelques jours la liste complète.",
+    "Part of the site's sitemap didn't load, or it has more sitemap files than the app reads. Pages listed only there aren't watched, so some new pages may not be reported.": "Une partie du sitemap du site ne s'est pas chargée, ou il compte plus de fichiers sitemap que l'app n'en lit. Les pages listées seulement là ne sont pas suivies : certaines nouvelles pages peuvent ne pas être signalées.",
     "Big sitemap: {most} pages watched, ranking pages first.": "Gros sitemap : {most} pages suivies, celles qui se positionnent d'abord.",
     "First read: {tried} of ~{known} pages, {per} a day, ~{days} to go. Edits show after.": "Première lecture : {tried} sur ~{known} pages, {per} par jour, encore ~{days}. Les modifications s'affichent ensuite.",
     "{n} day": "{n} jour", "{n} days": "{n} jours",
