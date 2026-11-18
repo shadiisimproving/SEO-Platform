@@ -21,7 +21,7 @@ import time
 from sqlalchemy import Engine, text
 
 from seo.backlinks import logos
-from seo.backlinks.cleaner import SPAM_THRESHOLD, root_domain
+from seo.backlinks.cleaner import is_spam_score, root_domain
 from seo.competitors import pages
 from seo.core import budget
 from seo.crawl.extract import extract
@@ -99,12 +99,26 @@ def verdict(spam_score: float | None, system_quality: str | None, system_reason:
     if decision == "spam":
         return SPAM, "my_choice", BY_YOU
     if spam_score is not None:
-        return (SPAM, "spam_score", BY_FILE) if spam_score > SPAM_THRESHOLD else (GOOD, None, None)
+        return (SPAM, "spam_score", BY_FILE) if is_spam_score(spam_score) else (GOOD, None, None)
     if system_reason == "spam_score":  # set by an older version from some other file's score: the checks haven't judged it yet
         return PENDING, None, None
     if system_quality == SPAM:
         return SPAM, system_reason, BY_SYSTEM
     return system_quality or PENDING, None, None
+
+
+WEAK_FLAGS = frozenset({"site_down", "unreadable"})  # a site down on one day can be back the next: shown with its date, as the weaker kind
+
+
+def app_flag(system_quality: str | None, system_reason: str | None, flagged_by: str | None, decision: str | None, checked_at=None, redirect_to: str | None = None) -> dict | None:
+    """What the app's own check saw, kept on a row the file's spam score let through (owner rule of 2026-11-10: the file decides).
+
+    None when the app saw nothing, when the app's flag is already the row's reason, or when a person decided."""
+    if system_quality != SPAM or not system_reason or system_reason in ("spam_score", "my_choice") or flagged_by is not None or decision is not None:
+        return None
+    at = checked_at.strftime("%Y-%m-%dT%H:%M:%SZ") if checked_at is not None else None
+    return {"reason": system_reason, "words": reason_words(system_reason), "to": redirect_to if system_reason == "leads_elsewhere" else None,
+            "weak": system_reason in WEAK_FLAGS, "at": at}
 
 
 def judge_name(domain: str) -> str | None:
@@ -234,6 +248,8 @@ def run_checks(job, engine: Engine) -> None:
                 except Exception:  # noqa: BLE001 - one odd home page counts as an attempt, and the next domain carries on (F100)
                     fields, quality, reason, note = None, "retry", "unreadable", None
                 title = (fields.title or "")[:300] if fields else None
+                # Where it led, so a row can say "Redirects to cvgorilla.com", not only "to another site".
+                led_to = (root_domain(host_key(result.final_url)) or host_key(result.final_url))[:190] if reason == "leads_elsewhere" and getattr(result, "final_url", None) else None
                 with engine.begin() as conn:
                     if quality == "retry":
                         conn.execute(
@@ -245,8 +261,8 @@ def run_checks(job, engine: Engine) -> None:
                         )
                     else:
                         conn.execute(
-                            text("UPDATE link_domains SET quality = :q, reason = :r, page_note = :n, page_title = :t, checked_at = UTC_TIMESTAMP(3) WHERE domain = :d"),
-                            {"q": quality, "r": reason, "n": note, "t": title, "d": domain},
+                            text("UPDATE link_domains SET quality = :q, reason = :r, page_note = :n, page_title = :t, redirect_to = :to, checked_at = UTC_TIMESTAMP(3) WHERE domain = :d"),
+                            {"q": quality, "r": reason, "n": note, "t": title, "to": led_to, "d": domain},
                         )
                 if quality != "retry":  # flagged ones too: a row is easier to tell apart with its icon, good or not
                     logos.queue_for(engine, [domain])

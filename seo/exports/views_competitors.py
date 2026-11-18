@@ -34,9 +34,11 @@ def competitors(engine, args) -> Report:
     site_id = _site(args)
     rows = tracking.apply_to_overview(engine, site_id, profile.overview(engine, site_id))
     report = Report("competitors", "Competitors", site=registry.site_host(engine, site_id))
+    # Each keyword once, however many rivals rank on it (W4): the sum over rivals said 289 "they are ahead" for 129 keywords.
+    whole = collective.totals(engine, site_id)
     report.tiles = [
-        Tile("Competitors", len(rows), "int"), Tile("Keywords shared", sum(r.get("shared") or 0 for r in rows), "int"),
-        Tile("Where I am ahead", sum(r.get("i_ahead") or 0 for r in rows), "int"), Tile("Where they are ahead", sum(r.get("they_ahead") or 0 for r in rows), "int"),
+        Tile("Competitors", len(rows), "int"), Tile("Keywords shared", whole["shared"], "int"),
+        Tile("Where I am ahead", whole["i_ahead"], "int"), Tile("Where they are ahead", whole["they_ahead"], "int"),
     ]
     report.tables.append(Table("competitors", "Competitors", [
         C("display", "Competitor", "text", width=3.4), C("shared", "Keywords shared", "int"), C("i_ahead", "I am ahead", "int"), C("they_ahead", "They are ahead", "int"),
@@ -140,6 +142,11 @@ def _gap_columns() -> list:
         C("sample_url", "A page with a link", "url"), C("reason_words", "Why filtered out", "text", width=3, translate=True),
         C("flagged_by", "Flagged by", "text", width=1.6, get=lambda r: FLAGGED_BY.get(r.get("flagged_by") or "", ""), translate=True),
         C("in_consideration", "In consideration", "bool"),
+        # Kept by the file's spam score, flagged by the app's own check (links A1); a link last seen 6+ months before its file (B1).
+        C("app_flag", "The app saw", "text", width=2.6, get=lambda r: (r.get("app_flag") or {}).get("words"), translate=True),
+        C("app_flag_to", "Leads to", "text", width=2, get=lambda r: (r.get("app_flag") or {}).get("to")),
+        C("app_flag_at", "Checked", "date", get=lambda r: (r.get("app_flag") or {}).get("at")),
+        C("old_link", "Old link, last seen", "date", get=lambda r: (r.get("old_link") or {}).get("last_seen")),
     ]
 
 
@@ -154,10 +161,12 @@ def link_gaps(engine, args) -> Report:
     report.tiles = [
         Tile("Sites found", funnel.get("found"), "int"), Tile("Worth a look", funnel.get("good"), "int"),
         Tile("Filtered out", funnel.get("filtered"), "int"), Tile("Already link to me", data.get("already_linking"), "int"),
+        Tile("App flagged", funnel.get("app_flagged"), "int"), Tile("Old links", funnel.get("old"), "int"),
     ]
     columns = _gap_columns()
+    flag_only = ("app_flag", "app_flag_to", "app_flag_at", "old_link")
     report.tables.append(Table("gaps", "Linking to competitors, not me", [c for c in columns if c.key not in ("reason_words", "flagged_by")], data.get("gaps") or [], total=funnel.get("good"), empty="No link gaps found yet."))
-    report.tables.append(Table("filtered", "Filtered out", [c for c in columns if c.key != "in_consideration"], data.get("filtered") or [], total=funnel.get("filtered"), empty="Nothing was filtered out."))
+    report.tables.append(Table("filtered", "Filtered out", [c for c in columns if c.key != "in_consideration" and c.key not in flag_only], data.get("filtered") or [], total=funnel.get("filtered"), empty="Nothing was filtered out."))
     return report
 
 

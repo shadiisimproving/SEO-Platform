@@ -173,6 +173,14 @@
 .cg-reasons .chip { display: inline-flex; align-items: center; }
 .cg-reasons .chip .comp-ic { color: inherit; }
 .cg-why { display: block; margin-top: 3px; white-space: normal; font-size: 12px; color: var(--text-2); }
+/* What the app's own check saw on a row the file's spam score keeps (links A1). Site down is the weaker kind: muted, with its day. */
+.cg-app-flag { display: flex; align-items: flex-start; gap: 4px; margin-top: 3px; white-space: normal; font-size: 12px; color: var(--warn-t); }
+.cg-app-flag svg.i { width: 12px; height: 12px; flex: none; margin-top: 2px; }
+.cg-app-flag.weak { color: var(--muted); }
+.tag.cg-old { color: var(--muted); display: inline-flex; align-items: center; gap: 3px; }
+.tag.cg-old svg.i { width: 11px; height: 11px; }
+.cg-followed > span { display: inline-flex; flex-direction: column; line-height: 1.25; }
+.cg-opt-note { font-size: 12px; }
 .cg-tools .chips { margin: 0; }
 .cg-tools { align-items: center; }
 .cg-tools .opt { margin: 0; }

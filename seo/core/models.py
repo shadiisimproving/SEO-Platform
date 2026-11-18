@@ -511,6 +511,7 @@ class LinkDomain(Base):
     reason: Mapped[str | None] = mapped_column(String(30), nullable=True)
     page_note: Mapped[str | None] = mapped_column(String(20), nullable=True)
     page_title: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    redirect_to: Mapped[str | None] = mapped_column(String(190), nullable=True)  # the other site a home page led to (leads_elsewhere)
     check_attempts: Mapped[int] = mapped_column(Integer, server_default="0")
     checked_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
     cc_rank: Mapped[int | None] = mapped_column(BigInteger, nullable=True)

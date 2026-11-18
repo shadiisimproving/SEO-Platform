@@ -159,8 +159,8 @@ def _links_by_domain(conn, site_id: int, removed: dict[str, list[int]]) -> dict[
     found: dict[str, list[dict]] = {}
     for row in conn.execute(
         text(
-            "SELECT l.*, s.host FROM competitor_referrer_links l JOIN site_competitors sc ON sc.competitor_id = l.competitor_id AND sc.site_id = :s AND sc.tracking <> 'off' "
-            "JOIN sites s ON s.id = l.competitor_id"
+            "SELECT l.*, s.host, r.last_seen_at AS file_at FROM competitor_referrer_links l JOIN site_competitors sc ON sc.competitor_id = l.competitor_id AND sc.site_id = :s AND sc.tracking <> 'off' "
+            "JOIN sites s ON s.id = l.competitor_id LEFT JOIN competitor_referrers r ON r.competitor_id = l.competitor_id AND r.domain = l.domain"
         ),
         {"s": site_id},
     ).mappings():
@@ -170,10 +170,38 @@ def _links_by_domain(conn, site_id: int, removed: dict[str, list[int]]) -> dict[
             "competitor_id": row["competitor_id"], "host": row["host"], "source_url": row["source_url"], "source_title": row["source_title"], "target_url": row["target_url"],
             "anchor": row["anchor"], "page_authority": row["page_authority"], "spam_score": row["spam_score"], "rel": row["rel"],
             "first_seen": row["first_seen"].isoformat() if row["first_seen"] else None, "last_seen": row["last_seen"].isoformat() if row["last_seen"] else None,
+            "old": is_old(row["last_seen"], row["file_at"]),
         })
     for links in found.values():
         links.sort(key=lambda l: (-(l["page_authority"] if l["page_authority"] is not None else -1), l["anchor"] or "", l["source_url"]))
     return found
+
+
+OLD_AFTER_MONTHS = 6  # a link a file last saw this long before the file itself was made is probably gone (SEO review 2026-11-17, B1)
+
+
+def months_before(day, months: int):
+    """The same day, `months` calendar months earlier. A day the shorter month lacks becomes its last day."""
+    import calendar
+    from datetime import date
+
+    year, month = divmod(day.year * 12 + day.month - 1 - months, 12)
+    return date(year, month + 1, min(day.day, calendar.monthrange(year, month + 1)[1]))
+
+
+def is_old(last_seen, file_at) -> bool:
+    """Last seen more than 6 months before its file. The file's date is the day it was uploaded: no export says when it was made."""
+    if last_seen is None or file_at is None:
+        return False
+    day = last_seen.date() if hasattr(last_seen, "date") and callable(last_seen.date) else last_seen
+    return day < months_before(file_at.date() if hasattr(file_at, "date") else file_at, OLD_AFTER_MONTHS)
+
+
+def old_link(links: list[dict], competitor_ids: set[int]) -> dict | None:
+    """A domain rests on old links only when it has links, every one is old, and no competitor lists it without a dated link."""
+    if not links or not all(l["old"] for l in links) or not competitor_ids <= {l["competitor_id"] for l in links}:
+        return None
+    return {"last_seen": max(l["last_seen"] for l in links)[:10]}
 
 
 def _read_common_crawl_file(data: bytes) -> tuple[list[dict], str] | None:
@@ -264,7 +292,7 @@ def _all_gaps(engine: Engine, site_id: int) -> dict:
             removed.setdefault(domain, []).append(competitor_id)
         rows = conn.execute(
             text(
-                "SELECT r.*, s.host, d.quality, d.reason, d.page_note, d.page_title, d.cc_rank, d.cc_total, d.cc_outlinks FROM competitor_referrers r "
+                "SELECT r.*, s.host, d.quality, d.reason, d.page_note, d.page_title, d.cc_rank, d.cc_total, d.cc_outlinks, d.checked_at AS domain_checked_at, d.redirect_to FROM competitor_referrers r "
                 "JOIN site_competitors sc ON sc.competitor_id = r.competitor_id AND sc.site_id = :s AND sc.tracking <> 'off' JOIN sites s ON s.id = r.competitor_id "
                 "LEFT JOIN link_domains d ON d.domain = r.domain WHERE r.removed_by_hand = 0"
             ),
@@ -294,7 +322,7 @@ def _all_gaps(engine: Engine, site_id: int) -> dict:
         entry = by_domain.setdefault(domain, {
             "domain": domain, "display": store.to_display_host(domain), "competitors": [], "authority": None, "authority_label": None, "spam_score": None, "sample_url": row["sample_url"],
             "sources": set(), "first_seen": row["first_seen_at"], "in_consideration": domain in prospects, "in_todo": domain in planned, "lost_link": domain in lost, "is_competitor": domain in own_rivals,
-            "system_quality": row["quality"], "system_reason": row["reason"], "kept": decision == "keep",
+            "system_quality": row["quality"], "system_reason": row["reason"], "system_at": row["domain_checked_at"], "redirect_to": row["redirect_to"], "kept": decision == "keep",
             "page_note": row["page_note"], "title": row["page_title"], "top_percent": _top_percent(row["cc_rank"], row["cc_total"]), "cc_rank": row["cc_rank"], "outlinks": row["cc_outlinks"],
             "added_by_hand": [], "follows": [],
         })
@@ -315,7 +343,11 @@ def _all_gaps(engine: Engine, site_id: int) -> dict:
     pick_scores(by_domain.values())
     for domain, entry in by_domain.items():
         # A person's decision beats every rule, then the uploaded file's spam score, then the app's own checks (quality.verdict).
-        state, reason, flagged_by = quality.verdict(entry["spam_score"], entry.pop("system_quality"), entry.pop("system_reason"), decisions.get(domain))
+        system_quality, system_reason, system_at, led_to = (entry.pop(key) for key in ("system_quality", "system_reason", "system_at", "redirect_to"))
+        state, reason, flagged_by = quality.verdict(entry["spam_score"], system_quality, system_reason, decisions.get(domain))
+        # The file's score let it through, but what the app's own check saw stays on the row (SEO review 2026-11-17, A1).
+        entry["app_flag"] = quality.app_flag(system_quality, system_reason, flagged_by, decisions.get(domain), system_at, led_to) if state == GOOD else None
+        entry["old_link"] = old_link(links.get(domain, []), {c["id"] for c in entry["competitors"]})
         # Someone found this one in a tool, so it shows while its home page waits. The check still runs and can still flag it.
         if state == quality.PENDING and domain in typed_in:
             state = GOOD
@@ -398,7 +430,9 @@ def link_gaps(engine: Engine, site_id: int) -> dict:
         "gaps": good[:MAX_LISTED],
         "filtered": spam[:MAX_FILTERED_LISTED],
         "funnel": {"found": len(everything), "filtered": len(spam), "checking": sum(1 for g in everything if g["quality"] == quality.PENDING), "good": len(good),
-                   "not_followed": sum(1 for g in good if g["followed"] is False)},
+                   "not_followed": sum(1 for g in good if g["followed"] is False), "follow_unknown": sum(1 for g in good if g["followed"] is None),
+                   "app_flagged": sum(1 for g in good if g["app_flag"]), "app_flagged_weak": sum(1 for g in good if g["app_flag"] and g["app_flag"]["weak"]),
+                   "old": sum(1 for g in good if g["old_link"])},
     }
 
 
@@ -734,7 +768,7 @@ def add_csv_prospects(engine: Engine, site_id: int, rows, file=None, authority_l
             if stage not in PROSPECT_STAGES:
                 raise Refused("That isn't a status a prospect can have.")
             owner = _text_or_none(row.get("owner"), "The owner's name", _MAX_OWNER)
-            if spam is not None and spam > cleaner.SPAM_THRESHOLD:
+            if cleaner.is_spam_score(spam):
                 skipped.append({"url": url, "why": "spam"})
             elif domain in taken:
                 skipped.append({"url": url, "why": "already_in_consideration"})
