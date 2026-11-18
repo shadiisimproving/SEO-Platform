@@ -42,6 +42,7 @@ class Keyword:
     pages: dict = field(default_factory=dict)  # page → clicks, last 28 days
     results: list = field(default_factory=list)  # (position, url, host), best first
     before: list | None = None  # the same, from the previous like-for-like check; None when there isn't one
+    disputed: bool = False  # another tool's check of the same 48 hours puts me far from this one (rankings' "Tools disagree")
 
     @property
     def p(self) -> int | None:
@@ -152,6 +153,7 @@ def _load(ctx: Ctx) -> list[Keyword]:
         found.append(Keyword(
             r["keyword"], r["keyword_id"], main, r["ai"], code3, numbers if numbers and numbers["position"] is not None else None, world.get(key), pages.get(key, {}),
             results.get(main["check_id"], []), results.get(before_id, []) if before_id else None,
+            bool(r["engines"]["google"].get("disagree")),
         ))
     return found
 
@@ -189,12 +191,15 @@ def _finding(ctx: Ctx, k: Keyword, kind: str, rivals: list[str], at_stake: float
 
 
 def _moved(ctx: Ctx, k: Keyword, rivals: list[str]) -> Finding | None:
-    """Today's place against Search Console's average: the average takes weeks to show what a check sees at once."""
+    """Today's place against Search Console's average: the average takes weeks to show what a check sees at once.
+    A drop another tool of the same days doesn't see is no drop: the tools disagree, so nothing is said."""
     if k.local is None or k.age > rules.MIX_FRESH_DAYS or k.local["impressions"] < rules.MIX_MIN_IMPRESSIONS:
         return None
     average, shown = k.local["position"], k.local["impressions"]
     was = _on(k.before, ctx.host) if k.before is not None else None
     if average <= rules.MIX_WORST and ((k.p is not None and k.p - average >= rules.MIX_GAP) or (k.p is None and average <= k.depth - rules.MIX_DEPTH_MARGIN)):
+        if k.disputed:
+            return None
         if k.before is not None and (was is None or (k.p is not None and k.p - was < rules.MIX_CONFIRM_PLACES)):
             return None  # the earlier check saw it just as low: the two sources simply differ here, nothing moved
         confirmed = k.before is not None
@@ -241,6 +246,8 @@ def _rival_passed(ctx: Ctx, k: Keyword, rivals: list[str]) -> Finding | None:
 
 def _rival_gap(ctx: Ctx, k: Keyword, rivals: list[str]) -> Finding | None:
     numbers = k.demand
+    if k.disputed:  # where I stand isn't settled: two tools of the same days put me far apart
+        return None
     if k.age > rules.MIX_USABLE_DAYS or not numbers or numbers["impressions"] < rules.MIX_MIN_IMPRESSIONS or (k.p is not None and k.p <= rules.MIX_RIVAL_ME_PAST):
         return None
     if not any(r["position"] <= rules.MIX_RIVAL_TOP for r in _rival_rows(k, rivals)):
@@ -276,6 +283,8 @@ def _page_id(url: str) -> str:
 
 
 def _page_switch(ctx: Ctx, k: Keyword, rivals: list[str]) -> Finding | None:
+    if k.disputed:
+        return None
     if not k.main["url"] or k.age > rules.MIX_USABLE_DAYS or not k.pages:
         return None
     total = sum(k.pages.values())

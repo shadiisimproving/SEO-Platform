@@ -342,3 +342,14 @@ def test_a_search_nobody_makes_raises_no_rival_passed(engine, site):
     check(engine, k, [(3, HOME + "page"), (9, "https://rival.test/a")], ago=10)
     check(engine, k, [(2, "https://rival.test/a"), (4, HOME + "page")], ago=1)
     assert "rival_passed" not in signals(engine, site)[0]
+
+
+def test_a_drop_or_page_switch_another_tool_of_the_same_days_does_not_see_is_not_raised(engine, site):
+    """Rankings review 3.2: SerpApi #37 at 09:48, Searlo #4 the same morning, Search Console's France average 6. The tools
+    disagree (33 places, past the gap of 3), so neither a rank drop nor a page switch is said."""
+    k = keyword(engine, site, "blue shoes")
+    search_console(engine, site, "blue shoes", position=6.0)
+    check(engine, k, [(4, HOME + "page")], ago=0.3, depth=50, tool="Searlo")
+    check(engine, k, [(37, HOME + "other")], ago=0.2, depth=50, tool="SerpApi")
+    found = signals(engine, site)[0]
+    assert "rank_drop" not in found and "page_switch" not in found

@@ -131,7 +131,7 @@
         ? tf(c.share < 50 ? "Copilot cited you {n}, but others win most of its answers ({s} share)." : "Copilot cited you {n}, with a {s} share of its answers.", { n: plural(c.citations, "{n} time", "{n} times"), s: share(c.share) })
         : tf("Copilot cited your sites {n}.", { n: plural(c.citations, "{n} time", "{n} times") })));
     } else if (d.ai_overviews.with_overview) {
-      lines.push(esc(tf("AI Overviews on {o} of {c} keywords checked; you're cited in {m}.", { o: num(d.ai_overviews.with_overview), c: num(d.ai_overviews.captured), m: num(d.ai_overviews.cited_me) })));
+      lines.push(esc(aioSaid(d.ai_overviews)));
     }
     return `<div class="ai-answer"><p class="today-lead">${lines[0]}</p>${lines[1] ? `<p class="today-second">${lines[1]}</p>` : ""}${simple() ? narrowSources(d) : sourcesLine(d)}</div>`;
   }
@@ -238,6 +238,11 @@
     const note = read && !NOT_ON.includes(live.state) ? `<div class="ai-half-foot"><p class="small muted ai-second"><span>${esc(tf("Weeks count only the days read: {n} so far.", { n: num(read) }))}${UI.tip("Clarity only gives its last 3 days.")}</span></p></div>` : "";
     return half("clarity", t("Clarity live"), live, body, note);
   }
+  /* One sentence for the AI Overview watch, naming the tool that looked: only a tool that sees AI Overviews counts (SerpApi). */
+  const aioSaid = (o) => (o.tools && o.tools.length
+    ? tf("AI Overviews on {o} of {c} keywords checked with {tool}; you're cited in {m}.", { o: num(o.with_overview), c: num(o.captured), m: num(o.cited_me), tool: o.tools.join(", ") })
+    : tf("AI Overviews on {o} of {c} keywords checked; you're cited in {m}.", { o: num(o.with_overview), c: num(o.captured), m: num(o.cited_me) }));
+
   /* The simpler screens: Clarity live beside Google Analytics once it's connected, one line with Connect until then. The
      second opinion is the card head's (i). */
   function chartCardSimple(d) {
@@ -471,7 +476,7 @@
     const o = d.ai_overviews;
     const said = !o.tracked ? t("No keywords tracked, so no AI Overview checks yet.")
       : !o.captured ? t("No AI Overview checks yet.")
-      : tf("AI Overviews on {o} of {c} keywords checked; you're cited in {m}.", { o: num(o.with_overview), c: num(o.captured), m: num(o.cited_me) });
+      : aioSaid(o);
     const p = A.aio.preview, tool = p?.tools?.find((x) => x.credits) || p?.tools?.[0];
     const check = A.aio.run || (A.aio.asked && o.keyword_ids.length) ? aioCheckButton(o) : !o.keyword_ids.length ? `<button class="btn btn-small" data-go="keywords">${t("Add keywords")}</button>` : "";
     const confirm = A.aio.confirm && p?.checks ? `<div class="ai-confirm" role="group" aria-label="${t("Check now")}"><span>${esc(tf("This checks {k} on Google with {tool} and uses {c}.", { k: plural(p.checks, "{n} keyword", "{n} keywords"), tool: tool?.name || "", c: plural(p.credits, "{n} credit", "{n} credits") }))}</span><button class="btn btn-small btn-main" data-ai-aio-go>${t("Check now")}</button><button class="btn btn-small btn-ghost" data-ai-aio-cancel>${t("Cancel")}</button></div>` : "";
@@ -484,7 +489,7 @@
     aioPreview(d);
     const said = !o.tracked ? t("No keywords tracked, so no AI Overview checks yet.")
       : !o.captured ? t("No AI Overview checks yet.")
-      : tf("AI Overviews on {o} of {c} keywords checked; you're cited in {m}.", { o: num(o.with_overview), c: num(o.captured), m: num(o.cited_me) });
+      : aioSaid(o);
     const p = A.aio.preview, tool = p?.tools?.find((x) => x.credits) || p?.tools?.[0];
     const confirm = A.aio.confirm && p?.checks ? `<div class="ai-confirm" role="group" aria-label="${t("Check now")}"><span>${esc(tf("This checks {k} on Google with {tool} and uses {c}.", { k: plural(p.checks, "{n} keyword", "{n} keywords"), tool: tool?.name || "", c: plural(p.credits, "{n} credit", "{n} credits") }))}</span><button class="btn btn-small btn-main" data-ai-aio-go>${t("Check now")}</button><button class="btn btn-small btn-ghost" data-ai-aio-cancel>${t("Cancel")}</button></div>` : "";
     return `<section class="card ai-aio"><div class="ai-aio-row"><p class="ai-aio-said">${icon("sparkles", "sec")}<span>${esc(said)}</span></p><span class="ai-aio-chip">${chip(serp, { fix: false })}</span>
@@ -725,6 +730,7 @@
     "Copilot cited you {n}, but others win most of its answers ({s} share).": "Copilot vous a cité {n}, mais d'autres remportent la plupart de ses réponses ({s} de part).",
     "Copilot cited you {n}, with a {s} share of its answers.": "Copilot vous a cité {n}, avec {s} de ses réponses.", "Copilot cited your sites {n}.": "Copilot a cité vos sites {n}.",
     "AI Overviews on {o} of {c} keywords checked; you're cited in {m}.": "AI Overviews sur {o} des {c} mots-clés relevés ; vous êtes cité dans {m}.",
+    "AI Overviews on {o} of {c} keywords checked with {tool}; you're cited in {m}.": "AI Overviews sur {o} des {c} mots-clés relevés avec {tool} ; vous êtes cité dans {m}.",
     "AI visits": "Visites IA", "Google Analytics not connected": "Google Analytics non connecté", "Leads": "Leads", "Not set up": "Non configuré", "Mark forms as GA4 key events": "Marquez vos formulaires comme événements clés GA4",
     "needs {need} AI visits, {n} so far": "il faut {need} visites IA, {n} pour l'instant", "organic search": "recherche organique", "{l} of {v}": "{l} sur {v}", "Lead rate": "Taux de lead",
     "Upload a Clarity AI download": "Importer un export IA de Clarity", "since the last upload": "depuis l'import précédent", "share": "part", "pts": "pts", "Copilot citations": "Citations Copilot",
