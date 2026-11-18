@@ -1718,3 +1718,10 @@ class GscAiReport(Base):
     data: Mapped[dict] = mapped_column(JSON)
     uploaded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     uploaded_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
+# Every table is created in utf8mb4_unicode_ci, whatever the server's default, so a new install, the test databases and a
+# converted live database have one collation (a join between two is refused). seo.core.charset converts older tables.
+for _table in Base.metadata.tables.values():
+    _table.kwargs.setdefault("mysql_charset", "utf8mb4")
+    _table.kwargs.setdefault("mysql_collate", "utf8mb4_unicode_ci")

@@ -19,8 +19,9 @@ TEXTS = ["Créer société à Dubaï", "تأسيس شركة في دبي", "🏆 
 LIVE_TABLES = ("keywords", "gsc_query", "pages", "change_events", "backlinks", "competitor_referrer_links", "notes", "tasks")
 
 
-def _as_live_was(conn, tables=LIVE_TABLES):
-    """Every text column of these tables in latin1, as on the live server before the conversion. JSON stays utf8mb4."""
+def _as_live_was(conn, tables=LIVE_TABLES, charset_name="latin1", collation="latin1_swedish_ci"):
+    """Every text column of these tables in latin1, as on the live server before the conversion. JSON stays utf8mb4.
+    With utf8mb4_general_ci: a table a server with that default made, as a fresh test database does."""
     for table in tables:
         columns = conn.execute(
             text(
@@ -31,11 +32,11 @@ def _as_live_was(conn, tables=LIVE_TABLES):
         ).all()
         parts = []
         for name, kind, nullable, default in columns:
-            clause = f"MODIFY `{name}` {kind} CHARACTER SET latin1 COLLATE latin1_swedish_ci {'NULL' if nullable == 'YES' else 'NOT NULL'}"
+            clause = f"MODIFY `{name}` {kind} CHARACTER SET {charset_name} COLLATE {collation} {'NULL' if nullable == 'YES' else 'NOT NULL'}"
             if default is not None and not (default == "NULL" and nullable == "YES"):
                 clause += f" DEFAULT {default}"
             parts.append(clause)
-        parts.append("DEFAULT CHARACTER SET latin1 COLLATE latin1_swedish_ci")
+        parts.append(f"DEFAULT CHARACTER SET {charset_name} COLLATE {collation}")
         conn.execute(text(f"ALTER TABLE `{table}` " + ", ".join(parts)))
 
 
@@ -44,6 +45,9 @@ def converted(engine):
     """The live tables' old format, the loss shown, then the conversion run."""
     with engine.begin() as conn:
         _as_live_was(conn)
+        # Two tables already utf8mb4 but on the server's other collation: backlinks joins prospects on the domain, and
+        # the two collations can't be compared (found after the merge, 2026-11-17).
+        _as_live_was(conn, ("prospects", "sites"), "utf8mb4", "utf8mb4_general_ci")
         assert charset.tables_to_convert(conn)
         conn.execute(text("SET SESSION sql_mode = ''"))  # the live server saved what it couldn't hold as "?" instead of refusing
         conn.execute(text("INSERT INTO tasks (title) VALUES (:t)"), {"t": TEXTS[1]})
@@ -53,7 +57,28 @@ def converted(engine):
         done = charset.convert(conn)
         assert done["tables"] >= len(LIVE_TABLES)
         assert charset.columns_to_convert(conn) == [] and charset.tables_to_convert(conn) == []
+        assert set(charset.collations(conn)) == {"utf8mb4_unicode_ci"}
     return engine
+
+
+def test_every_text_column_has_one_collation_after_the_migrations_and_every_model_creates_it(engine):
+    from sqlalchemy.dialects import mysql
+    from sqlalchemy.schema import CreateTable
+
+    from seo.core.models import Base
+
+    with engine.connect() as conn:  # the session's tables, built by the real migrations from the server's default
+        assert set(charset.collations(conn)) == {"utf8mb4_unicode_ci"}
+        assert {r[0] for r in conn.execute(text("SELECT TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()"))} == {"utf8mb4_unicode_ci"}
+        assert conn.execute(text("SELECT DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = DATABASE()")).scalar() == "utf8mb4_unicode_ci"
+        json_columns = {r[0] for r in conn.execute(text(
+            "SELECT DISTINCT c.COLLATION_NAME FROM information_schema.COLUMNS c JOIN information_schema.CHECK_CONSTRAINTS k ON k.CONSTRAINT_SCHEMA = c.TABLE_SCHEMA "
+            "AND k.TABLE_NAME = c.TABLE_NAME AND k.CHECK_CLAUSE = CONCAT('json_valid(`', c.COLUMN_NAME, '`)') WHERE c.TABLE_SCHEMA = DATABASE()"
+        ))}
+        assert json_columns == {"utf8mb4_bin"}  # MariaDB's JSON, never compared as text
+    # create_all and every model: the same charset and collation, whatever the server's default.
+    for table in Base.metadata.tables.values():
+        assert str(CreateTable(table).compile(dialect=mysql.dialect())).rstrip().endswith("CHARSET=utf8mb4 COLLATE utf8mb4_unicode_ci"), table.name
 
 
 def test_the_conversion_keeps_types_defaults_indexes_and_rows_and_json_stays_as_it_was(engine):
@@ -129,6 +154,8 @@ def test_every_script_and_emoji_goes_through_every_path_after_the_conversion(wor
     # My backlinks from a file: the page address and its anchor.
     parsed = clean_csv("URL,Spam\nhttps://ar.example/صفحة-🏆,1\n".encode("utf-8"))
     assert parsed.rows[0].url == "https://ar.example/صفحة-🏆"
+    with world.engine.begin() as conn:  # a prospect for the same site, so saving the link joins backlinks to prospects
+        conn.execute(text("INSERT INTO prospects (site_id, url, domain, authority) VALUES (:s, :u, 'ar.example', 33)"), {"s": own, "u": parsed.rows[0].url})
     sent = [{"site_id": own, "source_url": parsed.rows[0].url, "anchor": TEXTS[1], "notes": TEXTS[2], "owner": TEXTS[0]}]
     assert client.post("/api/backlinks/bulk", json={"rows": sent}).status_code == 201
     saved = client.get(f"/api/backlinks?site_id={own}").get_json()["backlinks"][0]

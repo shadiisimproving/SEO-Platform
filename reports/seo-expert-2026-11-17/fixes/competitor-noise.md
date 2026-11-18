@@ -89,6 +89,12 @@ Targets:
      - Row counts are equal in all 97 tables (1,414,364 rows).
      - Column definitions (type, NULL, default, extra, comment) are identical, and so are all 316 index entries.
      - **No index issue:** the longest text index is 190 characters (760 bytes); all tables are DYNAMIC.
+   - **One collation everywhere** (found after the merge: a test database made with utf8mb4_general_ci tables broke the backlinks-to-prospects join once some tables were converted). The conversion brings every text column to utf8mb4_unicode_ci, JSON apart, including columns already utf8mb4 on another collation, and sets the database default.
+     - Every model creates its table in utf8mb4_unicode_ci.
+     - The connection uses that collation.
+     - A new install (no site yet) is converted at once.
+     - Re-run on the live copy: one collation on all 343 text columns, 97 tables and the database; row counts equal; 15.6 s.
+     - Test: `test_every_text_column_has_one_collation_after_the_migrations_and_every_model_creates_it`, also run on a fresh utf8mb4_general_ci database. The round trip now includes a general_ci `prospects` table joined by the bulk backlink save.
    - Text already saved as "?" can't be recovered. Only new reads are right.
    - **Also:**
      - An event whose before equals after is never saved.
