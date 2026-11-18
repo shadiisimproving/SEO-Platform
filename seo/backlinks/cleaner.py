@@ -21,7 +21,12 @@ from dataclasses import dataclass, field
 from typing import Mapping
 
 UPLOAD_MAX_BYTES = 10 * 1024 * 1024
-SPAM_THRESHOLD = 30.0
+SPAM_THRESHOLD = 30.0  # one line everywhere: a spam score ABOVE 30 is spam, 30 itself is not (owner's words of 2026-11-10)
+
+
+def is_spam_score(score) -> bool:
+    """The only place the line is drawn (SEO review 2026-11-17, B5): Link gaps, Backlinks, tasks and files all ask here."""
+    return score is not None and float(score) > SPAM_THRESHOLD
 ALLOWED_EXTENSIONS = (".csv", ".tsv", ".txt")
 
 # Logical column -> header aliases, lowercased. The first alias found in the file wins.
@@ -378,7 +383,7 @@ def clean_csv(data: bytes, known: Mapping[str, str] | None = None, *, need_spam:
 
     for r in data_rows:
         spam = parse_spam(cell(r, spam_at)) if spam_at is not None else None
-        spammy = spam is not None and spam > SPAM_THRESHOLD
+        spammy = is_spam_score(spam)
         if spammy and not keep_spam:
             removed_spam += 1
             continue

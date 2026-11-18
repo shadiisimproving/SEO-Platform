@@ -39,7 +39,7 @@
     const on = sort?.id === id;
     return `<th scope="col" class="${cls}" aria-sort="${on ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}" ${tip ? `data-tip="${esc(tip)}"` : ""}><button type="button" class="th-btn" ${attr}="${id}">${t(label)}${on ? UI.icon(sort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
   }
-  const MANY_OUTBOUND = 100, SPAM_SCORE = 30, CURRENCIES = ["USD", "EUR", "AED", "GBP"];
+  const MANY_OUTBOUND = 100, CURRENCIES = ["USD", "EUR", "AED", "GBP"];
 
   /* The verdict in plain words (2026-11-12 critique: "Counts" and "Weak" read as jargon). The same three words name the Useful and
      Not useful filters, so a badge and the filter that finds it agree. */
@@ -134,7 +134,7 @@
   }
   const authorityCell = (b) => scoreCell(linkScore(b));
 
-  const looksSpammy = (b) => (b.check?.outbound_links || 0) > MANY_OUTBOUND || (b.spam !== null && b.spam !== undefined && b.spam >= SPAM_SCORE);
+  const looksSpammy = (b) => (b.check?.outbound_links || 0) > MANY_OUTBOUND || window.BacklinkCleaner.isSpamScore(b.spam);
 
   // ---- on a link's panel -----------------------------------------------------------------------------
   /* The panel reads in seconds: one verdict on top, then one short question per row with its answer on the right.
@@ -290,14 +290,17 @@
   const trafficValue = (v) => (v === null || v === undefined ? '<span class="muted">—</span>' : UI.num(v));
   const trafficCell = (b) => (ahrefsOn() ? `<td class="r tabular" data-label="${t("Site traffic")}">${trafficValue(b.siteTraffic)}</td>` : "");
 
-  /* A type set by hand says so in its tip. One worked out from the anchor text doesn't. */
+  /* A type set by hand says so in its tip. One worked out from the anchor read on the page names those words, and a
+     hand-set type it replaced (SEO review 2026-11-17, B3). */
+  const onPage = (b) => (b.anchorRead ? ` ${t("On the page:")} “${b.anchorRead}”.` : "");
   function anchorTag(b) {
     const a = ANCHORS[b.anchorType];
     if (!a) return "";
-    const tip = b.anchorKind ? `${t(a[1])} ${t("Set by hand.")}` : t(a[1]);
+    const replaced = b.anchorKind && !b.anchorByHand && b.anchorKind !== b.anchorType && ANCHORS[b.anchorKind] ? ` ${t("Your type ({type}) is used only when the page can't be read.").replace("{type}", t(ANCHORS[b.anchorKind][0]))}` : "";
+    const tip = b.anchorByHand ? `${t(a[1])} ${t("Set by hand.")}` : `${t(a[1])}${onPage(b)}${replaced}`;
     return `<span class="tag vd-anchor" data-tip="${esc(tip)}" tabindex="0">${t(a[0])}</span>`;
   }
-  const anchorWord = (b) => (ANCHORS[b.anchorType] ? `${t(ANCHORS[b.anchorType][0])}${b.anchorKind ? ` · ${t("set by hand")}` : ""}` : "");
+  const anchorWord = (b) => (ANCHORS[b.anchorType] ? `${t(ANCHORS[b.anchorType][0])}${b.anchorByHand ? ` · ${t("set by hand")}` : b.anchorRead ? ` · ${t("from the page")}` : ""}` : "");
   /* The form's choices. Automatic means the app works it out from the anchor text and your keywords. */
   const anchorOptions = (picked) => [["", "Automatic"], ...Object.entries(ANCHORS).map(([key, [word]]) => [key, word])]
     .map(([key, word]) => `<option value="${key}" ${(picked || "") === key ? "selected" : ""}>${esc(t(word))}</option>`).join("");
@@ -393,7 +396,7 @@
   /* Below the link check: the one thing a person decides about a bad link. */
   function spamBody(b, server) {
     if (!server || !b.serverId) return "";
-    return `<p class="small sec vd-spam">${looksSpammy(b) ? `${t("Many outbound links or a high spam score.")} ` : ""}${t("It goes in the disavow file.")}${UI.tip("Mark a link you can't get removed and that could look paid or spammy.")}</p>
+    return `<p class="small sec vd-spam">${looksSpammy(b) ? `${t("Many outbound links or a spam score above 30.")} ` : ""}${t("It goes in the disavow file.")}${UI.tip("Mark a link you can't get removed and that could look paid or spammy.")}</p>
       <button class="btn btn-small" data-vd-disavow="${b.serverId}" data-on="${b.disavow ? "1" : ""}">${UI.icon(b.disavow ? "check" : "ban")}${t(b.disavow ? "Not spam" : "Mark as spam")}</button>`;
   }
 
@@ -952,7 +955,7 @@
     "Linking page in {a}, yours in {b}.": "Page source en {a}, la vôtre en {b}.",
     "Answers {n}: redirect it to a live page.": "Répond {n} : redirigez-la vers une page en ligne.",
     "Not in your last Search Console upload.": "Absent de votre dernier import Search Console.",
-    "Many outbound links or a high spam score.": "Beaucoup de liens sortants ou un score de spam élevé.",
+    "Many outbound links or a spam score above 30.": "Beaucoup de liens sortants ou un score de spam supérieur à 30.",
     "It goes in the disavow file.": "Il ira dans le fichier de désaveu.",
     "Mark as spam": "Marquer comme spam", "Not spam": "Pas du spam", "Marked as spam": "Marqué comme spam", "Spam mark removed": "Marquage spam retiré",
     "Waiting for Search Console data.": "En attente des données Search Console.", "Ready on": "Prêt le",
@@ -1002,7 +1005,8 @@
     "Linking page not in Google, or not indexable": "Page source absente de Google ou non indexable", "Barely or not useful: nofollow, sponsored, or on a page that passes nothing": "Peu ou pas utile : nofollow, sponsored, ou sur une page qui ne transmet rien",
     "Site traffic": "Trafic du site", "Ahrefs estimate: the linking site's monthly Google visits": "Estimation Ahrefs : visites Google mensuelles du site source",
     "Brand": "Marque", "Bare URL": "URL nue", "Exact keyword": "Mot-clé exact", "Partial keyword": "Mot-clé partiel", "Generic": "Générique",
-    "Automatic": "Automatique", "Set by hand.": "Choisi à la main.", "set by hand": "choisi à la main", "None of the above.": "Aucun des types précédents.",
+    "Automatic": "Automatique", "Set by hand.": "Choisi à la main.", "set by hand": "choisi à la main", "On the page:": "Sur la page :", "from the page": "lu sur la page",
+    "Your type ({type}) is used only when the page can't be read.": "Votre type ({type}) ne sert que si la page ne peut pas être lue.", "None of the above.": "Aucun des types précédents.",
     "Your brand or domain. The safest anchor.": "Votre marque ou domaine. L'ancre la plus sûre.",
     "Brand + keyword": "Marque + mot-clé",
     "Points elsewhere": "Pointe ailleurs", "The last check found this link pointing at another page of your site, not the target page you logged.": "Le dernier contrôle a trouvé ce lien vers une autre page de votre site, pas la page cible enregistrée.",

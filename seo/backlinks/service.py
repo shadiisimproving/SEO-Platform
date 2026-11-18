@@ -363,9 +363,14 @@ def list_for_site(engine: Engine, site_id: int) -> list[dict]:
         if item["source_index"] and item["source_index"]["state"] == source_index.NOT_INDEXED and item["check"].get("verdict") in ("counts", "weak"):
             item["check"]["verdict"] = "none"  # a page Google doesn't have passes nothing, whatever its link says
             item["check"]["reasons"] = [*item["check"].get("reasons", []), "source_not_indexed"]
-        # One set by hand wins. The worked-out one stays beside it, so the screen can say which is which.
-        item["anchor_auto"] = anchors.kind(row["anchor"] or row["seen_anchor"], brand, keywords)
-        item["anchor_type"] = row["anchor_kind"] or item["anchor_auto"]
+        # The anchor the link checker read on the page decides (SEO review 2026-11-17, B3): a typed anchor can be wrong, as on
+        # lavoixdunord.fr, logged "Créer Société Dubai" and set to Brand while the page says "Always Improving". A type set by
+        # hand only counts when nothing was read. The worked-out one stays beside it, so the screen can say which is which.
+        read = (row["seen_anchor"] or "").strip() or None
+        item["anchor_read"] = read
+        item["anchor_auto"] = anchors.kind(read or row["anchor"], brand, keywords)
+        item["anchor_by_hand"] = bool(row["anchor_kind"]) and read is None
+        item["anchor_type"] = row["anchor_kind"] if item["anchor_by_hand"] else item["anchor_auto"]
         item["site_traffic"] = traffic_of.get(row["domain"])  # Ahrefs' monthly organic visits to the linking website, only with its key
         answer.append(item)
     traffic = traffic_provider(engine, site_id) if traffic_provider else {}

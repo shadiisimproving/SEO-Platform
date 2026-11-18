@@ -528,7 +528,7 @@ Object.assign(window.FR, {
  "Works without a key, with a lower limit; a free key raises it.": "Marche sans clé, avec une limite plus basse ; une clé gratuite l'augmente.",
  "Cost, clicks and leads from Google Ads, via Google Analytics": "Coût, clics et leads de Google Ads, via Google Analytics",
  "Your pages were shown {n} times, {p}.": "Vos pages ont été montrées {n} fois, {p}.",
- "Many outbound links or a high spam score.": "Beaucoup de liens sortants ou un score de spam élevé.",
+ "Many outbound links or a spam score above 30.": "Beaucoup de liens sortants ou un score de spam supérieur à 30.",
  "Nothing yet: needs two checks of a keyword by the same tool.": "Rien pour l'instant : il faut deux relevés d'un mot-clé par le même outil.",
  "The site had its own error. Try Read again later.": "Le site a eu sa propre erreur. Réessayez plus tard avec Relire.",
  "In Settings → Google, follow How to get these keys to make new ones.": "Dans Réglages → Google, suivez Comment obtenir ces clés pour en créer de nouvelles.",

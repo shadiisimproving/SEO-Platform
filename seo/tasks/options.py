@@ -8,6 +8,7 @@ from urllib.parse import urlsplit
 
 from sqlalchemy import Engine, text
 
+from seo.backlinks import cleaner
 from seo.competitors.keywords import require_own
 from seo.metrics.service import _path
 from seo.serp import rankings, store
@@ -96,13 +97,13 @@ def _domains(conn, site_id: int) -> list[dict]:
     """Websites I'd like a link from: In consideration, and Link gaps (who links to my competitors)."""
     found: dict[str, dict] = {}
     for r in conn.execute(text("SELECT domain, spam_score FROM prospects WHERE site_id = :s LIMIT 3000"), {"s": site_id}).mappings():
-        found.setdefault(r["domain"], {"domain": r["domain"], "where": "consideration", "spam": (r["spam_score"] or 0) >= 30})
+        found.setdefault(r["domain"], {"domain": r["domain"], "where": "consideration", "spam": cleaner.is_spam_score(r["spam_score"])})
     for r in conn.execute(text(
         "SELECT r.domain, MAX(r.spam_score) AS spam, COUNT(DISTINCT r.competitor_id) AS rivals FROM competitor_referrers r "
         "JOIN site_competitors sc ON sc.competitor_id = r.competitor_id WHERE sc.site_id = :s AND r.removed_by_hand = 0 "
         "GROUP BY r.domain ORDER BY rivals DESC LIMIT 3000"
     ), {"s": site_id}).mappings():
-        found.setdefault(r["domain"], {"domain": r["domain"], "where": "gap", "spam": (r["spam"] or 0) >= 30, "rivals": int(r["rivals"])})
+        found.setdefault(r["domain"], {"domain": r["domain"], "where": "gap", "spam": cleaner.is_spam_score(r["spam"]), "rivals": int(r["rivals"])})
     return list(found.values())[:_MAX]
 
 

@@ -9,6 +9,8 @@
 
   const UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
   const SPAM_THRESHOLD = 30;
+  /* One spam line everywhere (SEO review 2026-11-17, B5): a score ABOVE 30 is spam, 30 itself is not, as on the server (cleaner.is_spam_score). */
+  const isSpamScore = (score) => score !== null && score !== undefined && score !== "" && Number(score) > SPAM_THRESHOLD;
   const ALLOWED_EXTENSIONS = /\.(csv|tsv|txt)$/i;
 
   const COLUMN_ALIASES = {
@@ -263,7 +265,7 @@
     let removedSpam = 0, removedNoUrl = 0, duplicates = 0, unknownSpam = 0;
     for (const r of dataRows) {
       const spam = parseSpam(cell(r, mapping.spam_score));
-      if (spam !== null && spam > SPAM_THRESHOLD) { removedSpam += 1; if (!keepSpam) continue; }
+      if (isSpamScore(spam)) { removedSpam += 1; if (!keepSpam) continue; }
       const url = cell(r, mapping.backlink_url).trim();
       const domain = rootDomain(url);
       if (!domain) { removedNoUrl += 1; continue; }
@@ -319,5 +321,5 @@
     return x[0] !== y[0] ? x[0] - y[0] : (x[1] - y[1]) * dir;
   }
 
-  return { UPLOAD_MAX_BYTES, SPAM_THRESHOLD, MULTI_SUFFIXES, CleanerError, checkUpload, cleanCsv, rootDomain, decodeCsv, parseTable, scaleOf, scaleRanks, compareScored };
+  return { UPLOAD_MAX_BYTES, SPAM_THRESHOLD, isSpamScore, MULTI_SUFFIXES, CleanerError, checkUpload, cleanCsv, rootDomain, decodeCsv, parseTable, scaleOf, scaleRanks, compareScored };
 });

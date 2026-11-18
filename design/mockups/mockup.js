@@ -926,12 +926,14 @@
     opr: row.opr ?? null, foundBy: row.found_by || null, gsc: row.gsc || null, disavow: Boolean(row.disavow), targetIndex: row.target_index || null,
     sourceIndex: row.source_index || null, anchorType: row.anchor_type || row.anchor_kind || null, siteTraffic: row.site_traffic ?? null,
     keyword: row.keyword || null, anchorKind: row.anchor_kind || null, anchorAuto: row.anchor_auto || null,
+    // The anchor the link checker read on the page decides the type; one set by hand only counts when nothing was read (B3).
+    anchorRead: row.anchor_read || null, anchorByHand: row.anchor_by_hand ?? Boolean(row.anchor_kind && !row.anchor_read),
   });
   const localLink = (id, x, site, status) => ({
     id, src: x.src, domain: window.BacklinkCleaner.rootDomain(x.src), site, target: x.target || null, anchor: x.anchor || null, status, auth: null, visits: 0, leads: 0, label: "none",
     cost: window.BulkLinks.parsePrice(x.cost) ?? 0, priceText: x.cost || null, mediator: x.mediator || null, owner: x.owner || null, placed: x.placed || null, utm: utmOf(x.utm_source, x.utm_medium, x.utm_campaign), before: null, after: null,
     linkType: x.link_type || null, due: x.due || null, renewal: x.renewal || null, contact: x.contact || null, platform: x.platform || null, notes: x.notes || null, createdAt: new Date().toISOString(),
-    keyword: x.keyword || null, anchorKind: x.anchor_kind || null, anchorType: x.anchor_kind || null,
+    keyword: x.keyword || null, anchorKind: x.anchor_kind || null, anchorType: x.anchor_kind || null, anchorByHand: Boolean(x.anchor_kind), anchorRead: null,
   });
   const serverRow = (x, site, status) => ({
     site_id: bl.sites.find((s) => s.host === site)?.id, source_url: x.src, status, target_url: x.target || null, anchor: x.anchor || null, link_type: x.link_type || null, placed: x.placed || null, due: x.due || null, renewal: x.renewal || null,
@@ -2493,7 +2495,7 @@
     return `${t("Missing columns")} : ${words}. ${t("Headers found")} : ${err.headers.join(", ")}.`;
   }
 
-  const isFlaggedRow = (row) => row.spam_score !== null && row.spam_score !== undefined && row.spam_score > 30;
+  const isFlaggedRow = (row) => window.BacklinkCleaner.isSpamScore(row.spam_score);
   function runCleaner(bytes, name, urlColumn = null) {
     try {
       // A file with no spam score is fine: every score is unknown. Spam is flagged and kept, never removed.
@@ -2833,10 +2835,13 @@
         if (bl.server) {
           const answer = await COMP.api("PUT", `backlinks/${editing.serverId}`, serverRow(record, site, status));
           // A saved row doesn't carry the worked-out anchor type. It still holds while the anchor text is the same.
-          const auto = (editing.anchor || "") === (record.anchor || "") ? editing.anchorAuto : null;
+          const auto = (editing.anchor || "") === (record.anchor || "") || editing.anchorRead ? editing.anchorAuto : null;
+          const read = editing.src === record.src ? editing.anchorRead : null; // a new address clears what was read on the old one
           Object.assign(editing, toBacklink(answer.saved, site));
           editing.anchorAuto = auto;
-          editing.anchorType = editing.anchorKind || auto;
+          editing.anchorRead = read;
+          editing.anchorByHand = Boolean(editing.anchorKind) && !read;
+          editing.anchorType = editing.anchorByHand ? editing.anchorKind : auto || editing.anchorKind;
           takeProspects(answer.prospects_removed);
         } else {
           const key = window.BulkLinks.sourceKey(record.src);
