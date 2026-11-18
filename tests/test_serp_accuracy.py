@@ -300,3 +300,18 @@ def test_two_pages_compete_only_with_a_real_second_page_or_both_ranked(world):
     store.save_check(world.engine, c, "google", Answer("Searlo", "FR", 10, rows, "not_captured", [], 1))
     two = {r["keyword"]: r["two_pages"] for r in rankings.listing(world.engine, world.site)["rows"]}
     assert two == {"a": False, "b": True, "c": True}
+
+
+def test_one_tools_two_glitched_answers_never_mark_another_tools_check(world):
+    """Code review 2026-11-18, #10. SerpApi searched "creer societe dubai" and "créer société dubai" in one run and got the
+    same wrong page twice; a correct Bright Data check agrees with neither. The twin search can't back SerpApi, nor can a
+    second SerpApi search of one batch: Bright Data stays ok. A third tool agreeing with SerpApi still counts."""
+    plain, accented = track(world, "creer societe dubai", "créer société dubai")
+    put(world, plain, "SerpApi", WRONG, hours_ago=2)
+    put(world, accented, "SerpApi", WRONG, hours_ago=2)
+    put(world, plain, "SerpApi", WRONG, hours_ago=1.5)  # the same keyword again, half an hour later: the same run
+    bright = put(world, plain, "Bright Data", HONEST, hours_ago=1)
+    assert status(world, bright)[0] == "ok"  # was suspect, "which another check backs"
+    put(world, plain, "Searlo", WRONG, hours_ago=0.5)  # another tool sees SerpApi's page: now it is backed
+    rejudge(world, plain)
+    assert status(world, bright)[0] == "suspect"

@@ -229,10 +229,19 @@ def odd_one_out(check: "_Judged", pool: list) -> "_Judged | None":
     if any(_agree(check, same) for same in near if same.tool == check.tool and _apart(check, same) >= OWN_BACKING_HOURS):
         return None
     for other in others:
-        third = [x for x in pool if _near(other, x) and x.id != check.id and x.tool != check.tool and len(x.sites) >= MIN_SITES]
+        third = [x for x in pool if _near(other, x) and x.id != check.id and x.tool != check.tool and len(x.sites) >= MIN_SITES and _backs(other, x)]
         if any(_agree(other, x) for x in third):
             return other
     return None
+
+
+def _backs(other: "_Judged", x: "_Judged") -> bool:
+    """Whether x can vouch for `other`: another tool, or the same tool from another run (OWN_BACKING_HOURS apart). A
+    search of the same keyword spelt with other accents by the same tool never does, even later: it is the same tool
+    reading the same page twice, and one glitch can be in both (code review 2026-11-18, #10)."""
+    if x.tool != other.tool:
+        return True
+    return x.target == other.target and _apart(other, x) >= OWN_BACKING_HOURS
 
 
 def cross_reason(other_tool: str, other_at) -> str:
