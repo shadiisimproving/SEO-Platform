@@ -28,6 +28,12 @@
   const keyEvents = (d) => d?.lead_kind === "key_events" || d?.kind === "key_events";
   const mixed = (d) => d?.lead_kind === "mixed" || d?.kind === "mixed";
 
+  /* A number card's label on a phone has room for about 18 letters: the mixed total gets a short name there, its full name in
+     the card's tip ("Leads and key events.", FR "Leads et événements clés."). */
+  const SHORT_WORDS = { Leads: "Leads + key events" };
+  function short(english, d) {
+    return mixed(d) && SHORT_WORDS[english] ? SHORT_WORDS[english] : word(english, d);
+  }
   function word(english, d) {
     if (mixed(d)) return MIXED_WORDS[english] || english;
     return keyEvents(d) ? KEY_EVENT_WORDS[english] || english : english;
@@ -76,7 +82,7 @@
     return list.map((item) => line("warn", esc(fill(t("This Google Analytics property also records {hosts}: check its data streams. Those visits are left out."), { hosts: item.hosts.map((h) => h.host).join(", ") })) + (item.host ? ` <span class="muted">(${esc(item.host)})</span>` : ""))).join("");
   }
 
-  window.GA4W = { word, notes, hostsNote, keyEvents, mixed };
+  window.GA4W = { word, short, notes, hostsNote, keyEvents, mixed };
   window.FR = window.FR || {};
   Object.assign(window.FR, {
     "Key events": "Événements clés", "key events": "événements clés", "Key event rate": "Taux d'événements clés", "Pages with key events": "Pages avec des événements clés",
@@ -85,6 +91,7 @@
     "No leads in this period": "Aucun lead sur cette période", "No key events in this period": "Aucun événement clé sur cette période",
     "No leads or key events in this period": "Aucun lead ni événement clé sur cette période",
     "Leads and key events": "Leads et événements clés", "leads and key events": "leads et événements clés",
+    "Leads + key events": "Leads + évts clés", "Leads and key events.": "Leads et événements clés.",
     "Sites without lead events picked count every key event": "Les sites sans leads choisis comptent tous leurs événements clés",
     "Counting every Google Analytics key event, not only enquiries.": "Tous les événements clés de Google Analytics sont comptés, pas seulement les demandes.",
     "Pick which are leads in Settings → Sites.": "Choisissez ceux qui sont des leads dans Réglages → Sites.",
