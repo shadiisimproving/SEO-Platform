@@ -107,8 +107,9 @@ def test_a_page_drop_names_the_real_rival_change_two_days_before_it(engine):
     rows = {row["page"]: row for row in todo if row["kind"] == "page_drop"}
     sub = rows["https://mine.example/subscription/"]
     assert sub["rival"] == {"event_id": real, "host": "rival.example", "url": "https://rival.example/abonnement/", "path": "/abonnement/", "day": "2026-10-12",
-                            "days_before": 2, "pair_id": pair, "competitor_id": rival, "site_id": site}
-    assert sub["words"]["rival"] == ["Rival changed {path} {n} days before", {"path": "/abonnement/", "n": 2}]
+                            "days_before": 2, "pair_id": pair, "competitor_id": rival, "site_id": site, "dated": False}
+    # The page gives no modified date: the day is the one the app saw the change, said as "seen" (N8, 2026-11-18).
+    assert sub["words"]["rival"] == ["Rival changed {path}, seen {n} days before", {"path": "/abonnement/", "n": 2}]
     assert "rival" not in rows["https://mine.example/quiet/"] and "rival" not in rows["https://mine.example/quiet/"]["words"]
 
 
@@ -121,7 +122,7 @@ def test_a_rival_change_during_the_drop_week_says_during(engine):
     _event(engine, "https://rival.example/abonnement/", "2026-10-25 09:00:00")  # after the drop's last day: not behind it
     row = next(r for r in today.today(engine, site)["todo"] if r["kind"] == "page_drop")
     assert row["rival"]["day"] == "2026-10-16" and row["rival"]["days_before"] == 0
-    assert row["words"]["rival"] == ["Rival changed {path} during the drop", {"path": "/abonnement/"}]
+    assert row["words"]["rival"] == ["Rival changed {path}, seen during the drop", {"path": "/abonnement/"}]
 
 
 def test_a_keyword_drop_names_the_rival_just_above_it(engine):
@@ -143,5 +144,5 @@ def test_a_keyword_drop_names_the_rival_just_above_it(engine):
     down = today.today(engine, site)["going_down"]
     move = next(m for m in down if m["type"] == "keyword")
     assert move["rival"]["event_id"] == real and move["rival"]["days_before"] == 3 and move["rival"]["competitor_id"] == rival and move["rival"]["pair_id"] is None
-    assert move["words"]["rival"] == ["Rival changed {path} {n} days before", {"path": "/abonnement/", "n": 3}]
+    assert move["words"]["rival"] == ["Rival changed {path}, seen {n} days before", {"path": "/abonnement/", "n": 3}]
     assert other  # a second rival exists and is not named
