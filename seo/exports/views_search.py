@@ -198,20 +198,44 @@ def keywords(engine, args) -> Report:
         return of(row).get("main") or {}
 
     def position(row):
+        """The position the screen shows: none for a suspect check (greyed on screen, it counts for nothing)."""
         found = main(row)
-        return found.get("p")
+        return None if found.get("status") == "suspect" else found.get("p")
+
+    def status(row):
+        """Why a position needs a second look: a suspect check, or tools that disagree (rankings.engine_view)."""
+        if main(row).get("status") == "suspect":
+            return "Suspect"
+        return "Tools disagree" if of(row).get("disagree") else ""
+
+    def reading(found):
+        if not found or not found.get("tool"):
+            return None
+        place = f"#{found['p']}" if found.get("p") else f">{found.get('depth')}"
+        return f"{found['tool']} {place}"
+
+    def also(row):
+        """The answer the position column doesn't hold: the suspect check's own place, or the other tool's when nothing settled it."""
+        if main(row).get("status") == "suspect" and main(row).get("p"):
+            return reading(main(row))
+        return reading((of(row).get("disagree") or {}).get("also"))
 
     columns = [
         C("keyword", "Keyword", "text", width=4),
         C("site", "Site", "text", width=2.4),
         C("country", "Country", "text", width=1.1),
         C("position", "Position", "int", get=position),
+        C("check_status", "Check status", "text", width=1.6, get=status, translate=True),
+        C("also_seen", "Also seen", "text", width=1.6, get=also),
         C("change", "Change", "delta", get=lambda r: of(r).get("change")),
         C("own", "Own tool average", "position", get=lambda r: of(r).get("own")),
-        C("impressions", "Impressions", "int", get=lambda r: of(r).get("impressions")),
-        C("clicks", "Clicks", "int", get=lambda r: of(r).get("clicks")),
-        C("volume", "Searches a month", "int"),
-        C("page", "Page", "url", width=4.2, get=lambda r: main(r).get("url") or r.get("page")),
+        C("impressions", "Impressions, 28 days", "int", get=lambda r: of(r).get("impressions")),
+        C("clicks", "Clicks, 28 days", "int", get=lambda r: of(r).get("clicks")),
+        # "volume" was never search volume: Search Console's impressions over 28 days. On Google that is the column above.
+        *([] if name == "google" else [C("volume", "Google impressions, 28 days", "int")]),
+        # The page that ranked, from the check shown; Search Console's most-shown page is another fact, in its own column.
+        C("page", "Ranking page", "url", width=4.2, get=lambda r: main(r).get("url")),
+        C("gsc_page", "Most shown in Search Console", "url", width=4.2),
         C("tool", "Checked with", "text", width=1.6, get=lambda r: main(r).get("tool")),
         C("checked_at", "Checked", "datetime", get=lambda r: main(r).get("checked_at")),
     ]

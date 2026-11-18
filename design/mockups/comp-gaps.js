@@ -207,9 +207,12 @@
     const stat = (n, label) => `<span class="cg-stat"><b class="tabular">${UI.num(n)}</b> ${t(label)}</span>`;
     // Good ones leave out old links unless they are asked for; the app's own flags on good ones are counted apart (links A1, B1).
     const oldOut = S.old ? 0 : f?.old || 0;
-    const stats = f && f.found ? `${stat(f.found, "Domains found")}${stat(f.filtered, "Flagged as spam")}${stat(f.good - oldOut, "Good ones")}${f.old ? stat(f.old, S.old ? "Old links, included" : "Old links, left out") : ""}${f.app_flagged ? `<span class="cg-stat" tabindex="0" data-tip="${esc(t("The file's spam score keeps them, but the app's own check flagged them. Each row says what it saw."))}"><b class="tabular">${UI.num(f.app_flagged)}</b> ${t("App flagged")}</span>` : ""}` : "";
+    // The App flagged count is of the rows the table can show: with old links left out, only current ones (final re-check 3.5).
+    const appFlagged = S.old ? f?.app_flagged || 0 : f?.app_flagged_current ?? f?.app_flagged ?? 0;
+    const stats = f && f.found ? `${stat(f.found, "Domains found")}${stat(f.filtered, "Flagged as spam")}${stat(f.good - oldOut, "Good ones")}${f.old ? stat(f.old, S.old ? "Old links, included" : "Old links, left out") : ""}${appFlagged ? `<span class="cg-stat" tabindex="0" data-tip="${esc(t("The file's spam score keeps them, but the app's own check flagged them. Each row says what it saw."))}"><b class="tabular">${UI.num(appFlagged)}</b> ${t("App flagged")}</span>` : ""}` : "";
+    // Of the good ones the table can show (old ones too once asked for): how many the server sent, when it capped the list.
     const goodSent = allRows().filter((g) => !isFlagged(g) && !oldHidden(g)).length;
-    const capped = f && f.good - oldOut > goodSent ? `<span class="cg-stat sec">${esc(t("{sent} of {total}, most competitors first").replace("{sent}", UI.num(goodSent)).replace("{total}", UI.num(f.good)))}</span>` : "";
+    const capped = f && f.good - oldOut > goodSent ? `<span class="cg-stat sec">${esc(t("{sent} of {total}, most competitors first").replace("{sent}", UI.num(goodSent)).replace("{total}", UI.num(f.good - oldOut)))}</span>` : "";
     const checking = f?.checking ? `<span class="cg-stat sec">${UI.icon("refresh-cw", "spin")}<b class="tabular">${UI.num(f.checking)}</b> ${t("Being checked")}</span>` : "";
     // A competitor with nothing yet is named here, with the way to feed it.
     const empty = d.competitors.some((c) => c.has_data) ? d.competitors.filter((c) => !c.has_data) : [];

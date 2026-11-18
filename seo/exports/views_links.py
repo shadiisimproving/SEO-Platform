@@ -26,11 +26,17 @@ def _words(table: dict):
     return lambda value: table.get(value, str(value or "").replace("_", " ").capitalize())
 
 
+ANCHOR_TYPES = {"brand": "Brand", "brand_kw": "Brand + keyword", "url": "Bare URL", "exact": "Exact keyword", "partial": "Partial keyword", "generic": "Generic", "other": "Other"}  # backlinks-seo.js
+
+
 BACKLINK_COLUMNS = [
     C("source_url", "Linking page", "url", width=4.4),
     C("domain", "Site", "text", width=2.2, pdf=False),
     C("target_url", "My page", "text", width=2.6),
-    C("anchor", "Link text", "text", width=2.2, get=lambda r: r.get("anchor") or (r.get("check") or {}).get("anchor") or r.get("anchor_auto")),
+    # The anchor the link checker read on the page, as the screen shows it (links B3); the one typed in stays beside it.
+    C("anchor", "Link text", "text", width=2.2, get=lambda r: r.get("anchor_read") or (r.get("check") or {}).get("anchor") or r.get("anchor")),
+    C("anchor_typed", "Link text typed in", "text", width=2.2, get=lambda r: r.get("anchor") if r.get("anchor") and r.get("anchor") != (r.get("anchor_read") or r.get("anchor")) else None),
+    C("anchor_type", "Anchor type", "text", width=1.6, get=lambda r: ANCHOR_TYPES.get(r.get("anchor_type") or "", None), translate=True),
     C("status", "Status", "text", width=1.2, get=lambda r: _words(STATUS)(r.get("status")), translate=True),
     C("authority", "Authority", "int"),
     C("spam_score", "Spam score", "float"),

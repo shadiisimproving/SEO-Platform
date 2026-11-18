@@ -17,7 +17,7 @@ from urllib.parse import urlsplit
 
 from sqlalchemy import Engine, bindparam, text
 
-from seo.competitors import history, pairs, quality, tracking
+from seo.competitors import gaps, history, pairs, quality, tracking
 from seo.competitors.keywords import _iso, require_own
 from seo.competitors.pages import fold
 from seo.competitors.suggest import domain_of, my_domains
@@ -483,25 +483,42 @@ def _links(conn, site_id: int, competitor_id: int, host: str) -> dict:
     rows = [r for r in rows if r["domain"] not in mine and r["domain"] != domain_of(host)]
     logged = conn.execute(text("SELECT domain, status FROM backlinks WHERE site_id = :s"), {"s": site_id}).all()
     linking_me = {domain for domain, status in logged if status in ("live", "found")}
+    # Old links (Link gaps' rule, gaps.old_link): a domain whose every link to them was last seen 6+ months before its file is
+    # probably gone. It counts apart, as "+N old" (final re-check 2026-11-18, 3.4).
+    dated: dict[str, list[dict]] = {}
+    for row in conn.execute(
+        text("SELECT l.domain, l.last_seen, r.last_seen_at AS file_at FROM competitor_referrer_links l "
+             "LEFT JOIN competitor_referrers r ON r.competitor_id = l.competitor_id AND r.domain = l.domain WHERE l.competitor_id = :c"),
+        {"c": competitor_id},
+    ).mappings():
+        dated.setdefault(row["domain"], []).append({
+            "competitor_id": competitor_id, "old": gaps.is_old(row["last_seen"], row["file_at"]), "last_seen": row["last_seen"].isoformat() if row["last_seen"] else "",
+        })
+    old_domains = {domain for domain, found in dated.items() if gaps.old_link(found, {competitor_id})}
 
     def spam(row) -> bool:
         return quality.verdict(row["spam_score"], row["quality"], row["reason"], decisions.get(row["domain"]))[0] == quality.SPAM
 
-    top = sorted(rows, key=lambda r: (spam(r), -(r["authority"] if r["authority"] is not None else -1), r["domain"]))[:TOP_LINKS]
+    def old(row) -> bool:
+        return row["domain"] in old_domains and not spam(row)
+
+    top = sorted(rows, key=lambda r: (spam(r), old(r), -(r["authority"] if r["authority"] is not None else -1), r["domain"]))[:TOP_LINKS]
     flagged = sum(1 for r in rows if spam(r))
+    aged = sum(1 for r in rows if old(r))
     sources = sorted({"Common Crawl" if r["in_common_crawl"] and not r["source_label"] else r["source_label"] or "Common Crawl" for r in rows})
     # Spam never counts: five spam domains made a rival "Ahead" (SEO review 2026-11-17, #11). It's said apart, as "+5 flagged".
     # My number comes from my Backlinks list, theirs from their files or Common Crawl: two sources, so the screen names both and
     # calls no winner (`same_source` false).
     return {
-        "linking_domains": len(rows) - flagged if rows else None,
+        "linking_domains": len(rows) - flagged - aged if rows else None,
         "linking_flagged": flagged,
+        "linking_old": aged,
         "linking_sources": sources,
         "my_linking_domains": len(linking_me) if logged else None,
         "my_linking_source": "Backlinks",
         "same_source": False,
-        "not_to_me": sum(1 for r in rows if r["domain"] not in linking_me and not spam(r)),
-        "top": [{"domain": r["domain"], "authority": r["authority"], "authority_label": r["authority_label"], "spam": spam(r)} for r in top],
+        "not_to_me": sum(1 for r in rows if r["domain"] not in linking_me and not spam(r) and not old(r)),
+        "top": [{"domain": r["domain"], "authority": r["authority"], "authority_label": r["authority_label"], "spam": spam(r), "old": old(r)} for r in top],
     }
 
 

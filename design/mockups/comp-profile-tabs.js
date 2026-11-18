@@ -492,7 +492,7 @@
     const linkCount = [known(l.linking_domains) ? many(l.linking_domains, "{n} website links to them.", "{n} websites link to them.") : "", l.not_to_me ? many(l.not_to_me, "{n} of these doesn't link to you.", "{n} of these don't link to you.") : ""].filter(Boolean).join(" ");
     const linkLine = linkCount ? `<p class="pt-gap-line pt-link-count"><span>${esc(linkCount)}</span>${l.not_to_me ? `<button class="btn btn-small" data-pt-gaps>${icon("link-2")}${t("Open Link gaps")}</button>` : ""}</p>` : "";
     const links = top.length
-      ? `${linkLine}<ul class="rows pt-links">${top.slice(0, 10).map((d) => `<li><div class="what"><span class="with-logo">${UI().siteLogo(d.domain, 16)}<span class="logo-text mono" dir="ltr">${esc(d.domain)}</span></span>${d.spam ? ` ${UI().status("warn", t("Likely spam"))}` : ""}</div><div class="acts small muted tabular">${known(d.authority) ? linkScore(d) : ""}</div></li>`).join("")}</ul>`
+      ? `${linkLine}<ul class="rows pt-links">${top.slice(0, 10).map((d) => `<li><div class="what"><span class="with-logo">${UI().siteLogo(d.domain, 16)}<span class="logo-text mono" dir="ltr">${esc(d.domain)}</span></span>${d.spam ? ` ${UI().status("warn", t("Likely spam"))}` : d.old ? ` <span class="tag cg-old" data-tip="${esc(t("Domains whose links were last seen more than 6 months before their file. Probably gone."))}">${icon("calendar-days")}${t("Old link")}</span>` : ""}</div><div class="acts small muted tabular">${known(d.authority) ? linkScore(d) : ""}</div></li>`).join("")}</ul>`
       : `<div class="pt-empty-links"><p class="small sec">${esc(t("No linking sites known yet."))}${UI().tip("Upload a CSV of links to {host} from any backlink tool (SEMrush, Ubersuggest, Ahrefs…), or add the ones you know one by one.", { host: p.host })}</p><div class="pt-btns">${linkButtons(true)}</div></div>`;
     const build = (ins.build || []);
     const main = build.filter((b) => !b.more), more = build.filter((b) => b.more);
@@ -530,7 +530,7 @@
     const theirLinks = bothMoz ? f.moz_links : known(l.linking_domains) ? l.linking_domains : f.moz_links;
     const myLinks = bothMoz ? f.my_moz_links : known(l.my_linking_domains) ? l.my_linking_domains : f.my_moz_links;
     const linkSource = bothMoz ? t("from Moz") : fromFiles ? t("Different sources: no winner") : known(f.moz_links) ? t("from Moz") : "";
-    const theirSrc = fromFiles ? [fill("from {source}", { source: (l.linking_sources || []).join(", ") || t("Link gaps") }), l.linking_flagged ? fill("+{n} flagged as spam", { n: num(l.linking_flagged) }) : ""].filter(Boolean).join(" · ") : "";
+    const theirSrc = fromFiles ? [fill("from {source}", { source: (l.linking_sources || []).join(", ") || t("Link gaps") }), l.linking_flagged ? fill("+{n} flagged as spam", { n: num(l.linking_flagged) }) : "", l.linking_old ? fill("+{n} old links", { n: num(l.linking_old) }) : ""].filter(Boolean).join(" · ") : "";
     const mySrc = fromFiles && known(myLinks) ? t("from your Backlinks list") : "";
     const h = f.history?.status;
     const items = [
@@ -919,7 +919,7 @@
     "How fast they publish": "À quel rythme ils publient",
     "How often they edit": "À quelle fréquence ils modifient", "Edits each month": "Modifications par mois",
     "Pages edited each month": "Pages modifiées par mois", "Pages edited": "Pages modifiées",
-    "Different sources: no winner": "Sources différentes : pas de gagnant", "from {source}": "d'après {source}", "+{n} flagged as spam": "+{n} signalés comme spam",
+    "Different sources: no winner": "Sources différentes : pas de gagnant", "from {source}": "d'après {source}", "+{n} flagged as spam": "+{n} signalés comme spam", "+{n} old links": "+{n} anciens liens", "Old link": "Ancien lien",
     "from your Backlinks list": "d'après votre liste de backlinks",
     "Pages they already had where the app saw a change: title, text, headings and so on. A page counts once, however many things changed. Counted from the day the app started watching.": "Pages qu'ils avaient déjà et où l'app a vu un changement : titre, texte, intertitres, etc. Une page compte une fois, quel que soit le nombre de changements. Compté depuis le jour où l'app a commencé à les suivre.",
     "Edits each month, them against you": "Modifications par mois, eux face à vous", "Their edits each month": "Leurs modifications par mois",

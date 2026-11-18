@@ -56,7 +56,7 @@ def _fold_pages(seen: dict) -> dict:
 
 ENGINES = connections.ENGINE_ORDER
 DEVICE = "desktop"  # the screen shows desktop. A mobile check is another target, so it can never be compared with these.
-HOURS_TO_AGREE = 48
+HOURS_TO_AGREE = store.CROSS_HOURS  # tools disagree only between checks this close (store.clash)
 OWN_DAYS = 28
 
 
@@ -126,6 +126,10 @@ def _load_checks(conn, keyword_ids: list[int], hosts: list[str]) -> dict[tuple[i
     return by_target
 
 
+def _read(seen: Seen, host: str) -> store.Read:
+    return store.Read(seen.check_id, seen.tool, seen.depth, seen.at, seen.position(host), can_miss=seen.status == "ok")
+
+
 def _view(seen: Seen, host: str, now: datetime, home: bool, verdict: str | None = None) -> dict:
     best = seen.own(host)
     return {
@@ -166,6 +170,17 @@ def engine_view(checks: list[Seen], host: str, country: str, language: str, orde
     if main is None and home:  # only suspect results: shown as such, and counted as nothing
         main, flagged_only = home[-1], True
 
+    # Tools that disagree (store.settle, the rule Competitors shares): a third tool's check of the same days decides which is
+    # shown; with none, the newest stays and the row carries the other answer too ("also").
+    disagree = None
+    if main is not None and not flagged_only:
+        reads = {seen.check_id: _read(seen, host) for seen in home}
+        witnesses = [reads[seen.check_id] for seen in home if store.can_witness(seen.why)]
+        locked = bool(main_tool) and main.tool == main_tool and passed_over is None
+        shown, disagree = store.settle(reads[main.check_id], [reads[seen.check_id] for seen in latest_by_tool.values()], witnesses, gap, locked)
+        if shown.id != main.check_id:
+            main = next(seen for seen in good if seen.check_id == shown.id)
+
     change, change_note, trend, move, was, url_changed = None, None, [], None, None, False
     if main is not None and not flagged_only:
         same = [seen for seen in good if seen.kind() == main.kind()]
@@ -188,15 +203,6 @@ def engine_view(checks: list[Seen], host: str, country: str, language: str, orde
     if main is not None:
         same_before = [seen for seen in good if seen.kind() == main.kind() and seen.check_id < main.check_id]
         verdict = "suspect" if main.status == "suspect" else ("ok" if same_before or (own and own.get("position") is not None) else "unverifiable")
-
-    disagree = None
-    fresh = [seen for seen in latest_by_tool.values() if seen.position(host) is not None]
-    for i, one in enumerate(fresh):
-        for other in fresh[i + 1:]:
-            hours = abs((one.at - other.at).total_seconds()) / 3600
-            diff = abs(one.position(host) - other.position(host))
-            if hours <= HOURS_TO_AGREE and diff > gap and (disagree is None or diff > disagree["diff"]):
-                disagree = {"tools": [one.tool, other.tool], "diff": diff}
 
     others = [_view(seen, host, now, True) for name, seen in latest_by_tool.items() if main is None or name != main.tool]
     others.sort(key=lambda row: place.get(row["tool"], len(place)))

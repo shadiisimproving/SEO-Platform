@@ -10,7 +10,7 @@
   /* Every table, Who is moving too since 2026-11-10, has pages (table-pages.js), as every long table in the app. */
   const FIRST_ROWS = { moves: 5 }, MORE_ROWS = 50;
   const PAGES = { rivals: "cs-rivals", keywords: "cs-keywords", links: "cs-links", flagged: "cs-flagged", moves: "cs-moves" };
-  const S = { site: null, token: 0, data: {}, errors: {}, limit: {}, list: null, order: null, orderSite: null, find: "", sort: null, kwRival: "", kwSort: null, lnSort: null, flaggedOpen: false, linkQ: "", mvKind: "all", mvRival: "", mvDays: 30, low: "moves" };
+  const S = { site: null, token: 0, data: {}, errors: {}, limit: {}, list: null, order: null, orderSite: null, find: "", sort: null, kwRival: "", kwSort: null, lnSort: null, lnOld: false, flaggedOpen: false, linkQ: "", mvKind: "all", mvRival: "", mvDays: 30, low: "moves" };
   /* The simpler screens (UI.simple(), plan section 2): the head says how the positions were checked, four number cards, the
      Competitors table with one ⋯ per row (Tracking and Remove), then one card with three tabs: They beat you on (first),
      Who is moving (all its filters) and Shared links. Each tab keeps its ids (#cs-keywords, #cs-moves, #cs-links), so a card
@@ -726,12 +726,14 @@
   function siteState(g, s, inFold = false) {
     const label = `<span class="mono small" dir="auto">${esc(s.host)}</span>`;
     const lost = s.lost_link ? `<span class="tag cg-lost">${UI.icon("link-2-off")}${t("Lost link")}</span>` : "";
+    // Good only through links last seen 6+ months before their file (Link gaps' rule): said on the site's line.
+    const old = s.quality === "good" && s.old_link ? `<span class="tag cg-old">${UI.icon("calendar-days")}${esc(fill("Old link (last seen {day})", { day: UI.fmtDateOnly(s.old_link.last_seen) }))}</span>` : "";
     let state;
     if (s.in_consideration || COMP.gapConsidered(g.domain, s.host)) state = `<span class="tag cp-yours">${t("In consideration")}</span>`;
     else if (s.quality === "good") state = `<button class="btn btn-small" data-cs-add="${esc(g.domain)}" data-cs-add-site="${s.id}" data-cs-add-host="${esc(s.host)}" aria-label="${esc(fill("Add {domain} for {site}", { domain: g.display || g.domain, site: s.host }))}">${UI.icon("plus")}${t("Add")}</button>`;
     else if (s.quality === "spam") state = `<span class="tag cg-flag">${UI.icon("ban")}${t("Spam")}</span><span class="second cg-why">${COMP.spamWhyHtml(s)}</span>${inFold ? "" : `<button class="link-btn small" data-cs-review="${s.id}">${t("Open Link gaps")}</button>`}`;
     else state = `<span class="tag">${t("Being checked")}</span>`;
-    return `<li>${label}<span class="cs-state">${lost}${state}</span></li>`;
+    return `<li>${label}<span class="cs-state">${lost}${old}${state}</span></li>`;
   }
 
   const linkRow = (g, inFold = false) => `<tr>
@@ -765,17 +767,22 @@
     if (q !== S.linkQ) { S.linkQ = q; TP.reset(PAGES.flagged); }
     const find = (g) => TP.matches(PAGES.links, g.domain, g.display, g.title);
     const value = LN_SORTS[S.lnSort?.key] || (() => 0);
-    const goodRows = sortList(d.gaps.filter(find), value, S.lnSort), flaggedRows = sortList(d.flagged.filter(find), value, S.lnSort);
+    // Old links (final re-check 2026-11-18, 3.4): left out of the good ones, as on Link gaps, until the chip asks for them.
+    const oldRows = S.lnOld ? d.old || [] : [];
+    const goodRows = sortList([...d.gaps, ...oldRows].filter(find), value, S.lnSort), flaggedRows = sortList(d.flagged.filter(find), value, S.lnSort);
     const page = TP.view(PAGES.links, goodRows), flaggedPage = TP.view(PAGES.flagged, flaggedRows);
-    const search = d.gaps.length + d.flagged.length >= FIND_FROM || q ? `<div class="cp-tools cs-tools">${TP.search(PAGES.links, t("Search domains"))}</div>` : "";
+    const oldChip = f.old ? `<button type="button" class="chip cg-old-chip" data-cs-old aria-pressed="${S.lnOld}" data-tip="${esc(t("Domains whose links were last seen more than 6 months before their file. Probably gone."))}">${t("Include old links")}<b>${UI.num(f.old)}</b></button>` : "";
+    const findBox = d.gaps.length + d.flagged.length >= FIND_FROM || q ? TP.search(PAGES.links, t("Search domains")) : "";
+    const search = findBox || oldChip ? `<div class="cp-tools cs-tools">${findBox}${oldChip}</div>` : "";
     const facts = [
       fill("{with} of {total} competitors have link data", { with: UI.num(d.rivals_with_data), total: UI.num(d.rivals_total) }),
+      f.old ? `${UI.num(f.old)} ${t(S.lnOld ? "Old links, included" : "Old links, left out").toLowerCase()}` : "",
       f.checking ? plural(f.checking, "{n} domain still being checked", "{n} domains still being checked") : "",
     ].filter(Boolean).join(" · ");
     const capped = (sent, total) => (total > sent ? fill("{sent} of {total}, most competitors first", { sent: UI.num(sent), total: UI.num(total) }) : null);
     const flaggedBody = flaggedRows.length ? linkTable("cs-flagged-table", PAGES.flagged, flaggedPage, t("domains"), capped(d.flagged.length, f.flagged), true) : `<p class="small sec cs-find-count">${esc(fill("No domain matches “{text}”.", { text: q }))}</p>`;
     const flagged = d.flagged.length ? `<div class="cs-flagged-wrap"><details class="fold cs-flagged" ${S.flaggedOpen ? "open" : ""}><summary>${UI.icon("chevron-right")}${esc(plural(f.flagged, "{n} flagged as spam", "{n} flagged as spam"))}</summary>${flaggedBody}</details></div>` : "";
-    const good = goodRows.length ? linkTable("cs-links-table", PAGES.links, page, t("domains"), capped(d.gaps.length, f.good))
+    const good = goodRows.length ? linkTable("cs-links-table", PAGES.links, page, t("domains"), capped(d.gaps.length + oldRows.length, f.good + (S.lnOld ? f.old || 0 : 0)))
       : q && d.gaps.length ? noneFound(fill("No domain matches “{text}”.", { text: q }), PAGES.links)
         : COMP.empty(t("No good domains yet"), t("No domain has passed the spam check yet."));
     return `${linksHead(title, `${t("Most competitors first.")} ${facts}.`, d)}${search}${good}${flagged}`;
@@ -1015,6 +1022,13 @@
         TP.reset(PAGES.keywords);
         paintSection("keywords");
         UI.$(`[data-cs-kw-sort="${key}"]`)?.focus({ preventScroll: true });
+        return;
+      }
+      if (hit("[data-cs-old]")) {
+        S.lnOld = !S.lnOld;
+        TP.reset(PAGES.links);
+        paintSection("links");
+        UI.$("[data-cs-old]")?.focus({ preventScroll: true });
         return;
       }
       if ((el = hit("[data-cs-ln-sort]"))) {
