@@ -161,7 +161,7 @@
     "Timed out": "Délai dépassé", "Request failed": "Requête échouée", "Key refused": "Clé refusée", "Out of credits": "Plus de crédits",
     "Stopped: asked to slow down": "Arrêté : demande de ralentir",
     // the shared date range
-    "vs": "vs", "Dates": "Dates", "This month": "Ce mois-ci", "Last month": "Mois dernier", "Last 24 hours": "Dernières 24 heures", "Last 7 days": "7 derniers jours", "Last 28 days": "28 derniers jours",
+    "vs": "vs", "Dates": "Dates", "This month": "Ce mois-ci", "Last month": "Mois dernier", "Last 24 hours": "Dernières 24 heures", "Last {n} saved days": "{n} jours enregistrés", "Last 7 days": "7 derniers jours", "Last 28 days": "28 derniers jours",
     "Last 3 months": "3 derniers mois", "Last 6 months": "6 derniers mois", "Last 12 months": "12 derniers mois", "Last 16 months": "16 derniers mois", "vs last year": "vs l'an dernier",
     "No comparison: Search Console doesn't keep that far back.": "Sans comparaison : la Search Console ne remonte pas aussi loin.",
     // Keywords

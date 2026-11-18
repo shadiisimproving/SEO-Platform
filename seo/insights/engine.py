@@ -203,15 +203,21 @@ def _alerts(engine: Engine, ctx: data.Ctx) -> None:
             raised_at[row["k"]] = max(raised_at.get(row["k"]) or row["created_at"], row["created_at"])
         wanted = {row["finding_key"] for row in big}
         for row in big:
+            detail = {"finding_key": row["finding_key"], "finding": row["kind"], "detail": f"~{round(row['at_stake'])} clicks/month at stake"}  # the row's Open goes to Insights
             if row["finding_key"] in raised:
                 if raised_at[row["finding_key"]] >= row["first_seen"]:
+                    # The same drop, still open: its title and stake follow the finding's numbers of this run, so Today
+                    # never says "−60%, ~80 a month" for a drop now at −57% and 62 (expert review 2026-11-17, 3.5).
+                    conn.execute(
+                        text("UPDATE alerts SET title = :t, detail = :d WHERE site_id = :s AND kind = :k AND JSON_UNQUOTE(JSON_EXTRACT(detail, '$.finding_key')) = :f"),
+                        {"s": ctx.site_id, "k": ALERT_KIND, "f": row["finding_key"], "t": _alert_title(row)[:300], "d": json.dumps(detail, ensure_ascii=False)},
+                    )
                     continue
                 # Seen for an earlier appearance of the same drop: this one is new, so it's raised again (F109).
                 conn.execute(
                     text("DELETE FROM alerts WHERE site_id = :s AND kind = :k AND JSON_UNQUOTE(JSON_EXTRACT(detail, '$.finding_key')) = :f"),
                     {"s": ctx.site_id, "k": ALERT_KIND, "f": row["finding_key"]},
                 )
-            detail = {"finding_key": row["finding_key"], "finding": row["kind"], "detail": f"~{round(row['at_stake'])} clicks/month at stake"}  # the row's Open goes to Insights
             conn.execute(
                 text("INSERT INTO alerts (site_id, kind, severity, title, detail) VALUES (:s, :k, 'crit', :t, :d)"),
                 {"s": ctx.site_id, "k": ALERT_KIND, "t": _alert_title(row)[:300], "d": json.dumps(detail, ensure_ascii=False)},

@@ -440,12 +440,19 @@ def _competing(scope: Scope) -> list[dict]:
         "SELECT query, page, SUM(clicks) c, SUM(impressions) i, SUM(position * impressions) w FROM gsc_query_page "
         "WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY pair_hash, query, page"
     )
-    by_query: dict[str, list] = {}
+    # One page is one page: its #section jump links are the same page, not a rival (expert review 2026-11-17, 3.3). Its
+    # own address speaks for it; a page Google showed only through jump links is counted by the biggest of them.
+    by_query: dict[str, dict] = {}
     for row in pairs:
-        by_query.setdefault(common.digest(row["query"]), []).append(row)
+        page = row["page"] or ""
+        own = page.split("#", 1)[0]
+        held = by_query.setdefault(common.digest(row["query"]), {}).get(own)
+        jump = "#" in page
+        if held is None or (held["jump"] and (not jump or int(row["i"] or 0) > int(held["row"]["i"] or 0))):
+            by_query[common.digest(row["query"])][own] = {"jump": jump, "row": {**row, "page": own if jump else page}}
     out = []
     for key, query in volume.items():
-        pages = by_query.get(key, [])
+        pages = [held["row"] for held in by_query.get(key, {}).values()]
         total = sum(int(p["i"] or 0) for p in pages)
         if not total:
             continue
@@ -724,8 +731,11 @@ def overview(scope: Scope, window: dict, fresh: bool = False, page: str | None =
             origin = "live"
         except (SourceError, ConnectionError, credentials.CredentialsFailed, NotFound) as exc:
             live_error = str(exc)
+    saved_days = None
     if origin == "saved":
-        hourly = False  # hours are only ever read live
+        if hourly:  # hours are only ever read live: the saved days are shown, and called what they are (review 3.9)
+            saved_days = {"from": scope.start.isoformat(), "to": scope.end.isoformat(), "days": (scope.end - scope.start).days + 1}
+        hourly = False
         now_points = _saved_series(scope, scope.start, drawn_to, page)
         # One page's earlier days come from the page table, which can start after the daily totals do: it is compared
         # only when its own stored days reach back (period.rows_compared), never with gains made from missing days.
@@ -758,7 +768,7 @@ def overview(scope: Scope, window: dict, fresh: bool = False, page: str | None =
                   "history_from": (window.get("rows_from") or {}).get("page")}
     compared = scope.has_compare and not page_short
     return {
-        **status, **window, "origin": origin, "live_error": live_error, "hourly": hourly,
+        **status, **window, "origin": origin, "live_error": live_error, "hourly": hourly, "saved_days": saved_days,
         "granularity": "hour" if hourly else "week" if size == 7 else "day",
         "totals": totals, "before": before if compared or (hourly and before) else None,
         "series": series, "compare_series": compare_series, "week_left_out": left_out,

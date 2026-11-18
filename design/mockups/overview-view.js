@@ -719,6 +719,9 @@
      long as its site stays picked. The server says which page it counted (d.page); "Show the whole site" goes back. */
   const onlyPage = () => (OV.onlyPage && OV.onlyPage.host === (UI.siteHostPicked?.() || null) ? OV.onlyPage.page : null);
   const ovArgs = () => (onlyPage() ? { only_page: onlyPage() } : {});
+  /* 24 hours asked while Google can't be reached: hours are only read live, so the last saved days are shown, and said
+     (expert review 2026-11-17, 3.9: it labelled 2 saved days "Last 24 hours"). */
+  const savedDaysNote = (d) => (d?.saved_days ? `<p class="note ov-saved-days" role="status">${icon("clock")}<span>${esc(t(d.fresh_from && d.fresh_from <= d.saved_days.from ? "Hours need the live connection to Google. These are the last {n} saved days, {from} – {to}, not final yet." : "Hours need the live connection to Google. These are the last {n} saved days, {from} – {to}.").replace("{n}", num(d.saved_days.days)).replace("{from}", dayLabel(d.saved_days.from)).replace("{to}", dayLabel(d.saved_days.to, true)))}</span></p>` : "");
   const onlyPageNote = (d) => (d?.page ? `<p class="note ov-only-page" role="status">${icon("filter")}<span>${t("Numbers and chart for this page only:")} ${window.PageLink ? PageLink.html(d.page, { text: (() => { try { return new URL(d.page).pathname || "/"; } catch { return d.page; } })(), host: UI.siteHostPicked?.() || null, cls: "mono" }) : `<span class="mono">${esc(d.page)}</span>`}</span><button class="btn btn-small" data-ov-only-clear>${t("Show the whole site")}</button></p>` : "");
   function overviewPage() {
     const entry = load("overview", ovArgs());
@@ -735,7 +738,7 @@
     if (!d.totals) return wrap(`${trust(d)}<section class="card"><div class="empty"><h3>${t("No data in this period.")}</h3><p>${t("Pick a longer or earlier period.")}</p>${UI.longerPeriodButton ? `<div style="margin-top:12px">${UI.longerPeriodButton()}</div>` : ""}</div></section>`);
     const chartHead = `<div class="card-head"><h2>${t({ hour: "Hour by hour", week: "Week by week", day: "Day by day" }[d.granularity])}</h2>
       <span class="end ov-chart-tools">${d.single_site ? `<button class="link-btn" data-ov-note-add>${icon("plus")}${t("Add a note")}</button>` : ""}<button class="link-btn" data-ov-table aria-expanded="${OV.table}">${t(OV.table ? "Hide table" : "Show table")}</button></span></div>`;
-    return wrap(`${trust(d)}${onlyPageNote(d)}
+    return wrap(`${trust(d)}${savedDaysNote(d)}${onlyPageNote(d)}
       ${(() => { const said = sentence(d.answer); return said ? `<div class="ov-answer" dir="auto">${said}</div>` : ""; })()}
       ${cards(d)}
       <section class="card ov-chart-card">${chartHead}${chart(d)}</section>
@@ -1032,6 +1035,8 @@
     "Read those days again": "Relire ces jours", "Includes not-final days": "Inclut des jours provisoires", "These are the last saved numbers.": "Voici les derniers chiffres enregistrés.", "Open the Google connection": "Ouvrir la connexion Google", "From": "Du", "To": "Au", "Period": "Période", "Compare with": "Comparer avec", "Reading…": "Lecture…",
     "Hour by hour": "Heure par heure", "Week by week": "Semaine par semaine", "Day by day": "Jour par jour",
     "Tables below show the last 2 whole days.": "Les tableaux ci-dessous montrent les 2 derniers jours entiers.",
+    "Hours need the live connection to Google. These are the last {n} saved days, {from} – {to}, not final yet.": "Les heures demandent la connexion en direct à Google. Voici les {n} derniers jours enregistrés, du {from} au {to}, pas encore définitifs.",
+    "Hours need the live connection to Google. These are the last {n} saved days, {from} – {to}.": "Les heures demandent la connexion en direct à Google. Voici les {n} derniers jours enregistrés, du {from} au {to}.",
     "Search Console data updated.": "Données Search Console à jour.", "Add it in Keywords.": "Ajoutez-le dans Mots-clés.",
     "It matches Search Console.": "C'est identique à la Search Console.", "It differs from Search Console. See the warning.": "Cela diffère de la Search Console. Voir l'alerte.",
     "Re-reading those days. Updates here when done.": "Relecture de ces jours. Mise à jour ici une fois terminé.",

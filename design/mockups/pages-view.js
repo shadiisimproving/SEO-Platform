@@ -73,6 +73,8 @@
     const pct = r.clicks_before ? Math.round((r.change / r.clicks_before) * 100) : null;
     return `<span class="nowrap"><span class="ov-d ${r.change > 0 ? "good" : "crit"} tabular" title="${esc(`${num(r.clicks_before)} → ${num(r.clicks || 0)}`)}">${r.change > 0 ? "+" : "−"}${num(Math.abs(r.change))}</span>${pct === null ? "" : ` <span class="small muted tabular">${pct > 0 ? "+" : pct < 0 ? "−" : ""}${num(Math.abs(pct))}%</span>`}</span>`;
   };
+  // Google's #section jump links, said apart from the page's own numbers (expert review 2026-11-17, 3.3).
+  const jumpWords = (n) => t("Jump links: {n} impressions").replace("{n}", num(n));
   const passes = (r) => (PASS[P.filter] ? PASS[P.filter](r) : true);
 
   function listBody() {
@@ -96,7 +98,7 @@
       <thead><tr><th scope="col">${t("Page")}</th><th scope="col" class="num">${t("Google clicks")}</th>${compare ? `<th scope="col" class="num">${t("Change")}</th>` : ""}<th scope="col" class="num">${t("Position")}</th><th scope="col">${t("Linked")}</th></tr></thead>
       <tbody>${view.rows.map((r) => `<tr data-pg-open="${esc(r.url)}" tabindex="0">
         <td class="head-cell pg-page"><button type="button" class="kw pg-title" data-pg-open-btn="${esc(r.url)}" dir="auto">${esc(r.title || r.path)}</button>
-          <span class="second mono" dir="auto">${many ? `${esc(r.host)}` : ""}${esc(r.path)}</span>${r.indexed === false ? ` ${UI.status ? UI.status("warn", t("Not indexed")) : ""}` : ""}</td>
+          <span class="second mono" dir="auto">${many ? `${esc(r.host)}` : ""}${esc(r.path)}</span>${r.jump_impressions ? `<span class="second pg-jump">${esc(jumpWords(r.jump_impressions))}</span>` : ""}${r.indexed === false ? ` ${UI.status ? UI.status("warn", t("Not indexed")) : ""}` : ""}</td>
         <td class="num" data-label="${t("Google clicks")}">${r.clicks === null ? `<span class="muted">—</span>` : `<span class="tabular">${num(r.clicks)}</span>`}</td>
         ${compare ? `<td class="num pg-change" data-label="${t("Change")}" data-sort="${r.change === null || r.change === undefined ? "" : r.change}">${changeCell(r, compare)}</td>` : ""}
         <td class="num" data-label="${t("Position")}">${posBadge(r.position)}</td>
@@ -120,7 +122,7 @@
     const tasks = UI.relatedTasks ? relatedOpen() : 0;
     return `<div class="pg-nums">
       ${tile("Google clicks", tot ? (tot.clicks === null ? "—" : num(tot.clicks)) : loading, tot && before ? cellChange(tot.clicks, before.clicks) : "")}
-      ${tile("Position", tot ? dec1(tot.position) : loading, tot && before ? cellChange(tot.position, before.position, true) : "")}
+      ${tile("Position", tot ? dec1(tot.position) : loading, tot && before ? cellChange(tot.position, before.position, true) : "", m?.jump?.impressions ? esc(jumpWords(m.jump.impressions)) : "")}
       ${tile("Visits", tot ? (tot.sessions === null ? "—" : num(tot.sessions)) : loading, tot && before ? cellChange(tot.sessions, before.sessions) : "")}
       ${tile("Indexed", indexed, "", ins?.coverage && ins.verdict !== "PASS" ? esc(ins.coverage) : "")}
       ${!p || speed ? tile("Lab speed", !p ? loading : `<span class="${speed.score >= 90 ? "pg-good" : speed.score < 50 ? "pg-bad" : ""}">${num(speed.score)}</span><span class="muted">/100</span>`, "", speed ? realVisitors(speed) : "") : ""}
@@ -352,7 +354,7 @@
     "No earlier data for this page": "Pas de données antérieures pour cette page", "No comparison period": "Pas de période de comparaison", "No clicks": "Sans clic", "All about this page": "Tout sur cette page", "Have backlinks": "Avec backlinks", "Page": "Page", "Google clicks": "Clics Google", "Position": "Position", "Linked": "Lié",
     "open task": "tâche ouverte", "open tasks": "tâches ouvertes", "note": "note", "notes": "notes", "backlink": "backlink", "backlinks": "backlinks",
     "No pages yet": "Pas encore de pages", "Pages show here once Search Console or Google Analytics sends data, or once the page reader has read your site.": "Les pages s'affichent ici dès que Search Console ou Google Analytics envoie des données, ou que le lecteur de pages a lu votre site.",
-    "Open Settings": "Ouvrir les réglages", "Search pages": "Chercher une page", "No page matches.": "Aucune page ne correspond.", "page": "page", "pages": "pages",
+    "Open Settings": "Ouvrir les réglages", "Search pages": "Chercher une page", "No page matches.": "Aucune page ne correspond.", "Jump links: {n} impressions": "Liens vers une section : {n} impressions", "page": "page", "pages": "pages",
     "Add a note": "Ajouter une note", "New task about this page": "Nouvelle tâche sur cette page", "All pages": "Toutes les pages", "About this page": "À propos de cette page",
     "Search": "Recherche", "Visits": "Visites", "Rankings": "Positions", "Backlinks": "Backlinks", "Tasks": "Tâches", "Notes": "Notes", "Technical": "Technique", "Content": "Contenu",
     "Indexed": "Indexée", "Speed": "Vitesse", "Lab speed": "Vitesse (labo)", "lab test": "test labo", "No real-visitor data": "Pas de données de vrais visiteurs",

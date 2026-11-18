@@ -248,6 +248,8 @@
   // Kinds about a page: the page is named on top already, so "Page that ranks" would say it twice.
   const PAGE_IS_SUBJECT = ["dropped_out", "page_down", "page_up", "decay", "lead_page", "no_leads", "duplicate", "shown_broken", "questions", "page_near", "task_result"];
 
+  // Hidden searches are more than half of the change: no listed part is named as its cause (findings stored before 18 Nov).
+  const hiddenMost = (e) => Math.abs(e.parts?.hidden || 0) > Math.abs(e.change || 0) / 2;
   /* The sentence on top: why clicks moved, from the change breakdown. */
   function answer(change, many) {
     const e = change.evidence, host = many ? `${change.host}: ` : "";
@@ -259,7 +261,7 @@
     const ex = e.explains || [];
     const named = ex.length === 1 ? fill("Mostly one page: {page}, {n} clicks.", { page: ex[0].path, n: signed(ex[0].change) })
       : ex.length ? fill("Most of it: {list}.", { list: ex.map((p) => `${p.path} ${signed(p.change)}`).join(", ") })
-      : e.main && e.main !== "hidden" ? fill("Mostly: {what} ({n} clicks).", { what: t(PARTS[e.main][up ? 0 : 1]).toLowerCase(), n: signed(e.parts[e.main]) }) : "";
+      : e.main && e.main !== "hidden" && !hiddenMost(e) ? fill("Mostly: {what} ({n} clicks).", { what: t(PARTS[e.main][up ? 0 : 1]).toLowerCase(), n: signed(e.parts[e.main]) }) : "";
     return `${host}${head}${demand}${named ? ` ${named}` : ""}`;
   }
   /* The same answer on screen: badges and one row per page, never one packed sentence (owner, 2026-11-12).
@@ -274,7 +276,7 @@
     const ex = many ? e.explains || [] : [];
     const top = Math.max(1, ...ex.map((p) => Math.abs(p.change)));
     const rows = ex.length ? `<span class="ov-ans-label">${t(up ? "Biggest gains" : "Biggest losses")}</span><ul class="ov-ans-list">${ex.map((p) => `<li><span class="ov-ans-name">${pageLink(p.page, { text: p.path })}</span><span class="ov-ans-bar" aria-hidden="true"><i class="${p.change < 0 ? "down" : "up"}" style="width:${Math.max(4, Math.round(Math.abs(p.change) / top * 100))}%"></i></span><b class="${p.change < 0 ? "down" : "up"}">${signed(p.change)}</b></li>`).join("")}</ul>` : "";
-    const cause = many && !ex.length && e.main && e.main !== "hidden" ? `<span class="in-ans-cause"><span class="ov-ans-label">${t("Main cause")}</span>${esc(t(PARTS[e.main][up ? 0 : 1]))} <b class="${e.parts[e.main] < 0 ? "down" : "up"}">${signed(e.parts[e.main])}</b></span>` : "";
+    const cause = many && !ex.length && e.main && e.main !== "hidden" && !hiddenMost(e) ? `<span class="in-ans-cause"><span class="ov-ans-label">${t("Main cause")}</span>${esc(t(PARTS[e.main][up ? 0 : 1]))} <b class="${e.parts[e.main] < 0 ? "down" : "up"}">${signed(e.parts[e.main])}</b></span>` : "";
     return `<div class="ov-answer" dir="auto">${head}${rows}${cause}</div>`;
   }
   /* Two ranked lists with bars from a centre line: lost to the left, gained to the right, so size reads at a glance. */
@@ -286,7 +288,11 @@
     const e = change.evidence, up = e.change > 0;
     const parts = Object.entries(e.parts).filter(([, v]) => Math.round(v));
     const named = parts.filter(([id]) => id !== "hidden").sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
-    const why = [...named, ...parts.filter(([id]) => id === "hidden")].map(([id, v]) => ({ label: `${esc(t(PARTS[id][v > 0 ? 0 : 1]))}${id === "hidden" ? UI.tip(HIDDEN_TIP) : ""}`, tip: id === "hidden" ? "" : t(PARTS[id][v > 0 ? 0 : 1]), value: v, quiet: id === "hidden" }));
+    const hidden = parts.filter(([id]) => id === "hidden");
+    /* Searches Google doesn't list, carrying more than half of the change: they lead, at full strength, since they are
+       most of the answer (expert review 2026-11-17, 3.6). Otherwise they come last, quiet, as a remainder. */
+    const hiddenLeads = hidden.length && Math.abs(hidden[0][1]) > Math.abs(e.change || 0) / 2;
+    const why = (hiddenLeads ? [...hidden, ...named] : [...named, ...hidden]).map(([id, v]) => ({ label: `${esc(t(PARTS[id][v > 0 ? 0 : 1]))}${id === "hidden" ? UI.tip(HIDDEN_TIP) : ""}`, tip: id === "hidden" ? "" : t(PARTS[id][v > 0 ? 0 : 1]), value: v, quiet: id === "hidden" && !hiddenLeads }));
     const pages = (e.pages || []).map((p) => ({ label: pageLink(p.page, { text: p.path, host: change.host }), value: p.change }));
     return `<div class="in-lists">${pages.length ? `<div><h3 class="ov-h3">${t("Which pages moved")}</h3>${barList(pages)}</div>` : ""}
       <div><h3 class="ov-h3">${t("Why")}</h3>${barList(why)}<button class="link-btn in-see" data-in-open="${change.id}">${t(up ? "See what gained" : "See what lost")}</button></div></div>`;

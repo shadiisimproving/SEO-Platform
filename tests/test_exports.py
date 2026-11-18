@@ -306,7 +306,8 @@ def test_overview_export_has_the_screens_numbers_filters_and_order(engine, site,
     assert report.tiles[0].value == screen["totals"]["clicks"] and report.tiles[1].value == screen["totals"]["impressions"]
     assert [t.id for t in report.tables] == ["query", "page", "country", "device"]
     assert [r["name"] for r in report.tables[0].rows] == [r["name"] for r in rows] and len(rows) == 3
-    assert report.charts and len(report.charts[0].series[0].values) == len(screen["series"])
+    # The counted days only: the not-final days the screen draws after the period stay out of the file (review W12).
+    assert report.charts and len(report.charts[0].series[0].values) == len([p for p in screen["series"] if p.get("counted", True) is not False])
 
     picked = registry.build(engine, "overview", {**args, "q": "café", "sort": "clicks", "dir": "asc"})
     assert [r["name"] for r in picked.tables[0].rows] == ["moulin à café", "café en grains"]

@@ -101,6 +101,7 @@ _PATTERNS: list[tuple[str, str | Callable[[re.Match], str | None]]] = [
     (r"^Visits and leads: (\d{4}-\d\d-\d\d) – (\d{4}-\d\d-\d\d), where Google Analytics' data ends\.$", lambda m: f"Visites et demandes : {_day(m.group(1))} – {_day(m.group(2))}, là où s'arrêtent les données de Google Analytics."),
     # Overview's export: a long period drawn in whole weeks
     (r"^The first (\d+) days are counted in the totals, not drawn: a short week would look like a fall\.$", "Les {1} premiers jours sont comptés dans les totaux, pas dessinés : une semaine incomplète ressemblerait à une chute."),
+    (r"^The last (\d+) days aren't final yet in Google: they are left out of the charts and totals\.$", "Les {1} derniers jours ne sont pas encore définitifs chez Google : ils sont exclus des graphiques et des totaux."),
     # filters in the file's header: how a typed text is matched
     (r"^(contains|doesn't contain|is exactly|matches) “(.*)”$", lambda m: f"{_MATCH[m.group(1)]} « {m.group(2)} »"),
     # whole-site health problems, several in one title; and the same alert on several sites

@@ -49,7 +49,12 @@ def overview(engine, args) -> Report:
     ]
     if data.get("week_left_out"):
         report.notes.append(f"The first {data['week_left_out']['days']} days are counted in the totals, not drawn: a short week would look like a fall.")
-    series, compared = data.get("series") or [], data.get("compare_series") or []
+    # Only the days the totals count: the not-final days drawn after the period on screen are left out of the file, so a
+    # 28-day header never sits over 30 days of chart (competitors-exports W12).
+    every = data.get("series") or []
+    series, compared = [p for p in every if p.get("counted", True) is not False], data.get("compare_series") or []
+    if len(series) < len(every):
+        report.notes.append(f"The last {len(every) - len(series)} days aren't final yet in Google: they are left out of the charts and totals.")
     labels = [_short_day(p.get("day")) for p in series]
     for key, title in (("clicks", "Clicks"), ("impressions", "Impressions")):
         lines = [Series(title, [p.get(key) for p in series])]
