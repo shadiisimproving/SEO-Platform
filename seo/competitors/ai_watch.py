@@ -7,12 +7,12 @@ from __future__ import annotations
 
 from collections import Counter
 
-from sqlalchemy import Engine
+from sqlalchemy import Engine, text
 
 from seo.competitors.keywords import _iso, require_own
 from seo.competitors.suggest import tracked_competitors
 from seo.serp import store
-from seo.serp.tools import ABSENT, PRESENT
+from seo.serp.tools import ABSENT, NOT_CAPTURED, PRESENT
 
 ENGINE = "google"
 
@@ -26,21 +26,33 @@ def watch(engine: Engine, site_id: int) -> dict:
         site = require_own(conn, site_id)
         competitors = [c for c in tracked_competitors(conn, site_id) if c["tracking"] == "on"]  # AI answers are keyword data
     rival_hosts = {c["host"]: c for c in competitors}
-    # A keyword only another engine has checked is on the list too: as not captured, which is all that tool can say.
-    latest = store.one_per_keyword(store.latest_checks(engine, site_id))
+    # Each keyword's newest check from a tool that can see AI Overviews, named. A keyword no such tool checked is "not
+    # checked": a newer check from Searlo or HasData says nothing about an overview, so it never hides one SerpApi saw.
+    with engine.connect() as conn:
+        tracked = conn.execute(text(
+            "SELECT k.id, k.keyword, k.country, k.language FROM site_keywords sk JOIN keywords k ON k.id = sk.keyword_id WHERE sk.site_id = :s ORDER BY k.keyword"
+        ), {"s": site_id}).mappings().all()
+    by_keyword = {check.keyword_id: check for check in store.latest_ai_checks(engine, site_id)}
+    latest = [by_keyword[k["id"]] for k in tracked if k["id"] in by_keyword]
 
     def rivals_in(check: store.Check) -> list[dict]:
         return [{"id": c["id"], "host": host} for host, c in rival_hosts.items() if check.cites(host)]
 
     rows = []
-    for check in latest:
-        captured = check.ai_state != "not_captured"
+    for keyword in tracked:
+        check = by_keyword.get(keyword["id"])
+        if check is None:
+            rows.append({
+                "keyword": keyword["keyword"], "keyword_id": keyword["id"], "country": keyword["country"], "language": keyword["language"], "tool": None, "location": None,
+                "checked_at": None, "state": NOT_CAPTURED, "not_checked": True, "cited_me": None, "my_cited_urls": [], "competitors_cited": [], "others_cited": [],
+            })
+            continue
         rows.append({
             "keyword": check.keyword, "keyword_id": check.keyword_id, "country": check.country, "language": check.language, "tool": check.tool, "location": check.real_location,
-            "checked_at": _iso(check.checked_at), "state": check.ai_state,
-            "cited_me": check.cites(site["host"]) if captured else None,
+            "checked_at": _iso(check.checked_at), "state": check.ai_state, "not_checked": False,
+            "cited_me": check.cites(site["host"]),
             "my_cited_urls": [row.url for row in check.citations if store.on_host(row.host, site["host"])],
-            "competitors_cited": rivals_in(check) if captured else [],
+            "competitors_cited": rivals_in(check),
             "others_cited": [d for d in _cited_domains(check) if not any(store.on_host(d, h) or store.on_host(h, d) for h in (site["host"], *rival_hosts))],
         })
     rows.sort(key=lambda r: ({PRESENT: 0, ABSENT: 1}.get(r["state"], 2), r["keyword"]))
@@ -84,6 +96,8 @@ def watch(engine: Engine, site_id: int) -> dict:
             "with_overview": len(with_overview),
             "cited_me": sum(1 for c in with_overview if c.cites(site["host"])),
             "rivals": [{"host": host, "keywords": n} for host, n in rival_counts.most_common()],
+            "tools": sorted({c.tool for c in latest}),  # who looked: the screen names them
+            "checked_at": _iso(max((c.checked_at for c in latest), default=None)),
         },
         "changes": changes[:200],
         "trend": sorted(trend.values(), key=lambda p: p["day"]),

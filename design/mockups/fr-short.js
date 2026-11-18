@@ -472,6 +472,7 @@ Object.assign(window.FR, {
  "robots.txt forbids reading this page. The app respects that.": "robots.txt interdit la lecture de cette page. L'application le respecte.",
  "First rows only: the list is too long for one export.": "Premières lignes seulement : la liste est trop longue pour un export.",
  "AI Overviews on {o} of {c} keywords checked; you're cited in {m}.": "AI Overviews sur {o} des {c} mots-clés relevés ; vous êtes cité dans {m}.",
+ "AI Overviews on {o} of {c} keywords checked with {tool}; you're cited in {m}.": "AI Overviews sur {o} des {c} mots-clés relevés avec {tool} ; vous êtes cité dans {m}.",
  "Rewrite the title and description to match what searchers want.": "Réécrivez le titre et la description pour coller à ce que veulent les internautes.",
  "Write a page for it, or a clear section on the page that ranks.": "Écrivez une page pour elle, ou une section claire sur la page qui se classe.",
  "Not checked. Read monthly, or when you press Run.": "Non contrôlé. Lu chaque mois, ou quand vous cliquez sur Lancer.",
