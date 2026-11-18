@@ -340,7 +340,7 @@ def links(engine: Engine, site_id: int | None = None) -> dict:
             entry["is_competitor"] = entry["is_competitor"] or gap["is_competitor"]
             entry["sites"].append({
                 "id": site["id"], "host": site["host"], "quality": gap["quality"], "reason_words": gap["reason_words"], "flagged_by": gap["flagged_by"],
-                "in_consideration": gap["in_consideration"], "lost_link": gap["lost_link"], "kept": gap["kept"],
+                "in_consideration": gap["in_consideration"], "lost_link": gap["lost_link"], "kept": gap["kept"], "old_link": gap["old_link"],
             })
     gaps.pick_scores(merged.values())  # one tool's score per domain, never the biggest number of any tool (SEO review #7)
     for entry in merged.values():
@@ -351,10 +351,15 @@ def links(engine: Engine, site_id: int | None = None) -> dict:
     ]
     scale = gaps.order_by_scale(everything, "rival_count")
     has = lambda gap, state: any(s["quality"] == state for s in gap["sites"])  # noqa: E731
-    good = [g for g in everything if has(g, quality.GOOD)]
+    # A domain good for a site only through links last seen 6+ months before their file (gaps.old_link) is probably gone: it
+    # is counted apart, as on Link gaps, and listed only when asked for (final re-check 2026-11-18, 3.4).
+    current = lambda gap: any(s["quality"] == quality.GOOD and not s["old_link"] for s in gap["sites"])  # noqa: E731
+    good = [g for g in everything if current(g)]
+    old = [g for g in everything if not current(g) and has(g, quality.GOOD)]
     flagged = [g for g in everything if not has(g, quality.GOOD) and has(g, quality.SPAM)]
     return {
-        "sites": sites, "gaps": good[:LINK_ROWS], "flagged": flagged[:LINK_ROWS],
-        "funnel": {"found": len(everything), "good": len(good), "flagged": len(flagged), "checking": len(everything) - len(good) - len(flagged), "shared": sum(1 for g in good if g["rival_count"] >= 2)},
+        "sites": sites, "gaps": good[:LINK_ROWS], "old": old[:LINK_ROWS], "flagged": flagged[:LINK_ROWS],
+        "funnel": {"found": len(everything), "good": len(good), "old": len(old), "flagged": len(flagged), "checking": len(everything) - len(good) - len(old) - len(flagged),
+                   "shared": sum(1 for g in good if g["rival_count"] >= 2)},
         "score_scale": scale, "rivals_total": len(rival_ids), "rivals_with_data": len(with_data), "rivals": sorted(every_rival.values(), key=lambda r: r["host"]),
     }
