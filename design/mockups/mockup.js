@@ -199,16 +199,18 @@
     /* The server's own period (seo/metrics/period.py), once a screen has it for this choice: the head prints the days really
        counted and compared, never its own sum, and no "vs …" when nothing was compared. */
     const served = rangeServed[state.route];
-    let unavailable = null, historyFrom = null;
+    let unavailable = null, historyFrom = null, savedDays = null;
     if (served && served.site === state.site && served.preset === r.preset && served.compare === r.compare && !validDay(end) && (r.preset !== "custom" || (served.asked === `${r.from}|${r.to}`))) {
       if (validDay(served.from) && validDay(served.to)) { from = served.from; to = served.to; }
       compareFrom = validDay(served.compare_from) ? served.compare_from : null;
       compareTo = validDay(served.compare_to) ? served.compare_to : null;
       unavailable = served.compare_unavailable || null;
       historyFrom = served.history_from || null;
+      savedDays = served.saved_days || null; // 24 hours asked, Google not reachable: the server showed its last saved days
     }
     const name = RANGE_PRESETS.find(([id]) => id === r.preset)?.[1];
-    const label = r.preset === "custom" ? fmtRange(from, to) : r.preset === "24h" && !hours ? fmtDay(to) : t(name);
+    if (savedDays) hours = false; // never "Last 24 hours" over whole saved days (expert review 2026-11-17, 3.9)
+    const label = r.preset === "custom" ? fmtRange(from, to) : savedDays ? t("Last {n} saved days").replace("{n}", savedDays.days) : r.preset === "24h" && !hours ? fmtDay(to) : t(name);
     days = dayCount(from, to);
     const compareLabel = r.compare === "none" || !compareFrom ? t("No comparison") : `${t("vs")} ${fmtRange(compareFrom, compareTo)}`;
     return { preset: r.preset, from, to, compare: r.compare, compareFrom, compareTo, days, label, compareLabel, hours: r.preset === "24h" && hours, unavailable, historyFrom };
@@ -242,7 +244,7 @@
        history_from): the head then prints exactly that. */
     served(route, w) {
       if (!w || !validDay(w.from) || !validDay(w.to)) return;
-      const r = state.rng, next = { site: state.site, preset: r.preset, compare: r.compare, asked: `${r.from}|${r.to}`, from: w.from, to: w.to, compare_from: w.compare_from || null, compare_to: w.compare_to || null, compare_unavailable: w.compare_unavailable || null, history_from: w.history_from || null };
+      const r = state.rng, next = { site: state.site, preset: r.preset, compare: r.compare, asked: `${r.from}|${r.to}`, from: w.from, to: w.to, compare_from: w.compare_from || null, compare_to: w.compare_to || null, compare_unavailable: w.compare_unavailable || null, history_from: w.history_from || null, saved_days: w.saved_days || null };
       if (JSON.stringify(rangeServed[route]) === JSON.stringify(next)) return;
       rangeServed[route] = next;
       setTimeout(() => { if (state.route === route && !$("#popover")) { if (state.simple) redrawHeadRange(); else { const picks = $(".range-picks"); if (picks) picks.replaceWith(fragment(datePicks())); } } }, 0);
