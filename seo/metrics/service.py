@@ -683,8 +683,8 @@ def add_rule(engine: Engine, kind, pattern, value=None, site_id=None) -> dict:
             site_id = int(site_id)
             if not conn.execute(text("SELECT 1 FROM sites WHERE id = :i AND kind = 'own'"), {"i": site_id}).first():
                 raise Refused("That site isn't one of yours.")
-        if kind == "key_event" and site_id is None:
-            raise Refused("Pick the site whose key event this is.")
+        if kind == "key_event":
+            raise Refused("Pick lead events in Settings → Sites.")  # admins only, through leads.set_events (#9)
         new_id = conn.execute(
             text("INSERT INTO site_rules (site_id, kind, pattern, value) VALUES (:s, :k, :p, :v)"), {"s": site_id, "k": kind, "p": clean, "v": named}
         ).lastrowid
@@ -693,9 +693,16 @@ def add_rule(engine: Engine, kind, pattern, value=None, site_id=None) -> dict:
     return {"id": new_id, "site_id": site_id, "kind": kind, "pattern": clean, "value": named}
 
 
+def rule_kind(engine: Engine, rule_id: int) -> str | None:
+    with engine.connect() as conn:
+        return conn.execute(text("SELECT kind FROM site_rules WHERE id = :i"), {"i": rule_id}).scalar()
+
+
 def delete_rule(engine: Engine, rule_id: int) -> None:
     with engine.begin() as conn:
         held = conn.execute(text("SELECT kind, site_id FROM site_rules WHERE id = :i"), {"i": rule_id}).first()
+        if held:
+            access.require_site_or_every(held[1], conn)  # another site's rule (or one for every site) stays theirs (#9)
         conn.execute(text("DELETE FROM site_rules WHERE id = :i"), {"i": rule_id})
     if held and held[0] == "key_event" and held[1]:
         lead_rules.recompute(engine, held[1])

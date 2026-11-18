@@ -8,7 +8,7 @@ from seo.backlinks.cleaner import registrable_domain
 from seo.core.errors import Refused
 from seo.extras import auto as extras_auto, service as extras, summaries  # noqa: F401 - auto registers its job handler here too
 from seo.imports import clarity_reports
-from seo.metrics import backlink_traffic, service, today as today_view
+from seo.metrics import backlink_traffic, leads, service, today as today_view
 from seo.resources import service as resources
 
 metrics_api = Blueprint("metrics_api", __name__, url_prefix="/api")
@@ -168,11 +168,25 @@ def today_seen():
 @metrics_api.post("/rules")
 def add_rule():
     body = _body()
+    if body.get("kind") == leads.RULE:
+        # Which key events are leads changes every GA4 screen's leads: admins only, as PUT /ga4/key-events (code review
+        # 2026-11-18, #9). The old rules route used to let any member with Edit on Channels do it.
+        from seo.web.auth import require_admin
+
+        require_admin()
+        site_id = _site_id(body.get("site_id"))
+        pattern = body.get("pattern").strip() if isinstance(body.get("pattern"), str) else ""
+        leads.set_events(_engine(), site_id, leads.ticked(_engine(), site_id) + [pattern])
+        return jsonify({"site_id": site_id, "kind": leads.RULE, "pattern": pattern, "value": None}), 201
     return jsonify(service.add_rule(_engine(), body.get("kind"), body.get("pattern"), body.get("value"), body.get("site_id"))), 201
 
 
 @metrics_api.delete("/rules/<int:rule_id>")
 def delete_rule(rule_id: int):
+    if service.rule_kind(_engine(), rule_id) == leads.RULE:
+        from seo.web.auth import require_admin
+
+        require_admin()  # unticking a lead event: admins only (#9)
     service.delete_rule(_engine(), rule_id)
     return jsonify(ok=True)
 

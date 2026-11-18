@@ -196,3 +196,34 @@ def test_ticked_events_that_did_not_fire_say_no_leads_not_not_set_up(engine, sit
     answer = ai_search.build(_scope(engine, site, END, END))
     assert answer["key_events_set_up"] is True and answer["leads"] == 0  # the screen says "No leads in this period"
     assert service.conversions(_scope(engine, site, END, END))["key_events_set_up"] is True
+
+
+# ---- 9: only an admin changes which key events are leads ---------------------------------------------------------------
+
+
+def test_a_member_cannot_change_lead_events_through_the_rules_route(engine):
+    from tests.test_user_access import PASSWORD, _person, _signed_in
+    from seo.accounts import service as accounts
+    from seo.web import create_app
+
+    app = create_app(engine=engine, secret_key="test-secret-key")
+    with engine.begin() as conn:
+        one = conn.execute(text("INSERT INTO sites (host, start_url, kind) VALUES ('one.example', 'https://one.example/', 'own')")).lastrowid
+        two = conn.execute(text("INSERT INTO sites (host, start_url, kind) VALUES ('two.example', 'https://two.example/', 'own')")).lastrowid
+        conn.execute(text("INSERT INTO site_rules (site_id, kind, pattern) VALUES (:s, 'key_event', 'generate_lead')"), {"s": one})
+        lead_rule = conn.execute(text("SELECT id FROM site_rules WHERE kind = 'key_event'")).scalar()
+        conn.execute(text("INSERT INTO site_rules (site_id, kind, pattern, value) VALUES (:s, 'channel', '*/x', 'Spam')"), {"s": two})
+        other_rule = conn.execute(text("SELECT id FROM site_rules WHERE site_id = :s"), {"s": two}).scalar()
+    accounts.create_user(engine, "boss@example.com", "Boss", "admin", password=PASSWORD, must_change=False)
+    _person(engine, {"channels": "edit", "conversions": "edit"}, [one])  # chosen access: Edit on Channels, site one
+    accounts.create_user(engine, "full@example.com", "Full", "member", password=PASSWORD, must_change=False)  # full access, not admin
+    for email in ("helper@example.com", "full@example.com"):
+        client, headers = _signed_in(app, email)
+        assert client.post("/api/rules", json={"kind": "key_event", "site_id": one, "pattern": "page_view"}, headers=headers).status_code == 403
+        assert client.delete(f"/api/rules/{lead_rule}", headers=headers).status_code == 403
+    helper, headers = _signed_in(app, "helper@example.com")
+    assert helper.delete(f"/api/rules/{other_rule}", headers=headers).status_code == 403  # another site's rule
+    assert leads.ticked(engine, one) == ["generate_lead"]
+    boss, headers = _signed_in(app, "boss@example.com")
+    assert boss.post("/api/rules", json={"kind": "key_event", "site_id": one, "pattern": "form_submit"}, headers=headers).status_code == 201
+    assert leads.ticked(engine, one) == ["generate_lead", "form_submit"]
