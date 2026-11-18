@@ -61,6 +61,12 @@ def converted(engine):
     return engine
 
 
+ASCII_KEYS = {
+    ("ga4_key_event_daily", "report"), ("ga4_key_event_daily", "row_hash"), ("ga4_key_event_daily", "event_hash"),
+    ("ga4_host_daily", "host_hash"),
+}
+
+
 def test_every_text_column_has_one_collation_after_the_migrations_and_every_model_creates_it(engine):
     from sqlalchemy.dialects import mysql
     from sqlalchemy.schema import CreateTable
@@ -68,7 +74,13 @@ def test_every_text_column_has_one_collation_after_the_migrations_and_every_mode
     from seo.core.models import Base
 
     with engine.connect() as conn:  # the session's tables, built by the real migrations from the server's default
-        assert set(charset.collations(conn)) == {"utf8mb4_unicode_ci"}
+        # Text is utf8mb4_unicode_ci. The only exception: GA4's hex hash keys are ascii_bin on purpose, so they join with the
+        # other GA4 tables before (latin1) and after (utf8mb4) the owner's conversion; ASCII never clashes with either.
+        ascii_columns = {tuple(r) for r in conn.execute(text(
+            "SELECT TABLE_NAME, COLUMN_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND COLLATION_NAME = 'ascii_bin'"
+        ))}
+        assert ascii_columns <= ASCII_KEYS, ascii_columns - ASCII_KEYS
+        assert set(charset.collations(conn)) - {"ascii_bin"} == {"utf8mb4_unicode_ci"}
         assert {r[0] for r in conn.execute(text("SELECT TABLE_COLLATION FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE()"))} == {"utf8mb4_unicode_ci"}
         assert conn.execute(text("SELECT DEFAULT_COLLATION_NAME FROM information_schema.SCHEMATA WHERE SCHEMA_NAME = DATABASE()")).scalar() == "utf8mb4_unicode_ci"
         json_columns = {r[0] for r in conn.execute(text(
