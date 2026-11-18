@@ -127,6 +127,10 @@
   const dec1 = (v) => (v === null || v === undefined ? "—" : UI.dec(Math.round(v * 10) / 10));
   const rate = (v) => (v === null || v === undefined ? "—" : `${dec1(v)}${fr() ? " %" : "%"}`);
   const fmt = { clicks: (v) => num(v), impressions: (v) => num(v), click_rate: rate, position: dec1 };
+  // The chart's left axis: short from a thousand on ("2.8K", FR "2,8 k"), so the top number fits a phone's narrow strip
+  // instead of being cut to "810". The tooltip and the table keep the full number.
+  const compact = (v) => (Math.abs(v) >= 1000 ? new Intl.NumberFormat(UI.locale(), { notation: "compact", maximumFractionDigits: 1 }).format(v) : num(v));
+  const axisFmt = { ...fmt, clicks: compact, impressions: compact };
   const dayLabel = (key, long = false) => {
     if (key.length > 10) return new Intl.DateTimeFormat(UI.locale(), { hour: "2-digit", minute: "2-digit", ...(long ? { day: "numeric", month: "short" } : {}) }).format(new Date(key));
     return new Intl.DateTimeFormat(UI.locale(), { day: "numeric", month: "short", ...(long ? { year: "numeric" } : {}) }).format(new Date(`${key}T00:00:00`));
@@ -297,7 +301,7 @@
       const name = shown.length > 1 ? `<span class="ov-strip-name">${key}${esc(t(m.name))}</span>` : "";
       return `<div class="ov-strip" data-ov-strip="${m.id}">${name}
           <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${grid}${flags}${lines}<line class="lv-cross" x1="0" x2="0" y1="0" y2="${H}" hidden/></svg>
-          <span class="ov-ylab left">${shown.length > 1 ? "" : key}${esc(fmt[m.id](top))}</span><span class="ov-ylab left bottom">${esc(fmt[m.id](bottom))}</span>
+          <span class="ov-ylab left">${shown.length > 1 ? "" : key}${esc(axisFmt[m.id](top))}</span><span class="ov-ylab left bottom">${esc(axisFmt[m.id](bottom))}</span>
         </div>`;
     };
     const ticks = window.LV?.axisTicks ? window.LV.axisTicks(pts.length).map((i) => [pts[i], i]) : [[pts[0], 0]];
