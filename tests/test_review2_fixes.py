@@ -129,3 +129,32 @@ def test_a_normal_day_between_two_bursts_stays_in(engine, site):
     got = ga4_checks.unusual_change(engine, [site], start, END, start - timedelta(days=28), start - timedelta(days=1))
     assert [(r["from"], r["to"], r["days"], r["visits"]) for r in got["runs"]] == [(start.isoformat(), (start + timedelta(days=2)).isoformat(), 2, 2000)]
     assert got["visits"] == 2600 and got["change"] == 0.0  # 26 kept days, day 1 among them (was 2,500 over 25)
+
+
+# ---- 3: a row's panel gives the row's lead rate ------------------------------------------------------------------------
+
+
+def test_the_channel_panel_rate_is_the_rows_and_its_sources_have_one(engine, site):
+    d0 = END - timedelta(days=1)
+    _day(engine, site, d0, 10, key_events=30.0)  # 30 key events in 10 visits: at most 10 visits with one
+    _day(engine, site, END, 10, key_events=0.0)
+    _day(engine, site, d0, 10, key_events=30.0, channel="Referral", source="blog.example", medium="referral")
+    _day(engine, site, END, 10, key_events=0.0, channel="Referral", source="blog.example", medium="referral")
+    rows = {c["channel"]: c for c in service.channels(_scope(engine, site, d0, END))["channels"]}
+    assert rows["Organic Search"]["rate"] == 0.5  # 10 of 20 visits
+    panel = service.channel_detail(_scope(engine, site, d0, END), "Organic Search")
+    assert panel["totals"]["rate"] == 0.5  # was 1.0
+    assert [s["rate"] for s in panel["sources"]] == [0.5] and [m["rate"] for m in panel["mediums"]] == [0.5]  # was 0.0
+    referrer = service.referrer_detail(_scope(engine, site, d0, END), "blog.example")
+    assert referrer["totals"]["rate"] == 0.5
+
+
+def test_the_assistant_row_and_panel_give_the_same_rate(engine, site):
+    from seo.metrics import ai_search
+
+    d0 = END - timedelta(days=1)
+    _day(engine, site, d0, 30, key_events=90.0, channel="Referral", source="chatgpt.com", medium="referral")
+    _day(engine, site, END, 30, key_events=0.0, channel="Referral", source="chatgpt.com", medium="referral")
+    row = next(r for r in ai_search.build(_scope(engine, site, d0, END))["sources"] if r["source"] == "chatgpt.com")
+    panel = service.assistant_detail(_scope(engine, site, d0, END), "chatgpt.com")
+    assert row["rate"] == panel["totals"]["rate"] == 0.5  # 30 of 60 visits; both said 1.0

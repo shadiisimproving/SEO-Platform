@@ -772,8 +772,10 @@ def _listed(now: dict, past: dict | None, label: str) -> list[dict]:
     return rows
 
 
-def _summed(days: dict) -> tuple[int, float]:
-    return sum(item["sessions"] for item in days.values()), round(sum(item["leads"] for item in days.values()), 2)
+def _summed(days: dict) -> tuple[int, float, float]:
+    """Visits, leads, and the visits that converted (added up row by row, as the screen's row: code review 2026-11-18, #3)."""
+    return (sum(item["sessions"] for item in days.values()), round(sum(item["leads"] for item in days.values()), 2),
+            sum(item.get("conv", 0.0) for item in days.values()))
 
 
 def channel_detail(scope: Scope, name) -> dict:
@@ -788,29 +790,27 @@ def channel_detail(scope: Scope, name) -> dict:
         days, sources, mediums = {}, _days(), _days()
         everything, found = 0, False
         for row in _ga4_rows(scope, start, end):
-            sessions, leads = int(row["sessions"] or 0), float(row["leads"] or 0)
-            everything += sessions
-            day = days.setdefault(row["day"].isoformat(), {"sessions": 0, "leads": 0.0})  # GA4 reported this day
+            everything += int(row["sessions"] or 0)
+            day = days.setdefault(row["day"].isoformat(), {"sessions": 0, "leads": 0.0, "conv": 0.0})  # GA4 reported this day
             if namer(row["channel"], row["source"], row["medium"]) != name:
                 continue
             found = True
             for item in (day, sources[row["source"]], mediums[row["medium"]]):
-                item["sessions"] += sessions
-                item["leads"] += leads
+                _add(item, row)
         return {"days": days, "sources": sources, "mediums": mediums, "everything": everything, "found": found}
 
     now = gather(scope.start, scope.end)
     past = gather(scope.compare_start, scope.compare_end) if scope.has_compare else None
-    sessions, leads = _summed(now["days"])
+    sessions, leads, conv = _summed(now["days"])
     before = None
     if past and past["found"]:  # as the row: no change when the channel had no visits in the period before
-        was_sessions, was_leads = _summed(past["days"])
-        before = {"sessions": was_sessions, "leads": was_leads, "rate": _conv_rate({"sessions": was_sessions, "leads": was_leads})}
+        was_sessions, was_leads, was_conv = _summed(past["days"])
+        before = {"sessions": was_sessions, "leads": was_leads, "rate": _conv_rate({"sessions": was_sessions, "leads": was_leads, "conv": was_conv})}
     sources = _listed(now["sources"], past["sources"] if past else None, "source")
     mediums = _listed(now["mediums"], past["mediums"] if past else None, "medium")
     return {
         **status, "kind": "channel", "name": name, "lead_kind": scope.lead_kind, "found": now["found"] or bool(past and past["found"]), "period": period,
-        "totals": {"sessions": sessions, "leads": leads, "rate": _conv_rate({"sessions": sessions, "leads": leads}), "share": _ratio(sessions, now["everything"])} if now["days"] else None,
+        "totals": {"sessions": sessions, "leads": leads, "rate": _conv_rate({"sessions": sessions, "leads": leads, "conv": conv}), "share": _ratio(sessions, now["everything"])} if now["days"] else None,
         "before": before, "change": _pct_change(sessions, before["sessions"]) if before else None,
         "days": _day_rows(now["days"]), "days_before": _day_rows(past["days"]) if past else None,
         "sources": sources[:PANEL_ROWS], "sources_total": len(sources),
@@ -831,20 +831,19 @@ def referrer_detail(scope: Scope, domain) -> dict:
     def gather(start, end) -> tuple[dict, bool]:
         days, found = {}, False
         for row in _ga4_rows(scope, start, end):
-            day = days.setdefault(row["day"].isoformat(), {"sessions": 0, "leads": 0.0})
+            day = days.setdefault(row["day"].isoformat(), {"sessions": 0, "leads": 0.0, "conv": 0.0})
             if row["medium"] == "referral" and row["source"] == domain:
                 found = True
-                day["sessions"] += int(row["sessions"] or 0)
-                day["leads"] += float(row["leads"] or 0)
+                _add(day, row)
         return days, found
 
     days, found = gather(scope.start, scope.end)
     past, found_before = gather(scope.compare_start, scope.compare_end) if scope.has_compare else (None, False)
-    sessions, leads = _summed(days)
+    sessions, leads, conv = _summed(days)
     before = None
     if found_before:
-        was_sessions, was_leads = _summed(past)
-        before = {"sessions": was_sessions, "leads": was_leads, "rate": _conv_rate({"sessions": was_sessions, "leads": was_leads})}
+        was_sessions, was_leads, was_conv = _summed(past)
+        before = {"sessions": was_sessions, "leads": was_leads, "rate": _conv_rate({"sessions": was_sessions, "leads": was_leads, "conv": was_conv})}
     hosts = _hosts(scope)
     landing: dict[tuple[int, str], dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0})
     for row in scope.fetch(
@@ -860,7 +859,7 @@ def referrer_detail(scope: Scope, domain) -> dict:
     )
     return {
         **status, "kind": "referrer", "domain": domain, "lead_kind": scope.lead_kind, "found": found or found_before, "period": period,
-        "totals": {"sessions": sessions, "leads": leads, "rate": _conv_rate({"sessions": sessions, "leads": leads})} if days else None,
+        "totals": {"sessions": sessions, "leads": leads, "rate": _conv_rate({"sessions": sessions, "leads": leads, "conv": conv})} if days else None,
         "before": before, "change": _pct_change(sessions, before["sessions"]) if before else None,
         "days": _day_rows(days), "days_before": _day_rows(past) if past is not None else None,
         "pages": pages[:PANEL_ROWS], "pages_total": len(pages),
@@ -1013,11 +1012,12 @@ def page_detail(scope: Scope, path, host=None) -> dict:
         gs = [r for day, r in gsc_days.items() if test_gsc(day)]
         sessions = sum(int(r["s"] or 0) for r in ga) if ga else None
         leads = round(sum(float(r["k"] or 0) for r in ga), 2) if ga else None
+        conv = sum(float(r["v"] or 0) for r in ga)
         clicks = sum(int(r["c"] or 0) for r in gs) if gs else None
         shown = sum(int(r["i"] or 0) for r in gs) if gs else None
         weighted = sum(float(r["w"] or 0) for r in gs)
         return {
-            "sessions": sessions, "leads": leads, "rate": _conv_rate({"sessions": sessions, "leads": leads}) if ga else None,
+            "sessions": sessions, "leads": leads, "rate": _conv_rate({"sessions": sessions, "leads": leads, "conv": conv}) if ga else None,
             "clicks": clicks, "impressions": shown, "click_rate": _ratio(clicks, shown) if gs else None,
             "position": round(weighted / shown, 1) if shown else None, "ai": ai_visits,
         }
@@ -1081,7 +1081,8 @@ def assistant_detail(scope: Scope, source) -> dict:
         who = ai.ai_source(row, domains, namer)
         if not who:
             continue
-        sessions, leads = int(row["sessions"] or 0), float(row["leads"] or 0)
+        sessions = int(row["sessions"] or 0)
+        leads = float(row["leads"] or 0)
         if slot is not None:
             every_ai += sessions
         if who != wanted:
@@ -1092,19 +1093,17 @@ def assistant_detail(scope: Scope, source) -> dict:
                 week_leads[n] += leads
         if slot is not None:
             found = True
-            slot["sessions"] += sessions
-            slot["leads"] += leads
+            _add(slot, row)
     before, days_before = None, None
     if scope.has_compare:
         days_before = _days()
         for row in ai._ga4_site_rows(scope, scope.compare_start, scope.compare_end):
             slot = days_before[row["day"].isoformat()]
             if ai.ai_source(row, domains, namer) == wanted:
-                slot["sessions"] += int(row["sessions"] or 0)
-                slot["leads"] += float(row["leads"] or 0)
+                _add(slot, row)
         if days_before:
-            was_sessions, was_leads = _summed(days_before)
-            before = {"sessions": was_sessions, "leads": was_leads, "rate": ai._rate(was_leads, was_sessions)["value"]}
+            was_sessions, was_leads, was_conv = _summed(days_before)
+            before = {"sessions": was_sessions, "leads": was_leads, "rate": ai._rate(was_leads, was_sessions, was_conv)["value"]}
     pages = None  # "(not set)": GA4 didn't say which assistant, so not where it landed either
     if wanted != "(not set)":
         target, hosts = ai._domain(wanted), _hosts(scope)
@@ -1113,10 +1112,10 @@ def assistant_detail(scope: Scope, source) -> dict:
             ({"host": hosts.get(site_id, ""), "path": path, "sessions": item["sessions"], "leads": round(item["leads"], 2)} for (site_id, path), item in landing.items() if item["sessions"]),
             key=lambda p: (-p["sessions"], p["host"], p["path"]),
         )
-    sessions, leads = _summed(days)
+    sessions, leads, conv = _summed(days)
     return {
         **status, "kind": "assistant", "source": wanted, "lead_kind": scope.lead_kind, "found": found, "period": period,
-        "totals": {"sessions": sessions, "leads": leads, "rate": ai._rate(leads, sessions)["value"], "rate_needs": ai.LEAD_RATE_MIN_VISITS, "share": _ratio(sessions, every_ai)} if days else None,
+        "totals": {"sessions": sessions, "leads": leads, "rate": ai._rate(leads, sessions, conv)["value"], "rate_needs": ai.LEAD_RATE_MIN_VISITS, "share": _ratio(sessions, every_ai)} if days else None,
         "before": before, "change": _pct_change(sessions, before["sessions"]) if before else None,
         "days": _day_rows(days), "days_before": _day_rows(days_before) if days_before is not None else None,
         "weekly": [
