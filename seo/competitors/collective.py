@@ -240,6 +240,36 @@ def keywords(engine: Engine, site_id: int | None = None) -> dict:
     return {"sites": sites, "coverage": _coverage(checks, tracked), "total": len(out), "keywords": out[:KEYWORD_ROWS]}
 
 
+def totals(engine: Engine, site_id: int | None = None) -> dict:
+    """All rivals together, each keyword once (competitors-exports W4): a sum over rivals counted a keyword two rivals share twice.
+
+    shared: I rank and at least one rival ranks. i_ahead: I rank above every rival there. they_ahead: a rival above me, or a
+    rival ranks where I don't, the same rule and the same rows as keywords() below."""
+    with engine.connect() as conn:
+        sites = _sites(conn, site_id)
+        tracked = _tracked_by(conn, sites)
+        found = _rivals(conn, sites)
+    hosts = {s["id"]: s["host"] for s in sites}
+    shared = i_ahead = they_ahead = 0
+    for check in store.one_per_keyword(store.latest_checks_many(engine, list(hosts))):
+        mine_all = tracked.get(check.keyword_id, set())
+        beside = []  # (their row, my best among the sites that rival is linked to)
+        for rival in found:
+            mine_here = mine_all & _site_ids(rival)
+            theirs = check.best_on(rival["host"]) if mine_here else None
+            if theirs is not None:
+                beside.append((theirs, _best_of_mine(check, mine_here, hosts)[0]))
+        if not beside:
+            continue
+        if any(mine is None or theirs.position < mine.position for theirs, mine in beside):
+            they_ahead += 1
+        if any(mine is not None for _, mine in beside):
+            shared += 1
+            if all(mine is not None and mine.position < theirs.position for theirs, mine in beside):
+                i_ahead += 1
+    return {"shared": shared, "i_ahead": i_ahead, "they_ahead": they_ahead}
+
+
 def moves(engine: Engine, site_id: int | None = None, days: int = MOVE_DAYS) -> dict:
     """What rivals did lately, newest first: their pages, then ranking moves, each counted once whichever sites watch them."""
     days = days if days in MOVE_PERIODS else MOVE_DAYS
