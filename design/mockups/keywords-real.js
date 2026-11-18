@@ -1092,6 +1092,7 @@
         UI.setHTML($(".tray-actions", block), `<button class="btn btn-small kwr-tray-close">${t("Close")}</button>`);
       }
     }
+    document.dispatchEvent(new CustomEvent("seocc:refresh-done", { detail: { id: run.id, status: run.status, done: run.done } })); // other screens showing checks
     const info = K.runInfo.get(run.id);
     K.runInfo.delete(run.id);
     K.stale = true; K.queries = {};
@@ -1367,6 +1368,12 @@
     /* The order is per engine, so the list says which engine it's showing. */
     orderPicker: () => mainToolPicker() + `<span class="seg" role="group" aria-label="${t("Order for")}" style="margin-left:auto">${ENGINES.map(([id, label]) => `<button type="button" data-kwr-order="${id}" aria-pressed="${K.orderEngine === id}">${label}</button>`).join("")}</span>${K.aiFirst?.[K.orderEngine]?.length && K.aiFirstWhy ? `<p class="small sec kwr-ai-first" style="flex-basis:100%;margin:6px 0 0">${icon("sparkles")} ${esc(t(K.aiFirstWhy))}${UI.tip("SerpApi goes first for Google while it has free searches: it is the only tool that reads AI Overviews.")}</p>` : ""}`,
     openRefresh,
+    /* The usual Refresh dialog from another screen (the AI Overview watch's Check them): its tools are read first when the
+       Keywords screen hasn't been opened yet, so the dialog lists them with their credits. */
+    async checkWith(ids, engines, picked = []) {
+      if (!K.tools) { try { await loadTools(); } catch (err) { UI.toast(t(err.message), { kind: "crit" }); return; } }
+      openRefresh(ids, engines, 10, picked.length ? "pick" : "auto", picked);
+    },
     wanted: () => { if (K.stale && !K.loading) load(); },
     commands: () => { if (!K.data && !K.loading) load(); return commandRows(); },
   };
