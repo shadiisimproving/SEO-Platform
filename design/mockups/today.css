@@ -9,6 +9,9 @@
 .today-first-act { margin-top: 10px; }
 /* A drop's likely cause, and the same search this week: one short grey line each under the row. */
 .rows .what .today-cause { font-size: 12px; color: var(--text-2); margin-top: 2px; }
+.rows .what .today-rival { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.rows .what .today-rival > span { min-width: 0; overflow-wrap: anywhere; }
+.rows .what .today-rival-path { font-size: 12px; padding: 0; }
 .content > .setup + .today-answer, .today-answer + .setup { margin-top: 0; }
 /* Why a to-do row is where it is: an icon and a word, coloured by how serious it is. */
 .rows .what .d:has(> .today-why) { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 10px; }
