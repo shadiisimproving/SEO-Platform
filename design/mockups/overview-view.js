@@ -974,6 +974,8 @@
         if (freshWanted()) out.fresh = 1;
         NUMBER_FILTERS.forEach(([id]) => { if (String(f[id]).trim()) out[ADDR[id]] = String(f[id]).trim(); });
       }
+      // Today's See page: the four numbers and the chart count that page alone (only=1), so a reload or a link keeps it.
+      if (OV.tab === "page" && onlyPage() && onlyPage() === f.q.trim()) out.only = 1;
       return out;
     },
     fromAddress(q) {
@@ -991,6 +993,8 @@
         OV.moreFilters = numbersOn(f) > 0;
         OV.includeFresh = q.get("fresh") === "1" && f.q_mode === "exact" && f.q.trim() ? { dim: OV.tab, q: f.q.trim() } : null;
       }
+      const page = OV.filters.page?.q?.trim();
+      OV.onlyPage = q.get("only") === "1" && OV.tab === "page" && page ? { page, host: q.get("site") || UI?.siteHostPicked?.() || null } : null;
     },
   };
 
