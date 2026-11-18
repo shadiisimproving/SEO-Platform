@@ -1,14 +1,21 @@
 // One period rule (expert review 2026-11-17): the head prints only the days really compared, says why there is no
 // comparison, Today's cards say their own days, long charts end on a whole week, chart dates sit under their points.
 //   DB_NAME_TEST=test_fix_ui_periods_test .venv/bin/python tests/ui/app_server.py --port 8291
-//   OUT=<folder> BASE=http://127.0.0.1:8291 SEOCC_REAL_DEFAULT=1 node tests/ui/flow_one_period.cjs
+//   DB_NAME_TEST=test_fix_ui_periods_test OUT=<folder> BASE=http://127.0.0.1:8291 SEOCC_REAL_DEFAULT=1 node tests/ui/flow_one_period.cjs
+// It seeds AI search itself (seed_ai_search.py normal), so DB_NAME_TEST must name the server's database: the harness's own
+// seed has no Google Analytics on site one, so AI search would show "Connect" and no weekly chart to check.
 const fs = require("fs");
+const path = require("path");
+const { execFileSync } = require("child_process");
 const { open } = require("./pw.cjs");
 const OUT = process.env.OUT || "var/ui-one-period", BASE = (process.env.BASE || "http://127.0.0.1:8291").replace(/\/$/, "");
 fs.mkdirSync(OUT, { recursive: true });
 const fails = [];
 const check = (ok, what, extra = "") => { console.log(`${ok ? "ok  " : "FAIL"} ${what}${extra !== "" ? `  [${extra}]` : ""}`); if (!ok) fails.push(what); };
 const settle = (page, ms = 1200) => page.waitForTimeout(ms);
+if (!/_test$/.test(process.env.DB_NAME_TEST || "")) { console.error("Set DB_NAME_TEST to the test server's database (it must end in _test)."); process.exit(2); }
+const REPO = path.join(__dirname, "..", "..");
+execFileSync(path.join(REPO, ".venv", "bin", "python"), [path.join(__dirname, "seed_ai_search.py"), "normal"], { cwd: REPO, env: process.env, stdio: "pipe" });
 const json = (page, url) => page.evaluate(async (u) => (await fetch(u)).json(), url);
 
 async function visit(page, hash, range, lang) {
@@ -71,8 +78,17 @@ async function visit(page, hash, range, lang) {
 
       // AI search: weekly chart, every date under its point.
       await visit(page, "#ai?site=site-one.example", { preset: "28d", compare: "prev" }, lang);
-      const aiTicks = await page.$$eval(".lv-tick", (els) => els.map((e) => e.style.left));
-      check(aiTicks.length > 0 && /^100(\.0+)?%$/.test(aiTicks[aiTicks.length - 1]), `${tag} ${lang}: AI chart's last date under the last point`, aiTicks.join(" "));
+      // Each chart on its own: every date at its point's share of the width (index / (weeks − 1), half way for one week),
+      // and the last week has its date.
+      const aiCharts = await page.$$eval("[data-lv-chart^='ai-weeks']", (boxes) => boxes.map((b) => ({
+        id: b.dataset.lvChart, n: window.LV.chartData.get(b.dataset.lvChart)?.days.length || 0,
+        at: [...b.querySelectorAll(".lv-tick")].map((e) => parseFloat(e.style.left)) })));
+      check(aiCharts.length === 2, `${tag} ${lang}: AI search draws both weekly charts`, aiCharts.map((c) => c.id).join(" "));
+      for (const c of aiCharts) {
+        const slot = (v) => (c.n === 1 ? Math.abs(v - 50) < 0.01 : Math.abs((v / 100) * (c.n - 1) - Math.round((v / 100) * (c.n - 1))) < 0.01);
+        const last = c.at[c.at.length - 1];
+        check(c.at.length > 0 && c.at.every(slot) && Math.abs(last - (c.n === 1 ? 50 : 100)) < 0.01, `${tag} ${lang}: ${c.id}: last date under the last point`, `${c.n} weeks, ${c.at.join("% ")}%`);
+      }
       await page.screenshot({ path: name("06-ai"), fullPage: true });
 
       // Pages and Content: Search Console clicks on the shared period.
