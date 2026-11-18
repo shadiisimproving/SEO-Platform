@@ -595,14 +595,17 @@ def test_a_new_result_never_overwrites_an_old_one(world):
         assert conn.execute(text("SELECT COUNT(*) FROM serp_results WHERE check_id = :c AND position = 5 AND host = :h"), {"c": first, "h": ME}).scalar() == 1
 
 
-def test_the_first_tool_in_your_order_speaks_for_the_row(world):
+def test_with_no_main_tool_the_newest_check_speaks_for_the_row_whatever_the_order(world):
+    """2026-11-18: the order says which tool a Refresh tries first, not whose answer is right. The main tool still wins."""
     [k] = track(world, "a")
-    save(world, k, tool="Searlo", position=2)
     save(world, k, tool="Bright Data", position=8)
-    assert row_of(world, k)["main"]["tool"] == "Bright Data"
-    connections.set_order(world.engine, "google", ["Searlo", "Bright Data", "SerpApi", "HasData", "Browser on this Mac"])
+    save(world, k, tool="Searlo", position=2)
+    assert row_of(world, k)["main"]["tool"] == "Searlo"  # newest, though Bright Data is first in the default order
+    connections.set_order(world.engine, "google", ["Bright Data", "Searlo", "SerpApi", "HasData", "Browser on this Mac"])
     view = row_of(world, k)
     assert view["main"]["tool"] == "Searlo" and [row["tool"] for row in view["others"]] == ["Bright Data"]
+    connections.save_setting(world.engine, "main_tool", "Bright Data")
+    assert row_of(world, k)["main"]["tool"] == "Bright Data"
 
 
 def test_tools_disagree_only_within_48_hours_and_past_the_editable_gap(world):

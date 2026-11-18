@@ -315,7 +315,9 @@ class SerpCheck(Base):
     ai_state: Mapped[str] = mapped_column(String(14), server_default="not_captured")  # present, absent, not_captured
     features_state: Mapped[str] = mapped_column(String(14), server_default="not_captured")  # featured snippet, questions, rich results
     trigger_kind: Mapped[str] = mapped_column(String(14), server_default="refresh")  # first_upload, refresh
-    error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)  # a failed check's error, or why a check is suspect
+    asked: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # what the tool says it searched with (SerpApi's search_parameters)
+    query_shown: Mapped[str | None] = mapped_column(String(300), nullable=True)  # the query its results page showed
     checked_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
 
 

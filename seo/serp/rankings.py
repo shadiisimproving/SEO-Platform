@@ -134,7 +134,7 @@ def movement(now_p: int | None, then_p: int | None) -> str:
     return "out"
 
 
-def engine_view(checks: list[Seen], host: str, country: str, language: str, order: list[str], gap: int, now: datetime, own: dict | None = None) -> dict:
+def engine_view(checks: list[Seen], host: str, country: str, language: str, order: list[str], gap: int, now: datetime, own: dict | None = None, main_tool: str = "") -> dict:
     """One keyword on one engine. `checks` are oldest first."""
     home, away = [], []
     for seen in checks:
@@ -147,9 +147,8 @@ def engine_view(checks: list[Seen], host: str, country: str, language: str, orde
     place = {name: at for at, name in enumerate(order)}
     main, passed_over = None, None
     if latest_by_tool:
-        # The first tool in your order that has a result (the owner's rule), unless its result is older than
-        # store.MAIN_MAX_AGE_DAYS and another tool has a newer one: then the newer one, and the row says why.
-        main, passed_over = store.pick_main(list(latest_by_tool.values()), place, now, tool=lambda c: c.tool, ident=lambda c: c.check_id, at=lambda c: c.at)
+        # The main tool's result while it is fresh, otherwise the newest (store.pick_main, the rule every screen shares).
+        main, passed_over = store.pick_main(list(latest_by_tool.values()), main_tool, now, tool=lambda c: c.tool, ident=lambda c: c.check_id, at=lambda c: c.at)
     flagged_only = False
     if main is None and home:  # only suspect results: shown as such, and counted as nothing
         main, flagged_only = home[-1], True
@@ -328,6 +327,7 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
         ]
         last_run = max((day for day in finished if day), default=None)
     order = {name: connections.order_for(engine, name) for name in ENGINES}
+    chosen_tool = connections.main_tool(engine)
     gap = int(connections.get_setting(engine, "disagree_gap"))
     rows = []
     for track in tracked:
@@ -335,7 +335,7 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
         engines = {}
         for name in ENGINES:
             own_row = own["positions"].get(name, {}).get((track["site_id"], key))
-            engines[name] = engine_view(checks.get((track["id"], name), []), host, track["country"], track["language"], order[name], gap, now, _public(own_row))
+            engines[name] = engine_view(checks.get((track["id"], name), []), host, track["country"], track["language"], order[name], gap, now, _public(own_row), chosen_tool)
         ai = _ai(checks.get((track["id"], "google"), []), host, track["country"], track["language"], now)
         pages_seen = _fold_pages(own["pages"].get((track["site_id"], key), {}))
         latest_google = checks.get((track["id"], "google"), [])
