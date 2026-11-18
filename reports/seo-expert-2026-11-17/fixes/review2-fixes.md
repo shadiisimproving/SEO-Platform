@@ -65,7 +65,7 @@ Overview axis: from 1,000 on the left axis uses compact numbers (2.8K, FR 2,8 k)
 
 ## Tests run
 
-- Full pytest on `test_fix_rv2_test`: see the final summary in the hand-off message.
+- Full pytest on `test_fix_rv2_test`: all green (exit 0, about 3,150 tests, no failure or error; `test_text_all_scripts.py` passed too).
 - `node --test tests/js`: 6 pass, 0 fail.
 - Playwright (port 8306, `test_fix_ui_rv2_test`):
   - `flow_ga4_numbers.cjs`: all passed (desk/phone, EN/FR).
