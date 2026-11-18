@@ -19,7 +19,11 @@ from seo.sources import credentials
 from seo.sources.service import encode_property
 
 ROW_LIMIT = 25000  # Google's most per request. A report that fills it is marked partial.
-HISTORY_DAYS = 486  # Google keeps 16 months
+# Google keeps 16 months back from its last final day, and a few days more: its own "Last 16 months" export made on
+# 15 Nov 2026 started on 14 Jul 2025. 486 days kept from 19 Jul, 3 days short of the 16 months ending 15 Nov (from 16 Jul)
+# (expert review 2026-11-17, 4b). 490 days from Google's today keep every 16 months whole, whatever the months' lengths
+# (at most 487 days back from the last final day, 2 or 3 days before today), plus the days Google still has.
+HISTORY_DAYS = 490
 REREAD_DAYS = 5  # final days Google may still revise, read again once a day
 HOT_MINUTES = 50  # days that aren't final yet are read again when older than this
 DAY_TABLES = ("gsc_page", "gsc_query", "gsc_query_page", "gsc_country", "gsc_device")
