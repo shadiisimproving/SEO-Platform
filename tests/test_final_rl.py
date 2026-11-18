@@ -226,3 +226,49 @@ def test_link_gaps_app_flagged_and_the_cap_count_current_rows_and_the_export_mat
     tables = {table.id: table for table in report.tables}
     assert "old.example" not in [r["domain"] for r in tables["gaps"].rows] and tables["gaps"].total == 4
     assert [r["domain"] for r in tables["old"].rows] == ["old.example"]
+
+
+# ---- 6. the Keywords and Backlinks exports say what the screens say --------------------------------------------------
+
+
+def _cells(report, table_id="keywords"):
+    table = next(t for t in report.tables if t.id == table_id)
+    return {c.label: c for c in table.columns}, table.rows
+
+
+def test_keywords_export_names_impressions_leaves_suspects_unplaced_and_keeps_two_pages_apart(world, monkeypatch):
+    """'créer entreprise dubai': its only check is suspect (#1, greyed on screen) -> Position empty, 'Suspect', also 'Searlo #1'.
+    'ouvrir entreprise dubai': SerpApi #37 and Searlo #4, nothing settles it -> #37, 'Tools disagree', also 'Searlo #4'.
+    'vivre a dubai': no check found me, Search Console's most-shown page is /vivre -> Ranking page empty, that page apart."""
+    suspect, split, missing = track(world, "créer entreprise dubai", "ouvrir entreprise dubai", "vivre a dubai")
+    marked = put(world, suspect, "Searlo", HONEST, hours_ago=2, mine_at=1)
+    with world.engine.begin() as conn:
+        conn.execute(text("UPDATE serp_checks SET status = 'suspect', error = 'x' WHERE id = :i"), {"i": marked})
+    put(world, split, "Searlo", HONEST, hours_ago=3, mine_at=4)
+    put(world, split, "SerpApi", HONEST + [f"https://t{i}.example/" for i in range(40)], hours_ago=1, mine_at=37, depth=50)
+    put(world, missing, "Searlo", HONEST, hours_ago=1)
+    rows = {r["keyword"]: r for r in rankings.listing(world.engine, world.site)["rows"]}
+    rows["vivre a dubai"]["gsc_page"] = f"https://{ME}/vivre"
+    real = rankings.listing
+    monkeypatch.setattr(rankings, "listing", lambda engine, site_id=None: {**real(engine, site_id), "rows": list(rows.values())})
+    report = registry.build(world.engine, "keywords", {"site_id": str(world.site)})
+    columns, listed = _cells(report)
+    assert "Searches a month" not in columns and "Impressions, 28 days" in columns and "Google impressions, 28 days" not in columns  # same as Impressions on Google
+    by = {r["keyword"]: r for r in listed}
+    value = lambda label, kw: columns[label].get(by[kw]) if columns[label].get else by[kw].get(columns[label].key)  # noqa: E731
+    assert (value("Position", "créer entreprise dubai"), value("Check status", "créer entreprise dubai"), value("Also seen", "créer entreprise dubai")) == (None, "Suspect", "Searlo #1")
+    assert (value("Position", "ouvrir entreprise dubai"), value("Check status", "ouvrir entreprise dubai"), value("Also seen", "ouvrir entreprise dubai")) == (37, "Tools disagree", "Searlo #4")
+    assert value("Ranking page", "vivre a dubai") is None and value("Most shown in Search Console", "vivre a dubai") == f"https://{ME}/vivre"
+
+
+def test_backlinks_export_gives_the_anchor_read_on_the_page_and_the_typed_one_apart(cworld):  # noqa: F811
+    reply = cworld.client.post("/api/backlinks/bulk", json={"rows": [
+        {"site_id": cworld.own, "source_url": "https://lavoix.example/a", "anchor": "Créer Société Dubai", "anchor_kind": "brand"},
+    ]})
+    assert reply.status_code == 201
+    with cworld.engine.begin() as conn:
+        conn.execute(text("UPDATE backlinks SET seen_anchor = 'click here', check_outcome = 'found'"))
+    report = registry.build(cworld.engine, "backlinks", {"site_id": str(cworld.own)})
+    columns, [row] = _cells(report, "done")
+    get = lambda label: columns[label].get(row) if columns[label].get else row.get(columns[label].key)  # noqa: E731
+    assert (get("Link text"), get("Link text typed in"), get("Anchor type")) == ("click here", "Créer Société Dubai", "Generic")
