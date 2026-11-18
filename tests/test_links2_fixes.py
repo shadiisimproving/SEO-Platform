@@ -1,7 +1,8 @@
 """Link and competitor numbers, second round (SEO expert review 2026-11-17, accuracy/links.md and competitors-exports.md W4, W14).
 
 Every answer here is worked out by hand from the rows each test writes:
-1. The file's spam score still wins on Link gaps (owner, 2026-11-10), but the app's own flag stays on the row as a note.
+1. The file's spam score still wins on Link gaps (owner, 2026-11-10), but the app's own flag stays on the row as a note
+   (since 2026-11-18 a hard fact, such as a redirect, beats the file: tests/test_spam_facts.py).
 2. A file that doesn't say which links are followed leaves the follow status unknown, counted apart.
 3. A domain whose links were all last seen more than 6 months before its file is an old link, counted apart.
 4. The anchor type comes from the anchor the link checker read on the page; a type set by hand only when nothing was read.
@@ -59,19 +60,19 @@ def _checked(world, verdicts):  # noqa: F811
 
 # ---- 1. the app's own flag stays on a row the file's score keeps ----------------------------------------------------
 
-def test_a_file_score_still_wins_but_the_app_flag_stays_on_the_row(world):  # noqa: F811
+def test_a_file_score_still_wins_except_over_a_hard_fact_and_the_app_flag_stays_on_the_row(world):  # noqa: F811
     rival = add_rival(world)
     gaps.import_referrers(world.engine, world.own, rival, _file(), "ubersuggest.csv")
     _checked(world, {"moved.example": ("leads_elsewhere", "cvgorilla.example"), "down.example": ("site_down", None)})
     answer, rows = _gaps(world)
     moved, down, fresh = rows["moved.example"], rows["down.example"], rows["fresh.example"]
-    # The owner's rule is kept: a file score of 3 means good, whatever the app saw.
-    assert (moved["quality"], moved["flagged_by"], down["quality"]) == ("good", None, "good")
-    assert moved["app_flag"] == {"reason": "leads_elsewhere", "words": "Redirects to another site", "to": "cvgorilla.example", "weak": False, "at": "2026-11-11T08:00:00Z"}
+    # A file score of 3 means good, except for a hard fact like a redirect, which is flagged and keeps its note (owner, 2026-11-18).
+    assert (moved["quality"], moved["flagged_by"], down["quality"]) == ("spam", "system", "good")
+    assert moved["app_flag"] == {"reason": "leads_elsewhere", "words": "Redirects to another site", "to": "cvgorilla.example", "weak": False, "at": "2026-11-11T08:00:00Z", "over_file": 3}
     # Site down can be stale, so it is the weak kind and carries the day it was seen.
     assert down["app_flag"]["reason"] == "site_down" and down["app_flag"]["weak"] is True and down["app_flag"]["at"].startswith("2026-11-11")
     assert fresh["app_flag"] is None
-    assert answer["funnel"]["app_flagged"] == 2 and answer["funnel"]["app_flagged_weak"] == 1
+    assert answer["funnel"]["app_flagged"] == 1 and answer["funnel"]["app_flagged_weak"] == 1  # only good ones count: down.example
 
 
 def test_a_domain_the_file_has_no_score_for_is_flagged_as_before_with_no_second_note(world):  # noqa: F811

@@ -7,8 +7,10 @@ Three steps, cheapest first:
 3. Its home page, read once: gone, down, parked, spam words, almost empty, or hidden from search engines.
 
 When the uploaded file gives a domain a spam score, the file decides, not these steps: above 30 is spam, the rest is good
-(the owner asked for this on 2026-11-10, after betmatecasino.com was flagged by its name with a score of 3). The steps
-only judge domains the file has no score for, and the screen says the system flagged those.
+(the owner asked for this on 2026-11-10, after betmatecasino.com was flagged by its name with a score of 3). One exception
+(owner, 2026-11-18): a hard fact the app saw itself beats the file, because a file's score can't see it. The site redirects
+to another website, the domain is parked, or there is no home page. "Site down" is not one: it can be back the next day.
+Otherwise the steps only judge domains the file has no score for, and the screen says the system flagged those.
 
 A site that doesn't let the app read its home page isn't spam, so it stays good, with a note. A rule can be wrong, so a
 flagged domain is never removed: it stays in the list with its reason, and a person's decision always wins. The numbers
@@ -91,15 +93,23 @@ PARKED_WORDS = (
 # Who flagged it. The screen only adds words for the system: the file's and the person's reasons already say who.
 BY_FILE, BY_SYSTEM, BY_YOU = "file", "system", "you"
 
+# What the app saw for itself that a file's spam score can't overrule (owner, 2026-11-18). Site down isn't one: it can be stale.
+HARD_FACTS = frozenset({"leads_elsewhere", "parked", "no_home_page"})
+
 
 def verdict(spam_score: float | None, system_quality: str | None, system_reason: str | None, decision: str | None = None) -> tuple[str, str | None, str | None]:
-    """The quality, the reason and who flagged it. A person first, then the uploaded file's spam score, then the app's own checks."""
+    """The quality, the reason and who flagged it. A person first, then a hard fact the app saw, then the uploaded file's spam score,
+    then the app's other checks."""
     if decision == "keep":
         return GOOD, None, None
     if decision == "spam":
         return SPAM, "my_choice", BY_YOU
     if spam_score is not None:
-        return (SPAM, "spam_score", BY_FILE) if is_spam_score(spam_score) else (GOOD, None, None)
+        if is_spam_score(spam_score):
+            return SPAM, "spam_score", BY_FILE  # the file already says spam: its reason is the one shown
+        if system_quality == SPAM and system_reason in HARD_FACTS:
+            return SPAM, system_reason, BY_SYSTEM
+        return GOOD, None, None
     if system_reason == "spam_score":  # set by an older version from some other file's score: the checks haven't judged it yet
         return PENDING, None, None
     if system_quality == SPAM:
@@ -110,15 +120,21 @@ def verdict(spam_score: float | None, system_quality: str | None, system_reason:
 WEAK_FLAGS = frozenset({"site_down", "unreadable"})  # a site down on one day can be back the next: shown with its date, as the weaker kind
 
 
-def app_flag(system_quality: str | None, system_reason: str | None, flagged_by: str | None, decision: str | None, checked_at=None, redirect_to: str | None = None) -> dict | None:
-    """What the app's own check saw, kept on a row the file's spam score let through (owner rule of 2026-11-10: the file decides).
+def app_flag(system_quality: str | None, system_reason: str | None, flagged_by: str | None, decision: str | None, checked_at=None, redirect_to: str | None = None,
+             spam_score: float | None = None) -> dict | None:
+    """What the app's own check saw, kept on the row when the file's spam score had a say.
 
-    None when the app saw nothing, when the app's flag is already the row's reason, or when a person decided."""
-    if system_quality != SPAM or not system_reason or system_reason in ("spam_score", "my_choice") or flagged_by is not None or decision is not None:
+    On a row the file let through (its other checks, and site down): the note. On a row a hard fact flagged though the file said
+    good (owner, 2026-11-18): the same note, with `over_file` the score it overruled. None when the app saw nothing, when the
+    app's flag is simply the row's reason with no file score, or when a person decided."""
+    if system_quality != SPAM or not system_reason or system_reason in ("spam_score", "my_choice") or decision is not None:
+        return None
+    overruled = flagged_by == BY_SYSTEM and system_reason in HARD_FACTS and spam_score is not None and not is_spam_score(spam_score)
+    if flagged_by is not None and not overruled:
         return None
     at = checked_at.strftime("%Y-%m-%dT%H:%M:%SZ") if checked_at is not None else None
     return {"reason": system_reason, "words": reason_words(system_reason), "to": redirect_to if system_reason == "leads_elsewhere" else None,
-            "weak": system_reason in WEAK_FLAGS, "at": at}
+            "weak": system_reason in WEAK_FLAGS, "at": at, "over_file": spam_score if overruled else None}
 
 
 def judge_name(domain: str) -> str | None:

@@ -407,15 +407,17 @@ def test_a_site_that_is_down_isnt_tried_again_straight_away(world):
 
 # ---- the file's spam score decides --------------------------------------------------------------------
 
-def test_the_files_spam_score_decides_over_the_apps_own_checks(world):
+def test_the_files_spam_score_decides_over_the_apps_own_checks_but_not_over_hard_facts(world):
     # betmatecasino.com had a score of 3 in an Ubersuggest file and was flagged by its name (2026-11-10).
     scores = {"bet-casino.example": 3, "parked.example": 3, "toxic.example": 52}
     report = gaps.import_referrers(world.engine, world.own, world.rival, csv_of(["bet-casino.example", "parked.example", "toxic.example", "gamble-casino.example"], scores), "links.csv")
     assert report["flagged"] == 2  # the file's 52, and a spam name the file has no score for
     world.check()
     answer = world.gaps()
-    assert sorted(good(world)) == ["bet-casino.example", "parked.example"]  # a low score wins over a spam name and a parked page
+    # A low score wins over a spam name, but not over a parked page: a hard fact the app saw itself (owner, 2026-11-18).
+    assert good(world) == ["bet-casino.example"]
     flagged = {g["domain"]: g for g in answer["filtered"]}
+    assert (flagged["parked.example"]["reason"], flagged["parked.example"]["flagged_by"], flagged["parked.example"]["app_flag"]["over_file"]) == ("parked", "system", 3)
     assert (flagged["toxic.example"]["reason"], flagged["toxic.example"]["flagged_by"]) == ("spam_score", "file")
     assert flagged["toxic.example"]["reason_words"] == "File spam score above 30"
     assert (flagged["gamble-casino.example"]["reason"], flagged["gamble-casino.example"]["flagged_by"]) == ("name_words", "system")

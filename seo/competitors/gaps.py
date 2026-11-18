@@ -345,8 +345,10 @@ def _all_gaps(engine: Engine, site_id: int) -> dict:
         # A person's decision beats every rule, then the uploaded file's spam score, then the app's own checks (quality.verdict).
         system_quality, system_reason, system_at, led_to = (entry.pop(key) for key in ("system_quality", "system_reason", "system_at", "redirect_to"))
         state, reason, flagged_by = quality.verdict(entry["spam_score"], system_quality, system_reason, decisions.get(domain))
-        # The file's score let it through, but what the app's own check saw stays on the row (SEO review 2026-11-17, A1).
-        entry["app_flag"] = quality.app_flag(system_quality, system_reason, flagged_by, decisions.get(domain), system_at, led_to) if state == GOOD else None
+        # What the app's own check saw stays on the row: on one the file let through (SEO review 2026-11-17, A1), and on one a
+        # hard fact flagged though the file said good, with the score it overruled (owner, 2026-11-18).
+        entry["app_flag"] = quality.app_flag(system_quality, system_reason, flagged_by, decisions.get(domain), system_at, led_to, entry["spam_score"])
+        entry["redirect_to"] = led_to if state == SPAM and reason == "leads_elsewhere" else None
         entry["old_link"] = old_link(links.get(domain, []), {c["id"] for c in entry["competitors"]})
         # Someone found this one in a tool, so it shows while its home page waits. The check still runs and can still flag it.
         if state == quality.PENDING and domain in typed_in:
