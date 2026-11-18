@@ -193,10 +193,11 @@ def test_a_burst_of_visits_is_marked_and_the_change_is_given_without_it(engine, 
         day += timedelta(days=1)
     found = ga4_checks.unusual_change(engine, [site], date(2026, 8, 1), date(2026, 8, 31), date(2026, 7, 1), date(2026, 7, 31))
     assert [(r["from"], r["to"], r["visits"], r["usual"]) for r in found["runs"]] == [("2026-08-01", "2026-08-05", 5000, 10)]
-    # Without 1-5 Aug: 26 days x 10 = 260 against July's 310: -16.1%.
-    assert found["visits"] == 260 and found["visits_before"] == 310 and found["change"] == -16.1
+    # Without 1-5 Aug: 26 days x 10 = 260 against July's 310, but a day each: 10 against 10, so 0% (code review
+    # 2026-11-18, #2: it said -16.1%, only from the five days left out).
+    assert found["visits"] == 260 and found["visits_before"] == 310 and found["change"] == 0.0
     answer = service.channels(_scope(engine, site, date(2026, 8, 1), date(2026, 8, 31), date(2026, 7, 1), date(2026, 7, 31)))
-    assert answer["unusual"]["change"] == -16.1 and sorted(answer["unusual"]["days"]) == [f"2026-08-0{n}" for n in range(1, 6)]
+    assert answer["unusual"]["change"] == 0.0 and sorted(answer["unusual"]["days"]) == [f"2026-08-0{n}" for n in range(1, 6)]
 
 
 # ---- Clarity's day (W10) -------------------------------------------------------------------------------------------

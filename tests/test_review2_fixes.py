@@ -104,3 +104,28 @@ def test_the_history_is_read_again_a_batch_a_run_and_a_quota_stop_is_not_a_failu
         conn.execute(text("UPDATE coverage SET saved_at = UTC_TIMESTAMP(3)"))
     assert ga4.collect(world.engine, world.site) == ga4.LATER
     assert common.source_row(world.engine, world.site, "ga4")["last_error"] is None
+
+
+# ---- 2: visits change without the unusual days, a day against a day ---------------------------------------------------
+
+
+def test_a_steady_100_a_day_with_a_5_day_burst_is_no_change(engine, site):
+    from seo.metrics import today as today_view
+
+    start = END - timedelta(days=27)
+    for n in range(-120, 28):  # 100 a day in both periods; 1,000 a day on the first 5 days of this one
+        _day(engine, site, start + timedelta(days=n), 1000 if 0 <= n < 5 else 100)
+    got = ga4_checks.unusual_change(engine, [site], start, END, start - timedelta(days=28), start - timedelta(days=1))
+    assert (got["visits"], got["visits_before"]) == (2300, 2800)  # 23 kept days x 100, 28 x 100
+    assert got["change"] == 0.0  # was -17.9%
+    row = today_view.today(engine, site, {"range": "28d"})
+    assert row["results"]["visits"]["unusual"]["change"] == 0
+
+
+def test_a_normal_day_between_two_bursts_stays_in(engine, site):
+    start = END - timedelta(days=27)
+    for n in range(-120, 28):  # bursts on days 0 and 2 (one run: 2 days apart); day 1 is a normal 100
+        _day(engine, site, start + timedelta(days=n), 1000 if n in (0, 2) else 100)
+    got = ga4_checks.unusual_change(engine, [site], start, END, start - timedelta(days=28), start - timedelta(days=1))
+    assert [(r["from"], r["to"], r["days"], r["visits"]) for r in got["runs"]] == [(start.isoformat(), (start + timedelta(days=2)).isoformat(), 2, 2000)]
+    assert got["visits"] == 2600 and got["change"] == 0.0  # 26 kept days, day 1 among them (was 2,500 over 25)

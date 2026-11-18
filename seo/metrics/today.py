@@ -781,8 +781,20 @@ def _unusual_total(strip: list[dict]) -> dict | None:
     runs = [run for row in rows for run in row["unusual"]["runs"]]
     runs_before = [run for row in rows for run in row["unusual"]["runs_before"]]
     compared = [row for row in strip if row["visits_was"] is not None]
-    now = sum((row["unusual"]["visits"] if row.get("unusual") else row["visits"]) for row in compared)
-    was = sum((row["unusual"]["visits_before"] if row.get("unusual") and row["unusual"]["visits_before"] is not None else row["visits_was"]) for row in compared)
+
+
+    def per_day(row, side: str) -> float:
+        """Visits a day of one side: without the unusual days when the site has some there, else over its days with data."""
+        found = row.get("unusual")
+        key = "per_day" if side == "now" else "per_day_before"
+        if found and found.get(key) is not None:
+            return found[key]
+        days = sum(1 for slot in row["_daily"]["visits"] if slot[0] == side)
+        return (row["visits"] if side == "now" else row["visits_was"]) / days if days else 0.0
+
+    # Visits a day, as each site's own change: days left out of one period only can't read as a fall (code review 2026-11-18, #2).
+    now = sum(per_day(row, "now") for row in compared)
+    was = sum(per_day(row, "was") for row in compared)
     days = sorted({day for row in rows for day in row["unusual"]["days"]})
     days_before = sorted({day for row in rows for day in row["unusual"]["days_before"]})
     return {"runs": runs, "runs_before": runs_before, "days": days, "days_before": days_before, "change": _percent(now, was) if compared and was else None}

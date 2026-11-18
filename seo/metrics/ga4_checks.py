@@ -193,36 +193,53 @@ def unusual_days(engine: Engine, site_ids: list[int], start: date, end: date) ->
                 marked[day.isoformat()] = marked.get(day.isoformat(), 0) + int(visits - usual)
                 if current and (day - date.fromisoformat(current["to"])).days <= 2:
                     current.update(to=day.isoformat(), visits=current["visits"] + visits, days=current["days"] + 1)
+                    current["list"].append(day.isoformat())
                 else:
-                    current = {"site_id": site_id, "host": hosts.get(site_id, ""), "from": day.isoformat(), "to": day.isoformat(), "visits": visits, "days": 1, "usual": round(usual)}
+                    current = {"site_id": site_id, "host": hosts.get(site_id, ""), "from": day.isoformat(), "to": day.isoformat(), "visits": visits, "days": 1, "usual": round(usual), "list": [day.isoformat()]}
                     runs.append(current)
     return {"days": marked, "runs": runs}
 
 
+def _kept(engine: Engine, site_id: int, start: date, end: date, unusual: dict) -> tuple[int, int]:
+    """A site's visits in the period and the days with data they come from, leaving out its unusual days. Only the days
+    marked unusual: a normal day between two bursts of one run stays in (code review 2026-11-18)."""
+    skip = {day for run in unusual["runs"] if run["site_id"] == site_id for day in run.get("list") or [run["from"], run["to"]]}
+    with engine.connect() as conn:
+        rows = conn.execute(text("SELECT day, SUM(sessions) FROM ga4_source_daily WHERE site_id = :s AND day BETWEEN :a AND :b GROUP BY day"), {"s": site_id, "a": start, "b": end}).all()
+    kept = [int(visits or 0) for day, visits in rows if day.isoformat() not in skip]
+    return sum(kept), len(kept)
+
+
 def visits_without(engine: Engine, site_ids: list[int], start: date, end: date, unusual: dict) -> int:
     """Visits in the period, leaving out the unusual days of each site."""
-    total = 0
-    skip = {(run["site_id"], run["from"], run["to"]) for run in unusual["runs"]}
-    for site_id in site_ids:
-        ranges = [(date.fromisoformat(a), date.fromisoformat(b)) for s, a, b in skip if s == site_id]
-        with engine.connect() as conn:
-            rows = conn.execute(text("SELECT day, SUM(sessions) FROM ga4_source_daily WHERE site_id = :s AND day BETWEEN :a AND :b GROUP BY day"), {"s": site_id, "a": start, "b": end}).all()
-        for day, visits in rows:
-            if not any(a <= day <= b for a, b in ranges):
-                total += int(visits or 0)
-    return total
+    return sum(_kept(engine, site_id, start, end, unusual)[0] for site_id in site_ids)
+
+
+def per_day_without(engine: Engine, site_ids: list[int], start: date, end: date, unusual: dict) -> float | None:
+    """Visits a day without the unusual days: each site's kept visits over its kept days with data, added up across sites.
+    None when no site has a kept day."""
+    found = [_kept(engine, site_id, start, end, unusual) for site_id in site_ids]
+    if not any(days for _, days in found):
+        return None
+    return sum(visits / days for visits, days in found if days)
 
 
 def unusual_change(engine: Engine, site_ids: list[int], start: date, end: date, compare_start: date | None, compare_end: date | None) -> dict | None:
-    """The unusual days of both periods, and the visits change without them. None when neither period has any."""
+    """The unusual days of both periods, and the visits change without them. None when neither period has any.
+
+    The change compares visits a day: leaving 5 burst days out of one period only must not read as a fall (a steady 100 a
+    day gave -17.9%; code review 2026-11-18, #2)."""
     now = unusual_days(engine, site_ids, start, end)
     was = unusual_days(engine, site_ids, compare_start, compare_end) if compare_start else {"days": {}, "runs": []}
     if not now["runs"] and not was["runs"]:
         return None
     usual_now = visits_without(engine, site_ids, start, end, now)
     usual_was = visits_without(engine, site_ids, compare_start, compare_end, was) if compare_start else None
-    change = round((usual_now - usual_was) / usual_was * 100, 1) if usual_was else None
-    return {"runs": now["runs"], "runs_before": was["runs"], "days": now["days"], "days_before": was["days"], "visits": usual_now, "visits_before": usual_was, "change": change}
+    per_now = per_day_without(engine, site_ids, start, end, now)
+    per_was = per_day_without(engine, site_ids, compare_start, compare_end, was) if compare_start else None
+    change = round((per_now - per_was) / per_was * 100, 1) if per_now is not None and per_was else None
+    return {"runs": now["runs"], "runs_before": was["runs"], "days": now["days"], "days_before": was["days"], "visits": usual_now, "visits_before": usual_was,
+            "per_day": round(per_now, 4) if per_now is not None else None, "per_day_before": round(per_was, 4) if per_was is not None else None, "change": change}
 
 
 def other_hosts(engine: Engine, site_id: int, today: date | None = None) -> list[dict]:
