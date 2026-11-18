@@ -25,8 +25,15 @@ GENERIC_WORDS = {
 _URLISH = re.compile(r"^(https?://|www\.)|^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}(/\S*)?$")
 
 
+_APOSTROPHES = str.maketrans({mark: " " for mark in "\u02bc\u02bb\u02b9\u02bd"})  # letter-like apostrophes (ʼ): isalnum() says yes
+
+
 def clean(value: str | None) -> str:
-    folded = unicodedata.normalize("NFKD", value or "").encode("ascii", "ignore").decode().lower()
+    """Lower case, no accents, every mark a space. Marks become spaces *before* the ASCII fold: folding first dropped a
+    curly apostrophe (d’entreprise → "dentreprise"), so a French anchor typed in a CMS stopped matching its keyword."""
+    decomposed = unicodedata.normalize("NFKD", value or "").translate(_APOSTROPHES)
+    letters = "".join(ch if ch.isalnum() else (" " if not unicodedata.combining(ch) else "") for ch in decomposed)
+    folded = letters.encode("ascii", "ignore").decode().lower()
     return " ".join(re.sub(r"[^a-z0-9]+", " ", folded).split())
 
 
