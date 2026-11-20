@@ -85,8 +85,21 @@ def _merge(rows: list[dict], key: str, *adding: str) -> list[dict]:
     return list(merged.values())
 
 
+SOURCE_DIMENSIONS = ["sessionDefaultChannelGroup", "sessionSource", "sessionMedium"]
+SOURCE_METRICS = ["sessions", "totalUsers", "keyEvents", "engagedSessions"]
+SOURCE_INSERT = (
+    "INSERT INTO ga4_source_daily (site_id, day, row_hash, channel, source, medium, sessions, users, key_events, engaged_sessions) "
+    "VALUES (:s, :d, :h, :a, :b, :m, :x, :u, :k, :e)"
+)
+
+
+def _source_rows(site: dict, report: _Report) -> list[dict]:
+    rows = [{**site, "h": common.digest(r[0], r[1], r[2]), "a": r[0][:80], "b": r[1][:190], "m": r[2][:190], "x": _int(r[3]), "u": _int(r[4]), "k": _float(r[5]), "e": _int(r[6]) if len(r) > 6 else 0} for r in report.rows]
+    return _merge(rows, "h", "x", "u", "k", "e")
+
+
 def _one_day(engine: Engine, site_id: int, token: str, prop: str, day: date) -> None:
-    sources = _report(token, prop, day, ["sessionDefaultChannelGroup", "sessionSource", "sessionMedium"], ["sessions", "totalUsers", "keyEvents"])
+    sources = _report(token, prop, day, SOURCE_DIMENSIONS, SOURCE_METRICS)
     pages = _report(token, prop, day, ["landingPage"], ["sessions", "totalUsers", "keyEvents"])
     referrals = _report(token, prop, day, ["sessionSource", "sessionMedium", "landingPage", "sessionManualCampaignName"], ["sessions", "keyEvents"])
     campaigns = _report(token, prop, day, ["sessionManualSource", "sessionManualMedium", "sessionManualCampaignName", "landingPage"], ["sessions", "keyEvents"])
@@ -97,7 +110,7 @@ def _one_day(engine: Engine, site_id: int, token: str, prop: str, day: date) -> 
             raise
         ads = _Report([], False, None)
     site = {"s": site_id, "d": day}
-    source_rows = _merge([{**site, "h": common.digest(r[0], r[1], r[2]), "a": r[0][:80], "b": r[1][:190], "m": r[2][:190], "x": _int(r[3]), "u": _int(r[4]), "k": _float(r[5])} for r in sources.rows], "h", "x", "u", "k")
+    source_rows = _source_rows(site, sources)
     page_rows = _merge([{**site, "h": common.digest(r[0]), "p": r[0], "x": _int(r[1]), "u": _int(r[2]), "k": _float(r[3])} for r in pages.rows], "h", "x", "u", "k")
     # Rows with a UTM campaign are counted by UTM only, so they can't be counted twice.
     # A row tagged with a UTM source but no campaign is kept too, or its visits would be in neither table.
@@ -106,12 +119,29 @@ def _one_day(engine: Engine, site_id: int, token: str, prop: str, day: date) -> 
     ad_rows = _merge([{**site, "h": common.digest(r[0]), "c": r[0][:190], "n": _int(r[1]), "z": _money(r[2]), "y": ads.currency, "x": _int(r[3]), "k": _float(r[4])} for r in ads.rows if r[0] not in NOT_SET], "h", "n", "z", "x", "k")
     hid = sources.hid_rows or pages.hid_rows or referrals.hid_rows or campaigns.hid_rows
     with engine.begin() as conn:
-        _replace(conn, "ga4_source_daily", site_id, day, "INSERT INTO ga4_source_daily (site_id, day, row_hash, channel, source, medium, sessions, users, key_events) VALUES (:s, :d, :h, :a, :b, :m, :x, :u, :k)", source_rows)
+        _replace(conn, "ga4_source_daily", site_id, day, SOURCE_INSERT, source_rows)
         _replace(conn, "ga4_page_daily", site_id, day, "INSERT INTO ga4_page_daily (site_id, day, page_hash, path, sessions, users, key_events) VALUES (:s, :d, :h, :p, :x, :u, :k)", page_rows)
         _replace(conn, "ga4_referral_daily", site_id, day, "INSERT INTO ga4_referral_daily (site_id, day, row_hash, domain, path, sessions, key_events) VALUES (:s, :d, :h, :o, :p, :x, :k)", referral_rows)
         _replace(conn, "ga4_campaign_daily", site_id, day, "INSERT INTO ga4_campaign_daily (site_id, day, row_hash, source, medium, campaign, path, sessions, key_events) VALUES (:s, :d, :h, :a, :m, :c, :p, :x, :k)", campaign_rows)
         _replace(conn, "ga4_ads_daily", site_id, day, "INSERT INTO ga4_ads_daily (site_id, day, row_hash, campaign, clicks, cost, currency, sessions, key_events) VALUES (:s, :d, :h, :c, :n, :z, :y, :x, :k)", ad_rows)
         common.save_coverage(conn, site_id, "ga4", day, len(source_rows), "ok", hid_rows=hid)
+
+
+def _engaged_missing(engine: Engine, site_id: int, oldest: date) -> list[date]:
+    """Days read before engaged sessions were asked for (2026-11-20), newest first."""
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT DISTINCT day FROM ga4_source_daily WHERE site_id = :s AND day >= :o AND engaged_sessions IS NULL ORDER BY day DESC"),
+            {"s": site_id, "o": oldest},
+        ).all()
+    return [row[0] for row in rows]
+
+
+def _engaged_day(engine: Engine, site_id: int, token: str, prop: str, day: date) -> None:
+    """One report instead of five: the sources report again, now with engaged sessions. The other tables stay as read."""
+    sources = _report(token, prop, day, SOURCE_DIMENSIONS, SOURCE_METRICS)
+    with engine.begin() as conn:
+        _replace(conn, "ga4_source_daily", site_id, day, SOURCE_INSERT, _source_rows({"s": site_id, "d": day}, sources))
 
 
 def collect(engine: Engine, site_id: int, budget_seconds: float = 40) -> bool:
@@ -125,4 +155,8 @@ def collect(engine: Engine, site_id: int, budget_seconds: float = 40) -> bool:
             return False
         _one_day(engine, site_id, token, src["property"], day)
         common.succeeded(engine, site_id, "ga4", day)
+    for day in _engaged_missing(engine, site_id, oldest):  # once per old day, after the usual read, in the same budget
+        if time.monotonic() >= deadline:
+            return False
+        _engaged_day(engine, site_id, token, src["property"], day)
     return True

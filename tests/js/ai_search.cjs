@@ -1,5 +1,5 @@
 // Runs the AI search screen's own helpers from the Python tests (tests/test_ai_search.py). Reads one JSON request on stdin.
-// "fold": rows of 1 folding into one line. "french": every word the screen writes that has no French.
+// "fold": rows of 1 folding into one line. "donut": the visits per assistant donut's parts. "french": every word the screen writes that has no French.
 const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
@@ -38,5 +38,6 @@ const ask = JSON.parse(fs.readFileSync(0, "utf8"));
 const w = load();
 let answer;
 if (ask.ask === "fold") answer = w.AISearch.foldRows(ask.rows, (r) => r.v === 1, ask.min);
+else if (ask.ask === "donut") answer = w.AISearch.donutParts(ask.sources, ask.max);
 else if (ask.ask === "french") answer = words().filter((word) => w.FR[word] === undefined && !/^(AI Overview|SerpApi|Clarity|Google Analytics|Search Console)$/.test(word));
 process.stdout.write(JSON.stringify(answer));

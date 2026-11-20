@@ -26,12 +26,17 @@ def site(engine):
     return site_id
 
 
-def _ga4(engine, site_id, day, channel, source, medium, sessions, leads=0):
+def _ga4(engine, site_id, day, channel, source, medium, sessions, leads=0, engaged=None):
     with engine.begin() as conn:
         conn.execute(
-            text("INSERT INTO ga4_source_daily (site_id, day, row_hash, channel, source, medium, sessions, users, key_events) VALUES (:s, :d, :h, :c, :o, :m, :x, :x, :k)"),
-            {"s": site_id, "d": day, "h": common.digest(channel, source, medium), "c": channel, "o": source, "m": medium, "x": sessions, "k": leads},
+            text("INSERT INTO ga4_source_daily (site_id, day, row_hash, channel, source, medium, sessions, users, key_events, engaged_sessions) VALUES (:s, :d, :h, :c, :o, :m, :x, :x, :k, :e)"),
+            {"s": site_id, "d": day, "h": common.digest(channel, source, medium), "c": channel, "o": source, "m": medium, "x": sessions, "k": leads, "e": engaged},
         )
+
+
+def _gsc_page(engine, site_id, day, page, clicks):
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO gsc_page (site_id, day, page_hash, page, clicks, impressions) VALUES (:s, :d, :h, :p, :c, :c)"), {"s": site_id, "d": day, "h": common.digest(page), "p": page, "c": clicks})
 
 
 def _referral(engine, site_id, day, domain, path, sessions, leads=0):
@@ -65,7 +70,7 @@ def test_chatgpt_tagged_with_no_medium_counts_although_ga4_files_it_as_unassigne
     _ga4(engine, site, D1, "Organic Social", "perplexity.ai", "social", 2)
     answer = service.ai_search(_scope(engine))
     assert answer["sessions"] == 15
-    assert answer["sources"][0] == {"source": "chatgpt.com", "sessions": 13, "leads": 1.0, "rate": None}
+    assert {k: answer["sources"][0][k] for k in ("source", "sessions", "leads", "rate")} == {"source": "chatgpt.com", "sessions": 13, "leads": 1.0, "rate": None}
 
 
 def test_ga4s_own_ai_channel_and_a_channel_rule_naming_one_count_too(engine, site):
@@ -83,7 +88,69 @@ def test_landing_pages_take_tagged_visits_once(engine, site):
     _campaign(engine, site, D1, "chatgpt.com", "referral", "(not set)", "/visa/", 6)  # already in the referral table
     _campaign(engine, site, D1, "newsletter", "email", "nov", "/visa/", 99)
     pages = service.ai_search(_scope(engine))["pages"]
-    assert pages == [{"host": "mine.example", "path": "/visa/", "sessions": 10, "leads": 1.0}]
+    assert pages == [{"host": "mine.example", "path": "/visa/", "sessions": 10, "leads": 1.0, "google": None, "type": "Other pages", "by": [{"source": "chatgpt.com", "sessions": 10}]}]
+
+
+def test_landing_pages_say_their_page_type_their_assistants_and_their_google_clicks(engine, site):
+    _referral(engine, site, D1, "chatgpt.com", "/blog/visa-guide/", 5, 1)
+    _referral(engine, site, D1, "www.perplexity.ai", "/blog/visa-guide/", 2)
+    _campaign(engine, site, D1, "chatgpt.com", "(not set)", "(not set)", "/blog/costs/", 3)
+    _referral(engine, site, D2, "gemini.google.com", "/", 4)
+    _gsc_page(engine, site, D1, "https://mine.example/blog/visa-guide", 40)
+    _gsc_page(engine, site, D2, "https://mine.example/blog/visa-guide/?x=1", 2)  # the same page written another way
+    _gsc_page(engine, site, D2, "https://mine.example/", 90)
+    _gsc_page(engine, site, date(2026, 9, 30), "https://mine.example/", 500)  # not one of the period's days
+    answer = service.ai_search(_scope(engine))
+    assert answer["google_clicks_known"] is True
+    by_path = {p["path"]: p for p in answer["pages"]}
+    assert by_path["/blog/visa-guide/"]["google"] == 42 and by_path["/blog/costs/"]["google"] == 0 and by_path["/"]["google"] == 90
+    assert by_path["/blog/visa-guide/"]["by"] == [{"source": "chatgpt.com", "sessions": 5}, {"source": "perplexity.ai", "sessions": 2}]
+    assert by_path["/"]["type"] == "Home page" and by_path["/blog/costs/"]["type"] == "/blog/"
+    types = answer["page_types"]
+    assert [t["type"] for t in types] == ["/blog/", "Home page"]
+    blog = types[0]
+    assert blog["pages"] == 2 and blog["sessions"] == 10 and blog["share"] == round(10 / 14, 4) and blog["leads"] == 1.0
+    assert blog["rate"] is None  # under 30 AI visits, like every AI lead rate
+    assert blog["google"] == 42
+    assert blog["by"] == [{"source": "chatgpt.com", "sessions": 8}, {"source": "perplexity.ai", "sessions": 2}]
+
+
+def test_page_types_follow_the_conversions_screens_rules(engine, site):
+    _referral(engine, site, D1, "chatgpt.com", "/visa-dubai/", 3)
+    _referral(engine, site, D1, "chatgpt.com", "/visa-golden/", 2)
+    service.add_rule(engine, "category", "/visa-*", "Visa pages")
+    types = service.ai_search(_scope(engine))["page_types"]
+    assert types[0]["type"] == "Visa pages" and types[0]["pages"] == 2 and types[0]["sessions"] == 5
+
+
+def test_without_search_console_the_google_column_is_unknown_not_zero(engine, site):
+    _referral(engine, site, D1, "chatgpt.com", "/visa/", 3)
+    answer = service.ai_search(_scope(engine))
+    assert answer["google_clicks_known"] is False and answer["pages"][0]["google"] is None and answer["page_types"][0]["google"] is None
+
+
+def test_engaged_visits_per_assistant_with_their_change(engine, site):
+    _ga4(engine, site, D1, "Referral", "chatgpt.com", "referral", 10, engaged=8)
+    _ga4(engine, site, D2, "Unassigned", "chatgpt.com", "(not set)", 10, engaged=6)
+    _ga4(engine, site, D1, "Referral", "gemini.google.com", "referral", 2, engaged=2)
+    _ga4(engine, site, date(2026, 9, 1), "Referral", "chatgpt.com", "referral", 10, engaged=5)
+    answer = service.ai_search(_scope(engine, compare=True))
+    chat, gemini = answer["sources"]
+    assert chat["source"] == "chatgpt.com" and chat["engaged"] == 0.7 and chat["engaged_sessions"] == 14
+    assert chat["before"] == 10 and chat["change"] == 100.0
+    assert chat["engaged_before"] == 0.5 and chat["engaged_change"] == 20.0  # points
+    assert gemini["engaged"] == 1.0 and gemini["before"] == 0 and gemini["change"] is None and gemini["engaged_change"] is None  # new
+    assert answer["engaged"] == {"sessions": 16, "known": 22, "rate": round(16 / 22, 4)}
+
+
+def test_days_read_before_engaged_sessions_existed_never_count_as_zero(engine, site):
+    _ga4(engine, site, D1, "Referral", "chatgpt.com", "referral", 10)  # NULL: read before the column
+    _ga4(engine, site, D2, "Referral", "perplexity.ai", "referral", 4)
+    _ga4(engine, site, D2, "Unassigned", "perplexity.ai", "(not set)", 4, engaged=3)
+    chat, perplexity = service.ai_search(_scope(engine))["sources"]
+    assert chat["engaged"] is None and chat["engaged_partial"] is False
+    assert perplexity["engaged"] == 0.75 and perplexity["engaged_partial"] is True
+    assert chat["before"] is None  # no comparison asked
 
 
 def test_lead_rate_waits_for_30_visits_and_always_has_its_counts(engine, site):
@@ -356,6 +423,19 @@ def test_five_or_more_rows_of_one_fold_into_one_line():
     assert _node({"ask": "fold", "rows": rows, "min": 5}) == {"kept": 2, "folded": 6, "all": False}
     assert _node({"ask": "fold", "rows": [{"v": 1}] * 4 + [{"v": 3}], "min": 5}) == {"kept": 5, "folded": 0, "all": False}
     assert _node({"ask": "fold", "rows": [{"v": 1}] * 7, "min": 5}) == {"kept": 0, "folded": 7, "all": True}
+
+
+def test_the_donut_keeps_each_assistants_colour_and_folds_the_rest_into_other():
+    rows = [{"source": "perplexity.ai", "sessions": 50}, {"source": "new-bot.example", "sessions": 20}, {"source": "chatgpt.com", "sessions": 15},
+            {"source": "a.example", "sessions": 6}, {"source": "b.example", "sessions": 5}, {"source": "c.example", "sessions": 3}, {"source": "d.example", "sessions": 1}]
+    got = _node({"ask": "donut", "sources": rows, "max": 5})
+    assert got["total"] == 100
+    parts = got["parts"]
+    assert [p["source"] for p in parts] == ["perplexity.ai", "new-bot.example", "chatgpt.com", "a.example", "b.example", None]
+    assert parts[0]["color"] == "var(--ch-5)" and parts[2]["color"] == "var(--ch-1)"  # known assistants keep their colour whatever their rank
+    assert len({p["color"] for p in parts}) == 6 and parts[-1]["color"] == "var(--ch-other)"
+    assert parts[-1]["count"] == 2 and parts[-1]["sessions"] == 4 and abs(sum(p["share"] for p in parts) - 1) < 1e-9
+    assert _node({"ask": "donut", "sources": [{"source": "chatgpt.com", "sessions": 0}], "max": 5}) == {"total": 0, "parts": []}
 
 
 def test_every_word_on_the_ai_search_screen_has_its_french():

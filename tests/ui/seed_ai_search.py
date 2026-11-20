@@ -2,7 +2,8 @@
 
   DB_NAME_TEST=<the harness's database> .venv/bin/python tests/ui/seed_ai_search.py normal|ones|ga4fail|oldclarity|noserp|serpback
 
-normal: AI visits for 70 days (chatgpt.com as Referral and as Unassigned, perplexity, gemini, claude, copilot), landing pages,
+normal: AI visits for 70 days (chatgpt.com as Referral and as Unassigned, perplexity, gemini, claude, copilot) with engaged
+sessions for the last 50 days (older days as if read before they were kept), landing pages, a /blog/ folder for page types,
 two Clarity AI downloads, six Clarity live reads and Search Console queries for the questions. ones: the newest download cites
 every page once. ga4fail: Google Analytics stopped working 2 h ago. oldclarity: the download ended 24 days ago and Clarity live
 was read 55 h ago. noserp / serpback: hide site-one's keywords from the AI Overview watch, then give them back.
@@ -28,11 +29,16 @@ with engine.connect() as conn:
 end = today - timedelta(days=1)
 
 
+ENGAGED = {"google": 0.62, "chatgpt.com": 0.8, "perplexity.ai": 0.5, "gemini.google.com": 1.0, "copilot.microsoft.com": 0.4, "claude.ai": 0.75}
+
+
 def ga4(conn, site, day, channel, source, medium, sessions, leads=0):
+    """Engaged sessions: a share per source, and NULL on days older than 50, as if read before engaged sessions were kept."""
+    engaged = None if (end - day).days > 50 else int(sessions * ENGAGED.get(source, 0.6) + 0.5)
     conn.execute(
-        text("INSERT INTO ga4_source_daily (site_id, day, row_hash, channel, source, medium, sessions, users, key_events) VALUES (:s, :d, :h, :c, :o, :m, :x, :x, :k) "
-             "ON DUPLICATE KEY UPDATE sessions = :x, key_events = :k"),
-        {"s": site, "d": day, "h": common.digest(channel, source, medium), "c": channel, "o": source, "m": medium, "x": sessions, "k": leads},
+        text("INSERT INTO ga4_source_daily (site_id, day, row_hash, channel, source, medium, sessions, users, key_events, engaged_sessions) VALUES (:s, :d, :h, :c, :o, :m, :x, :x, :k, :e) "
+             "ON DUPLICATE KEY UPDATE sessions = :x, key_events = :k, engaged_sessions = :e"),
+        {"s": site, "d": day, "h": common.digest(channel, source, medium), "c": channel, "o": source, "m": medium, "x": sessions, "k": leads, "e": engaged},
     )
 
 
@@ -86,6 +92,11 @@ with engine.begin() as conn:
             if back % 6 == 0:
                 referral(conn, me, day, "chatgpt.com", "/cafe-grains", 1)
             referral(conn, two, day, "chatgpt.com", "/guide", 1)
+            if back % 3 == 0:
+                referral(conn, me, day, "gemini.google.com", "/blog/espresso-at-home", 1)
+            if back % 7 == 0:
+                referral(conn, me, day, "perplexity.ai", "/blog/grind-size", 1)
+            referral(conn, me, day, "claude.ai", "/", 1 if back % 5 == 0 else 0)
             for site in (me, two):  # read already, so a Refresh re-reads only the last few days instead of replacing them all
                 conn.execute(text("INSERT INTO coverage (site_id, source, day, status, `rows`, saved_at) VALUES (:s, 'ga4', :d, 'ok', 5, UTC_TIMESTAMP(3)) ON DUPLICATE KEY UPDATE saved_at = UTC_TIMESTAMP(3)"), {"s": site, "d": day})
         for back, n in ((1, 3), (2, 4), (3, 2), (4, 5), (5, 3), (6, 4)):  # Clarity's live reads
@@ -108,6 +119,10 @@ with engine.begin() as conn:
             for back in range(0, 20):
                 conn.execute(text("INSERT IGNORE INTO gsc_query_page (site_id, day, pair_hash, query, page, clicks, impressions, position) VALUES (:s, :d, :h, :q, :p, :c, 60, 7)"),
                              {"s": me, "d": today - timedelta(days=6 + back), "h": common.digest(q, page), "q": q, "p": page, "c": clicks})
+        for page, clicks in (("https://site-one.example/subscription/", 9), ("https://site-one.example/blog/espresso-at-home/", 4), ("https://site-one.example/", 30)):  # Google clicks beside AI visits
+            for back in range(0, 40):
+                conn.execute(text("INSERT INTO gsc_page (site_id, day, page_hash, page, clicks, impressions, position) VALUES (:s, :d, :h, :p, :c, 200, 6) ON DUPLICATE KEY UPDATE clicks = :c"),
+                             {"s": me, "d": end - timedelta(days=back), "h": common.digest(page), "p": page, "c": clicks})
     if mode == "ga4fail":
         conn.execute(text("UPDATE site_sources SET last_error = 'Google Analytics Data API has not been used in project 4242 before or it is disabled. Enable it by visiting https://console.developers.google.com/apis/api/analyticsdata.googleapis.com/overview?project=4242 then retry.', "
                           "last_attempt_at = UTC_TIMESTAMP(3) - INTERVAL 2 HOUR, data_through = :d WHERE source = 'ga4'"), {"d": end - timedelta(days=3)})

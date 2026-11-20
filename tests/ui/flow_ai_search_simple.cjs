@@ -83,6 +83,8 @@ const dayFrom = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 1
   check(!(await page.locator("[data-ai-menu]").count()) && await page.locator(".ai-split > [data-lv-collect]").count() === 1, "Refresh data is one button");
   check(!(await page.locator(".gai-upload").count()), "Google's AI report upload left the screen");
   check(!(await page.locator(".ai-limits").count()), "the closing note left the screen");
+  check((await page.getAttribute(".ai-tabs-card [role=tab][aria-selected=true]", "data-ai-tab")) === "brand", "What AI says opens first (2026-11-20, track B)");
+  await page.click('[data-ai-tab="assistants"]'); await settle(page, 500);
   check((await tip(page, ".ai-tabs-head .info-i")).includes("AI apps often send no referrer"), "the AI list's caveat is behind the tabs' (i)");
   check(await page.locator(".ai-tabs-head [data-ai-list]").count() === 1, "Edit the AI list sits in the tabs card's head");
   check(await page.locator(".ai-tabs-head .tt-in-head").count() === 1, "Filter sits in the tabs card's head");
@@ -98,13 +100,14 @@ const dayFrom = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 1
     const rowTick = (el) => el.matches('tbody :is(.tt-pick, .tt-own-pick) input[type="checkbox"]');
     return [...document.querySelector("#main").querySelectorAll("button,select,input,textarea,a[href],summary,[role=button],[role=tab]")].filter((el) => !rowTick(el)).filter(shown).length;
   });
-  // 29 on 4bab519 already (one over); What AI says adds its tab (2026-11-20).
-  check(count <= 30, `about 30 controls at rest: ${count}`);
+  // 29 on 4bab519 already (one over); What AI says adds its tab (2026-11-20); Page types its tab and "What AI says about you ›" its link (track B).
+  check(count <= 32, `about 30 controls at rest: ${count}`);
   await shot(page, "simple.png");
 
   for (const tab of ["pages", "cited", "questions"]) {
     await page.click(`[data-ai-tab="${tab}"]`); await settle(page, 500);
-    check((await page.locator(".ai-tabs-card th:not(.tt-pick)").count()) <= 4, `${tab}: four columns at most`);
+    const most = tab === "pages" ? 5 : 4; // Landing pages: Google clicks beside AI visits (track B)
+    check((await page.locator(".ai-tabs-card th:not(.tt-pick)").count()) <= most, `${tab}: ${most} columns at most`);
     check(!(await page.locator(".ai-tab-lead:not(.ai-cnv-line)").count()) || tab === "pages", `${tab}: its small print is behind the (i)`);
     if (SHOTS) await page.locator(".ai-tabs-card").screenshot({ path: path.join(SHOTS, `simple-tab-${tab}.png`) }).catch(() => {});
   }
@@ -190,6 +193,7 @@ const dayFrom = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 1
     if (opts.lang === "fr") {
       check((await text(page, ".ai-answer .today-lead")).startsWith("Les assistants IA"), `${name}: French answer`);
       check((await text(page, "#topbar [data-ai-sources]")).includes("sources à jour"), `${name}: French sources chip`);
+      await page.click('[data-ai-tab="assistants"]'); await settle(page, 500); // What AI says opens first and has no AI list
       check((await text(page, ".ai-tabs-head [data-ai-list]")).includes("Modifier la liste IA"), `${name}: French Edit the AI list`);
     }
     await shot(page, name);

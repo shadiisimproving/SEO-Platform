@@ -73,7 +73,7 @@ def _ga4_answer(request, thresholded=False):
     body = json.loads(request.content)
     names = [d["name"] for d in body["dimensions"]]
     rows = {
-        "sessionDefaultChannelGroup": [["Organic Search", "google", "organic", "50", "40", "2"], ["Referral", "blog.example", "referral", "7", "6", "1"]],
+        "sessionDefaultChannelGroup": [["Organic Search", "google", "organic", "50", "40", "2", "31"], ["Referral", "blog.example", "referral", "7", "6", "1", "5"]],
         "landingPage": [["/a/", "30", "25", "2"]],
         "sessionManualSource": [["blog", "backlink", "bl-1", "/a/", "3", "1"], ["(not set)", "(not set)", "(not set)", "/a/", "99", "9"]],
         "sessionGoogleAdsCampaignName": [["Brand", "12", "34.5", "12", "1"]],
@@ -232,6 +232,31 @@ def test_running_a_ga4_day_twice_changes_nothing(world):
     ga4._one_day(world.engine, world.site, "t", "123456", day)
     with world.engine.connect() as conn:
         assert conn.execute(text("SELECT SUM(sessions) FROM ga4_source_daily")).scalar() == 57
+
+
+def test_ga4_keeps_engaged_sessions_per_source(world):
+    _google(world)
+    world.answers["runReport"] = _ga4_answer
+    ga4._one_day(world.engine, world.site, "t", "123456", common.today(world.engine) - timedelta(days=1))
+    with world.engine.connect() as conn:
+        assert conn.execute(text("SELECT source, engaged_sessions FROM ga4_source_daily ORDER BY source")).all() == [("blog.example", 5), ("google", 31)]
+
+
+def test_days_read_before_engaged_sessions_are_read_again_with_one_report_each(world):
+    _google(world)
+    world.answers["runReport"] = _ga4_answer
+    old = common.today(world.engine) - timedelta(days=30)
+    with world.engine.begin() as conn:  # a day read before the column existed: its engaged sessions are NULL
+        conn.execute(text("INSERT INTO ga4_source_daily (site_id, day, row_hash, channel, source, medium, sessions, users, key_events) VALUES (:s, :d, 'h', 'Referral', 'blog.example', 'referral', 7, 6, 1)"), {"s": world.site, "d": old})
+        conn.execute(text("INSERT INTO ga4_page_daily (site_id, day, page_hash, path, sessions, users, key_events) VALUES (:s, :d, 'p', '/kept/', 3, 3, 0)"), {"s": world.site, "d": old})
+    assert ga4._engaged_missing(world.engine, world.site, old) == [old]
+    before = len(world.calls)
+    ga4._engaged_day(world.engine, world.site, "t", "123456", old)
+    assert len(world.calls) - before == 1  # the sources report only
+    with world.engine.connect() as conn:
+        assert conn.execute(text("SELECT SUM(engaged_sessions) FROM ga4_source_daily WHERE day = :d"), {"d": old}).scalar() == 36
+        assert conn.execute(text("SELECT path FROM ga4_page_daily WHERE day = :d"), {"d": old}).scalar() == "/kept/"  # the other tables stay
+    assert ga4._engaged_missing(world.engine, world.site, old) == []
 
 
 def test_a_property_with_no_ads_link_still_saves_its_day(world):
