@@ -13,6 +13,14 @@ SHOW_WORDS = {"gaining": "Gaining", "losing": "Losing", "new": "New", "lost": "L
 MODE_WORDS = {"contains": "contains", "not": "doesn't contain", "exact": "is exactly", "regex": "matches"}
 
 
+def _volume_source(volume: dict | None) -> str | None:
+    """"Bing", or "From file: <name>", with its month: the same words as the Volume column's tag."""
+    if not volume:
+        return None
+    where = "Bing" if volume.get("source") == "bing" else f"From file: {volume.get('name') or ''}"
+    return f"{where}, {volume['month']}" if volume.get("month") else where
+
+
 def _breakdown_table(search, scope, dim: str, show: str, brand: str, filters: dict | None, compare: bool) -> Table:
     data = search.breakdown(scope, dim, show, brand, filters, limit=MAX_ROWS + 1)
     first, kind = DIM_FIRST[dim]
@@ -204,7 +212,9 @@ def keywords(engine, args) -> Report:
         C("own", "Own tool average", "position", get=lambda r: of(r).get("own")),
         C("impressions", "Impressions", "int", get=lambda r: of(r).get("impressions")),
         C("clicks", "Clicks", "int", get=lambda r: of(r).get("clicks")),
-        C("volume", "Searches a month", "int"),
+        # Search volume only from a named source (seo/serp/volumes.py), never Search Console's impressions.
+        C("volume", "Searches a month", "int", get=lambda r: (r.get("search_volume") or {}).get("searches")),
+        C("volume_source", "Volume source", "text", width=1.8, get=lambda r: _volume_source(r.get("search_volume"))),
         C("page", "Page", "url", width=4.2, get=lambda r: main(r).get("url") or r.get("page")),
         C("tool", "Checked with", "text", width=1.6, get=lambda r: main(r).get("tool")),
         C("checked_at", "Checked", "datetime", get=lambda r: main(r).get("checked_at")),

@@ -111,6 +111,15 @@ def _markers(conn, site_id: int, host: str, keyword: str, page_keys: set[str], s
             undated.append({**item, "placed": link["placed"] or ""})
         elif start <= day <= end:
             marks.append({**item, "day": str(day)})
+    # Links nobody bought (found by Search Console's Links export or a tool) to one of the keyword's pages, on the day the
+    # app first saw them: when Google really found one isn't known, so the marker says "Found", never "Placed".
+    if page_keys:
+        for link in conn.execute(
+            text("SELECT id, domain, source_url, target_url, anchor, created_at FROM backlinks WHERE site_id = :s AND status = 'found' AND created_at >= :a AND created_at < :b"),
+            {"s": site_id, "a": start, "b": end + timedelta(days=1)},
+        ).mappings():
+            if page_key(link["target_url"]) in page_keys:
+                marks.append({"kind": "found", "id": link["id"], "day": str(link["created_at"].date()), "text": link["domain"] or "", "detail": link["anchor"] or "", "url": link["source_url"] or "", "status": "found"})
     if page_keys:
         edits = defaultdict(lambda: {"kinds": set(), "pages": set()})
         for row in conn.execute(
@@ -174,6 +183,32 @@ def _markers(conn, site_id: int, host: str, keyword: str, page_keys: set[str], s
     return sorted(folded.values(), key=lambda m: (m["day"], m["kind"])), bands, undated
 
 
+def _page_lines(conn, site_id: int, keyword: str, start: date, end: date, weekly: bool) -> list[dict]:
+    """One line per page of mine Search Console showed for the keyword (every country: its page report has none), the most
+    shown first, so Google switching pages is seen. Each day's position is that page's own, impression-weighted; a long
+    period is one point a week. Every page is returned; the panel draws the first four, whose colours pass the colour-blindness check."""
+    from seo.serp.rankings import page_address
+
+    key = store.clean_keyword(keyword).casefold()
+    by_page: dict[str, dict] = defaultdict(lambda: defaultdict(lambda: [0.0, 0]))
+    for row in conn.execute(
+        text("SELECT day, query, page, impressions, position FROM gsc_query_page WHERE site_id = :s AND day BETWEEN :a AND :b AND query IN :v"),
+        {"s": site_id, "a": start, "b": end, "v": tuple(_variants(keyword))},
+    ).mappings():
+        if store.clean_keyword(row["query"]).casefold() != key or not row["impressions"] or row["position"] is None:
+            continue
+        day = row["day"] - timedelta(days=row["day"].weekday()) if weekly else row["day"]
+        acc = by_page[page_address(row["page"])][day]
+        acc[0] += float(row["position"]) * int(row["impressions"])
+        acc[1] += int(row["impressions"])
+    lines = [
+        {"url": url, "impressions": sum(n for _, n in days.values()), "points": [{"day": str(d), "p": round(w / n, 1), "impressions": n} for d, (w, n) in sorted(days.items()) if n]}
+        for url, days in by_page.items()
+    ]
+    lines.sort(key=lambda line: -line["impressions"])
+    return lines
+
+
 def timeline(engine: Engine, site_id: int, keyword_id: int, start: date, end: date, also_pages: list[str] | None = None) -> dict:
     """also_pages: the page our own check found ranking, which Search Console may rank second (the panel sends it)."""
     if start > end:
@@ -207,8 +242,9 @@ def timeline(engine: Engine, site_id: int, keyword_id: int, start: date, end: da
         host_key = page_key(site["host"])
         pages |= {page_key(u) for u in (also_pages or [])[:3] if page_key(u).split("/")[0] == host_key}  # only my own site's pages
         markers, bands, undated = _markers(conn, site_id, site["host"], track["keyword"], pages, start, end)
+        url_lines = _page_lines(conn, site_id, track["keyword"], start, line_end, (end - start).days > WEEKLY_AFTER_DAYS) if through else []
     return {
         "keyword_id": keyword_id, "site_id": site_id, "from": str(start), "to": str(end), "through": str(through) if through else None,
         "weekly": (end - start).days > WEEKLY_AFTER_DAYS, "scope": scope, "series": series,
-        "markers": markers, "bands": bands, "undated": undated, "pages": sorted(pages),
+        "markers": markers, "bands": bands, "undated": undated, "pages": sorted(pages), "url_lines": url_lines,
     }

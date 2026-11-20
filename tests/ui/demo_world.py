@@ -54,6 +54,9 @@ def _ai_for(keyword: str, round_no: int) -> tuple[str, list[str]]:
         "specialty coffee online": [(ABSENT, []), (ABSENT, []), (PRESENT, ["beans-daily.example/shop", "rival-one.example/shop"])],
     }
     states = table.get(keyword)
+    if keyword.startswith("coffee gift idea "):  # the extra keywords tests/ui/seed_keywords_track_c.py adds: an overview on even ones, citing site-one on every fourth
+        n = int(keyword.rsplit(" ", 1)[1])
+        return (PRESENT, ["site-one.example/gifts" if n % 4 == 0 else "rival-one.example/gifts"]) if n % 2 == 0 else (ABSENT, [])
     if not states:
         return NOT_CAPTURED, []  # this keyword only ever went through a tool that can't see AI Overviews
     return states[min(round_no, len(states) - 1)]

@@ -241,6 +241,57 @@ def _own_tools(conn, site_ids: list[int]) -> dict:
     return {"positions": tables, "pages": pages, "through": through}
 
 
+SPARK_DAYS = 28  # the row's sparkline: Search Console's daily position over these final days
+
+
+def _gsc_daily(conn, tracked: list, through: dict) -> dict:
+    """Search Console's daily position for each tracked keyword over its last SPARK_DAYS final days, for the row's sparkline:
+    the keyword's own country when that country's rows reach the first day, otherwise every country (the panel's rule,
+    metrics/keyword_timeline._series). {(site_id, keyword_id): [{day, p}]}, days with no impressions left out."""
+    from seo.metrics.keyword_timeline import _hashes
+
+    out: dict = {}
+    by_site: dict = defaultdict(list)
+    for track in tracked:
+        by_site[track["site_id"]].append(track)
+    for site_id, rows in by_site.items():
+        last = through.get(site_id)
+        final = conn.execute(text("SELECT data_through FROM site_sources WHERE site_id = :s AND source = 'gsc'"), {"s": site_id}).scalar()
+        if final and last and final < last:
+            last = final
+        if not last:
+            continue
+        first = last - timedelta(days=SPARK_DAYS - 1)
+        hashes = {h: track for track in rows for h in _hashes(track["keyword"])}
+        if not hashes:
+            continue
+        reach = {r["country"]: r["first"] for r in conn.execute(text("SELECT country, MIN(day) AS first FROM gsc_query_country WHERE site_id = :s GROUP BY country"), {"s": site_id}).mappings()}
+        local_codes = {countries.alpha3(t["country"]) for t in rows if t["country"]} - {None}
+        local_codes = {c for c in local_codes if reach.get(c) and reach[c] <= first}
+        days: dict = defaultdict(lambda: defaultdict(lambda: [0.0, 0]))
+        marks = ",".join(f":h{i}" for i in range(len(hashes)))
+        params = {"s": site_id, "a": first, "b": last, **{f"h{i}": h for i, h in enumerate(hashes)}}
+        for row in conn.execute(text(f"SELECT day, query, query_hash, impressions, position FROM gsc_query WHERE site_id = :s AND day BETWEEN :a AND :b AND query_hash IN ({marks})"), params).mappings():
+            track = hashes[row["query_hash"]]
+            code3 = countries.alpha3(track["country"]) if track["country"] else None
+            if code3 in local_codes or not row["impressions"] or row["position"] is None:
+                continue
+            acc = days[(site_id, track["id"])][row["day"]]
+            acc[0] += float(row["position"]) * int(row["impressions"]); acc[1] += int(row["impressions"])
+        if local_codes:
+            cmarks = ",".join(f":c{i}" for i in range(len(local_codes)))
+            cparams = {**params, **{f"c{i}": c for i, c in enumerate(sorted(local_codes))}}
+            for row in conn.execute(text(f"SELECT day, country, query_hash, impressions, position FROM gsc_query_country WHERE site_id = :s AND day BETWEEN :a AND :b AND country IN ({cmarks}) AND query_hash IN ({marks})"), cparams).mappings():
+                track = hashes[row["query_hash"]]
+                if countries.alpha3(track["country"]) != row["country"] or not row["impressions"] or row["position"] is None:
+                    continue
+                acc = days[(site_id, track["id"])][row["day"]]
+                acc[0] += float(row["position"]) * int(row["impressions"]); acc[1] += int(row["impressions"])
+        for key, by_day in days.items():
+            out[key] = [{"day": str(day), "p": round(w / n, 1)} for day, (w, n) in sorted(by_day.items()) if n]
+    return out
+
+
 def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) -> dict:
     with engine.connect() as conn:
         sites = _sites(conn, site_id)
@@ -257,6 +308,10 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
             ).mappings().all()
         checks = _load_checks(conn, list({row["id"] for row in tracked}), list(hosts.values()))
         own = _own_tools(conn, site_ids)
+        daily = _gsc_daily(conn, tracked, own["through"])
+        from seo.serp import volumes
+
+        searched = volumes.lookup(conn, [dict(t) for t in tracked])
         # Whichever button pressed it: this screen's Refresh, or Check again in Competitors.
         finished = [
             conn.execute(text("SELECT MAX(finished_at) FROM rank_runs")).scalar(),
@@ -299,8 +354,11 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
             "country": track["country"], "language": track["language"], "engines": engines, "ai": ai, "page": page,
             "two_pages": len(pages_seen) >= 2 or bool(scraped_two),
             "pages": competing if len(pages_seen) >= 2 or scraped_two else [],
-            # "volume" is kept for older readers: it was never search volume, only our own impressions over 28 days.
-            "volume": google_own["impressions"] if google_own else None, "impressions": google_own["impressions"] if google_own else None,
+            # Our own Search Console impressions over 28 days, under their real name. The row key "volume" that once held them
+            # is gone: search volume is search_volume, always with its source (seo/serp/volumes.py), and never these.
+            "impressions": google_own["impressions"] if google_own else None,
+            "search_volume": volumes.of_row(searched, track["keyword"], track["country"]),
+            "gsc_daily": daily.get((track["site_id"], track["id"]), []),
             # Search Console in the keyword's own country, when the site's queries are read for it (None otherwise; the
             # world average stays in engines.google.own).
             "own_country": {"country": track["country"].upper(), **{k: (round(v, 1) if k == "position" and v is not None else v) for k, v in local.items()}} if local else None,
@@ -470,9 +528,11 @@ def detail(engine: Engine, site_id: int, keyword_id: int, engine_name: str) -> d
         ).mappings().all() if target else []
         marks = ",".join(str(int(check["id"])) for check in every) or "0"
         own_rows: dict[int, int] = {}
-        for result in conn.execute(text(f"SELECT check_id, position, host FROM serp_results WHERE check_id IN ({marks}) ORDER BY position")).mappings():
+        own_urls: dict[int, str] = {}  # the page of mine each check found: the panel draws one line per page
+        for result in conn.execute(text(f"SELECT check_id, position, url, host FROM serp_results WHERE check_id IN ({marks}) ORDER BY position")).mappings():
             if result["check_id"] not in own_rows and store.on_host(result["host"], host):
                 own_rows[result["check_id"]] = result["position"]
+                own_urls[result["check_id"]] = page_address(result["url"]) if result["url"] and not google_redirect(result["url"]) else None
         main = view["main"]
         competitors = []
         if main:
@@ -499,7 +559,7 @@ def detail(engine: Engine, site_id: int, keyword_id: int, engine_name: str) -> d
             continue
         key = (check["tool"], check["real_location"], check["depth"])
         line = lines.setdefault(key, {"tool": key[0], "location": key[1], "depth": key[2], "home": counts_for_keyword(engine_name, row["country"], key[1], row["language"]), "points": []})
-        line["points"].append({"at": _iso(check["checked_at"]), "p": own_rows.get(check["id"]), "suspect": check["status"] == "suspect"})
+        line["points"].append({"at": _iso(check["checked_at"]), "p": own_rows.get(check["id"]), "url": own_urls.get(check["id"]), "suspect": check["status"] == "suspect"})
     listed = connections.tool_list(engine)
     return {
         "row": {**row, "engines": {engine_name: view}}, "engine": engine_name, "lines": list(lines.values()), "competitors": competitors,

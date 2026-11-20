@@ -152,3 +152,41 @@ def paid(tool: str):
 def test(tool: str):
     require_admin()
     return jsonify(connections.test_tool(_engine(), tool))
+
+
+# ---- search volume: Bing and files (seo/serp/volumes.py) ------------------------------------------------------
+
+@keywords_api.get("/keyword-volumes")
+def volume_sources():
+    from seo.serp import volumes
+    return jsonify(volumes.sources(_engine()))
+
+
+@keywords_api.post("/keyword-volumes/file")
+def volume_file():
+    """A file of volumes (keyword, volume, optional country and month), stored as "From file: <its name>"."""
+    from seo.imports import keyword_volumes
+
+    upload = request.files.get("file")
+    if upload is None:
+        raise Refused("Choose a file to add.")
+    if request.content_length and request.content_length > keyword_volumes.MAX_BYTES + 100_000:
+        raise Refused("File too large: keep it under 5 MB.")
+    return jsonify(keyword_volumes.upload(_engine(), upload.filename or "", upload.read(keyword_volumes.MAX_BYTES + 1), _me())), 201
+
+
+@keywords_api.delete("/keyword-volumes/file")
+def volume_file_remove():
+    from seo.serp import volumes
+    return jsonify(removed=volumes.remove_file(_engine(), request.args.get("name", "")))
+
+
+@keywords_api.post("/keyword-volumes/bing")
+def volume_bing():
+    """Get Bing volumes: a click only, never a schedule. Bing Webmaster's keyword data is free with the saved key."""
+    from seo.serp import volumes
+
+    site_id = _body().get("site_id")
+    if type(site_id) is not int:
+        raise Refused("site_id is required.")
+    return jsonify(volumes.start_bing(_engine(), site_id, _me())), 202

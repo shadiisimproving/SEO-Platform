@@ -1777,3 +1777,28 @@ class BrandAnswer(Base):
     # Head-to-head: the competitor the question was about, and who this answer recommends with what it says of each side.
     rival_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id", ondelete="SET NULL", name="fk_brand_answers_rival"), nullable=True)
     versus: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+
+
+class KeywordVolume(Base):
+    """Searches a month for a keyword, always with where the number came from (seo/serp/volumes.py). Never Search Console's
+    impressions, and never called Google's volume unless it is: `source` is "bing" (Bing Webmaster's keyword data, Bing's own
+    searches) or "file" (an uploaded file, `source_name` its file name). `month` is "YYYY-MM", or "" when the file gave none.
+    Keyed by the cleaned keyword text (store.keyword_hash), so a volume uploaded before a keyword is tracked still matches."""
+
+    __tablename__ = "keyword_volumes"
+    __table_args__ = (
+        UniqueConstraint("keyword_hash", "source", "source_name", "country", "language", "month", name="uq_keyword_volume"),
+        Index("ix_keyword_volumes_source", "source", "source_name"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    keyword_hash: Mapped[str] = mapped_column(String(64))
+    keyword: Mapped[str] = mapped_column(String(400))
+    source: Mapped[str] = mapped_column(String(10))  # bing or file
+    source_name: Mapped[str] = mapped_column(String(190), server_default="")  # the file's name; "" for Bing
+    country: Mapped[str] = mapped_column(String(2), server_default="")  # empty: the source didn't say
+    language: Mapped[str] = mapped_column(String(10), server_default="")
+    month: Mapped[str] = mapped_column(String(7), server_default="")
+    searches: Mapped[int] = mapped_column(Integer)
+    added_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
