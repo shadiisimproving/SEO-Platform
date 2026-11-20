@@ -1597,7 +1597,7 @@
   /* The legend under the chart: each page's line sample, its address (a PageLink) and its impressions. */
   function pageLegend(lines, extra) {
     if (lines.length < 2) return "";
-    return `<ul class="kwt-legend" aria-label="${esc(t("Position by page"))}">${lines.map((line) => `<li><svg class="kwt-swatch" width="22" height="8" aria-hidden="true"><line x1="1" x2="21" y1="4" y2="4" style="stroke:${line.style[0]}${line.style[1] ? `;stroke-dasharray:${line.style[1]}` : ""}"/></svg>${PageLink.html(line.url, { text: shortPath(line.url), title: "" })}${line.impressions ? ` <span class="small muted">${num(line.impressions)} ${t("impr.")}</span>` : ""}</li>`).join("")}${extra ? `<li class="small muted">${esc(extra)}</li>` : ""}</ul>`;
+    return `<ul class="kwt-legend" aria-label="${esc(t("Position by page"))}">${lines.map((line) => `<li><svg class="kwt-swatch" width="22" height="8" aria-hidden="true"><line x1="1" x2="21" y1="4" y2="4" style="stroke:${line.style[0]}${line.style[1] ? `;stroke-dasharray:${line.style[1]}` : ""}"/></svg>${PageLink.html(line.url, { text: shortPath(line.url), title: "" })}${line.impressions ? ` <span class="small muted">${num(line.impressions)} ${t("impr.")}</span>` : ""}</li>`).join("")}${""}</ul>${extra ? `<p class="small muted kwt-legend-note">${esc(extra)}</p>` : ""}`;
   }
   /* A page line's daily Search Console points as 7-day averages from the period's first day, weighted by impressions. */
   function weeklyPoints(points, from, to) {

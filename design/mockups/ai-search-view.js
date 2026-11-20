@@ -694,6 +694,10 @@
     if (d.through) UI.range.end("ai", d.through, "Google Analytics");
     if (simple()) {
       window.GoogleAIReport?.later?.(); // its fifth tab, quietly after this first draw
+      if (A.refocus && Date.now() < A.refocus.until) {
+        const want = A.refocus.tab;
+        setTimeout(() => { const a = document.activeElement; if (!a || a === document.body) UI.$(`[data-ai-tab="${want}"]`)?.focus({ preventScroll: true }); }, 0);
+      }
       return wrap(refreshOne(), `${answer(d)}${tiles(d)}
       <div class="ai-mid">${chartCard(d)}${actionsCard(d)}</div>
       ${tabsCard(d)}${aioCard(d)}`, d);
@@ -730,6 +734,7 @@
         const tab = UI.$(`[data-ai-tab="${A.tab}"]`);
         tab?.closest(".ai-tabs-card")?.scrollIntoView({ block: "start", behavior: UI.reduceMotion() ? "auto" : "smooth" });
         tab?.focus({ preventScroll: true });
+        A.refocus = { tab: A.tab, until: Date.now() + 4000 }; // What AI says redraws once its answers arrive: keep the focus there
         return;
       }
       if ((el = hit("[data-ai-type]"))) { A.type = el.dataset.aiType; A.tab = "pages"; UI.render({ keepScroll: true }); UI.$('[data-ai-tab="pages"]')?.focus({ preventScroll: true }); return; }
