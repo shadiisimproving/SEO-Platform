@@ -627,6 +627,9 @@ def markers(scope: Scope) -> list[dict]:
     out = [{"kind": "note", "id": n["id"], "site_id": n["site_id"], "day": n["day"].isoformat(), "text": n["text"]} for n in notes]
     out += [{"kind": "task", "id": t["id"], "site_id": t["site_id"], "day": t["day"].isoformat(), "text": t["title"]} for t in tasks]
     out += [{"kind": "dated", "id": n["id"], "site_id": n["site_id"], "day": n["day"].isoformat(), "text": _first_line(n["body"])} for n in dated]
+    from seo.metrics import google_updates  # it imports this module
+
+    out += google_updates.chart_marks(scope)
     return sorted(out, key=lambda m: m["day"])
 
 

@@ -47,6 +47,9 @@ def main(argv: list[str] | None = None) -> int:
         collector_jobs.enqueue_authority(engine)
         ddg = auto_ddg.enqueue_due(engine)  # DuckDuckGo positions once a day, with its free tool only (owner, 2026-11-11)
         ddg_words = f", DuckDuckGo positions for {len(ddg)} site{'' if len(ddg) == 1 else 's'}" if ddg else ""
+        from seo.metrics import google_updates  # Google's list of updates, read at most twice a day, and the bell when one starts or ends
+
+        google_updates.daily(engine)
         print(f"collect-due: queued {len(queued)} source{'' if len(queued) == 1 else 's'}{ddg_words}")
         return 0
     if args.command == "uptime-due":

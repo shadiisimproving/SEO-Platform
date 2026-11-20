@@ -99,7 +99,7 @@
     clearTimeout(OV.later);
     OV.later = setTimeout(() => redraw(route), 400);
   }
-  const forget = () => { OV.cache.clear(); if (shared()) window.SCREEN_DATA.forget("search/"); };
+  const forget = () => { OV.cache.clear(); OV.gu?.cache.clear(); if (shared()) window.SCREEN_DATA.forget("search/"); };
   OV.forget = forget; // Settings calls it after a connection is saved, so Overview doesn't keep "not connected"
   /* A redraw replaces the filter box, so typing in it would lose the cursor: it is put back where it was. */
   function draw() {
@@ -266,8 +266,12 @@
     const grid = [0, 0.5, 1].map((f) => `<line class="lv-grid" x1="0" x2="${W}" y1="${8 + f * (H - 16)}" y2="${8 + f * (H - 16)}"/>`).join("");
     // Markers sit on the point whose day (or week) holds them.
     const markAt = (m) => { let at = -1; pts.forEach((p, i) => { if (p.day.slice(0, 10) <= m.day) at = i; }); return at; };
-    const marks = (d.markers || []).map((m) => ({ ...m, at: markAt(m) })).filter((m) => m.at >= 0);
-    const flags = marks.map((m) => `<g class="ov-flag ${m.kind}"><line x1="${x(m.at)}" x2="${x(m.at)}" y1="0" y2="${H}"/></g>`).join("");
+    // A Google update is a band from the day it began to the day it finished (or the chart's end while it's rolling out).
+    const endAt = (m) => { if (!m.end) return pts.length - 1; let at = 0; pts.forEach((p, i) => { if (p.day.slice(0, 10) <= m.end) at = i; }); return at; };
+    const all = (d.markers || []).map((m) => (m.kind === "google" ? { ...m, at: Math.max(0, markAt(m)), to: endAt(m) } : { ...m, at: markAt(m) }));
+    const marks = all.filter((m) => m.at >= 0 && m.kind !== "google"), bands = all.filter((m) => m.kind === "google");
+    const flags = bands.map((m) => `<g class="ov-band"><rect x="${x(m.at)}" width="${Math.max(3, x(m.to) - x(m.at))}" y="0" height="${H}"/></g>`).join("")
+      + marks.map((m) => `<g class="ov-flag ${m.kind}"><line x1="${x(m.at)}" x2="${x(m.at)}" y1="0" y2="${H}"/></g>`).join("");
     const strip = (m) => {
       const values = pts.map((p) => p[m.id]);
       const was = (d.compare_series || []).map((p) => p[m.id]);
@@ -303,11 +307,12 @@
     const every = Math.max(1, Math.floor(pts.length / 6));
     const inner = pts.map((p, i) => [p, i]).filter(([, i]) => i > 0 && i % every === 0 && i < pts.length - every / 2).slice(0, 5);
     const ticks = [[pts[0], 0], ...inner, ...(pts.length > 1 ? [[pts[pts.length - 1], pts.length - 1]] : [])]; // the last day always shows
-    window.OV.chart = { pts, was: d.compare_series || [], shown, marks };
+    window.OV.chart = { pts, was: d.compare_series || [], shown, marks, bands };
     const legend = `<div class="lv-legend">${shown.length === 1 ? `<span><i class="lv-key" style="background:${shown[0].color}"></i>${esc(t(shown[0].name))}</span>` : ""}
       ${d.compare_series ? `<span><i class="ov-key-dash" aria-hidden="true"></i>${t("Period before")}</span>` : ""}
       ${freshAt >= 0 ? `<span><i class="ov-key-fresh" aria-hidden="true"></i>${t("Not final yet")}</span>` : ""}
-      ${marks.length ? `<span><i class="ov-key-flag" aria-hidden="true"></i>${t("Notes and finished tasks")}</span>` : ""}</div>`;
+      ${marks.length ? `<span><i class="ov-key-flag" aria-hidden="true"></i>${t("Notes and finished tasks")}</span>` : ""}
+      ${bands.length ? `<span><i class="ov-key-band" aria-hidden="true"></i>${t("Google update")}</span>` : ""}</div>`;
     return `<div class="lv-chart ov-chart${shown.length > 1 ? " ov-multi" : ""}" style="--ov-strips:${shown.length}" data-ov-chart tabindex="0" role="img" aria-label="${t("Chart")}: ${esc(shown.map((m) => t(m.name)).join(", "))}. ${t("Use the arrow keys to read each day.")}">
         ${shown.map(strip).join("")}
         <div class="lv-tip" hidden></div>
@@ -334,7 +339,8 @@
     const tip = box.querySelector(".lv-tip"), svg = box.querySelector("svg");
     box.querySelectorAll(".lv-cross").forEach((cross) => { cross.removeAttribute("hidden"); cross.setAttribute("x1", xs); cross.setAttribute("x2", xs); });
     const rows = info.shown.map((m) => `<div><span><i class="lv-key" style="background:${m.color}"></i>${esc(t(m.name))}</span><span>${esc(fmt[m.id](p[m.id]))}${w ? ` <span class="muted">(${esc(fmt[m.id](w[m.id]))})</span>` : ""}</span></div>`).join("");
-    const notes = info.marks.filter((m) => m.at === i).map((m) => `<div class="ov-tip-note">${esc(m.text)}</div>`).join("");
+    const notes = info.marks.filter((m) => m.at === i).map((m) => `<div class="ov-tip-note">${esc(m.text)}</div>`).join("")
+      + (info.bands || []).filter((m) => m.at <= i && i <= m.to).map((m) => `<div class="ov-tip-note ov-tip-google">${esc(m.text)}</div>`).join("");
     UI.setHTML(tip, `<b>${esc(dayLabel(p.day, true))}${p.fresh ? ` · ${t("not final")}` : ""}</b>${rows}${w ? `<div class="muted ov-tip-was">${t("In brackets: period before")} (${esc(dayLabel(w.day))})</div>` : ""}${notes}`);
     tip.hidden = false;
     const rect = svg.getBoundingClientRect(), left = (xs / W) * rect.width + 18, room = box.clientWidth - tip.offsetWidth - 8;
@@ -713,8 +719,141 @@
       ${(() => { const said = sentence(d.answer); return said ? `<div class="ov-answer" dir="auto">${said}</div>` : ""; })()}
       ${cards(d)}
       <section class="card ov-chart-card">${chartHead}${chart(d)}</section>
+      ${updatesCard()}
       ${d.hourly && !simple() ? `<p class="small muted ov-hint">${t("Tables below show the last 2 whole days.")}</p>` : ""}
       ${tabsCard(d)}`);
+  }
+
+  // ---- Google updates: Google's own list, and what each did to my clicks (seo/metrics/google_updates.py) ----
+  /* One row per update: its name, its dates, and one verdict, answer first. "What moved" opens why: my own edits, who rose
+     where I fell, the sections, devices and countries that moved, then the pages and keywords. A match in time, not proof,
+     and the card's (i) says so. Loaded on its own, so the chart never waits for it. Today and the bell open it with
+     #overview?site=…&update=…, which opens that update's details. With All my sites, one verdict per site. */
+  OV.gu = { cache: new Map(), open: null, handled: null };
+  function guLoad(path) {
+    const key = `search/${path}${path.includes("?") ? "&" : "?"}site_id=${UI.siteIdPicked() || ""}`;
+    let entry = OV.gu.cache.get(key);
+    if (entry) return entry;
+    entry = { loading: true, route: UI.state.route };
+    OV.gu.cache.set(key, entry);
+    window.COMP.api("GET", key).then((data) => {
+      entry.data = data;
+      // Google's list was just read: the chart came first, so it's asked for again to draw the update bands.
+      if (data?.read_now) { OV.cache.clear(); if (shared()) window.SCREEN_DATA.forget("search/overview"); }
+    }).catch((err) => { entry.error = err.message; })
+      .finally(() => { entry.loading = false; redraw(entry.route); });
+    return entry;
+  }
+  const tf = (s, values) => Object.entries(values).reduce((out, [k, v]) => out.split(`{${k}}`).join(v), t(s));
+  const pct = (v) => `${v > 0 ? "+" : ""}${dec1(v)}${fr() ? " %" : "%"}`;
+  const VERDICTS = {
+    lost: ["crit", "Lost clicks"], gained: ["good", "Gained clicks"], normal: ["info", "Within your usual ups and downs"], season: ["warn", "Probably the season"],
+    little: ["info", "Too few clicks to tell"], early: ["planned", "Too early to tell"], no_data: ["info", "No data from before it"],
+  };
+  function guVerdict(u, short = false) {
+    const [tone, words] = VERDICTS[u.verdict] || VERDICTS.no_data;
+    const withPct = (u.verdict === "lost" || u.verdict === "gained") && u.clicks_pct !== null && u.clicks_pct !== undefined;
+    return UI.status(tone, withPct ? `${short ? "" : `${t(words)} `}${pct(u.clicks_pct)}` : t(words));
+  }
+  function guDates(u) {
+    const end = u.ended ? dayLabel(u.ended, true) : t("still rolling out");
+    return `${esc(dayLabel(u.began, !u.ended))} – ${esc(end)}`;
+  }
+  /* Under the verdict: the numbers it rests on, in one or two short lines. */
+  function guFacts(u) {
+    if (!u.before) return "";
+    const pos = u.before.position !== null && u.after.position !== null ? ` · ${t("Position")} ${dec1(u.before.position)} → ${dec1(u.after.position)}` : "";
+    const span = tf(u.rolling ? "{n} days before vs {n} days since it began" : "{n} days before vs {n} days after", { n: u.days });
+    const clicks = t(u.brand_out ? "Clicks without brand" : "Clicks");
+    const extra = [];
+    if (u.usual_swing !== null && u.usual_swing !== undefined) extra.push(tf("Usually moves ±{n}", { n: `${dec1(u.usual_swing)}${fr() ? " %" : "%"}` }));
+    if (u.verdict === "season" && u.last_year_pct !== null) extra.push(tf("Same weeks last year: {n}", { n: pct(u.last_year_pct) }));
+    if (u.recovery) extra.push(u.recovery.pct >= 10 ? tf("Since then: {n} of the loss back", { n: `${Math.min(100, u.recovery.pct)}${fr() ? " %" : "%"}` }) : t("Not recovered yet"));
+    return `<div class="small muted">${esc(clicks)} ${num(u.before.clicks)} → ${num(u.after.clicks)}${pos} · ${esc(span)}</div>${extra.length ? `<div class="small muted">${extra.map(esc).join(" · ")}</div>` : ""}`;
+  }
+  const WHY = { position_down: "position fell", position_up: "position rose", searched_less: "searched less", searched_more: "searched more", click_rate: "click rate changed" };
+  function guMovers(list, kind, u) {
+    if (!list.length) return `<li class="muted">${t("None")}</li>`;
+    const name = (m) => (kind === "page" && window.PageLink ? PageLink.html(m.name, { text: pathOf(m.name), cls: "mono" }) : kind === "query" && window.KeywordLink ? KeywordLink.html(m.name) : `<span dir="auto">${esc(m.name)}</span>`);
+    const pos = (m) => (m.position_before !== null && m.position_after !== null ? ` · ${t("pos.")} ${dec1(m.position_before)} → ${dec1(m.position_after)}` : "");
+    const task = (m) => (kind === "page" && m.change < 0 && UI.taskButton ? UI.taskButton({
+      title: tf("Check {page} after the {update}", { page: pathOf(m.name), update: u.name }), host: UI.siteHostPicked?.() || null, priority: "medium", pages: [m.name],
+      source: { type: "search", label: u.name, key: `gu|${u.id}|${m.name}`, facts: [`${num(m.clicks_before)} → ${num(m.clicks_after)} ${t("clicks")}`] },
+    }, { label: "Task", cls: "btn btn-small btn-ghost gu-task" }) : "");
+    return list.map((m) => `<li><span class="gu-name">${name(m)}</span><span class="small muted gu-num">${num(m.clicks_before)} → ${num(m.clicks_after)} ${t("clicks")}${pos(m)} · ${esc(t(WHY[m.why] || ""))}</span>${kind === "page" ? `<span class="gu-slot">${task(m)}</span>` : ""}</li>`).join("");
+  }
+  /* One line per kind of split: where most clicks went, each with its change. */
+  function guWhere(d) {
+    const parts = [];
+    const add = (rows, label) => rows.slice(0, 3).forEach((r) => parts.push(`${label(r)} <span class="gu-chg ${r.change < 0 ? "down" : "up"}">${r.change > 0 ? "+" : ""}${num(r.change)}</span>`));
+    const lost = (key) => (d[key]?.down || []);
+    add(lost("sections"), (r) => `<span class="mono">${esc(r.name)}</span>`);
+    add(lost("devices"), (r) => esc(t({ MOBILE: "Mobile", DESKTOP: "Desktop", TABLET: "Tablet" }[String(r.name).toUpperCase()] || r.name)));
+    add(lost("countries"), (r) => esc(r.code ? UI.countryName(r.code) : r.name));
+    return parts.length ? `<p class="gu-fact">${icon("arrow-down")}<span><b>${t("Lost most in")}</b> ${parts.join(" · ")} <span class="muted small">${t("clicks")}</span></span></p>` : "";
+  }
+  function guEdits(e) {
+    if (e.count === null || e.count === undefined) return `<p class="gu-fact">${icon("pencil")}<span class="muted">${e.reading_since ? tf("Your own edits in these weeks aren't known: the app reads your site since {day}.", { day: dayLabel(e.reading_since, true) }) : t("Your own edits aren't known: the app hasn't read your site yet.")}</span></p>`;
+    const since = e.partial ? ` <span class="muted small">${tf("Known from {day}", { day: dayLabel(e.reading_since, true) })}</span>` : "";
+    if (!e.count) return `<p class="gu-fact">${icon("pencil")}<span>${t("You didn't edit your pages in these weeks.")}${since}</span></p>`;
+    const list = e.items.map((p) => `<li>${window.PageLink ? PageLink.html(p.url, { text: pathOf(p.url), cls: "mono" }) : esc(p.url)} <span class="muted small">${esc(dayLabel(p.last))}</span></li>`).join("");
+    return `<div class="gu-fact">${icon("pencil")}<details class="gu-edits"><summary><b>${tf(e.count === 1 ? "You edited 1 of your pages in these weeks" : "You edited {n} of your pages in these weeks", { n: num(e.count) })}</b>${since}</summary><ul class="gu-list">${list}</ul></details></div>`;
+  }
+  function guRivals(r) {
+    if (!r.checked) return `<p class="gu-fact">${icon("users")}<span class="muted">${t("No rank checks on both sides of this update, so who took your place isn't known.")}</span></p>`;
+    if (!r.items.length) return `<p class="gu-fact">${icon("users")}<span>${tf("No website rose where you fell ({n} keywords checked).", { n: num(r.checked) })}</span></p>`;
+    const who = r.items.map((x) => `<span class="gu-rival" title="${esc(x.keywords.join(", "))}">${UI.siteLogo ? UI.siteLogo(x.domain, 14) : ""}${esc(x.domain)} <span class="muted small">${tf(x.count === 1 ? "1 keyword" : "{n} keywords", { n: x.count })}</span></span>`).join("");
+    return `<div class="gu-fact">${icon("users")}<span><b>${t("Rose where you fell")}</b><span class="gu-rivals">${who}</span></span></div>`;
+  }
+  function guDetail(u) {
+    const entry = guLoad(`google-update?id=${encodeURIComponent(u.id)}`);
+    if (entry.loading) return `<div class="gu-detail" aria-busy="true">${UI.skeleton ? UI.skeleton("rows") : t("Loading…")}</div>`;
+    if (entry.error) return `<div class="gu-detail"><p class="small">${esc(entry.error)}</p></div>`;
+    const d = entry.data;
+    const block = (title, moved, kind) => `<div class="gu-block"><h4>${t(title)}</h4>
+      <p class="gu-sub down">${icon("arrow-down")}${t("Lost the most")}</p><ul class="gu-list">${guMovers(moved.down, kind, u)}</ul>
+      <p class="gu-sub up">${icon("arrow-up")}${t("Gained the most")}</p><ul class="gu-list">${guMovers(moved.up, kind, u)}</ul></div>`;
+    const brand = d.brand_out ? "" : `<p class="gu-fact">${icon("info")}<span class="muted">${t("Brand searches are counted too.")} <button class="link-btn" data-ov-brand-edit>${t("Add your brand words")}</button></span></p>`;
+    return `<div class="gu-why">${guEdits(d.edits)}${guRivals(d.rivals)}${guWhere(d)}${brand}</div>
+      <div class="gu-detail">${block("Pages", d.pages, "page")}${block("Keywords", d.queries, "query")}</div>`;
+  }
+  function guSites(u) {
+    return `<div class="gu-sites">${u.sites.map((x) => `<span class="gu-site">${UI.siteLogo ? UI.siteLogo(x.host, 14) : ""}<span class="gu-site-host">${esc(x.host || "")}</span>${guVerdict(x, true)}</span>`).join("")}</div>`;
+  }
+  /* Arriving from Today or the bell: that update opens once, and comes into view. The app tidies the address as soon as
+     it loads, which drops "update=", so it's caught from the address it arrived with and from every change of address. */
+  const updateIn = (url) => new URLSearchParams(String(url || "").split("#")[1]?.split("?")[1] || "").get("update");
+  OV.gu.want = updateIn(location.href);
+  window.addEventListener("hashchange", (e) => { const found = updateIn(e.newURL); if (found) { OV.gu.want = found; OV.gu.handled = null; } }, true);
+  function guFromAddress() {
+    const want = OV.gu.want;
+    if (!want || OV.gu.handled === want) return;
+    OV.gu.handled = want;
+    OV.gu.open = want;
+    OV.gu.want = null;
+    setTimeout(() => UI.$(`[data-gu-row="${CSS.escape(want)}"]`)?.scrollIntoView({ block: "start", behavior: "smooth" }), 600);
+  }
+  function updatesCard() {
+    guFromAddress();
+    const entry = guLoad("google-updates");
+    const info = UI.tip ? UI.tip("Google's confirmed ranking updates, from its Search Status Dashboard. Each compares your clicks after it with the same weekdays before it, without brand searches, and only calls it a loss or a gain when the change is bigger than your usual ups and downs. A match in time, not proof: the season, a change on your site or a competitor can move the same numbers.") : "";
+    const head = `<div class="card-head"><h2>${t("Google updates")}${info}</h2></div>`;
+    if (entry.loading) return `<section class="card ov-updates">${head}${UI.skeleton ? UI.skeleton("rows") : ""}</section>`;
+    if (entry.error) return `<section class="card ov-updates">${head}<p class="gu-empty small">${esc(entry.error)}</p></section>`;
+    const list = entry.data.updates || [];
+    if (!list.length) return `<section class="card ov-updates">${head}<p class="gu-empty small muted">${t("No Google update since your Search Console data begins.")}</p></section>`;
+    const rows = list.map((u) => {
+      const open = OV.gu.open === u.id, can = ["lost", "gained", "normal", "season"].includes(u.verdict);
+      const more = u.sites ? `<span class="gu-more small muted">${t("Pick a site to see what moved")}</span>`
+        : can ? `<button class="link-btn gu-more" data-gu-open="${esc(u.id)}" aria-expanded="${open}">${t(open ? "Hide" : "What moved")}${icon(open ? "chevron-up" : "chevron-down")}</button>` : `<span class="gu-more"></span>`;
+      return `<li class="gu-row${open ? " open" : ""}" data-gu-row="${esc(u.id)}">
+        <div class="gu-main">
+          <div class="gu-what"><a href="${esc(u.url)}" target="_blank" rel="noopener" class="gu-title" dir="auto">${esc(u.name)}</a><div class="small muted">${guDates(u)}</div></div>
+          <div class="gu-verdict">${u.sites ? guSites(u) : `${guVerdict(u)}${guFacts(u)}`}</div>
+          ${more}
+        </div>${open && can && !u.sites ? guDetail(u) : ""}</li>`;
+    }).join("");
+    return `<section class="card ov-updates">${head}<ul class="gu-rows">${rows}</ul></section>`;
   }
 
   // ---- after Refresh: wait for the pull, gently ------------------------------------------------------
@@ -755,6 +894,7 @@
         try { await window.COMP.api("DELETE", `rules/${el.dataset.ovBrandDel}`); forget(); await brandPanel(); redraw(); UI.toast(t("Brand word removed")); } catch (err) { UI.toast(err.message, { kind: "crit" }); }
         return;
       }
+      if ((el = hit("[data-gu-open]"))) { const id = el.dataset.guOpen; OV.gu.open = OV.gu.open === id ? null : id; UI.render({ keepScroll: true }); UI.$(`[data-gu-open="${CSS.escape(id)}"]`)?.focus({ preventScroll: true }); return; }
       if (hit("[data-ov-table]")) { OV.table = !OV.table; UI.render({ keepScroll: true }); UI.$("[data-ov-table]")?.focus({ preventScroll: true }); return; }
       if (hit("[data-ov-more-filters]")) {
         const f = filterOf(OV.tab), open = OV.moreFilters || numbersOn(f) > 0;

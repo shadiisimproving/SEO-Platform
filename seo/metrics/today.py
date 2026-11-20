@@ -425,6 +425,24 @@ def _ai_overview_rows(engine: Engine, site_id: int | None) -> list[dict]:
     return rows
 
 
+def _google_update_rows(engine: Engine, site_id: int | None) -> list[dict]:
+    """A site that lost clicks in a Google update that ended lately (seo/metrics/google_updates.py). Opens Overview's card."""
+    from seo.metrics import google_updates
+
+    with engine.connect() as conn:
+        ids = [row["id"] for row in _own_sites(conn, site_id)]
+    rows = []
+    for found in google_updates.today_rows(engine, site_id, ids):
+        title, detail = "{update}: you lost {pct}% of clicks", "See what moved: pages, keywords and who took your place"
+        values = {"update": found["name"], "pct": found["lost_pct"]}
+        rows.append({
+            "id": f"gu-{found['key']}", "seen_key": found["key"], "kind": "google_update", "severity": "warn", "rank": LOSING_RESULTS, "host": found["host"],
+            "title": title.format(**values), "detail": detail, "link": f"#overview?site={found['host']}&update={found['update_id']}", "created_at": f"{found['ended']}T00:00:00Z",
+            "words": {"title": [title, values], "detail": [detail, {}]},
+        })
+    return rows
+
+
 def _todo(engine: Engine, site_id: int | None, moves: list[dict]) -> tuple[list[dict], set[str]]:
     """One list, ranked by what is being lost. Returns which pages it names, so they aren't repeated under Going down."""
     seen = _seen_drops(engine)
@@ -435,6 +453,7 @@ def _todo(engine: Engine, site_id: int | None, moves: list[dict]) -> tuple[list[
 
     rows += [_finding_row(f) for f in insights.today_rows(engine, site_id) if f["key"] not in seen and not (f["page"] and f["page"] in named and f["kind"] == "page_down")]
     rows += [row for row in _ai_overview_rows(engine, site_id) if row["seen_key"] not in seen]
+    rows += [row for row in _google_update_rows(engine, site_id) if row["seen_key"] not in seen]
     # Sorted is stable, and page drops were added in order of clicks lost.
     rows.sort(key=lambda item: (item["rank"], SEVERITY.get(item["severity"], 3), item.get("expires_in", 10**6 if item.get("reason") == "may_go_offline" else -1)) if item["kind"] != "page_drop" else (item["rank"], -1, 0))
     for item in rows:

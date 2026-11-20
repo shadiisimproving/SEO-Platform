@@ -77,7 +77,37 @@ def overview(engine, args) -> Report:
             for key, label in (("min_clicks", "Min clicks"), ("min_impressions", "Min impressions"), ("pos_from", "Position from"), ("pos_to", "Position to")):
                 if filters.get(key) is not None:
                     report.filters.append((label, f"{filters[key]:g}"))
+    report.tables.append(_google_updates_table(engine, args))
     return report
+
+
+GU_VERDICTS = {
+    "lost": "Lost clicks", "gained": "Gained clicks", "normal": "Within your usual ups and downs", "season": "Probably the season",
+    "little": "Too few clicks to tell", "early": "Too early to tell", "no_data": "No data from before it",
+}
+
+
+def _google_updates_table(engine, args) -> Table:
+    """Google's confirmed updates and what each did to the clicks (seo/metrics/google_updates.py), one row per update and site."""
+    from seo.metrics import google_updates
+
+    answer = google_updates.listing(engine, args.get("site_id"), read=False)
+    rows = []
+    for u in answer["updates"]:
+        for one in u.get("sites") or [u]:
+            before, after = one.get("before") or {}, one.get("after") or {}
+            rows.append({
+                "name": u["name"], "began": u["began"], "ended": u["ended"] or "", "site": one.get("host") or "", "verdict": GU_VERDICTS.get(one["verdict"], one["verdict"]),
+                "clicks_pct": one.get("clicks_pct"), "clicks_before": before.get("clicks"), "clicks_after": after.get("clicks"),
+                "position_before": before.get("position"), "position_after": after.get("position"), "usual_swing": one.get("usual_swing"),
+            })
+    columns = [C("name", "Google update", "text", width=3), C("began", "Began", "text"), C("ended", "Ended", "text")]
+    if answer.get("many"):
+        columns.append(C("site", "Site", "text"))
+    columns += [C("verdict", "Verdict", "text", translate=True), C("clicks_pct", "Change in clicks", "pct100"), C("clicks_before", "Clicks before", "int"), C("clicks_after", "Clicks after", "int"),
+                C("position_before", "Position before", "position"), C("position_after", "Position after", "position"), C("usual_swing", "Usual swing", "pct100")]
+    return Table("google_updates", "Google updates", columns, rows, empty="No Google update since your Search Console data begins.",
+                 note="Clicks after each update against the same weekdays before it, without brand searches when brand words are set. A match in time, not proof.")
 
 
 OPP_TITLES = {"almost": "Almost on page 1", "low_ctr": "Low click rate", "compete": "Two pages compete", "lost": "Lost queries"}

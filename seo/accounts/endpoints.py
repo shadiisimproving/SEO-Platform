@@ -160,6 +160,8 @@ ENDPOINTS: dict[str, tuple[str, str, str]] = {
 
     # ---- Search: Overview ----
     "search_api.overview": ("overview today", "read", "all"),
+    "search_api.google_updates_list": ("overview today", "read", "all"),
+    "search_api.google_update_detail": ("overview today", "read", "all"),
     "search_api.breakdown": ("overview", "read", "all"),
     "search_api.detail": ("overview keywords", "read", "all"),
     "search_api.opportunities": ("overview", "read", "all"),

@@ -1658,3 +1658,16 @@ class GscAiReport(Base):
     data: Mapped[dict] = mapped_column(JSON)
     uploaded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     uploaded_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
+class GoogleUpdate(Base):
+    """Google's confirmed ranking updates, from its Search Status Dashboard. Not per site: one list for everyone."""
+    __tablename__ = "google_updates"
+
+    id: Mapped[str] = mapped_column(String(40), primary_key=True)  # Google's own id for the incident
+    name: Mapped[str] = mapped_column(String(200))
+    kind: Mapped[str] = mapped_column(String(20))  # core, spam, reviews, helpful, link or other
+    began: Mapped[date] = mapped_column(Date, index=True)
+    ended: Mapped[date | None] = mapped_column(Date, nullable=True)  # empty while it's still rolling out
+    url: Mapped[str] = mapped_column(String(300))
+    read_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)

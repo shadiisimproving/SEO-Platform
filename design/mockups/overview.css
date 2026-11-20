@@ -235,3 +235,52 @@ html[data-simple="1"] .ov-foot.is-quiet { display: none; }
 /* The head's Search Console chip: brands.js puts the logo in it, which made the button a block and broke the line. */
 html[data-simple="1"] #topbar .head-line .ov-trust { display: inline-flex; align-items: center; gap: 4px; vertical-align: top; }
 html[data-simple="1"] #topbar .head-line .ov-trust .brand-mention { display: inline-flex; }
+
+/* Google updates (overview-view.js updatesCard): a soft band on the chart, then one row per update with its verdict. */
+.ov-band rect { fill: var(--c-indigo, var(--muted)); opacity: .08; }
+.ov-key-band { display: inline-block; width: 14px; height: 10px; margin-right: 6px; vertical-align: -1px; border-radius: 2px; background: var(--c-indigo, var(--muted)); opacity: .25; }
+.ov-tip-google { color: var(--c-indigo, var(--text-2)); }
+.ov-updates { margin-bottom: 14px; }
+.gu-empty { padding: 0 18px 16px; margin: 0; }
+.gu-rows { list-style: none; margin: 0; padding: 0; }
+.gu-row { border-top: 1px solid var(--line); }
+.gu-main { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr) 130px; gap: 8px 18px; align-items: center; padding: 12px 18px; }
+.gu-title { font-weight: 600; color: var(--text); text-decoration: none; }
+.gu-title:hover, .gu-title:focus-visible { text-decoration: underline; }
+.gu-verdict { display: grid; gap: 4px; justify-items: start; }
+.gu-more { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; justify-self: end; }
+.gu-more svg { width: 14px; height: 14px; }
+.gu-detail { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; padding: 4px 18px 16px; }
+.gu-block h4 { margin: 0 0 6px; font-size: 13px; }
+.gu-sub { display: flex; align-items: center; gap: 5px; margin: 8px 0 4px; font-size: var(--fs-min); font-weight: 600; }
+.gu-sub svg { width: 13px; height: 13px; }
+.gu-sub.down { color: var(--crit-t); } .gu-sub.up { color: var(--good-t); }
+.gu-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 13px; }
+.gu-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 10px; min-width: 0; }
+.gu-list li:has(.gu-slot) { grid-template-columns: minmax(0, 1fr) auto 64px; } /* page rows: a Task column, empty on gains */
+.gu-slot { display: flex; justify-content: flex-end; }
+.gu-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gu-num { flex: none; font-variant-numeric: tabular-nums; }
+@media (max-width: 720px) {
+  .gu-main { grid-template-columns: 1fr; }
+  .gu-more { justify-self: start; }
+  .gu-detail { grid-template-columns: 1fr; }
+  .gu-list li, .gu-list li:has(.gu-slot) { grid-template-columns: minmax(0, 1fr) auto; gap: 0 8px; }
+  .gu-list li .gu-num { grid-column: 1; }
+  .gu-list li .gu-slot { grid-column: 2; grid-row: 1 / span 2; }
+}
+/* "What moved": why first (my edits, who rose, where it went), then the pages and keywords. */
+.gu-why { display: grid; gap: 8px; padding: 2px 18px 6px; }
+.gu-fact { display: flex; align-items: flex-start; gap: 8px; margin: 0; font-size: 13px; }
+.gu-fact > svg { width: 15px; height: 15px; flex: none; margin-top: 2px; color: var(--muted); }
+.gu-chg { font-variant-numeric: tabular-nums; font-weight: 600; }
+.gu-chg.down { color: var(--crit-t); } .gu-chg.up { color: var(--good-t); }
+.gu-rivals { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 4px; }
+.gu-rival { display: inline-flex; align-items: center; gap: 5px; }
+.gu-edits summary { cursor: pointer; }
+.gu-edits .gu-list { margin-top: 6px; }
+.gu-sites { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+.gu-site { display: inline-flex; align-items: center; gap: 6px; }
+.gu-site-host { font-size: 13px; }
+.gu-more.small { white-space: normal; text-align: right; }
+@media (max-width: 720px) { .gu-more.small { text-align: left; } }

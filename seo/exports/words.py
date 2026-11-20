@@ -17,6 +17,13 @@ FR: dict[str, str] = {
     "Some characters show as “?” in this PDF; Excel and CSV keep them.": "Certains caractères apparaissent comme « ? » dans ce PDF ; Excel et CSV les conservent.",
     "Page": "Page", "of": "sur", "Yes": "Oui", "No": "Non", "Nothing to show for this period.": "Rien à afficher pour cette période.", "Nothing matches these filters.": "Rien ne correspond à ces filtres.", "Before": "Avant",
     # Search overview
+    "Google updates": "Mises à jour Google", "Google update": "Mise à jour Google", "Began": "Début", "Ended": "Fin", "Site": "Site", "Verdict": "Verdict",
+    "Change in clicks": "Évolution des clics", "Clicks after": "Clics après", "Position after": "Position après", "Usual swing": "Écart habituel",
+    "Lost clicks": "Clics perdus", "Gained clicks": "Clics gagnés", "Within your usual ups and downs": "Dans vos variations habituelles", "Probably the season": "Sans doute la saison",
+    "Too few clicks to tell": "Trop peu de clics pour juger", "Too early to tell": "Trop tôt pour juger", "No data from before it": "Pas de données d'avant",
+    "No Google update since your Search Console data begins.": "Aucune mise à jour Google depuis le début de vos données Search Console.",
+    "Clicks after each update against the same weekdays before it, without brand searches when brand words are set. A match in time, not proof.":
+        "Les clics après chaque mise à jour, comparés aux mêmes jours de la semaine avant, hors recherches de marque quand des mots de marque sont définis. Une coïncidence dans le temps, pas une preuve.",
     "Search overview": "Vue d'ensemble de la recherche", "Clicks": "Clics", "Impressions": "Impressions", "Click rate": "Taux de clic", "Average position": "Position moyenne",
     "Queries": "Requêtes", "Pages": "Pages", "Countries": "Pays", "Devices": "Appareils", "Query": "Requête", "Country": "Pays", "Device": "Appareil",
     "Clicks before": "Clics avant", "Position": "Position", "Position before": "Position avant", "Brand": "Marque", "Brand only": "Marque seulement", "Without brand": "Hors marque",

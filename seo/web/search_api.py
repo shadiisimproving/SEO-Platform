@@ -7,7 +7,7 @@ from flask import Blueprint, current_app, g, jsonify, request
 
 from seo.core.errors import Refused
 from seo.imports import gsc_ai_report
-from seo.metrics import search
+from seo.metrics import google_updates, search
 from seo.metrics.service import Scope
 
 search_api = Blueprint("search_api", __name__, url_prefix="/api/search")
@@ -28,6 +28,18 @@ def _site_id(value) -> int:
 def overview():
     scope, window = search.scope_for(_engine(), request.args)
     return jsonify(search.overview(scope, window, fresh=request.args.get("fresh") == "1"))
+
+
+@search_api.get("/google-updates")
+def google_updates_list():
+    """Google's ranking updates and what each did to these sites' clicks."""
+    return jsonify(google_updates.listing(_engine(), request.args.get("site_id")))
+
+
+@search_api.get("/google-update")
+def google_update_detail():
+    """One update: the pages and keywords that moved most. Its id is Google's, shared by every site, so it's not in the path."""
+    return jsonify(google_updates.detail(_engine(), request.args.get("site_id"), request.args.get("id") or ""))
 
 
 @search_api.get("/breakdown")

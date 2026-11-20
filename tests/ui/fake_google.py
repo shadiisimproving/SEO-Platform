@@ -126,6 +126,15 @@ def _answer(request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json={"data": {"free_model_daily_requests": {"used": 3, "limit": 50, "remaining": 47}}})
     if "openrouter.ai/api/v1/chat" in url:
         return httpx.Response(200, json={"model": "fake/free-model:free", "choices": [{"message": {"content": "The page title now leads with the price. The old wording about gifts was removed."}}]})
+    if "status.search.google.com/incidents.json" in url:  # Google's list of ranking updates, dated from today so the demo always has some
+        from datetime import date, timedelta
+        day = lambda n: f"{(date.today() - timedelta(days=n)).isoformat()}T16:00:00+00:00"  # noqa: E731
+        return httpx.Response(200, json=[
+            {"id": "fakecore3", "begin": day(7), "external_desc": "This month's core update", "service_name": "Ranking", "uri": "incidents/fakecore3"},
+            {"id": "fakespam2", "begin": day(45), "end": day(38), "external_desc": "Spam update", "service_name": "Ranking", "uri": "incidents/fakespam2"},
+            {"id": "fakecore1", "begin": day(95), "end": day(80), "external_desc": "Earlier core update", "service_name": "Ranking", "uri": "incidents/fakecore1"},
+            {"id": "fakecrawl", "begin": day(20), "external_desc": "Crawling issue", "service_name": "Crawling"},
+        ])
     if "openpagerank" in url:
         return httpx.Response(200, json={"data": []})
     return httpx.Response(404, json={"error": {"message": f"The fake doesn't know {url}"}})

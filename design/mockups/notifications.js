@@ -84,8 +84,11 @@
       B.loaded = true;
       B.failed = false;
       if (!B.firstLoad && fresh.length && window.UI) {
-        const count = fresh.reduce((n, i) => n + (i.kind === "new_query_more" || i.kind === "new_queries" ? i.detail?.count || 0 : 1), 0);
-        UI.toast(plural(count, "1 new Google search", "{n} new Google searches"), { kind: "info" });
+        const searches = fresh.filter((i) => i.kind !== "google_update");
+        const count = searches.reduce((n, i) => n + (i.kind === "new_query_more" || i.kind === "new_queries" ? i.detail?.count || 0 : 1), 0);
+        if (count) UI.toast(plural(count, "1 new Google search", "{n} new Google searches"), { kind: "info" });
+        const update = fresh.find((i) => i.kind === "google_update");
+        if (update) UI.toast(t(update.detail?.state === "ended" ? "A Google update has finished: see what it did" : "Google started an update"), { kind: "info" });
       }
       B.items.forEach((i) => B.shown.add(i.id));
       B.firstLoad = false;
@@ -139,10 +142,28 @@
     </li>`;
   }
 
+  /* A Google update starting, or finished with its effect on this site (seo/metrics/google_updates.py). Opens Overview's card. */
+  const UPDATE_WORDS = { lost: "you lost {n} of clicks", gained: "you gained {n} of clicks", normal: "within your usual ups and downs", season: "probably the season", little: "too few clicks to tell" };
+  function updateHtml(item, readBtn, logo) {
+    const d = item.detail || {};
+    const pctText = d.clicks_pct === null || d.clicks_pct === undefined ? "" : `${Math.abs(Math.round(d.clicks_pct))}${UI.state.lang === "fr" ? " %" : "%"}`;
+    const title = d.state === "ended" ? `${d.name}: ${fill(UPDATE_WORDS[d.verdict] || "finished", { n: pctText })}` : fill("Google started the {name}", { name: d.name });
+    const when = d.state === "ended" && d.ended ? fill("Finished {day}", { day: dayLabel(d.ended) }) : fill("Began {day}", { day: dayLabel(d.began) });
+    return `<li class="bell-row bell-row-go ${item.read ? "" : "unread"}" data-bell-row="${item.id}" data-bell-update="${item.id}">
+      <span class="bell-dot" aria-hidden="true"></span>
+      <div class="bell-body">
+        <p class="bell-title"><button type="button" class="bell-go" data-bell-update="${item.id}"><span class="bell-kind" aria-hidden="true">${UI.icon(d.verdict === "lost" ? "arrow-down" : "activity")}</span> <b dir="auto">${esc(title)}</b></button></p>
+        <p class="bell-meta">${logo}<span>${esc(item.host)}</span><span>·</span><span>${esc(when)}</span></p>
+      </div>
+      <div class="bell-acts">${readBtn}</div>
+    </li>`;
+  }
+
   function rowHtml(item) {
     const d = item.detail || {}, logo = UI.siteLogo ? UI.siteLogo(item.host, 14) : "";
     const readBtn = `<button type="button" class="icon-btn bell-mark" data-bell-read="${item.id}" data-read="${!item.read}" aria-label="${esc(t(item.read ? "Mark as unread" : "Mark as read"))}" title="${esc(t(item.read ? "Mark as unread" : "Mark as read"))}">${UI.icon(item.read ? "circle" : "check")}</button>`;
     if (item.kind === "new_queries") return groupHtml(item, readBtn, logo);
+    if (item.kind === "google_update") return updateHtml(item, readBtn, logo);
     if (item.kind === "new_query_more") {
       const open = B.opened === item.id;
       const list = open ? `<ul class="bell-more">${(d.queries || []).map((q, i) => `<li><button type="button" class="bell-go" data-bell-go="${item.id}" data-q="${i}" title="${esc(goTip(q.query, item.host))}"><span dir="auto">${esc(q.query)}</span></button><span class="bell-num">${esc(place(q.position))}</span></li>`).join("")}</ul>` : "";
@@ -267,6 +288,14 @@
       closePanel();
       if (!window.KW) { UI.toast(t("Add it in Keywords."), { kind: "info" }); return; }
       window.KW.track([query], item.host, opener, {});
+      return;
+    }
+    if ((el = hit("[data-bell-update]")) && !hit("[data-bell-read]")) {
+      const item = B.items.find((i) => i.id === Number(el.dataset.bellUpdate));
+      if (!item) return;
+      setRead(item.id, true);
+      closePanel();
+      location.hash = `#overview?site=${encodeURIComponent(item.host)}&update=${encodeURIComponent(item.detail?.update_id || "")}`;
       return;
     }
     // The search itself, or anywhere on its row but a button or link, opens it: its keyword when tracked, else Overview → Queries.
