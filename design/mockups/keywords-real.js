@@ -91,6 +91,7 @@
     "With AI Overview": "Avec AI Overview", "No check before the period": "Aucun contrôle avant la période", "No comparison chosen: changes are hidden.": "Aucune comparaison choisie : les évolutions sont masquées.",
     "Not in the first {n} results": "Absent des {n} premiers résultats", "Cited in Google's AI Overview": "Cité dans l'AI Overview de Google", "No keyword here": "Aucun mot-clé ici",
     "Show all {n}": "Tout afficher ({n})", "Show fewer": "Afficher moins",
+    "since {day}": "depuis le {day}", "from {band}": "venait de {band}", "moved up": "en hausse", "moved down": "en baisse",
     "Position over time": "Position dans le temps", "What we did": "Ce qu'on a fait", "Bought link": "Lien acheté", "Page edit": "Modif. de page", "Task done": "Tâche finie", "Google update": "Mise à jour Google",
     "3 months": "3 mois", "6 months": "6 mois", "12 months": "12 mois", "still rolling out": "encore en cours", "until": "jusqu'au", "Changed": "Modifié", "No date": "Sans date", "all countries": "tous pays", "weekly averages": "moyennes par semaine",
     "{a} ({d1}) → {b} ({d2})": "{a} ({d1}) → {b} ({d2})", "No Search Console impressions for this keyword in this period.": "Aucune impression Search Console pour ce mot-clé sur la période.",
@@ -559,7 +560,8 @@
     const round = (v) => (v === null || v === undefined ? null : Math.max(1, Math.round(v)));
     const items = all.map((row) => {
       const x = r.rows[row.id] || {}, is = round(x.now), was = round(x.then);
-      return { row, p: is, avg: x.now ?? null, checked: true, nodata: is === null, depth: null, move: base && is !== null && was !== null ? { kind: "diff", n: was - is } : null, band: BANDS.find((b) => b.test(is)).id };
+      return { row, p: is, avg: x.now ?? null, checked: true, nodata: is === null, depth: null, move: base && is !== null && was !== null ? { kind: "diff", n: was - is } : null, band: BANDS.find((b) => b.test(is)).id,
+        wasBand: base && was !== null && is !== null ? BANDS.find((b) => b.test(was)).id : null, thenBand: base && was !== null ? BANDS.find((b) => b.test(was)).id : null };
     });
     const top10Then = base ? all.filter((row) => { const v = round(r.rows[row.id]?.then); return v !== null && v <= 10; }).length : null;
     const sites = Object.values(r.through || {});
@@ -584,7 +586,7 @@
         move = was !== null && is !== null ? { kind: "diff", n: was - is } : was === null && is !== null ? { kind: "new" } : was !== null && is === null ? { kind: "lost" } : { kind: "diff", n: 0 };
       }
       const p = now ? now.p ?? null : null;
-      return { row, p, checked: Boolean(now), depth: v.main?.depth || null, move, band: BANDS.find((b) => b.test(p)).id };
+      return { row, p, checked: Boolean(now), depth: v.main?.depth || null, move, band: BANDS.find((b) => b.test(p)).id, wasBand: then ? BANDS.find((b) => b.test(then.p ?? null)).id : null, thenBand: then && then.p ? BANDS.find((b) => b.test(then.p)).id : null };
     });
     // Top 10 on each day of the period, for the card's graph; a long period is drawn one point a week.
     const days = [];
@@ -604,11 +606,18 @@
     return `<section class="tiles kwb-tiles" id="kw-tiles">
       ${UI.card({ id: "kw-tracked", label: t("Tracked"), value: all.length, cls: "tile" })}
       ${UI.card({ id: "kw-ranked", label: t("Ranked"), value: ranked, sub: `${t("of")} ${num(all.length)} · ${gsc ? brandLabel("Search Console") : brandLabel(name(e))}`, cls: "tile" })}
-      ${UI.card({ id: "kw-top10", label: t("Top 10"), def: "Top 10", value: m.top10, change: m.top10Then !== null && m.top10 !== null ? { now: m.top10, before: m.top10Then } : null, sub: m.top10Then === null && !gsc ? t("No check before the period") : "", spark: m.spark.length >= 2 ? { now: m.spark, days: m.days } : null, cls: "tile" })}
+      ${UI.card({ id: "kw-top10", label: t("Top 10"), def: "Top 10", value: m.top10, change: m.top10Then !== null && m.top10 !== null ? { now: m.top10, before: m.top10Then } : null, sub: m.top10Then === null ? (gsc ? "" : t("No check before the period")) : sinceLine(m), spark: m.spark.length >= 2 ? { now: m.spark, days: m.days } : null, cls: "tile" })}
       ${UI.card({ id: "kw-overview", label: t("With AI Overview"), def: false, value: overview, sub: `${t("of")} ${num(all.length)}`, cls: "tile" })}
       ${UI.card({ id: "kw-cited", label: t("Cited by AI"), value: cited, sub: `${t("of")} ${num(all.length)}`, cls: "tile" })}
     </section>`;
   }
+  /* "17 → 43 since 22 Oct": the card's change names what it is compared with (benchmark 2026-11-20: HubSpot, Stripe). */
+  function sinceLine(m) {
+    const day = m.source === "gsc" ? m.windows?.then : m.base;
+    const fig = `${num(m.top10Then)} → ${num(m.top10)}`;
+    return day ? `${fig} <span class="muted">${esc(t("since {day}").replace("{day}", UI.fmtDay(day, { day: "numeric", month: "short" })))}</span>` : fig;
+  }
+  const bandLabel = (id) => t(BANDS.find((b) => b.id === id).label);
   function moveBadge(move) {
     if (!move) return "";
     if (move.kind === "new") return `<span class="kwb-mv up">${t("entered")}</span>`;
@@ -624,7 +633,7 @@
         : `<span class="kwb-pos none">—</span>`;
     return `<li><button type="button" class="kwb-card" data-kwr-open="${esc(row.id)}">
       <span class="kwb-kw" dir="auto">${esc(row.keyword)}</span>${state.site === "all" ? `<span class="kwb-site" dir="auto">${esc(row.site)}</span>` : ""}
-      <span class="kwb-meta">${pos}${moveBadge(x.move)}${x.checked ? "" : `<span class="kwb-vol">${t("Not checked")}</span>`}${impr !== null && impr !== undefined ? `<span class="kwb-vol" data-tip="${esc(t("Search Console impressions, last 28 days. Exact volume isn't available for free."))}">${num(impr)} ${t("impr.")}</span>` : ""}${row.ai.state === "cited" ? `<span class="kwb-ai" data-tip="${esc(t("Cited in Google's AI Overview"))}">${t("AI")}</span>` : ""}</span>
+      <span class="kwb-meta">${pos}${moveBadge(x.move)}${x.wasBand && x.wasBand !== x.band ? `<span class="kwb-from">${esc(t("from {band}").replace("{band}", bandLabel(x.wasBand)))}</span>` : ""}${x.checked ? "" : `<span class="kwb-vol">${t("Not checked")}</span>`}${impr !== null && impr !== undefined ? `<span class="kwb-vol" data-tip="${esc(t("Search Console impressions, last 28 days. Exact volume isn't available for free."))}">${num(impr)} ${t("impr.")}</span>` : ""}${row.ai.state === "cited" ? `<span class="kwb-ai" data-tip="${esc(t("Cited in Google's AI Overview"))}">${t("AI")}</span>` : ""}</span>
     </button></li>`;
   }
   function bucketView(rows) {
@@ -642,11 +651,23 @@
     if (m.loading) return `${bar}<p class="small muted kwb-note" role="status">${t("Loading Search Console…")}</p>`;
     if (m.error) return `${bar}${UI.failCard(m.error, { title: "Couldn't load Search Console positions.", retry: 'data-kwb-src="gsc"' })}`;
     const note = m.base ? "" : `<p class="small muted kwb-note">${t("No comparison chosen: changes are hidden.")}</p>`;
-    return `${bar}${note}<div class="kwb-board">${BANDS.map((b) => {
+    // Each column's count against the same column at the start (only keywords read both times), and how many moved up or
+    // down, as Moz, AccuRanker and Advanced Web Ranking show next to their bands (benchmark 2026-11-20).
+    // Ranked now in the band, against ranked in it at the start, so Top 3 + 4 to 10 add up to the Top 10 card's change.
+    // "Outside top 50" mixes "no data" with "not found", so it gets no change.
+    const bandDelta = (id) => {
+      if (!m.base || id === "out" || !m.items.some((x) => x.thenBand)) return "";
+      const d = m.items.filter((x) => x.band === id && x.p !== null).length - m.items.filter((x) => x.thenBand === id).length;
+      return d ? `<span class="kwb-delta ${(d > 0) === (id !== "out") ? "up" : "down"}" aria-label="${esc(`${t(d > 0 ? "Up" : "Down")} ${Math.abs(d)}`)}">${d > 0 ? "+" : "−"}${Math.abs(d)}</span>` : "";
+    };
+    const ups = m.items.filter((x) => x.move?.kind === "new" || (x.move?.kind === "diff" && x.move.n > 0)).length;
+    const downs = m.items.filter((x) => x.move?.kind === "lost" || (x.move?.kind === "diff" && x.move.n < 0)).length;
+    const moves = m.base ? `<p class="kwb-moves small"><span class="kwb-mv up">${icon("arrow-up")}${num(ups)}</span> ${esc(t("moved up"))} <span class="kwb-sep" aria-hidden="true">·</span> <span class="kwb-mv down">${icon("arrow-down")}${num(downs)}</span> ${esc(t("moved down"))}</p>` : "";
+    return `${bar}${note}${moves}<div class="kwb-board">${BANDS.map((b) => {
       const list = m.items.filter((x) => x.band === b.id).sort(cmp), open = K.bucketAll.has(b.id);
       const shown = open ? list : list.slice(0, BAND_SHOWN);
       return `<section class="kwb-col kwb-${b.id}" aria-labelledby="kwb-h-${b.id}">
-        <h3 class="kwb-head" id="kwb-h-${b.id}"><span>${t(b.label)}</span><b class="tabular">${num(list.length)}</b></h3>
+        <h3 class="kwb-head" id="kwb-h-${b.id}"><span>${t(b.label)}</span><span class="kwb-count"><b class="tabular">${num(list.length)}</b>${bandDelta(b.id)}</span></h3>
         ${list.length ? `<ol class="kwb-list">${shown.map(bucketCard).join("")}</ol>` : `<p class="kwb-empty">${t("No keyword here")}</p>`}
         ${list.length > BAND_SHOWN ? `<button type="button" class="link-btn kwb-more" data-kwb-more="${b.id}" aria-expanded="${open}">${open ? t("Show fewer") : t("Show all {n}").replace("{n}", num(list.length))}</button>` : ""}
       </section>`;
@@ -824,17 +845,18 @@
     const views = [["positions", "Positions"], ["bucket", "By bucket"], ["queries", "Queries"]];
     const positions = state.view !== "bucket" && state.view !== "queries";
     // One search and one Filter (2026-11-12): the chips, the view, compact rows, columns and the per-column filter sit inside it.
-    const active = (state.filter !== "all" ? 1 : 0) + (positions ? 0 : 1);
+    const active = state.filter !== "all" ? 1 : 0; // the view is its own switch now, not a filter
     const filterButton = `<button type="button" class="btn btn-small kw-filter-btn" id="kw-filter" aria-expanded="${K.filterOpen ? "true" : "false"}" aria-controls="kw-filter-panel">${icon("filter")}${t("Filter")}<b class="tt-count" id="kw-filter-count" data-base="${active}" ${active ? "" : "hidden"}>${num(active)}</b></button>`;
     const panel = !K.filterOpen ? (positions ? '<span class="kw-tt-slot" data-tt-slot="kw-table" hidden></span>' : "") : `<div class="kw-filter-panel" id="kw-filter-panel" role="group" aria-label="${t("Filter")}">
         ${positions ? `<div class="kw-fp-row"><span class="kw-fp-lab" id="kw-fp-show">${t("Show")}</span><div class="chips" role="group" aria-labelledby="kw-fp-show">${chips.map(([id, label]) => `<button class="chip" data-filter="${id}" aria-pressed="${state.filter === id}">${t(label)}<b>${num(counts[id])}</b></button>`).join("")}</div></div>` : ""}
-        <div class="kw-fp-row"><span class="kw-fp-lab" id="kw-fp-view">${t("View")}</span><span class="seg kw-views" role="group" aria-labelledby="kw-fp-view">${views.map(([id, label]) => `<button data-view="${id}" aria-pressed="${state.view === id}">${t(label)}</button>`).join("")}</span></div>
         ${positions ? `<div class="kw-fp-row"><span class="kw-fp-lab">${t("Rows")}</span><button type="button" class="btn btn-small" id="density" aria-pressed="${state.dense ? "true" : "false"}">${icon("rows-3")}${t("Compact rows")}</button></div>
         <div class="kw-fp-row"><span class="kw-fp-lab" id="kw-fp-cols">${t("Columns")}</span><span class="kw-fp-cols" role="group" aria-labelledby="kw-fp-cols">${Object.entries({ vol: "Impressions (28 days)", trend: "Trend", page: "Page", ai: "AI" }).map(([k, label]) => `<label class="opt"><input type="checkbox" class="chk" style="margin:0" data-col="${k}" ${state.cols[k] ? "checked" : ""}>${t(label)}</label>`).join("")}</span></div>
         <div class="kw-fp-row"><span class="kw-fp-lab">${t("By column")}</span><span class="kw-tt-slot" data-tt-slot="kw-table"></span></div>` : ""}
         <div class="kw-fp-end"><button type="button" class="link-btn" id="kw-filter-close">${t("Close filters")}</button></div>
       </div>`;
-    const bar = `<div class="kw-bar">${positions ? `<div class="kw-find">${TP.search(KW_PAGES, t("Search keywords"))}</div>` : ""}<span class="kw-bar-end">${filterButton}</span></div>${panel}`;
+    // The view is a switch on the page, never inside Filter: every tool compared (Monday, Notion, ClickUp, HubSpot) shows it.
+    const viewSwitch = `<span class="seg kw-views" role="group" aria-label="${esc(t("View"))}">${views.map(([id, label]) => `<button type="button" data-view="${id}" aria-pressed="${(state.view || "positions") === id}">${t(label)}</button>`).join("")}</span>`;
+    const bar = `<div class="kw-bar">${viewSwitch}${positions ? `<div class="kw-find">${TP.search(KW_PAGES, t("Search keywords"))}</div>` : ""}${positions ? `<span class="kw-bar-end">${filterButton}</span>` : ""}</div>${positions ? panel : ""}`; // By bucket and Queries have nothing to filter
     const body = state.view === "bucket" ? bar + bucketView(all) : state.view === "queries" ? bar + queriesView() : `${bar}
       ${outOfChecks(all)}
       ${noToolCard(all) || `${table(shown)}${selectionBar()}`}`;
@@ -1411,7 +1433,7 @@
     return K.tl[key];
   }
   function dateChart({ from, to, series, dots, marks, bands, weekly }) {
-    const w = 680, h = 220, left = 30, right = 10, top = 10, bottom = 26;
+    const w = 680, h = 244, left = 30, right = 10, top = 10, bottom = 50; // bottom: the markers' strip, then the dates
     const t0 = Date.parse(`${from}T12:00:00Z`), t1 = Date.parse(`${to}T12:00:00Z`);
     const x = (day) => left + ((Date.parse(`${day}T12:00:00Z`) - t0) / Math.max(1, t1 - t0)) * (w - left - right);
     const known = series.map((p) => p.p).filter((v) => v !== null && v !== undefined);
@@ -1432,14 +1454,31 @@
     const fmt = (d) => UI.fmtDay(d, { day: "numeric", month: "short" });
     const mid = isoDay(new Date((t0 + t1) / 2));
     const bandSvg = bands.map((b, i) => { const a = Math.max(left, x(b.day < from ? from : b.day)), z = Math.min(w - right, x(b.end > to ? to : b.end)); return `<rect class="kwt-band kwt-${b.kind}" data-kwt-i="b${i}" x="${a.toFixed(1)}" y="${top}" width="${Math.max(3, z - a).toFixed(1)}" height="${h - top - bottom}" style="fill:${TL_KINDS[b.kind][1]}"><title>${esc(`${t(TL_KINDS[b.kind][0])}: ${b.text} (${fmt(b.day)} – ${b.rolling ? t("still rolling out") : fmt(b.end)})`)}</title></rect>`; }).join("");
-    const markSvg = marks.map((m, i) => `<line class="kwt-mark" data-kwt-i="m${i}" x1="${x(m.day).toFixed(1)}" x2="${x(m.day).toFixed(1)}" y1="${top}" y2="${h - bottom}" style="stroke:${TL_KINDS[m.kind][1]}"><title>${esc(`${fmt(m.day)} · ${t(TL_KINDS[m.kind][0])}${m.count > 1 ? ` ×${m.count}` : ""}: ${m.text}`)}</title></line>`).join("");
+    /* What was done sits on a strip under the plot, one marker a day, never a line across it (benchmark 2026-11-20: Semrush,
+       Ahrefs, SE Ranking, Search Console). Markers closer than PIN_GAP px merge into one with their count. Pointing at one,
+       or at its row in "What we did", draws its dashed guide up through the chart. */
+    const PIN_GAP = 14, stripY = h - bottom + 14;
+    const groups = [];
+    marks.map((m, i) => ({ m, i, at: x(m.day) })).sort((a, b) => a.at - b.at).forEach((p) => {
+      const last = groups[groups.length - 1];
+      if (last && p.at - last.at0 < PIN_GAP) last.items.push(p); else groups.push({ at0: p.at, items: [p] });
+    });
+    const markSvg = `<line x1="${left}" x2="${w - right}" y1="${stripY}" y2="${stripY}" class="kwt-strip"/>` + groups.map((g) => {
+      const cx = g.items.reduce((n, p) => n + p.at, 0) / g.items.length, kinds = new Set(g.items.map((p) => p.m.kind));
+      const colour = kinds.size === 1 ? TL_KINDS[g.items[0].m.kind][1] : "var(--text-2)";
+      const count = g.items.reduce((n, p) => n + (p.m.count || 1), 0);
+      const words = g.items.map((p) => `${fmt(p.m.day)} · ${t(TL_KINDS[p.m.kind][0])}${p.m.count > 1 ? ` ×${p.m.count}` : ""}: ${p.m.text}`).join("\n");
+      return `<g class="kwt-pin" data-kwt-ids="${g.items.map((p) => `m${p.i}`).join(" ")}"><title>${esc(words)}</title>
+        ${g.items.map((p) => `<line class="kwt-guide" x1="${p.at.toFixed(1)}" x2="${p.at.toFixed(1)}" y1="${top}" y2="${stripY - 7}" style="stroke:${TL_KINDS[p.m.kind][1]}"/>`).join("")}
+        <circle cx="${cx.toFixed(1)}" cy="${stripY}" r="${count > 1 ? 8 : 5.5}" style="fill:${colour}"/>${count > 1 ? `<text class="kwt-pin-n" x="${cx.toFixed(1)}" y="${stripY + 3.5}" text-anchor="middle">${count > 9 ? "9+" : count}</text>` : ""}</g>`;
+    }).join("");
     const dotSvg = dots ? series.filter((p) => p.p).map((p) => `<circle cx="${x(p.day).toFixed(1)}" cy="${y(p.p).toFixed(1)}" r="3.5" fill="var(--series-1)" stroke="var(--panel-solid)" stroke-width="1.5"><title>${esc(`${fmt(p.day)}: ${p.p}`)}</title></circle>`).join("") : "";
     const words = known.length ? `${t("Position over time")}: ${fmt(series.find((p) => p.p)?.day || from)} ${known[0]}, ${fmt([...series].reverse().find((p) => p.p)?.day || to)} ${known[known.length - 1]}` : t("Position over time");
     return `<svg class="chart kwt-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(words)}">
       ${bandSvg}
       ${ticks.map((v) => `<line x1="${left}" x2="${w - right}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${left - 6}" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join("")}
       ${[[from, "start"], [mid, "middle"], [to, "end"]].map(([d, a]) => `<text x="${x(d).toFixed(1)}" y="${h - 6}" text-anchor="${a}">${esc(fmt(d))}</text>`).join("")}
-      ${markSvg}<path class="chart-line" d="${path}"/>${dotSvg}</svg>`;
+      <path class="chart-line" d="${path}"/>${dotSvg}${markSvg}</svg>`;
   }
   function timelineSection(info, row, view, shownLine) {
     const src = kwbSource(), span = K.tlSpan || 90;
@@ -1712,7 +1751,10 @@
     }, true);
 
     // "What we did": pointing at a row (or focusing it) lights its line on the chart.
-    const lightMark = (e, on) => { const li = e.target.closest?.("[data-kwt-row]"); if (!li) return; $$(`.kwt-chart [data-kwt-i="${li.dataset.kwtRow}"]`).forEach((n) => n.classList.toggle("on", on)); };
+    // A marker under the chart lights its rows in "What we did", and a row lights its marker.
+    const lightRows = (e, on) => { const pin = e.target.closest?.(".kwt-pin"); if (!pin) return; pin.classList.toggle("on", on); pin.dataset.kwtIds.split(" ").forEach((id) => $(`[data-kwt-row="${id}"]`)?.classList.toggle("on", on)); };
+    document.addEventListener("mouseover", (e) => lightRows(e, true)); document.addEventListener("mouseout", (e) => lightRows(e, false));
+    const lightMark = (e, on) => { const li = e.target.closest?.("[data-kwt-row]"); if (!li) return; $$(`.kwt-chart [data-kwt-i="${li.dataset.kwtRow}"], .kwt-chart [data-kwt-ids~="${li.dataset.kwtRow}"]`).forEach((n) => n.classList.toggle("on", on)); };
     document.addEventListener("mouseover", (e) => lightMark(e, true)); document.addEventListener("mouseout", (e) => lightMark(e, false));
     document.addEventListener("focusin", (e) => lightMark(e, true)); document.addEventListener("focusout", (e) => lightMark(e, false));
     document.addEventListener("click", (e) => {

@@ -155,11 +155,11 @@ const many = (page, sel, fn) => page.locator(sel).evaluateAll(fn);
     await p.goto(`${BASE}?simple=1#keywords`); await p.waitForSelector("#kw-table", { timeout: 20000 }); await settle(p, 1200);
     const before = await p.evaluate(() => {
       const table = document.querySelector("#kw-table"), content = document.querySelector(".content");
-      return [...content.querySelectorAll("button, input, select, a")].filter((el) => el.offsetParent && (el.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING) && !el.closest(".kw-engines, .tiles, .kwr-phone-acts")).map((el) => el.id || (el.matches("[data-tp-search]") ? "search" : el.textContent.trim()));
+      return [...content.querySelectorAll("button, input, select, a")].filter((el) => el.offsetParent && (el.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING) && !el.closest(".kw-engines, .tiles, .kwr-phone-acts, .kw-views")).map((el) => el.id || (el.matches("[data-tp-search]") ? "search" : el.textContent.trim()));
     });
-    check(before.length === 2 && before.includes("kw-filter"), `Simple: one search and one Filter before the first row: ${before.join(", ")}`);
+    check(before.length === 2 && before.includes("kw-filter"), `Simple: one search and one Filter before the first row, besides the view switch (2026-11-20): ${before.join(", ")}`);
     await p.click("#kw-filter"); await settle(p, 400);
-    check((await p.locator("#kw-filter-panel [data-filter]").count()) >= 8 && Boolean(await p.$("#kw-filter-panel [data-view]")) && Boolean(await p.$("#kw-filter-panel #density")), "Simple: the chips, the view and compact rows are inside Filter");
+    check((await p.locator("#kw-filter-panel [data-filter]").count()) >= 8 && !(await p.$("#kw-filter-panel [data-view]")) && Boolean(await p.$(".kw-bar .kw-views [data-view]")) && Boolean(await p.$("#kw-filter-panel #density")), "Simple: the chips and compact rows are inside Filter, the view is a switch beside it");
     await p.click('#kw-filter-panel [data-filter="top10"]'); await settle(p, 500);
     check(await p.evaluate(() => document.activeElement?.dataset.filter === "top10") && (await p.textContent("#kw-filter-count")) === "1", "Simple: a chip keeps the keyboard and Filter counts it");
     await p.screenshot({ path: `${OUT}/simple-filter.png` });

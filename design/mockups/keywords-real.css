@@ -150,6 +150,13 @@ html[data-simple="1"] #panel.wide svg.chart { display: block; width: 100%; max-w
 .kwb-empty { margin: 0; padding: 14px 12px; border: 1px dashed var(--line-2); border-radius: 10px; font-size: 12.5px; color: var(--text-2); }
 .kwb-more { margin: 10px 2px 0; }
 .kwb-note { margin: 0 0 10px; }
+.kwb-count { display: inline-flex; align-items: baseline; gap: 6px; }
+.kwb-delta { font-size: 11.5px; font-weight: 650; letter-spacing: 0; text-transform: none; font-variant-numeric: tabular-nums; }
+.kwb-delta.up { color: var(--good-t); } .kwb-delta.down { color: var(--crit-t); }
+.kwb-moves { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 12px; color: var(--text-2); }
+.kwb-moves .kwb-mv { gap: 3px; } .kwb-moves .kwb-mv svg { width: 13px; height: 13px; }
+.kwb-sep { color: var(--muted); margin: 0 4px; }
+.kwb-from { font-size: 11.5px; color: var(--text-2); white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { .kwb-card, .kwb-card:hover { transition: none; transform: none; } }
 /* The board's five number cards: 5 across, 3 + 2, then 2 + 2 + 1 with the last one full width, so none sits alone. */
 #kw-tiles.kwb-tiles { grid-template-columns: repeat(5, minmax(0, 1fr)); }
@@ -166,8 +173,14 @@ html[data-simple="1"] #panel.wide svg.chart { display: block; width: 100%; max-w
 .kwt-chart { width: 100%; height: auto; }
 .kwt-chart .kwt-band { opacity: .1; }
 .kwt-chart .kwt-band.on { opacity: .22; }
-.kwt-chart .kwt-mark { stroke-width: 1.5; stroke-dasharray: 4 3; opacity: .75; }
-.kwt-chart .kwt-mark.on { stroke-width: 3; opacity: 1; }
+.kwt-chart .kwt-strip { stroke: var(--line); }
+.kwt-chart .kwt-pin { cursor: default; }
+.kwt-chart .kwt-pin circle { stroke: var(--panel-solid, #fff); stroke-width: 2; }
+.kwt-chart .kwt-pin-n { fill: #fff; font-size: 10px; font-weight: 700; pointer-events: none; }
+.kwt-chart .kwt-guide { stroke-width: 1.5; stroke-dasharray: 4 3; opacity: 0; transition: opacity 120ms ease-out; }
+.kwt-chart .kwt-pin:hover .kwt-guide, .kwt-chart .kwt-pin.on .kwt-guide { opacity: .9; }
+.kwt-list li.on { background: var(--hover); }
+@media (prefers-reduced-motion: reduce) { .kwt-chart .kwt-guide { transition: none; } }
 .kwt-h { margin: 14px 0 8px; font-size: 13px; }
 .kwt-kinds { margin: 0 0 8px; }
 .kwt-key { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; flex: none; }
