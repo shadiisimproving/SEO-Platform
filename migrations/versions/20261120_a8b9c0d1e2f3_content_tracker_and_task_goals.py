@@ -1,15 +1,15 @@
 """content tracker and task goals: the Content screen's "Content tracker" tab keeps what a person set on a published piece
 (its target query, publish date, title, or that it isn't tracked), and a task gains a goal and a Blocked status.
 
-Revision ID: e6f7a8b9c0d1
-Revises: d5e6f7a8b9c0
+Revision ID: a8b9c0d1e2f3
+Revises: f7a8b9c0d1e2
 """
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import mysql
 
-revision = "e6f7a8b9c0d1"
-down_revision = "d5e6f7a8b9c0"
+revision = "a8b9c0d1e2f3"
+down_revision = "f7a8b9c0d1e2"
 branch_labels = None
 depends_on = None
 
