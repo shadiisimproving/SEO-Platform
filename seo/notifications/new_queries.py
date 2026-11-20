@@ -27,7 +27,7 @@ KIND = "new_query"  # one search, from before grouping; also the mark's kind
 MORE_KIND = "new_query_more"
 GROUP_KIND = "new_queries"  # the day's new searches for one site
 QUIET_KIND = "new_query_quiet"  # one announced search: kept read and never shown, so it isn't announced again
-SHOWN_KINDS = (GROUP_KIND, KIND, MORE_KIND)
+SHOWN_KINDS = (GROUP_KIND, KIND, MORE_KIND, "social_ready")  # social_ready: the morning's drafts (seo.social.service._bell)
 LANE = "collectors"
 
 MIN_HISTORY_DAYS = 28

@@ -37,11 +37,22 @@ def main(argv: list[str] | None = None) -> int:
     watch.add_argument("--budget", type=float, default=240, help="seconds before it stops checking")
     placed = commands.add_parser("backlinks-due", help="queue a live check for each of my sites with a backlink due one")
     placed.add_argument("--test-db", action="store_true", help=argparse.SUPPRESS)
+    social = commands.add_parser("social-due", help="read each Social site's feeds and newsletters, then ask Grok for X trends and posts to comment on")
+    social.add_argument("--no-grok", action="store_true", help="feeds and newsletters only")
+    social.add_argument("--test-db", action="store_true", help=argparse.SUPPRESS)
     collect = commands.add_parser("collect-due", help="queue each site's data sources that are due, this month's authority scores, and today's DuckDuckGo positions")
     collect.add_argument("--test-db", action="store_true", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
 
     engine = make_engine(test=args.test_db)
+    if args.command == "social-due":
+        from seo.social import service as social_service
+
+        for done in social_service.gather_day(engine, with_grok=not args.no_grok):
+            rss, mail, grok = done["rss"], done["mail"], done["grok"]
+            print(f"social-due: site {done['site_id']}: {rss['added']} from feeds, {mail.get('added', 0)} from newsletters, "
+                  f"grok {grok.get('error') or grok.get('targets', 0) if not grok.get('skipped') else 'off'}")
+        return 0
     if args.command == "collect-due":
         queued = collector_jobs.enqueue_due(engine)
         collector_jobs.enqueue_authority(engine)

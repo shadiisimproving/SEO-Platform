@@ -13,7 +13,7 @@
 
    Hiding a button only keeps the screen honest: the server refuses anything not theirs whatever the screen shows. */
 (function () {
-  const ORDER = ["today", "channels", "conversions", "content", "overview", "pages", "insights", "keywords", "competitors", "ai", "ads", "tasks", "notes", "backlinks", "resources", "health"];
+  const ORDER = ["today", "channels", "conversions", "content", "overview", "pages", "insights", "keywords", "competitors", "ai", "ads", "tasks", "notes", "social", "backlinks", "resources", "health"];
   const user = window.BOOT?.user || null;
   const chosen = user && user.role !== "admin" ? user.access || null : null;
   const level = (section) => (chosen ? chosen.sections?.[section] || null : "edit");
@@ -46,7 +46,7 @@
   const PATHS = [
     ["today", ["today"]], ["alerts", ["health", "today"]], ["tasks", ["tasks", "today"]],
     ["prospects", ["competitors", "backlinks"]], ["mediators", ["backlinks"]], ["refresh/", ["keywords", "competitors", "ai"]],
-    ["uptime/", ["health"]], ["health/", ["health"]], ["links/scan", ["health"]], ["notifications", ["overview", "keywords"]],
+    ["uptime/", ["health"]], ["health/", ["health"]], ["links/scan", ["health"]], ["notifications", ["overview", "keywords", "social"]], ["social/", ["social"]],
     ["notes", ["notes"]], ["note-files", ["notes"]], ["rankings", ["keywords", "competitors", "tasks", "ai", "today"]],
     ["collective/", ["competitors"]], ["link-gaps", ["competitors"]], ["page-pairs", ["competitors"]], ["site-pages", ["pages"]], ["tasks/options", ["tasks"]], ["keyword-check", ["competitors"]],
     ["keywords/", ["competitors"]], ["ai-watch", ["competitors", "ai"]], ["resources", ["resources"]], ["insights", ["insights", "today"]],

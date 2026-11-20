@@ -57,6 +57,8 @@ def install(app, secret_key: str, https: bool = False) -> None:
         path = request.path
         if path in PUBLIC_APIS or path == "/login" or path.lstrip("/") in PUBLIC_FILES or path.startswith("/fonts/"):
             return None
+        if path.startswith("/api/social/bot/"):
+            return None  # the Social helpers sign in with their site's token, checked in seo.web.social_api
         user = service.session_user(_engine(), session.get("uid"), session.get("sv"))
         if user is None:
             session.clear()

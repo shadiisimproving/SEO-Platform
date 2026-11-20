@@ -356,7 +356,7 @@
     ["channels", "Channels", "Traffic"], ["conversions", "Conversions", "Traffic"], ["content", "Content", "Traffic"],
     ["overview", "Overview", "Search"], ["pages", "Pages", "Search"], ["insights", "Insights", "Search"], ["keywords", "Keywords", "Search"], ["competitors", "Competitors", "Search"], ["ai", "AI search", "Search"],
     ["ads", "Google Ads", "Ads"],
-    ["tasks", "Tasks", "Work"], ["notes", "Notes", "Work"], ["backlinks", "Backlinks", "Work"], ["resources", "Resources", "Work"],
+    ["tasks", "Tasks", "Work"], ["notes", "Notes", "Work"], ["social", "Social", "Work"], ["backlinks", "Backlinks", "Work"], ["resources", "Resources", "Work"],
     ["health", "Site health", "Health"],
   ];
   const ownSites = () => window.BOOT.sites || [];
