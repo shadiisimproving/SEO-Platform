@@ -54,7 +54,7 @@ const errorsOf = (run) => [...run.problems.filter((p) => !/Failed to load resour
   check(!(await has(page, "#period")) && await has(page, "#topbar .head-line .def-i"), "no period, and the screen's sentence is behind the (i)");
   check(await top(page, ".kw-tabs-row") < await top(page, "#kw-tiles"), "the engine tabs sit above the cards, since the cards follow the engine");
   check(await page.locator("#kw-tiles .ncard").count() === 4, "four number cards");
-  check(await page.locator(".kw-tabs-row [data-view]").count() === 0, "Positions, By bucket and Queries moved inside Filter (UI critique 2026-11-12)");
+  check(await page.locator(".kw-bar .kw-views [data-view]").count() === 3 && await page.locator(".kw-tabs-row [data-view]").count() === 0, "Positions, By bucket and Queries are a switch beside the search, not inside Filter (benchmark 2026-11-20)");
   check(!(await has(page, "#kw-table button.kw")) && await page.locator("#kw-table [data-kwr-open]").count() >= 8, "the keyword is text, not a button, and still names its row");
   check(!(await has(page, "#kw-table [data-kwr-deeper]")), "no Check deeper in the rows (it's in the panel)");
   const heads = () => page.locator("#kw-table thead th").allInnerTexts().then((x) => x.join("|"));
@@ -68,7 +68,7 @@ const errorsOf = (run) => [...run.problems.filter((p) => !/Failed to load resour
 
   // ---- Filter: the chips, the view, Columns and Compact rows ---------------------------------------------------------------------
   await page.click("#kw-filter"); await settle(page, 300);
-  check(await page.getAttribute("#kw-filter", "aria-expanded") === "true" && await has(page, "#kw-filter-panel .chip") && await has(page, "#kw-filter-panel [data-view]"), "Filter opens the chips and the view");
+  check(await page.getAttribute("#kw-filter", "aria-expanded") === "true" && await has(page, "#kw-filter-panel .chip") && !(await has(page, "#kw-filter-panel [data-view]")), "Filter opens the chips, and the view stays outside it");
   await page.screenshot({ path: `${out}/s02-more.png`, clip: { x: 260, y: 0, width: 1180, height: 560 } });
   await page.check('#kw-filter-panel [data-col="trend"]'); await settle(page, 400);
   check((await heads()).includes("Trend"), "Columns turns Trend on");
