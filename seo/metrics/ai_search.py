@@ -2,7 +2,8 @@
 
 Every block says where its numbers come from, for which days, and how fresh they are, so a snapshot never passes for live
 data and a failing source fails only its own card. Four sources feed it:
-- GA4: visits and leads from AI assistants, the pages they land on (the period picked on the screen).
+- GA4: visits, engaged visits and leads from AI assistants, the pages they land on (the period picked on the screen).
+- Search Console: each AI landing page's Google clicks on the same days, beside its AI visits.
 - Clarity download: Copilot's citations, share of authority and questions (the file's own period, uploaded by hand).
 - Clarity live: the referrers Clarity's API gave for the last 24 hours, read once a UTC day. It has its own weekly chart,
   and a second opinion beside GA4 on the days both have. It's never added to GA4.
@@ -92,17 +93,29 @@ def _now(scope) -> datetime:
 
 
 def _ga4_site_rows(scope, start: date, end: date):
+    """engaged: GA4's engaged sessions; known: the sessions on rows that have it (a day read before 2026-11-20 has NULL until
+    the GA4 read fills it again), so a rate is only ever taken over the visits it's known for."""
     return scope.fetch(
-        "SELECT site_id, day, channel, source, medium, SUM(sessions) sessions, SUM(key_events) leads FROM ga4_source_daily "
+        "SELECT site_id, day, channel, source, medium, SUM(sessions) sessions, SUM(key_events) leads, "
+        "SUM(COALESCE(engaged_sessions, 0)) engaged, SUM(CASE WHEN engaged_sessions IS NULL THEN 0 ELSE sessions END) known FROM ga4_source_daily "
         "WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY site_id, day, channel, source, medium",
         start, end,
     )
 
 
+def _engaged(engaged: int, known: int) -> float | None:
+    return base._ratio(engaged, known) if known else None
+
+
+def _assistant_name(value: str) -> str:
+    """chatgpt.com, whether GA4 wrote it as a referral domain or a utm_source."""
+    return _domain(value) or "(not set)"
+
+
 def _landing_rows(scope, start: date, end: date, wanted):
     """AI landing pages: the referral table, plus tagged visits it leaves out (utm_source=chatgpt.com has no medium, so it's
     not a referral). A tagged referral with no campaign is in both tables, so it's taken from the referral side only."""
-    found: dict[tuple[int, str], dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0})
+    found: dict[tuple[int, str], dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0, "by": defaultdict(int)})
     for row in scope.fetch(
         "SELECT site_id, day, MAX(domain) domain, MAX(path) path, SUM(sessions) sessions, SUM(key_events) leads FROM ga4_referral_daily "
         "WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY site_id, day, row_hash", start, end,
@@ -111,6 +124,7 @@ def _landing_rows(scope, start: date, end: date, wanted):
             item = found[(row["site_id"], base._path(row["path"]))]
             item["sessions"] += int(row["sessions"] or 0)
             item["leads"] += float(row["leads"] or 0)
+            item["by"][_assistant_name(row["domain"])] += int(row["sessions"] or 0)
     for row in scope.fetch(
         "SELECT site_id, MAX(source) source, MAX(medium) medium, MAX(campaign) campaign, MAX(path) path, SUM(sessions) sessions, SUM(key_events) leads "
         "FROM ga4_campaign_daily WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY site_id, row_hash", start, end,
@@ -122,7 +136,45 @@ def _landing_rows(scope, start: date, end: date, wanted):
         item = found[(row["site_id"], base._path(row["path"]))]
         item["sessions"] += int(row["sessions"] or 0)
         item["leads"] += float(row["leads"] or 0)
+        item["by"][_assistant_name(row["source"])] += int(row["sessions"] or 0)
     return found
+
+
+def _google_clicks(scope) -> tuple[dict[tuple[int, str], int], set[int]]:
+    """Search Console clicks per page on the period's days, so each AI landing page has its Google visits beside it.
+    A site with no Search Console day in the period has no entry: its pages show "—", not 0."""
+    rows = scope.fetch(
+        "SELECT site_id, MAX(page) page, SUM(clicks) clicks FROM gsc_page WHERE site_id IN :sites AND day BETWEEN :a AND :b GROUP BY site_id, page_hash"
+    )
+    out: dict[tuple[int, str], int] = defaultdict(int)
+    for row in rows:
+        out[(row["site_id"], base._path(row["page"]))] += int(row["clicks"] or 0)
+    return out, {row["site_id"] for row in rows}
+
+
+def _by_list(by: dict[str, int]) -> list[dict]:
+    return [{"source": name, "sessions": n} for name, n in sorted(by.items(), key=lambda pair: (-pair[1], pair[0])) if n]
+
+
+def page_types(pages: list[dict], categorise) -> list[dict]:
+    """AI landing pages grouped by the Conversions screen's page types (Settings → rules, or the first folder). Share is of
+    all AI landing visits; the lead rate waits for LEAD_RATE_MIN_VISITS like every other AI lead rate."""
+    total = sum(p["sessions"] for p in pages)
+    types: dict[str, dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0, "pages": 0, "google": None, "by": defaultdict(int)})
+    for p in pages:
+        item = types[categorise(p["path"])]
+        item["sessions"] += p["sessions"]
+        item["leads"] += p["leads"]
+        item["pages"] += 1
+        if p.get("google") is not None:
+            item["google"] = (item["google"] or 0) + p["google"]
+        for b in p.get("by") or []:
+            item["by"][b["source"]] += b["sessions"]
+    return [
+        {"type": name, "pages": item["pages"], "sessions": item["sessions"], "share": base._ratio(item["sessions"], total), "leads": round(item["leads"], 2),
+         "rate": _rate(item["leads"], item["sessions"])["value"], "google": item["google"], "by": _by_list(item["by"])}
+        for name, item in sorted(types.items(), key=lambda pair: (-pair[1]["sessions"], pair[0]))
+    ]
 
 
 def _weeks(end: date, start: date) -> list[tuple[date, date]]:
@@ -443,6 +495,20 @@ def next_actions(pages: list[dict], leads_set_up: bool, copilot: dict, aio: dict
     return [dict(item, rank=n + 1) for n, item in enumerate(chosen)], total
 
 
+def _source_row(name: str, item: dict, past: dict | None, comparing: bool) -> dict:
+    """One assistant: visits and engaged visits %, each with its change. before None: no comparison asked; 0: new this period.
+    engaged_partial: some of its days were read before engaged sessions were kept, so the % is over the visits known."""
+    engaged = _engaged(item["engaged"], item["known"])
+    was = _engaged(past["engaged"], past["known"]) if past else None
+    return {
+        "source": name, "sessions": item["sessions"], "leads": round(item["leads"], 2), "rate": _rate(item["leads"], item["sessions"])["value"],
+        "before": (past["sessions"] if past else 0) if comparing else None,
+        "change": base._pct_change(item["sessions"], past["sessions"]) if past and past["sessions"] else None,
+        "engaged": engaged, "engaged_sessions": item["engaged"], "engaged_partial": 0 < item["known"] < item["sessions"],
+        "engaged_before": was, "engaged_change": round((engaged - was) * 100, 1) if engaged is not None and was is not None else None,
+    }
+
+
 # ---- the whole reply -------------------------------------------------------------------------------------------
 
 
@@ -457,7 +523,7 @@ def build(scope) -> dict:
     weeks = _weeks(scope.end, scope.start)
     first = min(scope.start, weeks[0][0])
 
-    per_source: dict[str, dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0})
+    per_source: dict[str, dict] = defaultdict(lambda: {"sessions": 0, "leads": 0.0, "engaged": 0, "known": 0})
     per_day: dict[str, int] = defaultdict(int)
     ai_by_site_day: dict[tuple[int, date], int] = defaultdict(int)
     week_sessions: dict[int, int] = defaultdict(int)
@@ -483,6 +549,8 @@ def build(scope) -> dict:
         if assistant:
             per_source[assistant]["sessions"] += sessions
             per_source[assistant]["leads"] += leads
+            per_source[assistant]["engaged"] += int(row["engaged"] or 0)
+            per_source[assistant]["known"] += int(row["known"] or 0)
             per_day[day.isoformat()] += sessions
     data_days = {d for _, d in ga4_days}
     weekly = [
@@ -490,17 +558,28 @@ def build(scope) -> dict:
         for n, (a, b) in enumerate(weeks)
     ]
     before = before_leads = None
+    past_source: dict[str, dict] = defaultdict(lambda: {"sessions": 0, "engaged": 0, "known": 0})
     if scope.has_compare:
-        past = [row for row in _ga4_site_rows(scope, scope.compare_start, scope.compare_end) if ai_source(row, domains, namer)]
-        before = sum(int(r["sessions"] or 0) for r in past)
-        before_leads = round(sum(float(r["leads"] or 0) for r in past), 2)
+        past = [(row, ai_source(row, domains, namer)) for row in _ga4_site_rows(scope, scope.compare_start, scope.compare_end)]
+        past = [(row, name) for row, name in past if name]
+        before = sum(int(r["sessions"] or 0) for r, _ in past)
+        before_leads = round(sum(float(r["leads"] or 0) for r, _ in past), 2)
+        for row, name in past:
+            item = past_source[name]
+            item["sessions"] += int(row["sessions"] or 0)
+            item["engaged"] += int(row["engaged"] or 0)
+            item["known"] += int(row["known"] or 0)
     sessions = sum(item["sessions"] for item in per_source.values())
     leads = round(sum(item["leads"] for item in per_source.values()), 2)
     leads_set_up = bool(scope.fetch("SELECT 1 x FROM ga4_source_daily WHERE site_id IN :sites AND key_events > 0 LIMIT 1"))
 
     landing = _landing_rows(scope, scope.start, scope.end, lambda d: base._is_ai(_domain(d), domains))
+    clicks, gsc_sites = _google_clicks(scope)
+    categorise = base._categorise(scope.engine, scope.site_ids)
     pages = sorted(
-        ({"host": hosts.get(site_id, ""), "path": path, "sessions": item["sessions"], "leads": round(item["leads"], 2)} for (site_id, path), item in landing.items() if item["sessions"]),
+        ({"host": hosts.get(site_id, ""), "path": path, "sessions": item["sessions"], "leads": round(item["leads"], 2),
+          "google": clicks.get((site_id, path), 0) if site_id in gsc_sites else None, "type": categorise(path), "by": _by_list(item["by"])}
+         for (site_id, path), item in landing.items() if item["sessions"]),
         key=lambda p: (-p["sessions"], p["path"]),
     )
     try:
@@ -521,10 +600,11 @@ def build(scope) -> dict:
         "change": base._pct_change(sessions, before) if before else None,
         "key_events_set_up": leads_set_up,
         "rate": _rate(leads, sessions), "organic": _rate(organic["leads"], organic["sessions"]),
-        "sources": [
-            {"source": name, "sessions": item["sessions"], "leads": round(item["leads"], 2), "rate": _rate(item["leads"], item["sessions"])["value"]}
-            for name, item in sorted(per_source.items(), key=lambda pair: (-pair[1]["sessions"], pair[0]))
-        ],
+        "sources": [_source_row(name, item, past_source.get(name) if scope.has_compare else None, scope.has_compare) for name, item in sorted(per_source.items(), key=lambda pair: (-pair[1]["sessions"], pair[0]))],
+        "engaged": {"sessions": sum(i["engaged"] for i in per_source.values()), "known": sum(i["known"] for i in per_source.values()),
+                    "rate": _engaged(sum(i["engaged"] for i in per_source.values()), sum(i["known"] for i in per_source.values()))},
+        "page_types": page_types(pages, categorise),
+        "google_clicks_known": bool(gsc_sites),
         "series": [{"day": day, "sessions": per_day[day]} for day in sorted(per_day)],
         "weekly": weekly,
         "clarity_weekly": _clarity_weekly(scope, domains, weeks),

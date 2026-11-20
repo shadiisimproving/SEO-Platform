@@ -69,6 +69,7 @@ def _ga4(request: httpx.Request) -> httpx.Response:
     w = lambda base, salt=0: str(_wave(day, base, salt))  # noqa: E731
     if names[0] == "sessionDefaultChannelGroup":
         table = [["Organic Search", "google", "organic", w(140), w(120), w(5, 1)], ["Direct", "(direct)", "(none)", w(60, 2), w(50, 2), w(3, 2)], ["Referral", "blog-expat.test", "referral", w(22, 3), w(20, 3), w(2, 3)], ["Referral", "chatgpt.com", "referral", w(12, 4), w(11, 4), w(1, 4)], ["Organic Social", "facebook.com", "social", w(18, 5), w(16, 5), "0"], ["Paid Search", "google", "cpc", w(30, 6), w(28, 6), w(2, 6)], ["Email", "newsletter", "email", w(8, 7), w(8, 7), "0"]]
+        table = [row + [str(int(row[3]) * 2 // 3)] for row in table]  # engaged sessions: about two in three
     elif names[0] == "landingPage":
         table = [["/visa/", w(90), w(80), w(4, 1)], ["/creer-societe/", w(60, 2), w(50, 2), w(5, 2)], ["/", w(40, 3), w(35, 3), "0"], ["/blog/zone-franche-seville/", w(25, 4), w(22, 4), w(1, 4)], ["/contact/", w(10, 5), w(10, 5), w(3, 5)]]
     elif names[0] == "sessionSource":

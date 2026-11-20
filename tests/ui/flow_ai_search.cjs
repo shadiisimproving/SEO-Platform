@@ -48,17 +48,20 @@ const text = (page, sel) => page.locator(sel).first().innerText().catch(() => ""
   check(!(await page.locator("text=Share of all visits").count()), "share of all visits is gone");
   check((await page.locator(".ai-actions .rows > li").count()) <= 3, "at most three next actions");
   check((await text(page, ".ai-sources-line")).includes("All 4 sources up to date"), "sources line says all is well");
-  check((await page.locator("th", { hasText: "Engaged" }).count()) === 0, "no engaged-rate column");
+  check((await page.getAttribute(".ai-tabs-card [role=tab][aria-selected=true]", "data-ai-tab")) === "brand", "What AI says opens first (track B, 2026-11-20)");
+  await page.click('[data-ai-tab="assistants"]'); await settle(page, 500);
+  check((await page.locator("th", { hasText: "Engaged" }).count()) === 1, "an engaged visits column (GA4 engagedSessions, track B)");
   await shot(page, "after.png");
 
   for (const [tab, name] of [["pages", "after-tab-pages.png"], ["cited", "after-tab-cited.png"], ["questions", "after-tab-questions.png"]]) {
     await page.click(`[data-ai-tab="${tab}"]`); await settle(page, 500);
-    check((await page.locator(".ai-tabs-card th:not(.tt-pick)").count()) <= 4, `${tab}: four columns at most`);
+    const most = tab === "pages" ? 5 : 4; // Landing pages: Google clicks beside AI visits (track B)
+    check((await page.locator(".ai-tabs-card th:not(.tt-pick)").count()) <= most, `${tab}: ${most} columns at most`);
     await page.locator(".ai-tabs-card").screenshot({ path: SHOTS ? path.join(SHOTS, name) : undefined }).catch(() => {});
   }
   check((await page.locator(".ai-tabs-card .lv-url").count()) > 0 && (await page.locator(".ai-tabs-card a.lv-url, .ai-tabs-card .lv-url a, a.lv-url").count()) > 0, "page paths are links");
   // keyboard: arrows move between tabs
-  await page.focus('[data-ai-tab="questions"]'); await page.keyboard.press("ArrowRight"); await settle(page, 300);
+  await page.focus('[data-ai-tab="brand"]'); await page.keyboard.press("ArrowRight"); await settle(page, 300);
   check((await page.getAttribute('[data-ai-tab="assistants"]', "aria-selected")) === "true", "arrow keys move between tabs");
 
   // the split Refresh: its menu, then Escape

@@ -51,7 +51,7 @@ FR: dict[str, str] = {
     "Conversions": "Conversions", "Leads by channel": "Demandes par canal", "By channel": "Par canal", "By kind of page": "Par type de page", "Kind of page": "Type de page", "Landing pages": "Pages d'arrivée",
     "Content": "Contenus", "Google clicks": "Clics Google", "AI visits": "Visites IA", "Social networks": "Réseaux sociaux", "Network": "Réseau", "Other pages": "Autres pages",
     "No visits from social networks in this period.": "Aucune visite venue des réseaux sociaux sur cette période.",
-    "AI search": "Recherche IA", "Share of all visits": "Part de toutes les visites", "Assistants": "Assistants", "Assistant": "Assistant", "Landing pages": "Pages d'arrivée",
+    "AI search": "Recherche IA", "Share of all visits": "Part de toutes les visites", "Engaged visits": "Visites engagées", "Share": "Part", "Assistants": "Assistants", "Assistant": "Assistant", "Landing pages": "Pages d'arrivée",
     "No AI visits in this period.": "Aucune visite IA sur cette période.",
     "Google Ads": "Google Ads", "Cost": "Coût", "Campaigns": "Campagnes", "Campaign": "Campagne", "Currency": "Devise", "No campaigns in this period.": "Aucune campagne sur cette période.",
     # Today

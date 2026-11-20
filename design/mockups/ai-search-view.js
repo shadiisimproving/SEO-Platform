@@ -14,17 +14,25 @@
    - AI visits per week: Clarity live beside Google Analytics once connected, one line with Connect until then. Its small
      print ("Weeks count only the days read", the second opinion) goes behind (i)s.
    - Next actions: one row each, Compare visible, Task on hover (.row-act), no grey second line.
-   - One card, tabs in the underline look: Assistants · Landing pages · Cited pages · Questions to win, and Google AI report
-     as a fifth once one is uploaded. "Edit the AI list" and Filter sit in its head, each tab's small print in its (i).
+   - One card, tabs in the underline look: What AI says (first, and opened first) · Assistants · Page types · Landing pages ·
+     Cited pages · Questions to win, and Google AI report last once one is uploaded. "Edit the AI list" and Filter sit in its head, each tab's small print in its (i).
      A row opens its panel (UI.rowPanel): an assistant's, or a page's.
    - One line for Google's AI Overviews with Open the watch. Check now is in Sources and asks here before spending.
    - Google's AI report upload and its how-to are in the Sources panel. The closing note is the tabs card's (i).
+   AI traffic like Mickaz's (2026-11-20, plan-seo-command-center-mickaz-missing-features-geo-keywords-2026-11-20.md, track B):
+   - Assistants: a donut of visits per assistant (its share beside each name) next to the table, which now has each assistant's
+     change in visits and its engaged visits % (GA4 engagedSessions) with the change in points.
+   - Page types: AI visits and leads grouped like Conversions → Page types (its rules, else the first folder), with the share,
+     the lead rate (from 30 visits, as everywhere here) and which assistants sent them. A type opens Landing pages filtered to it.
+   - Landing pages: each page's Google clicks (Search Console, same days) beside its AI visits, and its page type under it.
+   - "What AI says about you ›" under the answer opens that tab. The page snaps back to the top when it's scrolled just a little,
+     so the answer is never half hidden under the sticky head.
    - One request on first open (metrics/ai, through SCREEN_DATA). The AI report loads quietly after the first draw, and the
      AI Overview check's price only when Check now is asked. The logo timer goes through SCREEN_DATA.logos(). */
 (() => {
   "use strict";
   let UI = null, t, esc, num, icon;
-  const A = { tab: "assistants", fold: new Set(), menu: false, aio: { key: "", preview: null, asking: false, confirm: false, run: null }, listBusy: false };
+  const A = { tab: "brand", type: null, fold: new Set(), menu: false, aio: { key: "", preview: null, asking: false, confirm: false, run: null }, listBusy: false };
   window.AISearch = A;
   const fill = (text, values) => String(text).replace(/\{(\w+)\}/g, (_, k) => String(values?.[k] ?? ""));
   const tf = (text, values) => fill(t(text), values);
@@ -124,7 +132,8 @@
     } else if (d.ai_overviews.with_overview) {
       lines.push(esc(tf("AI Overviews on {o} of {c} keywords checked; you're cited in {m}.", { o: num(d.ai_overviews.with_overview), c: num(d.ai_overviews.captured), m: num(d.ai_overviews.cited_me) })));
     }
-    return `<div class="ai-answer"><p class="today-lead">${lines[0]}</p>${lines[1] ? `<p class="today-second">${lines[1]}</p>` : ""}${simple() ? narrowSources(d) : sourcesLine(d)}</div>`;
+    const jump = `<button class="link-btn ai-brand-jump" data-ai-jump="brand">${icon("sparkles")}<span>${t("What AI says about you")} ›</span></button>`;
+    return `<div class="ai-answer"><p class="today-lead">${lines[0]}</p>${lines[1] ? `<p class="today-second">${lines[1]}</p>` : ""}${simple() ? `${narrowSources(d)}<div class="ai-jump-line">${jump}</div>` : sourcesLine(d).replace(/<\/div>$/, `${jump}</div>`)}</div>`;
   }
 
   // ---- four numbers ------------------------------------------------------------------------------
@@ -305,7 +314,7 @@
   }
 
   // ---- one card, four tabs -----------------------------------------------------------------------
-  const TABS = [["assistants", "Assistants"], ["pages", "Landing pages"], ["cited", "Cited pages"], ["questions", "Questions to win"], ["brand", "What AI says"]];
+  const TABS = [["brand", "What AI says"], ["assistants", "Assistants"], ["types", "Page types"], ["pages", "Landing pages"], ["cited", "Cited pages"], ["questions", "Questions to win"]];
   /* What AI says (ai-brand.js): what ChatGPT, Perplexity, Gemini and Google's AIs answer about the company. Drawn by AIBrand. */
   const brandTab = () => (window.AIBrand ? window.AIBrand.tab() : "");
   /* The simpler screens: each tab's small print goes to the (i) in the card's head instead of a line above the table
@@ -335,32 +344,124 @@
   const notSet = (text, button = "") => `<div class="empty"><p>${text}</p>${button ? `<div style="margin-top:10px">${button}</div>` : ""}</div>`;
   const pageCell = (r) => `${rowMark("page", r.path, r.host)}${PageLink.html(r.url || r.path, { text: r.path, host: r.host, cls: "mono lv-url" })}${LVx().siteOfPage(r)}`;
 
+  /* Visits per assistant as a donut (dataviz skill: thin ring, 2px surface gaps, total in the middle, a legend with every
+     value so colour is never the only key). Colour follows the assistant, not its rank: the known ones keep their slot, others
+     take the free slots in order, and past five the rest fold into Other. Slot order 1,3,5,2,4 keeps neighbours apart for
+     colour-blind readers in light and dark (validated with the skill's validate_palette.js). Pure, tested in tests/js. */
+  const SLOTS = ["var(--ch-1)", "var(--ch-3)", "var(--ch-5)", "var(--ch-2)", "var(--ch-4)"];
+  const KNOWN_SLOT = { "chatgpt.com": 0, "gemini.google.com": 1, "perplexity.ai": 2, "claude.ai": 3, "copilot.microsoft.com": 4 };
+  function donutParts(sources, max = 5) {
+    const total = sources.reduce((n, r) => n + r.sessions, 0);
+    if (!total) return { total: 0, parts: [] };
+    const top = sources.filter((r) => r.sessions > 0).slice(0, max), rest = sources.filter((r) => r.sessions > 0).slice(max);
+    const taken = new Set(top.map((r) => KNOWN_SLOT[r.source]).filter((n) => n !== undefined));
+    const free = [0, 1, 2, 3, 4].filter((n) => !taken.has(n));
+    const parts = top.map((r) => {
+      const slot = KNOWN_SLOT[r.source] !== undefined ? KNOWN_SLOT[r.source] : free.shift();
+      return { source: r.source, sessions: r.sessions, share: r.sessions / total, color: SLOTS[slot] };
+    });
+    const other = rest.reduce((n, r) => n + r.sessions, 0);
+    if (other) parts.push({ source: null, count: rest.length, sessions: other, share: other / total, color: "var(--ch-other)" });
+    return { total, parts };
+  }
+  A.donutParts = donutParts;
+  const sharePct = (v) => `${UI.dec(Math.round(v * 1000) / 10)}${unit()}`;
+  function donut(d) {
+    const { total, parts } = donutParts(d.sources);
+    if (parts.length < 2) return ""; // one assistant is the whole ring: the table already says it
+    const R = 52, W = 14, C = 2 * Math.PI * R, GAP = 2;
+    let at = 0;
+    const name = (p) => (p.source ? p.source : tf("Other ({n})", { n: num(p.count) }));
+    const arcs = parts.map((p) => {
+      const len = Math.max(p.share * C - GAP, 1);
+      const arc = `<circle class="ai-donut-arc" r="${R}" cx="64" cy="64" fill="none" stroke="${p.color}" stroke-width="${W}" stroke-dasharray="${len.toFixed(2)} ${(C - len).toFixed(2)}" stroke-dashoffset="${(-at).toFixed(2)}" data-ai-arc="${esc(p.source || "")}"><title>${esc(`${name(p)}: ${plural(p.sessions, "{n} visit", "{n} visits")} · ${sharePct(p.share)}`)}</title></circle>`;
+      at += p.share * C;
+      return arc;
+    }).join("");
+    const said = parts.map((p) => `${name(p)} ${sharePct(p.share)}`).join(", ");
+    const legend = parts.map((p) => `<li data-ai-key="${esc(p.source || "")}"><i class="ai-swatch" style="background:${p.color}"></i><span class="ai-key-name">${p.source ? mark(p.source) : esc(name(p))}</span><span class="ai-key-n">${num(p.sessions)}</span><span class="ai-key-pct">${sharePct(p.share)}</span></li>`).join("");
+    return `<figure class="ai-donut" aria-label="${esc(`${t("Visits per assistant")}: ${said}`)}">
+      <div class="ai-donut-ring"><svg viewBox="0 0 128 128" width="128" height="128" role="img" aria-hidden="true"><g transform="rotate(-90 64 64)">${arcs}</g></svg>
+        <div class="ai-donut-mid"><b>${num(total)}</b><span>${esc(t(total === 1 ? "visit" : "visits"))}</span></div></div>
+      <ul class="ai-donut-keys">${legend}</ul></figure>`;
+  }
+  /* A change beside a number: "+20%" or "+5 pts", green up and red down, "new" when there was none before. */
+  const changePill = (change, { pts = false, isNew = false } = {}) => {
+    if (isNew) return ` <span class="d-pill sec ai-new">${UI.state.lang === "fr" ? "nouveau" : "new"}</span>`; // the shared "new" is feminine in French
+    if (change === null || change === undefined) return "";
+    const r = Math.round(change);
+    const words = `${r > 0 ? "+" : r < 0 ? "−" : "±"}${UI.dec(Math.abs(r))}${pts ? ` ${t("pts")}` : unit()}`;
+    return ` <span class="d-pill ${r > 0 ? "good" : r < 0 ? "crit" : "sec"}">${words}</span>`;
+  };
   function assistantsTab(d) {
     const ga4 = stateOf(d, "ga4");
     if (["not_connected", "not_used", "no_sites"].includes(ga4.state)) return notSet(t("Connect Google Analytics to see which assistants send visits."), `<button class="btn btn-main" data-lv-connect="google">${t("Connect")}</button>`);
     if (!d.sources.length) return notSet(`${t("No AI visits in this period: a real zero.")}${UI.tip("Google Analytics has data, and none of it came from the assistants on the AI list.")}`);
     const rateCell = (r) => (r.rate !== null ? pct(r.rate) : `<span class="muted" data-tip="${esc(tf("needs {need} AI visits, {n} so far", { need: num(d.limits.lead_rate_min_visits), n: num(r.sessions) }))}">—</span>`);
+    const keep = (html) => `<span class="ai-num">${html}</span>`; // the figure and its change stay together on a phone's card rows
+    const visitsCell = (r) => keep(`${num(r.sessions)}${changePill(r.change, { isNew: r.before === 0 && r.sessions > 0 })}`);
+    const engagedCell = (r) => (r.engaged === null || r.engaged === undefined
+      ? `<span class="muted" data-tip="${esc(t("Not read yet. Refresh data reads it for past days too."))}">—</span>`
+      : keep(`${r.engaged_partial ? `<span data-tip="${esc(t("Some days aren't read yet: this is over the visits read so far."))}">${pct(r.engaged)}*</span>` : pct(r.engaged)}${changePill(r.engaged_change, { pts: true })}`));
     const columns = [
       { key: "source", label: "Assistant", html: (r) => `${rowMark("assistant", r.source)}${mark(r.source)}` },
-      { key: "sessions", label: "Visits", num: true },
+      { key: "sessions", label: "Visits", num: true, html: visitsCell },
+      { key: "engaged", label: "Engaged", num: true, html: engagedCell },
       ...(d.key_events_set_up ? [{ key: "leads", label: "Leads", num: true }, { key: "rate", label: "Lead rate", num: true, html: rateCell }] : []),
     ];
     const small = d.sources.filter((r) => r.rate === null).length;
-    return `${small && d.key_events_set_up ? lead(`${esc(tf("Lead rate shows from {n} AI visits.", { n: num(d.limits.lead_rate_min_visits) }))}${UI.tip("Below that, one lead more or less swings it too far.")}`) : ""}${rowsOpen(LVx().dataTable("ai-assistants", columns, d.sources, { pageSize: 10 }))}`;
+    const notes = [
+      `${esc(t("Engaged: visits that stayed 10 seconds or more, saw two pages or sent a lead, as Google Analytics counts them."))}`,
+      ...(small && d.key_events_set_up ? [`${esc(tf("Lead rate shows from {n} AI visits.", { n: num(d.limits.lead_rate_min_visits) }))}${UI.tip("Below that, one lead more or less swings it too far.")}`] : []),
+    ];
+    const said = simple() ? (notes.forEach((n) => lead(n)), "") : lead(notes.join(" "));
+    const table = rowsOpen(LVx().dataTable("ai-assistants", columns, d.sources, { pageSize: 10 }));
+    const ring = donut(d);
+    return `${said}${ring ? `<div class="ai-asst-box"><div class="ai-asst"><div class="ai-asst-chart">${ring}</div><div class="ai-asst-table">${table}</div></div></div>` : table}`;
+  }
+  /* Which assistants sent a row's visits: each one's logo, name and count, three at most, then "+N". */
+  const byCell = (r) => {
+    const by = r.by || [];
+    const chips = by.slice(0, 3).map((b) => `<span class="ai-by">${UI.siteLogo(b.source, 14)}<span dir="ltr">${esc(b.source)}</span><b>${num(b.sessions)}</b></span>`).join("");
+    return `<span class="ai-bys">${chips}${by.length > 3 ? `<span class="ai-by ai-by-more">+${num(by.length - 3)}</span>` : ""}</span>`;
+  };
+  const typeName = (type) => t(type);
+  function typesTab(d) {
+    const ga4 = stateOf(d, "ga4");
+    if (["not_connected", "not_used", "no_sites"].includes(ga4.state)) return notSet(t("Connect Google Analytics to see AI landing pages."), `<button class="btn btn-main" data-lv-connect="google">${t("Connect")}</button>`);
+    const rows = d.page_types || [];
+    const rateCell = (r) => (r.rate !== null ? pct(r.rate) : `<span class="muted" data-tip="${esc(tf("needs {need} AI visits, {n} so far", { need: num(d.limits.lead_rate_min_visits), n: num(r.sessions) }))}">—</span>`);
+    const columns = [
+      { key: "type", label: "Page type", get: (r) => typeName(r.type), html: (r) => `<button class="link-btn ai-type-btn" data-ai-type="${esc(r.type)}" dir="auto">${esc(typeName(r.type))}</button><div class="lv-cat">${esc(plural(r.pages, "{n} page", "{n} pages"))}</div>` },
+      { key: "sessions", label: "AI visits", num: true },
+      { key: "share", label: "Share", num: true, html: (r) => sharePct(r.share || 0) },
+      ...(d.key_events_set_up ? [{ key: "leads", label: "Leads", num: true }, { key: "rate", label: "Lead rate", num: true, html: rateCell }] : []),
+      { key: "by", label: "Assistants", get: (r) => (r.by || []).map((b) => b.source).join(" "), html: byCell },
+    ];
+    const said = lead(`${esc(t("Page types as on Conversions: your rules in Settings, else each page's first folder."))}`);
+    return said + (d.key_events_set_up ? "" : lead(esc(t("Leads aren't tracked: mark your forms as key events in GA4.")), { keep: true }))
+      + LVx().dataTable("ai-types", columns, rows, { pageSize: 10, empty: "No AI landing pages in this period." });
   }
   function pagesTab(d) {
     const ga4 = stateOf(d, "ga4");
     if (["not_connected", "not_used", "no_sites"].includes(ga4.state)) return notSet(t("Connect Google Analytics to see AI landing pages."), `<button class="btn btn-main" data-lv-connect="google">${t("Connect")}</button>`);
     const min = d.limits.cta_min_visits;
-    const none = d.pages.filter((p) => !p.leads).length;
+    if (A.type && !(d.page_types || []).some((x) => x.type === A.type)) A.type = null; // another site or period
+    const all = d.pages, list = A.type ? all.filter((p) => p.type === A.type) : all;
+    const none = all.filter((p) => !p.leads).length;
     const action = (r) => rowAct(d.key_events_set_up && !r.leads && r.sessions >= min ? UI.taskButton(taskFind({ kind: "cta", host: r.host, path: r.path, visits: r.sessions, key: `ai|cta|${r.host}|${r.path}` }, actionText({ kind: "cta", host: r.host, path: r.path, visits: r.sessions })), { label: "Task" }) : "");
+    const googleCell = (r) => (r.google === null || r.google === undefined
+      ? `<span class="muted" data-tip="${esc(t("Search Console has no day of this period for this site."))}">—</span>` : num(r.google));
     const columns = [
-      { key: "path", label: "Page", get: LVx().pageName, html: pageCell },
-      { key: "sessions", label: "Visits", num: true },
+      { key: "path", label: "Page", get: LVx().pageName, html: (r) => `${pageCell(r)}${A.type || !r.type ? "" : `<div class="lv-cat" dir="auto">${esc(typeName(r.type))}</div>`}` },
+      { key: "sessions", label: "AI visits", num: true },
+      { key: "google", label: "Google clicks", num: true, html: googleCell },
       ...(d.key_events_set_up ? [{ key: "leads", label: "Leads", num: true }, { key: "action", label: "Action", get: () => null, html: action }] : []),
     ];
-    const said = !d.pages.length ? "" : d.key_events_set_up ? lead(esc(tf("{n} of {m} pages: AI visits, no lead. Task button from {min} visits.", { n: num(none), m: num(d.pages.length), min: num(min) }))) : lead(esc(t("Leads aren't tracked: mark your forms as key events in GA4.")), { keep: true });
-    return said + folded("ai-pages", columns, d.pages, { test: (r) => r.sessions === 1, word: "{n} pages with one AI visit each", allWord: "{n} pages got one AI visit each; none stands out yet.", empty: "No AI landing pages in this period." });
+    const google = d.google_clicks_known ? lead(esc(t("Google clicks: Search Console, same days, for the same page."))) : lead(`${esc(t("Connect Search Console to see each page's Google clicks beside its AI visits."))} <button class="link-btn" data-lv-connect="google">${t("Connect")}</button>`, { keep: true });
+    const said = !all.length ? "" : d.key_events_set_up ? lead(esc(tf("{n} of {m} pages: AI visits, no lead. Task button from {min} visits.", { n: num(none), m: num(all.length), min: num(min) }))) : lead(esc(t("Leads aren't tracked: mark your forms as key events in GA4.")), { keep: true });
+    const filter = A.type ? `<p class="ai-tab-lead ai-type-filter"><span class="tag">${esc(tf("Page type: {t}", { t: typeName(A.type) }))}<button type="button" class="rs-chip-x" data-ai-type-clear aria-label="${esc(t("Show all page types"))}">${icon("x")}</button></span><span class="small muted">${esc(tf("{n} of {m} pages", { n: num(list.length), m: num(all.length) }))}</span></p>` : "";
+    return filter + said + google + folded(A.type ? "ai-pages-type" : "ai-pages", columns, list, { test: (r) => r.sessions === 1, word: "{n} pages with one AI visit each", allWord: "{n} pages got one AI visit each; none stands out yet.", empty: "No AI landing pages in this period." });
   }
   const uploadAi = () => `<button class="btn btn-main" data-lv-connect="clarity">${t("Upload a Clarity AI download")}</button>`;
   function citedTab(d) {
@@ -405,12 +506,12 @@
   function tabsCardSimple(d) {
     const report = window.GoogleAIReport?.has?.();
     const tabs = report ? [...TABS, ["report", "Google AI report"]] : TABS;
-    if (!tabs.some(([id]) => id === A.tab)) A.tab = "assistants";
+    if (!tabs.some(([id]) => id === A.tab)) A.tab = "brand";
     tabInfo = [];
-    const body = A.tab === "report" ? window.GoogleAIReport.tab() : { assistants: assistantsTab, pages: pagesTab, cited: citedTab, questions: questionsTab, brand: brandTab }[A.tab](d);
+    const body = A.tab === "report" ? window.GoogleAIReport.tab() : { assistants: assistantsTab, types: typesTab, pages: pagesTab, cited: citedTab, questions: questionsTab, brand: brandTab }[A.tab](d);
     // Each tab's count is its badge (the table then needs no "1–5 of 5" under it: data-tt-own-count).
     const ga4On = !NOT_ON.includes(stateOf(d, "ga4").state), c = d.copilot;
-    const counts = { brand: window.AIBrand?.count?.() ?? null, assistants: ga4On ? d.sources.length : null, pages: ga4On ? d.pages.length : null, cited: c.sites.length ? c.sites.reduce((n, x) => n + x.pages.length, 0) : null, questions: c.sites.some((x) => x.queries) ? c.sites.reduce((n, x) => n + (x.queries?.length || 0), 0) : null };
+    const counts = { brand: window.AIBrand?.count?.() ?? null, assistants: ga4On ? d.sources.length : null, types: ga4On ? (d.page_types || []).length : null, pages: ga4On ? d.pages.length : null, cited: c.sites.length ? c.sites.reduce((n, x) => n + x.pages.length, 0) : null, questions: c.sites.some((x) => x.queries) ? c.sites.reduce((n, x) => n + (x.queries?.length || 0), 0) : null };
     const badge = (id) => (counts[id] ? ` <span class="n-badge">${num(counts[id])}</span>` : "");
     const info = A.tab === "report" ? tabInfo : A.tab === "brand" ? window.AIBrand?.info?.() || [] : ["Some AI visits show as Direct or Organic Search.", "AI apps often send no referrer, so their visits show as Direct. Clicks from Google's AI Overviews count as Organic Search.", ...tabInfo];
     return `<section class="card ai-tabs-card ai-tabs-simple"><div class="card-head ai-tabs-head"><div class="page-tabs in-card" role="tablist" aria-label="${t("AI search")}">${tabs.map(([id, word]) => `<button class="page-tab tab" role="tab" id="ai-tab-${id}" data-ai-tab="${id}" aria-selected="${A.tab === id}" tabindex="${A.tab === id ? 0 : -1}">${t(word)}${badge(id)}</button>`).join("")}</div>
@@ -419,8 +520,8 @@
   }
   function tabsCard(d) {
     if (simple()) return tabsCardSimple(d);
-    const chipFor = { assistants: stateOf(d, "ga4"), pages: stateOf(d, "ga4"), cited: stateOf(d, "clarity_download"), questions: stateOf(d, "clarity_download") }[A.tab];
-    const body = { assistants: assistantsTab, pages: pagesTab, cited: citedTab, questions: questionsTab, brand: brandTab }[A.tab](d);
+    const chipFor = { assistants: stateOf(d, "ga4"), types: stateOf(d, "ga4"), pages: stateOf(d, "ga4"), cited: stateOf(d, "clarity_download"), questions: stateOf(d, "clarity_download") }[A.tab];
+    const body = { assistants: assistantsTab, types: typesTab, pages: pagesTab, cited: citedTab, questions: questionsTab, brand: brandTab }[A.tab](d);
     return `<section class="card ai-tabs-card"><div class="ai-tabs-head"><div class="tabs" role="tablist" aria-label="${t("AI search")}">${TABS.map(([id, word]) => `<button class="tab" role="tab" id="ai-tab-${id}" data-ai-tab="${id}" aria-selected="${A.tab === id}" tabindex="${A.tab === id ? 0 : -1}">${t(word)}</button>`).join("")}</div><span class="end">${chipFor ? chip(chipFor, { short: true }) : ""}</span></div>
       <div role="tabpanel" aria-labelledby="ai-tab-${A.tab}" class="${A.tab === "brand" ? "ab-tab" : ""}">${body}</div></section>`;
   }
@@ -624,6 +725,15 @@
       if (UI.state.route !== "ai" && !hit("#panel")) return;
       if ((el = hit("[data-ai-menu]"))) { A.menu = !A.menu; UI.render({ keepScroll: true }); if (A.menu) UI.$("#ai-refresh-menu button:not([disabled])")?.focus(); return; }
       if ((el = hit("[data-ai-tab]"))) { A.tab = el.dataset.aiTab; UI.render({ keepScroll: true }); UI.$(`[data-ai-tab="${A.tab}"]`)?.focus({ preventScroll: true }); return; }
+      if ((el = hit("[data-ai-jump]"))) { // "What AI says about you ›": that tab, scrolled to, its tab focused
+        A.tab = el.dataset.aiJump; UI.render({ keepScroll: true });
+        const tab = UI.$(`[data-ai-tab="${A.tab}"]`);
+        tab?.closest(".ai-tabs-card")?.scrollIntoView({ block: "start", behavior: UI.reduceMotion() ? "auto" : "smooth" });
+        tab?.focus({ preventScroll: true });
+        return;
+      }
+      if ((el = hit("[data-ai-type]"))) { A.type = el.dataset.aiType; A.tab = "pages"; UI.render({ keepScroll: true }); UI.$('[data-ai-tab="pages"]')?.focus({ preventScroll: true }); return; }
+      if (hit("[data-ai-type-clear]")) { A.type = null; UI.render({ keepScroll: true }); UI.$('[data-ai-tab="pages"]')?.focus({ preventScroll: true }); return; }
       if ((el = hit("[data-ai-fold]"))) { const id = el.dataset.aiFold; if (A.fold.has(id)) A.fold.delete(id); else A.fold.add(id); UI.render({ keepScroll: true }); return; }
       if ((el = hit("[data-ai-sources]"))) { sourcesPanel(el); return; }
       if (SD() && hit("[data-lv-retry]")) { SD().forget("metrics/ai"); UI.render(); return; } // the shared cache keeps a failure until Try again
@@ -661,6 +771,20 @@
       if (box) box.hidden = true;
       changeList(() => window.COMP.api("POST", "rules", { kind: "ai_domain", pattern: form.elements.f_pattern.value, site_id: UI.siteIdPicked() || null }));
     });
+    /* The answer line is never left cut in half by the sticky head (seen at 25 px of scroll: "AI assistants sent…" half
+       hidden). When a scroll stops with the line partly under the head, the page goes back to the top; a line fully
+       scrolled away stays away. */
+    let settleTimer = 0;
+    document.addEventListener("scroll", (e) => {
+      if (UI.state.route !== "ai" || !e.target?.matches?.("main.main")) return;
+      clearTimeout(settleTimer);
+      settleTimer = setTimeout(() => {
+        const main = e.target, line = main.querySelector(".ai-page > .ai-answer .today-lead"), head = main.querySelector(".topbar");
+        if (!line || !head || main.scrollTop <= 0) return;
+        const under = head.getBoundingClientRect().bottom, box = line.getBoundingClientRect();
+        if (box.top < under && box.bottom > under - 4) main.scrollTo({ top: 0, behavior: UI.reduceMotion() ? "auto" : "smooth" });
+      }, 160);
+    }, true);
     // The assistants' own icons arrive a little after the page asks for them.
     let looked = "";
     setInterval(() => {
@@ -752,6 +876,17 @@
     "Refresh data": "Actualiser les données", "Refresh one source": "Actualiser une seule source", "Do AI assistants send you leads, and do AI answers cite you?": "Les assistants IA vous envoient-ils des leads, et les réponses IA vous citent-elles ?",
     "Some AI visits show as Direct or Organic Search.": "Certaines visites IA apparaissent en Direct ou en Recherche organique.",
     "Edit the AI list": "Modifier la liste IA", "What AI says": "Ce que dit l'IA",
+    // AI traffic like Mickaz's (2026-11-20)
+    "What AI says about you": "Ce que l'IA dit de vous", "Visits per assistant": "Visites par assistant", "Other ({n})": "Autres ({n})", "visit": "visite", "visits": "visites",
+    "Engaged": "Engagées", "Not read yet. Refresh data reads it for past days too.": "Pas encore lu. Actualiser les données le lit aussi pour les jours passés.",
+    "Some days aren't read yet: this is over the visits read so far.": "Certains jours ne sont pas encore lus : c'est sur les visites lues jusqu'ici.",
+    "Engaged: visits that stayed 10 seconds or more, saw two pages or sent a lead, as Google Analytics counts them.": "Engagées : visites restées 10 secondes ou plus, avec deux pages vues ou un lead, comme les compte Google Analytics.",
+    "Page types": "Types de page", "Page type": "Type de page", "{n} page": "{n} page", "{n} pages": "{n} pages", "Home page": "Page d'accueil", "Other pages": "Autres pages",
+    "Page types as on Conversions: your rules in Settings, else each page's first folder.": "Types de page comme dans Conversions : vos règles dans Réglages, sinon le premier dossier de chaque page.",
+    "Google clicks": "Clics Google", "Search Console has no day of this period for this site.": "Search Console n'a aucun jour de cette période pour ce site.",
+    "Google clicks: Search Console, same days, for the same page.": "Clics Google : Search Console, mêmes jours, même page.",
+    "Connect Search Console to see each page's Google clicks beside its AI visits.": "Connectez Search Console pour voir les clics Google de chaque page à côté de ses visites IA.",
+    "Page type: {t}": "Type de page : {t}", "Show all page types": "Afficher tous les types de page", "{n} of {m} pages": "{n} pages sur {m}",
     // the simpler screens
     "{n} sources up to date": "{n} sources à jour", "{n} sources need you": "{n} sources à traiter", "Google AI report": "Rapport IA de Google",
   };

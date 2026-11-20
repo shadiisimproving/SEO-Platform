@@ -88,6 +88,52 @@ button.ai-chip { cursor: pointer; border: 0; font: inherit; font-size: 12px; }
 .ai-fold-all p { margin: 0 0 6px; }
 .ai-tabs-card td .btn-small { white-space: nowrap; }
 
+/* Assistants: the donut beside the table (side by side when there's room, the donut above on a narrow card). */
+.ai-asst-box { container-type: inline-size; }
+.ai-asst { display: grid; grid-template-columns: minmax(0, 1fr); }
+.ai-asst-chart { padding: 14px 18px 4px; }
+.ai-asst-table { min-width: 0; }
+@container (min-width: 820px) {
+  .ai-asst { grid-template-columns: 300px minmax(0, 1fr); }
+  .ai-asst-chart { padding: 16px 18px; border-right: 1px solid var(--line); }
+}
+.ai-donut { display: flex; align-items: center; gap: 18px; margin: 0; flex-wrap: wrap; }
+@container (min-width: 820px) { .ai-donut { flex-direction: column; align-items: stretch; } .ai-donut-ring { align-self: center; } }
+.ai-donut-ring { position: relative; width: 128px; height: 128px; flex: none; }
+.ai-donut-ring svg { display: block; }
+.ai-donut-arc { transition: opacity .15s ease-out; }
+.ai-donut:has(.ai-donut-keys li:hover) .ai-donut-arc { opacity: .35; }
+.ai-donut-mid { position: absolute; inset: 0; display: grid; place-content: center; text-align: center; pointer-events: none; }
+.ai-donut-mid b { font-size: 22px; font-weight: 650; letter-spacing: -.02em; line-height: 26px; font-variant-numeric: tabular-nums; }
+.ai-donut-mid span { font-size: 12px; color: var(--muted); }
+.ai-donut-keys { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; flex: 1 1 200px; min-width: 0; font-size: 13px; }
+.ai-donut-keys li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto 52px; align-items: center; gap: 8px; }
+.ai-donut-keys .ai-key-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-donut-keys .ai-key-n { font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.ai-donut-keys .ai-key-pct { color: var(--text-2); font-variant-numeric: tabular-nums; text-align: right; }
+.ai-swatch { width: 10px; height: 10px; border-radius: 3px; }
+.ai-new { text-transform: none; }
+.ai-num { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+/* Page types and landing pages: which assistants sent the visits, each with its logo. */
+.ai-bys { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.ai-by { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px 1px 4px; border-radius: 7px; background: var(--track); font-size: 12px; line-height: 18px; color: var(--text-2); white-space: nowrap; }
+.ai-by .site-logo { border-radius: 3px; flex: none; }
+.ai-by b { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.ai-by-more { padding-left: 7px; }
+.ai-type-btn { font-weight: 500; text-align: left; }
+.ai-type-filter { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ai-type-filter .tag { display: inline-flex; align-items: center; gap: 2px; padding-right: 2px; }
+.ai-type-filter .rs-chip-x { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; color: var(--muted); }
+.ai-type-filter .rs-chip-x:hover { background: var(--hover); color: var(--text); }
+.ai-type-filter .rs-chip-x svg.i { width: 12px; height: 12px; }
+/* "What AI says about you ›" under the answer. */
+.ai-brand-jump { display: inline-flex; align-items: center; gap: 5px; font-size: 13px; font-weight: 500; }
+.ai-brand-jump svg.i { width: 14px; height: 14px; }
+.ai-jump-line { margin-top: 8px; }
+.ai-sources-line .ai-brand-jump { margin-left: auto; }
+/* A jump to a card stops below the sticky head. (A headline left half under the head scrolls back: ai-search-view.js.) */
+.main:has(.ai-page) { scroll-padding-top: 84px; }
+
 /* Google AI Overviews: one line */
 .ai-aio { margin-bottom: 14px; }
 .ai-aio-row { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; padding: 12px 18px; }

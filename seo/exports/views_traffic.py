@@ -109,8 +109,9 @@ def ai_search(engine, args) -> Report:
     series = data.get("series") or []
     if series:
         report.charts.append(Chart("AI visits", [_day(p.get("day")) for p in series], [Series("Visits", [p.get("sessions") for p in series])]))
-    report.tables.append(Table("sources", "Assistants", [C("source", "Assistant", "text"), C("sessions", "Visits", "int"), C("leads", "Leads", "float")], data.get("sources") or [], empty="No AI visits in this period.", key="source"))
-    report.tables.append(Table("pages", "Landing pages", [C("page", "Page", "url", get=page_address), C("sessions", "Visits", "int"), C("leads", "Leads", "float")], data.get("pages") or [], empty="No AI visits in this period.", key=lambda r: f"{r.get('host') or ''}|{r.get('path') or ''}"))
+    report.tables.append(Table("sources", "Assistants", [C("source", "Assistant", "text"), C("sessions", "Visits", "int"), C("engaged", "Engaged visits", "pct"), C("leads", "Leads", "float")], data.get("sources") or [], empty="No AI visits in this period.", key="source"))
+    report.tables.append(Table("page_types", "By kind of page", [C("type", "Kind of page", "text", translate=True), C("pages", "Pages", "int"), C("sessions", "AI visits", "int"), C("share", "Share", "pct"), C("leads", "Leads", "float"), C("google", "Google clicks", "int")], data.get("page_types") or [], empty="No AI visits in this period.", key="type"))
+    report.tables.append(Table("pages", "Landing pages", [C("page", "Page", "url", get=page_address), C("sessions", "Visits", "int"), C("google", "Google clicks", "int"), C("leads", "Leads", "float")], data.get("pages") or [], empty="No AI visits in this period.", key=lambda r: f"{r.get('host') or ''}|{r.get('path') or ''}"))
     _hidden(report, data)
     return report
 

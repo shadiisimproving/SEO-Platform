@@ -1062,6 +1062,8 @@ class Ga4SourceDaily(Base):
     sessions: Mapped[int] = mapped_column(Integer, server_default="0")
     users: Mapped[int] = mapped_column(Integer, server_default="0")
     key_events: Mapped[float] = mapped_column(Float, server_default="0")
+    # GA4's engagedSessions. NULL: the day was read before this was asked for, and is read again for it (ga4.py).
+    engaged_sessions: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
 
 class Ga4PageDaily(Base):
