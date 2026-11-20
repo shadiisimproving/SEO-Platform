@@ -37,7 +37,8 @@ def brand_reading(user: str, system: str) -> str:
     """What AI says: named when the company's name is in the answer, in the run's language, like a real reading would."""
     company = json.loads(user.split("<company>", 1)[1].split("</company>", 1)[0])
     answer = user.split("<answer>", 1)[1].lower()
-    named = company.lower() in answer
+    aka = json.loads(user.split("<also_known_as>", 1)[1].split("</also_known_as>", 1)[0]) if "<also_known_as>" in user else []
+    named = any(n.lower() in answer for n in [company, *aka])
     french = "in French" in system
     if not named:
         return json.dumps({"brand_named": False, "summary": "La réponse ne cite pas l'entreprise." if french else "The answer doesn't mention the company.", "tone": "neutral", "pros": [], "cons": [], "competitors": ["Rival One", "Café Monde"]})
@@ -57,10 +58,11 @@ def versus_reading(user: str, system: str) -> str:
     company = json.loads(user.split("<company>", 1)[1].split("</company>", 1)[0])
     rival = json.loads(user.split("<competitor>", 1)[1].split("</competitor>", 1)[0])
     answer = user.split("<answer>", 1)[1].lower()
-    winner = "us" if f"recommend {company.lower()}" in answer else "them" if f"choose {rival.lower()}" in answer else "tie"
+    aka = json.loads(user.split("<also_known_as>", 1)[1].split("</also_known_as>", 1)[0]) if "<also_known_as>" in user else []
+    winner = "us" if any(f"recommend {n.lower()}" in answer for n in [company, *aka]) else "them" if f"choose {rival.lower()}" in answer else "tie"
     french = "in French" in system
     return json.dumps({
-        "winner": winner, "brand_named": company.lower() in answer, "tone": "positive" if winner == "us" else "neutral",
+        "winner": winner, "brand_named": any(n.lower() in answer for n in [company, *aka]), "tone": "positive" if winner == "us" else "neutral",
         "summary": {"us": "La réponse recommande l'entreprise.", "them": "La réponse recommande le concurrent.", "tie": "La réponse laisse le choix."}[winner] if french
         else {"us": "The answer recommends the company.", "them": "The answer recommends the competitor.", "tie": "The answer leaves the choice open."}[winner],
         "us": ["Café livré chaque mois", "Café en grains de plusieurs origines"] if french else ["Coffee delivered every month", "A plain brewing guide"],

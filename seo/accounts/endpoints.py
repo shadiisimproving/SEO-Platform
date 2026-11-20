@@ -188,6 +188,8 @@ ENDPOINTS: dict[str, tuple[str, str, str]] = {
     "ai_brand_api.estimate": ("ai", "read", ""),
     "ai_brand_api.start": ("ai", "spend", ""),
     "ai_brand_api.run": ("ai", "read", ""),
+    "ai_brand_api.check_site": ("ai", "spend", ""),  # may ask the site's AI (Settings → AI), which can cost money
+    "ai_brand_api.read_pages": ("ai", "write", ""),
 
     # ---- Insights ----
     "insights_api.listing": ("insights today", "read", "all"),

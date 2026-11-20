@@ -84,6 +84,53 @@ def brand_of(conn, site: dict) -> tuple[str, bool]:
     return site["host"].split(".")[0].replace("-", " ").title(), False
 
 
+MAX_ALIASES = 5
+
+
+def aliases_of(conn, site_id: int) -> list[str]:
+    """The company's other names ("also known as"): the company behind the site, its web address... Saved with the name."""
+    raw = _setting(conn, f"brand_aliases:{site_id}")
+    try:
+        found = json.loads(raw) if raw else []
+    except ValueError:
+        return []
+    return [a for a in found if isinstance(a, str) and a.strip()][:MAX_ALIASES] if isinstance(found, list) else []
+
+
+def names_of(conn, site: dict) -> list[str]:
+    """Every name the company goes by: the main one first (the one questions and answers use), then its aliases."""
+    return [brand_of(conn, site)[0], *aliases_of(conn, site["id"])]
+
+
+def _clean_aliases(value, main: str) -> list[str]:
+    """Up to 5 names, as a list or one text with commas. Blank ones, repeats and the main name itself are dropped."""
+    if isinstance(value, str):
+        value = value.split(",")
+    if not isinstance(value, list) or not all(isinstance(v, str) for v in value):
+        raise Refused("Type the other names separated by commas.")
+    out: list[str] = []
+    for item in value:
+        item = " ".join(item.split())
+        if not item or _fold(item) == _fold(main) or _fold(item) in (_fold(x) for x in out):
+            continue
+        if len(item) > 80:
+            raise Refused("Keep each name under 80 characters.")
+        out.append(item)
+    if len(out) > MAX_ALIASES:
+        raise Refused(f"Up to {MAX_ALIASES} other names.")
+    return out
+
+
+def own_hosts(host: str, names: list[str]) -> tuple[str, ...]:
+    """The site's address, and every other name that is a web address (creer-societe.example), counted as "You" in the sources."""
+    hosts = [host.lower().removeprefix("www.")]
+    for name in names:
+        bare = name.strip().lower().removeprefix("https://").removeprefix("http://").removeprefix("www.").split("/")[0]
+        if "." in bare and " " not in bare and bare not in hosts:
+            hosts.append(bare)
+    return tuple(hosts)
+
+
 def _brand_from(engine: Engine, site: dict) -> str:
     """Where the unsaved name came from: "brand_words" (Settings → brand words) or "address" (the site's address)."""
     with engine.connect() as conn:
@@ -91,16 +138,23 @@ def _brand_from(engine: Engine, site: dict) -> str:
     return "brand_words" if word else "address"
 
 
-def save_brand(engine: Engine, site_id, name) -> dict:
+def save_brand(engine: Engine, site_id, name, aliases=None) -> dict:
+    """The main name (what questions and answers use) and, when given, its other names ("also known as", up to 5)."""
     if not isinstance(name, str) or not name.strip():
         raise Refused("Type the company's name.")
     name = " ".join(name.split())
     if len(name) > 80:
         raise Refused("Keep the name under 80 characters.")
+    kept = None if aliases is None else _clean_aliases(aliases, name)
     with engine.begin() as conn:
         _site(conn, site_id)
         conn.execute(text("INSERT INTO serp_settings (name, value) VALUES (:n, :v) ON DUPLICATE KEY UPDATE value = :v"), {"n": f"brand_name:{site_id}", "v": name})
-    return {"brand": name, "saved": True}
+        if kept is not None:
+            conn.execute(text("INSERT INTO serp_settings (name, value) VALUES (:n, :v) ON DUPLICATE KEY UPDATE value = :v"),
+                         {"n": f"brand_aliases:{site_id}", "v": json.dumps(kept, ensure_ascii=False)})
+        else:
+            kept = aliases_of(conn, site_id)
+    return {"brand": name, "saved": True, "aliases": kept}
 
 
 def market_of(conn, site: dict) -> tuple[str, str]:
@@ -417,8 +471,10 @@ def _send(engine: Engine, run: dict, engine_id: str, rows: list[dict]) -> None:
             connections.count_use(engine, info["tool"], 1, paid=True, cost=cost, run_id=run["id"], search_engine=engine_id[:20], note="What AI says: sent")
 
 
-def _brand_named(brand: str, words: str) -> bool:
-    return bool(brand) and _fold(brand) in _fold(words)
+def _brand_named(names, words: str) -> bool:
+    """The company is named when its main name or any of its other names is in the words (case and accents ignored)."""
+    folded = _fold(words)
+    return any(n and _fold(n) in folded for n in ([names] if isinstance(names, str) else names))
 
 
 # ---- head-to-head answers read without AI -------------------------------------------------------------------
@@ -437,9 +493,15 @@ def _clip(sentence: str, most: int = 180) -> str:
     return words if len(words) <= most else f"{words[:most - 1]}…"
 
 
-def versus_by_words(brand: str, rival: str, answer: str) -> dict:
-    """Who a head-to-head answer recommends, and what it says of each side, from its words alone (no AI)."""
-    us_name, them_name = _fold(brand), _fold(rival)
+def versus_by_words(brand, rival: str, answer: str) -> dict:
+    """Who a head-to-head answer recommends, and what it says of each side, from its words alone (no AI). `brand` is the
+    main name or the list of every name the company goes by: a sentence naming any of them names us."""
+    ours = [_fold(n) for n in ([brand] if isinstance(brand, str) else brand) if n and n.strip()]
+    them_name = _fold(rival)
+
+    def at(folded: str, start: int = 0) -> int:  # where the first of our names is, from `start`; -1 when none is
+        found = [x for x in (folded.find(n, start) for n in ours) if x >= 0]
+        return min(found) if found else -1
     votes = {"us": 0, "them": 0}
     named_us = named_them = False
     us_points, them_points = [], []
@@ -447,7 +509,7 @@ def versus_by_words(brand: str, rival: str, answer: str) -> dict:
         folded = _fold(sentence)
         if not folded.strip():
             continue
-        has_us = bool(us_name) and us_name in folded
+        has_us = at(folded) >= 0
         has_them = bool(them_name) and them_name in folded
         named_us, named_them = named_us or has_us, named_them or has_them
         cue_at = min((folded.find(c) for c in CUES if c in folded), default=-1)
@@ -457,7 +519,7 @@ def versus_by_words(brand: str, rival: str, answer: str) -> dict:
             elif has_them and not has_us:
                 votes["them"] += 1
             else:
-                at_us, at_them = folded.find(us_name, cue_at), folded.find(them_name, cue_at)
+                at_us, at_them = at(folded, cue_at), folded.find(them_name, cue_at)
                 if at_us >= 0 and (at_them < 0 or at_us < at_them):
                     votes["us"] += 1
                 elif at_them >= 0:
@@ -475,7 +537,7 @@ def versus_by_words(brand: str, rival: str, answer: str) -> dict:
     return {"winner": winner, "us": us_points, "them": them_points, "by": "words"}
 
 
-def _save(engine: Engine, run: dict, brand: str, row: dict, reply: E.Reply) -> None:
+def _save(engine: Engine, run: dict, brand: list[str], row: dict, reply: E.Reply) -> None:
     provider = E.ENGINES[row["engine"]]["provider"]
     info = E.PROVIDERS[provider]
     if reply.error:
@@ -500,7 +562,7 @@ def _save(engine: Engine, run: dict, brand: str, row: dict, reply: E.Reply) -> N
         connections.count_use(engine, info["tool"], 1, paid=True, cost=cost, run_id=run["id"], search_engine=row["engine"][:20], note="What AI says: answer")
 
 
-def _collect(engine: Engine, run: dict, brand: str, engine_id: str, rows: list[dict]) -> None:
+def _collect(engine: Engine, run: dict, brand: list[str], engine_id: str, rows: list[dict]) -> None:
     provider = E.ENGINES[engine_id]["provider"]
     client = E.client(engine, provider)
     if client is None:
@@ -523,7 +585,7 @@ def _collect(engine: Engine, run: dict, brand: str, engine_id: str, rows: list[d
                 _save(engine, run, brand, row, replies[row["id"]])
 
 
-def _read(engine: Engine, run: dict, brand: str, started: float) -> bool:
+def _read(engine: Engine, run: dict, brand: list[str], started: float) -> bool:
     """AI's reading of each new answer. True when some are left for the next pass (time ran out)."""
     if ai.provider_of(engine, run["site_id"]) not in ("openrouter", "claude"):
         return False  # the raw answers show; the screen says to pick an AI
@@ -542,7 +604,7 @@ def _read(engine: Engine, run: dict, brand: str, started: float) -> bool:
                         names[row["rival_id"]] = rival_name(conn, host) if host else ""
                 _read_versus(engine, run, brand, names[row["rival_id"]], row, lang)
                 continue
-            found = ai.read_brand_answer(engine, run["site_id"], brand, row["question"], row["answer_text"], lang)
+            found = ai.read_brand_answer(engine, run["site_id"], brand[0], row["question"], row["answer_text"], lang, brand[1:])
         except Refused as exc:
             with engine.begin() as conn:
                 conn.execute(text("UPDATE brand_answers SET read_error = :e WHERE id = :i"), {"e": str(exc)[:300], "i": row["id"]})
@@ -557,9 +619,9 @@ def _read(engine: Engine, run: dict, brand: str, started: float) -> bool:
     return False
 
 
-def _read_versus(engine: Engine, run: dict, brand: str, rival: str, row: dict, lang: str) -> None:
+def _read_versus(engine: Engine, run: dict, brand: list[str], rival: str, row: dict, lang: str) -> None:
     """The site's AI reads a head-to-head answer: who it recommends, and what it says of each side. Refused passes up."""
-    found = ai.read_versus_answer(engine, run["site_id"], brand, rival, row["question"], row["answer_text"], lang)
+    found = ai.read_versus_answer(engine, run["site_id"], brand[0], rival, row["question"], row["answer_text"], lang, brand[1:])
     named = found["brand_named"] if isinstance(found["brand_named"], bool) else bool(row["brand_named"])
     versus = {"winner": found["winner"], "us": found["us"], "them": found["them"], "by": "ai"}
     with engine.begin() as conn:
@@ -593,20 +655,31 @@ def check_site(engine: Engine, run_id: int, use_ai: bool = True, again: bool = F
         if run is None:
             raise NotFound("That run isn't there any more.")
         rows = _answers(conn, run_id)
-        brand = brand_of(conn, {"id": run["site_id"], "host": run["host"]})[0]
+        brand = names_of(conn, {"id": run["site_id"], "host": run["host"]})
         rivals = [r["name"] for r in followed(conn, run["site_id"])]
     held = _json(run["onsite"], None) or {}
     points = _points_of(rows)
     todo = points if again else {k: v for k, v in points.items() if k not in (held.get("points") or {})}
     if not todo and held:
         return held
-    found = onsite.check(engine, run["site_id"], run["host"], todo, (brand, *rivals), run["language"] if run["language"] in ai.LANGUAGES else "en", use_ai)
+    found = onsite.check(engine, run["site_id"], run["host"], todo, (*brand, *rivals), run["language"] if run["language"] in ai.LANGUAGES else "en", use_ai)
     merged = {**({} if again else (held.get("points") or {})), **found["points"]}
     kept = {"pages": found["pages"], "by": found["by"] if again or not held else ("ai" if found["by"] == "ai" or held.get("by") == "ai" else "words"),
             "note": found["note"], "at": found["at"], "points": merged}
     with engine.begin() as conn:
         conn.execute(text("UPDATE brand_runs SET onsite = :o WHERE id = :i"), {"o": json.dumps(kept, ensure_ascii=False), "i": run_id})
     return kept
+
+
+def read_my_pages(engine: Engine, site_id) -> dict:
+    """Queues a read of the site's own pages (the same polite read as Refresh data, without the other sources), so
+    "On your site?" has page texts to check against. Free: no search tool, no AI."""
+    from seo.competitors import suggest
+
+    with engine.connect() as conn:
+        site = _site(conn, site_id)
+    suggest.queue_crawl(engine, site["id"])
+    return {"queued": True}
 
 
 def _finish(engine: Engine, run_id: int) -> None:
@@ -629,7 +702,7 @@ def run_job(job, engine: Engine) -> None:
             return
         run = dict(run)
         site = conn.execute(text("SELECT id, host FROM sites WHERE id = :s"), {"s": run["site_id"]}).mappings().first()
-        brand = brand_of(conn, dict(site))[0] if site else ""
+        brand = names_of(conn, dict(site)) if site else [""]  # the main name, then its aliases
         stuck = [r["id"] for r in _answers(conn, run_id, "sending")]
     with engine.begin() as conn:
         conn.execute(text("UPDATE brand_runs SET status = 'running' WHERE id = :i AND status = 'queued'"), {"i": run_id})
@@ -674,15 +747,17 @@ def _json(value, default):
     return default if value is None else value
 
 
-def _is_mine(host: str, mine: str) -> bool:
-    return bool(host) and (host == mine or host.endswith("." + mine))
+def _is_mine(host: str, mine) -> bool:
+    """`mine` is one host or several (the site's address and any alias that is a web address)."""
+    hosts = (mine,) if isinstance(mine, str) else mine
+    return bool(host) and any(host == m or host.endswith("." + m) for m in hosts if m)
 
 
 def _iso(value):
     return value.isoformat() if value is not None else None
 
 
-def _answer_dict(row: dict, mine: str) -> dict:
+def _answer_dict(row: dict, mine) -> dict:
     sources = [{**s, "mine": _is_mine(s.get("host", ""), mine)} for s in _json(row["sources"], []) if isinstance(s, dict)]
     return {
         "id": row["id"], "question_id": row["question_id"], "question": row["question"], "engine": row["engine"],
@@ -779,14 +854,15 @@ def grouped_points(answers: list[dict], field: str) -> list[dict]:
     return out
 
 
-def named_competitors(answers: list[dict], brand: str = "") -> list[dict]:
-    """The other companies the AIs named, ranked by how many AIs named each. The company itself is left out."""
-    own = point_key(brand)
+def named_competitors(answers: list[dict], brand="", hosts: tuple[str, ...] = ()) -> list[dict]:
+    """The other companies the AIs named, ranked by how many AIs named each. The company itself is left out, under any of
+    its names (`brand` is one name or a list) and its own web addresses."""
+    mine = {point_key(n) for n in ([brand] if isinstance(brand, str) else brand) if n} | {point_key(h) for h in hosts if h}
     found: dict[str, dict] = {}
     for a in answers:
         for name in a.get("competitors") or []:
             key = point_key(name)
-            if not key or (own and key == own):
+            if not key or key in mine:
                 continue
             item = found.setdefault(key, {"name": name, "engines": [], "answers": 0, "by_engine": {}, "seen": set()})
             if a["engine"] not in item["engines"]:
@@ -827,7 +903,7 @@ def site_counts(points: list[dict]) -> dict:
     return onsite.counts([(p.get("onsite") or {}).get("mark") for p in points])
 
 
-def picture(answers: list[dict], engines: list[str], sources: list[dict], brand: str = "", marks: dict | None = None) -> dict:
+def picture(answers: list[dict], engines: list[str], sources: list[dict], brand="", marks: dict | None = None, hosts: tuple[str, ...] = ()) -> dict:
     """Everything the screen's combined view needs, worked out once here. The screen filters it by AI."""
     marks = marks or {}
     said = [a for a in answers if a["status"] == "done" and a["answer_text"]]
@@ -844,7 +920,7 @@ def picture(answers: list[dict], engines: list[str], sources: list[dict], brand:
         "named_answers": sum(bool(a["brand_named"]) for a in said), "cited_mine": sum(any(s.get("mine") for s in a["sources"]) for a in said),
         "tone_score": score, "tone_word": tone_word(score), "tone_before": None, "tone_change": None,
         "engines": rows, "pros": pros, "cons": cons, "on_site": site_counts(pros + cons),
-        "competitors": named_competitors(said, brand), "source_groups": groups,
+        "competitors": named_competitors(said, brand, hosts), "source_groups": groups,
     }
 
 
@@ -922,9 +998,10 @@ def run_dict(engine: Engine, run_id: int, mine: str | None = None) -> dict:
             raise NotFound("That run isn't there any more.")
         rows = _answers(conn, run_id)
         rivals = _rivals(conn, run["site_id"])
-        brand = brand_of(conn, {"id": run["site_id"], "host": run["host"]})[0]
+        brand = names_of(conn, {"id": run["site_id"], "host": run["host"]})
         names = _names(conn, [r["rival_id"] for r in rows])
-    answers = [_answer_dict(r, mine or run["host"]) for r in rows]
+    hosts = (mine,) if mine else own_hosts(run["host"], brand)
+    answers = [_answer_dict(r, hosts) for r in rows]
     costs: dict[str, Decimal] = {}
     for a in answers:
         costs[a["currency"]] = costs.get(a["currency"], Decimal("0")) + Decimal(a["cost"])
@@ -939,7 +1016,7 @@ def run_dict(engine: Engine, run_id: int, mine: str | None = None) -> dict:
         "error": run["error"], "engines": engines, "questions": _json(run["questions"], []), "language": run["language"], "country": run["country"],
         "estimate": _json(run["estimate"], {}), "costs": {k: str(v) for k, v in costs.items()},
         "total": len(answers), "done": states["done"], "failed": states["failed"], "waiting": states["pending"] + states["sending"] + states["waiting"],
-        "answers": answers, "sources": sources, "picture": picture(ordinary, engines, sources, brand, marks),
+        "answers": answers, "sources": sources, "picture": picture(ordinary, engines, sources, brand, marks, hosts),
         "onsite": None if checked is None else {k: checked.get(k) for k in ("pages", "by", "note", "at")},
         "versus": head_to_head(answers, names, marks, rivals),
     }
@@ -1015,8 +1092,9 @@ def state(engine: Engine, site_id) -> dict:
         failed_last = run_dict(engine, runs[0]["id"])
     with engine.connect() as conn:
         rivals = followed(conn, site["id"])
+        aliases = aliases_of(conn, site["id"])
     return {
-        "site_id": site["id"], "host": site["host"], "brand": brand, "brand_saved": saved, "brand_from": None if saved else _brand_from(engine, site),
+        "site_id": site["id"], "host": site["host"], "brand": brand, "brand_saved": saved, "brand_from": None if saved else _brand_from(engine, site), "aliases": aliases, "max_aliases": MAX_ALIASES,
         "rivals": rivals, "language": language, "country": country,
         "reader": ai.provider_of(engine, site["id"]), "questions": listed, "max_questions": MAX_PER_RUN, "max_list": MAX_QUESTIONS,
         "engines": _engine_list(keys), "keys": keys, "running": run_dict(engine, running) if running else None,

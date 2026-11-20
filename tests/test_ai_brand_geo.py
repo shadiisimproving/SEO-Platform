@@ -306,3 +306,65 @@ def test_the_unsaved_name_says_where_it_came_from(engine):
     assert (first["brand"], first["brand_saved"], first["brand_from"]) == ("Shop Two", False, "brand_words")
     second = service.state(engine, two)
     assert (second["brand"], second["brand_from"]) == ("Blue Mug", "address")
+
+
+# ---- "Also known as": the company's other names ----
+
+def test_other_names_are_saved_cleaned_and_kept(engine, site):
+    saved = service.save_brand(engine, site, "Site One", "Mug Holdings,  mug-holdings.example , , site one, MUG HOLDINGS")
+    assert saved["aliases"] == ["Mug Holdings", "mug-holdings.example"]  # blanks, the main name and repeats dropped
+    assert service.state(engine, site)["aliases"] == ["Mug Holdings", "mug-holdings.example"]
+    assert service.save_brand(engine, site, "Site One")["aliases"] == ["Mug Holdings", "mug-holdings.example"]  # name alone: kept
+    with pytest.raises(Refused, match="Up to 5"):
+        service.save_brand(engine, site, "Site One", ["A1", "B2", "C3", "D4", "E5", "F6"])
+    with pytest.raises(Refused, match="commas"):
+        service.save_brand(engine, site, "Site One", [3])
+    assert service.save_brand(engine, site, "Site One", [])["aliases"] == []
+
+
+def test_an_answer_naming_only_another_name_counts_as_named(engine, site, keys, fake_net):
+    service.save_brand(engine, site, "Site One", ["Mug Holdings"])
+    service.add_question(engine, site, "Que pensez-vous de mug holdings ?")  # the fake answer repeats the question
+    run = service.start(engine, site, ["chatgpt"])
+    _drain(engine, run["id"])
+    (a,) = service.run_dict(engine, run["id"])["answers"]
+    assert "Site One" not in a["answer_text"] and a["brand_named"] is True
+    assert service._brand_named(["Site One", "Mug Holdings"], "Ask MUG HÓLDINGS first.") and not service._brand_named(["Site One"], "Ask Mug Holdings.")
+
+
+def test_the_sites_ai_is_told_the_other_names(engine, site, keys, fake_net):
+    fake = _claude(engine, site)
+    service.save_brand(engine, site, "Site One", ["Mug Holdings"])
+    service.add_question(engine, site, "Que pensez-vous de Mug Holdings ?")
+    run = service.start(engine, site, ["chatgpt"])
+    _drain(engine, run["id"])
+    (a,) = service.run_dict(engine, run["id"])["answers"]
+    assert a["brand_named"] is True and a["read_by"].startswith("claude")
+    sent = next(c for c in fake.calls if "<also_known_as>" in c["messages"][0]["content"])
+    assert '["Mug Holdings"]' in sent["messages"][0]["content"] and "also_known_as" in sent["system"]
+
+
+def test_a_head_to_head_vote_by_another_name_counts_for_us(engine, site, keys, fake_net):
+    assert service.versus_by_words(["Site One", "Mug Holdings"], "Rival One", "Rival One is big. For a simple start, I recommend Mug Holdings.")["winner"] == "us"
+    assert service.versus_by_words(["Site One", "Mug Holdings"], "Rival One", "I'd go with mug holdings rather than Rival One.")["winner"] == "us"
+    assert service.versus_by_words("Site One", "Rival One", "Rival One is big. I recommend Mug Holdings.")["winner"] == "tie"  # without the alias: not us
+    rival = _rival(engine, site, "rival-one.example", "Rival One | Coffee")
+    service.save_brand(engine, site, "Site One", ["Mug Holdings"])
+    service.add_question(engine, site, "Choisir plutôt Mug Holdings ou Rival One ?", "suggested", rival)
+    run = service.start(engine, site, ["chatgpt"])  # the fake ChatGPT recommends the first name: "I recommend Mug Holdings"
+    _drain(engine, run["id"])
+    (vs,) = service.run_dict(engine, run["id"])["versus"]
+    assert vs["verdict"] == "us" and vs["by_engine"] == {"chatgpt": "us"} and any("Mug Holdings" in p["text"] for p in vs["us"])
+
+
+def test_own_names_are_never_competitors_and_own_addresses_are_you():
+    answers = [{"id": 1, "engine": "chatgpt", "competitors": ["Mug Holdings", "site-one.example", "MUG-HOLDINGS.example", "Rival One"]}]
+    found = service.named_competitors(answers, ["Site One", "Mug Holdings", "mug-holdings.example"], ("site-one.example",))
+    assert [c["name"] for c in found] == ["Rival One"]
+    hosts = service.own_hosts("site-one.example", ["Site One", "Mug Holdings", "https://www.mug-holdings.example/"])
+    assert hosts == ("site-one.example", "mug-holdings.example")
+    row = {"id": 1, "question_id": 1, "question": "q", "engine": "chatgpt", "status": "done", "answer_text": "x", "signed_out": 1,
+           "sources": '[{"host": "shop.mug-holdings.example", "url": "https://shop.mug-holdings.example/a"}, {"host": "rival-one.example", "url": ""}]',
+           "brand_named": 1, "summary": None, "tone": None, "pros": None, "cons": None, "competitors": None, "read_by": None, "read_error": None,
+           "error": None, "cost": 0, "currency": "USD", "answered_at": None}
+    assert [s["mine"] for s in service._answer_dict(row, hosts)["sources"]] == [True, False]

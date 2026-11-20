@@ -422,7 +422,17 @@ def _phrases(value, most: int) -> list[str]:
     return out[:most]
 
 
-def read_brand_answer(engine: Engine, site_id: int, brand: str, question: str, answer: str, lang: str = "en") -> dict:
+def _aka(aliases) -> str:
+    """The company's other names, sent so an answer naming only one of them still counts as naming the company."""
+    names = [a for a in (aliases or []) if isinstance(a, str) and a.strip()]
+    return f"<also_known_as>{json.dumps(names, ensure_ascii=False)}</also_known_as>\n" if names else ""
+
+
+AKA_RULE = ("The company may also be named by any name listed in <also_known_as> (another trading name, the company behind it, "
+            "its web address): an answer using one of those names is speaking of the company, never of a competitor. ")
+
+
+def read_brand_answer(engine: Engine, site_id: int, brand: str, question: str, answer: str, lang: str = "en", aliases=()) -> dict:
     """What one AI's answer says about the brand, in fixed fields. Uses the site's AI from Settings → AI and its monthly cap.
 
     Returns {brand_named, summary, tone, pros, cons, competitors, model, provider, cost}. Refused when no AI is chosen, the
@@ -432,9 +442,9 @@ def read_brand_answer(engine: Engine, site_id: int, brand: str, question: str, a
     provider = provider_of(engine, site_id)
     if provider not in ("openrouter", "claude"):
         raise Refused("No AI chosen yet, so nothing is sent. Pick one in Settings → AI.")
-    user = (f"<company>{json.dumps(brand, ensure_ascii=False)}</company>\n<question>{json.dumps(question, ensure_ascii=False)}</question>\n"
+    user = (f"<company>{json.dumps(brand, ensure_ascii=False)}</company>\n{_aka(aliases)}<question>{json.dumps(question, ensure_ascii=False)}</question>\n"
             f"<answer>\n{answer[:12000]}\n</answer>")
-    words, model, dollars = (_claude if provider == "claude" else _openrouter)(engine, "brand", _brand_system(lang), user)
+    words, model, dollars = (_claude if provider == "claude" else _openrouter)(engine, "brand", _brand_system(lang) + (" " + AKA_RULE if _aka(aliases) else ""), user)
     found = _json_object(words)
     tone = found.get("tone") if found.get("tone") in TONES else "neutral"
     named = found.get("brand_named")
@@ -468,16 +478,16 @@ def _versus_system(lang: str) -> str:
 WINNERS = ("us", "them", "tie", "none")
 
 
-def read_versus_answer(engine: Engine, site_id: int, brand: str, rival: str, question: str, answer: str, lang: str = "en") -> dict:
+def read_versus_answer(engine: Engine, site_id: int, brand: str, rival: str, question: str, answer: str, lang: str = "en", aliases=()) -> dict:
     """Who one AI's answer recommends between the company and one competitor, and what it says of each. Same rules as
     read_brand_answer: the site's AI from Settings → AI, within the monthly cap, refused when none is chosen."""
     lang = lang if lang in LANGUAGES else "en"
     provider = provider_of(engine, site_id)
     if provider not in ("openrouter", "claude"):
         raise Refused("No AI chosen yet, so nothing is sent. Pick one in Settings → AI.")
-    user = (f"<company>{json.dumps(brand, ensure_ascii=False)}</company>\n<competitor>{json.dumps(rival, ensure_ascii=False)}</competitor>\n"
+    user = (f"<company>{json.dumps(brand, ensure_ascii=False)}</company>\n{_aka(aliases)}<competitor>{json.dumps(rival, ensure_ascii=False)}</competitor>\n"
             f"<question>{json.dumps(question, ensure_ascii=False)}</question>\n<answer>\n{answer[:12000]}\n</answer>")
-    words, model, dollars = (_claude if provider == "claude" else _openrouter)(engine, "versus", _versus_system(lang), user)
+    words, model, dollars = (_claude if provider == "claude" else _openrouter)(engine, "versus", _versus_system(lang) + (" " + AKA_RULE if _aka(aliases) else ""), user)
     found = _json_object(words)
     named = found.get("brand_named")
     return {
