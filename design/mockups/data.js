@@ -276,6 +276,22 @@ window.CONNECTIONS = [
       { title: "Copy the key", text: "In API Keys, copy your key (it starts with fc-).", url: "https://www.firecrawl.dev/app/api-keys", link: "API Keys" },
       { title: "Paste it here", text: "Paste it, press Test (free, shows credits), then Save." },
     ] },
+  { id: "brightdata_ai", group: "extra", name: "Bright Data AI scrapers", logo: "Bright Data", desc: "Asks ChatGPT, Perplexity, Gemini and Google AI Mode what they say about you", status: "off", price: "$1.50 per 1,000 answers", limit: "5,000 free answers a month", auth: "key", sites: "all", url: "https://brightdata.com/cp/setting/users",
+    note: "Optional: without it, the key saved for Bright Data search is used. Only AI search → What AI says uses it, on a click, after showing the price.",
+    risk: "Sends your questions to Bright Data. Nothing about your leads.",
+    steps: [
+      { title: "Open your account", text: "Sign in to Bright Data, or create an account.", url: "https://brightdata.com/", link: "Open Bright Data", logo: "Bright Data" },
+      { title: "Copy the API key", text: "In Account settings → API keys, copy a key. The search zone isn't needed here.", url: "https://brightdata.com/cp/setting/users", link: "API keys" },
+      { title: "Paste it here", text: "Paste it above and press Save. Its first use shows if it works (Test can't check it for free)." },
+    ] },
+  { id: "semscraper", group: "extra", name: "Semscraper", logo: "semscraper", desc: "Reads Google's AI Overviews for What AI says", status: "off", price: "€0.30 per 1,000 searches", limit: "1,000 free searches at sign-up", auth: "key", sites: "all", url: "https://www.semscraper.com/en/documentation",
+    note: "Only AI search → What AI says uses it, on a click, after showing the price.",
+    risk: "Sends your questions to Semscraper. Nothing about your leads.",
+    steps: [
+      { title: "Create an account", text: "Create an account. Prepaid, no subscription.", url: "https://www.semscraper.com/", link: "Open Semscraper", logo: "Semscraper" },
+      { title: "Copy the key", text: "Copy your API key from your account page.", url: "https://www.semscraper.com/en/documentation", link: "Documentation" },
+      { title: "Paste it here", text: "Paste it, press Test (free, shows your balance), then Save." },
+    ] },
   { id: "cloudflare", group: "extra", name: "Cloudflare Radar", logo: "cloudflare", desc: "Domain popularity bucket", status: "off", price: "No price listed", limit: "1,200 requests per 5 minutes", auth: "key", sites: "all", url: "https://dash.cloudflare.com/profile/api-tokens",
     steps: [
       { title: "Create an account", text: "Sign up free with your email. No need to move a site to Cloudflare.", url: "https://dash.cloudflare.com/sign-up", link: "Open Cloudflare sign-up", logo: "Cloudflare" },

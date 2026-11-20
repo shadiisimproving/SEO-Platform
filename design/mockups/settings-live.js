@@ -320,7 +320,7 @@
         if (key) { await api("PUT", `app-keys/${c.id}`, { key }); UI.$("#conn-key").value = ""; }
         const answer = await api("POST", `app-keys/${c.id}/test`, {});
         if (answer.ok !== false) UI.$("#conn-fix")?.remove(); // it works now: the old advice would only confuse
-        say(answer.ok === true ? status("good", `${t("Works.")}${answer.left === null || answer.left === undefined ? "" : ` ${num(answer.left)} ${t("of")} ${num(answer.of)} ${t(c.id === "firecrawl" ? "credits left this month" : "free requests left today")}`}`) : answer.ok === null ? `<span class="note inline-note">${icon("info")}<span>${esc(t(answer.note))}</span></span>` : `<span class="error" style="margin:0">${icon("octagon-alert")}${esc(t(answer.note))}</span>${fixFor(answer.note, c)}`);
+        say(answer.ok === true ? status("good", `${t("Works.")}${answer.left === null || answer.left === undefined ? "" : c.id === "semscraper" ? ` ${t("Balance")}: ${new Intl.NumberFormat(UI.locale(), { style: "currency", currency: "EUR" }).format(Number(answer.left))}` : ` ${num(answer.left)} ${t("of")} ${num(answer.of)} ${t(c.id === "firecrawl" ? "credits left this month" : "free requests left today")}`}`) : answer.ok === null ? `<span class="note inline-note">${icon("info")}<span>${esc(t(answer.note))}</span></span>` : `<span class="error" style="margin:0">${icon("octagon-alert")}${esc(t(answer.note))}</span>${fixFor(answer.note, c)}`);
         await reload();
       }
     } catch (err) { sayError(err.message); } finally { if (button.isConnected) { button.disabled = false; button.textContent = was; } }

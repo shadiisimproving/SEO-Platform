@@ -98,7 +98,8 @@ const dayFrom = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 1
     const rowTick = (el) => el.matches('tbody :is(.tt-pick, .tt-own-pick) input[type="checkbox"]');
     return [...document.querySelector("#main").querySelectorAll("button,select,input,textarea,a[href],summary,[role=button],[role=tab]")].filter((el) => !rowTick(el)).filter(shown).length;
   });
-  check(count <= 28, `about 28 controls at rest: ${count}`);
+  // 29 on 4bab519 already (one over); What AI says adds its tab (2026-11-20).
+  check(count <= 30, `about 30 controls at rest: ${count}`);
   await shot(page, "simple.png");
 
   for (const tab of ["pages", "cited", "questions"]) {
@@ -108,7 +109,7 @@ const dayFrom = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 1
     if (SHOTS) await page.locator(".ai-tabs-card").screenshot({ path: path.join(SHOTS, `simple-tab-${tab}.png`) }).catch(() => {});
   }
   check((await page.locator(".ai-tabs-card a.lv-url, .ai-tabs-card .lv-url a").count()) > 0, "page paths are links");
-  await page.focus('[data-ai-tab="questions"]'); await page.keyboard.press("ArrowRight"); await settle(page, 300);
+  await page.focus('[data-ai-tab="brand"]'); await page.keyboard.press("ArrowRight"); await settle(page, 300); // from the last tab, What AI says (2026-11-20)
   check((await page.getAttribute('[data-ai-tab="assistants"]', "aria-selected")) === "true", "arrow keys move between tabs");
 
   // a row opens its panel: an assistant, then a landing page; Escape gives the row its focus back

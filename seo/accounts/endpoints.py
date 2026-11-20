@@ -44,6 +44,8 @@ OWNERS = {
     "competitor_id": "SELECT site_id FROM site_competitors WHERE competitor_id = :v",
     "keyword_id": "SELECT site_id FROM site_keywords WHERE keyword_id = :v",
     "boost_id": "SELECT site_id FROM traffic_boosts WHERE id = :v",
+    "brand_question_id": "SELECT site_id FROM brand_questions WHERE id = :v",
+    "brand_run_id": "SELECT site_id FROM brand_runs WHERE id = :v",
 }
 # The same path key means another table on these routes.
 OWNER_OVERRIDES = {
@@ -176,6 +178,16 @@ ENDPOINTS: dict[str, tuple[str, str, str]] = {
     "search_api.verify": ("overview", "write", ""),
     "search_api.ai_report": ("ai overview", "read", "all"),
     "search_api.upload_ai_report": ("ai", "write", ""),
+    # AI search → What AI says: a run may spend Bright Data and Semscraper credits.
+    "ai_brand_api.overview": ("ai", "read", ""),
+    "ai_brand_api.save_brand": ("ai", "write", ""),
+    "ai_brand_api.add_question": ("ai", "write", ""),
+    "ai_brand_api.edit_question": ("ai", "write", ""),
+    "ai_brand_api.remove_question": ("ai", "write", ""),
+    "ai_brand_api.suggest": ("ai", "read", ""),
+    "ai_brand_api.estimate": ("ai", "read", ""),
+    "ai_brand_api.start": ("ai", "spend", ""),
+    "ai_brand_api.run": ("ai", "read", ""),
 
     # ---- Insights ----
     "insights_api.listing": ("insights today", "read", "all"),

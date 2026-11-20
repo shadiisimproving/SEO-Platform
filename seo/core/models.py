@@ -1697,3 +1697,74 @@ class TrafficBoost(Base):
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
+class BrandQuestion(Base):
+    """A question asked of AI assistants about the owner's company (AI search → What AI says). The owner's own, or a
+    suggestion the owner kept and may edit."""
+
+    __tablename__ = "brand_questions"
+    __table_args__ = (Index("ix_brand_questions_site", "site_id"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    active: Mapped[bool] = mapped_column(Boolean, server_default=text("1"))  # before `text`, which hides sqlalchemy's text() below it
+    source: Mapped[str] = mapped_column(String(10), server_default="owner")  # owner or suggested
+    text: Mapped[str] = mapped_column(String(500))
+    created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
+class BrandRun(Base):
+    """One press of Ask the AIs: its questions and AIs as they were, the price shown first, and what it really cost."""
+
+    __tablename__ = "brand_runs"
+    __table_args__ = (Index("ix_brand_runs_site", "site_id", "created_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    status: Mapped[str] = mapped_column(String(10), server_default="queued")  # queued, running, complete, partial, failed
+    questions: Mapped[list] = mapped_column(JSON)
+    engines: Mapped[list] = mapped_column(JSON)
+    language: Mapped[str] = mapped_column(String(10), server_default="")
+    country: Mapped[str] = mapped_column(String(2), server_default="")
+    estimate: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    cost: Mapped[Decimal] = mapped_column(Numeric(10, 5), server_default="0")
+    started_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+    finished_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+
+
+class BrandAnswer(Base):
+    """One AI's answer to one question in a run, read signed out, with every source it cited and what AI read in it.
+    `job_id` is the provider's snapshot or task id: once it's set the question was sent and is never sent again."""
+
+    __tablename__ = "brand_answers"
+    __table_args__ = (
+        UniqueConstraint("run_id", "question_id", "engine", name="uq_brand_answer"),
+        Index("ix_brand_answers_run", "run_id", "engine", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    run_id: Mapped[int] = mapped_column(ForeignKey("brand_runs.id", ondelete="CASCADE"))
+    question_id: Mapped[int | None] = mapped_column(ForeignKey("brand_questions.id", ondelete="SET NULL"), nullable=True)
+    question: Mapped[str] = mapped_column(String(500))
+    engine: Mapped[str] = mapped_column(String(20))  # chatgpt, perplexity, gemini, ai_mode, ai_overview
+    status: Mapped[str] = mapped_column(String(10), server_default="pending")  # pending, sending, waiting, done, failed
+    answer_text: Mapped[str | None] = mapped_column(MEDIUMTEXT, nullable=True)
+    signed_out: Mapped[bool] = mapped_column(Boolean, server_default=text("1"))
+    sources: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    brand_named: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    tone: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    pros: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    cons: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    competitors: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    read_by: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    read_error: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    cost: Mapped[Decimal] = mapped_column(Numeric(10, 5), server_default="0")
+    currency: Mapped[str] = mapped_column(String(3), server_default="USD")
+    job_id: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    answered_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
