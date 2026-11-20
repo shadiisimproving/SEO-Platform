@@ -2,9 +2,11 @@
 // (tests/ui/fake_ai_brand.py) and fake Claude: nothing leaves the Mac and nothing is spent.
 // No key: the tab says which key to paste and opens Settings. Keys pasted: no questions yet, so Suggest questions; the panel
 // adds them, edits one, unticks one. Ask the AIs shows the count and the price first; unticking an AI changes it; Ask now.
-// The answers arrive (the job comes back every 30 s): one line per AI, sources with yours marked You, the raw answers
-// with "Pick an AI in Settings". Then Claude picked for the site, a second run: summaries, tone, pros and cons, and Since
-// the last run. A line opens the AI's answers. 1600 px and 390 px (one card per AI), English and French, no console errors,
+// The answers arrive (the job comes back every 30 s): the verdict (named by how many AIs), the AI switch, one table row per
+// AI, sources in four groups with yours marked You, the raw answers with "Pick an AI in Settings". A row or the switch picks
+// one AI and filters what's under it. Then Claude picked for the site, a second run: tone as "% positive", strengths and weak
+// points grouped with who said them (a mark opens that AI's answer), competitors named, and Since the last run. A row's
+// Answers button opens the AI's answers. 1600 px and 390 px (one card per AI), English and French, no console errors,
 // no sideways scroll.
 // Needs: DB_NAME_TEST=seo_cc_f_test .venv/bin/python tests/ui/app_server.py --port 8471 --slow 0 --fake-claude
 // Usage: SCREENS_URL=http://127.0.0.1:8471/ node tests/ui/flow_ai_brand.cjs [folder for screenshots]
@@ -113,11 +115,22 @@ async function waitForAnswers(page, label) {
   check(await page.locator(".ab-head .ai-chip.busy").count() === 1, "asking: the tab shows progress");
   await shot(page, "brand-asking.png", ".ai-tabs-card");
   await waitForAnswers(page, "first run");
-  const lines = await page.locator(".ab-ais > li").count();
-  check(lines === 4, `one line per AI asked: ${lines}`);
-  check((await text(page, ".ab-ais")).includes("Names you"), "a line says the AI names you");
+  const lines = await page.locator(".ab-ai-table tbody tr").count();
+  check(lines === 4, `one table row per AI asked: ${lines}`);
+  check(/Named by \d of 4 AIs/.test(await text(page, ".ab-verdict")), `the verdict first: ${(await text(page, ".ab-verdict")).replace(/\s+/g, " ")}`);
+  check((await text(page, ".ab-ai-table")).includes("Names you") && (await text(page, ".ab-ai-table tbody")).includes("Yes"), "the table says which AI names you");
+  check(await page.locator(".ab-seg button").count() === 5, "the switch: All AIs and the 4 AIs asked");
   check((await text(page, ".ab-reader")).includes("Pick an AI in Settings"), "no AI chosen: one line says to pick one");
-  check(await page.locator(".ab-ai-said.muted").count() > 0, "the raw answer shows instead of a summary");
+  check((await text(page, ".ab-gkeys")).includes("Social & forums") && (await text(page, ".ab-gkeys")).includes("Competitors"), "sources grouped: your site, competitors, social, other");
+  const allSources = await page.locator("#ab-sources-table tbody tr, .ab-sec table tbody tr").count();
+  await page.locator('[data-ab-row="gemini"]').click(); await settle(page, 800);
+  check(await page.locator('[data-ab-pick-ai="gemini"][aria-pressed="true"]').count() === 1, "a table row picks that AI in the switch");
+  check(await page.locator(".ab-ai-said.muted").count() > 0, "the picked AI's raw answer shows instead of a summary");
+  const geminiSources = await page.locator(".ab-sec table tbody tr").count();
+  check(geminiSources > 0 && geminiSources < allSources, `the switch filters the sources: ${allSources} → ${geminiSources}`);
+  await shot(page, "brand-first-run-gemini-1600.png");
+  await page.locator('[data-ab-pick-ai=""]').click(); await settle(page, 800);
+  check(await page.locator('[data-ab-pick-ai=""][aria-pressed="true"]').count() === 1, "All AIs again");
   const you = await page.locator("#ab-sources-table .who-you, .ab-sec .who-you").count();
   check(you >= 1, "my site is marked You in the sources");
   check(await page.locator(".ab-sec a.ab-src-link[href^='https://']").count() >= 3, "each source is a link");
@@ -134,12 +147,18 @@ async function waitForAnswers(page, label) {
   await waitForAnswers(page, "second run");
   await page.waitForFunction(() => (window.AIBrand.data.last?.id || 0) > 1 && document.querySelector(".ab-ai-said:not(.muted)"), null, { timeout: 30000 }).catch(() => {});
   check(!(await page.locator(".ab-reader").count()), "with an AI chosen, the line goes");
-  check((await text(page, ".ab-ais")).match(/Positive|Negative|Mixed/), "a tone shows");
-  check(await page.locator(".ab-pc-card").count() >= 1, "pros and cons per AI");
+  check(/\d+% positive/.test(await text(page, ".ab-verdict")), `tone as a number: ${(await text(page, ".ab-verdict")).replace(/\s+/g, " ")}`);
+  check((await text(page, ".ab-ai-table")).match(/Positive|Negative|Mixed|Neutral/), "the word stays as a small label");
+  check(await page.locator(".ab-pts li").count() >= 2 && (await text(page, ".ab-pts-grid")).includes("Strengths") && (await text(page, ".ab-pts-grid")).includes("Weak points"), "strengths and weak points");
+  check(await page.locator(".ab-pts li").first().locator(".ab-who").count() >= 2, "a point said by several AIs shows once, with who said it");
+  check((await text(page, ".ab-rv")).includes("Rival One"), "competitors named, with how many AIs");
+  await page.locator(".ab-pts li .ab-who").first().click(); await settle(page, 1000);
+  check(await page.locator("#panel .ab-p-one.focus").count() >= 1 && (await text(page, "#panel")).includes("The full answer"), "a point's AI mark opens that AI's answer");
+  await page.keyboard.press("Escape"); await settle(page, 600);
   check((await text(page, ".ab-sec:last-of-type, .ab-sec")).length > 0 && /Since the last run/.test(await text(page, ".ai-tabs-card")), "since the last run");
   check(await sideways(page) <= 1, "1600 px: no sideways scroll");
   await shot(page, "brand-1600.png");
-  await page.locator('[data-ab-open="chatgpt"]').click(); await settle(page, 1200);
+  await page.locator('.ab-row-go [data-ab-open="chatgpt"]').click(); await settle(page, 1200);
   const panel = await text(page, "#panel");
   check(panel.includes("ChatGPT") && panel.includes("The full answer") && panel.includes("Read signed out"), "a line opens the AI's answers");
   check(await page.locator("#panel .who-you").count() >= 1, "the panel marks my source You too");
@@ -155,13 +174,13 @@ async function waitForAnswers(page, label) {
     await settle(page, 1500);
     check(await sideways(page) <= 1, `${name}: no sideways scroll (${await sideways(page)})`);
     if (opts.width === 390) {
-      const cards = await page.locator(".ab-ais > li").evaluateAll((els) => els.map((el) => getComputedStyle(el).borderTopWidth));
+      const cards = await page.locator(".ab-ai-table tbody tr").evaluateAll((els) => els.map((el) => getComputedStyle(el).borderTopWidth));
       check(cards.length === 4 && cards.every((w) => w !== "0px"), `${name}: one card per AI`);
     }
     if (opts.lang === "fr") {
       const all = await text(page, ".ai-tabs-card");
-      check(all.includes("Ce que dit l'IA") && all.includes("Ce que dit chaque IA") && all.includes("Les sources citées par les IA") && all.includes("lue sans compte"), `${name}: French words`);
-      check(!/What each AI says|Sources the AIs cite|Ask again|read signed out/.test(all), `${name}: no English left`);
+      check(all.includes("Ce que dit l'IA") && all.includes("Cité par") && all.includes("Ce que les IA disent de vous") && all.includes("Les sources citées par les IA") && all.includes("lue sans compte"), `${name}: French words`);
+      check(!/What the AIs say about you|Sources the AIs cite|Ask again|read signed out|Named by|Strengths|Weak points|Competitors named|Press & other/.test(all), `${name}: no English left`);
     }
     const problems2 = [...run.problems.filter((p) => !/status of 404/.test(p)), ...run.bad];
     check(!problems2.length, `${name}: no console errors ${problems2.join(" | ")}`);

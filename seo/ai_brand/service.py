@@ -500,18 +500,21 @@ def _answer_dict(row: dict, mine: str) -> dict:
     }
 
 
-def ranked_sources(answers: list[dict]) -> list[dict]:
-    """Each site cited, by how many answers cite it, with the AIs that did and its addresses."""
+def ranked_sources(answers: list[dict], rivals: tuple[str, ...] = ()) -> list[dict]:
+    """Each site cited, by how many answers cite it, with the AIs that did (and how many answers each), its addresses and its
+    group: mine, competitor (a tracked competitor's site), social (SOCIAL_HOSTS) or other."""
     found: dict[str, dict] = {}
     for a in answers:
         for s in a["sources"]:
             host = s.get("host")
             if not host:
                 continue
-            item = found.setdefault(host, {"host": host, "answers": 0, "engines": [], "urls": [], "mine": s.get("mine", False), "seen": set()})
+            item = found.setdefault(host, {"host": host, "answers": 0, "engines": [], "by_engine": {}, "urls": [], "mine": s.get("mine", False),
+                                           "group": source_group(host, bool(s.get("mine")), rivals), "seen": set()})
             if a["id"] not in item["seen"]:
                 item["seen"].add(a["id"])
                 item["answers"] += 1
+                item["by_engine"][a["engine"]] = item["by_engine"].get(a["engine"], 0) + 1
             if a["engine"] not in item["engines"]:
                 item["engines"].append(a["engine"])
             if s.get("url") and s["url"] not in [u["url"] for u in item["urls"]]:
@@ -523,24 +526,162 @@ def ranked_sources(answers: list[dict]) -> list[dict]:
     return out
 
 
+# ---- the combined picture: one verdict, one row per AI, points, competitors, source groups --------------------------------
+# Tone as a number: each answer that names the company counts positive = 1, neutral = 0.5, negative = 0; the score is their
+# average as a whole percent ("80% positive"). Answers that don't name the company, or weren't read by an AI, don't count.
+TONE_SCORE = {"positive": 1.0, "neutral": 0.5, "negative": 0.0}
+# Sites counted as "Social & forums" in the source groups (a subdomain counts too: m.youtube.com, old.reddit.com).
+SOCIAL_HOSTS = ("youtube.com", "youtu.be", "reddit.com", "facebook.com", "linkedin.com", "x.com", "twitter.com", "instagram.com",
+                "tiktok.com", "quora.com", "trustpilot.com")
+GROUPS = ("mine", "competitor", "social", "other")
+
+
+def source_group(host: str, mine: bool, rivals: tuple[str, ...] = ()) -> str:
+    host = (host or "").lower().removeprefix("www.")
+    if mine:
+        return "mine"
+    if any(_is_mine(host, r) for r in rivals):
+        return "competitor"
+    if any(_is_mine(host, s) for s in SOCIAL_HOSTS):
+        return "social"
+    return "other"
+
+
+def tone_score(answers: list[dict]) -> int | None:
+    scores = [TONE_SCORE[a["tone"]] for a in answers if a.get("brand_named") and a.get("tone") in TONE_SCORE]
+    return round(100 * sum(scores) / len(scores)) if scores else None
+
+
+def tone_word(score: int | None) -> str | None:
+    """The small label beside the number: positive from 67 %, negative up to 33 %, mixed between (neutral when every answer was)."""
+    if score is None:
+        return None
+    return "positive" if score >= 67 else "negative" if score <= 33 else "neutral" if score == 50 else "mixed"
+
+
+def point_key(words: str) -> str:
+    """Two points are the same when they match once folded (case, accents), with punctuation and extra spaces dropped."""
+    return " ".join("".join(ch if ch.isalnum() else " " for ch in _fold(words)).split())
+
+
+def grouped_points(answers: list[dict], field: str) -> list[dict]:
+    """The same strength (or weak point) said by several AIs, once, ranked by how many AIs said it, then by how many answers."""
+    found: dict[str, dict] = {}
+    for a in answers:
+        for words in a.get(field) or []:
+            key = point_key(words)
+            if not key:
+                continue
+            item = found.setdefault(key, {"key": key, "text": words, "engines": [], "answers": []})
+            if a["engine"] not in item["engines"]:
+                item["engines"].append(a["engine"])
+            if a["id"] not in [x["id"] for x in item["answers"]]:
+                item["answers"].append({"id": a["id"], "engine": a["engine"], "question": a["question"]})
+    out = list(found.values())
+    for item in out:
+        item["ais"] = len(item["engines"])
+    out.sort(key=lambda x: (-x["ais"], -len(x["answers"]), x["key"]))
+    return out
+
+
+def named_competitors(answers: list[dict], brand: str = "") -> list[dict]:
+    """The other companies the AIs named, ranked by how many AIs named each. The company itself is left out."""
+    own = point_key(brand)
+    found: dict[str, dict] = {}
+    for a in answers:
+        for name in a.get("competitors") or []:
+            key = point_key(name)
+            if not key or (own and key == own):
+                continue
+            item = found.setdefault(key, {"name": name, "engines": [], "answers": 0, "by_engine": {}, "seen": set()})
+            if a["engine"] not in item["engines"]:
+                item["engines"].append(a["engine"])
+            if a["id"] not in item["seen"]:
+                item["seen"].add(a["id"])
+                item["answers"] += 1
+                item["by_engine"][a["engine"]] = item["by_engine"].get(a["engine"], 0) + 1
+    out = [{**{k: v for k, v in item.items() if k != "seen"}, "ais": len(item["engines"])} for item in found.values()]
+    out.sort(key=lambda x: (-x["ais"], -x["answers"], point_key(x["name"])))
+    return out
+
+
+def per_engine(answers: list[dict], engines: list[str]) -> list[dict]:
+    """One row per AI asked: does it name you, its tone as a number, does it cite your site (in how many answers), how many sites."""
+    rows = []
+    for engine_id in engines:
+        mine = [a for a in answers if a["engine"] == engine_id]
+        done = [a for a in mine if a["status"] == "done"]
+        said = [a for a in done if a["answer_text"]]
+        score = tone_score(said)
+        rows.append({
+            "engine": engine_id, "name": E.ENGINES.get(engine_id, {}).get("name", engine_id), "host": E.ENGINES.get(engine_id, {}).get("host", ""),
+            "asked": len(mine), "answered": len(said), "no_answer": len(done) - len(said), "failed": sum(a["status"] == "failed" for a in mine),
+            "named": sum(bool(a["brand_named"]) for a in said), "tone_score": score, "tone_word": tone_word(score), "tone_before": None, "tone_change": None,
+            "cited_mine": sum(any(s.get("mine") for s in a["sources"]) for a in said),
+            "sources": len({s["host"] for a in said for s in a["sources"] if s.get("host")}),
+        })
+    return rows
+
+
+def picture(answers: list[dict], engines: list[str], sources: list[dict], brand: str = "") -> dict:
+    """Everything the screen's combined view needs, worked out once here. The screen filters it by AI."""
+    said = [a for a in answers if a["status"] == "done" and a["answer_text"]]
+    rows = per_engine(answers, engines)
+    answered = [r for r in rows if r["answered"]]
+    score = tone_score(said)
+    groups = {g: {"sites": 0, "citations": 0} for g in GROUPS}
+    for s in sources:
+        groups[s["group"]]["sites"] += 1
+        groups[s["group"]]["citations"] += s["answers"]
+    return {
+        "named_by": sum(1 for r in answered if r["named"]), "answered_by": len(answered), "answers": len(said),
+        "named_answers": sum(bool(a["brand_named"]) for a in said), "cited_mine": sum(any(s.get("mine") for s in a["sources"]) for a in said),
+        "tone_score": score, "tone_word": tone_word(score), "tone_before": None, "tone_change": None,
+        "engines": rows, "pros": grouped_points(said, "pros"), "cons": grouped_points(said, "cons"),
+        "competitors": named_competitors(said, brand), "source_groups": groups,
+    }
+
+
+def _rivals(conn, site_id: int) -> tuple[str, ...]:
+    hosts = conn.execute(text("SELECT s.host FROM site_competitors sc JOIN sites s ON s.id = sc.competitor_id WHERE sc.site_id = :s"), {"s": site_id}).scalars().all()
+    return tuple(h.lower().removeprefix("www.") for h in hosts if h)
+
+
 def run_dict(engine: Engine, run_id: int, mine: str | None = None) -> dict:
     with engine.connect() as conn:
         run = conn.execute(text("SELECT r.*, s.host FROM brand_runs r JOIN sites s ON s.id = r.site_id WHERE r.id = :i"), {"i": run_id}).mappings().first()
         if run is None:
             raise NotFound("That run isn't there any more.")
         rows = _answers(conn, run_id)
+        rivals = _rivals(conn, run["site_id"])
+        brand = brand_of(conn, {"id": run["site_id"], "host": run["host"]})[0]
     answers = [_answer_dict(r, mine or run["host"]) for r in rows]
     costs: dict[str, Decimal] = {}
     for a in answers:
         costs[a["currency"]] = costs.get(a["currency"], Decimal("0")) + Decimal(a["cost"])
     states = Counter(a["status"] for a in answers)
+    engines = _json(run["engines"], [])
+    sources = ranked_sources([a for a in answers if a["status"] == "done"], rivals)
     return {
         "id": run["id"], "site_id": run["site_id"], "status": run["status"], "created_at": _iso(run["created_at"]), "finished_at": _iso(run["finished_at"]),
-        "error": run["error"], "engines": _json(run["engines"], []), "questions": _json(run["questions"], []), "language": run["language"], "country": run["country"],
+        "error": run["error"], "engines": engines, "questions": _json(run["questions"], []), "language": run["language"], "country": run["country"],
         "estimate": _json(run["estimate"], {}), "costs": {k: str(v) for k, v in costs.items()},
         "total": len(answers), "done": states["done"], "failed": states["failed"], "waiting": states["pending"] + states["sending"] + states["waiting"],
-        "answers": answers, "sources": ranked_sources([a for a in answers if a["status"] == "done"]),
+        "answers": answers, "sources": sources, "picture": picture(answers, engines, sources, brand),
     }
+
+
+def _tone_against(now: dict, then: dict) -> None:
+    """The tone's change against the run before, overall and per AI, in points ("80% positive ▲13")."""
+    def diff(a, b):
+        return None if a is None or b is None else a - b
+    now["tone_before"] = then["tone_score"]
+    now["tone_change"] = diff(now["tone_score"], then["tone_score"])
+    before = {r["engine"]: r for r in then["engines"]}
+    for row in now["engines"]:
+        old = before.get(row["engine"])
+        row["tone_before"] = old["tone_score"] if old else None
+        row["tone_change"] = diff(row["tone_score"], row["tone_before"])
 
 
 def state(engine: Engine, site_id) -> dict:
@@ -561,6 +702,7 @@ def state(engine: Engine, site_id) -> dict:
         before = run_dict(engine, finished[1])
         now_hosts, then_hosts = {s["host"] for s in last["sources"]}, {s["host"] for s in before["sources"]}
         since = {"previous_at": before["created_at"], "new": sorted(now_hosts - then_hosts), "lost": sorted(then_hosts - now_hosts)}
+        _tone_against(last["picture"], before["picture"])
     failed_last = None
     if runs and runs[0]["status"] == "failed":
         failed_last = run_dict(engine, runs[0]["id"])
