@@ -23,7 +23,7 @@ ALLOW = lambda url: True  # noqa: E731
 QUEUE_ICONS = logos.queue_for  # the world fixture swaps it for nothing
 NODE = shutil.which("node")
 needs_node = pytest.mark.skipif(not NODE, reason="node is not installed")
-COLUMNS = ["Our site", "Source page", "Target page", "Anchor text", "Anchor type", "Keyword", "Link type", "Status", "Date placed", "Due date", "Renewal date", "Price", "Mediator", "Contact", "Platform", "UTM source", "UTM medium", "UTM campaign", "Owner", "Notes"]
+COLUMNS = ["Our site", "Source page", "Target page", "Anchor text", "Anchor type", "Keyword", "Link type", "Status", "Date placed", "Due date", "Renewal date", "Price", "Billed", "Mediator", "Contact", "Platform", "UTM source", "UTM medium", "UTM campaign", "Owner", "Notes"]
 
 FULL_ROW = {
     "source_url": "https://blog-expat.example/guide", "target_url": "/creer-societe/", "anchor": "créer sa société", "link_type": "Guest post", "status": "planned",
@@ -568,7 +568,7 @@ def test_the_download_button_gives_exactly_the_template_file():
 def test_the_browser_parser_opens_the_template_as_columns():
     table = browser("table", base64=base64.b64encode(TEMPLATE.read_bytes()).decode())
     assert table[0] == COLUMNS and len(table) == 3
-    assert browser("columns", headers=table[0]) == ["site", "src", "target", "anchor", "anchor_kind", "keyword", "link_type", "status", "placed", "due", "renewal", "cost", "mediator", "contact", "platform", "utm_source", "utm_medium", "utm_campaign", "owner", "notes"]
+    assert browser("columns", headers=table[0]) == ["site", "src", "target", "anchor", "anchor_kind", "keyword", "link_type", "status", "placed", "due", "renewal", "cost", "billed", "mediator", "contact", "platform", "utm_source", "utm_medium", "utm_campaign", "owner", "notes"]
 
 
 def test_the_template_readme_explains_it_in_plain_words():
@@ -581,7 +581,7 @@ def test_the_template_readme_explains_it_in_plain_words():
 def test_both_sides_use_the_same_limits_and_row_cap():
     from_browser = browser("limits")
     assert from_browser["most"] == service.MAX_ROWS == 5000
-    names = {"cost": "price_text", "target": "target_url"}
+    names = {"cost": "price_text", "billed": "billed_text", "target": "target_url"}
     assert {names.get(key, key): value for key, value in from_browser["limits"].items()} == service.LIMITS
 
 
@@ -755,7 +755,7 @@ def test_a_cell_over_the_limit_is_a_row_problem_before_it_reaches_the_server():
 
 @needs_node
 def test_every_cell_of_a_row_lands_in_the_record():
-    line = ["site-one.example", "https://a.example/x", "/to/", "ancre", "brand", "mot clé", "Guest post", "Live", "2026-01-01", "2026-02-01", "2026-03-01", "AED 500", "Agency", "a@b.example", "Fiverr", "src", "med", "camp", "Sara", "Note"]
+    line = ["site-one.example", "https://a.example/x", "/to/", "ancre", "brand", "mot clé", "Guest post", "Live", "2026-01-01", "2026-02-01", "2026-03-01", "AED 500", "AED 650", "Agency", "a@b.example", "Fiverr", "src", "med", "camp", "Sara", "Note"]
     row = check([line], headers=COLUMNS)[0]
     keys = browser("columns", headers=COLUMNS)
     assert said(row) == ("ok", "Ready")

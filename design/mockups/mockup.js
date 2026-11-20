@@ -889,7 +889,7 @@
     id: `srv${row.id}`, serverId: row.id, src: row.source_url, domain: row.domain, site: host, target: row.target_url, anchor: row.anchor, status: row.status, auth: row.authority ?? null, spam: row.spam_score ?? null, authLabel: row.authority_label || null,
     // Unknown until something measures them. Unknown isn't 0: that would make a paid link look worthless.
     visits: row.visits ?? null, leads: row.leads ?? null, label: row.traffic_label || "no-ga4", shared: row.shared ?? null, group: row.traffic_group || null, check: row.check || null,
-    cost: row.cost ?? 0, priceText: row.price_text, mediator: row.mediator, owner: row.owner, placed: row.placed, utm: utmOf(row.utm_source, row.utm_medium, row.utm_campaign), before: null, after: null,
+    cost: row.cost ?? 0, priceText: row.price_text, billed: row.billed ?? null, billedText: row.billed_text || null, mediator: row.mediator, owner: row.owner, placed: row.placed, utm: utmOf(row.utm_source, row.utm_medium, row.utm_campaign), before: null, after: null,
     pageAuthority: row.page_authority ?? null, rating: row.rating ?? null, articleUrl: row.article_url || null, sentAt: row.sent_at || null,
     linkType: row.link_type, due: row.due, renewal: row.renewal, contact: row.contact, platform: row.platform, notes: row.notes, createdAt: row.created_at,
     opr: row.opr ?? null, foundBy: row.found_by || null, gsc: row.gsc || null, disavow: Boolean(row.disavow), targetIndex: row.target_index || null,
@@ -898,13 +898,13 @@
   });
   const localLink = (id, x, site, status) => ({
     id, src: x.src, domain: window.BacklinkCleaner.rootDomain(x.src), site, target: x.target || null, anchor: x.anchor || null, status, auth: null, visits: 0, leads: 0, label: "none",
-    cost: window.BulkLinks.parsePrice(x.cost) ?? 0, priceText: x.cost || null, mediator: x.mediator || null, owner: x.owner || null, placed: x.placed || null, utm: utmOf(x.utm_source, x.utm_medium, x.utm_campaign), before: null, after: null,
+    cost: window.BulkLinks.parsePrice(x.cost) ?? 0, priceText: x.cost || null, billed: window.BulkLinks.parsePrice(x.billed) ?? null, billedText: x.billed || null, mediator: x.mediator || null, owner: x.owner || null, placed: x.placed || null, utm: utmOf(x.utm_source, x.utm_medium, x.utm_campaign), before: null, after: null,
     linkType: x.link_type || null, due: x.due || null, renewal: x.renewal || null, contact: x.contact || null, platform: x.platform || null, notes: x.notes || null, createdAt: new Date().toISOString(),
     keyword: x.keyword || null, anchorKind: x.anchor_kind || null, anchorType: x.anchor_kind || null,
   });
   const serverRow = (x, site, status) => ({
     site_id: bl.sites.find((s) => s.host === site)?.id, source_url: x.src, status, target_url: x.target || null, anchor: x.anchor || null, link_type: x.link_type || null, placed: x.placed || null, due: x.due || null, renewal: x.renewal || null,
-    price_text: x.cost || null, mediator: x.mediator || null, contact: x.contact || null, platform: x.platform || null, utm_source: x.utm_source || null, utm_medium: x.utm_medium || null, utm_campaign: x.utm_campaign || null, owner: x.owner || null, notes: x.notes || null,
+    price_text: x.cost || null, billed_text: x.billed || null, mediator: x.mediator || null, contact: x.contact || null, platform: x.platform || null, utm_source: x.utm_source || null, utm_medium: x.utm_medium || null, utm_campaign: x.utm_campaign || null, owner: x.owner || null, notes: x.notes || null,
     keyword: x.keyword || null, anchor_kind: x.anchor_kind || null,
   });
 
@@ -1196,9 +1196,11 @@
       <button class="tab" role="tab" data-bl-section="consideration" aria-selected="${section === "consideration"}">${icon("filter")}${t("In consideration")} <span class="muted">${prospectsForSite().length}</span></button>
       <button class="tab" role="tab" data-bl-section="todo" aria-selected="${section === "todo"}">${icon("clock")}${t("To do")} <span class="muted">${state.firstRun ? 0 : window.LinkTodo.count()}</span></button>
       <button class="tab" role="tab" data-bl-section="done" aria-selected="${section === "done"}">${icon("circle-check")}${t("Done")} <span class="muted">${state.firstRun ? 0 : siteLinks().filter((b) => b.status !== "planned").length}</span></button>
+      <button class="tab" role="tab" data-bl-section="bought" aria-selected="${section === "bought"}">${icon("link-2")}${t("Bought links")}</button>
+      <button class="tab" role="tab" data-bl-section="boost" aria-selected="${section === "boost"}">${icon("megaphone")}${t("Boost URL")}</button>
     </div>`;
     if (state.firstRun) {
-      return topbar(title, sub, main) + `<div class="content page-enter">${sections}${section === "consideration" ? considerationBody() : section === "todo" ? window.LinkTodo.body() : `<div class="table-wrap"><div class="empty"><h3>${t("No backlinks yet")}</h3><p>${t("Log your links, or import a CSV.")}${window.UI.tip("A Google Sheet can be exported as CSV.")}</p><span class="bl-tools"><button class="btn" id="bulk-open">${icon("list-plus")}${t("Import CSV")}</button><button class="btn" id="gsc-open">${icon("search")}${t("Import from Search Console")}</button></span></div></div>`}</div>`;
+      return topbar(title, sub, main) + `<div class="content page-enter">${sections}${section === "consideration" ? considerationBody() : section === "todo" ? window.LinkTodo.body() : section === "bought" ? window.BoughtLinks.body() : section === "boost" ? window.BoughtLinks.boostBody() : `<div class="table-wrap"><div class="empty"><h3>${t("No backlinks yet")}</h3><p>${t("Log your links, or import a CSV.")}${window.UI.tip("A Google Sheet can be exported as CSV.")}</p><span class="bl-tools"><button class="btn" id="bulk-open">${icon("list-plus")}${t("Import CSV")}</button><button class="btn" id="gsc-open">${icon("search")}${t("Import from Search Console")}</button></span></div></div>`}</div>`;
     }
     const all = siteLinks().filter((b) => b.status !== "planned"); // not built yet, so it's in To do and never counts in the cards
     const real = all;
@@ -1260,7 +1262,7 @@
         ${bl.server ? tile(t("Leads"), visitsKnown ? cnt(leads) : "—", visitsKnown ? `<span class="ab">${t("Last 12 months")}</span>` : `<span class="ab">${t("GA4 not connected")}</span>`, { ic: "users" }) : tile(t("Leads"), cnt(leads), delta(1), { ic: "users", line: [1, 1, 2, 2, 3, 3, 3, 4] })}
       </section>
       ${sections}
-      ${section === "consideration" ? considerationBody() : section === "todo" ? window.LinkTodo.body() : `<div class="tabs" role="tablist" aria-label="${t("Backlinks")}">${tabs.map(([id, label, n]) => `<button class="tab" role="tab" data-bl-tab="${id}" aria-selected="${state.blTab === id}">${t(label)} <span class="muted">${n}</span></button>`).join("")}</div>
+      ${section === "consideration" ? considerationBody() : section === "todo" ? window.LinkTodo.body() : section === "bought" ? window.BoughtLinks.body() : section === "boost" ? window.BoughtLinks.boostBody() : `<div class="tabs" role="tablist" aria-label="${t("Backlinks")}">${tabs.map(([id, label, n]) => `<button class="tab" role="tab" data-bl-tab="${id}" aria-selected="${state.blTab === id}">${t(label)} <span class="muted">${n}</span></button>`).join("")}</div>
       ${body}`}</div>`;
   }
 
@@ -2029,7 +2031,7 @@
     }
     if (route === "health" && ["test", "links", "uptime"].includes(rest[0])) state.healthTab = rest[0];
     if (route === "backlinks") {
-      if (rest[0] === "consideration" || rest[0] === "todo") state.blSection = rest[0];
+      if (["consideration", "todo", "bought", "boost"].includes(rest[0])) state.blSection = rest[0];
       else { state.blSection = "done"; if (["all", "mediators", "found"].includes(rest[0])) state.blTab = rest[0]; }
     }
     const q = new URLSearchParams(query);
@@ -2376,11 +2378,13 @@
     const fold = (title, hint, inner, open = false) => `<details class="fold" ${open ? "open" : ""}><summary>${icon("chevron-right")}${t(title)}${hint ? `<span class="hint">${t(hint)}</span>` : ""}</summary><div style="padding-bottom:6px">${inner}</div></details>`;
     const fromProspect = prefill.prospect || "";
     const edit = prefill.edit || null; // the same form, filled in, when correcting a link already logged
+    const from = edit || prefill.copy || null; // Duplicate (Bought links): a new link, every field but the source page copied
     const had = (value) => esc(value || "");
     // A date typed some other way in a spreadsheet ("le 3 mars") stays as text: a date box would silently blank it.
     const dateBox = (id, value) => `<input class="input" id="${id}" type="${!value || /^\d{4}-\d{2}-\d{2}$/.test(value) ? "date" : "text"}" value="${had(value)}">`;
-    const price = edit ? edit.priceText || (edit.cost ? String(edit.cost) : "") : "";
-    const owners = [...new Set([...window.TEAM, ...(edit?.owner ? [edit.owner] : [])])];
+    const price = from ? from.priceText || (from.cost ? String(from.cost) : "") : "";
+    const billed = from ? from.billedText || (from.billed ? String(from.billed) : "") : "";
+    const owners = [...new Set([...window.TEAM, ...(from?.owner ? [edit.owner] : [])])];
     openPanel(`${panelHead(t(edit ? "Edit backlink" : "Add backlink"), edit ? "" : t(fromProspect ? "From In consideration; moves to Done when you save." : "Everything else is optional"))}
       ${fromProspect || edit ? "" : addModeSwitch("one")}
       <form class="panel-body" id="bl-form" data-prospect="${esc(fromProspect)}" data-edit="${edit ? esc(edit.id) : ""}" novalidate>
@@ -2389,34 +2393,35 @@
         <label class="field"><span>${t("Source page")} <span class="req">*</span></span>
           <input class="input mono" spellcheck="false" autocapitalize="off" autocomplete="off" id="bl-src" type="url" inputmode="url" placeholder="https://" value="${esc(prefill.src || "")}" ${fromProspect ? "" : "data-autofocus"} aria-describedby="bl-src-err"><div id="bl-src-err"></div></label>
         ${fold("Target", "optional", `
-          <label class="field"><span>${t("Target page")}</span><input class="input mono" spellcheck="false" autocapitalize="off" autocomplete="off" id="bl-target" placeholder="/page/" value="${esc(prefill.target || "")}" ${fromProspect ? "data-autofocus" : ""}></label>
-          <label class="field"><span>${t("Anchor text")}</span><input class="input" id="bl-anchor" dir="auto" value="${had(edit?.anchor)}"></label>
+          <label class="field"><span>${t("Target page")}</span><input class="input mono" spellcheck="false" autocapitalize="off" autocomplete="off" id="bl-target" placeholder="/page/" value="${esc(prefill.target || prefill.copy?.target || "")}" ${fromProspect ? "data-autofocus" : ""}></label>
+          <label class="field"><span>${t("Anchor text")}</span><input class="input" id="bl-anchor" dir="auto" value="${had(from?.anchor)}"></label>
           <div class="field-row">
-            <label class="field"><span>${t("Keyword")}</span><input class="input" id="bl-keyword" dir="auto" value="${had(edit?.keyword)}"></label>
-            <label class="field"><span>${t("Anchor type")}</span><select class="select" id="bl-anchor-kind" style="width:100%">${window.BacklinkSeo.anchorOptions(edit?.anchorKind)}</select></label>
-          </div>`, Boolean(prefill.target || fromProspect || edit?.anchor || edit?.keyword || edit?.anchorKind))}
+            <label class="field"><span>${t("Keyword")}</span><input class="input" id="bl-keyword" dir="auto" value="${had(from?.keyword)}"></label>
+            <label class="field"><span>${t("Anchor type")}</span><select class="select" id="bl-anchor-kind" style="width:100%">${window.BacklinkSeo.anchorOptions(from?.anchorKind)}</select></label>
+          </div>`, Boolean(prefill.target || fromProspect || from?.anchor || from?.keyword || from?.anchorKind))}
         ${fold("Status and type", "optional", `
           <div class="field-row">
-            <label class="field"><span>${t("Status")}</span><select class="select" id="bl-status" style="width:100%">${[["live", "Live "], ["lost", "Lost "], ["planned", "Planned"], ...(edit?.status === "nofollow" ? [["nofollow", "Nofollow"]] : [])].map(([value, word]) => `<option value="${value}" ${edit?.status === value ? "selected" : ""}>${t(word)}</option>`).join("")}</select></label>
-            <label class="field"><span>${t("Link type")}</span><input class="input" id="bl-type" dir="auto" list="link-types" value="${had(edit?.linkType)}"><datalist id="link-types">${LINK_TYPES.map((name) => `<option value="${esc(t(name))}"></option>`).join("")}</datalist></label>
-          </div>`, Boolean(edit))}
+            <label class="field"><span>${t("Status")}</span><select class="select" id="bl-status" style="width:100%">${[["live", "Live "], ["lost", "Lost "], ["planned", "Planned"], ...(from?.status === "nofollow" ? [["nofollow", "Nofollow"]] : [])].map(([value, word]) => `<option value="${value}" ${from?.status === value ? "selected" : ""}>${t(word)}</option>`).join("")}</select></label>
+            <label class="field"><span>${t("Link type")}</span><input class="input" id="bl-type" dir="auto" list="link-types" value="${had(from?.linkType)}"><datalist id="link-types">${LINK_TYPES.map((name) => `<option value="${esc(t(name))}"></option>`).join("")}</datalist></label>
+          </div>`, Boolean(from))}
         ${fold("UTM in this link?", "optional", `
           <label class="field"><span>${t("Link as placed")}</span><input class="input mono" type="url" inputmode="url" spellcheck="false" autocapitalize="off" autocomplete="off" id="bl-paste" placeholder="https://site/page/?utm_source=…"><div id="bl-paste-note" class="help" role="status"></div></label>
           <div class="field-row">
-            <label class="field"><span>${t("Source")}</span><input class="input mono" spellcheck="false" autocapitalize="off" autocomplete="off" id="bl-utm-source" value="${had(edit?.utm?.source)}"></label>
-            <label class="field"><span>${t("Medium")}</span><input class="input mono" spellcheck="false" autocapitalize="off" autocomplete="off" id="bl-utm-medium" value="${had(edit?.utm?.medium)}"></label>
+            <label class="field"><span>${t("Source")}</span><input class="input mono" spellcheck="false" autocapitalize="off" autocomplete="off" id="bl-utm-source" value="${had(from?.utm?.source)}"></label>
+            <label class="field"><span>${t("Medium")}</span><input class="input mono" spellcheck="false" autocapitalize="off" autocomplete="off" id="bl-utm-medium" value="${had(from?.utm?.medium)}"></label>
           </div>
-          <label class="field"><span>${t("Campaign")}</span><input class="input mono" spellcheck="false" autocapitalize="off" autocomplete="off" id="bl-utm-campaign" value="${had(edit?.utm?.campaign)}"></label>
+          <label class="field"><span>${t("Campaign")}</span><input class="input mono" spellcheck="false" autocapitalize="off" autocomplete="off" id="bl-utm-campaign" value="${had(from?.utm?.campaign)}"></label>
           <button type="button" class="btn btn-small" id="bl-generate">${t("Generate tagged link")}</button>
-          <div id="bl-generated" class="help" style="overflow-wrap:anywhere" role="status"></div>`, Boolean(edit?.utm))}
+          <div id="bl-generated" class="help" style="overflow-wrap:anywhere" role="status"></div>`, Boolean(from?.utm))}
         ${fold("Mediator", "optional", `
-          <label class="field"><span>${t("Mediator")}</span><input class="input" id="bl-mediator" dir="auto" list="mediators" aria-describedby="bl-med-help" value="${had(edit?.mediator)}"><datalist id="mediators">${window.LinkExtras.names().map((m) => `<option value="${esc(m)}"></option>`).join("")}</datalist><div class="help" id="bl-med-help">${t("Pick a name or type a new one")}</div></label>
-          <div class="field-row"><label class="field"><span>${t("Contact")}</span><input class="input" id="bl-contact" dir="auto" value="${had(edit?.contact)}"></label><label class="field"><span>${t("Platform")}</span><input class="input" id="bl-platform" dir="auto" value="${had(edit?.platform)}"></label></div>`, Boolean(edit?.mediator || edit?.contact || edit?.platform))}
+          <label class="field"><span>${t("Mediator")}</span><input class="input" id="bl-mediator" dir="auto" list="mediators" aria-describedby="bl-med-help" value="${had(from?.mediator)}"><datalist id="mediators">${window.LinkExtras.names().map((m) => `<option value="${esc(m)}"></option>`).join("")}</datalist><div class="help" id="bl-med-help">${t("Pick a name or type a new one")}</div></label>
+          <div class="field-row"><label class="field"><span>${t("Contact")}</span><input class="input" id="bl-contact" dir="auto" value="${had(from?.contact)}"></label><label class="field"><span>${t("Platform")}</span><input class="input" id="bl-platform" dir="auto" value="${had(from?.platform)}"></label></div>`, Boolean(from?.mediator || from?.contact || from?.platform))}
         ${fold("Cost", "optional", `
-          <div class="field-row"><label class="field"><span>${t("Price")}</span><input class="input" id="bl-cost" placeholder="150 €, AED 500" value="${esc(price)}"></label><label class="field"><span>${t("Owner")}</span><select class="select" id="bl-owner" style="width:100%"><option value="">—</option>${owners.map((n) => `<option ${n === edit?.owner ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label></div>
-          <div class="field-row"><label class="field"><span>${t("Date placed")}</span>${dateBox("bl-placed", edit?.placed)}</label><label class="field"><span>${t("Due date")}</span>${dateBox("bl-due", edit?.due)}</label></div>
-          <div class="field-row"><label class="field"><span>${t("Renewal date")}</span>${dateBox("bl-renewal", edit?.renewal)}</label></div>
-          <label class="field"><span>${t("Notes")}</span><textarea class="input" id="bl-notes" rows="2" dir="auto">${had(edit?.notes)}</textarea></label>`, Boolean(price || edit?.owner || edit?.placed || edit?.due || edit?.renewal || edit?.notes))}
+          <div class="field-row"><label class="field"><span>${t("Billed")}</span><input class="input" id="bl-billed" placeholder="1 131 €" value="${esc(billed)}" aria-describedby="bl-billed-help"><span class="help" id="bl-billed-help">${t("What you were billed")}</span></label><label class="field"><span>${t("Real cost")}</span><input class="input" id="bl-cost" placeholder="870 €" value="${esc(price)}"></label></div>
+          <div class="field-row"><label class="field"><span>${t("Owner")}</span><select class="select" id="bl-owner" style="width:100%"><option value="">—</option>${owners.map((n) => `<option ${n === from?.owner ? "selected" : ""}>${esc(n)}</option>`).join("")}</select></label></div>
+          <div class="field-row"><label class="field"><span>${t("Date placed")}</span>${dateBox("bl-placed", from?.placed)}</label><label class="field"><span>${t("Due date")}</span>${dateBox("bl-due", from?.due)}</label></div>
+          <div class="field-row"><label class="field"><span>${t("Renewal date")}</span>${dateBox("bl-renewal", from?.renewal)}</label></div>
+          <label class="field"><span>${t("Notes")}</span><textarea class="input" id="bl-notes" rows="2" dir="auto">${had(from?.notes)}</textarea></label>`, Boolean(price || billed || from?.owner || from?.placed || from?.due || from?.renewal || from?.notes))}
       </form>
       <div class="panel-foot"><button class="btn btn-main" id="bl-save">${t("Save")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button></div>`, opener, { key: edit ? `backlink-edit|${edit.id}` : `backlink|${prefill.src || ""}`, reopen: () => addBacklinkPanel(prefill, opener) });
     window.BacklinkSeo.duplicateNote(); // a link from In consideration arrives with its address filled in
@@ -2781,7 +2786,7 @@
     if (!$("#bl-site").value) { setHTML($("#bl-src-err"), `<div class="error" role="alert">${icon("octagon-alert")}<span>${esc(t("Add your own website first"))}</span></div>`); return; }
     const field = (id) => $(id).value.trim();
     const record = {
-      src: field("#bl-src"), target: field("#bl-target"), anchor: field("#bl-anchor"), link_type: field("#bl-type"), placed: field("#bl-placed"), due: field("#bl-due"), renewal: field("#bl-renewal"), cost: field("#bl-cost"),
+      src: field("#bl-src"), target: field("#bl-target"), anchor: field("#bl-anchor"), link_type: field("#bl-type"), placed: field("#bl-placed"), due: field("#bl-due"), renewal: field("#bl-renewal"), cost: field("#bl-cost"), billed: field("#bl-billed"),
       mediator: field("#bl-mediator"), contact: field("#bl-contact"), platform: field("#bl-platform"), utm_source: field("#bl-utm-source"), utm_medium: field("#bl-utm-medium"), utm_campaign: field("#bl-utm-campaign"), owner: field("#bl-owner"), notes: field("#bl-notes"),
       keyword: field("#bl-keyword"), anchor_kind: field("#bl-anchor-kind"),
     };
@@ -4422,6 +4427,7 @@
     ignoreClicks: (ms = 400) => { ignoreClicksUntil = performance.now() + ms; },
     popover, closePopover, // a screen's own menu, such as a competitor choice with each logo: a native list can't show pictures
     confirmDanger, // the app's own confirm, with a danger button (settings-live.js)
+    addBacklinkPanel, linkStatus, // Bought links (bought-links.js): Edit, Duplicate ({ copy: link }) and the status words
     longerPeriodButton, // an empty period's way out (screens-live.js emptyCard, Overview)
     openConnection, pickSite, showingNote, preferredSite, syncUrl, periodWindow, settingsPage, setupCard, range: UIRange, fmtRange, fmtDay,
     /* export.js: the rows on screen, in their order, and the links scan that is open. */

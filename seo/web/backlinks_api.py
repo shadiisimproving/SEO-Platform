@@ -5,7 +5,7 @@ import re
 
 from flask import Blueprint, Response, current_app, jsonify, request
 
-from seo.backlinks import live, mediators, protect, reclaim, service, todo
+from seo.backlinks import boosts, bought, live, mediators, protect, reclaim, service, todo
 from seo.imports import gsc_links
 from seo.competitors.keywords import require_own
 from seo.core.errors import Refused
@@ -84,6 +84,36 @@ def budget_get():
 def budget_set():
     body = _body()
     return jsonify(budget=protect.set_budget(_engine(), _site_arg(body.get("site_id")), body))
+
+
+@backlinks_api.get("/backlinks/bought")
+def bought_links():
+    """Bought links: grouped by keyword, billed and real cost, Search Console position before → after."""
+    return jsonify(bought.bought(_engine(), _site_arg(request.args.get("site_id"))))
+
+
+@backlinks_api.get("/backlinks/boosts")
+def boosts_list():
+    return jsonify(boosts.listing(_engine(), _site_arg(request.args.get("site_id"))))
+
+
+@backlinks_api.post("/backlinks/boosts")
+def boosts_add():
+    from flask import g
+
+    user = g.get("user")
+    return jsonify(boosts.add(_engine(), _body(), user["name"] if user else None)), 201
+
+
+@backlinks_api.put("/backlinks/boosts/<int:boost_id>")
+def boosts_update(boost_id: int):
+    return jsonify(boosts.update(_engine(), boost_id, _body()))
+
+
+@backlinks_api.delete("/backlinks/boosts/<int:boost_id>")
+def boosts_delete(boost_id: int):
+    boosts.delete(_engine(), boost_id)
+    return jsonify(ok=True)
 
 
 @backlinks_api.get("/backlinks/<int:backlink_id>")

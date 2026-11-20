@@ -27,7 +27,8 @@ If you keep your own column names or put the columns in another order, the app s
 | Date placed | The day the link went up. | `2026-01-15` |
 | Due date | The day you expect it to go up, or have to deal with it. | `2026-12-01` |
 | Renewal date | The day it has to be paid for or renewed again. | `2027-01-15` |
-| Price | What it cost, as you'd normally write it, with the currency. | `$150`, `150 €`, `AED 500`, `1 500` |
+| Price | What it really cost, as you'd normally write it, with the currency. | `$150`, `150 €`, `AED 500`, `1 500` |
+| Billed | What you were billed for it, when that differs from what it really cost (Backlinks → Bought links shows both). | `$200`, `1 131 €` |
 | Mediator | The agency or person who got you the link. | `Example Agency` |
 | Contact | How to reach them: email, phone, anything. | `sales@example-agency.example` |
 | Platform | The marketplace or website you bought it through. | `Example Marketplace` |

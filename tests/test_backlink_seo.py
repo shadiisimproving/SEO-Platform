@@ -201,7 +201,7 @@ def test_suggested_spam():
 
 def test_budget_is_saved_checked_and_cleared(world):
     put = lambda body: world.client.put("/api/backlinks/budget", json={"site_id": world.own, **body})  # noqa: E731
-    assert put({"amount": "500", "currency": "EUR"}).get_json()["budget"] == {"amount": 500.0, "currency": "EUR"}
+    assert put({"amount": "500", "currency": "EUR"}).get_json()["budget"] == {"amount": 500.0, "currency": "EUR", "total": None}
     assert world.client.get(f"/api/backlinks/budget?site_id={world.own}").get_json()["budget"]["currency"] == "EUR"
     assert put({"amount": "-1", "currency": "EUR"}).status_code == 400
     assert put({"amount": "10", "currency": "BTC"}).status_code == 400

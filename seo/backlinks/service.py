@@ -36,10 +36,12 @@ MAX_COST = Decimal("9999999999.99")
 LIMITS = {
     "target_url": 2048, "anchor": 1000, "link_type": 100, "placed": 60, "due": 60, "renewal": 60, "price_text": 60, "mediator": 180,
     "contact": 250, "platform": 180, "utm_source": 180, "utm_medium": 180, "utm_campaign": 180, "owner": 100, "notes": 5000, "keyword": 250,
+    "billed_text": 60,  # Bought links: what we were billed; price_text stays what it really cost
 }
 WORDS = {
     "target_url": "Target page", "anchor": "Anchor text", "link_type": "Link type", "placed": "Date placed", "due": "Due date", "renewal": "Renewal date", "price_text": "Price", "mediator": "Mediator",
     "contact": "Contact", "platform": "Platform", "utm_source": "UTM source", "utm_medium": "UTM medium", "utm_campaign": "UTM campaign", "owner": "Owner", "notes": "Notes", "keyword": "Keyword",
+    "billed_text": "Billed",
 }
 LIVE, LOST, PLANNED, FOUND, IGNORED = "live", "lost", "planned", "found", "ignored"
 STATUSES = (LIVE, LOST, PLANNED, FOUND)
@@ -69,7 +71,7 @@ EXAMPLE_SOURCES = ("https://example-blog.example/article", "https://example-dire
 # Phase 5 sets this: site ID to {backlink ID: {"visits", "leads", "label", "shared"}}. Until then visits and leads stay unknown, never 0.
 traffic_provider: Callable[[Engine, int], dict[int, dict]] | None = None
 
-_COLUMNS = ("site_id", "source_url", "domain", "status", "cost", "anchor_kind", *LIMITS)
+_COLUMNS = ("site_id", "source_url", "domain", "status", "cost", "billed", "anchor_kind", *LIMITS)
 _INSERT = text(f"INSERT INTO backlinks ({', '.join(_COLUMNS)}) VALUES ({', '.join(f':{c}' for c in _COLUMNS)})")
 _UPDATE = text(f"UPDATE backlinks SET {', '.join(f'{c} = :{c}' for c in _COLUMNS)} WHERE id = :id")
 _CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
@@ -180,6 +182,7 @@ def _clean_row(row) -> dict:
     clean = {"site_id": site_id, "source_url": address, "domain": domain, "status": status, "key": key, "anchor_kind": anchor_kind}
     clean.update({field: _as_text(row, field, name) for field in LIMITS})
     clean["cost"] = _cost_of(row, clean["price_text"], name)
+    clean["billed"] = parse_price(clean["billed_text"]) if clean["billed_text"] else None
     return clean
 
 
@@ -305,7 +308,7 @@ def _as_dict(row) -> dict:
     return {
         "id": row["id"], "site_id": row["site_id"], "source_url": row["source_url"], "domain": row["domain"], "status": row["status"],
         **{field: row[field] for field in LIMITS}, "anchor_kind": row["anchor_kind"],
-        "cost": float(row["cost"]) if row["cost"] is not None else None, "created_at": _iso(row["created_at"]),
+        "cost": float(row["cost"]) if row["cost"] is not None else None, "billed": float(row["billed"]) if row["billed"] is not None else None, "created_at": _iso(row["created_at"]),
         "authority": row["authority"], "authority_label": row["authority_label"], "spam_score": row["spam_score"], "page_authority": row["page_authority"], "rating": row["rating"],
         "article_url": row["article_url"], "sent_at": _iso(row["sent_at"]),
         "check": {

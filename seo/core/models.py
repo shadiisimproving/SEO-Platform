@@ -564,6 +564,8 @@ class Backlink(Base):
     renewal: Mapped[str | None] = mapped_column(String(80), nullable=True)
     price_text: Mapped[str | None] = mapped_column(String(80), nullable=True)  # as typed, because the currency matters
     cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)  # the number read from it, in that currency
+    billed_text: Mapped[str | None] = mapped_column(String(80), nullable=True)  # what we were billed, as typed (Bought links); 60 + the formula guard
+    billed: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)  # the number read from it; cost stays the real cost
     mediator: Mapped[str | None] = mapped_column(String(190), nullable=True)
     page_authority: Mapped[int | None] = mapped_column(Integer, nullable=True)
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True)  # 1 to 5, carried over from In consideration
@@ -1399,6 +1401,7 @@ class BacklinkBudget(Base):
     site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True)
     amount: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     currency: Mapped[str] = mapped_column(String(8))
+    total: Mapped[Decimal | None] = mapped_column(Numeric(14, 2), nullable=True)  # the overall budget, beside the monthly amount
     updated_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
 
 
@@ -1671,3 +1674,26 @@ class GoogleUpdate(Base):
     ended: Mapped[date | None] = mapped_column(Date, nullable=True)  # empty while it's still rolling out
     url: Mapped[str] = mapped_column(String(300))
     read_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
+class TrafficBoost(Base):
+    """Boost URL: traffic sent to one of my pages on purpose, from start to end (open while it runs), with what it cost.
+    Shown as a band on the keyword charts (metrics/keyword_timeline.py) and with its visits and positions before and after."""
+
+    __tablename__ = "traffic_boosts"
+    __table_args__ = (Index("ix_traffic_boosts_site_started", "site_id", "started"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    url: Mapped[str] = mapped_column(Text)
+    keywords: Mapped[list] = mapped_column(JSON)
+    started: Mapped[date] = mapped_column(Date)
+    ended: Mapped[date | None] = mapped_column(Date, nullable=True)
+    source: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    billed_text: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    billed: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    cost_text: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    cost: Mapped[Decimal | None] = mapped_column(Numeric(12, 2), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)

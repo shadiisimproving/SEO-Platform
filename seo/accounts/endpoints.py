@@ -43,6 +43,7 @@ OWNERS = {
     "page_id": "SELECT site_id FROM gsc_linked_pages WHERE id = :v",
     "competitor_id": "SELECT site_id FROM site_competitors WHERE competitor_id = :v",
     "keyword_id": "SELECT site_id FROM site_keywords WHERE keyword_id = :v",
+    "boost_id": "SELECT site_id FROM traffic_boosts WHERE id = :v",
 }
 # The same path key means another table on these routes.
 OWNER_OVERRIDES = {
@@ -52,6 +53,7 @@ OWNER_OVERRIDES = {
     # The site sent with these decides: after "stop following" their own row is gone, so the keyword's other sites would refuse the undo.
     # The route itself only touches that site's row (rankings.forget / follow_again, probe.*), and the guard checks the site.
     "keywords_api.forget": {"keyword_id": None}, "keywords_api.restore": {"keyword_id": None}, "keywords_api.detail": {"keyword_id": None},
+    "keywords_api.timeline": {"keyword_id": None},  # its site_id decides, as for detail
     "competitors_api.keyword_check_remove": {"keyword_id": None}, "competitors_api.keyword_check_restore": {"keyword_id": None},
     "competitors_api.keyword_check_track": {"keyword_id": None},
     # A Refresh started at All sites has no site of its own: it belongs to the sites whose keywords it checks.
@@ -187,6 +189,8 @@ ENDPOINTS: dict[str, tuple[str, str, str]] = {
     "keywords_api.listing": ("keywords competitors tasks ai today", "read", "all"),
     "keywords_api.queries": ("keywords overview", "read", "all"),
     "keywords_api.detail": ("keywords competitors overview", "read", ""),
+    "keywords_api.timeline": ("keywords competitors overview", "read", ""),
+    "keywords_api.gsc_positions": ("keywords", "read", "all"),
     "keywords_api.forget": ("keywords", "write", ""),
     "keywords_api.restore": ("keywords", "write", ""),  # its keyword_id is checked through site_id (see OWNER_OVERRIDES)
     "keywords_api.preview": ("keywords competitors ai", "read", ""),
@@ -288,6 +292,11 @@ ENDPOINTS: dict[str, tuple[str, str, str]] = {
     "backlinks_api.todo_update": ("backlinks", "write", ""),
     "backlinks_api.budget_get": ("backlinks", "read", ""),
     "backlinks_api.budget_set": ("backlinks", "write", ""),
+    "backlinks_api.bought_links": ("backlinks", "read", ""),
+    "backlinks_api.boosts_list": ("backlinks", "read", ""),
+    "backlinks_api.boosts_add": ("backlinks", "write", ""),
+    "backlinks_api.boosts_update": ("backlinks", "write", ""),
+    "backlinks_api.boosts_delete": ("backlinks", "write", ""),
     "backlinks_api.disavow_file": ("backlinks", "read", ""),
     "backlinks_api.gsc_import": ("backlinks", "write", ""),
     "backlinks_api.reclaim_list": ("backlinks", "read", ""),

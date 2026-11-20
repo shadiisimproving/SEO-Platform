@@ -21,6 +21,7 @@
     ["due", "Due date", ["due", "echeance", "date d echeance", "date limite", "deadline"], /\bdue\b|echeance|deadline|limite/],
     ["renewal", "Renewal date", ["renewal", "renew", "renouvellement", "date de renouvellement", "expiry", "expires", "expiration", "date d expiration"], /renew|renouv|expir/],
     ["cost", "Price", ["prix", "cost", "cout", "tarif", "amount", "montant", "budget", "fee"], /price|prix|cost|\bcout\b|tarif|montant|amount/],
+    ["billed", "Billed", ["facture", "prix facture", "montant facture", "billed", "billed price", "invoiced", "prix de vente", "sold price"], /factur|billed|invoic|prix de vente|sold/],
     ["mediator", "Mediator", ["mediateur", "intermediaire", "agency", "agence", "vendor", "fournisseur", "seller", "broker"], /mediat|intermedi|agenc|vendor|fournisseur|seller|broker/],
     ["contact", "Contact", ["email", "e mail", "mail", "phone", "telephone", "whatsapp"], /contact|e ?mail|telephone|phone|whatsapp/],
     ["platform", "Platform", ["plateforme", "marketplace", "market place"], /platform|plateforme|marketplace/],
@@ -31,7 +32,7 @@
     ["notes", "Notes", ["note", "comment", "comments", "commentaire", "commentaires", "remarque", "remarques"], /note|comment|remarque/],
   ];
   // Most specific first: "UTM source" before "source", "Renewal date" before "date", "Mediator contact" before "mediator".
-  const MOST_SPECIFIC = ["utm_source", "utm_medium", "utm_campaign", "renewal", "due", "anchor_kind", "keyword", "link_type", "status", "placed", "anchor", "cost", "contact", "platform", "mediator", "owner", "notes", "site", "target", "src"].map((key) => FIELDS.find(([field]) => field === key));
+  const MOST_SPECIFIC = ["utm_source", "utm_medium", "utm_campaign", "renewal", "due", "anchor_kind", "keyword", "link_type", "status", "placed", "anchor", "billed", "cost", "contact", "platform", "mediator", "owner", "notes", "site", "target", "src"].map((key) => FIELDS.find(([field]) => field === key));
   const SCREEN_WORDS = {};
   const labelOf = (key) => SCREEN_WORDS[key] || FIELDS.find(([field]) => field === key)[1];
 
@@ -39,8 +40,8 @@
   const TEMPLATE_COLUMNS = FIELDS.map(([, label]) => label);
   // Left in by mistake, these two must never count as real links. The server knows them too.
   const EXAMPLE_ROWS = [
-    ["your-site.example", "https://example-blog.example/article", "/your-page/", "your anchor text", "Partial keyword", "your keyword", "Guest post", "Live", "2026-01-15", "", "2027-01-15", "$150", "Example Agency", "sales@example-agency.example", "Example Marketplace", "example-blog", "backlink", "bl-101", "Alex", "Example row: delete it before you upload"],
-    ["your-site.example", "https://example-directory.example/listing/123", "/", "Your Company", "Brand", "", "Directory", "Planned", "", "2026-12-01", "", "AED 500", "", "+971 50 000 0000", "", "", "", "", "Sam", "Example row: delete it before you upload"],
+    ["your-site.example", "https://example-blog.example/article", "/your-page/", "your anchor text", "Partial keyword", "your keyword", "Guest post", "Live", "2026-01-15", "", "2027-01-15", "$150", "$200", "Example Agency", "sales@example-agency.example", "Example Marketplace", "example-blog", "backlink", "bl-101", "Alex", "Example row: delete it before you upload"],
+    ["your-site.example", "https://example-directory.example/listing/123", "/", "Your Company", "Brand", "", "Directory", "Planned", "", "2026-12-01", "", "AED 500", "", "", "+971 50 000 0000", "", "", "", "", "Sam", "Example row: delete it before you upload"],
   ];
   const EXAMPLE_SOURCES = EXAMPLE_ROWS.map((row) => row[1]);
   // Commas, as Excel expects on the owner's Mac (English, UAE). A "sep=" first line would make Excel ignore the UTF-8 mark and garble accents.
@@ -167,7 +168,7 @@
   // ---- checking the rows of a file --------------------------------------------------------------------
   const MAX_ROWS = 5000;
   const MAX_ADDRESS = 2048;
-  const LIMITS = { target: 2048, anchor: 1000, link_type: 100, placed: 60, due: 60, renewal: 60, cost: 60, mediator: 180, contact: 250, platform: 180, utm_source: 180, utm_medium: 180, utm_campaign: 180, owner: 100, notes: 5000, keyword: 250 };
+  const LIMITS = { target: 2048, anchor: 1000, link_type: 100, placed: 60, due: 60, renewal: 60, cost: 60, billed: 60, mediator: 180, contact: 250, platform: 180, utm_source: 180, utm_medium: 180, utm_campaign: 180, owner: 100, notes: 5000, keyword: 250 };
 
   /* 31/02/2026 can't be a day whichever way round it's read. Anything not written as numbers ("le 3 mars") is left alone. */
   const MONTHS = { jan: 1, january: 1, janvier: 1, janv: 1, feb: 2, february: 2, fev: 2, fevrier: 2, mar: 3, march: 3, mars: 3, apr: 4, april: 4, avr: 4, avril: 4, may: 5, mai: 5, jun: 6, june: 6, juin: 6, jul: 7, july: 7, juil: 7, juillet: 7, aug: 8, august: 8, aou: 8, aout: 8, sep: 9, sept: 9, september: 9, septembre: 9, oct: 10, october: 10, octobre: 10, nov: 11, november: 11, novembre: 11, dec: 12, december: 12, decembre: 12 };

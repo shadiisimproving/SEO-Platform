@@ -1278,6 +1278,7 @@
      boost. Under it, "What we did": the same things as a list, with one chip per kind to hide or show it; pointing at a row
      lights its line. Labels never sit on the chart itself: they collide, and a phone has no hover. */
   const TL_SPANS = [[90, "3 months"], [180, "6 months"], [365, "12 months"]];
+  window.KW_TIMELINE_RESET = () => { K.tl = {}; }; // a boost saved or deleted in Backlinks: the charts ask again
   const TL_KINDS = { link: ["Bought link", "var(--series-1)"], edit: ["Page edit", "var(--series-3)"], task: ["Task done", "var(--good)"], boost: ["Boost URL", "var(--warn)"], google: ["Google update", "var(--crit)"] };
   const isoDay = (d) => d.toISOString().slice(0, 10);
   function timelineFor(info, row, view) {

@@ -56,12 +56,27 @@ def disavow_file(engine: Engine, site_id: int) -> tuple[str, int]:
 def get_budget(engine: Engine, site_id: int) -> dict | None:
     with engine.connect() as conn:
         require_own(conn, site_id)
-        row = conn.execute(text("SELECT amount, currency FROM backlink_budgets WHERE site_id = :s"), {"s": site_id}).mappings().first()
-    return {"amount": float(row["amount"]), "currency": row["currency"]} if row else None
+        row = conn.execute(text("SELECT amount, currency, total FROM backlink_budgets WHERE site_id = :s"), {"s": site_id}).mappings().first()
+    return {"amount": float(row["amount"]), "currency": row["currency"], "total": float(row["total"]) if row["total"] is not None else None} if row else None
+
+
+def _money(value, words: str) -> Decimal | None:
+    if value in (None, ""):
+        return None
+    if isinstance(value, bool):
+        raise Refused(words)
+    try:
+        amount = Decimal(str(value)).quantize(Decimal("0.01"))
+    except (InvalidOperation, ValueError):
+        raise Refused(words) from None
+    if amount < 0 or amount > MAX_BUDGET:
+        raise Refused(words)
+    return amount
 
 
 def set_budget(engine: Engine, site_id: int, body: dict) -> dict | None:
     amount, currency = body.get("amount"), body.get("currency")
+    total = _money(body.get("total"), "The overall budget must be a number.")  # Bought links' bar; the monthly amount stays as it was
     with engine.begin() as conn:
         require_own(conn, site_id)
         if amount in (None, ""):
@@ -78,7 +93,7 @@ def set_budget(engine: Engine, site_id: int, body: dict) -> dict | None:
         if currency not in CURRENCIES:
             raise Refused(f"Choose one of {', '.join(CURRENCIES)}.")
         conn.execute(
-            text("INSERT INTO backlink_budgets (site_id, amount, currency) VALUES (:s, :a, :c) ON DUPLICATE KEY UPDATE amount = :a, currency = :c, updated_at = UTC_TIMESTAMP(3)"),
-            {"s": site_id, "a": value, "c": currency},
+            text("INSERT INTO backlink_budgets (site_id, amount, currency, total) VALUES (:s, :a, :c, :t) ON DUPLICATE KEY UPDATE amount = :a, currency = :c, total = :t, updated_at = UTC_TIMESTAMP(3)"),
+            {"s": site_id, "a": value, "c": currency, "t": total},
         )
-    return {"amount": float(value), "currency": currency}
+    return {"amount": float(value), "currency": currency, "total": float(total) if total is not None else None}
