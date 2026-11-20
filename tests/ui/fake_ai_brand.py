@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import itertools
 import json
+import re
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
@@ -43,7 +44,24 @@ def _own(prompt: str) -> str:
     return OWN if any(w[:1].isupper() for w in prompt.split()[1:]) else ""
 
 
+# A head-to-head question as the app suggests it: "Choisir plutôt X ou Y ?" / "Should I choose X or Y?".
+VERSUS = re.compile(r"(?:Choisir plutôt|Should I choose)\s+(.+?)\s+(?:ou|or)\s+(.+?)\s*\?")
+# Who each AI picks in a head-to-head answer: ChatGPT and AI Mode the company, Perplexity the competitor, Gemini neither.
+PICKS = {"chatgpt": "us", "ai_mode": "us", "perplexity": "them", "gemini": "tie"}
+
+
+def _versus(engine: str, us: str, them: str) -> str:
+    lines = [f"{us} delivers a monthly coffee subscription to your door.", f"{us} also has a plain brewing guide.",
+             f"{them} offers three sizes and free delivery.", f"{them} lets you cancel any time.", f"{them} sells fresh coffee beans."]
+    pick = PICKS.get(engine, "tie")
+    end = {"us": f"For a simple start, I recommend {us}.", "them": f"For more choice, I would choose {them}.", "tie": "It depends on what matters most to you."}[pick]
+    return " ".join([f"Comparing {us} and {them}.", *lines, end])
+
+
 def _text(engine: str, prompt: str) -> str:
+    pair = VERSUS.search(prompt)
+    if pair:
+        return _versus(engine, pair.group(1), pair.group(2))
     if "fiable" in prompt or "reliable" in prompt:
         return f"About “{prompt}”: reviews are mixed, some say to avoid long delays. Rival One is often compared."
     return f"About “{prompt}”: well-known choices are Rival One and Café Monde. ({engine} answer)"

@@ -44,7 +44,7 @@ def save_brand():
 @ai_brand_api.post("/questions")
 def add_question():
     body = _body()
-    return jsonify(service.add_question(_engine(), _site(body.get("site_id")), body.get("text"), body.get("source") or "owner")), 201
+    return jsonify(service.add_question(_engine(), _site(body.get("site_id")), body.get("text"), body.get("source") or "owner", body.get("rival_id"))), 201
 
 
 @ai_brand_api.put("/questions/<int:brand_question_id>")
@@ -78,4 +78,11 @@ def start():
 
 @ai_brand_api.get("/runs/<int:brand_run_id>")
 def run(brand_run_id: int):
+    return jsonify(service.run_dict(_engine(), brand_run_id))
+
+
+@ai_brand_api.post("/runs/<int:brand_run_id>/check-site")
+def check_site(brand_run_id: int):
+    """"On your site?" again for every point of a run, after the site's pages were read again. Uses the site's AI when chosen."""
+    service.check_site(_engine(), brand_run_id, again=True)
     return jsonify(service.run_dict(_engine(), brand_run_id))

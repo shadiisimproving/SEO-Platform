@@ -1712,6 +1712,8 @@ class BrandQuestion(Base):
     source: Mapped[str] = mapped_column(String(10), server_default="owner")  # owner or suggested
     text: Mapped[str] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+    # A head-to-head question ("<brand> or <competitor>?") names the followed competitor it is about; NULL for the others.
+    rival_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id", ondelete="SET NULL", name="fk_brand_questions_rival"), nullable=True)
 
 
 class BrandRun(Base):
@@ -1733,6 +1735,8 @@ class BrandRun(Base):
     created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
     finished_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
     error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # "On your site?": each point the AIs made, checked against the site's own stored page texts (seo/ai_brand/onsite.py).
+    onsite: Mapped[dict | None] = mapped_column(JSON, nullable=True)
 
 
 class BrandAnswer(Base):
@@ -1768,3 +1772,6 @@ class BrandAnswer(Base):
     error: Mapped[str | None] = mapped_column(String(500), nullable=True)
     answered_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
     created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+    # Head-to-head: the competitor the question was about, and who this answer recommends with what it says of each side.
+    rival_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id", ondelete="SET NULL", name="fk_brand_answers_rival"), nullable=True)
+    versus: Mapped[dict | None] = mapped_column(JSON, nullable=True)

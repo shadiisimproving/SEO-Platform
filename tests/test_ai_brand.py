@@ -218,7 +218,7 @@ def test_answers_are_read_by_the_sites_ai_in_its_language(engine, site, keys, fa
     _drain(engine, run["id"])
     done = service.run_dict(engine, run["id"])
     good = next(a for a in done["answers"] if a["question"] == Q1)
-    assert good["tone"] == "positive" and good["summary"].startswith("La réponse") and good["pros"] == ["Prix clairs", "Accompagnement en français"]
+    assert good["tone"] == "positive" and good["summary"].startswith("La réponse") and good["pros"] == ["Prix clairs", "Accompagnement en français", "Café livré chaque mois"]
     assert good["competitors"] == ["Rival One"] and good["read_by"].startswith("claude")
     warned = next(a for a in done["answers"] if a["question"] != Q1)
     assert warned["tone"] == "negative"
@@ -324,10 +324,10 @@ def test_the_picture_of_a_read_run(engine, site, keys, fake_net):
     assert pic["tone_score"] == 50 and pic["tone_word"] == "neutral" and pic["tone_before"] == 100 and pic["tone_change"] == -50
     chatgpt = next(r for r in pic["engines"] if r["engine"] == "chatgpt")
     assert chatgpt["named"] == 2 and chatgpt["tone_score"] == 50 and chatgpt["tone_change"] == -50 and chatgpt["cited_mine"] == 2 and chatgpt["sources"] == 3
-    assert [p["text"] for p in pic["pros"]] == ["Accompagnement en français", "Prix clairs"]  # a tie: alphabetical
-    top = pic["pros"][1]
+    assert [p["text"] for p in pic["pros"]] == ["Accompagnement en français", "Café livré chaque mois", "Prix clairs"]  # a tie: alphabetical
+    top = pic["pros"][2]
     assert top["ais"] == 2 and len(top["answers"]) == 4 and {x["engine"] for x in top["answers"]} == {"chatgpt", "gemini"}
-    assert pic["cons"][0]["text"] == "Délais parfois longs"
+    assert [c["text"] for c in pic["cons"]] == ["Abonnement peu flexible", "Délais parfois longs"]
     assert [(c["name"], c["ais"]) for c in pic["competitors"]] == [("Rival One", 2)]
     groups = {s["host"]: s["group"] for s in service.state(engine, site)["last"]["sources"]}
     assert groups["site-one.example"] == "mine" and groups["rival-one.example"] == "competitor" and groups["trustpilot.com"] == "social" and groups["en.wikipedia.org"] == "other"

@@ -28,7 +28,8 @@ class _Messages:
         self.owner.calls.append(kwargs)
         purpose = next((p for p, words in PURPOSE_WORDS.items() if words in kwargs.get("system", "")), "explain")
         usage = SimpleNamespace(input_tokens=1800, output_tokens=420, cache_read_input_tokens=0, cache_creation_input_tokens=0)
-        words = brand_reading(kwargs["messages"][0]["content"], kwargs.get("system", "")) if purpose == "brand" else ANSWERS[purpose]
+        user, system = kwargs["messages"][0]["content"], kwargs.get("system", "")
+        words = brand_reading(user, system) if purpose == "brand" else versus_reading(user, system) if purpose == "versus" else onsite_reading(user) if purpose == "onsite" else ANSWERS[purpose]
         return SimpleNamespace(stop_reason="end_turn", usage=usage, content=[SimpleNamespace(type="text", text=words)])
 
 
@@ -45,10 +46,46 @@ def brand_reading(user: str, system: str) -> str:
         "brand_named": True,
         "summary": ("La réponse cite l'entreprise parmi les choix sérieux, avec des prix clairs." if french else "The answer lists the company among the serious choices, with clear prices.") if not negative else ("La réponse met en garde contre l'entreprise." if french else "The answer warns against the company."),
         "tone": "negative" if negative else "positive",
-        "pros": ["Prix clairs", "Accompagnement en français"] if french else ["Clear prices", "Help in French"],
-        "cons": ["Délais parfois longs"] if french else ["Sometimes slow"],
+        "pros": ["Prix clairs", "Accompagnement en français", "Café livré chaque mois"] if french else ["Clear prices", "Help in French", "Coffee delivered every month"],
+        "cons": ["Délais parfois longs", "Abonnement peu flexible"] if french else ["Sometimes slow", "Subscription not very flexible"],
         "competitors": ["Rival One"],
     }, ensure_ascii=False)
+
+
+def versus_reading(user: str, system: str) -> str:
+    """Head-to-head: "recommend <company>" is us, "choose <competitor>" is them, anything else a tie, like a real reading."""
+    company = json.loads(user.split("<company>", 1)[1].split("</company>", 1)[0])
+    rival = json.loads(user.split("<competitor>", 1)[1].split("</competitor>", 1)[0])
+    answer = user.split("<answer>", 1)[1].lower()
+    winner = "us" if f"recommend {company.lower()}" in answer else "them" if f"choose {rival.lower()}" in answer else "tie"
+    french = "in French" in system
+    return json.dumps({
+        "winner": winner, "brand_named": company.lower() in answer, "tone": "positive" if winner == "us" else "neutral",
+        "summary": {"us": "La réponse recommande l'entreprise.", "them": "La réponse recommande le concurrent.", "tie": "La réponse laisse le choix."}[winner] if french
+        else {"us": "The answer recommends the company.", "them": "The answer recommends the competitor.", "tie": "The answer leaves the choice open."}[winner],
+        "us": ["Café livré chaque mois", "Café en grains de plusieurs origines"] if french else ["Coffee delivered every month", "A plain brewing guide"],
+        "them": ["Trois formats et livraison gratuite", "Résiliation à tout moment", "Moulins à café en vente"] if french else ["Three sizes and free delivery", "Cancel any time", "Fresh coffee beans"],
+        "competitors": [rival],
+    }, ensure_ascii=False)
+
+
+def onsite_reading(user: str) -> str:
+    """"On your site?": the word match on the passages sent, so the marks are steady and plausible."""
+    from seo.ai_brand import onsite
+
+    listed = json.loads(user.split("<points>", 1)[1].split("</points>", 1)[0])
+    out = []
+    for item in listed:
+        best = None
+        for page in item["pages"]:
+            fake = {"url": page["url"], "text": f"{page['title']} {page['passage']}"}
+            fake["stems"] = {w[:onsite.STEM] for w in onsite.words_of(fake["text"])}
+            got = onsite.by_words(item["point"], [fake], set())
+            if best is None or got["score"] > best[0]["score"]:
+                best = (got, page["page"])
+        mark = best[0]["mark"] if best else "missing"
+        out.append({"i": item["i"], "mark": mark, "page": best[1] if best and mark != "missing" else None})
+    return json.dumps({"results": out})
 
 
 class FakeClaude:
