@@ -109,17 +109,36 @@ def test_channel_totals_add_up_and_shares_are_right(engine, site):
     _ga4(engine, site, D1, "Organic Search", "google", "organic", 80, 4)
     _ga4(engine, site, D1, "Direct", "(direct)", "(none)", 20, 1)
     answer = service.channels(_scope(engine))
-    assert answer["total"] == {"sessions": 100, "leads": 5.0}
+    assert answer["total"] == {"sessions": 100, "leads": 5.0, "converted": 5.0, "rated": 100}  # converted: visits with a key event, for the rate
     assert answer["channels"][0]["channel"] == "Organic Search" and answer["channels"][0]["share"] == 0.8 and answer["channels"][0]["rate"] == 0.05
 
 
 def test_a_channel_rule_applies_to_past_days(engine, site):
-    _ga4(engine, site, D1, "Referral", "chatgpt.com", "referral", 7)
+    _ga4(engine, site, D1, "Referral", "news.example", "referral", 7)
     assert service.channels(_scope(engine))["channels"][0]["channel"] == "Referral"
-    rule = service.add_rule(engine, "channel", "chatgpt.com/*", "AI assistants")
-    assert service.channels(_scope(engine))["channels"][0]["channel"] == "AI assistants"
+    rule = service.add_rule(engine, "channel", "news.example/*", "Newsletter")
+    assert service.channels(_scope(engine))["channels"][0]["channel"] == "Newsletter"
     service.delete_rule(engine, rule["id"])
     assert service.channels(_scope(engine))["channels"][0]["channel"] == "Referral"
+
+
+def test_ai_assistants_are_a_channel_of_their_own_with_the_ai_search_total(engine, site):
+    """Expert review 2026-11-17, #22: GA4 puts chatgpt.com in Referral and tagged AI visits in Unassigned, so Channels hid them.
+    They now make one "AI assistants" row, by AI search's own rule, so the two screens agree."""
+    _ga4(engine, site, D1, "Referral", "chatgpt.com", "referral", 30, 2)
+    _ga4(engine, site, D1, "Unassigned", "perplexity.ai", "(not set)", 12)
+    _ga4(engine, site, D1, "AI Assistant", "gemini.google.com", "referral", 3)  # GA4's own AI grouping joins the same row
+    _ga4(engine, site, D1, "Referral", "news.example", "referral", 10)
+    _ga4(engine, site, D1, "Unassigned", "(not set)", "(not set)", 5)
+    channels = {r["channel"]: r for r in service.channels(_scope(engine))["channels"]}
+    assert channels["AI assistants"]["sessions"] == 45 and channels["AI assistants"]["leads"] == 2
+    assert (channels["Referral"]["sessions"], channels["Unassigned"]["sessions"]) == (10, 5)
+    assert "AI Assistant" not in channels
+    assert service.ai_search(_scope(engine))["sessions"] == 45
+    funnel = {r["channel"]: r["sessions"] for r in service.conversions(_scope(engine))["funnel"]}
+    assert funnel["AI assistants"] == 45
+    panel = service.channel_detail(_scope(engine), "AI assistants")
+    assert panel["totals"]["sessions"] == 45 and {r["source"] for r in panel["sources"]} == {"chatgpt.com", "perplexity.ai", "gemini.google.com"}
 
 
 def test_more_than_five_channels_fold_into_other_and_totals_stay_right(engine, site):
@@ -155,7 +174,7 @@ def test_content_puts_not_set_last_and_marks_it(engine, site):
         for h, path, sessions in (("a", "(not set)", 900), ("b", "/visa/", 30), ("c", "/", 20)):
             conn.execute(text("INSERT INTO ga4_page_daily (site_id, day, page_hash, path, sessions, users, key_events) VALUES (:s, :d, :h, :p, :x, :x, 1)"), {"s": site, "d": D1, "h": h, "p": path, "x": sessions})
     rows = service.content(_scope(engine))["pages"]
-    assert [r["path"] for r in rows] == ["/visa/", "/", "(not set)/"]
+    assert [r["path"] for r in rows] == ["/visa/", "/", "(not set)"]  # as Google Analytics wrote them
     assert [r["unknown"] for r in rows] == [False, False, True]
     pages = service.conversions(_scope(engine))["pages"]
     assert pages[-1]["unknown"] and not pages[0]["unknown"]
@@ -319,6 +338,8 @@ def _page_clicks(engine, site_id, host, name, end, was, now):
     with engine.begin() as conn:
         for day, clicks in ((end - timedelta(days=10), was), (end, now)):
             conn.execute(text("INSERT INTO gsc_page (site_id, day, page_hash, page, clicks, impressions, position) VALUES (:s, :d, :h, :p, :c, 100, 5)"), {"s": site_id, "d": day, "h": common.digest(page), "p": page, "c": clicks})
+        for back in range(14):  # both weeks were read (Today compares only full weeks of the page table)
+            common.save_coverage(conn, site_id, "gsc", end - timedelta(days=back), 1)
 
 
 END = date(2026, 10, 20)
@@ -417,12 +438,13 @@ def test_today_splits_big_drops_from_smaller_moves_and_never_shows_one_twice(eng
     _page_clicks(engine, site, "mine.example", "dipped", END, 100, 75)  # under 30%: only Going down
     _page_clicks(engine, site, "mine.example", "small", END, 40, 10)  # under 50 clicks before: only Going down
     _page_clicks(engine, site, "mine.example", "same", END, 100, 95)  # barely moved
-    _page_clicks(engine, site, "mine.example", "tiny", END, 5, 50)  # too small before to mean anything
+    _page_clicks(engine, site, "mine.example", "tiny", END, 5, 50)  # small before, but up 45 clicks: newly winning (F10, 2026-11-17)
     _page_clicks(engine, site, "mine.example", "rose", END, 50, 80)
+    _page_clicks(engine, site, "mine.example", "wobble", END, 25, 20)  # −20%, but 5 clicks: under this site's floor of 8
     data = today_view.today(engine)
     assert [item["page"] for item in data["todo"]] == ["https://mine.example/fell/"]
     assert {move["path"] for move in data["going_down"]} == {"/dipped/", "/small/"}
-    assert [move["path"] for move in data["going_up"]] == ["/rose/"]
+    assert [move["path"] for move in data["going_up"]] == ["/tiny/", "/rose/"]
 
 
 def test_today_a_site_whose_data_stopped_does_not_look_like_it_fell(engine, site):
@@ -478,8 +500,9 @@ def test_today_results_count_back_from_where_each_source_ends_not_from_today(eng
         _ga4(engine, site, end - timedelta(days=back), "Organic", "google", "organic", 50, leads=2)
     results = today_view.today(engine)["results"]
     assert results["clicks"]["value"] == 100 and results["clicks"]["change"] == -50
-    assert results["visits"]["value"] == 50 and results["visits"]["change"] == -50
-    assert results["leads"]["value"] == 2 and results["leads"]["change"] == -2 and results["leads"]["state"] == "ok"
+    # GA4 has 2 days of the 28 before: too little to compare (final review N1), so the visits and leads changes are blank.
+    assert results["visits"]["value"] == 50 and results["visits"]["change"] is None and results["visits"]["note"] == "little_before"
+    assert results["leads"]["value"] == 2 and results["leads"]["change"] is None and results["leads"]["state"] == "ok"
     assert results["through"] == (end - timedelta(days=1)).isoformat()
 
 

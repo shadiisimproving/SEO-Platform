@@ -193,6 +193,8 @@ def run(job: queue.ClaimedJob, engine: Engine) -> None:
     if finished:
         # A finished read with nothing new to save (every day already read) still proves the key works: an old error goes.
         common.succeeded(engine, site_id, source)
+    if finished == ga4.LATER:
+        raise RunAgain(ga4.BACKLOG_PAUSE_SECONDS)  # GA4's history read again, a batch an hour (#11)
     if not finished:
         raise RunAgain(0)
     if source == "gsc":

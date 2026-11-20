@@ -3,13 +3,14 @@
 (() => {
   "use strict";
   let UI = null;
-  const S = { site: null, data: null, filter: "", hide: false, quality: "all", reason: "", reach: "any", pa: "", sort: null, picked: new Set(), adding: false, openLink: null, linkSort: null };
+  const S = { site: null, data: null, filter: "", hide: false, followed: null, old: false, quality: "all", reason: "", reach: "any", pa: "", sort: null, picked: new Set(), adding: false, openLink: null, linkSort: null };
   const PAGES = "cg"; // the table's pages and search (table-pages.js), like every long table in the app
   const LINK_PAGES = "cg-links"; // the same for the links of the one domain that is open
   let sync = Promise.resolve(); // calls caused by the Backlinks page, kept in the order they happened
 
   const t = (s) => UI.t(s);
   const esc = (v) => UI.esc(v);
+  const fill = (words, values) => Object.entries(values).reduce((out, [key, value]) => out.split(`{${key}}`).join(value), t(words));
   const onScreen = () => UI.state.route === "competitors" && COMP.tab === "gaps";
   // An empty state with the short line on screen and the reason behind an (i) right after it.
   const emptyTip = (title, text, tip, action = "") => COMP.empty(title, text, action).replace("</p>", () => `${UI.tip(tip)}</p>`);
@@ -130,7 +131,24 @@
   const isFlagged = (gap) => gap.quality === "spam";
   /* One competitor, or all of them together; "2 or more" keeps the domains that link to several, the strongest gaps. */
   /* The search finds a domain by its name, its title, or the anchor text and pages of its links. */
-  const searched = () => allRows().filter((g) => TP.matches(PAGES, g.domain, g.display, g.title, ...(g.links || []).flatMap((l) => [l.anchor, l.source_title, l.source_url, l.target_url])) && !(S.hide && (inConsideration(g) || g.in_todo)));
+  const searched = () => allRows().filter((g) => TP.matches(PAGES, g.domain, g.display, g.title, ...(g.links || []).flatMap((l) => [l.anchor, l.source_title, l.source_url, l.target_url])) && !(S.hide && (inConsideration(g) || g.in_todo)) && !(followOn() && g.followed === false) && !oldHidden(g));
+  /* Followed links only (SEO review 2026-11-17, #13): a domain whose file says every link is nofollow, sponsored or ugc passes
+     little, so it waits behind one tick. A file that doesn't say (Ubersuggest) leaves it unknown: then the box isn't ticked,
+     because a tick would read as "all of these are followed" (links C1). Unknown ones always show, counted apart. */
+  const followKnown = () => allRows().some((g) => g.followed === true || g.followed === false);
+  const followOn = () => (S.followed === null ? followKnown() : S.followed);
+  const notFollowed = () => allRows().filter((g) => g.followed === false && TP.matches(PAGES, g.domain, g.display, g.title)).length;
+  function followedBox() {
+    const known = followKnown(), unknown = S.data?.funnel?.follow_unknown || 0;
+    const note = !known ? t("This file doesn't say which links are followed") : unknown ? fill("{n} not known: their file doesn't say", { n: UI.num(unknown) }) : "";
+    return `<label class="opt cg-followed"><input type="checkbox" class="chk" id="cg-followed" style="margin:0" ${followOn() ? "checked" : ""} ${known ? "" : "disabled"}${note ? ' aria-describedby="cg-followed-note"' : ""}><span>${t("Followed links only")}${note ? `<span class="small sec cg-opt-note" id="cg-followed-note">${esc(note)}</span>` : ""}</span>${UI.tip("Leaves out domains whose file says every link is nofollow, sponsored or ugc. Lost links in a file are never listed.")}</label>`;
+  }
+  /* Old links (links B1): a good domain whose links a file last saw more than 6 months before the file was made is probably
+     gone. It is left out of Good ones until someone asks for it, with one chip. */
+  const isOld = (g) => Boolean(g.old_link) && !isFlagged(g);
+  const oldHidden = (g) => !S.old && isOld(g);
+  const oldCount = () => allRows().filter((g) => isOld(g) && TP.matches(PAGES, g.domain, g.display, g.title)).length;
+  const oldChip = () => { const n = allRows().filter(isOld).length; return n ? `<button type="button" class="chip cg-old-chip" data-cg-old aria-pressed="${S.old}" data-tip="${esc(t("Domains whose links were last seen more than 6 months before their file. Probably gone."))}">${t("Include old links")}<b>${UI.num(n)}</b></button>` : ""; };
   /* "any", "1" for exactly one competitor, or a number for that many or more. */
   const reachOk = (g, reach) => reach === "any" || (reach === "1" ? g.competitor_count === 1 : g.competitor_count >= Number(reach));
   const reaches = (g) => reachOk(g, S.reach);
@@ -150,7 +168,7 @@
   /* Status sorts by how far along a domain is: To do, In consideration, a lost link, nothing yet, then spam. */
   const statusRank = (g) => (g.in_todo ? 3 : inConsideration(g) ? 2 : g.lost_link ? 1 : isFlagged(g) ? -1 : 0);
   const SORTS = {
-    domain: (g) => g.display || g.domain, links: (g) => g.competitor_count, authority: (g) => g.authority, spam: (g) => g.spam_score, pa: bestPa, anchor: (g) => topLink(g)?.anchor || null, count: (g) => (linksOf(g).length ? linkTotal(g, linksOf(g)) : null), status: statusRank,
+    domain: (g) => g.display || g.domain, links: (g) => g.competitor_count, authority: (g) => (isSet(g.authority) ? [g.scale_rank ?? 0, g.authority] : null), spam: (g) => g.spam_score, pa: bestPa, anchor: (g) => topLink(g)?.anchor || null, count: (g) => (linksOf(g).length ? linkTotal(g, linksOf(g)) : null), status: statusRank,
   };
   const LINK_SORTS = { anchor: (l) => l.anchor || null, pa: (l) => l.page_authority, from: (l) => l.source_url, to: (l) => l.target_url || null };
   const PA_STEPS = [10, 20, 30, 40, 50];
@@ -160,6 +178,8 @@
     return list.map((item) => [get(item), item]).sort(([x], [y]) => {
       if (!isSet(x)) return isSet(y) ? 1 : 0;
       if (!isSet(y)) return -1;
+      const scored = window.BacklinkCleaner.compareScored(x, y, dir); // one tool's scores against each other (#7)
+      if (scored !== null) return scored;
       return (typeof x === "number" ? x - y : String(x).localeCompare(String(y))) * dir;
     }).map(([, item]) => item);
   }
@@ -168,7 +188,8 @@
   /* Why a flagged domain is flagged, as one key: who flagged it and the reason's words. */
   const reasonKey = (g) => `${g.flagged_by || ""}|${g.reason_words || ""}`;
   const reasonOk = (g) => S.quality !== "spam" || !S.reason || reasonKey(g) === S.reason;
-  const shownGaps = () => sorted(byRival().filter((g) => (S.quality === "all" || (S.quality === "spam") === isFlagged(g)) && reasonOk(g)));
+  const qualityOk = (g) => (S.quality === "all" || (S.quality === "app" ? !isFlagged(g) && Boolean(g.app_flag) : (S.quality === "spam") === isFlagged(g)));
+  const shownGaps = () => sorted(byRival().filter((g) => qualityOk(g) && reasonOk(g)));
   const canPick = (gap) => !isFlagged(gap) && !inConsideration(gap) && !gap.in_todo;
   const pickable = () => TP.view(PAGES, shownGaps()).rows.filter(canPick); // only rows on this page: "Select all shown" means shown
 
@@ -184,16 +205,21 @@
   function summaryLine(d) {
     const f = d.funnel;
     const stat = (n, label) => `<span class="cg-stat"><b class="tabular">${UI.num(n)}</b> ${t(label)}</span>`;
-    const stats = f && f.found ? `${stat(f.found, "Domains found")}${stat(f.filtered, "Flagged as spam")}${stat(f.good, "Good ones")}` : "";
-    const goodSent = allRows().filter((g) => !isFlagged(g)).length;
-    const capped = f && f.good > goodSent ? `<span class="cg-stat sec">${esc(t("{sent} of {total}, most competitors first").replace("{sent}", UI.num(goodSent)).replace("{total}", UI.num(f.good)))}</span>` : "";
+    // Good ones leave out old links unless they are asked for; the app's own flags on good ones are counted apart (links A1, B1).
+    const oldOut = S.old ? 0 : f?.old || 0;
+    // The App flagged count is of the rows the table can show: with old links left out, only current ones (final re-check 3.5).
+    const appFlagged = S.old ? f?.app_flagged || 0 : f?.app_flagged_current ?? f?.app_flagged ?? 0;
+    const stats = f && f.found ? `${stat(f.found, "Domains found")}${stat(f.filtered, "Flagged as spam")}${stat(f.good - oldOut, "Good ones")}${f.old ? stat(f.old, S.old ? "Old links, included" : "Old links, left out") : ""}${appFlagged ? `<span class="cg-stat" tabindex="0" data-tip="${esc(t("The file's spam score keeps them, but the app's own check flagged them. Each row says what it saw."))}"><b class="tabular">${UI.num(appFlagged)}</b> ${t("App flagged")}</span>` : ""}` : "";
+    // Of the good ones the table can show (old ones too once asked for): how many the server sent, when it capped the list.
+    const goodSent = allRows().filter((g) => !isFlagged(g) && !oldHidden(g)).length;
+    const capped = f && f.good - oldOut > goodSent ? `<span class="cg-stat sec">${esc(t("{sent} of {total}, most competitors first").replace("{sent}", UI.num(goodSent)).replace("{total}", UI.num(f.good - oldOut)))}</span>` : "";
     const checking = f?.checking ? `<span class="cg-stat sec">${UI.icon("refresh-cw", "spin")}<b class="tabular">${UI.num(f.checking)}</b> ${t("Being checked")}</span>` : "";
     // A competitor with nothing yet is named here, with the way to feed it.
     const empty = d.competitors.some((c) => c.has_data) ? d.competitors.filter((c) => !c.has_data) : [];
     const rest = empty.slice(LOGOS_SHOWN);
     const faces = `<span class="cg-logos">${empty.slice(0, LOGOS_SHOWN).map((c) => logoOnly(c.host, 20)).join("")}${rest.length ? `<span class="cg-logos-more tabular" tabindex="0" data-tip="${esc(rest.map((c) => c.host).join(", "))}">+${UI.num(rest.length)}</span>` : ""}</span>`;
     const missing = empty.length ? `<span class="cg-stat">${t("No links yet for")} ${faces} <button class="link-btn" id="cg-up-missing" data-cg-upload="${empty[0].id}">${t("Add links")}</button></span>` : "";
-    const open = allRows().filter(canPick).length;
+    const open = allRows().filter((g) => canPick(g) && !oldHidden(g)).length;
     const addAll = open ? `<button class="btn btn-main btn-small cg-add-all" id="cg-add-all" data-cg-add-all>${UI.icon("plus")}${t("Add all good ones")} (${UI.num(open)})</button>` : "";
     if (!stats && !checking && !missing && !addAll) return "";
     return `<div class="cg-summary" aria-label="${t("Spam filter")}" role="group">${stats}${capped}${checking}${missing}${addAll}</div>`;
@@ -282,6 +308,30 @@
   }
   const COLS = 7; // tick box, Domain, Links to, Strength, Links, Status, ⋯
 
+  /* The file's spam score let a domain through (owner, 2026-11-10), but what the app's own check saw stays on its row (links A1).
+     "Site down" can be stale, so it carries the day it was seen and is the weaker kind. */
+  function appFlagNote(gap) {
+    const f = gap.app_flag;
+    if (!f || gap.kept) return "";
+    if (isFlagged(gap)) return overruledNote(gap);
+    const seen = f.reason === "leads_elsewhere" && f.to ? fill("redirects to {site}", { site: f.to }) : t(f.words || "Flagged as spam").toLowerCase();
+    const day = f.at ? UI.fmtDateOnly(f.at) : "";
+    const words = f.weak && day ? fill("The app saw: {what} on {day}", { what: seen, day }) : fill("The app saw: {what}", { what: seen });
+    return `<span class="second cg-app-flag ${f.weak ? "weak" : ""}" ${day ? `data-tip="${esc(fill("Checked on {day}. The file's spam score keeps it in Good ones.", { day }))}" tabindex="0"` : ""}>${UI.icon(f.weak ? "clock" : "triangle-alert")}<span dir="auto">${esc(words)}</span></span>`;
+  }
+
+  /* A redirect, a parked domain or no home page beats the file's spam score (owner, 2026-11-18): the row is under Flagged, and
+     says what the app saw (where it leads) and the score it overruled. Shown in every view: the reasons line above the table
+     only gives the general reason. */
+  function overruledNote(gap) {
+    const f = gap.app_flag;
+    if (!f || f.over_file === null || f.over_file === undefined) return "";
+    const seen = f.reason === "leads_elsewhere" && f.to ? fill("Redirects to {site}", { site: f.to }) : t(f.words || "Flagged as spam");
+    const day = f.at ? UI.fmtDateOnly(f.at) : "";
+    const tip = t("A redirect, a parked domain or no home page beats the file's spam score. Not spam puts it back in Good ones.");
+    return `<span class="second cg-why cg-overruled" tabindex="0" data-tip="${esc(day ? `${fill("Checked on {day}.", { day })} ${tip}` : tip)}">${COMP.iconTip("settings", t("Flagged by the system"), "comp-ic-system")}<span dir="auto">${esc(seen)}</span><span class="sec"> · ${esc(fill("file score {score} overruled", { score: UI.num(f.over_file) }))}</span></span>`;
+  }
+
   /* Spam and In consideration never show together: a domain in consideration (or in To do) is the user's choice, which beats
      the filter, so its row shows that state alone. Marking one as spam takes it off the list (decide below). */
   function rowHtml(gap) {
@@ -293,12 +343,15 @@
       gap.is_competitor ? `<span class="tag">${t("Competitor")}</span>` : "",
       gap.kept ? `<span class="tag">${t("Kept by you")}</span>` : "",
       gap.page_note === "unread" ? `<span class="tag" data-tip="${t("The site blocked the app; that doesn't make it spam.")}">${t("Home page not read")}</span>` : "",
+      isOld(gap) ? `<span class="tag cg-old">${UI.icon("calendar-days")}${esc(fill("Old link (last seen {day})", { day: UI.fmtDateOnly(gap.old_link.last_seen) }))}</span>` : "",
     ].filter(Boolean).join(" ");
     // With Flagged as spam on, the reasons are said once above the table, so a row keeps only its tag (the reason in its tooltip).
-    const why = flagged && S.quality !== "spam" ? `<span class="second cg-why">${COMP.spamWhyHtml(gap)}</span>` : "";
+    const why = flagged && overruledNote(gap) ? overruledNote(gap) : flagged && S.quality !== "spam" ? `<span class="second cg-why">${COMP.spamWhyHtml(gap)}</span>` : appFlagNote(gap);
     const word = gap.reason === "my_choice" ? "Undo" : "Not spam";
     // A flagged row keeps its one-click way back; Edit and Mark as spam are in the row's ⋯ menu (and Mark as spam in the picked bar).
-    const back = flagged ? `<button class="btn btn-small" data-cg-decide="${gap.reason === "my_choice" ? "auto" : "keep"}" data-domain="${esc(gap.domain)}" aria-label="${t(word)}: ${esc(gap.display || gap.domain)}">${t(word)}</button>` : "";
+    // On a row the app flagged, the tip says a person's choice beats the app's check (owner, 2026-11-18).
+    const backTip = gap.flagged_by === "system" ? ` data-tip="${esc(t("Overrides the app's check: back to Good ones."))}"` : "";
+    const back = flagged ? `<button class="btn btn-small" data-cg-decide="${gap.reason === "my_choice" ? "auto" : "keep"}" data-domain="${esc(gap.domain)}" aria-label="${t(word)}: ${esc(gap.display || gap.domain)}"${backTip}>${t(word)}</button>` : "";
     const menu = `<button type="button" class="icon-btn cg-row-menu" data-pop-toggle data-cg-menu="${esc(gap.domain)}" aria-haspopup="menu" aria-expanded="false" aria-label="${esc(t("More for {domain}").replace("{domain}", gap.display || gap.domain))}" data-tip="${t(flagged || gap.in_todo ? "Edit" : "Edit and Mark as spam")}">${UI.icon("ellipsis")}</button>`;
     const open = S.openLink === gap.domain && linksOf(gap).length > 0;
     const off = considered || isFlagged(gap);
@@ -368,17 +421,17 @@
 
   const simple = () => Boolean(UI.simple?.());
   /* Simpler screens: Links to, Page authority, Good ones / Flagged as spam and Hide added ones, behind one Filter button. */
-  const filtersOn = () => (S.reach !== "any") + Boolean(S.pa) + (S.quality !== "all") + Boolean(S.hide);
+  const filtersOn = () => (S.reach !== "any") + Boolean(S.pa) + (S.quality !== "all") + Boolean(S.hide) + Boolean(S.old);
   const filterButton = () => { const n = filtersOn(); return `<button type="button" class="btn btn-small cg-filters" id="cg-filters" data-pop-toggle aria-haspopup="dialog" aria-expanded="false">${UI.icon("filter")}${t("Filter")}${n ? ` <b class="tt-count tabular">${UI.num(n)}</b>` : ""}</button>`; };
   const qualityChips = () => `<div class="chips cp-chips" role="group" aria-label="${t("Flagged as spam")}">
-          ${[["all", "All", byRival().length], ["good", "Good ones", byRival().filter((g) => !isFlagged(g)).length], ["spam", "Flagged as spam", byRival().filter(isFlagged).length]].map(([id, word, n]) => `<button class="chip" data-cg-quality="${id}" aria-pressed="${S.quality === id}">${t(word)}<b>${UI.num(n)}</b></button>`).join("")}
+          ${[["all", "All", byRival().length], ["good", "Good ones", byRival().filter((g) => !isFlagged(g)).length], ["spam", "Flagged as spam", byRival().filter(isFlagged).length], ["app", "App flagged", byRival().filter((g) => !isFlagged(g) && g.app_flag).length]].filter(([id, , n]) => id !== "app" || n || S.quality === "app").map(([id, word, n]) => `<button class="chip" data-cg-quality="${id}" aria-pressed="${S.quality === id}">${t(word)}<b>${UI.num(n)}</b></button>`).join("")}
         </div>`;
   const paField = () => `<label class="field"><span>${t("Page authority")}</span><select class="select" id="cg-pa">
           <option value="">${t("Any")}</option>
           ${PA_STEPS.map((n) => `<option value="${n}" ${String(n) === S.pa ? "selected" : ""}>${esc(t("{n} or more").replace("{n}", UI.num(n)))}</option>`).join("")}
         </select></label>`;
   const hideBox = () => `<label class="opt"><input type="checkbox" class="chk" id="cg-hide" style="margin:0" ${S.hide ? "checked" : ""}>${t("Hide added ones")}</label>`;
-  const filterPop = () => `<div class="cg-filter-pop-body" role="group" aria-label="${t("Filter")}">${reachField()}${paField()}<div class="field"><span>${t("Spam filter")}</span>${qualityChips()}</div>${hideBox()}${filtersOn() ? `<button type="button" class="link-btn" data-cg-unfilter>${t("Clear filters")}</button>` : ""}</div>`;
+  const filterPop = () => `<div class="cg-filter-pop-body" role="group" aria-label="${t("Filter")}">${reachField()}${paField()}<div class="field"><span>${t("Spam filter")}</span>${qualityChips()}</div>${oldChip() ? `<div class="field"><span>${t("Old links")}</span><div class="chips">${oldChip()}</div></div>` : ""}${hideBox()}${followedBox()}${filtersOn() ? `<button type="button" class="link-btn" data-cg-unfilter>${t("Clear filters")}</button>` : ""}</div>`;
   function openFilters(anchor) {
     if (anchor.getAttribute("aria-expanded") === "true") { UI.closePopover({ focus: true }); return; }
     UI.popover(anchor, filterPop(), "cg-filter-pop");
@@ -400,7 +453,12 @@
       return emptyTip(t("No competitors yet"), t("Add a competitor first."), "Link gaps show who links to your competitors but not to you.", `<button class="btn btn-main" data-cg-find>${UI.icon("search")}${t("Find competitors")}</button>`);
     }
     const strip = summaryLine(d);
-    const left = d.already_linking ? `<p class="help cg-left">${esc(leftOutWords(d.already_linking))}</p>` : "";
+    const hiddenNf = followOn() ? notFollowed() : 0;
+    const hiddenOld = S.old ? 0 : oldCount();
+    // Scores of different tools never sort as one (#7): the leading tool's come first, the others after, each on its own scale.
+    const scales = new Set(allRows().filter((g) => isSet(g.scale_rank)).map((g) => g.scale_rank));
+    const scaleNote = scales.size > 1 && d.score_scale ? `<p class="help cg-left">${esc(fill("Strength: {tool} scores are compared first; other tools' scores come after, on their own scale.", { tool: scaleOf(d.score_scale) }))}</p>` : "";
+    const left = `${d.already_linking ? `<p class="help cg-left">${esc(leftOutWords(d.already_linking))}</p>` : ""}${scaleNote}${hiddenNf ? `<p class="help cg-left">${esc(hiddenNf === 1 ? t("1 domain with only nofollow, sponsored or ugc links is hidden.") : fill("{n} domains with only nofollow, sponsored or ugc links are hidden.", { n: UI.num(hiddenNf) }))} <button type="button" class="link-btn" data-cg-show-nofollow>${t("Show them")}</button></p>` : ""}${hiddenOld ? `<p class="help cg-left">${esc(hiddenOld === 1 ? t("1 domain whose links were last seen more than 6 months before its file is left out.") : fill("{n} domains whose links were last seen more than 6 months before their file are left out.", { n: UI.num(hiddenOld) }))} <button type="button" class="link-btn" data-cg-old>${t("Show them")}</button></p>` : ""}`;
     if (!d.competitors.some((c) => c.has_data)) {
       return `${strip}${emptyTip(t("No links yet"), t("Upload a CSV of a competitor's links, or add a domain."), "Export the CSV from a free SEMrush or Ubersuggest account. Domains that don't link to you appear here, with spam flagged.", `<button class="btn btn-main" id="cg-up-empty" data-cg-upload="${d.competitors[0].id}">${UI.icon("list-plus")}${t("Upload a CSV")}</button><button class="btn" data-cg-add-domain>${UI.icon("plus")}${t("Add a domain")}</button>`)}`;
     }
@@ -446,7 +504,9 @@
         ${reachField()}
         ${paField()}
         ${qualityChips()}
+        ${oldChip()}
         ${hideBox()}
+        ${followedBox()}
         <span class="cg-picktools">
           ${uploadButton(d)}
           <button class="btn btn-small" data-cg-add-domain>${UI.icon("plus")}${t("Add a domain")}</button>
@@ -898,7 +958,7 @@
       if ((el = hit("#cg-todo-save"))) { saveTodo(el); return; }
       if ((el = hit("[data-cg-task]"))) { taskPicked(el); return; }
       if (hit("[data-cg-spam-picked]")) { spamPicked(); return; }
-      if (hit("[data-cg-add-all]")) { allRows().filter(canPick).forEach((g) => S.picked.add(g.domain)); addPicked(); return; }
+      if (hit("[data-cg-add-all]")) { allRows().filter((g) => canPick(g) && !oldHidden(g)).forEach((g) => S.picked.add(g.domain)); addPicked(); return; }
       if ((el = hit("[data-cg-menu]"))) { openRowMenu(el); return; }
       // From a row's ⋯ menu: the menu closes, and the ⋯ button is where the keyboard comes back to.
       if ((el = hit("[data-cg-from-menu]"))) {
@@ -927,7 +987,9 @@
       }
       if ((el = hit("[data-cg-quality]"))) { S.quality = el.dataset.cgQuality; S.reason = ""; refilter(`[data-cg-quality="${S.quality}"]`); return; }
       if ((el = hit("#cg-filters"))) { openFilters(el); return; }
-      if (hit("[data-cg-unfilter]")) { Object.assign(S, { reach: "any", pa: "", quality: "all", hide: false, reason: "" }); refilter("#cg-reach"); return; }
+      if (hit("[data-cg-show-nofollow]")) { S.followed = false; refilter(); return; }
+      if (hit("[data-cg-old]")) { S.old = !S.old; refilter(UI.$("#popover.cg-filter-pop") ? ".cg-filter-pop [data-cg-old]" : "[data-cg-old]"); return; }
+      if (hit("[data-cg-unfilter]")) { Object.assign(S, { reach: "any", pa: "", quality: "all", hide: false, reason: "", old: false }); refilter("#cg-reach"); return; }
       if ((el = hit("[data-cg-sort]"))) {
         const id = el.dataset.cgSort, first = id === "domain" || id === "anchor" ? "asc" : "desc"; // words A to Z, numbers biggest first
         S.sort = S.sort?.id !== id ? { id, dir: first } : S.sort.dir === first ? { id, dir: first === "asc" ? "desc" : "asc" } : null; // a third click goes back to the usual order
@@ -974,6 +1036,7 @@
       if (id === "cg-reach") { S.reach = e.target.value; refilter("#cg-reach"); return; }
       if (id === "cg-pa") { S.pa = e.target.value; refilter("#cg-pa"); return; }
       if (id === "cg-hide") { S.hide = e.target.checked; refilter("#cg-hide"); return; }
+      if (id === "cg-followed") { S.followed = e.target.checked; refilter("#cg-followed"); return; }
       if (id === "cg-up-file") {
         UI.$("#cg-up-error")?.replaceChildren();
         const send = UI.$("#cg-up-send");
@@ -1002,7 +1065,7 @@
     },
     async load() {
       const siteId = COMP.siteId;
-      if (S.site !== siteId) { S.site = siteId; S.filter = ""; S.hide = false; S.quality = "all"; S.reason = ""; S.reach = "any"; S.sort = null; S.openLink = null; S.linkSort = null; TP.state(PAGES).q = ""; TP.reset(PAGES); S.picked.clear(); }
+      if (S.site !== siteId) { S.site = siteId; S.filter = ""; S.hide = false; S.followed = null; S.old = false; S.quality = "all"; S.reason = ""; S.reach = "any"; S.sort = null; S.openLink = null; S.linkSort = null; TP.state(PAGES).q = ""; TP.reset(PAGES); S.picked.clear(); }
       await sync; // anything the Backlinks page just changed is on the server before reading it back
       const [answer, competitors] = await Promise.all([COMP.api("GET", `link-gaps?site_id=${siteId}`), COMP.api("GET", `competitors?site_id=${siteId}`)]);
       if (siteId !== COMP.siteId) return; // another site was picked while this was on its way
@@ -1017,6 +1080,8 @@
     /* Simpler screens: the two ways to bring in domains sit in the head, so the bar over the table is only search and filters. */
     headMain: () => (S.data?.competitors?.length ? `<span class="cg-head-acts" data-comp-main="gaps"><button class="btn" id="cg-upload-head" data-cg-upload="${uploadTarget(S.data)}">${UI.icon("list-plus")}${t("Upload links")}</button><button class="btn" id="cg-add-domain-head" data-cg-add-domain>${UI.icon("plus")}${t("Add a domain")}</button></span>` : ""),
     headInfo: () => [INTRO],
+    // Say what the list is in its head (COMPARISON, place 3): sites that link to competitors and not to me.
+    headLine: () => `<span class="cg-head-line">${esc(t("Sites linking to your competitors, not to you"))}</span>`,
     after() {
       const all = UI.$("#cg-all");
       if (all) all.indeterminate = all.dataset.indeterminate === "true";
@@ -1263,7 +1328,7 @@
         gap = { authority: null, authority_label: null, competitor_count: 0, competitors: [], display: domain, domain, first_seen: new Date().toISOString(), in_consideration: false, is_competitor: false, lost_link: false, sample_url: row.url, sources: [], spam_score: null };
         // As on the server: the file's spam score decides when it has one, the name rules only when it doesn't.
         const fromFile = row.spam_score !== null && row.spam_score !== undefined;
-        const spam = fromFile ? (row.spam_score > window.BacklinkCleaner.SPAM_THRESHOLD ? ["spam_score", "File spam score above 30", "file"] : null) : sampleNameReason(domain);
+        const spam = fromFile ? (window.BacklinkCleaner.isSpamScore(row.spam_score) ? ["spam_score", "File spam score above 30", "file"] : null) : sampleNameReason(domain);
         if (spam) {
           report.filtered = report.filtered || [];
           if (!report.filtered.some((g) => g.domain === domain)) report.filtered.push({ ...gap, quality: "spam", reason: spam[0], reason_words: spam[1], flagged_by: spam[2], authority: row.authority, authority_label: result.authority_label, spam_score: row.spam_score, sample_url: row.url, competitor_count: 1, competitors: [{ id: competitorId, host: rival.host }] });
@@ -1346,7 +1411,28 @@
     "Upload a CSV of links to one of your competitors, and the domains that don't link to you appear here.": "Importez un CSV des liens vers un de vos concurrents : les domaines qui ne pointent pas vers vous apparaîtront ici.",
     "No gaps in your files": "Aucun lien manquant dans vos fichiers",
     "Every domain in your files already links to you, or is one of your own.": "Tous les domaines de vos fichiers pointent déjà vers vous, ou sont les vôtres.",
-    "Hide added ones": "Masquer les ajoutés", "Why they're flagged": "Pourquoi ils sont signalés",
+    "Hide added ones": "Masquer les ajoutés", "Followed links only": "Liens suivis seulement",
+    "This file doesn't say which links are followed": "Ce fichier ne dit pas quels liens sont suivis",
+    "{n} not known: their file doesn't say": "{n} inconnus : leur fichier ne le dit pas",
+    "Include old links": "Inclure les anciens liens", "Old links": "Anciens liens", "Old links, left out": "Anciens liens, écartés", "Old links, included": "Anciens liens, inclus",
+    "Old link (last seen {day})": "Ancien lien (vu le {day})",
+    "Domains whose links were last seen more than 6 months before their file. Probably gone.": "Domaines dont les liens ont été vus pour la dernière fois plus de 6 mois avant leur fichier. Sans doute disparus.",
+    "1 domain whose links were last seen more than 6 months before its file is left out.": "1 domaine dont les liens ont été vus plus de 6 mois avant son fichier est écarté.",
+    "{n} domains whose links were last seen more than 6 months before their file are left out.": "{n} domaines dont les liens ont été vus plus de 6 mois avant leur fichier sont écartés.",
+    "App flagged": "Signalés par l'appli",
+    "The file's spam score keeps them, but the app's own check flagged them. Each row says what it saw.": "Le score de spam du fichier les garde, mais le contrôle de l'appli les a signalés. Chaque ligne dit ce qu'il a vu.",
+    "The app saw: {what}": "L'appli a vu : {what}", "The app saw: {what} on {day}": "L'appli a vu : {what} le {day}", "redirects to {site}": "redirige vers {site}",
+    "Checked on {day}. The file's spam score keeps it in Good ones.": "Contrôlé le {day}. Le score de spam du fichier le garde parmi les bons.",
+    "Redirects to {site}": "Redirige vers {site}", "file score {score} overruled": "score du fichier ({score}) écarté", "Checked on {day}.": "Contrôlé le {day}.",
+    "A redirect, a parked domain or no home page beats the file's spam score. Not spam puts it back in Good ones.": "Une redirection, un domaine parqué ou l'absence de page d'accueil passe avant le score de spam du fichier. Pas du spam le remet parmi les bons.",
+    "Overrides the app's check: back to Good ones.": "Passe avant le contrôle de l'appli : retour parmi les bons.",
+    "Leaves out domains whose file says every link is nofollow, sponsored or ugc. Lost links in a file are never listed.": "Écarte les domaines dont le fichier indique que tous les liens sont nofollow, sponsored ou ugc. Les liens perdus d'un fichier ne sont jamais listés.",
+    "1 domain with only nofollow, sponsored or ugc links is hidden.": "1 domaine qui n'a que des liens nofollow, sponsored ou ugc est masqué.",
+    "{n} domains with only nofollow, sponsored or ugc links are hidden.": "{n} domaines qui n'ont que des liens nofollow, sponsored ou ugc sont masqués.",
+    "Show them": "Les afficher",
+    "Strength: {tool} scores are compared first; other tools' scores come after, on their own scale.": "Force : les scores {tool} sont comparés d'abord ; ceux des autres outils viennent après, sur leur propre échelle.",
+    "Sites linking to your competitors, not to you": "Sites qui font un lien vers vos concurrents, pas vers vous",
+    "Why they're flagged": "Pourquoi ils sont signalés",
     "Search domains": "Chercher un domaine", "Competitor": "Concurrent", "All competitors": "Tous les concurrents",
     "Any number": "Un ou plusieurs", "Only 1": "Un seul", "domains": "domaines",
     "Select all shown": "Tout sélectionner à l'écran",

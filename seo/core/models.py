@@ -174,6 +174,8 @@ class Page(Base):
     first_seen_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
     last_checked_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
     last_changed_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+    final_url: Mapped[str | None] = mapped_column(Text, nullable=True)  # set while this address redirects to another page of the site
+    blocks: Mapped[list | None] = mapped_column(JSON, nullable=True)  # short hashes of the main text's blocks, to find a site's template
 
 
 class PageVersion(Base):
@@ -202,6 +204,22 @@ class ChangeEvent(Base):
     detected_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
     summaries: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # optional AI summaries per language, kept so a request is never used twice
     changed_words: Mapped[int | None] = mapped_column(Integer, nullable=True)  # a text edit: about how many words changed, so a small one says so
+    # Kept but not shown: an event the noise rules say nobody made (seo.crawl.noise). hidden_reason says which rule.
+    hidden: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))
+    hidden_reason: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+
+class SiteBoilerplate(Base):
+    """Blocks of text a site repeats on many pages or changes on every request: left out when looking for an edit."""
+
+    __tablename__ = "site_boilerplate"
+
+    domain_id: Mapped[int] = mapped_column(ForeignKey("domains.id", ondelete="CASCADE"), primary_key=True)
+    block_hash: Mapped[str] = mapped_column(String(16), primary_key=True)
+    kind: Mapped[str] = mapped_column(String(10))  # repeated: on many pages; unstable: two reads of one page disagreed
+    pages: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    sample: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    learned_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
 
 
 class Keyword(Base):
@@ -297,7 +315,9 @@ class SerpCheck(Base):
     ai_state: Mapped[str] = mapped_column(String(14), server_default="not_captured")  # present, absent, not_captured
     features_state: Mapped[str] = mapped_column(String(14), server_default="not_captured")  # featured snippet, questions, rich results
     trigger_kind: Mapped[str] = mapped_column(String(14), server_default="refresh")  # first_upload, refresh
-    error: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    error: Mapped[str | None] = mapped_column(String(500), nullable=True)  # a failed check's error, or why a check is suspect
+    asked: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # what the tool says it searched with (SerpApi's search_parameters)
+    query_shown: Mapped[str | None] = mapped_column(String(300), nullable=True)  # the query its results page showed
     checked_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
 
 
@@ -446,6 +466,8 @@ class CompetitorReferrer(Base):
     source_file: Mapped[str | None] = mapped_column(String(255), nullable=True)
     source_label: Mapped[str | None] = mapped_column(String(60), nullable=True)
     in_common_crawl: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))
+    # From the file's Nofollow / Sponsored / UGC columns: any followed link (1), only ones that pass little (0), not said (NULL).
+    followed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     # Someone said this competitor has no such link. Kept rather than deleted, so a later upload can't bring it back.
     removed_by_hand: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))
     first_seen_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
@@ -476,6 +498,7 @@ class CompetitorReferrerLink(Base):
     last_seen: Mapped[date | None] = mapped_column(Date, nullable=True)
     source_file: Mapped[str | None] = mapped_column(String(255), nullable=True)
     source_label: Mapped[str | None] = mapped_column(String(60), nullable=True)
+    rel: Mapped[str | None] = mapped_column(String(40), nullable=True)  # "follow", "nofollow ugc"...; NULL when the file doesn't say
     imported_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
 
 
@@ -490,6 +513,7 @@ class LinkDomain(Base):
     reason: Mapped[str | None] = mapped_column(String(30), nullable=True)
     page_note: Mapped[str | None] = mapped_column(String(20), nullable=True)
     page_title: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    redirect_to: Mapped[str | None] = mapped_column(String(190), nullable=True)  # the other site a home page led to (leads_elsewhere)
     check_attempts: Mapped[int] = mapped_column(Integer, server_default="0")
     checked_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
     cc_rank: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
@@ -591,6 +615,8 @@ class Backlink(Base):
     seen_rel: Mapped[str | None] = mapped_column(String(120), nullable=True)
     seen_anchor: Mapped[str | None] = mapped_column(Text, nullable=True)
     seen_href: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Did the last reading find the link pointing at the logged target page? 0: it moved to another page of my site.
+    to_target: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     final_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     target_final_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     lost_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
@@ -1062,6 +1088,7 @@ class Ga4SourceDaily(Base):
     sessions: Mapped[int] = mapped_column(Integer, server_default="0")
     users: Mapped[int] = mapped_column(Integer, server_default="0")
     key_events: Mapped[float] = mapped_column(Float, server_default="0")
+    leads: Mapped[float] = mapped_column(Float, server_default="0")  # visits with a key event ticked as a lead (seo/metrics/leads.py)
 
 
 class Ga4PageDaily(Base):
@@ -1075,6 +1102,7 @@ class Ga4PageDaily(Base):
     sessions: Mapped[int] = mapped_column(Integer, server_default="0")
     users: Mapped[int] = mapped_column(Integer, server_default="0")
     key_events: Mapped[float] = mapped_column(Float, server_default="0")
+    leads: Mapped[float] = mapped_column(Float, server_default="0")  # visits with a key event ticked as a lead (seo/metrics/leads.py)
 
 
 class Ga4ReferralDaily(Base):
@@ -1090,6 +1118,7 @@ class Ga4ReferralDaily(Base):
     path: Mapped[str] = mapped_column(Text)
     sessions: Mapped[int] = mapped_column(Integer, server_default="0")
     key_events: Mapped[float] = mapped_column(Float, server_default="0")
+    leads: Mapped[float] = mapped_column(Float, server_default="0")  # visits with a key event ticked as a lead (seo/metrics/leads.py)
 
 
 class Ga4CampaignDaily(Base):
@@ -1105,6 +1134,36 @@ class Ga4CampaignDaily(Base):
     path: Mapped[str] = mapped_column(Text)
     sessions: Mapped[int] = mapped_column(Integer, server_default="0")
     key_events: Mapped[float] = mapped_column(Float, server_default="0")
+    leads: Mapped[float] = mapped_column(Float, server_default="0")  # visits with a key event ticked as a lead (seo/metrics/leads.py)
+
+
+class Ga4KeyEventDaily(Base):
+    """Each key event by its name, for one row of the source, page, referral or campaign table (report + row_hash)."""
+
+    __tablename__ = "ga4_key_event_daily"
+    __table_args__ = (Index("ix_ga4_key_event_name", "site_id", "event_hash", "day"),)
+
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    report: Mapped[str] = mapped_column(String(10, collation="ascii_bin"), primary_key=True)  # source, page, referral, campaign
+    row_hash: Mapped[str] = mapped_column(String(32, collation="ascii_bin"), primary_key=True)
+    event_hash: Mapped[str] = mapped_column(String(32, collation="ascii_bin"), primary_key=True)
+    event_name: Mapped[str] = mapped_column(String(120))
+    key_events: Mapped[float] = mapped_column(Float, server_default="0")
+    sessions: Mapped[int] = mapped_column(Integer, server_default="0")  # sessions the event happened in
+
+
+class Ga4HostDaily(Base):
+    """Every host a property recorded visits on. Rows on another site's host stay out of the other GA4 tables."""
+
+    __tablename__ = "ga4_host_daily"
+
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True)
+    day: Mapped[date] = mapped_column(Date, primary_key=True)
+    host_hash: Mapped[str] = mapped_column(String(32, collation="ascii_bin"), primary_key=True)
+    host: Mapped[str] = mapped_column(String(190))
+    own: Mapped[bool] = mapped_column(Boolean, server_default=text("1"))
+    sessions: Mapped[int] = mapped_column(Integer, server_default="0")
 
 
 class Ga4AdsDaily(Base):
@@ -1204,6 +1263,7 @@ class CwvRun(Base):
     inp_ms: Mapped[int | None] = mapped_column(Integer, nullable=True)
     cls: Mapped[float | None] = mapped_column(Float, nullable=True)
     field_data: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))  # real visitors' numbers, not a lab run
+    field_origin: Mapped[bool] = mapped_column(Boolean, server_default=text("0"))  # those visitors are the whole site's: Google had too few on the page
     ran_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
 
 
@@ -1768,3 +1828,10 @@ class BrandAnswer(Base):
     error: Mapped[str | None] = mapped_column(String(500), nullable=True)
     answered_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
     created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
+# Every table is created in utf8mb4_unicode_ci, whatever the server's default, so a new install, the test databases and a
+# converted live database have one collation (a join between two is refused). seo.core.charset converts older tables.
+for _table in Base.metadata.tables.values():
+    _table.kwargs.setdefault("mysql_charset", "utf8mb4")
+    _table.kwargs.setdefault("mysql_collate", "utf8mb4_unicode_ci")

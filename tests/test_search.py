@@ -22,6 +22,8 @@ def site(engine):
     with engine.begin() as conn:
         site_id = conn.execute(text("INSERT INTO sites (host, start_url, kind) VALUES ('shop-one.test', 'https://shop-one.test/', 'own')")).lastrowid
         conn.execute(text("INSERT INTO site_sources (site_id, source, data_through, fresh_from, fresh_through) VALUES (:s, 'gsc', :d, :f, :t)"), {"s": site_id, "d": END, "f": END + timedelta(days=1), "t": END + timedelta(days=2)})
+        # The day-by-day tables were read this far back (rows are sparse in these tests: a day can have none)
+        conn.execute(text("INSERT INTO coverage (site_id, source, day, status) VALUES (:s, 'gsc', :d, 'ok')"), {"s": site_id, "d": END - timedelta(days=480)})
     return site_id
 
 
@@ -91,7 +93,7 @@ def test_ranges_end_on_the_last_final_day_and_the_fresh_days_are_only_drawn(engi
     assert window["fresh_from"] == (END + timedelta(days=1)).isoformat() and window["fresh_to"] == (END + timedelta(days=2)).isoformat()
     assert window["final_through"] == END.isoformat() and window["newest"] == (END + timedelta(days=2)).isoformat()
     _scope_, window = _scope(engine, site, "28d", "yoy")
-    assert (window["compare_from"], window["compare_to"]) == ("2025-10-11", "2025-11-07")
+    assert (window["compare_from"], window["compare_to"]) == ("2025-10-12", "2025-11-08")  # 364 days back: same weekdays
     _scope_, window = _scope(engine, site, "7d", "none")
     assert window["from"] == "2026-11-01" and window["compare_from"] is None
 

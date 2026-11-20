@@ -191,10 +191,55 @@ def summary(engine: Engine, sites: list[int]) -> dict:
     serious = _stake_rows(engine, sites, "AND severity <> 'info'")
     to_recover, to_win = recover_and_win(serious)
     return {
+        "technical_elsewhere": technical_elsewhere(engine, sites),
         "changes": changes, "open": int(row["n"]), "at_stake": round(stake_total(serious)), "fixed": int(row["fixed"] or 0), "to_recover": to_recover, "to_win": to_win,
         "days": _days(engine, changes[0]) if len(changes) == 1 and changes[0]["evidence"].get("before_from") else [],
         "ran_at": row["ran_at"].isoformat() + "Z" if row["ran_at"] else None, "needs": needs, "sites": len(sites),
     }
+
+
+# Health test checks that make a page broken for a searcher, as Insights → Technical reads them (technical.BROKEN).
+_ELSEWHERE_CODES = ("broken_pages", "server_errors", "noindex", "canonical_elsewhere", "broken_links")
+
+
+def technical_elsewhere(engine: Engine, sites: list[int]) -> dict:
+    """What Insights → Technical leaves out because Google didn't show those pages this week: pages the last health test
+    flags, and pages URL Inspection says aren't on Google. So the tab never says "Good news" beside a 404, a 500 and a
+    noindex page (expert review 2026-11-17). A page Google showed in the last week is left out (Technical lists it
+    already), and a page with several problems counts once: "pages" is the one number the tab says."""
+    from seo.insights.movement import NOT_ON_GOOGLE
+    from seo.metrics.service import _path  # /gone and /gone/ are one page, as on Pages
+
+    if not sites:
+        return {"pages": 0, "critical": 0, "not_indexed": 0}
+    flagged: set[tuple[int, str]] = set()
+    critical: set[tuple[int, str]] = set()
+    not_indexed: set[tuple[int, str]] = set()
+    many = lambda sql: text(sql).bindparams(*(bindparam(n, expanding=True) for n in ("sites", "codes") if f":{n}" in sql))  # noqa: E731
+    with engine.connect() as conn:
+        rows = conn.execute(many(
+            "SELECT a.site_id, i.code, i.pages FROM health_issues i JOIN health_audits a ON a.id = i.audit_id "
+            "JOIN (SELECT MAX(id) id FROM health_audits WHERE site_id IN :sites AND status = 'complete' GROUP BY site_id) last "
+            "ON last.id = i.audit_id WHERE i.code IN :codes AND i.page_count > 0"
+        ), {"sites": sites, "codes": list(_ELSEWHERE_CODES)}).mappings().all()
+        for r in conn.execute(many(f"SELECT site_id, url FROM gsc_inspections WHERE site_id IN :sites AND {NOT_ON_GOOGLE}"), {"sites": sites}).mappings():
+            not_indexed.add((r["site_id"], _path(r["url"])))
+        # Shown this week: as Technical's own rule (technical.shown_broken), the last BROKEN_DAYS days of each site's page table.
+        shown = {(r["site_id"], _path(r["page"])) for r in conn.execute(many(
+            "SELECT p.site_id, p.page FROM gsc_page p JOIN (SELECT site_id, MAX(day) last FROM gsc_page WHERE site_id IN :sites GROUP BY site_id) e "
+            f"ON e.site_id = p.site_id WHERE p.day > e.last - INTERVAL {int(rules.BROKEN_DAYS)} DAY AND p.impressions > 0 GROUP BY p.site_id, p.page_hash, p.page"
+        ), {"sites": sites}).mappings()}
+    for r in rows:
+        pages = r["pages"] if isinstance(r["pages"], list) else json.loads(r["pages"] or "[]")
+        for url in pages:
+            if isinstance(url, dict):
+                url = url.get("url") or url.get("page")
+            if isinstance(url, str):
+                flagged.add((r["site_id"], _path(url)))
+                if r["code"] in ("broken_pages", "server_errors", "broken_links"):
+                    critical.add((r["site_id"], _path(url)))
+    away = (flagged | not_indexed) - shown
+    return {"pages": len(away), "critical": len(critical & away), "not_indexed": len(not_indexed & away)}
 
 
 def one(engine: Engine, finding_id: int) -> dict:

@@ -36,12 +36,15 @@ def test_nothing_found_is_100():
     assert audit.score({}, [], 10) == 100
 
 
-@pytest.mark.parametrize("code", audit.CHECKS)
+SCORED = {code: check for code, check in audit.CHECKS.items() if check[1]}  # robots_blocked is listed, never scored
+
+
+@pytest.mark.parametrize("code", SCORED)
 def test_each_kind_of_problem_lowers_the_score(code):
     assert audit.score({code: ["https://shop.example/a"]}, [], 10) < 100
 
 
-@pytest.mark.parametrize("code,check", audit.CHECKS.items())
+@pytest.mark.parametrize("code,check", SCORED.items())
 def test_a_problem_on_every_page_costs_its_full_weight(code, check):
     urls = [f"https://shop.example/{n}" for n in range(10)]
     assert audit.score({code: urls}, [], 10) == 100 - check[1]
@@ -86,7 +89,7 @@ def test_a_score_needs_no_pages_to_work():
 # ---- pages the crawl skipped lower nothing ---------------------------------------------------
 
 @pytest.mark.parametrize("status,code", [
-    ("blocked", 401), ("blocked", 403), ("blocked", 200), ("rate_limited", 429), ("rate_limited", None), ("robots", None),
+    ("blocked", 401), ("blocked", 403), ("blocked", 200), ("rate_limited", 429), ("rate_limited", None),
     ("not_html", 200), ("too_large", 200), ("too_large", 403), ("refused", None), ("left_scope", 301), ("network_error", None),
     ("too_many_redirects", None), ("http_error", 301), ("not_modified", 304),
 ])
@@ -179,6 +182,40 @@ def test_a_failing_robots_txt_on_the_way_to_the_start_page_is_a_whole_site_probl
     audit.look_at_page(found, START, FetchResult(url=START, status="robots", error="robots.txt answered with a server error"), None, START)
     assert found.site_codes == ["robots_down"]
     assert "robots_down" in audit.SITE_CHECKS
+
+
+def test_a_page_robots_txt_blocks_is_listed_but_lowers_nothing():
+    """Expert review 2026-11-17: a service page hidden by a wrong Disallow line appeared nowhere. It is now listed under
+    "Blocked by robots.txt", without lowering the score (blocking /admin is often meant)."""
+    found = audit.Findings()
+    url = "https://shop.example/services"
+    audit.look_at_page(found, url, FetchResult(url=url, status="robots"), None, START)
+    audit.look_at_page(found, url, FetchResult(url=url, status="robots"), None, START)
+    issues = audit.finish(found)
+    assert issues == {"robots_blocked": [url]} and found.pages_seen == 0
+    assert audit.score(issues, found.site_codes, 10) == 100
+    assert audit.CHECKS["robots_blocked"][2] == audit.INFO
+
+
+@pytest.mark.parametrize("header,head", [
+    ("noindex", ""), ("googlebot: noindex, nofollow", ""), ("none", ""),
+    (None, '<meta name="googlebot" content="noindex">'), (None, '<meta name="robots" content="NOINDEX, follow">'),
+])
+def test_noindex_counts_from_the_header_and_from_a_googlebot_tag(header, head):
+    found = audit.Findings()
+    url = "https://shop.example/a"
+    body = page(head=head).encode()
+    audit.look_at_page(found, url, FetchResult(url=url, status="ok", http_status=200, body=body, final_url=url, x_robots_tag=header), extract(body, url), START)
+    assert "noindex" in audit.finish(found)
+
+
+@pytest.mark.parametrize("header,head", [("bingbot: noindex", ""), ("max-snippet: 50", ""), (None, '<meta name="bingbot" content="noindex">')])
+def test_a_rule_for_another_crawler_is_not_noindex(header, head):
+    found = audit.Findings()
+    url = "https://shop.example/a"
+    body = page(head=head).encode()
+    audit.look_at_page(found, url, FetchResult(url=url, status="ok", http_status=200, body=body, final_url=url, x_robots_tag=header), extract(body, url), START)
+    assert "noindex" not in audit.finish(found)
 
 
 def test_a_failing_robots_txt_elsewhere_lowers_nothing():

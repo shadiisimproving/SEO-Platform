@@ -13,7 +13,7 @@ import math
 from sqlalchemy import text
 
 from seo.competitors import firecrawl
-from seo.competitors.crawl import EVERY_FEW_DAYS, MAX_DISCOVERED, PAGES_PER_DAY, TIERS, TOP_RANK
+from seo.competitors.crawl import CUT_TEXT, CUT_WAIT_TEXT, EVERY_FEW_DAYS, MAX_DISCOVERED, PAGES_PER_DAY, TIERS, TOP_RANK
 
 
 STOPPED_READ = "Last read stopped early. Pages so far are saved; it resumes at the next daily read."
@@ -70,7 +70,8 @@ def facts_many(conn, rows: dict[int, dict]) -> dict[int, dict]:
             fc_status, fc_message = "failed", STOPPED_FIRECRAWL  # its job is gone: the box stops waiting, and Try again works
             fc_finished = fc_finished or row["started_at"] or row["finished_at"]
         out[competitor_id] = {
-            "list_source": row["list_source"], "list_capped": bool(row["list_capped"]), "list_most": MAX_DISCOVERED, "per_day": PAGES_PER_DAY,
+            "list_source": row["list_source"], "list_capped": bool(row["list_capped"]),
+            "sitemap_cut": "waiting" if row["message"] == CUT_WAIT_TEXT else "cut" if row["message"] == CUT_TEXT else None, "list_most": MAX_DISCOVERED, "per_day": PAGES_PER_DAY,
             "pages_tried": tried, "days_left": days_left, "js_only": int(page.get("js") or 0),
             "read_stopped": row["status"] == "running" and not _held(keys, f"competitor:{competitor_id}"),
             "follow": {

@@ -55,7 +55,8 @@ def test_f8_twelve_months_on_a_flat_site_has_no_made_up_rise(engine, site):
     for range_key, compare in (("12m", "prev"), ("16m", "prev"), ("6m", "yoy"), ("12m", "yoy")):
         scope, window = _scope(engine, site, range_key, compare)
         found = search.overview(scope, window)
-        assert window["compare_from"] is None and window["compare_unavailable"] == "history", (range_key, compare)
+        # "google": further back than the 16 months Google keeps; "history": not stored that far back (yet)
+        assert window["compare_from"] is None and window["compare_unavailable"] in ("history", "google"), (range_key, compare)
         assert found["before"] is None and found["answer"]["kind"] == "summary", (range_key, compare)
     scope, window = _scope(engine, site, "28d", "prev")
     assert window["compare_from"] and search.overview(scope, window)["answer"]["kind"] == "steady"

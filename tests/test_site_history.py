@@ -156,7 +156,8 @@ def test_insights_show_their_best_pages_and_who_links_to_them(world):
     links = found["links"]
     domains = [d["domain"] for d in links["top"]]
     assert "me.example" not in domains and "rival.example" not in domains  # my own and theirs aren't links to them
-    assert links["linking_domains"] == len(domains) and links["my_linking_domains"] is None
+    # Spam never counts in their linking sites; it's said apart (SEO review 2026-11-17, #11).
+    assert links["linking_domains"] == len(domains) - 1 and links["linking_flagged"] == 1 and links["my_linking_domains"] is None
 
 
 def test_insights_hide_keyword_numbers_when_only_pages_are_followed(world):
@@ -294,6 +295,7 @@ def test_edits_are_counted_per_month_apart_from_new_and_removed_pages(world):
             conn.execute(text("INSERT INTO change_events (page_id, domain_id, kind) VALUES (:p, :d, :k)"), {"p": page_id, "d": domain_id, "k": kind})
         conn.execute(text("INSERT INTO change_events (page_id, domain_id, kind, detected_at) VALUES (:p, :d, 'text', UTC_TIMESTAMP(3) - INTERVAL 20 MONTH)"), {"p": page_id, "d": domain_id})
     rhythm = insights.insights(world.engine, world.own, rival)["rhythm"]
-    assert len(rhythm["edits"]) == 12 and rhythm["edits"][-1]["theirs"] == 3, "three edits this month; a new or removed page isn't one"
-    assert sum(m["theirs"] for m in rhythm["edits"]) == 3, "an edit older than the 12 months stays out"
+    # Pages edited, not change rows (SEO review 2026-11-17, #11): three edits on one page are one page edited.
+    assert len(rhythm["edits"]) == 12 and rhythm["edits"][-1]["theirs"] == 1, "three edits on one page this month; a new or removed page isn't one"
+    assert sum(m["theirs"] for m in rhythm["edits"]) == 1 and rhythm["edited_pages"]["theirs"] == 1, "an edit older than the 12 months stays out"
     assert rhythm["edits_since"]["theirs"] is not None and rhythm["edits"][-1]["mine"] is None, "my site hasn't been read, so no count of mine"

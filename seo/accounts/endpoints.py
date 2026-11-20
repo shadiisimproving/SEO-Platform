@@ -147,6 +147,8 @@ ENDPOINTS: dict[str, tuple[str, str, str]] = {
     "metrics_api.ai_search": ("ai today", "read", "all"),
     "metrics_api.add_rule": ("channels conversions content ai overview", "write", ""),
     "metrics_api.delete_rule": ("channels conversions content ai overview", "write", ""),
+    "metrics_api.ga4_key_events": ("channels conversions today", "read", ""),  # Settings: a site's key events and other hosts
+    "metrics_api.ga4_set_key_events": ("channels conversions", "admin", ""),  # which key events are leads
     "metrics_api.ideas": ("keywords", "read", "free"),  # ideas for a country and language, no site's data
     "metrics_api.push_indexnow": ("health content", "write", ""),
     "metrics_api.backlink_visits": ("backlinks", "read", ""),

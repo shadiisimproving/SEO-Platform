@@ -19,6 +19,10 @@ FORMATS = {
     "change": "+0.0%;-0.0%;0%", "delta": "+#,##0;-#,##0;0", "delta_low": "+#,##0;-#,##0;0",
     "date": "yyyy-mm-dd", "datetime": "yyyy-mm-dd hh:mm",
 }
+CHANGE_FORMATS = {"delta": "+#,##0;-#,##0;0", "points": '+0.0" pts";-0.0" pts";0'}  # Tile.change_kind
+# A position's change is written as the Keywords file writes it: + is places gained (better), − places lost, in words, so
+# "+6.7" never means 6.7 places worse here and better there (competitors-exports W15). The tile keeps now − before.
+PLACES_FORMATS = {"en": '+0.0" places better";-0.0" places worse";"same place"', "fr": '+0.0" places gagnées";-0.0" places perdues";"même place"'}
 WIDTHS = {"text": 28, "url": 46, "int": 12, "float": 12, "position": 11, "money": 13, "pct": 11, "pct100": 11, "change": 12, "delta": 12, "delta_low": 12, "date": 12, "datetime": 17, "bool": 9}
 _SHEET_BAD = re.compile(r"[\[\]:*?/\\]")
 _HEAD_FONT = Font(name="Calibri", bold=True, color=INK)
@@ -135,9 +139,11 @@ def _about(sheet, report: Report, names: dict[str, str]) -> None:
                 cell = sheet.cell(row=line, column=2, value=cell_text(fmt.cell(lang, tile.value, tile.kind)) or "—")
             cell.alignment = Alignment(horizontal="left")
             if tile.change is not None:
-                change = sheet.cell(row=line, column=3, value=tile.change / 100)
-                change.number_format = "+0.0%;-0.0%;0%"
-                tone = fmt.tone(tile.change, "delta_low" if tile.lower_is_better else "change")
+                percent, places = tile.change_kind == "change", tile.change_kind == "places"
+                value = tile.change / 100 if percent else -tile.change if places else tile.change
+                change = sheet.cell(row=line, column=3, value=value)
+                change.number_format = "+0.0%;-0.0%;0%" if percent else PLACES_FORMATS["fr" if lang == "fr" else "en"] if places else CHANGE_FORMATS.get(tile.change_kind, "+0;-0;0")
+                tone = fmt.tone(value, "change") if places else fmt.tone(tile.change, "delta_low" if tile.lower_is_better else "change")
                 change.font = Font(name="Calibri", color=GOOD if tone == "good" else BAD if tone == "bad" else INK)
             line += 1
     if report.tables:

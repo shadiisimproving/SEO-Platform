@@ -44,9 +44,9 @@ def _page_id(url: str) -> str:
 
 
 def _shared_count(checks, my_url: str, their_url: str) -> int:
-    """Keywords where both pages show up in the latest results. A pair someone chose has no other count."""
-    wanted = {_page_id(my_url), _page_id(their_url)}
-    return len({check.keyword_id for check in checks if wanted <= {_page_id(r.url) for r in check.results}})
+    """Keywords where both pages show up, counted as the pair's ahead / behind are (competitors-exports W14): the latest check
+    of each keyword, one engine speaking for it. Counting every engine's check said 31 beside "they ahead 6, me 0"."""
+    return ranking_summary(checks, my_url, their_url)["shared"]
 
 
 def refresh_auto_pairs(engine: Engine, site_id: int) -> int:
@@ -57,6 +57,7 @@ def refresh_auto_pairs(engine: Engine, site_id: int) -> int:
     if not competitors:
         return 0
     checks = store.latest_checks(engine, site_id)
+    indexed = IndexedChecks(checks)
     written = 0
     for competitor in competitors:
         together: dict[str, dict[str, set[int]]] = defaultdict(lambda: defaultdict(set))
@@ -80,8 +81,9 @@ def refresh_auto_pairs(engine: Engine, site_id: int) -> int:
         with engine.begin() as conn:
             live_hashes = set()
             for my_url, counts in together.items():
-                their_url, keywords = sorted(counts.items(), key=lambda kv: (-len(kv[1]), their_best[kv[0]], kv[0]))[0]
-                shared = len(keywords)
+                # The page beside mine most often, on any engine, is the pair. Its count is the one its ahead / behind uses.
+                their_url, _ = sorted(counts.items(), key=lambda kv: (-len(kv[1]), their_best[kv[0]], kv[0]))[0]
+                shared = _shared_count(indexed, my_url, their_url)
                 hashed = pages.url_hash(my_url)
                 live_hashes.add(hashed)
                 written += conn.execute(
@@ -108,7 +110,7 @@ def refresh_auto_pairs(engine: Engine, site_id: int) -> int:
                 {"s": site_id, "c": competitor["id"]},
             ).mappings().all()
             for row in mine_chosen:
-                conn.execute(text("UPDATE page_pairs SET shared_keywords = :n WHERE id = :i"), {"n": _shared_count(checks, row["my_url"], row["their_url"]), "i": row["id"]})
+                conn.execute(text("UPDATE page_pairs SET shared_keywords = :n WHERE id = :i"), {"n": _shared_count(indexed, row["my_url"], row["their_url"]), "i": row["id"]})
     return written
 
 
@@ -201,12 +203,14 @@ def _pair_dict(conn, row: dict, checks=None, loaded: dict | None = None) -> dict
     if loaded is None:
         loaded = pages.load_many(conn, [row["my_url"], row["their_url"]])
     my_page, their_page = loaded.get(row["my_url"]), loaded.get(row["their_url"])
+    ranking = ranking_summary(checks, row["my_url"], row["their_url"]) if checks is not None else None
     return {
-        "ranking": ranking_summary(checks, row["my_url"], row["their_url"]) if checks is not None else None,
+        "ranking": ranking,
         "my_facts": _page_facts(my_page), "their_facts": _page_facts(their_page),
         "id": row["id"], "site_id": row["site_id"], "competitor_id": row["competitor_id"], "competitor": row["their_host"],
         "my_url": row["my_url"], "their_url": row["their_url"], "source": row["source"], "hidden": bool(row["hidden"]),
-        "shared_keywords": row["shared_keywords"], "updated_at": _iso(row["updated_at"]),
+        # Today's count by the ranking's own rule, not the one saved at the last refresh (W14).
+        "shared_keywords": ranking["shared"] if ranking is not None else row["shared_keywords"], "updated_at": _iso(row["updated_at"]),
         "my_title": (my_page or {}).get("title") or "", "their_title": (their_page or {}).get("title") or "",
         "my_state": _side_state(my_page), "their_state": _side_state(their_page),
     }

@@ -17,10 +17,11 @@ from urllib.parse import urlsplit
 
 from sqlalchemy import Engine, bindparam, text
 
-from seo.competitors import history, pairs, quality, tracking
+from seo.competitors import gaps, history, pairs, quality, tracking
 from seo.competitors.keywords import _iso, require_own
 from seo.competitors.pages import fold
 from seo.competitors.suggest import domain_of, my_domains
+from seo.crawl import pagedates
 from seo.insights import words as topic_words
 from seo.serp import store
 
@@ -54,24 +55,16 @@ def _json(value):
 
 
 def _day(value) -> date | None:
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    if isinstance(value, str) and len(value) >= 10:
-        try:
-            return date.fromisoformat(value[:10])
-        except ValueError:
-            return None
-    return None
+    """ISO and the other forms sites write ("May 26, 2020, 11:26:50 AM", "26 mai 2020"): one reader, seo.crawl.pagedates (W7)."""
+    return pagedates.page_day(value)
 
 
 def _pages(conn, host: str) -> list[dict]:
     """Pages read and still there. A page that's gone isn't one of theirs any more."""
     rows = conn.execute(
         text(
-            f"SELECT {_PAGE_COLUMNS}, (SELECT MIN(e.detected_at) FROM change_events e WHERE e.page_id = p.id AND e.kind = 'new_page') AS reported_new "
-            "FROM pages p JOIN domains d ON d.id = p.domain_id WHERE d.host IN (:h, :w) AND p.content_hash IS NOT NULL AND (p.last_status IS NULL OR p.last_status <> 'gone')"
+            f"SELECT {_PAGE_COLUMNS}, (SELECT MIN(e.detected_at) FROM change_events e WHERE e.page_id = p.id AND e.kind = 'new_page' AND e.hidden = 0) AS reported_new "
+            "FROM pages p JOIN domains d ON d.id = p.domain_id WHERE d.host IN (:h, :w) AND p.content_hash IS NOT NULL AND (p.last_status IS NULL OR p.last_status NOT IN ('gone', 'moved'))"
         ),
         {"h": host, "w": f"www.{host}"},
     ).mappings().all()
@@ -90,9 +83,80 @@ def _add_dates(pages: list[dict]) -> None:
     lastmods = Counter(p["sitemap_lastmod"] for p in pages if p["sitemap_lastmod"])
     honest = bool(lastmods) and lastmods.most_common(1)[0][1] < SITEMAP_SAME_DATE * len(pages)
     for page in pages:
-        page["appeared"] = _day(page["extras"].get("published")) or page["first_archived"] or _day(page["reported_new"])
+        page["appeared"] = appeared_day(page["extras"].get("published"), page["first_archived"], page["reported_new"])
+        page["reported"] = page["appeared"] is not None and page["appeared"] == _day(page["reported_new"]) and appeared_day(page["extras"].get("published"), page["first_archived"]) is None
         updated = [_day(page["extras"].get("modified")), _day(page["last_changed_at"]), page["sitemap_lastmod"] if honest else None]
         page["updated"] = max((d for d in updated if d), default=None)
+
+
+def appeared_day(published, first_archived=None, reported_new=None, today: date | None = None) -> date | None:
+    """When a page appeared: the day it says it was published (never a day after today, N6), else its first Wayback
+    copy, else the day the daily read reported it new."""
+    today = today or datetime.now(timezone.utc).date()
+    for value in (pagedates.published_day(published, today), _day(first_archived), _day(reported_new)):
+        if value is not None and value <= today:
+            return value
+    return None
+
+
+ADDED_DAYS = 30
+
+
+def added_since(pages: list[dict], watch_start, days: int = ADDED_DAYS, today: date | None = None) -> list[dict]:
+    """The one meaning of "added in 30 days", on the cards and the profile alike (SEO review 2026-11-18, N1): pages whose
+    own date (else the day the app reported them new) is in the last `days` days and not before watching began. A page
+    published after watching began but found while the first read was still going counts too."""
+    today = today or datetime.now(timezone.utc).date()
+    start = _day(watch_start)
+    since = today - timedelta(days=days)
+    if start is not None:
+        since = max(since, start)
+    month = today - timedelta(days=days)
+    # A page the daily read reported new was found after watching began by definition; only a page's own date is held to it.
+    return [p for p in pages if p.get("appeared") and (month if p.get("reported") else since) <= p["appeared"] <= today]
+
+
+def watch_starts(conn, hosts: list[str]) -> dict[str, date]:
+    """The day the app first read each site (www or not), by host as asked."""
+    out = {}
+    for host in hosts:
+        found = conn.execute(text("SELECT MIN(p.first_seen_at) FROM pages p JOIN domains d ON d.id = p.domain_id WHERE d.host IN (:h, :w)"), {"h": host, "w": f"www.{host}"}).scalar()
+        if found:
+            out[host] = found.date()
+    return out
+
+
+def added_counts(conn, hosts: list[str], days: int = ADDED_DAYS) -> dict[str, int]:
+    """"Added in 30 days" for many sites at once, by the rule of added_since, in two queries whatever the number of
+    sites. Only the columns the dates need are read."""
+    if not hosts:
+        return {}
+    owner = {}
+    for host in hosts:
+        owner[host.lower()] = host
+        owner[f"www.{host}".lower()] = host
+    names = sorted(owner)
+    starts: dict[str, date] = {}
+    for found_host, first in conn.execute(text(
+        "SELECT d.host, MIN(p.first_seen_at) FROM pages p JOIN domains d ON d.id = p.domain_id WHERE d.host IN :hosts GROUP BY d.host"
+    ).bindparams(bindparam("hosts", expanding=True)), {"hosts": names}):
+        host = owner.get(str(found_host).lower())
+        if host and first and (host not in starts or first.date() < starts[host]):
+            starts[host] = first.date()
+    pages: dict[str, list] = {host: [] for host in hosts}
+    for r in conn.execute(text(
+        "SELECT d.host, JSON_UNQUOTE(JSON_EXTRACT(p.extras, '$.published')) AS published, p.first_archived, n.reported_new "
+        "FROM pages p JOIN domains d ON d.id = p.domain_id "
+        "LEFT JOIN (SELECT page_id, MIN(detected_at) AS reported_new FROM change_events WHERE kind = 'new_page' AND hidden = 0 GROUP BY page_id) n ON n.page_id = p.id "
+        "WHERE d.host IN :hosts AND p.content_hash IS NOT NULL AND (p.last_status IS NULL OR p.last_status NOT IN ('gone', 'moved'))"
+    ).bindparams(bindparam("hosts", expanding=True)), {"hosts": names}).mappings():
+        host = owner.get(str(r["host"]).lower())
+        if host is None:
+            continue
+        published = r["published"] if r["published"] not in (None, "null") else None
+        own = appeared_day(published, r["first_archived"])
+        pages[host].append({"appeared": own or appeared_day(None, None, r["reported_new"]), "reported": own is None})
+    return {host: len(added_since(found, starts.get(host), days)) for host, found in pages.items()}
 
 
 def _section(url: str) -> str:
@@ -108,7 +172,7 @@ def _events(conn, host: str, kind: str, days: int) -> list[str]:
         for row in conn.execute(
             text(
                 "SELECT p.url FROM change_events e JOIN domains d ON d.id = e.domain_id JOIN pages p ON p.id = e.page_id "
-                f"WHERE d.host IN (:h, :w) AND e.kind = :k AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL {int(days)} DAY"
+                f"WHERE d.host IN (:h, :w) AND e.kind = :k AND e.hidden = 0 AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL {int(days)} DAY"
             ),
             {"h": host, "w": f"www.{host}", "k": kind},
         )
@@ -159,24 +223,45 @@ def _date_iso(value) -> str | None:
 
 # ---- activity -------------------------------------------------------------------------------------
 
-EDIT_SKIP = ("new_page", "page_gone")  # a page coming or going isn't an edit
+EDIT_SKIP = ("new_page", "page_gone", "redirect")  # a page coming, going or moving to another address isn't an edit (N3)
 
 
-def _edits_by_month(conn, host: str, keys: list[str]) -> tuple[list[int], str | None]:
-    """Edits per month over the chart's months, and the day the app first saw any change on that site."""
+def _edits_by_month(conn, host: str, keys: list[str]) -> tuple[list[int], str | None, int]:
+    """Pages edited per month over the chart's months, the day the app first saw any change on that site, and how many
+    different pages were edited over those months. Pages, not change rows: one rewrite saves a title, a meta and a text
+    change, and is still one page edited (SEO review 2026-11-17, #11)."""
+    where = "WHERE d.host IN (:h, :w) AND e.hidden = 0 AND e.kind NOT IN :skip AND e.detected_at >= :start"
+    args = {"h": host, "w": f"www.{host}", "skip": list(EDIT_SKIP), "start": f"{keys[0]}-01"}
     rows = conn.execute(
         text(
-            "SELECT DATE_FORMAT(e.detected_at, '%Y-%m') AS ym, COUNT(*) AS n FROM change_events e JOIN domains d ON d.id = e.domain_id "
-            "WHERE d.host IN (:h, :w) AND e.kind NOT IN :skip AND e.detected_at >= :start GROUP BY ym"
+            "SELECT DATE_FORMAT(e.detected_at, '%Y-%m') AS ym, COUNT(DISTINCT e.page_id) AS n FROM change_events e JOIN domains d ON d.id = e.domain_id "
+            f"{where} GROUP BY ym"
         ).bindparams(bindparam("skip", expanding=True)),
-        {"h": host, "w": f"www.{host}", "skip": list(EDIT_SKIP), "start": f"{keys[0]}-01"},
+        args,
     ).all()
+    pages = conn.execute(
+        text(f"SELECT COUNT(DISTINCT e.page_id) FROM change_events e JOIN domains d ON d.id = e.domain_id {where}").bindparams(bindparam("skip", expanding=True)), args,
+    ).scalar()
     counts = {ym: int(n) for ym, n in rows}
     first = conn.execute(
-        text("SELECT MIN(e.detected_at) FROM change_events e JOIN domains d ON d.id = e.domain_id WHERE d.host IN (:h, :w)"),
+        text("SELECT MIN(e.detected_at) FROM change_events e JOIN domains d ON d.id = e.domain_id WHERE d.host IN (:h, :w) AND e.hidden = 0"),
         {"h": host, "w": f"www.{host}"},
     ).scalar()
-    return [counts.get(key, 0) for key in keys], first.date().isoformat() if first else None
+    return [counts.get(key, 0) for key in keys], first.date().isoformat() if first else None, int(pages or 0)
+
+
+DATED_SHARE = 0.1  # under this share of pages with an update date (and under 5 pages), the share says nothing
+DATED_MIN = 5
+
+
+def updated_share_of(pages: list[dict], since: date) -> float | None:
+    """Among pages with an update date, the share updated since `since`. A page with none isn't "not updated": nobody
+    knows. When few pages carry a date, the share isn't shown: meyranpartners.fr gives no dates, and the 3 pages the app
+    saw edited made "Updated, 12 months" read 100% of 486 (SEO review 2026-11-17, W11)."""
+    dated = [p for p in pages if p["updated"]]
+    if not dated or len(dated) < max(DATED_MIN, DATED_SHARE * len(pages)):
+        return None
+    return round(sum(1 for p in dated if p["updated"] >= since) / len(dated), 3)
 
 
 def _rhythm(conn, host: str, my_host: str, theirs: list[dict], mine: list[dict], by_year: dict) -> dict:
@@ -193,22 +278,23 @@ def _rhythm(conn, host: str, my_host: str, theirs: list[dict], mine: list[dict],
         return [counts.get(key, 0) for key in keys]
 
     their_months, my_months = per_month(theirs), per_month(mine) if mine else [None] * MONTHS
-    their_edits, edits_since = _edits_by_month(conn, host, keys)
-    my_edits, my_edits_since = _edits_by_month(conn, my_host, keys) if mine else ([None] * MONTHS, None)
-    new_urls = _events(conn, host, "new_page", 30)
+    their_edits, edits_since, their_pages = _edits_by_month(conn, host, keys)
+    my_edits, my_edits_since, my_pages = _edits_by_month(conn, my_host, keys) if mine else ([None] * MONTHS, None, None)
+    # Published in the last 30 days by the pages' own dates, else the day the app reported them new (W10): "They
+    # published N pages in 30 days" counted only pages seen new since watching began.
+    new_urls = [p["url"] for p in added_since(theirs, watch_starts(conn, [host]).get(host), today=today)]
     sections = Counter(_section(url) for url in new_urls)
     year_ago = today - timedelta(days=365)
 
     def updated_share(pages):
-        # Among pages with an update date. A page with none isn't "not updated": nobody knows.
-        dated = [p for p in pages if p["updated"]]
-        return round(sum(1 for p in dated if p["updated"] >= year_ago) / len(dated), 3) if dated else None
+        return updated_share_of(pages, year_ago)
 
     return {
         "months": [{"month": key, "theirs": t, "mine": m} for key, t, m in zip(keys, their_months, my_months)],
         # Edits to pages they already had, by the month the app saw them. Only counted since the app started watching.
         "edits": [{"month": key, "theirs": t, "mine": m} for key, t, m in zip(keys, their_edits, my_edits)],
         "edits_since": {"theirs": edits_since, "mine": my_edits_since},
+        "edited_pages": {"theirs": their_pages, "mine": my_pages},  # different pages, so a page edited in two months counts once
         "new_30d": len(new_urls),
         # My site's pages are read when paired, not every day, so nothing reports its new or removed pages yet.
         "my_new_30d": None,
@@ -458,7 +544,8 @@ def _links(conn, site_id: int, competitor_id: int, host: str) -> dict:
     decisions = dict(conn.execute(text("SELECT domain, decision FROM link_gap_overrides WHERE site_id = :s"), {"s": site_id}).all())
     rows = conn.execute(
         text(
-            "SELECT r.domain, r.authority, r.authority_label, r.spam_score, d.quality, d.reason FROM competitor_referrers r LEFT JOIN link_domains d ON d.domain = r.domain "
+            "SELECT r.domain, r.authority, r.authority_label, r.spam_score, r.source_label, r.in_common_crawl, d.quality, d.reason FROM competitor_referrers r "
+            "LEFT JOIN link_domains d ON d.domain = r.domain "
             "WHERE r.competitor_id = :c AND r.removed_by_hand = 0"
         ),
         {"c": competitor_id},
@@ -466,16 +553,42 @@ def _links(conn, site_id: int, competitor_id: int, host: str) -> dict:
     rows = [r for r in rows if r["domain"] not in mine and r["domain"] != domain_of(host)]
     logged = conn.execute(text("SELECT domain, status FROM backlinks WHERE site_id = :s"), {"s": site_id}).all()
     linking_me = {domain for domain, status in logged if status in ("live", "found")}
+    # Old links (Link gaps' rule, gaps.old_link): a domain whose every link to them was last seen 6+ months before its file is
+    # probably gone. It counts apart, as "+N old" (final re-check 2026-11-18, 3.4).
+    dated: dict[str, list[dict]] = {}
+    for row in conn.execute(
+        text("SELECT l.domain, l.last_seen, r.last_seen_at AS file_at FROM competitor_referrer_links l "
+             "LEFT JOIN competitor_referrers r ON r.competitor_id = l.competitor_id AND r.domain = l.domain WHERE l.competitor_id = :c"),
+        {"c": competitor_id},
+    ).mappings():
+        dated.setdefault(row["domain"], []).append({
+            "competitor_id": competitor_id, "old": gaps.is_old(row["last_seen"], row["file_at"]), "last_seen": row["last_seen"].isoformat() if row["last_seen"] else "",
+        })
+    old_domains = {domain for domain, found in dated.items() if gaps.old_link(found, {competitor_id})}
 
     def spam(row) -> bool:
         return quality.verdict(row["spam_score"], row["quality"], row["reason"], decisions.get(row["domain"]))[0] == quality.SPAM
 
-    top = sorted(rows, key=lambda r: (spam(r), -(r["authority"] if r["authority"] is not None else -1), r["domain"]))[:TOP_LINKS]
+    def old(row) -> bool:
+        return row["domain"] in old_domains and not spam(row)
+
+    top = sorted(rows, key=lambda r: (spam(r), old(r), -(r["authority"] if r["authority"] is not None else -1), r["domain"]))[:TOP_LINKS]
+    flagged = sum(1 for r in rows if spam(r))
+    aged = sum(1 for r in rows if old(r))
+    sources = sorted({"Common Crawl" if r["in_common_crawl"] and not r["source_label"] else r["source_label"] or "Common Crawl" for r in rows})
+    # Spam never counts: five spam domains made a rival "Ahead" (SEO review 2026-11-17, #11). It's said apart, as "+5 flagged".
+    # My number comes from my Backlinks list, theirs from their files or Common Crawl: two sources, so the screen names both and
+    # calls no winner (`same_source` false).
     return {
-        "linking_domains": len(rows) if rows else None,
+        "linking_domains": len(rows) - flagged - aged if rows else None,
+        "linking_flagged": flagged,
+        "linking_old": aged,
+        "linking_sources": sources,
         "my_linking_domains": len(linking_me) if logged else None,
-        "not_to_me": sum(1 for r in rows if r["domain"] not in linking_me and not spam(r)),
-        "top": [{"domain": r["domain"], "authority": r["authority"], "authority_label": r["authority_label"], "spam": spam(r)} for r in top],
+        "my_linking_source": "Backlinks",
+        "same_source": False,
+        "not_to_me": sum(1 for r in rows if r["domain"] not in linking_me and not spam(r) and not old(r)),
+        "top": [{"domain": r["domain"], "authority": r["authority"], "authority_label": r["authority_label"], "spam": spam(r), "old": old(r)} for r in top],
     }
 
 
@@ -550,7 +663,7 @@ def insights(engine: Engine, site_id: int, competitor_id: int) -> dict:
         past = history.state(conn, host) or {}
         rhythm = _rhythm(conn, host, my_host, theirs, mine, past.get("pages_by_year"))
         questions = _questions(conn, site_id, theirs, mine)
-        links = _links(conn, site_id, competitor_id, host) if setting != tracking.OFF else {"linking_domains": None, "my_linking_domains": None, "not_to_me": 0, "top": []}
+        links = _links(conn, site_id, competitor_id, host) if setting != tracking.OFF else {"linking_domains": None, "linking_flagged": 0, "linking_sources": [], "my_linking_domains": None, "my_linking_source": "Backlinks", "same_source": False, "not_to_me": 0, "top": []}
         best, cannibal = [], {}
         if setting == tracking.ON:  # keyword numbers only for a competitor that's followed
             best = _best_pages(conn, site_id, competitor_id, my_host, host, store.latest_checks(engine, site_id), theirs)

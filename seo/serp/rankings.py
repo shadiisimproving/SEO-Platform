@@ -35,6 +35,17 @@ def page_address(url: str) -> str:
     return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(kept), ""))
 
 
+TWO_PAGES_SHARE = 0.2  # a second page with fewer of the impressions is a stray showing, not a page competing
+
+
+def second_page_counts(pages_seen: dict) -> bool:
+    """Two of my pages compete in Search Console when the second one holds a real share of the keyword's impressions
+    (at least TWO_PAGES_SHARE of them), not when it showed once (rankings review 3.8: 41 against 1)."""
+    shows = sorted((n or 0 for n in pages_seen.values()), reverse=True)
+    total = sum(shows)
+    return len(shows) >= 2 and total > 0 and shows[1] / total >= TWO_PAGES_SHARE
+
+
 def _fold_pages(seen: dict) -> dict:
     """Search Console's pages for one query, tagged copies added into their page's impressions."""
     folded: dict = {}
@@ -45,7 +56,7 @@ def _fold_pages(seen: dict) -> dict:
 
 ENGINES = connections.ENGINE_ORDER
 DEVICE = "desktop"  # the screen shows desktop. A mobile check is another target, so it can never be compared with these.
-HOURS_TO_AGREE = 48
+HOURS_TO_AGREE = store.CROSS_HOURS  # tools disagree only between checks this close (store.clash)
 OWN_DAYS = 28
 
 
@@ -62,6 +73,7 @@ class Seen:
     at: datetime
     rows: list = field(default_factory=list)  # (position, url, host) of pages on any of my sites
     cited: list = field(default_factory=list)  # hosts of my sites this check's AI Overview cites
+    why: str | None = None  # a suspect check's reason (serp_checks.error)
 
     def own(self, host: str):
         return next((row for row in self.rows if store.on_host(row[2], host)), None)
@@ -90,11 +102,11 @@ def _load_checks(conn, keyword_ids: list[int], hosts: list[str]) -> dict[tuple[i
         marks = ",".join(str(int(i)) for i in keyword_ids[start:start + 1000])
         for row in conn.execute(
             text(
-                f"SELECT c.id, t.keyword_id, t.engine, c.tool, c.real_location, c.depth, c.status, c.ai_state, c.checked_at FROM serp_targets t JOIN serp_checks c ON c.target_id = t.id "
+                f"SELECT c.id, t.keyword_id, t.engine, c.tool, c.real_location, c.depth, c.status, c.ai_state, c.checked_at, c.error FROM serp_targets t JOIN serp_checks c ON c.target_id = t.id "
                 f"WHERE t.device = '{DEVICE}' AND t.keyword_id IN ({marks}) AND c.status IN ('ok', 'suspect') ORDER BY c.id"
             )
         ).mappings():
-            seen = Seen(row["id"], row["keyword_id"], row["engine"], row["tool"], row["real_location"], row["depth"], row["status"], row["ai_state"], row["checked_at"])
+            seen = Seen(row["id"], row["keyword_id"], row["engine"], row["tool"], row["real_location"], row["depth"], row["status"], row["ai_state"], row["checked_at"], why=row["error"] if row["status"] == "suspect" else None)
             by_target[(seen.keyword_id, seen.engine)].append(seen)
             by_id[seen.check_id] = seen
     ascii_hosts = [store.to_ascii_host(host) for host in hosts]
@@ -114,15 +126,32 @@ def _load_checks(conn, keyword_ids: list[int], hosts: list[str]) -> dict[tuple[i
     return by_target
 
 
+def _read(seen: Seen, host: str) -> store.Read:
+    return store.Read(seen.check_id, seen.tool, seen.depth, seen.at, seen.position(host), can_miss=seen.status == "ok")
+
+
 def _view(seen: Seen, host: str, now: datetime, home: bool, verdict: str | None = None) -> dict:
     best = seen.own(host)
     return {
         "check_id": seen.check_id, "tool": seen.tool, "p": best[0] if best else None, "url": best[1] if best else None, "depth": seen.depth, "location": seen.location,
         "checked_at": _iso(seen.at), "age_days": round((now - seen.at).total_seconds() / 86400, 2), "status": seen.status, "home": home, "verdict": verdict or seen.status,
+        "why": store.suspect_why(seen.why),
     }
 
 
-def engine_view(checks: list[Seen], host: str, country: str, language: str, order: list[str], gap: int, now: datetime, own: dict | None = None) -> dict:
+def movement(now_p: int | None, then_p: int | None) -> str:
+    """How a keyword moved between two like-for-like checks (same tool, location and depth). Beyond the depth is a real
+    state, "out of the top N": found → out is "lost" (a drop), out → found is "new" (a gain), out → out is "out"."""
+    if now_p is not None and then_p is not None:
+        return "up" if now_p < then_p else "down" if now_p > then_p else "same"
+    if then_p is not None:
+        return "lost"
+    if now_p is not None:
+        return "new"
+    return "out"
+
+
+def engine_view(checks: list[Seen], host: str, country: str, language: str, order: list[str], gap: int, now: datetime, own: dict | None = None, main_tool: str = "") -> dict:
     """One keyword on one engine. `checks` are oldest first."""
     home, away = [], []
     for seen in checks:
@@ -133,16 +162,26 @@ def engine_view(checks: list[Seen], host: str, country: str, language: str, orde
     for seen in good:
         latest_by_tool[seen.tool] = seen
     place = {name: at for at, name in enumerate(order)}
-    main = None
+    main, passed_over = None, None
     if latest_by_tool:
-        # The first tool in your order that has a result, however fresh another tool's is.
-        first = min(latest_by_tool, key=lambda name: (place.get(name, len(place)), -latest_by_tool[name].check_id))
-        main = latest_by_tool[first]
+        # The main tool's result while it is fresh, otherwise the newest (store.pick_main, the rule every screen shares).
+        main, passed_over = store.pick_main(list(latest_by_tool.values()), main_tool, now, tool=lambda c: c.tool, ident=lambda c: c.check_id, at=lambda c: c.at)
     flagged_only = False
     if main is None and home:  # only suspect results: shown as such, and counted as nothing
         main, flagged_only = home[-1], True
 
-    change, change_note, trend, history = None, None, [], []
+    # Tools that disagree (store.settle, the rule Competitors shares): a third tool's check of the same days decides which is
+    # shown; with none, the newest stays and the row carries the other answer too ("also").
+    disagree = None
+    if main is not None and not flagged_only:
+        reads = {seen.check_id: _read(seen, host) for seen in home}
+        witnesses = [reads[seen.check_id] for seen in home if store.can_witness(seen.why)]
+        locked = bool(main_tool) and main.tool == main_tool and passed_over is None
+        shown, disagree = store.settle(reads[main.check_id], [reads[seen.check_id] for seen in latest_by_tool.values()], witnesses, gap, locked)
+        if shown.id != main.check_id:
+            main = next(seen for seen in good if seen.check_id == shown.id)
+
+    change, change_note, trend, move, was, url_changed, history = None, None, [], None, None, False, []
     if main is not None and not flagged_only:
         same = [seen for seen in good if seen.kind() == main.kind()]
         before = [seen for seen in same if seen.check_id < main.check_id]
@@ -152,8 +191,11 @@ def engine_view(checks: list[Seen], host: str, country: str, language: str, orde
         history = [{"at": _iso(seen.at), "p": seen.position(host)} for seen in same if seen.check_id <= main.check_id]
         if before:
             now_p, then_p = main.position(host), before[-1].position(host)
+            move, was = movement(now_p, then_p), then_p
             if now_p is not None and then_p is not None:
                 change = then_p - now_p  # a smaller position is better, so up is positive
+                now_url, then_url = (main.own(host) or (None, None))[1], (before[-1].own(host) or (None, None))[1]
+                url_changed = bool(now_url and then_url and page_address(now_url).rstrip("/") != page_address(then_url).rstrip("/"))
         else:
             earlier = [seen for seen in good if seen.check_id < main.check_id]
             if earlier:
@@ -165,24 +207,20 @@ def engine_view(checks: list[Seen], host: str, country: str, language: str, orde
         same_before = [seen for seen in good if seen.kind() == main.kind() and seen.check_id < main.check_id]
         verdict = "suspect" if main.status == "suspect" else ("ok" if same_before or (own and own.get("position") is not None) else "unverifiable")
 
-    disagree = None
-    fresh = [seen for seen in latest_by_tool.values() if seen.position(host) is not None]
-    for i, one in enumerate(fresh):
-        for other in fresh[i + 1:]:
-            hours = abs((one.at - other.at).total_seconds()) / 3600
-            diff = abs(one.position(host) - other.position(host))
-            if hours <= HOURS_TO_AGREE and diff > gap and (disagree is None or diff > disagree["diff"]):
-                disagree = {"tools": [one.tool, other.tool], "diff": diff}
-
     others = [_view(seen, host, now, True) for name, seen in latest_by_tool.items() if main is None or name != main.tool]
     others.sort(key=lambda row: place.get(row["tool"], len(place)))
     latest_away: dict[tuple, Seen] = {}
     for seen in away:
         latest_away[(seen.tool, seen.location)] = seen
     suspects = [_view(seen, host, now, True) for seen in home if seen.status == "suspect" and (main is None or seen.check_id > main.check_id)]
+    main_view = _view(main, host, now, True, verdict) if main else None
+    if main_view and passed_over is not None:
+        main_view["passed_over"] = {"tool": passed_over.tool, "age_days": round((now - passed_over.at).total_seconds() / 86400, 2)}
+    if main_view:
+        main_view["old"] = main_view["age_days"] > store.MAIN_MAX_AGE_DAYS  # the row's amber age badge
     return {
-        "main": _view(main, host, now, True, verdict) if main else None,
-        "change": change, "change_note": change_note, "trend": trend, "history": history, "others": others, "suspects": suspects, "disagree": disagree,
+        "main": main_view,
+        "change": change, "change_note": change_note, "move": move, "was": was, "url_changed": url_changed, "trend": trend, "history": history, "others": others, "suspects": suspects, "disagree": disagree,
         "away": [_view(seen, host, now, False) for seen in latest_away.values()],
         "never": not checks,
         "own": own.get("position") if own else None, "impressions": own.get("impressions") if own else None, "clicks": own.get("clicks") if own else None,
@@ -199,49 +237,115 @@ def _ai(checks: list[Seen], host: str, country: str, language: str, now: datetim
     return {"state": state, "tool": seen.tool, "age_days": round((now - seen.at).total_seconds() / 86400, 2)}
 
 
-def _own_tools(conn, site_ids: list[int]) -> dict:
-    """Search Console, Bing's and Yandex's own numbers for my sites, by the keyword's cleaned text. Empty until each is connected."""
-    tables: dict[str, dict] = {"google": {}, "bing": {}, "yandex": {}}
+def _add_own(table: dict, key, query: str, clicks, impressions, position) -> None:
+    """Queries with the same matching key (store.match_key) count for one tracked keyword: clicks and impressions add up,
+    and the position is weighted by impressions. Which spellings went in is kept, so the screen can say so."""
+    slot = table.setdefault(key, {"clicks": 0, "impressions": 0, "_weighted": 0.0, "_shown": 0, "_plain": None, "_queries": set()})
+    shown = int(impressions or 0)
+    slot["clicks"] += int(clicks or 0)
+    slot["impressions"] += shown
+    slot["_queries"].add(store.clean_keyword(query).casefold())
+    if position is not None:
+        if shown:
+            slot["_weighted"] += float(position) * shown
+            slot["_shown"] += shown
+        elif slot["_plain"] is None:
+            slot["_plain"] = float(position)
+
+
+def _settle_own(table: dict) -> dict:
+    for slot in table.values():
+        slot["position"] = slot["_weighted"] / slot["_shown"] if slot["_shown"] else slot["_plain"]
+        for name in ("_weighted", "_shown", "_plain"):
+            slot.pop(name, None)
+    return table
+
+
+def _public(slot: dict | None) -> dict | None:
+    return {k: v for k, v in slot.items() if not k.startswith("_")} if slot else None
+
+
+def tracked_spellings(conn, site_ids: list[int]) -> dict[int, frozenset]:
+    """Per site, the matching keys tracked under two or more spellings (store.shared_keys)."""
+    if not site_ids:
+        return {}
+    marks = ",".join(str(int(i)) for i in site_ids)
+    words: dict[int, list] = defaultdict(list)
+    for row in conn.execute(text(f"SELECT sk.site_id, k.keyword FROM site_keywords sk JOIN keywords k ON k.id = sk.keyword_id WHERE sk.site_id IN ({marks})")).mappings():
+        words[row["site_id"]].append(row["keyword"])
+    return {site_id: store.shared_keys(found) for site_id, found in words.items()}
+
+
+def search_windows(engine: Engine, site_ids: list[int]) -> dict:
+    """Per site, (first, last) day of Search Console's shared 28 days (period.for_site): Google's final days only."""
+    from seo.metrics import period
+
+    windows = {}
+    for site_id in site_ids:
+        scope, _ = period.for_site(engine, site_id, OWN_DAYS)
+        windows[site_id] = (scope.start, scope.end)
+    return windows
+
+
+def _own_tools(conn, site_ids: list[int], shared: dict[int, frozenset] | None = None, windows: dict | None = None) -> dict:
+    """Search Console, Bing's and Yandex's own numbers for my sites, by matching key (store.match_key): every spelling of a
+    keyword tracked once, or only its exact query when the site tracks two spellings of it. Empty until each is connected."""
+    shared = shared or {}
+    tables: dict[str, dict] = {"google": {}, "bing": {}, "yandex": {}, "google_country": {}}
     pages: dict = defaultdict(dict)
     through = {}
     if not site_ids:
         return {"positions": tables, "pages": pages, "through": through}
+
+    def key(site_id, query):
+        return store.match_key(query, shared.get(site_id, frozenset()))
+
     marks = ",".join(str(int(i)) for i in site_ids)
+    # The shared period (seo.metrics.period): the last 28 of Google's final days, as Overview and Insights count them.
+    # Google's fresh days (the last two or three, still changing) never count.
+    windows = windows or {}
     for row in conn.execute(text(f"SELECT site_id, MAX(day) AS last FROM gsc_query WHERE site_id IN ({marks}) GROUP BY site_id")).mappings():
-        through[row["site_id"]] = row["last"]
-    for site_id, last in through.items():
+        if row["last"] is not None:
+            through[row["site_id"]] = windows.get(row["site_id"], (row["last"] - timedelta(days=OWN_DAYS - 1), row["last"]))[1]
+    for site_id in list(through):
+        first, last = windows.get(site_id, (through[site_id] - timedelta(days=OWN_DAYS - 1), through[site_id]))
         for row in conn.execute(
             text(
                 "SELECT query, SUM(clicks) AS clicks, SUM(impressions) AS impressions, SUM(position * impressions) / NULLIF(SUM(impressions), 0) AS position "
-                f"FROM gsc_query WHERE site_id = :s AND day > :last - INTERVAL {OWN_DAYS} DAY GROUP BY query_hash, query"
+                "FROM gsc_query WHERE site_id = :s AND day BETWEEN :first AND :last GROUP BY query_hash, query"
             ),
-            {"s": site_id, "last": last},
+            {"s": site_id, "first": first, "last": last},
         ).mappings():
-            tables["google"][(site_id, store.clean_keyword(row["query"]).casefold())] = {"position": float(row["position"]) if row["position"] is not None else None, "impressions": int(row["impressions"] or 0), "clicks": int(row["clicks"] or 0)}
+            _add_own(tables["google"], (site_id, key(site_id, row["query"])), row["query"], row["clicks"], row["impressions"], row["position"])
         for row in conn.execute(
-            text(f"SELECT query, page, SUM(impressions) AS impressions FROM gsc_query_page WHERE site_id = :s AND day > :last - INTERVAL {OWN_DAYS} DAY GROUP BY pair_hash, query, page"),
-            {"s": site_id, "last": last},
+            text("SELECT query, page, SUM(impressions) AS impressions FROM gsc_query_page WHERE site_id = :s AND day BETWEEN :first AND :last GROUP BY pair_hash, query, page"),
+            {"s": site_id, "first": first, "last": last},
         ).mappings():
-            pages[(site_id, store.clean_keyword(row["query"]).casefold())].setdefault(row["page"], int(row["impressions"] or 0))
+            seen = pages[(site_id, key(site_id, row["query"]))]
+            seen[row["page"]] = seen.get(row["page"], 0) + int(row["impressions"] or 0)
         # The same, in each country the site's queries are read for: a keyword's own country, not a world average.
         for row in conn.execute(
             text(
                 "SELECT country, query, SUM(clicks) AS clicks, SUM(impressions) AS impressions, SUM(position * impressions) / NULLIF(SUM(impressions), 0) AS position "
-                f"FROM gsc_query_country WHERE site_id = :s AND day > :last - INTERVAL {OWN_DAYS} DAY AND day <= :last GROUP BY country, query_hash, query"
+                "FROM gsc_query_country WHERE site_id = :s AND day BETWEEN :first AND :last GROUP BY country, query_hash, query"
             ),
-            {"s": site_id, "last": last},
+            {"s": site_id, "first": first, "last": last},
         ).mappings():
-            tables.setdefault("google_country", {})[(site_id, row["country"], store.clean_keyword(row["query"]).casefold())] = {
-                "position": float(row["position"]) if row["position"] is not None else None, "impressions": int(row["impressions"] or 0), "clicks": int(row["clicks"] or 0),
-            }
+            _add_own(tables["google_country"], (site_id, row["country"], key(site_id, row["query"])), row["query"], row["clicks"], row["impressions"], row["position"])
     for row in conn.execute(text(f"SELECT site_id, query, clicks, impressions, position FROM bing_query WHERE site_id IN ({marks})")).mappings():
-        tables["bing"][(row["site_id"], store.clean_keyword(row["query"]).casefold())] = {"position": row["position"], "impressions": row["impressions"], "clicks": row["clicks"]}
+        _add_own(tables["bing"], (row["site_id"], key(row["site_id"], row["query"])), row["query"], row["clicks"], row["impressions"], row["position"])
     for row in conn.execute(text(f"SELECT site_id, query, clicks, shows, position FROM yandex_query WHERE site_id IN ({marks})")).mappings():
-        tables["yandex"][(row["site_id"], store.clean_keyword(row["query"]).casefold())] = {"position": row["position"], "impressions": row["shows"], "clicks": row["clicks"]}
+        _add_own(tables["yandex"], (row["site_id"], key(row["site_id"], row["query"])), row["query"], row["clicks"], row["shows"], row["position"])
+    for table in tables.values():
+        _settle_own(table)
     return {"positions": tables, "pages": pages, "through": through}
 
 
 def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) -> dict:
+    # The shared period is read before this connection opens: a route never holds two connections at once (test_db_pool).
+    with engine.connect() as conn:
+        wanted = [site["id"] for site in _sites(conn, site_id)]
+    windows = search_windows(engine, wanted)
     with engine.connect() as conn:
         sites = _sites(conn, site_id)
         site_ids = [site["id"] for site in sites]
@@ -256,7 +360,8 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
                 {"k": keyword_id},
             ).mappings().all()
         checks = _load_checks(conn, list({row["id"] for row in tracked}), list(hosts.values()))
-        own = _own_tools(conn, site_ids)
+        shared = tracked_spellings(conn, site_ids)  # all of each site's keywords, even when one keyword is asked for
+        own = _own_tools(conn, site_ids, shared, windows)
         # Whichever button pressed it: this screen's Refresh, or Check again in Competitors.
         finished = [
             conn.execute(text("SELECT MAX(finished_at) FROM rank_runs")).scalar(),
@@ -264,23 +369,27 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
         ]
         last_run = max((day for day in finished if day), default=None)
     order = {name: connections.order_for(engine, name) for name in ENGINES}
+    chosen_tool = connections.main_tool(engine)
     gap = int(connections.get_setting(engine, "disagree_gap"))
     rows = []
     for track in tracked:
-        host, key = hosts[track["site_id"]], store.clean_keyword(track["keyword"]).casefold()
+        host, key = hosts[track["site_id"]], store.match_key(track["keyword"], shared.get(track["site_id"], frozenset()))
         engines = {}
         for name in ENGINES:
             own_row = own["positions"].get(name, {}).get((track["site_id"], key))
-            engines[name] = engine_view(checks.get((track["id"], name), []), host, track["country"], track["language"], order[name], gap, now, own_row)
+            engines[name] = engine_view(checks.get((track["id"], name), []), host, track["country"], track["language"], order[name], gap, now, _public(own_row), chosen_tool)
         ai = _ai(checks.get((track["id"], "google"), []), host, track["country"], track["language"], now)
         pages_seen = _fold_pages(own["pages"].get((track["site_id"], key), {}))
-        latest_google = checks.get((track["id"], "google"), [])
+        # The check shown on Google (pick_main), not whichever check came last: a suspect or far-away one says nothing here.
+        shown_id = (engines["google"]["main"] or {}).get("check_id")
+        shown_check = next((seen for seen in checks.get((track["id"], "google"), []) if seen.check_id == shown_id), None)
         # Two addresses: a result whose address Google hid may be either page, so it isn't a second one.
-        scraped_two = latest_google and len({page_address(row[1]) for row in latest_google[-1].rows if row[1] and store.on_host(row[2], host)}) >= 2
-        # Which pages they are: Search Console's by impressions, then any other address the latest Google check found.
+        scraped_two = bool(shown_check) and len({page_address(row[1]) for row in shown_check.rows if row[1] and store.on_host(row[2], host)}) >= 2
+        two_pages = scraped_two or second_page_counts(pages_seen)
+        # Which pages they are: Search Console's by impressions, then any other address the shown check found.
         competing = [{"url": url, "impressions": shows, "position": None} for url, shows in sorted(pages_seen.items(), key=lambda kv: -kv[1])]
-        if latest_google:
-            for position, url, row_host in latest_google[-1].rows:
+        if shown_check:
+            for position, url, row_host in shown_check.rows:
                 if not url or not store.on_host(row_host, host):
                     continue
                 url = page_address(url)
@@ -289,29 +398,52 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
                     known["position"] = known["position"] or position
                 else:
                     competing.append({"url": url, "impressions": None, "position": position})
+        # The page that ranked: the URL our newest check found (Google first). Search Console's most-shown page over 28 days is
+        # another fact, kept apart and named as such on screen ("Most shown in Search Console"), never passed off as the ranking URL.
         main_url = next((view["main"]["url"] for view in engines.values() if view["main"] and view["main"]["url"]), None)
-        page = max(pages_seen, key=pages_seen.get) if pages_seen else main_url
+        gsc_page = max(pages_seen, key=pages_seen.get) if pages_seen else None
+        page = main_url or gsc_page
         google_own = own["positions"]["google"].get((track["site_id"], key))
         code3 = countries.alpha3(track["country"]) if track["country"] else None
         local = own["positions"].get("google_country", {}).get((track["site_id"], code3, key)) if code3 else None
         rows.append({
             "id": f"{track['site_id']}:{track['id']}", "keyword_id": track["id"], "site_id": track["site_id"], "site": host, "keyword": track["keyword"],
             "country": track["country"], "language": track["language"], "engines": engines, "ai": ai, "page": page,
-            "two_pages": len(pages_seen) >= 2 or bool(scraped_two),
-            "pages": competing if len(pages_seen) >= 2 or scraped_two else [],
+            "ranking_url": main_url, "gsc_page": gsc_page,
+            # Search Console's numbers include other spellings of it ("cafe" for "café"): only when the site tracks one spelling.
+            "other_spellings": bool(google_own and google_own["_queries"] - {store.clean_keyword(track["keyword"]).casefold()}),
+            "two_pages": two_pages,
+            "pages": competing if two_pages else [],
             # "volume" is kept for older readers: it was never search volume, only our own impressions over 28 days.
             "volume": google_own["impressions"] if google_own else None, "impressions": google_own["impressions"] if google_own else None,
             # Search Console in the keyword's own country, when the site's queries are read for it (None otherwise; the
             # world average stays in engines.google.own).
-            "own_country": {"country": track["country"].upper(), **{k: (round(v, 1) if k == "position" and v is not None else v) for k, v in local.items()}} if local else None,
+            "own_country": {"country": track["country"].upper(), **{k: (round(v, 1) if k == "position" and v is not None else v) for k, v in local.items() if not k.startswith("_")}} if local else None,
         })
     return {"rows": rows, "through": own["through"], "last_refresh": last_run, "now": now, "order": order, "gap": gap}
 
 
+GAINS, DROPS = ("up", "new"), ("down", "lost")
+
+
+def top10_step(view: dict) -> int:
+    """+1 when a like-for-like pair entered the top 10, −1 when it left it, 0 otherwise. Dropping out of the depth checked
+    (at depth 10, the top 10 itself) is leaving it; coming in from beyond it is entering."""
+    move, main = view.get("move"), view.get("main") or {}
+    if move is None:
+        return 0
+    now_p, was = main.get("p"), view.get("was")
+    inside_now = now_p is not None and now_p <= 10
+    inside_then = was is not None and was <= 10
+    return (1 if inside_now and not inside_then else 0) - (1 if inside_then and not inside_now else 0)
+
+
 def tiles(rows: list[dict], engine_name: str) -> dict:
-    """Top 10 here always means scraped results. It's never added to Search Console's, and its change only counts like-for-like pairs."""
+    """Top 10 here always means scraped results. It's never added to Search Console's, and its change only counts like-for-like pairs.
+    A keyword that left the depth checked counts as Down ("lost"), one that came in as Up ("new")."""
     tracked = len(rows)
-    ranked = top10 = up = down = compared = moved_in = moved_out = none = cited = 0
+    ranked = top10 = up = down = compared = lost = new = none = cited = 0
+    top10_change = 0
     for row in rows:
         view = row["engines"][engine_name]
         main = view["main"]
@@ -323,18 +455,18 @@ def tiles(rows: list[dict], engine_name: str) -> dict:
                 top10 += 1
         elif usable:  # checked, and not found. A keyword nobody has checked yet isn't "not ranked": nothing is known.
             none += 1
-        change = view["change"]
-        if change is not None:
+        move = view.get("move")
+        if move is not None:
             compared += 1
-            up += change > 0
-            down += change < 0
-            was = position + change
-            moved_in += position <= 10 < was
-            moved_out += was <= 10 < position
+            up += move in GAINS
+            down += move in DROPS
+            lost += move == "lost"
+            new += move == "new"
+            top10_change += top10_step(view)
         cited += row["ai"]["state"] == "cited"
     return {
-        "tracked": tracked, "ranked": ranked, "not_ranked": none, "top10": top10, "top10_source": "scraped", "up": up, "down": down,
-        "top10_change": (moved_in - moved_out) if compared else None, "compared": compared, "cited": cited,
+        "tracked": tracked, "ranked": ranked, "not_ranked": none, "top10": top10, "top10_source": "scraped", "up": up, "down": down, "lost": lost, "new": new,
+        "top10_change": top10_change if compared else None, "compared": compared, "cited": cited,
     }
 
 
@@ -470,9 +602,11 @@ def detail(engine: Engine, site_id: int, keyword_id: int, engine_name: str) -> d
         ).mappings().all() if target else []
         marks = ",".join(str(int(check["id"])) for check in every) or "0"
         own_rows: dict[int, int] = {}
-        for result in conn.execute(text(f"SELECT check_id, position, host FROM serp_results WHERE check_id IN ({marks}) ORDER BY position")).mappings():
+        own_urls: dict[int, str | None] = {}  # the page of mine each check found: the ranking URL, check by check
+        for result in conn.execute(text(f"SELECT check_id, position, url, host FROM serp_results WHERE check_id IN ({marks}) ORDER BY position")).mappings():
             if result["check_id"] not in own_rows and store.on_host(result["host"], host):
                 own_rows[result["check_id"]] = result["position"]
+                own_urls[result["check_id"]] = page_address(result["url"]) if result["url"] else None
         main = view["main"]
         competitors = []
         if main:
@@ -504,7 +638,7 @@ def detail(engine: Engine, site_id: int, keyword_id: int, engine_name: str) -> d
     return {
         "row": {**row, "engines": {engine_name: view}}, "engine": engine_name, "lines": list(lines.values()), "competitors": competitors,
         "checks": [
-            {"id": check["id"], "tool": check["tool"], "location": check["real_location"], "depth": check["depth"], "status": check["status"], "error": check["error"], "p": own_rows.get(check["id"]), "checked_at": _iso(check["checked_at"])}
+            {"id": check["id"], "tool": check["tool"], "location": check["real_location"], "depth": check["depth"], "status": check["status"], "error": check["error"], "why": store.suspect_why(check["error"]) if check["status"] == "suspect" else None, "p": own_rows.get(check["id"]), "url": own_urls.get(check["id"]), "checked_at": _iso(check["checked_at"])}
             for check in every
         ],
         "tools": [tool for tool in listed["tools"] if engine_name in tool["engines"] or tool["name"] in connections.DEFAULT_ORDER.get(engine_name, [])],
@@ -516,18 +650,20 @@ def queries(engine: Engine, site_id: int | None, engine_name: str) -> dict:
     """What each engine's own tool says, keyword or not. Bing updates weekly, and the others lag a few days."""
     with engine.connect() as conn:
         sites = _sites(conn, site_id)
+    windows = search_windows(engine, [site["id"] for site in sites]) if engine_name == "google" else {}
+    with engine.connect() as conn:
         rows = []
         for site in sites:
             if engine_name == "google":
-                last = conn.execute(text("SELECT MAX(day) FROM gsc_query WHERE site_id = :s"), {"s": site["id"]}).scalar()
-                if not last:
+                if not conn.execute(text("SELECT 1 FROM gsc_query WHERE site_id = :s LIMIT 1"), {"s": site["id"]}).first():
                     continue
+                first, last = windows[site["id"]]
                 found = conn.execute(
                     text(
                         "SELECT query, SUM(clicks) AS clicks, SUM(impressions) AS impressions, SUM(position * impressions) / NULLIF(SUM(impressions), 0) AS position "
-                        f"FROM gsc_query WHERE site_id = :s AND day > :last - INTERVAL {OWN_DAYS} DAY GROUP BY query_hash, query ORDER BY clicks DESC, impressions DESC LIMIT 500"
+                        "FROM gsc_query WHERE site_id = :s AND day BETWEEN :first AND :last GROUP BY query_hash, query ORDER BY clicks DESC, impressions DESC LIMIT 500"
                     ),
-                    {"s": site["id"], "last": last},
+                    {"s": site["id"], "first": first, "last": last},
                 ).mappings().all()
             elif engine_name == "bing":
                 found = conn.execute(text("SELECT query, clicks, impressions, position FROM bing_query WHERE site_id = :s ORDER BY clicks DESC, impressions DESC LIMIT 500"), {"s": site["id"]}).mappings().all()

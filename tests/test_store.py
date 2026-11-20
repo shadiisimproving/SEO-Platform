@@ -125,3 +125,13 @@ def test_very_long_title_is_cut_not_rejected(engine):
     domain = setup_domain(engine)
     store.save_fetch(engine, domain, URL, ok(), page(title="x" * 5000))
     assert len(rows(engine, "pages")[0]["title"]) <= 1000
+
+
+def test_a_first_reading_is_no_edit_and_leaves_no_last_changed_date(engine):
+    """"Updated, 12 months" read 100% because the first reading stamped last_changed_at (SEO review 2026-11-17, #11)."""
+    domain = setup_domain(engine)
+    store.save_fetch(engine, domain, URL, FetchResult(url=URL, status="robots", http_status=None, etag=None, seconds=0.1, bytes=0), None)  # a page known before it's read
+    assert store.save_fetch(engine, domain, URL, ok(), page()) == "baseline"
+    assert rows(engine, "pages")[0]["last_changed_at"] is None
+    assert store.save_fetch(engine, domain, URL, ok(), page(title="Nouveau")) == "changed"
+    assert rows(engine, "pages")[0]["last_changed_at"] is not None

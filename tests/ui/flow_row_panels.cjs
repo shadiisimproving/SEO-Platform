@@ -141,8 +141,9 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
     check((await count("#panel [data-rp-chart]")) === 2, "a switch between visits and Google clicks");
     check((await text('#panel [data-rp-sec="0"] h3')) === "Searches that bring it" && (await text('#panel [data-rp-sec="1"] h3')) === "Where AI visits come from", "the searches that bring it, and where AI visits come from");
     check((await count('#panel .panel-foot a.rp-open-page[target="_blank"]')) === 1, "Open page ↗ in the foot");
-    const order = await all("#panel .panel-foot > *", (els) => els.map((e) => (e.matches("[data-task-find]") ? "task" : e.matches("[data-notes-open]") ? "note" : e.matches(".rp-open-page") ? "open" : "other")));
-    check(order.join() === "task,note,open", `the foot reads Task, Add a note, Open page (${order.join()})`);
+    // All about this page (the Pages screen, eb80720, 2026-11-13) leads the foot, before Task, Add a note and Open page.
+    const order = await all("#panel .panel-foot > *", (els) => els.map((e) => (e.matches("[data-rp-pages]") ? "pages" : e.matches("[data-task-find]") ? "task" : e.matches("[data-notes-open]") ? "note" : e.matches(".rp-open-page") ? "open" : "other")));
+    check(order.join() === "pages,task,note,open", `the foot reads All about this page, Task, Add a note, Open page (${order.join()})`);
     await shot("03-page-1440-light-en");
     await closed();
   });
@@ -157,8 +158,25 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
     await openRow("page", 0, target);
     check((await text('#panel [data-rp-num="ai"] .rp-num-val')) === ai, `AI visits is the row's (${ai})`);
     check((await count('#panel [data-rp-sec="1"] tbody tr')) >= 1 && (await count('#panel [data-rp-sec="1"] .site-logo')) >= 1, "the assistants it came from, with their logos");
+    await closed();
+  });
+
+  // The Google clicks chart needs a page Search Console has clicks for: the harness's GA4 pages (seed_ga4.py) and its Search
+  // Console pages (demo_world.py) are different addresses, so the page with AI visits above has no clicks to draw.
+  await step("a page with Google clicks, from Content", async () => {
+    await go("content");
+    const keys = await all('#page tr[data-rp-open="page"]', (rows) => rows.map((r) => r.dataset.rpKey));
+    let found = null;
+    for (const key of keys) {
+      await openRow("page", 0, key);
+      if (/\d/.test(await text('#panel [data-rp-num="clicks"] .rp-num-val'))) { found = key; break; }
+      await closed();
+    }
+    check(Boolean(found), `a page with Google clicks (${found})`);
+    if (!found) return;
     await page.click('#panel [data-rp-chart="1"]'); await page.waitForTimeout(300);
     check((await count("#panel .rp-chart path.lv-line")) >= 1, "the Google clicks chart draws");
+    await shot("03b-page-google-clicks-1440-light-en");
     await closed();
   });
 
@@ -239,7 +257,7 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
           await page.waitForTimeout(600);
           const box = await page.locator("#panel").boundingBox();
           if (width === 390) check(box.width >= 388, `${theme} ${lang}: full width on a phone (${Math.round(box.width)})`);
-          if (lang === "fr") check((await text('#panel [data-rp-sec="0"] h3')) === "Les recherches qui y mènent" && (await text('#panel [data-rp-num="visits"] .rp-num-name')) === "Visites", `${width} ${theme}: in French`);
+          if (lang === "fr") check((await text('#panel [data-rp-sec="0"] h3')) === "Recherches qui y mènent" && (await text('#panel [data-rp-num="visits"] .rp-num-name')) === "Visites", `${width} ${theme}: in French`);
           const sideways = await page.evaluate(() => document.querySelector("#panel .panel-body").scrollWidth - document.querySelector("#panel .panel-body").clientWidth);
           check(sideways <= 1, `${width} ${theme} ${lang}: nothing scrolls sideways`);
           await shot(`06-page-${width}-${theme}-${lang}`);

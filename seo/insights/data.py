@@ -13,7 +13,7 @@ from datetime import date, timedelta
 from sqlalchemy import Engine, bindparam, text
 
 from seo.insights import rules
-from seo.metrics import search
+from seo.metrics import period, search
 
 NEVER = date(1900, 1, 1)  # stands in for an empty list of days left out, which SQL can't take
 
@@ -72,6 +72,7 @@ class Ctx:
     brand_numbers: dict = field(default_factory=dict)  # brand and non-brand clicks, now and before (C11)
     countries: list = field(default_factory=list)  # the site's target countries (collectors.gsc.target_countries), Google's alpha-3
     memo: dict = field(default_factory=dict)  # what several detectors read, worked out once per run
+    rows_from: dict = field(default_factory=dict)  # where the page and search tables start (they can start after the totals)
 
     @property
     def has_before(self) -> bool:
@@ -90,33 +91,38 @@ class Ctx:
 
 
 def load(engine: Engine, site_id: int) -> Ctx | None:
+    """The period is the app's one rule (seo/metrics/period.py): the last 28 final days against the 28 before, the very
+    days Today and Overview open with, so the site's clicks are the same number on every screen. The earlier period only
+    counts as there when the totals AND the page and search tables reach back to it (one check per table): tables that
+    start later would turn every page and search into a gain."""
     with engine.connect() as conn:
         site = conn.execute(text("SELECT host FROM sites WHERE id = :s AND kind = 'own'"), {"s": site_id}).first()
         if site is None:
             return None
-        row = conn.execute(
-            text(
-                "SELECT MIN(day) first_day, MAX(day) last_day FROM gsc_daily WHERE site_id = :s "
-                "AND day < COALESCE((SELECT fresh_from FROM site_sources WHERE site_id = :s AND source = 'gsc'), '9999-12-31')"
-            ),
-            {"s": site_id},
-        ).mappings().first()
+        row = conn.execute(text("SELECT MIN(day) first_day, MAX(day) last_day FROM gsc_daily WHERE site_id = :s"), {"s": site_id}).mappings().first()
         if not row or row["last_day"] is None:
             return None
         partial = {r[0] for r in conn.execute(text("SELECT day FROM coverage WHERE site_id = :s AND source = 'gsc' AND status = 'partial'"), {"s": site_id}).all()}
-    end, first_day = row["last_day"], row["first_day"]
-    start = end - timedelta(days=rules.PERIOD_DAYS - 1)
-    before_end = start - timedelta(days=1)
-    before_start = before_end - timedelta(days=rules.PERIOD_DAYS - 1)
-    has_before = first_day <= before_start
+    _scope, window = period.for_site(engine, site_id, rules.PERIOD_DAYS)
+    first_day = row["first_day"]
+    end, start = date.fromisoformat(window["to"]), date.fromisoformat(window["from"])
+    if first_day > end:
+        return None
+    before_start = date.fromisoformat(window["compare_from"]) if window["compare_from"] else None
+    before_end = date.fromisoformat(window["compare_to"]) if window["compare_to"] else None
+    rows_ok = all((window.get("rows_compare") or {}).get(dim) for dim in ("query", "page"))
+    has_before = before_start is not None and rows_ok
+    # A day whose search tables hit Google's row limit is left out of the per-search and per-page splits, with its twin in
+    # the other period, so both sides compare alike. The site's totals keep every day (they're complete): see totals().
     skip = set(partial)
-    if has_before:  # a partial day takes its twin in the other period with it
+    if has_before:
         for day in list(partial):
             if start <= day <= end:
                 skip.add(day - timedelta(days=rules.PERIOD_DAYS))
             elif before_start <= day <= before_end:
                 skip.add(day + timedelta(days=rules.PERIOD_DAYS))
     ctx = Ctx(engine, site_id, site[0], end, max(start, first_day), before_start if has_before else None, before_end if has_before else None, sorted(skip), first_day)
+    ctx.rows_from = window.get("rows_from") or {}
     scope = search.Scope(engine, site_id, ctx.start.isoformat(), end.isoformat())
     ctx.brand = search.brand_words(scope)
     ctx.tracked = search.tracked(scope)
@@ -196,7 +202,9 @@ def daily(ctx: Ctx, start: date, end: date) -> dict[date, dict]:
 
 
 def totals(ctx: Ctx, start: date, end: date) -> dict:
-    days = daily(ctx, start, end).values()
+    """The site's totals: every day, as Today and Overview count them. A row-limited day is complete here."""
+    rows = ctx.fetch("SELECT day, clicks, impressions, position FROM gsc_daily WHERE site_id = :s AND day BETWEEN :a AND :b", a=start, b=end)
+    days = [{"clicks": int(r["clicks"] or 0), "impressions": int(r["impressions"] or 0), "position": r["position"]} for r in rows]
     clicks, shown = sum(d["clicks"] for d in days), sum(d["impressions"] for d in days)
     weighted = sum(d["position"] * d["impressions"] for d in days if d["position"] is not None)
     return {"clicks": clicks, "impressions": shown, "position": round(weighted / shown, 1) if shown else None, "click_rate": round(clicks / shown * 100, 2) if shown else None}

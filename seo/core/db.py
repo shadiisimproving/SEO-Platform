@@ -54,5 +54,6 @@ def make_engine(test: bool = False) -> Engine:
         pool_pre_ping=True,
         pool_recycle=280,
         isolation_level="READ COMMITTED",
-        connect_args={"init_command": "SET time_zone='+00:00'", "connect_timeout": 10},
+        # The tables' one collation (seo.core.charset), so a text sent by the app compares with any column without a clash.
+        connect_args={"init_command": "SET time_zone='+00:00', collation_connection='utf8mb4_unicode_ci'", "connect_timeout": 10},
     )

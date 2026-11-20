@@ -20,7 +20,7 @@
   const PAGES = "pg";
   const TABS = [["search", "Search", "search"], ["visits", "Visits", "activity"], ["rankings", "Rankings", "trending-up"], ["backlinks", "Backlinks", "link-2"],
     ["tasks", "Tasks", "square-check"], ["notes", "Notes", "sticky-note"], ["technical", "Technical", "heart-pulse"], ["content", "Content", "file-text"]];
-  const FILTERS = [["", "Pages"], ["clicks", "Get clicks"], ["noclicks", "No clicks"], ["noindex", "Not indexed"], ["tasks", "Open tasks"], ["links", "Have backlinks"]];
+  const FILTERS = [["", "Pages"], ["clicks", "Get clicks"], ["losing", "Losing clicks"], ["noclicks", "No clicks"], ["noindex", "Not indexed"], ["tasks", "Open tasks"], ["links", "Have backlinks"]];
 
   const cells = () => window.OV_CELLS || { numCell: (v) => v, cellChange: () => "", posBadge: (p) => (p === null || p === undefined ? "—" : esc(String(p))) };
   const dec1 = (v) => (v === null || v === undefined ? "—" : UI.dec ? UI.dec(v) : String(v));
@@ -64,7 +64,17 @@
     const out = bit(r.tasks_open, "square-check", "open task", "open tasks") + bit(r.notes, "sticky-note", "note", "notes") + bit(r.backlinks, "link-2", "backlink", "backlinks");
     return out || `<span class="muted">—</span>`;
   };
-  const PASS = { clicks: (r) => r.clicks > 0, noclicks: (r) => !r.clicks, noindex: (r) => r.indexed === false, tasks: (r) => r.tasks_open > 0, links: (r) => r.backlinks > 0 };
+  const PASS = { clicks: (r) => r.clicks > 0, losing: (r) => r.change !== null && r.change !== undefined && r.change < 0, noclicks: (r) => !r.clicks, noindex: (r) => r.indexed === false, tasks: (r) => r.tasks_open > 0, links: (r) => r.backlinks > 0 };
+  /* Change: Google clicks against the period before, as a count (expert review 2026-11-17: Pages couldn't show losing pages).
+     The server leaves it empty where Search Console's page data doesn't cover the period before, so no gain is made up. */
+  const changeCell = (r, compared) => {
+    if (r.change === null || r.change === undefined) return `<span class="muted" title="${esc(t(compared ? "No earlier data for this page" : "No comparison period"))}">—</span>`;
+    if (r.change === 0) return `<span class="muted tabular">0</span>`;
+    const pct = r.clicks_before ? Math.round((r.change / r.clicks_before) * 100) : null;
+    return `<span class="nowrap"><span class="ov-d ${r.change > 0 ? "good" : "crit"} tabular" title="${esc(`${num(r.clicks_before)} → ${num(r.clicks || 0)}`)}">${r.change > 0 ? "+" : "−"}${num(Math.abs(r.change))}</span>${pct === null ? "" : ` <span class="small muted tabular">${pct > 0 ? "+" : pct < 0 ? "−" : ""}${num(Math.abs(pct))}%</span>`}</span>`;
+  };
+  // Google's #section jump links, said apart from the page's own numbers (expert review 2026-11-17, 3.3).
+  const jumpWords = (n) => t("Jump links: {n} impressions").replace("{n}", num(n));
   const passes = (r) => (PASS[P.filter] ? PASS[P.filter](r) : true);
 
   function listBody() {
@@ -75,19 +85,22 @@
       return window.COMP.empty(t("No pages yet"), t("Pages show here once Search Console or Google Analytics sends data, or once the page reader has read your site."),
         `<button class="btn" data-pg-go="settings">${t("Open Settings")}</button>`);
     }
-    const counts = { "": s.pages, clicks: s.with_clicks, noclicks: s.pages - s.with_clicks, noindex: s.not_indexed, tasks: s.open_tasks, links: d.pages.filter(PASS.links).length };
-    const chips = `<div class="pg-counts" role="group" aria-label="${t("Show")}">${FILTERS.map(([id, word]) => `<button type="button" class="pg-count${id === "noindex" && counts[id] ? " is-warn" : ""}" data-pg-filter="${id}" aria-pressed="${P.filter === id}"><b class="tabular">${num(counts[id] || 0)}</b><span>${t(word)}</span></button>`).join("")}</div>`;
-    const rows = d.pages.filter(passes).filter((r) => window.TP.matches(PAGES, `${r.path} ${r.title} ${r.host}`));
+    const counts = { "": s.pages, clicks: s.with_clicks, losing: s.losing ?? d.pages.filter(PASS.losing).length, noclicks: s.pages - s.with_clicks, noindex: s.not_indexed, tasks: s.open_tasks, links: d.pages.filter(PASS.links).length };
+    // Losing clicks needs a period before; without one, its chip isn't offered.
+    const chips = `<div class="pg-counts" role="group" aria-label="${t("Show")}">${FILTERS.filter(([id]) => id !== "losing" || d.compared).map(([id, word]) => `<button type="button" class="pg-count${(id === "noindex" || id === "losing") && counts[id] ? " is-warn" : ""}" data-pg-filter="${id}" aria-pressed="${P.filter === id}"><b class="tabular">${num(counts[id] || 0)}</b><span>${t(word)}</span></button>`).join("")}</div>`;
+    let rows = d.pages.filter(passes).filter((r) => window.TP.matches(PAGES, `${r.path} ${r.title} ${r.host}`));
+    if (P.filter === "losing") rows = [...rows].sort((a, b) => a.change - b.change); // the biggest loss first
     const view = window.TP.view(PAGES, rows);
     const many = !UI.siteIdPicked();
-    const { numCell, cellChange, posBadge } = cells();
-    const compare = d.pages.some((r) => r.clicks_before !== null);
+    const { posBadge } = cells();
+    const compare = !!d.compared;
     const table = rows.length ? `<div class="table-wrap"><table class="data pg-table" id="pg-table" data-tt-own-count>
-      <thead><tr><th scope="col">${t("Page")}</th><th scope="col" class="num">${t("Google clicks")}</th><th scope="col" class="num">${t("Position")}</th><th scope="col">${t("Linked")}</th></tr></thead>
+      <thead><tr><th scope="col">${t("Page")}</th><th scope="col" class="num">${t("Google clicks")}</th>${compare ? `<th scope="col" class="num">${t("Change")}</th>` : ""}<th scope="col" class="num">${t("Position")}</th><th scope="col">${t("Linked")}</th></tr></thead>
       <tbody>${view.rows.map((r) => `<tr data-pg-open="${esc(r.url)}" tabindex="0">
         <td class="head-cell pg-page"><button type="button" class="kw pg-title" data-pg-open-btn="${esc(r.url)}" dir="auto">${esc(r.title || r.path)}</button>
-          <span class="second mono" dir="auto">${many ? `${esc(r.host)}` : ""}${esc(r.path)}</span>${r.indexed === false ? ` ${UI.status ? UI.status("warn", t("Not indexed")) : ""}` : ""}</td>
-        <td class="num" data-label="${t("Google clicks")}">${r.clicks === null ? `<span class="muted">—</span>` : numCell(num(r.clicks), compare ? cellChange(r.clicks, r.clicks_before ?? 0) : null)}</td>
+          <span class="second mono" dir="auto">${many ? `${esc(r.host)}` : ""}${esc(r.path)}</span>${r.jump_impressions ? `<span class="second pg-jump">${esc(jumpWords(r.jump_impressions))}</span>` : ""}${r.indexed === false ? ` ${UI.status ? UI.status("warn", t("Not indexed")) : ""}` : ""}</td>
+        <td class="num" data-label="${t("Google clicks")}">${r.clicks === null ? `<span class="muted">—</span>` : `<span class="tabular">${num(r.clicks)}</span>`}</td>
+        ${compare ? `<td class="num pg-change" data-label="${t("Change")}" data-sort="${r.change === null || r.change === undefined ? "" : r.change}">${changeCell(r, compare)}</td>` : ""}
         <td class="num" data-label="${t("Position")}">${posBadge(r.position)}</td>
         <td data-label="${t("Linked")}"><span class="pg-bits">${linkedBits(r)}</span></td>
       </tr>`).join("")}</tbody></table></div>
@@ -109,13 +122,20 @@
     const tasks = UI.relatedTasks ? relatedOpen() : 0;
     return `<div class="pg-nums">
       ${tile("Google clicks", tot ? (tot.clicks === null ? "—" : num(tot.clicks)) : loading, tot && before ? cellChange(tot.clicks, before.clicks) : "")}
-      ${tile("Position", tot ? dec1(tot.position) : loading, tot && before ? cellChange(tot.position, before.position, true) : "")}
+      ${tile("Position", tot ? dec1(tot.position) : loading, tot && before ? cellChange(tot.position, before.position, true) : "", m?.jump?.impressions ? esc(jumpWords(m.jump.impressions)) : "")}
       ${tile("Visits", tot ? (tot.sessions === null ? "—" : num(tot.sessions)) : loading, tot && before ? cellChange(tot.sessions, before.sessions) : "")}
       ${tile("Indexed", indexed, "", ins?.coverage && ins.verdict !== "PASS" ? esc(ins.coverage) : "")}
-      ${tile("Speed", !p ? loading : speed ? `<span class="${speed.score >= 90 ? "pg-good" : speed.score < 50 ? "pg-bad" : ""}">${num(speed.score)}</span><span class="muted">/100</span>` : `<span class="muted">—</span>`)}
+      ${!p || speed ? tile("Lab speed", !p ? loading : `<span class="${speed.score >= 90 ? "pg-good" : speed.score < 50 ? "pg-bad" : ""}">${num(speed.score)}</span><span class="muted">/100</span>`, "", speed ? realVisitors(speed) : "") : ""}
       ${tile("Open tasks", num(tasks))}
     </div>`;
   }
+  /* The speed score is Google's lab test. Real visitors say Passed or Failed, and whose they are: this page, or the whole
+     site when Google has too few visitors on the page (expert review 2026-11-17). */
+  const realVisitors = (s) => {
+    if (!s.field) return `<span class="muted">${t("No real-visitor data")}</span>`;
+    const verdict = s.passed === true ? `<span class="pg-good">${t("Passed")}</span>` : s.passed === false ? `<span class="pg-bad">${t("Failed")}</span>` : "";
+    return `${t("Real visitors")}: ${verdict} <span class="muted">${t(s.field === "site" ? "whole site" : "this page")}</span>`;
+  };
   const relatedOpen = () => {
     const box = document.createElement("div");
     UI.setHTML(box, UI.relatedTasks({ host: P.open.host, page: P.open.url }));
@@ -200,7 +220,7 @@
       const x = p.technical;
       const row = (label, value) => `<div class="pg-fact"><dt>${t(label)}</dt><dd>${value}</dd></div>`;
       const ins = x.inspection;
-      const speedLine = (s) => (s ? `<b class="tabular">${num(s.score)}</b>/100${s.lcp_ms ? ` · LCP ${UI.dec ? UI.dec(Math.round(s.lcp_ms / 100) / 10) : s.lcp_ms / 1000} s` : ""}` : `<span class="muted">${t("Not measured")}</span>`);
+      const speedLine = (s) => (s ? `<span><b class="tabular">${num(s.score)}</b>/100 <span class="muted">${t("lab test")}</span>${s.lcp_ms ? ` · LCP ${UI.dec ? UI.dec(Math.round(s.lcp_ms / 100) / 10) : s.lcp_ms / 1000} s` : ""}</span><span class="small">${realVisitors(s)}</span>` : `<span class="muted">${t("Not measured")}</span>`);
       const health = x.health.length ? `<ul class="pg-list">${x.health.map((code) => `<li>${icon("triangle-alert", "warn")}<span>${esc(t(window.HealthTest?.checkWord?.(code) || code))}</span></li>`).join("")}</ul>` : `<span class="muted">${x.health_at ? t("Nothing found") : t("No health test yet")}</span>`;
       const links = x.links.length ? `<ul class="pg-list">${x.links.map((l) => `<li>${icon("link-2-off", "warn")}<span class="mono small" dir="auto">${PageLink.html(l.target)}</span><span class="end small sec">${l.status ? esc(String(l.status)) : esc(t(l.category))}</span></li>`).join("")}</ul>` : `<span class="muted">${x.links_at ? t("No broken links") : t("No links check yet")}</span>`;
       return `<dl class="pg-facts">
@@ -236,6 +256,8 @@
   function page() {
     if (P.open) { loadPage(); return pageView(); }
     loadList();
+    // Clicks and the period before are Search Console's, on the app's one period rule: the head prints those very days.
+    if (P.list?.gsc_window) UI.range.served?.("pages", P.list.gsc_window);
     const head = UI.topbar(t("Pages"), t("Every page of your site, with what's linked to it"), "", true);
     return `${head}<div class="content page-enter">${listBody()}</div>`;
   }
@@ -328,13 +350,15 @@
 
   const fr = {
     "Pages": "Pages", "Every page of your site, with what's linked to it": "Chaque page de votre site, avec ce qui y est lié", "Get clicks": "Reçoivent des clics",
-    "Not indexed": "Non indexées", "Open tasks": "Tâches ouvertes", "No clicks": "Sans clic", "All about this page": "Tout sur cette page", "Have backlinks": "Avec backlinks", "Page": "Page", "Google clicks": "Clics Google", "Position": "Position", "Linked": "Lié",
+    "Not indexed": "Non indexées", "Open tasks": "Tâches ouvertes", "Losing clicks": "Perdent des clics", "Change": "Évolution",
+    "No earlier data for this page": "Pas de données antérieures pour cette page", "No comparison period": "Pas de période de comparaison", "No clicks": "Sans clic", "All about this page": "Tout sur cette page", "Have backlinks": "Avec backlinks", "Page": "Page", "Google clicks": "Clics Google", "Position": "Position", "Linked": "Lié",
     "open task": "tâche ouverte", "open tasks": "tâches ouvertes", "note": "note", "notes": "notes", "backlink": "backlink", "backlinks": "backlinks",
     "No pages yet": "Pas encore de pages", "Pages show here once Search Console or Google Analytics sends data, or once the page reader has read your site.": "Les pages s'affichent ici dès que Search Console ou Google Analytics envoie des données, ou que le lecteur de pages a lu votre site.",
-    "Open Settings": "Ouvrir les réglages", "Search pages": "Chercher une page", "No page matches.": "Aucune page ne correspond.", "page": "page", "pages": "pages",
+    "Open Settings": "Ouvrir les réglages", "Search pages": "Chercher une page", "No page matches.": "Aucune page ne correspond.", "Jump links: {n} impressions": "Liens vers une section : {n} impressions", "page": "page", "pages": "pages",
     "Add a note": "Ajouter une note", "New task about this page": "Nouvelle tâche sur cette page", "All pages": "Toutes les pages", "About this page": "À propos de cette page",
     "Search": "Recherche", "Visits": "Visites", "Rankings": "Positions", "Backlinks": "Backlinks", "Tasks": "Tâches", "Notes": "Notes", "Technical": "Technique", "Content": "Contenu",
-    "Indexed": "Indexée", "Speed": "Vitesse", "Not checked": "Pas vérifié", "Yes": "Oui", "No": "Non",
+    "Indexed": "Indexée", "Speed": "Vitesse", "Lab speed": "Vitesse (labo)", "lab test": "test labo", "No real-visitor data": "Pas de données de vrais visiteurs",
+    "Real visitors": "Vrais visiteurs", "Passed": "Réussi", "Failed": "Échoué", "whole site": "site entier", "this page": "cette page", "Not checked": "Pas vérifié", "Yes": "Oui", "No": "Non",
     "The numbers didn't load.": "Les chiffres n'ont pas chargé.", "Google shows no clicks or impressions for this page in this period.": "Google n'indique ni clic ni impression pour cette page sur cette période.",
     "Connect Search Console to see this page's searches.": "Connectez Search Console pour voir les recherches de cette page.", "No visits to this page in this period.": "Aucune visite sur cette page pendant cette période.",
     "Connect Google Analytics to see this page's visits.": "Connectez Google Analytics pour voir les visites de cette page.", "Clicks": "Clics", "Impressions": "Impressions", "Leads": "Leads",

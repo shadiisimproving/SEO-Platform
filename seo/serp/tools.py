@@ -38,6 +38,8 @@ class Answer:
     ai_state: str = NOT_CAPTURED
     ai_citations: list[str] = field(default_factory=list)
     charged: int = 1
+    asked: dict = field(default_factory=dict)  # what the tool says it searched with (SerpApi's search_parameters), kept with the check
+    query_shown: str = ""  # the query the results page showed (SerpApi's search_information.query_displayed); "" when not said
 
 
 class ToolStopped(Exception):
@@ -82,6 +84,18 @@ def _so_far(charged: int):
 def pages_for(depth: int) -> int:
     """Each tool returns about 10 results a page, and each extra page is another request."""
     return max(1, (int(depth) + 9) // 10)
+
+
+READ_STEPS = (10, 20, 30, 50)  # the depths a Refresh offers (refresh.DEPTHS): a saved depth is always one of them
+
+
+def depth_read(asked: int, read: int) -> int:
+    """The depth one page of results really answers. DuckDuckGo has no page 2 here (its next page needs a token from this
+    one), so a Top 30 asked for and one page of about 10 read answers Top 10, never ">30". Rounded down to a depth the app
+    offers, so checks stay comparable with each other. A page with fewer than 10 results is the whole list: Top 10.
+    The results kept are cut to the same depth, so a #23 is never saved inside a "Top 20" check."""
+    steps = [step for step in READ_STEPS if step <= min(int(asked), max(int(read), 10))]
+    return steps[-1] if steps else int(asked)
 
 
 def most_cost(tool, depth: int = 10) -> int:
@@ -217,7 +231,8 @@ class DuckDuckGoDirect:
             raise ToolStopped("DuckDuckGo asked us to slow down, so this tool stopped.")
         if reply.status_code != 200:
             raise SearchFailed(f"DuckDuckGo answered {reply.status_code}")
-        results = parse_ddg(reply.content)[:depth]
+        every = parse_ddg(reply.content)
+        results = every[:depth]
         if not results:
             # The word alone proves nothing on a page of results: "anomaly detection" is a fine keyword.
             says_none = b"no-results" in reply.content
@@ -225,16 +240,28 @@ class DuckDuckGoDirect:
                 raise ToolStopped(self.BOT_CHECK, bot_check=True)
             if not says_none:  # a page we can't read must not pass as "nobody ranks"
                 raise SearchFailed("DuckDuckGo's page had no results the app could read.")
-        return Answer(self.name, region, depth, results, NOT_CAPTURED, [], 0)
+        saved = depth_read(depth, len(every)) if every else depth
+        return Answer(self.name, region, saved, results[:saved], NOT_CAPTURED, [], 0)  # position and depth always agree
 
 
 # ---- SerpApi: all four engines, AI Overview on Google. Written from its documentation: no key has been tried yet --------
 
-def _position(item: dict, index: int) -> int:
-    try:
-        return int(item.get("position") or index + 1)
-    except (TypeError, ValueError):
-        return index + 1
+# SerpApi's own location names and Google's domain per country, so a search never runs from SerpApi's default place.
+# A country not listed sends gl alone, as before.
+GOOGLE_PLACES = {
+    "FR": ("France", "google.fr"), "BE": ("Belgium", "google.be"), "CH": ("Switzerland", "google.ch"), "LU": ("Luxembourg", "google.lu"),
+    "MC": ("Monaco", "google.mc"), "CA": ("Canada", "google.ca"), "US": ("United States", "google.com"), "GB": ("United Kingdom", "google.co.uk"),
+    "IE": ("Ireland", "google.ie"), "DE": ("Germany", "google.de"), "AT": ("Austria", "google.at"), "NL": ("Netherlands", "google.nl"),
+    "ES": ("Spain", "google.es"), "PT": ("Portugal", "google.pt"), "IT": ("Italy", "google.it"), "PL": ("Poland", "google.pl"),
+    "SE": ("Sweden", "google.se"), "NO": ("Norway", "google.no"), "DK": ("Denmark", "google.dk"), "FI": ("Finland", "google.fi"),
+    "GR": ("Greece", "google.gr"), "TR": ("Turkey", "google.com.tr"), "RU": ("Russia", "google.ru"), "AE": ("United Arab Emirates", "google.ae"),
+    "SA": ("Saudi Arabia", "google.com.sa"), "QA": ("Qatar", "google.com.qa"), "KW": ("Kuwait", "google.com.kw"), "BH": ("Bahrain", "google.com.bh"),
+    "OM": ("Oman", "google.com.om"), "EG": ("Egypt", "google.com.eg"), "JO": ("Jordan", "google.jo"), "LB": ("Lebanon", "google.com.lb"),
+    "MA": ("Morocco", "google.co.ma"), "DZ": ("Algeria", "google.dz"), "TN": ("Tunisia", "google.tn"), "SN": ("Senegal", "google.sn"),
+    "CI": ("Cote d'Ivoire", "google.ci"), "ZA": ("South Africa", "google.co.za"), "IN": ("India", "google.co.in"), "SG": ("Singapore", "google.com.sg"),
+    "HK": ("Hong Kong", "google.com.hk"), "JP": ("Japan", "google.co.jp"), "KR": ("South Korea", "google.co.kr"), "AU": ("Australia", "google.com.au"),
+    "NZ": ("New Zealand", "google.co.nz"), "BR": ("Brazil", "google.com.br"), "MX": ("Mexico", "google.com.mx"), "AR": ("Argentina", "google.com.ar"),
+}
 
 
 class SerpApi:
@@ -299,39 +326,54 @@ class SerpApi:
             if not rows or engine == "duckduckgo":  # its next page needs a token from this one, so it stops at the first page
                 break
         location = country.upper() if engine == "bing" and country else ddg_region(country, language) if engine == "duckduckgo" else ""
-        return Answer(self.name, location, depth, found[:depth], NOT_CAPTURED, [], charged)
+        # DuckDuckGo read one page only: the depth saved is what that page answers. An empty list is the end of the results.
+        read = depth_read(depth, len(found)) if engine == "duckduckgo" and found else depth
+        return Answer(self.name, location, read, found[:read], NOT_CAPTURED, [], charged)  # nothing kept past the depth saved
+
+    @staticmethod
+    def google_params(keyword: str, country: str, language: str, device: str) -> dict:
+        """The market from the keyword's country: gl, and also location and google_domain, so SerpApi never falls back to a
+        default place. No num: Google stopped honouring it in September 2025, so a deeper check reads page after page."""
+        params = {"engine": "google", "q": keyword, "device": device}
+        code = (country or "").upper()
+        if code:
+            params["gl"] = code.lower()
+            if code in GOOGLE_PLACES:
+                params["location"], params["google_domain"] = GOOGLE_PLACES[code]
+        if language:
+            params["hl"] = language.lower()
+        return params
 
     def search(self, keyword: str, engine: str, country: str, language: str, device: str, depth: int) -> Answer:
         if engine != "google":
             return self._other_engine(keyword, engine, country, language, device, depth)
-        params = {"engine": "google", "q": keyword, "num": depth, "device": device}
-        if country:
-            params["gl"] = country.lower()
-        if language:
-            params["hl"] = language.lower()
+        params = self.google_params(keyword, country, language, device)
         data = self._get(params)
-        results = [
-            _found(_position(item, i), item, str(item["link"]))
-            for i, item in enumerate(data.get("organic_results") or []) if isinstance(item, dict) and item.get("link")
-        ]
+        seen: set[str] = set()  # the same address on two pages counts once, as with every other tool (_rows)
+        results = _rows(data.get("organic_results"), 0, seen)
         charged = 1
         _refuse_hidden(self.name, results, charged)
-        # Google stopped honouring num in September 2025, so a deeper check reads further pages, each one a search.
+        asked = {k: v for k, v in (data.get("search_parameters") or {}).items() if k != "api_key"} if isinstance(data.get("search_parameters"), dict) else {}
+        information = data.get("search_information") if isinstance(data.get("search_information"), dict) else {}
+        shown = str(information.get("query_displayed") or "")[:300]
         # A page can hold 9 results and still have a next one, so only an empty page means the end.
-        last_page_had_rows = bool(results)
+        last_page_had_rows = bool(data.get("organic_results"))
         for page in range(1, pages_for(depth)):
             if len(results) >= depth or not last_page_had_rows:
                 break
             with _so_far(charged):
                 more = self._get({**params, "start": page * 10})
             charged += 1
-            rows = [item for item in more.get("organic_results") or [] if isinstance(item, dict) and item.get("link")]
-            found = [_found(len(results) + i + 1, item, str(item["link"])) for i, item in enumerate(rows)]
+            found = _rows(more.get("organic_results"), len(results), seen)
             _refuse_hidden(self.name, found, charged)
             results += found
-            last_page_had_rows = bool(rows)
+            last_page_had_rows = bool(more.get("organic_results"))
         results = results[:depth]
         location = country.upper() if country else ""
+
+        def answer(state: str, cited: list[str] | None = None) -> Answer:
+            return Answer(self.name, location, depth, results, state, cited or [], charged, asked, shown)
+
         overview = data.get("ai_overview")
         # Google may send the overview through a second request. Its token lasts one minute, so use it now.
         if isinstance(overview, dict) and overview.get("page_token") and not overview.get("references"):
@@ -339,18 +381,18 @@ class SerpApi:
                 overview = self._get({"engine": "google_ai_overview", "page_token": overview["page_token"]}).get("ai_overview")
             except (SearchFailed, ToolStopped):
                 # The page was read and counts. An overview showed, but we can't say who it cites: that's not a "no".
-                return Answer(self.name, location, depth, results, NOT_CAPTURED, [], charged)
+                return answer(NOT_CAPTURED)
             charged += 1
             if not overview:
-                return Answer(self.name, location, depth, results, NOT_CAPTURED, [], charged)
+                return answer(NOT_CAPTURED)
         if not isinstance(overview, dict) or not overview:
-            return Answer(self.name, location, depth, results, ABSENT, [], charged)
+            return answer(ABSENT)
         if overview.get("error"):
-            return Answer(self.name, location, depth, results, NOT_CAPTURED, [], charged)
+            return answer(NOT_CAPTURED)
         cited = [result_address(str(ref["link"])) for ref in overview.get("references") or [] if isinstance(ref, dict) and ref.get("link")]
         if any(hidden for _, hidden in cited):  # Google hid a source: who it cites can't be said, and that's not a "no"
-            return Answer(self.name, location, depth, results, NOT_CAPTURED, [], charged)
-        return Answer(self.name, location, depth, results, PRESENT, [address for address, _ in cited], charged)
+            return answer(NOT_CAPTURED)
+        return answer(PRESENT, [address for address, _ in cited])
 
     def test(self) -> int | None:
         """Asks SerpApi how many searches are left. This call uses no credit."""
@@ -578,12 +620,14 @@ class BrightData:
                 raise ToolStopped(f"Bright Data can't read DuckDuckGo with this zone: {reply.headers.get('x-brd-error') or refused}.")
         body = reply.content
         text = body.decode("utf-8", "replace")
-        results = (parse_ddg_markdown(text) or parse_ddg(body))[:depth]  # an HTML page, should the zone ever send one
+        every = parse_ddg_markdown(text) or parse_ddg(body)  # an HTML page, should the zone ever send one
+        results = every[:depth]
         if not results and b"no-results" not in body and "No results found" not in text:
             failed = SearchFailed("Bright Data's DuckDuckGo page had no results the app could read.")
             failed.charged = 1
             raise failed
-        return Answer(self.name, ddg_region(country, language), depth, results, NOT_CAPTURED, [], 1)
+        saved = depth_read(depth, len(every)) if every else depth
+        return Answer(self.name, ddg_region(country, language), saved, results[:saved], NOT_CAPTURED, [], 1)  # position and depth agree
 
     def search(self, keyword: str, engine: str, country: str, language: str, device: str, depth: int) -> Answer:
         if engine == "duckduckgo":

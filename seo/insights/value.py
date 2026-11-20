@@ -6,38 +6,52 @@
   has enough sessions, the site's otherwise. Clicks stay the ranking unit; the leads are shown beside them.
 
 Pages are matched by path (service._path), since GA4 reports paths and Search Console full addresses.
+
+A lead is a visit with a key event the owner ticked as a lead (seo/metrics/leads.py). Until the site ticks one, the rate is
+visits with any key event, and every finding says "key events" (lead_kind). The 90 days start after the last day GA4 changed
+how it counts them (seo/metrics/ga4_checks.py), so a stretch of one key event per visit never inflates leads at stake.
 """
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 
 from seo.insights import rules
 from seo.insights.data import Ctx
 from seo.insights.finding import Finding, Result
 from seo.insights.movement import _path as short_path
+from seo.metrics import ga4_checks
+from seo.metrics import leads as lead_rules
 from seo.metrics.service import _path
 
 LEAD_KINDS = ("page_down", "dropped_out", "decay")
 
 
 def _leads(ctx: Ctx) -> tuple[dict[str, dict], dict] | None:
+    kind = lead_rules.kind(ctx.engine, [ctx.site_id])
     since = ctx.end - timedelta(days=rules.LEAD_DAYS - 1)
-    rows = ctx.fetch("SELECT MAX(path) path, SUM(sessions) sessions, SUM(key_events) leads FROM ga4_page_daily WHERE site_id = :s AND day BETWEEN :a AND :e GROUP BY page_hash", a=since, e=ctx.end)
+    for change in ga4_checks.crossing(ga4_checks.tracking_changes(ctx.engine, ctx.site_id, kind), since, ctx.end):
+        since = max(since, date.fromisoformat(change["day"]))
+    rows = ctx.fetch(
+        f"SELECT MAX(path) path, SUM(sessions) sessions, SUM({lead_rules.count_sql(kind)}) leads, SUM({lead_rules.converted_sql(kind)}) conv "
+        "FROM ga4_page_daily WHERE site_id = :s AND day BETWEEN :a AND :e GROUP BY page_hash", a=since, e=ctx.end,
+    )
     if not rows:
         return None
     by_path: dict[str, dict] = {}
     for r in rows:
-        slot = by_path.setdefault(_path(r["path"]), {"sessions": 0, "leads": 0.0})
+        slot = by_path.setdefault(_path(r["path"]), {"sessions": 0, "leads": 0.0, "conv": 0.0})
         slot["sessions"] += int(r["sessions"] or 0)
         slot["leads"] += float(r["leads"] or 0)
+        slot["conv"] += float(r["conv"] or 0)
     sessions = sum(v["sessions"] for v in by_path.values())
     leads = sum(v["leads"] for v in by_path.values())
-    return by_path, {"sessions": sessions, "leads": leads, "rate": leads / sessions if sessions else 0.0}
+    conv = sum(v["conv"] for v in by_path.values())
+    return by_path, {"sessions": sessions, "leads": leads, "rate": min(conv, sessions) / sessions if sessions else 0.0, "kind": kind, "since": since.isoformat()}
 
 
 def _rate(page: dict | None, site: dict) -> tuple[float, str]:
     if page and page["sessions"] >= rules.LEAD_MIN_SESSIONS:
-        return page["leads"] / page["sessions"], "page"
+        return min(page["conv"], page["sessions"]) / page["sessions"], "page"
     return site["rate"], "site"
 
 
@@ -60,7 +74,7 @@ def leads(ctx: Ctx, findings: list[Finding]) -> Result:
         page = by_path.get(_path(url))
         rate, basis = _rate(page, site)
         f.evidence["leads_at_stake"] = round(f.at_stake * rate, 2)
-        f.evidence["lead_rate"] = {"rate": round(rate * 100, 2), "basis": basis}
+        f.evidence["lead_rate"] = {"rate": round(rate * 100, 2), "basis": basis, "kind": site["kind"]}
     # D1: a lead page losing clicks.
     for f in list(findings):
         if f.kind not in LEAD_KINDS or not f.page:
@@ -73,8 +87,8 @@ def leads(ctx: Ctx, findings: list[Finding]) -> Result:
         out.findings.append(Finding(
             "lead_page", "leads", f.page, page=f.page, at_stake=f.at_stake, severity="big" if monthly >= rules.LEAD_BIG else "normal",
             evidence={
-                "path": short_path(f.page), "because": f.kind, "leads": round(page["leads"], 1), "sessions": page["sessions"], "days": rules.LEAD_DAYS,
-                "leads_at_stake": round(monthly, 2), "lead_rate": {"rate": round(rate * 100, 2), "basis": basis},
+                "path": short_path(f.page), "because": f.kind, "leads": round(page["leads"], 1), "sessions": page["sessions"], "days": (ctx.end - date.fromisoformat(site["since"])).days + 1,
+                "leads_at_stake": round(monthly, 2), "lead_rate": {"rate": round(rate * 100, 2), "basis": basis, "kind": site["kind"]}, "lead_kind": site["kind"],
                 **{k: f.evidence[k] for k in ("clicks", "clicks_before", "percent", "below_peak", "peak", "last", "seasonal") if k in f.evidence},
             },
         ).settle())
@@ -94,7 +108,7 @@ def leads(ctx: Ctx, findings: list[Finding]) -> Result:
             "no_leads", "leads", r["page"], page=r["page"],
             evidence={
                 "path": short_path(r["page"]), "clicks": clicks, "impressions": int(r["i"] or 0), "sessions": page["sessions"], "days": rules.LEAD_DAYS,
-                "site_rate": round(site["rate"] * 100, 2), "expected": round(page["sessions"] * site["rate"], 1),
+                "site_rate": round(site["rate"] * 100, 2), "expected": round(page["sessions"] * site["rate"], 1), "lead_kind": site["kind"],
             },
         ))
     out.findings += sorted(quiet, key=lambda f: -f.evidence["clicks"])[: rules.NO_LEADS_KEPT]

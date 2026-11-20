@@ -1243,3 +1243,8 @@ html[data-simple="1"] .app.rail .side-search .kbd { display: none; }
 @media (min-width: 1241px) {
   .app:not(.rail) ~ .toasts { left: calc(var(--gap) + 6px); bottom: 72px; width: calc(var(--side) - 12px); }
 }
+
+/* A search box typed in Arabic (2026-11-17): the box keeps its left-to-right layout, so its search icon and its clear
+   button stay where they are, while the words typed read right to left. dir="auto" alone flipped the whole box, and the
+   browser's clear button landed on the icon. */
+input[type="search"][dir="auto"] { direction: ltr; unicode-bidi: plaintext; }

@@ -38,6 +38,8 @@ CHECKS: dict[str, tuple[str, int, str]] = {
     "almost_no_text": ("Almost no text", 5, WARN),
     "redirect_chains": ("More than 2 redirects", 3, INFO),
     "slow_pages": ("Slower than 5 seconds", 6, WARN),
+    # Listed so a page hidden by a wrong Disallow line shows somewhere, but never scored: blocking /admin is often meant.
+    "robots_blocked": ("Blocked by robots.txt", 0, INFO),
 }
 # Problems with the whole site: a fixed cost, and an alert on their own.
 SITE_CHECKS: dict[str, tuple[str, int]] = {
@@ -139,6 +141,24 @@ def _points_elsewhere(canonical: str, page: str) -> bool:
     return bool(normalize_url(target)) and page_key(target) != page_key(page)
 
 
+def robots_words(*values: str | None) -> set[str]:
+    """noindex, nofollow and none from robots and googlebot meta tags and X-Robots-Tag headers, as Google reads them:
+    "googlebot: noindex" counts, "bingbot: noindex" and "max-snippet: 50" don't, and none means noindex and nofollow."""
+    words: set[str] = set()
+    for value in values:
+        for part in (value or "").lower().split(","):
+            part = part.strip()
+            if ":" in part:
+                left, _, rest = part.partition(":")
+                if left.strip() != "googlebot":  # another crawler's rule, or a directive with a value
+                    continue
+                part = rest.strip()
+            words.update(part.split())
+    if "none" in words:
+        words.update(("noindex", "nofollow"))
+    return words
+
+
 def look_at_page(found: Findings, url: str, result: FetchResult, fields: PageFields | None, start_url: str) -> None:
     """Judges one answer. A page the crawl skipped or couldn't judge lowers nothing: robots.txt said no, it blocked us, it isn't a web page."""
     is_start = page_key(url) == page_key(start_url)
@@ -146,6 +166,8 @@ def look_at_page(found: Findings, url: str, result: FetchResult, fields: PageFie
     if status == "robots":
         if is_start and result.error:  # robots.txt itself is failing, which keeps every polite crawler out, search engines included
             found.site_codes.append("robots_down")
+        elif not result.error and not result.held_back:  # robots.txt says no to this page: listed, lowers nothing
+            found.add("robots_blocked", url)
         return
     if status in ("network_error", "refused", "too_many_redirects"):  # "refused" is also what an address that no longer resolves gets
         if is_start:
@@ -161,8 +183,7 @@ def look_at_page(found: Findings, url: str, result: FetchResult, fields: PageFie
         return
     if fields is None or not found.first_look(page):
         return
-    robots = (fields.robots_meta or "").lower()
-    if "noindex" in robots or "none" in robots.replace(",", " ").split():
+    if "noindex" in robots_words(fields.robots_meta, fields.extras.get("googlebot"), result.x_robots_tag):
         found.add("noindex", page)
         if is_start:
             found.site_codes.append("start_page_noindex")
@@ -218,7 +239,7 @@ def score(issues: dict[str, list[str]], site_codes: list[str], pages_seen: int) 
     pages = max(1, pages_seen)
     found_something = bool(site_codes)
     for code, urls in issues.items():
-        if code in CHECKS and urls:
+        if code in CHECKS and CHECKS[code][1] and urls:  # a check that weighs nothing is only listed
             found_something = True
             share = min(1.0, len(urls) / pages)
             total -= CHECKS[code][1] * math.sqrt(share)

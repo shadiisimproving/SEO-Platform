@@ -33,7 +33,9 @@ from seo.worker.runner import RunAgain, handler
 JOB_KIND = "backlinks.check"
 LANE = "crawl"
 CHUNK_SECONDS = 40.0
-CHECK_EVERY_DAYS = 30
+# A link someone pays for (a price, a mediator or a renewal date) is read every week: a month of a dead paid link is a month
+# paid for nothing (SEO review 2026-11-17, links F2). They are few, and a read is one polite request.
+CHECK_EVERY_DAYS, PAID_CHECK_EVERY_DAYS = service.CHECK_EVERY_DAYS, service.PAID_CHECK_EVERY_DAYS
 RECHECK_HOURS = 20
 MISSES_TO_LOSE = 2
 FOUND, MISSING, PAGE_GONE, UNKNOWN = "found", "missing", "page_gone", "unknown"
@@ -327,8 +329,14 @@ def read_page(fetcher, source_url: str, site_host: str, target: str | None, anch
 # ---- saving what was seen ----------------------------------------------------------------------------
 
 def _changes(row, seen: LinkSeen) -> list[dict]:
-    """Compared with the last reading, never with what someone typed: an anchor logged loosely isn't a change."""
+    """Compared with the last reading, never with what someone typed: an anchor logged loosely isn't a change.
+
+    A link that pointed at the logged target page and now points at another page of my site has moved: agencies swap a paid
+    link to the home page. That raises the same backlink_changed alert (SEO review 2026-11-17, links F3).
+    """
     changes = []
+    if row["target_url"] and row["to_target"] and not seen.to_target:
+        changes.append({"what": "target", "before": row["seen_href"] or row["target_url"], "after": seen.href or ""})
     if row["is_nofollow"] is not None and bool(row["is_nofollow"]) != bool(seen.is_nofollow):
         changes.append({"what": "nofollow", "before": bool(row["is_nofollow"]), "after": bool(seen.is_nofollow)})
     if row["seen_anchor"] is not None and row["seen_anchor"] != (seen.anchor or ""):
@@ -367,6 +375,7 @@ def _save(engine: Engine, row, reading: Reading, trigger: str, target: dict | No
             text(
                 "UPDATE backlinks SET checked_at = UTC_TIMESTAMP(3), check_outcome = :o, check_reason = :r, final_url = COALESCE(:f, final_url), miss_count = :m, status = :st, "
                 "is_nofollow = IF(:found, :n, is_nofollow), seen_rel = IF(:found, :l, seen_rel), seen_anchor = IF(:found, :a, seen_anchor), seen_href = IF(:found, :u, seen_href), "
+                "to_target = IF(:found, :tt, to_target), "
                 "target_final_url = COALESCE(:tf, target_final_url), lost_at = CASE WHEN :lost THEN UTC_TIMESTAMP(3) WHEN :back THEN NULL ELSE lost_at END, "
                 # The verdict is about a link that's there. When it's gone there's nothing to judge, so it's cleared rather than kept stale.
                 "seo_verdict = IF(:found, :v, IF(:o IN ('missing', 'page_gone'), NULL, seo_verdict)), seo_reasons = IF(:found, :vr, IF(:o IN ('missing', 'page_gone'), NULL, seo_reasons)), "
@@ -374,7 +383,7 @@ def _save(engine: Engine, row, reading: Reading, trigger: str, target: dict | No
                 "target_http = COALESCE(:th, target_http), target_lang = COALESCE(:tl, target_lang) WHERE id = :i"
             ),
             {"o": outcome, "r": reading.reason, "f": reading.final_url, "m": misses, "st": status, "found": outcome == FOUND, "n": seen.is_nofollow, "l": seen.rel, "a": seen.anchor or "", "u": seen.href, "tf": target.get("final"), "lost": went_lost, "back": came_back, "i": row["id"],
-             "v": reading.verdict, "vr": json.dumps(reading.reasons), "pl": reading.signals.lang, "ob": reading.signals.outbound, "th": target.get("http"), "tl": target.get("lang")},
+             "v": reading.verdict, "vr": json.dumps(reading.reasons), "tt": seen.to_target if row["target_url"] else None, "pl": reading.signals.lang, "ob": reading.signals.outbound, "th": target.get("http"), "tl": target.get("lang")},
         )
         if reading.article:
             _move_to_article(conn, row, reading.article)
@@ -443,11 +452,13 @@ def check_one(engine: Engine, row, fetcher, trigger: str, resolved: dict[str, di
 _DUE = (
     "SELECT * FROM backlinks WHERE site_id = :s AND status IN ('live', 'lost') AND ("
     " checked_at IS NULL OR checked_at < UTC_TIMESTAMP(3) - INTERVAL :every DAY"
+    " OR (status = 'live' AND (cost > 0 OR COALESCE(price_text, '') <> '' OR COALESCE(mediator, '') <> '' OR COALESCE(renewal, '') <> '')"
+    "     AND checked_at < UTC_TIMESTAMP(3) - INTERVAL :paid DAY)"
     " OR (status = 'live' AND miss_count > 0 AND checked_at < UTC_TIMESTAMP(3) - INTERVAL :soon HOUR)"
     " OR (check_outcome = 'unknown' AND check_reason IN ('network', 'server', 'rate_limited') AND checked_at < UTC_TIMESTAMP(3) - INTERVAL :soon HOUR)"
     ") ORDER BY checked_at IS NOT NULL, checked_at, id"
 )
-_DUE_ARGS = {"every": CHECK_EVERY_DAYS, "soon": RECHECK_HOURS}
+_DUE_ARGS = {"every": CHECK_EVERY_DAYS, "paid": PAID_CHECK_EVERY_DAYS, "soon": RECHECK_HOURS}
 
 
 @handler(JOB_KIND)

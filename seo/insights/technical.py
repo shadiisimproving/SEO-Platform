@@ -68,7 +68,7 @@ def _differences(main: str, others: list[str]) -> list[str]:
 
 
 # What makes a page broken for a searcher. "Almost no text" is a content matter, said elsewhere.
-BROKEN = ("broken_pages", "server_errors", "noindex", "canonical_elsewhere", "link_broken", "link_redirect")
+BROKEN = ("broken_pages", "server_errors", "noindex", "canonical_elsewhere", "link_broken", "link_redirect", "not_indexed")
 
 
 def shown_broken(ctx: Ctx, gone: set[str] | None = None) -> Result:

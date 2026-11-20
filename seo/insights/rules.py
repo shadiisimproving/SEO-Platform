@@ -146,6 +146,7 @@ MIX_WORST = 20  # further down than this on average, a drop means little
 MIX_CONFIRM_PLACES = 3  # moved at least this much since the previous like-for-like check
 MIX_DEPTH_MARGIN = 3  # "beyond the depth checked" only counts when the average sat this far inside it
 MIX_MIN_IMPRESSIONS = 50
+MIX_PASS_PLACES = 2  # "a rival passed you" needs it to climb, or me to fall, at least this far: a one-place swap is noise
 MIX_RIVAL_TOP, MIX_RIVAL_ME_PAST, MIX_RIVAL_TARGET = 5, 10, 5
 MIX_STRIKING, MIX_STRIKING_GAP, MIX_STRIKING_MIN, MIX_STRIKING_TARGET = (8, 20), 5, 20, 5
 MIX_NO_CLICK_TOP, MIX_NO_CLICK_MIN, MIX_NO_CLICK_SHARE = 7, 100, 0.6

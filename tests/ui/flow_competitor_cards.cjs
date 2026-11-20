@@ -16,6 +16,8 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
 
 (async () => {
   const { browser, page, problems } = await open({ width: 1440, height: 950 });
+  // The cards can fold to a rail of logos (2026-11-20, flow_reading_competitors.cjs); this flow is about the open cards.
+  await page.addInitScript(() => { try { localStorage.setItem("seocc-cs-slim", "0"); } catch { /* a page without storage */ } });
   const settle = (ms = 900) => page.waitForTimeout(ms);
   const asked = [];
   page.on("request", (r) => { if (r.url().includes("/api/collective/moves")) asked.push(r.url()); });
@@ -35,7 +37,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   check("your site's card comes first", cards[0]?.you && /Your site/.test(cards[0].host), JSON.stringify(cards[0]));
   const one = cards.find((c) => /rival-one/.test(c.host || ""));
   check("a competitor's card is named by its home page and says what it does", one && one.name === "Rival One" && /Coffee club/.test(one.about), JSON.stringify(one));
-  check("the card splits its 30 days into added and edited, with its pages", one && /1 added in 30 days/.test(one.counts) && /3 edited in 30 days/.test(one.counts) && /9 pages/.test(one.counts), one?.counts);
+  check("the card splits its 30 days into added and edited pages (3 edits on 2 pages: 2), with its pages", one && /1 added in 30 days/.test(one.counts) && /2 edited in 30 days/.test(one.counts) && /9 pages/.test(one.counts), one?.counts);
   const blocked = cards.find((c) => /cafe-monde/.test(c.host || ""));
   check("a site that blocks bots says so, and shows no 0s", blocked && /Blocked/.test(blocked.counts) && !/0 added/.test(blocked.counts), blocked?.counts);
   check("every card has a logo", cards.every((c) => c.logo), cards.filter((c) => !c.logo).map((c) => c.host).join(", "));
@@ -44,12 +46,12 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   const first = await page.evaluate(() => ({
     tab: document.querySelector("#cs-low-tabs [aria-selected=true]")?.dataset.csLow,
     heads: [...document.querySelectorAll("#cs-moves-list thead th")].map((th) => th.textContent.trim()).filter(Boolean),
-    ...(() => { const row = document.querySelector("#cs-moves-list .cl-tl-link")?.closest("tr"); return { link: row?.querySelector(".cl-tl-link")?.textContent.trim(), owner: row?.querySelector(".cl-tl-owner")?.textContent.replace(/\s+/g, " ").trim() }; })(),
+    ...(() => { const row = document.querySelector("#cs-moves-list a.cs-line-title")?.closest("tr"); return { link: row?.querySelector("a.cs-line-title")?.textContent.trim(), owner: row?.querySelector(".cs-line-host")?.textContent.replace(/\s+/g, " ").trim() }; })(),
     rows: document.querySelectorAll("#cs-moves-list tbody tr").length,
     tiles: Boolean(document.querySelector("#cs-tiles")), table: Boolean(document.querySelector("#cs-rivals-table")),
   }));
   check("Changes is the tab open first", first.tab === "moves", first.tab);
-  check("the table has no Competitor column", !first.heads.includes("Competitor") && first.heads.includes("Page"), first.heads.join(" | "));
+  check("the table has no Competitor column", !first.heads.includes("Competitor") && first.heads.includes("Their page"), first.heads.join(" | "));
   check("a page row shows its title as the link, with the site and path under it", Boolean(first.link) && /\.example/.test(first.owner || "") && /\//.test(first.owner || ""), `${first.link} / ${first.owner}`);
   check("the number cards and the old Competitors table are gone", !first.tiles && !first.table);
   const headTop = await page.evaluate(() => document.querySelector("#cs-moves .cs-mv-head")?.getBoundingClientRect().top ?? 9999);
@@ -60,7 +62,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await page.click(`[data-cs-pick="${one.id}"]`); await settle();
   const picked = await page.evaluate((id) => ({
     pressed: document.querySelector(`[data-cs-pick="${id}"]`)?.getAttribute("aria-pressed"), on: document.querySelector(`[data-cs-card="${id}"]`)?.classList.contains("on"),
-    chip: document.querySelector(".cs-mv-who")?.textContent.trim(), owners: [...document.querySelectorAll("#cs-moves-list .cl-tl-owner")].map((o) => o.textContent),
+    chip: document.querySelector(".cs-mv-who")?.textContent.trim(), owners: [...document.querySelectorAll("#cs-moves-list .cs-line-host")].map((o) => o.textContent),
     rows: document.querySelectorAll("#cs-moves-list tbody tr").length, focus: document.activeElement?.dataset?.csPick,
   }), one.id);
   check("pressing a card shows only that competitor's changes", picked.pressed === "true" && picked.on && picked.owners.length > 0 && picked.owners.every((o) => /rival-one/.test(o)), JSON.stringify({ ...picked, owners: picked.owners.length }));
@@ -72,8 +74,8 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
 
   // ---- kind and period buttons ---------------------------------------------------------------------------------------
   await page.click('[data-cs-mv-kind="new"]'); await settle();
-  const added = await page.evaluate(() => [...document.querySelectorAll("#cs-moves-list tbody tr .cl-tl-kind")].map((k) => k.textContent.trim()));
-  check("Added shows only added pages", added.length > 0 && added.every((w) => /Added/.test(w)), added.join(", "));
+  const added = await page.evaluate(() => [...document.querySelectorAll("#cs-moves-list tbody tr.cs-line .cs-what")].map((k) => k.textContent.trim()));
+  check("Added shows only added pages", added.length > 0 && added.every((w) => /^New page/.test(w)), added.join(", "));
   await page.click('[data-cs-mv-kind="all"]'); await settle();
   const before = asked.length;
   await page.click('[data-cs-mv-days-btn="7"]'); await settle(1500);
@@ -128,6 +130,9 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   });
   check("on a phone the page doesn't scroll sideways, the cards do", !phone.pageWide && phone.strip, JSON.stringify(phone));
   check("on a phone the filter buttons fit the screen", phone.segsInside);
+  // SEO review 2026-11-17, competitors 3: the 1440 px rule kept two columns on a phone and gave Changes about 60 px.
+  const lower = await page.evaluate(() => document.querySelector("#cs-lower")?.getBoundingClientRect().width || 0);
+  check("on a phone Changes sits under the cards at the screen's width", lower > 300, lower);
   await page.screenshot({ path: OUT + "4-phone.png", fullPage: true });
 
   const real = problems.filter((p) => !/status of 404/.test(p)); // /api/auth/me answers 404 without --login

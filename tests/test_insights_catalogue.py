@@ -274,7 +274,7 @@ def test_leads_rank_a_lead_page_first_and_find_clicks_without_leads(engine, site
     result = value.leads(ctx, drops)
     lead = _kinds(result, "lead_page")
     assert len(lead) == 1 and lead[0].page == HOME + "quote/" and lead[0].grp == "leads"
-    assert lead[0].evidence["lead_rate"] == {"rate": 10.0, "basis": "page"}
+    assert lead[0].evidence["lead_rate"] == {"rate": 10.0, "basis": "page", "kind": "key_events"}  # no lead event picked: key events
     assert drops[0].evidence["leads_at_stake"] == pytest.approx(drops[0].at_stake * 0.1, abs=0.01)
     assert lead[0].severity == "big"  # 168 clicks a month × 10% = 16.8 leads a month
     quiet = _kinds(result, "no_leads")
@@ -306,6 +306,20 @@ def test_a_page_google_shows_that_the_health_test_flags(engine, site):
         conn.execute(text("INSERT INTO health_issues (audit_id, code, page_count, pages) VALUES (:a, 'almost_no_text', 1, :p)"), {"a": audit, "p": json.dumps([HOME + "hats/"])})
     found = _kinds(technical.shown_broken(data.load(engine, site)), "shown_broken")
     assert [f.page for f in found] == [HOME + "shoes/"] and found[0].evidence["causes"] == ["noindex"]
+
+
+def test_a_page_google_dropped_from_its_index_is_a_technical_finding(engine, site):
+    """Expert review 2026-11-17: Insights ignored URL Inspection. A page Google still showed this week but now reports as
+    not indexed is a finding; an indexed one isn't."""
+    w = World(engine, site)
+    w.spread(*NOW, "shoes", HOME + "shoes/", 2, 20, 5)
+    w.spread(*NOW, "hats", HOME + "hats/", 2, 20, 5)
+    w.save()
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO gsc_inspections (site_id, url_hash, url, verdict, coverage) VALUES (:s, 'a', :u, 'NEUTRAL', 'Crawled - currently not indexed')"), {"s": site, "u": HOME + "shoes/"})
+        conn.execute(text("INSERT INTO gsc_inspections (site_id, url_hash, url, verdict, coverage) VALUES (:s, 'b', :u, 'PASS', 'Submitted and indexed')"), {"s": site, "u": HOME + "hats/"})
+    found = _kinds(technical.shown_broken(data.load(engine, site)), "shown_broken")
+    assert [f.page for f in found] == [HOME + "shoes/"] and found[0].evidence["causes"] == ["not_indexed"]
 
 
 def test_data_gaps_only_for_what_a_new_pull_can_fix(engine, site):
@@ -364,3 +378,17 @@ def test_a_full_run_saves_the_new_kinds_in_their_groups(engine, site):
     assert ("query_down", "changed") in groups and ("no_page", "wins") in groups
     assert all(len(kind) <= 30 for kind, _ in groups)
     assert not insights.run(engine, site)["added"]  # the same data again: nothing new
+
+
+def test_technical_says_what_it_leaves_out_on_pages_google_did_not_show(engine, site):
+    """Insights → Technical said "Nothing here. Good news." beside a 404, a 500 and a noindex page, because it only lists
+    pages Google showed this week. The summary now counts the rest, so the tab can point at Site health."""
+    from seo.insights import service
+
+    with engine.begin() as conn:
+        audit = conn.execute(text("INSERT INTO health_audits (site_id, status) VALUES (:s, 'complete')"), {"s": site}).lastrowid
+        for code, pages in (("broken_pages", ["/old-offer"]), ("server_errors", ["/down"]), ("noindex", ["/decafeine", "/down"]), ("no_title", ["/moulins"])):
+            conn.execute(text("INSERT INTO health_issues (audit_id, code, page_count, pages) VALUES (:a, :c, :n, :p)"), {"a": audit, "c": code, "n": len(pages), "p": json.dumps([HOME.rstrip("/") + p for p in pages])})
+        conn.execute(text("INSERT INTO gsc_inspections (site_id, url_hash, url, verdict) VALUES (:s, 'z', :u, 'NEUTRAL')"), {"s": site, "u": HOME + "subscription"})
+    # 3 flagged pages and 1 not indexed, none shown this week: 4 pages, each once (code review 2026-11-17)
+    assert service.summary(engine, [site])["technical_elsewhere"] == {"pages": 4, "critical": 2, "not_indexed": 1}

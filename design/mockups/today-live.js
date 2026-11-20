@@ -6,7 +6,7 @@
   // at: when the last answer landed (not when it was asked), so a slow server isn't asked again the moment it answers (F5).
   // busy: one load at a time. failed: the query that failed, so it isn't asked again until Try again or something changes.
   const T = { key: null, data: null, error: "", summary: {}, at: 0, busy: false, failed: null };
-  const KINDS = { new_page: "New page", page_gone: "Page removed", title: "Title changed", search_title: "Search title changed", meta: "Meta description changed", h1: "Main heading changed", headings: "Headings changed", content: "Content changed", canonical: "Canonical changed", schema: "Structured data changed", links: "Links changed", redirect: "Redirect changed", status: "Status changed", robots: "Indexing changed" };
+  const KINDS = { new_page: "New page", page_gone: "Page removed", title: "Title changed", search_title: "Search title changed", meta: "Meta description changed", h1: "Main heading changed", headings: "Headings changed", content: "Content changed", canonical: "Canonical changed", schema: "Structured data changed", links: "Links changed", redirect: "Moved to another address", status: "Status changed", robots: "Indexing changed" };
 
   const words = (title) => {
     if (UI.state.lang !== "fr") return title;
@@ -57,6 +57,7 @@
     window.ATTENTION = data.todo.map((a) => ({ id: a.id, sev: a.severity, title: say(a, "title"), detail: a.detail, host: a.host, act: "Open", key: a.kind }));
     if (Array.isArray(data.setup)) UI.setupFacts?.(data.setup);
     if (data.results?.window?.to) UI.range?.end?.("today", data.results.window.to, "Search Console");
+    if (data.results?.window) UI.range?.served?.("today", data.results.window); // the head prints the period really compared
     T.badgeLate = true; // taken in while the page draws, after the side menu: after() draws it again with the new count
   }
   // What Today shows now: the held answer for the site and period picked, asked for when there's none (one ask at a time).
@@ -111,6 +112,7 @@
   function shownValue(a, k, v) {
     let shown = typeof v === "number" ? UI.num(v) : String(v ?? "");
     if (k === "segment" && a.words.segment_dim === "device") shown = t(DEVICE_WORDS[String(v).toUpperCase()] || shown);
+    if (["a", "b", "was", "now"].includes(k) && typeof v === "number" && !Number.isInteger(v) && UI.dec) shown = UI.dec(v); // avg pos 4,2 in French
     if (k === "day" && /^\d{4}-\d{2}-\d{2}$/.test(shown)) shown = new Intl.DateTimeFormat(UI.locale(), { day: "numeric", month: "long" }).format(new Date(`${shown}T00:00:00`));
     return shown;
   }
@@ -129,7 +131,7 @@
     });
     return out.replace(/\u0000(\d+)\u0000/g, (_, i) => marks[Number(i)]);
   }
-  const MAIN_WORD = { source_failing: "Fix", backlink_lost: "Review", backlink_changed: "Review", page_drop: "See page", search_finding: "See why", ai_overview: "See it" };
+  const MAIN_WORD = { leads_drop: "See leads", source_failing: "Fix", backlink_lost: "Review", backlink_changed: "Review", page_drop: "See page", search_finding: "See why", ai_overview: "See it" };
   const mainButton = (a) => {
     if (a.kind === "page_drop" && a.open?.page) return `<button class="btn btn-small" data-today-page="${esc(a.open.page)}" data-today-host="${esc(a.host || "")}" data-today-range="${esc(a.open.range || "")}">${t("See page")}</button>`;
     const link = a.host && a.link && !a.link.includes("?") ? `${a.link}?site=${encodeURIComponent(a.host)}` : a.link;
@@ -139,6 +141,9 @@
     const title = say(a, "title"), detail = say(a, "detail");
     return {
       id: a.id, severity: a.severity, kind: a.kind, reason: a.reason, title, titleHtml: sayHtml(a, "title"), detail, host: a.host,
+      // One short line of likely cause on a drop, and what the same search did this week (seo/metrics/today.py).
+      cause: a.words?.cause ? say(a, "cause") : "", week: a.words?.week ? say(a, "week") : "",
+      rival: a.rival || null, rivalWords: a.words?.rival || null, // the rival change behind a drop: its line is drawn with its link
       seenAttr: a.alert_ids ? `data-lv-seen="${esc(a.alert_ids.join(","))}"` : a.seen_key ? `data-lv-drop="${esc(a.seen_key)}"` : "",
       mainHtml: mainButton(a),
       find: a.kind === "search_finding" ? { title, host: a.host || null, priority: "medium", pages: a.page ? [a.page] : [], keywords: a.query ? [a.query] : [], source: { type: "search", key: a.seen_key, label: title, host: a.host || undefined, facts: detail ? [detail] : [], link: a.link } } : { title, host: a.host || null, priority: a.severity === "crit" ? "high" : "medium", ...(a.page ? { pages: [a.page] } : {}), ...(a.query ? { keywords: [a.query] } : {}), source: { type: "alert", label: title, host: a.host || undefined, facts: detail ? [detail] : [], link: a.link, key: a.seen_key ? `drop|${a.seen_key}` : `alert|${a.kind}|${a.host || ""}|${a.title}` } },
@@ -158,6 +163,7 @@
     const stale = d.lanes.filter((l) => l.stale);
     return {
       results: d.results, googleStopped: d.google_stopped, todo: d.todo.map(todoItem), goingDown: d.going_down, goingUp: d.going_up, otherEdits: d.other_edits,
+      movesWindow: d.moves_window || null, todoDrops: d.todo_drops || 0,
       rivals: d.rival_changes.map((c) => ({ ...c, label: t(KINDS[c.kind] || c.kind), path: pathOf(c.url), my_path: pathOf(c.my_url), when: when(c.when) })),
       followUp: T.summary.follow_up, renewals: T.summary.renewals_30d,
       sources: { ok: d.sources.filter((s) => s.ok).length, waiting: d.sources.filter((s) => s.waiting).length, total: d.sources.length, hosts: withoutGoogle(d), connectAttr: `data-today-connect="${esc(withoutGoogle(d)[0] || "")}"`, note: stale.length ? `${t("Background work")}: ${t("Last ran")} ${ago(stale[0].minutes) || t("never")}` : "" },
@@ -295,7 +301,12 @@
     "Clarity data lost in {n} h": "Données Clarity perdues dans {n} h", "Clarity data is being lost": "Des données Clarity sont en train d'être perdues",
     "Clarity keeps only 3 days of data.": "Clarity ne garde que 3 jours de données.",
     "{path}: −{percent}% Google clicks": "{path} : −{percent} % de clics Google", "Week on week: {was} → {now}": "Semaine sur semaine : {was} → {now}",
-    "~{n} clicks/month at stake": "~{n} clics/mois en jeu",
+    "~{n} clicks/month at stake": "~{n} clics/mois en jeu", "See leads": "Voir les leads",
+    "Leads fell {percent}%: {was} → {now}": "Les leads ont baissé de {percent} % : {was} → {now}", "Key events fell {percent}%: {was} → {now}": "Les événements clés ont baissé de {percent} % : {was} → {now}", "Last 28 days vs the 28 before": "28 derniers jours vs les 28 précédents",
+    "Likely cause: lost places, avg pos {a} → {b}": "Cause probable : places perdues, pos. moy. {a} → {b}",
+    "Likely cause: fewer searches, {a} → {b} impressions": "Cause probable : moins de recherches, {a} → {b} impressions",
+    "Likely cause: lower click rate at the same place": "Cause probable : taux de clic plus bas à la même place",
+    "This week: avg pos {was} → {now}": "Cette semaine : pos. moy. {was} → {now}",
     "{path} dropped out of Google": "{path} est sortie de Google", "{path} is slowly losing clicks": "{path} perd lentement des clics",
     "“{query}” is almost on page 1": "« {query} » est presque en page 1", "“{query}” is close to the top 3": "« {query} » est proche du top 3",
     "“{query}” is clicked less than usual": "« {query} » est moins cliquée que d'habitude", "“{query}” is seen but never clicked": "« {query} » est vue mais jamais cliquée",
@@ -310,7 +321,7 @@
     "“{keyword}”: the AI Overview has gone": "« {keyword} » : l'AI Overview a disparu", "Last two AI Overview checks": "Deux derniers relevés de l'AI Overview",
     "Mobile": "Mobile", "Desktop": "Ordinateur", "Tablet": "Tablette",
     "Background work": "Tâches de fond", "Last ran": "Dernier passage", "never": "jamais", "Marked as seen": "Marqué comme vu",
-    "New page": "Nouvelle page", "Page removed": "Page retirée", "Title changed": "Titre modifié", "Search title changed": "Titre dans les résultats modifié", "Meta description changed": "Méta description modifiée", "Main heading changed": "Titre principal modifié", "Headings changed": "Titres modifiés", "Content changed": "Contenu modifié", "Canonical changed": "Canonique modifiée", "Structured data changed": "Données structurées modifiées", "Links changed": "Liens modifiés", "Redirect changed": "Redirection modifiée", "Status changed": "Statut modifié", "Indexing changed": "Indexation modifiée",
+    "New page": "Nouvelle page", "Page removed": "Page retirée", "Moved to another address": "Déplacée vers une autre adresse", "Title changed": "Titre modifié", "Search title changed": "Titre dans les résultats modifié", "Meta description changed": "Méta description modifiée", "Main heading changed": "Titre principal modifié", "Headings changed": "Titres modifiés", "Content changed": "Contenu modifié", "Canonical changed": "Canonique modifiée", "Structured data changed": "Données structurées modifiées", "Links changed": "Liens modifiés", "Redirect changed": "Redirection modifiée", "Status changed": "Statut modifié", "Indexing changed": "Indexation modifiée",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 })();

@@ -142,7 +142,8 @@
     return { view: "links", params };
   }
   const SCREENS = {
-    today: () => ({ view: "today", params: { site_id: site() } }),
+    // The period on screen (UI.range.search), so the file holds Today's numbers for that period, not always 28 days.
+    today: () => ({ view: "today", params: { ...Object.fromEntries(new URLSearchParams(ui().range.search())), site_id: site() } }),
     channels: traffic("channels", [["channels", "channels", (r) => r.channel], ["referrers", "referrers", (r) => r.domain]]),
     conversions: traffic("conversions", [["types", "page_types", (r) => r.type], ["converting", "pages", pageKey]]),
     content: traffic("content", [["content", "pages", pageKey]], "pages"),
