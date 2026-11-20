@@ -127,7 +127,7 @@
     "SerpApi reads Google's AI Overviews: one search per keyword.": "SerpApi lit les aperçus IA de Google : une recherche par mot-clé.",
     "Connect a tool that reads AI Overviews in Settings first.": "Connectez d'abord dans les réglages un outil qui lit les aperçus IA.",
     "Every keyword already has an AI Overview check.": "Chaque mot-clé a déjà une vérification d'aperçu IA.",
-    "Other pages ranking": "Autres pages classées", "Main page": "Page principale", "Other pages": "Autres pages", "{n} more pages, in the list below": "{n} autres pages, dans la liste ci-dessous",
+    "Other pages ranking": "Autres pages classées", "{n} more pages in this period": "{n} autres pages sur la période", "Show all {n}": "Tout afficher ({n})", "Main page": "Page principale", "Other pages": "Autres pages", "{n} more pages, in the list below": "{n} autres pages, dans la liste ci-dessous",
     "Backlink found": "Backlink trouvé", "Bought links and other backlinks to this page are the dashed lines.": "Les liens achetés et les autres backlinks vers cette page sont les lignes pointillées.",
     "Position by page": "Position par page", "Your page": "Votre page", "Months": "Mois",
   };
@@ -198,7 +198,7 @@
   };
   // The other pages of mine that show for a keyword (Search Console's, then any our last Google check found): the panel lists
   // them, and the Two pages chip finds the keywords that have them. The row keeps only a small mark (Track C, 2026-11-20).
-  const otherPages = (row) => (row.pages || []).filter((p) => !row.page || p.url.replace(/\/$/, "") !== row.page.replace(/\/$/, ""));
+  const otherPages = (row) => (row.pages || []).filter((p) => !/\?/.test(p.url) && (!row.page || p.url.replace(/\/$/, "") !== row.page.replace(/\/$/, "")));
   const shortPath = (url) => { try { const u = new URL(url); return decodeURI(u.pathname + u.search) || "/"; } catch { return url || ""; } };
   const allRows = () => { const host = UI.siteHostPicked(); return (K.data?.rows || []).filter((row) => !host || row.site === host); };
   /* What the Keyword ideas card needs from here: the words already tracked, and the country and language used most. */
@@ -1584,7 +1584,7 @@
     const lineSvg = lines.map((line, n) => {
       const [colour, dash] = line.style || PAGE_LINES[0];
       const dotSvg = dots ? line.points.filter((p) => p.p).map((p) => `<circle cx="${x(p.day).toFixed(1)}" cy="${y(p.p).toFixed(1)}" r="3.5" style="fill:${colour}" stroke="var(--panel-solid)" stroke-width="1.5"><title>${esc(`${fmt(p.day)}: ${p.p}${line.url ? ` · ${shortPath(line.url)}` : ""}`)}</title></circle>`).join("") : "";
-      return `<path class="chart-line kwt-pline" data-kwt-line="${n}" d="${pathOf(line.points, dots ? 1e9 : gapDays)}" style="stroke:${colour}${dash ? `;stroke-dasharray:${dash}` : ""}"/>${dotSvg}`;
+      return `<path class="chart-line kwt-pline" data-kwt-line="${n}" d="${pathOf(line.points, dots ? 1e9 : line.gap || gapDays)}" style="stroke:${colour}${dash ? `;stroke-dasharray:${dash}` : ""}"/>${dotSvg}`;
     }).join("");
     const first = lines[0]?.points.filter((p) => p.p) || [];
     const words = known.length ? `${t("Position over time")}: ${fmt(first[0]?.day || from)} ${first[0]?.p ?? ""}, ${fmt(first[first.length - 1]?.day || to)} ${first[first.length - 1]?.p ?? ""}${lines.length > 1 ? ` · ${lines.length} ${t("Other pages").toLowerCase()}` : ""}` : t("Position over time");
@@ -1599,6 +1599,19 @@
     if (lines.length < 2) return "";
     return `<ul class="kwt-legend" aria-label="${esc(t("Position by page"))}">${lines.map((line) => `<li><svg class="kwt-swatch" width="22" height="8" aria-hidden="true"><line x1="1" x2="21" y1="4" y2="4" style="stroke:${line.style[0]}${line.style[1] ? `;stroke-dasharray:${line.style[1]}` : ""}"/></svg>${PageLink.html(line.url, { text: shortPath(line.url), title: "" })}${line.impressions ? ` <span class="small muted">${num(line.impressions)} ${t("impr.")}</span>` : ""}</li>`).join("")}${extra ? `<li class="small muted">${esc(extra)}</li>` : ""}</ul>`;
   }
+  /* A page line's daily Search Console points as 7-day averages from the period's first day, weighted by impressions. */
+  function weeklyPoints(points, from, to) {
+    const start = new Date(`${from}T12:00:00Z`).getTime(), buckets = new Map();
+    points.filter((p) => p.p).forEach((p) => {
+      const k = Math.floor((new Date(`${p.day}T12:00:00Z`).getTime() - start) / (7 * 864e5));
+      if (!buckets.has(k)) buckets.set(k, []);
+      buckets.get(k).push(p);
+    });
+    return [...buckets].sort((a, b) => a[0] - b[0]).map(([k, pts]) => {
+      const w = pts.reduce((a, p) => a + (p.impressions || 1), 0), end = isoDay(new Date(start + (7 * k + 6) * 864e5));
+      return { day: end < pts[pts.length - 1].day ? pts[pts.length - 1].day : end > to ? to : end, p: Math.round((pts.reduce((a, p) => a + p.p * (p.impressions || 1), 0) / w) * 10) / 10 };
+    });
+  }
   function timelineSection(info, row, view, shownLine) {
     const src = kwbSource(), span = K.tlSpan || 90;
     const tl = timelineFor(info, row, view);
@@ -1606,12 +1619,15 @@
       <span class="seg" role="group" aria-label="${esc(t("Period"))}">${TL_SPANS.map(([d, label]) => `<button type="button" data-kwt-span="${d}" aria-pressed="${span === d}">${t(label)}</button>`).join("")}</span></div>`;
     if (tl === "loading") return `<h3>${t("Position over time")}</h3>${switches}<p class="small muted" role="status">${t("Loading…")}</p>`;
     if (tl.error) return `<h3>${t("Position over time")}</h3>${switches}<p class="error small">${icon("octagon-alert")}<span>${esc(t(tl.error))}</span></p>`;
-    let series, dots = false, lines, more = 0;
+    let series, dots = false, lines, more = 0, smoothed = false;
     if (src === "gsc") {
       series = tl.series;
       // Two pages or more: one line each, from Search Console's page report (every country), so Google switching pages shows.
-      const pages = (tl.url_lines || []).filter((line) => line.points.length);
-      lines = pages.length >= 2 ? pages.slice(0, PAGE_LINES.length).map((line, n) => ({ ...line, style: PAGE_LINES[n] })) : [{ points: series, style: PAGE_LINES[0] }];
+      const pages = (tl.url_lines || []).filter((line) => line.points.length && !/\?/.test(line.url || ""));
+      // Several daily lines jumping between 1 and 100 tangle (real data, 2026-11-20): with two pages or more each line is its
+      // 7-day averages (impression-weighted, like the lead), one point at the end of each week.
+      lines = pages.length >= 2 ? pages.slice(0, PAGE_LINES.length).map((line, n) => ({ ...line, points: tl.weekly ? line.points : weeklyPoints(line.points, tl.from, tl.to), gap: tl.weekly ? undefined : 8, style: PAGE_LINES[n] })) : [{ points: series, style: PAGE_LINES[0] }];
+      smoothed = pages.length >= 2 && !tl.weekly;
       more = pages.length >= 2 ? Math.max(0, pages.length - PAGE_LINES.length) : 0;
     } else {
       const pts = (shownLine?.points || []).filter((p) => !p.suspect && p.at.slice(0, 10) >= tl.from);
@@ -1640,7 +1656,7 @@
     const when = (x) => (x.from === x.day ? fmt(x.day) : `${fmt(x.from)} – ${fmt(x.day)}`);
     const lead = last ? `<p class="kwt-lead"><span class="kwb-pos kwt-now">${Math.max(1, Math.round(last.p))}</span> ${moved ? `<span class="kwb-mv ${moved > 0 ? "up" : "down"}">${moved > 0 ? "+" : "−"}${Math.abs(moved)}</span>` : ""} <span class="small muted">${esc(t("{a} ({d1}) → {b} ({d2})").replace("{a}", dec(first.p)).replace("{d1}", when(first)).replace("{b}", dec(last.p)).replace("{d2}", when(last)))}${src === "gsc" ? ` · ${esc(tl.scope === "all" ? t("all countries") : UI.countryName(row.country) || row.country || tl.scope)}${tl.weekly ? ` · ${t("weekly averages")}` : ""}` : ""}</span></p>` : "";
     const hasLinks = marks.some((m) => LINK_KINDS.has(m.kind));
-    const chartHtml = known.length >= 2 ? dateChart({ from: tl.from, to: tl.to, lines, dots, marks, bands, weekly: tl.weekly }) + pageLegend(lines, more ? t("{n} more pages, in the list below").replace("{n}", num(more)) : "") + (hasLinks ? `<p class="small muted kwt-note">${t("Bought links and other backlinks to this page are the dashed lines.")}</p>` : "")
+    const chartHtml = known.length >= 2 ? dateChart({ from: tl.from, to: tl.to, lines, dots, marks, bands, weekly: tl.weekly }) + pageLegend(lines, [more ? t("{n} more pages in this period").replace("{n}", num(more)) : "", smoothed ? t("weekly averages") : ""].filter(Boolean).join(" · ")) + (hasLinks ? `<p class="small muted kwt-note">${t("Bought links and other backlinks to this page are the dashed lines.")}</p>` : "")
       : `<p class="note">${icon("info")}<span>${t(src === "gsc" ? "No Search Console impressions for this keyword in this period." : "Our checks started on 11 Nov 2026: too few to draw yet.")}</span></p>`;
     const chips = kinds.length ? `<div class="chips kwt-kinds" role="group" aria-label="${esc(t("What we did"))}">${kinds.map((k) => `<button type="button" class="chip brand-mention" data-kwt-kind="${k}" aria-pressed="${!hidden.has(k)}"><i class="kwt-key" style="background:${TL_KINDS[k][1]}" aria-hidden="true"></i>${t(TL_KINDS[k][0])}</button>`).join("")}</div>` : "";
     const rowOf = (m, i, kind) => {
@@ -1704,8 +1720,8 @@
           <div><div class="k">${t("Volume")}</div><div class="v">${volPanel(row)}</div></div>
           <div><div class="k">${t("Impressions (28 days)")}</div><div class="v">${impressionsOf(row) === null || impressionsOf(row) === undefined ? '<span class="muted">—</span>' : num(impressionsOf(row))}</div></div>
         </div>
-        ${otherPagesSection(row)}
         ${timelineSection(info, row, view, shownLine)}
+        ${otherPagesSection(row)}
         <h3>${t("Results")} · ${esc(place)}</h3>
         <table class="mini" id="tool-table"><thead><tr><th>${t("Tool")}</th><th>${t("Position")}</th><th>${t("Checked")}</th><th>${t("Status")}</th><th><span class="sr">${t("Action")}</span></th></tr></thead><tbody>${toolRows}${suspects}</tbody></table>
         ${notRanked(view) ? `<p style="margin-top:8px"><button class="link-btn" data-kwr-deeper="${esc(row.id)}" data-engine-id="${e}">${t("Check deeper")}</button></p>` : ""}
@@ -1738,9 +1754,10 @@
   function otherPagesSection(row) {
     const others = otherPages(row);
     if (!row.two_pages || !others.length) return "";
+    const list = (pages) => `<ul class="kw-other-pages">${pages.map((p) => `<li><span class="mono small" dir="auto">${PageLink.html(p.url, { text: shortPath(p.url), title: p.url })}</span>${fact(p) ? `<span class="small muted">${esc(fact(p))}</span>` : ""}</li>`).join("")}</ul>`;
     const fact = (p) => [p.position ? `#${p.position}` : "", p.impressions !== null && p.impressions !== undefined ? `${num(p.impressions)} ${t("impr.")}` : ""].filter(Boolean).join(" · ");
     return `<h3>${t("Other pages ranking")} <span class="kw-count">${num(others.length)}</span></h3>
-      <ul class="kw-other-pages">${others.map((p) => `<li><span class="mono small" dir="auto">${PageLink.html(p.url, { text: shortPath(p.url), title: p.url })}</span>${fact(p) ? `<span class="small muted">${esc(fact(p))}</span>` : ""}</li>`).join("")}</ul>`;
+      ${list(others.slice(0, 3))}${others.length > 3 ? `<details class="kw-other-more"><summary class="link-btn">${t("Show all {n}").replace("{n}", num(others.length))}</summary>${list(others.slice(3))}</details>` : ""}`;
   }
 
   function findOf(row, e, view) {
