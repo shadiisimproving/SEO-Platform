@@ -1658,3 +1658,163 @@ class GscAiReport(Base):
     data: Mapped[dict] = mapped_column(JSON)
     uploaded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
     uploaded_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
+class SocialSetting(Base):
+    """The Social section of one site: the Writing guide Claude follows, the rules taught in plain words, the newsletter
+    mailbox, and the hash of the token the writing task and the Grok run sign in with. One row per site."""
+
+    __tablename__ = "social_settings"
+
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"), primary_key=True)
+    guide: Mapped[str | None] = mapped_column(MEDIUMTEXT, nullable=True)
+    niche: Mapped[str | None] = mapped_column(Text, nullable=True)  # what the owner posts about, so Grok looks in the right place
+    guide_version: Mapped[int] = mapped_column(Integer, server_default="1")
+    rules: Mapped[list | None] = mapped_column(JSON, nullable=True)  # [{"id", "text", "added_at"}]
+    proposals: Mapped[list | None] = mapped_column(JSON, nullable=True)  # the weekly suggestions waiting for a yes or no
+    token_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True)
+    token_last4: Mapped[str | None] = mapped_column(String(4), nullable=True)
+    mail_host: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    mail_user: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    mail_secret: Mapped[str | None] = mapped_column(Text, nullable=True)  # sealed with seo.core.crypto
+    updated_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
+class SocialSource(Base):
+    """A website feed (RSS or Atom) or a newsletter sender the day's topics are read from."""
+
+    __tablename__ = "social_sources"
+    __table_args__ = (
+        CheckConstraint("kind IN ('rss', 'mail')", name="ck_social_sources_kind"),
+        UniqueConstraint("site_id", "kind", "address", name="uq_social_sources_address"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    kind: Mapped[str] = mapped_column(String(10))
+    address: Mapped[str] = mapped_column(String(500))  # the feed address, or the sender's email address
+    label: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    active: Mapped[bool] = mapped_column(Boolean, server_default=text("1"))
+    last_ok_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+    last_error: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
+class SocialTopic(Base):
+    """Something worth posting about: an article from a feed, a newsletter story, or an X trend Grok found."""
+
+    __tablename__ = "social_topics"
+    __table_args__ = (
+        UniqueConstraint("site_id", "link_hash", name="uq_social_topics_link"),
+        Index("ix_social_topics_recent", "site_id", "found_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    origin: Mapped[str] = mapped_column(String(10))  # rss, mail, grok
+    source_id: Mapped[int | None] = mapped_column(ForeignKey("social_sources.id", ondelete="SET NULL"), nullable=True)
+    title: Mapped[str] = mapped_column(String(500))
+    link: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    link_hash: Mapped[str] = mapped_column(String(32))
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
+    lang: Mapped[str | None] = mapped_column(String(5), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+    found_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
+class SocialRun(Base):
+    """One day of the routine for one site: how each step went (feeds, mailbox, Grok, writing)."""
+
+    __tablename__ = "social_runs"
+    __table_args__ = (UniqueConstraint("site_id", "run_date", name="uq_social_runs_day"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    run_date: Mapped[date] = mapped_column(Date)
+    stages: Mapped[dict | None] = mapped_column(JSON, nullable=True)  # {"rss": {"ok", "count", "error", "at"}, "mail": ..., "grok": ..., "writing": ...}
+    trends: Mapped[list | None] = mapped_column(JSON, nullable=True)  # Grok's X trends, shown as they came
+    created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
+class SocialItem(Base):
+    """A draft for the owner: a post of their own, or a comment on someone's post. Only the owner sends it out."""
+
+    __tablename__ = "social_items"
+    __table_args__ = (
+        CheckConstraint("kind IN ('post', 'comment')", name="ck_social_items_kind"),
+        CheckConstraint("platform IN ('x', 'linkedin')", name="ck_social_items_platform"),
+        CheckConstraint("status IN ('new', 'rewrite', 'approved', 'posted', 'skipped')", name="ck_social_items_status"),
+        UniqueConstraint("site_id", "kind", "platform", "key_hash", name="uq_social_items_key"),
+        Index("ix_social_items_day", "site_id", "run_date", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    run_date: Mapped[date] = mapped_column(Date)
+    kind: Mapped[str] = mapped_column(String(10))  # a comment with no draft yet is a post Grok found, waiting for the writing
+    platform: Mapped[str] = mapped_column(String(10))
+    key_hash: Mapped[str] = mapped_column(String(32))  # the post commented on, or the topic plus a number for posts
+    topic_id: Mapped[int | None] = mapped_column(ForeignKey("social_topics.id", ondelete="SET NULL"), nullable=True)
+    source_url: Mapped[str | None] = mapped_column(String(1000), nullable=True)
+    source_author: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    source_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+    lang: Mapped[str] = mapped_column(String(5), server_default="ar")
+    angle: Mapped[str | None] = mapped_column(Text, nullable=True)  # the owner's own point, for a rewrite
+    draft: Mapped[str | None] = mapped_column(Text, nullable=True)  # as Claude wrote it
+    final: Mapped[str | None] = mapped_column(Text, nullable=True)  # as the owner left it
+    status: Mapped[str] = mapped_column(String(10), server_default="new")
+    skip_reason: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    guide_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    link_checked: Mapped[bool | None] = mapped_column(Boolean, nullable=True)  # X links checked live; LinkedIn can't be
+    created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+    updated_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+    posted_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+
+
+class SocialTranscriptBatch(Base):
+    """A named group of Instagram and TikTok videos turned into text together: pasted, from a file, or one account's latest."""
+
+    __tablename__ = "social_transcript_batches"
+    __table_args__ = (
+        CheckConstraint("origin IN ('paste', 'file', 'account')", name="ck_social_transcript_batches_origin"),
+        Index("ix_social_transcript_batches_site", "site_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(120))
+    origin: Mapped[str] = mapped_column(String(10))
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
+class SocialTranscript(Base):
+    """One video's words: downloaded on the server, written out by Groq's free Whisper. Never the video itself."""
+
+    __tablename__ = "social_transcripts"
+    __table_args__ = (
+        CheckConstraint("platform IN ('tiktok', 'instagram')", name="ck_social_transcripts_platform"),
+        CheckConstraint("status IN ('queued', 'working', 'done', 'failed')", name="ck_social_transcripts_status"),
+        CheckConstraint("method IS NULL OR method IN ('captions', 'groq')", name="ck_social_transcripts_method"),
+        UniqueConstraint("batch_id", "url_hash", name="uq_social_transcripts_url"),
+        Index("ix_social_transcripts_site", "site_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("social_transcript_batches.id", ondelete="CASCADE"))
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    url: Mapped[str] = mapped_column(String(500))
+    url_hash: Mapped[str] = mapped_column(String(32))
+    platform: Mapped[str] = mapped_column(String(10))
+    status: Mapped[str] = mapped_column(String(10), server_default="queued")
+    title: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    author: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    duration: Mapped[int | None] = mapped_column(Integer, nullable=True)  # seconds
+    lang: Mapped[str | None] = mapped_column(String(10), nullable=True)  # ar, fr, en...: the captions' language, or as Whisper heard it
+    method: Mapped[str | None] = mapped_column(String(10), nullable=True)  # captions (free, nothing downloaded) or groq
+    transcript: Mapped[str | None] = mapped_column(MEDIUMTEXT, nullable=True)
+    caption: Mapped[str | None] = mapped_column(Text, nullable=True)  # the words written under the video
+    error: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+    done_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
