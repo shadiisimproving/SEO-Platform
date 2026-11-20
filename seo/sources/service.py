@@ -20,7 +20,7 @@ from seo.sources import credentials
 SOURCES = ("gsc", "ga4", "clarity", "bing", "yandex", "pagespeed")
 GOOGLE_SOURCES = ("gsc", "ga4")
 # Keys kept once for the whole app, in the connections table with the search tools.
-APP_KEYS = {"bing": "Bing Webmaster", "yandex": "Yandex Webmaster", "pagespeed": "PageSpeed Insights", "openpagerank": "Open PageRank", "moz": "Moz", "cloudflare": "Cloudflare Radar", "indexnow": "IndexNow", "openrouter": "OpenRouter", "ahrefs": "Ahrefs", "firecrawl": "Firecrawl", "anthropic": "Anthropic", "brightdata_ai": "Bright Data AI scrapers", "semscraper": "Semscraper"}
+APP_KEYS = {"bing": "Bing Webmaster", "yandex": "Yandex Webmaster", "pagespeed": "PageSpeed Insights", "openpagerank": "Open PageRank", "moz": "Moz", "cloudflare": "Cloudflare Radar", "indexnow": "IndexNow", "openrouter": "OpenRouter", "ahrefs": "Ahrefs", "firecrawl": "Firecrawl", "anthropic": "Anthropic", "brightdata_ai": "Bright Data AI scrapers", "semscraper": "Semscraper", "groq": "Groq", "instagram": "Instagram cookies"}
 
 
 def _iso(value) -> str | None:
@@ -326,6 +326,8 @@ def test_app_key(engine: Engine, source: str) -> dict:
             data = http.request("GET", "https://api.firecrawl.dev/v2/team/credit-usage", tool, headers={"Authorization": f"Bearer {key}"}).json().get("data") or {}
             note_app_key(engine, source, None)
             return {"ok": True, "note": "Works.", "left": data.get("remainingCredits"), "of": data.get("planCredits")}
+        elif source == "groq":
+            http.request("GET", "https://api.groq.com/openai/v1/models", tool, headers={"Authorization": f"Bearer {key}"})  # free: lists the models
         elif source == "anthropic":
             from seo.extras import ai  # listing one model is free and proves the key
 

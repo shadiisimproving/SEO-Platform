@@ -39,6 +39,9 @@ OWNERS = {
     "finding_id": "SELECT site_id FROM search_findings WHERE id = :v",
     "alert_id": "SELECT site_id FROM alerts WHERE id = :v",
     "notification_id": "SELECT site_id FROM notifications WHERE id = :v",
+    "social_item_id": "SELECT site_id FROM social_items WHERE id = :v",
+    "transcript_batch_id": "SELECT site_id FROM social_transcript_batches WHERE id = :v",
+    "transcript_id": "SELECT site_id FROM social_transcripts WHERE id = :v",
     "rule_id": "SELECT site_id FROM site_rules WHERE id = :v",
     "page_id": "SELECT site_id FROM gsc_linked_pages WHERE id = :v",
     "competitor_id": "SELECT site_id FROM site_competitors WHERE competitor_id = :v",
@@ -106,9 +109,9 @@ ENDPOINTS: dict[str, tuple[str, str, str]] = {
     "exports_api.views": ("*", "read", "free"),
     "exports_api.export": ("*", "read", ""),  # decided by the view id: see access._export
     # The bell: new Search Console queries, opened in Overview or Keywords.
-    "notifications_api.listing": ("overview keywords", "read", "all"),
-    "notifications_api.read": ("overview keywords", "self", ""),
-    "notifications_api.read_all": ("overview keywords", "self", "all"),
+    "notifications_api.listing": ("overview keywords social", "read", "all"),
+    "notifications_api.read": ("overview keywords social", "self", ""),
+    "notifications_api.read_all": ("overview keywords social", "self", "all"),
 
     # ---- Settings: admins only ----
     "sources_api.save_key": ("*", "admin", ""), "sources_api.remove_key": ("*", "admin", ""), "sources_api.test_key": ("*", "admin", ""),
@@ -125,6 +128,37 @@ ENDPOINTS: dict[str, tuple[str, str, str]] = {
     "metrics_api.important_domains": ("competitors", "read", "free"),
     "metrics_api.get_moz": ("competitors", "gspend", "free"),
     "metrics_api.get_popularity": ("competitors", "global", "free"),
+
+    # ---- Social: LinkedIn and X drafts ----
+    # The helpers' routes never reach this table: they have no session and sign in with the site's token (seo.web.social_api).
+    "social_api.bot_brief": ("*", "read", "free"), "social_api.bot_inbox": ("*", "read", "free"),
+    "social_api.bot_targets": ("*", "read", "free"), "social_api.bot_stage": ("*", "read", "free"),
+    "social_api.day": ("social", "read", ""),
+    "social_api.settings": ("social", "read", ""),
+    "social_api.update_item": ("social", "write", ""),
+    "social_api.add_target": ("social", "write", ""),
+    "social_api.save_guide": ("social", "write", ""),
+    "social_api.upload_skill": ("social", "write", ""),
+    "social_api.add_rule": ("social", "write", ""),
+    "social_api.remove_rule": ("social", "write", ""),
+    "social_api.answer_proposal": ("social", "write", ""),
+    "social_api.add_source": ("social", "write", ""),
+    "social_api.remove_source": ("social", "write", ""),
+    "social_api.gather_now": ("social", "write", ""),
+    "social_api.save_mailbox": ("*", "admin", ""),
+    "social_api.new_token": ("*", "admin", ""),
+    # Video transcripts (seo/web/social_transcripts_api.py). Finding links in text or a file touches no site.
+    "social_transcripts_api.listing": ("social", "read", ""),
+    "social_transcripts_api.one": ("social", "read", ""),
+    "social_transcripts_api.download": ("social", "read", ""),
+    "social_transcripts_api.find": ("social", "read", "free"),
+    "social_transcripts_api.from_file": ("social", "read", "free"),
+    "social_transcripts_api.account": ("social", "write", ""),
+    "social_transcripts_api.create": ("social", "write", ""),
+    "social_transcripts_api.rename": ("social", "write", ""),
+    "social_transcripts_api.remove": ("social", "write", ""),
+    "social_transcripts_api.retry_batch": ("social", "write", ""),
+    "social_transcripts_api.retry_one": ("social", "write", ""),
 
     # ---- Today ----
     "metrics_api.today": ("today", "read", "all"),

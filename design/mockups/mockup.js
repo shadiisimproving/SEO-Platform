@@ -64,7 +64,7 @@
     return `<span class="status ${map[sev][1]}">${icon(map[sev][0])}${esc(word)}</span>`;
   };
   // Logos are copied into the project, so nothing loads from outside.
-  const LOGOS = { google: "google.svg", googleads: "googleads.svg", duckduckgo: "duckduckgo.png", bing: "bing.svg", yandex: "yandex.png", "Bright Data": "brightdata.png", SerpApi: "serpapi.png", HasData: "hasdata.png", Searlo: "searlo.png", "DuckDuckGo direct": "duckduckgo.png", SearXNG: "searxng.svg", clarity: "clarity.png", analytics: "analytics.svg", openpagerank: "openpagerank.png", searchconsole: "searchconsole.png", pagespeed: "pagespeed.png", moz: "moz.png", cloudflare: "cloudflare.png", commoncrawl: "commoncrawl.jpg", indexnow: "indexnow.png", openrouter: "openrouter.png", ahrefs: "ahrefs.png", firecrawl: "firecrawl.png", anthropic: "anthropic.png" };
+  const LOGOS = { google: "google.svg", googleads: "googleads.svg", duckduckgo: "duckduckgo.png", bing: "bing.svg", yandex: "yandex.png", "Bright Data": "brightdata.png", SerpApi: "serpapi.png", HasData: "hasdata.png", Searlo: "searlo.png", "DuckDuckGo direct": "duckduckgo.png", SearXNG: "searxng.svg", clarity: "clarity.png", analytics: "analytics.svg", openpagerank: "openpagerank.png", searchconsole: "searchconsole.png", pagespeed: "pagespeed.png", moz: "moz.png", cloudflare: "cloudflare.png", commoncrawl: "commoncrawl.jpg", indexnow: "indexnow.png", openrouter: "openrouter.png", ahrefs: "ahrefs.png", firecrawl: "firecrawl.png", anthropic: "anthropic.png", x: "x.svg", linkedin: "linkedin.svg" };
   const logo = (name, size = 18, cls = "") => (LOGOS[name]
     ? `<img class="logo ${cls}" src="logos/${LOGOS[name]}" alt="" width="${size}" height="${size}">`
     : `<span class="logo ${cls}" style="width:${size}px;height:${size}px" aria-hidden="true">${name === "Browser on this Mac" ? icon("globe") : esc(String(name || "?")[0].toUpperCase())}</span>`);
@@ -253,7 +253,7 @@
     { group: "Ads" },
     { id: "ads", label: "Google Ads", icon: "megaphone", logo: "googleads" },
     { group: "Work" },
-    { id: "tasks", label: "Tasks", icon: "square-check" }, { id: "notes", label: "Notes", icon: "sticky-note" }, { id: "backlinks", label: "Backlinks", icon: "link-2" }, { id: "resources", label: "Resources", icon: "folder-open" },
+    { id: "tasks", label: "Tasks", icon: "square-check" }, { id: "notes", label: "Notes", icon: "sticky-note" }, { id: "social", label: "Social", icon: "message-square-text" }, { id: "backlinks", label: "Backlinks", icon: "link-2" }, { id: "resources", label: "Resources", icon: "folder-open" },
     { group: "Health" },
     { id: "health", label: "Site health", icon: "heart-pulse" },
   ];

@@ -11,3 +11,4 @@ tzdata>=2024.1  # Pacific time for Search Console days, on hosts without a syste
 anthropic>=1.17,<2  # Claude for Search insights' AI add-on, only with a key pasted in Settings
 openpyxl==3.1.5  # Excel exports (seo/exports). Pure Python
 reportlab==5.1.0  # PDF exports. Pure Python; brings Pillow, which installs as a ready-made wheel with no system library
+yt-dlp>=2026.10.26  # Social → Video transcripts: reads Instagram and TikTok videos (captions, or the sound for Groq). Pure Python

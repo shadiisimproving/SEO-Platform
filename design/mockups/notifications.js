@@ -164,6 +164,16 @@
     const readBtn = `<button type="button" class="icon-btn bell-mark" data-bell-read="${item.id}" data-read="${!item.read}" aria-label="${esc(t(item.read ? "Mark as unread" : "Mark as read"))}" title="${esc(t(item.read ? "Mark as unread" : "Mark as read"))}">${UI.icon(item.read ? "circle" : "check")}</button>`;
     if (item.kind === "new_queries") return groupHtml(item, readBtn, logo);
     if (item.kind === "google_update") return updateHtml(item, readBtn, logo);
+    if (item.kind === "social_ready") {
+      return `<li class="bell-row bell-row-go ${item.read ? "" : "unread"}" data-bell-row="${item.id}" data-bell-social="${item.id}">
+        <span class="bell-dot" aria-hidden="true"></span>
+        <div class="bell-body">
+          <p class="bell-title"><button type="button" class="bell-go" data-bell-social="${item.id}"><span class="bell-kind" aria-hidden="true">${UI.icon("message-square-text")}</span> ${esc(t(item.title || "Drafts ready"))}</button></p>
+          <p class="bell-meta">${logo}<span>${esc(item.host)}</span><span>·</span><span>${esc(dayLabel(d.day))}</span></p>
+        </div>
+        <div class="bell-acts">${readBtn}</div>
+      </li>`;
+    }
     if (item.kind === "new_query_more") {
       const open = B.opened === item.id;
       const list = open ? `<ul class="bell-more">${(d.queries || []).map((q, i) => `<li><button type="button" class="bell-go" data-bell-go="${item.id}" data-q="${i}" title="${esc(goTip(q.query, item.host))}"><span dir="auto">${esc(q.query)}</span></button><span class="bell-num">${esc(place(q.position))}</span></li>`).join("")}</ul>` : "";
@@ -296,6 +306,17 @@
       setRead(item.id, true);
       closePanel();
       location.hash = `#overview?site=${encodeURIComponent(item.host)}&update=${encodeURIComponent(item.detail?.update_id || "")}`;
+      return;
+    }
+    // The morning's LinkedIn and X drafts: Social, on that site.
+    const social = hit("[data-bell-social]");
+    if (social && !hit("[data-bell-read]")) {
+      const item = B.items.find((i) => i.id === Number(social.dataset.bellSocial));
+      if (!item) return;
+      setRead(item.id, true);
+      closePanel();
+      if (item.host) UI.pickSite(item.host);
+      UI.go("social");
       return;
     }
     // The search itself, or anywhere on its row but a button or link, opens it: its keyword when tracked, else Overview → Queries.

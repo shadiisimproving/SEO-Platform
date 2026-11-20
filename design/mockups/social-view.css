@@ -1,0 +1,108 @@
+/* Social (social-view.js): the morning's drafts and the Writing guide. Tokens only, from look-clear.css. */
+.so-page { max-width: 980px; }
+.so-tabs { margin-bottom: 14px; }
+.so-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.so-head-card { padding: 16px 18px; }
+.so-head-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.so-head-row .end { margin-left: auto; }
+.so-verdict { font-size: 20px; font-weight: 650; letter-spacing: -.015em; text-wrap: balance; }
+.so-select { width: auto; min-width: 0; }
+.so-stages { list-style: none; padding: 0; margin: 0; display: flex; flex-wrap: wrap; gap: 8px 28px; }
+.so-stage { display: flex; align-items: center; gap: 6px; font-size: 13px; flex-wrap: wrap; min-width: 0; }
+.so-stage-name { font-weight: 550; }
+.so-stage.so-stage-bad { flex-basis: 100%; order: 9; padding: 8px 10px; border-radius: var(--r-m); background: color-mix(in srgb, var(--crit-t) 8%, transparent); }
+.so-stage.so-stage-bad > :last-child { flex-basis: 100%; padding-inline-start: 22px; }
+.so-stage-mark { display: inline-grid; }
+.so-stage-mark svg.i { width: 16px; height: 16px; }
+.so-err { color: var(--crit-t); }
+.so-confirm { margin: 12px 0 0; }
+.so-confirm p + p { margin-top: 2px; }
+
+.so-setup { padding: 16px 18px; }
+.so-setup h2 { font-size: 15px; font-weight: 600; margin-bottom: 10px; }
+.so-steps { display: grid; gap: 10px; margin-bottom: 14px; list-style: none; padding: 0; }
+.so-steps li { display: grid; grid-template-columns: 20px 1fr; gap: 9px; align-items: start; }
+.so-steps li.done .so-step-mark { color: var(--good-t); }
+.so-steps li:not(.done) .so-step-mark { color: var(--muted); }
+
+.so-items { list-style: none; padding: 0; margin: 0; }
+.so-item { padding: 16px 18px; display: grid; gap: 10px; }
+.so-item + .so-item { border-top: 1px solid var(--line); }
+.so-item.so-done { opacity: .72; }
+.so-item.so-done:hover, .so-item.so-done:focus-within { opacity: 1; }
+.so-item-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.so-platform { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; font-size: 13px; }
+.so-pill { margin-left: auto; }
+.so-topic { color: var(--text-2); overflow-wrap: anywhere; }
+.so-topic a { color: var(--accent-text, var(--c-blue)); text-underline-offset: 2px; }
+.so-source { display: grid; gap: 6px; }
+.so-quote { margin: 0; padding: 9px 12px; border-radius: var(--r-m); background: var(--chip); box-shadow: inset 0 0 0 1px var(--line); font-size: 13px; line-height: 1.55; color: var(--text-2);
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-line; overflow-wrap: anywhere; }
+.so-quote:hover { -webkit-line-clamp: unset; }
+.so-text-wrap { display: grid; gap: 4px; }
+.so-text { font-size: 14px; line-height: 1.6; resize: vertical; min-height: 84px; white-space: pre-wrap; }
+/* Arabic reads small at Latin sizes: a step up, with room between the lines for its marks. */
+.so-text.so-ar { font-family: "Noto Sans Arabic", var(--font); font-size: 16px; line-height: 1.85; }
+.so-text[readonly] { background: var(--chip); }
+.so-count { text-align: end; font-variant-numeric: tabular-nums; }
+.so-count.so-over { color: var(--crit-t); font-weight: 600; }
+.so-acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.so-acts .end { margin-left: auto; display: inline-flex; gap: 2px; }
+.so-acts .btn img, .so-acts .btn .logo { flex: none; }
+.so-reasons { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 10px 12px; border-radius: var(--r-m); background: var(--chip); box-shadow: inset 0 0 0 1px var(--line); }
+.so-reasons > span { flex-basis: 100%; }
+.so-angle { display: grid; gap: 6px; padding: 10px 12px; border-radius: var(--r-m); background: var(--chip); box-shadow: inset 0 0 0 1px var(--line); }
+.so-waiting { padding: 0 18px 14px; }
+
+.so-add { position: relative; }
+.so-add > summary { list-style: none; cursor: pointer; }
+.so-add > summary::-webkit-details-marker { display: none; }
+.so-add[open] > summary { color: var(--text); background: var(--hover); }
+.so-add-form { position: absolute; right: 0; top: calc(100% + 6px); z-index: 20; width: min(420px, calc(100vw - 48px)); display: grid; gap: 6px; padding: 14px;
+  background: var(--panel-solid); border-radius: var(--r-m); box-shadow: var(--shadow-2), inset 0 0 0 1px var(--line); }
+
+.so-trends > summary { list-style: none; cursor: pointer; padding: 13px 18px; }
+.so-trends > summary::-webkit-details-marker { display: none; }
+.so-trends > summary h2 { font-size: 14px; font-weight: 600; display: inline; }
+.so-trend-list { list-style: none; margin: 0; padding: 0 18px 14px; display: grid; gap: 12px; }
+.so-trend-list a { color: var(--accent-text, var(--c-blue)); }
+
+.so-page .card > textarea, .so-page .card > .so-row, .so-page .card > p, .so-page .card > ul, .so-page .card > form, .so-page .card > details, .so-page .card > .note, .so-page .card > .so-h3 { margin-inline: 18px; }
+.so-page .card > :last-child { margin-bottom: 16px; }
+.so-page .card > textarea { width: calc(100% - 36px); display: block; }
+.so-page .card > p + textarea { margin-top: 8px; }
+.so-page .card > .card-head + * { margin-top: 14px; }
+.so-page .card > * + .so-row, .so-page .card > textarea + .so-row { margin-top: 10px; }
+.so-guide { font-size: 14px; line-height: 1.65; min-height: 260px; resize: vertical; }
+.so-rules, .so-sources { list-style: none; padding: 0; display: grid; gap: 4px; }
+.so-rules li, .so-sources li { display: flex; align-items: center; gap: 10px; padding: 7px 10px; border-radius: var(--r-s); background: var(--chip); }
+.so-rules li > :first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.so-sources li > div { flex: 1; min-width: 0; }
+.so-src-addr { overflow-wrap: anywhere; font-size: 13px; }
+.so-src-mark svg.i { width: 16px; height: 16px; }
+.so-teach { margin-top: 10px; }
+.so-teach .input, .so-page form.so-row .input { flex: 1 1 260px; }
+.so-h3 { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; margin-top: 16px; margin-bottom: 6px; }
+.so-mailbox { margin-top: 12px; }
+.so-mailbox > summary { cursor: pointer; color: var(--text-2); }
+.so-grid { display: grid; grid-template-columns: max-content minmax(0, 360px); gap: 8px 12px; align-items: center; margin-top: 10px; }
+.so-token { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.so-token code { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; user-select: all; padding: 3px 6px; border-radius: 6px; background: var(--field); }
+.so-token-once { display: block; }
+
+@media (max-width: 640px) {
+  .so-item { padding: 14px; }
+  .so-page .card > textarea, .so-page .card > .so-row, .so-page .card > p, .so-page .card > ul, .so-page .card > form, .so-page .card > details, .so-page .card > .note, .so-page .card > .so-h3 { margin-inline: 14px; }
+  .so-page .card > textarea { width: calc(100% - 28px); }
+  .so-head-row .end { margin-left: 0; width: 100%; }
+  .so-acts .end { margin-left: 0; }
+  .so-acts .btn { flex: 1 1 auto; justify-content: center; }
+  .so-grid { grid-template-columns: 1fr; }
+  .so-add-form { right: auto; left: 0; }
+  .so-pill { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) { .so-item.so-done { transition: none; } }
+
+/* The skill upload: the hidden file field gets the keyboard, its button shows the ring. */
+.so-row:has(#so-skill-file:focus-visible) label[for="so-skill-file"] { outline: 2px solid var(--focus); outline-offset: 2px; }
+label[for="so-skill-file"] { cursor: pointer; }

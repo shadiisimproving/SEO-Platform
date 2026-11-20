@@ -1,14 +1,14 @@
 """google_updates: Google's confirmed ranking updates, read from its Search Status Dashboard
 
 Revision ID: b8c2d3e4f5a6
-Revises: a7b1c2d3e4f5
+Revises: e7f3a9c1d5b2
 """
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import mysql
 
 revision = "b8c2d3e4f5a6"
-down_revision = "a7b1c2d3e4f5"
+down_revision = "e7f3a9c1d5b2"
 branch_labels = None
 depends_on = None
 
