@@ -558,6 +558,21 @@ def test_beyond_the_depth_is_not_a_drop(world):
     assert tile["down"] == 0 and tile["not_ranked"] == 1
 
 
+def test_history_keeps_not_found_checks_of_the_same_kind_only(world):
+    """By bucket's period change reads "history": a keyword found then not found is "lost", so the "not found" checks stay in it,
+    while another tool's check, a suspect one and the trend's rule (found only) are untouched."""
+    [k] = track(world, "a")
+    save(world, k, position=None)
+    save(world, k, position=6)
+    save(world, k, position=9, status="suspect")
+    save(world, k, tool="HasData", position=1)
+    save(world, k, position=None)
+    view = row_of(world, k)
+    assert [point["p"] for point in view["history"]] == [None, 6, None]
+    assert all(point["at"] for point in view["history"])
+    assert [point["p"] for point in view["trend"]] == [6]
+
+
 def test_suspect_results_stay_visible_and_stay_out_of_trends(world):
     [k] = track(world, "a")
     save(world, k, position=5)
@@ -905,3 +920,59 @@ def test_the_main_tool_speaks_for_every_screen_and_another_tool_fills_in_with_it
     latest = {c.keyword: c.tool for c in store.latest_checks(world.engine, world.site)}
     assert latest == {"a": "Bright Data", "b": "SerpApi"}
     assert {c.keyword: c.tool for c in store.latest_checks_many(world.engine, [world.site])} == latest
+
+
+# ---- By bucket's Search Console source ---------------------------------------------------------------
+
+def _gsc(world, table, keyword, day, position, impressions, country=None):
+    from seo.collectors.common import digest
+    cols, vals = "site_id, day, query_hash, query, clicks, impressions, position", ":s, :d, :h, :q, 0, :i, :p"
+    if country:
+        cols, vals = cols + ", country", vals + ", :c"
+    with world.engine.begin() as conn:
+        conn.execute(text(f"INSERT INTO {table} ({cols}) VALUES ({vals})"), {"s": world.site, "d": day, "h": digest(keyword), "q": keyword, "i": impressions, "p": position, "c": country})
+
+
+def test_search_console_readings_are_7_day_weighted_averages_at_both_ends(world):
+    from datetime import date, timedelta
+    [k] = track(world, "a")
+    end = date(2026, 11, 17)
+    _gsc(world, "gsc_query", "a", end - timedelta(days=40), 30, 10)  # outside both windows
+    _gsc(world, "gsc_query", "a", end - timedelta(days=31), 20, 30)   # "then" window, ends 30 days back
+    _gsc(world, "gsc_query", "a", end - timedelta(days=30), 10, 10)
+    _gsc(world, "gsc_query", "a", end, 4, 30)
+    _gsc(world, "gsc_query", "a", end - timedelta(days=6), 8, 10)
+    reading = rankings.gsc_positions(world.engine, world.site, end - timedelta(days=30), end)["rows"][f"{world.site}:{k}"]
+    assert reading["then"] == 17.5 and reading["then_impressions"] == 40  # (20*30 + 10*10) / 40
+    assert reading["now"] == 5.0 and reading["now_impressions"] == 40      # (4*30 + 8*10) / 40
+    assert reading["scope"] == "all"  # no country rows at all
+
+
+def test_search_console_now_stops_before_days_that_are_not_final(world):
+    from datetime import date
+    [k] = track(world, "a")
+    _gsc(world, "gsc_query", "a", date(2026, 11, 10), 9, 10)
+    _gsc(world, "gsc_query", "a", date(2026, 11, 19), 2, 10)  # Google's early numbers
+    with world.engine.begin() as conn:
+        conn.execute(text("INSERT INTO site_sources (site_id, source, data_through) VALUES (:s, 'gsc', '2026-11-17') ON DUPLICATE KEY UPDATE data_through = '2026-11-17'"), {"s": world.site})
+    answer = rankings.gsc_positions(world.engine, world.site, date(2026, 10, 1), date(2026, 11, 19))
+    assert answer["through"][ME]["now"] == "2026-11-17"
+    assert answer["rows"][f"{world.site}:{k}"]["now"] is None  # 10 Nov is outside 11-17 Nov: no data, not position 2
+
+
+def test_search_console_uses_the_country_only_when_it_reaches_the_first_window(world):
+    from datetime import date
+    [k] = track(world, "a", country="FR")
+    _gsc(world, "gsc_query", "a", date(2026, 9, 1), 30, 10)
+    _gsc(world, "gsc_query", "a", date(2026, 11, 17), 20, 10)
+    _gsc(world, "gsc_query_country", "a", date(2026, 11, 17), 3, 10, country="fra")  # France only starts after the "before" window
+    late = rankings.gsc_positions(world.engine, world.site, date(2026, 9, 1), date(2026, 11, 17))["rows"][f"{world.site}:{k}"]
+    assert late["scope"] == "all" and (late["then"], late["now"]) == (30.0, 20.0)  # never France for "now" and the world for "then"
+    _gsc(world, "gsc_query_country", "a", date(2026, 9, 1), 6, 10, country="fra")
+    early = rankings.gsc_positions(world.engine, world.site, date(2026, 9, 1), date(2026, 11, 17))["rows"][f"{world.site}:{k}"]
+    assert early["scope"] == "fra" and (early["then"], early["now"]) == (6.0, 3.0)
+
+
+def test_search_console_positions_route_refuses_a_bad_date(world):
+    answer = world.client.get(f"/api/rankings/positions?site_id={world.site}&then=yesterday&to=2026-11-17")
+    assert answer.status_code == 400

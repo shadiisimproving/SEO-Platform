@@ -85,6 +85,15 @@
     "Any language": "Toutes les langues", "Choose a file": "Choisir un fichier", "No file chosen": "Aucun fichier choisi", "Filter": "Filtrer", "Show": "Afficher", "View": "Vue", "Rows": "Lignes", "Columns": "Colonnes", "Compact rows": "Lignes compactes",
     "By column": "Par colonne", "Close filters": "Fermer les filtres", "Impressions (28 days)": "Impressions (28 jours)", "Trend": "Tendance", "Page": "Page", "AI": "IA",
     "Search Console average position": "Position moyenne Search Console", "Phone actions": "Actions",
+    "4 to 10": "4 à 10", "11 to 20": "11 à 20", "21 to 50": "21 à 50", "Outside top 50": "Hors top 50", "entered": "entrée", "lost": "perdu",
+    "With AI Overview": "Avec AI Overview", "No check before the period": "Aucun contrôle avant la période", "No comparison chosen: changes are hidden.": "Aucune comparaison choisie : les évolutions sont masquées.",
+    "Not in the first {n} results": "Absent des {n} premiers résultats", "Cited in Google's AI Overview": "Cité dans l'AI Overview de Google", "No keyword here": "Aucun mot-clé ici",
+    "Show all {n}": "Tout afficher ({n})", "Show fewer": "Afficher moins",
+    "Positions from": "Positions venant de", "Our checks": "Nos contrôles", "Loading Search Console…": "Chargement de Search Console…", "Couldn't load Search Console positions.": "Impossible de charger les positions Search Console.",
+    "7-day averages: {then} vs {now}": "Moyennes sur 7 jours : {then} vs {now}", "7-day average: {now}": "Moyenne sur 7 jours : {now}",
+    "Search Console average: {n}": "Moyenne Search Console : {n}", "No Search Console impressions in these 7 days": "Aucune impression Search Console sur ces 7 jours",
+    "Search Console: Google's own average position for real searches, over 7 days, in the keyword's country when Google has it. Our checks: one reading from one place, only since 11 Nov 2026.": "Search Console : la position moyenne de Google sur les vraies recherches, sur 7 jours, dans le pays du mot-clé quand Google l'a. Nos contrôles : une lecture, d'un seul endroit, seulement depuis le 11 nov. 2026.",
+    "Our checks: one reading from one place and one tool. They started on 11 Nov 2026, so a longer period has no \"before\" yet.": "Nos contrôles : une lecture, d'un seul endroit et d'un seul outil. Ils ont commencé le 11 nov. 2026 : une période plus longue n'a pas encore d'« avant ».",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 
@@ -416,14 +425,139 @@
       <button class="icon-btn" id="kwr-sel-clear" aria-label="${t("Clear selection")}" data-tip="${t("Clear selection")}">${icon("x")}</button></div>`;
   }
 
+  /* ---- By bucket: the board (owner's reference, 2026-11-20) ---------------------------------------------------------------
+     Five number cards, then one column per position band, one card per keyword: its position, how it moved over the period
+     chosen in the head, its impressions, and "AI" when an AI Overview cites the site. The change is the position at the end of
+     the comparison window (the day before the period starts, or a year before its end) against the position now, from the
+     same tool, place and depth only (rankings.py "history", which keeps the "not found" checks): a keyword found now and not
+     found then "entered", the other way it is "lost". No check before the period: no change, never a guess. */
+  const BANDS = [
+    { id: "top3", label: "Top 3", test: (p) => p !== null && p <= 3 },
+    { id: "top10", label: "4 to 10", test: (p) => p !== null && p > 3 && p <= 10 },
+    { id: "top20", label: "11 to 20", test: (p) => p !== null && p > 10 && p <= 20 },
+    { id: "top50", label: "21 to 50", test: (p) => p !== null && p > 20 && p <= 50 },
+    { id: "out", label: "Outside top 50", test: () => true },
+  ];
+  const BAND_SHOWN = 12; // cards a column shows before its "Show all"
+  const dayOf = (at) => String(at || "").slice(0, 10);
+  // The check in force on a day: the last one made on or before it. undefined: none yet. Its p is null when not found.
+  const atDay = (history, day) => { let hit; for (const h of history || []) { if (dayOf(h.at) <= day) hit = h; else break; } return hit; };
+  /* Where the board's positions come from (owner, 2026-11-20): Search Console by default, because our own checks only
+     started on 11 Nov 2026 and a period needs a "before"; or our checks. Never one for "before" and the other for "now".
+     Search Console's are 7-day impression-weighted averages, the keyword's own country when that reaches back far enough
+     (rankings.py gsc_positions). Remembered in this browser only. */
+  const kwbSource = () => { try { return localStorage.getItem("seocc2-kwb-source") === "checks" ? "checks" : "gsc"; } catch { return "gsc"; } };
+  function gscReadings(g) {
+    const then = g.compare === "none" ? g.to : g.compareTo;
+    const siteId = UI.siteIdPicked?.() || null, key = `${siteId || "all"}|${then}|${g.to}`;
+    if (!K.gsc) K.gsc = {};
+    if (!K.gsc[key]) {
+      K.gsc[key] = "loading";
+      const site = siteId ? `site_id=${encodeURIComponent(siteId)}&` : "";
+      const redraw = () => { if (state.route === "keywords" && state.view === "bucket") UI.render({ keepScroll: true }); };
+      api("GET", `rankings/positions?${site}then=${then}&to=${g.to}`).then((answer) => { K.gsc[key] = answer; redraw(); }).catch((err) => { K.gsc[key] = { error: err.message || "error" }; redraw(); });
+    }
+    return K.gsc[key];
+  }
+  function gscModel(all, g) {
+    const base = g.compare === "none" ? null : g.compareTo;
+    const r = gscReadings(g);
+    if (r === "loading" || r.error) return { source: "gsc", loading: r === "loading", error: r.error || "", items: [], spark: [], days: [], top10: null, top10Then: null, base };
+    const round = (v) => (v === null || v === undefined ? null : Math.max(1, Math.round(v)));
+    const items = all.map((row) => {
+      const x = r.rows[row.id] || {}, is = round(x.now), was = round(x.then);
+      return { row, p: is, avg: x.now ?? null, checked: true, nodata: is === null, depth: null, move: base && is !== null && was !== null ? { kind: "diff", n: was - is } : null, band: BANDS.find((b) => b.test(is)).id };
+    });
+    const top10Then = base ? all.filter((row) => { const v = round(r.rows[row.id]?.then); return v !== null && v <= 10; }).length : null;
+    const sites = Object.values(r.through || {});
+    return { source: "gsc", items, spark: [], days: [], top10: items.filter((x) => x.p !== null && x.p <= 10).length, top10Then, base, windows: sites.length === 1 ? sites[0] : null, windowDays: r.window_days || 7 };
+  }
+  function bucketModel(all) {
+    const e = engineOf(), g = UI.range.get(), src = kwbSource();
+    if (src === "gsc") return gscModel(all, g);
+    const key = [K.data?.rows?.length, e, g.from, g.to, g.compare, g.compareTo, UI.siteHostPicked()].join("|");
+    if (K.bm?.key === key && K.bm.data === K.data && K.bm.n === all.length) return K.bm.model;
+    const live = !["custom", "lm"].includes(g.preset); // a period that ends now reads today's checks, not only up to its last day
+    const base = g.compare === "none" ? null : g.compareTo;
+    const items = all.map((row) => {
+      const v = row.engines[e] || {}, hist = v.history || [];
+      let now; // { p } with p null when not found, or undefined when never checked
+      if (live) now = v.main && v.main.status === "ok" ? { p: v.main.p || null } : undefined;
+      else { const h = atDay(hist, g.to); now = h ? { p: h.p ?? null } : undefined; }
+      const then = base && now ? atDay(hist, base) : undefined;
+      let move = null;
+      if (then && now) {
+        const was = then.p ?? null, is = now.p ?? null;
+        move = was !== null && is !== null ? { kind: "diff", n: was - is } : was === null && is !== null ? { kind: "new" } : was !== null && is === null ? { kind: "lost" } : { kind: "diff", n: 0 };
+      }
+      const p = now ? now.p ?? null : null;
+      return { row, p, checked: Boolean(now), depth: v.main?.depth || null, move, band: BANDS.find((b) => b.test(p)).id };
+    });
+    // Top 10 on each day of the period, for the card's graph; a long period is drawn one point a week.
+    const days = [];
+    for (let d = new Date(`${g.from}T12:00:00Z`), end = new Date(`${g.to}T12:00:00Z`), step = (g.days || 0) > 120 ? 7 : 1; d <= end; d.setUTCDate(d.getUTCDate() + step)) days.push(d.toISOString().slice(0, 10));
+    const top10On = (day) => all.reduce((n, row) => { const h = atDay(row.engines[e]?.history, day); return n + (h && h.p && h.p <= 10 ? 1 : 0); }, 0);
+    const spark = days.map(top10On);
+    const top10 = items.filter((x) => x.p !== null && x.p <= 10).length;
+    const top10Then = base && all.some((row) => atDay(row.engines[e]?.history, base)) ? top10On(base) : null;
+    const model = { source: "checks", items, spark, days, top10, top10Then, base };
+    K.bm = { key, data: K.data, n: all.length, model };
+    return model;
+  }
+  function bucketTiles(all) {
+    const m = bucketModel(all), e = engineOf(), gsc = m.source === "gsc";
+    const ranked = m.loading || m.error ? null : m.items.filter((x) => x.p !== null).length;
+    const overview = all.filter((r) => r.ai.state === "cited" || r.ai.state === "overview").length, cited = all.filter((r) => r.ai.state === "cited").length;
+    return `<section class="tiles kwb-tiles" id="kw-tiles">
+      ${UI.card({ id: "kw-tracked", label: t("Tracked"), value: all.length, cls: "tile" })}
+      ${UI.card({ id: "kw-ranked", label: t("Ranked"), value: ranked, sub: `${t("of")} ${num(all.length)} · ${gsc ? brandLabel("Search Console") : brandLabel(name(e))}`, cls: "tile" })}
+      ${UI.card({ id: "kw-top10", label: t("Top 10"), def: "Top 10", value: m.top10, change: m.top10Then !== null && m.top10 !== null ? { now: m.top10, before: m.top10Then } : null, sub: m.top10Then === null && !gsc ? t("No check before the period") : "", spark: m.spark.length >= 2 ? { now: m.spark, days: m.days } : null, cls: "tile" })}
+      ${UI.card({ id: "kw-overview", label: t("With AI Overview"), def: false, value: overview, sub: `${t("of")} ${num(all.length)}`, cls: "tile" })}
+      ${UI.card({ id: "kw-cited", label: t("Cited by AI"), value: cited, sub: `${t("of")} ${num(all.length)}`, cls: "tile" })}
+    </section>`;
+  }
+  function moveBadge(move) {
+    if (!move) return "";
+    if (move.kind === "new") return `<span class="kwb-mv up">${t("entered")}</span>`;
+    if (move.kind === "lost") return `<span class="kwb-mv down">${t("lost")}</span>`;
+    if (!move.n) return `<span class="kwb-mv same" aria-label="${esc(t("No change"))}"><span aria-hidden="true">=</span></span>`;
+    return `<span class="kwb-mv ${move.n > 0 ? "up" : "down"}" aria-label="${esc(`${t(move.n > 0 ? "Up" : "Down")} ${Math.abs(move.n)}`)}">${move.n > 0 ? "+" : "−"}${Math.abs(move.n)}</span>`;
+  }
+  function bucketCard(x) {
+    const { row } = x, impr = impressionsOf(row);
+    const pos = x.p !== null ? `<span class="kwb-pos"${x.avg !== null && x.avg !== undefined ? ` data-tip="${esc(t("Search Console average: {n}").replace("{n}", dec(x.avg)))}"` : ""}>${x.p}</span>`
+      : x.nodata ? `<span class="kwb-pos none" data-tip="${esc(t("No Search Console impressions in these 7 days"))}">—</span>`
+      : x.checked ? `<span class="kwb-pos none" data-tip="${esc(t("Not in the first {n} results").replace("{n}", x.depth || "?"))}">${x.depth ? `&gt;${x.depth}` : "—"}</span>`
+        : `<span class="kwb-pos none">—</span>`;
+    return `<li><button type="button" class="kwb-card" data-kwr-open="${esc(row.id)}">
+      <span class="kwb-kw" dir="auto">${esc(row.keyword)}</span>${state.site === "all" ? `<span class="kwb-site" dir="auto">${esc(row.site)}</span>` : ""}
+      <span class="kwb-meta">${pos}${moveBadge(x.move)}${x.checked ? "" : `<span class="kwb-vol">${t("Not checked")}</span>`}${impr !== null && impr !== undefined ? `<span class="kwb-vol" data-tip="${esc(t("Search Console impressions, last 28 days. Exact volume isn't available for free."))}">${num(impr)} ${t("impr.")}</span>` : ""}${row.ai.state === "cited" ? `<span class="kwb-ai" data-tip="${esc(t("Cited in Google's AI Overview"))}">${t("AI")}</span>` : ""}</span>
+    </button></li>`;
+  }
   function bucketView(rows) {
-    const e = engineOf();
-    const pos = rows.map((row) => (row.engines[e].main?.status === "ok" ? row.engines[e].main.p : null));
-    const buckets = [["1-3", pos.filter((p) => p && p <= 3).length], ["4-10", pos.filter((p) => p > 3 && p <= 10).length], ["11-20", pos.filter((p) => p > 10 && p <= 20).length], ["21+", pos.filter((p) => p > 20).length], [t("Not ranked"), rows.filter((row) => notRanked(row.engines[e])).length]];
-    const max = Math.max(...buckets.map((b) => b[1]), 1);
-    return `<section class="card" style="padding:16px">${buckets.map(([label, n]) => `
-      <div style="display:grid;grid-template-columns:90px 1fr 30px;gap:10px;align-items:center;padding:6px 0;font-size:13px">
-        <span class="sec">${label}</span><span class="bucket-bar"><span style="width:${(n / max) * 100}%"></span></span><span class="tabular" style="text-align:center;font-weight:600">${num(n)}</span></div>`).join("")}</section>`;
+    const m = bucketModel(rows);
+    if (!K.bucketAll) K.bucketAll = new Set();
+    const rank = (x) => [x.p ?? 999, x.move?.kind === "lost" ? 0 : 1, -(impressionsOf(x.row) || 0)];
+    const cmp = (a, b) => { const A = rank(a), B = rank(b); for (let i = 0; i < A.length; i += 1) if (A[i] !== B[i]) return A[i] - B[i]; return a.row.keyword.localeCompare(b.row.keyword); };
+    const src = m.source;
+    const fmt = (d) => UI.fmtDay(d, { day: "numeric", month: "short" });
+    const span = (end) => { const a = new Date(`${end}T12:00:00Z`); a.setUTCDate(a.getUTCDate() - ((m.windowDays || 7) - 1)); return `${fmt(a.toISOString().slice(0, 10))} – ${fmt(end)}`; };
+    const when = src === "gsc" && m.windows ? (m.base ? t("7-day averages: {then} vs {now}").replace("{then}", span(m.windows.then)).replace("{now}", span(m.windows.now)) : t("7-day average: {now}").replace("{now}", span(m.windows.now))) : "";
+    const bar = `<div class="kwb-bar"><span class="seg kwb-src" role="group" aria-label="${esc(t("Positions from"))}">${[["gsc", "Search Console"], ["checks", "Our checks"]].map(([id, label]) => `<button type="button" data-kwb-src="${id}" aria-pressed="${src === id}">${t(label)}</button>`).join("")}</span>
+      ${UI.info(src === "gsc" ? "Search Console: Google's own average position for real searches, over 7 days, in the keyword's country when Google has it. Our checks: one reading from one place, only since 11 Nov 2026." : "Our checks: one reading from one place and one tool. They started on 11 Nov 2026, so a longer period has no \"before\" yet.")}
+      ${when ? `<span class="small muted kwb-when">${esc(when)}</span>` : ""}</div>`;
+    if (m.loading) return `${bar}<p class="small muted kwb-note" role="status">${t("Loading Search Console…")}</p>`;
+    if (m.error) return `${bar}${UI.failCard(m.error, { title: "Couldn't load Search Console positions.", retry: 'data-kwb-src="gsc"' })}`;
+    const note = m.base ? "" : `<p class="small muted kwb-note">${t("No comparison chosen: changes are hidden.")}</p>`;
+    return `${bar}${note}<div class="kwb-board">${BANDS.map((b) => {
+      const list = m.items.filter((x) => x.band === b.id).sort(cmp), open = K.bucketAll.has(b.id);
+      const shown = open ? list : list.slice(0, BAND_SHOWN);
+      return `<section class="kwb-col kwb-${b.id}" aria-labelledby="kwb-h-${b.id}">
+        <h3 class="kwb-head" id="kwb-h-${b.id}"><span>${t(b.label)}</span><b class="tabular">${num(list.length)}</b></h3>
+        ${list.length ? `<ol class="kwb-list">${shown.map(bucketCard).join("")}</ol>` : `<p class="kwb-empty">${t("No keyword here")}</p>`}
+        ${list.length > BAND_SHOWN ? `<button type="button" class="link-btn kwb-more" data-kwb-more="${b.id}" aria-expanded="${open}">${open ? t("Show fewer") : t("Show all {n}").replace("{n}", num(list.length))}</button>` : ""}
+      </section>`;
+    }).join("")}</div>`;
   }
 
   function queriesView() {
@@ -590,7 +724,7 @@
       ${outOfChecks(all)}
       ${table(shown)}${selectionBar()}`;
     const main = `${addButton}<button class="btn ${K.selected.size ? "" : "btn-main"}" id="kwr-refresh">${icon("refresh-cw")}${t("Refresh")}</button>`;
-    const head = UI.head({ title, period: false, line: headLine(all), info: ["Rankings from engines' own tools and our own checks"], main });
+    const head = UI.head({ title, period: state.view === "bucket", line: headLine(all), info: ["Rankings from engines' own tools and our own checks"], main });
     return head + `
       <div class="content page-enter kw-simple">
         ${phoneActions()}
@@ -600,12 +734,12 @@
           </div>
           ${state.engine === "duckduckgo" ? UI.info(DDG_HOW) : ""}
         </div>
-        <section class="tiles" id="kw-tiles">
+        ${state.view === "bucket" ? bucketTiles(all) : `<section class="tiles" id="kw-tiles">
           ${UI.card({ id: "kw-tracked", label: t("Tracked"), value: all.length, cls: "tile" })}
           ${UI.card({ id: "kw-ranked", label: t("Ranked"), value: ranked, sub: `${t("of")} ${num(all.length)} · ${brandLabel(name(e))}`, cls: "tile" })}
           ${UI.card({ id: "kw-top10", label: `${t("Top 10")} <span class="muted">· ${t("our checks")}</span>`, def: "Top 10", value: top10, change: moved.compared ? { value: moved.change, unit: "" } : null, sub: moved.compared ? `${num(moved.compared)} ${t("compared")}` : "", cls: "tile" })}
           ${UI.card({ id: "kw-cited", label: t("Cited by AI"), value: cited, sub: `${t("of")} ${num(all.length)}`, cls: "tile" })}
-        </section>
+        </section>`}
         ${body}
       </div>`;
   }
@@ -1393,6 +1527,8 @@
       if (hit("#kwr-add, #kwr-add-phone")) { addPanel(hit("#kwr-add, #kwr-add-phone")); return; }
       if ((el = hit("#kwr-add-save"))) { saveKeywords(el); return; }
       if ((el = hit("[data-kwr-follow]"))) { addPanel(el, el.dataset.kwrFollow, el.dataset.siteHost); return; }
+      if ((el = hit("[data-kwb-src]"))) { const to = el.dataset.kwbSrc; try { localStorage.setItem("seocc2-kwb-source", to); } catch { /* storage off: this visit only */ } if (to === "gsc" && K.gsc) Object.keys(K.gsc).forEach((k) => { if (K.gsc[k]?.error) delete K.gsc[k]; }); K.bm = null; UI.render({ keepScroll: true }); $(`[data-kwb-src="${to}"]`)?.focus({ preventScroll: true }); return; }
+      if ((el = hit("[data-kwb-more]"))) { const id = el.dataset.kwbMore; if (!K.bucketAll) K.bucketAll = new Set(); if (K.bucketAll.has(id)) K.bucketAll.delete(id); else K.bucketAll.add(id); UI.render({ keepScroll: true }); $(`[data-kwb-more="${id}"]`)?.focus({ preventScroll: true }); return; }
       if ((el = hit("[data-kwr-open]"))) { openKeyword(el.dataset.kwrOpen, el); return; }
       if ((el = hit("[data-kwr-deeper]"))) { checkDeeper(rowById(el.dataset.kwrDeeper), el.dataset.engineId); return; }
       if (hit("#kwr-deeper-all") && K.refresh?.deeper) { K.refresh.deeper.all = true; renderRefresh(); ($("#kwr-tool-list .chk:checked") || $("#kwr-tool-list .chk"))?.focus(); return; }

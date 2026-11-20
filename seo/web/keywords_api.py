@@ -40,6 +40,21 @@ def listing():
     return jsonify(rankings.listing(_engine(), _site_arg()))
 
 
+@keywords_api.get("/rankings/positions")
+def gsc_positions():
+    """By bucket's Search Console source: two readings per keyword, ?then=YYYY-MM-DD&to=YYYY-MM-DD."""
+    from datetime import date
+
+    def day(name: str) -> date:
+        value = request.args.get(name, "")
+        try:
+            return date.fromisoformat(value)
+        except ValueError:
+            raise Refused(f"{name} must be a date (YYYY-MM-DD).") from None
+
+    return jsonify(rankings.gsc_positions(_engine(), _site_arg(), day("then"), day("to")))
+
+
 @keywords_api.get("/rankings/queries")
 def queries():
     return jsonify(rankings.queries(_engine(), _site_arg(), request.args.get("engine", "google")))

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from sqlalchemy import Engine, text
@@ -142,11 +142,14 @@ def engine_view(checks: list[Seen], host: str, country: str, language: str, orde
     if main is None and home:  # only suspect results: shown as such, and counted as nothing
         main, flagged_only = home[-1], True
 
-    change, change_note, trend = None, None, []
+    change, change_note, trend, history = None, None, [], []
     if main is not None and not flagged_only:
         same = [seen for seen in good if seen.kind() == main.kind()]
         before = [seen for seen in same if seen.check_id < main.check_id]
         trend = [{"at": _iso(seen.at), "p": seen.position(host)} for seen in same if seen.position(host) is not None]
+        # Every check with the main one's tool, place and depth, "not found" ones too (p None): By bucket's period change
+        # needs them to tell a keyword that entered the results from one that was never checked before the period.
+        history = [{"at": _iso(seen.at), "p": seen.position(host)} for seen in same if seen.check_id <= main.check_id]
         if before:
             now_p, then_p = main.position(host), before[-1].position(host)
             if now_p is not None and then_p is not None:
@@ -179,7 +182,7 @@ def engine_view(checks: list[Seen], host: str, country: str, language: str, orde
     suspects = [_view(seen, host, now, True) for seen in home if seen.status == "suspect" and (main is None or seen.check_id > main.check_id)]
     return {
         "main": _view(main, host, now, True, verdict) if main else None,
-        "change": change, "change_note": change_note, "trend": trend, "others": others, "suspects": suspects, "disagree": disagree,
+        "change": change, "change_note": change_note, "trend": trend, "history": history, "others": others, "suspects": suspects, "disagree": disagree,
         "away": [_view(seen, host, now, False) for seen in latest_away.values()],
         "never": not checks,
         "own": own.get("position") if own else None, "impressions": own.get("impressions") if own else None, "clicks": own.get("clicks") if own else None,
@@ -368,6 +371,75 @@ def _first_checks(engine: Engine, rows: list[dict]) -> None:
         if w is None or any(view["main"] for view in row["engines"].values()):
             continue
         row["checking"] = {"engine": w["engine"], "tool": w["tool"] or tool_for(w["engine"])}
+
+
+GSC_WINDOW = 7  # days averaged for one Search Console reading: a single day of it jumps around
+
+
+def _gsc_two_windows(conn, table: str, site_id: int, then: tuple[date, date], now: tuple[date, date], by_country: bool) -> dict:
+    """Impression-weighted position and impressions per query (and country) in two date windows, in one read."""
+    lead = "country, " if by_country else ""
+    sql = (
+        f"SELECT {lead}query, "
+        "SUM(CASE WHEN day BETWEEN :a1 AND :b1 THEN position * impressions END) / NULLIF(SUM(CASE WHEN day BETWEEN :a1 AND :b1 THEN impressions END), 0) AS then_p, "
+        "SUM(CASE WHEN day BETWEEN :a1 AND :b1 THEN impressions ELSE 0 END) AS then_i, "
+        "SUM(CASE WHEN day BETWEEN :a2 AND :b2 THEN position * impressions END) / NULLIF(SUM(CASE WHEN day BETWEEN :a2 AND :b2 THEN impressions END), 0) AS now_p, "
+        "SUM(CASE WHEN day BETWEEN :a2 AND :b2 THEN impressions ELSE 0 END) AS now_i "
+        f"FROM {table} WHERE site_id = :s AND (day BETWEEN :a1 AND :b1 OR day BETWEEN :a2 AND :b2) GROUP BY {lead}query_hash, query"
+    )
+    out = {}
+    for row in conn.execute(text(sql), {"s": site_id, "a1": then[0], "b1": then[1], "a2": now[0], "b2": now[1]}).mappings():
+        key = store.clean_keyword(row["query"]).casefold()
+        reading = {
+            "then": round(float(row["then_p"]), 1) if row["then_p"] is not None else None, "then_impressions": int(row["then_i"] or 0),
+            "now": round(float(row["now_p"]), 1) if row["now_p"] is not None else None, "now_impressions": int(row["now_i"] or 0),
+        }
+        out[(row["country"], key) if by_country else key] = reading
+    return out
+
+
+def gsc_positions(engine: Engine, site_id: int | None, then_end: date, now_end: date) -> dict:
+    """Search Console's position for every tracked keyword at two moments, for By bucket's "Search Console" source: the
+    7 days ending on `then_end` (the day before the period, or a year back) and the 7 days ending on `now_end`, or on the
+    last final day Search Console has when that is earlier (site_sources.data_through).
+    Impression-weighted, like the table's own column. The keyword's own country when that country's rows reach back to the
+    first window's days, otherwise every country for both numbers: one table never gives "before" and the other "now".
+    No impressions in a window: no position (None), which By bucket shows as no data, never as "lost"."""
+    if then_end > now_end:
+        then_end = now_end
+    span = timedelta(days=GSC_WINDOW - 1)
+    rows, through = {}, {}
+    with engine.connect() as conn:
+        sites = _sites(conn, site_id)
+        for site in sites:
+            last = conn.execute(text("SELECT MAX(day) FROM gsc_query WHERE site_id = :s"), {"s": site["id"]}).scalar()
+            if not last:
+                continue
+            # After data_through come Google's early numbers, read again until final (collectors/gsc.py): left out.
+            final = conn.execute(text("SELECT data_through FROM site_sources WHERE site_id = :s AND source = 'gsc'"), {"s": site["id"]}).scalar()
+            if final and final < last:
+                last = final
+            end = min(now_end, last)
+            start = min(then_end, end)
+            then, now = (start - span, start), (end - span, end)
+            through[site["host"]] = {"then": str(start), "now": str(end)}
+            tracked = conn.execute(
+                text("SELECT k.id, k.keyword, k.country FROM site_keywords sk JOIN keywords k ON k.id = sk.keyword_id WHERE sk.site_id = :s"), {"s": site["id"]}
+            ).mappings().all()
+            reach = {r["country"]: r["first"] for r in conn.execute(text("SELECT country, MIN(day) AS first FROM gsc_query_country WHERE site_id = :s GROUP BY country"), {"s": site["id"]}).mappings()}
+            everywhere = _gsc_two_windows(conn, "gsc_query", site["id"], then, now, False)
+            wanted = {countries.alpha3(t["country"]) for t in tracked if t["country"]} - {None}
+            local = _gsc_two_windows(conn, "gsc_query_country", site["id"], then, now, True) if any(reach.get(c) and reach[c] <= then[1] for c in wanted) else {}
+            for track in tracked:
+                key = store.clean_keyword(track["keyword"]).casefold()
+                code3 = countries.alpha3(track["country"]) if track["country"] else None
+                if code3 and reach.get(code3) and reach[code3] <= then[1]:  # the country has days in the "before" window
+                    reading, scope = local.get((code3, key)), code3
+                else:
+                    reading, scope = everywhere.get(key), "all"
+                empty = {"then": None, "then_impressions": 0, "now": None, "now_impressions": 0}
+                rows[f"{site['id']}:{track['id']}"] = {**(reading or empty), "scope": scope}
+    return {"rows": rows, "through": through, "window_days": GSC_WINDOW}
 
 
 def listing(engine: Engine, site_id: int | None = None) -> dict:
