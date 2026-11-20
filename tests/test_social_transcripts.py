@@ -280,3 +280,8 @@ def test_the_routes_make_list_and_download_a_batch(client, engine, site):
 def test_the_groq_key_test_lists_models(engine, groq):
     assert sources.test_app_key(engine, "groq") == {"ok": True, "note": "Works."}
     assert groq[-1].url.path == "/openai/v1/models"
+
+
+def test_tiktok_blocking_a_missing_video_reads_as_a_wrong_link():
+    said = transcripts._plain_error("ERROR: [TikTok] 1: Your IP address is blocked from accessing this post", "tiktok")
+    assert said == "This video is private, removed, or the link is wrong."

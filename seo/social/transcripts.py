@@ -335,7 +335,9 @@ def _plain_error(message: str, platform: str) -> str:
     low = message.lower()
     if platform == "instagram" and any(w in low for w in ("login", "log in", "429", "rate-limit", "rate limit", "cookies", "not available", "empty media")):
         return "Instagram wants a sign-in before it shares this video. Add your Instagram cookies under 'Instagram sign-in' at the foot of this tab, then try again."
-    if any(w in low for w in ("private", "this video is unavailable", "removed", "not found", "404", "does not exist")):
+    # TikTok says "Your IP address is blocked from accessing this post" for a video that doesn't exist (tried 2026-11-20 on
+    # a made-up link, from the Mac): the same words as a deleted one, not a block on the server.
+    if any(w in low for w in ("private", "this video is unavailable", "removed", "not found", "404", "does not exist", "ip address is blocked")):
         return "This video is private, removed, or the link is wrong."
     if "429" in low or "too many" in low:
         return f"{platform.title()} says too many requests. It will be tried again later."
