@@ -9,7 +9,7 @@ from seo.exports.model import Report, Table, Tile, Typed
 from seo.exports.registry import view
 from seo.exports.safe import without_secrets
 
-TASK_STATUS = {"todo": "To do", "doing": "Doing", "done": "Done", "blocked": "Blocked", "backlog": "Backlog", "review": "In review"}
+TASK_STATUS = {"todo": "To start", "doing": "Doing", "done": "Done", "blocked": "Blocked", "backlog": "Backlog", "review": "In review"}
 PRIORITY = {"high": "High", "medium": "Medium", "low": "Low", "urgent": "Urgent"}
 SCOPES = {"all": "Everything", "competitor": "Competitor", "page": "Page", "site": "Site", "keyword": "Keyword", "day": "Day", "date": "Day", "section": "Section", "domain": "Domain", "task": "Task", "screen": "Screen"}
 
@@ -48,6 +48,7 @@ def tasks(engine, args) -> Report:
     report.tables.append(Table("tasks", "Tasks", [
         C("title", "Task", "text", width=4.4), C("status", "Status", "text", width=1.3, get=lambda r: _words(TASK_STATUS, r.get("status")), translate=True),
         C("priority", "Priority", "text", width=1.2, get=lambda r: _words(PRIORITY, r.get("priority")) if r.get("priority") else "", translate=True),
+        C("goal", "Goal", "text", width=2), C("kind", "Type", "text", width=1.2),
         C("owner_label", "Owner", "text", width=1.6), C("site_host", "Site", "text", width=2.2), C("due", "Due", "date"), C("completed_on", "Done on", "date"),
         C("hours_estimate", "Hours planned", "float"), C("hours_spent", "Hours spent", "float"),
         C("pages", "Pages", "text", width=3, get=lambda r: ", ".join(str(p.get("url") or p.get("path") or p) if isinstance(p, dict) else str(p) for p in r.get("pages") or [])),

@@ -123,7 +123,7 @@ def _task_for_now(task: tuple | None, appeared) -> str | None:
 def _status(old: dict | None, finding: Finding, task: str | None) -> tuple[str, float | None]:
     if task == "done":
         return "done", None
-    if task in ("todo", "doing"):
+    if task in ("todo", "doing", "blocked"):
         return "open", None
     if old and old["status"] == "dismissed":
         comes_back = old["dismissed_stake"] is not None and finding.at_stake > 0 and finding.at_stake >= old["dismissed_stake"] * rules.DISMISS_COMES_BACK

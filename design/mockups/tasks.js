@@ -4,9 +4,11 @@
 (function () {
   let UI, t, esc, icon, num, status;
 
-  const STATUSES = [["todo", "To do"], ["doing", "In progress"], ["done", "Done"]];
+  // Blocked (2026-11-20, like the agency board's four buttons): work that waits on something else. Still open everywhere.
+  const STATUSES = [["todo", "To start"], ["doing", "In progress"], ["blocked", "Blocked"], ["done", "Done"]];
   const PRIORITIES = [["low", "Low"], ["medium", "Normal"], ["high", "High"]];
-  const KINDS = ["Content", "Technical", "Links", "UX", "Lead magnet", "Ads"];
+  const KINDS = ["SEO", "Content", "Links", "Technical", "UX", "Ads", "Social", "Lead magnet"];
+  const SHOWS = [["open", "To do"], ["done", "Done"], ["all", "All tasks"]]; // the month list's own switch, as the agency board has it
   const PERIODS = [["all", "All dates"], ["week", "This week"], ["month", "Month"], ["dates", "Dates"]];
   // "Done" already means something else in French on the Backlinks screen.
   const columnWord = (word) => (word === "Done" && UI.state.lang === "fr" ? "Terminé" : t(word));
@@ -14,7 +16,7 @@
 
   const T = {
     ready: false, loading: null, failed: "", tasks: [], sites: [],
-    view: "kanban", query: "", status: "", kind: "", owner: "", period: "all", month: "", from: "", to: "",
+    view: "months", show: "open", query: "", status: "", kind: "", goal: "", owner: "", period: "all", month: "", from: "", to: "",
     saving: false, dragId: null, sort: null, // sort: a heading pressed in the table, or null for status then due date
   };
   const PAGES = "tk"; // the table's pages (table-pages.js), like every long table in the app; its search is the Filter box
@@ -72,16 +74,25 @@
   function matches(task) {
     if (!onThisSite(task)) return false;
     if (T.kind && task.kind !== T.kind) return false;
+    if (T.goal && plain(task.goal || "") !== plain(T.goal)) return false;
     if (T.owner === UNASSIGNED ? task.owner_label : T.owner && task.owner_label !== T.owner) return false;
     if (T.query) {
-      const hay = [task.title, task.description, task.owner_label, task.kind, task.source?.label, ...(task.pages || []), ...(task.keywords || []), window.TaskAbout.words(task)].join(" ").toLowerCase();
+      const hay = [task.title, task.description, task.owner_label, task.kind, task.goal, task.source?.label, ...(task.pages || []), ...(task.keywords || []), window.TaskAbout.words(task)].join(" ").toLowerCase();
       if (!hay.includes(T.query.toLowerCase())) return false;
     }
     return true;
   }
   const inPeriod = (task, r = range()) => !r || (task.due && task.due >= r[0] && task.due <= r[1]) || !!carriedFrom(task, r);
   const visible = () => T.tasks.filter((task) => matches(task) && inPeriod(task));
-  const counted = () => visible().filter((task) => !(T.view === "table" && T.status) || task.status === T.status); // the table also filters by status
+  const shownByMonth = (task) => T.show === "all" || (T.show === "done" ? !isOpen(task) : isOpen(task));
+  const counted = () => visible().filter((task) => (T.view === "months" ? shownByMonth(task) : !(T.view === "table" && T.status) || task.status === T.status)); // the table also filters by status, the month list by To do / Done
+  /* Goals already used, most used first: a new task picks one, or a new one is typed. */
+  const goals = () => {
+    const seen = new Map();
+    T.tasks.forEach((task) => { const g = (task.goal || "").trim(); if (g) { const k = plain(g); const was = seen.get(k); seen.set(k, { word: was?.word || g, n: (was?.n || 0) + 1 }); } });
+    return [...seen.values()].sort((a, b) => b.n - a.n || a.word.localeCompare(b.word)).map((x) => x.word);
+  };
+  const sameGoal = (typed) => goals().find((g) => plain(g) === plain(typed)) || String(typed || "").trim();
   const undatedHidden = () => (range() ? T.tasks.filter((task) => matches(task) && !task.due).length : 0);
   // Soonest first, with no date last.
   const byDue = (a, b) => (a.due || "9999").localeCompare(b.due || "9999") || b.id - a.id;
@@ -352,12 +363,12 @@
   const signedIn = () => window.BOOT?.user?.name?.trim() || myName();
 
   /* task: an existing one. Otherwise prefill: { title, host, description, source, kind, owner, keywords, pages, about }. */
-  function openTask({ task = null, title = "", host = null, description = "", source = null, priority = "medium", pages = [], keywords = [], about = null, kind = "", owner = null, query = "", opener = null } = {}) {
+  function openTask({ task = null, title = "", host = null, description = "", source = null, priority = "medium", pages = [], keywords = [], about = null, kind = "", goal = "", owner = null, query = "", opener = null } = {}) {
     // The keyword a finding carries, wherever it keeps it.
     if (!task && !keywords.length) { const k = query || source?.query || source?.keyword; if (k) keywords = [k]; }
     T.base = task ? JSON.parse(JSON.stringify(task)) : null;
     T.openId = task ? task.id : null;
-    const given = task || { owner_label: owner ?? signedIn(), kind: kind || KIND_OF_SOURCE[source?.type] || "" };
+    const given = task || { owner_label: owner ?? signedIn(), kind: kind || KIND_OF_SOURCE[source?.type] || "", goal };
     const siteId = task ? task.site_id : (T.sites.find((s) => s.host === (host ?? hostHere()))?.id ?? "");
     // Chosen access without every site: a task is for one of their sites ("All sites" belongs to the owner).
     const siteOptions = `${window.ACCESS?.limited && !window.ACCESS.everySite() ? "" : `<option value="">${t("All sites")}</option>`}${T.sites.map((s) => `<option value="${esc(String(s.id))}" ${String(s.id) === String(siteId ?? "") ? "selected" : ""}>${esc(s.host)}</option>`).join("")}`;
@@ -381,6 +392,7 @@
           <label class="field"><span>${t("Due date")}</span><input class="input" type="date" id="task-due" value="${esc(given.due || "")}"></label>
           <label class="field"><span>${t("Type")}</span><input class="input" id="task-kind" value="${esc(given.kind ? t(given.kind) : "")}" list="task-kinds" maxlength="40" autocomplete="off"><datalist id="task-kinds">${KINDS.map((kind) => `<option value="${esc(t(kind))}"></option>`).join("")}</datalist></label>
         </div>
+        <label class="field"><span>${t("Goal")}</span><input class="input" id="task-goal" value="${esc(given.goal || "")}" list="task-goals" maxlength="200" autocomplete="off" dir="auto" placeholder="${esc(t("e.g. Strengthen site credibility"))}"><datalist id="task-goals">${goals().map((g) => `<option value="${esc(g)}"></option>`).join("")}</datalist></label>
         <div class="field-row">
           <label class="field"><span>${t("Status")}</span>${select("task-status", STATUSES, given.status || "todo")}</label>
           <label class="field"><span>${t("Priority")}</span>${select("task-priority", PRIORITIES, given.priority || priority)}</label>
@@ -391,7 +403,7 @@
       </form>
       ${task ? commentsBlock(task) : ""}${task && window.COMP?.notes ? `<div class="task-notes">${window.COMP.notes.block({ scope: "task", taskId: task.id, task: task.title, siteId: task.site_id ?? null, title: t("Notes on this task") })}</div>` : ""}</div>
       <div class="panel-foot"><button class="btn btn-main" id="task-save" ${task ? `data-id="${task.id}"` : ""}>${t("Save")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button>${task ? `<button class="btn btn-ghost danger" id="task-delete" data-id="${task.id}">${t("Delete")}</button>` : ""}</div>`,
-    opener, { key: draftKey, reopen: () => openTask({ task, title, host, description, source, priority, pages, keywords, about, kind, owner, opener }), after: () => { window.TaskAbout.mount(); window.COMP?.notes?.mount(); } });
+    opener, { key: draftKey, reopen: () => openTask({ task, title, host, description, source, priority, pages, keywords, about, kind, goal, owner, opener }), after: () => { window.TaskAbout.mount(); window.COMP?.notes?.mount(); } });
     pendingSource = task ? null : source;
   }
   let pendingSource = null; // what the panel on screen would be created from
@@ -411,7 +423,7 @@
     const rawSite = UI.$("#task-site").value;
     const body = {
       title: title.value, status: UI.$("#task-status").value, priority: UI.$("#task-priority").value, due: UI.$("#task-due").value,
-      owner_label: sameOwner(UI.$("#task-owner").value), kind: sameKind(UI.$("#task-kind").value), description: UI.$("#task-description").value,
+      owner_label: sameOwner(UI.$("#task-owner").value), kind: sameKind(UI.$("#task-kind").value), goal: sameGoal(UI.$("#task-goal").value), description: UI.$("#task-description").value,
       pages: linked.pages, keywords: linked.keywords, about: linked.about,
       site_id: T.sites.find((s) => String(s.id) === rawSite)?.id ?? null,
     };
@@ -445,13 +457,13 @@
     setTimeout(() => { if (UI.state.route === "tasks") UI.$(`[data-task-open="${saved.id}"]`)?.focus({ preventScroll: true }); }, UI.reduceMotion() ? 10 : 160);
   }
 
-  const EDITABLE = ["title", "status", "priority", "due", "owner_label", "kind", "description", "pages", "keywords", "about", "site_id"];
+  const EDITABLE = ["title", "status", "priority", "due", "owner_label", "kind", "goal", "description", "pages", "keywords", "about", "site_id"];
   const sameValue = (a, b) => {
     const empty = (v) => v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length) || (typeof v === "object" && !Array.isArray(v) && !v.main && !(v.items || []).length);
     if (typeof a === "object" || typeof b === "object") return (empty(a) && empty(b)) || JSON.stringify(a) === JSON.stringify(b);
     return String(a ?? "").trim() === String(b ?? "").trim();
   };
-  const FIELD_WORDS = { title: "Title", status: "Status", priority: "Priority", due: "Due date", owner_label: "Assigned to", kind: "Type", description: "Description", pages: "Pages", keywords: "Keywords", about: "About", site_id: "Site" };
+  const FIELD_WORDS = { title: "Title", status: "Status", priority: "Priority", due: "Due date", owner_label: "Assigned to", kind: "Type", goal: "Goal", description: "Description", pages: "Pages", keywords: "Keywords", about: "About", site_id: "Site" };
 
   /* Only what this person changed is sent, so two people can edit different things. If someone else changed the same
      thing while the panel was open, nothing is overwritten until this person has seen it and chosen. */
@@ -541,7 +553,7 @@
   };
   const siteBit = (task) => (hostHere() || !task.site_host ? "" : `<span class="tk-site small sec">${UI.siteLogo(task.site_host, 14)}<span class="mono" dir="auto">${esc(task.site_host)}</span></span>`);
   // A colour per type, so they read apart at a glance. A type someone made up stays plain.
-  const KIND_TONES = { Content: "blue", Technical: "grey", Links: "teal", UX: "indigo", "Lead magnet": "teal", Ads: "indigo" };
+  const KIND_TONES = { SEO: "teal", Content: "blue", Technical: "grey", Links: "teal", UX: "indigo", "Lead magnet": "teal", Ads: "indigo", Social: "indigo" };
   const kindTag = (kind) => (kind ? `<span class="tag ${KIND_TONES[kind] ? `tk-kind-${KIND_TONES[kind]}` : ""}" dir="auto">${esc(t(kind))}</span>` : "");
   const moveSelect = (task, id = `tk-move-${task.id}`) => `<select class="select tk-move" id="${id}" data-task-move="${task.id}" aria-label="${t("Status")}: ${esc(task.title)}">${STATUSES.map(([key, word]) => `<option value="${key}" ${key === task.status ? "selected" : ""}>${columnWord(word)}</option>`).join("")}</select>`;
 
@@ -558,7 +570,7 @@
   }
 
   function board(list) {
-    return `<div class="tk-board">${STATUSES.map(([key, word]) => {
+    return `<div class="tk-board tk-board-4">${STATUSES.map(([key, word]) => {
       const here = list.filter((task) => task.status === key).sort(byDue);
       return `<section class="card tk-col" data-task-col="${key}" aria-label="${columnWord(word)}">
         <div class="tk-col-head"><h2>${columnWord(word)}</h2><span class="lc-count sec tabular">${num(here.length)}</span></div>
@@ -619,6 +631,113 @@
       ${TP.footer(PAGES, view, { noun: t(view.total === 1 ? "task" : "tasks") })}</div>`;
   }
 
+  // ---- by month, like the agency board: month headings, a goal and a type on each task, four status buttons -------------
+  const monthKey = (task) => (task.due || task.created_at || "").slice(0, 7) || monthOf(new Date());
+  const canEdit = () => !window.ACCESS || window.ACCESS.canEdit("tasks");
+  const STATUS_ICONS = { todo: "circle", doing: "circle-dot", blocked: "octagon-pause", done: "circle-check" };
+  /* The four statuses as one group of buttons: the task's own is pressed. One press saves, and the focus stays on it. */
+  const quickStatus = (task) => `<div class="tk-quick" role="group" aria-label="${esc(t("Status"))}: ${esc(task.title)}">${STATUSES.map(([key, word]) => {
+    const on = task.status === key;
+    return `<button type="button" class="tk-q tk-q-${key}" data-task-set="${task.id}:${key}" id="tk-q-${task.id}-${key}" aria-pressed="${on}"${canEdit() ? "" : " disabled"}>${icon(STATUS_ICONS[key])}<span>${columnWord(word)}</span></button>`;
+  }).join("")}</div>`;
+  /* What the task is about, in links: its keywords (each opens its details) and pages (each opens the page), 2 of each and "+N". */
+  function aboutLinks(task) {
+    const host = task.site_host || hostHere() || null;
+    const kws = (task.keywords || []).filter(Boolean), pages = (task.pages || []).filter(Boolean);
+    const more = Math.max(0, kws.length - 2) + Math.max(0, pages.length - 2) + (task.about?.items || []).length;
+    const kw = kws.slice(0, 2).map((k) => `<span class="tk-m-bit tk-m-kw">${icon("search")}${window.KeywordLink ? KeywordLink.html(k, { host }) : esc(k)}</span>`).join("");
+    const pg = pages.slice(0, 2).map((p) => `<span class="tk-m-bit tk-m-page mono">${window.PageLink && (host || /^https?:/i.test(p)) ? PageLink.html(p, { host }) : esc(p)}</span>`).join("");
+    return `${kw}${pg}${more ? `<span class="tk-m-bit muted">+${num(more)}</span>` : ""}`;
+  }
+  function monthRow(task) {
+    const goal = task.goal ? `<span class="tk-m-bit tk-m-goal" dir="auto">${icon("target")}<span>${esc(task.goal)}</span></span>` : "";
+    const kind = task.kind ? `<span class="tk-m-bit tk-m-kind tk-dot-${KIND_TONES[task.kind] || "plain"}" dir="auto">${esc(t(task.kind))}</span>` : "";
+    const owner = task.owner_label ? `<span class="tk-m-bit tk-owner small sec"><span class="tk-avatar" aria-hidden="true">${esc([...task.owner_label][0].toUpperCase())}</span><span dir="auto">${esc(task.owner_label)}</span></span>` : "";
+    return `<li class="tk-mrow${isOpen(task) ? "" : " tk-mrow-done"}" data-task-row="${task.id}">
+      <div class="tk-m-main">
+        <button type="button" class="tk-title tk-m-title" data-task-open="${task.id}" dir="auto">${esc(task.title)}</button>${findingTag(task)}
+        <div class="tk-m-meta">${goal}${kind}${aboutLinks(task)}${siteBit(task)}${owner}${dueBit(task, "")}</div>
+      </div>
+      ${quickStatus(task)}
+    </li>`;
+  }
+  function quickAdd() {
+    if (!canEdit()) return "";
+    const kinds = KINDS.map((k) => `<option value="${esc(k)}"${T.addKind === k ? " selected" : ""}>${esc(t(k))}</option>`).join("");
+    return `<form class="tk-add" id="tk-add" novalidate>
+      <label class="field tk-add-title"><span class="sr-only">${t("New task")}</span><input class="input" id="tk-add-title" maxlength="300" autocomplete="off" dir="auto" placeholder="${esc(t("New task: what needs doing?"))}"></label>
+      <label class="field tk-add-goal"><span class="sr-only">${t("Goal")}</span><input class="input" id="tk-add-goal" maxlength="200" list="tk-add-goals" autocomplete="off" dir="auto" value="${esc(T.addGoal || "")}" placeholder="${esc(t("Goal (optional)"))}"><datalist id="tk-add-goals">${goals().map((g) => `<option value="${esc(g)}"></option>`).join("")}</datalist></label>
+      <label class="field"><span class="sr-only">${t("Type")}</span><select class="select" id="tk-add-kind"><option value="">${t("No type")}</option>${kinds}</select></label>
+      <label class="field"><span class="sr-only">${t("Month")}</span><input class="input" type="month" id="tk-add-month" value="${esc(T.addMonth || monthOf(new Date()))}"></label>
+      <button class="btn btn-main" type="submit" id="tk-add-go">${icon("plus")}${t("Add")}</button>
+      <div class="tk-add-error" id="tk-add-error" role="alert"></div>
+    </form>`;
+  }
+  function months(list) {
+    const rows = list.filter(shownByMonth);
+    const groups = new Map();
+    rows.forEach((task) => { const k = monthKey(task); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(task); });
+    const keys = [...groups.keys()].sort();
+    const none = T.show === "open" ? ["Nothing left to do here.", "Every task in these filters is done."] : T.show === "done" ? ["No task is done yet.", "Done tasks show here, under their month."] : ["Nothing matches these filters", "Change the filters above."];
+    const body = keys.length ? keys.map((k) => `<section class="tk-mgroup" aria-labelledby="tk-m-${k}">
+        <div class="tk-mhead"><h2 id="tk-m-${k}">${esc(monthWord(k))}</h2><span class="n-badge tabular">${num(groups.get(k).length)}</span>${k === monthOf(new Date()) ? `<span class="tk-now small">${t("This month")}</span>` : ""}</div>
+        <ul class="tk-mrows">${groups.get(k).sort(byDue).map(monthRow).join("")}</ul>
+      </section>`).join("") : `<div class="empty tk-mempty"><h3>${t(none[0])}</h3><p>${t(none[1])}</p></div>`;
+    return `<section class="card tk-months">
+      <div class="card-head tk-mtop"><h2>${t("Tasks")}</h2><span class="n-badge tabular">${num(rows.length)}</span>
+        <span class="seg end" role="group" aria-label="${t("Show")}">${SHOWS.map(([id, word]) => `<button type="button" data-task-show="${id}" aria-pressed="${T.show === id}">${columnWord(word)}</button>`).join("")}</span></div>
+      ${quickAdd()}
+      ${body}
+    </section>`;
+  }
+
+  async function setStatus(id, to, button) {
+    const task = T.tasks.find((x) => x.id === id);
+    if (!task || task.status === to || !canEdit()) return;
+    const was = task.status;
+    task.status = to; // shown at once; put back if the server says no
+    paint();
+    UI.$(`#tk-q-${id}-${to}`)?.focus({ preventScroll: true });
+    try {
+      keep(await COMP.api("PATCH", `tasks/${id}`, { status: to }));
+      UI.$(`#tk-q-${id}-${to}`)?.focus({ preventScroll: true });
+      if (to === "done" && T.show === "open") UI.toast(t("Task done"), { undo: () => setStatus(id, was), undoLabel: t("Undo") });
+    } catch (err) {
+      task.status = was;
+      paint();
+      UI.toast(t(err.message), { kind: "crit" });
+    }
+    void button;
+  }
+  async function quickCreate(form) {
+    if (T.saving) return;
+    const title = UI.$("#tk-add-title"), box = UI.$("#tk-add-error");
+    UI.setHTML(box, "");
+    title.classList.remove("invalid");
+    if (!title.value.trim()) { title.classList.add("invalid"); title.focus(); UI.setHTML(box, `<span class="error">${icon("octagon-alert")}<span>${t("A task needs a title.")}</span></span>`); return; }
+    const month = UI.$("#tk-add-month").value || monthOf(new Date());
+    T.addGoal = UI.$("#tk-add-goal").value; T.addKind = UI.$("#tk-add-kind").value; T.addMonth = month;
+    const siteId = T.sites.find((x) => x.host === hostHere())?.id ?? null;
+    const body = { title: title.value, goal: sameGoal(T.addGoal), kind: T.addKind ? sameKind(T.addKind) : "", due: monthRange(month)[1], owner_label: signedIn() || "", site_id: siteId };
+    T.saving = true;
+    const go = UI.$("#tk-add-go");
+    if (go) go.disabled = true;
+    try {
+      const saved = await COMP.api("POST", "tasks", body);
+      if (T.show === "done") T.show = "open";
+      keep(saved);
+      UI.toast(t("Task added"), { undo: () => openTask({ task: T.tasks.find((x) => x.id === saved.id) }), undoLabel: t("Open") });
+      UI.$("#tk-add-title")?.focus();
+    } catch (err) {
+      UI.setHTML(UI.$("#tk-add-error"), `<span class="error">${icon("octagon-alert")}<span>${esc(t(err.message))}</span></span>`);
+    } finally {
+      T.saving = false;
+      const again = UI.$("#tk-add-go");
+      if (again) again.disabled = false;
+    }
+    void form;
+  }
+
   function bodyHtml() {
     if (!T.ready) return UI.skeleton ? UI.skeleton("table", { rows: 6 }) : COMP.loading();
     if (T.failed) return UI.failCard ? UI.failCard(T.failed, { retry: 'id="tk-retry"' }) : COMP.empty(t("That didn't load"), t(T.failed), `<button class="btn" id="tk-retry">${t("Try again")}</button>`);
@@ -626,7 +745,7 @@
     const list = visible();
     const hidden = undatedHidden();
     const note = hidden ? `<p class="help tk-hidden">${num(hidden)} ${t(hidden === 1 ? "undated task hidden." : "undated tasks hidden.")} <button class="link-btn" data-task-period="all">${t("Show all")}</button></p>` : "";
-    const content = !list.length ? COMP.empty(t("Nothing matches these filters"), t("Change the filters above.")) : T.view === "table" ? table(list) : board(list);
+    const content = T.view === "months" ? months(list) : !list.length ? COMP.empty(t("Nothing matches these filters"), t("Change the filters above.")) : T.view === "table" ? table(list) : board(list);
     return `${note}${content}`;
   }
 
@@ -637,20 +756,22 @@
       <span class="seg" role="group" aria-label="${t("Period")}">${PERIODS.map(([id, word]) => `<button data-task-period="${id}" aria-pressed="${T.period === id}">${t(word)}</button>`).join("")}</span>
       ${nav}${dates}
       ${filterBar()}
-      <span class="seg tk-views" role="group" aria-label="${t("View")}"><button data-task-view="kanban" aria-pressed="${T.view === "kanban"}">${t("Board")}</button><button data-task-view="table" aria-pressed="${T.view === "table"}">${t("Table")}</button></span>
+      <span class="seg tk-views" role="group" aria-label="${t("View")}"><button data-task-view="months" aria-pressed="${T.view === "months"}">${t("By month")}</button><button data-task-view="kanban" aria-pressed="${T.view === "kanban"}">${t("Board")}</button><button data-task-view="table" aria-pressed="${T.view === "table"}">${t("Table")}</button></span>
     </div>`;
   }
   function filterBar() {
     const here = T.tasks.filter(onThisSite);
     const kinds = [...new Set(here.map((x) => x.kind).filter(Boolean))].sort();
+    const goalList = [...new Set(here.map((x) => (x.goal || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b));
     const people = [...new Set(here.map((x) => x.owner_label).filter(Boolean))].sort();
     const pick = (id, label, all, options, chosen, extra = "") => `<label class="field"><span class="sr-only">${t(label)}</span><select class="select" id="${id}" ${extra}><option value="">${t(all)}</option>${options.map(([value, word]) => `<option value="${esc(value)}" ${value === chosen ? "selected" : ""}>${esc(word)}</option>`).join("")}</select></label>`;
-    const active = [T.query, T.kind, T.owner, T.view === "table" ? T.status : ""].filter(Boolean).length;
+    const active = [T.query, T.kind, T.goal, T.owner, T.view === "table" ? T.status : ""].filter(Boolean).length;
     return `<button type="button" class="btn btn-small tk-filter-toggle" data-task-filters aria-expanded="${Boolean(T.filtersOpen)}">${icon("filter")}${t("Filter")}${active ? ` <span class="tag">${num(active)}</span>` : ""}</button>
     <div class="tk-filters ${T.filtersOpen ? "open" : ""}">
       <label class="field tk-search"><span class="sr-only">${t("Search")}</span>${icon("search")}<input class="input" type="search" id="tk-query" value="${esc(T.query)}" placeholder="${t("Search tasks")}" autocomplete="off"></label>
       ${T.view === "table" ? pick("tk-status", "Status", "All statuses", STATUSES.map(([k, w]) => [k, columnWord(w)]), T.status) : ""}
       ${pick("tk-kind", "Type", "All types", kinds.map((k) => [k, t(k)]), T.kind)}
+      ${goalList.length || T.goal ? pick("tk-goal", "Goal", "All goals", goalList.map((g) => [g, g]), T.goal) : ""}
       ${pick("tk-owner", "Assigned to", "Everyone", [[UNASSIGNED, t("Unassigned")], ...people.map((p) => [p, p])], T.owner)}
     </div>`;
   }
@@ -733,6 +854,8 @@
         openTask({ task: fresh });
         return;
       }
+      if ((el = hit("[data-task-set]"))) { const [id, to] = el.dataset.taskSet.split(":"); setStatus(Number(id), to, el); return; }
+      if ((el = hit("[data-task-show]"))) { T.show = el.dataset.taskShow; paint(); UI.$(`[data-task-show="${T.show}"]`)?.focus({ preventScroll: true }); return; }
       if ((el = hit("#tk-retry"))) { T.ready = false; paint(); load().then(() => UI.render()); return; }
       if ((el = hit("[data-tk-sort]"))) {
         const id = el.dataset.tkSort, first = SORTS[id].first;
@@ -750,7 +873,7 @@
       if ((el = hit("[data-task-month]"))) { moveMonth(Number(el.dataset.taskMonth)); TP.reset(PAGES); const again = el.dataset.taskMonth; UI.render(); UI.$(`[data-task-month="${again}"]`)?.focus({ preventScroll: true }); return; }
       if ((el = hit("[data-task-view]"))) {
         T.view = el.dataset.taskView; TP.reset(PAGES);
-        UI.store.set("taskView", T.view);
+        UI.store.set("taskView2", T.view);
         if (T.view === "kanban") T.status = "";
         UI.render();
         UI.$(`[data-task-view="${T.view}"]`)?.focus({ preventScroll: true });
@@ -759,7 +882,10 @@
     document.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && e.target.matches?.("#task-form input:not([type='date']):not(.pl-input)")) { e.preventDefault(); UI.$("#task-save")?.click(); }
     });
-    document.addEventListener("submit", (e) => { if (e.target.id === "task-form") e.preventDefault(); });
+    document.addEventListener("submit", (e) => {
+      if (e.target.id === "task-form") e.preventDefault();
+      if (e.target.id === "tk-add") { e.preventDefault(); quickCreate(e.target); }
+    });
     document.addEventListener("input", (e) => {
       if (e.target.id === "tk-query") { T.query = e.target.value; TP.reset(PAGES); paint(); }
     });
@@ -769,6 +895,7 @@
       if (e.target.matches?.("[data-task-move]")) { moveTask(Number(e.target.dataset.taskMove), e.target.value, `#${id}`); return; }
       if (id === "tk-status") { T.status = e.target.value; TP.reset(PAGES); paint(); return; }
       if (id === "tk-kind") { T.kind = e.target.value; TP.reset(PAGES); paint(); return; }
+      if (id === "tk-goal") { T.goal = e.target.value; TP.reset(PAGES); paint(); return; }
       if (id === "tk-owner") { T.owner = e.target.value; TP.reset(PAGES); paint(); return; }
       if (id === "tk-from") { T.from = e.target.value; TP.reset(PAGES); paint(); return; }
       if (id === "tk-to") { T.to = e.target.value; TP.reset(PAGES); paint(); }
@@ -827,8 +954,8 @@
     init(helpers) {
       UI = helpers;
       ({ t, esc, icon, num, status } = helpers);
-      const view = UI.store.get("taskView");
-      if (view === "table" || view === "kanban") T.view = view;
+      const view = UI.store.get("taskView2");
+      if (view === "table" || view === "kanban" || view === "months") T.view = view; // taskView2: the month list (2026-11-20) shows first once
       T.month = monthOf(new Date());
       helpers.openTask = openTask;
       helpers.goToFinding = goToFinding;
@@ -846,10 +973,12 @@
     /* The view in the address: board or table, the search, status, type, owner and dates. */
     address() {
       const out = {};
-      if (T.view !== "kanban") out.view = T.view;
+      if (T.view !== "months") out.view = T.view;
+      if (T.view === "months" && T.show !== "open") out.show = T.show;
       if (T.query.trim()) out.q = T.query.trim();
       if (T.view === "table" && T.status) out.status = T.status;
       if (T.kind) out.type = T.kind;
+      if (T.goal) out.goal = T.goal;
       if (T.owner) out.owner = T.owner === UNASSIGNED ? "none" : T.owner;
       if (T.period !== "all") out.when = T.period;
       if (T.period === "month" && T.month) out.month = T.month;
@@ -858,7 +987,9 @@
     },
     fromAddress(q) {
       const view = q.get("view");
-      if (view === "table" || view === "kanban") T.view = view;
+      if (view === "table" || view === "kanban" || view === "months") T.view = view;
+      T.show = SHOWS.some(([k]) => k === q.get("show")) ? q.get("show") : "open";
+      T.goal = (q.get("goal") || "").slice(0, 200);
       T.query = (q.get("q") || "").slice(0, 200);
       T.status = STATUSES.some(([k]) => k === q.get("status")) ? q.get("status") : "";
       T.kind = (q.get("type") || "").slice(0, 60);
@@ -868,7 +999,7 @@
       if (/^\d{4}-\d{2}$/.test(q.get("month") || "")) T.month = q.get("month");
       const day = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v || "") ? v : "");
       T.from = day(q.get("from")); T.to = day(q.get("to"));
-      if (T.query || T.kind || T.owner || T.status) T.filtersOpen = true;
+      if (T.query || T.kind || T.goal || T.owner || T.status) T.filtersOpen = true;
     },
     after() {
       if (T.ready) { const total = UI.$("#tk-total"); if (total) { const n = counted().length; total.textContent = `${num(n)} ${t(n === 1 ? "task" : "tasks")}`; } }
@@ -881,6 +1012,12 @@
     "Search tasks": "Chercher une tâche", "Comment as": "Commenter en tant que",
     "A task can list 50 pages at most.": "Une tâche peut lister 50 pages au maximum.", "A task can list 50 keywords at most.": "Une tâche peut lister 50 mots-clés au maximum.",
     "Who does what, where, by when": "Qui fait quoi, où, et pour quand",
+    "To start": "À lancer", "Blocked": "Bloqué", "Goal": "Objectif", "All goals": "Tous les objectifs", "e.g. Strengthen site credibility": "ex. Renforcer la crédibilité du site",
+    "By month": "Par mois", "All tasks": "Toutes", "This month": "Ce mois-ci", "Add": "Ajouter", "No type": "Sans type", "Goal (optional)": "Objectif (facultatif)",
+    "New task: what needs doing?": "Nouvelle tâche : que faut-il faire ?", "Task added": "Tâche ajoutée", "Task done": "Tâche terminée", "Undo": "Annuler",
+    "Nothing left to do here.": "Plus rien à faire ici.", "Every task in these filters is done.": "Toutes les tâches de ces filtres sont faites.",
+    "No task is done yet.": "Aucune tâche n'est encore faite.", "Done tasks show here, under their month.": "Les tâches faites s'affichent ici, sous leur mois.",
+    "SEO": "SEO", "Social": "Réseaux sociaux",
     "To do": "À faire", "In progress": "En cours", "Low": "Basse", "Normal": "Normale", "High": "Haute",
     "Task": "Tâche", "New task": "Nouvelle tâche", "Create task": "Créer une tâche", "Open task": "Ouvrir la tâche", "Task created": "Tâche créée", "Task saved": "Tâche enregistrée", "Task deleted": "Tâche supprimée",
     "Priority": "Priorité", "Status": "Statut", "Owner": "Responsable", "Assigned to": "Attribuée à", "Nobody": "Personne", "by": "par", "Type": "Type", "Description": "Description", "More details": "Plus de détails", "Hypothesis": "Hypothèse",

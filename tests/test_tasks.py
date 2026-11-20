@@ -352,3 +352,21 @@ def test_created_by_is_the_signed_in_account_and_never_changes(engine):
     assert client.patch(f"/api/tasks/{task['id']}", json={"created_by": "Ben"}, headers=headers).status_code == 400
     moved = client.patch(f"/api/tasks/{task['id']}", json={"owner_label": "Nour"}, headers=headers).json
     assert (moved["created_by"], moved["owner_label"]) == ("Sara Account", "Nour")  # reassigned, creator kept
+
+
+def test_a_task_carries_a_goal_and_a_type(client, own_site):
+    task = make(client, site_id=own_site, goal="  Strengthen site credibility ", kind="SEO", due="2026-10-31")
+    assert (task["goal"], task["kind"]) == ("Strengthen site credibility", "SEO")
+    changed = client.patch(f"/api/tasks/{task['id']}", json={"goal": "", "expected_version": task["version"]}).json
+    assert changed["goal"] == ""
+    assert client.post("/api/tasks", json={"title": "Too long", "goal": "x" * 201}).status_code == 400
+    assert [t["goal"] for t in client.get("/api/tasks").json["tasks"]] == [""]
+
+
+def test_blocked_is_a_status_and_stays_open(client, own_site):
+    task = make(client, site_id=own_site, source=finding())
+    blocked = client.patch(f"/api/tasks/{task['id']}", json={"status": "blocked"}).json
+    assert blocked["status"] == "blocked" and blocked["completed_on"] == ""
+    # Still the open task for its finding: a second one is refused.
+    assert client.post("/api/tasks", json={"title": "Again", "source": finding()}).status_code == 409
+    assert client.patch(f"/api/tasks/{task['id']}", json={"status": "waiting"}).status_code == 400

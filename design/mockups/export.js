@@ -145,7 +145,10 @@
     today: () => ({ view: "today", params: { site_id: site() } }),
     channels: traffic("channels", [["channels", "channels", (r) => r.channel], ["referrers", "referrers", (r) => r.domain]]),
     conversions: traffic("conversions", [["types", "page_types", (r) => r.type], ["converting", "pages", pageKey]]),
-    content: traffic("content", [["content", "pages", pageKey]], "pages"),
+    // Content tracker is its own export (seo/exports/views_traffic.py content_tracker), with the rows as filtered on screen.
+    content: () => (window.LV?.contentTab?.() === "published"
+      ? { view: "content-tracker", params: { ...period(), site_id: site() }, table: "pieces", seen: window.ContentTracker?.shown?.() ? { pieces: window.ContentTracker.shown() } : {}, words: [...chipWords("[data-ct-filter]", "ctFilter"), ...sortWords()] }
+      : traffic("content", [["content", "pages", pageKey]], "pages")()),
     ai: traffic("ai", [["ai-sources", "sources", (r) => r.source], ["ai-pages", "pages", pageKey]]),
     ads: traffic("ads", [["campaigns", "campaigns", (r) => r.campaign]], "campaigns"),
     overview,

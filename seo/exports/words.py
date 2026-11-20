@@ -131,4 +131,10 @@ FR: dict[str, str] = {
     "Resources": "Ressources", "Address": "Adresse", "Tags": "Étiquettes", "Added by": "Ajouté par", "No resources yet.": "Aucune ressource pour l'instant.",
     "Connections": "Connexions", "Tools connected": "Outils connectés", "Not connected": "Non connecté", "Tools": "Outils", "Search tools": "Outils de recherche", "Tool": "Outil", "Connected": "Connecté", "Last worked": "A fonctionné le",
     "Has a problem": "A un problème", "Google accounts": "Comptes Google", "No Google account connected.": "Aucun compte Google connecté.",
+    # Content tracker and task goals (2026-11-20)
+    "Content tracker": "Suivi des contenus", "Pieces": "Contenus", "Bring clicks": "Apportent des clics", "Bring leads": "Apportent des demandes", "Published pieces": "Contenus publiés",
+    "Published": "Publié le", "Target query": "Requête visée", "Google position": "Position Google", "Position read on": "Position relevée le",
+    "No published piece tracked yet.": "Aucun contenu publié suivi pour l'instant.",
+    "Counted from the publish date when it falls inside the period. A lead counts on the page the visit landed on.": "Compté depuis la date de publication quand elle tombe dans la période. Une demande compte sur la page d'arrivée de la visite.",
+    "To start": "À lancer", "Goal": "Objectif", "Type": "Type",
 }
