@@ -257,7 +257,9 @@ def listing(scope: metrics.Scope, today: date | None = None) -> dict:
             for item in site_items:
                 check = checks.get(_key(item["query"])) if item["query"] else None
                 if check:
-                    url = check.pop("url")
+                    # Several pieces can target the same query, so each gets its own copy of the shared check.
+                    check = dict(check)
+                    url = check.pop("url", None)
                     check["via"] = _path(url) if url and _path(url) != item["path"] else None
                     item["position"] = check
             items.extend(site_items)

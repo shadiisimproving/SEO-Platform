@@ -144,6 +144,28 @@ def test_a_rank_check_wins_over_search_console(engine, site):
     assert piece["position"] == {"value": 3, "from": "check", "tool": "serpapi", "read_on": "2026-11-13", "out_of": None, "via": None}
 
 
+def test_two_pieces_with_the_same_query_share_one_check(engine, client, site):
+    # Real sites often aim several pieces at one query: each piece reads the same rank check, and the list still loads.
+    client.post("/api/content/tracker", json={"site_id": site, "page": "https://www.shop.example/tax-news"})
+    for page in ("/visa-guide/", "/tax-news/"):
+        client.post("/api/content/tracker", json={"site_id": site, "page": page, "target_query": "visa guide"})
+    with engine.begin() as conn:
+        kw = conn.execute(text("INSERT INTO keywords (keyword, keyword_hash) VALUES ('visa guide', SHA2('visa guide', 256))")).lastrowid
+        conn.execute(text("INSERT INTO site_keywords (site_id, keyword_id) VALUES (:s, :k)"), {"s": site, "k": kw})
+    fake = [{"keyword": "Visa Guide", "engines": {"google": {"main": {"p": 3, "url": "https://shop.example/visa-guide/", "tool": "serpapi", "checked_at": "2026-11-13T09:00:00Z", "status": "ok", "depth": 100}}}}]
+    from seo.serp import rankings
+
+    original = rankings.rows_of_site
+    rankings.rows_of_site = lambda _engine, _site: fake
+    try:
+        scope = metrics.Scope(engine, site, ago(30).isoformat(), TODAY.isoformat())
+        pieces = {i["path"]: i for i in tracker.listing(scope)["items"]}
+    finally:
+        rankings.rows_of_site = original
+    assert pieces["/visa-guide/"]["position"]["value"] == 3 and pieces["/visa-guide/"]["position"]["via"] is None
+    assert pieces["/tax-news/"]["position"]["value"] == 3 and pieces["/tax-news/"]["position"]["via"] == "/visa-guide/"
+
+
 def test_piece_detail_months_and_choices(engine, client, site):
     with engine.begin() as conn:
         conn.execute(text("INSERT INTO tasks (title, site_id, site_host, status, priority, pages, keywords) VALUES ('Fix it', :s, 'shop.example', 'todo', 'medium', '[\"/visa-guide\"]', '[\"visa price\"]')"), {"s": site})

@@ -383,13 +383,26 @@
   const worldCell = (view) => (view.own === null || view.own === undefined ? `<span class="muted dash">—</span>` : `<span class="tabular">${dec(Math.round(view.own * 10) / 10)}</span>`);
 
   const impressionsOf = (row) => row.impressions ?? row.volume ?? null;
+  /* Up / Down for the chips: with Search Console chosen (Google), its first 7 days against its last 7 of the trend line's 28,
+     a move of half a place or more, like the agency's 7-day change. Otherwise the change since our last check with the same
+     tool. Before this, our checks' change alone left both chips at 0 whenever the tool changed (seen on real data 2026-11-20). */
+  function movedOf(row, view, e) {
+    if (e === "google" && kwbSource() === "gsc") {
+      const v = (row.gsc_daily || []).map((x) => x.p).filter((x) => typeof x === "number");
+      if (v.length < 4) return 0;
+      const n = Math.min(7, Math.floor(v.length / 2)), avg = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+      const d = avg(v.slice(0, n)) - avg(v.slice(-n)); // a smaller position is better, so first minus last is the gain
+      return Math.abs(d) >= 0.5 ? d : 0;
+    }
+    return view.change || 0;
+  }
   function passes(row, e) {
     const view = row.engines[e], p = view.main?.status === "ok" ? view.main.p : null;
     switch (state.filter) {
       case "top3": return p && p <= 3;
       case "top10": return p && p <= 10;
-      case "up": return view.change > 0;
-      case "down": return view.change < 0;
+      case "up": return movedOf(row, view, e) > 0;
+      case "down": return movedOf(row, view, e) < 0;
       case "none": return notRanked(view);
       case "cited": return row.ai.state === "cited";
       case "two": return row.two_pages;
@@ -826,7 +839,7 @@
     const e = engineOf();
     const local = K.data.tiles[e], view = (row) => row.engines[e], good = (row) => (view(row).main?.status === "ok" ? view(row).main.p : null);
     const found = searched(all);
-    const counts = { all: found.length, top3: found.filter((r) => good(r) && good(r) <= 3).length, top10: found.filter((r) => good(r) && good(r) <= 10).length, up: found.filter((r) => view(r).change > 0).length, down: found.filter((r) => view(r).change < 0).length, none: found.filter((r) => notRanked(view(r))).length, cited: found.filter((r) => r.ai.state === "cited").length, two: found.filter((r) => r.two_pages).length };
+    const counts = { all: found.length, top3: found.filter((r) => good(r) && good(r) <= 3).length, top10: found.filter((r) => good(r) && good(r) <= 10).length, up: found.filter((r) => movedOf(r, view(r), e) > 0).length, down: found.filter((r) => movedOf(r, view(r), e) < 0).length, none: found.filter((r) => notRanked(view(r))).length, cited: found.filter((r) => r.ai.state === "cited").length, two: found.filter((r) => r.two_pages).length };
     const moved = (() => { // the same rule as the server's tile, on the rows this site shows
       let change = 0, compared = 0;
       all.forEach((r) => { const c = view(r).change, p = good(r); if (c === null || c === undefined || !p) return; compared += 1; const was = p + c; change += (p <= 10 && was > 10 ? 1 : 0) - (was <= 10 && p > 10 ? 1 : 0); });
