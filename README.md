@@ -4,6 +4,7 @@ Internal app for tracking websites in SEO: per-site data, tasks, backlinks, comp
 
 - **Plan:** `~/.claude/plans/plan-seo-command-center-free-apis.md`
 - **Measured results:** `reports/phase-0-results.md`
+- **Social (LinkedIn and X drafts, video transcripts):** what it does and how to use it: [docs/social.md](docs/social.md)
 
 ## Where it runs
 
