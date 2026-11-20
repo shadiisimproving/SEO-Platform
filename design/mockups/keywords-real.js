@@ -100,6 +100,36 @@
     "Search Console average: {n}": "Moyenne Search Console : {n}", "No Search Console impressions in these 7 days": "Aucune impression Search Console sur ces 7 jours",
     "Search Console: Google's own average position for real searches, over 7 days, in the keyword's country when Google has it. Our checks: one reading from one place, only since 11 Nov 2026.": "Search Console : la position moyenne de Google sur les vraies recherches, sur 7 jours, dans le pays du mot-clé quand Google l'a. Nos contrôles : une lecture, d'un seul endroit, seulement depuis le 11 nov. 2026.",
     "Our checks: one reading from one place and one tool. They started on 11 Nov 2026, so a longer period has no \"before\" yet.": "Nos contrôles : une lecture, d'un seul endroit et d'un seul outil. Ils ont commencé le 11 nov. 2026 : une période plus longue n'a pas encore d'« avant ».",
+    // Track C (2026-11-20): chips always on show, the row's trend, Volume with its source, one line per page, Check AI Overviews
+    "Two pages": "Deux pages", "Volume": "Volume", "a month": "par mois", "File": "Fichier", "From file: {name}": "Depuis le fichier : {name}",
+    "Searches a month, with where the number comes from: Bing (Bing's own searches) or a file you added. Never Search Console's impressions, and never Google's volume unless the file is.": "Recherches par mois, avec leur source : Bing (les recherches sur Bing) ou un fichier que vous avez ajouté. Jamais les impressions Search Console, et jamais le volume Google sauf si le fichier l'est.",
+    "No search volume yet. Add a file or get Bing's in Volumes.": "Pas encore de volume de recherche. Ajoutez un fichier ou récupérez celui de Bing dans Volumes.",
+    "Bing searches": "Recherches Bing", "Volumes": "Volumes", "Search volume": "Volume de recherche",
+    "Search Console's impressions stay in their own column: they are your own impressions, not how often people search.": "Les impressions Search Console restent dans leur colonne : ce sont vos propres impressions, pas le nombre de recherches.",
+    "From Bing": "Depuis Bing", "Bing's own searches, read with the key in Settings. Free.": "Les recherches sur Bing, lues avec la clé des réglages. Gratuit.",
+    "Get Bing volumes": "Récupérer les volumes Bing", "Add the Bing Webmaster key in Settings first.": "Ajoutez d'abord la clé Bing Webmaster dans les réglages.",
+    "{n} keywords have a Bing volume.": "{n} mots-clés ont un volume Bing.", "{n} keyword has a Bing volume.": "{n} mot-clé a un volume Bing.", "Reading Bing…": "Lecture de Bing…",
+    "Bing is being read in the background. Volumes appear as each keyword comes back.": "Bing est lu en arrière-plan. Les volumes apparaissent au fur et à mesure.",
+    "Bing refused the key:": "Bing a refusé la clé :", "From a file": "Depuis un fichier",
+    "A CSV with a Keyword column and a Volume column. Country and Month are optional. Keyword Planner's export works as it is.": "Un CSV avec une colonne Mot-clé et une colonne Volume. Pays et Mois sont facultatifs. L'export du Planificateur de mots-clés fonctionne tel quel.",
+    "Add a file": "Ajouter un fichier", "Files added": "Fichiers ajoutés", "No file yet.": "Aucun fichier pour l'instant.", "Remove": "Retirer",
+    "{n} keywords": "{n} mots-clés", "{n} keyword": "{n} mot-clé", "{n} rows skipped: no number in the volume column.": "{n} lignes ignorées : pas de nombre dans la colonne volume.",
+    "{n} row skipped: no number in the volume column.": "{n} ligne ignorée : pas de nombre dans la colonne volume.",
+    "Volumes added from {name}": "Volumes ajoutés depuis {name}", "Volumes from {name} removed": "Volumes de {name} retirés", "Remove the volumes from {name}?": "Retirer les volumes de {name} ?",
+    "Google's own volume needs a Google Ads account: parked for now.": "Le volume de Google demande un compte Google Ads : en attente pour l'instant.",
+    "Couldn't load the volume sources.": "Impossible de charger les sources de volume.", "Bing started": "Bing lancé",
+    "Higher on the line is better.": "Plus la ligne est haute, mieux c'est.", "Search Console, {n} days": "Search Console, {n} jours",
+    "{a} → {b}": "{a} → {b}", "No Search Console position in the last 28 days.": "Aucune position Search Console sur les 28 derniers jours.",
+    "AIO": "AIO", "cited": "cité", "AI Overview shown; you're cited.": "Aperçu IA affiché ; vous êtes cité.", "AI Overview shown; other sites are cited, not you.": "Aperçu IA affiché ; d'autres sites sont cités, pas vous.",
+    "No AI Overview on this search.": "Pas d'aperçu IA sur cette recherche.", "AI Overview not checked yet.": "Aperçu IA pas encore vérifié.", "No AIO": "Pas d'AIO",
+    "Check AI Overviews": "Vérifier les aperçus IA", "Check AI Overviews for all keywords": "Vérifier les aperçus IA de tous les mots-clés",
+    "{n} not checked": "{n} non vérifiés", "{n} keywords have no AI Overview check yet.": "{n} mots-clés n'ont pas encore de vérification d'aperçu IA.", "{n} keyword has no AI Overview check yet.": "{n} mot-clé n'a pas encore de vérification d'aperçu IA.",
+    "SerpApi reads Google's AI Overviews: one search per keyword.": "SerpApi lit les aperçus IA de Google : une recherche par mot-clé.",
+    "Connect a tool that reads AI Overviews in Settings first.": "Connectez d'abord dans les réglages un outil qui lit les aperçus IA.",
+    "Every keyword already has an AI Overview check.": "Chaque mot-clé a déjà une vérification d'aperçu IA.",
+    "Other pages ranking": "Autres pages classées", "Main page": "Page principale", "Other pages": "Autres pages", "{n} more pages, in the list below": "{n} autres pages, dans la liste ci-dessous",
+    "Backlink found": "Backlink trouvé", "Bought links and other backlinks to this page are the dashed lines.": "Les liens achetés et les autres backlinks vers cette page sont les lignes pointillées.",
+    "Position by page": "Position par page", "Your page": "Votre page", "Months": "Mois",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 
@@ -166,17 +196,9 @@
     if (days < 1) return `${Math.max(1, Math.round(days * 24))} h`;
     return `${Math.round(days)} ${state.lang === "fr" ? "j" : "d"}`;
   };
-  // Every page of yours that shows up for the keyword, under the main one: the warning alone doesn't say which.
-  const ALSO_SHOWN = 3;
-  const competingPages = (row) => {
-    const others = (row.pages || []).filter((p) => !row.page || p.url.replace(/\/$/, "") !== row.page.replace(/\/$/, ""));
-    if (!row.two_pages || !others.length) return "";
-    const fact = (p) => [p.position ? `#${p.position}` : "", p.impressions != null ? `${num(p.impressions)} ${t("impr.")}` : ""].filter(Boolean).join(" · ");
-    // Three at most in the row, so one keyword never fills the screen; the rest behind "+N more" (kept open across redraws).
-    const open = K.alsoOpen?.has(row.id), shown = open ? others : others.slice(0, ALSO_SHOWN), rest = others.length - ALSO_SHOWN;
-    const more = rest > 0 ? `<li><button type="button" class="link-btn small" data-kw-also="${esc(row.id)}" aria-expanded="${open}">${open ? t("Show fewer") : t("+{n} more").replace("{n}", num(rest))}</button></li>` : "";
-    return `<ul class="kw-also" aria-label="${esc(t("Also ranks"))}">${shown.map((p) => `<li data-tip="${esc(p.url)}"><span class="warn small">${t("Also")}</span>${fact(p) ? ` <span class="muted">${esc(fact(p))}</span>` : ""} ${PageLink.html(p.url, { text: shortPath(p.url), title: "" })}</li>`).join("")}${more}</ul>`;
-  };
+  // The other pages of mine that show for a keyword (Search Console's, then any our last Google check found): the panel lists
+  // them, and the Two pages chip finds the keywords that have them. The row keeps only a small mark (Track C, 2026-11-20).
+  const otherPages = (row) => (row.pages || []).filter((p) => !row.page || p.url.replace(/\/$/, "") !== row.page.replace(/\/$/, ""));
   const shortPath = (url) => { try { const u = new URL(url); return decodeURI(u.pathname + u.search) || "/"; } catch { return url || ""; } };
   const allRows = () => { const host = UI.siteHostPicked(); return (K.data?.rows || []).filter((row) => !host || row.site === host); };
   /* What the Keyword ideas card needs from here: the words already tracked, and the country and language used most. */
@@ -300,19 +322,60 @@
     if (c === 0) return `<span class="kw-same" aria-label="${esc(t("No change"))}"><span aria-hidden="true">=</span><span class="small">${t("No change")}</span></span>`;
     return `<span class="chg ${c > 0 ? "good" : "crit"}" aria-label="${t(c > 0 ? "Up" : "Down")} ${Math.abs(c)}">${icon(c > 0 ? "arrow-up" : "arrow-down")}${Math.abs(c)}</span>`;
   }
+  /* AI, as Mickaz reads it (owner, 2026-11-20): "AIO" when Google showed an AI Overview, and "cited" beside it when the
+     site is one of its sources. A search that showed none is a quiet dash; one never read says Not checked, never "no". */
+  const aiTip = (words) => `data-tip="${esc(t(words))}"`;
   const aiCell = (row) => ({
-    cited: `<span class="nowrap">${icon("sparkles")} ${t("Cited")}</span>`,
-    overview: `<span class="kw-ai-miss nowrap" data-tip="${esc(t("A competitor is cited instead"))}">${icon("triangle-alert")}${t("Not cited")}<span class="sr">: ${esc(t("A competitor is cited instead"))}</span></span>`,
-    none: `<span class="muted small" data-tip="${esc(t("No AI Overview on this search"))}">${t("No overview")}</span>`,
-    "not-captured": `<span class="muted small" data-tip="${esc(t("The check couldn't read the AI Overview"))}">${t("Not captured")}<span class="sr">: ${esc(t("The check couldn't read the AI Overview"))}</span></span>`,
+    cited: `<span class="kw-ai" ${aiTip("AI Overview shown; you're cited.")}><span class="kw-aio">${t("AIO")}</span><span class="kw-cited">${icon("check")}${t("cited")}</span><span class="sr">: ${esc(t("AI Overview shown; you're cited."))}</span></span>`,
+    overview: `<span class="kw-ai" ${aiTip("AI Overview shown; other sites are cited, not you.")}><span class="kw-aio">${t("AIO")}</span><span class="sr">: ${esc(t("AI Overview shown; other sites are cited, not you."))}</span></span>`,
+    none: `<span class="muted dash" role="img" ${aiTip("No AI Overview on this search.")} aria-label="${esc(t("No AI Overview on this search."))}">—</span>`,
+    "not-captured": `<span class="muted small" ${aiTip("AI Overview not checked yet.")}>${t("Not checked")}<span class="sr">: ${esc(t("AI Overview not checked yet."))}</span></span>`,
   }[row.ai.state]);
+  /* Volume: searches a month, with its source beside it, always. "Bing" is Bing's own searches; "File" is a file someone
+     added, named in full in the tooltip and the panel ("From file: tool.csv · Oct 2026"). Never impressions. */
+  const monthName = (m) => (m ? UI.fmtDay(`${m}-15`, { month: "short", year: "numeric" }) : "");
+  const volSource = (v) => `${v.source === "bing" ? t("Bing searches") : t("From file: {name}").replace("{name}", v.name || "")}${v.month ? ` · ${monthName(v.month)}` : ""}`;
+  function volCell(row) {
+    const v = row.search_volume;
+    if (!v) return `<span class="muted dash" role="img" data-tip="${esc(t("No search volume yet. Add a file or get Bing's in Volumes."))}" aria-label="${esc(t("No search volume yet. Add a file or get Bing's in Volumes."))}">—</span>`;
+    const where = volSource(v);
+    return `<span class="kw-vol" data-tip="${esc(where)}"><span class="tabular">${num(v.searches)}</span><span class="kw-vsrc${v.source === "bing" ? " kw-vsrc-bing" : ""}" aria-label="${esc(where)}">${v.source === "bing" ? "Bing" : esc(t("File"))}</span></span>`;
+  }
+  /* The row's trend (Track C): the recent positions as a small line, 1 at the top, so a line going up is a keyword going up.
+     A dashed line marks where it started, so above it is better and below it worse. Search Console's daily average over its
+     last 28 final days when that is the chosen source (Google only), otherwise our own checks with the same tool. */
+  function sparkSvg(values) {
+    const W = 84, H = 24, pad = 3;
+    let lo = Math.min(...values), hi = Math.max(...values);
+    if (hi - lo < 2) { const mid = (hi + lo) / 2; lo = mid - 1; hi = mid + 1; }
+    const x = (i) => pad + (values.length === 1 ? 0 : (i / (values.length - 1)) * (W - pad * 2));
+    const y = (v) => pad + ((v - lo) / (hi - lo)) * (H - pad * 2); // a smaller position (better) sits higher
+    const path = values.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+    const last = values.length - 1;
+    return `<svg class="kw-spark-svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" aria-hidden="true"><line class="kw-spark-start" x1="${pad}" x2="${W - pad}" y1="${y(values[0]).toFixed(1)}" y2="${y(values[0]).toFixed(1)}"/><path class="kw-spark-line" d="${path}"/><circle class="kw-spark-end" cx="${x(last).toFixed(1)}" cy="${y(values[last]).toFixed(1)}" r="2.6"/></svg>`;
+  }
+  function trendCell(row, view, e) {
+    const gsc = e === "google" && kwbSource() === "gsc";
+    const values = gsc ? (row.gsc_daily || []).map((x) => x.p) : (view.trend || []).map((x) => x.p);
+    if (values.length < 2) {
+      const why = t(gsc ? "No Search Console position in the last 28 days." : "Needs 2 checks, same tool");
+      return `<span class="muted dash" role="img" data-tip="${esc(why)}" aria-label="${esc(why)}">—</span>`;
+    }
+    const a = values[0], b = values[values.length - 1], moved = Math.round((a - b) * 10) / 10;
+    const from = gsc ? t("Search Console, {n} days").replace("{n}", "28") : t("Our checks");
+    const words = `${from}: ${t("{a} → {b}").replace("{a}", dec(a)).replace("{b}", dec(b))}${moved ? ` (${t(moved > 0 ? "Up" : "Down")} ${dec(Math.abs(moved))})` : ""}. ${t("Higher on the line is better.")}`;
+    return `<span class="kw-spark ${moved > 0 ? "up" : moved < 0 ? "down" : ""}" role="img" data-tip="${esc(words)}" aria-label="${esc(words)}">${sparkSvg(values)}</span>`;
+  }
   /* Google: the position in the keyword's own country when Search Console has it, on one line with the country's flag.
      The all-countries average then has its own column (K.worldCol, worldCell), so each row stays one line high (2026-11-13). */
   const localOf = (row, e) => { const local = e === "google" ? row?.own_country : null; return local && local.position !== null && local.position !== undefined ? local : null; };
+  // With the All countries column folded into Columns (Track C: Volume and the trend took its room), its number is the
+  // tooltip of this cell, so it's one pointing away.
+  const worldTip = (view) => (K.worldCol && !K.showWorld && view.own !== null && view.own !== undefined ? `${t("All countries")}: ${dec(Math.round(view.own * 10) / 10)}` : "");
   const ownCell = (view, row = null, e = "") => {
-    const local = localOf(row, e);
-    if (local) return `<span class="nowrap"><span class="tabular">${dec(local.position)}</span> ${UI.flag(local.country)}</span>`;
-    if (K.worldCol) return `<span class="muted dash" role="img" data-tip="${esc(t("No Search Console data in the keyword's country."))}" aria-label="${esc(t("No Search Console data in the keyword's country."))}">—</span>`;
+    const local = localOf(row, e), tip = worldTip(view);
+    if (local) return `<span class="nowrap"${tip ? ` data-tip="${esc(tip)}"` : ""}><span class="tabular">${dec(local.position)}</span> ${UI.flag(local.country)}</span>`;
+    if (K.worldCol) { const why = [t("No Search Console data in the keyword's country."), tip].filter(Boolean).join(" "); return `<span class="muted dash" role="img" data-tip="${esc(why)}" aria-label="${esc(why)}">—</span>`; }
     return view.own === null || view.own === undefined
       ? `<span class="muted dash" data-tip="${esc(t("Not connected for this site, or no data for this keyword."))}" aria-label="${esc(t("Not connected for this site, or no data for this keyword."))}" role="img">—</span>`
       : `<span class="tabular">${dec(Math.round(view.own * 10) / 10)}</span>`;
@@ -339,7 +402,8 @@
   function filtered() {
     const e = engineOf();
     K.worldCol = state.engine !== "all" && e === "google" && allRows().some((row) => localOf(row, e)); // read by ownCell, rowHtml and table
-    const value = (row) => { const v = row.engines[e]; return { k: row.keyword, own: K.worldCol ? localOf(row, e)?.position ?? null : v.own, world: v.own, pos: v.main?.status === "ok" ? v.main.p : null, chg: v.change, vol: impressionsOf(row) }[state.sort.key]; };
+    K.showWorld = K.worldCol && state.cols.world !== false; // the All countries column, a Columns choice since Track C
+    const value = (row) => { const v = row.engines[e]; return { k: row.keyword, own: K.worldCol ? localOf(row, e)?.position ?? null : v.own, world: v.own, pos: v.main?.status === "ok" ? v.main.p : null, chg: v.change, vol: impressionsOf(row), sv: row.search_volume?.searches ?? null }[state.sort.key]; };
     const sign = state.sort.dir === "ascending" ? 1 : -1;
     return searched(allRows()).filter((row) => passes(row, e)).sort((a, b) => {
       const x = value(a), y = value(b);
@@ -358,16 +422,17 @@
 
   function rowHtml(row) {
     const e = engineOf(), view = row.engines[e];
-    const trend = view.trend.length >= 2 ? UI.spark(view.trend.map((x) => x.p), { invert: true }) : `<span class="muted dash" data-tip="${t("Needs 2 checks, same tool")}" aria-label="${t("Needs 2 checks, same tool")}" role="img">—</span>`;
+    const trend = trendCell(row, view, e);
     const cells = state.engine === "all"
       ? ENGINES.map(([id, label]) => `<td data-label="${label}">${scrapedCell(row, id)}</td>`).join("")
       : `${OWN_TOOL[e] ? `<td class="c" data-label="${OWN_TOOL[e]} · ${t(K.worldCol ? "in its country" : "avg position")}">${ownCell(view, row, e)}</td>` : ""}
-         ${K.worldCol ? `<td class="c" data-label="${t("All countries")}">${worldCell(view)}</td>` : ""}
+         ${K.showWorld ? `<td class="c" data-label="${t("All countries")}">${worldCell(view)}</td>` : ""}
          <td data-label="${t("Our check")}">${scrapedCell(row, e)}</td>
          <td class="c" data-label="${t("Change")}">${changeCell(view)}</td>
          ${state.cols.vol ? `<td class="c" data-label="${t("Impressions (28 days)")}">${impressionsOf(row) === null ? '<span class="muted dash">—</span>' : num(impressionsOf(row))}</td>` : ""}
+         ${state.cols.sv ? `<td class="c" data-label="${t("Volume")}">${volCell(row)}</td>` : ""}
          ${state.cols.trend ? `<td data-label="${t("Trend")}">${trend}</td>` : ""}
-         ${state.cols.page ? `<td class="url-cell mono small" data-label="${t("Page")}" ${row.page ? `data-tip="${esc(row.page)}"` : ""}>${row.page ? PageLink.html(row.page, { text: shortPath(row.page), title: "" }) : '<span class="muted dash">—</span>'}${row.two_pages ? `<span class="warn" role="img" data-tip="${esc(t("Two of your pages rank for it."))}" aria-label="${esc(t("Two pages compete"))}">${icon("triangle-alert")}</span>` : ""}${competingPages(row)}</td>` : ""}
+         ${state.cols.page ? `<td class="url-cell mono small" data-label="${t("Page")}" ${row.page ? `data-tip="${esc(row.page)}"` : ""}>${row.page ? PageLink.html(row.page, { text: shortPath(row.page), title: "" }) : '<span class="muted dash">—</span>'}${row.two_pages ? ` <span class="kw-two" role="img" data-tip="${esc(t("Two of your pages rank for it."))}" aria-label="${esc(t("Two of your pages rank for it."))}">+${num(Math.max(1, otherPages(row).length))}</span>` : ""}</td>` : ""}
          ${state.cols.ai ? `<td data-label="${t("AI")}">${aiCell(row)}</td>` : ""}`;
     // The simpler screens: the keyword is text and the whole row opens the panel (a click, or Enter once the row has focus).
     // data-kwr-open stays on the keyword, holding only its words, so a click on it and the flows that look for it still work.
@@ -394,9 +459,10 @@
     const head = state.engine === "all"
       ? ENGINES.map(([id, label]) => `<th scope="col"><span class="th-engine">${logo(id, 16)}${label}</span></th>`).join("")
       : `${OWN_TOOL[e] ? sortHeader("own", OWN_TOOL[e], "c", t(K.worldCol ? "in its country" : "avg position"), K.worldCol ? t("Search Console's average position in the keyword's own country.") : "", true) : ""}
-         ${K.worldCol ? sortHeader("world", t("All countries"), "c", t("avg position"), t("Search Console's average position across every country.")) : ""}
+         ${K.showWorld ? sortHeader("world", t("All countries"), "c", t("avg position"), t("Search Console's average position across every country.")) : ""}
          ${sortHeader("pos", t("Our check"), "", "", UI.def?.(UI.defKey?.("Scraped results")) || "")}${sortHeader("chg", t("Change"), "c", t("vs last check"))}
          ${state.cols.vol ? sortHeader("vol", t("Impressions"), "c", t("28 days"), t("Search Console impressions, last 28 days. Exact volume isn't available for free.")) : ""}
+         ${state.cols.sv ? sortHeader("sv", t("Volume"), "c", t("a month"), t("Searches a month, with where the number comes from: Bing (Bing's own searches) or a file you added. Never Search Console's impressions, and never Google's volume unless the file is.")) : ""}
          ${state.cols.trend ? `<th scope="col">${t("Trend")}</th>` : ""}${state.cols.page ? `<th scope="col">${t("Page")}</th>` : ""}${state.cols.ai ? `<th scope="col">${t("AI")}</th>` : ""}`;
     const every = rows.length > 0 && rows.every((row) => K.selected.has(row.id));
     K.shownList = { total: view.total, pageFull: every };
@@ -429,6 +495,100 @@
       <button class="btn btn-main btn-small" id="kwr-sel-refresh">${icon("refresh-cw")}${t("Refresh")}</button>
       <button class="btn btn-small" id="kwr-sel-task">${t("Create task")}</button>
       <button class="icon-btn" id="kwr-sel-clear" aria-label="${t("Clear selection")}" data-tip="${t("Clear selection")}">${icon("x")}</button></div>`;
+  }
+
+  /* ---- Check AI Overviews for all keywords (Track C) ---------------------------------------------------------------------
+     The keywords whose AI column says Not checked, on Google, checked once with the tools that read AI Overviews (SerpApi),
+     through the usual Refresh path: its dialog shows how many and what it uses before anything runs. Only this click starts it. */
+  const aiTools = () => (K.tools || []).filter((tool) => tool.gives_ai && (tool.engines || []).includes("google"));
+  const aioUnchecked = (rows) => rows.filter((row) => row.ai?.state === "not-captured");
+  function aioButton(rows) {
+    const n = aioUnchecked(rows).length;
+    if (!n) return "";
+    return `<button type="button" class="btn btn-small" id="kw-aio-all" data-tip="${esc(t("Check AI Overviews for all keywords"))}">${icon("sparkles")}${t("Check AI Overviews")}<b class="tt-count">${num(n)}</b><span class="sr"> · ${esc(t("{n} not checked").replace("{n}", num(n)))}</span></button>`;
+  }
+  function openAioCheck() {
+    const rows = aioUnchecked(allRows()), ids = [...new Set(rows.map((row) => row.keyword_id))];
+    const ready = aiTools().filter((tool) => tool.connected).map((tool) => tool.name);
+    openRefresh(ids, ["google"], 10, "pick", ready, null, { count: ids.length });
+  }
+
+  /* ---- Volumes: where search volume comes from (Track C, plan item 7) ----------------------------------------------------
+     Bing's own searches with the Bing key in Settings, or a file someone adds. Google Ads' own volume stays parked. */
+  async function openVolumes(opener) {
+    UI.openPanel(`${UI.panelHead(t("Search volume"))}<div class="panel-body"><p class="small muted">${t("Loading…")}</p></div>`, opener, { key: "kw-volumes", reopen: () => openVolumes(opener) });
+    await paintVolumes();
+  }
+  async function paintVolumes(note = "") {
+    let src;
+    try { src = await api("GET", "keyword-volumes"); } catch (err) {
+      if ($("#panel")) UI.setHTML($("#panel"), `${UI.panelHead(t("Search volume"))}<div class="panel-body">${UI.failCard(err.message, { title: "Couldn't load the volume sources.", retry: 'id="kw-volumes-retry"' })}</div>`);
+      return;
+    }
+    if (!$("#panel")) return;
+    K.volSrc = src;
+    const siteId = UI.siteIdPicked?.() || allRows()[0]?.site_id || null;
+    const running = siteId && src.bing.running_sites.includes(siteId);
+    const plural = (n, one, many) => t(n === 1 ? one : many).replace("{n}", num(n));
+    const bing = !src.bing.key
+      ? `<p class="note">${icon("info")}<span>${t("Add the Bing Webmaster key in Settings first.")} <button type="button" class="link-btn" data-go="settings">${t("Open Settings")}</button></span></p>`
+      : `<p class="small">${src.bing.keywords ? esc(plural(src.bing.keywords, "{n} keyword has a Bing volume.", "{n} keywords have a Bing volume.")) : ""}</p>
+         ${running ? `<p class="note" role="status">${icon("refresh-cw", "spin")}<span>${t("Bing is being read in the background. Volumes appear as each keyword comes back.")}</span></p>`
+           : `<button type="button" class="btn btn-small" id="kw-vol-bing" ${siteId ? "" : "disabled"}>${t("Get Bing volumes")}</button>`}`;
+    const files = src.files.length
+      ? `<ul class="kw-vol-files">${src.files.map((f) => `<li><span class="kw-vol-fname" dir="auto">${esc(f.name)}</span><span class="small muted">${esc(plural(f.keywords, "{n} keyword", "{n} keywords"))}${f.added_at ? ` · ${esc(UI.fmtStamp(f.added_at))}` : ""}</span><button type="button" class="btn btn-small btn-ghost danger" data-kw-vol-remove="${esc(f.name)}">${icon("trash-2")}${t("Remove")}</button></li>`).join("")}</ul>`
+      : `<p class="small muted">${t("No file yet.")}</p>`;
+    UI.setHTML($("#panel"), `${UI.panelHead(t("Search volume"))}
+      <div class="panel-body kw-vol-panel">
+        ${note}
+        <h3 class="brand-mention">${logo("bing", 16)}<span>${t("From Bing")}</span></h3>
+        <p class="small muted">${t("Bing's own searches, read with the key in Settings. Free.")}</p>
+        ${bing}
+        <h3>${t("From a file")}</h3>
+        <p class="small muted">${t("A CSV with a Keyword column and a Volume column. Country and Month are optional. Keyword Planner's export works as it is.")}</p>
+        <div class="kwr-file"><input class="kwr-file-input" id="kw-vol-file" type="file" accept=".csv,.tsv,.txt" aria-labelledby="kw-vol-file-label"><label class="btn btn-small" for="kw-vol-file" id="kw-vol-file-label">${icon("paperclip")}${t("Add a file")}</label></div>
+        <p id="kw-vol-error" role="alert"></p>
+        <h4 class="kwt-h">${t("Files added")}</h4>
+        ${files}
+        <p class="small muted kw-vol-foot">${t("Search Console's impressions stay in their own column: they are your own impressions, not how often people search.")} ${t("Google's own volume needs a Google Ads account: parked for now.")}</p>
+      </div>`);
+  }
+  async function addVolumeFile(input) {
+    const file = input.files?.[0];
+    if (!file) return;
+    const form = new FormData();
+    form.append("file", file);
+    const box = $("#kw-vol-error");
+    try {
+      const answer = await api("POST", "keyword-volumes/file", undefined, { form });
+      const skipped = answer.skipped ? `<p class="small muted">${esc(t(answer.skipped === 1 ? "{n} row skipped: no number in the volume column." : "{n} rows skipped: no number in the volume column.").replace("{n}", num(answer.skipped)))}</p>` : "";
+      UI.toast(t("Volumes added from {name}").replace("{name}", answer.name));
+      K.stale = true; load();
+      await paintVolumes(skipped);
+    } catch (err) {
+      if (box) UI.setHTML(box, `<span class="error">${icon("octagon-alert")}<span>${esc(t(err.message))}</span></span>`);
+      input.value = "";
+    }
+  }
+  async function removeVolumeFile(button) {
+    const fname = button.dataset.kwVolRemove;
+    if (!window.confirm(t("Remove the volumes from {name}?").replace("{name}", fname))) return;
+    try { await api("DELETE", `keyword-volumes/file?name=${encodeURIComponent(fname)}`); } catch (err) { UI.toast(t(err.message), { kind: "crit" }); return; }
+    UI.toast(t("Volumes from {name} removed").replace("{name}", fname));
+    K.stale = true; load();
+    await paintVolumes();
+  }
+  async function startBing(button) {
+    const siteId = UI.siteIdPicked?.() || allRows()[0]?.site_id;
+    button.disabled = true;
+    try { await api("POST", "keyword-volumes/bing", { site_id: siteId }); UI.toast(t("Bing started")); } catch (err) { UI.toast(t(err.message), { kind: "crit" }); button.disabled = false; return; }
+    await paintVolumes();
+    // Look again now and then while the job runs, so the column fills in without a reload.
+    clearInterval(K.bingPoll);
+    K.bingPoll = setInterval(async () => {
+      if (!K.volSrc?.bing.running_sites.includes(siteId) || !$("#panel .kw-vol-panel")) { clearInterval(K.bingPoll); K.stale = true; load(); return; }
+      await paintVolumes(); K.stale = true; load();
+    }, 5000);
   }
 
   /* ---- By bucket: the board (owner's reference, 2026-11-20) ---------------------------------------------------------------
@@ -672,7 +832,7 @@
       all.forEach((r) => { const c = view(r).change, p = good(r); if (c === null || c === undefined || !p) return; compared += 1; const was = p + c; change += (p <= 10 && was > 10 ? 1 : 0) - (was <= 10 && p > 10 ? 1 : 0); });
       return { change, compared };
     })();
-    const chips = [["all", "All"], ["top3", "Top 3"], ["top10", "Top 10"], ["up", "Up"], ["down", "Down"], ["none", "Not ranked"], ["cited", "Cited by AI"], ["two", "Two pages compete"], ...(K.runFilter?.size ? [["run", "This Refresh"]] : [])];
+    const chips = [["all", "All"], ["top3", "Top 3"], ["top10", "Top 10"], ["up", "Up"], ["down", "Down"], ["none", "Not ranked"], ["cited", "Cited by AI"], ["two", "Two pages"], ...(K.runFilter?.size ? [["run", "This Refresh"]] : [])];
     counts.run = found.filter((r) => K.runFilter?.has(r.id)).length;
     const shown = filtered();
     if (simple()) return simplePage({ title, all, e, good, counts, chips, shown, moved, addButton });
@@ -681,6 +841,7 @@
       <div class="chips" role="group" aria-label="${t("Keywords")}">
         ${chips.map(([id, label]) => `<button class="chip" data-filter="${id}" aria-pressed="${state.filter === id}">${t(label)}<b>${num(counts[id])}</b></button>`).join("")}
         <span style="margin-left:auto" class="table-tools">
+          ${e === "google" && state.engine !== "all" ? aioButton(all) : ""}<button type="button" class="btn btn-small" id="kw-volumes">${icon("activity")}${t("Volumes")}</button>
           <button class="icon-btn" id="density" aria-label="${t(state.dense ? "Comfortable rows" : "Compact rows")}" data-tip="${t(state.dense ? "Comfortable rows" : "Compact rows")}">${icon("rows-3")}</button>
           <button class="icon-btn" id="columns" aria-label="${t("Columns")}" data-tip="${t("Columns")}">${icon("columns-3")}</button>
         </span>
@@ -735,18 +896,22 @@
     const views = [["positions", "Positions"], ["bucket", "By bucket"], ["queries", "Queries"]];
     const positions = state.view !== "bucket" && state.view !== "queries";
     // One search and one Filter (2026-11-12): the chips, the view, compact rows, columns and the per-column filter sit inside it.
-    const active = state.filter !== "all" ? 1 : 0; // the view is its own switch now, not a filter
+    const active = 0; // the chips are on show above the table now (Track C); Filter counts only its per-column filters
     const filterButton = `<button type="button" class="btn btn-small kw-filter-btn" id="kw-filter" aria-expanded="${K.filterOpen ? "true" : "false"}" aria-controls="kw-filter-panel">${icon("filter")}${t("Filter")}<b class="tt-count" id="kw-filter-count" data-base="${active}" ${active ? "" : "hidden"}>${num(active)}</b></button>`;
     const panel = !K.filterOpen ? (positions ? '<span class="kw-tt-slot" data-tt-slot="kw-table" hidden></span>' : "") : `<div class="kw-filter-panel" id="kw-filter-panel" role="group" aria-label="${t("Filter")}">
-        ${positions ? `<div class="kw-fp-row"><span class="kw-fp-lab" id="kw-fp-show">${t("Show")}</span><div class="chips" role="group" aria-labelledby="kw-fp-show">${chips.map(([id, label]) => `<button class="chip" data-filter="${id}" aria-pressed="${state.filter === id}">${t(label)}<b>${num(counts[id])}</b></button>`).join("")}</div></div>` : ""}
         ${positions ? `<div class="kw-fp-row"><span class="kw-fp-lab">${t("Rows")}</span><button type="button" class="btn btn-small" id="density" aria-pressed="${state.dense ? "true" : "false"}">${icon("rows-3")}${t("Compact rows")}</button></div>
-        <div class="kw-fp-row"><span class="kw-fp-lab" id="kw-fp-cols">${t("Columns")}</span><span class="kw-fp-cols" role="group" aria-labelledby="kw-fp-cols">${Object.entries({ vol: "Impressions (28 days)", trend: "Trend", page: "Page", ai: "AI" }).map(([k, label]) => `<label class="opt"><input type="checkbox" class="chk" style="margin:0" data-col="${k}" ${state.cols[k] ? "checked" : ""}>${t(label)}</label>`).join("")}</span></div>
+        <div class="kw-fp-row"><span class="kw-fp-lab" id="kw-fp-cols">${t("Columns")}</span><span class="kw-fp-cols" role="group" aria-labelledby="kw-fp-cols">${Object.entries({ world: "All countries", sv: "Volume", vol: "Impressions (28 days)", trend: "Trend", page: "Page", ai: "AI" }).map(([k, label]) => `<label class="opt"><input type="checkbox" class="chk" style="margin:0" data-col="${k}" ${state.cols[k] ? "checked" : ""}>${t(label)}</label>`).join("")}</span></div>
         <div class="kw-fp-row"><span class="kw-fp-lab">${t("By column")}</span><span class="kw-tt-slot" data-tt-slot="kw-table"></span></div>` : ""}
         <div class="kw-fp-end"><button type="button" class="link-btn" id="kw-filter-close">${t("Close filters")}</button></div>
       </div>`;
     // The view is a switch on the page, never inside Filter: every tool compared (Monday, Notion, ClickUp, HubSpot) shows it.
     const viewSwitch = `<span class="seg kw-views" role="group" aria-label="${esc(t("View"))}">${views.map(([id, label]) => `<button type="button" data-view="${id}" aria-pressed="${(state.view || "positions") === id}">${t(label)}</button>`).join("")}</span>`;
-    const bar = `<div class="kw-bar">${viewSwitch}${positions ? `<div class="kw-find">${TP.search(KW_PAGES, t("Search keywords"))}</div>` : ""}${positions ? `<span class="kw-bar-end">${filterButton}</span>` : ""}</div>${positions ? panel : ""}`; // By bucket and Queries have nothing to filter
+    // Mickaz's chips (owner, 2026-11-20): always on show with their counts, one click, under the search; they follow the
+    // search and the per-column filters, and the pager starts again on page 1 (bind()).
+    const chipRow = `<div class="chips kw-chips" role="group" aria-label="${esc(t("Show"))}">${chips.map(([id, label]) => `<button class="chip" data-filter="${id}" aria-pressed="${state.filter === id}">${t(label)}<b>${num(counts[id])}</b></button>`).join("")}</div>`;
+    const aio = e === "google" && state.engine !== "all" ? aioButton(all) : "";
+    const vols = `<button type="button" class="btn btn-small" id="kw-volumes">${icon("activity")}${t("Volumes")}</button>`;
+    const bar = `<div class="kw-bar">${viewSwitch}${positions ? `<div class="kw-find">${TP.search(KW_PAGES, t("Search keywords"))}</div>` : ""}${positions ? `<span class="kw-bar-end">${aio}${vols}${filterButton}</span>` : ""}</div>${positions ? panel + chipRow : ""}`; // By bucket and Queries have nothing to filter
     const body = state.view === "bucket" ? bar + bucketView(all) : state.view === "queries" ? bar + queriesView() : `${bar}
       ${outOfChecks(all)}
       ${table(shown)}${selectionBar()}`;
@@ -868,9 +1033,9 @@
   };
 
   /* `deeper` is Check deeper's own view of the dialog: { keyword, tools } names the one keyword and the tools that missed it. */
-  function openRefresh(ids, engines, depth = 10, mode = "auto", picked = [], deeper = null) {
+  function openRefresh(ids, engines, depth = 10, mode = "auto", picked = [], deeper = null, aio = null) {
     const unique = [...new Set(ids)];
-    K.refresh = { ids: unique, engines: new Set(engines || [state.engine === "all" ? "google" : state.engine]), depth, mode, picked: new Set(picked), includeRecent: false, paid: false, cap: 5, token: token(), asked: 0, preview: null, deeper };
+    K.refresh = { ids: unique, engines: new Set(engines || [state.engine === "all" ? "google" : state.engine]), depth, mode, picked: new Set(picked), includeRecent: false, paid: false, cap: 5, token: token(), asked: 0, preview: null, deeper, aio };
     $("#dlg").classList.remove("wide");
     renderRefresh();
     $("#dlg").showModal();
@@ -894,6 +1059,7 @@
     const anyPaid = K.tools.some((tool) => tool.paid_on && tool.connected);
     // Check deeper: one keyword on one engine, its tools picked; only the tools that missed it show until All tools.
     const deep = r.deeper, only = deep && !deep.all ? new Set(deep.tools) : null, engine = [...r.engines][0];
+    if (r.aio) { renderAioCheck(r, credit); return; }
     UI.setHTML($("#dlg"), `
       <div class="dlg-head"><h2 id="dlg-title">${t(deep ? "Check deeper" : "Refresh keywords")}</h2><button class="icon-btn" data-close-dlg aria-label="${t("Close")}">${icon("x")}</button></div>
       <div class="dlg-body">
@@ -918,6 +1084,30 @@
         <div id="kwr-summary" aria-live="polite"></div>
       </div>
       <div class="dlg-foot"><span class="left" id="kwr-foot"></span><button class="btn" data-close-dlg>${t("Cancel")}</button><button class="btn btn-main" id="kwr-confirm" disabled>${t(deep ? "Check deeper" : "Refresh")}</button></div>`);
+    updatePreview();
+  }
+
+  /* Check AI Overviews' own view of the dialog: how many keywords, the tools that read AI Overviews only, never paid use. */
+  function renderAioCheck(r, credit) {
+    const tools = aiTools(), lead = t(r.aio.count === 1 ? "{n} keyword has no AI Overview check yet." : "{n} keywords have no AI Overview check yet.").replace("{n}", num(r.aio.count));
+    const none = !tools.some((tool) => tool.connected);
+    UI.setHTML($("#dlg"), `
+      <div class="dlg-head"><h2 id="dlg-title">${t("Check AI Overviews for all keywords")}</h2><button class="icon-btn" data-close-dlg aria-label="${t("Close")}">${icon("x")}</button></div>
+      <div class="dlg-body">
+        <p style="margin-bottom:8px"><b>${esc(lead)}</b></p>
+        <p class="small sec" style="margin:0 0 12px">${t("SerpApi reads Google's AI Overviews: one search per keyword.")}</p>
+        ${none ? `<p class="note warn">${icon("triangle-alert")}<span>${t("Connect a tool that reads AI Overviews in Settings first.")}</span></p>` : ""}
+        <div class="tool-list" id="kwr-tool-list">
+          ${tools.map((tool) => `<label class="tool-row" data-kwr-tool-row="${esc(tool.name)}">
+            <input type="checkbox" class="chk" style="margin:0" data-kwr-tool="${esc(tool.name)}" ${r.picked.has(tool.name) ? "checked" : ""}>
+            ${logo(tool.name, 22)}
+            <span class="tool-main"><span class="t">${esc(t(tool.name))}</span><span class="d">${esc(credit(tool))}</span></span>
+            <span class="tool-checks"></span></label>`).join("")}
+        </div>
+        <div id="kwr-summary" aria-live="polite"></div>
+      </div>
+      <div class="dlg-foot"><span class="left" id="kwr-foot"></span><button class="btn" data-close-dlg>${t("Cancel")}</button><button class="btn btn-main" id="kwr-confirm" disabled>${t("Check AI Overviews")}</button></div>`);
+    if (none) { r.picked.clear(); UI.setHTML($("#kwr-summary"), ""); paintToolRows(null); return; }
     updatePreview();
   }
 
@@ -990,7 +1180,7 @@
   function confirmWords(answer) {
     // Searches as the tools count them: a check past the first page is more than one search on a tool that counts credits.
     const used = answer.tools.filter((p) => p.checks), n = used.reduce((sum, p) => sum + (p.left === null ? p.checks : p.credits + p.paid_credits || p.checks), 0);
-    const label = K.refresh?.deeper
+    const label = K.refresh?.deeper || K.refresh?.aio
       ? (used.length === 1 ? plural2(n, "Check with {tool} · {n} search", "Check with {tool} · {n} searches", { tool: brandLabel(used[0].name) }) : plural2(n, "Check · {n} search", "Check · {n} searches"))
       : plural2(n, "Refresh · {n} search", "Refresh · {n} searches");
     return answer.cost ? esc(t("{label} · up to {money}")).replace("{label}", label).replace("{money}", esc(money(answer.cost))) : label;
@@ -1301,8 +1491,14 @@
      lights its line. Labels never sit on the chart itself: they collide, and a phone has no hover. */
   const TL_SPANS = [[90, "3 months"], [180, "6 months"], [365, "12 months"]];
   window.KW_TIMELINE_RESET = () => { K.tl = {}; }; // a boost saved or deleted in Backlinks: the charts ask again
-  const TL_KINDS = { link: ["Bought link", "var(--series-1)"], edit: ["Page edit", "var(--series-3)"], task: ["Task done", "var(--good)"], boost: ["Boost URL", "var(--warn)"], google: ["Google update", "var(--crit)"] };
+  /* Links are dashed lines in ink, never a series colour: blue, orange, teal and magenta belong to the pages' lines. */
+  const TL_KINDS = { link: ["Bought link", "var(--text-2)"], found: ["Backlink found", "var(--c-grey)"], edit: ["Page edit", "var(--series-3)"], task: ["Task done", "var(--good)"], boost: ["Boost URL", "var(--warn)"], google: ["Google update", "var(--crit)"] };
   const isoDay = (d) => d.toISOString().slice(0, 10);
+  /* One line per page that ranked (Track C): four at most, in this order (blue, orange, teal, magenta passed the
+     colour-blindness check in both modes, dataviz validator 2026-11-20; violet is left out: it means a competitor), each
+     with its own dash too, so the legend never rests on colour alone. */
+  const PAGE_LINES = [["var(--ch-1)", ""], ["var(--ch-5)", "7 4"], ["var(--ch-3)", "2 3"], ["var(--ch-4)", "9 3 2 3"]];
+  const LINK_KINDS = new Set(["link", "found"]);
   function timelineFor(info, row, view) {
     const span = K.tlSpan || 90;
     const to = isoDay(new Date()), fromD = new Date(); fromD.setUTCDate(fromD.getUTCDate() - span);
@@ -1317,11 +1513,11 @@
     }
     return K.tl[key];
   }
-  function dateChart({ from, to, series, dots, marks, bands, weekly }) {
-    const w = 680, h = 244, left = 30, right = 10, top = 10, bottom = 50; // bottom: the markers' strip, then the dates
+  function dateChart({ from, to, lines, dots, marks, bands, weekly }) {
+    const w = 680, h = 244, left = 30, right = 10, top = 22, bottom = 50; // top: the links' labels; bottom: the markers' strip, then the dates
     const t0 = Date.parse(`${from}T12:00:00Z`), t1 = Date.parse(`${to}T12:00:00Z`);
     const x = (day) => left + ((Date.parse(`${day}T12:00:00Z`) - t0) / Math.max(1, t1 - t0)) * (w - left - right);
-    const known = series.map((p) => p.p).filter((v) => v !== null && v !== undefined);
+    const known = lines.flatMap((line) => line.points.map((p) => p.p)).filter((v) => v !== null && v !== undefined);
     const worst = Math.max(10, ...known);
     const step = [1, 2, 5, 10, 20, 25, 50].find((n) => (worst - 1) / n <= 4) || 50;
     const hi = 1 + step * Math.max(1, Math.ceil((worst - 1) / step));
@@ -1329,22 +1525,37 @@
     const ticks = Array.from({ length: Math.round((hi - 1) / step) + 1 }, (_, i) => 1 + i * step);
     // A gap where Search Console had no impressions (a missing day, or week): never a line through a made-up number.
     const gapDays = weekly ? 8 : 1.5;
-    let path = "", prev = null;
-    series.forEach((p) => {
-      if (p.p === null || p.p === undefined) { prev = null; return; }
-      const far = prev && (Date.parse(p.day) - Date.parse(prev)) / 86400000 > gapDays;
-      path += `${!prev || far ? "M" : "L"}${x(p.day).toFixed(1)},${y(p.p).toFixed(1)}`;
-      prev = p.day;
-    });
+    const pathOf = (points, gap) => {
+      let path = "", prev = null;
+      points.forEach((p) => {
+        if (p.p === null || p.p === undefined) { prev = null; return; }
+        const far = prev && (Date.parse(p.day) - Date.parse(prev)) / 86400000 > gap;
+        path += `${!prev || far ? "M" : "L"}${x(p.day).toFixed(1)},${y(p.p).toFixed(1)}`;
+        prev = p.day;
+      });
+      return path;
+    };
     const fmt = (d) => UI.fmtDay(d, { day: "numeric", month: "short" });
     const mid = isoDay(new Date((t0 + t1) / 2));
     const bandSvg = bands.map((b, i) => { const a = Math.max(left, x(b.day < from ? from : b.day)), z = Math.min(w - right, x(b.end > to ? to : b.end)); return `<rect class="kwt-band kwt-${b.kind}" data-kwt-i="b${i}" x="${a.toFixed(1)}" y="${top}" width="${Math.max(3, z - a).toFixed(1)}" height="${h - top - bottom}" style="fill:${TL_KINDS[b.kind][1]}"><title>${esc(`${t(TL_KINDS[b.kind][0])}: ${b.text} (${fmt(b.day)} – ${b.rolling ? t("still rolling out") : fmt(b.end)})`)}</title></rect>`; }).join("");
-    /* What was done sits on a strip under the plot, one marker a day, never a line across it (benchmark 2026-11-20: Semrush,
-       Ahrefs, SE Ranking, Search Console). Markers closer than PIN_GAP px merge into one with their count. Pointing at one,
-       or at its row in "What we did", draws its dashed guide up through the chart. */
-    const PIN_GAP = 14, stripY = h - bottom + 14;
+    /* Bought links and other backlinks to the ranking page: a labelled vertical line on their day, as Mickaz draws them
+       (owner, 2026-11-20). Labels closer than LABEL_GAP px share one label ("site.fr +1"). Edits and tasks stay on the
+       strip under the plot, one marker a day, their dashed guide shown when pointed at. */
+    const LABEL_GAP = 13, PIN_GAP = 14, stripY = h - bottom + 14;
+    const linkMarks = marks.map((m, i) => ({ m, i, at: x(m.day) })).filter((p) => LINK_KINDS.has(p.m.kind)).sort((a, b) => a.at - b.at);
+    const labelGroups = [];
+    linkMarks.forEach((p) => { const last = labelGroups[labelGroups.length - 1]; if (last && p.at - last.at0 < LABEL_GAP) last.items.push(p); else labelGroups.push({ at0: p.at, items: [p] }); });
+    const linkSvg = labelGroups.map((g) => {
+      const first = g.items[0].m, count = g.items.reduce((n, p) => n + (p.m.count || 1), 0);
+      const words = g.items.map((p) => `${fmt(p.m.day)} · ${t(TL_KINDS[p.m.kind][0])}: ${p.m.text}${p.m.count > 1 ? ` +${p.m.count - 1}` : ""}`).join("\n");
+      const label = `${first.text}${count > 1 ? ` +${count - 1}` : ""}`;
+      const lx = g.items[0].at;
+      return `<g class="kwt-link" data-kwt-ids="${g.items.map((p) => `m${p.i}`).join(" ")}"><title>${esc(words)}</title>
+        ${g.items.map((p) => `<line class="kwt-vline kwt-v-${p.m.kind}" x1="${p.at.toFixed(1)}" x2="${p.at.toFixed(1)}" y1="${top}" y2="${h - bottom}" style="stroke:${TL_KINDS[p.m.kind][1]}"/>`).join("")}
+        <text class="kwt-vlabel" transform="translate(${(lx + 3.5).toFixed(1)},${top + 2}) rotate(90)">${esc(label.length > 22 ? `${label.slice(0, 21)}…` : label)}</text></g>`;
+    }).join("");
     const groups = [];
-    marks.map((m, i) => ({ m, i, at: x(m.day) })).sort((a, b) => a.at - b.at).forEach((p) => {
+    marks.map((m, i) => ({ m, i, at: x(m.day) })).filter((p) => !LINK_KINDS.has(p.m.kind)).sort((a, b) => a.at - b.at).forEach((p) => {
       const last = groups[groups.length - 1];
       if (last && p.at - last.at0 < PIN_GAP) last.items.push(p); else groups.push({ at0: p.at, items: [p] });
     });
@@ -1357,13 +1568,23 @@
         ${g.items.map((p) => `<line class="kwt-guide" x1="${p.at.toFixed(1)}" x2="${p.at.toFixed(1)}" y1="${top}" y2="${stripY - 7}" style="stroke:${TL_KINDS[p.m.kind][1]}"/>`).join("")}
         <circle cx="${cx.toFixed(1)}" cy="${stripY}" r="${count > 1 ? 8 : 5.5}" style="fill:${colour}"/>${count > 1 ? `<text class="kwt-pin-n" x="${cx.toFixed(1)}" y="${stripY + 3.5}" text-anchor="middle">${count > 9 ? "9+" : count}</text>` : ""}</g>`;
     }).join("");
-    const dotSvg = dots ? series.filter((p) => p.p).map((p) => `<circle cx="${x(p.day).toFixed(1)}" cy="${y(p.p).toFixed(1)}" r="3.5" fill="var(--series-1)" stroke="var(--panel-solid)" stroke-width="1.5"><title>${esc(`${fmt(p.day)}: ${p.p}`)}</title></circle>`).join("") : "";
-    const words = known.length ? `${t("Position over time")}: ${fmt(series.find((p) => p.p)?.day || from)} ${known[0]}, ${fmt([...series].reverse().find((p) => p.p)?.day || to)} ${known[known.length - 1]}` : t("Position over time");
+    const lineSvg = lines.map((line, n) => {
+      const [colour, dash] = line.style || PAGE_LINES[0];
+      const dotSvg = dots ? line.points.filter((p) => p.p).map((p) => `<circle cx="${x(p.day).toFixed(1)}" cy="${y(p.p).toFixed(1)}" r="3.5" style="fill:${colour}" stroke="var(--panel-solid)" stroke-width="1.5"><title>${esc(`${fmt(p.day)}: ${p.p}${line.url ? ` · ${shortPath(line.url)}` : ""}`)}</title></circle>`).join("") : "";
+      return `<path class="chart-line kwt-pline" data-kwt-line="${n}" d="${pathOf(line.points, dots ? 1e9 : gapDays)}" style="stroke:${colour}${dash ? `;stroke-dasharray:${dash}` : ""}"/>${dotSvg}`;
+    }).join("");
+    const first = lines[0]?.points.filter((p) => p.p) || [];
+    const words = known.length ? `${t("Position over time")}: ${fmt(first[0]?.day || from)} ${first[0]?.p ?? ""}, ${fmt(first[first.length - 1]?.day || to)} ${first[first.length - 1]?.p ?? ""}${lines.length > 1 ? ` · ${lines.length} ${t("Other pages").toLowerCase()}` : ""}` : t("Position over time");
     return `<svg class="chart kwt-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(words)}">
       ${bandSvg}
       ${ticks.map((v) => `<line x1="${left}" x2="${w - right}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${left - 6}" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join("")}
       ${[[from, "start"], [mid, "middle"], [to, "end"]].map(([d, a]) => `<text x="${x(d).toFixed(1)}" y="${h - 6}" text-anchor="${a}">${esc(fmt(d))}</text>`).join("")}
-      <path class="chart-line" d="${path}"/>${dotSvg}${markSvg}</svg>`;
+      ${linkSvg}${lineSvg}${markSvg}</svg>`;
+  }
+  /* The legend under the chart: each page's line sample, its address (a PageLink) and its impressions. */
+  function pageLegend(lines, extra) {
+    if (lines.length < 2) return "";
+    return `<ul class="kwt-legend" aria-label="${esc(t("Position by page"))}">${lines.map((line) => `<li><svg class="kwt-swatch" width="22" height="8" aria-hidden="true"><line x1="1" x2="21" y1="4" y2="4" style="stroke:${line.style[0]}${line.style[1] ? `;stroke-dasharray:${line.style[1]}` : ""}"/></svg>${PageLink.html(line.url, { text: shortPath(line.url), title: "" })}${line.impressions ? ` <span class="small muted">${num(line.impressions)} ${t("impr.")}</span>` : ""}</li>`).join("")}${extra ? `<li class="small muted">${esc(extra)}</li>` : ""}</ul>`;
   }
   function timelineSection(info, row, view, shownLine) {
     const src = kwbSource(), span = K.tlSpan || 90;
@@ -1372,9 +1593,24 @@
       <span class="seg" role="group" aria-label="${esc(t("Period"))}">${TL_SPANS.map(([d, label]) => `<button type="button" data-kwt-span="${d}" aria-pressed="${span === d}">${t(label)}</button>`).join("")}</span></div>`;
     if (tl === "loading") return `<h3>${t("Position over time")}</h3>${switches}<p class="small muted" role="status">${t("Loading…")}</p>`;
     if (tl.error) return `<h3>${t("Position over time")}</h3>${switches}<p class="error small">${icon("octagon-alert")}<span>${esc(t(tl.error))}</span></p>`;
-    let series, dots = false;
-    if (src === "gsc") series = tl.series;
-    else { series = (shownLine?.points || []).filter((p) => !p.suspect && p.at.slice(0, 10) >= tl.from).map((p) => ({ day: p.at.slice(0, 10), p: p.p || null })); dots = true; }
+    let series, dots = false, lines, more = 0;
+    if (src === "gsc") {
+      series = tl.series;
+      // Two pages or more: one line each, from Search Console's page report (every country), so Google switching pages shows.
+      const pages = (tl.url_lines || []).filter((line) => line.points.length);
+      lines = pages.length >= 2 ? pages.slice(0, PAGE_LINES.length).map((line, n) => ({ ...line, style: PAGE_LINES[n] })) : [{ points: series, style: PAGE_LINES[0] }];
+      more = pages.length >= 2 ? Math.max(0, pages.length - PAGE_LINES.length) : 0;
+    } else {
+      const pts = (shownLine?.points || []).filter((p) => !p.suspect && p.at.slice(0, 10) >= tl.from);
+      series = pts.map((p) => ({ day: p.at.slice(0, 10), p: p.p || null }));
+      dots = true;
+      // Our checks: a line per page each check found, the most found first.
+      const byUrl = new Map();
+      pts.filter((p) => p.p && p.url).forEach((p) => { if (!byUrl.has(p.url)) byUrl.set(p.url, []); byUrl.get(p.url).push({ day: p.at.slice(0, 10), p: p.p }); });
+      const urls = [...byUrl].sort((a, b) => b[1].length - a[1].length);
+      lines = urls.length >= 2 ? urls.slice(0, PAGE_LINES.length).map(([url, points], n) => ({ url, points, style: PAGE_LINES[n] })) : [{ points: series, style: PAGE_LINES[0] }];
+      more = urls.length >= 2 ? Math.max(0, urls.length - PAGE_LINES.length) : 0;
+    }
     const hidden = K.tlHidden || (K.tlHidden = new Set());
     const marks = tl.markers.filter((m) => !hidden.has(m.kind)), bands = tl.bands.filter((b) => !hidden.has(b.kind));
     const kinds = Object.keys(TL_KINDS).filter((k) => tl.markers.some((m) => m.kind === k) || tl.bands.some((b) => b.kind === k) || (k === "link" && tl.undated.length));
@@ -1390,11 +1626,12 @@
     const moved = first && last && known.length > 1 ? Math.round(first.p) - Math.round(last.p) : null;
     const when = (x) => (x.from === x.day ? fmt(x.day) : `${fmt(x.from)} – ${fmt(x.day)}`);
     const lead = last ? `<p class="kwt-lead"><span class="kwb-pos kwt-now">${Math.max(1, Math.round(last.p))}</span> ${moved ? `<span class="kwb-mv ${moved > 0 ? "up" : "down"}">${moved > 0 ? "+" : "−"}${Math.abs(moved)}</span>` : ""} <span class="small muted">${esc(t("{a} ({d1}) → {b} ({d2})").replace("{a}", dec(first.p)).replace("{d1}", when(first)).replace("{b}", dec(last.p)).replace("{d2}", when(last)))}${src === "gsc" ? ` · ${esc(tl.scope === "all" ? t("all countries") : UI.countryName(row.country) || row.country || tl.scope)}${tl.weekly ? ` · ${t("weekly averages")}` : ""}` : ""}</span></p>` : "";
-    const chartHtml = known.length >= 2 ? dateChart({ from: tl.from, to: tl.to, series, dots, marks, bands, weekly: tl.weekly })
+    const hasLinks = marks.some((m) => LINK_KINDS.has(m.kind));
+    const chartHtml = known.length >= 2 ? dateChart({ from: tl.from, to: tl.to, lines, dots, marks, bands, weekly: tl.weekly }) + pageLegend(lines, more ? t("{n} more pages, in the list below").replace("{n}", num(more)) : "") + (hasLinks ? `<p class="small muted kwt-note">${t("Bought links and other backlinks to this page are the dashed lines.")}</p>` : "")
       : `<p class="note">${icon("info")}<span>${t(src === "gsc" ? "No Search Console impressions for this keyword in this period." : "Our checks started on 11 Nov 2026: too few to draw yet.")}</span></p>`;
     const chips = kinds.length ? `<div class="chips kwt-kinds" role="group" aria-label="${esc(t("What we did"))}">${kinds.map((k) => `<button type="button" class="chip brand-mention" data-kwt-kind="${k}" aria-pressed="${!hidden.has(k)}"><i class="kwt-key" style="background:${TL_KINDS[k][1]}" aria-hidden="true"></i>${t(TL_KINDS[k][0])}</button>`).join("")}</div>` : "";
     const rowOf = (m, i, kind) => {
-      const what = m.kind === "link" ? `${m.url ? `<a href="${esc(m.url)}" target="_blank" rel="noopener">${esc(m.text)}</a>` : esc(m.text)}${m.count > 1 ? ` <span class="muted">+${m.count - 1}</span>` : ""}${m.detail ? ` <span class="muted">· ${esc(m.detail)}</span>` : ""}`
+      const what = m.kind === "link" || m.kind === "found" ? `${m.url ? `<a href="${esc(m.url)}" target="_blank" rel="noopener">${esc(m.text)}</a>` : esc(m.text)}${m.count > 1 ? ` <span class="muted">+${m.count - 1}</span>` : ""}${m.detail ? ` <span class="muted">· ${esc(m.detail)}</span>` : ""}`
         : m.kind === "edit" ? `${esc(t("Changed"))}: ${esc(m.text)}`
           : m.kind === "google" || m.kind === "boost" ? `${m.url && m.kind === "google" ? `<a href="${esc(m.url)}" target="_blank" rel="noopener">${esc(m.text)}</a>` : esc(m.text || m.url || "")}${m.rolling ? ` <span class="muted">· ${t("still rolling out")}</span>` : ` <span class="muted">· ${t("until")} ${esc(fmt(m.end))}</span>`}`
             : esc(m.text);
@@ -1451,7 +1688,10 @@
         <div class="kv">
           ${own ? `<div><div class="k">${brandLabel(own)}</div><div class="v">${view.own === null || view.own === undefined ? '<span class="muted">—</span>' : `${dec(Math.round(view.own * 10) / 10)} <span class="small muted" style="font-weight:400">${t("average")}</span>`}</div></div>` : ""}
           <div><div class="k">${t("Page")}</div><div class="mono small kw-page-url" style="margin-top:6px" dir="auto">${row.page ? pageAddress(row.page) : "—"}</div></div>
+          <div><div class="k">${t("Volume")}</div><div class="v">${volPanel(row)}</div></div>
+          <div><div class="k">${t("Impressions (28 days)")}</div><div class="v">${impressionsOf(row) === null || impressionsOf(row) === undefined ? '<span class="muted">—</span>' : num(impressionsOf(row))}</div></div>
         </div>
+        ${otherPagesSection(row)}
         ${timelineSection(info, row, view, shownLine)}
         <h3>${t("Results")} · ${esc(place)}</h3>
         <table class="mini" id="tool-table"><thead><tr><th>${t("Tool")}</th><th>${t("Position")}</th><th>${t("Checked")}</th><th>${t("Status")}</th><th><span class="sr">${t("Action")}</span></th></tr></thead><tbody>${toolRows}${suspects}</tbody></table>
@@ -1471,6 +1711,23 @@
       <div class="panel-foot">${task}<button class="btn btn-ghost danger" id="kwr-forget">${t("Stop tracking")}</button></div>`);
     const body = $(".panel-body", $("#panel"));
     if (body) body.scrollTop = scroll;
+  }
+
+  /* Volume in the panel: the number, its source in full, and the months the source has (Track C). */
+  function volPanel(row) {
+    const v = row.search_volume;
+    if (!v) return `<span class="small muted">${t("No search volume yet. Add a file or get Bing's in Volumes.")}</span>`;
+    const months = (v.months || []).length > 1 ? `<span class="kw-vol-months small muted">${v.months.map((m) => `${esc(monthName(m.month))} ${num(m.searches)}`).join(" · ")}</span>` : "";
+    return `${num(v.searches)} <span class="small muted" style="font-weight:400">${esc(volSource(v))}</span>${months}`;
+  }
+  /* Every other page of mine that shows for the keyword, each a link with its impressions and our last check's position:
+     the rows keep only a "+1" mark, and the Two pages chip finds these keywords (Track C). */
+  function otherPagesSection(row) {
+    const others = otherPages(row);
+    if (!row.two_pages || !others.length) return "";
+    const fact = (p) => [p.position ? `#${p.position}` : "", p.impressions !== null && p.impressions !== undefined ? `${num(p.impressions)} ${t("impr.")}` : ""].filter(Boolean).join(" · ");
+    return `<h3>${t("Other pages ranking")} <span class="kw-count">${num(others.length)}</span></h3>
+      <ul class="kw-other-pages">${others.map((p) => `<li><span class="mono small" dir="auto">${PageLink.html(p.url, { text: shortPath(p.url), title: p.url })}</span>${fact(p) ? `<span class="small muted">${esc(fact(p))}</span>` : ""}</li>`).join("")}</ul>`;
   }
 
   function findOf(row, e, view) {
@@ -1627,7 +1884,7 @@
 
     // "What we did": pointing at a row (or focusing it) lights its line on the chart.
     // A marker under the chart lights its rows in "What we did", and a row lights its marker.
-    const lightRows = (e, on) => { const pin = e.target.closest?.(".kwt-pin"); if (!pin) return; pin.classList.toggle("on", on); pin.dataset.kwtIds.split(" ").forEach((id) => $(`[data-kwt-row="${id}"]`)?.classList.toggle("on", on)); };
+    const lightRows = (e, on) => { const pin = e.target.closest?.(".kwt-pin, .kwt-link"); if (!pin) return; pin.classList.toggle("on", on); pin.dataset.kwtIds.split(" ").forEach((id) => $(`[data-kwt-row="${id}"]`)?.classList.toggle("on", on)); };
     document.addEventListener("mouseover", (e) => lightRows(e, true)); document.addEventListener("mouseout", (e) => lightRows(e, false));
     const lightMark = (e, on) => { const li = e.target.closest?.("[data-kwt-row]"); if (!li) return; $$(`.kwt-chart [data-kwt-i="${li.dataset.kwtRow}"], .kwt-chart [data-kwt-ids~="${li.dataset.kwtRow}"]`).forEach((n) => n.classList.toggle("on", on)); };
     document.addEventListener("mouseover", (e) => lightMark(e, true)); document.addEventListener("mouseout", (e) => lightMark(e, false));
@@ -1641,12 +1898,11 @@
       if ((el = hit("[data-kwt-src]"))) { try { localStorage.setItem("seocc2-kwb-source", el.dataset.kwtSrc); } catch { /* this visit only */ } K.bm = null; if (K.panel) paintPanel(K.panel); $(`[data-kwt-src="${el.dataset.kwtSrc}"]`)?.focus({ preventScroll: true }); return; }
       if ((el = hit("[data-kwt-span]"))) { K.tlSpan = Number(el.dataset.kwtSpan); if (K.panel) paintPanel(K.panel); $(`[data-kwt-span="${K.tlSpan}"]`)?.focus({ preventScroll: true }); return; }
       if ((el = hit("[data-kwt-kind]"))) { const k = el.dataset.kwtKind; K.tlHidden ||= new Set(); K.tlHidden.has(k) ? K.tlHidden.delete(k) : K.tlHidden.add(k); if (K.panel) paintPanel(K.panel); $(`[data-kwt-kind="${k}"]`)?.focus({ preventScroll: true }); return; }
-      if ((el = hit("[data-kw-also]"))) {
-        const id = el.dataset.kwAlso; K.alsoOpen ||= new Set();
-        K.alsoOpen.has(id) ? K.alsoOpen.delete(id) : K.alsoOpen.add(id);
-        UI.render({ keepScroll: true }); $(`[data-kw-also="${CSS.escape(id)}"]`)?.focus({ preventScroll: true });
-        return;
-      }
+      if (hit("#kw-aio-all")) { openAioCheck(); return; }
+      if ((el = hit("#kw-volumes"))) { openVolumes(el); return; }
+      if (hit("#kw-volumes-retry")) { paintVolumes(); return; }
+      if ((el = hit("#kw-vol-bing"))) { startBing(el); return; }
+      if ((el = hit("[data-kw-vol-remove]"))) { removeVolumeFile(el); return; }
       if (hit("#kw-filter")) { K.filterOpen = !K.filterOpen; UI.render({ keepScroll: true }); $(K.filterOpen ? "#kw-filter-panel button" : "#kw-filter")?.focus({ preventScroll: true }); return; }
       if (hit("#kw-filter-close")) { K.filterOpen = false; UI.render({ keepScroll: true }); $("#kw-filter")?.focus({ preventScroll: true }); return; }
       // Inside Filter, a chip or a view redraws the screen: the keyboard stays on what was pressed.
@@ -1719,6 +1975,7 @@
       if (el.id === "kwr-paid") { K.refresh.paid = el.checked; $("#kwr-paid-cap").hidden = !el.checked; updatePreview(); return; }
       if (el.id === "kwr-cap") { K.refresh.cap = Number(el.value) || 0; updatePreview(); return; }
       if (el.dataset?.col && el.closest("#kw-filter-panel")) { const k = el.dataset.col; setTimeout(() => $(`#kw-filter-panel [data-col="${k}"]`)?.focus({ preventScroll: true }), 0); }
+      if (el.id === "kw-vol-file") { addVolumeFile(el); return; }
       if (el.id === "kwr-add-file") { const f = el.files?.[0]; $("#kwr-add-file-name").textContent = f ? f.name : t("No file chosen"); return; }
       if (el.id === "kwr-add-country" || el.id === "kwr-add-language") { shareMarket(); return; }
       if (el.id === "kwr-line") { K.panel.line = el.value; paintPanel(K.panel); $("#kwr-line")?.focus(); return; }
@@ -1752,8 +2009,12 @@
       UI = helpers;
       ({ t, esc, icon, num, dec, status, logo, $, $$, state } = helpers);
       bind();
+      // Volume is a column of its own (Track C). The simpler screens show the trend line and fold Impressions into Columns,
+      // so Volume and the trend fit without the table growing wider (the panel still has the impressions).
+      if (state.cols.sv === undefined) state.cols.sv = true;
       if (simple()) {
-        state.cols.trend = false; // Trend leaves the default columns (Columns turns it on; the panel has the history)
+        state.cols.vol = false;
+        if (state.cols.world === undefined) state.cols.world = false;
         // The warm-up and the menu hover fetch what Keywords first shows (screen-data.js).
         window.SCREEN_DATA?.screen?.("keywords", () => ["rankings", "tools"]);
       }

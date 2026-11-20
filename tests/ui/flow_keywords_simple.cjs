@@ -58,21 +58,21 @@ const errorsOf = (run) => [...run.problems.filter((p) => !/Failed to load resour
   check(!(await has(page, "#kw-table button.kw")) && await page.locator("#kw-table [data-kwr-open]").count() >= 8, "the keyword is text, not a button, and still names its row");
   check(!(await has(page, "#kw-table [data-kwr-deeper]")), "no Check deeper in the rows (it's in the panel)");
   const heads = () => page.locator("#kw-table thead th").allInnerTexts().then((x) => x.join("|"));
-  check(!(await heads()).includes("Trend"), "Trend isn't a default column");
+  check((await heads()).includes("Trend") && (await heads()).includes("Volume") && !(await heads()).includes("Impressions"), "Trend and Volume are default columns, Impressions is in Columns (Track C, 2026-11-20)");
   const src = await text(page, "#kw-src");
   check(/Checked by:/.test(src), `the tools and ages are said once under the table (${src.trim()})`);
-  check(await has(page, ".kw-bar #kw-filter") && !(await has(page, ".kw-bar .chip")) && !(await has(page, "#density")), "one search and one Filter: the chips, Compact rows and Columns are inside it");
-  const controls = await page.evaluate(seen);
-  check(controls <= 30, `fewer controls at rest, 39 before the Filter panel (${controls})`);
+  check(await has(page, ".kw-bar #kw-filter") && await page.locator(".kw-chips .chip").count() === 8 && !(await has(page, "#density")), "one search and one Filter, the chips always on show under them (Track C, 2026-11-20); Compact rows and Columns inside Filter");
+  const controls = await page.evaluate(seen), inRows = await page.locator("#kw-table tbody :is(button, a[href], input)").evaluateAll((els) => els.filter((el) => el.getBoundingClientRect().width > 1 && !el.closest(".tt-pick, .tt-own-pick")).length);
+  check(controls - inRows <= 40, `controls at rest outside the rows, the eight chips now on show (${controls - inRows})`);
   check(!(await has(page, "[data-lv-ideas]")), "Keyword ideas left the screen (it's in Add keywords)");
 
   // ---- Filter: the chips, the view, Columns and Compact rows ---------------------------------------------------------------------
   await page.click("#kw-filter"); await settle(page, 300);
-  check(await page.getAttribute("#kw-filter", "aria-expanded") === "true" && await has(page, "#kw-filter-panel .chip") && !(await has(page, "#kw-filter-panel [data-view]")), "Filter opens the chips, and the view stays outside it");
+  check(await page.getAttribute("#kw-filter", "aria-expanded") === "true" && !(await has(page, "#kw-filter-panel .chip")) && !(await has(page, "#kw-filter-panel [data-view]")), "Filter opens rows and columns; the chips and the view stay outside it");
   await page.screenshot({ path: `${out}/s02-more.png`, clip: { x: 260, y: 0, width: 1180, height: 560 } });
-  await page.check('#kw-filter-panel [data-col="trend"]'); await settle(page, 400);
-  check((await heads()).includes("Trend"), "Columns turns Trend on");
-  await page.uncheck('#kw-filter-panel [data-col="trend"]'); await settle(page, 300);
+  await page.check('#kw-filter-panel [data-col="vol"]'); await settle(page, 400);
+  check((await heads()).includes("Impressions"), "Columns turns Impressions on");
+  await page.uncheck('#kw-filter-panel [data-col="vol"]'); await settle(page, 300);
   await page.click("#density"); await settle(page, 300);
   check(await has(page, ".table-wrap.dense #kw-table"), "Compact rows still works from Filter");
   await page.click("#density"); await settle(page, 300);

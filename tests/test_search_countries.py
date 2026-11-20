@@ -120,7 +120,8 @@ def test_keywords_get_the_search_console_position_in_their_own_country_and_impre
         _query_country(engine, site, END - timedelta(days=n), "fra", "sofa repair", 1, 60, 8.0)
         _query_country(engine, site, END - timedelta(days=n), "usa", "sofa repair", 0, 40, 23.0)
     [row] = rankings.listing(engine, site)["rows"]
-    assert row["impressions"] == row["volume"] == 300  # our own 28 days of impressions, under its real name
+    assert row["impressions"] == 300 and "volume" not in row  # our own 28 days of impressions, under its real name only
+    assert row["search_volume"] is None  # no source gave a search volume: never the impressions
     assert row["own_country"] == {"country": "FR", "position": 8.0, "impressions": 180, "clicks": 3}
     assert row["engines"]["google"]["own"] == pytest.approx(14.0)  # the world average stays where it was
 

@@ -65,8 +65,8 @@ const many = (page, sel, fn) => page.locator(sel).evaluateAll(fn);
   check(tabbable === 0, `Keywords: no plain mark takes a Tab stop (${tabbable})`);
   const heads = await many(page, "#kw-table thead th", (els) => els.map((x) => x.innerText.replace(/\s+/g, " ").trim()));
   check(heads.some((h) => /Change vs last check/.test(h)) && heads.some((h) => /^Our check/.test(h)) && heads.some((h) => /Search Console avg position/.test(h)), `Keywords: plain headers with their period and brand name: ${heads.join(" / ")}`);
-  const ai = await many(page, ".kw-ai-miss", (els) => els.map((x) => x.textContent));
-  check(ai.length > 0 && ai.every((x) => /Not cited/.test(x)), "Keywords: Not cited stands out with an icon and a word");
+  const ai = await many(page, ".kw-ai", (els) => els.map((x) => x.textContent));
+  check(ai.length > 0 && ai.every((x) => /^AIO/.test(x)), "Keywords: an AI Overview reads AIO, with \"cited\" beside it when the site is a source (Track C, 2026-11-20)");
 
   // Check deeper: one cost line, the cost on the button
   const deeper = await page.$("[data-kwr-deeper]");
@@ -140,7 +140,7 @@ const many = (page, sel, fn) => page.locator(sel).evaluateAll(fn);
 
   // The side panel: even ticks, the host kept whole
   await page.click("#kw-table tbody [data-kwr-open]"); await page.waitForSelector("#tool-table", { timeout: 8000 }); await settle(page, 600);
-  const ticks = await many(page, "#panel svg.chart text", (els) => els.map((x) => x.textContent).filter((x) => /^\d+$/.test(x)).map(Number));
+  const ticks = await many(page, "#panel svg.chart:not(.kwt-chart) text", (els) => els.map((x) => x.textContent).filter((x) => /^\d+$/.test(x)).map(Number));
   const steps = ticks.slice(1).map((v, i) => v - ticks[i]);
   check(ticks.length < 2 || new Set(steps).size === 1, `Panel: the position history's ticks are even: ${ticks.join(",")}`);
   const host = await one(page, ".kw-page-url", (x) => x.querySelector(".nowrap")?.textContent || "");
@@ -157,11 +157,11 @@ const many = (page, sel, fn) => page.locator(sel).evaluateAll(fn);
       const table = document.querySelector("#kw-table"), content = document.querySelector(".content");
       return [...content.querySelectorAll("button, input, select, a")].filter((el) => el.offsetParent && (el.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING) && !el.closest(".kw-engines, .tiles, .kwr-phone-acts, .kw-views")).map((el) => el.id || (el.matches("[data-tp-search]") ? "search" : el.textContent.trim()));
     });
-    check(before.length === 2 && before.includes("kw-filter"), `Simple: one search and one Filter before the first row, besides the view switch (2026-11-20): ${before.join(", ")}`);
+    check(before.includes("kw-filter") && before.includes("kw-volumes") && before.filter((x) => /^(All|Top|Up|Down|Not ranked|Cited|Two)/.test(x)).length === 8, `Simple: search, Volumes, Filter and the eight chips before the first row (Track C, 2026-11-20): ${before.join(", ")}`);
     await p.click("#kw-filter"); await settle(p, 400);
-    check((await p.locator("#kw-filter-panel [data-filter]").count()) >= 8 && !(await p.$("#kw-filter-panel [data-view]")) && Boolean(await p.$(".kw-bar .kw-views [data-view]")) && Boolean(await p.$("#kw-filter-panel #density")), "Simple: the chips and compact rows are inside Filter, the view is a switch beside it");
-    await p.click('#kw-filter-panel [data-filter="top10"]'); await settle(p, 500);
-    check(await p.evaluate(() => document.activeElement?.dataset.filter === "top10") && (await p.textContent("#kw-filter-count")) === "1", "Simple: a chip keeps the keyboard and Filter counts it");
+    check(!(await p.$("#kw-filter-panel [data-filter]")) && !(await p.$("#kw-filter-panel [data-view]")) && Boolean(await p.$(".kw-bar .kw-views [data-view]")) && Boolean(await p.$("#kw-filter-panel #density")), "Simple: compact rows are inside Filter, the chips and the view outside it");
+    await p.click('.kw-chips [data-filter="top10"]'); await settle(p, 500);
+    check(await p.evaluate(() => document.activeElement?.dataset.filter === "top10") && await p.getAttribute('.kw-chips [data-filter="top10"]', "aria-pressed") === "true", "Simple: a chip keeps the keyboard and shows it's on");
     await p.screenshot({ path: `${OUT}/simple-filter.png` });
     await b.close();
   }

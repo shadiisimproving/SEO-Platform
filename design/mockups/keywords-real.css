@@ -114,11 +114,6 @@ html[data-simple="1"] #panel-root:has(#panel.wide) ~ #tray-root .tray { right: c
 /* In the 760 px panel the position history keeps the size it has in the narrow one, instead of growing with the width. */
 html[data-simple="1"] #panel.wide svg.chart { display: block; width: 100%; max-width: 520px; height: auto; }
 /* The other pages of yours that show up for a keyword, listed under the main one. */
-.url-cell .kw-also { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 2px; }
-.url-cell .kw-also li { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.url-cell .kw-also .warn { font-family: var(--font); font-weight: 600; margin-right: 2px; }
-.url-cell .kw-also .muted { font-family: var(--font); }
-.url-cell .kw-also .link-btn { font-family: var(--font); font-weight: 600; padding: 2px 0; }
 /* By bucket: the board (keywords-real.js bucketView). One column per position band, a 3 px line in the band's colour on top,
    one card per keyword. The position badge is a solid fill dark enough for white figures in both themes. */
 .kwb-board { --kwb-top3: #15803d; --kwb-top10: #1a72b5; --kwb-top20: #b45309; --kwb-top50: #c2410c; --kwb-out: #64748b;
@@ -193,3 +188,50 @@ html[data-simple="1"] #panel.wide svg.chart { display: block; width: 100%; max-w
 .kwt-what { overflow-wrap: anywhere; }
 @media (max-width: 640px) { .kwt-list li { grid-template-columns: 56px minmax(0, 1fr); } .kwt-list .kwt-kind { grid-column: 2; } .kwt-list .kwt-what { grid-column: 1 / -1; padding-left: 66px; } }
 html[data-simple="1"] #panel.wide svg.chart.kwt-chart, svg.chart.kwt-chart { max-width: none; }
+
+/* ---- Track C (2026-11-20): chips on show, the row's trend, Volume with its source, AIO / cited, one line per page ---------- */
+/* The chips sit under the search, always on show; Filter keeps only the per-column filters, rows and columns. */
+html[data-simple="1"] .kw-chips { margin: -2px 0 12px; }
+html[data-simple="1"] .kw-bar-end .tt-count, .table-tools #kw-aio-all .tt-count { margin-inline-start: 2px; }
+/* The trend: 1 at the top, so up is better; a dashed line where it started; the last point a dot. */
+.kw-spark { display: inline-flex; vertical-align: middle; }
+.kw-spark-svg { display: block; overflow: visible; }
+.kw-spark-line { fill: none; stroke: var(--series-1); stroke-width: 1.75; stroke-linejoin: round; stroke-linecap: round; }
+.kw-spark-start { stroke: var(--line-2, var(--line)); stroke-width: 1; stroke-dasharray: 2 2; }
+.kw-spark-end { fill: var(--series-1); stroke: var(--panel-solid, #fff); stroke-width: 1; }
+/* Volume: the number, then its source as a quiet tag (Bing, File); the full source is the tooltip and the panel's line. */
+.kw-vol { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; }
+.kw-vsrc { font-size: var(--fs-min, 12px); font-weight: 500; color: var(--text-2); padding: 0 6px; border-radius: 999px; background: var(--c-grey-pale); line-height: 18px; }
+.kw-vol-months { display: block; margin-top: 4px; font-weight: 400; }
+/* AI: "AIO" when an AI Overview showed, "cited" beside it when the site is one of its sources. */
+.kw-ai { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
+.kw-aio { font-size: var(--fs-min, 12px); font-weight: 600; color: var(--text-2); padding: 0 6px; border-radius: 999px; background: var(--c-grey-pale); line-height: 20px; }
+.kw-cited { display: inline-flex; align-items: center; gap: 3px; font-size: var(--fs-min, 12px); font-weight: 600; color: var(--good-t); padding: 0 7px 0 5px; border-radius: 999px; background: color-mix(in srgb, var(--good-t) 11%, transparent); line-height: 20px; }
+.kw-cited svg { width: 12px; height: 12px; flex: none; }
+/* Two pages: a small "+1" after the page instead of the old "Also …" lines; the panel lists the pages. */
+.kw-two { display: inline-block; margin-inline-start: 4px; font-family: var(--font); font-size: var(--fs-min, 12px); font-weight: 600; color: var(--warn-t); }
+.kw-count { font-weight: 500; color: var(--muted); font-size: 12px; margin-inline-start: 4px; }
+.kw-other-pages { list-style: none; margin: 0 0 6px; padding: 0; display: grid; gap: 4px; }
+.kw-other-pages li { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; padding: 6px 8px; border-radius: 6px; background: var(--hover); }
+.kw-other-pages li > span:first-child { min-width: 0; overflow-wrap: anywhere; }
+/* The chart: bought links and other backlinks as labelled vertical lines; one line per page, with a legend. */
+.kwt-chart .kwt-vline { stroke-width: 1.25; stroke-dasharray: 4 3; opacity: .75; }
+.kwt-chart .kwt-v-found { stroke-dasharray: 1.5 3; }
+.kwt-chart .kwt-link:hover .kwt-vline, .kwt-chart .kwt-link.on .kwt-vline { opacity: 1; stroke-width: 2; }
+.kwt-chart .kwt-vlabel { font-size: 10px; fill: var(--text-2); }
+.kwt-chart .kwt-pline { filter: none; }
+.kwt-legend { list-style: none; margin: 6px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; }
+.kwt-legend li { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+.kwt-legend li a { font-family: var(--mono, monospace); font-size: 12px; overflow-wrap: anywhere; }
+.kwt-swatch line { stroke-width: 2.5; stroke-linecap: round; }
+.kwt-note { margin: 6px 0 0; }
+/* The Volumes panel. */
+.kw-vol-panel h3 { display: flex; align-items: center; gap: 6px; }
+.kw-vol-files { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.kw-vol-files li { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name btn" "meta btn"; gap: 0 10px; align-items: center; padding: 6px 8px; border-radius: 6px; background: var(--hover); }
+.kw-vol-fname { grid-area: name; font-weight: 600; overflow-wrap: anywhere; }
+.kw-vol-files li > .small { grid-area: meta; }
+.kw-vol-files li > .btn { grid-area: btn; }
+.kw-vol-foot { margin-top: 16px; }
+#kw-vol-error:empty { display: none; }
+.kwt-chart .kwt-vlabel { paint-order: stroke; stroke: var(--panel-solid, #fff); stroke-width: 3px; stroke-linejoin: round; }

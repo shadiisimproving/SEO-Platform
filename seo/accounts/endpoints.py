@@ -204,6 +204,11 @@ ENDPOINTS: dict[str, tuple[str, str, str]] = {
     "keywords_api.timeline": ("keywords competitors overview", "read", ""),
     "keywords_api.gsc_positions": ("keywords", "read", "all"),
     "keywords_api.forget": ("keywords", "write", ""),
+    # Search volume: the files are one list every site shares (keyed by the keyword's words), Bing is read per site, free.
+    "keywords_api.volume_sources": ("keywords", "read", "free"),
+    "keywords_api.volume_file": ("keywords", "global", "free"),
+    "keywords_api.volume_file_remove": ("keywords", "global", "free"),
+    "keywords_api.volume_bing": ("keywords", "write", ""),
     "keywords_api.restore": ("keywords", "write", ""),  # its keyword_id is checked through site_id (see OWNER_OVERRIDES)
     "keywords_api.preview": ("keywords competitors ai", "read", ""),
     "keywords_api.start": ("keywords competitors ai", "paid?", ""),

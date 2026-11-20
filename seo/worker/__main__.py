@@ -15,7 +15,7 @@ from seo.insights import engine as insights_engine  # noqa: F401 - registers the
 from seo.links import service as links_service  # registers the links checker's job handler
 from seo.notifications import new_queries  # noqa: F401 - registers the new-search notification's job handler
 from seo.ai_brand import service as ai_brand  # noqa: F401 - registers the What AI says job handler (button only, never scheduled)
-from seo.serp import auto_ddg, refresh  # noqa: F401 - refresh registers the Refresh button's job handler. Only collect-due starts one: auto_ddg's free DuckDuckGo check.
+from seo.serp import auto_ddg, refresh, volumes  # noqa: F401 - volumes registers Get Bing volumes' job (button only). refresh registers the Refresh button's job handler. Only collect-due starts one: auto_ddg's free DuckDuckGo check.
 from seo.worker.runner import EXIT_CODES, tick
 
 
