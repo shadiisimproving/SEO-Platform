@@ -20,6 +20,7 @@ window.ICONS = {
 "chevron-left": "<path d=\"m15 18-6-6 6-6\" />",
 "chevron-right": "<path d=\"m9 18 6-6-6-6\" />",
 "circle-check": "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"m9 12 2 2 4-4\" />",
+"contrast": "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <path d=\"M12 18a6 6 0 0 0 0-12v12z\" />",
 "circle-dot": "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <circle cx=\"12\" cy=\"12\" r=\"1\" />",
 "clock": "<circle cx=\"12\" cy=\"12\" r=\"10\" /> <polyline points=\"12 6 12 12 16 14\" />",
 "columns-3": "<rect width=\"18\" height=\"18\" x=\"3\" y=\"3\" rx=\"2\" /> <path d=\"M9 3v18\" /> <path d=\"M15 3v18\" />",

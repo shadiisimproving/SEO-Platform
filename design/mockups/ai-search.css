@@ -308,6 +308,75 @@ html[data-simple="1"] .ai-aio-line .ai-aio-said { font-weight: 400; color: var(-
 .ab-sug h3 { font-size: 13px; margin: 0; }
 .ab-sug ul { list-style: none; margin: 6px 0 0; padding: 0; }
 .ab-sug li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; font-size: 13px; }
+/* "On your site?" (2026-11-20): a mark on every point, the page that says it, a Task on Missing; a ring of the totals */
+.ab-mark-row { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.ab-mark svg.i { width: 12px; height: 12px; }
+.ab-mark-page { font-size: 12px; color: var(--text-2); }
+.ab-mark-row .btn-small { min-height: 24px; padding: 0 9px; font-size: 12px; }
+.ab-site-card { display: flex; align-items: center; gap: 14px; padding: 12px 14px; margin: 0 0 14px; border: 1px solid var(--line); border-radius: 12px; max-width: 640px; }
+.ab-site-card.none { align-items: flex-start; }
+.ab-site-ico { display: inline-flex; color: var(--muted); margin-top: 2px; }
+.ab-site-ico svg.i { width: 20px; height: 20px; }
+.ab-site-body { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.ab-site-h { margin: 0; font-size: 13px; font-weight: 600; }
+.ab-site-sub, .ab-site-note { margin: 0; }
+.ab-site-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+.ab-site-keys { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 13px; }
+.ab-site-keys li { display: inline-flex; align-items: center; gap: 6px; }
+.ab-site-keys b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.ab-site-dot { display: inline-flex; width: 18px; height: 18px; align-items: center; justify-content: center; border-radius: 999px; }
+.ab-site-dot svg.i { width: 12px; height: 12px; }
+.ab-site-dot.said { color: var(--good-t); background: color-mix(in srgb, var(--good) 16%, transparent); }
+.ab-site-dot.hinted { color: var(--warn-t); background: color-mix(in srgb, var(--warn) 18%, transparent); }
+.ab-site-dot.missing { color: var(--crit-t); background: color-mix(in srgb, var(--crit) 14%, transparent); }
+.ab-ring { position: relative; flex: none; width: 60px; height: 60px; display: inline-grid; place-items: center; }
+.ab-ring svg { position: absolute; inset: 0; }
+.ab-ring b { position: relative; font-size: 16px; font-weight: 600; }
+.ab-ring circle { fill: none; stroke-width: 7; }
+.ab-ring-track { stroke: var(--track); }
+.ab-ring-arc { stroke-linecap: butt; transition: stroke-dasharray var(--t-slow, .3s) ease-out; }
+.ab-ring-arc.said { stroke: var(--good); } .ab-ring-arc.hinted { stroke: var(--warn); } .ab-ring-arc.missing { stroke: var(--crit); }
+/* "You or them?": one row per competitor (the AI table's look), and both sides in the wide panel */
+.ab-rival { display: inline-flex; align-items: center; gap: 7px; font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.ab-rival .site-logo { border-radius: 4px; flex: none; }
+.ab-vs-table td.r, .ab-vs-table th.r { white-space: nowrap; }
+.ab-trend { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 500; }
+.ab-trend svg.i { width: 14px; height: 14px; }
+.ab-vs-empty { margin: 0 0 10px; font-size: 13px; max-width: 70ch; }
+.ab-vs-empty-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.ab-vs-more { margin: 8px 0 0; }
+.ab-vs-tag { display: inline-flex; align-items: center; gap: 4px; }
+.ab-vs-tag .site-logo { border-radius: 3px; }
+.ab-sug-text { min-width: 0; }
+.ab-vs-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; margin: 0 0 12px; }
+.ab-vs-verdict { margin: 0; display: inline-flex; align-items: center; gap: 8px; font-size: 13px; }
+.ab-vs-ais { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12.5px; }
+.ab-vs-ais li { display: inline-flex; align-items: center; gap: 6px; }
+.ab-vs-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin: 0 0 18px; }
+.ab-vs-col { padding: 12px 14px; min-width: 0; }
+.ab-vs-col + .ab-vs-col { border-left: 1px solid var(--line); }
+.ab-vs-col-h { display: flex; align-items: center; gap: 7px; font-size: 13.5px; margin: 0 0 2px; }
+.ab-vs-col-h .site-logo { border-radius: 4px; flex: none; }
+.ab-vs-col > p { margin: 0 0 8px; }
+.ab-vs-pts { list-style: none; margin: 0; padding: 0; }
+.ab-vs-pts > li { display: flex; flex-direction: column; gap: 4px; padding: 8px 0; border-top: 1px solid var(--line); }
+.ab-vs-pts > li:first-child { border-top: 0; padding-top: 2px; }
+.ab-panel .ab-vs-sub-h { font-size: 13px; margin: 0 0 6px; }
+.ab-vs-panel .ab-p-src { margin: 0 0 18px; }
+.ab-vs-raw { display: flex; flex-direction: column; gap: 6px; margin: 0 0 12px; }
+.ab-vs-raw summary { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; cursor: pointer; font-size: 13px; }
+.ab-vs-raw-bad { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; }
+.ab-vs-raw-bad p { margin: 0; }
+.ab-vs-q { margin: 4px 0 0; }
+/* the brand name, while it is still a guess */
+.ab-name-ask { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; margin: 0 0 14px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line)); background: color-mix(in srgb, var(--warn) 7%, transparent); max-width: 720px; }
+.ab-name-text { display: flex; gap: 8px; align-items: flex-start; margin: 0; font-size: 13px; color: var(--text); }
+.ab-name-text svg.i { width: 16px; height: 16px; flex: none; margin-top: 1px; color: var(--warn-t); }
+.ab-name-ask .ab-inline { max-width: 460px; }
+.ab-name-ask .ab-aka, .ab-name-ask .help { max-width: 460px; margin: 0; }
+.ab-brand-form .help { margin: 4px 0 8px; }
+.ab-brand-form { padding: 0 0 14px; margin: 0 0 12px; border-bottom: 1px solid var(--line); }
+.ab-brand-save { display: flex; }
 /* a phone: the AI table becomes one card per AI, its four facts in a 2 × 2 grid */
 @media (max-width: 640px) {
   .ab-tab { padding: 4px 12px 14px; }
@@ -327,4 +396,8 @@ html[data-simple="1"] .ai-aio-line .ai-aio-said { font-weight: 400; color: var(-
   .ab-row-go { grid-column: 1 / -1; width: auto; text-align: left; }
   .ab-pts-grid { grid-template-columns: 1fr; gap: 18px; }
   .ab-rv > li { grid-template-columns: minmax(0, 1fr) 70px 56px; gap: 8px; }
+  .ab-site-card { align-items: flex-start; }
+  .ab-vs-cols { grid-template-columns: 1fr; }
+  .ab-vs-col + .ab-vs-col { border-left: 0; border-top: 1px solid var(--line); }
+  .ab-name-ask .ab-inline { max-width: none; }
 }

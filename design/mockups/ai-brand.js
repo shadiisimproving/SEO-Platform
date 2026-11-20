@@ -12,10 +12,15 @@
    The server works the numbers out (run.picture, seo/ai_brand/service.py: picture()); this file only filters by AI.
    Asking costs money, so Ask the AIs first shows the count and the price, and asks only on the owner's yes. Nothing here
    runs on a schedule. The questions (the owner's, and suggestions from the brand and the top keywords) are edited in a panel.
+   GEO round (2026-11-20, after Mickaz's "Attributs de marque" and "Benchmark perception IA"): every point carries "On your
+   site?" (Said / Hinted / Missing against the site's own read pages, the page that says it as a link, a Task on Missing) with
+   a ring of the totals; "You or them?" asks "<brand> or <competitor>?" for each followed competitor (one row each: who the AIs
+   pick, since the last run, x/y covered), a row opens both sides in a wide panel with the sources' real links and the
+   answers. An unsaved brand name gets one prompt to set it. Server: seo/ai_brand/onsite.py and service.head_to_head().
    ai-search-view.js draws the tab with window.AIBrand.tab(). Every word is in English and French below. */
 (() => {
   "use strict";
-  const B = { site: undefined, data: null, loading: false, error: "", ask: null, polling: 0, suggest: null, busy: false, showAll: false, pick: "", allPoints: false, allRivals: false };
+  const B = { site: undefined, data: null, loading: false, error: "", ask: null, polling: 0, suggest: null, busy: false, showAll: false, pick: "", allPoints: false, allRivals: false, checking: false };
   window.AIBrand = B;
   const UI = () => window.UI;
   const t = (w) => UI().t(w);
@@ -98,6 +103,184 @@
   }
   const picked = (run) => (B.pick && run.engines.includes(B.pick) ? B.pick : "");
 
+  // ---- "On your site?": Said / Hinted / Missing against the site's own read pages -------------------------------------
+  const MARK = { said: ["good", "check", "Said"], hinted: ["warn", "contrast", "Hinted"], missing: ["crit", "x", "Missing"] };
+  const pathOf = (url) => { try { const u = new URL(url); return `${u.pathname}${u.search}` || "/"; } catch { return String(url || ""); } };
+  const ownHost = () => B.data?.host || UI().siteHostPicked?.() || "";
+  const quote = (w) => (UI().state.lang === "fr" ? `« ${w} »` : `“${w}”`);
+  function markChip(o) {
+    if (!o || !MARK[o.mark]) return "";
+    const [tone, ic, word] = MARK[o.mark];
+    return `<span class="status ${tone} ab-mark" data-mark="${o.mark}"><span aria-hidden="true">${icon(ic)}</span><span class="sr">${esc(t("On your site?"))} </span>${esc(t(word))}</span>`;
+  }
+  /* What a Task on a Missing point says: our own point to write, or a competitor's point to cover. */
+  function pointTask(p, side, rival) {
+    const host = ownHost();
+    const title = (side === "them" ? tf("Cover on your site: {p} (the AIs say it of {r})", { p: quote(p.text), r: rival?.name || rival?.host || "" }) : tf("Say on your site: {p}", { p: quote(p.text) })).slice(0, 180);
+    return {
+      title, host, description: t(side === "them" ? "The AIs give this point to a competitor, and no page of your site covers it. Add it to the page that fits best." : "The AIs say this about you, but no page of your site does. Add it to the page that fits best."),
+      source: { type: "search", label: title, host, facts: [tf(p.ais === 1 ? "{n} AI" : "{n} AIs", { n: num(p.ais) }), t("What AI says")], link: "#ai", key: `ai|onsite|${host}|${side}|${p.key}` },
+    };
+  }
+  /* The mark, the page that says it (a link), and a Task when no page does. */
+  function siteLine(p, side = "us", rival = null) {
+    const o = p.onsite;
+    if (!o || !MARK[o.mark]) return "";
+    const page = o.url && o.mark !== "missing" ? PageLink.html(o.url, { text: pathOf(o.url), host: ownHost(), cls: "mono ab-mark-page" }) : "";
+    const task = o.mark === "missing" ? UI().taskButton(pointTask(p, side, rival), { label: "Task" }) : "";
+    return `<span class="ab-mark-row">${markChip(o)}${page}${task}</span>`;
+  }
+  const countMarks = (points) => { const c = { said: 0, hinted: 0, missing: 0 }; points.forEach((p) => { if (p.onsite && c[p.onsite.mark] !== undefined) c[p.onsite.mark] += 1; }); return c; };
+  /* The ring: one arc per mark, its length its share, the number of points checked in the middle. */
+  function ring(c) {
+    const total = c.said + c.hinted + c.missing, r = 24, len = 2 * Math.PI * r;
+    let at = 0;
+    const arcs = total ? ["said", "hinted", "missing"].filter((m) => c[m]).map((m) => {
+      const part = (c[m] / total) * len, gap = c[m] === total ? 0 : 2;
+      const arc = `<circle class="ab-ring-arc ${m}" r="${r}" cx="30" cy="30" stroke-dasharray="${Math.max(part - gap, 0.5).toFixed(2)} ${len.toFixed(2)}" stroke-dashoffset="${(-at).toFixed(2)}"></circle>`;
+      at += part;
+      return arc;
+    }).join("") : "";
+    const label = tf("{s} said, {h} hinted, {m} missing", { s: num(c.said), h: num(c.hinted), m: num(c.missing) });
+    return `<span class="ab-ring" role="img" aria-label="${esc(label)}"><svg viewBox="0 0 60 60" width="60" height="60" aria-hidden="true"><circle class="ab-ring-track" r="${r}" cx="30" cy="30"></circle><g transform="rotate(-90 30 30)">${arcs}</g></svg><b class="tabular" aria-hidden="true">${num(total)}</b></span>`;
+  }
+  function siteCard(run, points) {
+    const o = run.onsite;
+    if (!o) return "";
+    const head = `<h4 class="ab-site-h" id="ab-site-h">${esc(t("On your site?"))}</h4>`;
+    if (!o.pages) {
+      return `<div class="ab-site-card none" role="group" aria-labelledby="ab-site-h"><span class="ab-site-ico" aria-hidden="true">${icon("file-text")}</span><div class="ab-site-body">${head}
+        <p class="ab-site-sub">${esc(t("None of your pages has been read yet, so nothing can be checked."))}</p>
+        <div class="ab-site-acts"><button type="button" class="btn btn-small" data-ab-read-pages>${esc(t("Read my pages"))}</button><button type="button" class="btn btn-small btn-ghost" data-ab-check ${B.checking ? "disabled" : ""}>${esc(t(B.checking ? "Checking…" : "Check again"))}</button></div></div></div>`;
+    }
+    const c = countMarks(points);
+    const key = (m) => `<li><span class="ab-site-dot ${m}" aria-hidden="true">${icon(MARK[m][1])}</span><span>${esc(t(MARK[m][2]))}</span><b class="tabular">${num(c[m])}</b></li>`;
+    const by = o.by === "ai" ? t("read by your AI") : t("by word match");
+    const note = o.note ? `<p class="small muted ab-site-note">${esc(tf("AI not used this time: {why}", { why: t(o.note) }))}</p>` : "";
+    return `<div class="ab-site-card" role="group" aria-labelledby="ab-site-h">${ring(c)}<div class="ab-site-body">${head}<ul class="ab-site-keys">${key("said")}${key("hinted")}${key("missing")}</ul>
+      <p class="small muted ab-site-sub">${esc(tf(o.pages === 1 ? "Checked against {n} page of your site, {by}." : "Checked against {n} pages of your site, {by}.", { n: num(o.pages), by }))} <button type="button" class="link-btn" data-ab-check ${B.checking ? "disabled" : ""}>${esc(t(B.checking ? "Checking…" : "Check again"))}</button></p>${note}</div></div>`;
+  }
+
+  // ---- "You or them?": head-to-head questions, one row per competitor ----------------------------------------------------
+  const VERDICT = { us: ["good", "You"], them: ["crit", "Them"], tie: ["info", "Tie"], none: ["", "Unclear"] };
+  const verdictChip = (v) => (!v || !VERDICT[v] ? `<span class="muted">—</span>` : `<span class="status ${VERDICT[v][0]} ab-verdict-chip">${esc(t(VERDICT[v][1]))}</span>`);
+  const covered = (points) => { const marks = points.map((p) => p.onsite?.mark).filter(Boolean); return { n: marks.filter((m) => m !== "missing").length, of: marks.length }; };
+  /* The rows as the AI switch sees them: one AI picked shows its own pick and its own points. */
+  function vsRows(run) {
+    const id = picked(run);
+    return (run.versus || []).map((v) => {
+      const keep = (list) => (id ? list.filter((p) => p.engines.includes(id)) : list);
+      const us = keep(v.us), them = keep(v.them);
+      return { ...v, verdict: id ? (v.by_engine[id] ?? null) : v.verdict, trend: id ? null : v.trend, us, them, ours: covered(us), theirs: covered(them), onlyAi: id };
+    });
+  }
+  const rivalMark = (v, size = 18) => `<span class="ab-rival">${UI().siteLogo(v.host, size)}<span dir="auto">${esc(v.name || v.host)}</span></span>`;
+  function trendCell(v) {
+    if (v.onlyAi || !v.trend) return `<span class="muted">—</span>`;
+    if (v.trend === "first") return `<span class="small muted">${esc(t("1st reading"))}</span>`;
+    if (v.trend === "same") return `<span class="small muted">${esc(t("Same"))}</span>`;
+    const up = v.trend === "up";
+    return `<span class="ab-trend ${up ? "good" : "crit"}">${icon(up ? "trending-up" : "arrow-down")}<span>${esc(t(up ? "Better" : "Worse"))}</span></span><span class="sr"> ${esc(tf("was {v}", { v: t(VERDICT[v.verdict_before]?.[1] || "") }))}</span>`;
+  }
+  const ratio = (c) => (c.of ? `<span class="tabular">${esc(tf("{n} / {m}", { n: num(c.n), m: num(c.of) }))}</span>` : `<span class="muted">—</span>`);
+  function headToHead(d, run) {
+    const listed = d.questions.filter((q) => q.rival_id);
+    const head = `<div class="ab-h-row"><h3 class="ab-h">${esc(t("You or them?"))}</h3></div>`;
+    if (!d.rivals?.length && !run.versus?.length) {
+      return `<section class="ab-sec ab-vs">${head}<p class="ab-vs-empty muted">${esc(t("Follow a competitor to ask the AIs to choose between you."))} <button type="button" class="link-btn" data-go="competitors">${esc(t("Competitors"))} ›</button></p></section>`;
+    }
+    if (!run.versus?.length) {
+      const missing = d.rivals.filter((r) => !listed.some((q) => q.rival_id === r.id));
+      const body = listed.length && !missing.length ? `<p class="ab-vs-empty muted">${esc(t("Your head-to-head questions haven't been asked yet. Ask again: the price shows first."))}</p>`
+        : `<p class="ab-vs-empty">${esc(tf(missing.length === 1 ? "Ask the AIs to choose between you and the competitor you follow: “{b} or {r}?”" : "Ask the AIs to choose between you and each of the {n} competitors you follow: “{b} or {r}?”", { n: num(missing.length), b: d.brand, r: missing[0].name }))}</p>
+          <div class="ab-vs-empty-acts"><button type="button" class="btn btn-small" data-ab-add-vs ${B.busy ? "disabled" : ""}>${icon("plus")}<span>${esc(tf(missing.length === 1 ? "Add {n} head-to-head question" : "Add {n} head-to-head questions", { n: num(missing.length) }))}</span></button></div>`;
+      return `<section class="ab-sec ab-vs">${head}${body}</section>`;
+    }
+    const rows = vsRows(run).map((v) => {
+      const failed = !v.answered && v.failed;
+      const pick = failed ? `<span class="crit small">${esc(t("Didn't answer"))}</span>` : verdictChip(v.verdict);
+      return `<tr data-ab-vs="${v.rival_id}" tabindex="0" aria-label="${esc(tf("Open {b} or {r}", { b: d.brand, r: v.name || v.host }))}">
+        <th scope="row" data-label="${esc(t("Competitor"))}">${rivalMark(v)}</th>
+        <td data-label="${esc(t("The AIs pick"))}">${pick}</td><td data-label="${esc(t("Since the last run"))}">${trendCell(v)}</td>
+        <td class="r" data-label="${esc(t("Your points on your site"))}">${ratio(v.ours)}</td><td class="r" data-label="${esc(t("Their points you cover"))}">${ratio(v.theirs)}</td>
+        <td class="ab-row-go"><span class="link-btn" aria-hidden="true">${esc(t("Compare"))}${icon("chevron-right")}</span></td></tr>`;
+    }).join("");
+    const unasked = d.rivals.filter((r) => !listed.some((q) => q.rival_id === r.id));
+    const more = unasked.length ? `<p class="small muted ab-vs-more">${esc(tf(unasked.length === 1 ? "{n} competitor you follow has no head-to-head question yet." : "{n} competitors you follow have no head-to-head question yet.", { n: num(unasked.length) }))} <button type="button" class="link-btn" data-ab-add-vs>${esc(t("Add them"))}</button></p>` : "";
+    return `<section class="ab-sec ab-vs">${head}<div class="ab-table-wrap"><table class="ab-ai-table ab-vs-table"><caption class="sr">${esc(t("Who the AIs pick, you or each competitor"))}</caption>
+      <thead><tr><th scope="col">${esc(t("Competitor"))}</th><th scope="col">${esc(t("The AIs pick"))}</th><th scope="col">${esc(t("Since the last run"))}</th><th scope="col" class="r">${esc(t("Your points on your site"))}</th><th scope="col" class="r">${esc(t("Their points you cover"))}</th><th scope="col"><span class="sr">${esc(t("Compare"))}</span></th></tr></thead>
+      <tbody>${rows}</tbody></table></div>${more}</section>`;
+  }
+  /* Both sides of one head-to-head question, side by side, in a wide panel: each side's points with their marks, the
+     sources with their real links, and the answers themselves. */
+  function vsPanel(rivalId, opener) {
+    const d = B.data, run = d?.last; if (!run) return;
+    const v = (run.versus || []).find((x) => String(x.rival_id) === String(rivalId)); if (!v) return;
+    const answers = v.answers.map((id) => run.answers.find((a) => a.id === id)).filter(Boolean);
+    const perAi = Object.entries(v.by_engine).map(([e, w]) => `<li>${aiShort(e, 14)}${verdictChip(w)}</li>`).join("");
+    const point = (p, side) => {
+      const who = p.engines.map((e) => aiShort(e, 12)).join("");
+      return `<li><span class="ab-pt-text" dir="auto">${esc(p.text)}</span>${siteLine(p, side, v)}<span class="ab-pt-who ab-src-ais">${who}</span></li>`;
+    };
+    const col = (side, logoHost, name, points, c) => `<section class="ab-vs-col ${side}"><h3 class="ab-vs-col-h">${UI().siteLogo(logoHost, 18)}<span dir="auto">${esc(tf("{x}, by the AIs", { x: name }))}</span></h3>
+      <p class="small muted">${esc(c.of ? tf(side === "us" ? "{n} of {m} on your site" : "{n} of {m} covered on your site", { n: num(c.n), m: num(c.of) }) : t("No points named."))}</p>
+      ${points.length ? `<ul class="ab-vs-pts">${points.map((p) => point(p, side)).join("")}</ul>` : ""}</section>`;
+    const src = v.sources.length ? `<ul class="ab-p-src">${v.sources.map((s) => {
+      const first = s.urls[0];
+      // The address itself is the link text, so where it goes shows; the page's title follows when the answer gave one.
+      const link = first ? `${sourceLink({ url: first.url, host: s.host }, `${s.host}${pathOf(first.url) === "/" ? "" : pathOf(first.url)}`)}${first.title ? ` <span class="small muted ab-src-title" dir="auto">${esc(snippet(first.title, 70))}</span>` : ""}`
+        : `<a href="https://${esc(s.host)}/" target="_blank" rel="noopener noreferrer nofollow" class="ab-src-link" dir="ltr">${esc(s.host)}</a> <span class="small muted">${esc(t("(home page: the answer gave no address)"))}</span>`;
+      const more = s.urls.length > 1 ? ` <span class="small muted">${esc(tf(s.urls.length === 2 ? "+{n} page" : "+{n} pages", { n: num(s.urls.length - 1) }))}</span>` : "";
+      return `<li>${UI().siteLogo(s.host, 14)}${link}${more}${s.mine ? ` ${you()}` : ""}<span class="small muted tabular"> · ${esc(tf(s.answers === 1 ? "{n} answer" : "{n} answers", { n: num(s.answers) }))}</span></li>`;
+    }).join("")}</ul>` : `<p class="small muted">${esc(t("No sources cited in these answers."))}</p>`;
+    const raw = answers.map((a) => {
+      const body = a.status === "failed" ? `<p class="crit small">${esc(tf("Didn't answer: {why}", { why: t(a.error || "unknown error") }))}</p>` : a.no_answer ? `<p class="muted small">${esc(t("No answer."))}</p>`
+        : `<details class="fold ab-p-full"><summary>${icon("chevron-right")}${aiShort(a.engine, 14)} <span class="small muted">${esc(snippet(a.summary || a.answer_text, 90))}</span></summary><div class="ab-p-text" dir="auto">${esc(a.answer_text)}</div></details>`;
+      return a.status === "done" && !a.no_answer ? body : `<div class="ab-vs-raw-bad">${aiShort(a.engine, 14)}${body}</div>`;
+    }).join("");
+    const words = v.read_by === "words" ? `<p class="note lv-note small">${icon("info")}<span>${esc(t("Read from the answers' words. Pick an AI in Settings → AI for a closer reading."))}</span></p>` : "";
+    const title = tf("{b} or {r}?", { b: d.brand, r: v.name || v.host });
+    UI().openPanel(`${UI().panelHead(title, esc(tf("Asked on {d}", { d: day(run.created_at) })))}
+      <div class="panel-body ab-panel ab-vs-panel">
+        <div class="ab-vs-top"><p class="ab-vs-verdict"><span class="muted">${esc(t("The AIs pick"))}</span> ${verdictChip(v.verdict)}${v.trend && v.trend !== "first" ? ` ${trendCell(v)}` : ""}</p>${perAi ? `<ul class="ab-vs-ais" aria-label="${esc(t("Each AI"))}">${perAi}</ul>` : ""}</div>
+        ${words}
+        <div class="ab-vs-cols">${col("us", d.host, d.brand, v.us, covered(v.us))}${col("them", v.host, v.name || v.host, v.them, covered(v.them))}</div>
+        <h3 class="ab-vs-sub-h">${esc(t("Sources the AIs used"))} <span class="muted tabular">${num(v.sources.length)}</span></h3>${src}
+        <h3 class="ab-vs-sub-h">${esc(t("The answers"))} <span class="muted tabular">${num(answers.length)}</span></h3><div class="ab-vs-raw">${raw}</div>
+        ${v.questions.map((q) => `<p class="small muted ab-vs-q">${esc(t("Question asked:"))} <span dir="auto">${esc(q)}</span></p>`).join("")}
+      </div>`, opener, { wide: true });
+  }
+  async function addHeadToHead() {
+    if (B.busy) return;
+    B.busy = true; redraw();
+    try {
+      const found = await api("POST", "ai-brand/suggest", { site_id: B.site });
+      for (const v of found.versus || []) await api("POST", "ai-brand/questions", { site_id: B.site, text: v.text, source: "suggested", rival_id: v.rival_id });
+      UI().toast(tf((found.versus || []).length === 1 ? "{n} head-to-head question added. Ask again to see who the AIs pick." : "{n} head-to-head questions added. Ask again to see who the AIs pick.", { n: num((found.versus || []).length) }), { kind: "good" });
+    } catch (err) { UI().toast(t(err.message), { kind: "crit" }); }
+    B.busy = false;
+    load({ force: true });
+  }
+  async function checkAgain() {
+    const run = B.data?.last; if (!run || B.checking) return;
+    B.checking = true; redraw();
+    try { await api("POST", `ai-brand/runs/${run.id}/check-site`, {}); UI().toast(t("Checked against your pages again."), { kind: "good" }); } catch (err) { UI().toast(t(err.message), { kind: "crit" }); }
+    B.checking = false;
+    load({ force: true });
+  }
+  /* "Also known as": the company's other names (the company behind the site, its web address), one field, commas between. */
+  const akaField = (d, id) => `<label class="field ab-aka" for="${id}"><span>${esc(t("Also known as"))}</span><input class="input" id="${id}" name="f_aliases" dir="auto" value="${esc((d.aliases || []).join(", "))}" maxlength="420" placeholder="${esc(t("Another name, the company behind it, your web address"))}" aria-describedby="${id}-help"></label>
+    <p class="help" id="${id}-help">${esc(tf("Other names the AIs may use for you, up to {n}, separated by commas. An answer naming any of them counts as naming you.", { n: num(d.max_aliases || 5) }))}</p>`;
+  const aliasesOf = (form) => String(form.elements.f_aliases?.value || "").split(",").map((w) => w.trim()).filter(Boolean);
+  /* The name the AIs are asked about, while it is still a guess. */
+  function namePrompt(d) {
+    if (d.brand_saved) return "";
+    const from = d.brand_from === "brand_words" ? "It was guessed from your brand words." : "It was guessed from your site's address.";
+    return `<form class="ab-name-ask" data-ab-name-ask aria-labelledby="ab-name-h"><p class="ab-name-text">${icon("info")}<span><b id="ab-name-h">${esc(tf("Is “{b}” your company's real name?", { b: d.brand }))}</b> ${esc(t(from))} ${esc(t("The AIs are asked about this name, so use the one your customers know."))}</span></p>
+      <label class="field ab-aka" for="ab-name-input"><span>${esc(t("Company name the AIs should name"))}</span><input class="input" id="ab-name-input" name="f_brand" dir="auto" value="${esc(d.brand)}" maxlength="80" autocomplete="organization"></label>
+      ${akaField(d, "ab-aka-ask")}<div><button class="btn btn-small btn-main" type="submit" ${B.busy ? "disabled" : ""}>${esc(t("Save names"))}</button></div></form>`;
+  }
+
   // ---- the tab -----------------------------------------------------------------------------------------
   function emptyCard(html, buttons = "") {
     return `<div class="empty ab-empty"><p>${html}</p>${buttons ? `<div class="ab-empty-acts">${buttons}</div>` : ""}</div>`;
@@ -130,7 +313,7 @@
     const boxes = est.engines.map((e) => `<label class="ab-pick ${e.connected ? "" : "off"}"><input type="checkbox" data-ab-pick="${e.id}" ${picks.has(e.id) ? "checked" : ""} ${e.connected ? "" : "disabled"}> ${aiMark(e.id, e.host)}${e.connected ? "" : ` <span class="small muted">${t("needs a key")}</span>`}</label>`).join("");
     return `<div class="ai-confirm ab-confirm" role="group" aria-label="${esc(t("Ask the AIs"))}">
       <fieldset class="ab-picks"><legend class="sr">${t("Which AIs")}</legend>${boxes}</fieldset>
-      <p class="ab-price">${esc(tf("This asks {q} to {n}: {a}.", { q: tf(qs === 1 ? "{n} question" : "{n} questions", { n: num(qs) }), n: tf(picks.size === 1 ? "{n} AI" : "{n} AIs", { n: num(picks.size) }), a: tf(total === 1 ? "{n} answer" : "{n} answers", { n: num(total) }) }))}<br><span class="small">${price || esc(t("Pick at least one AI."))}</span></p>
+      <p class="ab-price">${esc(tf("This asks {q} to {n}: {a}.", { q: tf(qs === 1 ? "{n} question" : "{n} questions", { n: num(qs) }), n: tf(picks.size === 1 ? "{n} AI" : "{n} AIs", { n: num(picks.size) }), a: tf(total === 1 ? "{n} answer" : "{n} answers", { n: num(total) }) }))}${est.versus ? ` ${esc(tf(est.versus === 1 ? "Including {n} head-to-head question." : "Including {n} head-to-head questions.", { n: num(est.versus) }))}` : ""}<br><span class="small">${price || esc(t("Pick at least one AI."))}</span></p>
       <div class="ab-confirm-acts"><button class="btn btn-small btn-main" data-ab-go ${total && !a.sending ? "" : "disabled"}>${t("Ask now")}</button><button class="btn btn-small btn-ghost" data-ab-cancel>${t("Cancel")}</button></div></div>`;
   }
 
@@ -193,12 +376,12 @@
           return `<button type="button" class="ab-who" data-ab-open="${e}" data-ab-focus="${ids.join(",")}" aria-label="${esc(tf("Open {ai}'s answer", { ai: t(ENGINE_WORD[e]) }))}">${aiShort(e, 12)}</button>`;
         }).join("");
         return `<li><span class="ab-pt-mark ${cls}" aria-hidden="true">${icon(ic)}</span><span class="ab-pt-body"><span class="ab-pt-text" dir="auto">${esc(x.text)}</span>
-          <span class="ab-pt-who"><span class="small muted tabular">${esc(tf(x.ais === 1 ? "{n} AI" : "{n} AIs", { n: num(x.ais) }))}</span>${who}</span></span></li>`;
+          ${siteLine(x)}<span class="ab-pt-who"><span class="small muted tabular">${esc(tf(x.ais === 1 ? "{n} AI" : "{n} AIs", { n: num(x.ais) }))}</span>${who}</span></span></li>`;
       }).join("");
       return `<div class="ab-pts-col"><h4 class="ab-h4 ${cls}">${esc(t(title))} <span class="muted tabular">${num(items.length)}</span></h4>${list ? `<ul class="ab-pts">${list}</ul>` : `<p class="small muted">${esc(t(none))}</p>`}</div>`;
     };
     const more = Math.max(pros.length, cons.length) > 5 ? `<button type="button" class="link-btn ab-more" data-ab-all-points>${esc(t(B.allPoints ? "Show fewer" : "Show all points"))}</button>` : "";
-    return `<section class="ab-sec"><h3 class="ab-h">${t("What the AIs say about you")}</h3><div class="ab-pts-grid">${col(pros, "good", "plus", "Strengths", "No strengths named.")}${col(cons, "crit", "minus", "Weak points", "No weak points named.")}</div>${more}</section>`;
+    return `<section class="ab-sec"><h3 class="ab-h">${t("What the AIs say about you")}</h3>${siteCard(run, [...pros, ...cons])}<div class="ab-pts-grid">${col(pros, "good", "plus", "Strengths", "No strengths named.")}${col(cons, "crit", "minus", "Weak points", "No weak points named.")}</div>${more}</section>`;
   }
   /* (5) Competitors named: each brand once, ranked by how many AIs named it. */
   function rivals(run) {
@@ -248,17 +431,20 @@
     if (B.error && !B.data) return UI().failCard ? UI().failCard(B.error, { retry: "data-ab-retry" }) : emptyCard(esc(t(B.error)), `<button class="btn" data-ab-retry>${t("Try again")}</button>`);
     const d = B.data;
     if (!d.keys.brightdata && !d.keys.semscraper && !d.last) return keysEmpty(d);
-    const head = headLine(d) + confirmBox(d);
+    const head = headLine(d) + namePrompt(d) + confirmBox(d);
     const reader = d.reader === "none" ? `<p class="note lv-note ab-reader">${icon("info")}<span>${t("Pick an AI in Settings to get the summary.")}</span> <button class="link-btn" data-go="settings">${t("Settings")} ›</button></p>` : "";
     if (!d.questions.length) return head + emptyCard(t("Add the questions to ask, or let the app suggest some from your brand and keywords."), `<button class="btn btn-main" data-ab-questions data-ab-suggest-first>${t("Suggest questions")}</button><button class="btn" data-ab-questions>${t("Add a question")}</button>`);
     const failed = d.failed && (!d.last || d.failed.id > d.last.id) && !d.running ? `<p class="ab-failed crit" role="alert">${icon("octagon-alert")}<span>${esc(tf("The last run got no answer: {why}", { why: t(d.failed.error || "unknown error") }))}</span></p>` : "";
     if (!d.last) return head + failed + (d.running || B.ask ? "" : emptyCard(t("No answers yet. Press Ask the AIs: the price shows first."))) + reader;
     const run = d.last;
     const note = `<p class="small muted ab-note">${icon("info")}<span>${esc(tf("One answer per AI, read signed out on {d}. AIs answer differently each time.", { d: day(run.created_at) }))}</span></p>`;
-    return head + failed + reader + verdict(run) + `<div class="ab-pick-row">${aiSwitch(run)}</div>` + aiTable(run) + pickedLine(run) + points(run) + rivals(run) + sourcesBlock(run) + sinceBlock(d) + note;
+    const ordinary = run.picture.answers || run.picture.engines.some((r) => r.asked);
+    return head + failed + reader + (ordinary ? verdict(run) : "") + `<div class="ab-pick-row">${aiSwitch(run)}</div>` + (ordinary ? aiTable(run) + pickedLine(run) + points(run) : "") + headToHead(d, run) + (ordinary ? rivals(run) + sourcesBlock(run) + sinceBlock(d) : "") + note;
   }
   B.tab = tab;
-  B.info = () => ["Each AI is asked your questions once, signed out, only when you press the button.", "Tone: each answer that names you counts positive 1, neutral ½, negative 0; the score is their average.", "Sources: every site an answer cites, yours marked You."];
+  B.info = () => ["Each AI is asked your questions once, signed out, only when you press the button.", "Tone: each answer that names you counts positive 1, neutral ½, negative 0; the score is their average.", "Sources: every site an answer cites, yours marked You.",
+    "On your site?: each point is looked for in the pages of your site the app has read. Said: a page says it. Hinted: a page touches on it. Missing: no page says it.",
+    "You or them?: x / y counts the points your site says or hints at, of the points the AIs made."];
 
   // ---- one AI's answers, in the side panel (the ones asked for first) -----------------------------------
   function answerPanel(id, opener, focus = []) {
@@ -286,10 +472,11 @@
     const rows = d.questions.map((q) => `<li class="ab-q" data-ab-q="${q.id}">
       <label class="ab-q-tick"><input type="checkbox" data-ab-q-active="${q.id}" ${q.active ? "checked" : ""} ${!q.active && active >= d.max_questions ? "disabled" : ""}><span class="sr">${t("Ask this one")}</span></label>
       <input class="input" dir="auto" data-ab-q-text="${q.id}" value="${esc(q.text)}" aria-label="${esc(t("Question"))}" maxlength="400">
-      ${q.source === "suggested" ? `<span class="tag">${t("suggested")}</span>` : ""}
+      ${q.rival_id ? `<span class="tag ab-vs-tag" title="${esc(q.rival_host || "")}">${q.rival_host ? UI().siteLogo(q.rival_host, 12) : ""}${t("You or them")}</span>` : q.source === "suggested" ? `<span class="tag">${t("suggested")}</span>` : ""}
       <button type="button" class="icon-btn" data-ab-q-del="${q.id}" aria-label="${esc(tf("Remove: {q}", { q: q.text }))}">${icon("trash-2")}</button></li>`).join("");
-    const sug = B.suggest ? (B.suggest.length ? `<div class="ab-sug"><div class="ab-sug-head"><h3>${t("Suggestions")}</h3><button type="button" class="btn btn-small" data-ab-sug-all>${t("Add all")}</button></div><ul>${B.suggest.map((w, i) => `<li><span dir="auto">${esc(w)}</span><button type="button" class="btn btn-small" data-ab-sug="${i}">${t("Add")}</button></li>`).join("")}</ul></div>` : `<p class="small muted">${t("No new suggestions: they're all in the list.")}</p>`) : "";
-    return `<form class="ab-brand-form" data-ab-brand-form><label class="field"><span>${t("Company name the AIs should name")}</span><span class="ab-inline"><input class="input" name="f_brand" dir="auto" value="${esc(d.brand)}" maxlength="80"><button class="btn btn-small" type="submit" ${B.busy ? "disabled" : ""}>${t("Save")}</button></span></label></form>
+    const sug = B.suggest ? (B.suggest.length ? `<div class="ab-sug"><div class="ab-sug-head"><h3>${t("Suggestions")}</h3><button type="button" class="btn btn-small" data-ab-sug-all>${t("Add all")}</button></div><ul>${B.suggest.map((w, i) => `<li><span class="ab-sug-text"><span dir="auto">${esc(w.text)}</span>${w.rival_id ? ` <span class="tag ab-vs-tag">${UI().siteLogo(w.host, 12)}${t("You or them")}</span>` : ""}</span><button type="button" class="btn btn-small" data-ab-sug="${i}">${t("Add")}</button></li>`).join("")}</ul></div>` : `<p class="small muted">${t("No new suggestions: they're all in the list.")}</p>`) : "";
+    return `<form class="ab-brand-form" data-ab-brand-form><label class="field"><span>${t("Company name the AIs should name")}</span><input class="input" name="f_brand" dir="auto" value="${esc(d.brand)}" maxlength="80" autocomplete="organization"></label>
+      ${akaField(d, "ab-aka-panel")}<div class="ab-brand-save"><button class="btn btn-small" type="submit" ${B.busy ? "disabled" : ""}>${t("Save")}</button></div></form>
       <p class="help">${esc(tf("Ticked questions are asked, at most {n} a run. Asked in {l}.", { n: num(d.max_questions), l: t(d.language === "fr" ? "French" : "English") }))}</p>
       ${rows ? `<ul class="ab-qs">${rows}</ul>` : `<p class="muted">${t("No questions yet.")}</p>`}
       <form class="ab-add" data-ab-add><input class="input" name="f_question" dir="auto" maxlength="400" placeholder="${esc(t(d.language === "fr" ? "Que pensez-vous de …" : "What do you think of …"))}" aria-label="${esc(t("Add a question"))}"><button class="btn btn-small" type="submit" ${B.busy ? "disabled" : ""}>${t("Add")}</button></form>
@@ -326,7 +513,7 @@
   }
   function suggest() {
     B.busy = true; paintPanel();
-    api("POST", "ai-brand/suggest", { site_id: B.site }).then((r) => { B.suggest = r.suggestions; }).catch((err) => { B.suggest = null; UI().toast(t(err.message), { kind: "crit" }); })
+    api("POST", "ai-brand/suggest", { site_id: B.site }).then((r) => { B.suggest = [...r.suggestions.map((text) => ({ text })), ...(r.versus || []).map((v) => ({ text: v.text, rival_id: v.rival_id, host: v.host }))]; }).catch((err) => { B.suggest = null; UI().toast(t(err.message), { kind: "crit" }); })
       .finally(() => { B.busy = false; paintPanel(); });
   }
 
@@ -372,15 +559,25 @@
     if (hit("[data-ab-all-rivals]")) { B.allRivals = !B.allRivals; redraw(); return; }
     if ((el = hit("[data-ab-q-del]"))) { const id = el.dataset.abQDel; change(() => api("DELETE", `ai-brand/questions/${id}`)); return; }
     if (hit("[data-ab-suggest]")) { suggest(); return; }
-    if ((el = hit("[data-ab-sug]"))) { const words = B.suggest[Number(el.dataset.abSug)]; B.suggest = B.suggest.filter((w) => w !== words); change(() => api("POST", "ai-brand/questions", { site_id: B.site, text: words, source: "suggested" })); return; }
+    if ((el = hit("[data-ab-sug]"))) { const one = B.suggest[Number(el.dataset.abSug)]; B.suggest = B.suggest.filter((w) => w !== one); change(() => api("POST", "ai-brand/questions", { site_id: B.site, text: one.text, source: "suggested", ...(one.rival_id ? { rival_id: one.rival_id } : {}) })); return; }
     if (hit("[data-ab-sug-all]")) {
       const all = [...B.suggest]; B.suggest = [];
-      change(async () => { for (const words of all) await api("POST", "ai-brand/questions", { site_id: B.site, text: words, source: "suggested" }); });
+      change(async () => { for (const one of all) await api("POST", "ai-brand/questions", { site_id: B.site, text: one.text, source: "suggested", ...(one.rival_id ? { rival_id: one.rival_id } : {}) }); });
+      return;
     }
+    if (hit("[data-ab-add-vs]")) { addHeadToHead(); return; }
+    if (hit("[data-ab-check]")) { checkAgain(); return; }
+    if (hit("[data-ab-read-pages]")) {
+      api("POST", "ai-brand/read-pages", { site_id: B.site }).then(() => UI().toast(t("Your pages are being read. Press Check again in a few minutes."), { kind: "good" })).catch((err) => UI().toast(t(err.message), { kind: "crit" }));
+      return;
+    }
+    if ((el = hit("[data-ab-vs]")) && !hit("a, button")) { vsPanel(el.dataset.abVs, el); }
   });
   // A row of the AI table works from the keyboard too: Enter or Space picks that AI.
   document.addEventListener("keydown", (e) => {
     if (!window.UI || UI().state.route !== "ai" || (e.key !== "Enter" && e.key !== " ")) return;
+    const vs = e.target.closest?.("[data-ab-vs]");
+    if (vs && e.target === vs) { e.preventDefault(); vsPanel(vs.dataset.abVs, vs); return; }
     const row = e.target.closest?.("[data-ab-row]");
     if (!row || e.target !== row) return;
     e.preventDefault();
@@ -401,15 +598,23 @@
     }
   });
   document.addEventListener("submit", (e) => {
-    const form = e.target.closest?.("[data-ab-add], [data-ab-brand-form]");
+    const form = e.target.closest?.("[data-ab-add], [data-ab-brand-form], [data-ab-name-ask]");
     if (!form) return;
     e.preventDefault();
     if (form.matches("[data-ab-add]")) {
       const words = form.elements.f_question.value;
       change(() => api("POST", "ai-brand/questions", { site_id: B.site, text: words }), { focus: "[data-ab-add] input" });
+    } else if (form.matches("[data-ab-name-ask]")) {
+      const name = form.elements.f_brand.value;
+      B.busy = true; redraw();
+      api("PUT", "ai-brand/brand", { site_id: B.site, brand: name, aliases: aliasesOf(form) })
+        .then(() => { UI().toast(t("Name saved. Your questions still use the old name: edit them, or suggest new ones."), { kind: "good" }); })
+        .catch((err) => UI().toast(t(err.message), { kind: "crit" }))
+        .finally(() => { B.busy = false; load({ force: true }); });
     } else {
       const name = form.elements.f_brand.value;
-      change(() => api("PUT", "ai-brand/brand", { site_id: B.site, brand: name })).then(() => UI().toast(t("Name saved"), { kind: "good" }));
+      const aliases = aliasesOf(form);
+      change(() => api("PUT", "ai-brand/brand", { site_id: B.site, brand: name, aliases })).then(() => UI().toast(t("Name saved"), { kind: "good" }));
     }
   });
   // Back on the screen after the questions panel closes: the tab shows what the panel changed.
@@ -456,6 +661,44 @@
     "Competitors named": "Concurrents cités", "Your site": "Votre site", "Competitors": "Concurrents", "Social & forums": "Réseaux sociaux et forums", "Press & other": "Presse et autres", "Competitor": "Concurrent",
     "{n} citation": "{n} citation", "{n} citations": "{n} citations",
     "Tone: each answer that names you counts positive 1, neutral ½, negative 0; the score is their average.": "Ton : chaque réponse qui vous cite compte positif 1, neutre ½, négatif 0 ; le score est leur moyenne.",
+    // GEO round (2026-11-20): "On your site?", "You or them?", the name prompt
+    "On your site?": "Sur votre site ?", "Said": "Dit", "Hinted": "Évoqué", "Missing": "Absent", "Task": "Tâche",
+    "Say on your site: {p}": "Le dire sur votre site : {p}", "Cover on your site: {p} (the AIs say it of {r})": "Le traiter sur votre site : {p} (les IA le disent de {r})",
+    "The AIs say this about you, but no page of your site does. Add it to the page that fits best.": "Les IA disent cela de vous, mais aucune page de votre site ne le dit. Ajoutez-le à la page qui convient le mieux.",
+    "The AIs give this point to a competitor, and no page of your site covers it. Add it to the page that fits best.": "Les IA attribuent ce point à un concurrent, et aucune page de votre site ne le traite. Ajoutez-le à la page qui convient le mieux.",
+    "{s} said, {h} hinted, {m} missing": "{s} dits, {h} évoqués, {m} absents",
+    "None of your pages has been read yet, so nothing can be checked.": "Aucune de vos pages n'a encore été lue : rien ne peut être vérifié.", "Read my pages": "Lire mes pages",
+    "Checking…": "Vérification…", "Check again": "Vérifier à nouveau", "read by your AI": "lu par votre IA", "by word match": "par correspondance des mots",
+    "AI not used this time: {why}": "IA non utilisée cette fois : {why}",
+    "Checked against {n} page of your site, {by}.": "Vérifié sur {n} page de votre site, {by}.", "Checked against {n} pages of your site, {by}.": "Vérifié sur {n} pages de votre site, {by}.",
+    "Them": "Eux", "Tie": "Égalité", "Unclear": "Pas clair", "1st reading": "1er relevé", "Same": "Pareil", "Better": "Mieux", "Worse": "Moins bien", "was {v}": "avant : {v}",
+    "{n} / {m}": "{n} / {m}", "You or them?": "Vous ou eux ?", "Follow a competitor to ask the AIs to choose between you.": "Suivez un concurrent pour demander aux IA de choisir entre vous.",
+    "Your head-to-head questions haven't been asked yet. Ask again: the price shows first.": "Vos questions face à face n'ont pas encore été posées. Redemandez : le prix s'affiche d'abord.",
+    "Ask the AIs to choose between you and the competitor you follow: “{b} or {r}?”": "Demandez aux IA de choisir entre vous et le concurrent que vous suivez : « {b} ou {r} ? »",
+    "Ask the AIs to choose between you and each of the {n} competitors you follow: “{b} or {r}?”": "Demandez aux IA de choisir entre vous et chacun des {n} concurrents que vous suivez : « {b} ou {r} ? »",
+    "Add {n} head-to-head question": "Ajouter {n} question face à face", "Add {n} head-to-head questions": "Ajouter {n} questions face à face",
+    "Open {b} or {r}": "Ouvrir {b} ou {r}", "The AIs pick": "Le choix des IA", "Since the last run": "Depuis la dernière fois",
+    "Your points on your site": "Vos points sur votre site", "Their points you cover": "Leurs points traités chez vous", "Compare": "Comparer",
+    "{n} competitor you follow has no head-to-head question yet.": "{n} concurrent suivi n'a pas encore de question face à face.",
+    "{n} competitors you follow have no head-to-head question yet.": "{n} concurrents suivis n'ont pas encore de question face à face.", "Add them": "Les ajouter",
+    "Who the AIs pick, you or each competitor": "Qui les IA choisissent, vous ou chaque concurrent", "{x}, by the AIs": "{x}, selon les IA",
+    "{n} of {m} on your site": "{n} sur {m} sur votre site", "{n} of {m} covered on your site": "{n} sur {m} traités sur votre site", "No points named.": "Aucun point cité.",
+    "(home page: the answer gave no address)": "(page d'accueil : la réponse ne donnait pas d'adresse)",
+    "Read from the answers' words. Pick an AI in Settings → AI for a closer reading.": "Lu d'après les mots des réponses. Choisissez une IA dans Réglages → IA pour une lecture plus fine.",
+    "{b} or {r}?": "{b} ou {r} ?", "Asked on {d}": "Demandé le {d}", "Sources the AIs used": "Les sources utilisées par les IA", "The answers": "Les réponses", "Question asked:": "Question posée :",
+    "{n} head-to-head question added. Ask again to see who the AIs pick.": "{n} question face à face ajoutée. Redemandez pour voir qui les IA choisissent.",
+    "{n} head-to-head questions added. Ask again to see who the AIs pick.": "{n} questions face à face ajoutées. Redemandez pour voir qui les IA choisissent.",
+    "Checked against your pages again.": "Vérifié à nouveau sur vos pages.", "Your pages are being read. Press Check again in a few minutes.": "Vos pages sont en cours de lecture. Cliquez sur Vérifier à nouveau dans quelques minutes.",
+    "It was guessed from your brand words.": "Il a été deviné à partir de vos mots de marque.", "It was guessed from your site's address.": "Il a été deviné à partir de l'adresse de votre site.",
+    "Is “{b}” your company's real name?": "« {b} » est-il le vrai nom de votre entreprise ?", "The AIs are asked about this name, so use the one your customers know.": "Les IA sont interrogées sur ce nom : mettez celui que vos clients connaissent.",
+    "Save name": "Enregistrer le nom", "Save names": "Enregistrer les noms", "Name saved. Your questions still use the old name: edit them, or suggest new ones.": "Nom enregistré. Vos questions utilisent encore l'ancien nom : modifiez-les, ou proposez-en de nouvelles.",
+    "Also known as": "Aussi appelé", "Another name, the company behind it, your web address": "Un autre nom, la société derrière, votre adresse web",
+    "Other names the AIs may use for you, up to {n}, separated by commas. An answer naming any of them counts as naming you.": "D'autres noms que les IA peuvent utiliser pour vous, {n} au plus, séparés par des virgules. Une réponse qui cite l'un d'eux compte comme vous citant.",
+    "Up to 5 other names.": "5 autres noms au plus.", "Keep each name under 80 characters.": "Chaque nom doit faire moins de 80 caractères.", "Type the other names separated by commas.": "Tapez les autres noms séparés par des virgules.",
+    "You or them": "Vous ou eux", "+{n} page": "+{n} page", "+{n} pages": "+{n} pages", "Including {n} head-to-head question.": "Dont {n} question face à face.", "Including {n} head-to-head questions.": "Dont {n} questions face à face.",
+    "On your site?: each point is looked for in the pages of your site the app has read. Said: a page says it. Hinted: a page touches on it. Missing: no page says it.": "Sur votre site ? : chaque point est cherché dans les pages de votre site que l'appli a lues. Dit : une page le dit. Évoqué : une page l'aborde. Absent : aucune page ne le dit.",
+    "You or them?: x / y counts the points your site says or hints at, of the points the AIs made.": "Vous ou eux ? : x / y compte les points que votre site dit ou évoque, sur les points cités par les IA.",
+    "Pick one of the competitors you follow.": "Choisissez un des concurrents que vous suivez.", "That run isn't there any more.": "Cette demande n'existe plus.",
     // the server's words
     "Type the question first.": "Tapez d'abord la question.", "That question is already in the list.": "Cette question est déjà dans la liste.", "Keep a question under 400 characters.": "Une question doit faire moins de 400 caractères.",
     "A run asks at most 10 questions. Untick one first.": "Une demande pose au plus 10 questions. Décochez-en une d'abord.", "A run asks at most 10 questions. Untick some first.": "Une demande pose au plus 10 questions. Décochez-en d'abord.",

@@ -100,3 +100,35 @@ Sources: https://www.semscraper.com/en/documentation, https://www.semscraper.com
 - `competitors`: other companies named (the company itself left out), with `ais`, `answers`, `by_engine`, ranked by `ais`.
 - `source_groups`: `mine`, `competitor` (a tracked competitor's host, `site_competitors`), `social` (`SOCIAL_HOSTS`),
   `other`, each `{sites, citations}`. Each ranked source also carries its `group` and `by_engine` answer counts.
+
+## "On your site?" and head-to-head (2026-11-20, GEO round)
+
+- **On your site?** (`onsite.py`): every point the AIs make (strengths, weak points, each side's points in a head-to-head
+  answer) is marked **said** / **hinted** / **missing** against the site's own pages as the app last read them (`pages` +
+  the latest `page_versions` text; nothing is fetched). Word match first: common words and the company's (and followed
+  competitors') names dropped, words cut to 5 letters; a page's score is the share of the point's words on it. Said: the whole
+  point word for word, or ≥ 0.75 with 2 words or more; hinted: ≥ 0.4; else missing. With an AI picked in Settings → AI, one
+  request per 30 points (purpose `onsite`, Haiku on Claude) sends each point with its 3 best pages (title + best passage) and
+  its mark replaces the word match. Refused (no key, cap reached): the word match stays, with the reason in `onsite.note`.
+  Kept in `brand_runs.onsite` = `{pages, by, note, at, points: {point_key: {mark, url, score, by}}}`: checked once when the run
+  finishes; a run from before this is checked once by word match only when first shown (a page view never pays an AI);
+  `POST /api/ai-brand/runs/<id>/check-site` checks every point again (after `POST /api/ai-brand/read-pages`, which queues a
+  free read of the site's own pages).
+- **Head-to-head** ("Choisir plutôt {brand} ou {competitor} ?" / "Should I choose {brand} or {competitor}?"): suggested once
+  per followed competitor (`site_competitors.tracking <> 'off'`), stored with `brand_questions.rival_id`, asked by the same Ask
+  the AIs flow (the estimate says how many are head-to-head). The competitor's name is the part of its home page title that
+  matches its address, else its address's first word. Each answer gets `brand_answers.versus = {winner: us|them|tie|none, us,
+  them, by}`: from its words when it arrives (a sentence with a recommending cue naming one side is a vote; equal votes is a
+  tie), then from the site's AI (purpose `versus`) when there is one. Per competitor (`run.versus`): the verdict overall and
+  per AI (more "us" than "them" is us, and so on), each side's points grouped like strengths with their marks, `ours_on_site`
+  and `theirs_covered` = said + hinted of the points checked, the sources, and the trend against the latest earlier run that
+  asked about it (`first`, `up`, `down`, `same`).
+- Head-to-head answers stay out of the combined picture (verdict, tone, strengths, competitors named, sources): a question that
+  names the company on purpose would count as the AIs naming it.
+- `state()` adds `brand_from` (`brand_words` or `address`) while the name isn't saved, and `rivals` (the followed competitors).
+- **Also known as** (`serp_settings brand_aliases:<site_id>`, a JSON list, up to 5, saved with the name by `PUT
+  /api/ai-brand/brand {brand, aliases}`): other names the company goes by (the company behind the site, its web address).
+  Questions and answers keep using the main name. The company counts as named when the main name or any alias is in the
+  answer, case and accents ignored (`_brand_named`); a head-to-head sentence naming an alias is a vote for us
+  (`versus_by_words`); aliases and the site's own addresses never show as competitors named; an alias that is a web address
+  is "You" in the sources (`own_hosts`); the site's AI gets them in `<also_known_as>`; the on-site check drops their words.
