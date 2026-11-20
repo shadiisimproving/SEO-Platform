@@ -87,7 +87,8 @@
 .vt-cookies > summary h2 { font-size: 14px; font-weight: 600; display: inline; color: var(--text-2); }
 .vt-cookies form { display: grid; gap: 8px; }
 .vt-cookies-box { width: 100%; font-family: var(--mono); font-size: 12px; resize: vertical; }
-.vt .empty p { padding: 22px 18px; margin: 0; color: var(--text-2); }
+.vt .empty { padding: 28px 18px; }
+.vt .empty p { margin: 0 auto; }
 
 @media (max-width: 640px) {
   .vt .card > p, .vt .card > ol, .vt .card > form, .vt .card > .so-row, .vt .card > .vt-modes, .vt .card > .vt-mode-body, .vt .card > .error { margin-inline: 14px; }
