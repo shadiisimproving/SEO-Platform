@@ -80,3 +80,23 @@ Sources: https://www.semscraper.com/en/documentation, https://www.semscraper.com
 - One AI failing fails only its own answers.
 - Reading the answers (brand named, summary, tone, pros, cons, competitors) uses the site's AI from Settings → AI
   (`seo/extras/ai.py: read_brand_answer`), within the monthly cap. Without one, the raw answers and sources still show.
+  The reading asks for pros and cons as short, general claims (12 words at most, without the company's name), so the
+  same point reads the same way in every AI's answer and can be grouped.
+
+## The combined picture (`run.picture`, 2026-11-20)
+
+`run_dict()` adds `picture`, worked out in `service.picture()`; the screen only filters it by AI.
+
+- `named_by` / `answered_by`: AIs that named the company in at least one answer, of the AIs that answered at all.
+  `answers`, `named_answers`, `cited_mine` (answers citing the site's own host).
+- `tone_score`: each answer that names the company counts positive = 1, neutral = 0.5, negative = 0; the score is their
+  average as a whole percent ("80% positive"). Not named or not read: not counted; none left: `null`. `tone_word`:
+  positive from 67, negative up to 33, neutral at exactly 50, mixed between. `tone_before` / `tone_change`: against the run
+  before (the same one "Since the last run" uses, complete or partial), set by `state()`; `null` when either has no score.
+- `engines`: one row per AI asked: `answered`, `named`, `tone_score`, `tone_word`, `tone_change`, `cited_mine`, `sources`
+  (distinct sites cited), `failed`, `no_answer`.
+- `pros` / `cons`: the same point once (`point_key`: folded case and accents, punctuation dropped), with `engines`, `ais`
+  and `answers` (`id`, `engine`, `question`), ranked by how many AIs said it, then how many answers.
+- `competitors`: other companies named (the company itself left out), with `ais`, `answers`, `by_engine`, ranked by `ais`.
+- `source_groups`: `mine`, `competitor` (a tracked competitor's host, `site_competitors`), `social` (`SOCIAL_HOSTS`),
+  `other`, each `{sites, citations}`. Each ranked source also carries its `group` and `by_engine` answer counts.

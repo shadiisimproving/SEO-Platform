@@ -2,15 +2,20 @@
    Overviews answer when asked about the company. The server is /api/ai-brand (seo/ai_brand/); the providers are in
    seo/ai_brand/README.md.
 
-   Answer first: (1) one line per AI: does it name you, its tone and a short summary; a line opens the full answers.
-   (2) The sites the AIs cite, the most cited first, yours marked You, each a link. (3) Pros and cons per AI. (4) Since the
-   last run: new and lost sources. Then one line: one answer per AI, read signed out, AIs answer differently each time.
+   Answer first (2026-11-20 rework, after Semrush AI, Profound, Peec, Otterly and Ahrefs Brand Radar): (1) one verdict from
+   every answer: named by how many AIs, the tone as "% positive" with its change since the last run. (2) A switch, All AIs or
+   one AI, that filters everything under it. (3) One small table, a row per AI: names you, tone score, cites your site, how
+   many sites; a row picks that AI, its Answers button opens the full answers. (4) Strengths and weak points, the same point
+   said by several AIs once, ranked by how many said it; each AI mark opens its answer. (5) Competitors named, ranked by how
+   many AIs named them. (6) Sources: four groups (your site, competitors, social & forums, press & other) as one bar, then
+   the ranked list, yours marked You. (7) Since the last run: new and lost sources. Then one line: read signed out.
+   The server works the numbers out (run.picture, seo/ai_brand/service.py: picture()); this file only filters by AI.
    Asking costs money, so Ask the AIs first shows the count and the price, and asks only on the owner's yes. Nothing here
    runs on a schedule. The questions (the owner's, and suggestions from the brand and the top keywords) are edited in a panel.
    ai-search-view.js draws the tab with window.AIBrand.tab(). Every word is in English and French below. */
 (() => {
   "use strict";
-  const B = { site: undefined, data: null, loading: false, error: "", ask: null, polling: 0, suggest: null, busy: false, showAll: false };
+  const B = { site: undefined, data: null, loading: false, error: "", ask: null, polling: 0, suggest: null, busy: false, showAll: false, pick: "", allPoints: false, allRivals: false };
   window.AIBrand = B;
   const UI = () => window.UI;
   const t = (w) => UI().t(w);
@@ -32,7 +37,7 @@
     const id = site();
     if (!window.COMP?.server || !id) return;
     if (!force && B.site === id && (B.data || B.loading || B.error)) return;
-    if (B.site !== id) { B.ask = null; B.suggest = null; B.showAll = false; }
+    if (B.site !== id) { B.ask = null; B.suggest = null; B.showAll = false; B.pick = ""; B.allPoints = false; B.allRivals = false; }
     B.site = id; B.loading = true; B.error = "";
     return api("GET", `ai-brand?site_id=${id}`)
       .then((d) => { if (B.site === id) { B.data = d; if (d.running) poll(d.running.id); } })
@@ -61,29 +66,37 @@
   // ---- small pieces ----------------------------------------------------------------------------------
   // Google's two get their logo from brands.js beside the word "Google"; the others take their site's icon.
   const aiMark = (id, host) => `<span class="ab-ai-name">${host && host !== "google.com" ? UI().siteLogo(host, 18) : ""}<span>${esc(t(ENGINE_WORD[id] || id))}</span></span>`;
+  // The short name, with its logo drawn here (brand-mention stops brands.js adding a second one): the switch and the "who said it" marks.
+  const SHORT = { chatgpt: "ChatGPT", perplexity: "Perplexity", gemini: "Gemini", ai_mode: "AI Mode", ai_overview: "AI Overviews" };
+  const hostOf = (id) => (B.data?.engines.find((e) => e.id === id) || {}).host || "";
+  const google = (size) => (window.BRANDS?.FILES?.Google ? `<img class="logo brand-logo" src="logos/${window.BRANDS.FILES.Google}" width="${size}" height="${size}" alt="">` : "");
+  const aiLogo = (id, size) => (hostOf(id) === "google.com" && google(size) ? google(size) : hostOf(id) ? UI().siteLogo(hostOf(id), size) : "");
+  const aiShort = (id, size = 14) => `<span class="brand-mention ab-ai-short">${aiLogo(id, size)}<span>${esc(t(SHORT[id] || id))}</span></span>`;
   const TONE = { positive: ["good", "Positive"], negative: ["crit", "Negative"], mixed: ["warn", "Mixed"], neutral: ["info", "Neutral"] };
   const toneChip = (tone) => (!tone || !TONE[tone] ? "" : UI().status(TONE[tone][0], t(TONE[tone][1])));
+  const toneWord = (tone) => (!tone || !TONE[tone] ? "" : `<span class="ab-tone-word ${TONE[tone][0]}">${esc(t(TONE[tone][1]))}</span>`);
   const namedChip = (named, of) => (of === 0 ? "" : named ? UI().status("good", of > 1 ? tf("Names you in {n} of {m}", { n: num(named), m: num(of) }) : t("Names you")) : UI().status("warn", t("Doesn't name you")));
   const you = () => window.COMP?.who ? window.COMP.who("you") : `<span class="who who-you">${t("You")}</span>`;
   const sourceLink = (s, text) => (s.url ? `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer nofollow" dir="ltr" class="ab-src-link">${esc(text || s.host)}</a>` : `<span dir="ltr">${esc(text || s.host)}</span>`);
   const snippet = (words, n = 160) => { const s = String(words || "").replace(/\s+/g, " ").trim(); return s.length > n ? `${s.slice(0, n - 1)}…` : s; };
+  // "▲13" / "▼8": the change in points against the run before; the words are there for screen readers.
+  const delta = (n, quiet = false) => (n === null || n === undefined || (quiet && n === 0) ? "" : n === 0 ? `<span class="ab-delta flat">${esc(t("same as last run"))}</span>`
+    : `<span class="ab-delta ${n > 0 ? "up" : "down"}"><span aria-hidden="true">${n > 0 ? "▲" : "▼"}${num(Math.abs(n))}</span><span class="sr">${esc(tf(n > 0 ? "up {n} points since the last run" : "down {n} points since the last run", { n: num(Math.abs(n)) }))}</span></span>`);
+  const pct = (n) => tf("{n}% positive", { n: num(n) });
 
-  /* One AI's answers in the last run, put together for its line. */
+  /* One AI's answers in the last run, for its summary line and its panel. */
   function perAi(run) {
     return run.engines.map((id) => {
       const all = run.answers.filter((a) => a.engine === id);
       const done = all.filter((a) => a.status === "done");
       const said = done.filter((a) => !a.no_answer);
-      const named = said.filter((a) => a.brand_named).length;
-      const tones = said.filter((a) => a.brand_named && a.tone).map((a) => a.tone);
-      const bad = tones.includes("negative"), good = tones.includes("positive");
-      const tone = bad && good ? "mixed" : bad ? "negative" : good ? "positive" : tones.length ? "neutral" : null;
-      // The line's summary: a warning first, since that's what to act on; else the first answer that names you.
+      // A warning first, since that's what to act on; else the first answer that names you.
       const lead = said.find((a) => a.brand_named && a.tone === "negative" && a.summary) || said.find((a) => a.brand_named && a.summary) || said.find((a) => a.summary) || said[0] || null;
       const failed = all.filter((a) => a.status === "failed");
-      return { id, host: (B.data.engines.find((e) => e.id === id) || {}).host, all, done, said, named, tone, lead, failed };
+      return { id, host: hostOf(id), all, done, said, lead, failed };
     });
   }
+  const picked = (run) => (B.pick && run.engines.includes(B.pick) ? B.pick : "");
 
   // ---- the tab -----------------------------------------------------------------------------------------
   function emptyCard(html, buttons = "") {
@@ -106,59 +119,118 @@
     if (!a) return "";
     if (a.loading && !a.est) return `<div class="ai-confirm ab-confirm" role="status">${t("Working out the price…")}</div>`;
     if (a.error) return `<div class="ai-confirm ab-confirm" role="alert"><span class="error" style="margin:0">${esc(t(a.error))}</span><button class="btn btn-small btn-ghost" data-ab-cancel>${t("Close")}</button></div>`;
-    const est = a.est, picked = a.picked;
+    const est = a.est, picks = a.picked;
     const qs = Math.min(est.questions, est.max_questions);
     const lines = est.lines.map((line) => {
-      const n = line.engines.filter((e) => picked.has(e)).length * qs;
+      const n = line.engines.filter((e) => picks.has(e)).length * qs;
       return n ? { ...line, n, total: Number(line.each) * n } : null;
     }).filter(Boolean);
     const total = lines.reduce((s, l) => s + l.n, 0);
     const price = lines.map((l) => `${esc(t(KEY_WORD[l.provider]))}: ${esc(tf("{n} × {p}", { n: num(l.n), p: money(l.each, l.currency) }))} = <b>${esc(money(l.total, l.currency))}</b>`).join(" · ");
-    const boxes = est.engines.map((e) => `<label class="ab-pick ${e.connected ? "" : "off"}"><input type="checkbox" data-ab-pick="${e.id}" ${picked.has(e.id) ? "checked" : ""} ${e.connected ? "" : "disabled"}> ${aiMark(e.id, e.host)}${e.connected ? "" : ` <span class="small muted">${t("needs a key")}</span>`}</label>`).join("");
+    const boxes = est.engines.map((e) => `<label class="ab-pick ${e.connected ? "" : "off"}"><input type="checkbox" data-ab-pick="${e.id}" ${picks.has(e.id) ? "checked" : ""} ${e.connected ? "" : "disabled"}> ${aiMark(e.id, e.host)}${e.connected ? "" : ` <span class="small muted">${t("needs a key")}</span>`}</label>`).join("");
     return `<div class="ai-confirm ab-confirm" role="group" aria-label="${esc(t("Ask the AIs"))}">
       <fieldset class="ab-picks"><legend class="sr">${t("Which AIs")}</legend>${boxes}</fieldset>
-      <p class="ab-price">${esc(tf("This asks {q} to {n}: {a}.", { q: tf(qs === 1 ? "{n} question" : "{n} questions", { n: num(qs) }), n: tf(picked.size === 1 ? "{n} AI" : "{n} AIs", { n: num(picked.size) }), a: tf(total === 1 ? "{n} answer" : "{n} answers", { n: num(total) }) }))}<br><span class="small">${price || esc(t("Pick at least one AI."))}</span></p>
+      <p class="ab-price">${esc(tf("This asks {q} to {n}: {a}.", { q: tf(qs === 1 ? "{n} question" : "{n} questions", { n: num(qs) }), n: tf(picks.size === 1 ? "{n} AI" : "{n} AIs", { n: num(picks.size) }), a: tf(total === 1 ? "{n} answer" : "{n} answers", { n: num(total) }) }))}<br><span class="small">${price || esc(t("Pick at least one AI."))}</span></p>
       <div class="ab-confirm-acts"><button class="btn btn-small btn-main" data-ab-go ${total && !a.sending ? "" : "disabled"}>${t("Ask now")}</button><button class="btn btn-small btn-ghost" data-ab-cancel>${t("Cancel")}</button></div></div>`;
   }
-  function aiLines(run) {
-    const rows = perAi(run).map((x) => {
-      const failedAll = !x.done.length && x.failed.length;
-      const said = failedAll ? `<span class="crit">${esc(tf("Didn't answer: {why}", { why: t(x.failed[0].error || "unknown error") }))}</span>`
-        : !x.said.length ? `<span class="muted">${esc(t(x.id === "ai_overview" ? "Google showed no AI Overview for these questions." : "No answer."))}</span>`
-        : x.lead?.summary ? `<span class="ab-ai-said" dir="auto">${esc(x.lead.summary)}</span>`
-        : `<span class="ab-ai-said muted" dir="auto">“${esc(snippet(x.lead?.answer_text))}”</span>`;
-      const extra = x.failed.length && x.done.length ? ` <span class="small warn">${esc(tf("{n} didn't answer", { n: num(x.failed.length) }))}</span>` : "";
-      return `<li><button type="button" class="ab-ai" data-ab-open="${x.id}" aria-label="${esc(tf("Open {ai}'s answers", { ai: t(ENGINE_WORD[x.id]) }))}">
-        <span class="ab-ai-who">${aiMark(x.id, x.host)}</span>
-        <span class="ab-ai-marks">${failedAll ? "" : namedChip(x.named, x.said.length)}${toneChip(x.tone)}${extra}</span>
-        <span class="ab-ai-sum">${said}</span><span class="ab-ai-go" aria-hidden="true">${icon("chevron-right")}</span></button></li>`;
-    }).join("");
-    return `<section class="ab-sec"><h3 class="ab-h">${t("What each AI says")}</h3><ul class="ab-ais">${rows}</ul></section>`;
+
+  /* (1) The verdict, from every answer: named by how many AIs, the tone as a number and its change, your site cited. */
+  function verdict(run) {
+    const p = run.picture;
+    const named = tf(p.answered_by === 1 ? "Named by {n} of {m} AI" : "Named by {n} of {m} AIs", { n: num(p.named_by), m: num(p.answered_by) });
+    const tone = p.tone_score === null ? "" : ` <span class="ab-v-sep" aria-hidden="true">·</span> <span class="ab-v-tone">${esc(pct(p.tone_score))}</span>${delta(p.tone_change)}${toneWord(p.tone_word)}`;
+    const cited = p.answers ? (p.cited_mine ? tf("Your site is cited in {n} of {m} answers.", { n: num(p.cited_mine), m: num(p.answers) }) : t("Your site isn't cited in these answers.")) : "";
+    return `<section class="ab-verdict" aria-label="${esc(t("All AIs together"))}"><p class="ab-v-line"><span class="ab-v-named ${p.named_by ? "" : "warn"}">${esc(named)}</span>${tone}</p>
+      ${cited ? `<p class="ab-v-sub ${p.cited_mine ? "" : "warn"}">${esc(cited)}</p>` : ""}</section>`;
   }
+  /* (2) The switch: All AIs, then each AI asked. It filters everything under it. */
+  function aiSwitch(run) {
+    const now = picked(run);
+    const btn = (id, label) => `<button type="button" data-ab-pick-ai="${id}" aria-pressed="${now === id}">${label}</button>`;
+    return `<div class="seg ab-seg" role="group" aria-label="${esc(t("Which AI"))}">${btn("", esc(t("All AIs")))}${run.engines.map((id) => btn(id, aiShort(id))).join("")}</div>`;
+  }
+  /* (3) One row per AI: names you, tone as a score, cites your site (in how many answers), how many sites. A row picks that AI. */
+  function aiTable(run) {
+    const now = picked(run);
+    const rows = run.picture.engines.map((r) => {
+      const x = perAi(run).find((y) => y.id === r.engine);
+      const failedAll = !r.answered && r.failed;
+      const nothing = !r.answered && !r.failed;
+      const named = failedAll ? `<span class="crit">${esc(t("Didn't answer"))}</span>` : nothing ? `<span class="muted">${esc(t("No answer"))}</span>`
+        : r.named ? `<span class="good">${esc(t("Yes"))}</span>${r.answered > 1 ? ` <span class="small muted">${esc(tf("{n} of {m}", { n: num(r.named), m: num(r.answered) }))}</span>` : ""}` : `<span class="warn">${esc(t("No"))}</span>`;
+      const tone = r.tone_score === null ? `<span class="muted">—</span>` : `<span class="tabular ab-score">${esc(tf("{n}%", { n: num(r.tone_score) }))}</span>${delta(r.tone_change, true)} ${toneWord(r.tone_word)}`;
+      const cited = !r.answered ? `<span class="muted">—</span>` : r.cited_mine ? `<span class="good">${esc(t("Yes"))}</span> <span class="small muted">${esc(tf(r.cited_mine === 1 ? "{n} answer" : "{n} answers", { n: num(r.cited_mine) }))}</span>` : `<span class="warn">${esc(t("No"))}</span>`;
+      const why = failedAll ? `<span class="small crit ab-row-why">${esc(t(x.failed[0].error || "unknown error"))}</span>` : r.failed ? `<span class="small warn ab-row-why">${esc(tf("{n} didn't answer", { n: num(r.failed) }))}</span>` : "";
+      return `<tr data-ab-row="${r.engine}" class="${now === r.engine ? "on" : ""}" aria-selected="${now === r.engine}" tabindex="0">
+        <th scope="row" data-label="${esc(t("AI"))}"><span class="ab-row-who">${aiMark(r.engine, r.host)}${why}</span></th>
+        <td data-label="${esc(t("Names you"))}">${named}</td><td data-label="${esc(t("Tone"))}">${tone}</td><td data-label="${esc(t("Cites your site"))}">${cited}</td>
+        <td class="r" data-label="${esc(t("Sources"))}"><span class="tabular">${r.answered ? num(r.sources) : "—"}</span></td>
+        <td class="ab-row-go"><button type="button" class="link-btn" data-ab-open="${r.engine}" aria-label="${esc(tf("Open {ai}'s answers", { ai: t(ENGINE_WORD[r.engine]) }))}">${esc(t("Read answers"))}${icon("chevron-right")}</button></td></tr>`;
+    }).join("");
+    return `<div class="ab-table-wrap"><table class="ab-ai-table"><caption class="sr">${esc(t("Each AI"))}</caption>
+      <thead><tr><th scope="col">${t("AI")}</th><th scope="col">${t("Names you")}</th><th scope="col">${t("Tone")}</th><th scope="col">${t("Cites your site")}</th><th scope="col" class="r">${t("Sources")}</th><th scope="col"><span class="sr">${t("Read answers")}</span></th></tr></thead>
+      <tbody>${rows}</tbody></table></div>`;
+  }
+  /* The picked AI's own words: its summary (a warning first), or the start of its answer. */
+  function pickedLine(run) {
+    const id = picked(run); if (!id) return "";
+    const x = perAi(run).find((y) => y.id === id); if (!x) return "";
+    const said = !x.said.length ? `<span class="muted">${esc(t(x.id === "ai_overview" ? "Google showed no AI Overview for these questions." : "No answer."))}</span>`
+      : x.lead?.summary ? `<span class="ab-ai-said" dir="auto">${esc(x.lead.summary)}</span>` : `<span class="ab-ai-said muted" dir="auto">“${esc(snippet(x.lead?.answer_text))}”</span>`;
+    return `<p class="ab-picked">${said} <button type="button" class="link-btn" data-ab-open="${id}">${esc(tf("Read {ai}'s answers", { ai: t(SHORT[id]) }))} ›</button></p>`;
+  }
+  /* (4) Strengths and weak points: the same point once, ranked by how many AIs said it, with who said it (a click opens the answer). */
+  function points(run) {
+    const id = picked(run), p = run.picture;
+    const keep = (list) => (id ? list.filter((x) => x.engines.includes(id)) : list);
+    const pros = keep(p.pros), cons = keep(p.cons);
+    if (!pros.length && !cons.length) return "";
+    const most = B.allPoints ? Infinity : 5;
+    const col = (items, cls, ic, title, none) => {
+      const list = items.slice(0, most).map((x) => {
+        const who = x.engines.map((e) => {
+          const ids = x.answers.filter((a) => a.engine === e).map((a) => a.id);
+          return `<button type="button" class="ab-who" data-ab-open="${e}" data-ab-focus="${ids.join(",")}" aria-label="${esc(tf("Open {ai}'s answer", { ai: t(ENGINE_WORD[e]) }))}">${aiShort(e, 12)}</button>`;
+        }).join("");
+        return `<li><span class="ab-pt-mark ${cls}" aria-hidden="true">${icon(ic)}</span><span class="ab-pt-body"><span class="ab-pt-text" dir="auto">${esc(x.text)}</span>
+          <span class="ab-pt-who"><span class="small muted tabular">${esc(tf(x.ais === 1 ? "{n} AI" : "{n} AIs", { n: num(x.ais) }))}</span>${who}</span></span></li>`;
+      }).join("");
+      return `<div class="ab-pts-col"><h4 class="ab-h4 ${cls}">${esc(t(title))} <span class="muted tabular">${num(items.length)}</span></h4>${list ? `<ul class="ab-pts">${list}</ul>` : `<p class="small muted">${esc(t(none))}</p>`}</div>`;
+    };
+    const more = Math.max(pros.length, cons.length) > 5 ? `<button type="button" class="link-btn ab-more" data-ab-all-points>${esc(t(B.allPoints ? "Show fewer" : "Show all points"))}</button>` : "";
+    return `<section class="ab-sec"><h3 class="ab-h">${t("What the AIs say about you")}</h3><div class="ab-pts-grid">${col(pros, "good", "plus", "Strengths", "No strengths named.")}${col(cons, "crit", "minus", "Weak points", "No weak points named.")}</div>${more}</section>`;
+  }
+  /* (5) Competitors named: each brand once, ranked by how many AIs named it. */
+  function rivals(run) {
+    const id = picked(run), p = run.picture;
+    const list = id ? p.competitors.filter((c) => c.engines.includes(id)) : p.competitors;
+    if (!list.length) return "";
+    const of = Math.max(1, id ? 1 : p.answered_by);
+    const most = B.allRivals ? Infinity : 8;
+    const rows = list.slice(0, most).map((c) => `<li><span class="ab-rv-name" dir="auto">${esc(c.name)}</span>
+      <span class="ab-rv-bar" aria-hidden="true"><i style="width:${Math.round(100 * Math.min(c.ais, of) / of)}%"></i></span>
+      <span class="small tabular ab-rv-n">${esc(id ? tf((c.by_engine?.[id] || 0) === 1 ? "{n} answer" : "{n} answers", { n: num(c.by_engine?.[id] || 0) }) : tf(c.ais === 1 ? "{n} AI" : "{n} AIs", { n: num(c.ais) }))}</span></li>`).join("");
+    const more = list.length > 8 ? `<button type="button" class="link-btn ab-more" data-ab-all-rivals>${esc(B.allRivals ? t("Show fewer") : tf("Show all {n}", { n: num(list.length) }))}</button>` : "";
+    return `<section class="ab-sec"><h3 class="ab-h">${t("Competitors named")}</h3><ul class="ab-rv">${rows}</ul>${more}</section>`;
+  }
+  /* (6) Sources: the four groups as one bar, then the ranked list with links. */
+  const GROUPS = [["mine", "Your site"], ["competitor", "Competitors"], ["social", "Social & forums"], ["other", "Press & other"]];
+  const GROUP_TAG = { competitor: "Competitor", social: "Social & forums" };
   function sourcesBlock(run) {
-    const rows = run.sources;
+    const id = picked(run);
+    const rows = (id ? run.sources.filter((s) => s.engines.includes(id)).map((s) => ({ ...s, answers: s.by_engine?.[id] || 0 })).sort((a, b) => b.answers - a.answers || (b.mine - a.mine) || a.host.localeCompare(b.host)) : run.sources);
     if (!rows.length) return `<section class="ab-sec"><h3 class="ab-h">${t("Sources the AIs cite")}</h3><p class="muted">${t("No sources cited in these answers.")}</p></section>`;
-    const mine = rows.filter((s) => s.mine);
-    const lead = mine.length ? tf("Your site is cited in {n} of {m} answers.", { n: num(mine.reduce((s, x) => Math.max(s, x.answers), 0)), m: num(run.done) }) : t("Your site isn't cited in these answers.");
+    const groups = Object.fromEntries(GROUPS.map(([g]) => [g, { sites: 0, citations: 0 }]));
+    rows.forEach((s) => { const g = groups[s.group || "other"]; g.sites += 1; g.citations += s.answers; });
+    const bar = `<div class="ab-gbar" role="img" aria-label="${esc(GROUPS.map(([g, w]) => `${t(w)}: ${num(groups[g].citations)}`).join(", "))}">${GROUPS.filter(([g]) => groups[g].citations).map(([g]) => `<i class="g-${g}" style="flex-grow:${groups[g].citations}"></i>`).join("")}</div>`;
+    const keys = `<ul class="ab-gkeys">${GROUPS.map(([g, w]) => `<li class="${groups[g].sites ? "" : "none"}"><i class="ab-gdot g-${g}" aria-hidden="true"></i><span>${esc(t(w))}</span> <b class="tabular">${num(groups[g].sites)}</b><span class="small muted tabular">${esc(tf(groups[g].citations === 1 ? "{n} citation" : "{n} citations", { n: num(groups[g].citations) }))}</span></li>`).join("")}</ul>`;
     const columns = [
-      { key: "host", label: "Site", html: (s) => `<span class="ab-src">${UI().siteLogo(s.host, 16)}${sourceLink(s.urls[0] ? { ...s, url: s.urls[0].url } : s, s.host)}${s.mine ? ` ${you()}` : ""}${s.urls.length > 1 ? ` <span class="small muted">${esc(tf("{n} pages", { n: num(s.urls.length) }))}</span>` : ""}</span>` },
+      { key: "host", label: "Site", html: (s) => `<span class="ab-src">${UI().siteLogo(s.host, 16)}${sourceLink(s.urls[0] ? { ...s, url: s.urls[0].url } : s, s.host)}${s.mine ? ` ${you()}` : ""}${GROUP_TAG[s.group] ? ` <span class="ab-gtag g-${s.group}">${esc(t(GROUP_TAG[s.group]))}</span>` : ""}${s.urls.length > 1 ? ` <span class="small muted">${esc(tf("{n} pages", { n: num(s.urls.length) }))}</span>` : ""}</span>` },
       { key: "answers", label: "Answers citing it", num: true },
-      { key: "engines", label: "AIs", get: (s) => s.engines.map((e) => t(ENGINE_WORD[e])).join(", "), html: (s) => `<span class="small">${esc(s.engines.map((e) => t(ENGINE_WORD[e])).join(", "))}</span>` },
+      ...(id ? [] : [{ key: "engines", label: "AIs", get: (s) => s.engines.map((e) => t(SHORT[e])).join(", "), html: (s) => `<span class="ab-src-ais">${s.engines.map((e) => aiShort(e, 12)).join("")}</span>` }]),
     ];
     return `<section class="ab-sec"><div class="ab-h-row"><h3 class="ab-h">${t("Sources the AIs cite")}</h3><span data-tt-slot=""></span></div>
-      <p class="ab-lead ${mine.length ? "" : "warn"}">${esc(lead)}</p>${window.LV.dataTable("ab-sources", columns, rows, { empty: "No sources cited in these answers." })}</section>`;
-  }
-  function prosCons(run) {
-    const cards = perAi(run).map((x) => {
-      const pros = [...new Set(x.said.flatMap((a) => a.pros || []))], cons = [...new Set(x.said.flatMap((a) => a.cons || []))], rivals = [...new Set(x.said.flatMap((a) => a.competitors || []))];
-      if (!pros.length && !cons.length && !rivals.length) return "";
-      const list = (items, cls, ic) => (items.length ? `<ul class="ab-pc ${cls}">${items.map((w) => `<li>${icon(ic, cls)}<span dir="auto">${esc(w)}</span></li>`).join("")}</ul>` : "");
-      return `<div class="ab-pc-card"><div class="ab-pc-head">${aiMark(x.id, x.host)}</div>
-        ${pros.length || cons.length ? `${list(pros, "good", "plus")}${list(cons, "crit", "minus")}` : `<p class="small muted">${t("No pros or cons about you.")}</p>`}
-        ${rivals.length ? `<p class="small ab-rivals"><span class="muted">${t("Also named:")}</span> <span dir="auto">${esc(rivals.join(", "))}</span></p>` : ""}</div>`;
-    }).filter(Boolean).join("");
-    if (!cards) return "";
-    return `<section class="ab-sec"><h3 class="ab-h">${t("Pros and cons")}</h3><div class="ab-pc-grid">${cards}</div></section>`;
+      <div class="ab-groups">${bar}${keys}</div>${window.LV.dataTable(id ? `ab-sources-${id}` : "ab-sources", columns, rows, { empty: "No sources cited in these answers." })}</section>`;
   }
   function sinceBlock(d) {
     const s = d.since;
@@ -183,13 +255,13 @@
     if (!d.last) return head + failed + (d.running || B.ask ? "" : emptyCard(t("No answers yet. Press Ask the AIs: the price shows first."))) + reader;
     const run = d.last;
     const note = `<p class="small muted ab-note">${icon("info")}<span>${esc(tf("One answer per AI, read signed out on {d}. AIs answer differently each time.", { d: day(run.created_at) }))}</span></p>`;
-    return head + failed + reader + aiLines(run) + sourcesBlock(run) + prosCons(run) + sinceBlock(d) + note;
+    return head + failed + reader + verdict(run) + `<div class="ab-pick-row">${aiSwitch(run)}</div>` + aiTable(run) + pickedLine(run) + points(run) + rivals(run) + sourcesBlock(run) + sinceBlock(d) + note;
   }
   B.tab = tab;
-  B.info = () => ["Each AI is asked your questions once, signed out, only when you press the button.", "Sources: every site an answer cites, yours marked You."];
+  B.info = () => ["Each AI is asked your questions once, signed out, only when you press the button.", "Tone: each answer that names you counts positive 1, neutral ½, negative 0; the score is their average.", "Sources: every site an answer cites, yours marked You."];
 
-  // ---- one AI's answers, in the side panel -----------------------------------------------------------
-  function answerPanel(id, opener) {
+  // ---- one AI's answers, in the side panel (the ones asked for first) -----------------------------------
+  function answerPanel(id, opener, focus = []) {
     const run = B.data?.last; if (!run) return;
     const x = perAi(run).find((r) => r.id === id); if (!x) return;
     const one = (a) => {
@@ -198,11 +270,13 @@
       const summary = a.summary ? `<div class="ab-p-sum"><span class="tag">${t("AI summary")}</span> <span dir="auto">${esc(a.summary)}</span></div>` : a.read_error ? `<p class="small muted">${esc(t(a.read_error))}</p>` : "";
       const src = a.sources.length ? `<h4>${esc(tf("Sources ({n})", { n: num(a.sources.length) }))}</h4><ul class="ab-p-src">${a.sources.map((s) => `<li>${UI().siteLogo(s.host, 14)}${sourceLink(s, s.title || s.url || s.host)}${s.mine ? ` ${you()}` : ""}<span class="small muted" dir="ltr"> ${esc(s.host)}</span></li>`).join("")}</ul>` : "";
       const pc = (a.pros?.length || a.cons?.length) ? `<div class="ab-p-pc">${(a.pros || []).map((w) => `<span class="ab-p-pro">${icon("plus", "good")}<span dir="auto">${esc(w)}</span></span>`).join("")}${(a.cons || []).map((w) => `<span class="ab-p-con">${icon("minus", "crit")}<span dir="auto">${esc(w)}</span></span>`).join("")}</div>` : "";
-      const words = a.answer_text ? `<details class="fold ab-p-full" open><summary>${icon("chevron-right")}${t("The full answer")}</summary><div class="ab-p-text" dir="auto">${esc(a.answer_text)}</div></details>` : "";
-      return `<section class="ab-p-one"><h3 dir="auto">${esc(a.question)}</h3><div class="ab-ai-marks">${a.status === "done" && !a.no_answer ? namedChip(a.brand_named ? 1 : 0, 1) : ""}${toneChip(a.brand_named ? a.tone : null)}</div>${status}${summary}${pc}${words}${src}</section>`;
+      const open = !focus.length || focus.includes(a.id);
+      const words = a.answer_text ? `<details class="fold ab-p-full" ${open ? "open" : ""}><summary>${icon("chevron-right")}${t("The full answer")}</summary><div class="ab-p-text" dir="auto">${esc(a.answer_text)}</div></details>` : "";
+      return `<section class="ab-p-one ${focus.includes(a.id) ? "focus" : ""}" data-ab-answer="${a.id}"><h3 dir="auto">${esc(a.question)}</h3><div class="ab-ai-marks">${a.status === "done" && !a.no_answer ? namedChip(a.brand_named ? 1 : 0, 1) : ""}${toneChip(a.brand_named ? a.tone : null)}</div>${status}${summary}${pc}${words}${src}</section>`;
     };
+    const order = [...x.all.filter((a) => focus.includes(a.id)), ...x.all.filter((a) => !focus.includes(a.id))];
     UI().openPanel(`${UI().panelHead(t(ENGINE_WORD[id]), esc(tf("Read signed out on {d}", { d: day(run.created_at) })))}
-      <div class="panel-body ab-panel">${x.all.map(one).join("")}<p class="small muted">${t("AIs answer differently each time.")}</p></div>`, opener);
+      <div class="panel-body ab-panel">${order.map(one).join("")}<p class="small muted">${t("AIs answer differently each time.")}</p></div>`, opener);
   }
 
   // ---- the questions panel -----------------------------------------------------------------------------
@@ -291,7 +365,11 @@
     if (hit("[data-ab-ask]")) { openAsk(); return; }
     if (hit("[data-ab-cancel]")) { B.ask = null; redraw(); UI().$("[data-ab-ask]")?.focus({ preventScroll: true }); return; }
     if (hit("[data-ab-go]")) { go(); return; }
-    if ((el = hit("[data-ab-open]"))) { answerPanel(el.dataset.abOpen, el); return; }
+    if ((el = hit("[data-ab-open]"))) { answerPanel(el.dataset.abOpen, el, (el.dataset.abFocus || "").split(",").filter(Boolean).map(Number)); return; }
+    if ((el = hit("[data-ab-pick-ai]"))) { pickAi(el.dataset.abPickAi, `[data-ab-pick-ai="${el.dataset.abPickAi}"]`); return; }
+    if ((el = hit("[data-ab-row]"))) { pickAi(B.pick === el.dataset.abRow ? "" : el.dataset.abRow, `[data-ab-row="${el.dataset.abRow}"]`); return; }
+    if (hit("[data-ab-all-points]")) { B.allPoints = !B.allPoints; redraw(); return; }
+    if (hit("[data-ab-all-rivals]")) { B.allRivals = !B.allRivals; redraw(); return; }
     if ((el = hit("[data-ab-q-del]"))) { const id = el.dataset.abQDel; change(() => api("DELETE", `ai-brand/questions/${id}`)); return; }
     if (hit("[data-ab-suggest]")) { suggest(); return; }
     if ((el = hit("[data-ab-sug]"))) { const words = B.suggest[Number(el.dataset.abSug)]; B.suggest = B.suggest.filter((w) => w !== words); change(() => api("POST", "ai-brand/questions", { site_id: B.site, text: words, source: "suggested" })); return; }
@@ -300,6 +378,19 @@
       change(async () => { for (const words of all) await api("POST", "ai-brand/questions", { site_id: B.site, text: words, source: "suggested" }); });
     }
   });
+  // A row of the AI table works from the keyboard too: Enter or Space picks that AI.
+  document.addEventListener("keydown", (e) => {
+    if (!window.UI || UI().state.route !== "ai" || (e.key !== "Enter" && e.key !== " ")) return;
+    const row = e.target.closest?.("[data-ab-row]");
+    if (!row || e.target !== row) return;
+    e.preventDefault();
+    pickAi(B.pick === row.dataset.abRow ? "" : row.dataset.abRow, `[data-ab-row="${row.dataset.abRow}"]`);
+  });
+  function pickAi(id, focus) {
+    B.pick = id || "";
+    redraw();
+    UI().$(focus)?.focus({ preventScroll: true });
+  }
   document.addEventListener("change", (e) => {
     const el = e.target;
     if (el.matches?.("[data-ab-pick]") && B.ask) { if (el.checked) B.ask.picked.add(el.dataset.abPick); else B.ask.picked.delete(el.dataset.abPick); redraw(); UI().$(`[data-ab-pick="${el.dataset.abPick}"]`)?.focus({ preventScroll: true }); return; }
@@ -355,6 +446,16 @@
     "Paste a Bright Data or Semscraper key in Settings first.": "Collez d'abord une clé Bright Data ou Semscraper dans Réglages.",
     "Asking {n}. The answers show here in a few minutes.": "Demande de {n}. Les réponses s'affichent ici dans quelques minutes.", "Name saved": "Nom enregistré",
     "No AI answered. See why in What AI says.": "Aucune IA n'a répondu. Voyez pourquoi dans Ce que dit l'IA.", "The AIs answered.": "Les IA ont répondu.",
+    // the combined picture (2026-11-20)
+    "same as last run": "comme la dernière fois", "up {n} points since the last run": "en hausse de {n} points depuis la dernière fois", "down {n} points since the last run": "en baisse de {n} points depuis la dernière fois",
+    "{n}% positive": "{n} % positif", "Named by {n} of {m} AI": "Cité par {n} IA sur {m}", "Named by {n} of {m} AIs": "Cité par {n} IA sur {m}", "All AIs together": "Toutes les IA ensemble",
+    "Which AI": "Quelle IA", "All AIs": "Toutes les IA", "AI Mode": "Mode IA", "AI Overviews": "Aperçus IA", "Didn't answer": "Pas de réponse", "No answer": "Pas de réponse", "Yes": "Oui", "No": "Non",
+    "{n} of {m}": "{n} sur {m}", "{n}%": "{n} %", "AI": "IA", "Tone": "Ton", "Cites your site": "Cite votre site", "Sources": "Sources", "Read answers": "Lire les réponses", "Each AI": "Chaque IA",
+    "Read {ai}'s answers": "Lire les réponses de {ai}", "Open {ai}'s answer": "Ouvrir la réponse de {ai}", "Show fewer": "En montrer moins", "Show all points": "Voir tous les points", "Show all {n}": "Voir les {n}",
+    "What the AIs say about you": "Ce que les IA disent de vous", "Strengths": "Points forts", "Weak points": "Points faibles", "No strengths named.": "Aucun point fort cité.", "No weak points named.": "Aucun point faible cité.",
+    "Competitors named": "Concurrents cités", "Your site": "Votre site", "Competitors": "Concurrents", "Social & forums": "Réseaux sociaux et forums", "Press & other": "Presse et autres", "Competitor": "Concurrent",
+    "{n} citation": "{n} citation", "{n} citations": "{n} citations",
+    "Tone: each answer that names you counts positive 1, neutral ½, negative 0; the score is their average.": "Ton : chaque réponse qui vous cite compte positif 1, neutre ½, négatif 0 ; le score est leur moyenne.",
     // the server's words
     "Type the question first.": "Tapez d'abord la question.", "That question is already in the list.": "Cette question est déjà dans la liste.", "Keep a question under 400 characters.": "Une question doit faire moins de 400 caractères.",
     "A run asks at most 10 questions. Untick one first.": "Une demande pose au plus 10 questions. Décochez-en une d'abord.", "A run asks at most 10 questions. Untick some first.": "Une demande pose au plus 10 questions. Décochez-en d'abord.",
