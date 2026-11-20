@@ -20,7 +20,7 @@ from seo.sources import credentials
 SOURCES = ("gsc", "ga4", "clarity", "bing", "yandex", "pagespeed")
 GOOGLE_SOURCES = ("gsc", "ga4")
 # Keys kept once for the whole app, in the connections table with the search tools.
-APP_KEYS = {"bing": "Bing Webmaster", "yandex": "Yandex Webmaster", "pagespeed": "PageSpeed Insights", "openpagerank": "Open PageRank", "moz": "Moz", "cloudflare": "Cloudflare Radar", "indexnow": "IndexNow", "openrouter": "OpenRouter", "ahrefs": "Ahrefs", "firecrawl": "Firecrawl", "anthropic": "Anthropic"}
+APP_KEYS = {"bing": "Bing Webmaster", "yandex": "Yandex Webmaster", "pagespeed": "PageSpeed Insights", "openpagerank": "Open PageRank", "moz": "Moz", "cloudflare": "Cloudflare Radar", "indexnow": "IndexNow", "openrouter": "OpenRouter", "ahrefs": "Ahrefs", "firecrawl": "Firecrawl", "anthropic": "Anthropic", "brightdata_ai": "Bright Data AI scrapers", "semscraper": "Semscraper"}
 
 
 def _iso(value) -> str | None:
@@ -333,6 +333,12 @@ def test_app_key(engine: Engine, source: str) -> dict:
         elif source == "ahrefs":
             # ahrefs.com is one of the targets Ahrefs never bills, so this costs no API units
             http.request("GET", "https://api.ahrefs.com/v3/site-explorer/domain-rating", tool, headers={"Authorization": f"Bearer {key}"}, params={"target": "ahrefs.com", "date": date.today().isoformat()})
+        elif source == "semscraper":
+            # Its balance, which costs nothing (seo/ai_brand/README.md).
+            data = http.request("GET", "https://api.semscraper.com/v1/billing/credit", tool, headers={"Authorization": f"Bearer {key}"}).json()
+            rows = data.get("data") if isinstance(data, dict) else None
+            note_app_key(engine, source, None)
+            return {"ok": True, "note": "Works.", "left": rows[0].get("balance") if isinstance(rows, list) and rows and isinstance(rows[0], dict) else None}
         elif source == "cloudflare":
             # Radar itself, not /user/tokens/verify: that one rejects account API tokens as "Invalid API Token",
             # though they read Radar fine. This also proves the token has Radar access. It costs nothing.

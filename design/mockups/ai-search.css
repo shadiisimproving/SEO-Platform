@@ -170,3 +170,82 @@ html[data-simple="1"] .ai-aio-line .ai-aio-said { font-weight: 400; color: var(-
 @media (max-width: 640px) {
   html[data-simple="1"] .ai-clarity-line { padding-left: 12px; padding-right: 12px; }
 }
+
+/* What AI says (ai-brand.js): one line per AI, the sources, pros and cons, what changed. Same tokens, no raw colours. */
+.ab-tab { padding: 4px 18px 16px; }
+.ab-head { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; padding: 10px 0 12px; }
+.ab-brand { margin: 0; font-size: 13px; }
+.ab-confirm { flex-direction: column; align-items: stretch; gap: 10px; padding: 12px 14px; margin: 0 0 14px; border: 1px solid var(--line); border-radius: 12px; }
+.ab-picks { display: flex; flex-wrap: wrap; gap: 6px 14px; border: 0; padding: 0; margin: 0; }
+.ab-pick { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+.ab-pick.off { color: var(--muted); cursor: default; }
+.ab-price { margin: 0; }
+.ab-confirm-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+.ab-ai-name { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; white-space: nowrap; }
+.ab-ai-name .site-logo { border-radius: 4px; flex: none; }
+.ab-sec { margin-top: 16px; }
+.ab-sec:first-child { margin-top: 0; }
+.ab-h { font-size: 14px; margin: 0 0 8px; }
+.ab-h-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ab-lead { margin: 0 0 8px; font-size: 13px; }
+.ab-ais { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--line); }
+.ab-ais > li { border-bottom: 1px solid var(--line); }
+.ab-ai { display: grid; grid-template-columns: minmax(150px, 200px) minmax(150px, 290px) 1fr 18px; align-items: center; gap: 12px; width: 100%; padding: 10px 6px; background: none; border: 0; text-align: left; font: inherit; color: var(--text); cursor: pointer; border-radius: 8px; }
+.ab-ai:hover { background: var(--hover); }
+.ab-ai:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.ab-ai-marks { display: inline-flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
+.ab-ai-sum { font-size: 13px; color: var(--text-2); min-width: 0; }
+.ab-ai-go { color: var(--muted); display: inline-flex; }
+.ab-src { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ab-src .site-logo { border-radius: 4px; flex: none; }
+.ab-src-link { color: var(--text); text-decoration: underline; text-decoration-color: var(--line); text-underline-offset: 2px; overflow-wrap: anywhere; }
+.ab-src-link:hover { text-decoration-color: currentColor; }
+.ab-pc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; }
+.ab-pc-card { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; }
+.ab-pc-head { margin-bottom: 6px; }
+.ab-pc { list-style: none; margin: 0 0 4px; padding: 0; font-size: 13px; }
+.ab-pc li { display: flex; gap: 6px; align-items: flex-start; padding: 2px 0; }
+.ab-pc li svg.i { width: 14px; height: 14px; flex: none; margin-top: 2px; }
+.ab-rivals { margin: 6px 0 0; }
+.ab-since { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin: 0 0 6px; font-size: 13px; }
+.ab-since > span:first-child { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
+.ab-since svg.i, .ab-reader svg.i, .ab-note svg.i, .ab-failed svg.i { width: 14px; height: 14px; flex: none; }
+.ab-host { display: inline-flex; align-items: center; gap: 5px; }
+.ab-note { display: flex; gap: 6px; align-items: flex-start; margin: 16px 0 0; }
+.ab-reader { margin: 0 0 12px; }
+.ab-failed { display: flex; gap: 6px; align-items: flex-start; margin: 0 0 12px; font-size: 13px; }
+.ab-empty { padding: 22px 8px; }
+.ab-empty-acts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 12px; }
+/* the side panels */
+.ab-panel .ab-p-one { padding: 0 0 16px; margin: 0 0 16px; border-bottom: 1px solid var(--line); }
+.ab-panel h3 { font-size: 14px; margin: 0 0 6px; }
+.ab-panel h4 { font-size: 12px; margin: 10px 0 4px; color: var(--text-2); }
+.ab-p-sum { font-size: 13px; margin: 8px 0; }
+.ab-p-text { white-space: pre-wrap; font-size: 13px; line-height: 1.5; color: var(--text-2); max-height: 320px; overflow: auto; padding: 8px 10px; border-radius: 8px; background: var(--track); overflow-wrap: anywhere; }
+.ab-p-src { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.ab-p-src li { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 3px 0; }
+.ab-p-pc { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; margin: 6px 0; }
+.ab-p-pc > span { display: inline-flex; align-items: center; gap: 4px; }
+.ab-p-pc svg.i { width: 13px; height: 13px; }
+.ab-inline { display: flex; gap: 8px; }
+.ab-inline .input { flex: 1; min-width: 0; }
+.ab-qs { list-style: none; margin: 0 0 12px; padding: 0; }
+.ab-q { display: flex; align-items: center; gap: 8px; padding: 5px 0; }
+.ab-q .input { flex: 1; min-width: 0; }
+.ab-add { display: flex; gap: 8px; margin-bottom: 10px; }
+.ab-add .input { flex: 1; min-width: 0; }
+.ab-sug { margin-top: 10px; border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; }
+.ab-sug-head { display: flex; align-items: center; justify-content: space-between; }
+.ab-sug h3 { font-size: 13px; margin: 0; }
+.ab-sug ul { list-style: none; margin: 6px 0 0; padding: 0; }
+.ab-sug li { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 0; font-size: 13px; }
+/* a phone: one card per AI */
+@media (max-width: 640px) {
+  .ab-tab { padding: 4px 12px 14px; }
+  .ab-ais { border-top: 0; display: grid; gap: 8px; }
+  .ab-ais > li { border: 1px solid var(--line); border-radius: 12px; }
+  .ab-ai { grid-template-columns: 1fr 18px; grid-template-areas: "who go" "marks marks" "sum sum"; gap: 6px; padding: 10px 12px; }
+  .ab-ai-who { grid-area: who; } .ab-ai-marks { grid-area: marks; } .ab-ai-sum { grid-area: sum; } .ab-ai-go { grid-area: go; }
+  .ab-head { align-items: stretch; }
+  .ab-head > .btn { width: 100%; justify-content: center; }
+}

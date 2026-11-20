@@ -44,6 +44,7 @@ def main() -> None:
     parser.add_argument("--keep", action="store_true", help="keep what's in the database, so a restart loses nothing")
     parser.add_argument("--login", action="store_true", help="ask for a login, with admin@example.com / demo-password-1")
     parser.add_argument("--slow", type=float, default=0.25, help="seconds between requests, so progress can be seen")
+    parser.add_argument("--fake-claude", action="store_true", help="answer AI requests with tests/ui/fake_claude.py, so nothing reaches Anthropic")
     args = parser.parse_args()
 
     engine = make_engine(test=True)
@@ -66,7 +67,10 @@ def main() -> None:
                 print(f"worker {lane}: {exc}", flush=True)
             time.sleep(0.4)
 
-    fake_google.install()
+    fake_google.install()  # also a fake Bright Data AI scrapers and Semscraper (tests/ui/fake_ai_brand.py)
+    if args.fake_claude:
+        from tests.ui import fake_claude
+        fake_claude.install()
     fake_firecrawl.install(websites)
     for lane in ("refresh", "crawl", "collectors"):
         threading.Thread(target=worker, args=(lane,), daemon=True).start()

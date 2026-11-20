@@ -305,7 +305,9 @@
   }
 
   // ---- one card, four tabs -----------------------------------------------------------------------
-  const TABS = [["assistants", "Assistants"], ["pages", "Landing pages"], ["cited", "Cited pages"], ["questions", "Questions to win"]];
+  const TABS = [["assistants", "Assistants"], ["pages", "Landing pages"], ["cited", "Cited pages"], ["questions", "Questions to win"], ["brand", "What AI says"]];
+  /* What AI says (ai-brand.js): what ChatGPT, Perplexity, Gemini and Google's AIs answer about the company. Drawn by AIBrand. */
+  const brandTab = () => (window.AIBrand ? window.AIBrand.tab() : "");
   /* The simpler screens: each tab's small print goes to the (i) in the card's head instead of a line above the table
      (keep: true for a line that asks for something). Its words, with any hover tip's, as plain sentences. */
   let tabInfo = [];
@@ -405,22 +407,22 @@
     const tabs = report ? [...TABS, ["report", "Google AI report"]] : TABS;
     if (!tabs.some(([id]) => id === A.tab)) A.tab = "assistants";
     tabInfo = [];
-    const body = A.tab === "report" ? window.GoogleAIReport.tab() : { assistants: assistantsTab, pages: pagesTab, cited: citedTab, questions: questionsTab }[A.tab](d);
+    const body = A.tab === "report" ? window.GoogleAIReport.tab() : { assistants: assistantsTab, pages: pagesTab, cited: citedTab, questions: questionsTab, brand: brandTab }[A.tab](d);
     // Each tab's count is its badge (the table then needs no "1–5 of 5" under it: data-tt-own-count).
     const ga4On = !NOT_ON.includes(stateOf(d, "ga4").state), c = d.copilot;
-    const counts = { assistants: ga4On ? d.sources.length : null, pages: ga4On ? d.pages.length : null, cited: c.sites.length ? c.sites.reduce((n, x) => n + x.pages.length, 0) : null, questions: c.sites.some((x) => x.queries) ? c.sites.reduce((n, x) => n + (x.queries?.length || 0), 0) : null };
+    const counts = { brand: window.AIBrand?.count?.() ?? null, assistants: ga4On ? d.sources.length : null, pages: ga4On ? d.pages.length : null, cited: c.sites.length ? c.sites.reduce((n, x) => n + x.pages.length, 0) : null, questions: c.sites.some((x) => x.queries) ? c.sites.reduce((n, x) => n + (x.queries?.length || 0), 0) : null };
     const badge = (id) => (counts[id] ? ` <span class="n-badge">${num(counts[id])}</span>` : "");
-    const info = A.tab === "report" ? tabInfo : ["Some AI visits show as Direct or Organic Search.", "AI apps often send no referrer, so their visits show as Direct. Clicks from Google's AI Overviews count as Organic Search.", ...tabInfo];
+    const info = A.tab === "report" ? tabInfo : A.tab === "brand" ? window.AIBrand?.info?.() || [] : ["Some AI visits show as Direct or Organic Search.", "AI apps often send no referrer, so their visits show as Direct. Clicks from Google's AI Overviews count as Organic Search.", ...tabInfo];
     return `<section class="card ai-tabs-card ai-tabs-simple"><div class="card-head ai-tabs-head"><div class="page-tabs in-card" role="tablist" aria-label="${t("AI search")}">${tabs.map(([id, word]) => `<button class="page-tab tab" role="tab" id="ai-tab-${id}" data-ai-tab="${id}" aria-selected="${A.tab === id}" tabindex="${A.tab === id ? 0 : -1}">${t(word)}${badge(id)}</button>`).join("")}</div>
-      <span class="end ai-tabs-tools">${UI.info(info)}<button class="link-btn" data-ai-list>${t("Edit the AI list")}</button><span data-tt-slot=""></span></span></div>
-      <div role="tabpanel" aria-labelledby="ai-tab-${A.tab}" ${A.tab === "report" ? "" : "data-tt-own-count"}>${body}</div></section>`;
+      <span class="end ai-tabs-tools">${UI.info(info)}${A.tab === "brand" ? "" : `<button class="link-btn" data-ai-list>${t("Edit the AI list")}</button><span data-tt-slot=""></span>`}</span></div>
+      <div role="tabpanel" aria-labelledby="ai-tab-${A.tab}" class="${A.tab === "brand" ? "ab-tab" : ""}" ${A.tab === "report" ? "" : "data-tt-own-count"}>${body}</div></section>`;
   }
   function tabsCard(d) {
     if (simple()) return tabsCardSimple(d);
     const chipFor = { assistants: stateOf(d, "ga4"), pages: stateOf(d, "ga4"), cited: stateOf(d, "clarity_download"), questions: stateOf(d, "clarity_download") }[A.tab];
-    const body = { assistants: assistantsTab, pages: pagesTab, cited: citedTab, questions: questionsTab }[A.tab](d);
-    return `<section class="card ai-tabs-card"><div class="ai-tabs-head"><div class="tabs" role="tablist" aria-label="${t("AI search")}">${TABS.map(([id, word]) => `<button class="tab" role="tab" id="ai-tab-${id}" data-ai-tab="${id}" aria-selected="${A.tab === id}" tabindex="${A.tab === id ? 0 : -1}">${t(word)}</button>`).join("")}</div><span class="end">${chip(chipFor, { short: true })}</span></div>
-      <div role="tabpanel" aria-labelledby="ai-tab-${A.tab}">${body}</div></section>`;
+    const body = { assistants: assistantsTab, pages: pagesTab, cited: citedTab, questions: questionsTab, brand: brandTab }[A.tab](d);
+    return `<section class="card ai-tabs-card"><div class="ai-tabs-head"><div class="tabs" role="tablist" aria-label="${t("AI search")}">${TABS.map(([id, word]) => `<button class="tab" role="tab" id="ai-tab-${id}" data-ai-tab="${id}" aria-selected="${A.tab === id}" tabindex="${A.tab === id ? 0 : -1}">${t(word)}</button>`).join("")}</div><span class="end">${chipFor ? chip(chipFor, { short: true }) : ""}</span></div>
+      <div role="tabpanel" aria-labelledby="ai-tab-${A.tab}" class="${A.tab === "brand" ? "ab-tab" : ""}">${body}</div></section>`;
   }
 
   // ---- Google AI Overviews: one line, its own button, never spent by Refresh data -------------------
@@ -749,7 +751,7 @@
     "Upload a Clarity download…": "Importer un export Clarity…", "Check AI Overviews": "Relever les AI Overviews", "uses credits, asks first": "utilise des crédits, demande d'abord",
     "Refresh data": "Actualiser les données", "Refresh one source": "Actualiser une seule source", "Do AI assistants send you leads, and do AI answers cite you?": "Les assistants IA vous envoient-ils des leads, et les réponses IA vous citent-elles ?",
     "Some AI visits show as Direct or Organic Search.": "Certaines visites IA apparaissent en Direct ou en Recherche organique.",
-    "Edit the AI list": "Modifier la liste IA",
+    "Edit the AI list": "Modifier la liste IA", "What AI says": "Ce que dit l'IA",
     // the simpler screens
     "{n} sources up to date": "{n} sources à jour", "{n} sources need you": "{n} sources à traiter", "Google AI report": "Rapport IA de Google",
   };

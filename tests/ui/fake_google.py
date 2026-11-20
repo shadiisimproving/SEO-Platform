@@ -137,6 +137,9 @@ def _answer(request: httpx.Request) -> httpx.Response:
         ])
     if "openpagerank" in url:
         return httpx.Response(200, json={"data": []})
+    if "api.brightdata.com/datasets" in url or "api.semscraper.com" in url:  # What AI says (tests/ui/fake_ai_brand.py)
+        from tests.ui import fake_ai_brand
+        return fake_ai_brand.answer(request)
     return httpx.Response(404, json={"error": {"message": f"The fake doesn't know {url}"}})
 
 

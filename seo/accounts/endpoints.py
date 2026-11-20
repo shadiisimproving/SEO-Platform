@@ -43,6 +43,8 @@ OWNERS = {
     "page_id": "SELECT site_id FROM gsc_linked_pages WHERE id = :v",
     "competitor_id": "SELECT site_id FROM site_competitors WHERE competitor_id = :v",
     "keyword_id": "SELECT site_id FROM site_keywords WHERE keyword_id = :v",
+    "brand_question_id": "SELECT site_id FROM brand_questions WHERE id = :v",
+    "brand_run_id": "SELECT site_id FROM brand_runs WHERE id = :v",
 }
 # The same path key means another table on these routes.
 OWNER_OVERRIDES = {
@@ -174,6 +176,16 @@ ENDPOINTS: dict[str, tuple[str, str, str]] = {
     "search_api.verify": ("overview", "write", ""),
     "search_api.ai_report": ("ai overview", "read", "all"),
     "search_api.upload_ai_report": ("ai", "write", ""),
+    # AI search → What AI says: a run may spend Bright Data and Semscraper credits.
+    "ai_brand_api.overview": ("ai", "read", ""),
+    "ai_brand_api.save_brand": ("ai", "write", ""),
+    "ai_brand_api.add_question": ("ai", "write", ""),
+    "ai_brand_api.edit_question": ("ai", "write", ""),
+    "ai_brand_api.remove_question": ("ai", "write", ""),
+    "ai_brand_api.suggest": ("ai", "read", ""),
+    "ai_brand_api.estimate": ("ai", "read", ""),
+    "ai_brand_api.start": ("ai", "spend", ""),
+    "ai_brand_api.run": ("ai", "read", ""),
 
     # ---- Insights ----
     "insights_api.listing": ("insights today", "read", "all"),
@@ -185,6 +197,7 @@ ENDPOINTS: dict[str, tuple[str, str, str]] = {
 
     # ---- Keywords and Refresh ----
     "keywords_api.listing": ("keywords competitors tasks ai today", "read", "all"),
+    "keywords_api.gsc_positions": ("keywords", "read", ""),  # By bucket board (4bab519 left it out)
     "keywords_api.queries": ("keywords overview", "read", "all"),
     "keywords_api.detail": ("keywords competitors overview", "read", ""),
     "keywords_api.forget": ("keywords", "write", ""),
