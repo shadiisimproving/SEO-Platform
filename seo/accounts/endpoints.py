@@ -78,7 +78,7 @@ ROW_SITES = {"competitors_api.save_backlinks": "rows"}
 
 # Which section an export belongs to, by its view id (seo/exports/views_*.py). They all share one address.
 EXPORT_SECTIONS = {
-    "channels": "channels", "conversions": "conversions", "content": "content", "ai": "ai", "ads": "ads", "today": "today",
+    "channels": "channels", "conversions": "conversions", "content": "content", "content-tracker": "content", "ai": "ai", "ads": "ads", "today": "today",
     "competitors": "competitors", "competitor": "competitors", "page-pairs": "competitors", "keyword-check": "competitors",
     "link-gaps": "competitors", "ai-watch": "competitors", "competitor-notes": "competitors",
     "overview": "overview", "insights": "insights", "keywords": "keywords",
@@ -282,6 +282,10 @@ ENDPOINTS: dict[str, tuple[str, str, str]] = {
     # The Pages screen: every page of their sites, with its Search Console and Analytics numbers (metrics.Scope keeps "all" to their sites).
     # Its Search and Visits tabs read metrics_api.page_detail, which lists "pages" among its sections.
     "pages_api.listing": ("pages", "read", "all"),
+    # Content → Content tracker: the list answers for their sites only (metrics.Scope), the rest names one of theirs.
+    "content_api.listing": ("content", "read", "all"),
+    "content_api.piece": ("content", "read", ""),
+    "content_api.save": ("content", "write", ""),
     "pages_api.profile": ("pages", "read", ""),
     "tasks_api.create": ("tasks", "write", ""),
     "tasks_api.update": ("tasks", "write", ""),

@@ -269,7 +269,7 @@ def fixed_today(monkeypatch):
 
 
 ARGS = {
-    "channels": {"from": "2026-10-11", "to": "2026-11-07"}, "conversions": {"from": "2026-10-11", "to": "2026-11-07"}, "content": {"from": "2026-10-11", "to": "2026-11-07"},
+    "channels": {"from": "2026-10-11", "to": "2026-11-07"}, "conversions": {"from": "2026-10-11", "to": "2026-11-07"}, "content": {"from": "2026-10-11", "to": "2026-11-07"}, "content-tracker": {"from": "2026-10-11", "to": "2026-11-07"},
     "ai": {"from": "2026-10-11", "to": "2026-11-07"}, "pages": {"from": "2026-10-11", "to": "2026-11-07"}, "site-page": {"url": "/"}, "ads": {"from": "2026-10-11", "to": "2026-11-07", "compare_from": "2026-09-13", "compare_to": "2026-10-10"},
 }
 

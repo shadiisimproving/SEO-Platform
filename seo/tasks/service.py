@@ -17,7 +17,7 @@ from seo.accounts import access
 from seo.competitors.keywords import _iso, require_own
 from seo.core.errors import Conflict, NotFound, Refused
 
-STATUSES = ("todo", "doing", "done")
+STATUSES = ("todo", "doing", "blocked", "done")  # To start, In progress, Blocked, Done
 PRIORITIES = ("low", "medium", "high")
 SOURCE_TYPES = ("keyword", "health", "link", "competitor", "alert", "backlink", "search", "other")
 ALREADY_OPEN = "This finding already has an open task."
@@ -31,6 +31,7 @@ _TEXT = {
     "hypothesis": (300, "The hypothesis"),
     "note": (20000, "The note"),
     "owner_label": (100, "The name of who it's assigned to"),
+    "goal": (200, "The goal"),
 }
 # name: (the longest one can be, what to call one in a message). What a task is about, so it can show on those screens.
 _LISTS = {
@@ -62,7 +63,7 @@ def _dict(row) -> dict:
         "priority": row["priority"], "site_id": row["site_id"], "site_host": row["site_host"] or "",
         "due": row["due_date"].isoformat() if row["due_date"] else "", "kind": row["kind"] or "",
         "hypothesis": row["hypothesis"] or "", "impact": row["impact"], "hours_estimate": row["hours_estimate"],
-        "hours_spent": row["hours_spent"], "note": row["note"] or "", "owner_label": row["owner_label"] or "",
+        "hours_spent": row["hours_spent"], "note": row["note"] or "", "owner_label": row["owner_label"] or "", "goal": row.get("goal") or "",
         "created_by": row.get("created_by") or "",
         "pages": _load(row["pages"], []), "keywords": _load(row["keywords"], []),
         "about": _load(row.get("about"), None) or {"main": "", "items": []},

@@ -20,7 +20,7 @@ const TITLE = `Fix the coffee pages ${Date.now().toString(36)}`;
   await page.goto(`${base}login`);
   await page.fill("#email", "admin@example.com"); await page.fill("#password", "demo-password-1"); await page.click("#go");
   await settle(2500);
-  await page.goto(`${base}?a=1#tasks?site=site-one.example`);
+  await page.goto(`${base}?a=1#tasks?site=site-one.example&view=kanban`);
   await page.waitForSelector(".topbar [data-task-new]");
   await page.locator(".topbar [data-task-new]").click();
   await settle();

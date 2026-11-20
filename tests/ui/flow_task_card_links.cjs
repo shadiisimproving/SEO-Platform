@@ -35,7 +35,7 @@ const KW = "moulin à café", KW_FREE = "how to brew coffee";
     return r.status;
   }, TITLE);
   check("a made-up task to work with", made === 201 || made === 200, made);
-  await page.goto(`${base}?r=${RUN}#tasks`);
+  await page.goto(`${base}?r=${RUN}#tasks?view=kanban`);
   await page.waitForSelector("[data-task-card]");
   await settle();
   await page.screenshot({ path: `${shots}/board.png` });
@@ -155,7 +155,7 @@ const KW = "moulin à café", KW_FREE = "how to brew coffee";
 
   // Table, phone, dark.
   await page.goto("about:blank");
-  await page.goto(`${base}?t=2#tasks`);
+  await page.goto(`${base}?t=2#tasks?view=kanban`);
   await page.waitForSelector("[data-task-card]");
   await page.locator('[data-task-view="table"]').click();
   await settle();

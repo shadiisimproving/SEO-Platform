@@ -755,12 +755,15 @@
     if (entry.loading || entry.error || entry.noServer) return page(head, stateCard(entry, "ga4"));
     const heat = d.clarity, reports = d.clarity_reports, runs = d.speed?.runs || [];
     const downloads = (reports?.sites || []).filter((s) => s.dashboard);
-    const tabs = [["pages", t("All pages")], ["social", t("Social networks")], ["speed", t("Page speed")]];
+    // Content tracker (2026-11-20): every published piece and whether it worked, second after All pages (content-tracker.js).
+    const tabs = [["pages", t("All pages")], ...(window.ContentTracker ? [["published", t("Content tracker"), window.ContentTracker.count()]] : []), ["social", t("Social networks")], ["speed", t("Page speed")]];
     if (heat?.has_data || downloads.length) tabs.push(["clarity", "Clarity"]);
     pickTab("content", tabs);
     const tab = TABS.content;
     let body;
-    if (tab === "social") {
+    if (tab === "published") {
+      body = window.ContentTracker.body();
+    } else if (tab === "social") {
       body = `<section class="card"><div class="card-head"><h2>${t("Social networks")}</h2><span class="end small muted">${sourceAndDays("Google Analytics")}</span></div>${d.social?.length ? socialBars(d.social) : `<div class="empty"><p>${t("No visits from social networks in this period.")}</p></div>`}</section>`;
     } else if (tab === "speed") {
       body = speedSimple(runs, downloads);
@@ -1123,6 +1126,7 @@
   screen("resources", resourcesPage); // AI search registers itself from ai-search-view.js
   Object.assign(LV, { load, pct, change, hiddenNote, siteOfPage, pageName, shortDay, fillIn, emptyCard, refreshBtn, readingWord, SOURCE_NAMES }); // for screens in their own files
   LV.dataTable = (...args) => dataTable(...args);
+  LV.contentTab = () => (simple() ? TABS.content : "pages"); // export.js: the Content tracker tab exports its own file
   LV.ideasCard = (ctx) => ideasCard(ctx); // Keyword ideas sit on Keywords since 2026-11-09
   LV.stateCard = (...args) => stateCard(...args); // Overview's own file shows the same not-connected, failing and waiting cards
 

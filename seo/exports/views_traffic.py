@@ -5,7 +5,7 @@ from datetime import timedelta
 
 from seo.exports import fmt, registry
 from seo.exports.build import C, change, page_address
-from seo.exports.model import Chart, Report, Series, Table, Tile
+from seo.exports.model import Chart, Report, Series, Table, Tile, Typed
 from seo.exports.registry import view
 
 
@@ -91,6 +91,28 @@ def content(engine, args) -> Report:
     ], pages, total=data.get("total_pages"), key=lambda r: f"{r.get('host') or ''}|{r.get('path') or ''}"))
     report.tables.append(Table("social", "Social networks", [C("source", "Network", "text"), C("sessions", "Visits", "int")], data.get("social") or [], empty="No visits from social networks in this period."))
     _hidden(report, data)
+    return report
+
+
+@view("content-tracker", "Content tracker")
+def content_tracker(engine, args) -> Report:
+    """Content → Content tracker: every published piece, as the tab shows it."""
+    from seo.content import tracker
+
+    scope = _scope(engine, args)
+    data = tracker.listing(scope)
+    report = _report(engine, args, scope, "content-tracker", "Content tracker")
+    items, summary = data.get("items") or [], data.get("summary") or {}
+    report.tiles = [Tile("Pieces", summary.get("pieces"), "int"), Tile("Bring clicks", summary.get("with_clicks"), "int"), Tile("Bring leads", summary.get("with_leads"), "int")]
+    position = lambda r: (r.get("position") or {}).get("value")  # noqa: E731
+    read_on = lambda r: _day((r.get("position") or {}).get("read_on"))  # noqa: E731
+    report.tables.append(Table("pieces", "Published pieces", [
+        C("title", "Content", "text", width=3.6, get=lambda r: Typed(r.get("title") or r.get("path") or "")), C("page", "Page", "url", get=page_address),
+        C("published", "Published", "date"), C("query", "Target query", "text", width=2.4, get=lambda r: Typed(r.get("query") or "")),
+        C("position", "Google position", "position", get=position), C("read_on", "Position read on", "date", get=read_on),
+        C("sessions", "Visits", "int"), C("clicks", "Google clicks", "int"), C("avg_position", "Average position", "position"), C("leads", "Leads", "float"),
+    ], items, empty="No published piece tracked yet.", key=lambda r: f"{r.get('host') or ''}|{r.get('path') or ''}"))
+    report.notes.append("Counted from the publish date when it falls inside the period. A lead counts on the page the visit landed on.")
     return report
 
 

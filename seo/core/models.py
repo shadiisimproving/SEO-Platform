@@ -804,7 +804,7 @@ class Task(Base):
 
     __tablename__ = "tasks"
     __table_args__ = (
-        CheckConstraint("status IN ('todo', 'doing', 'done')", name="ck_tasks_status"),
+        CheckConstraint("status IN ('todo', 'doing', 'blocked', 'done')", name="ck_tasks_status"),
         CheckConstraint("priority IN ('low', 'medium', 'high')", name="ck_tasks_priority"),
         Index("ix_tasks_board", "deleted_at", "status", "due_date"),
     )
@@ -826,6 +826,7 @@ class Task(Base):
     note: Mapped[str | None] = mapped_column(Text, nullable=True)
     # Who the task is assigned to: an account's name, picked from the team in the panel.
     owner_label: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    goal: Mapped[str | None] = mapped_column(String(200), nullable=True)  # what the work is for, such as "Strengthen site credibility": free text, picked from the goals already used
     created_by: Mapped[str | None] = mapped_column(String(100), nullable=True)  # the signed-in account, set once
     comments: Mapped[list | None] = mapped_column(JSON, nullable=True)
     # What the task is about, as lists of text, so it can show when that page or keyword is opened.
@@ -839,6 +840,26 @@ class Task(Base):
     created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
     updated_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
     deleted_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+
+
+class ContentItem(Base):
+    """What a person set on one published piece in Content → Content tracker. Pages the reader saw as articles are tracked
+    without a row; a row only holds what was typed (title, publish date, target query) or that the piece was removed."""
+
+    __tablename__ = "content_items"
+    __table_args__ = (UniqueConstraint("site_id", "path_hash", name="uq_content_item_page"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    path: Mapped[str] = mapped_column(String(1000))  # one spelling: no domain, no query, one trailing slash (metrics.service._path)
+    path_hash: Mapped[str] = mapped_column(String(64))
+    title: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    published_on: Mapped[date | None] = mapped_column(Date, nullable=True)  # typed; NULL means the date the app found
+    target_query: Mapped[str | None] = mapped_column(String(400), nullable=True)  # picked or typed; NULL means Search Console's top query
+    added_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    removed_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+    updated_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
 
 
 # ---- Accounts ------------------------------------------------------------------------------------
