@@ -40,6 +40,8 @@ OWNERS = {
     "alert_id": "SELECT site_id FROM alerts WHERE id = :v",
     "notification_id": "SELECT site_id FROM notifications WHERE id = :v",
     "social_item_id": "SELECT site_id FROM social_items WHERE id = :v",
+    "transcript_batch_id": "SELECT site_id FROM social_transcript_batches WHERE id = :v",
+    "transcript_id": "SELECT site_id FROM social_transcripts WHERE id = :v",
     "rule_id": "SELECT site_id FROM site_rules WHERE id = :v",
     "page_id": "SELECT site_id FROM gsc_linked_pages WHERE id = :v",
     "competitor_id": "SELECT site_id FROM site_competitors WHERE competitor_id = :v",
@@ -140,6 +142,18 @@ ENDPOINTS: dict[str, tuple[str, str, str]] = {
     "social_api.gather_now": ("social", "write", ""),
     "social_api.save_mailbox": ("*", "admin", ""),
     "social_api.new_token": ("*", "admin", ""),
+    # Video transcripts (seo/web/social_transcripts_api.py). Finding links in text or a file touches no site.
+    "social_transcripts_api.listing": ("social", "read", ""),
+    "social_transcripts_api.one": ("social", "read", ""),
+    "social_transcripts_api.download": ("social", "read", ""),
+    "social_transcripts_api.find": ("social", "read", "free"),
+    "social_transcripts_api.from_file": ("social", "read", "free"),
+    "social_transcripts_api.account": ("social", "write", ""),
+    "social_transcripts_api.create": ("social", "write", ""),
+    "social_transcripts_api.rename": ("social", "write", ""),
+    "social_transcripts_api.remove": ("social", "write", ""),
+    "social_transcripts_api.retry_batch": ("social", "write", ""),
+    "social_transcripts_api.retry_one": ("social", "write", ""),
 
     # ---- Today ----
     "metrics_api.today": ("today", "read", "all"),

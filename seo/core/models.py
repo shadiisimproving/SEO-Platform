@@ -1770,3 +1770,51 @@ class SocialItem(Base):
     created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
     updated_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
     posted_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+
+
+class SocialTranscriptBatch(Base):
+    """A named group of Instagram and TikTok videos turned into text together: pasted, from a file, or one account's latest."""
+
+    __tablename__ = "social_transcript_batches"
+    __table_args__ = (
+        CheckConstraint("origin IN ('paste', 'file', 'account')", name="ck_social_transcript_batches_origin"),
+        Index("ix_social_transcript_batches_site", "site_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    name: Mapped[str] = mapped_column(String(120))
+    origin: Mapped[str] = mapped_column(String(10))
+    created_by: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
+class SocialTranscript(Base):
+    """One video's words: downloaded on the server, written out by Groq's free Whisper. Never the video itself."""
+
+    __tablename__ = "social_transcripts"
+    __table_args__ = (
+        CheckConstraint("platform IN ('tiktok', 'instagram')", name="ck_social_transcripts_platform"),
+        CheckConstraint("status IN ('queued', 'working', 'done', 'failed')", name="ck_social_transcripts_status"),
+        CheckConstraint("method IS NULL OR method IN ('captions', 'groq')", name="ck_social_transcripts_method"),
+        UniqueConstraint("batch_id", "url_hash", name="uq_social_transcripts_url"),
+        Index("ix_social_transcripts_site", "site_id", "status"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("social_transcript_batches.id", ondelete="CASCADE"))
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    url: Mapped[str] = mapped_column(String(500))
+    url_hash: Mapped[str] = mapped_column(String(32))
+    platform: Mapped[str] = mapped_column(String(10))
+    status: Mapped[str] = mapped_column(String(10), server_default="queued")
+    title: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    author: Mapped[str | None] = mapped_column(String(150), nullable=True)
+    duration: Mapped[int | None] = mapped_column(Integer, nullable=True)  # seconds
+    lang: Mapped[str | None] = mapped_column(String(10), nullable=True)  # ar, fr, en...: the captions' language, or as Whisper heard it
+    method: Mapped[str | None] = mapped_column(String(10), nullable=True)  # captions (free, nothing downloaded) or groq
+    transcript: Mapped[str | None] = mapped_column(MEDIUMTEXT, nullable=True)
+    caption: Mapped[str | None] = mapped_column(Text, nullable=True)  # the words written under the video
+    error: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+    done_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
