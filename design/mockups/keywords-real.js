@@ -89,6 +89,11 @@
     "With AI Overview": "Avec AI Overview", "No check before the period": "Aucun contrôle avant la période", "No comparison chosen: changes are hidden.": "Aucune comparaison choisie : les évolutions sont masquées.",
     "Not in the first {n} results": "Absent des {n} premiers résultats", "Cited in Google's AI Overview": "Cité dans l'AI Overview de Google", "No keyword here": "Aucun mot-clé ici",
     "Show all {n}": "Tout afficher ({n})", "Show fewer": "Afficher moins",
+    "Position over time": "Position dans le temps", "What we did": "Ce qu'on a fait", "Bought link": "Lien acheté", "Page edit": "Modif. de page", "Task done": "Tâche finie", "Google update": "Mise à jour Google",
+    "3 months": "3 mois", "6 months": "6 mois", "12 months": "12 mois", "still rolling out": "encore en cours", "until": "jusqu'au", "Changed": "Modifié", "No date": "Sans date", "all countries": "tous pays", "weekly averages": "moyennes par semaine",
+    "{a} ({d1}) → {b} ({d2})": "{a} ({d1}) → {b} ({d2})", "No Search Console impressions for this keyword in this period.": "Aucune impression Search Console pour ce mot-clé sur la période.",
+    "Our checks started on 11 Nov 2026: too few to draw yet.": "Nos contrôles ont commencé le 11 nov. 2026 : trop peu pour tracer une courbe.",
+    "Nothing logged for this keyword in this period: bought links, page edits, finished tasks, boosts.": "Rien de noté pour ce mot-clé sur la période : liens achetés, modifications de page, tâches finies, boosts.",
     "Positions from": "Positions venant de", "Our checks": "Nos contrôles", "Loading Search Console…": "Chargement de Search Console…", "Couldn't load Search Console positions.": "Impossible de charger les positions Search Console.",
     "7-day averages: {then} vs {now}": "Moyennes sur 7 jours : {then} vs {now}", "7-day average: {now}": "Moyenne sur 7 jours : {now}",
     "Search Console average: {n}": "Moyenne Search Console : {n}", "No Search Console impressions in these 7 days": "Aucune impression Search Console sur ces 7 jours",
@@ -1267,6 +1272,101 @@
       <path class="chart-line" d="${path}"/>${dots}</svg>`;
   }
 
+  /* ---- Position over time, with what was done (plan step 2, Mickaz screenshots 2-3) ---------------------------------------
+     Search Console's daily position (or our own checks) on a date axis, a dashed line on each day something was done
+     (a bought link, an edit to the keyword's page, a finished task) and a shaded band for each Google update and traffic
+     boost. Under it, "What we did": the same things as a list, with one chip per kind to hide or show it; pointing at a row
+     lights its line. Labels never sit on the chart itself: they collide, and a phone has no hover. */
+  const TL_SPANS = [[90, "3 months"], [180, "6 months"], [365, "12 months"]];
+  const TL_KINDS = { link: ["Bought link", "var(--series-1)"], edit: ["Page edit", "var(--series-3)"], task: ["Task done", "var(--good)"], boost: ["Boost URL", "var(--warn)"], google: ["Google update", "var(--crit)"] };
+  const isoDay = (d) => d.toISOString().slice(0, 10);
+  function timelineFor(info, row, view) {
+    const span = K.tlSpan || 90;
+    const to = isoDay(new Date()), fromD = new Date(); fromD.setUTCDate(fromD.getUTCDate() - span);
+    const key = `${info.siteId}|${info.keywordId}|${span}`;
+    if (!K.tl) K.tl = {};
+    if (!K.tl[key]) {
+      K.tl[key] = "loading";
+      const pages = [row.page, view?.main?.url].filter(Boolean).map((p) => `&page=${encodeURIComponent(p)}`).join("");
+      api("GET", `rankings/${info.keywordId}/timeline?site_id=${info.siteId}&from=${isoDay(fromD)}&to=${to}${pages}`)
+        .then((answer) => { K.tl[key] = answer; if (K.panel === info && $("#panel")) paintPanel(info); })
+        .catch((err) => { K.tl[key] = { error: err.message || "error" }; if (K.panel === info && $("#panel")) paintPanel(info); });
+    }
+    return K.tl[key];
+  }
+  function dateChart({ from, to, series, dots, marks, bands, weekly }) {
+    const w = 680, h = 220, left = 30, right = 10, top = 10, bottom = 26;
+    const t0 = Date.parse(`${from}T12:00:00Z`), t1 = Date.parse(`${to}T12:00:00Z`);
+    const x = (day) => left + ((Date.parse(`${day}T12:00:00Z`) - t0) / Math.max(1, t1 - t0)) * (w - left - right);
+    const known = series.map((p) => p.p).filter((v) => v !== null && v !== undefined);
+    const worst = Math.max(10, ...known);
+    const step = [1, 2, 5, 10, 20, 25, 50].find((n) => (worst - 1) / n <= 4) || 50;
+    const hi = 1 + step * Math.max(1, Math.ceil((worst - 1) / step));
+    const y = (v) => top + ((v - 1) / Math.max(1, hi - 1)) * (h - top - bottom);
+    const ticks = Array.from({ length: Math.round((hi - 1) / step) + 1 }, (_, i) => 1 + i * step);
+    // A gap where Search Console had no impressions (a missing day, or week): never a line through a made-up number.
+    const gapDays = weekly ? 8 : 1.5;
+    let path = "", prev = null;
+    series.forEach((p) => {
+      if (p.p === null || p.p === undefined) { prev = null; return; }
+      const far = prev && (Date.parse(p.day) - Date.parse(prev)) / 86400000 > gapDays;
+      path += `${!prev || far ? "M" : "L"}${x(p.day).toFixed(1)},${y(p.p).toFixed(1)}`;
+      prev = p.day;
+    });
+    const fmt = (d) => UI.fmtDay(d, { day: "numeric", month: "short" });
+    const mid = isoDay(new Date((t0 + t1) / 2));
+    const bandSvg = bands.map((b, i) => { const a = Math.max(left, x(b.day < from ? from : b.day)), z = Math.min(w - right, x(b.end > to ? to : b.end)); return `<rect class="kwt-band kwt-${b.kind}" data-kwt-i="b${i}" x="${a.toFixed(1)}" y="${top}" width="${Math.max(3, z - a).toFixed(1)}" height="${h - top - bottom}" style="fill:${TL_KINDS[b.kind][1]}"><title>${esc(`${t(TL_KINDS[b.kind][0])}: ${b.text} (${fmt(b.day)} – ${b.rolling ? t("still rolling out") : fmt(b.end)})`)}</title></rect>`; }).join("");
+    const markSvg = marks.map((m, i) => `<line class="kwt-mark" data-kwt-i="m${i}" x1="${x(m.day).toFixed(1)}" x2="${x(m.day).toFixed(1)}" y1="${top}" y2="${h - bottom}" style="stroke:${TL_KINDS[m.kind][1]}"><title>${esc(`${fmt(m.day)} · ${t(TL_KINDS[m.kind][0])}${m.count > 1 ? ` ×${m.count}` : ""}: ${m.text}`)}</title></line>`).join("");
+    const dotSvg = dots ? series.filter((p) => p.p).map((p) => `<circle cx="${x(p.day).toFixed(1)}" cy="${y(p.p).toFixed(1)}" r="3.5" fill="var(--series-1)" stroke="var(--panel-solid)" stroke-width="1.5"><title>${esc(`${fmt(p.day)}: ${p.p}`)}</title></circle>`).join("") : "";
+    const words = known.length ? `${t("Position over time")}: ${fmt(series.find((p) => p.p)?.day || from)} ${known[0]}, ${fmt([...series].reverse().find((p) => p.p)?.day || to)} ${known[known.length - 1]}` : t("Position over time");
+    return `<svg class="chart kwt-chart" viewBox="0 0 ${w} ${h}" role="img" aria-label="${esc(words)}">
+      ${bandSvg}
+      ${ticks.map((v) => `<line x1="${left}" x2="${w - right}" y1="${y(v)}" y2="${y(v)}" stroke="var(--line)"/><text x="${left - 6}" y="${y(v) + 4}" text-anchor="end">${v}</text>`).join("")}
+      ${[[from, "start"], [mid, "middle"], [to, "end"]].map(([d, a]) => `<text x="${x(d).toFixed(1)}" y="${h - 6}" text-anchor="${a}">${esc(fmt(d))}</text>`).join("")}
+      ${markSvg}<path class="chart-line" d="${path}"/>${dotSvg}</svg>`;
+  }
+  function timelineSection(info, row, view, shownLine) {
+    const src = kwbSource(), span = K.tlSpan || 90;
+    const tl = timelineFor(info, row, view);
+    const switches = `<div class="kwt-bar"><span class="seg" role="group" aria-label="${esc(t("Positions from"))}">${[["gsc", "Search Console"], ["checks", "Our checks"]].map(([id, label]) => `<button type="button" data-kwt-src="${id}" aria-pressed="${src === id}">${t(label)}</button>`).join("")}</span>
+      <span class="seg" role="group" aria-label="${esc(t("Period"))}">${TL_SPANS.map(([d, label]) => `<button type="button" data-kwt-span="${d}" aria-pressed="${span === d}">${t(label)}</button>`).join("")}</span></div>`;
+    if (tl === "loading") return `<h3>${t("Position over time")}</h3>${switches}<p class="small muted" role="status">${t("Loading…")}</p>`;
+    if (tl.error) return `<h3>${t("Position over time")}</h3>${switches}<p class="error small">${icon("octagon-alert")}<span>${esc(t(tl.error))}</span></p>`;
+    let series, dots = false;
+    if (src === "gsc") series = tl.series;
+    else { series = (shownLine?.points || []).filter((p) => !p.suspect && p.at.slice(0, 10) >= tl.from).map((p) => ({ day: p.at.slice(0, 10), p: p.p || null })); dots = true; }
+    const hidden = K.tlHidden || (K.tlHidden = new Set());
+    const marks = tl.markers.filter((m) => !hidden.has(m.kind)), bands = tl.bands.filter((b) => !hidden.has(b.kind));
+    const kinds = Object.keys(TL_KINDS).filter((k) => tl.markers.some((m) => m.kind === k) || tl.bands.some((b) => b.kind === k) || (k === "link" && tl.undated.length));
+    const known = series.filter((p) => p.p);
+    const fmt = (d) => UI.fmtDay(d, { day: "numeric", month: "short" });
+    // The lead compares the first and the last 7 days (impression-weighted, as By bucket does): one day of Search Console jumps.
+    const week = (pts) => { const n = pts.reduce((a, p) => a + (p.impressions || 1), 0); return n ? { p: Math.round((pts.reduce((a, p) => a + p.p * (p.impressions || 1), 0) / n) * 10) / 10, day: pts[pts.length - 1].day, from: pts[0].day } : null; };
+    const firstDay = known[0]?.day, lastDay = known[known.length - 1]?.day;
+    const within = (a, b) => known.filter((p) => p.day >= a && p.day <= b);
+    const plus = (d, n) => { const x = new Date(`${d}T12:00:00Z`); x.setUTCDate(x.getUTCDate() + n); return isoDay(x); };
+    const first = src === "gsc" && !tl.weekly && firstDay ? week(within(firstDay, plus(firstDay, 6))) : known[0] ? { ...known[0], from: known[0].day } : null;
+    const last = src === "gsc" && !tl.weekly && lastDay ? week(within(plus(lastDay, -6), lastDay)) : known[known.length - 1] ? { ...known[known.length - 1], from: known[known.length - 1].day } : null;
+    const moved = first && last && known.length > 1 ? Math.round(first.p) - Math.round(last.p) : null;
+    const when = (x) => (x.from === x.day ? fmt(x.day) : `${fmt(x.from)} – ${fmt(x.day)}`);
+    const lead = last ? `<p class="kwt-lead"><span class="kwb-pos kwt-now">${Math.max(1, Math.round(last.p))}</span> ${moved ? `<span class="kwb-mv ${moved > 0 ? "up" : "down"}">${moved > 0 ? "+" : "−"}${Math.abs(moved)}</span>` : ""} <span class="small muted">${esc(t("{a} ({d1}) → {b} ({d2})").replace("{a}", dec(first.p)).replace("{d1}", when(first)).replace("{b}", dec(last.p)).replace("{d2}", when(last)))}${src === "gsc" ? ` · ${esc(tl.scope === "all" ? t("all countries") : UI.countryName(row.country) || row.country || tl.scope)}${tl.weekly ? ` · ${t("weekly averages")}` : ""}` : ""}</span></p>` : "";
+    const chartHtml = known.length >= 2 ? dateChart({ from: tl.from, to: tl.to, series, dots, marks, bands, weekly: tl.weekly })
+      : `<p class="note">${icon("info")}<span>${t(src === "gsc" ? "No Search Console impressions for this keyword in this period." : "Our checks started on 11 Nov 2026: too few to draw yet.")}</span></p>`;
+    const chips = kinds.length ? `<div class="chips kwt-kinds" role="group" aria-label="${esc(t("What we did"))}">${kinds.map((k) => `<button type="button" class="chip brand-mention" data-kwt-kind="${k}" aria-pressed="${!hidden.has(k)}"><i class="kwt-key" style="background:${TL_KINDS[k][1]}" aria-hidden="true"></i>${t(TL_KINDS[k][0])}</button>`).join("")}</div>` : "";
+    const rowOf = (m, i, kind) => {
+      const what = m.kind === "link" ? `${m.url ? `<a href="${esc(m.url)}" target="_blank" rel="noopener">${esc(m.text)}</a>` : esc(m.text)}${m.count > 1 ? ` <span class="muted">+${m.count - 1}</span>` : ""}${m.detail ? ` <span class="muted">· ${esc(m.detail)}</span>` : ""}`
+        : m.kind === "edit" ? `${esc(t("Changed"))}: ${esc(m.text)}`
+          : m.kind === "google" || m.kind === "boost" ? `${m.url && m.kind === "google" ? `<a href="${esc(m.url)}" target="_blank" rel="noopener">${esc(m.text)}</a>` : esc(m.text || m.url || "")}${m.rolling ? ` <span class="muted">· ${t("still rolling out")}</span>` : ` <span class="muted">· ${t("until")} ${esc(fmt(m.end))}</span>`}`
+            : esc(m.text);
+      return `<li tabindex="0" data-kwt-row="${kind}${i}"><span class="kwt-day">${esc(fmt(m.day))}</span><span class="kwt-kind brand-mention"><i class="kwt-key" style="background:${TL_KINDS[m.kind][1]}" aria-hidden="true"></i>${t(TL_KINDS[m.kind][0])}</span><span class="kwt-what" dir="auto">${what}</span></li>`;
+    };
+    const all = [...marks.map((m, i) => [m, i, "m"]), ...bands.map((b, i) => [b, i, "b"])].sort((a, b) => (a[0].day < b[0].day ? 1 : -1));
+    const undated = hidden.has("link") ? [] : tl.undated;
+    const list = all.length || undated.length ? `<ul class="kwt-list">${all.map(([m, i, k]) => rowOf(m, i, k)).join("")}${undated.map((u) => `<li><span class="kwt-day muted">${t("No date")}</span><span class="kwt-kind brand-mention"><i class="kwt-key" style="background:${TL_KINDS.link[1]}" aria-hidden="true"></i>${t("Bought link")}</span><span class="kwt-what" dir="auto">${esc(u.text)}${u.placed ? ` <span class="muted">· ${esc(u.placed)}</span>` : ""}</span></li>`).join("")}</ul>`
+      : `<p class="small muted">${t("Nothing logged for this keyword in this period: bought links, page edits, finished tasks, boosts.")}</p>`;
+    return `<h3>${t("Position over time")}</h3>${switches}${lead}${chartHtml}<h4 class="kwt-h">${t("What we did")}</h4>${chips}${list}`;
+  }
+
   function paintPanel(info) {
     const { detail } = info, row = detail.row, e = detail.engine, view = row.engines[e];
     const lineKey = (x) => `${x.tool}|${x.location}|${x.depth}`;
@@ -1312,6 +1412,7 @@
           ${own ? `<div><div class="k">${brandLabel(own)}</div><div class="v">${view.own === null || view.own === undefined ? '<span class="muted">—</span>' : `${dec(Math.round(view.own * 10) / 10)} <span class="small muted" style="font-weight:400">${t("average")}</span>`}</div></div>` : ""}
           <div><div class="k">${t("Page")}</div><div class="mono small kw-page-url" style="margin-top:6px" dir="auto">${row.page ? pageAddress(row.page) : "—"}</div></div>
         </div>
+        ${timelineSection(info, row, view, shownLine)}
         <h3>${t("Results")} · ${esc(place)}</h3>
         <table class="mini" id="tool-table"><thead><tr><th>${t("Tool")}</th><th>${t("Position")}</th><th>${t("Checked")}</th><th>${t("Status")}</th><th><span class="sr">${t("Action")}</span></th></tr></thead><tbody>${toolRows}${suspects}</tbody></table>
         ${notRanked(view) ? `<p style="margin-top:8px"><button class="link-btn" data-kwr-deeper="${esc(row.id)}" data-engine-id="${e}">${t("Check deeper")}</button></p>` : ""}
@@ -1484,12 +1585,19 @@
       if (state.route === "keywords" && hit("[data-filter], [data-sort], [data-engine], [data-view]")) { TP.reset(KW_PAGES); if (hit("[data-engine]")) TP.reset(Q_PAGES); }
     }, true);
 
+    // "What we did": pointing at a row (or focusing it) lights its line on the chart.
+    const lightMark = (e, on) => { const li = e.target.closest?.("[data-kwt-row]"); if (!li) return; $$(`.kwt-chart [data-kwt-i="${li.dataset.kwtRow}"]`).forEach((n) => n.classList.toggle("on", on)); };
+    document.addEventListener("mouseover", (e) => lightMark(e, true)); document.addEventListener("mouseout", (e) => lightMark(e, false));
+    document.addEventListener("focusin", (e) => lightMark(e, true)); document.addEventListener("focusout", (e) => lightMark(e, false));
     document.addEventListener("click", (e) => {
       const hit = (sel) => e.target.closest?.(sel);
       let el;
       if (hit("#kwr-retry")) { K.stale = true; K.error = ""; load(); UI.render(); return; }
       // The simpler screens: the whole row opens its panel (not its tick box, page link or a button in it); ⋯ pins its tools.
       if (simple() && (el = hit("#kw-table tbody tr[data-kwr-row]")) && !hit("a, button, input, select, textarea, label, [data-kwr-open], .chk-cell")) { openKeyword(el.dataset.kwrRow, el); return; }
+      if ((el = hit("[data-kwt-src]"))) { try { localStorage.setItem("seocc2-kwb-source", el.dataset.kwtSrc); } catch { /* this visit only */ } K.bm = null; if (K.panel) paintPanel(K.panel); $(`[data-kwt-src="${el.dataset.kwtSrc}"]`)?.focus({ preventScroll: true }); return; }
+      if ((el = hit("[data-kwt-span]"))) { K.tlSpan = Number(el.dataset.kwtSpan); if (K.panel) paintPanel(K.panel); $(`[data-kwt-span="${K.tlSpan}"]`)?.focus({ preventScroll: true }); return; }
+      if ((el = hit("[data-kwt-kind]"))) { const k = el.dataset.kwtKind; K.tlHidden ||= new Set(); K.tlHidden.has(k) ? K.tlHidden.delete(k) : K.tlHidden.add(k); if (K.panel) paintPanel(K.panel); $(`[data-kwt-kind="${k}"]`)?.focus({ preventScroll: true }); return; }
       if ((el = hit("[data-kw-also]"))) {
         const id = el.dataset.kwAlso; K.alsoOpen ||= new Set();
         K.alsoOpen.has(id) ? K.alsoOpen.delete(id) : K.alsoOpen.add(id);

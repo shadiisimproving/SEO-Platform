@@ -159,3 +159,24 @@ html[data-simple="1"] #panel.wide svg.chart { display: block; width: 100%; max-w
 .kwb-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin: 0 0 12px; }
 .kwb-when { margin-left: auto; }
 @media (max-width: 760px) { .kwb-when { margin-left: 0; flex-basis: 100%; } }
+/* Keyword panel, Position over time (keywords-real.js timelineSection): switches, the line with what was done, the list. */
+.kwt-bar { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 10px; }
+.kwt-lead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 6px; }
+.kwt-lead .kwt-now { --band: var(--series-1); }
+.kwt-chart { width: 100%; height: auto; }
+.kwt-chart .kwt-band { opacity: .1; }
+.kwt-chart .kwt-band.on { opacity: .22; }
+.kwt-chart .kwt-mark { stroke-width: 1.5; stroke-dasharray: 4 3; opacity: .75; }
+.kwt-chart .kwt-mark.on { stroke-width: 3; opacity: 1; }
+.kwt-h { margin: 14px 0 8px; font-size: 13px; }
+.kwt-kinds { margin: 0 0 8px; }
+.kwt-key { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; flex: none; }
+.kwt-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.kwt-list li { display: grid; grid-template-columns: 64px 130px minmax(0, 1fr); gap: 10px; align-items: baseline; padding: 6px 8px; border-radius: 6px; font-size: 13px; }
+.kwt-list li:hover, .kwt-list li:focus-visible { background: var(--hover); outline: none; }
+.kwt-list li:focus-visible { box-shadow: 0 0 0 2px var(--focus); }
+.kwt-day { color: var(--text-2); font-variant-numeric: tabular-nums; }
+.kwt-kind { display: inline-flex; align-items: center; color: var(--text-2); }
+.kwt-what { overflow-wrap: anywhere; }
+@media (max-width: 640px) { .kwt-list li { grid-template-columns: 56px minmax(0, 1fr); } .kwt-list .kwt-kind { grid-column: 2; } .kwt-list .kwt-what { grid-column: 1 / -1; padding-left: 66px; } }
+html[data-simple="1"] #panel.wide svg.chart.kwt-chart, svg.chart.kwt-chart { max-width: none; }

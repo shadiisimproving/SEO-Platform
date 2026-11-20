@@ -55,6 +55,22 @@ def gsc_positions():
     return jsonify(rankings.gsc_positions(_engine(), _site_arg(), day("then"), day("to")))
 
 
+@keywords_api.get("/rankings/<int:keyword_id>/timeline")
+def timeline(keyword_id: int):
+    """The keyword panel's Position over time: Search Console's line and what was done, ?site_id&from&to (YYYY-MM-DD)."""
+    from datetime import date
+
+    from seo.metrics import keyword_timeline
+
+    def day(name: str) -> date:
+        try:
+            return date.fromisoformat(request.args.get(name, ""))
+        except ValueError:
+            raise Refused(f"{name} must be a date (YYYY-MM-DD).") from None
+
+    return jsonify(keyword_timeline.timeline(_engine(), _site_arg(required=True), keyword_id, day("from"), day("to"), request.args.getlist("page")[:3]))
+
+
 @keywords_api.get("/rankings/queries")
 def queries():
     return jsonify(rankings.queries(_engine(), _site_arg(), request.args.get("engine", "google")))
