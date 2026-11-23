@@ -46,7 +46,7 @@ const check = (name, ok, extra) => { console.log(`${ok ? "ok  " : "FAIL"} ${name
     console.log("     boxes:", before);
     check("Done is the first section", (await page.locator('[data-bl-section="done"]').getAttribute("aria-selected")) === "true");
     const subTabs = await page.locator(".content .tabs:not(.sections) .tab").allInnerTexts();
-    check("Done keeps All backlinks, Mediators and Found but never logged", /All backlinks/.test(subTabs[0]) && subTabs.some((x) => /Mediators/.test(x)) && subTabs.some((x) => /Found but never logged/.test(x)), subTabs.join(" | "));
+    check("Done keeps All backlinks, Mediators and Links you didn't add", /All backlinks/.test(subTabs[0]) && subTabs.some((x) => /Mediators/.test(x)) && subTabs.some((x) => /Links you didn.t add|Found but never logged/.test(x)), subTabs.join(" | "));
     check("Done has Import CSV and no filter tool", (await page.locator("#bulk-open").count()) === 1 && (await page.locator("#cleaner-open").count()) === 0);
 
     // In consideration: the note, the button, and nothing from Done.

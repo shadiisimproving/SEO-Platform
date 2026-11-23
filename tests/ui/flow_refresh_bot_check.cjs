@@ -17,6 +17,7 @@ const overlap = (a, b) => a && b && a.x < b.x + b.width && b.x < a.x + a.width &
   const { browser, page, problems } = await open({ width: 1440, height: 900 });
   const settle = () => page.waitForTimeout(900);
   const dialogFor = async (engine) => {
+    await page.waitForSelector("#kwr-refresh:visible, #kwr-refresh-phone:visible", { timeout: 30000 }); // a busy Mac can take more than a second to draw Keywords
     await page.click((await page.isVisible("#kwr-refresh")) ? "#kwr-refresh" : "#kwr-refresh-phone"); await settle(); // a phone has it, labelled, above the cards
     for (const box of await page.$$("[data-kwr-engine]")) {
       const id = await box.getAttribute("data-kwr-engine");

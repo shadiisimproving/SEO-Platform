@@ -17,7 +17,8 @@ const stamp = Date.now().toString(36);
   await page.goto(`${base}login`);
   await page.fill("#email", "admin@example.com"); await page.fill("#password", "demo-password-1"); await page.click("#go");
   await settle(2500);
-  await page.goto(`${base}?a=1#tasks?site=site-one.example`);
+  // Tasks opens By month since 2026-11-20 (the bucket board); the cards this flow reads are on the Board view.
+  await page.goto(`${base}?a=1#tasks?site=site-one.example&view=kanban`);
   await page.waitForSelector(".topbar [data-task-new]");
   const made = await page.evaluate(async (stamp) => {
     const sites = await COMP.api("GET", "links/sites");
@@ -94,21 +95,21 @@ const stamp = Date.now().toString(36);
   await page.locator('[data-task-view="board"], .tk-views button:has-text("Board")').first().click(); await settle(600);
 
   // Dark mode, then French.
-  await page.goto(`${base}?a=1&theme=dark#tasks?site=site-one.example`); await page.reload(); await page.waitForSelector(`[data-task-card="${made.one}"]`); await settle(800);
+  await page.goto(`${base}?a=1&theme=dark#tasks?site=site-one.example&view=kanban`); await page.reload(); await page.waitForSelector(`[data-task-card="${made.one}"]`); await settle(800);
   const dark = await worstContrast();
   check("Dark: pill words pass AA", dark >= 4.5, `worst ${dark}:1`);
   await page.screenshot({ path: `${shots}/board-dark.png` });
   await card(made.one).screenshot({ path: `${shots}/card-dark.png` });
-  await page.goto(`${base}?a=1&theme=light&lang=fr#tasks?site=site-one.example`); await page.reload(); await page.waitForSelector(`[data-task-card="${made.one}"]`); await settle(800);
+  await page.goto(`${base}?a=1&theme=light&lang=fr#tasks?site=site-one.example&view=kanban`); await page.reload(); await page.waitForSelector(`[data-task-card="${made.one}"]`); await settle(800);
   const frRows = [...(await rows(made.many)), ...(await rows(made.kinds))];
   check("French words", frRows[0] === "Mot-clé: one" && /^(Concurrent|Lien à obtenir):/.test(frRows[3]), frRows.join(" | "));
   await page.screenshot({ path: `${shots}/board-fr.png` });
-  await page.goto(`${base}?a=1&lang=en#tasks?site=site-one.example`); await page.reload(); await page.waitForSelector(`[data-task-card="${made.one}"]`); await settle(800);
+  await page.goto(`${base}?a=1&lang=en#tasks?site=site-one.example&view=kanban`); await page.reload(); await page.waitForSelector(`[data-task-card="${made.one}"]`); await settle(800);
 
   // Links open the page or the keyword, never the task.
   await card(made.many).locator(".ta-pills a.kw-link").first().click(); await settle(800);
   check("Clicking the keyword opens it, not the task", !(await page.locator("#task-title").count()));
-  await page.goto(`${base}?a=1#tasks?site=site-one.example`); await page.reload(); await page.waitForSelector(`[data-task-card="${made.one}"]`); await settle(800);
+  await page.goto(`${base}?a=1#tasks?site=site-one.example&view=kanban`); await page.reload(); await page.waitForSelector(`[data-task-card="${made.one}"]`); await settle(800);
   const popup = page.waitForEvent("popup", { timeout: 4000 }).catch(() => null);
   await card(made.long).locator(".ta-pills a.page-link").click(); const tab = await popup; await settle(500);
   check("Clicking the page opens the page, not the task", !!tab && !(await page.locator("#task-title").count()));
@@ -124,10 +125,10 @@ const stamp = Date.now().toString(36);
   await card(made.long).scrollIntoViewIfNeeded().catch(() => {});
   check("Phone: +N stays beside the last pill", await moreBeside());
   await page.screenshot({ path: `${shots}/phone.png` });
-  await page.goto(`${base}?a=1&theme=dark#tasks?site=site-one.example`); await page.reload(); await page.waitForSelector(`[data-task-card="${made.one}"]`); await settle(800);
+  await page.goto(`${base}?a=1&theme=dark#tasks?site=site-one.example&view=kanban`); await page.reload(); await page.waitForSelector(`[data-task-card="${made.one}"]`); await settle(800);
   await card(made.kinds).scrollIntoViewIfNeeded().catch(() => {});
   await page.screenshot({ path: `${shots}/phone-dark.png` });
-  await page.goto(`${base}?a=1&theme=light#tasks?site=site-one.example`); await settle(500);
+  await page.goto(`${base}?a=1&theme=light#tasks?site=site-one.example&view=kanban`); await settle(500);
   await page.evaluate(async (ids) => { for (const id of ids) await COMP.api("DELETE", `tasks/${id}`); }, [made.one, made.many, made.none, made.kinds, made.long]);
   check("No page errors", !problems.length, problems.join(" / "));
   await browser.close();

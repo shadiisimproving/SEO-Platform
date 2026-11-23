@@ -3,6 +3,7 @@
 // Needs the demo world (tests/ui/app_server.py) with, made up, in link_domains:
 //   local-news.example (file score 2) leads_elsewhere -> link-shop.example, home-kitchen.example (file score 6) parked,
 //   coffee-review.example (file score 3) site_down, all checked 2026-11-18 08:00.
+// Seed them with: DB_NAME_TEST=<same>_test .venv/bin/python tests/ui/seed_link_flags.py spam-facts
 // Checks: the redirect and the parked domain sit under Flagged with what the app saw and the score it overruled, in every
 // view; site down stays in Good ones with its note; Not spam shows on the row with a tip that it overrides the app's check,
 // and pressing it puts the domain back in Good ones (undone at the end, so the flow can run again).

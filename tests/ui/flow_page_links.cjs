@@ -57,8 +57,13 @@ const survey = () => {
 
   // Overview: the sentence on top, the Pages tab, and a page's own panel.
   await page.evaluate(() => { location.hash = "#overview"; });
+  // Since the one-period rule (2026-11-17) a comparison names no page that gained when the page table doesn't reach back to
+  // the earlier period, and the demo world keeps only 14 days of pages. With no comparison, the answer names the Top page.
+  await page.evaluate(() => UI.range.set({ compare: "none" }));
   await page.waitForTimeout(2000);
-  check((await page.locator(".ov-answer a.page-link").count()) > 0, "Overview: the pages named in the sentence on top are links");
+  check((await page.locator(".ov-answer a.page-link").count()) > 0, "Overview: the pages named in the answer on top are links");
+  await page.evaluate(() => UI.range.set({ compare: "prev" }));
+  await page.waitForTimeout(1500);
   await page.getByRole("tab", { name: "Pages" }).first().click().catch(() => page.locator("button", { hasText: /^Pages$/ }).first().click());
   await page.waitForTimeout(1500);
   const ovRow = page.locator("#main tr a.page-link").first();
