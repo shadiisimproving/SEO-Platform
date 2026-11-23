@@ -11,7 +11,7 @@
   const COMP = window.COMP;
   /* Questions has its own tab since 2026-11-12 (UI critique): as the third card under Pages, the questions they answer and I
      don't were hard to find. */
-  const TABS = [["keywords", "Keywords", "key-round"], ["pages", "Pages", "file-text"], ["questions", "Questions", "message-circle-question"], ["activity", "Activity", "activity"], ["site", "Their site", "globe"], ["map", "Site map", "network"]];
+  const TABS = [["changes", "Changes", "clock"], ["keywords", "Keywords", "key-round"], ["pages", "Pages", "file-text"], ["questions", "Questions", "message-circle-question"], ["activity", "Activity", "activity"], ["site", "Their site", "globe"], ["map", "Site map", "network"]];
   if (window.ICONS && !window.ICONS["message-circle-question"]) window.ICONS["message-circle-question"] = '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>';
   const TAB_KEY = "competitor-tab";
   const S = { tab: null, p: null, ins: null, parts: null, buildMore: false, strengthBusy: false, strengthError: "", shownId: null, bestSort: null };
@@ -47,10 +47,11 @@
     return `<p class="pt-note small">${icon("info")}<span>${esc(t(words))}</span></p>`;
   };
 
-  /* Every competitor opens on Keywords, where the answer sentence points. The tab isn't kept across competitors or visits. */
+  /* Every competitor opens on Changes (2026-11-20: the list left the Competitors screen for this page). The tab isn't kept
+     across competitors or visits. */
   function currentTab() {
-    if (!S.tab) S.tab = "keywords";
-    return TABS.some(([id]) => id === S.tab) ? S.tab : "keywords";
+    if (!S.tab) S.tab = "changes";
+    return TABS.some(([id]) => id === S.tab) ? S.tab : "changes";
   }
 
   // ---- loading ------------------------------------------------------------------------------
@@ -160,6 +161,7 @@
 
   function panel() {
     const tab = currentTab(), p = S.p, ins = S.ins, parts = S.parts;
+    if (tab === "changes") return changesTab(p, parts);
     if (tab === "pages") return pagesTab(p, ins);
     if (tab === "questions") return questionsTab(p, ins);
     if (tab === "activity") return activityTab(p, ins, parts);
@@ -374,7 +376,13 @@
       <tbody>${rows.map((r) => `<tr class="pt-row-${r.who}"><th scope="row">${COMP.who(r.who, r.host)}</th>${r.cells.map((v, i) => `<td class="c tabular" data-label="${esc(cols[i])}">${v}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
   }
 
-  // Activity: what changed first (the timeline), then how fast they publish and edit, as small You/Them tables and charts.
+  // Changes: this competitor's timeline, the first thing its page shows.
+  function changesTab(p, parts) {
+    return `<section class="card" aria-label="${esc(t("Timeline"))}"><div class="card-head"><h2>${t("What changed")}</h2>${COMP.info("Moves only compare two checks by the same tool and place, so a tool change never shows as a move.")}</div>
+        <div class="cl-section-body" id="cl-timeline">${parts.timelineBody(p)}</div></section>`;
+  }
+
+  // Activity: how fast they publish and edit, as small You/Them tables and charts.
   function activityTab(p, ins, parts) {
     const r = ins?.rhythm;
     const showMine = mineRead(ins);
@@ -398,9 +406,7 @@
       : monthChart(months, showMine);
     const years = historyBlock(ins);
     const edits = editsCard(r, showMine, p);
-    return `<section class="card" aria-label="${esc(t("Timeline"))}"><div class="card-head"><h2>${t("What changed")}</h2>${COMP.info("Moves only compare two checks by the same tool and place, so a tool change never shows as a move.")}</div>
-        <div class="cl-section-body" id="cl-timeline">${parts.timelineBody(p)}</div></section>
-      <section class="card"><div class="card-head"><h2>${t("How fast they publish")}</h2><span class="end small muted">${t("New pages each month")}${UI().tip("Counted from the dates on their pages.")}</span></div><div class="cl-section-body">${lead}${chart}${showMine || !months.length ? "" : notReadNote()}</div></section>
+    return `<section class="card"><div class="card-head"><h2>${t("How fast they publish")}</h2><span class="end small muted">${t("New pages each month")}${UI().tip("Counted from the dates on their pages.")}</span></div><div class="cl-section-body">${lead}${chart}${showMine || !months.length ? "" : notReadNote()}</div></section>
       ${edits}
       ${years}`;
   }
@@ -676,7 +682,7 @@
   function body(p, ins, parts) {
     Object.assign(S, { p, ins, parts });
     if (S.shownId !== p.id) {
-      S.shownId = p.id; S.tab = "keywords"; S.buildMore = false; S.qOpen = new Set(); S.qPicked = new Set(); S.qOthers = false; S.bestSort = null;
+      S.shownId = p.id; S.tab = "changes"; S.buildMore = false; S.qOpen = new Set(); S.qPicked = new Set(); S.qOthers = false; S.bestSort = null;
       [BEST, QS, QO].forEach((key) => { TP().state(key).q = ""; TP().reset(key); }); // another competitor starts on page 1, unsearched
     }
     [BEST, QS, QO].forEach((key) => TP().on(key, () => repaint()));
@@ -1031,6 +1037,8 @@
 
   bind();
   COMP.profileTabs = {
+    /* The page was left: opened again, even the same competitor starts on Changes. */
+    leave() { S.shownId = null; },
     headBlock, load, body, factsLine, keywordMarks, sampleInsights,
     keywordsWhy: () => (kwUnknown() ? t(KW_WHY[kwUnknown()]) : "") };
   // The banner's answer can land after the profile is drawn: redraw once, so 0 becomes — the moment it's known there's no list.
