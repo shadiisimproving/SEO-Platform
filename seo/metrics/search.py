@@ -17,6 +17,7 @@ import statistics
 import time
 import unicodedata
 from calendar import monthrange
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta, timezone
 
 from sqlalchemy import Engine, bindparam, text
@@ -209,12 +210,23 @@ def _merge(rows_by_site: list[list[dict]]) -> dict[str, list]:
 
 def _live_series(engine: Engine, sources: list[dict], start: date, end: date, hourly: bool, fresh: bool) -> list[dict]:
     if hourly:
-        answers = [live(engine, s, start - timedelta(days=1), end, ["hour"], 1000, "hourly_all", fresh=fresh) for s in sources]
+        ask = lambda s: live(engine, s, start - timedelta(days=1), end, ["hour"], 1000, "hourly_all", fresh=fresh)  # noqa: E731
     else:
-        answers = [live(engine, s, start, end, ["date"], 25000, fresh=fresh) for s in sources]
+        ask = lambda s: live(engine, s, start, end, ["date"], 25000, fresh=fresh)  # noqa: E731
+    answers = _all_at_once([lambda s=s: ask(s) for s in sources])
     merged = _merge([answer.get("rows", []) for answer in answers])
     looks_right = (lambda key: len(key) > 10 and key[4] == "-" and "T" in key) if hourly else (lambda key: len(key) == 10 and key[4] == "-")
     return [_point(key, v[0], v[1], v[2] if v[3] else None) for key, v in sorted(merged.items()) if looks_right(key)]
+
+
+def _all_at_once(calls: list) -> list:
+    """Search Console calls sent together, answers in the same order (2026-11-16): one after another, Overview's 3 sites
+    times 2 periods took 11.5 s on live, nearly all of it waiting for Google. The first failure is raised, as before."""
+    if len(calls) <= 1:
+        return [call() for call in calls]
+    with ThreadPoolExecutor(max_workers=min(len(calls), 8)) as pool:
+        futures = [pool.submit(call) for call in calls]
+        return [future.result() for future in futures]
 
 
 def _saved_series(scope: Scope, start: date, end: date) -> list[dict]:
@@ -803,8 +815,11 @@ def overview(scope: Scope, window: dict, fresh: bool = False) -> dict:
                 if window["compare"] == "none":
                     before_points = None
             else:
-                now_points = _live_series(scope.engine, sources, scope.start, drawn_to, False, fresh)
-                before_points = _live_series(scope.engine, sources, scope.compare_start, scope.compare_end, False, fresh) if scope.has_compare else None
+                # This period and the one before at the same time, each with its sites at the same time.
+                periods = [lambda: _live_series(scope.engine, sources, scope.start, drawn_to, False, fresh)]
+                if scope.has_compare:
+                    periods.append(lambda: _live_series(scope.engine, sources, scope.compare_start, scope.compare_end, False, fresh))
+                now_points, before_points = (_all_at_once(periods) + [None])[:2]
             origin = "live"
         except (SourceError, ConnectionError, credentials.CredentialsFailed, NotFound) as exc:
             live_error = str(exc)

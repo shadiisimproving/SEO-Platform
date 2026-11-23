@@ -398,3 +398,25 @@ def test_the_last_24_hours_get_a_sentence_without_drivers(engine, site, google):
     google.answers[("hour",)] = lambda body: httpx.Response(200, json={"rows": [{"keys": [f"2026-11-0{6 + n // 24}T{n % 24:02d}:00:00-08:00"], "clicks": 1 if n < 24 else 3, "impressions": 10} for n in range(48)]})
     answer = search.overview(*_scope(engine, site, "24h", "prev"))["answer"]
     assert answer == {"kind": "up", "clicks": 72, "before": 24, "percent": 200, "drivers": []}
+
+
+def test_overview_asks_google_for_both_periods_at_the_same_time(engine, site, google):
+    """2026-11-16, "the app is very slow": one call after another, Overview's 3 sites times 2 periods took 11.5 s live."""
+    import threading
+    import time as clock
+    waiting, most = [0], [0]
+    lock = threading.Lock()
+
+    def slow(body):
+        with lock:
+            waiting[0] += 1; most[0] = max(most[0], waiting[0])
+        clock.sleep(0.4)
+        with lock:
+            waiting[0] -= 1
+        return httpx.Response(200, json={"rows": [{"keys": [body["startDate"]], "clicks": 5, "impressions": 100, "position": 9.0}]})
+    google.answers[("date",)] = slow
+    _day(engine, site, END - timedelta(days=400), 1, 1, 1.0)
+    began = clock.monotonic()
+    found = search.overview(*_scope(engine, site, "7d", "prev"))
+    assert found["origin"] == "live" and found["totals"]["clicks"] == 5 and found["before"]["clicks"] == 5
+    assert most[0] == 2 and clock.monotonic() - began < 0.75  # both periods waited on together, not 0.8 s in a row
