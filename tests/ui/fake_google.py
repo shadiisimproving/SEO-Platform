@@ -1,4 +1,4 @@
-"""A fake Google, Bing, Yandex, Clarity and PageSpeed for trying the screens by hand. Nothing leaves the machine.
+"""A fake Google, Bing, Yandex, Clarity, PageSpeed and Wayback Machine for trying the screens by hand. Nothing leaves the machine.
 
 Numbers are worked out from the date, so a day always gives the same answer, and they go through the real collectors.
 """
@@ -6,11 +6,12 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import date
+from datetime import date, timedelta
 
 import httpx
 
 from seo.collectors import http
+from seo.competitors import history
 from seo.sources import credentials
 
 PROPERTIES = lambda: ["sc-domain:mine-one.test", "sc-domain:mine-two.test", "https://mine-three.test/"]  # noqa: E731
@@ -129,8 +130,63 @@ def _inspect(request: httpx.Request) -> httpx.Response:
     return httpx.Response(200, json={"inspectionResult": {"indexStatusResult": found}})
 
 
+# ---- a rival page that changes between two days, and the Wayback Machine's copy of it ------------------
+# Made up: rival-guide.test is no real site. Before RIVAL_CHANGED_ON it's the 2025 guide; from that day on, the 2026 rewrite
+# with a new heading, two FAQ questions, FAQ structured data and more words. The archive holds one copy, from 20 Oct 2025.
+
+RIVAL_URL = "https://rival-guide.test/guide/"
+RIVAL_CHANGED_ON = date.today() - timedelta(days=3)
+ARCHIVED_AT = "20251020120000"
+
+
+def rival_html(day: date) -> str:
+    new = day >= RIVAL_CHANGED_ON
+    year = 2026 if new else 2025
+    filler = " ".join(["Setting up a company takes a few clear steps and some paperwork."] * (60 if new else 30))
+    faq = "<h3>How long does it take?</h3><p>About two weeks.</p><h3>What does it cost?</h3><p>From 4,000 a year.</p>" if new else "<h3>How long does it take?</h3><p>About a month.</p>"
+    schema = '{"@context": "https://schema.org", "@graph": [{"@type": "Article", "datePublished": "2024-03-01", "dateModified": "%s"}%s]}' % (
+        "2026-11-01" if new else "2025-10-01", ', {"@type": "FAQPage"}' if new else "")
+    links = '<a href="/visa/">Visa</a><a href="/costs/">Costs</a><a href="https://gov.example/rules">Rules</a>' if new else '<a href="/costs/">Costs</a>'
+    visa = "<h2>Visa options</h2><p>Each partner can get a residence visa through the company.</p>" if new else ""
+    return (
+        f'<html lang="en"><head><title>Company setup guide {year}</title><meta name="description" content="Everything about company setup in {year}.">'
+        f'<script type="application/ld+json">{schema}</script></head><body><main><h1>Company setup guide {year}</h1>'
+        f"<h2>Costs</h2><p>{filler}</p>{visa}<h2>Steps</h2><p>Updated for {year}.</p>{faq}{links}</main></body></html>"
+    )
+
+
+def _archive(request: httpx.Request) -> httpx.Response:
+    url = str(request.url)
+    if "/cdx/search/cdx" in url:
+        params = request.url.params
+        wanted, until = params.get("url", ""), params.get("to", "99999999")
+        if params.get("matchType") == "domain":
+            return httpx.Response(200, text="")
+        if history.page_key(wanted) == history.page_key(RIVAL_URL) and until >= ARCHIVED_AT[:8]:
+            return httpx.Response(200, text=f"{ARCHIVED_AT} {RIVAL_URL}\n")
+        return httpx.Response(200, text="")
+    stamp, _, original = url.removeprefix(history.ARCHIVE_URL).partition("id_/")
+    if history.page_key(original) == history.page_key(RIVAL_URL) and stamp.isdigit():
+        return httpx.Response(200, html=rival_html(date(int(stamp[:4]), int(stamp[4:6]), int(stamp[6:8]))))
+    return httpx.Response(404, text="Wayback Machine doesn't have that page archived.")
+
+
+def rival_site(today=date.today):
+    """The rival's own website, as a transport for the polite reader: the page as it is today()."""
+    def answer(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/robots.txt":
+            return httpx.Response(404)
+        if history.page_key(str(request.url)) == history.page_key(RIVAL_URL):
+            return httpx.Response(200, html=rival_html(today()))
+        return httpx.Response(404, html="<html><body>Not found</body></html>")
+
+    return httpx.MockTransport(answer)
+
+
 def _answer(request: httpx.Request) -> httpx.Response:
     url = str(request.url)
+    if url.startswith("https://web.archive.org/"):
+        return _archive(request)
     if "searchAnalytics" in url:
         if _gsc_refuses():
             return httpx.Response(403, json={"error": {"code": 403, "message": "User does not have sufficient permission for site. See also: https://support.google.com/webmasters/answer/2451999.", "status": "PERMISSION_DENIED"}})
@@ -188,3 +244,5 @@ def install() -> None:
     http.transport = fake
     credentials.transport = fake
     credentials.token_override = lambda connection_id: "fake-token"
+    history.transport = fake  # the Wayback Machine's copy of one page; the archive's index for a whole site stays demo_world's
+    history.is_allowed = lambda url: url.startswith("https://web.archive.org/")

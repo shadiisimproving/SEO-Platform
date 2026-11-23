@@ -40,10 +40,15 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
     await tab("changed");
     await shot("01-changed", true);
     const body = await rowsText();
-    check(body.includes("Query losing places") && body.includes("blue shoes"), "a query losing places, with its query");
-    check(body.includes("Unstable ranking"), "an unstable ranking");
+    // Since 2026-11-17: Pages, then Searches; a search whose page is listed is inside that page's panel, not said twice.
+    check(body.includes("/blue/") && body.includes("Ranking"), "the page losing clicks, with its cause");
+    check(/more searches? (is|are) inside/.test(await text(".in-wc")), "its searches are said to be inside the page");
     check(body.includes("Brand hides a loss"), "brand hiding a non-brand loss");
-    await openRow("Query losing places");
+    // Since 2026-11-17 a search whose page is listed sits inside that page in What changed: opened through the screen's own opener.
+    const qid = await page.evaluate(async () => (await window.COMP.api("GET", `insights?group=changed&status=open&site_id=${window.UI.siteIdPicked()}`)).rows.find((r) => r.kind === "query_down")?.id);
+    await page.evaluate((id) => { const b = document.createElement("button"); b.dataset.inOpen = id; document.querySelector(".in-wc").append(b); b.click(); b.remove(); }, qid);
+    await page.waitForSelector("#panel .panel-body .rows", { timeout: 5000 });
+    await page.waitForTimeout(500);
     await shot("02-query-down-panel");
     // Since 11 November the formula sits behind the (i) beside the figure (stakeBlock); .in-how only holds the AI Overview line.
     const how = await page.locator("#panel .in-stake .def-i").first().getAttribute("data-tip", { timeout: 1500 }).catch(() => "");
@@ -63,6 +68,7 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
     await shot("04-wins", true);
     const body = await rowsText();
     for (const name of ["No page of its own", "Near page 1 on many searches", "Topic without a strong page"]) check(body.includes(name), `${name} is listed`);
+    check(body.includes("Unstable ranking"), "an unstable ranking is a quick win (moved from What changed on 2026-11-17)");
     check(body.includes("Searches with “umbrella”"), "the topic is named by its word");
     await openRow("Topic without a strong page");
     await shot("05-topic-panel");

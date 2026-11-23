@@ -22,8 +22,15 @@ ODD_Z = 2.5  # with only 8 weeks to compare against, the spread is wide; the 60%
 PAGE_MIN_CLICKS, PAGE_MIN_CHANGE, PAGE_MIN_PERCENT = 20, 10, 20
 PAGE_BIG_PERCENT, PAGE_BIG_CLICKS = 50, 50
 PAGE_QUERIES = 5
-PLACES_LOST = 1.5  # a page that lost this many places lost them by ranking
+PLACES_LOST = 1.5  # a page that lost this many places lost them by ranking (kept for the panel's searches: "Lost places")
 FEWER_SEARCHES = 0.75  # impressions now ÷ before, below which demand fell
+SINCE_LOOK_BACK = 14  # days before the period the start of a fall may be found in
+SINCE_HOLD = 0.8  # from the day named, the 7-day average stays under the usual on this share of the days
+EDIT_BEFORE_DAYS = 14  # an edit of my own page this many days before a fall started is shown beside it
+
+# Chance: a drop of clicks smaller than this many times √(clicks before + now) can be noise (Poisson counts).
+CHANCE_SIGMAS = 2.0
+CHANCE_PLACES, CHANCE_IMPRESSIONS = 1.0, 200  # unless its position fell this many places over this many impressions in each period
 
 # A5, dropped out of Google.
 GONE_DAYS = 7
@@ -60,6 +67,13 @@ QUERY_PLACES_LOST = 3
 QUERY_MIN_IMPRESSIONS = 50  # in each period: a place 'lost' from 2 impressions says nothing
 QUERY_WORST_BEFORE = 30  # it ranked at least this well before; further down, places mean little
 QUERY_KEPT = 100
+TOP3_LOST = 3  # a query that was at or above this place and now isn't lost the top 3, even by under 3 places
+
+# Fewer clicks at the same position: the main sign of a new AI Overview or a richer results page.
+CTR_DROP_SHARE = 0.3  # the click rate fell at least this share
+CTR_DROP_PLACES = 1.0  # while the position moved less than this
+CTR_DROP_MIN_CLICKS = 10  # before, in the 28 days
+CTR_DROP_KEPT = 100
 
 # A6, one country or device carries the change.
 SEGMENT_SHARE = 0.7  # of the site's change, pulling the same way
@@ -67,8 +81,10 @@ SEGMENT_MIN_CLICKS = 20
 SEGMENT_OTHERS_STEADY = 0.15  # the rest of the site moved less than this share of its clicks
 
 # A7, unstable ranking: Google keeps moving it.
-UNSTABLE_MIN_DAYS = 14  # of the 28, with impressions
-UNSTABLE_MIN_IMPRESSIONS = 100
+UNSTABLE_MIN_DAYS = 14  # of the 28, each with at least UNSTABLE_DAY_IMPRESSIONS
+UNSTABLE_DAY_IMPRESSIONS = 5  # a day with fewer says little about its place
+UNSTABLE_MIN_IMPRESSIONS = 300  # over the 28 days
+UNSTABLE_NO_CLICK_SHARE = 0.4  # clicks under this share of the curve's at its usual place: it's the clicks, not the place
 UNSTABLE_SPREAD = 3.0  # places, the spread between its better and worse days (interquartile)
 UNSTABLE_TOP = 20  # its usual position at or above this
 UNSTABLE_KEPT = 50

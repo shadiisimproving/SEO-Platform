@@ -10,6 +10,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import time
 from datetime import date
 
@@ -22,6 +23,7 @@ from seo.worker.runner import handler
 
 LANE = "collectors"
 ALERT_KIND = "search_drop"
+log = logging.getLogger(__name__)
 
 
 def detect(ctx: data.Ctx) -> Result:
@@ -46,11 +48,12 @@ def detect(ctx: data.Ctx) -> Result:
     lost = movement.queries_down(ctx)
     take(lost)
     take(movement.segments(ctx))
-    take(movement.unstable(ctx))
     # B. Slow decline
     take(decline.decay(ctx))
-    take(decline.slide(ctx, {f.query for f in lost.findings}))  # a query that already lost 3 places is said once, as that
-    # C. Quick wins
+    # A query that already lost 3 places (or is one of the alike searches of one that did) is said once, as that.
+    take(decline.slide(ctx, {q for f in lost.findings for q in (f.query, *(a["query"] for a in f.evidence.get("alike", [])))}))
+    # C. Quick wins. Unstable ranking is one: a chance to win if it settled at its better days (it was under What changed).
+    take(movement.unstable(ctx))
     take(wins.wins(ctx))
     take(wins.page_near(ctx))
     take(wins.no_page(ctx))
@@ -85,6 +88,7 @@ def run(engine: Engine, site_id: int) -> dict:
     result = detect(ctx)
     counts = _save(engine, ctx, result)
     _alerts(engine, ctx)
+    queue_rivals(engine, site_id)
     counts["needs"] = result.needs
     _record(engine, site_id, ctx.end, started, counts)
     return {"site_id": site_id, "data_through": ctx.end.isoformat(), **counts}
@@ -172,6 +176,24 @@ def _save(engine: Engine, ctx: data.Ctx, result: Result) -> dict:
             conn.execute(text("UPDATE search_findings SET status = 'gone', gone_at = UTC_TIMESTAMP(3) WHERE id IN :ids").bindparams(bindparam("ids", expanding=True)), {"ids": vanished})
         conn.execute(text(f"DELETE FROM search_findings WHERE site_id = :s AND status = 'gone' AND gone_at < UTC_TIMESTAMP(3) - INTERVAL {rules.GONE_KEPT_DAYS} DAY"), {"s": site_id})
     return {"added": added, "updated": updated, "gone": len(vanished), "ran": sorted(result.ran)}
+
+
+def queue_rivals(engine: Engine, site_id: int) -> int | None:
+    """Who passed me (seo/competitors/rival_changes.py): once the findings are saved, one look is queued for the site when an open
+    rival_passed or rank_drop finding is on page 1. Never breaks the run: a queue or import error is logged and the run goes on."""
+    try:
+        from seo.competitors import rival_changes  # imported here: the competitors code reads this package's neighbours
+
+        with engine.connect() as conn:
+            rows = conn.execute(
+                text("SELECT kind, evidence FROM search_findings WHERE site_id = :s AND status = 'open' AND kind IN ('rival_passed', 'rank_drop')"), {"s": site_id}
+            ).mappings().all()
+        if not any(rival_changes.applies(r["kind"], rival_changes._evidence(r)) for r in rows):
+            return None
+        return rival_changes.enqueue_for_site(engine, site_id)
+    except Exception:  # noqa: BLE001 - the insights run is saved already; the rival look waits for the next run
+        log.exception("couldn't queue the rival look for site %s", site_id)
+        return None
 
 
 # ---- Alerts: the big drops only ------------------------------------------------------------------

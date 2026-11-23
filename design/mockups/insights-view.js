@@ -18,6 +18,7 @@
     no_click: { name: "Seen, never clicked", title: "{query}" },
     compete: { name: "Two pages compete", title: "{query}" },
     query_down: { name: "Query losing places", title: "{query}" },
+    ctr_drop: { name: "Fewer clicks at the same position", title: "{query}" },
     segment: { name: "One device or country", title: "{segment}: {sign}{percent}% clicks" },
     unstable: { name: "Unstable ranking", title: "{query}" },
     brand_split: { name: "Brand hides a loss", title: "Non-brand clicks fell {percent}%" },
@@ -47,12 +48,13 @@
   const MIX_KINDS = new Set(["rank_drop", "rank_rise", "rival_passed", "rival_gap", "striking", "rank_no_click", "page_switch", "no_demand"]);
   const MIX_CHIPS = [["all", "All", null, "above"], ["moved", "Just moved", ["rank_drop", "rank_rise"], "moved"], ["rivals", "Rivals ahead", ["rival_passed", "rival_gap"], "above"], ["almost", "Almost there", ["striking"], "above"], ["clicks", "Ranked, not clicked", ["rank_no_click"], "ai"], ["page", "Wrong page", ["page_switch"], "page"], ["tracking", "Tracking", ["no_demand", "track"], ""]];
   const PARTS = {
-    demand: ["More searches", "Fewer searches"], ranking: ["Ranking higher", "Ranking lower"], appeal: ["Higher click rate", "Lower click rate"],
+    demand: ["More searches", "Fewer searches"], ranking: ["Ranking higher", "Ranking lower"], appeal: ["More clicks at the same position", "Fewer clicks at the same position"],
     new: ["New queries", "New queries"], lost: ["Lost queries", "Lost queries"], hidden: ["Hidden searches", "Hidden searches"],
   };
   const HIDDEN_TIP = "Searches Google counts but doesn't name.";
   const USUAL_TIP = "Usual click rate at this position"; // beside the short "Usual rate"
   const PAGES = "in"; // the table's pages and search (table-pages.js), like every long table in the app
+  const resetAll = () => { TP.reset(PAGES); Object.values(BLOCK_KEYS).forEach((k) => TP.reset(k)); };
   const IN = { tab: "first", status: "open", cache: new Map(), sortDir: "desc", opened: null, mixChip: "all", gone: new Set() }; // sortDir: clicks a month, biggest first
   window.INSIGHTS = IN;
 
@@ -126,8 +128,8 @@
     const e = f.evidence || {};
     switch (f.kind) {
       case "page_down": case "page_up": {
-        const why = { ranking: fill("Lost places: {a} → {b}", { a: dec1(e.position_before), b: dec1(e.position) }), demand: fill("Fewer searches: {a} → {b} impressions", { a: num(e.impressions_before), b: num(e.impressions) }), appeal: t("Lower click rate") }[e.why];
-        const gained = { ranking: fill("Moved up: {a} → {b}", { a: dec1(e.position_before), b: dec1(e.position) }), demand: fill("More searches: {a} → {b} impressions", { a: num(e.impressions_before), b: num(e.impressions) }), appeal: t("Higher click rate") }[e.why];
+        const why = { ranking: fill("Lost places: {a} → {b}", { a: dec1(e.position_before), b: dec1(e.position) }), demand: fill("Fewer searches: {a} → {b} impressions", { a: num(e.impressions_before), b: num(e.impressions) }), appeal: t("Fewer clicks at the same position"), not_indexed: t("Not indexed by Google") }[e.why];
+        const gained = { ranking: fill("Moved up: {a} → {b}", { a: dec1(e.position_before), b: dec1(e.position) }), demand: fill("More searches: {a} → {b} impressions", { a: num(e.impressions_before), b: num(e.impressions) }), appeal: t("More clicks at the same position") }[e.why];
         return `${num(e.clicks_before)} → ${num(e.clicks)} ${t("clicks")} · ${f.kind === "page_up" ? gained : why}`;
       }
       case "dropped_out": return `${fill("No impressions for {n} days, after {c} clicks in 4 weeks", { n: num(e.days), c: num(e.clicks_before) })}${e.causes?.length ? ` · ${e.causes.map(cause).join(", ")}` : ""}`;
@@ -135,11 +137,12 @@
       case "decay": return fill("{p}% under its best 4 weeks: {a} → {b} clicks a week", { p: num(e.below_peak), a: dec1(e.peak), b: dec1(e.last) });
       case "almost": case "top3": return `${fill("Position {p} · {i} impressions · {c} clicks", { p: dec1(e.position), i: num(e.impressions), c: num(e.clicks) })}${marketWords(e) ? ` · ${marketWords(e)}` : ""}`;
       case "low_ctr": return fill("{r}% click rate at position {p}; usual {u}%", { r: UI.dec(e.click_rate ?? 0), p: dec1(e.position), u: UI.dec(e.expected_rate ?? 0) });
-      case "no_click": return fill("{i} impressions at position {p}, 0 clicks", { i: num(e.impressions), p: dec1(e.position) });
+      case "no_click": return e.clicks ? fill("{i} impressions at position {p}, {c} clicks; usual {u}%", { i: num(e.impressions), p: dec1(e.position), c: num(e.clicks), u: UI.dec(e.expected_rate ?? 0) }) : fill("{i} impressions at position {p}, 0 clicks", { i: num(e.impressions), p: dec1(e.position) });
+      case "ctr_drop": return fill("Click rate {a}% → {b}% at position {p}", { a: UI.dec(e.click_rate_before ?? 0), b: UI.dec(e.click_rate ?? 0), p: dec1(e.position) });
       case "compete": return (e.pages || []).slice(0, 2).map((p) => `${pathOf(p.page)} ${p.share}% (${t("pos.")} ${dec1(p.position)})`).join(" · ");
       case "query_down": return fill("Position {a} → {b} · {i} impressions", { a: dec1(e.position_before), b: dec1(e.position), i: num(e.impressions) });
       case "segment": return fill("{a} → {b} clicks; rest of site {c}", { a: num(e.clicks_before), b: num(e.clicks), c: signed(e.others_change) });
-      case "unstable": return fill("Swings between position {a} and {b}, usually {p}", { a: dec1(e.better), b: dec1(e.worse), p: dec1(e.position) });
+      case "unstable": return fill("Half its days between position {a} and {b}, usually {p}", { a: dec1(e.better), b: dec1(e.worse), p: dec1(e.position) });
       case "brand_split": return fill("Non-brand {a} → {b} clicks; brand {c} → {d}", { a: num(e.other.clicks_before), b: num(e.other.clicks), c: num(e.brand.clicks_before), d: num(e.brand.clicks) });
       case "slide": return fill("Position {a} → {b}, slipping weekly for 8 weeks", { a: dec1(e.position_before), b: dec1(e.position) });
       case "page_near": return fill("{n} searches at positions 11–30 · {i} impressions", { n: num(e.queries_count), i: num(e.impressions) });
@@ -212,8 +215,9 @@
   function factOf(f) {
     const e = f.evidence || {};
     switch (f.kind) {
-      case "page_down": return t({ ranking: "Lost places", demand: "Fewer searches", appeal: "Lower click rate" }[e.why] || "");
-      case "page_up": return t({ ranking: "Moved up", demand: "More searches", appeal: "Higher click rate" }[e.why] || "");
+      case "page_down": return t({ ranking: "Lost places", demand: "Fewer searches", appeal: "Fewer clicks at the same position", not_indexed: "Not indexed by Google" }[e.why] || "");
+      case "page_up": return t({ ranking: "Moved up", demand: "More searches", appeal: "More clicks at the same position" }[e.why] || "");
+      case "ctr_drop": return "";
       case "almost": case "top3": return marketWords(e);
       case "no_click": case "query_down": case "decay": case "track": return "";
       case "no_page": return e.home ? t("Only the home page ranks") : fill("Ranks via {page}, an off-topic page", { page: pathOf(e.page) });
@@ -229,11 +233,13 @@
     }
   }
   const fellOnly = (f) => f.kind === "rival_passed" && (f.evidence?.passed || []).length > 0 && f.evidence.passed.every((r) => r.you_fell);
-  const kindName = (f) => t(fellOnly(f) ? "You fell below a rival" : KIND[f.kind]?.name || f.kind);
+  // An unstable search with far too few clicks is said as no_click though it has some (movement.unstable): "rarely".
+  const kindName = (f) => t(fellOnly(f) ? "You fell below a rival" : f.kind === "no_click" && f.evidence?.clicks ? "Seen, rarely clicked" : KIND[f.kind]?.name || f.kind);
   /* The kind's tag has one colour per family, so kinds read apart at a glance (owner, 2026-11-12; cc36dc2 had made it grey):
      loss red, opportunity blue, gain or result teal, technical amber, plain information grey. insights.css draws them. */
   const FAMILY = {
-    loss: ["page_down", "dropped_out", "decay", "query_down", "unstable", "brand_split", "slide", "lead_page", "rank_drop", "rival_passed"],
+    // Unstable ranking is a chance to win (Quick wins, "To win"), so blue like the other chances since 2026-11-17.
+    loss: ["page_down", "dropped_out", "decay", "query_down", "ctr_drop", "brand_split", "slide", "lead_page", "rank_drop", "rival_passed"],
     gain: ["page_up", "rank_rise", "task_result", "note_result"],
     tech: ["duplicate", "shown_broken", "data_gaps", "compete", "page_switch"],
     info: ["no_demand"],
@@ -325,6 +331,7 @@
     no_click: "Rewrite the title and description to match what searchers want.",
     compete: "Pick one page for this search, improve it, and link the other to it, or merge them.",
     query_down: "Compare with the pages that passed yours, and add what they cover.",
+    ctr_drop: "Look at its results page for an AI Overview or new boxes, then give the title and description a reason to click.",
     segment: "Open that country or device in Overview to see which pages fell.",
     unstable: "Make one page the clear answer: search in its title and H1, links from related pages.",
     brand_split: "Check non-brand searches in Overview: brand traffic hides a loss.",
@@ -363,7 +370,15 @@
     if (!o.h1) return t("The search isn't in the H1.");
     return t("The search is already in the title and H1.");
   }
-  const doLine = (f) => (f.kind === "rank_no_click" ? t(NO_CLICK_DO[f.evidence?.ai] || NO_CLICK_DO["not-captured"]) : DO[f.kind] ? t(DO[f.kind]) : "");
+  // A page losing clicks: one fixed action per cause (movement.page_split names it), not one line for every page.
+  const CAUSE_DO = {
+    ranking: "Compare with the pages now above yours on its main searches, and add what they cover.",
+    appeal: "Same place, fewer clicks: look for an AI Overview on its searches, then rewrite the title and description.",
+    demand: "Fewer people search this. Check the same weeks last year, then cover the searches that still grow.",
+    not_indexed: "Google took it out of its index. Fix what Search Console says, then request indexing.",
+  };
+  const doLine = (f) => (f.kind === "rank_no_click" ? t(NO_CLICK_DO[f.evidence?.ai] || NO_CLICK_DO["not-captured"])
+    : f.kind === "page_down" && CAUSE_DO[f.evidence?.why] ? t(CAUSE_DO[f.evidence.why]) : DO[f.kind] ? t(DO[f.kind]) : "");
   function doBlock(f, titled = true) { // titled false: the row panel's section already says "What to do"
     const line = doLine(f), page = onPageLine(f);
     if (!line && !page) return "";
@@ -444,9 +459,9 @@
     aiLater();
     const card = (id, label, value, sub, info) => UI.card({ id, label: esc(t(label)), value: value ?? null, sub: esc(t(sub)), def: false, info, cls: "in-fig" });
     const cards = `<div class="tiles in-figs in-cards">
-      ${card("to-recover", "To recover", s.to_recover, "clicks a month", "Clicks a month at stake on the open findings that lost clicks.")}
-      ${card("to-win", "To win", s.to_win, "clicks a month", "Clicks a month at stake on the open chances to win, not counting a query or page already counted as a loss.")}
-      ${card("fixed", "Fixed in 30 days", s.fixed, "findings", "Findings done, or gone by themselves, in the last 30 days.")}
+      ${card("to-recover", "To recover", s.to_recover, "clicks a month, all tabs", "Clicks a month at stake on the open findings that lost clicks, in every tab. Drops that could be chance are left out.")}
+      ${card("to-win", "To win", s.to_win, "clicks a month, all tabs", "Clicks a month at stake on the open chances to win, in every tab, not counting a query or page already counted as a loss.")}
+      ${card("fixed", "Fixed in 30 days", s.fixed, "findings, all tabs", "Findings done, or gone by themselves, in the last 30 days.")}
     </div>`;
     return wrap(`${topBlock(s)}${cards}${tabsCard(d)}`);
   }
@@ -468,9 +483,9 @@
     aiSettings();
     const top = topBlock(s);
     const figs = `<h2 class="sr">${t("Clicks at stake")}</h2><div class="in-figs">
-      <div class="in-fig"><div class="lab">${t("To recover")}</div><div class="fig">${num(s.to_recover ?? 0)}</div><div class="sub">${t("clicks a month")}</div></div>
-      <div class="in-fig"><div class="lab">${t("To win")}</div><div class="fig">${num(s.to_win ?? 0)}</div><div class="sub">${t("clicks a month")}</div></div>
-      <div class="in-fig"><div class="lab">${t("Fixed in 30 days")}</div><div class="fig">${num(s.fixed)}</div><div class="sub">${t("findings")}</div></div>
+      <div class="in-fig"><div class="lab">${t("To recover")}</div><div class="fig">${num(s.to_recover ?? 0)}</div><div class="sub">${t("clicks a month, all tabs")}</div></div>
+      <div class="in-fig"><div class="lab">${t("To win")}</div><div class="fig">${num(s.to_win ?? 0)}</div><div class="sub">${t("clicks a month, all tabs")}</div></div>
+      <div class="in-fig"><div class="lab">${t("Fixed in 30 days")}</div><div class="fig">${num(s.fixed)}</div><div class="sub">${t("findings, all tabs")}</div></div>
     </div>`;
     const trust = `<p class="ov-trust small" role="status"><span>${icon("clock")}${esc(updated(s.ran_at))}</span><span class="ov-dot" aria-hidden="true">·</span><span>${t("Final days only, last 28 days vs the 28 before")}</span>${countriesLine()}</p>`;
     return wrap(`${trust}${top}${figs}${tabsCard(d)}`);
@@ -505,7 +520,7 @@
     if (IN.tab === "technical" && awayPages) notes.push(`${esc(fill(awayPages === 1 ? "1 page Google didn't show this week has a problem." : "{n} pages Google didn't show this week have a problem.", { n: num(awayPages) }))} <a href="#health">${t("See Site health")}</a>`);
     if (IN.tab === "changed" && needs.brand_split === "brand_words") notes.push(`${t("Add brand words to see when brand hides a loss.")} <a href="#overview">${t("Add them on Overview")}</a>`);
     const hint = {
-      first: "Biggest findings, one row per query or page.", mix: "Rank checks beside Search Console: what neither shows alone.", changed: "Last 28 days vs the 28 before, plus odd days this week.",
+      first: "Biggest findings, one row per query or page.", mix: "Rank checks beside Search Console: what neither shows alone.", changed: "Pages first, then searches. Last 28 days vs the 28 before.",
       decline: "Pages and searches sliding a little every week.", wins: "Searches worth a small push, by your own click rates.",
       leads: "Search clicks joined with GA4's key events over 90 days.", technical: "Addresses, broken pages and missing days, from Search Console.",
       impact: "Done tasks and dated notes, before vs after.",
@@ -519,10 +534,10 @@
       const acts = notes.filter((n) => n.includes("<a ")), quiet = notes.filter((n) => !n.includes("<a "));
       const info = UI.info([t(hint), HINT_TIPS[IN.tab] ? t(HINT_TIPS[IN.tab]) : "", ...quiet].filter(Boolean));
       return `<section class="card ov-tabs-card in-tabs-card" aria-labelledby="in-findings-h"><h2 class="sr" id="in-findings-h">${t("Findings")}</h2><div class="card-head ov-tabs-head in-tabs-head">${tabs}<span class="in-tabs-i">${info}</span></div>${controls}
-        ${sameList}${acts.map((n) => `<p class="small ov-hint in-need">${n}</p>`).join("")}${IN.tab === "mix" ? mixTab(d) : table(d.rows, awayPages)}</section>`;
+        ${sameList}${acts.map((n) => `<p class="small ov-hint in-need">${n}</p>`).join("")}${IN.tab === "mix" ? mixTab(d) : IN.tab === "changed" ? changedTab(d) : table(d.rows, awayPages)}</section>`;
     }
     return `<section class="card ov-tabs-card" aria-labelledby="in-findings-h"><h2 class="sr" id="in-findings-h">${t("Findings")}</h2><div class="card-head ov-tabs-head">${tabs}</div>${controls}
-      <p class="small muted ov-hint">${t(hint)}${UI.tip(HINT_TIPS[IN.tab] || "")}</p>${sameList}${notes.map((n) => `<p class="small ov-hint in-need">${n}</p>`).join("")}${IN.tab === "mix" ? mixTab(d) : table(d.rows, awayPages)}</section>`;
+      <p class="small muted ov-hint">${t(hint)}${UI.tip(HINT_TIPS[IN.tab] || "")}</p>${sameList}${notes.map((n) => `<p class="small ov-hint in-need">${n}</p>`).join("")}${IN.tab === "mix" ? mixTab(d) : IN.tab === "changed" ? changedTab(d) : table(d.rows, awayPages)}</section>`;
   }
 
   function table(all, away = 0) {
@@ -560,12 +575,157 @@
     const tags = [`<span class="in-kind k-${kindFamily(f)}">${esc(kindName(f))}</span>`];
     if (e.confirmed === false) tags.push(`<span class="in-season" data-tip="${t("One rank check only. Check again before acting.")}" tabindex="0">${t("Check it")}</span>`);
     if (e.seasonal) tags.push(`<span class="in-season">${t("Seasonal")}</span>`);
+    if (e.uncertain) tags.push(chanceTag());
     if (worldWide(f)) tags.push(`<span class="in-world" role="img" title="${esc(t("Search Console position, all countries"))}" aria-label="${esc(t("Search Console position, all countries"))}">${icon("globe")}</span>`);
     if (f.task) tags.push(`<span class="in-task">${icon("square-check")}${t(f.task === "done" ? "Task done" : "Task open")}</span>`);
     if (many) tags.push(`<span class="muted small">${esc(f.host)}</span>`);
     return `<div class="in-what">${tags.join("")}</div>`;
   }
   const factLine = (f) => { const fact = MIX_KINDS.has(f.kind) ? "" : factOf(f); return fact ? `<div class="s muted small" dir="auto">${esc(fact)}</div>` : ""; };
+
+  // ---- What changed: Pages, then Searches, then the whole site; gains and the small or uncertain ones folded (2026-11-17) --
+  // One pager per block (table-pages.js), all under the tab's one search box.
+  const BLOCK_KEYS = { pages: "in-pg", searches: "in-sq", site: "in-ws", gains: "in-gn", small: "in-sm" };
+  const PAGE_KINDS = new Set(["page_down", "dropped_out"]), SEARCH_KINDS = new Set(["query_down", "ctr_drop"]);
+  const GAIN = (f) => f.kind === "page_up" || (f.kind === "odd_day" && !f.evidence?.low) || (f.kind === "segment" && !f.evidence?.down);
+  const quiet = (f) => f.severity === "info" || Boolean(f.evidence?.uncertain);
+  // The cause badge: the largest part of the page's split, or Google's "not indexed" before all (movement.pages).
+  const CAUSE = { ranking: "Ranking", appeal: "Click rate", demand: "Searches", not_indexed: "Not indexed" };
+  // Short words whose shared French means something else on other screens ("Search" is also "Rechercher", "New" plural):
+  // these read as this tab means them.
+  const OWN_FR = { Search: "Recherche", New: "Nouvelle", Gone: "Disparue", Text: "Texte", Ranking: "Classement", "Not indexed": "Non indexée", Searches: "Recherches", Indexed: "Indexée", Headings: "Intertitres" };
+  const tw = (k) => (fr() && OWN_FR[k] !== undefined ? OWN_FR[k] : t(k));
+  const shortDay = (iso) => (iso ? new Intl.DateTimeFormat(UI.locale(), { day: "numeric", month: "short" }).format(new Date(`${iso.slice(0, 10)}T00:00:00`)) : "");
+  const sinceWords = (e) => (e.since ? fill("Since {day}", { day: shortDay(e.since) }) : "");
+  const chanceTag = () => `<span class="in-chance" data-tip="${esc(t("Too few clicks to be sure: a change this size happens by chance."))}" aria-label="${esc(`${t("Could be chance")}: ${t("Too few clicks to be sure: a change this size happens by chance.")}`)}" tabindex="0">${t("Could be chance")}</span>`;
+  function causeBadge(f) {
+    const e = f.evidence || {};
+    if (f.kind === "dropped_out") return `<span class="in-kind k-loss">${esc(kindName(f))}</span>`;
+    const why = CAUSE[e.why] ? e.why : null;
+    return why ? `<span class="in-cause c-${why}">${why === "not_indexed" ? icon("ban") : ""}${esc(tw(CAUSE[why]))}</span>` : "";
+  }
+  // "Clicks −21%" as a badge, "58 → 46" under it.
+  function clicksCell(f) {
+    const e = f.evidence || {};
+    const before = f.kind === "decay" ? undefined : e.clicks_before, now = f.kind === "dropped_out" ? 0 : e.clicks;
+    if (!known(before) || !known(now)) return `<td class="ov-n" data-label="${t("Clicks")}">${known(now) ? num(now) : "—"}</td>`;
+    const p = before ? Math.round((now - before) / before * 100) : null;
+    const pill = p === null ? `<span class="sec d-pill">${t("new")}</span>` : `<span class="${p < 0 ? "crit" : p > 0 ? "good" : "sec"} d-pill">${p ? icon(p < 0 ? "arrow-down" : "arrow-up") : ""}${p > 0 ? "+" : p < 0 ? "−" : ""}${num(Math.abs(p))}%</span>`;
+    return `<td class="ov-n in-clicks" data-label="${t("Clicks")}">${pill}<div class="in-ba">${num(before)} → ${num(now)}</div></td>`;
+  }
+  const lostCell = (f) => `<td class="ov-n ov-sorted in-stake-col" data-label="${t("Lost / month")}"><span class="ov-v">${f.at_stake >= 1 ? num(Math.round(f.at_stake)) : "—"}</span></td>`;
+  const lostHead = () => `<th class="ov-n ov-sorted" scope="col" aria-sort="${IN.sortDir === "asc" ? "ascending" : "descending"}"><button type="button" class="th-btn" data-in-sort>${t("Lost / month")}${icon(IN.sortDir === "asc" ? "arrow-up" : "arrow-down")}</button></th>`;
+  const ordered = (rows) => (IN.sortDir === "asc" ? [...rows].sort((a, b) => (a.at_stake || 0) - (b.at_stake || 0)) : rows);
+  function pageRow(f, many) {
+    const e = f.evidence || {};
+    const extra = [causeBadge(f), e.since ? `<span class="in-since">${esc(sinceWords(e))}</span>` : "", e.uncertain ? chanceTag() : "", e.seasonal ? `<span class="in-season">${t("Seasonal")}</span>` : "",
+      f.task ? `<span class="in-task">${icon("square-check")}${t(f.task === "done" ? "Task done" : "Task open")}</span>` : "", many ? `<span class="muted small">${esc(f.host)}</span>` : ""].filter(Boolean).join("");
+    return `<tr class="ov-row" data-in-open="${f.id}" tabindex="0"><td class="head-cell" data-label="${t("Page")}"><div class="t">${subjectOf(f)}</div><div class="in-what in-under">${extra}</div></td>
+      ${clicksCell(f)}${lostCell(f)}${arrowCell()}</tr>`;
+  }
+  function searchRow(f, many) {
+    const e = f.evidence || {};
+    const tag = f.kind === "ctr_drop" ? t("Same place, fewer clicks") : e.top3_lost ? t("Out of the top 3") : t("Lost places");
+    const alike = e.alike?.length > 1 ? `<span class="in-alike" data-tip="${esc(e.alike.map((a) => a.query).join(" · "))}" aria-label="${esc(e.alike.map((a) => a.query).join(", "))}" tabindex="0">${esc(fill("+ {n} alike", { n: num(e.alike.length - 1) }))}</span>` : "";
+    const extra = [`<span class="in-kind k-loss">${esc(tag)}</span>`, alike, e.uncertain ? chanceTag() : "", f.task ? `<span class="in-task">${icon("square-check")}${t(f.task === "done" ? "Task done" : "Task open")}</span>` : "", many ? `<span class="muted small">${esc(f.host)}</span>` : ""].filter(Boolean).join("");
+    return `<tr class="ov-row" data-in-open="${f.id}" tabindex="0"><td class="head-cell" data-label="${tw("Search")}"><div class="t">${subjectOf(f)}</div><div class="in-what in-under">${extra}</div></td>
+      <td class="ov-n in-pos" data-label="${t("Position")}">${numCell(posBadge(e.position), cellChange(e.position, e.position_before, true))}</td>${clicksCell(f)}${lostCell(f)}${arrowCell()}</tr>`;
+  }
+  function otherRow(f, many) {
+    return `<tr class="ov-row" data-in-open="${f.id}" tabindex="0"><td class="head-cell" data-label="${t("What")}">${tagLine(f, many)}<div class="t">${subjectOf(f)}</div>${factLine(f)}</td>${clicksCell(f)}${lostCell(f)}${arrowCell()}</tr>`;
+  }
+  const POS_TIP = "Average of all its searches, weighted by impressions.";
+  function block(name, title, rows, draw, cols, note = "") {
+    if (!rows.length) return "";
+    const key = BLOCK_KEYS[name], view = TP.view(key, ordered(rows)), many = !UI.siteIdPicked();
+    const head = cols.map(([label, cls, tip]) => (label === "lost" ? lostHead() : `<th class="${cls || ""}" scope="col">${tw(label)}${tip ? UI.tip(tip) : ""}</th>`)).join("");
+    return `<section class="in-block" data-in-block="${name}" aria-labelledby="in-b-${name}"><div class="in-block-head" data-tt-slot><h3 class="in-block-h" id="in-b-${name}">${tw(title)}</h3><span class="n-badge">${num(rows.length)}</span></div>${note}
+      <div class="table-wrap ov-table in-table in-wc-table"><table class="data" id="in-t-${name}" data-tt-own-count><thead><tr>${head}<th class="in-act-col" scope="col"><span class="sr">${t("Open")}</span></th></tr></thead><tbody>${view.rows.map((f) => draw(f, many)).join("")}</tbody></table></div>
+      ${TP.footer(key, view, { noun: t(view.total === 1 ? "finding" : "findings") })}</section>`;
+  }
+  function changedTab(d) {
+    const all = d.rows.filter((f) => TP.matches(PAGES, titleOf(f), reasonOf(f), kindName(f), !UI.siteIdPicked() ? f.host : "", ...(f.evidence?.alike || []).map((a) => a.query)));
+    if (!d.rows.length) return `<div class="empty"><p>${t(IN.status === "open" ? "Nothing here. Good news." : "Nothing here.")}</p></div>`;
+    if (!all.length) return `<div class="empty"><p>${t("No finding matches this search.")}</p><button class="btn" data-in-search-clear>${t("Clear search")}</button></div>`;
+    const gains = all.filter(GAIN), rest = all.filter((f) => !GAIN(f));
+    const small = rest.filter(quiet), main = rest.filter((f) => !quiet(f));
+    const pages = main.filter((f) => PAGE_KINDS.has(f.kind));
+    const listed = new Set(pages.map((f) => `${f.site_id}|${f.page}`));
+    const searchesAll = main.filter((f) => SEARCH_KINDS.has(f.kind));
+    // A search whose page is already listed above is in that page's panel ("Searches behind it"), so it isn't said twice.
+    const searches = searchesAll.filter((f) => !listed.has(`${f.site_id}|${f.page}`));
+    const inside = searchesAll.length - searches.length;
+    const site = main.filter((f) => !PAGE_KINDS.has(f.kind) && !SEARCH_KINDS.has(f.kind));
+    const insideNote = inside ? `<p class="small muted in-inside">${esc(inside === 1 ? t("1 more search is inside its page above.") : fill("{n} more searches are inside their page above.", { n: num(inside) }))}</p>` : "";
+    const blocks = [
+      block("pages", "Pages", pages, pageRow, [["Page"], ["Clicks", "ov-n"], ["lost"]]),
+      searches.length ? block("searches", "Searches", searches, searchRow, [["Search"], ["Position", "ov-n in-pos", POS_TIP], ["Clicks", "ov-n"], ["lost"]], insideNote) : insideNote,
+      block("site", "Whole site", site, otherRow, [["What"], ["Clicks", "ov-n"], ["lost"]]),
+    ].join("");
+    const none = !pages.length && !searches.length && !site.length ? `<div class="empty in-wc-none"><p>${t(IN.status === "open" ? "Nothing clearly lost. Good news." : "Nothing here.")}</p></div>` : "";
+    const foldWords = [gains.length ? fill("Gains ({n})", { n: num(gains.length) }) : "", small.length ? fill("Small or uncertain ({n})", { n: num(small.length) }) : ""].filter(Boolean).join(" · ");
+    const smallNote = `<p class="small muted in-inside">${t("Under 3 clicks a month, or a change small enough to be chance. Left out of the totals.")}</p>`;
+    const folded = IN.fold ? `${block("gains", "Gains", gains, otherRow, [["What"], ["Clicks", "ov-n"], ["lost"]])}${block("small", "Small or uncertain", small, otherRow, [["What"], ["Clicks", "ov-n"], ["lost"]], smallNote)}` : "";
+    const fold = foldWords ? `<div class="in-fold"><button type="button" class="btn in-fold-btn" data-in-fold aria-expanded="${IN.fold ? "true" : "false"}" aria-controls="in-folded">${icon(IN.fold ? "chevron-up" : "chevron-down")}<span>${esc(foldWords)}</span><span class="in-fold-act">${t(IN.fold ? "Hide" : "Show")}</span></button>
+      <div id="in-folded"${IN.fold ? "" : " hidden"}>${folded}</div></div>` : "";
+    return `<div class="in-wc">${none}${blocks}${fold}</div>`;
+  }
+
+  // ---- a page row's panel: why, its searches, Google, my own edit, last year, what to do, Search Console (2026-11-17) ----
+  const QUERY_TAG = { places: "Lost places", new: "New", gone: "Gone", other_page: "Another page took it", click_rate: "Same place, fewer clicks" };
+  const EDIT_KIND = { title: "Title", meta: "Description", h1: "Main heading", headings: "Headings", canonical: "Canonical", robots: "Robots", schema: "Structured data", content: "Text" };
+  const cut = (v, n = 90) => { const s = String(v ?? "").replace(/\s+/g, " ").trim(); return s.length > n ? `${s.slice(0, n - 1)}…` : s; };
+  const editValue = (v) => { try { const x = JSON.parse(v); return Array.isArray(x) ? x.join(" · ") : v; } catch { return v; } };
+  function whyHtml(f) {
+    const e = f.evidence || {}, sp = e.split;
+    if (!sp) return "";
+    const rows = [["ranking", "Ranking"], ["click_rate", "Click rate"], ["searches", "Searches"]].map(([k, label]) => ({ label: esc(tw(label)), tip: tw(label), value: Math.round(sp[k] || 0) }));
+    if (Math.round(sp.other || 0)) rows.push({ label: `${esc(t("Hidden searches"))}${UI.tip(HIDDEN_TIP)}`, value: Math.round(sp.other), quiet: true });
+    const lead = [causeBadge(f), e.since ? `<span class="in-since">${esc(sinceWords(e))}</span>` : "", e.uncertain ? chanceTag() : ""].filter(Boolean).join("");
+    return `<div class="in-what in-why-head">${lead}</div>${barList(rows)}<p class="small muted in-why-note">${t("Clicks lost or won by each cause, over its own searches.")}</p>${known(e.position) && known(e.position_before) ? `<p class="small muted in-why-note">${esc(fill("Position {a} → {b} is the average of all its searches.", { a: dec1(e.position_before), b: dec1(e.position) }))}</p>` : ""}`;
+  }
+  function searchesHtml(f) {
+    const e = f.evidence || {}, aio = f.detail?.aio || {};
+    const list = (e.queries || []).slice(0, 5);
+    if (!list.length) return `<p class="small muted">${t("Google names none of its searches: they are all too rare.")}</p>`;
+    return `<ul class="rows ov-split in-behind">${list.map((q) => {
+      const tags = [q.tag ? `<span class="in-qtag q-${q.tag}">${esc(tw(QUERY_TAG[q.tag] || q.tag))}</span>` : "", aio[q.query] ? `<span class="in-qtag q-aio">${icon("sparkles")}${t("AI Overview")}</span>` : ""].filter(Boolean).join("");
+      const other = q.tag === "other_page" && q.other_page ? `<div class="s">${pageLink(q.other_page, { text: pathOf(q.other_page), host: f.host })}</div>` : "";
+      const pos = known(q.position_before) || known(q.position) ? `${t("pos.")} ${dec1(q.position_before)} → ${dec1(q.position)}` : "";
+      return `<li><div class="what"><div class="t">${KeywordLink.html(q.query, { host: f.host })}</div><div class="s muted"><span class="in-qtags">${tags}</span>${pos ? `<span>${pos}</span>` : ""}</div>${other}</div><span class="in-ba-r">${num(q.clicks_before)} → ${num(q.clicks)}</span></li>`;
+    }).join("")}</ul>`;
+  }
+  function googleHtml(f) {
+    const g = f.detail?.google || f.evidence?.google;
+    if (!g) return `<p class="small muted">${t("Not asked yet: Google's answer comes with the next index check.")}</p>`;
+    const state = { indexed: ["good", "Indexed"], not_indexed: ["crit", "Not indexed"], unknown: ["warn", "Google doesn't know this page"], error: ["sec", "Couldn't ask Google"] }[g.state] || ["sec", g.state];
+    const rows = [`<li><div class="what"><div class="t"><span class="${state[0]} d-pill">${esc(tw(state[1]))}</span></div>${g.coverage && g.state !== "indexed" ? `<div class="s" dir="auto">${esc(g.coverage)}</div>` : ""}</div><span class="muted small">${g.checked ? esc(fill("Asked {d}", { d: shortDay(g.checked) })) : ""}</span></li>`];
+    if (g.crawled) rows.push(`<li><div class="what"><div class="t">${t("Last crawl")}</div></div><span>${esc(shortDay(g.crawled))}</span></li>`);
+    if (g.google_canonical) rows.push(`<li><div class="what"><div class="t">${t("Google chose another address")}</div><div class="s">${pageLink(g.google_canonical, { text: pathOf(g.google_canonical), host: f.host })}</div></div></li>`);
+    return `<ul class="rows ov-split in-google">${rows.join("")}</ul>`;
+  }
+  function editHtml(f) {
+    const x = f.detail?.edit;
+    if (!x) return "";
+    if (!x.read) return `<p class="small muted">${t("The page reader hasn't read this page yet, so its edits can't be seen.")}</p>`;
+    if (!x.events.length) return `<p class="small muted">${esc(fill("No edit seen in the {n} days before {d}.", { n: num(x.days || 14), d: shortDay(x.since) }))}</p>`;
+    return `<p class="small">${esc(fill("Edited on {d}", { d: shortDay(x.events[0].at) }))}</p><ul class="rows ov-split in-edits">${x.events.map((ev) => {
+      const words = ev.kind === "content" ? `${esc(ev.before)} → ${esc(ev.after)}${known(ev.words) ? ` · ${esc(fill("about {n} words changed", { n: num(ev.words) }))}` : ""}` : `<span class="in-was" dir="auto">${esc(cut(editValue(ev.before)))}</span> → <span dir="auto">${esc(cut(editValue(ev.after)))}</span>`;
+      return `<li><div class="what"><div class="t">${esc(tw(EDIT_KIND[ev.kind] || ev.kind))}</div><div class="s">${words}</div></div></li>`;
+    }).join("")}</ul>`;
+  }
+  function lastYearHtml(f) {
+    const ly = f.evidence?.last_year;
+    if (!ly) return "";
+    return `<ul class="rows ov-split"><li><div class="what"><div class="t">${t("Clicks")}</div>${f.evidence.seasonal ? `<div class="s"><b>${t("Seasonal")}</b>: ${t("So it counts half.")}</div>` : ""}</div><span>${num(ly.clicks_before)} → ${num(ly.clicks)} <span class="${ly.percent < 0 ? "crit" : "good"} d-pill">${signed(ly.percent)}%</span></span></li></ul>`;
+  }
+  const consoleHtml = (f) => (f.detail?.console ? `<a class="btn btn-small in-console" href="${esc(f.detail.console)}" target="_blank" rel="noopener noreferrer">${icon("external-link")}${t("Open in Search Console")}</a><p class="small muted">${t("This page, last 28 days against the 28 before.")}</p>` : "");
+  // The panel's blocks, in the order the plan gives; empty ones are left out.
+  function pageBlocks(f, todo) {
+    return [["Why", whyHtml(f)], ["Searches behind it", searchesHtml(f)], ["Google index", googleHtml(f)], ["Did my page change?", editHtml(f)], ["Same weeks last year", lastYearHtml(f)], ["What to do", todo], ["", consoleHtml(f)]]
+      .filter(([, html]) => html).map(([title, html]) => ({ title, html }));
+  }
+  const blocksHtml = (list) => list.map((b) => `<section class="in-pblock">${b.title ? `<h3 class="ov-h3">${t(b.title)}</h3>` : ""}${b.html}</section>`).join("");
 
   // ---- Rank and clicks: rank checks beside Search Console ---------------------------------------------
   function mixIntro(d) {
@@ -638,7 +798,7 @@
   }
 
   // ---- AI, on a click only ------------------------------------------------------------------------
-  const AI_ASK = { explain: "Explain", titles: "Suggest titles", brief: "Write a brief", faq: "Write an FAQ", compete: "Which page to keep", weekly: "AI summary" };
+  const AI_ASK = { explain: "Explain", why_dropped: "Explain with AI", titles: "Suggest titles", brief: "Write a brief", faq: "Write an FAQ", compete: "Which page to keep", weekly: "AI summary" };
   const MODEL_NAMES = { "claude-haiku-5-5": "Claude Haiku 5.5", "claude-sonnet-5-5": "Claude Sonnet 5.5" };
   const aiReady = (provider) => Boolean(IN.ai?.keys?.[provider]);
   // Headings a brief marks with ## or ### show bold, without the marks; every line is escaped like everything else.
@@ -647,25 +807,26 @@
     return m ? `<b class="in-ai-h${m[1].length}">${esc(m[2])}</b>` : esc(line);
   }).join("\n");
   function aiAnswer(purpose, answer) {
+    if (purpose === "why_dropped" && answer.parsed) return whyAnswer(answer);
     const by = answer.provider === "claude" ? MODEL_NAMES[answer.model] || answer.model : t("a free model");
     const digits = answer.cost < 0.01 ? 4 : 2;
     const cost = answer.cost ? ` · ${esc(new Intl.NumberFormat(UI.locale(), { style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(answer.cost))}` : "";
-    return `<div class="in-ai-answer" data-in-ai-box="${purpose}"><p class="in-ai-label">${icon("sparkles")}${t("Written by AI")} · ${esc(by)}${cost}</p>
+    return `<div class="in-ai-answer" data-in-ai-box="${purpose}"><p class="in-ai-label">${icon("sparkles")}${t("Written by AI")} · ${esc(by)}${cost}${weakerTag(answer)}</p>
       <div class="in-ai-text" dir="auto">${aiText(answer.text)}</div>
       <div class="in-ai-acts"><button class="link-btn" data-in-ai-copy="${purpose}">${t("Copy")}</button><button class="link-btn" data-in-ai="${purpose}" data-in-ai-again="1">${t("Ask again")}</button></div></div>`;
   }
   const aiBlock = (f) => (f.ai?.purposes?.length ? `<section class="in-ai-wrap" data-in-ai-wrap>${aiInner(f)}</section>` : "");
-  function aiInner(f, withButtons = true) { // withButtons false: the row panel has them in its foot
+  function aiInner(f, withButtons = true, withHead = true) { // withButtons false: the row panel has them in its foot; withHead false: its section says "With AI"
     const info = f.ai;
     const lang = UI.state.lang === "fr" ? "fr" : "en";
     const kept = info.kept?.[lang] || {};
     if (info.provider === "none") return `<h3 class="ov-h3">${t("With AI")}</h3><p class="small muted">${t("No AI chosen yet, so nothing is sent. Pick one in Settings → AI.")} <a href="#settings">${t("Open Settings")}</a></p>`;
     const ready = aiReady(info.provider);
-    const head = `<h3 class="ov-h3">${t("With AI")} <span class="muted small">${t(info.provider === "claude" ? "Claude (Anthropic key)" : "Free models (OpenRouter)")}</span></h3>`;
+    const head = withHead ? `<h3 class="ov-h3">${t("With AI")} <span class="muted small">${t(info.provider === "claude" ? "Claude (Anthropic key)" : "Free models (OpenRouter)")}</span></h3>` : "";
     if (!ready && !Object.keys(kept).length) return `${head}<p class="small muted">${t(info.provider === "claude" ? "Paste an Anthropic key in Settings to use Claude here." : "Connect OpenRouter in Settings, or pick Claude for this site.")} <a href="#settings">${t("Open Settings")}</a></p>`;
     const buttons = !withButtons ? "" : info.purposes.filter((p) => !kept[p]).map((p) => `<button class="btn btn-small" data-in-ai="${p}" ${ready ? "" : "disabled"}>${icon("sparkles")}${t(AI_ASK[p])}</button>`).join("");
     return `${head}<div class="in-ai">${info.purposes.filter((p) => kept[p]).map((p) => aiAnswer(p, kept[p])).join("")}${buttons ? `<div class="in-ai-buttons">${buttons}</div>` : ""}
-      <p class="small muted">${t("Sends only the numbers above and the page's title and headings.")}${UI.tip("AI never changes what's found or how it's ranked.")}</p></div>`;
+      <p class="small muted">${t(info.purposes.includes("why_dropped") ? "Sends only the facts on this panel, the page's title and headings, and what the sites above you changed." : "Sends only the numbers above and the page's title and headings.")}${UI.tip("AI never changes what's found or how it's ranked.")}</p></div>`;
   }
   async function askAI(button) {
     const purpose = button.dataset.inAi, again = Boolean(button.dataset.inAiAgain), f = IN.current;
@@ -706,15 +867,142 @@
     return `<button class="link-btn in-weekly-btn" data-in-weekly="${change.id}">${icon("sparkles")}${t("AI summary")}</button>`;
   }
 
+  // ---- "Explain with AI" (why_dropped, 2026-11-17): the cause first, its proof, three steps each a task, how sure --------
+  const SURE = { sure: ["good", "Sure"], likely: ["sec", "Likely"], guess: ["warn", "A guess"] };
+  const weakerTag = (answer) => (answer.provider === "openrouter" || answer.weaker ? ` <span class="in-weaker" tabindex="0" data-tip="${esc(t("Free models are weaker than Claude: check what it says."))}">${t("Weaker")}</span>` : "");
+  function whyAnswer(answer) {
+    const p = answer.parsed, by = answer.provider === "claude" ? MODEL_NAMES[answer.model] || answer.model : t("a free model");
+    const digits = answer.cost < 0.01 ? 4 : 2;
+    const cost = answer.cost ? ` · ${esc(new Intl.NumberFormat(UI.locale(), { style: "currency", currency: "USD", minimumFractionDigits: digits, maximumFractionDigits: digits }).format(answer.cost))}` : "";
+    const sure = SURE[p.sure] || SURE.guess;
+    return `<div class="in-ai-answer in-why" data-in-ai-box="why_dropped"><p class="in-ai-label">${icon("sparkles")}${t("Written by AI")} · ${esc(by)}${cost}${weakerTag(answer)}</p>
+      <div class="in-why-top"><p class="in-why-cause" dir="auto">${esc(p.cause)}</p><span class="${sure[0]} d-pill in-sure" title="${esc(t("How sure"))}"><span class="sr">${t("How sure")}: </span>${esc(t(sure[1]))}</span></div>
+      ${p.proof.length ? `<h4 class="in-why-h">${t("Proof")}</h4><ul class="in-why-proof">${p.proof.map((x) => `<li dir="auto">${esc(x)}</li>`).join("")}</ul>` : ""}
+      <h4 class="in-why-h">${t("Do this")}</h4><ol class="in-why-do">${p.do.map((x, i) => `<li><span class="in-why-n" aria-hidden="true">${num(i + 1)}</span><span class="in-why-step" dir="auto">${esc(x)}</span><button type="button" class="btn btn-small in-why-task" data-in-why-task="${i}">${icon("square-check")}${t("Make it a task")}</button></li>`).join("")}</ol>
+      <div class="in-ai-acts"><button class="link-btn" data-in-ai-copy="why_dropped">${t("Copy")}</button><button class="link-btn" data-in-ai="why_dropped" data-in-ai-again="1">${t("Ask again")}</button></div>
+      <div class="in-ai-text" hidden>${esc(answer.text)}</div></div>`;
+  }
+  function whyTask(f, index, opener) {
+    const lang = fr() ? "fr" : "en", answer = f.ai?.kept?.[lang]?.why_dropped, p = answer?.parsed;
+    const step = p?.do?.[index];
+    if (!step) return;
+    // Its own key per step, so each step can be a task beside the finding's own one (one open task per key).
+    taskFor(f, opener, { title: step, key: `${f.key}#step${index + 1}`, description: [step, "", `${t("Cause")}: ${p.cause}`, ...(p.proof || []).map((x) => `- ${x}`)].join("\n"), facts: [p.cause] });
+  }
+
+  // ---- "Who passed you" (2026-11-17): the followed sites' pages now above mine, what each changed, my page beside -------
+  const RV_FIELD = { title: "Title", meta: "Description", h1: "Main heading", headings: "Headings", words: "Words", years: "Years named", questions: "FAQ questions", sections: "Text",
+    schema: "Structured data", modified: "Updated date", published: "Published date", internal_links: "Links to own pages", external_links: "Links out" };
+  const RV_POLLS = 8;
+  const rvList = (v) => (Array.isArray(v) ? v.join(", ") : v);
+  const rvPlain = (v) => (v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length) ? "—" : typeof v === "number" ? num(v) : esc(cut(rvList(v))));
+  const rvDay = (v) => (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v) ? new Intl.DateTimeFormat(UI.locale(), { day: "numeric", month: "short", year: "numeric" }).format(new Date(`${v.slice(0, 10)}T00:00:00`)) : v);
+  function rvValue(r) {
+    if (r.field === "modified" || r.field === "published") r = { ...r, before: rvDay(r.before), after: rvDay(r.after), mine: rvDay(r.mine) };
+    const plus = (list) => (list || []).slice(0, 3).map((x) => `<li dir="auto"><span class="in-rv-add" aria-hidden="true">+</span>${esc(cut(x, 80))}</li>`).join("");
+    const minus = (list) => (list || []).slice(0, 2).map((x) => `<li dir="auto"><span class="in-rv-del" aria-hidden="true">−</span><span class="in-was">${esc(cut(x, 80))}</span></li>`).join("");
+    if (r.field === "headings" || r.field === "questions") {
+      if (!Array.isArray(r.added) && !Array.isArray(r.removed)) return rvPlain(r.after); // what they have now
+      const counts = known(r.before) && known(r.after) ? `<span class="in-ba-r">${num(r.before)} → ${num(r.after)}</span>` : "";
+      return `${counts}<ul class="in-rv-items">${plus(r.added)}${minus(r.removed)}</ul>`;
+    }
+    if (r.field === "schema") return Array.isArray(r.added) || Array.isArray(r.removed) ? `<ul class="in-rv-items">${plus(r.added)}${minus(r.removed)}</ul>` : rvPlain(r.after);
+    if (r.field === "sections") {
+      const n = fill("{a} sentences added, {r} removed", { a: num(r.added_count ?? (r.added || []).length), r: num(r.removed_count ?? (r.removed || []).length) });
+      return `<span>${esc(n)}</span><ul class="in-rv-items">${plus((r.added || []).slice(0, 2))}</ul>`;
+    }
+    if (r.before === null || r.before === undefined) return `<span dir="auto">${rvPlain(r.after)}</span>`;
+    return `<span class="in-was" dir="auto">${rvPlain(r.before)}</span> → <span dir="auto">${rvPlain(r.after)}</span>`;
+  }
+  function rvRow(r, host) {
+    if (r.field === "modified" || r.field === "published") r = { ...r, mine: rvDay(r.mine) };
+    const mine = r.field === "sections" ? "" : `<div class="in-rv-me">${window.COMP?.who ? COMP.who("you", null, t("You")) : `<b>${t("You")}</b>`}<span dir="auto">${rvPlain(r.mine)}</span></div>`;
+    return `<li><div class="in-rv-f">${esc(tw(RV_FIELD[r.field] || r.field))}</div><div class="in-rv-v">${rvValue(r)}</div>${mine}</li>`;
+  }
+  function rvWhen(c) {
+    if (!c.read) return t("Not read yet");
+    if (c.unreadable) return t("Couldn't read their page");
+    const source = { stored: "Our stored copy", wayback: "From the Wayback Machine" }[c.before_source];
+    if (!source) return t("No earlier copy: what they have now");
+    const day = (iso) => (iso ? new Intl.DateTimeFormat(UI.locale(), { day: "numeric", month: "short", year: iso.slice(0, 4) === String(new Date().getFullYear()) ? undefined : "numeric" }).format(new Date(iso)) : "");
+    return `${fill(c.changed ? "Changed since {d}" : "No change since {d}", { d: day(c.before_at) })} · ${t(source)}`;
+  }
+  const rvPos = (pos) => (known(pos.before) ? `<span class="in-was">${num(pos.before)}</span> → <b>${num(pos.now)}</b>` : `<b>${num(pos.now)}</b>`);
+  function rvCard(c, f, i) {
+    const open = IN.rvOpen?.has(`${f.rivals.finding_id}:${i}`);
+    const rows = c.rows.map((r) => rvRow(r, f.host)).join("");
+    const extra = (c.extra || []).map((r) => rvRow(r, f.host)).join("");
+    const id = `in-rv-more-${f.rivals.finding_id}-${i}`;
+    return `<li class="in-rv"><div class="in-rv-head"><span class="in-rv-who">${UI.siteLogo ? UI.siteLogo(c.host, 20) : ""}<span class="in-rv-host" dir="ltr" translate="no">${esc(c.host)}</span>${c.passed ? `<span class="in-qtag q-places">${t("Passed you")}</span>` : ""}</span>
+        <span class="in-rv-pos"><span class="sr">${t("Position")} </span>${rvPos(c.position)}</span></div>
+      <p class="in-rv-url small">${pageLink(c.url, { text: pathOf(c.url) || c.url, host: c.host })}</p>
+      <p class="in-rv-when small muted">${esc(rvWhen(c))}</p>
+      ${rows ? `<ul class="in-rv-rows">${rows}${extra ? `<li class="in-rv-extra" id="${id}"${open ? "" : " hidden"}><ul class="in-rv-rows">${extra}</ul></li>` : ""}</ul>` : ""}
+      ${extra ? `<button type="button" class="link-btn in-rv-more" data-in-rv-more="${i}" aria-expanded="${open ? "true" : "false"}" aria-controls="${id}">${esc(open ? t("Show less") : fill("+{n} more", { n: num(c.more) }))}</button>` : ""}</li>`;
+  }
+  function rvNotFollowed(list, f) {
+    if (!list.length) return "";
+    const can = !window.ACCESS || ACCESS.canEdit("competitors");
+    return `<h4 class="in-why-h">${t("Above you, not followed")}</h4><ul class="rows ov-split in-rv-nf">${list.map((n) => `<li><div class="what"><div class="t in-rv-who">${UI.siteLogo ? UI.siteLogo(n.host, 16) : ""}${pageLink(n.url, { text: n.host, host: n.host })}</div><div class="s muted">${t("pos.")} ${num(n.position.now)}${n.tracking === "off" ? ` · ${t("Paused")}` : ""}</div></div>
+      ${can ? `<button type="button" class="btn btn-small" data-in-rv-follow="${esc(n.host)}" data-in-rv-id="${n.competitor_id ?? ""}">${icon("plus")}${t(n.tracking === "off" ? "Follow again" : "Follow")}</button>` : ""}</li>`).join("")}</ul>
+      <p class="small muted">${t("Followed sites' pages are read and compared. Others are only listed.")}</p>`;
+  }
+  function rivalsHtml(f) {
+    const r = f.rivals;
+    if (r === undefined) return `<p class="small muted" aria-busy="true">${t("Loading…")}</p>`;
+    if (r === null) return `<p class="small muted">${t("Couldn't load who passed you.")} <button type="button" class="link-btn" data-in-rv-retry>${t("Try again")}</button></p>`;
+    const cards = r.cards.length ? `<ul class="in-rv-list">${r.cards.map((c, i) => rvCard(c, f, i)).join("")}</ul>` : "";
+    const lead = !r.cards.length ? `<p class="small">${t(r.not_followed.length ? "No site you follow is above you on this search." : "Nobody passed you on this search's last check.")}</p>`
+      : r.status === "reading" ? `<p class="small in-rv-state" role="status"><span class="in-rv-spin" aria-hidden="true"></span>${t("Reading their pages now. This takes a minute.")}</p>`
+        : r.status === "waiting" ? `<p class="small in-rv-state" role="status">${t("Today's page reads are used up. The rest are read tomorrow.")}</p>` : "";
+    const keyword = r.keyword ? `<p class="small muted in-rv-kw">${t("On")} ${KeywordLink.html(r.keyword, { host: f.host })} · ${window.COMP?.who ? COMP.who("you", f.host, t("You")) : t("You")} ${known(r.me.before) ? `<span class="in-was">${num(r.me.before)}</span> → ` : ""}<b>${known(r.me.now) ? num(r.me.now) : "—"}</b>${r.me.url ? ` · ${pageLink(r.me.url, { text: pathOf(r.me.url), host: f.host })}` : ""}</p>` : "";
+    return `${keyword}${lead}${cards}${rvNotFollowed(r.not_followed, f)}`;
+  }
+  const rivalsBox = (f) => `<div class="in-rivals" data-in-rivals="${f.rivals_from}" aria-live="polite"><div data-in-rivals-body>${rivalsHtml(f)}</div></div>`;
+  const rivalsSection = (f) => (f.rivals_from ? `<section class="in-pblock"><h3 class="ov-h3">${t("Who passed you")}</h3>${rivalsBox(f)}</section>` : "");
+  function drawRivals(f) {
+    const box = UI.$(`#panel [data-in-rivals="${f.rivals_from}"] [data-in-rivals-body]`);
+    if (box && IN.current === f) UI.setHTML(box, rivalsHtml(f));
+  }
+  async function loadRivals(f, polls = 0) {
+    if (!f.rivals_from || IN.current !== f) return;
+    try { f.rivals = await window.COMP.api("GET", `insights/${f.rivals_from}/rivals`); }
+    catch { f.rivals = f.rivals || null; }
+    drawRivals(f);
+    if (f.rivals?.status === "reading" && polls < RV_POLLS) setTimeout(() => loadRivals(f, polls + 1), 3000 + polls * 1000); // the crawl lane reads them
+  }
+  async function followRival(button) {
+    const f = IN.current, host = button.dataset.inRvFollow, id = Number(button.dataset.inRvId) || null;
+    if (!f) return;
+    button.disabled = true;
+    const was = button.innerHTML;
+    button.textContent = t("Following…");
+    try {
+      const site = f.site_id ?? UI.siteIdPicked();
+      if (id) await window.COMP.api("PUT", `competitors/${id}/tracking`, { site_id: site, tracking: "on" });
+      else await window.COMP.api("POST", "competitors", { site_id: site, address: host });
+      f.rivals = await window.COMP.api("POST", `insights/${f.rivals_from}/rivals`);
+      drawRivals(f);
+      UI.toast(fill("Following {h}. Its page is read now.", { h: host }));
+      if (f.rivals?.status === "reading") setTimeout(() => loadRivals(f, 1), 3000);
+    } catch (err) {
+      UI.toast(t(err.message), { kind: "crit" });
+      if (button.isConnected) { button.disabled = false; button.innerHTML = was; }
+    }
+  }
+
   // ---- one finding, in the side panel ---------------------------------------------------------------
   // In the row panel these are its numbers on top already (findingNumbers), so the list below doesn't say them twice.
   const IN_NUMBERS = new Set(["Clicks", "Impressions", "Position", "Click rate"]);
+  const PAGE_PANEL = new Set(["page_down", "page_up", "dropped_out"]);
+  const LOSSES = new Set(["page_down", "dropped_out", "query_down", "ctr_drop", "segment", "brand_split", "odd_day"]);
   function evidenceList(f) {
     const e = f.evidence || {};
     const twice = simple() && UI.$("#panel.rp");
     const li = (label, value, tip = "") => (twice && IN_NUMBERS.has(label) ? "" : `<li><div class="what"><div class="t">${esc(t(label))}${UI.tip(tip)}</div></div><span>${value}</span></li>`);
     const rows = [];
     if (MIX_KINDS.has(f.kind)) return mixEvidence(f);
+    if (f.detail && PAGE_PANEL.has(f.kind)) return `${blocksHtml(pageBlocks(f, "").filter((b) => b.title !== "Why" || !twice))}`;
     if (f.kind === "change") {
       Object.entries(e.parts).filter(([, v]) => Math.round(v)).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).forEach(([id, v]) => rows.push(li(PARTS[id][v > 0 ? 0 : 1], signed(v), id === "hidden" ? HIDDEN_TIP : "")));
       const brand = e.brand ? `<h3 class="ov-h3">${t("Brand and non-brand searches")}</h3><ul class="rows ov-split">${[["brand", "Brand"], ["other", "Non-brand"]].map(([k, name]) => li(name, `${num(e.brand[k].clicks_before)} → ${num(e.brand[k].clicks)}`)).join("")}</ul>` : "";
@@ -773,6 +1061,7 @@
       compete: "Clicks if the best of these pages took all its impressions, per month.",
       change: "Site clicks lost vs the 28 days before, per month.",
       query_down: "Impressions now × (your usual click rate at the old position − at the new), per month.",
+      ctr_drop: "Impressions now × (its click rate before − now), per month.",
       segment: "Clicks lost vs the 28 days before, per month.",
       unstable: "Clicks if it held its better days' position, per month.",
       brand_split: "Non-brand clicks lost vs the 28 days before, per month.",
@@ -814,7 +1103,7 @@
     const done = (f.kind === "task_result" || f.kind === "note_result") && e.ready;
     const pick = (now, was) => ({ value: known(now) ? now : null, before: known(was) ? was : undefined });
     const list = [
-      { id: "stake", label: "Clicks a month at stake", def: false, value: f.at_stake >= 1 ? Math.round(f.at_stake) : null, sub: leadsLine(e) || (f.at_stake >= 1 ? "" : t("Not counted for this kind")) },
+      { id: "stake", label: f.group === "changed" && LOSSES.has(f.kind) ? "Lost / month" : "Clicks a month at stake", def: false, value: f.at_stake >= 1 ? Math.round(f.at_stake) : null, sub: leadsLine(e) || (f.at_stake >= 1 ? "" : t("Not counted for this kind")) },
       { id: "clicks", label: "Clicks", ...(done ? pick(e.after?.clicks, e.before?.clicks) : pick(e.clicks, e.clicks_before)) },
       { id: "impressions", label: "Impressions", ...(done ? pick(e.after?.impressions, e.before?.impressions) : pick(e.impressions, e.impressions_before)) },
       { id: "position", label: "Position", fmt: "pos", ...(done ? pick(e.after?.position, e.before?.position) : pick(e.position, e.position_before)) },
@@ -840,6 +1129,7 @@
     const where = !change && f.page && !onPage ? `<p class="small">${pageLink(f.page, { text: pathOf(f.page), host: f.host })}</p>` : "";
     const reason = change ? "" : `<p class="small" dir="auto">${esc(reasonOf(f))}${f.kind === "no_demand" ? UI.tip("It may be too rare for Google to report.") : ""}</p>`;
     const todo = `${how}${aio}${where}${reason}${doBlock(f, false)}`;
+    const pageView = !change && f.detail && PAGE_PANEL.has(f.kind);
     const ai = f.ai?.purposes?.length ? f.ai : null;
     const lang = fr() ? "fr" : "en", kept = ai?.kept?.[lang] || {};
     const ready = ai && ai.provider !== "none" && aiReady(ai.provider);
@@ -853,12 +1143,19 @@
     const site = f.site_id ?? UI.siteIdPicked();
     const note = change ? null : [f.query ? { label: f.query, where: { scope: "keyword", keyword: f.query, siteId: site } } : null, f.page ? { label: pathOf(f.page), where: { scope: "page", pageUrl: f.page, siteId: site } } : null].filter(Boolean);
     const sub = change ? answer(f, false) : [kindName(f), !UI.siteIdPicked() ? f.host : "", f.task ? t(f.task === "done" ? "Task done" : "Task open") : ""].filter(Boolean).join(" · ");
+    const keptWhy = Boolean(kept.why_dropped);
+    const rivals = f.rivals_from ? { title: "Who passed you", html: rivalsBox(f) } : null;
+    const base = pageView ? pageBlocks(f, todo) : [change ? null : { title: "What to do", html: todo }, rivals, { title: change ? "Why" : "The facts behind it", html: evidenceList(f) }].filter(Boolean);
+    if (pageView && rivals) base.splice(2, 0, rivals);
+    const blocks = keptWhy ? [{ title: "With AI", html: `<div class="in-ai-wrap" data-in-ai-wrap>${aiInner(f, false, false)}</div>` }, ...base] : base;
     return {
       id: "insight", kind: "Insight", period: false, title: change ? t("Change breakdown") : titleOf(f), sub,
       page: onPage ? { url: f.page, host: f.host } : undefined,
       numbers: findingNumbers(f), chart: findingChart(f),
-      sections: [change ? null : { title: "What to do", html: todo }, { title: change ? "Why" : "The facts behind it", html: evidenceList(f) }],
-      html: `${ai ? `<section class="in-ai-wrap" data-in-ai-wrap>${aiInner(f, false)}</section>` : ""}${f.status === "dismissed" ? `<p class="small muted">${t("Hidden as not useful. Comes back if it doubles.")}</p>` : ""}`,
+      // Answer first: an "Explain with AI" answer once asked, then (a page row) Why and its searches, or What to do and Who
+      // passed you; Google, my edit, last year, Search Console and the facts behind it below. The row panel shows two sections.
+      sections: blocks.slice(0, 2),
+      html: `${keptWhy || !ai ? "" : `<section class="in-ai-wrap" data-in-ai-wrap>${aiInner(f, false)}</section>`}${blocksHtml(blocks.slice(2))}${f.status === "dismissed" ? `<p class="small muted">${t("Hidden as not useful. Comes back if it doubles.")}</p>` : ""}`,
       actions, note: note?.length ? note : undefined,
     };
   }
@@ -871,7 +1168,7 @@
       load: async () => {
         const [f] = await Promise.all([window.COMP.api("GET", `insights/${id}`), aiFetch()]);
         IN.current = f;
-        setTimeout(markPanel, 0);
+        setTimeout(() => { markPanel(); loadRivals(f); }, 0);
         return findingSpec(f);
       },
     });
@@ -896,20 +1193,21 @@
       ${f.status === "dismissed" ? `<button class="btn btn-ghost" data-in-undismiss="${f.id}">${t("Bring it back")}</button>` : f.status === "open" ? `<button class="btn btn-ghost" data-in-dismiss="${f.id}">${t("Not useful")}</button>` : ""}
     </div>`;
     const where = (f.query ? `<p class="small">${KeywordLink.html(f.query, { id: f.evidence?.keyword_id, host: f.host })}</p>` : "") + (f.page ? `<p class="small">${pageLink(f.page, { text: pathOf(f.page), host: f.host })}</p>` : "");
-    UI.openPanel(`${UI.panelHead(title, sub)}<div class="panel-body">${stakeBlock(f)}${where}${f.kind !== "change" ? `<p class="small" dir="auto">${esc(reasonOf(f))}${f.kind === "no_demand" ? UI.tip("It may be too rare for Google to report.") : ""}</p>` : ""}${doBlock(f)}${chart}${evidenceList(f)}${aiBlock(f)}
+    UI.openPanel(`${UI.panelHead(title, sub)}<div class="panel-body">${stakeBlock(f)}${where}${f.kind !== "change" ? `<p class="small" dir="auto">${esc(reasonOf(f))}${f.kind === "no_demand" ? UI.tip("It may be too rare for Google to report.") : ""}</p>` : ""}${doBlock(f)}${aiBlock(f)}${rivalsSection(f)}${chart}${evidenceList(f)}
       ${f.status === "dismissed" ? `<p class="small muted">${t("Hidden as not useful. Comes back if it doubles.")}</p>` : ""}${actions}</div>`, opener);
     IN.current = f;
+    loadRivals(f);
   }
 
   // ---- events ---------------------------------------------------------------------------------------
-  function taskFor(f, opener) {
+  function taskFor(f, opener, step = null) { // step: one "Do this" of Explain with AI, its title and words in place of the finding's
     const e = f.evidence || {};
     UI.openTask?.({
-      title: titleOf(f), host: f.host, opener, priority: f.severity === "big" ? "high" : "medium",
+      title: step ? cut(step.title, 140) : titleOf(f), host: f.host, opener, priority: f.severity === "big" ? "high" : "medium",
       // The finding's own search, else the searches behind it (a page's or a topic's), so the task lists them from the start.
       keywords: f.query ? [f.query] : (e.queries || []).map((q) => q.query).filter(Boolean).slice(0, 5), pages: f.page ? [f.page] : [],
-      source: { type: "search", key: f.key, label: `${t("Search insights")}: ${kindName(f)}`, facts: [reasonOf(f), f.at_stake >= 1 ? `${num(Math.round(f.at_stake))} ${t("clicks a month at stake")}` : ""].filter(Boolean), link: `#insights/${f.id}`, host: f.host },
-      description: [e.path ? f.page : "", onPageLine(f), doLine(f)].filter(Boolean).join("\n"),
+      source: { type: "search", key: step?.key || f.key, label: `${t("Search insights")}: ${kindName(f)}`, facts: [...(step?.facts || []), reasonOf(f), f.at_stake >= 1 ? `${num(Math.round(f.at_stake))} ${t("clicks a month at stake")}` : ""].filter(Boolean), link: `#insights/${f.id}`, host: f.host },
+      description: step ? step.description : [e.path ? f.page : "", onPageLine(f), doLine(f)].filter(Boolean).join("\n"),
     });
   }
   function bind() {
@@ -917,9 +1215,10 @@
       if (UI.state.route !== "insights" && !UI.$("#panel")) return;
       const hit = (sel) => e.target.closest?.(sel);
       let el;
-      if ((el = hit("[data-in-tab]"))) { IN.tab = el.dataset.inTab; TP.reset(PAGES); UI.render({ keepScroll: true }); UI.$(`[data-in-tab="${IN.tab}"]`)?.focus({ preventScroll: true }); return; }
+      if ((el = hit("[data-in-fold]"))) { IN.fold = !IN.fold; UI.render({ keepScroll: true }); UI.$("[data-in-fold]")?.focus({ preventScroll: true }); return; }
+      if ((el = hit("[data-in-tab]"))) { IN.tab = el.dataset.inTab; resetAll(); UI.render({ keepScroll: true }); UI.$(`[data-in-tab="${IN.tab}"]`)?.focus({ preventScroll: true }); return; }
       if ((el = hit("[data-in-mix]"))) { IN.mixChip = el.dataset.inMix; TP.reset(PAGES); UI.render({ keepScroll: true }); UI.$(`[data-in-mix="${IN.mixChip}"]`)?.focus({ preventScroll: true }); return; }
-      if (hit("[data-in-sort]")) { IN.sortDir = IN.sortDir === "asc" ? "desc" : "asc"; TP.reset(PAGES); UI.render({ keepScroll: true }); UI.$("[data-in-sort]")?.focus({ preventScroll: true }); return; }
+      if (hit("[data-in-sort]")) { IN.sortDir = IN.sortDir === "asc" ? "desc" : "asc"; resetAll(); UI.render({ keepScroll: true }); UI.$("[data-in-sort]")?.focus({ preventScroll: true }); return; }
       if (hit("[data-in-search-clear]")) { TP.state(PAGES).q = ""; TP.reset(PAGES); UI.render({ keepScroll: true }); UI.$(`[data-tp-search][data-tp-key="${PAGES}"]`)?.focus({ preventScroll: true }); return; }
       if (hit("[data-in-retry]")) { forget(); if (window.SCREEN_DATA?.on()) window.SCREEN_DATA.forget("insights"); UI.render(); return; }
       if ((el = hit("[data-in-run]"))) {
@@ -937,6 +1236,18 @@
         return;
       }
       if ((el = hit("[data-in-task]"))) { if (IN.current) taskFor(IN.current, el); return; }
+      if ((el = hit("[data-in-why-task]"))) { if (IN.current) whyTask(IN.current, Number(el.dataset.inWhyTask), el); return; }
+      if ((el = hit("[data-in-rv-follow]"))) { followRival(el); return; }
+      if ((el = hit("[data-in-rv-retry]"))) { if (IN.current) { IN.current.rivals = undefined; drawRivals(IN.current); loadRivals(IN.current); } return; }
+      if ((el = hit("[data-in-rv-more]"))) {
+        const f = IN.current, key = `${f?.rivals?.finding_id}:${el.dataset.inRvMore}`;
+        if (!f) return;
+        IN.rvOpen = IN.rvOpen || new Set();
+        if (IN.rvOpen.has(key)) IN.rvOpen.delete(key); else IN.rvOpen.add(key);
+        drawRivals(f);
+        UI.$(`#panel [data-in-rv-more="${el.dataset.inRvMore}"]`)?.focus({ preventScroll: true });
+        return;
+      }
       if ((el = hit("[data-in-track]"))) {
         if (!window.KW) { UI.toast(t("Add it in Keywords."), { kind: "info" }); return; }
         window.KW.track([el.dataset.inTrack], IN.current?.host || UI.siteHostPicked(), el, {});
@@ -974,7 +1285,7 @@
       } catch (err) { error.hidden = false; error.textContent = t(err.message); }
     });
     document.addEventListener("change", (e) => {
-      if (e.target.matches?.("[data-in-status]")) { IN.status = e.target.value; TP.reset(PAGES); UI.render({ keepScroll: true }); UI.$("[data-in-status]")?.focus({ preventScroll: true }); }
+      if (e.target.matches?.("[data-in-status]")) { IN.status = e.target.value; resetAll(); UI.render({ keepScroll: true }); UI.$("[data-in-status]")?.focus({ preventScroll: true }); }
     });
     // A task made here, or a finding opened from Today (#insights/12), lands on the finding.
     const fromAddress = () => { const m = location.hash.match(/^#insights\/(\d+)/); if (m && UI.state.route === "insights") setTimeout(() => openFinding(Number(m[1]), null), 50); };
@@ -986,7 +1297,7 @@
   window.SCREENS = window.SCREENS || {};
   window.SCREENS.insights = {
     init(helpers) {
-      UI = helpers; ({ t, esc, num, icon } = helpers); bind(); TP.on(PAGES, redraw);
+      UI = helpers; ({ t, esc, num, icon } = helpers); bind(); TP.on(PAGES, redraw); Object.values(BLOCK_KEYS).forEach((k) => TP.on(k, redraw));
       // The first-view answers, for screen-data.js's warm-up and menu hover (simpler screens only; it reads site and tab then).
       window.SCREEN_DATA?.screen?.("insights", () => { const site = UI.siteIdPicked(); return [`insights?${query()}`, site ? `search/countries?site_id=${site}` : ""]; });
     },
@@ -1175,6 +1486,53 @@
     "Clicks a month at stake on the open chances to win, not counting a query or page already counted as a loss.": "Clics par mois en jeu sur les occasions ouvertes, sans compter une requête ou une page déjà comptée comme perte.",
     "Findings done, or gone by themselves, in the last 30 days.": "Constats réglés, ou disparus d'eux-mêmes, ces 30 derniers jours.",
     "Search findings": "Chercher un constat", "No finding matches this search.": "Aucun constat ne correspond à cette recherche.", "finding": "constat", "findings": "constats",
+    // What changed, 2026-11-17
+    "Fewer clicks at the same position": "Moins de clics à la même position", "More clicks at the same position": "Plus de clics à la même position", "Not indexed by Google": "Non indexée par Google",
+    "{i} impressions at position {p}, {c} clicks; usual {u}%": "{i} impressions en position {p}, {c} clics ; habituel {u} %",
+    "Click rate {a}% → {b}% at position {p}": "Taux de clic {a} % → {b} % en position {p}",
+    "Half its days between position {a} and {b}, usually {p}": "La moitié de ses jours entre la position {a} et {b}, d'habitude {p}", "Seen, rarely clicked": "Vue, rarement cliquée",
+    "Look at its results page for an AI Overview or new boxes, then give the title and description a reason to click.": "Regardez sa page de résultats : un AI Overview ou de nouveaux encadrés ? Puis donnez au titre et à la description une raison de cliquer.",
+    "Compare with the pages now above yours on its main searches, and add what they cover.": "Comparez avec les pages maintenant devant la vôtre sur ses recherches principales, et ajoutez ce qu'elles traitent.",
+    "Same place, fewer clicks: look for an AI Overview on its searches, then rewrite the title and description.": "Même place, moins de clics : cherchez un AI Overview sur ses recherches, puis réécrivez le titre et la description.",
+    "Fewer people search this. Check the same weeks last year, then cover the searches that still grow.": "Moins de gens cherchent cela. Regardez les mêmes semaines l'an dernier, puis traitez les recherches qui montent encore.",
+    "Google took it out of its index. Fix what Search Console says, then request indexing.": "Google l'a retirée de son index. Corrigez ce que dit la Search Console, puis demandez l'indexation.",
+    "Impressions now × (its click rate before − now), per month.": "Impressions actuelles × (son taux de clic d'avant − l'actuel), ramené au mois.",
+    "clicks a month, all tabs": "clics par mois, tous onglets", "findings, all tabs": "constats, tous onglets",
+    "Pages first, then searches. Last 28 days vs the 28 before.": "Les pages d'abord, puis les recherches. 28 derniers jours vs les 28 précédents.",
+    "Could be chance": "Peut-être le hasard", "Lost / month": "Perdus / mois", "Same place, fewer clicks": "Même place, moins de clics", "Out of the top 3": "Sortie du top 3", "+ {n} alike": "+ {n} proches",
+    "Gains": "Gains", "Small or uncertain": "Petits ou incertains", "Gains ({n})": "Gains ({n})", "Small or uncertain ({n})": "Petits ou incertains ({n})",
+    "1 more search is inside its page above.": "1 recherche de plus est dans sa page, plus haut.", "{n} more searches are inside their page above.": "{n} recherches de plus sont dans leur page, plus haut.",
+    "Nothing clearly lost. Good news.": "Rien de nettement perdu. Bonne nouvelle.",
+    "Under 3 clicks a month, or a change small enough to be chance. Left out of the totals.": "Moins de 3 clics par mois, ou un écart assez petit pour être le hasard. Hors des totaux.",
+    "Another page took it": "Une autre page l'a prise", "Main heading": "Titre principal",
+    "Clicks lost or won by each cause, over its own searches.": "Clics perdus ou gagnés par chaque cause, sur ses propres recherches.",
+    "Google names none of its searches: they are all too rare.": "Google ne nomme aucune de ses recherches : elles sont toutes trop rares.",
+    "Not asked yet: Google's answer comes with the next index check.": "Pas encore demandé : la réponse de Google viendra avec la prochaine vérification d'index.",
+    "Google doesn't know this page": "Google ne connaît pas cette page", "Couldn't ask Google": "Impossible de demander à Google", "Asked {d}": "Demandé le {d}", "Last crawl": "Dernière exploration",
+    "Google chose another address": "Google a choisi une autre adresse",
+    "The page reader hasn't read this page yet, so its edits can't be seen.": "Le lecteur de pages n'a pas encore lu cette page : ses modifications ne se voient pas.",
+    "No edit seen in the {n} days before {d}.": "Aucune modification vue dans les {n} jours avant le {d}.", "Edited on {d}": "Modifiée le {d}", "about {n} words changed": "environ {n} mots changés",
+    "Open in Search Console": "Ouvrir dans la Search Console", "This page, last 28 days against the 28 before.": "Cette page, 28 derniers jours contre les 28 précédents.",
+    "Searches behind it": "Les recherches derrière", "Did my page change?": "Ma page a-t-elle changé ?", "Same weeks last year": "Mêmes semaines l'an dernier",
+    "Position {a} → {b} is the average of all its searches.": "La position {a} → {b} est la moyenne de toutes ses recherches.",
+    // Explain with AI and Who passed you (2026-11-17)
+    "Explain with AI": "Expliquer avec l'IA", "Proof": "Preuves", "Do this": "À faire", "Make it a task": "En faire une tâche", "How sure": "Certitude", "Cause": "Cause",
+    "Sure": "Sûr", "Likely": "Probable", "A guess": "Hypothèse", "Weaker": "Moins fiable", "Free models are weaker than Claude: check what it says.": "Les modèles gratuits sont moins fiables que Claude : vérifiez ce qu'il dit.",
+    "Sends only the facts on this panel, the page's title and headings, and what the sites above you changed.": "N'envoie que les faits de ce panneau, le titre et les intertitres de la page, et ce qu'ont changé les sites au-dessus de vous.",
+    "Who passed you": "Qui vous a dépassé", "Passed you": "Vous a dépassé", "On": "Sur", "You": "Vous", "Position {a} → {b}": "Position {a} → {b}",
+    "Not read yet": "Pas encore lue", "Couldn't read their page": "Leur page n'a pas pu être lue", "Our stored copy": "Notre copie enregistrée", "From the Wayback Machine": "D'après la Wayback Machine",
+    "No earlier copy: what they have now": "Pas de copie plus ancienne : ce qu'ils ont aujourd'hui", "Changed since {d}": "Changée depuis le {d}", "No change since {d}": "Aucun changement depuis le {d}",
+    "+{n} more": "+{n} de plus", "Show less": "Voir moins", "{a} sentences added, {r} removed": "{a} phrases ajoutées, {r} retirées",
+    "Title": "Titre", "Description": "Description", "Words": "Mots", "Years named": "Années citées", "FAQ questions": "Questions de FAQ", "Structured data": "Données structurées",
+    "Updated date": "Date de mise à jour", "Published date": "Date de publication", "Links to own pages": "Liens vers ses pages", "Links out": "Liens sortants",
+    "Above you, not followed": "Au-dessus de vous, non suivis", "Paused": "En pause", "Follow": "Suivre", "Follow again": "Suivre à nouveau", "Following…": "Ajout…",
+    "Followed sites' pages are read and compared. Others are only listed.": "Les pages des sites suivis sont lues et comparées. Les autres sont seulement listées.",
+    "Following {h}. Its page is read now.": "{h} est suivi. Sa page est lue maintenant.",
+    "No site you follow is above you on this search.": "Aucun site que vous suivez n'est au-dessus de vous sur cette recherche.",
+    "Nobody passed you on this search's last check.": "Personne ne vous a dépassé au dernier relevé de cette recherche.",
+    "Reading their pages now. This takes a minute.": "Lecture de leurs pages en cours. Cela prend une minute.",
+    "Today's page reads are used up. The rest are read tomorrow.": "Les lectures de pages du jour sont épuisées. Les autres seront lues demain.",
+    "Couldn't load who passed you.": "Impossible de charger qui vous a dépassé.", "Try again": "Réessayer", "Loading…": "Chargement…",
   };
   Object.keys(words).forEach((w) => { if (window.FR[w] === undefined) window.FR[w] = words[w]; });
 })();

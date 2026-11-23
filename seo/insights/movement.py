@@ -8,7 +8,8 @@ from urllib.parse import urlsplit
 
 from sqlalchemy import bindparam, text
 
-from seo.insights import rules
+from seo.collectors.common import digest
+from seo.insights import rules, words
 from seo.insights.data import NEVER, Ctx, daily, rnd, split, totals
 from seo.insights.finding import Finding, Result
 
@@ -37,17 +38,7 @@ def breakdown(ctx: Ctx) -> Result:
     movers: dict[str, list] = {name: [] for name in parts}
     for r in split(ctx, "query", ctx.start, ctx.end, ctx.before_start, ctx.before_end):
         c1, i1, c0, i0 = r["clicks"], r["impressions"], r["clicks_before"], r["impressions_before"]
-        if not i0 and not i1:
-            continue
-        if not i0:
-            effect = {"new": float(c1)}
-        elif not i1:
-            effect = {"lost": float(-c0)}
-        else:
-            rate0, rate1 = c0 / i0, c1 / i1
-            demand = (i1 - i0) * rate0
-            ranking = i1 * (ctx.curve.rate(r["position"]) - ctx.curve.rate(r["position_before"])) if r["position"] is not None and r["position_before"] is not None else 0.0
-            effect = {"demand": demand, "ranking": ranking, "appeal": (c1 - c0) - demand - ranking}
+        effect = effect_of(ctx.curve, c0, i0, c1, i1, r["position_before"], r["position"])
         for name, value in effect.items():
             parts[name] += value
             if value:
@@ -81,6 +72,40 @@ def breakdown(ctx: Ctx) -> Result:
         },
     ).settle())
     return out
+
+
+def effect_of(curve, c0: int, i0: int, c1: int, i1: int, p0: float | None, p1: float | None) -> dict:
+    """One search's change in clicks, split so the parts add up to it exactly:
+
+    - demand: more or fewer impressions, at its old click rate
+    - ranking: its own old click rate moved as the site's curve moves between the old and the new position, so a search
+      clicked more than the curve keeps that edge (a page at 6.5 → 7.9 loses about a quarter of its clicks to ranking)
+    - appeal: what's left, at the same position: titles, snippets, an AI Overview
+    - new and lost: seen only now, or only before
+    """
+    if not i0 and not i1:
+        return {}
+    if not i0:
+        return {"new": float(c1)}
+    if not i1:
+        return {"lost": float(-c0)}
+    rate0 = c0 / i0
+    demand = (i1 - i0) * rate0
+    ranking = 0.0
+    if p0 is not None and p1 is not None:
+        r0, r1 = curve.rate(p0), curve.rate(p1)
+        ranking = i1 * rate0 * (r1 / r0 - 1) if rate0 and r0 else i1 * (r1 - r0)
+    return {"demand": demand, "ranking": ranking, "appeal": (c1 - c0) - demand - ranking}
+
+
+def chance(c0: int, c1: int) -> bool:
+    """A change of clicks this small can be noise: counts of clicks vary by about √n on their own."""
+    return abs(c1 - c0) < rules.CHANCE_SIGMAS * (c0 + c1) ** 0.5
+
+
+def _well_measured_fall(p0: float | None, p1: float | None, i0: int, i1: int) -> bool:
+    """A position that fell at least a place over many impressions is no accident, however few the clicks."""
+    return p0 is not None and p1 is not None and p1 - p0 >= rules.CHANCE_PLACES and min(i0, i1) >= rules.CHANCE_IMPRESSIONS
 
 
 def _page_moves(ctx: Ctx, change: int) -> tuple[list[dict], list[dict]]:
@@ -151,13 +176,138 @@ def _path(url: str | None) -> str:
 
 
 def _why(r: dict) -> str:
-    """The likely reason a page moved: its position, its impressions, or its click rate at the same place."""
+    """The old guess, kept for a page whose searches Google hides entirely: its position, its impressions, or the rest."""
     p0, p1, i0, i1 = r["position_before"], r["position"], r["impressions_before"], r["impressions"]
     if p0 is not None and p1 is not None and abs(p1 - p0) >= rules.PLACES_LOST:
         return "ranking"
     if i0 and (i1 / i0 <= rules.FEWER_SEARCHES or i1 / i0 >= 1 / rules.FEWER_SEARCHES):
         return "demand"
     return "appeal"
+
+
+# The split's three parts, by the codes the screen already knows: ranking, appeal (click rate), demand (searches).
+SPLIT_PARTS = (("ranking", "ranking"), ("click_rate", "appeal"), ("searches", "demand"))
+
+
+def page_split(ctx: Ctx, rows: list[dict], change: int) -> dict:
+    """A page's change in clicks, split over its own searches (gsc_query_page) like the site's change: clicks lost to
+    ranking, to the click rate at the same place, and to fewer searches (new and lost searches count there). "other" is
+    what Google keeps out of the query tables."""
+    parts = {"ranking": 0.0, "click_rate": 0.0, "searches": 0.0}
+    for q in rows:
+        effect = effect_of(ctx.curve, q["clicks_before"], q["impressions_before"], q["clicks"], q["impressions"], q["position_before"], q["position"])
+        parts["ranking"] += effect.get("ranking", 0.0)
+        parts["click_rate"] += effect.get("appeal", 0.0)
+        parts["searches"] += effect.get("demand", 0.0) + effect.get("new", 0.0) + effect.get("lost", 0.0)
+    parts["other"] = change - sum(parts.values())
+    return {name: round(value, 1) for name, value in parts.items()}
+
+
+def _cause(split: dict, change: int) -> str | None:
+    """The biggest part pulling the same way as the change; "other" can't be acted on, so it's never the one named."""
+    direction = 1 if change >= 0 else -1
+    found = [(abs(split[part]), code) for part, code in SPLIT_PARTS if split[part] * direction > 0]
+    return max(found)[1] if found else None
+
+
+def _query_tag(q: dict, page: str, best: dict[str, str]) -> tuple[str | None, str | None]:
+    """What happened to one search of the page: new, gone, another page took it, lost places, or fewer clicks at the same place."""
+    if not q["impressions_before"]:
+        return "new", None
+    if not q["impressions"]:
+        other = best.get(q["query"])
+        return ("other_page", other) if other and other != page else ("gone", None)
+    p0, p1 = q["position_before"], q["position"]
+    if p0 is not None and p1 is not None and p1 - p0 >= 1:
+        return "places", None
+    if q["clicks_before"] and p0 is not None and p1 is not None and abs(p1 - p0) < rules.CTR_DROP_PLACES:
+        rate0, rate1 = q["clicks_before"] / q["impressions_before"], q["clicks"] / q["impressions"]
+        if rate1 <= rate0 * (1 - rules.CTR_DROP_SHARE):
+            return "click_rate", None
+    return None, None
+
+
+def _google_answers(ctx: Ctx) -> dict[str, dict]:
+    """Google's indexing answer for each of the site's pages (URL Inspection, kept by seo/backlinks/indexed.py)."""
+    if "google" not in ctx.memo:
+        from seo.backlinks import indexed
+
+        with ctx.engine.connect() as conn:
+            ctx.memo["google"] = indexed.for_site(conn, ctx.site_id)
+    return ctx.memo["google"]
+
+
+def _google_for(ctx: Ctx, page: str) -> dict | None:
+    from seo.backlinks import indexed
+
+    return _google_answers(ctx).get(indexed.url_hash(page))
+
+
+def _median_spread(values: list[float], floor: float) -> tuple[float, float]:
+    middle = statistics.median(values)
+    return middle, max(statistics.median(abs(v - middle) for v in values) * 1.4826, floor)
+
+
+def since(ctx: Ctx, days: dict[date, dict], by: str) -> str | None:
+    """The first day of a fall: the first day the 7-day average (centred) goes past the before period's usual by one spread
+    and mostly stays there, then on to the first day in the next three that was itself past it. By clicks, or by position
+    when the page fell by ranking (position is far less noisy than a page's few clicks a day)."""
+    if not ctx.has_before:
+        return None
+    skip = set(ctx.skip)
+    all_days = [ctx.before_start + timedelta(days=n) for n in range((ctx.end - ctx.before_start).days + 1)]
+    all_days = [d for d in all_days if d not in skip]
+
+    def value(d):
+        row = days.get(d)
+        if by == "position":
+            return row["position"] if row and row["impressions"] and row["position"] is not None else None
+        return row["clicks"] if row else 0
+
+    raw = {d: value(d) for d in all_days}
+    avg = {}
+    for i, d in enumerate(all_days):
+        window = [raw[x] for x in all_days[max(0, i - 3): i + 4] if raw[x] is not None]
+        if len(window) >= 4:
+            avg[d] = sum(window) / len(window)
+    before = [v for d, v in avg.items() if d <= ctx.before_end and d >= ctx.before_start + timedelta(days=3)]
+    if len(before) < 7:
+        return None
+    if by == "position":
+        middle, spread = _median_spread(before, 0.3)
+        past = lambda v: v > middle + spread  # noqa: E731 - a bigger number is a worse place
+    else:
+        middle, spread = _median_spread(before, (statistics.median(before) / 7) ** 0.5)
+        past = lambda v: v < middle - spread  # noqa: E731
+    first = ctx.start - timedelta(days=rules.SINCE_LOOK_BACK)
+    scan = [d for d in all_days if d >= first and d in avg]
+    for i, d in enumerate(scan):
+        if not past(avg[d]):
+            continue
+        rest = scan[i:]
+        if sum(1 for x in rest if past(avg[x])) < len(rest) * rules.SINCE_HOLD:
+            continue
+        for ahead in range(4):  # the centred average crosses up to 3 days early: the first day itself past the usual
+            day = d + timedelta(days=ahead)
+            if raw.get(day) is not None and past(raw[day]):
+                return day.isoformat()
+        return d.isoformat()
+    return None
+
+
+def _page_days(ctx: Ctx, wanted: list[str]) -> dict[str, dict[date, dict]]:
+    """Each page's days, both periods: clicks, impressions, position."""
+    found: dict[str, dict] = {}
+    if not wanted or not ctx.has_before:
+        return found
+    hashes = {digest(page): page for page in wanted}
+    statement = text(
+        "SELECT page_hash h, day, clicks, impressions, position FROM gsc_page WHERE site_id = :s AND day BETWEEN :a AND :b AND page_hash IN :hashes"
+    ).bindparams(bindparam("hashes", expanding=True))
+    with ctx.engine.connect() as conn:
+        for r in conn.execute(statement, {"s": ctx.site_id, "a": ctx.before_start, "b": ctx.end, "hashes": list(hashes)}).mappings():
+            found.setdefault(hashes[r["h"]], {})[r["day"]] = {"clicks": int(r["clicks"] or 0), "impressions": int(r["impressions"] or 0), "position": float(r["position"]) if r["position"] is not None else None}
+    return found
 
 
 def pages(ctx: Ctx, gone: set[str] | None = None) -> Result:
@@ -180,19 +330,38 @@ def pages(ctx: Ctx, gone: set[str] | None = None) -> Result:
     if not moved:
         return out
     queries = _queries_behind(ctx, [r["page"] for r in moved])
+    best = _best_pages(ctx)
+    days = _page_days(ctx, [r["page"] for r in moved if r["clicks"] < r["clicks_before"]])
     for r in moved:
         change = r["clicks"] - r["clicks_before"]
         percent = round(change / r["clicks_before"] * 100) if r["clicks_before"] else None
         down = change < 0
-        behind = sorted((q for q in queries.get(r["page"], []) if (q["clicks"] - q["clicks_before"]) * change > 0), key=lambda q: -abs(q["clicks"] - q["clicks_before"]))[: rules.PAGE_QUERIES]
+        mine = queries.get(r["page"], [])
+        split_ = page_split(ctx, mine, change)
+        why = _cause(split_, change) if mine else None
+        why = why or _why(r)
+        google = _google_for(ctx, r["page"])
+        if down and google and google["state"] == "not_indexed":
+            why = "not_indexed"  # Google says it isn't in its index: that beats every other cause
+        behind = []
+        for q in sorted((q for q in mine if (q["clicks"] - q["clicks_before"]) * change > 0), key=lambda q: -abs(q["clicks"] - q["clicks_before"]))[: rules.PAGE_QUERIES]:
+            tag, other = _query_tag(q, r["page"], best)
+            behind.append({**q, "tag": tag, **({"other_page": other} if other else {})})
         big = down and percent is not None and percent <= -rules.PAGE_BIG_PERCENT and -change >= rules.PAGE_BIG_CLICKS
         evidence = {
             "path": _path(r["page"]), "clicks": r["clicks"], "clicks_before": r["clicks_before"], "percent": percent,
             "impressions": r["impressions"], "impressions_before": r["impressions_before"], "position": rnd(r["position"]), "position_before": rnd(r["position_before"]),
-            "why": _why(r), "queries": behind,
+            "why": why, "split": split_, "queries": behind,
         }
+        if google:
+            evidence["google"] = google
         if down:
-            out.findings.append(Finding("page_down", "changed", r["page"], page=r["page"], at_stake=-change * rules.MONTH, severity="big" if big else "normal", evidence=evidence).settle())
+            evidence["since"] = since(ctx, days.get(r["page"], {}), "position" if why == "ranking" else "clicks")
+            uncertain = chance(r["clicks_before"], r["clicks"]) and not _well_measured_fall(r["position_before"], r["position"], r["impressions_before"], r["impressions"])
+            if uncertain:
+                evidence["uncertain"] = True
+            severity = "info" if uncertain else "big" if big else "normal"
+            out.findings.append(Finding("page_down", "changed", r["page"], page=r["page"], at_stake=-change * rules.MONTH, severity=severity, evidence=evidence).settle())
         else:
             out.findings.append(Finding("page_up", "changed", r["page"], page=r["page"], severity="info", evidence={**evidence, "gained": round(change * rules.MONTH)}))
     return out
@@ -213,7 +382,7 @@ def _queries_behind(ctx: Ctx, wanted: list[str]) -> dict[str, list]:
     for row in rows:
         shown, before = int(row["i"] or 0), int(row["pi"] or 0)
         by_page.setdefault(row["page"], []).append({
-            "query": row["query"], "clicks": int(row["c"] or 0), "clicks_before": int(row["pc"] or 0),
+            "query": row["query"], "clicks": int(row["c"] or 0), "clicks_before": int(row["pc"] or 0), "impressions": shown, "impressions_before": before,
             "position": rnd(float(row["w"]) / shown) if shown and row["w"] is not None else None,
             "position_before": rnd(float(row["pw"]) / before) if before and row["pw"] is not None else None,
         })
@@ -297,42 +466,105 @@ def _known_problems(ctx: Ctx) -> dict[str, list]:
 
 def _best_pages(ctx: Ctx) -> dict[str, str]:
     """The page that ranks for each query now: the one with the most impressions over the period."""
-    best: dict[str, tuple[int, str]] = {}
-    for r in split(ctx, "pair", ctx.start, ctx.end):
-        if r["impressions"] and r["impressions"] > best.get(r["query"], (0, ""))[0]:
-            best[r["query"]] = (r["impressions"], r["page"])
-    return {query: page for query, (_, page) in best.items()}
+    if "best_pages" not in ctx.memo:
+        best: dict[str, tuple[int, str]] = {}
+        for r in split(ctx, "pair", ctx.start, ctx.end):
+            if r["impressions"] and r["impressions"] > best.get(r["query"], (0, ""))[0]:
+                best[r["query"]] = (r["impressions"], r["page"])
+        ctx.memo["best_pages"] = {query: page for query, (_, page) in best.items()}
+    return ctx.memo["best_pages"]
 
 
 def queries_down(ctx: Ctx) -> Result:
-    """A query that dropped at least 3 places with real impressions, while it still shows: the clicks its old place would
-    bring now, at today's impressions, are what's at stake."""
+    """Searches losing clicks, while they still show:
+
+    - query_down: it dropped at least 3 places, or it fell out of the top 3; the clicks its old place would bring now, at
+      today's impressions, are what's at stake.
+    - ctr_drop: fewer clicks at the same position (the click rate fell 30% or more, the place moved under 1): the main sign
+      of a new AI Overview or a richer page of results. What's at stake is today's impressions at the old click rate.
+
+    A drop of clicks small enough to be chance is said, marked uncertain, and kept out of the totals. Near-identical searches
+    (the same words, in any order, plural or not) that the same page ranks for become one row: "query + N alike"."""
     out = Result()
     if not ctx.has_before:
-        out.needs["query_down"] = "history"
+        out.needs.update(query_down="history", ctr_drop="history")
         return out
-    out.ran.add("query_down")
-    pages = None
-    found = []
+    out.ran.update({"query_down", "ctr_drop"})
+    pages = _best_pages(ctx)
+    found: dict[str, list] = {"query_down": [], "ctr_drop": []}
     for r in split(ctx, "query", ctx.start, ctx.end, ctx.before_start, ctx.before_end):
-        p1, p0, i1, i0 = r["position"], r["position_before"], r["impressions"], r["impressions_before"]
+        p1, p0, i1, i0, c1, c0 = r["position"], r["position_before"], r["impressions"], r["impressions_before"], r["clicks"], r["clicks_before"]
         if p1 is None or p0 is None or not i1 or min(i0, i1) < rules.QUERY_MIN_IMPRESSIONS or p0 > rules.QUERY_WORST_BEFORE:  # both sides: 2 impressions say nothing (F110)
             continue
-        if p1 - p0 < rules.QUERY_PLACES_LOST:
-            continue
-        if pages is None:
-            pages = _best_pages(ctx)
+        evidence = {
+            "clicks": c1, "clicks_before": c0, "impressions": i1, "impressions_before": i0,
+            "position": rnd(p1), "position_before": rnd(p0), "places": rnd(p1 - p0), "page": pages.get(r["name"]), "tracked": _tracked(ctx, r["name"]),
+        }
         lost = i1 * max(0.0, ctx.curve.rate(p0) - ctx.curve.rate(p1))
-        found.append(Finding(
-            "query_down", "changed", r["name"], query=r["name"], page=pages.get(r["name"]), at_stake=lost * rules.MONTH,
-            evidence={
-                "clicks": r["clicks"], "clicks_before": r["clicks_before"], "impressions": i1, "impressions_before": i0,
-                "position": rnd(p1), "position_before": rnd(p0), "places": rnd(p1 - p0), "page": pages.get(r["name"]),
-                "tracked": _tracked(ctx, r["name"]),
-            },
-        ).settle())
-    out.findings += sorted(found, key=lambda f: -f.at_stake)[: rules.QUERY_KEPT]
+        top3 = p0 <= rules.TOP3_LOST and round(p1) > rules.TOP3_LOST and lost * rules.MONTH >= rules.INFO_BELOW
+        if p1 - p0 >= rules.QUERY_PLACES_LOST or top3:
+            found["query_down"].append(Finding("query_down", "changed", r["name"], query=r["name"], page=pages.get(r["name"]), at_stake=lost * rules.MONTH, evidence={**evidence, **({"top3_lost": True} if top3 else {})}))
+            continue
+        if c0 < rules.CTR_DROP_MIN_CLICKS or abs(p1 - p0) >= rules.CTR_DROP_PLACES:
+            continue
+        rate0, rate1 = c0 / i0, c1 / i1
+        if rate1 > rate0 * (1 - rules.CTR_DROP_SHARE):
+            continue
+        found["ctr_drop"].append(Finding(
+            "ctr_drop", "changed", r["name"], query=r["name"], page=pages.get(r["name"]), at_stake=i1 * (rate0 - rate1) * rules.MONTH,
+            evidence={**evidence, "click_rate": round(rate1 * 100, 2), "click_rate_before": round(rate0 * 100, 2)},
+        ))
+    for kind, kept in (("query_down", rules.QUERY_KEPT), ("ctr_drop", rules.CTR_DROP_KEPT)):
+        grouped = [_judge(f) for f in _group_alike(found[kind])]
+        out.findings += sorted(grouped, key=lambda f: -f.at_stake)[:kept]
     return out
+
+
+def _judge(f: Finding) -> Finding:
+    """Chance or not, then the usual floor. A chance drop is only information: it stays out of the totals and of To do first."""
+    e = f.evidence
+    if chance(e["clicks_before"], e["clicks"]) and not _well_measured_fall(e["position_before"], e["position"], e["impressions_before"], e["impressions"]):
+        e["uncertain"] = True
+        f.severity = "info"
+    return f.settle()
+
+
+def _group_alike(found: list[Finding]) -> list[Finding]:
+    """Searches with the same meaningful words (seo/insights/words.tokens: case, accents, order, plurals, years left out)
+    ranked by the same page: one finding, led by the biggest, with their figures summed and each listed under "alike".
+    The same words on different pages is another thing, said by "Two pages compete" (wins.compete)."""
+    groups: dict[tuple, list[Finding]] = {}
+    alone = []
+    for f in found:
+        key = frozenset(words.tokens(f.query or ""))
+        if not key or not f.page:
+            alone.append(f)
+            continue
+        groups.setdefault((f.page, key), []).append(f)
+    for members in groups.values():
+        if len(members) == 1:
+            alone.append(members[0])
+            continue
+        members.sort(key=lambda f: (-f.at_stake, len(f.query or ""), f.query or ""))  # ties: the shortest wording leads
+        lead = members[0]
+        e = lead.evidence
+        own = {k: e[k] for k in ("clicks", "clicks_before", "impressions", "impressions_before", "position", "position_before")}
+        e["alike"] = [{"query": m.query, **{k: m.evidence[k] for k in own}} for m in members]
+        for name in ("clicks", "clicks_before", "impressions", "impressions_before"):
+            e[name] = sum(m.evidence[name] for m in members)
+        for name, shown in (("position", "impressions"), ("position_before", "impressions_before")):
+            total = sum(m.evidence[shown] for m in members)
+            e[name] = rnd(sum(m.evidence[name] * m.evidence[shown] for m in members) / total) if total else e[name]
+        e["places"] = rnd(e["position"] - e["position_before"])
+        if "click_rate" in e:
+            e["click_rate"] = round(e["clicks"] / e["impressions"] * 100, 2) if e["impressions"] else None
+            e["click_rate_before"] = round(e["clicks_before"] / e["impressions_before"] * 100, 2) if e["impressions_before"] else None
+        e["top3_lost"] = any(m.evidence.get("top3_lost") for m in members) or None
+        if not e["top3_lost"]:
+            e.pop("top3_lost")
+        lead.at_stake = sum(m.at_stake for m in members)
+        alone.append(lead)
+    return alone
 
 
 def _tracked(ctx: Ctx, query: str) -> bool:
@@ -396,21 +628,34 @@ def segments(ctx: Ctx) -> Result:
 # ---- A7. Unstable ranking ------------------------------------------------------------------------
 
 
-def _quartiles(values: list[float]) -> tuple[float, float, float]:
-    ordered = sorted(values)
-    q = statistics.quantiles(ordered, n=4, method="inclusive")
-    return q[0], q[1], q[2]
+def _weighted_quartiles(points: list[tuple[float, int]]) -> tuple[float, float, float]:
+    """The positions a quarter, half and three quarters of its impressions were seen at: a day with 40 views counts 8 times
+    a day with 5."""
+    ordered = sorted(points)
+    total = sum(w for _, w in ordered)
+    out, seen, wanted = [], 0, [total * q for q in (0.25, 0.5, 0.75)]
+    for position, weight in ordered:
+        seen += weight
+        while wanted and seen >= wanted[0]:
+            out.append(position)
+            wanted.pop(0)
+    while len(out) < 3:
+        out.append(ordered[-1][0])
+    return out[0], out[1], out[2]
 
 
 def unstable(ctx: Ctx) -> Result:
     """A query whose position swings from day to day: Google is trying it at different places. If it settled at its better
-    days, it would get the clicks of that place, which is what's at stake."""
+    days, it would get the clicks of that place, which is what's at stake. It's a chance to win, so it goes with the quick
+    wins. Only with real views: 300 over the 28 days, 5 or more a day on 14 days or more, each day weighted by its views.
+    When its clicks are far below what its usual place brings, the clicks are the problem, not the place: it's said as
+    "seen, rarely clicked" (no_click) instead, with no swing."""
     out = Result()
     out.ran.add("unstable")
     candidates = ctx.fetch(
         "SELECT query_hash k FROM gsc_query WHERE site_id = :s AND day BETWEEN :a AND :b AND day NOT IN :skip AND impressions > 0 AND position IS NOT NULL "
-        "GROUP BY query_hash HAVING COUNT(*) >= :d AND SUM(impressions) >= :i",
-        a=ctx.start, b=ctx.end, d=rules.UNSTABLE_MIN_DAYS, i=rules.UNSTABLE_MIN_IMPRESSIONS,
+        "GROUP BY query_hash HAVING SUM(impressions >= :di) >= :d AND SUM(impressions) >= :i",
+        a=ctx.start, b=ctx.end, d=rules.UNSTABLE_MIN_DAYS, di=rules.UNSTABLE_DAY_IMPRESSIONS, i=rules.UNSTABLE_MIN_IMPRESSIONS,
     )
     keys = [r["k"] for r in candidates]
     if not keys:
@@ -423,28 +668,34 @@ def unstable(ctx: Ctx) -> Result:
         ).bindparams(bindparam("skip", expanding=True), bindparam("keys", expanding=True))
         with ctx.engine.connect() as conn:
             for r in conn.execute(statement, {"s": ctx.site_id, "a": ctx.start, "b": ctx.end, "skip": ctx.skip or [NEVER], "keys": keys[chunk: chunk + 500]}).mappings():
-                slot = days.setdefault(r["k"], {"query": r["query"], "positions": [], "clicks": 0, "impressions": 0})
-                slot["positions"].append(float(r["position"]))
+                slot = days.setdefault(r["k"], {"query": r["query"], "points": [], "clicks": 0, "impressions": 0})
+                slot["points"].append((float(r["position"]), int(r["impressions"] or 0)))
                 slot["clicks"] += int(r["clicks"] or 0)
                 slot["impressions"] += int(r["impressions"] or 0)
     pages = None
     found = []
     for slot in days.values():
-        if len(slot["positions"]) < rules.UNSTABLE_MIN_DAYS:
+        if sum(1 for _, w in slot["points"] if w >= rules.UNSTABLE_DAY_IMPRESSIONS) < rules.UNSTABLE_MIN_DAYS:
             continue
-        better, middle, worse = _quartiles(slot["positions"])
+        better, middle, worse = _weighted_quartiles(slot["points"])
         if middle > rules.UNSTABLE_TOP or worse - better < rules.UNSTABLE_SPREAD:
             continue
         if pages is None:
             pages = _best_pages(ctx)
-        shown = slot["impressions"]
-        gain = max(0.0, shown * ctx.curve.rate(better) - slot["clicks"])
+        shown, clicks = slot["impressions"], slot["clicks"]
+        usual = shown * ctx.curve.rate(middle)
+        base = {"clicks": clicks, "impressions": shown, "position": rnd(middle), "page": pages.get(slot["query"]), "tracked": _tracked(ctx, slot["query"])}
+        if clicks < usual * rules.UNSTABLE_NO_CLICK_SHARE:
+            found.append(Finding(
+                "no_click", "wins", slot["query"], query=slot["query"], page=pages.get(slot["query"]), at_stake=(usual - clicks) * rules.MONTH,
+                evidence={**base, "click_rate": round(clicks / shown * 100, 2), "expected_rate": round(ctx.curve.rate(middle) * 100, 2), "from": "unstable"},
+            ).settle())
+            continue
+        gain = max(0.0, shown * ctx.curve.rate(better) - clicks)
+        positions = [p for p, _ in slot["points"]]
         found.append(Finding(
-            "unstable", "changed", slot["query"], query=slot["query"], page=pages.get(slot["query"]), at_stake=gain * rules.MONTH,
-            evidence={
-                "clicks": slot["clicks"], "impressions": shown, "position": rnd(middle), "better": rnd(better), "worse": rnd(worse),
-                "best": rnd(min(slot["positions"])), "worst": rnd(max(slot["positions"])), "days": len(slot["positions"]), "tracked": _tracked(ctx, slot["query"]),
-            },
+            "unstable", "wins", slot["query"], query=slot["query"], page=pages.get(slot["query"]), at_stake=gain * rules.MONTH,
+            evidence={**base, "better": rnd(better), "worse": rnd(worse), "best": rnd(min(positions)), "worst": rnd(max(positions)), "days": len(positions)},
         ).settle())
     out.findings += sorted(found, key=lambda f: -f.at_stake)[: rules.UNSTABLE_KEPT]
     return out

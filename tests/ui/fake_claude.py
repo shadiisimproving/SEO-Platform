@@ -16,7 +16,27 @@ ANSWERS = {
     "brief": "## Goal\nOne page that answers garden furniture searches.\n\n## Outline\n## What to look for\n### Materials\n### Sizes\n## Questions people ask",
     "faq": "How do I clean suede shoes?\nBrush them dry with a suede brush. Check the label before using water.",
     "compete": "Keep /blue/ for this search: its title matches it. Re-target the other page on a nearby search.",
+    "why_dropped": json.dumps({
+        "cause": "A rival rewrote its guide for 2026 and passed you, while your page still says 2025.",
+        "proof": ["rival-guide.test went from 5 to 2 after adding a Visa options section and two FAQ questions.",
+                  "Your page fell from 3 to 5 on the same check; its title still says 2025.",
+                  "Most clicks were lost to Ranking, not to fewer searches."],
+        "do": ["Update the title and the text for 2026.", "Add a Visa options section and answer how long it takes and what it costs.",
+               "Add FAQ structured data to the questions."],
+        "sure": "likely",
+    }),
     "weekly": "Clicks fell this month, mostly because blue shoes lost places. Fix the blue page first, then the ski page, which drops every autumn.",
+}
+
+
+FRENCH = {
+    "why_dropped": json.dumps({
+        "cause": "Un concurrent a réécrit son guide pour 2026 et vous a dépassé ; votre page dit encore 2025.",
+        "proof": ["rival-guide.test est passé de 5 à 2 après une section Visa et deux questions de FAQ.", "Votre page est passée de 3 à 5 au même relevé."],
+        "do": ["Mettez le titre et le texte à jour pour 2026.", "Ajoutez une section sur les visas et répondez aux questions de délai et de coût.",
+               "Ajoutez les données structurées FAQ."],
+        "sure": "likely",
+    }, ensure_ascii=False),
 }
 
 
@@ -29,7 +49,7 @@ class _Messages:
         purpose = next((p for p, words in PURPOSE_WORDS.items() if words in kwargs.get("system", "")), "explain")
         usage = SimpleNamespace(input_tokens=1800, output_tokens=420, cache_read_input_tokens=0, cache_creation_input_tokens=0)
         user, system = kwargs["messages"][0]["content"], kwargs.get("system", "")
-        words = brand_reading(user, system) if purpose == "brand" else versus_reading(user, system) if purpose == "versus" else onsite_reading(user) if purpose == "onsite" else ANSWERS[purpose]
+        words = brand_reading(user, system) if purpose == "brand" else versus_reading(user, system) if purpose == "versus" else onsite_reading(user) if purpose == "onsite" else (FRENCH.get(purpose) if "Write in French" in system else None) or ANSWERS[purpose]
         return SimpleNamespace(stop_reason="end_turn", usage=usage, content=[SimpleNamespace(type="text", text=words)])
 
 

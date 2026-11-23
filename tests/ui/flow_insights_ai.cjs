@@ -64,7 +64,16 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
     await page.waitForTimeout(1500);
     await page.click('[data-in-tab="changed"]');
     await page.waitForTimeout(900);
-    await page.locator(".in-table tbody tr", { hasText: "Query losing places" }).first().click();
+    // Since 2026-11-17 a search whose page is listed sits inside that page in What changed: opened through the screen's own opener.
+    // Since 2026-11-17 a drop (query_down, page_down…) has "Explain with AI" (why_dropped) instead: the short Explain is on the rest.
+    const qid = await page.evaluate(async () => {
+      for (const group of ["changed", "wins", "decline", "technical"]) {
+        const row = (await window.COMP.api("GET", `insights?group=${group}&status=open&site_id=${window.UI.siteIdPicked()}`)).rows.find((r) => !["change", "page_down", "query_down", "rank_drop", "rival_passed", "ctr_drop"].includes(r.kind));
+        if (row) return row.id;
+      }
+      return null;
+    });
+    await page.evaluate((id) => { const b = document.createElement("button"); b.dataset.inOpen = id; document.querySelector(".in-wc").append(b); b.click(); b.remove(); }, qid);
     await page.waitForSelector("#panel [data-in-ai]", { timeout: 5000 });
     await page.locator("#panel [data-in-ai-wrap]").scrollIntoViewIfNeeded();
     await shot("03-panel-before");
@@ -79,7 +88,7 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
     check((await count('#panel [data-in-ai="explain"]:not([data-in-ai-again])')) === 0, "its button gives way to the answer");
     await page.keyboard.press("Escape");
     await page.waitForTimeout(500);
-    await page.locator(".in-table tbody tr", { hasText: "Query losing places" }).first().click();
+    await page.evaluate((id) => { const b = document.createElement("button"); b.dataset.inOpen = id; document.querySelector(".in-wc").append(b); b.click(); b.remove(); }, qid);
     await page.waitForSelector("#panel .in-ai-answer", { timeout: 5000 });
     check((await text("#panel .in-ai-answer")).includes("Ranking for this search slipped"), "opened again, the answer is kept");
     await page.keyboard.press("Escape");
