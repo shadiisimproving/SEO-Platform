@@ -13,6 +13,8 @@ from urllib.parse import urljoin, urlsplit
 
 from lxml import etree, html as lxml_html
 
+from seo.links.urls import page_key
+
 SCRIPTED = ("script", "style", "noscript", "template", "svg", "iframe")
 CHROME = ("nav", "footer", "aside")
 BLOCK = {
@@ -63,10 +65,12 @@ class PageFields:
     js_only: bool = False
     text: str = ""
     extras: dict = field(default_factory=dict)
+    links: list[str] = field(default_factory=list)  # pages of the same site this page links to, in the page's order (page_key form)
 
     def as_dict(self) -> dict:
         data = asdict(self)
         data.pop("text")
+        data.pop("links")  # kept in page_links, never in a version: one menu edit would bloat every page's history
         return data
 
 
@@ -139,6 +143,40 @@ def _count_links(root, url: str) -> tuple[int, int]:
         else:
             external += 1
     return internal, external
+
+
+MAX_PAGE_LINKS = 300
+_NOT_A_PAGE = (
+    ".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".ico", ".avif", ".pdf", ".zip", ".rar", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+    ".mp3", ".mp4", ".mov", ".avi", ".webm", ".css", ".js", ".json", ".xml", ".rss", ".txt", ".csv", ".woff", ".woff2", ".ttf",
+)
+
+
+def _page_links(root, url: str) -> list[str]:
+    """The site's own pages this page links to, menu and footer included, once each and in the page's order.
+
+    Each is a page_key (host without www, path, query), so http or https and www or not are one page. The site map's
+    "By links" view is built from these (seo/pages/sitemap_tree.py)."""
+    own = _host(urlsplit(url).hostname)
+    me = page_key(url)
+    found: dict[str, None] = {}
+    for anchor in root.iterfind(".//a[@href]"):
+        href = (anchor.get("href") or "").strip()
+        if not href or href.startswith(("#", "mailto:", "tel:", "javascript:")):
+            continue
+        try:
+            target = urljoin(url, href)
+            if _host(urlsplit(target).hostname) != own:
+                continue
+        except ValueError:
+            continue
+        key = page_key(target)
+        if not key or key == me or key.split("?", 1)[0].lower().endswith(_NOT_A_PAGE):
+            continue
+        found.setdefault(key)
+        if len(found) >= MAX_PAGE_LINKS:
+            break
+    return list(found)
 
 
 def _schema_dates(root) -> dict:
@@ -243,6 +281,7 @@ def extract(body: bytes, url: str, charset: str | None = None) -> PageFields:
     page.schema_types = _schema_types(root)
     page.extras = _extras(root)
     page.internal_links, page.external_links = _count_links(root, url)
+    page.links = _page_links(root, url)
     has_app_root = any((el.get("id") or "") in APP_ROOT_IDS for el in root.iter() if isinstance(el.tag, str))
 
     _drop(root, SCRIPTED)

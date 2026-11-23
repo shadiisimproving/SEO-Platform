@@ -1,0 +1,182 @@
+/* Site map: a website's pages as a mind map (site-map.js). Clear look: white boxes' colours only tell the levels apart
+   (blue home page, then teal, slate, grey in turn); purple is kept for a competitor's home page, as everywhere. */
+.sm { overflow: hidden; }
+.sm-screen { padding-bottom: 24px; }
+.sm-head { gap: 10px 12px; }
+.sm-search { position: relative; display: inline-flex; align-items: center; flex: 0 1 230px; min-width: 150px; }
+.sm-search svg.i { position: absolute; left: 10px; width: 15px; height: 15px; color: var(--muted); pointer-events: none; }
+.sm-search .input { width: 100%; padding-left: 32px; min-height: 34px; }
+.sm-found { color: var(--text-2); min-width: 0; }
+.sm-tools { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.sm-zoom { display: inline-flex; gap: 0; padding-left: 6px; margin-left: 2px; border-left: 1px solid var(--line); }
+
+.sm-progress { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 9px 18px; border-bottom: 1px solid var(--line); font-size: 13px; color: var(--text-2); }
+.sm-bar { flex: 0 0 140px; height: 6px; border-radius: 99px; background: var(--track); overflow: hidden; }
+.sm-bar i { display: block; height: 100%; border-radius: inherit; background: var(--c-blue); }
+
+.sm-stand { padding: 8px 18px 18px; }
+.sm-stand .empty p { max-width: 56ch; margin-inline: auto; color: var(--text-2); }
+.sm-stand .empty p + p { margin-top: 14px; }
+.sm-wait { padding: 18px 0; }
+
+/* The frame the map moves in. The dots give the eye something to hold while it moves. */
+.sm-view {
+  position: relative; overflow: hidden; height: clamp(420px, calc(100vh - 240px), 920px); cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none;
+  background-color: var(--th-bg);
+  background-image: radial-gradient(circle, color-mix(in srgb, var(--text) 13%, transparent) 1px, transparent 1.4px); background-size: 22px 22px;
+}
+.sm[data-sm-competitor] .sm-view, .sm[data-sm-pair] .sm-view { height: clamp(420px, 64vh, 720px); } /* inside a profile, under its head and tabs */
+.sm-view.is-dragging { cursor: grabbing; }
+.sm-view:focus { outline: none; }
+.sm-stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; will-change: transform; }
+.sm-stage.is-gliding { transition: transform 300ms var(--ease-out); }
+.sm-edges { position: absolute; left: 0; top: 0; overflow: visible; pointer-events: none; }
+.sm-edges.is-new { animation: sm-fade 320ms var(--ease-out) both; }
+.sm-edge { fill: none; stroke-width: 1.75; stroke-linecap: round; stroke: color-mix(in srgb, var(--c) 62%, transparent); }
+.sm-edge.is-more { stroke-dasharray: 3 5; }
+.sm-e1, .sm-e2, .sm-e3 { --c: var(--c-grey); } /* a line with no branch colour: the “+N more” one */
+.sm-hint { position: absolute; left: 14px; bottom: 10px; margin: 0; padding: 3px 9px; border-radius: 99px; color: var(--text-2); background: color-mix(in srgb, var(--glass) 88%, transparent); pointer-events: none; }
+@media (hover: none) { .sm-hint { display: none; } }
+
+/* A box: one page, a folder of the address, or a group. */
+.sm-node {
+  --c: var(--c-teal);
+  position: absolute; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 9px;
+  font: 500 13px/1 var(--font); color: var(--text); text-align: start; white-space: nowrap; cursor: pointer;
+  background: var(--c-pale); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 38%, transparent);
+  transition: box-shadow var(--t-fast), background var(--t-fast), opacity var(--t-base);
+}
+/* One colour per main branch (owner, 2026-11-20: "more colours so I can tell pages apart"): the branch's line, boxes,
+   icons and round buttons all carry it. Deeper levels keep the hue and get paler, so the level still shows.
+   Blue stays the home page (you) and purple a competitor's, so neither is in the rotation. */
+.sm { --sm-b0: #0B7F72; --sm-b1: #B45309; --sm-b2: #BE185D; --sm-b3: #15803D; --sm-b4: #0369A1; --sm-b5: #B91C1C; --sm-b6: #A21CAF; --sm-b7: #4D7C0F; }
+[data-theme="dark"] .sm { --sm-b0: #5EEAD4; --sm-b1: #FBBF24; --sm-b2: #F9A8D4; --sm-b3: #86EFAC; --sm-b4: #7DD3FC; --sm-b5: #FCA5A5; --sm-b6: #F0ABFC; --sm-b7: #BEF264; }
+.sm-tog { --c: var(--c-teal); } /* before the branch colours, which then win */
+.sm-b0 { --c: var(--sm-b0); } .sm-b1 { --c: var(--sm-b1); } .sm-b2 { --c: var(--sm-b2); } .sm-b3 { --c: var(--sm-b3); }
+.sm-b8 { --c: var(--c-grey); } /* a group of loose pages */
+.sm-b4 { --c: var(--sm-b4); } .sm-b5 { --c: var(--sm-b5); } .sm-b6 { --c: var(--sm-b6); } .sm-b7 { --c: var(--sm-b7); }
+.sm-node { --tint: 22%; --c-pale: color-mix(in srgb, var(--c) var(--tint), var(--glass)); }
+.sm-l2 { --tint: 22%; }
+.sm-l3 { --tint: 12%; }
+[data-theme="dark"] .sm-node { --tint: 20%; } [data-theme="dark"] .sm-l2 { --tint: 13%; } [data-theme="dark"] .sm-l3 { --tint: 8%; }
+.sm-node svg.i { flex: none; width: 14px; height: 14px; color: var(--c); }
+.sm-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.sm-node:hover { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 62%, transparent), 0 6px 14px -8px rgba(15, 34, 51, .35); }
+.sm-node:focus-visible, .sm-tog:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.sm-node.is-picked { box-shadow: inset 0 0 0 2px var(--accent-text), 0 6px 14px -8px rgba(15, 34, 51, .35); }
+.sm-home { --c: var(--c-blue); height: 34px; margin-top: -2px; padding: 0 14px; font-weight: 600; color: var(--glass); background: var(--c-blue); box-shadow: 0 8px 18px -10px color-mix(in srgb, var(--c-blue) 80%, transparent); }
+[data-theme="dark"] .sm-home { background: var(--c-blue); }
+.sm-home svg.i { color: inherit; }
+.sm-home:hover { box-shadow: 0 10px 20px -10px color-mix(in srgb, var(--c-blue) 95%, transparent); }
+.sm-home.is-picked { box-shadow: 0 0 0 2px var(--glass), 0 0 0 4px var(--c-blue); }
+.sm[data-sm-competitor] .sm-home { --c: var(--c-purple); background: var(--c-purple); box-shadow: 0 8px 18px -10px color-mix(in srgb, var(--c-purple) 80%, transparent); }
+.sm[data-sm-competitor] .sm-home.is-picked { box-shadow: 0 0 0 2px var(--glass), 0 0 0 4px var(--c-purple); }
+.sm-folder, .sm-group { background: var(--glass); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 45%, transparent); }
+[data-theme="dark"] .sm-folder, [data-theme="dark"] .sm-group { background: var(--glass); }
+.sm-group { font-weight: 600; }
+.sm-node.is-unread { color: var(--text-2); background: var(--glass); box-shadow: none; outline: 1px dashed color-mix(in srgb, var(--c) 50%, transparent); outline-offset: -1px; }
+.sm-more { justify-content: center; padding: 0 10px; color: var(--accent-text); background: var(--glass); box-shadow: inset 0 0 0 1px var(--line-2); text-decoration: underline; text-underline-offset: 2px; }
+.sm-notes { flex: none; display: inline-flex; align-items: center; gap: 2px; margin-inline-start: 2px; font-size: 12px; color: var(--c); }
+.sm-home .sm-notes { color: inherit; }
+.sm-notes svg.i { width: 13px; height: 13px; }
+.sm-notes b { font-weight: 600; }
+.sm-node.is-dim { opacity: .34; }
+.sm-node.is-hit { font-weight: 600; box-shadow: inset 0 0 0 2px var(--accent-text); }
+.sm-node.is-at { box-shadow: inset 0 0 0 2px var(--accent-text), 0 0 0 4px color-mix(in srgb, var(--accent-text) 22%, transparent); }
+
+/* The round button on a box's outer edge: the pages under it while closed, a minus once open. */
+.sm-tog {
+  position: absolute; display: inline-flex; align-items: center; justify-content: center; height: 20px; padding: 0 5px; border-radius: 99px; z-index: 1;
+  font: 600 12px/1 var(--font); color: var(--c); background: var(--glass); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--c) 48%, transparent); cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast), transform var(--t-fast);
+}
+.sm-tog::before { content: ""; position: absolute; inset: -7px -4px; } /* a bigger place to hit than the eye sees */
+.sm-tog:hover { background: var(--c); color: var(--glass); }
+.sm-tog:active { transform: scale(.92); }
+.sm-tog svg.i { width: 12px; height: 12px; }
+.sm-tog.is-open { color: var(--muted); box-shadow: inset 0 0 0 1px var(--line-2); }
+
+.sm-node.is-new, .sm-tog.is-new { animation: sm-in 260ms var(--ease-out) both; }
+.sm-node.is-moving, .sm-tog.is-moving { transition: transform 280ms var(--ease-out); }
+@keyframes sm-in { from { opacity: 0; scale: .9; } }
+@keyframes sm-fade { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .sm-node.is-new, .sm-tog.is-new, .sm-edges.is-new { animation: none; }
+  .sm-node.is-moving, .sm-tog.is-moving, .sm-stage.is-gliding { transition: none; }
+}
+
+/* All sites picked: choose one. */
+.sm-pick-list { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; margin-top: 16px; }
+
+/* The side panel of one box. */
+.sm-url { font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+.sm-lede { font-size: 13px; color: var(--text-2); }
+.sm-under { color: var(--text-2); margin: 0 0 6px; }
+.sm-panel .sm-facts { margin-bottom: 6px; }
+.sm-panel .pg-fact { grid-template-columns: minmax(120px, 170px) 1fr; padding: 9px 0; }
+.sm-fold { border-top: 1px solid var(--line); }
+.sm-fold:last-of-type { border-bottom: 1px solid var(--line); }
+.sm-fold summary { display: flex; align-items: center; gap: 8px; padding: 11px 0; font-size: 13px; font-weight: 600; cursor: pointer; list-style: none; }
+.sm-fold summary::-webkit-details-marker { display: none; }
+.sm-fold summary::after { content: ""; margin-inline-start: auto; width: 7px; height: 7px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(-45deg); transition: transform var(--t-fast); }
+.sm-fold[open] summary::after { transform: rotate(45deg); }
+.sm-fold summary:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 6px; }
+.sm-fold > :not(summary) { margin: 0 0 12px; }
+.sm-links { list-style: none; padding: 0; display: grid; gap: 7px; max-height: 260px; overflow-y: auto; scrollbar-width: thin; }
+.sm-links li { display: grid; gap: 1px; justify-items: start; min-width: 0; }
+.sm-links .sm-go { font-size: 13px; text-align: start; overflow-wrap: anywhere; }
+.sm-links .mono { overflow-wrap: anywhere; }
+.sm-panel .nb-block { margin-top: 18px; }
+
+@media (max-width: 640px) {
+  .sm-view { height: clamp(380px, calc(100vh - 300px), 640px); }
+  .sm-search { flex: 1 1 100%; }
+  .sm-tools { margin-left: 0; width: 100%; justify-content: space-between; }
+}
+
+/* Them / You, in a competitor's profile: whose site the frame shows. The words carry the app's own colours (COMP.who). */
+.sm-side .who { font-weight: 600; }
+
+/* The row above the map on the Site map screen: my website, then its competitors. One is shown at a time. */
+.sm-who { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin-bottom: 12px; }
+.sm-who[hidden] { display: none; }
+.sm-who-lab { font-size: 12px; }
+.sm-who-lab:not(:first-child) { margin-inline-start: 10px; }
+.sm-who-chip {
+  display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border-radius: 99px; cursor: pointer;
+  font: 500 13px/1 var(--font); color: var(--text); background: var(--glass); box-shadow: inset 0 0 0 1px var(--line-2);
+  transition: box-shadow var(--t-fast), background var(--t-fast);
+}
+.sm-who-chip:hover { box-shadow: inset 0 0 0 1px var(--muted); }
+.sm-who-chip[aria-pressed="true"] { font-weight: 600; }
+.sm-who-you[aria-pressed="true"] { background: var(--c-blue-pale); box-shadow: inset 0 0 0 1.5px var(--c-blue); }
+.sm-who-them[aria-pressed="true"] { background: var(--c-purple-pale); box-shadow: inset 0 0 0 1.5px var(--c-purple); }
+@media (max-width: 700px) { .sm-who { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; } .sm-who-chip, .sm-who-lab { flex: none; } .sm-who-chip { height: 36px; } }
+
+/* A main branch's first box is filled with its colour (owner, 2026-11-20: the pale boxes looked alike), white words on it
+   (each colour gives white 4.5:1 or more). The pages under it keep a lighter shade of the same colour. Loose pages,
+   pages not read and the grey group stay as they were. */
+.sm-node.sm-l1:not(.sm-b8):not(.is-unread):not(.sm-more) { background: var(--solid, var(--c)); color: #fff; box-shadow: none; }
+.sm-node.sm-l1:not(.sm-b8):not(.is-unread):not(.sm-more) svg.i, .sm-node.sm-l1:not(.sm-b8):not(.is-unread):not(.sm-more) .sm-notes { color: #fff; }
+.sm-node.sm-l1:not(.sm-b8):not(.is-unread):not(.sm-more):hover { box-shadow: 0 6px 14px -8px rgba(15, 34, 51, .5); }
+.sm-b0 { --solid: #0B7F72; } .sm-b1 { --solid: #B45309; } .sm-b2 { --solid: #BE185D; } .sm-b3 { --solid: #15803D; }
+.sm-b4 { --solid: #0369A1; } .sm-b5 { --solid: #B91C1C; } .sm-b6 { --solid: #A21CAF; } .sm-b7 { --solid: #4D7C0F; }
+.sm-edge { stroke-width: 2; stroke: color-mix(in srgb, var(--c) 75%, transparent); }
+
+/* Internal links view: on each page, how many of the site's other pages link to it. */
+.sm-in { flex: none; min-width: 18px; height: 18px; padding: 0 5px; margin-inline-start: 2px; display: inline-flex; align-items: center; justify-content: center; border-radius: 99px; font-size: 12px; font-weight: 600; color: #fff; background: var(--solid, var(--c)); }
+.sm-home .sm-in { color: var(--c-blue); background: var(--glass); }
+
+/* The competitors list on the Site map screen: one button that opens a menu with logos. */
+.sm-who-pick { display: inline-flex; align-items: center; gap: 8px; min-width: 240px; max-width: 100%; height: 34px; text-align: start; cursor: pointer; }
+.sm-who-pick.is-on { background-color: var(--c-purple-pale); box-shadow: inset 0 0 0 1.5px var(--c-purple); font-weight: 600; }
+.sm-who-word { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sm-who-chip { height: 34px; }
+.sm-who-chip .who { font-size: 12px; }
+.sm-who-menu .site-logo, .sm-who-pick .site-logo { vertical-align: 0; border-radius: 4px; }
+.sm-who-menu { max-height: min(60vh, 420px); overflow-y: auto; }
+.sm-read.is-busy { color: var(--muted); cursor: progress; }
+.sm-read.is-busy svg.i { animation: sm-spin 1.1s linear infinite; }
+@keyframes sm-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .sm-read.is-busy svg.i { animation: none; } }
+@media (max-width: 700px) { .sm-who-pick { min-width: 0; flex: 1; } }

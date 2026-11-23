@@ -87,9 +87,24 @@ def get_or_create_domain(engine: Engine, host: str) -> int:
 
 
 def validators(engine: Engine, url: str) -> tuple[str | None, str | None]:
+    """What lets the site answer "not modified". None for a page whose links were never saved: it is fetched in full once,
+    so the site map's "By links" view fills in without waiting for the page to change."""
     with engine.connect() as conn:
-        row = conn.execute(select(Page.etag, Page.last_modified).where(Page.url_hash == _url_hash(url))).first()
-    return (row.etag, row.last_modified) if row else (None, None)
+        row = conn.execute(
+            text("SELECT p.etag, p.last_modified, l.page_id AS has_links FROM pages p LEFT JOIN page_links l ON l.page_id = p.id WHERE p.url_hash = :h"),
+            {"h": _url_hash(url)},
+        ).first()
+    return (row.etag, row.last_modified) if row and row.has_links is not None else (None, None)
+
+
+def _save_links(conn, page_id: int, domain_id: int, links: list[str]) -> None:
+    conn.execute(
+        text(
+            "INSERT INTO page_links (page_id, domain_id, links, read_at) VALUES (:p, :d, :l, UTC_TIMESTAMP(3)) "
+            "ON DUPLICATE KEY UPDATE links = VALUES(links), read_at = VALUES(read_at)"
+        ),
+        {"p": page_id, "d": domain_id, "l": json.dumps(links, ensure_ascii=False, separators=(",", ":"))},
+    )
 
 
 def _page_values(fields: PageFields, result: FetchResult) -> dict:
@@ -147,6 +162,7 @@ def save_fetch(engine: Engine, domain_id: int, url: str, result: FetchResult, fi
                 insert(Page).values(domain_id=domain_id, url=url, url_hash=url_hash, **values)
             ).inserted_primary_key[0]
             _add_version(conn, page_id, fields)
+            _save_links(conn, page_id, domain_id, fields.links)
             return "baseline"
 
         events = []
@@ -173,6 +189,7 @@ def save_fetch(engine: Engine, domain_id: int, url: str, result: FetchResult, fi
             values["last_changed_at"] = NOW
             _add_version(conn, current.id, fields)
         conn.execute(update(Page).where(Page.id == current.id).values(**values))
+        _save_links(conn, current.id, current.domain_id, fields.links)
         for event in events:
             conn.execute(insert(ChangeEvent).values(page_id=current.id, domain_id=domain_id, **event))
         if first_real_read:
