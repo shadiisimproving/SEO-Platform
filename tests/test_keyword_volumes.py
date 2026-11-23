@@ -191,7 +191,8 @@ def test_search_console_daily_line_for_the_sparkline(engine, site):
         conn.execute(text("INSERT INTO gsc_query (site_id, day, query_hash, query, clicks, impressions, position) VALUES (:s, :d, :h, 'sofa repair', 0, 9, 1)"),
                      {"s": site, "d": last - timedelta(days=40), "h": digest("sofa repair")})  # before the 28 days
     daily = row_of(engine, site, "sofa repair")["gsc_daily"]
-    assert daily == [{"day": "2026-11-14", "p": 9.0}, {"day": "2026-11-15", "p": 7.0}, {"day": "2026-11-16", "p": 5.0}]
+    # Each day carries its impressions ("i") since 2026-11-23: the Up / Down rule weights the 7-day averages by them (moves.py).
+    assert daily == [{"day": "2026-11-14", "p": 9.0, "i": 10}, {"day": "2026-11-15", "p": 7.0, "i": 30}, {"day": "2026-11-16", "p": 5.0, "i": 10}]
     # France's own rows, once they reach the first of the 28 days, are the line instead.
     with engine.begin() as conn:
         for n in range(28):

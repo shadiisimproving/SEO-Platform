@@ -120,7 +120,15 @@
     "Volumes added from {name}": "Volumes ajoutés depuis {name}", "Volumes from {name} removed": "Volumes de {name} retirés", "Remove the volumes from {name}?": "Retirer les volumes de {name} ?",
     "Google's own volume needs a Google Ads account: parked for now.": "Le volume de Google demande un compte Google Ads : en attente pour l'instant.",
     "Couldn't load the volume sources.": "Impossible de charger les sources de volume.", "Bing started": "Bing lancé",
-    "Higher on the line is better.": "Plus la ligne est haute, mieux c'est.", "Search Console, {n} days": "Search Console, {n} jours",
+    "Higher on the line is better.": "Plus la ligne est haute, mieux c'est.", "Lost|move": "Perdu", "New|move": "Nouveau",
+    "Search Console: up 1 place or more, last 7 days against the first 7 of 28, or newly shown.": "Search Console : +1 place ou plus, 7 derniers jours par rapport aux 7 premiers des 28, ou nouvellement affiché.",
+    "Our checks: up 1 place or more since the check before, or newly found.": "Nos vérifications : +1 place ou plus depuis la vérification précédente, ou nouvellement trouvé.",
+    "Search Console: down 1 place or more, last 7 days against the first 7 of 28, or lost (not shown now).": "Search Console : −1 place ou plus, 7 derniers jours par rapport aux 7 premiers des 28, ou perdu (plus affiché).",
+    "Our checks: down 1 place or more since the check before, or lost (not found now).": "Nos vérifications : −1 place ou plus depuis la vérification précédente, ou perdu (introuvable maintenant).",
+    "shown in the first 7 days, not at all in the last 7.": "affiché les 7 premiers jours, plus du tout les 7 derniers.",
+    "not shown in the first 7 days, shown in the last 7.": "pas affiché les 7 premiers jours, affiché les 7 derniers.",
+    "found on the check before, not in the top {n} now.": "trouvé à la vérification précédente, hors du top {n} maintenant.",
+    "not in the top {n} on the check before, found now.": "hors du top {n} à la vérification précédente, trouvé maintenant.", "Search Console, {n} days": "Search Console, {n} jours",
     "{a} → {b}": "{a} → {b}", "No Search Console position in the last 28 days.": "Aucune position Search Console sur les 28 derniers jours.",
     "AIO": "AIO", "cited": "cité", "AI Overview shown; you're cited.": "Aperçu IA affiché ; vous êtes cité.", "AI Overview shown; other sites are cited, not you.": "Aperçu IA affiché ; d'autres sites sont cités, pas vous.",
     "No AI Overview on this search.": "Pas d'aperçu IA sur cette recherche.", "AI Overview not checked yet.": "Aperçu IA pas encore vérifié.", "No AIO": "Pas d'AIO",
@@ -222,6 +230,8 @@
   /* How a keyword moved between two like-for-like checks (rankings.movement): up, down, same, lost (fell out of the depth
      checked), new (came into it), out (out both times), or null when there's nothing to compare. */
   const GAINS = ["up", "new"], DROPS = ["down", "lost"];
+  // "Lost" / "New" for a keyword's move: their own keys, as the shared French list has "Perdus" / "Nouveaux" for links.
+  const moveWord = (kind) => t(kind === "lost" ? "Lost|move" : "New|move").split("|")[0];
   const goesUp = (view) => GAINS.includes(view?.move), goesDown = (view) => DROPS.includes(view?.move);
   // +1 entered the top 10, −1 left it: the server's rankings.top10_step, on the rows this screen shows.
   const top10Step = (view) => {
@@ -428,8 +438,8 @@
       if (!view.main) return `<span class="muted small kw-unchecked">${t("Not checked")}</span>`;
       const depth = view.main.depth;
       const said = (cls, word, tip, mark = "") => `<span class="${cls}" data-tip="${esc(tip)}" aria-label="${esc(`${word}: ${tip}`)}">${mark}<span class="small">${esc(word)}</span></span>`;
-      if (view.move === "lost") return said("chg crit kw-move", t("Dropped out"), t("Was #{was}, now not in the top {n}.").replace("{was}", view.was).replace("{n}", depth), icon("arrow-down"));
-      if (view.move === "new") return said("chg good kw-move", t("New"), t("Wasn't in the top {n} last check.").replace("{n}", depth), icon("arrow-up"));
+      if (view.move === "lost") return said("chg crit kw-move", moveWord("lost"), t("Was #{was}, now not in the top {n}.").replace("{was}", view.was).replace("{n}", depth), icon("arrow-down"));
+      if (view.move === "new") return said("chg good kw-move", moveWord("new"), t("Wasn't in the top {n} last check.").replace("{n}", depth), icon("arrow-up"));
       if (view.move === "out") return said("muted kw-move", t("Still out"), t("Not in the top {n} on the last two checks.").replace("{n}", depth));
       return `<span class="muted small" data-tip="${esc(t("Only one check so far: nothing to compare yet."))}">${t("First check")}</span>`;
     }
@@ -471,14 +481,24 @@
   function trendCell(row, view, e) {
     const gsc = e === "google" && kwbSource() === "gsc";
     const values = gsc ? (row.gsc_daily || []).map((x) => x.p) : (view.trend || []).map((x) => x.p);
+    // Lost / New say why a keyword counts as Down or Up (the one rule, seo/serp/moves.py): a tag beside the line, its reason in the tip.
+    const kind = gsc ? row.gsc_move?.kind : view.move;
+    const why = kind === "lost" ? t(gsc ? "shown in the first 7 days, not at all in the last 7." : "found on the check before, not in the top {n} now.").replace("{n}", view.main?.depth || "") : kind === "new" ? t(gsc ? "not shown in the first 7 days, shown in the last 7." : "not in the top {n} on the check before, found now.").replace("{n}", view.main?.depth || "") : "";
+    const tag = why ? `<span class="kw-trend-tag ${kind === "lost" ? "down" : "up"}">${esc(moveWord(kind))}</span>` : "";
     if (values.length < 2) {
-      const why = t(gsc ? "No Search Console position in the last 28 days." : "Needs 2 checks, same tool");
-      return `<span class="muted dash" role="img" data-tip="${esc(why)}" aria-label="${esc(why)}">—</span>`;
+      const none = t(gsc ? "No Search Console position in the last 28 days." : "Needs 2 checks, same tool");
+      const tip = why ? `${moveWord(kind)}: ${why}` : none;
+      return why ? `<span class="kw-trend-tag ${kind === "lost" ? "down" : "up"}" role="img" data-tip="${esc(tip)}" aria-label="${esc(tip)}">${esc(moveWord(kind))}</span>`
+        : `<span class="muted dash" role="img" data-tip="${esc(tip)}" aria-label="${esc(tip)}">—</span>`;
     }
-    const a = values[0], b = values[values.length - 1], moved = Math.round((a - b) * 10) / 10;
+    const a = values[0], b = values[values.length - 1];
+    // The move the chips count: Search Console's first 7 days against its last 7, 1 place or more; our checks' last two.
+    const m = gsc ? row.gsc_move : null;
+    const moved = gsc ? (m && (m.kind === "up" || m.kind === "down") ? m.places : 0) : Math.round((a - b) * 10) / 10;
     const from = gsc ? t("Search Console, {n} days").replace("{n}", "28") : t("Our checks");
-    const words = `${from}: ${t("{a} → {b}").replace("{a}", dec(a)).replace("{b}", dec(b))}${moved ? ` (${t(moved > 0 ? "Up" : "Down")} ${dec(Math.abs(moved))})` : ""}. ${t("Higher on the line is better.")}`;
-    return `<span class="kw-spark ${moved > 0 ? "up" : moved < 0 ? "down" : ""}" role="img" data-tip="${esc(words)}" aria-label="${esc(words)}">${sparkSvg(values)}</span>`;
+    const said = why ? ` ${moveWord(kind)}: ${why}` : moved ? ` (${t(moved > 0 ? "Up" : "Down")} ${dec(Math.abs(moved))})` : "";
+    const words = `${from}: ${t("{a} → {b}").replace("{a}", dec(a)).replace("{b}", dec(b))}.${said} ${t("Higher on the line is better.")}`;
+    return `<span class="kw-trend"><span class="kw-spark ${moved > 0 || kind === "new" ? "up" : moved < 0 || kind === "lost" ? "down" : ""}" role="img" data-tip="${esc(words)}" aria-label="${esc(words)}">${sparkSvg(values)}</span>${tag ? tag.replace("<span ", '<span aria-hidden="true" ') : ""}</span>`;
   }
   /* Google: the position in the keyword's own country when Search Console has it, on one line with the country's flag.
      The all-countries average then has its own column (K.worldCol, worldCell), so each row stays one line high (2026-11-13). */
@@ -527,18 +547,23 @@
     const words = t("Checked {age} ago.").replace("{age}", age(m.age_days));
     return `<span class="kw-age kw-age-old" role="img" data-tip="${esc(words)}" aria-label="${esc(words)}">${icon("clock")}${esc(age(m.age_days))}</span>`;
   }
-  /* Up / Down for the chips: with Search Console chosen (Google), its first 7 days against its last 7 of the trend line's 28,
-     a move of half a place or more, like the agency's 7-day change. Otherwise the change since our last check with the same
-     tool. Before this, our checks' change alone left both chips at 0 whenever the tool changed (seen on real data 2026-11-20). */
+  /* Up / Down for the chips and the filter: the one rule of seo/serp/moves.py (owner, 2026-11-23). With Search Console
+     chosen (Google), the server's gsc_move: the trend line's first 7 days against its last 7, impression-weighted, a move
+     of 1 place or more, and "lost" (shown before, not at all now) as Down, "new" as Up. Otherwise our checks' like-for-like
+     move, a move in or out of the depth checked counting too. Half a place counted before 2026-11-23, and lost never did. */
+  const MOVE_DIR = { up: 1, new: 1, down: -1, lost: -1 };
+  // The Up and Down chips say their rule on hover and focus, on the ranking they count with.
+  const moveTip = (id) => {
+    if (id !== "up" && id !== "down") return "";
+    const gsc = engineOf() === "google" && kwbSource() === "gsc";
+    const words = t(id === "up"
+      ? (gsc ? "Search Console: up 1 place or more, last 7 days against the first 7 of 28, or newly shown." : "Our checks: up 1 place or more since the check before, or newly found.")
+      : (gsc ? "Search Console: down 1 place or more, last 7 days against the first 7 of 28, or lost (not shown now)." : "Our checks: down 1 place or more since the check before, or lost (not found now)."));
+    return ` data-tip="${esc(words)}"`;
+  };
   function movedOf(row, view, e) {
-    if (e === "google" && kwbSource() === "gsc") {
-      const v = (row.gsc_daily || []).map((x) => x.p).filter((x) => typeof x === "number");
-      if (v.length < 4) return 0;
-      const n = Math.min(7, Math.floor(v.length / 2)), avg = (a) => a.reduce((x, y) => x + y, 0) / a.length;
-      const d = avg(v.slice(0, n)) - avg(v.slice(-n)); // a smaller position is better, so first minus last is the gain
-      return Math.abs(d) >= 0.5 ? d : 0;
-    }
-    return goesUp(view) ? 1 : goesDown(view) ? -1 : 0; // our checks: a move in or out of the depth counts too (2026-11-17)
+    if (e === "google" && kwbSource() === "gsc") return MOVE_DIR[row.gsc_move?.kind] || 0;
+    return goesUp(view) ? 1 : goesDown(view) ? -1 : 0;
   }
   function passes(row, e) {
     const view = row.engines[e], p = view.main?.status === "ok" ? view.main.p : null;
@@ -768,7 +793,8 @@
      started on 11 Nov 2026 and a period needs a "before"; or our checks. Never one for "before" and the other for "now".
      Search Console's are 7-day impression-weighted averages, the keyword's own country when that reaches back far enough
      (rankings.py gsc_positions). Remembered in this browser only. */
-  const kwbSource = () => { try { return localStorage.getItem("seocc2-kwb-source") === "checks" ? "checks" : "gsc"; } catch { return "gsc"; } };
+  // The app's one choice of ranking (rank-trends.js RankSource, 2026-11-23): the same one the Keywords by ranking card uses.
+  const kwbSource = () => window.RankSource?.get() || "gsc";
   function gscReadings(g) {
     const then = g.compare === "none" ? g.to : g.compareTo;
     const siteId = UI.siteIdPicked?.() || null, key = `${siteId || "all"}|${then}|${g.to}`;
@@ -788,7 +814,9 @@
     const round = (v) => (v === null || v === undefined ? null : Math.max(1, Math.round(v)));
     const items = all.map((row) => {
       const x = r.rows[row.id] || {}, is = round(x.now), was = round(x.then);
-      return { row, p: is, avg: x.now ?? null, checked: true, nodata: is === null, depth: null, move: base && is !== null && was !== null ? { kind: "diff", n: was - is } : null, band: BANDS.find((b) => b.test(is)).id,
+      // The move is the one rule's (rankings.gsc_positions → moves.py): 1 place or more, lost / new included.
+      const mv = x.move || null, move = !base || !mv ? null : mv.kind === "up" || mv.kind === "down" ? { kind: "diff", n: Math.round(mv.places) || Math.sign(mv.places) } : mv.kind === "same" ? { kind: "diff", n: 0 } : { kind: mv.kind };
+      return { row, p: is, avg: x.now ?? null, checked: true, nodata: is === null, depth: null, move, band: BANDS.find((b) => b.test(is)).id,
         wasBand: base && was !== null && is !== null ? BANDS.find((b) => b.test(was)).id : null, thenBand: base && was !== null ? BANDS.find((b) => b.test(was)).id : null };
     });
     const top10Then = base ? all.filter((row) => { const v = round(r.rows[row.id]?.then); return v !== null && v <= 10; }).length : null;
@@ -1013,7 +1041,7 @@
     const body = state.view === "bucket" ? bucketView(all) : state.view === "queries" ? queriesView() : `
       <div class="kw-find">${TP.search(KW_PAGES, t("Search keywords"))}</div>
       <div class="chips" role="group" aria-label="${t("Keywords")}">
-        ${chips.map(([id, label]) => `<button class="chip" data-filter="${id}" aria-pressed="${state.filter === id}">${t(label)}<b>${num(counts[id])}</b></button>`).join("")}
+        ${chips.map(([id, label]) => `<button class="chip" data-filter="${id}" aria-pressed="${state.filter === id}"${moveTip(id)}>${t(label)}<b>${num(counts[id])}</b></button>`).join("")}
         <span style="margin-left:auto" class="table-tools">
           ${e === "google" && state.engine !== "all" ? aioButton(all) : ""}<button type="button" class="btn btn-small" id="kw-volumes">${icon("activity")}${t("Volumes")}</button>
           <button class="icon-btn" id="density" aria-label="${t(state.dense ? "Comfortable rows" : "Compact rows")}" data-tip="${t(state.dense ? "Comfortable rows" : "Compact rows")}">${icon("rows-3")}</button>
@@ -1087,7 +1115,7 @@
     const viewSwitch = `<span class="seg kw-views" role="group" aria-label="${esc(t("View"))}">${views.map(([id, label]) => `<button type="button" data-view="${id}" aria-pressed="${(state.view || "positions") === id}">${t(label)}</button>`).join("")}</span>`;
     // Mickaz's chips (owner, 2026-11-20): always on show with their counts, one click, under the search; they follow the
     // search and the per-column filters, and the pager starts again on page 1 (bind()).
-    const chipRow = `<div class="chips kw-chips" role="group" aria-label="${esc(t("Show"))}">${chips.map(([id, label]) => `<button class="chip" data-filter="${id}" aria-pressed="${state.filter === id}">${t(label)}<b>${num(counts[id])}</b></button>`).join("")}</div>`;
+    const chipRow = `<div class="chips kw-chips" role="group" aria-label="${esc(t("Show"))}">${chips.map(([id, label]) => `<button class="chip" data-filter="${id}" aria-pressed="${state.filter === id}"${moveTip(id)}>${t(label)}<b>${num(counts[id])}</b></button>`).join("")}</div>`;
     const aio = e === "google" && state.engine !== "all" ? aioButton(all) : "";
     const vols = `<button type="button" class="btn btn-small" id="kw-volumes">${icon("activity")}${t("Volumes")}</button>`;
     const bar = `<div class="kw-bar">${viewSwitch}${positions ? `<div class="kw-find">${TP.search(KW_PAGES, t("Search keywords"))}</div>` : ""}${positions ? `<span class="kw-bar-end">${aio}${vols}${filterButton}</span>` : ""}</div>${positions ? panel + chipRow : ""}`; // By bucket and Queries have nothing to filter
@@ -2172,7 +2200,7 @@
       if (hit("#kwr-retry")) { K.stale = true; K.error = ""; load(); UI.render(); return; }
       // The simpler screens: the whole row opens its panel (not its tick box, page link or a button in it); ⋯ pins its tools.
       if (simple() && (el = hit("#kw-table tbody tr[data-kwr-row]")) && !hit("a, button, input, select, textarea, label, [data-kwr-open], .chk-cell")) { openKeyword(el.dataset.kwrRow, el); return; }
-      if ((el = hit("[data-kwt-src]"))) { try { localStorage.setItem("seocc2-kwb-source", el.dataset.kwtSrc); } catch { /* this visit only */ } K.bm = null; if (K.panel) paintPanel(K.panel); $(`[data-kwt-src="${el.dataset.kwtSrc}"]`)?.focus({ preventScroll: true }); return; }
+      if ((el = hit("[data-kwt-src]"))) { const to = el.dataset.kwtSrc; window.RankSource?.set(to, "panel"); K.bm = null; if (K.panel) paintPanel(K.panel); $(`[data-kwt-src="${to}"]`)?.focus({ preventScroll: true }); return; }
       if ((el = hit("[data-kwt-span]"))) { K.tlSpan = Number(el.dataset.kwtSpan); if (K.panel) paintPanel(K.panel); $(`[data-kwt-span="${K.tlSpan}"]`)?.focus({ preventScroll: true }); return; }
       if ((el = hit("[data-kwt-kind]"))) { const k = el.dataset.kwtKind; K.tlHidden ||= new Set(); K.tlHidden.has(k) ? K.tlHidden.delete(k) : K.tlHidden.add(k); if (K.panel) paintPanel(K.panel); $(`[data-kwt-kind="${k}"]`)?.focus({ preventScroll: true }); return; }
       if (hit("#kw-aio-all")) { openAioCheck(); return; }
@@ -2220,7 +2248,7 @@
         addPanel(el, el.dataset.kwrFollow, el.dataset.siteHost);
         return;
       }
-      if ((el = hit("[data-kwb-src]"))) { const to = el.dataset.kwbSrc; try { localStorage.setItem("seocc2-kwb-source", to); } catch { /* storage off: this visit only */ } if (to === "gsc" && K.gsc) Object.keys(K.gsc).forEach((k) => { if (K.gsc[k]?.error) delete K.gsc[k]; }); K.bm = null; UI.render({ keepScroll: true }); $(`[data-kwb-src="${to}"]`)?.focus({ preventScroll: true }); return; }
+      if ((el = hit("[data-kwb-src]"))) { const to = el.dataset.kwbSrc; window.RankSource?.set(to, "board"); if (to === "gsc" && K.gsc) Object.keys(K.gsc).forEach((k) => { if (K.gsc[k]?.error) delete K.gsc[k]; }); K.bm = null; UI.render({ keepScroll: true }); $(`[data-kwb-src="${to}"]`)?.focus({ preventScroll: true }); return; }
       if ((el = hit("[data-kwb-more]"))) { const id = el.dataset.kwbMore; if (!K.bucketAll) K.bucketAll = new Set(); if (K.bucketAll.has(id)) K.bucketAll.delete(id); else K.bucketAll.add(id); UI.render({ keepScroll: true }); $(`[data-kwb-more="${id}"]`)?.focus({ preventScroll: true }); return; }
       if ((el = hit("[data-kwr-open]"))) { openKeyword(el.dataset.kwrOpen, el); return; }
       if ((el = hit("[data-kwr-deeper]"))) { checkDeeper(rowById(el.dataset.kwrDeeper), el.dataset.engineId); return; }
@@ -2373,6 +2401,15 @@
   }
   window.addEventListener("seocc:site-added", () => { K.stale = true; });
   // Keywords added elsewhere (Competitors → Keyword check → Add to my keywords) show here without a reload.
+  // The one choice of ranking changed (the card's View menu, or the keyword panel's chart): the chips, trend and board follow.
+  // From the card, the keyboard goes back to its View button; from the panel, it stays in the panel.
+  document.addEventListener("rank-source:changed", (e) => {
+    if (state.route !== "keywords" || e.detail?.from === "board") return;
+    K.bm = null;
+    if (e.detail?.from === "panel" && K.panel) { const held = document.activeElement; UI.render({ keepScroll: true }); if (held?.isConnected) held.focus({ preventScroll: true }); return; }
+    UI.render({ keepScroll: true });
+    if (e.detail?.from === "card") $("[data-rank-trends] [data-rt-view]")?.focus({ preventScroll: true });
+  });
   document.addEventListener("keywords:changed", () => { K.stale = true; K.queries = {}; window.RankTrends?.stale(); if (state.route === "keywords" && !K.loading) load(); });
   /* Other screens track a query through the same panel, so there's one way to add a keyword. queries: one or many. */
   /* window.KW, for other screens:

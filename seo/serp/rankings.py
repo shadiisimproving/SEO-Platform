@@ -17,7 +17,7 @@ from seo.accounts import access
 from seo.competitors.keywords import _iso, require_own
 from seo.core.errors import NotFound
 from seo.metrics import countries
-from seo.serp import connections, store
+from seo.serp import connections, moves, store
 from seo.serp.tools import counts_for_keyword, google_redirect, same_place
 
 # Tags Google and ad tools add to an address. The same page with one of these is still that page: Reserve with Google
@@ -347,10 +347,12 @@ SPARK_DAYS = 28  # the row's sparkline: Search Console's daily position over the
 def _gsc_daily(conn, tracked: list, through: dict) -> dict:
     """Search Console's daily position for each tracked keyword over its last SPARK_DAYS final days, for the row's sparkline:
     the keyword's own country when that country's rows reach the first day, otherwise every country (the panel's rule,
-    metrics/keyword_timeline._series). {(site_id, keyword_id): [{day, p}]}, days with no impressions left out."""
+    metrics/keyword_timeline._series). {(site_id, keyword_id): [{day, p, i}]}, days with no impressions left out; and
+    each line's move, {(site_id, keyword_id): moves.search_console answer or None}."""
     from seo.metrics.keyword_timeline import _hashes
 
     out: dict = {}
+    moved: dict = {}
     by_site: dict = defaultdict(list)
     for track in tracked:
         by_site[track["site_id"]].append(track)
@@ -391,9 +393,15 @@ def _gsc_daily(conn, tracked: list, through: dict) -> dict:
                     continue
                 acc = days[(site_id, track["id"])][row["day"]]
                 acc[0] += float(row["position"]) * int(row["impressions"]); acc[1] += int(row["impressions"])
+        # Up / Down on Search Console (seo/serp/moves.py): the line's first 7 days against its last 7. The site's data must
+        # reach back to the first window, or a site connected last week would make every keyword "new".
+        began = conn.execute(text("SELECT MIN(day) FROM gsc_query WHERE site_id = :s"), {"s": site_id}).scalar()
+        early, late = moves.windows(last, SPARK_DAYS)
+        covered = bool(began) and began <= early[0]
         for key, by_day in days.items():
-            out[key] = [{"day": str(day), "p": round(w / n, 1)} for day, (w, n) in sorted(by_day.items()) if n]
-    return out
+            out[key] = [{"day": str(day), "p": round(w / n, 1), "i": n} for day, (w, n) in sorted(by_day.items()) if n]
+            moved[key] = moves.of_daily(out[key], early, late, covered)
+    return out, moved
 
 
 def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) -> dict:
@@ -417,7 +425,7 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
         checks = _load_checks(conn, list({row["id"] for row in tracked}), list(hosts.values()))
         shared = tracked_spellings(conn, site_ids)  # all of each site's keywords, even when one keyword is asked for
         own = _own_tools(conn, site_ids, shared, windows)
-        daily = _gsc_daily(conn, tracked, own["through"])
+        daily, gsc_moves = _gsc_daily(conn, tracked, own["through"])
         from seo.serp import volumes
 
         searched = volumes.lookup(conn, [dict(t) for t in tracked])
@@ -478,6 +486,8 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
             "impressions": google_own["impressions"] if google_own else None,
             "search_volume": volumes.of_row(searched, track["keyword"], track["country"]),
             "gsc_daily": daily.get((track["site_id"], track["id"]), []),
+            # Up / Down on Search Console, the one rule (seo/serp/moves.py): None when too few impressions to tell.
+            "gsc_move": gsc_moves.get((track["site_id"], track["id"])),
             # Search Console in the keyword's own country, when the site's queries are read for it (None otherwise; the
             # world average stays in engines.google.own).
             "own_country": {"country": track["country"].upper(), **{k: (round(v, 1) if k == "position" and v is not None else v) for k, v in local.items() if not k.startswith("_")}} if local else None,
@@ -485,7 +495,7 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
     return {"rows": rows, "through": own["through"], "last_refresh": last_run, "now": now, "order": order, "gap": gap}
 
 
-GAINS, DROPS = ("up", "new"), ("down", "lost")
+GAINS, DROPS = moves.GAINS, moves.DROPS
 
 
 def top10_step(view: dict) -> int:
@@ -526,7 +536,17 @@ def tiles(rows: list[dict], engine_name: str) -> dict:
             new += move == "new"
             top10_change += top10_step(view)
         cited += row["ai"]["state"] == "cited"
+    # The same chips with Search Console chosen (Google only): the trend line's first 7 days against its last 7, moves.py.
+    gsc = {"up": 0, "down": 0, "lost": 0, "new": 0}
+    if engine_name == "google":
+        for row in rows:
+            kind = (row.get("gsc_move") or {}).get("kind")
+            gsc["up"] += kind in GAINS
+            gsc["down"] += kind in DROPS
+            gsc["lost"] += kind == "lost"
+            gsc["new"] += kind == "new"
     return {
+        "search_console": gsc if engine_name == "google" else None,
         "tracked": tracked, "ranked": ranked, "not_ranked": none, "top10": top10, "top10_source": "scraped", "up": up, "down": down, "lost": lost, "new": new,
         "top10_change": top10_change if compared else None, "compared": compared, "cited": cited,
     }
@@ -578,7 +598,9 @@ def _gsc_two_windows(conn, table: str, site_id: int, then: tuple[date, date], no
         "SUM(CASE WHEN day BETWEEN :a1 AND :b1 THEN position * impressions END) / NULLIF(SUM(CASE WHEN day BETWEEN :a1 AND :b1 THEN impressions END), 0) AS then_p, "
         "SUM(CASE WHEN day BETWEEN :a1 AND :b1 THEN impressions ELSE 0 END) AS then_i, "
         "SUM(CASE WHEN day BETWEEN :a2 AND :b2 THEN position * impressions END) / NULLIF(SUM(CASE WHEN day BETWEEN :a2 AND :b2 THEN impressions END), 0) AS now_p, "
-        "SUM(CASE WHEN day BETWEEN :a2 AND :b2 THEN impressions ELSE 0 END) AS now_i "
+        "SUM(CASE WHEN day BETWEEN :a2 AND :b2 THEN impressions ELSE 0 END) AS now_i, "
+        "SUM(CASE WHEN day BETWEEN :a1 AND :b1 THEN position * impressions ELSE 0 END) AS then_w, "
+        "SUM(CASE WHEN day BETWEEN :a2 AND :b2 THEN position * impressions ELSE 0 END) AS now_w "
         f"FROM {table} WHERE site_id = :s AND (day BETWEEN :a1 AND :b1 OR day BETWEEN :a2 AND :b2) GROUP BY {lead}query_hash, query"
     )
     out = {}
@@ -587,6 +609,7 @@ def _gsc_two_windows(conn, table: str, site_id: int, then: tuple[date, date], no
         reading = {
             "then": round(float(row["then_p"]), 1) if row["then_p"] is not None else None, "then_impressions": int(row["then_i"] or 0),
             "now": round(float(row["now_p"]), 1) if row["now_p"] is not None else None, "now_impressions": int(row["now_i"] or 0),
+            "then_w": float(row["then_w"] or 0), "now_w": float(row["now_w"] or 0),
         }
         out[(row["country"], key) if by_country else key] = reading
     return out
@@ -598,7 +621,8 @@ def gsc_positions(engine: Engine, site_id: int | None, then_end: date, now_end: 
     last final day Search Console has when that is earlier (site_sources.data_through).
     Impression-weighted, like the table's own column. The keyword's own country when that country's rows reach back to the
     first window's days, otherwise every country for both numbers: one table never gives "before" and the other "now".
-    No impressions in a window: no position (None), which By bucket shows as no data, never as "lost"."""
+    No impressions in a window: no position (None). Each row's "move" is the one Up / Down rule (moves.py): shown before
+    and not at all now is "lost", the other way "new"."""
     if then_end > now_end:
         then_end = now_end
     span = timedelta(days=GSC_WINDOW - 1)
@@ -616,6 +640,8 @@ def gsc_positions(engine: Engine, site_id: int | None, then_end: date, now_end: 
             end = min(now_end, last)
             start = min(then_end, end)
             then, now = (start - span, start), (end - span, end)
+            began = conn.execute(text("SELECT MIN(day) FROM gsc_query WHERE site_id = :s"), {"s": site["id"]}).scalar()
+            covered = bool(began) and began <= then[0]
             through[site["host"]] = {"then": str(start), "now": str(end)}
             tracked = conn.execute(
                 text("SELECT k.id, k.keyword, k.country FROM site_keywords sk JOIN keywords k ON k.id = sk.keyword_id WHERE sk.site_id = :s"), {"s": site["id"]}
@@ -631,8 +657,11 @@ def gsc_positions(engine: Engine, site_id: int | None, then_end: date, now_end: 
                     reading, scope = local.get((code3, key)), code3
                 else:
                     reading, scope = everywhere.get(key), "all"
-                empty = {"then": None, "then_impressions": 0, "now": None, "now_impressions": 0}
-                rows[f"{site['id']}:{track['id']}"] = {**(reading or empty), "scope": scope}
+                empty = {"then": None, "then_impressions": 0, "now": None, "now_impressions": 0, "then_w": 0, "now_w": 0}
+                reading = reading or empty
+                # Up / Down / New / Lost, the one rule (moves.py), when the site's data reaches back to the "before" window.
+                move = moves.search_console(reading["then_impressions"], reading["then_w"], reading["now_impressions"], reading["now_w"], covered)
+                rows[f"{site['id']}:{track['id']}"] = {**{k: v for k, v in reading.items() if not k.endswith("_w")}, "scope": scope, "move": move}
     return {"rows": rows, "through": through, "window_days": GSC_WINDOW}
 
 

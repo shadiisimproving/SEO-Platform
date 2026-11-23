@@ -199,6 +199,11 @@ html[data-simple="1"] .kw-bar-end .tt-count, .table-tools #kw-aio-all .tt-count 
 .kw-spark-line { fill: none; stroke: var(--series-1); stroke-width: 1.75; stroke-linejoin: round; stroke-linecap: round; }
 .kw-spark-start { stroke: var(--line-2, var(--line)); stroke-width: 1; stroke-dasharray: 2 2; }
 .kw-spark-end { fill: var(--series-1); stroke: var(--panel-solid, #fff); stroke-width: 1; }
+/* Lost / New beside the line: why the keyword counts as Down or Up (seo/serp/moves.py). The word carries it, the colour helps. */
+.kw-trend { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.kw-trend-tag { display: inline-flex; align-items: center; font-size: var(--fs-min, 12px); font-weight: 600; line-height: 20px; padding: 0 7px; border-radius: 999px; white-space: nowrap; }
+.kw-trend-tag.down { color: var(--crit-t, var(--crit)); background: color-mix(in srgb, var(--crit-t, var(--crit)) 10%, transparent); }
+.kw-trend-tag.up { color: var(--good-t); background: color-mix(in srgb, var(--good-t) 11%, transparent); }
 /* Volume: the number, then its source as a quiet tag (Bing, File); the full source is the tooltip and the panel's line. */
 .kw-vol { display: inline-flex; align-items: baseline; gap: 6px; white-space: nowrap; }
 .kw-vsrc { font-size: var(--fs-min, 12px); font-weight: 500; color: var(--text-2); padding: 0 6px; border-radius: 999px; background: var(--c-grey-pale); line-height: 18px; }

@@ -1,4 +1,4 @@
-// Keywords after the expert review fixes (2026-11-17), driven by hand with screenshots: Dropped out / New / Still out in
+// Keywords after the expert review fixes (2026-11-17), driven by hand with screenshots: Lost / New / Still out in
 // Change, the Down chip and the Top 10 change counting them, the amber age badge when the main tool's check is too old,
 // the ranking URL with Search Console's most-shown page said apart, each engine tab showing only its own numbers, one card
 // for an engine no tool can search, and the panel's All results with each check's URL. English and French, 1440 and 390.
@@ -25,7 +25,7 @@ async function run(width, lang) {
   await settle(page, 1200);
   const fr = lang === "fr";
   const sub = await rowText(page, "coffee subscription");
-  check(sub.includes(fr ? "Sorti" : "Dropped out"), `${tag}: a #2 that fell out of the top 10 says Dropped out`);
+  check(sub.includes(fr ? "Perdu" : "Lost"), `${tag}: a #2 that fell out of the top 10 says Lost (the one Up / Down rule, 2026-11-23: lost counts as Down)`);
   check(!sub.includes(fr ? "Premier contrôle" : "First check"), `${tag}: never First check on a keyword checked many times`);
   const spec = await rowText(page, "specialty coffee online");
   check(spec.includes(fr ? "Nouveau" : "New"), `${tag}: out → #7 says New`);

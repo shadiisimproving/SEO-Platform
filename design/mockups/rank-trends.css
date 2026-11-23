@@ -3,18 +3,25 @@
 .rt-card { margin-bottom: 14px; }
 .rt-card .card-head { border-bottom: 0; padding-bottom: 8px; }
 
-/* The switch: which ranking. The pressed side is the raised one, as on every .seg, without the sliding ink. */
-.rt-seg button[aria-pressed="true"] { background: var(--ink-bg); box-shadow: var(--ink-shadow); }
+/* The head: the title, then the answer's counts as text and one View button (the list and the ranking live in its menu). */
+.rt-head-end { display: inline-flex; align-items: center; gap: 12px; margin-inline-start: auto; }
+.rt-counts { display: inline-flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.rt-count { display: inline-flex; align-items: center; gap: 2px; }
+.rt-count svg.i { width: 14px; height: 14px; }
+.rt-c-up { color: var(--good-t); }
+.rt-c-down { color: var(--crit-t); }
+.rt-view { display: inline-flex; align-items: center; gap: 4px; min-height: 30px; padding-inline: 10px 7px; font-weight: 500; white-space: nowrap; }
+.rt-view svg.i { width: 14px; height: 14px; transition: transform var(--t-fast); }
+.rt-view[aria-expanded="true"] svg.i { transform: rotate(180deg); }
+.rt-view:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
-/* Tabs under the head, the count beside each name. */
-.rt-tabs { display: flex; gap: 2px; padding: 0 8px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
-.rt-tabs::-webkit-scrollbar { display: none; }
-.rt-tab { flex: none; display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 8px 10px; margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; background: none; font: inherit; font-size: 13.5px; font-weight: 500; color: var(--text-2); cursor: pointer; white-space: nowrap; transition: color var(--t-fast), border-color var(--t-fast); }
-.rt-tab:hover { color: var(--text); }
-.rt-tab[aria-selected="true"] { color: var(--accent-text); font-weight: 600; border-bottom-color: var(--accent-2); }
-.rt-tab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: 6px 6px 0 0; }
-.rt-n { font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--muted); }
-.rt-tab[aria-selected="true"] .rt-n { color: inherit; }
+/* The View menu: two small groups of choices, each with its count, then Show more and the way to every keyword. */
+.rt-pop { min-width: 232px; }
+.rt-pop .rt-pop-h { margin: 6px 10px 2px; font-size: 12px; font-weight: 600; color: var(--muted); }
+.rt-pop > button .rt-pop-n { margin-inline-start: auto; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--muted); }
+.rt-pop > button .rt-pop-n + .tick { margin-inline-start: 10px; }
+.rt-pop > button .tick { display: inline-flex; width: 16px; justify-content: center; }
+.rt-pop > button .tick svg.i { width: 15px; height: 15px; }
 
 /* A row: the keyword and the ones like it, then how far it moved, then where it is. The two numbers keep their own
    columns, so every row's line up. */
@@ -25,14 +32,14 @@
 .rt-sim-pos { font-variant-numeric: tabular-nums; }
 .rt-move { flex: none; display: inline-flex; justify-content: flex-end; min-width: 58px; line-height: 22px; }
 .rt-same { color: var(--muted); padding-inline-end: 8px; }
+.rt-word { white-space: nowrap; }
+.rt-word svg.i { width: 13px; height: 13px; }
+.rt-gone { color: var(--muted); font-weight: 500; }
 .rt-pos { flex: none; min-width: 46px; text-align: end; font-size: 14px; font-weight: 600; line-height: 22px; font-variant-numeric: tabular-nums; color: var(--text); }
 
 .rt-empty { padding: 26px 18px; }
 .rt-foot { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; padding: 9px 18px; border-top: 1px solid var(--line); }
 .rt-note { flex: 1 1 260px; min-width: 0; }
-.rt-foot-acts { display: inline-flex; align-items: center; gap: 16px; margin-inline-start: auto; }
-.rt-all { display: inline-flex; align-items: center; gap: 2px; text-decoration: none; }
-.rt-all svg.i { width: 14px; height: 14px; }
 
 /* Grey rows while the answer is on its way. */
 .rt-wait > li { justify-content: space-between; align-items: center; }
@@ -44,8 +51,8 @@
 @keyframes rt-wait { from { opacity: 1; } to { opacity: .45; } }
 
 @media (max-width: 560px) {
-  .rt-card .card-head { gap: 8px; }
-  .rt-seg { margin-left: 0; }
+  .rt-card .card-head { gap: 8px; flex-wrap: wrap; }
+  .rt-head-end { gap: 10px; }
   .rt-rows > li { gap: 8px; }
   .rt-move { min-width: 48px; }
   .rt-pos { min-width: 38px; }

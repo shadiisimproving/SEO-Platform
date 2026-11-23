@@ -224,9 +224,11 @@ def keywords(engine, args) -> Report:
     tiles = (data.get("tiles") or {}).get(name) or {}
     report = Report("keywords", "Keywords", site=registry.site_host(engine, site_id))
     report.filters.append(("Search engine", ENGINE_NAMES[name]))
+    # Up / Down as the screen's chips counted them (seo/serp/moves.py): Search Console's when it was the chosen ranking.
+    moved = tiles.get("search_console") if args.get("source") == "gsc" and tiles.get("search_console") else tiles
     report.tiles = [
         Tile("Keywords followed", tiles.get("tracked"), "int"), Tile("In the top 10", tiles.get("top10"), "int"),
-        Tile("Moved up", tiles.get("up"), "int"), Tile("Moved down", tiles.get("down"), "int"),
+        Tile("Moved up", moved.get("up"), "int"), Tile("Moved down", moved.get("down"), "int"),
     ]
 
     def of(row):
