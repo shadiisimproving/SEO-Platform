@@ -275,7 +275,7 @@
         UI.$("#ca-rival")?.focus();
       });
       // A Refresh that ends (here or on Keywords) may have checked these keywords: the watch reads them again.
-      document.addEventListener("seocc:refresh-done", () => { if (S.data && UI.state.route === "competitors" && COMP.currentTab()?.id === "ai") COMP.reload({ quiet: true }); });
+      document.addEventListener("seocc:refresh-done", () => { if (S.data && COMP.onTab("ai")) COMP.reloadTab(tab, { quiet: true }); /* here, or inside a competitor's page */ });
       TP.on(PAGES, () => COMP.paintTab(tab)); // another page, another size or a search; the helper keeps the focus
       window.addEventListener("resize", () => {
         cancelAnimationFrame(resizeFrame);

@@ -454,6 +454,10 @@
     const absent = r.not_found ? `<span class="cs-lead-side cs-lead-absent" aria-label="${attr(plural(r.not_found, "you're absent on {n}", "you're absent on {n}"))}"><span>${esc(t("Absent"))}</span><b class="tabular">${UI.num(r.not_found)}</b></span>` : "";
     return `<span class="cs-card-lead" role="group" aria-label="${attr("Who leads")}">${side("them", "Them", r.they_ahead)}${side("you", "You", r.i_ahead)}${absent}</span>`;
   }
+  /* The folded rail: the logo only picks (filters Changes), so each logo gets its own small Open beside it (2026-11-23, the
+     owner: on a 1440 laptop you couldn't open a competitor without unfolding the cards). It shows on hover or focus, stays
+     shown on touch screens and on the picked logo, and its tooltip says what it does, unlike the logo's. */
+  const railOpen = (r, site, name) => `<button type="button" class="cs-rail-open" data-cs-open="${r.id}" data-cs-site="${site.id}" aria-label="${attr(fill("Open {rival}'s page", { rival: name }))}" data-tip="${attr(fill("Open {rival}'s page", { rival: name }))}">${UI.icon("arrow-right")}</button>`;
   function rivalCard(r) {
     const all = S.site === COMP.ALL, l = listRow(r.id), paused = l?.tracking === "off";
     const { name, rest } = cardName(r);
@@ -464,7 +468,7 @@
     const lead = trackedOn(r) && r.ranks_on !== null && r.ranks_on !== undefined ? cardLead(r) : "";
     const pages = pagesWords(r);
     return `<li class="cs-card${picked ? " on" : ""}${paused ? " paused" : ""}" data-cs-card="${r.id}">
-      <button type="button" class="cs-card-pick" data-cs-pick="${r.id}" data-cs-pick-host="${esc(r.host)}" aria-pressed="${picked}"${S.slim ? ` data-tip="${esc(name)}"` : ""} aria-label="${attr(fill(picked ? "Showing only {rival}: show all competitors" : "Show only {rival}", { rival: name }))}"></button>
+      <button type="button" class="cs-card-pick" data-cs-pick="${r.id}" data-cs-pick-host="${esc(r.host)}" aria-pressed="${picked}"${S.slim ? ` data-tip="${attr(fill(picked ? "Showing only {rival}: show all competitors" : "Show only {rival}'s changes", { rival: name }))}"` : ""} aria-label="${attr(fill(picked ? "Showing only {rival}: show all competitors" : "Show only {rival}", { rival: name }))}"></button>
       <div class="cs-card-top">
         <span class="cs-card-logo">${UI.siteLogo(r.host, 32)}</span>
         <span class="cs-card-id"><span class="cs-card-name" dir="auto">${esc(name)}</span><span class="cs-card-host" dir="auto">${esc(r.display || r.host)}</span></span>
@@ -474,6 +478,7 @@
       <div class="cs-card-counts">${cardCounts(r, edits, paused)}${pages ? `<span class="cs-card-pages sec">${esc(pages)}</span>` : ""}</div>
       ${all ? `<span class="cs-sites">${r.sites.map((x) => siteChip(r, x)).join("")}</span>` : ""}
       ${lead || site ? `<div class="cs-card-foot">${lead}${site ? `<button type="button" class="link-btn cs-card-open" data-cs-open="${r.id}" data-cs-site="${site.id}" aria-label="${attr(fill("Open {rival}", { rival: name }))}">${esc(t("Open"))}${UI.icon("arrow-right")}</button>` : ""}</div>` : ""}
+      ${S.slim && site ? railOpen(r, site, name) : ""}
     </li>`;
   }
   /* My own site first, the same counts, so they compare. Its edits open in the side panel (they aren't in Changes). */
@@ -1389,7 +1394,7 @@
     "You weren't found on": "Où vous êtes introuvable",
     "Your biggest competitors": "Vos principaux concurrents",
     "Most keywords where they beat you first. Click a competitor to open it.": "D'abord ceux qui vous battent sur le plus de mots-clés. Cliquez sur un concurrent pour l'ouvrir.",
-    "Open {rival}": "Ouvrir {rival}",
+    "Open {rival}": "Ouvrir {rival}", "Open {rival}'s page": "Ouvrir la page de {rival}", "Show only {rival}'s changes": "Afficher seulement les changements de {rival}",
     "Open {rival} for {site}": "Ouvrir {rival} pour {site}",
     "across {n} site": "sur {n} site",
     "across {n} sites": "sur {n} sites",

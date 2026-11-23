@@ -11,7 +11,11 @@
   const COMP = window.COMP;
   /* Questions has its own tab since 2026-11-12 (UI critique): as the third card under Pages, the questions they answer and I
      don't were hard to find. */
-  const TABS = [["changes", "Changes", "clock"], ["keywords", "Keywords", "key-round"], ["pages", "Pages", "file-text"], ["questions", "Questions", "message-circle-question"], ["activity", "Activity", "activity"], ["site", "Their site", "globe"], ["map", "Site map", "network"]];
+  const TABS = [["changes", "Changes", "clock"], ["keywords", "Keywords", "key-round"], ["pages", "Pages", "file-text"], ["questions", "Questions", "message-circle-question"], ["activity", "Activity", "activity"], ["site", "Their site", "globe"], ["map", "Site map", "network"],
+    /* 2026-11-23, the owner: Link gaps, Page vs page and the AI watch for this competitor alone, after the tabs above. Each is the
+       Competitors tab of the same name, drawn by its own file with this competitor fixed (competitors.js COMP.embed). */
+    ["gaps", "Link gaps", "link-2-off"], ["pairs", "Page vs page", "columns-3"], ["ai", "AI", "sparkles"]];
+  const EMBEDDED = new Set(["gaps", "pairs", "ai"]);
   if (window.ICONS && !window.ICONS["message-circle-question"]) window.ICONS["message-circle-question"] = '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>';
   const TAB_KEY = "competitor-tab";
   const S = { tab: null, p: null, ins: null, parts: null, buildMore: false, strengthBusy: false, strengthError: "", shownId: null, bestSort: null };
@@ -161,6 +165,8 @@
 
   function panel() {
     const tab = currentTab(), p = S.p, ins = S.ins, parts = S.parts;
+    if (EMBEDDED.has(tab)) return embeddedPanel(tab, p);
+    COMP.embed = null; // none of the Competitors tabs is shown in here now
     if (tab === "changes") return changesTab(p, parts);
     if (tab === "pages") return pagesTab(p, ins);
     if (tab === "questions") return questionsTab(p, ins);
@@ -169,6 +175,18 @@
     if (tab === "map") return window.SiteMap ? window.SiteMap.block({ competitorId: p.id, host: p.host, mine: { id: typeof COMP.siteId === "number" ? COMP.siteId : p.site?.id ?? null, host: COMP.site?.()?.host || p.site?.host || "" } }) : unavailable(); // site-map.js draws it by itself
     const off = p.tracking && p.tracking !== "on";
     return `<section class="card"><div class="cl-section-body" id="cl-keywords">${off ? COMP.trackingNote?.(p) ?? "" : parts.keywordsBody(p)}</div></section>`;
+  }
+
+  /* Link gaps, Page vs page or AI: the Competitors tab's own screen in a box, for this competitor only. Its file draws into the
+     box and loads into it (COMP.paintTab / COMP.reloadTab), so its buttons, filters and pages work as they do on their own. */
+  function embeddedPanel(id, p) {
+    const tab = COMP.tabs?.find((x) => x.id === id);
+    if (!tab) return unavailable();
+    COMP.embed = { id, competitorId: p.id };
+    const ready = tab.loadedFor === COMP.loadKey(tab);
+    // Drawn once the box is on the page: its after() (the AI chart, a ticked box, a watch) needs it there.
+    queueMicrotask(() => { if (!UI().$("#pt-embed") || !COMP.embedded(id)) return; if (ready) tab.after?.(); else COMP.reloadTab(tab); });
+    return `<div class="pt-embed" id="pt-embed" data-pt-embed="${id}">${ready ? tab.body() : COMP.loading()}</div>`;
   }
 
   // Keywords: small marks beside a keyword, from the same checks. "Not captured" stays silent.
@@ -708,6 +726,8 @@
 
   function pickTab(id, { focus = true } = {}) {
     S.tab = id;
+    // Opening one of the Competitors tabs in here reads it again: it may have changed on its own tab since.
+    if (EMBEDDED.has(id)) { const tab = COMP.tabs?.find((x) => x.id === id); if (tab) tab.loadedFor = undefined; }
     UI().$$("[data-pt-tab]").forEach((b) => { const on = b.dataset.ptTab === id; b.setAttribute("aria-selected", String(on)); b.tabIndex = on ? 0 : -1; });
     repaint();
     if (focus) UI().$(`[data-pt-tab="${id}"]`)?.focus({ preventScroll: true });
@@ -770,7 +790,7 @@
       }
       if (hit("[data-pt-only-them]")) { S.parts?.showKeywords?.("theirs_only"); pickTab("keywords", { focus: false }); UI().$('[data-cl-kw="theirs_only"]')?.focus({ preventScroll: false }); return; }
       if ((el = hit("[data-pt-go]"))) { UI().go?.(el.dataset.ptGo); return; }
-      if (hit("[data-pt-gaps]")) { COMP.open("gaps"); return; }
+      if (hit("[data-pt-gaps]")) { pickTab("gaps"); UI().$("#pt-panel")?.scrollIntoView?.({ block: "start" }); return; } // this competitor's own Link gaps, a tab away
       if ((el = hit("[data-pt-best-sort]"))) {
         const id = el.dataset.ptBestSort, first = BEST_SORT[id][1];
         S.bestSort = S.bestSort?.id !== id ? { id, dir: first } : S.bestSort.dir === first ? { id, dir: first === "asc" ? "desc" : "asc" } : null;
@@ -1039,7 +1059,7 @@
   bind();
   COMP.profileTabs = {
     /* The page was left: opened again, even the same competitor starts on Changes. */
-    leave() { S.shownId = null; },
+    leave() { S.shownId = null; COMP.embed = null; },
     headBlock, load, body, factsLine, keywordMarks, sampleInsights,
     keywordsWhy: () => (kwUnknown() ? t(KW_WHY[kwUnknown()]) : "") };
   // The banner's answer can land after the profile is drawn: redraw once, so 0 becomes — the moment it's known there's no list.
