@@ -21,7 +21,7 @@ const check = (name, ok, extra = "") => { results.push(ok); console.log(`${ok ? 
   const PIC = "https://site-one.example/img/abonnement.jpg";
   await page.route("**/api/site-pages?*", async (route) => {
     const reply = await route.fetch(), body = await reply.json();
-    for (const row of body.pages || []) if (row.path === "/abonnement/") row.image = PIC;
+    for (const row of body.pages || []) if (row.path === "/abonnement") row.image = PIC;
     await route.fulfill({ response: reply, json: body });
   });
   await page.route("**/api/site-pages/pictures", async (route) => {
@@ -91,8 +91,8 @@ const check = (name, ok, extra = "") => { results.push(ok); console.log(`${ok ? 
   await settle(1200);
   check("the numbers lead: clicks shown", (await page.locator(".pg-num").first().innerText()).includes("154"));
   const titleLink = page.locator("#topbar h1 a.head-link");
-  check("the title itself opens the page in a new tab", (await titleLink.getAttribute("href")) === "https://site-one.example/abonnement/" && (await titleLink.getAttribute("target")) === "_blank");
-  check("the page's address shows on hover, not as a line under the title", (await titleLink.getAttribute("data-tip")).endsWith("site-one.example/abonnement/") && !(await page.locator("#topbar").innerText()).includes("site-one.example/abonnement"));
+  check("the title itself opens the page in a new tab", (await titleLink.getAttribute("href")) === "https://site-one.example/abonnement" && (await titleLink.getAttribute("target")) === "_blank");
+  check("the page's address shows on hover, not as a line under the title", (await titleLink.getAttribute("data-tip")).endsWith("site-one.example/abonnement") && !(await page.locator("#topbar").innerText()).includes("site-one.example/abonnement"));
   const tabs = ["search", "visits", "rankings", "backlinks", "tasks", "notes", "technical", "content"];
   for (const tab of tabs) {
     await page.locator(`#pg-tab-${tab}`).click();

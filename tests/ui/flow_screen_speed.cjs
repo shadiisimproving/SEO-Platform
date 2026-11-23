@@ -118,7 +118,10 @@ const middleOf = async (page, route) => { const r = await page.locator(`#sidebar
     const v = await visit(page, sent, route);
     const asked = v.own.filter((r) => mine.some((p) => r.url === `api/${p}`));
     const others = v.own.filter((r) => !asked.includes(r));
-    check(asked.length === 0 && v.painted < 50 && !v.loading, `${route}: a first visit after the warm-up asks nothing for its answers and draws at once`, `${v.painted} ms${others.length ? `; not through SCREEN_DATA yet: ${short(others)}` : ""}`);
+    // Competitors: the warm-up holds only its site list until the screen's first visit (it learns its sites then), and never
+    // its Changes or links (owner, 2026-11-16: 5 to 8 MB a site on live). So its first visit may show those loading.
+    const firstLoads = route === "competitors";
+    check(asked.length === 0 && v.painted < 50 && (firstLoads || !v.loading), `${route}: a first visit after the warm-up asks nothing for its answers and draws at once`, `${v.painted} ms${others.length ? `; not through SCREEN_DATA yet: ${short(others)}` : ""}`);
     await away(page);
   }
 

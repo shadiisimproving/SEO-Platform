@@ -41,7 +41,8 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
     const row = key ? page.locator(`#page tr[data-rp-open="${kind}"][data-rp-key="${key}"]`).first() : page.locator(`#page tr[data-rp-open="${kind}"]`).nth(nth);
     const name = await row.getAttribute("data-rp-key");
     const cell = row.locator('td[data-label="Visits"], td[data-label="AI visits"]').first();
-    const visits = (await cell.innerText().catch(() => "")).trim();
+    // The figure only: since 2026-11-20 AI search's Visits cell also carries its change pill (Mickaz-like), on its own line.
+    const visits = (await cell.innerText().catch(() => "")).trim().split("\n")[0].trim();
     await cell.click();
     await loaded();
     await page.waitForTimeout(450);
@@ -182,6 +183,8 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
 
   await step("an assistant, from AI search", async () => {
     await go("ai");
+    // AI search opens on What AI says since 2026-11-20 (the Mickaz GEO work): the assistants are on their own tab.
+    if (await page.$('[data-ai-tab="assistants"][aria-selected="false"]')) { await page.click('[data-ai-tab="assistants"]'); await page.waitForTimeout(600); }
     check((await markRows("assistant", "Assistant")) >= 1, "the assistants are marked");
     const { name, visits } = await openRow("assistant");
     check((await text("#panel .rp-kind")).startsWith("Assistant") && (await text("#panel-title")) === name, `it says which assistant (${name})`);

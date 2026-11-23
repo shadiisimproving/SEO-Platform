@@ -104,6 +104,9 @@ async function go(page, hash, wait = 1400) {
   const firstCells = (file) => csvRows(file).map((line) => (line.startsWith('"') ? line.slice(1, line.indexOf('",')) : line.split(",")[0]));
   const about = (file) => require("child_process").execFileSync(path.join(__dirname, "..", "..", ".venv", "bin", "python"), ["-c", "import sys, openpyxl; s = openpyxl.load_workbook(sys.argv[1]).worksheets[0]; print(' | '.join(str(c.value) for r in s.iter_rows() for c in r if c.value is not None))", file]).toString();
 
+  // Up/Down follow Search Console's 7-day move by default since 2026-11-20; the demo's keywords have no daily Search Console
+  // positions, so the chips read our checks here, as the "Our checks" switch on the Keywords by ranking card does.
+  await page.evaluate(() => localStorage.setItem("seocc2-kwb-source", "checks"));
   await go(page, "#keywords?site=site-one.example");
   await page.click('#page [data-filter="down"]'); await page.waitForTimeout(400);
   await page.click('#page [data-sort="k"]'); await page.waitForTimeout(400);
