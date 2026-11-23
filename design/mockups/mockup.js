@@ -64,7 +64,7 @@
     return `<span class="status ${map[sev][1]}">${icon(map[sev][0])}${esc(word)}</span>`;
   };
   // Logos are copied into the project, so nothing loads from outside.
-  const LOGOS = { google: "google.svg", googleads: "googleads.svg", duckduckgo: "duckduckgo.png", bing: "bing.svg", yandex: "yandex.png", "Bright Data": "brightdata.png", SerpApi: "serpapi.png", HasData: "hasdata.png", Searlo: "searlo.png", "DuckDuckGo direct": "duckduckgo.png", SearXNG: "searxng.svg", clarity: "clarity.png", analytics: "analytics.svg", openpagerank: "openpagerank.png", searchconsole: "searchconsole.png", pagespeed: "pagespeed.png", moz: "moz.png", cloudflare: "cloudflare.png", commoncrawl: "commoncrawl.jpg", indexnow: "indexnow.png", openrouter: "openrouter.png", ahrefs: "ahrefs.png", firecrawl: "firecrawl.png", anthropic: "anthropic.png", x: "x.svg", linkedin: "linkedin.svg" };
+  const LOGOS = { google: "google.svg", googleads: "googleads.svg", duckduckgo: "duckduckgo.png", bing: "bing.svg", yandex: "yandex.png", "Bright Data": "brightdata.png", SerpApi: "serpapi.png", HasData: "hasdata.png", Searlo: "searlo.png", Semscraper: "semscraper.png", semscraper: "semscraper.png", "DuckDuckGo direct": "duckduckgo.png", SearXNG: "searxng.svg", clarity: "clarity.png", analytics: "analytics.svg", openpagerank: "openpagerank.png", searchconsole: "searchconsole.png", pagespeed: "pagespeed.png", moz: "moz.png", cloudflare: "cloudflare.png", commoncrawl: "commoncrawl.jpg", indexnow: "indexnow.png", openrouter: "openrouter.png", ahrefs: "ahrefs.png", firecrawl: "firecrawl.png", anthropic: "anthropic.png", x: "x.svg", linkedin: "linkedin.svg" };
   const logo = (name, size = 18, cls = "") => (LOGOS[name]
     ? `<img class="logo ${cls}" src="logos/${LOGOS[name]}" alt="" width="${size}" height="${size}">`
     : `<span class="logo ${cls}" style="width:${size}px;height:${size}px" aria-hidden="true">${name === "Browser on this Mac" ? icon("globe") : esc(String(name || "?")[0].toUpperCase())}</span>`);
@@ -3280,7 +3280,7 @@
   };
 
   // What each limit does when it runs out. Asked for: what refills, and what is one-time.
-  const RESETS = { google: "Daily", clarity: "Daily", bing: "Not published", yandex: "Not published", pagespeed: "Daily", openpagerank: "Monthly", brightdata: "Monthly, on the 1st", serpapi: "Monthly", hasdata: "Monthly", searlo: "Once only", ddg: "Nothing to refill", searxng: "Nothing to refill", browser: "Nothing to refill", moz: "Monthly", googleads: "Daily", cloudflare: "Every 5 minutes", indexnow: "No fixed limit", openrouter: "Daily", commoncrawl: "New release about monthly", ahrefs: "Monthly, per your plan" };
+  const RESETS = { google: "Daily", clarity: "Daily", bing: "Not published", yandex: "Not published", pagespeed: "Daily", openpagerank: "Monthly", brightdata: "Monthly, on the 1st", serpapi: "Monthly", hasdata: "Monthly", searlo: "Once only", "semscraper-serp": "Pay as you go", ddg: "Nothing to refill", searxng: "Nothing to refill", browser: "Nothing to refill", moz: "Monthly", googleads: "Daily", cloudflare: "Every 5 minutes", indexnow: "No fixed limit", openrouter: "Daily", commoncrawl: "New release about monthly", ahrefs: "Monthly, per your plan" };
 
   // The paid price shows once, under Price: a Limit that ends in ", then $1.50 per 1,000" leaves that part out.
   const reEsc = (text) => String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -3291,7 +3291,7 @@
     const engines = tool ? tool.engines.map((e) => `<span class="fact-engine">${logo(e, 14)}${esc(ENGINES.find(([id]) => id === e)?.[1] || e)}</span>`).join("") : "";
     return `<dl class="conn-facts">
       ${fact("Status", connStatus(c))}
-      ${fact("Price", `<span class="tag">${esc(t(c.price))}</span>${tool?.price ? ` <span class="small sec">${t("after that")} ${esc(t(tool.price))}</span>` : ""}`)}
+      ${fact("Price", `<span class="tag">${esc(t(c.price))}</span>${tool?.price ? ` <span class="small sec">${c.auth === "app" ? "" : `${t("after that")} `}${esc(t(tool.price))}</span>` : ""}`)}
       ${fact("Limit", esc(withoutPrice(t(c.limit), tool)))}
       ${fact("Refills", esc(t(RESETS[c.id] || "Not published")))}
       ${fact("Runs", esc(t(runs)))}
@@ -3427,6 +3427,8 @@
     let fields = "";
     if (c.auth === "key" || c.auth === "key+zone") fields = keyInput("conn-key", "API key", c.last4) + (c.auth === "key+zone" ? `<label class="field"><span>${t("Zone name")}</span><input class="input mono" spellcheck="false" autocapitalize="off" autocomplete="off" id="conn-zone" aria-describedby="conn-zone-help" value="${esc(c.zone ?? (c.status === "ok" ? "serp_api1" : ""))}"></label>
       <p class="help" id="conn-zone-help" style="margin:-6px 0 12px">${t("Your SERP API's name, such as serp_api1.")}${UI.tip("In the control panel, open that SERP API: the zone name and the API key are on its Overview tab.")} <a class="ext-link" href="https://brightdata.com/cp/zones" target="_blank" rel="noopener noreferrer">${icon("external-link")}${t("My zones")}</a></p>` : "");
+    // Semscraper's rank tool shares the app's Semscraper key (Extras): one key, saved once, so no second field here.
+    else if (c.auth === "app") fields = `<p class="note" style="margin:0 0 12px">${icon("key-round")}<span>${t("Uses the key saved under Extras → Semscraper. What AI says uses it too.")}</span></p><p style="margin:0 0 12px"><button type="button" class="btn btn-small" data-conn-open-key="semscraper">${t(c.status === "off" ? "Paste the Semscraper key" : "Open the Semscraper key")}</button></p>`;
     else if (c.auth === "url") fields = `<label class="field"><span>${t("Address")}</span><input class="input mono" type="url" inputmode="url" spellcheck="false" autocapitalize="off" autocomplete="off" id="conn-url" data-key-input placeholder="https://"></label>`;
     else if (c.auth === "per-site") fields = perSiteBlock(c, keyInput);
     else if (c.auth === "browser") fields = `<label class="field"><span>${t("This Mac's country")}</span><select class="select" id="conn-country" style="width:100%">${countryOptions(c.country || "AE")}</select></label><p class="help" style="margin:-4px 0 12px">${t("Results count for this country only.")}${window.UI.tip("For any other country they stay on a separate line and are never mixed in.")}</p>`;
@@ -3473,7 +3475,7 @@
         </details>`}
         ${window.LIVE?.oldClarityData?.(c) || ""}
       </form>
-      <div class="panel-foot"><button class="btn btn-main" id="conn-save" data-id="${c.id}">${t("Save")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button>${c.status === "ok" || c.status === "failing" ? `<button class="btn btn-ghost danger" id="conn-disconnect" data-id="${c.id}">${t("Disconnect")}</button>` : ""}</div>`,
+      <div class="panel-foot"><button class="btn btn-main" id="conn-save" data-id="${c.id}">${t("Save")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button>${(c.status === "ok" || c.status === "failing") && c.auth !== "app" ? `<button class="btn btn-ghost danger" id="conn-disconnect" data-id="${c.id}">${t("Disconnect")}</button>` : ""}</div>`,
     opener, { key: `conn|${id}`, reopen: () => connectionPanel(id, opener), after: () => { syncConnScope(); syncSiteNone(); syncGoogleKind(); } });
   }
 
@@ -3662,6 +3664,7 @@
 
 
     // Settings
+    if ((el = hit("[data-conn-open-key]"))) { connectionPanel(el.dataset.connOpenKey, el); return; }
     if ((el = hit("[data-conn]"))) { connectionPanel(el.dataset.conn, el); return; }
     if ((el = hit("[data-conn-open]")) && !hit("button, a, input, select, label")) { connectionPanel(el.dataset.connOpen, el.querySelector("[data-conn]")); return; }
     if ((el = hit("[data-conn-tool]"))) { $("#dlg").close(); openConnection(connFor(el.dataset.connTool).id); return; }

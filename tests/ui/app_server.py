@@ -44,6 +44,7 @@ def main() -> None:
     parser.add_argument("--keep", action="store_true", help="keep what's in the database, so a restart loses nothing")
     parser.add_argument("--login", action="store_true", help="ask for a login, with admin@example.com / demo-password-1")
     parser.add_argument("--slow", type=float, default=0.25, help="seconds between requests, so progress can be seen")
+    parser.add_argument("--semscraper", action="store_true", help="a fake Semscraper (tests/ui/fake_semscraper.py) as a Google rank tool, ahead of the fake SerpApi, with its key saved")
     parser.add_argument("--fake-claude", action="store_true", help="answer AI requests with tests/ui/fake_claude.py, so nothing reaches Anthropic")
     args = parser.parse_args()
 
@@ -58,6 +59,16 @@ def main() -> None:
         world = demo_world.build(engine, lock_dir)
         websites, tool = world["websites"], demo_world.install(world["websites"], world["tool"], delay=args.slow)
         print("sites:", world["sites"], "rivals:", world["rivals"], flush=True)
+
+    if args.semscraper:
+        from seo.serp import connections
+        from seo.sources import service as sources
+        from tests.ui import fake_semscraper
+
+        if not sources.app_key(engine, "semscraper"):
+            sources.save_app_key(engine, "semscraper", "fake-semscraper-key")
+        sem, plain = fake_semscraper.tool(), connections.tool_factory
+        connections.tool_factory = lambda eng, search_engine: ([sem] if search_engine == "google" else []) + list(plain(eng, search_engine))
 
     def worker(lane: str) -> None:
         while True:

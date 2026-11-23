@@ -1,7 +1,8 @@
 """Search tools: their keys (encrypted), the order Refresh tries them in, and what they've used.
 
 The order per engine is free tools that refill first, then one-time credits, then tools with no credits. It's editable.
-Paid use is off for every tool until someone switches it on, and only a Refresh ever reads that switch.
+Paid use is off for every tool until someone switches it on. A Refresh reads that switch (and asks its own limit), and so does
+the first check of new keywords, for a tool that is always paid (Semscraper) and only when the owner switched it on.
 """
 from __future__ import annotations
 
@@ -17,10 +18,14 @@ from sqlalchemy import Engine, text
 
 from seo.core import crypto
 from seo.core.errors import NotFound, Refused
-from seo.serp.tools import BrightData, BrowserBackup, DuckDuckGoDirect, HasData, Searlo, SearXNG, SerpApi, most_cost
+from seo.serp.tools import BrightData, BrowserBackup, DuckDuckGoDirect, HasData, Searlo, SearXNG, Semscraper, SerpApi, most_cost
 
 ENGINE_ORDER = ("google", "duckduckgo", "bing", "yandex")
 BRIGHT, SERPAPI, HASDATA, SEARLO, DDG, SEARX, BROWSER = "Bright Data", "SerpApi", "HasData", "Searlo", "DuckDuckGo direct", "SearXNG", "Browser on this Mac"
+SEMSCRAPER = "Semscraper"  # the same name as its app key (seo.sources.service.APP_KEYS["semscraper"]): one key, one counter
+# A run's limit is in dollars. A price in euros is held against it at this rate, on purpose above the real one, so a limit is
+# never passed. Only the limit uses it: every cost is written down and shown in its own currency.
+EUR_IN_USD = Decimal("1.20")
 
 
 @dataclass(frozen=True)
@@ -28,7 +33,7 @@ class Info:
     """What the screens need to say about a tool, whether or not it's connected."""
 
     cls: type
-    auth: str  # key, key+zone, url, none, browser
+    auth: str  # key, key+zone, url, none, browser, app (the key saved once for the app, in Settings → Semscraper)
     refills: str  # monthly, one-time, no credits
     price: str | None = None
 
@@ -39,11 +44,12 @@ TOOLS: dict[str, Info] = {
     SERPAPI: Info(SerpApi, "key", "monthly", "$25 a month"),
     HASDATA: Info(HasData, "key", "monthly", "$0.83 per 1,000"),
     SEARLO: Info(Searlo, "key", "one-time", "from $3.99 for 5,000"),
+    SEMSCRAPER: Info(Semscraper, "app", "paid", "€0.30 per 1,000"),
     SEARX: Info(SearXNG, "url", "no credits"),
     BROWSER: Info(BrowserBackup, "browser", "no credits"),
 }
 DEFAULT_ORDER = {
-    "google": [BRIGHT, SERPAPI, HASDATA, SEARLO, BROWSER],
+    "google": [SEMSCRAPER, BRIGHT, SERPAPI, HASDATA, SEARLO, BROWSER],  # Semscraper first (owner, 2026-11-23): used once its paid use is on
     "duckduckgo": [DDG, BRIGHT, SERPAPI],
     "bing": [BRIGHT, SERPAPI, HASDATA, SEARX, BROWSER],
     "yandex": [BRIGHT, SERPAPI, SEARX, BROWSER],
@@ -54,7 +60,7 @@ SETTINGS = {"disagree_gap": "3", "just_checked_hours": "12", "mac_country": "", 
 # that tool's name. The other tools' results stay in a keyword's details. "" = none: the saved orders alone decide.
 # Only SerpApi reads Google's AI Overview. With "ai_first" on, a Refresh on Google tries it first while it has free searches,
 # then follows the saved order. The owner's order stays as saved; this only goes in front of it.
-AI_FIRST_WHY = "SerpApi first while it has free searches, then the order below."
+AI_FIRST_WHY = "Tools that read AI Overviews go first: Semscraper when its paid use is on, SerpApi while it has free searches. Then the order below."
 
 # Tests and the local harness replace this to run on a fake search tool.
 tool_factory: Callable[[Engine, str], list] | None = None
@@ -93,6 +99,8 @@ def _seal(secret: str, key_path) -> str:
 
 def save_key(engine: Engine, tool: str, key: str = "", key_path=None, zone: str | None = None) -> dict:
     info = TOOLS.get(tool)
+    if info is not None and info.auth == "app":
+        raise Refused(APP_KEY_WHERE)
     if info is None or info.auth in ("none", "browser"):
         raise Refused("That tool doesn't take a key yet.")
     secret = key.strip() if isinstance(key, str) else ""
@@ -146,7 +154,12 @@ def status(engine: Engine, tool: str, key_path=None) -> dict:
     return answer
 
 
+APP_KEY_WHERE = "Semscraper's key is saved once, under Settings → Semscraper."
+
+
 def remove_key(engine: Engine, tool: str) -> None:
+    if TOOLS.get(tool) is not None and TOOLS[tool].auth == "app":  # it's the app's key: What AI says uses it too
+        raise Refused(APP_KEY_WHERE)
     with engine.begin() as conn:
         conn.execute(text("DELETE FROM connections WHERE tool = :t"), {"t": tool})
 
@@ -219,6 +232,11 @@ def _build(engine: Engine, name: str, key_path=None):
         return info.cls()
     if info.auth == "browser":
         return info.cls(get_setting(engine, "mac_country")) if on_this_mac() else None
+    if info.auth == "app":
+        from seo.sources import service as sources  # noqa: PLC0415 - sources never imports this module
+
+        secret = sources.app_key(engine, "semscraper", key_path)
+        return info.cls(secret) if secret else None
     with engine.connect() as conn:
         sealed = conn.execute(text("SELECT secret FROM connections WHERE tool = :t"), {"t": name}).scalar()
     if not sealed:
@@ -260,7 +278,9 @@ def set_order(engine: Engine, search_engine: str, names) -> list[str]:
     if search_engine not in ENGINE_ORDER:
         raise Refused("That search engine doesn't exist.")
     default = DEFAULT_ORDER[search_engine]
-    if not isinstance(names, list) or sorted(map(str, names)) != sorted(default):
+    # A list made before Semscraper joined (a page still open) may leave it out: it then goes to the end, as order_for does.
+    later = [SEMSCRAPER] if isinstance(names, list) and SEMSCRAPER in default and SEMSCRAPER not in names else []
+    if not isinstance(names, list) or sorted(map(str, names + later)) != sorted(default):
         raise Refused(f"Put every tool for this engine in the list: {', '.join(default)}.")
     with engine.begin() as conn:
         conn.execute(text("DELETE FROM tool_order WHERE engine = :e"), {"e": search_engine})
@@ -332,6 +352,44 @@ def save_setting(engine: Engine, name: str, value) -> str:
     return text_value
 
 
+def always_paid(tool) -> bool:
+    """A tool with no free allowance the app counts on: each search is paid use (Semscraper)."""
+    return bool(getattr(tool, "always_paid", False))
+
+
+def paid_ready(engine: Engine, tool) -> bool:
+    """An always-paid tool whose paid switch is on: the first check of new keywords may use it, the price being tiny."""
+    return always_paid(tool) and paid_on(engine, tool.name)
+
+
+def price(tool, credits: int) -> Decimal:
+    """What this many credits cost in the tool's own currency. Semscraper's first page costs more than the next ones."""
+    own = getattr(tool, "price_of", None)
+    if own is not None:
+        return Decimal(str(own(credits)))
+    return Decimal(str(getattr(tool, "paid_per", 0) or 0)) * credits
+
+
+def currency(tool) -> str:
+    return getattr(tool, "currency", "USD") or "USD"
+
+
+def in_cap_units(tool, money) -> Decimal:
+    """Money held against a run's dollar limit (see EUR_IN_USD)."""
+    amount = Decimal(str(money or 0))
+    return amount * EUR_IN_USD if currency(tool) == "EUR" else amount
+
+
+def free_serps_left(engine: Engine, tool) -> int | None:
+    """Semscraper's first free SERPs, by the app's own count of what it sent (Refresh and What AI says). None for others."""
+    allowance = getattr(tool, "free_serps", None)
+    if allowance is None:
+        return None
+    with engine.connect() as conn:
+        used = conn.execute(text("SELECT COALESCE(SUM(amount), 0) FROM credit_ledger WHERE tool = :t"), {"t": tool.name}).scalar()
+    return max(0, int(allowance) - int(used or 0))
+
+
 def paid_on(engine: Engine, tool: str) -> bool:
     with engine.connect() as conn:
         return bool(conn.execute(text("SELECT paid_on FROM tool_settings WHERE tool = :t"), {"t": tool}).scalar())
@@ -385,7 +443,10 @@ def hour_left(engine: Engine, tool) -> int | None:
 
 
 def can_afford_a_search(engine: Engine, tool, depth: int = 10) -> bool:
-    """On free credits alone. One search can cost a tool more than one credit, and the free allowance is never to be passed."""
+    """On free credits alone. One search can cost a tool more than one credit, and the free allowance is never to be passed.
+    An always-paid tool never can: free-only work (backlink checks, Keyword check, DuckDuckGo's daily check) never uses it."""
+    if always_paid(tool):
+        return False
     cost = max(most_cost(tool, depth), 1 if getattr(tool, "free_monthly", None) is not None or getattr(tool, "free_once", None) is not None else 0)
     left, hour = free_left(engine, tool), hour_left(engine, tool)
     return (left is None or left >= cost) and (hour is None or hour >= cost)
@@ -399,8 +460,9 @@ def out_only_for_this_hour(engine: Engine, tool, depth: int = 10) -> bool:
 
 
 def count_use(engine: Engine, tool_name: str, amount: int, *, paid: bool = False, cost=None, run_id: int | None = None, keyword_id: int | None = None, search_engine: str | None = None, note: str | None = None) -> None:
-    """A paid credit goes in the ledger and leaves the free allowance alone. A negative amount is a refund."""
-    if not amount:
+    """A paid credit goes in the ledger and leaves the free allowance alone. A negative amount is a refund. No credits but a
+    change of price (the tool said its own, lower one) is still written down."""
+    if not amount and not cost:
         return
     with engine.begin() as conn:
         if not paid:
@@ -428,11 +490,16 @@ def spend_on_search(engine: Engine, tool, keyword: str, search_engine: str, coun
     from seo.serp.tools import SearchFailed, TimedOut, ToolStopped, most_cost  # noqa: PLC0415 - tools imports nothing from here
 
     estimate = most_cost(tool, depth)
-    per = Decimal(str(getattr(tool, "paid_per", 0) or 0))
-    money = (lambda credits: per * credits if paid else None)
+    money = (lambda credits: price(tool, credits) if paid else None)
+    booked = {"credits": 0, "cost": Decimal(0)}
 
-    def book(amount: int, why: str | None) -> None:
-        count_use(engine, tool.name, amount, paid=paid, cost=money(amount), run_id=run_id, keyword_id=keyword_id, search_engine=search_engine, note=why)
+    def book(amount: int, why: str | None, cost_now=None) -> None:
+        """Written as the change from what's booked so far, so a price that isn't the same per credit still adds up."""
+        credits = booked["credits"] + amount
+        total = (cost_now if cost_now is not None else price(tool, credits)) if paid else None
+        cost = None if total is None else total - booked["cost"]
+        booked["credits"], booked["cost"] = credits, total if total is not None else booked["cost"]
+        count_use(engine, tool.name, amount, paid=paid, cost=cost, run_id=run_id, keyword_id=keyword_id, search_engine=search_engine, note=why)
 
     book(estimate, note)
     try:
@@ -454,8 +521,11 @@ def spend_on_search(engine: Engine, tool, keyword: str, search_engine: str, coun
         exc.credits_kept, exc.cost_kept = estimate, money(estimate)
         raise
     charged = int(answer.charged or 0)
-    book(charged - estimate, "what the tool really charged")
-    answer.cost = money(charged)
+    real = getattr(answer, "real_cost", None)  # the price the tool itself gave, when it gives one (Semscraper: €0 while free SERPs last)
+    real = Decimal(str(real)) if real is not None and paid else None
+    if charged != estimate or real is not None:
+        book(charged - estimate, "what the tool really charged", real)
+    answer.cost = real if real is not None else money(charged)
     clear_blocked(engine, tool.name)  # it got through, so the next automatic run may use it again
     return answer
 
@@ -491,6 +561,8 @@ def tool_list(engine: Engine, key_path=None) -> dict:
             "credits_per_search": most_cost(cls), "paid_per": getattr(cls, "paid_per", None), "paid_on": paid.get(name, False),
             "manual_only": bool(getattr(cls, "manual_only", False)), "gives_ai": bool(getattr(cls, "gives_ai", False)),
             "last4": state.get("last4"), "zone": state.get("zone"), "last_error": state.get("last_error"),
+            "always_paid": always_paid(cls), "currency": currency(cls), "price_first_page": float(price(cls, 1)) if always_paid(cls) else None,
+            "free_serps_left": free_serps_left(engine, cls), "free_serps_of": getattr(cls, "free_serps", None),
         })
     missing_browser = False
     if on_this_mac():
@@ -526,4 +598,6 @@ def test_tool(engine: Engine, name: str) -> dict:
         note_error(engine, name, str(exc))
         return {"ok": False, "checked": True, "message": str(exc)}
     note_ok(engine, name)
+    if currency(tool) == "EUR" and isinstance(left, float):  # Semscraper says its balance, in euros
+        return {"ok": True, "checked": True, "message": "Works.", "searches_left": None, "balance": left, "currency": "EUR"}
     return {"ok": True, "checked": True, "message": "Works.", "searches_left": left if isinstance(left, int) else None}

@@ -137,7 +137,7 @@
     "They don't refill; connect another tool in Settings.": "Ils ne se rechargent pas ; connectez un autre outil dans les réglages.",
     "They refill monthly, or connect another tool in Settings.": "Ils se rechargent chaque mois, ou connectez un autre outil dans les réglages.", "Open Settings": "Ouvrir les réglages",
     "Several links share these visits, so no single cost per visit.": "Plusieurs liens partagent ces visites : pas de coût par visite pour un seul lien.",
-    "SerpApi first while it has free searches, then the order below.": "SerpApi d'abord tant qu'il a des recherches gratuites, puis l'ordre ci-dessous.",
+    "SerpApi first while it has free searches, then the order below.": "SerpApi d'abord tant qu'il a des recherches gratuites, puis l'ordre ci-dessous.", "Tools that read AI Overviews go first: Semscraper when its paid use is on, SerpApi while it has free searches. Then the order below.": "Les outils qui lisent les aperçus IA passent en premier : Semscraper quand son usage payant est activé, SerpApi tant qu'il a des recherches gratuites. Puis l'ordre ci-dessous.",
     "Checked recently with this tool. Press again to spend a credit anyway.": "Contrôlé récemment avec cet outil. Appuyez encore pour dépenser un crédit quand même.",
     "Check again? 1 credit": "Contrôler encore ? 1 crédit",
     // Settings → the Claude (Anthropic) row and its panel

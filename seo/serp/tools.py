@@ -880,3 +880,193 @@ class BrowserBackup:
                 break
             found += [Found(len(found) + i + 1, row.url, row.title, row.host) for i, row in enumerate(rows)]
         return Answer(self.name, self.country, depth, found[:depth], NOT_CAPTURED, [], 0)
+
+
+# ---- Semscraper ----------------------------------------------------------------------------------
+# Written from semscraper.com/en/documentation (checked 2026-11-23). NEVER RUN ON A REAL KEY in tests. Google only. One task
+# per search: POST /v1/serp bills it when it's created (€0.30 per 1,000 for the first page, €0.20 per 1,000 for each more),
+# then GET /v1/serp?ids= (never billed) is asked every few seconds until it says done. It reads the AI Overview and who it
+# cites, so it can stand in for SerpApi there. Its key is the app's Semscraper key (Settings → Semscraper), the same one
+# What AI says uses. It has no free allowance the app can count on (the first 1,000 SERPs are the account's, and What AI says
+# spends from them too), so every search is paid use: only with its paid switch on, and the price is shown first.
+
+SEMSCRAPER_BASE = "https://api.semscraper.com/v1"
+_AI_BLOCKS = ("ai_overview_citation", "ai_overview_panel", "ai_overview_citation_source")
+
+
+def _money(value) -> "Decimal | None":
+    from decimal import Decimal, InvalidOperation  # noqa: PLC0415 - only Semscraper's prices need it here
+
+    try:
+        found = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError):
+        return None
+    return found if found.is_finite() and found >= 0 else None
+
+
+def semscraper_price(pages: int):
+    """Euros for one search of this many pages: €0.0003 for the first, €0.0002 for each more. Negative or zero: nothing."""
+    from decimal import Decimal  # noqa: PLC0415
+
+    pages = int(pages or 0)
+    if pages <= 0:
+        return Decimal("0")
+    return Decimal("0.0003") + Decimal("0.0002") * (pages - 1)
+
+
+def read_semscraper(row: dict, depth: int) -> tuple[list[Found], str, list[str]]:
+    """(organic results, AI Overview state, the addresses it cites) from one finished SERP.
+
+    Organic rows come in Google's order (page, then rank_type). A row whose link Google hid (url_approx) keeps its place,
+    with the site Semscraper shows and no page. The AI Overview mirrors SerpApi's rules: none shown is a "no"; one cut short,
+    unreadable, or citing a hidden source is "not captured", never a "no".
+    """
+    blocks = [block for block in row.get("results") or [] if isinstance(block, dict)]
+    items = []
+    for block in blocks:
+        if block.get("type") != "organic":
+            continue
+        for item in block.get("items") or []:
+            if isinstance(item, dict):
+                items.append(item)
+
+    def place(item: dict) -> tuple:
+        def whole(value, default):
+            try:
+                return int(value)
+            except (TypeError, ValueError):
+                return default
+        return whole(item.get("page"), 1), whole(item.get("rank_type"), 10**6), whole(item.get("rank_serp"), 10**6)
+
+    shaped = []
+    for item in sorted(items, key=place):  # a stable sort: rows without numbers keep the order they came in
+        link = str(item.get("url") or "").strip()
+        if item.get("url_approx"):  # Google hid the address: Semscraper's url is a guess, so the page stays unknown
+            goto = str(item.get("goto_url") or "").strip()
+            link = goto if google_redirect(goto) else "https://www.google.com/goto?url=hidden"
+        shaped.append({"link": link, "title": item.get("title"), "domain": item.get("domain")})
+    results = _rows(shaped, 0, set())[:depth]
+
+    info = row.get("serp_info") if isinstance(row.get("serp_info"), dict) else {}
+    overview = info.get("ai_overview")
+    ai_blocks = [block for block in blocks if block.get("type") in _AI_BLOCKS]
+    kind = str(overview.get("type") or "").lower() if isinstance(overview, dict) else ""
+    if not isinstance(overview, dict) or kind == "none" or (not kind and not overview.get("text") and not ai_blocks):
+        if ai_blocks:  # sources drawn without an overview to go with them: something's off, and that's not a "no"
+            return results, NOT_CAPTURED, []
+        return results, ABSENT, []
+    if not str(overview.get("text") or "").strip() or overview.get("complete") is False:
+        return results, NOT_CAPTURED, []  # it showed, but couldn't be read, or Google hadn't finished writing it
+    cited: list[str] = []
+    for block in ai_blocks:
+        for item in block.get("items") or []:
+            if not isinstance(item, dict):
+                continue
+            url = str(item.get("url") or "").strip()
+            if item.get("url_approx"):
+                return results, NOT_CAPTURED, []  # a hidden source: who it cites can't be said
+            if not url.startswith(("http://", "https://")):
+                continue  # a brand named in the text, with no link (ai_overview_citation often has only `brand`)
+            address, hidden = result_address(url)
+            if hidden:
+                return results, NOT_CAPTURED, []
+            if address not in cited:
+                cited.append(address)
+    return results, PRESENT, cited
+
+
+class Semscraper:
+    name = "Semscraper"
+    engines = ("google",)
+    gives_ai = True
+    always_paid = True  # no free allowance the app counts: every search needs its paid switch, and shows its price first
+    free_monthly = None
+    paid_per = 0.0003  # euros for the first page; each more page is €0.0002 (price_of)
+    currency = "EUR"
+    free_serps = 1000  # the account's first 1,000 SERPs are free; the app counts what it has sent against them
+    poll_seconds = 3.0
+    wait_limit = 120.0
+
+    def __init__(self, key: str, client: httpx.Client | None = None, sleep=time.sleep, clock=time.monotonic):
+        self.key = key
+        self.client = client or httpx.Client(timeout=TIMEOUT, headers={"User-Agent": BOT_NAME})
+        self.sleep, self.clock = sleep, clock
+
+    @staticmethod
+    def price_of(pages: int):
+        return semscraper_price(pages)
+
+    def _call(self, method: str, path: str, **kwargs) -> httpx.Response:
+        reply = _request(lambda: self.client.request(method, f"{SEMSCRAPER_BASE}{path}", headers={"Authorization": f"Bearer {self.key}"}, **kwargs), self.name)
+        if reply.status_code in (401, 403):
+            raise ToolStopped("Semscraper refused the key.")
+        if reply.status_code == 402:
+            raise ToolStopped("Semscraper has no credit left.")
+        if reply.status_code == 429:
+            raise ToolStopped("Semscraper asked us to slow down, so this tool stopped.")
+        if reply.status_code != 200:
+            said = ""
+            try:
+                data = reply.json()
+                said = str(data.get("message") or data.get("error") or "") if isinstance(data, dict) else ""
+            except ValueError:
+                pass
+            if re.search(r"credit|balance|insufficient|fund", said, re.IGNORECASE):
+                raise ToolStopped("Semscraper has no credit left.")
+            raise SearchFailed(f"Semscraper answered {reply.status_code}{f': {said[:200]}' if said else ''}")
+        return reply
+
+    def search(self, keyword: str, engine: str, country: str, language: str, device: str, depth: int) -> Answer:
+        if engine != "google":
+            raise SearchFailed("Semscraper is only used for Google.")
+        pages = min(10, pages_for(depth))
+        location = (country or "us").lower()
+        task = {"search_engine": "google_search", "keyword": keyword, "device": device if device in ("desktop", "mobile") else "desktop",
+                "depth": pages, "location": location, "language": (language or "en").lower(), "priority": 5}
+        sent = _json_or_fail(self._call("POST", "/serp", json=[task]), self.name)
+        rows = sent.get("data")
+        first = rows[0] if isinstance(rows, list) and rows and isinstance(rows[0], dict) else {}
+        task_id = str(first.get("id") or "")
+        if not task_id:
+            raise SearchFailed("Semscraper didn't take the search.")  # nothing was created, so nothing was billed
+        cost = _money(first.get("cost"))
+        started = self.clock()
+        while True:
+            # The task exists and is billed from here on: whatever stops it now keeps what it cost.
+            with _so_far(pages):
+                if self.clock() - started > self.wait_limit:
+                    raise TimedOut(f"Semscraper didn't finish the search within {int(self.wait_limit)} seconds.")
+                got = _json_or_fail(self._call("GET", "/serp", params={"ids": task_id, "output": "json"}), self.name)
+            found = got.get("data")
+            row = next((r for r in found if isinstance(r, dict) and str(r.get("id")) == task_id), None) if isinstance(found, list) else None
+            status = str((row or {}).get("status") or "").lower()
+            if row is not None and status == "done":
+                break
+            if row is not None and status not in ("pending", "processing", ""):
+                failed = SearchFailed(f"Semscraper couldn't do this search ({status}).")
+                failed.charged = 0  # a failed request isn't billed
+                raise failed
+            self.sleep(self.poll_seconds)
+        if cost is None:
+            cost = _money(row.get("cost"))
+        billed = pages
+        if cost is not None and cost > 0:  # only found pages are billed: the price says how many
+            extra = semscraper_price(2) - semscraper_price(1)
+            billed = max(1, min(pages, 1 + int(((cost - semscraper_price(1)) / extra).to_integral_value())))
+        results, state, cited = read_semscraper(row, depth)
+        _refuse_hidden(self.name, results, billed)  # the page came back and was billed
+        answer = Answer(self.name, location.upper(), depth, results, state, cited, billed)
+        answer.real_cost = cost  # what Semscraper said it cost: €0 while the account's free SERPs last
+        return answer
+
+    def test(self):
+        """Its balance, which costs nothing. No credit left stops it."""
+        data = _json_or_fail(self._call("GET", "/billing/credit"), self.name)
+        rows = data.get("data")
+        first = rows[0] if isinstance(rows, list) and rows and isinstance(rows[0], dict) else rows if isinstance(rows, dict) else {}
+        balance = _money(first.get("balance")) if isinstance(first, dict) else None
+        if balance is None:
+            raise SearchFailed("Semscraper didn't say what credit is left.")
+        if balance <= 0:
+            raise ToolStopped("Semscraper has no credit left.")
+        return float(balance)

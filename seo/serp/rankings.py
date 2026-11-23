@@ -419,7 +419,7 @@ def _first_checks(engine: Engine, rows: list[dict]) -> None:
 
     def tool_for(name: str) -> str | None:
         if name not in first_tool:
-            line = connections.not_blocked(engine, connections.tools_for(engine, name))
+            line = [t for t in connections.not_blocked(engine, connections.tools_for(engine, name)) if not connections.always_paid(t) or connections.paid_ready(engine, t)]
             first_tool[name] = line[0].name if line else None
         return first_tool[name]
 

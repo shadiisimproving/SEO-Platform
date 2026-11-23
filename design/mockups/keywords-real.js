@@ -130,6 +130,57 @@
     "Other pages ranking": "Autres pages classées", "{n} more pages in this period": "{n} autres pages sur la période", "Show all {n}": "Tout afficher ({n})", "Main page": "Page principale", "Other pages": "Autres pages", "{n} more pages, in the list below": "{n} autres pages, dans la liste ci-dessous",
     "Backlink found": "Backlink trouvé", "Bought links and other backlinks to this page are the dashed lines.": "Les liens achetés et les autres backlinks vers cette page sont les lignes pointillées.",
     "Position by page": "Position par page", "Your page": "Votre page", "Months": "Mois",
+    // Semscraper, the main tool for Google and its AI Overviews (2026-11-23)
+    "Paid on every search": "Payant à chaque recherche",
+    "paid use off": "usage payant désactivé",
+    "paid": "payant",
+    "Euro prices count at $1.20 per €1 toward this limit.": "Les prix en euros comptent 1,20 $ pour 1 € dans cette limite.",
+    "less than {money}": "moins de {money}",
+    "about {money}": "environ {money}",
+    "{tool} checks {n} keyword: {money}.": "{tool} vérifie {n} mot-clé : {money}.",
+    "{tool} checks {n} keywords: {money}.": "{tool} vérifie {n} mots-clés : {money}.",
+    "{tool} checks {n} keyword, free: uses {c} of your {left} free searches.": "{tool} vérifie {n} mot-clé, gratuitement : utilise {c} de vos {left} recherches gratuites.",
+    "{tool} checks {n} keywords, free: uses {c} of your {left} free searches.": "{tool} vérifie {n} mots-clés, gratuitement : utilise {c} de vos {left} recherches gratuites.",
+    "About {n} of the first {of} free Semscraper searches left, by the app's count. Free ones cost nothing.": "Il reste environ {n} des {of} premières recherches Semscraper gratuites, selon le compte de l'application. Les gratuites ne coûtent rien.",
+    "{tool} checks the last {n}.": "{tool} vérifie les {n} derniers.",
+    "Semscraper reads AI Overviews for €0.30 per 1,000. Paste its key in Settings to use it first.": "Semscraper lit les aperçus IA pour 0,30 € les 1 000. Collez sa clé dans les réglages pour l'utiliser en premier.",
+    "Semscraper's paid use is off, so SerpApi checks them for free.": "L'usage payant de Semscraper est désactivé : SerpApi les vérifie gratuitement.",
+    "Use Semscraper (€0.30 per 1,000)": "Utiliser Semscraper (0,30 € les 1 000)",
+    "Semscraper is resting after a block, so SerpApi checks them.": "Semscraper est en pause après un blocage : SerpApi les vérifie.",
+    "If Semscraper fails, SerpApi takes over, on its free searches.": "Si Semscraper échoue, SerpApi prend le relais, sur ses recherches gratuites.",
+    "{tool} costs money on every search: switch on its paid use in Settings, then allow paid use for this Refresh.": "{tool} est payant à chaque recherche : activez son usage payant dans les réglages, puis autorisez l'usage payant pour cette actualisation.",
+    "Semscraper costs money on every search: switch on its paid use in Settings, then allow paid use for this Refresh.": "Semscraper est payant à chaque recherche : activez son usage payant dans les réglages, puis autorisez l'usage payant pour cette actualisation.",
+    "Semscraper stopped: this Refresh reached its spending limit.": "Semscraper s'est arrêté : cette actualisation a atteint sa limite de dépense.",
+    "Semscraper has no credit left.": "Semscraper n'a plus de crédit.",
+    "Semscraper's key is saved once, under Settings → Semscraper.": "La clé Semscraper s'enregistre une seule fois, dans Réglages → Semscraper.",
+    "Semscraper is only used for Google.": "Semscraper ne sert que pour Google.",
+    "Semscraper didn't take the search.": "Semscraper n'a pas pris la recherche.",
+    "Semscraper didn't say what credit is left.": "Semscraper n'a pas indiqué le crédit restant.",
+    "Semscraper didn't finish the search within 120 seconds.": "Semscraper n'a pas terminé la recherche en 120 secondes.",
+    "has its paid use off": "a son usage payant désactivé",
+    "reached this Refresh's limit": "a atteint la limite de cette actualisation",
+    "has no credit left": "n'a plus de crédit",
+    "Also check rankings and AI Overviews with it": "S'en servir aussi pour les positions et les aperçus IA",
+    "Paid on every search: €0.30 per 1,000. Used only while this is on, and each Refresh shows its price in euros first.": "Payant à chaque recherche : 0,30 € les 1 000. Utilisé seulement si c'est activé, et chaque actualisation affiche d'abord son prix en euros.",
+    "Semscraper and SerpApi read AI Overviews, so they go first for Google: Semscraper when its paid use is on, SerpApi while it has free searches.": "Semscraper et SerpApi lisent les aperçus IA, ils passent donc en premier pour Google : Semscraper quand son usage payant est activé, SerpApi tant qu'il a des recherches gratuites.",
+    "{tool}'s paid use is off, so the next tool in the order checks instead.": "L'usage payant de {tool} est désactivé : l'outil suivant de l'ordre vérifie à sa place.",
+    "Switch it on": "L'activer",
+    "{tool}: paid use on": "{tool} : usage payant activé",
+    "Balance": "Solde",
+    "Uses the key saved under Extras → Semscraper. What AI says uses it too.": "Utilise la clé enregistrée dans Extras → Semscraper. Ce que dit l'IA l'utilise aussi.",
+    "Paste the Semscraper key": "Coller la clé Semscraper",
+    "Open the Semscraper key": "Ouvrir la clé Semscraper",
+    "Pay as you go": "Paiement à l'usage",
+    "Paid": "Payant",
+    "€0.30 per 1,000; the first 1,000 free": "0,30 € les 1 000 ; les 1 000 premières gratuites",
+    "€0.30 per 1,000": "0,30 € les 1 000",
+    "Save its key once": "Enregistrer sa clé une fois",
+    "Paste the key under Extras → Semscraper. What AI says uses the same key.": "Collez la clé dans Extras → Semscraper. Ce que dit l'IA utilise la même clé.",
+    "Switch on paid use": "Activer l'usage payant",
+    "Tick Allow paid use above. Every Refresh shows its price in euros before anything is spent.": "Cochez Autoriser l'usage payant ci-dessus. Chaque actualisation affiche son prix en euros avant toute dépense.",
+    "Tools that read AI Overviews go first: Semscraper when its paid use is on, SerpApi while it has free searches. Then the order below.": "Les outils qui lisent les aperçus IA passent en premier : Semscraper quand son usage payant est activé, SerpApi tant qu'il a des recherches gratuites. Puis l'ordre ci-dessous.",
+    "Semscraper refused the key.": "Semscraper a refusé la clé.",
+    "Semscraper asked us to slow down, so this tool stopped.": "Semscraper a demandé de ralentir : cet outil s'est arrêté.",
   };
   Object.keys(fr).forEach((word) => { if (window.FR[word] === undefined) window.FR[word] = fr[word]; });
 
@@ -142,7 +193,7 @@
 
   const ENGINES = [["google", "Google"], ["duckduckgo", "DuckDuckGo"], ["bing", "Bing"], ["yandex", "Yandex"]];
   const OWN_TOOL = { google: "Search Console", bing: "Bing Webmaster", yandex: "Yandex Webmaster" };
-  const CONN_ID = { "Bright Data": "brightdata", SerpApi: "serpapi", HasData: "hasdata", Searlo: "searlo", "DuckDuckGo direct": "ddg", SearXNG: "searxng", "Browser on this Mac": "browser" };
+  const CONN_ID = { "Bright Data": "brightdata", SerpApi: "serpapi", HasData: "hasdata", Searlo: "searlo", Semscraper: "semscraper-serp", "DuckDuckGo direct": "ddg", SearXNG: "searxng", "Browser on this Mac": "browser" };
   let UI, t, esc, icon, num, dec, status, logo, $, $$, state;
   const K = {
     data: null, error: "", loading: false, stale: true, tools: null, order: {}, settings: {}, selected: new Set(), queries: {},
@@ -229,7 +280,9 @@
     const usable = (K.tools || []).filter((tool) => tool.connected || tool.auth === "none" || tool.auth === "browser" || tool.name === main);
     const opts = [`<option value="">${esc(t("None: the order below"))}</option>`, ...usable.map((tool) => `<option value="${esc(tool.name)}"${tool.name === main ? " selected" : ""}>${esc(tool.name)}</option>`)];
     const tip = UI.tip(t("Every ranking in the app comes from this tool. If it hasn't checked a keyword yet, the next tool in the order is shown, with its name. The other tools' results are in each keyword's details."));
-    return `<label class="kwr-main-tool small" style="flex-basis:100%;display:flex;align-items:center;gap:8px;margin:8px 0 4px"><b>${t("Main tool")}</b><select id="kwr-main-tool" class="select" style="width:auto">${opts.join("")}</select>${tip}</label>`;
+    const chosen = (K.tools || []).find((tool) => tool.name === main);
+    const off = chosen?.always_paid && !chosen.paid_on ? `<span class="small sec" id="kwr-main-paid-off">${icon("triangle-alert", "warn")} ${esc(t("{tool}'s paid use is off, so the next tool in the order checks instead.").replace("{tool}", main))} <button type="button" class="link-btn" id="kwr-main-paid-on" data-tool="${esc(main)}">${t("Switch it on")}</button></span>` : "";
+    return `<label class="kwr-main-tool small" style="flex-basis:100%;display:flex;align-items:center;gap:8px;margin:8px 0 4px;flex-wrap:wrap"><b>${t("Main tool")}</b><select id="kwr-main-tool" class="select" style="width:auto">${opts.join("")}</select>${tip}</label>${off ? `<p style="flex-basis:100%;margin:0 0 4px">${off}</p>` : ""}`;
   };
 
   /* Settings draws the search tools from window.TOOLS and window.CONNECTIONS, so the real numbers go there. */
@@ -511,7 +564,7 @@
   }
 
   /* ---- Check AI Overviews for all keywords (Track C) ---------------------------------------------------------------------
-     The keywords whose AI column says Not checked, on Google, checked once with the tools that read AI Overviews (SerpApi),
+     The keywords whose AI column says Not checked, on Google, checked once with the tools that read AI Overviews (Semscraper, then SerpApi),
      through the usual Refresh path: its dialog shows how many and what it uses before anything runs. Only this click starts it. */
   const aiTools = () => (K.tools || []).filter((tool) => tool.gives_ai && (tool.engines || []).includes("google"));
   const aioUnchecked = (rows) => rows.filter((row) => row.ai?.state === "not-captured");
@@ -522,8 +575,7 @@
   }
   function openAioCheck() {
     const rows = aioUnchecked(allRows()), ids = [...new Set(rows.map((row) => row.keyword_id))];
-    const ready = aiTools().filter((tool) => tool.connected).map((tool) => tool.name);
-    openRefresh(ids, ["google"], 10, "pick", ready, null, { count: ids.length });
+    openRefresh(ids, ["google"], 10, "ai", [], null, { count: ids.length }); // mode "ai": Semscraper first, SerpApi the fallback
   }
 
   /* ---- Volumes: where search volume comes from (Track C, plan item 7) ----------------------------------------------------
@@ -1040,15 +1092,24 @@
   }
 
   // ---- refresh dialog -------------------------------------------------------------------------
-  const refreshBody = () => {
+  const refreshBody = (confirming = false) => {
     const r = K.refresh;
-    return { keyword_ids: r.ids, engines: [...r.engines], depth: r.depth, mode: r.mode, picked: [...r.picked], include_recent: r.includeRecent, allow_paid: r.paid, paid_cap: r.paid ? r.cap : undefined, site_id: undefined };
+    // Check AI Overviews asks the most it can cost first (the limit at its top), then confirms with that estimate as the limit,
+    // rounded up to the cent: it can never spend more than the dialog said.
+    const cap = r.aio ? (confirming ? Math.max(0.01, Math.ceil((r.preview?.cap_units || 0) * 100 + 1e-9) / 100) : 1000) : r.cap;
+    return { keyword_ids: r.ids, engines: [...r.engines], depth: r.depth, mode: r.mode, picked: [...r.picked], include_recent: r.includeRecent, allow_paid: r.paid, paid_cap: r.paid ? cap : undefined, site_id: undefined };
   };
 
   /* `deeper` is Check deeper's own view of the dialog: { keyword, tools } names the one keyword and the tools that missed it. */
   function openRefresh(ids, engines, depth = 10, mode = "auto", picked = [], deeper = null, aio = null) {
     const unique = [...new Set(ids)];
-    K.refresh = { ids: unique, engines: new Set(engines || [state.engine === "all" ? "google" : state.engine]), depth, mode, picked: new Set(picked), includeRecent: false, paid: false, cap: 5, token: token(), asked: 0, preview: null, deeper, aio };
+    const wanted = new Set(engines || [state.engine === "all" ? "google" : state.engine]);
+    // A tool that is paid on every search (Semscraper), switched on in Settings and leading this Refresh: paid use starts
+    // ticked. The dialog still shows its price in euros, and nothing runs before Confirm.
+    // Automatic: only when it leads an engine's order (the main tool, or first in the order); chosen: when ticked.
+    const leads = (tool) => (mode === "pick" ? picked.includes(tool.name) : [...wanted].some((e) => (K.order[e] || [])[0] === tool.name));
+    const paidLeads = (K.tools || []).some((tool) => tool.always_paid && tool.paid_on && tool.connected && tool.engines.some((e) => wanted.has(e)) && leads(tool));
+    K.refresh = { ids: unique, engines: wanted, depth, mode: aio ? "ai" : mode, picked: new Set(picked), includeRecent: Boolean(aio), /* AIO: each lacks an overview reading */ paid: paidLeads, cap: 5, token: token(), asked: 0, preview: null, deeper, aio };
     $("#dlg").classList.remove("wide");
     renderRefresh();
     $("#dlg").showModal();
@@ -1068,11 +1129,12 @@
 
   function renderRefresh() {
     const r = K.refresh;
-    const credit = (tool) => (tool.left === null ? t("No credits needed") : `${num(tool.left)}/${num(tool.of)} ${t("left")} · ${t(tool.refills === "one-time" ? "Never refills" : "Refills monthly")}`);
+    const credit = (tool) => (tool.always_paid ? `${t("Paid on every search")} · ${t(tool.price)}${tool.paid_on ? "" : ` · ${t("paid use off")}`}` : tool.left === null ? t("No credits needed") : `${num(tool.left)}/${num(tool.of)} ${t("left")} · ${t(tool.refills === "one-time" ? "Never refills" : "Refills monthly")}`);
     const anyPaid = K.tools.some((tool) => tool.paid_on && tool.connected);
+    const euroTool = K.tools.some((tool) => tool.paid_on && tool.connected && tool.currency === "EUR");
     // Check deeper: one keyword on one engine, its tools picked; only the tools that missed it show until All tools.
     const deep = r.deeper, only = deep && !deep.all ? new Set(deep.tools) : null, engine = [...r.engines][0];
-    if (r.aio) { renderAioCheck(r, credit); return; }
+    if (r.aio) { renderAioCheck(r); return; }
     UI.setHTML($("#dlg"), `
       <div class="dlg-head"><h2 id="dlg-title">${t(deep ? "Check deeper" : "Refresh keywords")}</h2><button class="icon-btn" data-close-dlg aria-label="${t("Close")}">${icon("x")}</button></div>
       <div class="dlg-body">
@@ -1088,40 +1150,82 @@
           ${orderedTools().filter((tool) => !only || only.has(tool.name)).map((tool) => `<label class="tool-row" data-kwr-tool-row="${esc(tool.name)}">
             <input type="checkbox" class="chk" style="margin:0" data-kwr-tool="${esc(tool.name)}" ${r.picked.has(tool.name) ? "checked" : ""}>
             ${logo(tool.name, 22)}
-            <span class="tool-main"><span class="t">${esc(t(tool.name))}</span><span class="d">${esc(credit(tool))}${tool.price ? ` · ${t("then")} ${esc(t(tool.price))}` : ""}</span></span>
+            <span class="tool-main"><span class="t">${esc(t(tool.name))}</span><span class="d">${esc(credit(tool))}${tool.price && !tool.always_paid ? ` · ${t("then")} ${esc(t(tool.price))}` : ""}</span></span>
             <span class="tool-engines" role="img" aria-label="${esc(tool.engines.map(name).join(", "))}" data-tip="${esc(tool.engines.map(name).join(", "))}">${tool.engines.map((e) => logo(e, 14)).join("")}</span>
             <span class="tool-checks"></span></label>`).join("")}
         </div>
         ${anyPaid ? `<div class="paid-row"><label class="opt"><input type="checkbox" class="chk" style="margin:0" id="kwr-paid" ${r.paid ? "checked" : ""}>${t("Use paid credits after free ones")}</label>
-          <label class="paid-cap" id="kwr-paid-cap" ${r.paid ? "" : "hidden"}>${t("Limit to")} $<input class="input" id="kwr-cap" type="number" autocomplete="off" min="1" step="1" value="${r.cap}"></label></div>` : ""}
+          <label class="paid-cap" id="kwr-paid-cap" ${r.paid ? "" : "hidden"}>${t("Limit to")} $<input class="input" id="kwr-cap" type="number" autocomplete="off" min="1" step="1" value="${r.cap}"></label></div>${euroTool ? `<p class="help" style="margin:4px 0 0">${t("Euro prices count at $1.20 per €1 toward this limit.")}</p>` : ""}` : ""}
         <div id="kwr-summary" aria-live="polite"></div>
       </div>
       <div class="dlg-foot"><span class="left" id="kwr-foot"></span><button class="btn" data-close-dlg>${t("Cancel")}</button><button class="btn btn-main" id="kwr-confirm" disabled>${t(deep ? "Check deeper" : "Refresh")}</button></div>`);
     updatePreview();
   }
 
-  /* Check AI Overviews' own view of the dialog: how many keywords, the tools that read AI Overviews only, never paid use. */
-  function renderAioCheck(r, credit) {
-    const tools = aiTools(), lead = t(r.aio.count === 1 ? "{n} keyword has no AI Overview check yet." : "{n} keywords have no AI Overview check yet.").replace("{n}", num(r.aio.count));
-    const none = !tools.some((tool) => tool.connected);
+  /* Check AI Overviews' own view of the dialog (owner, 2026-11-23): Semscraper is the main tool here, SerpApi the fallback. It
+     says which tool it will use, how many keywords, the price in euros and the free searches left, and runs only on Confirm. The
+     server's mode "ai" keeps to those two tools, in that order: Semscraper when its paid use is on, SerpApi when it isn't, has
+     no key, is resting after a block, or fails during the run. */
+  function renderAioCheck(r) {
+    const lead = t(r.aio.count === 1 ? "{n} keyword has no AI Overview check yet." : "{n} keywords have no AI Overview check yet.").replace("{n}", num(r.aio.count));
+    const none = !aiTools().some((tool) => tool.connected);
     UI.setHTML($("#dlg"), `
       <div class="dlg-head"><h2 id="dlg-title">${t("Check AI Overviews for all keywords")}</h2><button class="icon-btn" data-close-dlg aria-label="${t("Close")}">${icon("x")}</button></div>
       <div class="dlg-body">
         <p style="margin-bottom:8px"><b>${esc(lead)}</b></p>
-        <p class="small sec" style="margin:0 0 12px">${t("SerpApi reads Google's AI Overviews: one search per keyword.")}</p>
         ${none ? `<p class="note warn">${icon("triangle-alert")}<span>${t("Connect a tool that reads AI Overviews in Settings first.")}</span></p>` : ""}
-        <div class="tool-list" id="kwr-tool-list">
-          ${tools.map((tool) => `<label class="tool-row" data-kwr-tool-row="${esc(tool.name)}">
-            <input type="checkbox" class="chk" style="margin:0" data-kwr-tool="${esc(tool.name)}" ${r.picked.has(tool.name) ? "checked" : ""}>
-            ${logo(tool.name, 22)}
-            <span class="tool-main"><span class="t">${esc(t(tool.name))}</span><span class="d">${esc(credit(tool))}</span></span>
-            <span class="tool-checks"></span></label>`).join("")}
-        </div>
+        <div id="kwr-aio-plan" aria-live="polite">${none ? "" : `<p class="small muted" style="margin:0">${t("Loading…")}</p>`}</div>
         <div id="kwr-summary" aria-live="polite"></div>
       </div>
-      <div class="dlg-foot"><span class="left" id="kwr-foot"></span><button class="btn" data-close-dlg>${t("Cancel")}</button><button class="btn btn-main" id="kwr-confirm" disabled>${t("Check AI Overviews")}</button></div>`);
-    if (none) { r.picked.clear(); UI.setHTML($("#kwr-summary"), ""); paintToolRows(null); return; }
-    updatePreview();
+      <div class="dlg-foot"><span class="left" id="kwr-foot"></span><button class="btn" data-close-dlg>${t("Cancel")}</button><button class="btn btn-main" id="kwr-confirm" style="white-space:normal;height:auto;min-height:36px;text-align:center" disabled>${t("Check AI Overviews")}</button></div>`);
+    if (!none) updateAioPreview();
+  }
+
+  const euro = (n) => new Intl.NumberFormat(UI.locale(), { style: "currency", currency: "EUR" }).format(n);
+  /* "about €0.05", or "less than €0.01" for a price that rounds to nothing. */
+  const aboutEuro = (n) => (n > 0 && n < 0.005 ? t("less than {money}").replace("{money}", euro(0.01)) : t("about {money}").replace("{money}", euro(n)));
+
+  async function updateAioPreview() {
+    const r = K.refresh;
+    if (!r?.aio) return;
+    const asked = ++r.asked, confirm = $("#kwr-confirm"), box = $("#kwr-aio-plan");
+    confirm.disabled = true;
+    const sem = (K.tools || []).find((tool) => tool.name === "Semscraper"), serp = (K.tools || []).find((tool) => tool.name === "SerpApi");
+    r.paid = Boolean(sem?.connected && sem.paid_on);
+    let answer;
+    try { answer = await api("POST", "refresh/preview", refreshBody()); } catch (err) {
+      if (asked !== r.asked) return;
+      UI.setHTML(box, `<p class="error">${icon("octagon-alert")}<span>${esc(t(err.message))}</span></p>`);
+      return;
+    }
+    if (asked !== r.asked || K.refresh !== r) return;
+    r.preview = answer;
+    const used = answer.tools.filter((p) => p.checks), main = used[0], n = used.reduce((sum, p) => sum + p.checks, 0);
+    const lines = [];
+    if (main) {
+      const words = main.always_paid
+        ? plural2(main.checks, "{tool} checks {n} keyword: {money}.", "{tool} checks {n} keywords: {money}.", { tool: brandLabel(main.name), money: esc(aboutEuro(answer.cost_eur)) })
+        : plural2(main.checks, "{tool} checks {n} keyword, free: uses {c} of your {left} free searches.", "{tool} checks {n} keywords, free: uses {c} of your {left} free searches.", { tool: brandLabel(main.name), c: esc(num(main.credits)), left: esc(num(main.left ?? 0)) });
+      lines.push(`<p class="kwr-aio-tool" id="kwr-cost" style="margin:0 0 8px">${words}</p>`);
+      if (main.always_paid && main.free_serps_left !== null && main.free_serps_left !== undefined) {
+        lines.push(`<p class="small sec" style="margin:0 0 8px">${esc(t("About {n} of the first {of} free Semscraper searches left, by the app's count. Free ones cost nothing.").replace("{n}", num(main.free_serps_left)).replace("{of}", num(main.free_serps_of || 1000)))}</p>`);
+      }
+      if (used.length > 1) lines.push(`<p class="small sec" style="margin:0 0 8px">${plural2(used[1].checks, "{tool} checks the last {n}.", "{tool} checks the last {n}.", { tool: brandLabel(used[1].name) })}</p>`);
+    } else lines.push(`<p class="small sec" style="margin:0">${t("Nothing to check.")}</p>`);
+    // Semscraper is the main tool here: say why it isn't the one used, and offer the one click that changes it.
+    if (main && !main.always_paid && sem) {
+      if (!sem.connected) lines.push(`<p class="note" style="margin:0 0 8px">${icon("info")}<span>${t("Semscraper reads AI Overviews for €0.30 per 1,000. Paste its key in Settings to use it first.")} <button type="button" class="link-btn" data-kwr-connect="Semscraper">${t("Connect")}</button></span></p>`);
+      else if ((answer.paid_off || []).includes("Semscraper")) lines.push(`<p class="note" style="margin:0 0 8px">${icon("info")}<span>${t("Semscraper's paid use is off, so SerpApi checks them for free.")} <button type="button" class="link-btn" id="kwr-aio-paid-on">${t("Use Semscraper (€0.30 per 1,000)")}</button></span></p>`);
+      else if ((answer.blocked || []).some((b) => b.name === "Semscraper")) lines.push(`<p class="note warn" style="margin:0 0 8px">${icon("triangle-alert")}<span>${t("Semscraper is resting after a block, so SerpApi checks them.")}</span></p>`);
+    }
+    if (main?.always_paid && serp?.connected) lines.push(`<p class="small sec" style="margin:0">${icon("info")} ${t("If Semscraper fails, SerpApi takes over, on its free searches.")}</p>`);
+    if (answer.runs_out_after !== null) lines.push(`<p class="note warn" style="margin:8px 0 0">${icon("triangle-alert")}<span>${t("Runs out after")} ${num(answer.runs_out_after)} ${t(answer.runs_out_after === 1 ? "check" : "checks")}.</span></p>`);
+    UI.setHTML(box, lines.join(""));
+    UI.setHTML($("#kwr-summary"), "");
+    confirm.disabled = !answer.checks;
+    const label = used.length === 1 ? plural2(n, "Check with {tool} · {n} search", "Check with {tool} · {n} searches", { tool: brandLabel(used[0].name) }) : plural2(n, "Check · {n} search", "Check · {n} searches");
+    UI.setHTML(confirm, answer.checks ? (answer.cost_eur ? `${label} · ${esc(aboutEuro(answer.cost_eur))}` : label) : esc(t("Check AI Overviews")));
+    $("#kwr-foot").textContent = answer.checks && !answer.cost_eur && !answer.cost ? t("No charge.") : "";
   }
 
   function orderedTools() {
@@ -1175,6 +1279,8 @@
     $("#kwr-foot").textContent = used.length && used.every((p) => p.left === null && !p.paid_credits) ? t("Free tools only") : "";
   }
   const money = (n) => new Intl.NumberFormat(UI.locale(), { style: "currency", currency: "USD" }).format(n);
+  /* Dollars and euros, each in its own currency: "$0.50 + €0.05". A euro price under a cent keeps its own digits: €0.0003. */
+  const moneyBoth = (answer) => [answer.cost ? money(answer.cost) : "", answer.cost_eur ? new Intl.NumberFormat(UI.locale(), { style: "currency", currency: "EUR", maximumFractionDigits: answer.cost_eur < 0.01 ? 4 : 2 }).format(answer.cost_eur) : ""].filter(Boolean).join(" + ");
   // The sentence escaped, then its values put in: numbers, and a tool as its logo and name (HTML).
   const plural2 = (n, one, many, values) => Object.entries({ n: esc(num(n)), ...values }).reduce((out, [k, v]) => out.split(`{${k}}`).join(v), esc(t(n === 1 ? one : many)));
   /* One plain line: what this spends from each tool's free searches, what is paid, and what it costs. */
@@ -1186,7 +1292,7 @@
       if (p.left !== null && p.credits) parts.push(plural2(p.credits, "Uses {n} of your {left} free {tool} search", "Uses {n} of your {left} free {tool} searches", { tool, left: esc(num(p.left)) }));
       if (p.paid_credits) parts.push(plural2(p.paid_credits, "{n} paid {tool} search", "{n} paid {tool} searches", { tool }));
     });
-    const end = esc(answer.cost ? t("Up to {money}.").replace("{money}", money(answer.cost)) : t("No charge."));
+    const end = esc(answer.cost || answer.cost_eur ? t("Up to {money}.").replace("{money}", moneyBoth(answer)) : t("No charge."));
     return `${parts.join(" · ")}${parts.length ? ". " : ""}${end}`;
   }
   /* The button names the cost: "Check with SerpApi · 2 searches", "Refresh · 14 searches", "… · up to $0.50". */
@@ -1196,7 +1302,7 @@
     const label = K.refresh?.deeper || K.refresh?.aio
       ? (used.length === 1 ? plural2(n, "Check with {tool} · {n} search", "Check with {tool} · {n} searches", { tool: brandLabel(used[0].name) }) : plural2(n, "Check · {n} search", "Check · {n} searches"))
       : plural2(n, "Refresh · {n} search", "Refresh · {n} searches");
-    return answer.cost ? esc(t("{label} · up to {money}")).replace("{label}", label).replace("{money}", esc(money(answer.cost))) : label;
+    return answer.cost || answer.cost_eur ? esc(t("{label} · up to {money}")).replace("{label}", label).replace("{money}", esc(moneyBoth(answer))) : label;
   }
 
   function paintToolRows(answer) {
@@ -1226,7 +1332,7 @@
     const r = K.refresh;
     button.disabled = true; // the first click of a double click wins, and the token makes a second one harmless anyway
     let run;
-    try { run = await api("POST", "refresh/runs", { ...refreshBody(), token: r.token }); } catch (err) {
+    try { run = await api("POST", "refresh/runs", { ...refreshBody(true), token: r.token }); } catch (err) {
       UI.setHTML($("#kwr-summary"), `<p class="error">${icon("octagon-alert")}<span>${esc(t(err.message))}</span></p>`);
       button.disabled = false;
       return;
@@ -1778,10 +1884,13 @@
     button.disabled = true;
     UI.setHTML(button, icon("refresh-cw", "spin"));
     const depth = info.detail.row.engines[info.engine].main?.depth || 10;
+    const tool = (K.tools || []).find((x) => x.name === toolName);
+    if (tool?.always_paid && !tool.paid_on) { UI.toast(t("{tool} costs money on every search: switch on its paid use in Settings, then allow paid use for this Refresh.").replace("{tool}", toolName), { kind: "info" }); button.disabled = false; button.textContent = t("Refresh"); return; }
+    const paid = tool?.always_paid ? { allow_paid: true, paid_cap: 1 } : {}; // one search, a fraction of a cent
     // The first press respects the 12-hour guard; the server says when it was checked recently, and a second press spends anyway.
     const again = button.dataset.recent === "1";
     try {
-      const run = await api("POST", "refresh/runs", { keyword_ids: [info.keywordId], engines: [info.engine], depth, mode: "pick", picked: [toolName], include_recent: again, token: token() });
+      const run = await api("POST", "refresh/runs", { keyword_ids: [info.keywordId], engines: [info.engine], depth, mode: "pick", picked: [toolName], include_recent: again, token: token(), ...paid });
       delete button.dataset.recent;
       remember(run, [info.keywordId], [info.engine]);
       follow(run);
@@ -1815,14 +1924,19 @@
   window.KW_REAL = {
     /* One line in Settings' panel: paid use for this tool. */
     connExtras(c) {
-      const tool = c.group === "serp" ? toolOf(c) : null;
+      // Semscraper's key panel (Extras) carries the same switch: one key, one switch, for rankings and AI Overviews.
+      const tool = c.group === "serp" ? toolOf(c) : c.id === "semscraper" ? K.tools?.find((x) => x.name === "Semscraper") : null;
       if (!tool) return "";
-      const error = tool.last_error && !window.FIX ? `<p class="note warn" style="margin:0 0 12px">${icon("triangle-alert")}<span dir="auto">${esc(translateSentences(tool.last_error))}</span></p>` : "";
+      const error = tool.last_error && !window.FIX && c.group === "serp" ? `<p class="note warn" style="margin:0 0 12px">${icon("triangle-alert")}<span dir="auto">${esc(translateSentences(tool.last_error))}</span></p>` : "";
+      if (tool.always_paid) {
+        const free = tool.free_serps_left !== null && tool.free_serps_left !== undefined ? `<p class="help" style="margin:0 0 12px">${esc(t("About {n} of the first {of} free Semscraper searches left, by the app's count. Free ones cost nothing.").replace("{n}", num(tool.free_serps_left)).replace("{of}", num(tool.free_serps_of || 1000)))}</p>` : "";
+        return `${error}<label class="opt" style="margin:0 0 4px"><input type="checkbox" class="chk" style="margin:0" id="kwr-paid-on" data-tool="${esc(tool.name)}" ${tool.paid_on ? "checked" : ""} ${tool.connected ? "" : "disabled"}>${t(c.group === "serp" ? "Allow paid use" : "Also check rankings and AI Overviews with it")}</label><p class="help" style="margin:0 0 12px">${t("Paid on every search: €0.30 per 1,000. Used only while this is on, and each Refresh shows its price in euros first.")}</p>${free}`;
+      }
       if (!tool.paid_per) return error + (tool.auth === "key" || tool.auth === "key+zone" ? `<p class="help" style="margin:0 0 12px">${t("No pay-as-you-go price: paid use unavailable.")}</p>` : "");
       return `${error}<label class="opt" style="margin:0 0 4px"><input type="checkbox" class="chk" style="margin:0" id="kwr-paid-on" data-tool="${esc(tool.name)}" ${tool.paid_on ? "checked" : ""}>${t("Allow paid use")}</label><p class="help" style="margin:0 0 12px">${t("Refresh still uses free credits first; each run asks its own limit.")}</p>`;
     },
     /* The order is per engine, so the list says which engine it's showing. */
-    orderPicker: () => mainToolPicker() + `<span class="seg" role="group" aria-label="${t("Order for")}" style="margin-left:auto">${ENGINES.map(([id, label]) => `<button type="button" data-kwr-order="${id}" aria-pressed="${K.orderEngine === id}">${label}</button>`).join("")}</span>${K.aiFirst?.[K.orderEngine]?.length && K.aiFirstWhy ? `<p class="small sec kwr-ai-first" style="flex-basis:100%;margin:6px 0 0">${icon("sparkles")} ${esc(t(K.aiFirstWhy))}${UI.tip("SerpApi goes first for Google while it has free searches: it is the only tool that reads AI Overviews.")}</p>` : ""}`,
+    orderPicker: () => mainToolPicker() + `<span class="seg" role="group" aria-label="${t("Order for")}" style="margin-left:auto">${ENGINES.map(([id, label]) => `<button type="button" data-kwr-order="${id}" aria-pressed="${K.orderEngine === id}">${label}</button>`).join("")}</span>${K.aiFirst?.[K.orderEngine]?.length && K.aiFirstWhy ? `<p class="small sec kwr-ai-first" style="flex-basis:100%;margin:6px 0 0">${icon("sparkles")} ${esc(t(K.aiFirstWhy))}${UI.tip("Semscraper and SerpApi read AI Overviews, so they go first for Google: Semscraper when its paid use is on, SerpApi while it has free searches.")}</p>` : ""}`,
     openRefresh,
     wanted: () => { if (K.stale && !K.loading) load(); },
     commands: () => { if (!K.data && !K.loading) load(); return commandRows(); },
@@ -1842,7 +1956,7 @@
         const country = $("#conn-country").value;
         changed = country !== (K.settings.mac_country || "");
         if (changed) await api("PATCH", "tools/settings", { mac_country: country });
-      } else if (c.auth !== "none") {
+      } else if (c.auth !== "none" && c.auth !== "app") { // "app": Semscraper's key lives under Extras
         const key = ($("#conn-key")?.value || $("#conn-url")?.value || "").trim(), zone = $("#conn-zone")?.value.trim();
         changed = Boolean(key) || (c.auth === "key+zone" && c.status !== "off" && zone !== (c.zone || ""));
         if (changed) await api("PUT", `connections/${encodeURIComponent(c.tool)}`, { key, ...(c.auth === "key+zone" ? { zone } : {}) });
@@ -1864,7 +1978,7 @@
     try {
       const answer = await api("POST", `tools/${encodeURIComponent(c.tool)}/test`);
       if (answer.ok === true) $("#conn-fix")?.remove();
-      UI.setHTML(box, answer.ok === true ? status("good", `${t(answer.message)}${answer.searches_left === null || answer.searches_left === undefined ? "" : ` ${num(answer.searches_left)} ${t("left")}`}`) : answer.ok === false ? `<span class="error" style="margin:0">${icon("octagon-alert")}${UI.errorHtml ? UI.errorHtml(answer.message) : esc(t(answer.message))}</span>${fixFor(c, answer.message)}` : `<span class="note inline-note">${icon("info")}<span>${esc(t(answer.message))}</span></span>`);
+      UI.setHTML(box, answer.ok === true ? status("good", `${t(answer.message)}${answer.searches_left === null || answer.searches_left === undefined ? "" : ` ${num(answer.searches_left)} ${t("left")}`}${answer.balance !== undefined && answer.balance !== null ? ` ${t("Balance")}: ${new Intl.NumberFormat(UI.locale(), { style: "currency", currency: answer.currency || "EUR" }).format(answer.balance)}` : ""}`) : answer.ok === false ? `<span class="error" style="margin:0">${icon("octagon-alert")}${UI.errorHtml ? UI.errorHtml(answer.message) : esc(t(answer.message))}</span>${fixFor(c, answer.message)}` : `<span class="note inline-note">${icon("info")}<span>${esc(t(answer.message))}</span></span>`);
     } catch (err) { UI.setHTML(box, `<span class="error" style="margin:0">${icon("octagon-alert")}${UI.errorHtml ? UI.errorHtml(err) : esc(t(err.message))}</span>${fixFor(c, err.message)}`); }
     button.disabled = false;
   }
@@ -1985,6 +2099,17 @@
       if ((el = hit("[data-kwr-mode]"))) { K.refresh.mode = el.dataset.kwrMode; $$("[data-kwr-mode]").forEach((b) => b.setAttribute("aria-pressed", b === el)); updatePreview(); return; }
       if ((el = hit("[data-kwr-connect]"))) { const id = CONN_ID[el.dataset.kwrConnect]; $("#dlg").close(); K.refresh = null; UI.openConnection(id); return; }
       if (hit("#kwr-confirm") && !hit("#kwr-confirm").disabled) { confirmRefresh(hit("#kwr-confirm")); return; }
+      // One click switches Semscraper's paid use on (owner's switch), from the AI Overviews dialog or under the main tool.
+      if ((el = hit("#kwr-aio-paid-on, #kwr-main-paid-on"))) {
+        const name = el.dataset.tool || "Semscraper", inDialog = el.id === "kwr-aio-paid-on";
+        el.disabled = true;
+        api("PUT", `tools/${encodeURIComponent(name)}/paid`, { on: true }).then(async () => {
+          await loadTools();
+          UI.toast(t("{tool}: paid use on").replace("{tool}", name));
+          if (inDialog && K.refresh?.aio) { await updateAioPreview(); $("#kwr-confirm")?.focus(); } else { UI.render(); $("#kwr-main-tool")?.focus({ preventScroll: true }); }
+        }).catch((err) => { el.disabled = false; UI.toast(t(err.message), { kind: "crit" }); });
+        return;
+      }
     });
 
     document.addEventListener("change", (e) => {
@@ -2011,7 +2136,7 @@
       if (el.id === "kwr-line") { K.panel.line = el.value; paintPanel(K.panel); $("#kwr-line")?.focus(); return; }
       if (el.id === "kwr-paid-on") {
         const tool = el.dataset.tool;
-        api("PUT", `tools/${encodeURIComponent(tool)}/paid`, { on: el.checked }).then(loadTools).catch((err) => { el.checked = !el.checked; UI.toast(t(err.message), { kind: "crit" }); });
+        api("PUT", `tools/${encodeURIComponent(tool)}/paid`, { on: el.checked }).then(async () => { await loadTools(); if (state.route === "settings" && !$("#panel")) UI.render(); }).catch((err) => { el.checked = !el.checked; UI.toast(t(err.message), { kind: "crit" }); });
       }
     });
     document.addEventListener("close", (e) => { if (e.target.id === "dlg") K.refresh = null; }, true);

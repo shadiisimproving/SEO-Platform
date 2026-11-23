@@ -225,6 +225,13 @@ window.CONNECTIONS = [
       { title: "Copy the key", text: "In API keys, copy your key, or press new key if there's none." },
       { title: "Paste it here", text: "Paste it above and press Save. Your first Refresh shows if it works (Test would use a credit)." },
     ] },
+  // Semscraper as a rank tool (owner, 2026-11-23: the main one for Google and its AI Overviews). Its key is the one under
+  // Extras → Semscraper, so this row has no key field of its own: auth "app" points there.
+  { id: "semscraper-serp", group: "serp", tool: "Semscraper", name: "Semscraper", logo: "semscraper", desc: "Checks rankings on Google with AI Overview", status: "off", price: "Paid", limit: "€0.30 per 1,000; the first 1,000 free", auth: "app", sites: "all", url: "https://www.semscraper.com/en/pricing",
+    steps: [
+      { title: "Save its key once", text: "Paste the key under Extras → Semscraper. What AI says uses the same key." },
+      { title: "Switch on paid use", text: "Tick Allow paid use above. Every Refresh shows its price in euros before anything is spent." },
+    ] },
   { id: "ddg", group: "serp", tool: "DuckDuckGo direct", name: "DuckDuckGo direct", logo: "DuckDuckGo direct", desc: "DuckDuckGo only; breaks if its page changes", status: "nokey", price: "Free", limit: "No credits", auth: "none", sites: "all", steps: ["Nothing to connect."] },
   { id: "searxng", group: "serp", tool: "SearXNG", name: "SearXNG", logo: "SearXNG", desc: "Free backup for Bing and Yandex", status: "off", price: "Free", limit: "No credits", auth: "url", sites: "all", url: "https://docs.searxng.org/",
     steps: [

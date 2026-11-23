@@ -224,7 +224,7 @@ Object.assign(window.FR, {
  "Placed 60+ days before your last Search Console upload, yet missing from it. Its list is a sample: only a hint.": "Placé plus de 60 jours avant votre dernier import Search Console, mais absent. Sa liste est un échantillon : simple indice.",
  "No sitemap: only the {n} page linked from its home page is watched.": "Pas de sitemap : seule {n} page liée depuis sa page d'accueil est suivie.",
  "Paste it above and press Test. The token lasts 6 months; then repeat step 4.": "Collez-le ci-dessus et cliquez sur Tester. Le jeton dure 6 mois ; refaites ensuite l'étape 4.",
- "SerpApi first while it has free searches, then the order below.": "SerpApi d'abord tant qu'il a des recherches gratuites, puis l'ordre ci-dessous.",
+ "SerpApi first while it has free searches, then the order below.": "SerpApi d'abord tant qu'il a des recherches gratuites, puis l'ordre ci-dessous.", "Tools that read AI Overviews go first: Semscraper when its paid use is on, SerpApi while it has free searches. Then the order below.": "Les outils qui lisent les aperçus IA passent en premier : Semscraper quand son usage payant est activé, SerpApi tant qu'il a des recherches gratuites. Puis l'ordre ci-dessous.",
  "Visits from these count as AI, whatever their Google Analytics channel. Changes apply to past days too.": "Les visites venues de ces sites comptent comme IA, quel que soit leur canal dans Google Analytics. Les changements s'appliquent aussi aux jours passés.",
  "Linking page not on Google.": "Page source absente de Google.",
  "Paste it, press Test (free), then Save. Then pick Claude for a site under AI.": "Collez-la, cliquez sur Tester (gratuit), puis Enregistrer. Choisissez ensuite Claude pour un site dans IA.",

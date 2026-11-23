@@ -1,8 +1,9 @@
 """A keyword list, and its first check.
 
 Uploading a list runs one check per keyword that has never been checked, to find who really ranks.
-That is the one automatic spend in the app, and it only ever uses free tools. When they run out it
-stops and says so, and what is left carries on when a tool has free checks again. After that, a
+That is the one automatic spend in the app, and it uses free tools, plus one always-paid tool (Semscraper) only when the
+owner switched its paid use on in Settings (owner, 2026-11-23: Semscraper is the main rank tool; €0.30 per 1,000). When they
+run out it stops and says so, and what is left carries on when a tool has free checks again. After that, a
 search runs only when someone asks for it.
 """
 from __future__ import annotations
@@ -210,7 +211,10 @@ def _tool_line(engine: Engine, run) -> list[tuple[str, object]]:
     names = [run["engine"]]
     if run["kind"] != "refresh":
         names += [name for name in connections.ENGINE_ORDER if name != run["engine"]]
-    return [(name, tool) for name in names for tool in connections.not_blocked(engine, connections.tools_for(engine, name))]  # not one resting after a bot check
+    return [
+        (name, tool) for name in names for tool in connections.not_blocked(engine, connections.tools_for(engine, name))  # not one resting after a bot check
+        if not connections.always_paid(tool) or connections.paid_ready(engine, tool)  # a paid one only with its switch on
+    ]
 
 
 def _start(engine: Engine, run_id: int) -> None:
@@ -321,7 +325,8 @@ def run_check(job, engine: Engine) -> None:
             answer = None
             while line and answer is None:
                 name, tool = line[0]
-                if not connections.can_afford_a_search(engine, tool):
+                paid = connections.paid_ready(engine, tool)  # always paid, switch on: _tool_line only keeps it then
+                if not paid and not connections.can_afford_a_search(engine, tool):
                     if connections.out_only_for_this_hour(engine, tool):
                         hour_limited = True
                         stopped_because.append(f"{tool.name} has used all its checks for this hour.")
@@ -331,8 +336,8 @@ def run_check(job, engine: Engine) -> None:
                     continue
                 try:
                     # Booked before it goes out and settled after, so a timeout stays counted (F15). No count_use after it.
-                    answer = connections.spend_on_search(engine, tool, keyword["keyword"], name, keyword["country"], keyword["language"], "desktop", DEPTH, keyword_id=keyword["id"], note=trigger)
-                except ToolStopped as exc:  # never moves to a paid tool: the list only holds free ones
+                    answer = connections.spend_on_search(engine, tool, keyword["keyword"], name, keyword["country"], keyword["language"], "desktop", DEPTH, paid=paid, keyword_id=keyword["id"], note=trigger)
+                except ToolStopped as exc:  # never moves to paid credits: the list holds free tools, and a paid one only when switched on
                     stopped_because.append(str(exc))
                     connections.note_error(engine, tool.name, str(exc))
                     line.pop(0)
@@ -393,7 +398,7 @@ def resume_waiting(engine: Engine) -> list[int]:
     for row in rows:
         # A first check goes to the best engine that can search now, so a key saved today is used today.
         run = {"engine": row["engine"] if row["kind"] == "refresh" else choose_engine(engine), "kind": row["kind"]}
-        if any(connections.can_afford_a_search(engine, tool) for _, tool in _tool_line(engine, run)):
+        if any(connections.can_afford_a_search(engine, tool) or connections.paid_ready(engine, tool) for _, tool in _tool_line(engine, run)):
             _set_run(engine, row["id"], status="queued", engine=run["engine"], stop_reason=None, finished_at=None, failed=0)
             _queue(engine, row["id"], int(time.time()))
             resumed.append(row["id"])

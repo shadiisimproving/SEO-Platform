@@ -68,6 +68,10 @@ Sources: https://www.semscraper.com/en/documentation, https://www.semscraper.com
   Overviews come at no extra cost. Prepaid balance, no subscription, 1,000 free searches at sign-up. Costs are kept in
   euros (`currency = EUR`) and never added to dollars.
 - **Signed out:** a public Google results page, no account: `signed_out = true`.
+- **Also a rank tool (2026-11-23):** `seo/serp/tools.py: Semscraper` reads organic results (`rank_type`, `page`, `url`,
+  `url_approx` + `goto_url` when Google hid the link) and the AI Overview for Refresh and Check AI Overviews, with the same
+  key (`connections` tool name `Semscraper`, auth `app`) and the same `credit_ledger` name, so both count against the one
+  account. Every search is paid use, behind its switch in Settings.
 - Not documented: error codes for a bad key or a limit (**unknown**: any 4xx refuses, 429 and 5xx try again later).
 
 ## Rules

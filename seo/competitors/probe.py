@@ -124,6 +124,8 @@ def _ids(conn, site_id: int, only=None) -> list[int]:
 def _tools(engine: Engine, name: str) -> list[dict]:
     out = []
     for tool in connections.tools_for(engine, name):
+        if connections.always_paid(tool):  # a Keyword check never pays, so it isn't offered here
+            continue
         cost = max(most_cost(tool, DEPTH), 1)
         left = connections.free_left(engine, tool)
         hour = connections.hour_left(engine, tool)
@@ -255,6 +257,7 @@ def run_probe(job, engine: Engine) -> None:
     _set(engine, run_id, status="running")
     name = run["engine"]
     line = connections.not_blocked(engine, list(connections.tools_for(engine, name)))  # one engine only, so every position compares; not a tool resting after a bot check
+    line = [tool for tool in line if not connections.always_paid(tool)]  # free checks only: never Semscraper
     started, tried, stopped, fails = time.monotonic(), 0, [], {}
     checked, failed = run["checked"], run["failed"]
     with engine.connect() as conn:

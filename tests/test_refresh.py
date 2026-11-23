@@ -762,7 +762,7 @@ def test_tool_order_is_per_engine_and_must_name_every_tool(world):
     assert connections.order_for(world.engine, "duckduckgo")[0] == "DuckDuckGo direct"
     changed = world.client.put("/api/tools/order", json={"engine": "bing", "order": ["SearXNG", "Bright Data", "SerpApi", "HasData", "Browser on this Mac"]})
     assert changed.status_code == 200 and connections.order_for(world.engine, "bing")[0] == "SearXNG"
-    assert connections.order_for(world.engine, "google")[0] == "Bright Data"
+    assert connections.order_for(world.engine, "google")[0] == "Semscraper"  # first by default since 2026-11-23
     assert world.client.put("/api/tools/order", json={"engine": "bing", "order": ["SearXNG"]}).status_code == 400
     assert world.client.put("/api/tools/order", json={"engine": "nope", "order": []}).status_code == 400
 

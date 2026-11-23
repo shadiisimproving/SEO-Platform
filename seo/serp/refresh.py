@@ -6,6 +6,10 @@ Free tools first, in the editable order; on Google a tool that reads AI Overview
 searches, then the order (connections.AI_FIRST_WHY, switchable). A tool that runs out or fails hands over to the next free one. Paid use only
 happens when the tool's own switch is on, this run asked for it, and the run's limit has room. A timeout is never tried
 again, because it may already have been charged. Credits are written down before the search, so a crash can't hide a spend.
+
+A tool that is always paid (Semscraper, connections.always_paid) is used in its place in the order when its paid switch is on and
+the run allows paid use within its limit; otherwise it's passed over and the next tool takes its place. Mode "ai" is Check AI
+Overviews: Google only, and only the tools that read AI Overviews, in that order (Semscraper, then SerpApi as the fallback).
 """
 from __future__ import annotations
 
@@ -34,6 +38,8 @@ ACTIVE = ("queued", "running")
 ENGINE_NAMES = {"google": "Google", "duckduckgo": "DuckDuckGo", "bing": "Bing", "yandex": "Yandex"}
 INTERRUPTED = "The app stopped during this search. It isn't tried again, because it may already have been charged."
 RECENT_ONE = "Checked recently with this tool. Press again to spend a credit anyway."
+PAID_OFF = "{tool} costs money on every search: switch on its paid use in Settings, then allow paid use for this Refresh."
+CAP_REACHED = "{tool} stopped: this Refresh reached its spending limit."
 SKIPPED = "{tool} was skipped: it was blocked by a bot check in the last {hours} hours."
 
 
@@ -57,8 +63,10 @@ def _clean_request(engine: Engine, body: dict) -> dict:
     if depth not in DEPTHS:
         raise Refused("The depth is 10, 20, 30 or 50.")
     mode = body.get("mode", "auto")
-    if mode not in ("auto", "pick"):
+    if mode not in ("auto", "pick", "ai"):
         raise Refused("Tools are automatic or chosen.")
+    if mode == "ai":  # Check AI Overviews: Google's, and nothing else
+        engines = ["google"]
     picked = body.get("picked") or []
     if mode == "pick" and (not isinstance(picked, list) or not picked or any(not isinstance(name, str) for name in picked)):
         raise Refused("Pick a tool.")
@@ -155,8 +163,16 @@ def _split(engine: Engine, ask: dict) -> dict:
 
 
 def _line(engine: Engine, name: str, ask: dict) -> list:
-    tools = connections.tools_for(engine, name, include_manual=ask["mode"] == "pick", ai_first=True)
-    return [tool for tool in tools if tool.name in ask["picked"]] if ask["mode"] == "pick" else tools
+    return _tools_in(engine, name, ask["mode"], ask["picked"])
+
+
+def _tools_in(engine: Engine, name: str, mode: str, picked) -> list:
+    tools = connections.tools_for(engine, name, include_manual=mode == "pick", ai_first=True)
+    if mode == "ai":
+        # The tools that read AI Overviews, in the order: Semscraper first (it goes first in Google's order), SerpApi after.
+        ai = [tool for tool in tools if getattr(tool, "gives_ai", False)]
+        return sorted(ai, key=lambda tool: not connections.always_paid(tool))  # stable: a paid AI tool leads, then the free one
+    return [tool for tool in tools if tool.name in picked] if mode == "pick" and picked is not None else tools
 
 
 # ---- preview ----------------------------------------------------------------------------------------
@@ -175,30 +191,42 @@ def preview(engine: Engine, body: dict) -> dict:
                 "name": tool.name, "cost": most_cost(tool, ask["depth"]), "left": left, "hour_left": hour, "of": getattr(tool, "free_once", None) or getattr(tool, "free_monthly", None),
                 "refills": "one-time" if getattr(tool, "free_once", None) is not None else "monthly" if getattr(tool, "free_monthly", None) is not None else "no credits",
                 "paid_per": getattr(tool, "paid_per", None), "paid_on": connections.paid_on(engine, tool.name), "checks": 0, "credits": 0, "paid_credits": 0,
+                "always_paid": connections.always_paid(tool), "currency": connections.currency(tool), "paid_cost": 0.0,
+                "each": float(connections.price(tool, most_cost(tool, ask["depth"]))) if getattr(tool, "paid_per", None) else None,
+                "free_serps_left": connections.free_serps_left(engine, tool), "free_serps_of": getattr(tool, "free_serps", None),
+                "_tool": tool,
             }
         return pools[tool.name]
 
     def fits_free(p) -> bool:
+        if p["always_paid"]:
+            return False
         cost = max(p["cost"], 1 if p["left"] is not None else 0)
         return (p["left"] is None or p["left"] - p["credits"] >= cost) and (p["hour_left"] is None or p["hour_left"] - p["credits"] >= cost)
 
-    cost_total = Decimal(0)
+    cost_total = Decimal(0)  # in the limit's dollars (connections.in_cap_units)
+    by_currency: dict[str, Decimal] = {}
+
+    def one_paid(p) -> Decimal:
+        return connections.in_cap_units(p["_tool"], connections.price(p["_tool"], p["cost"]))
 
     def fits_paid(p) -> bool:
-        return bool(ask["allow_paid"] and p["paid_on"] and p["paid_per"] and cost_total + Decimal(str(p["paid_per"])) * p["cost"] <= ask["paid_cap"])
+        return bool(ask["allow_paid"] and p["paid_on"] and p["paid_per"] and cost_total + one_paid(p) <= ask["paid_cap"])
 
     full = {name: _line(engine, name, ask) for name in ask["engines"]}
     resting = {tool.name: connections.blocked(engine, tool.name) for tools in full.values() for tool in tools}
     # An automatic run skips a tool resting after a bot check, so its checks go to the next tool. Ticked by hand, it still runs.
     lines = full if ask["mode"] == "pick" else {name: [tool for tool in tools if not resting[tool.name]] for name, tools in full.items()}
+    paid_off = sorted({tool.name for tools in lines.values() for tool in tools if connections.always_paid(tool) and not connections.paid_on(engine, tool.name)})
     for tools in lines.values():
         for tool in tools:
             pool(tool)
     planned, unassigned = 0, 0
     for keyword_id, name in parts["todo"]:
         chosen = [pools[tool.name] for tool in lines[name]]
-        if ask["mode"] == "auto":
-            target = next((p for p in chosen if fits_free(p)), None) or next((p for p in chosen if fits_paid(p)), None)
+        if ask["mode"] != "pick":
+            # In the order: a free tool with room, or an always-paid one allowed now; only then paid credits past a free tool's.
+            target = next((p for p in chosen if fits_free(p) or (p["always_paid"] and fits_paid(p))), None) or next((p for p in chosen if fits_paid(p)), None)
             chosen = [target] if target else []
         if not chosen:
             unassigned += 1
@@ -208,7 +236,10 @@ def preview(engine: Engine, body: dict) -> dict:
                 p["credits"] += p["cost"]
             elif fits_paid(p):
                 p["paid_credits"] += p["cost"]
-                cost_total += Decimal(str(p["paid_per"])) * p["cost"]
+                cost_total += one_paid(p)
+                money = connections.price(p["_tool"], p["cost"])
+                p["paid_cost"] = float(Decimal(str(p["paid_cost"])) + money)
+                by_currency[p["currency"]] = by_currency.get(p["currency"], Decimal(0)) + money
             else:
                 unassigned += 1
                 continue
@@ -217,14 +248,17 @@ def preview(engine: Engine, body: dict) -> dict:
     names = ask["keywords"]
     return {
         "keywords": len(names), "engines": ask["engines"], "depth": ask["depth"], "pages": pages_for(ask["depth"]), "mode": ask["mode"], "checks": planned,
-        "tools": [{**p, "left_after": None if p["left"] is None else max(0, p["left"] - p["credits"])} for p in pools.values()],
-        "unassigned": unassigned, "runs_out_after": planned if unassigned else None, "cost": float(cost_total),
+        "tools": [{**{k: v for k, v in p.items() if k != "_tool"}, "left_after": None if p["left"] is None else max(0, p["left"] - p["credits"])} for p in pools.values()],
+        # cost: dollars, as before; cost_eur: euros (Semscraper); cap_units: both, as held against the limit
+        "unassigned": unassigned, "runs_out_after": planned if unassigned else None, "cost": float(by_currency.get("USD", Decimal(0))),
+        "cost_eur": float(by_currency.get("EUR", Decimal(0))), "cap_units": float(cost_total), "eur_in_usd": float(connections.EUR_IN_USD),
         "credits": sum(p["credits"] + p["paid_credits"] for p in pools.values()),
         "running": [{"keyword": names[k], "engine": name, "by": by} for (k, name), by in parts["running"].items()],
         "recent": [{"keyword": names[k], "engine": name, "hours": hours} for (k, name), hours in parts["recent"].items()],
         "just_checked_hours": parts["hours"],
         "no_tools_for": [name for name, tools in full.items() if not tools],
         "blocked": [rest for rest in resting.values() if rest],  # {name, at, until, why}: the window says so before Confirm
+        "paid_off": paid_off,  # always-paid tools passed over because their paid switch is off: the window offers to switch it on
     }
 
 
@@ -373,8 +407,8 @@ class _Picker:
 
     def line(self, name: str) -> list:
         if name not in self.lines:
-            tools = connections.tools_for(self.engine, name, include_manual=self.run["mode"] == "pick", ai_first=True)
-            if self.run["mode"] == "auto":  # resting after a bot check: skipped, and the run says so when it ends
+            tools = _tools_in(self.engine, name, self.run["mode"], None)  # every tool: named() picks by name
+            if self.run["mode"] != "pick":  # resting after a bot check: skipped, and the run says so when it ends
                 for tool in tools:
                     if tool.name not in self.dropped and connections.blocked(self.engine, tool.name):
                         self.drop(tool.name, SKIPPED.format(tool=tool.name, hours=connections.BLOCK_HOURS))
@@ -386,11 +420,14 @@ class _Picker:
         with self.engine.begin() as conn:
             conn.execute(text("UPDATE rank_runs SET dropped = :d WHERE id = :i"), {"d": json.dumps(self.dropped), "i": self.run["id"]})
 
+    def _paid_allowed(self, tool) -> bool:
+        return bool(self.run["allow_paid"] and getattr(tool, "paid_per", None) and connections.paid_on(self.engine, tool.name))
+
     def _paid_fits(self, tool) -> Decimal | None:
-        per = getattr(tool, "paid_per", None)
-        if not (self.run["allow_paid"] and per and connections.paid_on(self.engine, tool.name)):
+        """The most one more search can cost, held against the limit, or None when it isn't allowed or doesn't fit."""
+        if not self._paid_allowed(tool):
             return None
-        cost = Decimal(str(per)) * most_cost(tool, self.run["depth"])
+        cost = connections.in_cap_units(tool, connections.price(tool, most_cost(tool, self.run["depth"])))
         return cost if self.spent + cost <= Decimal(str(self.run["paid_cap"] or 0)) else None
 
     def named(self, name: str, wanted: str, exclude=()):
@@ -402,12 +439,22 @@ class _Picker:
             return tool, False
         if self._paid_fits(tool) is not None:
             return tool, True
+        if connections.always_paid(tool):
+            self.drop(wanted, (CAP_REACHED if self._paid_allowed(tool) else PAID_OFF).format(tool=wanted))
+            return None, False
         self.drop(wanted, f"{wanted} has no free checks left.")
         return None, False
 
     def next(self, name: str, exclude=()):
         usable = [t for t in self.line(name) if t.name not in self.dropped and t.name not in exclude]
         for tool in usable:
+            if connections.always_paid(tool):
+                # Used in its place in the order when this run may pay for it; otherwise passed over, quietly, for the next one.
+                if self._paid_fits(tool) is not None:
+                    return tool, True
+                if self._paid_allowed(tool):
+                    self.drop(tool.name, CAP_REACHED.format(tool=tool.name))
+                continue
             if connections.can_afford_a_search(self.engine, tool, self.run["depth"]):
                 return tool, False
             self.drop(tool.name, f"{tool.name} has no free checks left.")
@@ -426,10 +473,12 @@ def _json(value):
     return value
 
 
-def _add_spent(engine: Engine, picker: _Picker, run_id: int, cost) -> None:
-    """Dollars held against the run's limit: what was charged, and what a timeout may have been charged (F58)."""
+def _add_spent(engine: Engine, picker: _Picker, run_id: int, cost, tool=None) -> None:
+    """Dollars held against the run's limit: what was charged, and what a timeout may have been charged (F58). Euros count
+    at connections.EUR_IN_USD."""
     if not cost:
         return
+    cost = connections.in_cap_units(tool, cost) if tool is not None else cost
     picker.spent += cost
     with engine.begin() as conn:
         conn.execute(text("UPDATE rank_runs SET spent = spent + :c WHERE id = :i"), {"c": cost, "i": run_id})
@@ -446,10 +495,10 @@ def _one_search(engine: Engine, picker: _Picker, run, item, tool, paid: bool):
         )
     except Exception as exc:
         if paid:
-            _add_spent(engine, picker, run["id"], getattr(exc, "cost_kept", None))
+            _add_spent(engine, picker, run["id"], getattr(exc, "cost_kept", None), tool)
         raise
     if paid:
-        _add_spent(engine, picker, run["id"], getattr(answer, "cost", None))
+        _add_spent(engine, picker, run["id"], getattr(answer, "cost", None), tool)
     return answer
 
 
@@ -630,6 +679,12 @@ def short_why(reason: str) -> str:
         return "was blocked by a bot check"
     if "slow down" in low:
         return "was asked to slow down"
+    if "costs money on every search" in low:
+        return "has its paid use off"
+    if "spending limit" in low:
+        return "reached this Refresh's limit"
+    if "no credit left" in low:
+        return "has no credit left"
     if "refused the key" in low:
         return "refused the key"
     if "searches in a row" in low:
