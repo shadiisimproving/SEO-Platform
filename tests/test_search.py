@@ -398,3 +398,15 @@ def test_the_last_24_hours_get_a_sentence_without_drivers(engine, site, google):
     google.answers[("hour",)] = lambda body: httpx.Response(200, json={"rows": [{"keys": [f"2026-11-0{6 + n // 24}T{n % 24:02d}:00:00-08:00"], "clicks": 1 if n < 24 else 3, "impressions": 10} for n in range(48)]})
     answer = search.overview(*_scope(engine, site, "24h", "prev"))["answer"]
     assert answer == {"kind": "up", "clicks": 72, "before": 24, "percent": 200, "drivers": []}
+
+
+def test_the_check_says_so_in_words_when_the_google_key_no_longer_opens(engine, site, google, monkeypatch):
+    """A key saved with another server key (or broken) used to end the check with a server error."""
+    from seo.sources import credentials
+
+    def broken(*_args, **_kwargs):
+        raise credentials.CredentialsFailed("This value was encrypted with a different key. Re-paste the API key.")
+
+    monkeypatch.setattr(credentials, "access_token", broken)
+    with pytest.raises(Refused, match="Google refused the saved connection.*Settings → Connections"):
+        search.verify(engine, site)

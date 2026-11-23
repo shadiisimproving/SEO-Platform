@@ -669,6 +669,16 @@ def delete_note(engine: Engine, note_id: int) -> None:
 
 
 def verify(engine: Engine, site_id: int) -> dict:
+    """See _verify. A Google key that no longer opens, or Google not answering, says so in words instead of failing."""
+    try:
+        return _verify(engine, site_id)
+    except credentials.CredentialsFailed as exc:
+        raise Refused(f"Google refused the saved connection, so nothing could be compared: {exc} Fix it in Settings → Connections.") from None
+    except (SourceError, ConnectionError) as exc:
+        raise Refused(f"Google didn't answer, so nothing could be compared. Try again in a minute. ({exc})") from None
+
+
+def _verify(engine: Engine, site_id: int) -> dict:
     """The last 28 final days, asked of Google live and compared with what's saved: daily totals, the top 25 queries and
     pages. Days that aren't final change every hour, so they'd differ for no fault of the copy."""
     source = common.source_row(engine, site_id, "gsc")
