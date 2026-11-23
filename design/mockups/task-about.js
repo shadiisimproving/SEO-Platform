@@ -171,8 +171,11 @@
     const help = UI.$("#ta-help");
     if (help) {
       const main = aboutNow().main;
+      // A saved task with pages or keywords but no main kind (made before About, or by the API) read "Main: ." (test walk
+      // 2026-11-23): the first kind that holds something is named, as for a new task.
+      const named = kindOf(main) || KINDS.find((k) => valuesOf(k.id).length);
       help.textContent = main === "general" && !hasAny() ? t("General: not linked to anything in the app.")
-        : hasAny() ? `${t("Main")}: ${t(kindOf(main)?.label || "")}. ${t("Add more from any kind.")}` : t("Pick what this task is about. You can add several.");
+        : hasAny() ? `${named ? `${t("Main")}: ${t(named.label)}. ` : ""}${t("Add more from any kind.")}` : t("Pick what this task is about. You can add several.");
     }
   }
 
