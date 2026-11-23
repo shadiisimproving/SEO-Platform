@@ -59,6 +59,8 @@ bash deploy/deploy.sh --check   # what would go, then asks the server (reading o
 bash deploy/deploy.sh --go      # tests, upload, install, database copy, migrate, switch, then checks the site
 ```
 
+A commit already tested on this Mac isn't tested again: a full pass on a clean folder writes `var/tests-passed/<commit>`, and `--go` skips the tests when that stamp is there. `bash deploy/test_and_stamp.sh` runs the tests and stamps the commit ahead of a deploy. Any change makes a new commit, which has no stamp, so it is tested.
+
 It uploads the last commit only, and that commit must be on GitHub. Database copies are in `~/seo-platform/var/backups/database`.
 
 **Pillow must be installed on the server.** PDF exports use reportlab (in `requirements.txt`), and reportlab needs Pillow. `--go` installs both from `requirements.txt`, as a ready-made package, with nothing to build. `--check` says whether the server's Python can load them: it only asks, it changes nothing. If it says "can't be imported" after a `--go`, run this once on the server and send its last lines to whoever looks after the app: `$VENV/bin/pip install -r ~/seo-platform/requirements.txt`. Everything except PDF exports works without it.

@@ -9,7 +9,7 @@
 # Settings: SSH_USER, SSH_HOST, SSH_KEY and PUBLIC_URL are required, SSH_PORT, APP_NAME and VENV_BIN have defaults.
 # Put them in deploy/deploy.local.env, which is never committed (deploy/deploy.local.env.example shows how).
 # The server's SSH host keys go in deploy/known_hosts.local, also never committed.
-# SKIP_TESTS=1 skips the test run before an upload. FIRST_TIME=1 is for the very first upload: it makes the encryption key.
+# SKIP_TESTS=1 skips the test run before an upload; a commit that already passed them here (var/tests-passed) skips it too. FIRST_TIME=1 is for the very first upload: it makes the encryption key.
 set -euo pipefail
 
 MODE="${1:-}"
@@ -96,8 +96,18 @@ done
 [[ -f "$SSH_KEY" ]] || { echo "SSH key not found: $SSH_KEY" >&2; exit 1; }
 [[ -s "$KNOWN_HOSTS_FILE" ]] || { echo "The server's host keys aren't in $KNOWN_HOSTS_FILE. deploy/DEPLOY.md says how to get them." >&2; exit 1; }
 # Going back skips the tests: they'd test the code on this Mac, not the older commit, which passed them when it went out.
+# A commit whose full test run already passed on this Mac isn't tested again (owner, 2026-11-23: a deploy re-ran 25 minutes
+# of tests on a commit that had passed them an hour before). The stamp is var/tests-passed/<commit>, written only after a
+# full pass on a clean folder (here, or deploy/test_and_stamp.sh); any change is a new commit with no stamp, so it's tested.
 if [[ "${SKIP_TESTS:-}" != "1" && "$MODE" == "--go" ]]; then
-  (cd "$ROOT" && .venv/bin/pytest -q)
+  COMMIT="$(git -C "$ROOT" rev-parse "$REF")"
+  STAMP="$ROOT/var/tests-passed/$COMMIT"
+  if [[ -f "$STAMP" ]]; then
+    echo "Tests already passed for this commit ($(cat "$STAMP")): not run again."
+  else
+    (cd "$ROOT" && .venv/bin/pytest -q)
+    mkdir -p "$ROOT/var/tests-passed" && date "+%Y-%m-%d %H:%M" > "$STAMP"
+  fi
 fi
 
 STAGING=".deploy-staging/$APP_NAME"
