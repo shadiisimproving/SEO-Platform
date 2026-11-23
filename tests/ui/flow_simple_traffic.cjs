@@ -2,8 +2,9 @@
 // them, with screenshots to look at; and the Content fixes the owner asked for that also hold with the switch off.
 // Made-up sites only. Needs the real app on the fake internet, Google connected for site-one.example, and these made-up
 // extras on site-one.example: GA4's (not set) page, social sources written many ways (m.facebook.com, meta, Linkedin…),
-// Clarity live days, and a Clarity dashboard download for 9 Aug – 6 Nov 2026 with a speed score of 73.
+// Clarity live days, and a Clarity dashboard download for 9 Aug – 6 Nov 2026 with a speed score of 73:
 //   DB_NAME_TEST=test_t2_p2_a_test .venv/bin/python tests/ui/app_server.py --port 8411 --slow 0
+//   DB_NAME_TEST=test_t2_p2_a_test .venv/bin/python tests/ui/seed_simple_traffic.py
 // Run: node tests/ui/flow_simple_traffic.cjs http://127.0.0.1:8411/ reports/simplify-p2/t2
 const fs = require("fs");
 const { open } = require("./pw.cjs");
@@ -47,7 +48,8 @@ const metricAsks = (page, t0) => page.evaluate((since) => window.SCREEN_DATA.log
     check(await count(page, "#page .ncard[data-card]") === 4, "Channels: four number cards", await count(page, "#page .ncard[data-card]"));
     check(await count(page, "#page .ncard .ncard-graph") >= 3, "Channels: Visits, Leads and Lead rate have their own graph");
     check(!(await page.$("#page [data-lv-rule-form]")), "Channels: the rules form left the first view");
-    check(!(await page.$("#page .lv-note")), "Channels: no small print under the head");
+    // Google Analytics' own notes (key events counted, other website...) stay under the cards since the review of 2026-11-17 (W1).
+    check(!(await page.$("#page .lv-note:not(.ga4-note)")), "Channels: no small print under the head");
     const rows = await count(page, '#page tr[data-rp-open="channel"]');
     check(rows >= 3, "Channels: every channel row opens its panel", rows);
     const firstRow = await page.evaluate(() => Math.round(document.querySelector("#page tbody tr").getBoundingClientRect().top + document.querySelector("#main").scrollTop));
@@ -83,7 +85,7 @@ const metricAsks = (page, t0) => page.evaluate((since) => window.SCREEN_DATA.log
     check(/no personal data/.test(tip), "Conversions: \"counts only, no personal data\" sits behind the (i)");
     check(await count(page, "#page .ncard[data-card]") === 3 && (await count(page, "#page .ncard .d-pill")) >= 2, "Conversions: three cards with their change");
     const lines = await count(page, "#page .lv-fline");
-    check(lines >= 3 && (await page.getAttribute("#page .lv-fline .track", "data-tip") || "").includes("didn't become a lead"), "Conversions: one line per channel, the lost visits on the bar's tip", lines);
+    check(lines >= 3 && /didn't become a lead|had no key event/.test(await page.getAttribute("#page .lv-fline .track", "data-tip") || ""), "Conversions: one line per channel, the lost visits on the bar's tip", lines);
     check(await page.getAttribute('[data-lv-ptab="conversions:pages"]', "aria-selected") === "true", "Conversions: Pages that bring leads is the first tab");
     check(await count(page, '#page tr[data-rp-open="page"]') >= 2, "Conversions: page rows open the page panel");
     check(await count(page, "#page .lv-tab-tools button") >= 1, "Conversions: Filter sits beside the tabs");
@@ -105,7 +107,8 @@ const metricAsks = (page, t0) => page.evaluate((since) => window.SCREEN_DATA.log
     const asked = await metricAsks(page, since);
     check(asked.length <= 1, "Content: one call at most for its first view (Clarity and speed folded in)", asked.join(", "));
     const tabs = await page.$$eval("#page .lv-page > .page-tabs [role=tab]", (b) => b.map((x) => x.textContent.trim()));
-    check(tabs.length === 4 && /All pages/.test(tabs[0]) && tabs.includes("Clarity"), "Content: page tabs All pages, Social networks, Page speed and Clarity", tabs.join(" | "));
+    // Content tracker joined the tabs on 2026-11-20 (the Mickaz features).
+    check(tabs.length === 5 && /All pages/.test(tabs[0]) && ["Content tracker", "Social networks", "Page speed", "Clarity"].every((x) => tabs.includes(x)), "Content: page tabs All pages, Content tracker, Social networks, Page speed and Clarity", tabs.join(" | "));
     const head = await text(page, "#page .card .card-head");
     check(/–/.test(head), "Content: All pages says its source and days in its head", head);
     const last = await page.evaluate(() => { const rows = [...document.querySelectorAll("#page tbody tr")]; const r = rows[rows.length - 1]; return { text: r?.innerText || "", link: Boolean(r?.querySelector("a")), opens: r?.dataset.rpOpen || "" }; });
