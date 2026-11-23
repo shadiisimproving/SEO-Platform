@@ -357,7 +357,7 @@ def test_mix_lists_every_site_above_me_with_pages_only_rivals_followed(engine):
     check(engine, k, [(3, "https://shop-one.test/page"), (5, "https://rival.test/a"), (6, "https://pages-only.test/b")], ago=10)
     check(engine, k, [(1, "https://pages-only.test/b"), (2, "https://rival.test/a"), (3, "https://stranger.test/c"), (4, "https://shop-one.test/page")], ago=1)
     f = signals(engine, sid)[0]["rival_passed"]
-    assert f.evidence["passed"] == [{"host": "rival.test", "position": 2, "before": 5}]  # which rivals passed me is unchanged: On only
+    assert f.evidence["passed"] == [{"host": "rival.test", "position": 2, "before": 5, "you_fell": False}]  # which rivals passed me is unchanged: On only
     assert [(r["host"], r["before"], r["followed"]) for r in f.evidence["above"]] == [("pages-only.test", 6, True), ("rival.test", 5, True), ("stranger.test", None, False)]
     assert f.evidence["before_checked"].endswith("Z") and f.evidence["my_url"] == "https://shop-one.test/page"
     assert mine  # the helper module is the one these tests share

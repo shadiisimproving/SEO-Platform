@@ -147,7 +147,7 @@ def test_every_script_and_emoji_goes_through_every_path_after_the_conversion(wor
     with world.engine.begin() as conn:
         for n, words in enumerate(TEXTS):
             conn.execute(text(
-                "INSERT INTO gsc_query (site_id, day, query_hash, query, clicks, impressions, position) VALUES (:s, UTC_DATE() - INTERVAL 3 DAY, :h, :q, :c, :i, 4.0)"
+                "INSERT INTO gsc_query (site_id, day, query_hash, query, clicks, impressions, position) VALUES (:s, UTC_DATE() - INTERVAL 5 DAY, :h, :q, :c, :i, 4.0)"
             ), {"s": own, "h": f"h{n}", "q": words, "c": n + 1, "i": 10 * (n + 1)})
     listed = {r["keyword"]: r for r in rankings.listing(world.engine, own)["rows"]}
     for n, words in enumerate(TEXTS):

@@ -253,7 +253,9 @@ def test_keywords_export_names_impressions_leaves_suspects_unplaced_and_keeps_tw
     monkeypatch.setattr(rankings, "listing", lambda engine, site_id=None: {**real(engine, site_id), "rows": list(rows.values())})
     report = registry.build(world.engine, "keywords", {"site_id": str(world.site)})
     columns, listed = _cells(report)
-    assert "Searches a month" not in columns and "Impressions, 28 days" in columns and "Google impressions, 28 days" not in columns  # same as Impressions on Google
+    # "Searches a month" is real search volume from a named source since 2026-11-20 (seo/serp/volumes.py), never impressions.
+    assert columns["Searches a month"].key == "search_volume" and "Volume source" in columns
+    assert "Impressions, 28 days" in columns and "Google impressions, 28 days" not in columns  # same as Impressions on Google
     by = {r["keyword"]: r for r in listed}
     value = lambda label, kw: columns[label].get(by[kw]) if columns[label].get else by[kw].get(columns[label].key)  # noqa: E731
     assert (value("Position", "créer entreprise dubai"), value("Check status", "créer entreprise dubai"), value("Also seen", "créer entreprise dubai")) == (None, "Suspect", "Searlo #1")

@@ -359,6 +359,10 @@ def _gsc_daily(conn, tracked: list, through: dict) -> dict:
         final = conn.execute(text("SELECT data_through FROM site_sources WHERE site_id = :s AND source = 'gsc'"), {"s": site_id}).scalar()
         if final and last and final < last:
             last = final
+        # The shared period can end after the newest day Search Console has sent: the line ends on that day, not on empty ones.
+        newest = conn.execute(text("SELECT MAX(day) FROM gsc_query WHERE site_id = :s"), {"s": site_id}).scalar()
+        if newest and last and newest < last:
+            last = newest
         if not last:
             continue
         first = last - timedelta(days=SPARK_DAYS - 1)

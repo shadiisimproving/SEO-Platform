@@ -219,7 +219,7 @@ def test_the_kept_no_op_migration_upgrades_cleanly_and_changes_nothing(world):
     track(world, "café en grains", "cafe en grains")
     with world.engine.begin() as conn:
         head = conn.execute(text("SELECT version_num FROM alembic_version")).scalar()
-        conn.execute(text("UPDATE alembic_version SET version_num = 'a7b1c2d3e4f5'"))
+        conn.execute(text("UPDATE alembic_version SET version_num = 'a8b9c0d1e2f3'"))
     try:
         # Only this one step: later migrations (links, page speed) add columns the test schema already has.
         cfg = _alembic_config()
@@ -236,7 +236,7 @@ def test_the_kept_no_op_migration_upgrades_cleanly_and_changes_nothing(world):
     spec = importlib.util.spec_from_file_location("kept_migration", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    assert (module.revision, module.down_revision) == ("c5e7a9b1d3f2", "a7b1c2d3e4f5")
+    assert (module.revision, module.down_revision) == ("c5e7a9b1d3f2", "a8b9c0d1e2f3")
 
 
 # ---- #10 DuckDuckGo saves the depth it really read ---------------------------------------------------------------------

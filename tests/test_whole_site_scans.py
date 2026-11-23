@@ -1038,6 +1038,12 @@ def findings(data: dict) -> dict:
     return {c["code"]: sorted(p.replace(HOME, "/") for p in c["pages"]) for c in data["checks"] if c["count"]}
 
 
+# The made-up site serves no sitemap, so since the health test checks sitemaps (2026-11-18) every finished test also
+# finds "No sitemap found" (seo/health/audit.py), with its cost on the score. Nothing else about these scans changes.
+NO_SITEMAP = {"sitemap_missing": 1}
+NO_SITEMAP_COST = 8
+
+
 def plant_problems(world):
     """Problems on pages read early and read late, some only visible once both have been read."""
     change(world, 1, (GONE,), title="Same title")
@@ -1064,7 +1070,7 @@ def test_a_test_in_chunks_scores_every_page_not_just_the_last_chunk(world):
     result = data["audit"]
     assert (result["status"], result["pages_read"], result["pages_seen"], result["pages_not_read"]) == ("complete", 32, 32, 0)
     assert findings(data) == PLANTED
-    assert result["counts"] == {code: len(pages) for code, pages in PLANTED.items()}
+    assert result["counts"] == {**{code: len(pages) for code, pages in PLANTED.items()}, **NO_SITEMAP}
     assert Counter(world.site.page_requests()).most_common(1)[0][1] == 1
     assert world.saved() == 0
 
@@ -1093,10 +1099,10 @@ def test_a_kill_does_not_count_a_page_twice_in_the_findings(world):
     result = data["audit"]
     assert (result["status"], result["pages_read"], result["pages_seen"]) == ("complete", 32, 32)
     assert findings(data) == PLANTED
-    assert result["counts"] == {code: len(pages) for code, pages in PLANTED.items()}
+    assert result["counts"] == {**{code: len(pages) for code, pages in PLANTED.items()}, **NO_SITEMAP}
     with world.engine.connect() as conn:
         codes = [row[0] for row in conn.execute(text("SELECT code FROM health_issues WHERE audit_id = :i AND code <> 'links_in'"), {"i": audit_id})]  # links_in is the internal links report, not a check
-    assert sorted(codes) == sorted(PLANTED)  # one row each
+    assert sorted(codes) == sorted([*PLANTED, *NO_SITEMAP, "sitemap"])  # one row each; "sitemap" holds the sitemap report, like links_in
 
 
 def test_a_kill_repeating_a_chunk_with_problems_counts_them_once(world):
@@ -1107,7 +1113,7 @@ def test_a_kill_repeating_a_chunk_with_problems_counts_them_once(world):
     world.killed_chunk(health.run_audit, after_requests=3)  # robots.txt, /p3, /p4, and it dies asking for /p5
     world.to_the_end()
     assert findings(world.test_all(audit_id)) == {"no_meta": ["/p4", "/p5"]}
-    assert world.test_of(audit_id)["counts"] == {"no_meta": 2}
+    assert world.test_of(audit_id)["counts"] == {"no_meta": 2, **NO_SITEMAP}
 
 
 def test_a_test_paused_for_budget_stays_running_and_raises_nothing(world, monkeypatch):
@@ -1156,7 +1162,7 @@ def test_a_test_with_no_budget_on_its_first_day_carries_on_too(world):
     assert world.site.requests == []
     world.next_day()
     world.to_the_end()
-    assert world.test_of(audit_id)["score"] == 100
+    assert world.test_of(audit_id)["score"] == 100 - NO_SITEMAP_COST
 
 
 def test_stop_between_chunks_keeps_what_the_test_found(world, monkeypatch):
@@ -1297,7 +1303,7 @@ def test_robots_txt_failing_in_a_later_chunk_is_not_a_whole_site_problem_yet(wor
     world.sql("UPDATE jobs SET run_after = UTC_TIMESTAMP(3)")
     world.to_the_end()
     result = world.test_of(audit_id)
-    assert (result["status"], result["score"], result["pages_seen"], result["site_problems"]) == ("complete", 100, 31, [])
+    assert (result["status"], result["score"], result["pages_seen"], result["site_problems"]) == ("complete", 100 - NO_SITEMAP_COST, 31, [])
 
 
 def test_progress_numbers_of_a_test_are_saved_during_a_chunk(world):
