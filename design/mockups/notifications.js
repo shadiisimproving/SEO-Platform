@@ -37,6 +37,9 @@
     "First-time Google searches for your sites, and pages Google drops from its index, appear here.": "Les recherches Google où vos sites apparaissent pour la première fois, et les pages que Google retire de son index, s'affichent ici.",
     "Google dropped this page from its index": "Google a retiré cette page de son index", "Google dropped a page": "Google a retiré une page",
     "Google dropped {n} pages": "Google a retiré {n} pages", "Open the page": "Ouvrir la page",
+    "Today": "Aujourd'hui", "Yesterday": "Hier", "Show less": "Afficher moins", "{n} more": "{n} de plus",
+    "New on Google": "Nouveau sur Google", "Pos.": "Pos.", "Impr.": "Impr.", "{n} new": "{n} nouvelles",
+    "{n}+ impressions only": "Seulement {n}+ impressions",
   };
   Object.assign(WORDS, {
     "The sitemap can't be read any more": "Le sitemap ne peut plus être lu",
@@ -54,7 +57,6 @@
   const plural = (n, one, many) => (n === 1 ? t(one) : fill(many, { n: num(n) }));
   const pathOf = (url) => { try { return new URL(url).pathname || "/"; } catch { return url || ""; } };
   const dayLabel = (iso) => (iso ? new Intl.DateTimeFormat(UI.locale(), { weekday: "short", day: "numeric", month: "short" }).format(new Date(`${iso}T00:00:00`)) : "");
-  const place = (p) => (p === null || p === undefined ? "" : fill("Position {n}", { n: UI.dec(Math.round(p * 10) / 10) }));
 
   // ---- the sample, when the screens are opened as a plain file -----------------------------------
   let sample = null;
@@ -131,28 +133,50 @@
   // Which searches a day's row counts: the same floor for every row, so it's said once, under the list. Only if the
   // rows ever had different floors would each row say its own.
   const floorOf = (item) => item.detail?.min_impressions || 10;
-  const floorHtml = (n, cls = "") => `<p class="bell-meta bell-floor ${cls}">${esc(fill("{n}+ impressions since first shown", { n: num(n) }))}</p>`;
-  let floorOnRows = false;
   // A search tracked since opens its keyword in Keywords; any other, Overview → Queries (keyword-links.js).
   const goTip = (query, host) => t(window.KW?.trackedId?.(query || "", host || null) ? "See this keyword" : "Open in Overview → Queries");
-  /* The day's new searches for one site, in one row: the three most shown, the rest behind Show them. */
-  function groupHtml(item, readBtn, logo) {
-    const d = item.detail || {}, queries = d.queries || [], open = B.opened === item.id;
-    const list = (open ? queries : queries.slice(0, GROUP_SHOWN)).map((q, i) => `<li><button type="button" class="bell-go" data-bell-go="${item.id}" data-q="${i}" title="${esc(goTip(q.query, item.host))}"><span dir="auto">${esc(q.query)}</span></button>
-        <span class="bell-num">${esc([place(q.position), plural(q.impressions, "1 impression", "{n} impressions")].filter(Boolean).join(" · "))}</span>
-        <button type="button" class="icon-btn bell-track-one" data-bell-track="${item.id}" data-q="${i}" aria-label="${esc(`${t("Track")}: ${q.query}`)}" title="${esc(t("Track"))}">${UI.icon("plus")}</button></li>`).join("");
-    const more = queries.length > GROUP_SHOWN ? `<button type="button" class="link-btn" data-bell-more="${item.id}" aria-expanded="${open}">${esc(open ? t("Hide") : fill("Show all {n}", { n: num(queries.length) }))}</button>` : "";
-    return `<li class="bell-row ${item.read ? "" : "unread"}" data-bell-row="${item.id}">
-      <span class="bell-dot" aria-hidden="true"></span>
-      <div class="bell-body">
-        <p class="bell-title">${esc(plural(d.count || queries.length, "1 new Google search", "{n} new Google searches"))}</p>
-        <p class="bell-meta">${logo}<span>${esc(item.host)}</span><span>·</span><span>${esc(fill("Up to {d}", { d: dayLabel(d.day) }))}</span></p>
-        <ul class="bell-more bell-group">${list}</ul>${more}${floorOnRows ? floorHtml(floorOf(item)) : ""}
-      </div>
-      <div class="bell-acts">${readBtn}</div>
+  /* The compact layout (owner, 2026-11-17): one block per site (logo and name said once), a short day label per day, then one
+     line per search: the search, its position and its impressions as two columns headed once, and + to track it. Best
+     position first. Google updates, dropped pages, sitemap problems and Social drafts keep their own one-row look in the
+     site's block. */
+  const QUERY_ITEM = ["new_query", "new_queries", "new_query_more"];
+  const shortDay = (iso) => {
+    if (!iso) return "";
+    const d = new Date(`${iso}T00:00:00`), now = new Date(); now.setHours(0, 0, 0, 0);
+    const back = Math.round((now - d) / 86400000);
+    return back === 0 ? t("Today") : back === 1 ? t("Yesterday") : dayLabel(iso);
+  };
+  const countOf = (item) => (!QUERY_ITEM.includes(item.kind) ? 0 : item.kind === "new_query" ? 1 : item.detail?.count || item.detail?.queries?.length || 0);
+
+  function lineHtml(item, q, i) {
+    const qi = i === null ? "" : ` data-q="${i}"`, p = q.position;
+    const pos = p === null || p === undefined ? "—" : UI.dec(Math.round(p * 10) / 10);
+    const impr = q.impressions === undefined || q.impressions === null ? "—" : num(q.impressions);
+    return `<li class="bell-q">
+      <button type="button" class="bell-go" data-bell-go="${item.id}"${qi} title="${esc(`${q.query} — ${goTip(q.query, item.host)}`)}"><span dir="auto">${esc(q.query || "")}</span></button>
+      <span class="bell-n${p !== null && p !== undefined && p <= 10 ? " bell-top" : ""}">${esc(pos)}</span>
+      <span class="bell-n">${esc(impr)}</span>
+      <button type="button" class="icon-btn bell-track-one" data-bell-track="${item.id}"${qi} aria-label="${esc(`${t("Track")}: ${q.query}`)}" title="${esc(t("Track"))}">${UI.icon("plus")}</button>
     </li>`;
   }
 
+  function dayHtml(item) {
+    const d = item.detail || {}, open = B.opened === item.id;
+    const readBtn = `<button type="button" class="icon-btn bell-mark" data-bell-read="${item.id}" data-read="${!item.read}" aria-label="${esc(t(item.read ? "Mark as unread" : "Mark as read"))}" title="${esc(t(item.read ? "Mark as unread" : "Mark as read"))}">${UI.icon(item.read ? "circle" : "check")}</button>`;
+    let lines, hidden = 0;
+    if (item.kind === "new_query") lines = lineHtml(item, d, null);
+    else {
+      const all = (d.queries || []).map((q, i) => ({ q, i })).sort((x, y) => (x.q.position ?? 999) - (y.q.position ?? 999));
+      const keep = item.kind === "new_query_more" ? (open ? all.length : 0) : open ? all.length : GROUP_SHOWN;
+      hidden = item.kind === "new_query_more" ? d.count || all.length : Math.max(0, all.length - GROUP_SHOWN);
+      lines = all.slice(0, keep).map(({ q, i }) => lineHtml(item, q, i)).join("");
+    }
+    const more = hidden ? `<button type="button" class="link-btn bell-more-btn" data-bell-more="${item.id}" aria-expanded="${open}">${esc(open ? t("Show less") : fill("{n} more", { n: num(hidden) }))}</button>` : "";
+    return `<li class="bell-row ${item.read ? "" : "unread"}" data-bell-row="${item.id}">
+      <div class="bell-day"><span class="bell-dot" aria-hidden="true"></span><span class="bell-day-name">${esc(shortDay(d.day))}</span>${readBtn}</div>
+      <ul class="bell-group">${lines}</ul>${more}
+    </li>`;
+  }
   /* A Google update starting, or finished with its effect on this site (seo/metrics/google_updates.py). Opens Overview's card. */
   const UPDATE_WORDS = { lost: "you lost {n} of clicks", gained: "you gained {n} of clicks", normal: "within your usual ups and downs", season: "probably the season", little: "too few clicks to tell" };
   function updateHtml(item, readBtn, logo) {
@@ -160,7 +184,7 @@
     const pctText = d.clicks_pct === null || d.clicks_pct === undefined ? "" : `${Math.abs(Math.round(d.clicks_pct))}${UI.state.lang === "fr" ? " %" : "%"}`;
     const title = d.state === "ended" ? `${d.name}: ${fill(UPDATE_WORDS[d.verdict] || "finished", { n: pctText })}` : fill("Google started the {name}", { name: d.name });
     const when = d.state === "ended" && d.ended ? fill("Finished {day}", { day: dayLabel(d.ended) }) : fill("Began {day}", { day: dayLabel(d.began) });
-    return `<li class="bell-row bell-row-go ${item.read ? "" : "unread"}" data-bell-row="${item.id}" data-bell-update="${item.id}">
+    return `<li class="bell-row bell-ev bell-row-go ${item.read ? "" : "unread"}" data-bell-row="${item.id}" data-bell-update="${item.id}">
       <span class="bell-dot" aria-hidden="true"></span>
       <div class="bell-body">
         <p class="bell-title"><button type="button" class="bell-go" data-bell-update="${item.id}"><span class="bell-kind" aria-hidden="true">${UI.icon(d.verdict === "lost" ? "arrow-down" : "activity")}</span> <b dir="auto">${esc(title)}</b></button></p>
@@ -174,7 +198,7 @@
   const DROPPED = "page_dropped";
   function droppedHtml(item, readBtn, logo) {
     const d = item.detail || {};
-    return `<li class="bell-row bell-row-go ${item.read ? "" : "unread"}" data-bell-row="${item.id}">
+    return `<li class="bell-row bell-ev bell-row-go ${item.read ? "" : "unread"}" data-bell-row="${item.id}">
       <span class="bell-dot" aria-hidden="true"></span>
       <div class="bell-body">
         <p class="bell-title"><button type="button" class="bell-go" data-bell-page="${item.id}" title="${esc(t("Open the page"))}"><span class="bell-kind" role="img" aria-label="${esc(t("Google dropped this page from its index"))}">${UI.icon("triangle-alert")}</span> <b dir="auto">${esc(t("Google dropped this page from its index"))}</b></button></p>
@@ -191,7 +215,7 @@
     const d = item.detail || {};
     const title = d.state === "unreachable" ? t("The sitemap can't be read any more")
       : fill(d.after === 1 ? "1 listed page gives an error, up from {b}" : "{n} listed pages give an error, up from {b}", { n: num(d.after || 0), b: num(d.before || 0) });
-    return `<li class="bell-row bell-row-go ${item.read ? "" : "unread"}" data-bell-row="${item.id}">
+    return `<li class="bell-row bell-ev bell-row-go ${item.read ? "" : "unread"}" data-bell-row="${item.id}">
       <span class="bell-dot" aria-hidden="true"></span>
       <div class="bell-body">
         <p class="bell-title"><button type="button" class="bell-go" data-bell-health="${item.id}" title="${esc(t("Open Site health"))}"><span class="bell-kind" role="img" aria-label="${esc(t("Sitemap"))}">${UI.icon("triangle-alert")}</span> <b>${esc(title)}</b></button></p>
@@ -202,12 +226,12 @@
   }
 
   function rowHtml(item) {
+    if (QUERY_ITEM.includes(item.kind)) return dayHtml(item);
     const d = item.detail || {}, logo = UI.siteLogo ? UI.siteLogo(item.host, 14) : "";
     const readBtn = `<button type="button" class="icon-btn bell-mark" data-bell-read="${item.id}" data-read="${!item.read}" aria-label="${esc(t(item.read ? "Mark as unread" : "Mark as read"))}" title="${esc(t(item.read ? "Mark as unread" : "Mark as read"))}">${UI.icon(item.read ? "circle" : "check")}</button>`;
-    if (item.kind === "new_queries") return groupHtml(item, readBtn, logo);
     if (item.kind === "google_update") return updateHtml(item, readBtn, logo);
     if (item.kind === "social_ready") {
-      return `<li class="bell-row bell-row-go ${item.read ? "" : "unread"}" data-bell-row="${item.id}" data-bell-social="${item.id}">
+      return `<li class="bell-row bell-ev bell-row-go ${item.read ? "" : "unread"}" data-bell-row="${item.id}" data-bell-social="${item.id}">
         <span class="bell-dot" aria-hidden="true"></span>
         <div class="bell-body">
           <p class="bell-title"><button type="button" class="bell-go" data-bell-social="${item.id}"><span class="bell-kind" aria-hidden="true">${UI.icon("message-square-text")}</span> ${esc(t(item.title || "Drafts ready"))}</button></p>
@@ -218,33 +242,7 @@
     }
     if (item.kind === DROPPED) return droppedHtml(item, readBtn, logo);
     if (item.kind === SITEMAP) return sitemapHtml(item, readBtn, logo);
-    if (item.kind === "new_query_more") {
-      const open = B.opened === item.id;
-      const list = open ? `<ul class="bell-more">${(d.queries || []).map((q, i) => `<li><button type="button" class="bell-go" data-bell-go="${item.id}" data-q="${i}" title="${esc(goTip(q.query, item.host))}"><span dir="auto">${esc(q.query)}</span></button><span class="bell-num">${esc(place(q.position))}</span></li>`).join("")}</ul>` : "";
-      return `<li class="bell-row ${item.read ? "" : "unread"}" data-bell-row="${item.id}">
-        <span class="bell-dot" aria-hidden="true"></span>
-        <div class="bell-body">
-          <p class="bell-title">${esc(fill("{n} more new searches", { n: num(d.count || 0) }))}</p>
-          <p class="bell-meta">${logo}<span>${esc(item.host)}</span><span>·</span><span>${esc(dayLabel(d.day))}</span></p>
-          <button type="button" class="link-btn" data-bell-more="${item.id}" aria-expanded="${open}">${esc(t(open ? "Hide" : "Show"))}</button>
-          ${list}
-        </div>
-        <div class="bell-acts">${readBtn}</div>
-      </li>`;
-    }
-    const facts = [place(d.position), d.impressions !== undefined ? plural(d.impressions, "1 impression", "{n} impressions") : "", d.clicks ? plural(d.clicks, "1 click", "{n} clicks") : ""].filter(Boolean);
-    return `<li class="bell-row bell-row-go ${item.read ? "" : "unread"}" data-bell-row="${item.id}">
-      <span class="bell-dot" aria-hidden="true"></span>
-      <div class="bell-body">
-        <p class="bell-title"><button type="button" class="bell-go" data-bell-go="${item.id}" title="${esc(goTip(d.query, item.host))}"><span class="bell-kind" role="img" title="${esc(t("New search on Google"))}" aria-label="${esc(t("New search on Google"))}">${UI.icon("search")}</span> <b dir="auto">“${esc(d.query || "")}”</b></button></p>
-        <p class="bell-meta">${logo}<span>${esc(item.host)}</span>${d.page ? `<span>·</span>${PageLink.html(d.page, { text: pathOf(d.page), host: item.host, cls: "bell-path" })}` : ""}<span>·</span><span>${esc(dayLabel(d.day))}</span></p>
-        <p class="bell-meta">${facts.map((f) => `<span>${esc(f)}</span>`).join("<span>·</span>")}</p>
-      </div>
-      <div class="bell-acts">
-        <button type="button" class="btn btn-ghost bell-track" data-bell-track="${item.id}">${UI.icon("plus")}${esc(t("Track"))}</button>
-        ${readBtn}
-      </div>
-    </li>`;
+    return ""; // a kind this screen doesn't know yet
   }
 
   function panelHtml() {
@@ -252,9 +250,18 @@
     const head = `<div class="bell-head"><h2 id="bell-title">${esc(t("Notifications"))}${sampleTag}</h2>${B.unread ? `<button type="button" class="link-btn" id="bell-read-all">${esc(t("Mark all read"))}</button>` : ""}</div>`;
     if (B.failed && !B.loaded) return `${head}<p class="bell-empty">${esc(t("Notifications didn't load. Trying again in a few minutes."))}</p>`;
     if (!B.items.length) return `${head}<div class="bell-empty"><p><b>${esc(t("No notifications yet"))}</b></p><p>${esc(t("First-time Google searches for your sites, pages Google drops from its index, and sitemap problems, appear here."))}</p></div>`;
+    const searches = B.items.some((i) => QUERY_ITEM.includes(i.kind));
+    const cols = searches ? `<div class="bell-cols" aria-hidden="true"><span>${esc(t("New on Google"))}</span><span>${esc(t("Pos."))}</span><span>${esc(t("Impr."))}</span><span></span></div>` : "";
+    const hosts = [];
+    B.items.forEach((i) => { let h = hosts.find((x) => x.host === i.host); if (!h) hosts.push((h = { host: i.host, items: [] })); h.items.push(i); });
+    const sites = hosts.map((h) => {
+      const n = h.items.reduce((sum, i) => sum + countOf(i), 0);
+      return `<section class="bell-site"><p class="bell-site-head">${UI.siteLogo ? UI.siteLogo(h.host, 14) : ""}<span class="bell-host">${esc(h.host)}</span>${n ? `<span class="bell-site-n">${esc(fill("{n} new", { n: num(n) }))}</span>` : ""}</p>
+        <ul class="bell-list">${h.items.map(rowHtml).join("")}</ul></section>`;
+    }).join("");
     const floors = [...new Set(B.items.filter((i) => i.kind === "new_queries").map(floorOf))];
-    floorOnRows = floors.length > 1;
-    return `${head}<ul class="bell-list">${B.items.map(rowHtml).join("")}</ul>${floors.length === 1 ? floorHtml(floors[0], "bell-foot") : ""}`;
+    const foot = floors.length === 1 ? `<p class="bell-floor bell-foot">${esc(fill("{n}+ impressions only", { n: num(floors[0]) }))}</p>` : "";
+    return `${head}${cols}${sites}${foot}`;
   }
 
   function place_(el, anchor) {
