@@ -11,7 +11,7 @@
   const COMP = window.COMP;
   /* Questions has its own tab since 2026-11-12 (UI critique): as the third card under Pages, the questions they answer and I
      don't were hard to find. */
-  const TABS = [["keywords", "Keywords", "key-round"], ["pages", "Pages", "file-text"], ["questions", "Questions", "message-circle-question"], ["activity", "Activity", "activity"], ["site", "Their site", "globe"]];
+  const TABS = [["keywords", "Keywords", "key-round"], ["pages", "Pages", "file-text"], ["questions", "Questions", "message-circle-question"], ["activity", "Activity", "activity"], ["site", "Their site", "globe"], ["map", "Site map", "network"]];
   if (window.ICONS && !window.ICONS["message-circle-question"]) window.ICONS["message-circle-question"] = '<path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>';
   const TAB_KEY = "competitor-tab";
   const S = { tab: null, p: null, ins: null, parts: null, buildMore: false, strengthBusy: false, strengthError: "", shownId: null, bestSort: null };
@@ -164,6 +164,7 @@
     if (tab === "questions") return questionsTab(p, ins);
     if (tab === "activity") return activityTab(p, ins, parts);
     if (tab === "site") return siteTab(p, ins);
+    if (tab === "map") return window.SiteMap ? window.SiteMap.block({ competitorId: p.id, host: p.host, mine: { id: typeof COMP.siteId === "number" ? COMP.siteId : p.site?.id ?? null, host: COMP.site?.()?.host || p.site?.host || "" } }) : unavailable(); // site-map.js draws it by itself
     const off = p.tracking && p.tracking !== "on";
     return `<section class="card"><div class="cl-section-body" id="cl-keywords">${off ? COMP.trackingNote?.(p) ?? "" : parts.keywordsBody(p)}</div></section>`;
   }

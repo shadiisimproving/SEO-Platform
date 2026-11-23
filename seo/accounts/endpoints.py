@@ -332,6 +332,11 @@ ENDPOINTS: dict[str, tuple[str, str, str]] = {
     "content_api.piece": ("content", "read", ""),
     "content_api.save": ("content", "write", ""),
     "pages_api.profile": ("pages", "read", ""),
+    # The Site map: a website's pages as a mind map. One of their sites (site_id), or a competitor one of their sites follows (competitor_id).
+    "pages_api.site_map": ("map competitors", "read", ""),
+    "pages_api.site_map_page": ("map competitors", "read", ""),
+    "pages_api.site_map_reading": ("map competitors", "read", ""),
+    "pages_api.site_map_read": ("map competitors", "write", ""),
     "tasks_api.create": ("tasks", "write", ""),
     "tasks_api.update": ("tasks", "write", ""),
     "tasks_api.delete": ("tasks", "write", ""),

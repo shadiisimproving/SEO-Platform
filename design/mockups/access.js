@@ -13,7 +13,7 @@
 
    Hiding a button only keeps the screen honest: the server refuses anything not theirs whatever the screen shows. */
 (function () {
-  const ORDER = ["today", "channels", "conversions", "content", "overview", "pages", "insights", "keywords", "competitors", "ai", "ads", "tasks", "notes", "social", "backlinks", "resources", "health"];
+  const ORDER = ["today", "channels", "conversions", "content", "overview", "pages", "map", "insights", "keywords", "competitors", "ai", "ads", "tasks", "notes", "social", "backlinks", "resources", "health"];
   const user = window.BOOT?.user || null;
   const chosen = user && user.role !== "admin" ? user.access || null : null;
   const level = (section) => (chosen ? chosen.sections?.[section] || null : "edit");

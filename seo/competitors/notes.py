@@ -298,7 +298,8 @@ def list_notes(
     elif page_url:
         params["u"] = _clean_page(page_url) or page_url
         params["h"] = pages.url_hash(params["u"])
-        where.append("(n.page_hash = :h OR (n.scope = 'section' AND LEFT(:u, CHAR_LENGTH(n.page_url)) = n.page_url COLLATE utf8mb4_bin))")
+        # COLLATE sits on the value, not the column: the live tables are still latin1, where a column can't take utf8mb4_bin.
+        where.append("(n.page_hash = :h OR (n.scope = 'section' AND n.page_url = LEFT(:u, CHAR_LENGTH(n.page_url)) COLLATE utf8mb4_bin))")
     if site_id is not None:  # a note saved with no site belongs to all of them
         where.append("(n.site_id = :s OR n.site_id IS NULL)")
         params["s"] = site_id

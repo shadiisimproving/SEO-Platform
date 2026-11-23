@@ -178,6 +178,19 @@ class Page(Base):
     blocks: Mapped[list | None] = mapped_column(JSON, nullable=True)  # short hashes of the main text's blocks, to find a site's template
 
 
+class PageLinks(Base):
+    """The site's own pages one page links to, as a JSON list of page keys in the page's order (seo/crawl/extract.py).
+    No row: the page's links haven't been read yet. The site map's "By links" view reads this (seo/pages/sitemap_tree.py)."""
+
+    __tablename__ = "page_links"
+    __table_args__ = (Index("ix_page_links_domain", "domain_id"),)
+
+    page_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("pages.id", ondelete="CASCADE"), primary_key=True, autoincrement=False)
+    domain_id: Mapped[int] = mapped_column(ForeignKey("domains.id", ondelete="CASCADE"))
+    links: Mapped[str] = mapped_column(MEDIUMTEXT)
+    read_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
+
+
 class PageVersion(Base):
     """A snapshot, written only when a page changed, so a real text diff can be shown."""
 

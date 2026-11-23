@@ -325,7 +325,8 @@ def _plan(engine: Engine, competitor_id: int, site, baseline_done: bool, fetcher
                 text(
                     "SELECT url, last_status, content_hash, read_with, internal_links, last_checked_at, last_checked_at >= UTC_DATE() AS today, "
                     "last_checked_at < UTC_TIMESTAMP(3) - INTERVAL :d DAY AS stale, last_checked_at < UTC_TIMESTAMP(3) - INTERVAL :u DAY AS unlisted_due, "
-                    "last_checked_at < UTC_TIMESTAMP(3) - INTERVAL :f DAY AS few_days, last_changed_at >= UTC_TIMESTAMP(3) - INTERVAL :r DAY AS edited_lately "
+                    "last_checked_at < UTC_TIMESTAMP(3) - INTERVAL :f DAY AS few_days, last_changed_at >= UTC_TIMESTAMP(3) - INTERVAL :r DAY AS edited_lately, "
+                    "NOT EXISTS (SELECT 1 FROM page_links l WHERE l.page_id = pages.id) AS no_links "
                     "FROM pages WHERE domain_id = :i ORDER BY id"
                 ),
                 {"i": domain_id, "d": REREAD_DAYS, "u": UNLISTED_DAYS, "f": EVERY_FEW_DAYS, "r": RECENT_EDIT_DAYS},
@@ -412,7 +413,7 @@ def _plan(engine: Engine, competitor_id: int, site, baseline_done: bool, fetcher
             few.append(entry)
         elif mode == TIERS and key not in ranking_by_key and not row["edited_lately"]:
             rest.append(entry)  # in turn with what's left of the day, without waiting REREAD_DAYS
-        elif row["stale"]:
+        elif row["stale"] or row["no_links"]:  # its links were never saved (the site map's "By links" view): read in turn, behind the news
             rest.append(entry)
     for key, row in known.items():  # the site no longer lists these: reading them is how a removed page gets noticed
         if key in listed or key in ranking_by_key or not row["content_hash"] or row["last_status"] == "gone" or row["today"] or row["read_with"] == "firecrawl":

@@ -287,7 +287,7 @@
     { group: "Traffic" },
     { id: "channels", label: "Channels", icon: "activity" }, { id: "conversions", label: "Conversions", icon: "filter" }, { id: "content", label: "Content", icon: "file-text" },
     { group: "Search" },
-    { id: "overview", label: "Overview", icon: "search" }, { id: "pages", label: "Pages", icon: "layers" }, { id: "insights", label: "Insights", icon: "trending-up" }, { id: "keywords", label: "Keywords", icon: "key-round" }, { id: "competitors", label: "Competitors", icon: "crosshair" }, { id: "ai", label: "AI search", icon: "sparkles" },
+    { id: "overview", label: "Overview", icon: "search" }, { id: "pages", label: "Pages", icon: "layers" }, { id: "map", label: "Site map", icon: "network" }, { id: "insights", label: "Insights", icon: "trending-up" }, { id: "keywords", label: "Keywords", icon: "key-round" }, { id: "competitors", label: "Competitors", icon: "crosshair" }, { id: "ai", label: "AI search", icon: "sparkles" },
     { group: "Ads" },
     { id: "ads", label: "Google Ads", icon: "megaphone", logo: "googleads" },
     { group: "Work" },
