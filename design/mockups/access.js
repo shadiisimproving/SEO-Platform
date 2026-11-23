@@ -47,7 +47,7 @@
     ["today", ["today"]], ["alerts", ["health", "today"]], ["tasks", ["tasks", "today"]],
     ["prospects", ["competitors", "backlinks"]], ["mediators", ["backlinks"]], ["refresh/", ["keywords", "competitors", "ai"]],
     ["uptime/", ["health"]], ["health/", ["health"]], ["links/scan", ["health"]], ["notifications", ["overview", "keywords", "social"]], ["social/", ["social"]],
-    ["notes", ["notes"]], ["note-files", ["notes"]], ["rankings", ["keywords", "competitors", "tasks", "ai", "today"]],
+    ["notes", ["notes"]], ["note-files", ["notes"]], ["rankings", ["keywords", "competitors", "tasks", "ai", "today"]], ["rank-trends", ["keywords", "overview"]],
     ["collective/", ["competitors"]], ["link-gaps", ["competitors"]], ["page-pairs", ["competitors"]], ["site-pages", ["pages"]], ["tasks/options", ["tasks"]], ["keyword-check", ["competitors"]],
     ["keywords/", ["competitors"]], ["ai-watch", ["competitors", "ai"]], ["resources", ["resources"]], ["insights", ["insights", "today"]],
     ["backlinks/summary", ["backlinks", "today"]], ["backlinks", ["backlinks", "competitors"]], ["metrics/ads", ["ads", "today"]],

@@ -1038,7 +1038,8 @@ def today(engine: Engine, site_id: int | None = None, args: dict | None = None) 
     pages = [move for move in pages if move["key"] not in named]
     _say_this_week(todo, keywords)
     going_down = _mix([m for m in pages if m["clicks"] < m["was"]], [m for m in keywords if m["places"] < 0])
-    _add_rival_changes(engine, [*todo, *going_down])
+    pages_down = _mix([m for m in pages if m["clicks"] < m["was"]], [])
+    _add_rival_changes(engine, [*todo, *going_down, *[m for m in pages_down if not any(m is g for g in going_down)]])
     rivals, other_edits = _rival_changes(engine, site_id)
     results = _results(strip, clicks, _states(engine, site_id))
     for row in strip:
@@ -1050,6 +1051,8 @@ def today(engine: Engine, site_id: int | None = None, args: dict | None = None) 
         # The two weeks Going down and Going up compare, when every site's last day is the same (else each row has its own).
         "moves_window": windows[0] if windows and all(w == windows[0] for w in windows) else None,
         "todo_drops": sum(1 for row in todo if row.get("reason") in ("losing_clicks", "losing_leads")),
+        # Pages alone, for the screen: its keywords are in the Keywords by ranking card (seo.metrics.rank_trends).
+        "pages_down": pages_down, "pages_up": _mix([m for m in pages if m["clicks"] > m["was"]], []),
         "rival_changes": rivals, "other_edits": other_edits, "sources": sources, "lanes": _lanes(engine), "sites": strip,
     }
 
@@ -1100,6 +1103,7 @@ def for_person(answer: dict) -> dict:
     answer["todo"] = _rows_they_may_see(answer.get("todo") or [])
     if not (who.can("overview") or who.can("keywords")):
         answer["going_down"], answer["going_up"] = [], []
+        answer["pages_down"], answer["pages_up"] = [], []
     if not who.can("competitors"):
         answer["rival_changes"], answer["other_edits"] = [], 0
     # Counts over what they may see only, so they never tell of drops in sections they weren't given.

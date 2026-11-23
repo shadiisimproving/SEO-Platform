@@ -155,7 +155,7 @@ const many = (page, sel, fn) => page.locator(sel).evaluateAll(fn);
     await p.goto(`${BASE}?simple=1#keywords`); await p.waitForSelector("#kw-table", { timeout: 20000 }); await settle(p, 1200);
     const before = await p.evaluate(() => {
       const table = document.querySelector("#kw-table"), content = document.querySelector(".content");
-      return [...content.querySelectorAll("button, input, select, a")].filter((el) => el.offsetParent && (el.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING) && !el.closest(".kw-engines, .tiles, .kwr-phone-acts, .kw-views")).map((el) => el.id || (el.matches("[data-tp-search]") ? "search" : el.textContent.trim()));
+      return [...content.querySelectorAll("button, input, select, a")].filter((el) => el.offsetParent && (el.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING) && !el.closest(".kw-engines, .tiles, .kwr-phone-acts, .kw-views, [data-rank-trends]")).map((el) => el.id || (el.matches("[data-tp-search]") ? "search" : el.textContent.trim()));
     });
     check(before.includes("kw-filter") && before.includes("kw-volumes") && before.filter((x) => /^(All|Top|Up|Down|Not ranked|Cited|Two)/.test(x)).length === 8, `Simple: search, Volumes, Filter and the eight chips before the first row (Track C, 2026-11-20): ${before.join(", ")}`);
     await p.click("#kw-filter"); await settle(p, 400);

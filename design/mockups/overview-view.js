@@ -756,6 +756,7 @@
       ${cards(d)}
       <section class="card ov-chart-card">${chartHead}${chart(d)}</section>
       ${updatesCard()}
+      ${window.RankTrends ? window.RankTrends.card("overview") : ""}
       ${d.hourly && !simple() ? `<p class="small muted ov-hint">${t("Tables below show the last 2 whole days.")}</p>` : ""}
       ${tabsCard(d)}`);
   }

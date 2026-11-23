@@ -1,0 +1,52 @@
+/* Keywords by ranking (rank-trends.js): one card, three tabs, two rankings behind a switch. It uses the app's own card,
+   rows and change chip; only what those don't have is here. */
+.rt-card { margin-bottom: 14px; }
+.rt-card .card-head { border-bottom: 0; padding-bottom: 8px; }
+
+/* The switch: which ranking. The pressed side is the raised one, as on every .seg, without the sliding ink. */
+.rt-seg button[aria-pressed="true"] { background: var(--ink-bg); box-shadow: var(--ink-shadow); }
+
+/* Tabs under the head, the count beside each name. */
+.rt-tabs { display: flex; gap: 2px; padding: 0 8px; border-bottom: 1px solid var(--line); overflow-x: auto; scrollbar-width: none; }
+.rt-tabs::-webkit-scrollbar { display: none; }
+.rt-tab { flex: none; display: inline-flex; align-items: center; gap: 7px; min-height: 40px; padding: 8px 10px; margin-bottom: -1px; border: 0; border-bottom: 2px solid transparent; background: none; font: inherit; font-size: 13.5px; font-weight: 500; color: var(--text-2); cursor: pointer; white-space: nowrap; transition: color var(--t-fast), border-color var(--t-fast); }
+.rt-tab:hover { color: var(--text); }
+.rt-tab[aria-selected="true"] { color: var(--accent-text); font-weight: 600; border-bottom-color: var(--accent-2); }
+.rt-tab:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: 6px 6px 0 0; }
+.rt-n { font-size: 12px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--muted); }
+.rt-tab[aria-selected="true"] .rt-n { color: inherit; }
+
+/* A row: the keyword and the ones like it, then how far it moved, then where it is. The two numbers keep their own
+   columns, so every row's line up. */
+.rt-rows > li { gap: 14px; align-items: flex-start; padding-block: 10px; }
+.rt-rows .what .t { font-size: 14px; }
+.rt-similar { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; margin-top: 2px; line-height: 1.5; }
+.rt-sim + .rt-sim::before { content: "·"; margin: 0 7px; color: var(--line-2); }
+.rt-sim-pos { font-variant-numeric: tabular-nums; }
+.rt-move { flex: none; display: inline-flex; justify-content: flex-end; min-width: 58px; line-height: 22px; }
+.rt-same { color: var(--muted); padding-inline-end: 8px; }
+.rt-pos { flex: none; min-width: 46px; text-align: end; font-size: 14px; font-weight: 600; line-height: 22px; font-variant-numeric: tabular-nums; color: var(--text); }
+
+.rt-empty { padding: 26px 18px; }
+.rt-foot { display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; padding: 9px 18px; border-top: 1px solid var(--line); }
+.rt-note { flex: 1 1 260px; min-width: 0; }
+.rt-foot-acts { display: inline-flex; align-items: center; gap: 16px; margin-inline-start: auto; }
+.rt-all { display: inline-flex; align-items: center; gap: 2px; text-decoration: none; }
+.rt-all svg.i { width: 14px; height: 14px; }
+
+/* Grey rows while the answer is on its way. */
+.rt-wait > li { justify-content: space-between; align-items: center; }
+.rt-wait > li:hover { background: none; }
+.rt-wait span { height: 12px; border-radius: 6px; background: var(--track); }
+.rt-wait span:first-child { width: min(46%, 280px); }
+.rt-wait span:last-child { width: 72px; }
+@media (prefers-reduced-motion: no-preference) { .rt-wait span { animation: rt-wait 1.4s ease-in-out infinite alternate; } }
+@keyframes rt-wait { from { opacity: 1; } to { opacity: .45; } }
+
+@media (max-width: 560px) {
+  .rt-card .card-head { gap: 8px; }
+  .rt-seg { margin-left: 0; }
+  .rt-rows > li { gap: 8px; }
+  .rt-move { min-width: 48px; }
+  .rt-pos { min-width: 38px; }
+}

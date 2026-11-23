@@ -76,6 +76,14 @@ def queries():
     return jsonify(rankings.queries(_engine(), _site_arg(), request.args.get("engine", "google")))
 
 
+@keywords_api.get("/rank-trends")
+def rank_trends():
+    """The Keywords by ranking card, on Today, Keywords and Overview."""
+    from seo.metrics import rank_trends as trends
+
+    return jsonify(trends.rank_trends(_engine(), _site_arg()))
+
+
 @keywords_api.get("/rankings/<int:keyword_id>")
 def detail(keyword_id: int):
     return jsonify(rankings.detail(_engine(), _site_arg(True), keyword_id, request.args.get("engine", "google")))

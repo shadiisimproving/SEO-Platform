@@ -240,6 +240,7 @@ ENDPOINTS: dict[str, tuple[str, str, str]] = {
     # ---- Keywords and Refresh ----
     "keywords_api.listing": ("keywords competitors tasks ai today", "read", "all"),
     "keywords_api.queries": ("keywords overview", "read", "all"),
+    "keywords_api.rank_trends": ("keywords overview", "read", "all"),  # the Keywords by ranking card (Today shows it to those who have either)
     "keywords_api.detail": ("keywords competitors overview", "read", ""),
     "keywords_api.timeline": ("keywords competitors overview", "read", ""),
     "keywords_api.gsc_positions": ("keywords", "read", "all"),

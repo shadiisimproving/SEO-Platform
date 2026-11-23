@@ -1033,6 +1033,7 @@
           ${UI.tile(`${t("Top 10")} <span class="muted">· ${t(state.engine === "all" ? "Google only" : "our checks")}</span>`, num(all.filter((r) => good(r) && good(r) <= 10).length), moved.compared ? `${moved.change ? UI.delta(moved.change, { noWord: false }) : ""}<span class="ab">${num(moved.compared)} ${t("compared")}</span>` : "", { ic: "target" })}
           ${googleOnly(state.engine) || state.engine === "all" ? UI.tile(`${t("Cited by AI")}${state.engine === "all" ? ` <span class="muted kw-google-only">· ${t("Google only")}</span>` : ""}`, num(all.filter((r) => r.ai.state === "cited").length), `<span class="ab">${t("of")} ${num(all.length)}</span>`, { ic: "sparkles" }) : ""}
         </section>
+        ${window.RankTrends ? window.RankTrends.card("keywords") : ""}
         <div class="tabs-row">
           <div class="tabs" role="tablist" aria-label="${t("Engines")}">
             ${[...ENGINES, ["all", t("All engines")]].map(([id, label]) => `<button class="tab" role="tab" data-engine="${id}" aria-selected="${state.engine === id}">${id === "all" ? "" : logo(id, 16)}${label}</button>`).join("")}
@@ -1108,6 +1109,7 @@
           ${UI.card({ id: "kw-top10", label: `${t("Top 10")} <span class="muted">· ${t(state.engine === "all" ? "Google only" : "our checks")}</span>`, def: "Top 10", value: top10, change: moved.compared ? { value: moved.change, unit: "" } : null, sub: moved.compared ? `${num(moved.compared)} ${t("compared")}` : "", cls: "tile" })}
           ${googleOnly(state.engine) || state.engine === "all" ? UI.card({ id: "kw-cited", label: `${t("Cited by AI")}${state.engine === "all" ? ` <span class="muted kw-google-only">· ${t("Google only")}</span>` : ""}`, value: cited, sub: `${t("of")} ${num(all.length)}`, cls: "tile" }) : ""}
         </section>`}
+        ${window.RankTrends ? window.RankTrends.card("keywords") : ""}
         ${body}
       </div>`;
   }
@@ -1579,7 +1581,7 @@
     document.dispatchEvent(new CustomEvent("seocc:refresh-done", { detail: { id: run.id, status: run.status, done: run.done } })); // other screens showing checks
     const info = K.runInfo.get(run.id);
     K.runInfo.delete(run.id);
-    K.stale = true; K.queries = {};
+    K.stale = true; K.queries = {}; window.RankTrends?.stale();
     load().then(() => {
       if (K.panel) loadPanel(K.panel);
       if (!block?.isConnected) return;
@@ -1924,8 +1926,9 @@
     const wanted = info.line || (view.main ? lineKey(view.main) : lines[0] ? lineKey(lines[0]) : null);
     const shownLine = lines.find((x) => lineKey(x) === wanted) || lines[0];
     const picker = lines.length > 1 ? `<select class="select" id="kwr-line" aria-label="${t("Tool")}" style="margin-bottom:6px;width:100%">${lines.map((x) => `<option value="${esc(lineKey(x))}" ${x === shownLine ? "selected" : ""}>${esc(t(x.tool))} · ${esc(UI.countryName(x.location) || x.location || "?")} · ${t("Top")} ${x.depth}</option>`).join("")}</select>` : "";
+    const checkRow = (p) => `<tr><td>${esc(UI.fmtDateOnly(p.at.slice(0, 10)))}</td><td>${p.p ? `#${p.p}` : p.suspect ? `<span data-tip="${esc(t(UNSURE))}" role="img" aria-label="${esc(t(UNSURE))}">?</span>` : `&gt;${shownLine.depth}`}</td><td>${p.suspect ? status("warn", t("Suspect result")) : okMark()}</td></tr>`;
     const history = !shownLine ? `<p class="small muted">${t("None yet")}</p>` : info.table
-      ? `<table class="mini"><thead><tr><th>${t("Date")}</th><th>${t("Position")}</th><th>${t("Status")}</th></tr></thead><tbody>${shownLine.points.map((p) => `<tr><td>${esc(UI.fmtDateOnly(p.at.slice(0, 10)))}</td><td>${p.p ? `#${p.p}` : p.suspect ? `<span data-tip="${esc(t(UNSURE))}" role="img" aria-label="${esc(t(UNSURE))}">?</span>` : `&gt;${shownLine.depth}`}</td><td>${p.suspect ? status("warn", t("Suspect result")) : okMark()}</td></tr>`).join("")}</tbody></table>`
+      ? `<table class="mini"><thead><tr><th>${t("Date")}</th><th>${t("Position")}</th><th>${t("Status")}</th></tr></thead><tbody>${shownLine.points.map(checkRow).join("")}</tbody></table>`
       : chart(shownLine);
     const hasSuspect = shownLine?.points.some((p) => p.suspect);
     const competitors = detail.competitors.length
@@ -2366,7 +2369,7 @@
   }
   window.addEventListener("seocc:site-added", () => { K.stale = true; });
   // Keywords added elsewhere (Competitors → Keyword check → Add to my keywords) show here without a reload.
-  document.addEventListener("keywords:changed", () => { K.stale = true; K.queries = {}; if (state.route === "keywords" && !K.loading) load(); });
+  document.addEventListener("keywords:changed", () => { K.stale = true; K.queries = {}; window.RankTrends?.stale(); if (state.route === "keywords" && !K.loading) load(); });
   /* Other screens track a query through the same panel, so there's one way to add a keyword. queries: one or many. */
   /* window.KW, for other screens:
        KW.track(queries, host, opener, market)   the Add keywords panel, filled in (one query or many). On the simpler screens,

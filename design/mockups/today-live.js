@@ -162,7 +162,7 @@
   function vmOf(d) {
     const stale = d.lanes.filter((l) => l.stale);
     return {
-      results: d.results, googleStopped: d.google_stopped, todo: d.todo.map(todoItem), goingDown: d.going_down, goingUp: d.going_up, otherEdits: d.other_edits,
+      results: d.results, googleStopped: d.google_stopped, todo: d.todo.map(todoItem), goingDown: d.going_down, goingUp: d.going_up, pagesDown: d.pages_down, pagesUp: d.pages_up, otherEdits: d.other_edits,
       movesWindow: d.moves_window || null, todoDrops: d.todo_drops || 0,
       rivals: d.rival_changes.map((c) => ({ ...c, label: t(KINDS[c.kind] || c.kind), path: pathOf(c.url), my_path: pathOf(c.my_url), when: when(c.when) })),
       followUp: T.summary.follow_up, renewals: T.summary.renewals_30d,

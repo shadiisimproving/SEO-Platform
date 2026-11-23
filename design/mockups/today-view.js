@@ -316,7 +316,11 @@
     const urgent = vm.todo.filter((item) => item.severity !== "info").length;
     const hasData = r.leads.value !== null || r.visits.value !== null || r.clicks.value !== null;
     const stopped = vm.googleStopped && r.through ? ` ${t("Google numbers stop at")} ${esc(day(r.through))}.` : "";
-    const anyMove = vm.goingDown.length || vm.goingUp.length;
+    // Keywords moved to the Keywords by ranking card (2026-11-20), so the pair below keeps the pages.
+    const ranks = window.RankTrends ? window.RankTrends.card("today") : "";
+    const pagesOnly = (mixed, pages) => (ranks ? pages || mixed.filter((m) => m.type !== "keyword") : mixed);
+    const goingDown = pagesOnly(vm.goingDown, vm.pagesDown), goingUp = pagesOnly(vm.goingUp, vm.pagesUp);
+    const anyMove = goingDown.length || goingUp.length;
     // A verdict badge and the count; the numbers are in the cards below, so they aren't said again here (2026-11-12).
     const crit = vm.todo.filter((item) => item.severity === "crit").length;
     // Before any number exists, "All clear" would be a false all-clear: the verdict says what's missing and the way on.
@@ -328,7 +332,8 @@
       ${vm.setupHtml || ""}
       ${numbers(r, vm.range)}
       <div class="cols"><div>${todoCard(vm.todo)}</div><div>${workCard(vm)}</div></div>
-      ${anyMove || hasData ? `${UI().simple?.() ? "" : `<div class="today-moves-head"><span class="small muted">${t("Week on week")}${vm.movesWindow ? ` · ${esc(weeksWords(vm.movesWindow))}` : ""}</span></div>`}<div class="today-moves">${moveCard("Going down", vm.goingDown, true, vm.movesWindow, vm.todoDrops)}${moveCard("Going up", vm.goingUp, false, vm.movesWindow, 0)}</div>` : ""}
+      ${ranks}
+      ${anyMove || hasData ? `${UI().simple?.() ? "" : `<div class="today-moves-head"><span class="small muted">${t("Week on week")}${vm.movesWindow ? ` · ${esc(weeksWords(vm.movesWindow))}` : ""}</span></div>`}<div class="today-moves">${moveCard("Going down", goingDown, true, vm.movesWindow, vm.todoDrops)}${moveCard("Going up", goingUp, false, vm.movesWindow, 0)}</div>` : ""}
       ${vm.rivals.length || vm.otherEdits || hasData ? rivalCard(vm.rivals, vm.otherEdits) : ""}
       ${allSites() && vm.sites.length > 1 ? sitesCard(vm.sites) : ""}`;
   }

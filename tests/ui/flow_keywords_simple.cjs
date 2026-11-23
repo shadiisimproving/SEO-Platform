@@ -21,7 +21,9 @@ const seen = () => {
       if (s.display === "none" || s.visibility === "hidden") return false; o *= Number(s.opacity); } return o > 0.05; };
   // A row's tick box stays faintly visible since 2026-11-12 (UI critique: hidden ones weren't discovered); it isn't counted here.
   const rowTick = (el) => el.matches('tbody :is(.tt-pick, .tt-own-pick) input[type="checkbox"]');
-  return [...main.querySelectorAll("button,select,input,textarea,a[href],summary,[role=button],[role=tab]")].filter((el) => !rowTick(el)).filter(shown).length;
+  // The Keywords by ranking card (2026-11-20, rank-trends.js) is its own card with its own tabs: this counts the table's controls.
+  const rankCard = (el) => !!el.closest("[data-rank-trends]");
+  return [...main.querySelectorAll("button,select,input,textarea,a[href],summary,[role=button],[role=tab]")].filter((el) => !rowTick(el) && !rankCard(el)).filter(shown).length;
 };
 const opacity = (page, sel) => page.locator(sel).evaluate((el) => Number(getComputedStyle(el.closest(".kw-more-items") || el).opacity));
 const inView = (page, sel) => page.locator(sel).evaluate((el) => el.offsetParent !== null);
