@@ -517,7 +517,8 @@ def test_the_token_opens_nothing_but_the_helpers_own_routes(engine, site):
 def _login(engine, email, role="member", access=None):
     from seo.accounts import service as accounts
 
-    accounts.create_user(engine, email, "Someone", role, password="correct horse battery", must_change=False, access=access)
+    # Team names are unique since the team-access fix (2026-11-23), so each person is named after their address.
+    accounts.create_user(engine, email, email.split("@")[0], role, password="correct horse battery", must_change=False, access=access)
     app = create_app(engine=engine, secret_key="test-secret-key").test_client()
     reply = app.post("/api/auth/login", json={"email": email, "password": "correct horse battery"})
     return app, {"X-CSRF-Token": reply.get_json()["csrf"]}
