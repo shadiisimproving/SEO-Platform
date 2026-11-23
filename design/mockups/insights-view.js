@@ -541,6 +541,8 @@
   }
 
   function table(all, away = 0) {
+    // "Did it work" with nothing in it is not good news: nothing done has been measured yet (test walk 2026-11-23).
+    if (!all.length && IN.tab === "impact") return `<div class="empty"><p>${t("Nothing measured yet. Mark a task done or add a dated note, and its before and after shows here.")}</p></div>`;
     if (!all.length) return `<div class="empty"><p>${t(IN.status !== "open" ? "Nothing here." : IN.tab === "technical" && away ? "No problem on pages Google showed this week." : "Nothing here. Good news.")}</p></div>`;
     const many = !UI.siteIdPicked();
     // The server ranks by clicks a month at stake, biggest first; the heading turns it round.
@@ -1372,7 +1374,7 @@
     "Add them on Overview": "Ajoutez-les dans Vue d'ensemble", "Country and device data start on {day}: too soon to compare them.": "Les données par pays et par appareil commencent le {day} : trop tôt pour les comparer.", "Country data starts on {day}: too soon to compare countries.": "Les données par pays commencent le {day} : trop tôt pour comparer les pays.", "Device data starts on {day}: too soon to compare devices.": "Les données par appareil commencent le {day} : trop tôt pour comparer les appareils.", "Needs more history: 16 weeks for slow decline, 8 for changes.": "Il faut plus d'historique : 16 semaines pour le lent déclin, 8 pour les changements.",
     "Biggest findings, one row per query or page.": "Les plus gros constats, une ligne par requête ou page.", "Last 28 days vs the 28 before, plus odd days this week.": "28 derniers jours vs les 28 précédents, plus les jours inhabituels de la semaine.",
     "Pages sliding a little every week for 16 weeks.": "Pages qui reculent un peu chaque semaine depuis 16 semaines.", "Queries a small push would pay for, using this site's own click rates.": "Requêtes pour lesquelles un petit effort paierait, d'après les taux de clic du site.",
-    "Nothing here. Good news.": "Rien ici. Bonne nouvelle.", "Nothing here.": "Rien ici.",
+    "Nothing here. Good news.": "Rien ici. Bonne nouvelle.", "Nothing here.": "Rien ici.", "Nothing measured yet. Mark a task done or add a dated note, and its before and after shows here.": "Rien de mesuré pour l'instant. Terminez une tâche ou ajoutez une note datée : son avant/après s'affichera ici.",
     "No problem on pages Google showed this week.": "Aucun problème sur les pages que Google a montrées cette semaine.",
     "1 page Google didn't show this week has a problem.": "1 page que Google n'a pas montrée cette semaine a un problème.",
     "{n} pages Google didn't show this week have a problem.": "{n} pages que Google n'a pas montrées cette semaine ont un problème.", "See Site health": "Voir Santé du site",

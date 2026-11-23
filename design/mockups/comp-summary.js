@@ -994,7 +994,10 @@
   // ---- the tab ---------------------------------------------------------------------------------------
   /* The lower card's tabs, each with how many rows it holds once known. */
   function lowTabsHtml() {
-    const n = { keywords: S.data.keywords?.total, moves: S.data.moves?.total, links: S.data.links?.funnel?.shared };
+    // Shared links counts the rows its list shows (the good linking domains, and the old ones when asked for). It said
+    // 61 (domains linking to 2+ competitors) over a list of 322 (test walk 2026-11-23).
+    const f = S.data.links?.funnel;
+    const n = { keywords: S.data.keywords?.total, moves: S.data.moves?.total, links: f ? (f.good || 0) + (S.lnOld ? f.old || 0 : 0) : undefined };
     return LOW.map(([part, label]) => `<button type="button" class="page-tab" role="tab" id="cs-low-${part}" data-cs-low="${part}" aria-controls="cs-${part}" aria-selected="${S.low === part}" tabindex="${S.low === part ? 0 : -1}">${esc(t(label))}${n[part] ? `<span class="n-badge">${UI.num(n[part])}</span>` : ""}</button>`).join("");
   }
   function showLow(part, { focus = true, scroll = false } = {}) {
@@ -1255,6 +1258,8 @@
         S.lnOld = !S.lnOld;
         TP.reset(PAGES.links);
         paintSection("links");
+        const lowTabs = UI.$("#cs-low-tabs");
+        if (lowTabs) UI.setHTML(lowTabs, lowTabsHtml()); // the tab's count follows the old links in or out
         UI.$("[data-cs-old]")?.focus({ preventScroll: true });
         return;
       }

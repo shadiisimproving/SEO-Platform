@@ -48,7 +48,7 @@
     "DuckDuckGo has no tool for site owners, so the app checks its positions by itself every day, oldest first, on free searches only. Refresh and Refresh data check them now.": "DuckDuckGo n'a pas d'outil pour les propriétaires de sites : l'app vérifie ses positions toute seule chaque jour, les plus anciennes d'abord, avec des recherches gratuites uniquement. Actualiser et Actualiser les données les vérifient tout de suite.",
     "Automatic DuckDuckGo check": "Contrôle DuckDuckGo automatique", "automatic check": "contrôle automatique",
     "Clicks": "Clics", "Click rate": "Taux de clic", "selected": "sélectionnés", "Clear selection": "Effacer la sélection", "{n} selected on this page": "{n} sélectionnés sur cette page", "Select all {n} keywords": "Sélectionner les {n} mots-clés", "All {n} keywords selected": "Les {n} mots-clés sont sélectionnés", "Create task": "Créer une tâche", "Export CSV": "Exporter en CSV", "Export ready": "Export prêt",
-    "Up": "En hausse", "Down": "En baisse", "Top 3": "Top 3", "Top 10": "Top 10", "All": "Tous", "Not ranked": "Non classés", "Cited by AI": "Cités par l'IA", "Two pages compete": "Deux pages en concurrence", "Also ranks": "Classées aussi", "Also": "Aussi", "impr.": "impr.", "Main tool": "Outil principal", "None: the order below": "Aucun : l'ordre ci-dessous", "{tool} is the main tool": "{tool} est l'outil principal", "No main tool": "Pas d'outil principal", "Every ranking in the app comes from this tool. If it hasn't checked a keyword yet, the next tool in the order is shown, with its name. The other tools' results are in each keyword's details.": "Toutes les positions de l'app viennent de cet outil. S'il n'a pas encore vérifié un mot-clé, l'outil suivant de l'ordre est affiché, avec son nom. Les résultats des autres outils sont dans le détail de chaque mot-clé.", "+{n} more": "+{n} de plus", "Show fewer": "Afficher moins", "Two of your pages rank for it.": "Deux de vos pages se classent dessus.",
+    "Up": "En hausse", "Down": "En baisse", "Top 3": "Top 3", "Top 10": "Top 10", "All": "Tous", "Not ranked": "Non classés", "Cited by AI": "Cités par l'IA", "Two pages compete": "Deux pages en concurrence", "Also ranks": "Classées aussi", "Also": "Aussi", "impr.": "impr.", "Main tool": "Outil principal", "None: the order below": "Aucun : l'ordre ci-dessous", "{tool} is the main tool": "{tool} est l'outil principal", "No main tool": "Pas d'outil principal", "Every ranking in the app comes from this tool. If it hasn't checked a keyword yet, the next tool in the order is shown, with its name. The other tools' results are in each keyword's details.": "Toutes les positions de l'app viennent de cet outil. S'il n'a pas encore vérifié un mot-clé, l'outil suivant de l'ordre est affiché, avec son nom. Les résultats des autres outils sont dans le détail de chaque mot-clé.", "+{n} more": "+{n} de plus", "Show fewer": "Afficher moins", "Two of your pages rank for it.": "Deux de vos pages se classent dessus.", "{n} more of your pages rank for it.": "{n} autres de vos pages se classent dessus.",
     "Tracked": "Suivis", "Ranked": "Classés", "compared": "comparés", "Positions": "Positions", "By bucket": "Par tranche", "Queries": "Requêtes", "All engines": "Tous les moteurs", "Volume": "Volume", "Trend": "Tendance", "AI": "IA", "avg position": "position moy.",
     "No keyword matches": "Aucun mot-clé ne correspond", "Try another filter.": "Essayez un autre filtre.", "Show all": "Tout afficher", "Data through": "Données jusqu'au", "Refreshed": "Actualisé le", "Rankings from engines' own tools and scraped results": "Positions venant de l'outil de chaque moteur et de résultats scrapés",
     "in its country": "dans son pays", "No Search Console data in the keyword's country.": "Pas de données Search Console dans le pays du mot-clé.", "Search Console's average position in the keyword's own country.": "Position moyenne Search Console dans le pays du mot-clé.", "Search Console's average position across every country.": "Position moyenne Search Console dans tous les pays.", "Order for": "Ordre pour", "This tool doesn't search this engine.": "Cet outil ne couvre pas ce moteur.", "Order saved": "Ordre enregistré",
@@ -510,7 +510,9 @@
     const main = url ? PageLink.html(url, { text: shortPath(url), title: "" }) : '<span class="muted dash">—</span>';
     const most = gsc ? `<span class="second kw-gsc-page" data-tip="${esc(`${t("Most shown in Search Console")}: ${gsc}`)}"><span class="sr">${esc(t("Most shown in Search Console"))}: </span>${brandLabel("Search Console")} ${PageLink.html(gsc, { text: shortPath(gsc), title: "" })}</span>` : "";
     // Two pages: a small "+N" after the page (Track C, 2026-11-20); the panel lists the pages.
-    const two = e === "google" && row.two_pages ? ` <span class="kw-two" role="img" data-tip="${esc(t("Two of your pages rank for it."))}" aria-label="${esc(t("Two of your pages rank for it."))}">+${num(Math.max(1, otherPages(row).length))}</span>` : "";
+    // The tip says the number the badge shows: "+4" said "Two of your pages rank for it." (test walk 2026-11-23).
+    const more = Math.max(1, otherPages(row).length), twoTip = more === 1 ? t("Two of your pages rank for it.") : t("{n} more of your pages rank for it.").replace("{n}", num(more));
+    const two = e === "google" && row.two_pages ? ` <span class="kw-two" role="img" data-tip="${esc(twoTip)}" aria-label="${esc(twoTip)}">+${num(more)}</span>` : "";
     return `<td class="url-cell mono small" data-label="${t("Page")}" ${url ? `data-tip="${esc(url)}"` : ""}>${main}${changed}${two}${most}</td>`;
   }
   /* A row's check is old: amber, with its age, in simple mode too. When the main tool's check was too old and a newer one
@@ -1004,7 +1006,7 @@
       all.forEach((r) => { if (!view(r).move) return; compared += 1; change += top10Step(view(r)); });
       return { change, compared };
     })();
-    const chips = [["all", "All"], ["top3", "Top 3"], ["top10", "Top 10"], ["up", "Up"], ["down", "Down"], ["none", "Not ranked"], ["cited", "Cited by AI"], ["two", "Two pages"], ...(K.runFilter?.size ? [["run", "This Refresh"]] : [])];
+    const chips = [["all", "All"], ["top3", "Top 3"], ["top10", "Top 10"], ["up", "Up"], ["down", "Down"], ["none", "Not ranked"], ...(googleOnly(state.engine) || state.engine === "all" ? [["cited", "Cited by AI"], ["two", "Two pages"]] : []), ...(K.runFilter?.size ? [["run", "This Refresh"]] : [])];
     counts.run = found.filter((r) => K.runFilter?.has(r.id)).length;
     const shown = filtered();
     if (simple()) return simplePage({ title, all, e, good, counts, chips, shown, moved, addButton });
@@ -1033,7 +1035,7 @@
           ${UI.tile(`${t("Top 10")} <span class="muted">· ${t(state.engine === "all" ? "Google only" : "our checks")}</span>`, num(all.filter((r) => good(r) && good(r) <= 10).length), moved.compared ? `${moved.change ? UI.delta(moved.change, { noWord: false }) : ""}<span class="ab">${num(moved.compared)} ${t("compared")}</span>` : "", { ic: "target" })}
           ${googleOnly(state.engine) || state.engine === "all" ? UI.tile(`${t("Cited by AI")}${state.engine === "all" ? ` <span class="muted kw-google-only">· ${t("Google only")}</span>` : ""}`, num(all.filter((r) => r.ai.state === "cited").length), `<span class="ab">${t("of")} ${num(all.length)}</span>`, { ic: "sparkles" }) : ""}
         </section>
-        ${window.RankTrends ? window.RankTrends.card("keywords") : ""}
+        ${window.RankTrends && (googleOnly(state.engine) || state.engine === "all") ? window.RankTrends.card("keywords") : ""}${/* the card ranks Google only: on Bing it listed Google #1s beside "Ranked 0" (test walk 2026-11-23) */ ""}
         <div class="tabs-row">
           <div class="tabs" role="tablist" aria-label="${t("Engines")}">
             ${[...ENGINES, ["all", t("All engines")]].map(([id, label]) => `<button class="tab" role="tab" data-engine="${id}" aria-selected="${state.engine === id}">${id === "all" ? "" : logo(id, 16)}${label}</button>`).join("")}
@@ -1109,7 +1111,7 @@
           ${UI.card({ id: "kw-top10", label: `${t("Top 10")} <span class="muted">· ${t(state.engine === "all" ? "Google only" : "our checks")}</span>`, def: "Top 10", value: top10, change: moved.compared ? { value: moved.change, unit: "" } : null, sub: moved.compared ? `${num(moved.compared)} ${t("compared")}` : "", cls: "tile" })}
           ${googleOnly(state.engine) || state.engine === "all" ? UI.card({ id: "kw-cited", label: `${t("Cited by AI")}${state.engine === "all" ? ` <span class="muted kw-google-only">· ${t("Google only")}</span>` : ""}`, value: cited, sub: `${t("of")} ${num(all.length)}`, cls: "tile" }) : ""}
         </section>`}
-        ${window.RankTrends ? window.RankTrends.card("keywords") : ""}
+        ${window.RankTrends && (googleOnly(state.engine) || state.engine === "all") ? window.RankTrends.card("keywords") : ""}${/* the card ranks Google only: on Bing it listed Google #1s beside "Ranked 0" (test walk 2026-11-23) */ ""}
         ${body}
       </div>`;
   }

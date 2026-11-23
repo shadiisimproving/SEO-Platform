@@ -329,6 +329,7 @@
   function renderSidebar() {
     const c = attentionCounts();
     const urgent = state.firstRun ? 0 : c.crit + c.warn;
+    if (state.route !== "today") setTimeout(() => window.UI?.todayBadge?.(), 0); // the badge asks for the site now picked, when it changed
     // Only the sections this person has, and a group heading only when something under it is left.
     const mine = [];
     NAV.forEach((n) => {
@@ -1603,7 +1604,7 @@
     });
     const heads = byReason ? "" : `<th scope="col">${t("Status")}</th><th scope="col">${t("Reason")}</th>`;
     return `<section class="card lc-group" data-group="${id}">
-      <div class="card-head"><h2>${t(name)}</h2><span class="lc-count ${list.length && id === "broken" ? "crit" : "sec"}">${num(list.length)}</span></div>
+      <div class="card-head"><h2>${t(name)}</h2>${list.length ? "" : `<span class="lc-count sec">${num(0)}</span>`}</div>${/* with rows, the table's own count badge says it: both showed "7" (test walk 2026-11-23) */ ""}
       ${list.length ? `<table class="data lc-table" id="lc-table-${id}"><thead><tr><th scope="col">${t("Linking page")}</th><th scope="col">${t("Target URL")}</th>${heads}<th scope="col"><span class="sr-only">${t("Task")}</span></th></tr></thead><tbody>
         ${body}</tbody></table>
         ${window.TP.footer(lcKey(id), page, { noun: t("links") })}` : `<p class="lc-none small muted">${t(searching ? "No link matches." : "None found.")}</p>`}
@@ -2007,7 +2008,13 @@
   let urlReady = false, wantedSite = null, replaceNext = false, following = false;
   function urlNow() {
     const parts = [state.route];
-    if (state.route === "competitors") { parts.push(COMP.currentTab?.()?.id || COMP.tab); const pair = COMP.siteId === COMP.ALL ? null : COMP.pairShown?.(); if (pair) parts.push(pair); }
+    if (state.route === "competitors") {
+      const tab = COMP.currentTab?.();
+      parts.push(tab?.id || COMP.tab);
+      const pair = COMP.siteId === COMP.ALL ? null : COMP.pairShown?.();
+      if (pair) parts.push(pair);
+      else if (tab?.id === "list" && tab.competitorId) parts.push(tab.competitorId); // the open competitor, so the address can be shared
+    }
     if (state.route === "health") parts.push(state.healthTab);
     if (state.route === "backlinks") parts.push(state.blSection === "done" ? state.blTab : state.blSection);
     const host = state.site === "all" ? null : window.SITES.find((s) => s.id === state.site)?.host;
@@ -2077,6 +2084,9 @@
     if (route === "competitors" && rest[0]) {
       const tab = COMP.tabs.find((x) => x.id === rest[0]);
       if (tab) { COMP.tab = rest[0]; tab.loadedFor = undefined; }
+      // #competitors/list/4 opens that competitor's page (the search box's competitor results lead here; before, it fell back
+      // to the Competitors tab with nothing open, test walk 2026-11-23).
+      if (tab && rest[0] === "list" && Number(rest[1]) > 0) tab.competitorId = Number(rest[1]);
       if (tab && rest[0] !== "summary") COMP.tabFromAddress = true;
       COMP.showPair?.(rest[0] === "pairs" && rest[1] ? Number(rest[1]) : null);
     }

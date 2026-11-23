@@ -176,7 +176,7 @@
   const pagedKey = (table) => footOf(table)?.dataset.tpFoot ?? null;
   function headLabel(th) {
     const copy = th.cloneNode(true);
-    copy.querySelectorAll(".sr, svg, img, .th-sub, input").forEach((extra) => extra.remove());
+    copy.querySelectorAll(".sr, .sr-only, svg, img, .th-sub, input").forEach((extra) => extra.remove()); // a head only a screen reader hears (Task) gets no sort arrow
     return copy.textContent.replace(/\s+/g, " ").trim();
   }
   const tableOf = (key) => document.querySelector(`table[data-tt-key="${CSS.escape(key)}"]`);

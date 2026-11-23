@@ -209,7 +209,7 @@ html[data-simple="1"] .kw-bar-end .tt-count, .table-tools #kw-aio-all .tt-count 
 .kw-cited { display: inline-flex; align-items: center; gap: 3px; font-size: var(--fs-min, 12px); font-weight: 600; color: var(--good-t); padding: 0 7px 0 5px; border-radius: 999px; background: color-mix(in srgb, var(--good-t) 11%, transparent); line-height: 20px; }
 .kw-cited svg { width: 12px; height: 12px; flex: none; }
 /* Two pages: a small "+1" after the page instead of the old "Also …" lines; the panel lists the pages. */
-.kw-two { display: inline-block; margin-inline-start: 4px; font-family: var(--font); font-size: var(--fs-min, 12px); font-weight: 600; color: var(--warn-t); }
+.kw-two { display: inline-block; white-space: nowrap; flex: none; margin-inline-start: 4px; font-family: var(--font); font-size: var(--fs-min, 12px); font-weight: 600; color: var(--warn-t); }
 .kw-count { font-weight: 500; color: var(--muted); font-size: 12px; margin-inline-start: 4px; }
 .kw-other-pages { list-style: none; margin: 0 0 6px; padding: 0; display: grid; gap: 4px; }
 .kw-other-pages li { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; padding: 6px 8px; border-radius: 6px; background: var(--hover); }

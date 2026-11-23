@@ -1205,6 +1205,9 @@
     "Channel rules": "Règles de canaux", "Rename channels by source/medium (* = anything). Past days change too.": "Renommez les canaux par source/support (* = n'importe quoi). Les jours passés changent aussi.",
     "Channel name": "Nom du canal", "Matches": "Correspond à", "Add rule": "Ajouter la règle", "Remove": "Retirer", "Rule removed": "Règle retirée", "Rule added": "Règle ajoutée", "Type what the rule should match.": "Indiquez ce que la règle doit reconnaître.", "Type the channel name.": "Indiquez le nom du canal.",
     "Organic Search": "Recherche organique", "Direct": "Direct", "Referral": "Sites référents", "Organic Social": "Réseaux sociaux", "Paid Search": "Recherche payante", "Other": "Autre",
+    // GA4's other default channel groups, which reached the French screen in English (test walk 2026-11-23: Organic Video, Paid Other).
+    "Organic Video": "Vidéo organique", "Paid Other": "Autre payant", "Paid Social": "Réseaux sociaux payants", "Paid Video": "Vidéo payante", "Paid Shopping": "Shopping payant",
+    "Organic Shopping": "Shopping organique", "Display": "Display", "Email": "E-mail", "Affiliates": "Affiliation", "Audio": "Audio", "SMS": "SMS", "Mobile Push Notifications": "Notifications push mobiles", "Cross-network": "Multiréseau",
     "From visit to lead. Counts only, no personal data.": "De la visite au lead. Des chiffres, aucune donnée personnelle.",
     "No key events. Mark your forms as key events in GA4.": "Aucun événement clé. Marquez vos formulaires comme événements clés dans GA4.",
     "Not set up": "Non configuré", "visits": "visites", "leads": "leads", "without a lead": "sans lead", "From visit to lead, by channel": "De la visite au lead, par canal", "Rate": "Taux", "Without a lead": "Sans lead", "Open": "Ouvrir",

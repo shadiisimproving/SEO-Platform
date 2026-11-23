@@ -61,7 +61,7 @@ const dayFrom = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 1
   const calls = [];
   page.on("request", (r) => { if (r.url().includes("/api/")) calls.push(r.url()); });
   const lead = await text(page, ".ai-answer .today-lead");
-  check(/AI assistants sent \d+ visits and \d+ leads/.test(lead) && lead.includes("chatgpt.com"), `answer first: ${lead}`);
+  check(/AI assistants sent \d+ visits( \([^)]*\))? and \d+ leads/.test(lead) && lead.includes("chatgpt.com"), `answer first: ${lead}`);
   check(await page.locator("#topbar.head").count() === 1, "the simpler head");
   const chip = await text(page, "#topbar [data-ai-sources]");
   check(chip.includes("4 sources up to date"), `the head's sources chip: ${chip}`);

@@ -331,6 +331,19 @@ def test_a_date_placed_written_by_hand_is_not_guessed(engine, site):
 def _alert_row(engine, site_id, kind, severity, title, detail=None):
     with engine.begin() as conn:
         conn.execute(text("INSERT INTO alerts (site_id, kind, severity, title, detail) VALUES (:s, :k, :v, :t, :d)"), {"s": site_id, "k": kind, "v": severity, "t": title, "d": json.dumps(detail) if detail else None})
+        if kind == "backlink_lost":  # the link the alert speaks of, still lost (Today hides the alert once none is)
+            conn.execute(text("INSERT INTO backlinks (site_id, source_url, domain, status) VALUES (:s, 'https://gone.example/a', 'gone.example', 'lost')"), {"s": site_id})
+
+
+def test_today_hides_a_lost_link_alert_once_every_link_is_live_again(engine, site):
+    """Test walk 2026-11-23: an 11 Nov "3 backlinks were lost" stayed on Today after all three came back, while Backlinks
+    said "No lost links"."""
+    _alert_row(engine, site, "backlink_lost", "warn", "3 backlinks were lost")
+    assert any(row["kind"] == "backlink_lost" for row in today_view.today(engine)["todo"])
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE backlinks SET status = 'live' WHERE site_id = :s"), {"s": site})
+    assert not any(row["kind"] == "backlink_lost" for row in today_view.today(engine)["todo"])
+    assert not any(row["kind"] == "backlink_lost" for row in today_view.attention(engine))
 
 
 def _page_clicks(engine, site_id, host, name, end, was, now):

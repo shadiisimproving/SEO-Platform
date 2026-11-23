@@ -447,3 +447,5 @@ html[data-simple="1"] .ai-aio-line .ai-aio-said { font-weight: 400; color: var(-
   .ab-vs-col + .ab-vs-col { border-left: 0; border-top: 1px solid var(--line); }
   .ab-name-ask .ab-inline { max-width: none; }
 }
+/* "Compare with your other channels" under the Assistants table: inside the card's padding, not on its edge (test walk 2026-11-23). */
+.ai-on-channels { padding: 10px 18px 14px; margin: 0; }

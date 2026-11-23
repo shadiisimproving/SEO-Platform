@@ -128,11 +128,17 @@ def _attention(engine: Engine, site_id: int | None) -> list[dict]:
     clause, values = _site_filter(site_id)
     items = []
     with engine.connect() as conn:
+        # A "backlinks were lost" alert stays open until someone marks it seen, even after every one of those links is
+        # live again; Backlinks then says "No lost links" while Today still says 3 were lost (test walk 2026-11-23, an
+        # 11 Nov alert on creer-societe-dubai.fr). It shows only while the site still has a lost link.
+        still_lost = {r[0] for r in conn.execute(text("SELECT DISTINCT site_id FROM backlinks WHERE status = 'lost'")).all()}
         for row in conn.execute(text(f"SELECT a.*, s.host FROM alerts a JOIN sites s ON s.id = a.site_id WHERE a.acknowledged_at IS NULL {clause}"), values).mappings().all():
             detail = row["detail"]
             if isinstance(detail, str):
                 detail = json.loads(detail or "{}")
             kind = row["kind"]
+            if kind == "backlink_lost" and row["site_id"] not in still_lost:
+                continue
             item = {
                 "id": f"alert-{row['id']}", "alert_ids": [row["id"]], "severity": "crit" if _expiring_soon(kind, detail) else row["severity"], "kind": kind, "host": row["host"], "title": row["title"], "rank": _rank(kind, row["severity"], detail), "site_codes": (detail or {}).get("site"),
                 "detail": (detail or {}).get("error") or (detail or {}).get("detail") or "", "link": _link(kind), "created_at": _iso(row["created_at"]),
