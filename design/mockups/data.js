@@ -1,6 +1,8 @@
 // Sample data for the mockups. Nothing here is real measurement.
 
-window.FR = {
+// Merged, not replaced: keyword-links.js, table-pages.js, table-tools.js and reading.js load first and add their own words
+// ("See this keyword" stayed English in French, test walk 2026-11-23).
+window.FR = Object.assign(window.FR || {}, {
   "Today": "Aujourd'hui", "Traffic": "Trafic", "Channels": "Canaux", "Conversions": "Conversions", "Content": "Contenus",
   "Search": "Recherche", "Overview": "Vue d'ensemble", "Keywords": "Mots-clés", "Competitors": "Concurrents", "AI search": "Recherche IA",
   "Ads": "Publicité", "Google Ads": "Google Ads", "Work": "Travail", "Tasks": "Tâches", "Backlinks": "Backlinks", "Resources": "Ressources",
@@ -56,7 +58,7 @@ window.FR = {
   "Competitor edits and ranking moves appear here once a site has data.": "Les modifications des concurrents et les mouvements de positions s'affichent ici dès qu'un site a des données.", "No data sources connected.": "Aucune source de données connectée.",
   "Already refreshing.": "Actualisation déjà en cours.", "keyword": "mot-clé", "engine": "moteur", "result page": "page de résultats",
   "Failing": "En panne", "engines": "moteurs", "result pages": "pages de résultats", "Pick an engine.": "Choisissez un moteur.", "Clicks": "Clics", "Click rate": "Taux de clic", "Look": "Style", "Mode": "Mode", "Light": "Clair", "Dark": "Sombre", "Language": "Langue", "Data": "Données", "Filled": "Rempli", "First run": "Premier lancement", "Mockup": "Maquette", "Screens": "Écrans",
-};
+});
 
 window.SITES = [
   { id: "site-one", host: "site-one.example", leads: 24, ld: -3, visits: 4685, vd: 12, clicks: 1706, cd: 29, alerts: 2, thru: "1 Nov" },

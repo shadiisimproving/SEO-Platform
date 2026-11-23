@@ -156,3 +156,15 @@ def test_a_page_read_before_pictures_were_kept_is_asked_for_whole_once(engine):
     with engine.connect() as conn:
         assert page_reader._as_dict(conn.execute(text("SELECT extras FROM pages WHERE url = :u"), {"u": url}).scalar())["image"] == "https://shop.example/img/visa.jpg"
         assert conn.execute(text("SELECT COUNT(*) FROM change_events")).scalar() == 0  # no fake edit from it
+
+
+def test_a_page_indexed_at_one_address_is_not_marked_not_indexed_by_its_redirecting_twin(client, engine, site):
+    """Test walk 2026-11-23: the home page got 140 clicks yet showed "Not indexed", because https://site/ (a redirect to
+    https://www.site/, inspected a day later) overwrote the www address's PASS."""
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO gsc_inspections (site_id, url_hash, url, verdict, coverage, inspected_at) VALUES (:s, 'v1', 'https://www.shop.example/visa/', 'PASS', 'Submitted and indexed', '2026-11-10')"), {"s": site})
+        conn.execute(text("INSERT INTO gsc_inspections (site_id, url_hash, url, verdict, coverage, inspected_at) VALUES (:s, 'v2', 'https://shop.example/visa/', 'NEUTRAL', 'Page with redirect', '2026-11-11')"), {"s": site})
+    rows = {row["path"]: row for row in client.get(f"/api/site-pages?{period(site)}").json["pages"]}
+    assert rows["/visa/"]["indexed"] is True and rows["/tax"]["indexed"] is False
+    profile = client.get(f"/api/site-pages/profile?site_id={site}&url=/visa/").json
+    assert profile["technical"]["inspection"]["verdict"] == "PASS"

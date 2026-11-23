@@ -451,6 +451,9 @@ button.kw:hover { color: var(--accent-text); }
 .second { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; margin-top: 2px; }
 .url-cell { max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #bl-table .url-cell { max-width: 300px; }
+/* Keywords: the page column gives up 40 px so the AI column isn't cut at 1440 px (it was 2 px too wide in English, 34 px in
+   French, where "Première vérification" widens the change column: test walk 2026-11-23). The full address is in its tip. */
+#kw-table .url-cell { max-width: 190px; }
 /* A table cell's ellipsis can't cut through a button, so the button and its note truncate themselves. */
 .url-cell > .kw, .url-cell > .second { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 #kw-table .head-cell { min-width: 200px; }

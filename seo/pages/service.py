@@ -65,8 +65,12 @@ def _counts(conn, sites: dict[int, str]) -> dict[tuple[int, str], dict]:
             slot(row["site_id"], _path(row["page_url"]))["notes"] += 1
     for row in conn.execute(text(f"SELECT site_id, COALESCE(target_final_url, target_url) AS target FROM backlinks WHERE site_id IN ({marks}) AND status = 'live' AND target_url IS NOT NULL")).mappings():
         slot(row["site_id"], _path(row["target"]))["backlinks"] += 1
+    # One path, several addresses (www and not, http and https): the one Google indexed says it. The other spellings only
+    # redirect there, so "Page with redirect" on https://site.fr/ marked the home page with 140 clicks "Not indexed"
+    # (test walk 2026-11-23).
     for row in conn.execute(text(f"SELECT site_id, url, verdict FROM gsc_inspections WHERE site_id IN ({marks}) AND verdict IS NOT NULL")).mappings():
-        slot(row["site_id"], _path(row["url"]))["indexed"] = row["verdict"] == "PASS"
+        here = slot(row["site_id"], _path(row["url"]))
+        here["indexed"] = here.get("indexed") is True or row["verdict"] == "PASS"
     return out
 
 
@@ -227,7 +231,8 @@ def profile(engine: Engine, site_id: int, page: str) -> dict:
         ), None)
         inspection = next((
             {"verdict": r["verdict"], "coverage": r["coverage"] or "", "google_canonical": r["google_canonical"] or "", "last_crawl": _iso(r["last_crawl"]), "at": _iso(r["inspected_at"])}
-            for r in conn.execute(text("SELECT url, verdict, coverage, google_canonical, last_crawl, inspected_at FROM gsc_inspections WHERE site_id = :s ORDER BY inspected_at DESC"), {"s": site_id}).mappings()
+            # The indexed spelling of the address first (see _counts), then the newest.
+            for r in conn.execute(text("SELECT url, verdict, coverage, google_canonical, last_crawl, inspected_at FROM gsc_inspections WHERE site_id = :s ORDER BY verdict = 'PASS' DESC, inspected_at DESC"), {"s": site_id}).mappings()
             if _path(r["url"]) == path
         ), None)
         speed: dict[str, dict] = {}
