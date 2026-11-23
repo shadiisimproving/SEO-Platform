@@ -139,7 +139,7 @@ def create_app(engine: Engine | None = None, url_allowed: Callable[[str], bool] 
             from flask import Response, g
             from sqlalchemy import text as sql
 
-            from seo.accounts.service import team_names
+            from seo.accounts.service import admin_names, task_assignees, team_names
             with app.config["ENGINE"].connect() as conn:
                 from seo.accounts import access
                 visible = set(access.own_site_ids(conn))  # a person with chosen access only sees their sites
@@ -147,7 +147,11 @@ def create_app(engine: Engine | None = None, url_allowed: Callable[[str], bool] 
                 sites = [dict(row) for row in conn.execute(sql("SELECT id, host FROM sites WHERE kind = 'own' ORDER BY host")).mappings().all() if row["id"] in visible]
                 today = conn.execute(sql("SELECT UTC_DATE()")).scalar().isoformat()
                 conn_has_openrouter = conn.execute(sql("SELECT 1 FROM connections WHERE tool = 'OpenRouter'")).first()
-            data = {"served": True, "today": today, "sites": sites, "team": team_names(app.config["ENGINE"]) if auth else [], "user": g.get("user"), "every_site": every_site, "summaries_on": bool(conn_has_openrouter)}
+                # Who a task can go to on each of their sites, so Assigned to never offers someone who wouldn't see it.
+                assignees = task_assignees(conn, [s["id"] for s in sites], every_site) if auth else {}
+            engine = app.config["ENGINE"]
+            data = {"served": True, "today": today, "sites": sites, "team": team_names(engine) if auth else [], "admins": admin_names(engine) if auth else [],
+                    "assignees": assignees, "user": g.get("user"), "every_site": every_site, "summaries_on": bool(conn_has_openrouter)}
             return Response(f"window.BOOT = {json.dumps(data).replace('<', chr(92) + 'u003c')};", mimetype="text/javascript")
 
         @app.get("/login")

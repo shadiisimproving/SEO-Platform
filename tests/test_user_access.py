@@ -352,3 +352,73 @@ def test_the_undo_of_stop_following_a_keyword_another_site_tracks_works(app, eng
     reply = client.post(f"/api/rankings/{kw}/restore?site_id={world.one}", headers=headers)
     assert reply.status_code != 403 or not reply.get_json().get("no_access"), reply.get_json()
     _refused(client.post(f"/api/rankings/{kw}/restore?site_id={world.two}", headers=headers))
+
+
+# ---- the team on tasks (2026-11-23) ----
+
+def test_a_task_is_never_given_to_someone_who_cannot_see_it(app, engine, world):
+    """A site they don't have, a task for every site without every site, or no Tasks section: refused with who and why."""
+    _person(engine, {"tasks": "edit"}, [world.one])
+    service.create_user(engine, "reader@example.com", "Reader", "member", password=PASSWORD, must_change=False,
+                        access={"sites": [world.one], "sections": {"overview": "view"}, "spend": False})
+    boss, headers = _signed_in(app, "boss@example.com")
+    reply = boss.patch(f"/api/tasks/{world.task_two}", json={"owner_label": "Helper"}, headers=headers)
+    assert reply.status_code == 400 and "Helper can't see tasks on two.example" in reply.get_json()["error"]
+    reply = boss.patch(f"/api/tasks/{world.task_all}", json={"owner_label": "Helper"}, headers=headers)
+    assert reply.status_code == 400 and "doesn't have every website" in reply.get_json()["error"]
+    reply = boss.patch(f"/api/tasks/{world.task_one}", json={"owner_label": "Reader"}, headers=headers)
+    assert reply.status_code == 400 and "Reader can't see tasks" in reply.get_json()["error"]
+    reply = boss.post("/api/tasks", json={"title": "New", "site_id": world.two, "owner_label": "Helper"}, headers=headers)
+    assert reply.status_code == 400
+    # their own site is fine, and the name is written as the team list writes it
+    reply = boss.patch(f"/api/tasks/{world.task_one}", json={"owner_label": "helper"}, headers=headers)
+    assert reply.status_code == 200 and reply.get_json()["owner_label"] == "Helper"
+    # moving the task to a site they lack, with them still on it, is refused too
+    reply = boss.patch(f"/api/tasks/{world.task_one}", json={"site_id": world.two}, headers=headers)
+    assert reply.status_code == 400 and "Helper can't see tasks on two.example" in reply.get_json()["error"]
+    # someone not in the team at all
+    reply = boss.patch(f"/api/tasks/{world.task_one}", json={"owner_label": "Ghost"}, headers=headers)
+    assert reply.status_code == 400 and "Nobody in the team is called Ghost" in reply.get_json()["error"]
+
+
+def test_a_name_from_before_accounts_is_kept_when_other_things_change(engine, world):
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE tasks SET owner_label = 'Old helper' WHERE id = :i"), {"i": world.task_one})
+    saved = tasks.update(engine, world.task_one, {"status": "doing"})
+    assert saved["owner_label"] == "Old helper"
+
+
+def test_renaming_someone_moves_their_tasks_and_names_stay_unique(engine, world):
+    user = _person(engine, {"tasks": "edit"}, [world.one])
+    tasks.update(engine, world.task_one, {"owner_label": "Helper"})
+    service.update_user(engine, user["id"], {"name": "Helper Two"})
+    owners = [t["owner_label"] for t in tasks.list_tasks(engine)]
+    assert "Helper Two" in owners and "Helper" not in owners
+    with pytest.raises(Refused, match="already has that name"):
+        service.update_user(engine, user["id"], {"name": "boss"})
+    with pytest.raises(Refused, match="already has that name"):
+        service.create_user(engine, "other@example.com", "HELPER TWO", "member", password=PASSWORD, must_change=False)
+
+
+def test_boot_says_who_tasks_can_go_to_on_their_sites_and_who_the_admins_are(engine, world):
+    app = create_app(engine=engine, secret_key="test-secret-key", screens_dir="design/mockups")
+    _person(engine, {"tasks": "view"}, [world.one])
+    client, _ = _signed_in(app, "helper@example.com")
+    boot = client.get("/boot.js").get_data(as_text=True)
+    assert '"admins": ["Boss"]' in boot
+    assert f'"assignees": {{"{world.one}": {{"Boss": "edit", "Helper": "view"}}}}' in boot  # their site only, no "all", no site two
+
+
+def test_lists_shared_by_every_site_do_not_name_the_owners_other_sites(app, engine, world):
+    from seo.backlinks import logos
+    for host in ("one.example", "two.example", "blog.example"):
+        with engine.begin() as conn:
+            conn.execute(text("INSERT INTO site_logos (domain, status, image, content_type) VALUES (:h, 'found', 'x', 'image/png') "
+                              "ON DUPLICATE KEY UPDATE status = 'found', image = 'x', content_type = 'image/png'"), {"h": host})
+    assert "two.example" in logos.known(engine)
+    _person(engine, {"insights": "view"}, [world.one])
+    client, _ = _signed_in(app, "helper@example.com")
+    domains = client.get("/api/logos").get_json()["domains"]
+    assert "one.example" in domains and "blog.example" in domains and "two.example" not in domains
+    ai = client.get("/api/insights/ai").get_json()
+    assert [s["host"] for s in ai["sites"]] == ["one.example"] and "spent" not in ai

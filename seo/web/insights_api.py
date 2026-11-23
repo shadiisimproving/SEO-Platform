@@ -47,7 +47,17 @@ def run():
 def ai_settings():
     from seo.extras import ai
 
-    return jsonify(ai.settings(_engine()))
+    from seo.accounts import access
+
+    answer = ai.settings(_engine())
+    if not access.current().full:
+        # Chosen access: only their sites, and not what the whole account spends.
+        with _engine().connect() as conn:
+            mine = set(access.own_site_ids(conn))
+        answer = {**answer, "sites": [s for s in answer.get("sites", []) if s.get("id") in mine]}
+        answer.pop("spent", None)
+        answer.pop("requests", None)
+    return jsonify(answer)
 
 
 @insights_api.put("/ai")

@@ -251,6 +251,30 @@ def _clean(conn, body: dict, site_before: int | None = None) -> dict:
     return values
 
 
+def _check_assignee(conn, values: dict, owner_before: str | None, site_before: int | None, site_sent: bool) -> None:
+    """A task is never given to someone who can't see it: a site they don't have, an "All sites" task without every
+    site, or no Tasks section. Checked when the person or the site changes. A name from before accounts (nobody has it)
+    is kept as it was, and a server with no accounts at all (login off) takes any name."""
+    owner = values["owner_label"] if "owner_label" in values else owner_before
+    site_id = values["site_id"] if site_sent else site_before
+    owner_changed = "owner_label" in values and (owner or "") != (owner_before or "")
+    if not owner or not (owner_changed or (site_sent and site_id != site_before)):
+        return
+    person = conn.execute(text("SELECT name, role, access FROM users WHERE disabled = 0 AND LOWER(name) = LOWER(:n)"), {"n": owner}).mappings().first()
+    if person is None:
+        if owner_changed and conn.execute(text("SELECT 1 FROM users LIMIT 1")).first():
+            raise Refused(f"Nobody in the team is called {owner}. Pick someone from the list.")
+        return
+    values["owner_label"] = person["name"]  # their name exactly as the team list writes it
+    own = [row[0] for row in conn.execute(text("SELECT id FROM sites WHERE kind = 'own'"))]
+    if access.task_level(person["role"], person["access"], site_id, own):
+        return
+    if site_id is None:
+        raise Refused(f"{person['name']} doesn't have every website, so they won't see a task for all sites. Pick one of their sites, or someone else.")
+    host = conn.execute(text("SELECT host FROM sites WHERE id = :i"), {"i": site_id}).scalar() or "this site"
+    raise Refused(f"{person['name']} can't see tasks on {host}. Pick someone else, or give them that site in Settings → Team.")
+
+
 class _Checks:
     """What the latest full health test and links check of each site found. One query per site, however many tasks ask."""
 
@@ -340,6 +364,7 @@ def create(engine: Engine, body: dict, by: str | None = None) -> dict:
             values = _clean(conn, body)
             if "site_id" not in body:
                 access.require_site_or_every(None, conn)  # no site sent: a task for every site
+            _check_assignee(conn, values, None, None, "site_id" in body)
             done = values.get("status") == "done"
             columns = {**values, "source": source, "open_source_key": None if done else key, "created_by": (by or "")[:100] or None}
             names = ", ".join(columns)
@@ -367,6 +392,7 @@ def update(engine: Engine, task_id: int, body: dict) -> dict:
             if expected is not None and expected != before["updated_at"].isoformat(timespec="milliseconds"):
                 raise Conflict(CHANGED_MEANWHILE)
             values = _clean(conn, body, before["site_id"])
+            _check_assignee(conn, values, before["owner_label"], before["site_id"], "site_id" in body)
             sets = [f"{name} = :{name}" for name in values] + ["updated_at = UTC_TIMESTAMP(3)"]
             new_status = values.get("status", before["status"])
             if new_status != before["status"]:

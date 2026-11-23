@@ -2054,7 +2054,7 @@
   // Chosen access (access.js): a section they weren't given is never drawn, whatever the address or link says.
   const mayOpen = (route) => !window.ACCESS || ACCESS.can(route);
   function noAccessPage() {
-    const admin = (window.BOOT?.team || [])[0];
+    const admin = (window.BOOT?.admins || [])[0]; // an admin gives access, not whoever comes first in the team
     return `<div class="content page-enter"><div class="card no-access" role="status">
       <h1 class="no-access-title">${t("You don't have access to this section")}</h1>
       <p class="sec">${admin ? esc(t("Ask {name} if you need it.").replace("{name}", admin)) : t("Ask an admin if you need it.")}</p>
@@ -2067,6 +2067,7 @@
     closePanel();
     state.route = route;
     render({ enter: true, keepScroll: false });
+    window.dispatchEvent(new CustomEvent("seocc:entered", { detail: route })); // a screen that keeps a list (Tasks) catches up
     $("#main").scrollTop = 0;
     if (!opts.noFocus) $("#main").focus({ preventScroll: true });
   }
@@ -4310,7 +4311,7 @@
   const EDIT_CONTROLS = [
     "#add-backlink", "#bl-save", "#bulk-import", "#cg-add", "#cg-add-all", "#cg-edit-save", "#cg-todo-save", "#cg-upload", "#cl-add-open", "#cl-add-save", "#cl-run",
     "#cl-up-save", "#cleaner-add", "#cp-add", "#cp-save", "#ht-run", "#kwr-add", "#kwr-add-save", "#kwr-refresh", "#kwr-sel-refresh", "#lc-run", "#md-add", "#md-save",
-    "#open-refresh", "#pt-qn-save", "#sel-refresh", "#site-add", "#task-save", "#td-move-save", "#td-placed-save", "#vd-budget-save", "#ai-refresh-menu",
+    "#open-refresh", "#pt-qn-save", "#sel-refresh", "#site-add", "#task-save", "#task-delete", "#tk-comment-send", "label:has(> #tk-comment)", "#kw-aio-all", "#td-move-save", "#td-placed-save", "#vd-budget-save", "#ai-refresh-menu",
     "[data-cl-upload]", "[data-cl-remove]", "[data-ai-aio-check]", "[data-ov-track]", "[data-ov-check]", "[data-ov-brand-edit]", "[data-in-run]", "[data-cl-track]",
     "[data-up-check]", "[data-note-delete]", "[data-in-undismiss]", "[data-dp-move]", "[data-cg-upload]", "[data-vd-disavow]", "[data-task-new]", "[data-task-move]",
     "[data-ov-verify-run]", "[data-ov-track-picked]", "[data-ov-note-add]", "[data-note-status]", "[data-lv-rule-del]", "[data-kc-cancel]", "[data-in-track]",

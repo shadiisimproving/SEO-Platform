@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 from flask import Blueprint, Response, abort, current_app, jsonify
+from sqlalchemy import text
+
+from seo.accounts import access
 
 from seo.backlinks import logos
 from seo.serp.store import to_ascii_host, to_display_host
@@ -12,7 +15,14 @@ logos_api = Blueprint("logos_api", __name__, url_prefix="/api")
 @logos_api.get("/logos")
 def known():
     # Screens write a domain as people read it, so accented ones are listed under both spellings.
-    found = logos.known(current_app.config["ENGINE"])
+    engine = current_app.config["ENGINE"]
+    found = logos.known(engine)
+    if not access.current().full:
+        # Someone with chosen access doesn't learn the names of the owner's other sites from this list.
+        with engine.connect() as conn:
+            mine = set(access.own_site_ids(conn))
+            hidden = {host for site_id, host in conn.execute(text("SELECT id, host FROM sites WHERE kind = 'own'")) if site_id not in mine}
+        found = [d for d in found if d.removeprefix("www.") not in hidden]
     return jsonify(domains=sorted({*found, *(to_display_host(d) for d in found)}))
 
 

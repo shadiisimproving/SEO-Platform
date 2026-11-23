@@ -94,6 +94,22 @@ def parse(raw) -> dict | None:
     return {"sites": sorted(set(sites)), "sections": sections, "spend": raw.get("spend") is True}
 
 
+def task_level(role: str, raw_access, site_id: int | None, own_ids) -> str | None:
+    """What someone can do with a task on `site_id` (None: a task for every site): "edit", "view", or None when they
+    can't see it at all. Used to keep a task from being assigned to someone who would never see it."""
+    if role == "admin":
+        return "edit"
+    chosen = parse(raw_access)
+    if chosen is None:
+        return "edit"
+    level = chosen["sections"].get("tasks")
+    if not level:
+        return None
+    if site_id is None:
+        return level if set(own_ids) <= set(chosen["sites"]) else None
+    return level if site_id in chosen["sites"] else None
+
+
 def clean(value, conn) -> dict | None:
     """What the admin sent, checked: None for full access, or the chosen sites and sections. Refuses an empty choice."""
     if value is None:

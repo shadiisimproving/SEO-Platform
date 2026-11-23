@@ -54,9 +54,15 @@
     ["metrics/ai", ["ai", "today"]], ["metrics/channels", TRAFFIC], ["metrics/conversions", TRAFFIC], ["metrics/content", TRAFFIC],
   ];
   const ADMIN_ONLY = ["sources", "app-keys", "google-connections", "clarity-archive", "clarity-reports", "team/", "tools/order", "tools/settings"];
+  /* Exact addresses (GET only) whose prefix is shared with routes for other sections, so a prefix rule would be wrong. */
+  const EXACT_READS = {
+    "competitors": ["competitors", "notes", "today"], "competitors/suggestions": ["competitors"], "tools": ["keywords", "competitors", "ai"],
+    "search/overview": ["overview", "today"], "search/breakdown": ["overview"], "search/countries": ["overview", "insights"],
+  };
   function allows(method, path) {
     if (!chosen) return true;
     const bare = String(path || "").replace(/^\/?(api\/)?/, "").split("?")[0];
+    if (method === "GET" && EXACT_READS[bare]) return EXACT_READS[bare].some((section) => ACCESS.can(section));
     if (method !== "GET" && (ADMIN_ONLY.some((p) => bare.startsWith(p)) || bare === "team")) return false;
     const found = PATHS.filter(([prefix]) => bare.startsWith(prefix)).sort((a, b) => b[0].length - a[0].length)[0];
     if (!found) return true;

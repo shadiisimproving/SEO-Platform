@@ -1392,6 +1392,8 @@
     let tray = $("#tray");
     if (!tray) { UI.setHTML($("#tray-root"), `<div class="tray" id="tray" role="status"></div>`); tray = $("#tray"); }
     tray.classList.remove("pill");
+    // Stopping a Refresh is a change: only someone who can edit Keywords, Competitors or AI search gets the button.
+    const canStop = () => !window.ACCESS || ["keywords", "competitors", "ai"].some((s) => window.ACCESS.canEdit(s));
     // A finished run's block (Stopped, failures to retry) gives way to the new one, as the old single tray did; running ones stay.
     tray.querySelectorAll(".kwr-run").forEach((old) => { if (!K.runs.has(Number(old.dataset.run))) old.remove(); });
     const block = document.createElement("div");
@@ -1399,7 +1401,7 @@
     UI.setHTML(block, `<div class="top">${icon("refresh-cw", "spin")}<span class="tray-title">${t("Refreshing")}</span><span class="end tabular tray-count"></span></div>
       <div class="bar"><i class="tray-bar"></i></div>
       <div class="msg tray-msg"></div>
-      <div class="tray-actions" style="margin-top:8px"><button class="btn btn-small kwr-stop" data-stop="${run.id}">${t("Stop")}</button></div>`);
+      <div class="tray-actions" style="margin-top:8px">${canStop() ? `<button class="btn btn-small kwr-stop" data-stop="${run.id}">${t("Stop")}</button>` : ""}</div>`);
     tray.append(block);
     K.runs.set(run.id, { run, poll: null });
     paintTray(run);
