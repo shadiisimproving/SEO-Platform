@@ -366,7 +366,10 @@
     return rowsOpen(LVx().dataTable(id, columns, shown, { pageSize: 10, empty })) + line;
   }
   const notSet = (text, button = "") => `<div class="empty"><p>${text}</p>${button ? `<div style="margin-top:10px">${button}</div>` : ""}</div>`;
-  const pageCell = (r) => `${rowMark("page", r.path, r.host)}${PageLink.html(r.url || r.path, { text: r.path, host: r.host, cls: "mono lv-url" })}${LVx().siteOfPage(r)}`;
+  const pageCell = (r) => {
+    const inner = `${PageLink.html(r.url || r.path, { text: r.path, host: r.host, cls: "mono lv-url" })}${LVx().siteOfPage(r)}`;
+    return `${rowMark("page", r.path, r.host)}${window.PageThumb ? window.PageThumb.row(r.url || r.path, { host: r.host, inner, size: 36 }) : inner}`;
+  };
 
   /* Visits per assistant as a donut (dataviz skill: thin ring, 2px surface gaps, total in the middle, a legend with every
      value so colour is never the only key). Colour follows the assistant, not its rank: the known ones keep their slot, others

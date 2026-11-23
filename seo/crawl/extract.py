@@ -217,7 +217,30 @@ def _schema_dates(root) -> dict:
     return dates
 
 
-def _extras(root) -> dict:
+_SHARE_IMAGE = ("og:image", "og:image:url", "og:image:secure_url", "twitter:image", "twitter:image:src")
+
+
+def _share_image(root, url: str) -> str:
+    """The picture the page picks for itself when shared (og:image, else twitter:image), as a full address. "" if none."""
+    found: dict[str, str] = {}
+    for meta in root.iter("meta"):
+        name = (meta.get("property") or meta.get("name") or "").strip().lower()
+        content = (meta.get("content") or "").strip()
+        if name in _SHARE_IMAGE and content and name not in found:
+            found[name] = content
+    for name in _SHARE_IMAGE:
+        if name not in found:
+            continue
+        try:
+            address = urljoin(url, found[name])
+        except ValueError:
+            continue
+        if address.startswith(("https://", "http://")) and len(address) <= 1000 and not _SPACE.search(address):
+            return address
+    return ""
+
+
+def _extras(root, url: str = "") -> dict:
     """Plain counts about a page. They work the same in any language."""
     images = [el for el in root.iter("img")]
     embeds = [el for el in root.iter("iframe", "video") if el.tag == "video" or any(host in (el.get("src") or "") for host in _VIDEO_HOSTS)]
@@ -228,6 +251,7 @@ def _extras(root) -> dict:
         "lists": sum(1 for _ in root.iter("ul", "ol")),
         "videos": len(embeds),
         "forms": sum(1 for _ in root.iter("form")),
+        "image": _share_image(root, url),
         "hreflang": sorted({(el.get("hreflang") or "").lower() for el in root.iterfind(".//link[@hreflang]") if el.get("hreflang")})[:60],
         **_schema_dates(root),
     }
@@ -291,7 +315,7 @@ def extract(body: bytes, url: str, charset: str | None = None) -> PageFields:
             break
 
     page.schema_types = _schema_types(root)
-    page.extras = _extras(root)
+    page.extras = _extras(root, url)
     if googlebot:
         page.extras["googlebot"] = googlebot[:255]
     page.internal_links, page.external_links = _count_links(root, url)

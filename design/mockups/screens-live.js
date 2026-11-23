@@ -554,7 +554,7 @@
     return page(head, `
       ${missing ? `<p class="note lv-note">${icon("info")}<span>${t(missing)}</span></p>` : ""}${hiddenNote(d.hid_rows)}${clarityReportCard("dashboard")}${clarityCard}
       <section class="card"><div class="card-head"><h2>${t("All pages")}</h2><span class="end small muted">${num(d.total_pages)} ${t(d.total_pages === 1 ? "page" : "pages")} · ${sourceAndDays("Google Analytics and Search Console")}</span></div>${dataTable("content", [
-        { key: "path", label: "Page", get: pageName, html: (r) => (r.unknown ? unknownPage(r) : `<div class="mono lv-url">${PageLink.html(r.path, { host: r.host })}</div>${siteOfPage(r)}${jumpLine(r)}<div class="lv-cat" dir="auto">${esc(t(r.category))}</div>${UI.relatedTag?.({ host: r.host || UI.siteHostPicked() || "", page: r.path }) || ""}`) },
+        { key: "path", label: "Page", get: pageName, html: (r) => pageCell(r, r.unknown ? "" : `<div class="lv-cat" dir="auto">${esc(t(r.category))}</div>${UI.relatedTag?.({ host: r.host || UI.siteHostPicked() || "", page: r.path }) || ""}`) },
         { key: "sessions", label: "Visits", num: true }, { key: "leads", label: W("Leads", d), num: true }, { key: "clicks", label: "Google clicks", num: true },
         { key: "position", label: "Position", num: true, html: (r) => decimal(r.position) }, { key: "ai", label: "AI visits", num: true },
       ], d.pages, { search: "Search pages", rowAttrs: (r) => (r.unknown || !window.SCREENS?.pages ? 'style="cursor:default"' : `data-pg-goto="${esc(`https://${r.host || UI.siteHostPicked() || ""}${r.path}`)}" tabindex="0" title="${esc(t("All about this page"))}"`) })}</section>
@@ -687,7 +687,10 @@
   /* Google's #section jump links for the page, said apart: the page's clicks, click rate and position are its own address's
      (expert review 2026-11-17, 3.3). */
   const jumpLine = (r) => (r.jump_impressions ? `<div class="lv-cat lv-jump">${esc(t("Jump links: {n} impressions").replace("{n}", num(r.jump_impressions)))}</div>` : "");
-  const pageCell = (r) => (r.unknown ? unknownPage(r) : `<div class="mono lv-url">${PageLink.html(r.path, { host: r.host })}</div>${siteOfPage(r)}${jumpLine(r)}`);
+  // A page of my sites: its picture and title, the address and anything else under them (page-thumbs.js).
+  const pageCell = (r, under = "") => (r.unknown ? unknownPage(r) : window.PageThumb
+    ? window.PageThumb.row(r.path, { host: r.host, inner: `<div class="mono lv-url">${PageLink.html(r.path, { host: r.host })}</div>${siteOfPage(r)}${jumpLine(r)}${under}` })
+    : `<div class="mono lv-url">${PageLink.html(r.path, { host: r.host })}</div>${siteOfPage(r)}${jumpLine(r)}${under}`);
 
   // ---- Channels: cards, every channel (rules in a panel), then the chart beside the referring sites
   function channelsSimple() {
@@ -825,7 +828,7 @@
       body = blocked || emptyCard(t("No data in this period."), t("Pick a longer or earlier period."));
     } else {
       body = `<section class="card"><div class="card-head"><h2>${t("All pages")}</h2><span class="end small muted">${sourceAndDays("Google Analytics and Search Console")}</span></div>${dataTable("content", [
-        { key: "path", label: "Page", get: pageName, html: (r) => `${pageCell(r)}${r.unknown ? "" : `<div class="lv-cat" dir="auto">${esc(t(r.category))}</div>${UI.relatedTag?.({ host: r.host || UI.siteHostPicked() || "", page: r.path }) || ""}`}` },
+        { key: "path", label: "Page", get: pageName, html: (r) => pageCell(r, r.unknown ? "" : `<div class="lv-cat" dir="auto">${esc(t(r.category))}</div>${UI.relatedTag?.({ host: r.host || UI.siteHostPicked() || "", page: r.path }) || ""}`) },
         { key: "sessions", label: "Visits", num: true }, { key: "leads", label: W("Leads", d), num: true }, { key: "clicks", label: "Google clicks", num: true },
         { key: "position", label: "Position", num: true, html: (r) => decimal(r.position) }, { key: "ai", label: "AI visits", num: true },
       ], d.pages, { search: "Search pages", rowAttrs: pageRow })}</section>`;

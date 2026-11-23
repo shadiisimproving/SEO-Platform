@@ -352,3 +352,16 @@ def test_the_undo_of_stop_following_a_keyword_another_site_tracks_works(app, eng
     reply = client.post(f"/api/rankings/{kw}/restore?site_id={world.one}", headers=headers)
     assert reply.status_code != 403 or not reply.get_json().get("no_access"), reply.get_json()
     _refused(client.post(f"/api/rankings/{kw}/restore?site_id={world.two}", headers=headers))
+
+
+def test_page_pictures_answer_only_for_the_persons_sites(app, engine, world):
+    with engine.begin() as conn:
+        for host in ("one.example", "two.example"):
+            domain = conn.execute(text("INSERT INTO domains (host) VALUES (:h)"), {"h": host}).lastrowid
+            conn.execute(text("INSERT INTO pages (domain_id, url, url_hash, title, content_hash, extras) VALUES (:d, :u, :x, :t, 'h', :e)"),
+                         {"d": domain, "u": f"https://{host}/caf%C3%A9", "x": host, "t": f"Page of {host}", "e": f'{{"image": "https://{host}/i.jpg"}}'})
+    _person(engine, {"content": "view"}, [world.one])
+    client, _ = _signed_in(app, "helper@example.com")
+    reply = client.get("/api/site-pages/pictures")
+    assert reply.status_code == 200, reply.get_json()
+    assert reply.get_json()["sites"] == {"one.example": {"/café/": ["Page of one.example", "https://one.example/i.jpg"]}}

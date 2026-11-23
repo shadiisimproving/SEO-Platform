@@ -56,3 +56,8 @@ def site_map_read():
 @pages_api.get("/site-map/page")
 def site_map_page():
     return jsonify(sitemap_tree.page_card(_engine(), _map_site(), request.args.get("url", "")))
+
+
+@pages_api.get("/site-pages/pictures")
+def pictures():
+    return jsonify(service.pictures(_engine()))

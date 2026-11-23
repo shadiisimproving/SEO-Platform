@@ -8,7 +8,8 @@
 .pg-count:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .pg-table tbody tr[data-pg-open] { cursor: pointer; }
 .pg-table tbody tr[data-pg-open]:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
-.pg-page { min-width: 240px; max-width: 520px; }
+.pg-page { min-width: 240px; max-width: 580px; }
+
 .pg-title { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: start; }
 .pg-page .second { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 .pg-bits { display: inline-flex; flex-wrap: wrap; gap: 10px; }
@@ -63,3 +64,11 @@
 }
 tr[data-pg-goto] { cursor: pointer; }
 tr[data-pg-goto]:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.pg-link-t { min-width: 0; overflow-wrap: anywhere; }
+.pg-link-t a { overflow-wrap: anywhere; }
+.pg-unsure { margin-top: 2px; }
+.pg-unsure summary { cursor: pointer; list-style: none; line-height: 1.45; }
+.pg-unsure summary::-webkit-details-marker { display: none; }
+.pg-unsure summary::before { content: "▸ "; color: var(--muted); }
+.pg-unsure[open] summary::before { content: "▾ "; }
+.pg-unsure .pg-list { margin-top: 6px; }

@@ -6,10 +6,11 @@ from __future__ import annotations
 
 import json
 from datetime import date
-from urllib.parse import urlsplit
+from urllib.parse import unquote, urlsplit
 
 from sqlalchemy import Engine, text
 
+from seo.accounts import access
 from seo.competitors import pages as page_store
 from seo.competitors import pairs
 from seo.competitors.keywords import _iso, require_own
@@ -80,7 +81,7 @@ def listing(scope: metrics.Scope) -> dict:
 
         def row_for(site: int, path: str) -> dict:
             return rows.setdefault((site, path), {
-                "site_id": site, "host": sites[site], "path": path, "title": "", "clicks": None, "impressions": None,
+                "site_id": site, "host": sites[site], "path": path, "title": "", "image": "", "clicks": None, "impressions": None,
                 "position": None, "sessions": None, "leads": None, "ai": None, "jump_impressions": None, "clicks_before": None, "change": None, "read": False,
             })
 
@@ -98,11 +99,14 @@ def listing(scope: metrics.Scope) -> dict:
             spelling.offer((site, key), item["path"], 0 if item["clicks"] is not None else 2)
         for site, host in sites.items():
             for page in conn.execute(text(
-                "SELECT p.url, p.title FROM pages p JOIN domains d ON d.id = p.domain_id WHERE d.host IN (:h, :w) AND p.content_hash IS NOT NULL LIMIT 5000"
+                "SELECT p.url, p.title, p.extras FROM pages p JOIN domains d ON d.id = p.domain_id WHERE d.host IN (:h, :w) AND p.content_hash IS NOT NULL LIMIT 5000"
             ), {"h": host, "w": f"www.{host}"}).mappings():
                 row = row_for(site, _path(page["url"]))
                 row["read"] = True
                 row["title"] = row["title"] or (page["title"] or "")
+                image = _load(page["extras"], {}).get("image") if page["extras"] else ""
+                if isinstance(image, str) and image.startswith(("https://", "http://")):
+                    row["image"] = row["image"] or image
                 spelling.offer((site, _path(page["url"])), page["url"], 1)
         # The earlier period of the shared rule, per site, only where Search Console's page table covers it from its first
         # day: a page table that starts later would turn missing history into gains (expert review 2026-11-17). There, a
@@ -152,6 +156,30 @@ def listing(scope: metrics.Scope) -> dict:
         "compared": bool(compared),  # False: no Search Console page data for the whole period before, so no Change
         "gsc": content["gsc"], "ga4": content["ga4"], "gsc_window": content["gsc_window"],
     }
+
+
+def pictures(engine: Engine) -> dict:
+    """Each read page of the sites this person may see: its title and the picture it shares (og:image), by host and path.
+    Every screen that lists my pages shows them beside the address (page-thumbs.js). Paths are decoded, so /café/ and
+    /caf%C3%A9/ are one key on both sides."""
+    out: dict[str, dict[str, list[str]]] = {}
+    with engine.connect() as conn:
+        sites = _sites(conn, access.own_site_ids(conn))
+        for host in sites.values():
+            found = out.setdefault(host, {})
+            for page in conn.execute(text(
+                "SELECT p.url, p.title, p.extras FROM pages p JOIN domains d ON d.id = p.domain_id "
+                "WHERE d.host IN (:h, :w) AND p.content_hash IS NOT NULL ORDER BY p.id LIMIT :n"
+            ), {"h": host, "w": f"www.{host}", "n": _MAX_ROWS}).mappings():
+                image = _load(page["extras"], {}).get("image") if page["extras"] else ""
+                image = image if isinstance(image, str) and image.startswith(("https://", "http://")) else ""
+                title = (page["title"] or "").strip()
+                if not (title or image):
+                    continue
+                key = unquote(_path(page["url"]))
+                had = found.get(key)
+                found[key] = [had[0] or title, had[1] or image] if had else [title, image]
+    return {"sites": out}
 
 
 def _read(conn, host: str, path: str) -> tuple[dict | None, int | None]:

@@ -13,7 +13,7 @@
     set(k, v) { try { localStorage.setItem("seocc2-" + k, v); } catch { /* private mode */ } },
   };
   // target stays allowed, or every outside link replaces the app in its own tab. Each one also sets rel="noopener".
-  const fragment = (html) => { const out = window.DOMPurify.sanitize(html, { RETURN_DOM_FRAGMENT: true, ADD_ATTR: ["target"] }); window.BRANDS.mark(out); return out; };
+  const fragment = (html) => { const out = window.DOMPurify.sanitize(html, { RETURN_DOM_FRAGMENT: true, ADD_ATTR: ["target", "referrerpolicy"] }); window.BRANDS.mark(out); return out; };
   const setHTML = (el, html) => el.replaceChildren(fragment(html));
   // Rows alone would lose their <tr> and <td> on the way through DOMPurify, so they go in inside a table.
   const setRows = (tbody, html) => tbody.replaceChildren(...fragment(`<table><tbody>${html}</tbody></table>`).querySelector("tbody").children);
@@ -369,10 +369,15 @@
         <button class="pick" id="compare" aria-haspopup="true" aria-expanded="false" aria-label="${t("Compare with")}: ${esc(cmpName)}${g.compareFrom ? `, ${esc(fmtRange(g.compareFrom, g.compareTo))}` : ""}" data-tip="${esc(cmpName)}"><span class="pick-label">${esc(g.compareLabel)}</span>${icon("chevron-down", "chev")}</button>${behindMark()}</span>`;
   };
   // With the simpler screens switch on, the same call draws the new head (UI.head below), so screens not yet moved still draw.
-  const topbar = (title, sub, main = "", withDates = true) => (state.simple ? drawHead({ title, period: withDates, main, ...subParts(sub) }) : `
+  /* link: { href, tip, before } makes the title itself the link (before: markup put ahead of it, such as the page's picture) (opens in a new tab), its address shown on hover, instead of a
+     long address line under it (the Pages screen, 2026-11-20). */
+  const titleHTML = (title, link) => (link?.href
+    ? `${link.before || ""}<a class="head-link" href="${esc(link.href)}" target="_blank" rel="noopener noreferrer" data-tip="${esc(link.tip || link.href)}"><span>${esc(title)}</span>${icon("external-link", "head-link-i")}</a>`
+    : esc(title));
+  const topbar = (title, sub, main = "", withDates = true, link = null) => (state.simple ? drawHead({ title, period: withDates, main, link, ...subParts(sub) }) : `
     <header class="topbar" id="topbar">
       <button class="icon-btn menu-btn" id="menu-btn" aria-label="${t("Open menu")}">${icon("menu")}</button>
-      <div class="grow"><h1>${esc(title)}</h1><p class="sub">${sub}</p></div>
+      <div class="grow"><h1>${titleHTML(title, link)}</h1>${sub ? `<p class="sub">${sub}</p>` : ""}</div>
       <div class="tools">
         <button class="btn btn-ghost kbd-hint" id="cmd-open" aria-label="${t("Search or jump to…")}">${icon("search")}<span class="kbd">⌘K</span></button>
         ${window.Bell ? window.Bell.button() : ""}
@@ -469,7 +474,7 @@
   const headInfo = (list) => (!list.length ? "" : window.UI?.info ? window.UI.info(list.length > 1 ? list : list[0]) : `<span class="def-i" role="img" tabindex="0" data-tip="${esc(list.map(t).join(" "))}" aria-label="${esc(list.map(t).join(" "))}">${icon("info")}</span>`);
   // On a phone the line is cut to one line, so this (i) holds all of it, and the caveats after it (mockup.css shows it there only).
   const headAllTip = (text, info) => [text, info].filter(Boolean).join(". ");
-  function drawHead({ title = "", period = true, source = null, status = null, line = "", info = "", main = "" } = {}) {
+  function drawHead({ title = "", period = true, source = null, status = null, line = "", info = "", main = "", link = null } = {}) {
     // info: a sentence or a list, in English (translated here) or already in the screen's language; markup is dropped.
     const infoList = (Array.isArray(info) ? info : [info]).map((x) => String(x ?? "").trim()).filter(Boolean).map((x) => (/<[a-z!/]/i.test(x) ? plainText(x) : x));
     const infoText = infoList.map(t).join(" ");
@@ -479,7 +484,7 @@
     <header class="topbar head" id="topbar">
       <button class="icon-btn menu-btn" id="menu-btn" aria-label="${t("Open menu")}">${icon("menu")}</button>
       <div class="grow head-title">
-        ${text || !infoText ? `<h1>${esc(title)}</h1>` : `<div class="head-name"><h1>${esc(title)}</h1>${headInfo(infoList)}</div>`}
+        ${text || !infoText ? `<h1>${titleHTML(title, link)}</h1>` : `<div class="head-name"><h1>${titleHTML(title, link)}</h1>${headInfo(infoList)}</div>`}
         ${text ? `<p class="head-line"><span class="head-text">${text}</span>${headInfo(infoList)}<span class="def-i head-i-all" role="img" tabindex="0" data-tip="${esc(all)}" aria-label="${esc(all)}" data-info="${esc(infoText)}">${icon("info")}</span></p>` : ""}
       </div>
       <div class="tools">

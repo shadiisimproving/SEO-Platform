@@ -7,6 +7,10 @@ from seo.exports.build import C, change, page_address
 from seo.exports.model import Chart, Report, Series, Table, Tile, Typed
 from seo.exports.registry import view
 
+# The links check's groups: only "broken" is broken. Unverified links (Facebook, WhatsApp... refuse automated checks) and slow
+# ones aren't problems with the page, so the export leaves them out, as the Pages screen does.
+_LINK_KIND = {"broken": "Broken link", "redirect": "Link that redirects"}
+
 
 def _scope(engine, args):
     from seo.metrics import service
@@ -348,7 +352,10 @@ def site_page(engine, args) -> Report:
         C("source", "Linking page", "url"), C("domain", "Website", "text"), C("anchor", "Anchor", "text"), C("status", "Status", "text", translate=True), C("verdict", "Counts?", "text", translate=True),
     ], data["backlinks"], empty="No backlink you've logged points at this page."))
     tech = data["technical"]
-    facts = [{"what": "Health test", "found": code} for code in tech["health"]] + [{"what": "Broken link", "found": f"{x['target']} ({x.get('status') or x['category']})"} for x in tech["links"]]
+    facts = [{"what": "Health test", "found": code} for code in tech["health"]] + [
+        {"what": _LINK_KIND.get(x["category"], "Link"), "found": f"{x['target']} ({x.get('status') or x.get('reason') or x['category']})"}
+        for x in tech["links"] if x["category"] in _LINK_KIND
+    ]
     if tech["inspection"]:
         facts.append({"what": "Google index", "found": tech["inspection"]["coverage"] or tech["inspection"]["verdict"]})
     for device, s in tech["speed"].items():

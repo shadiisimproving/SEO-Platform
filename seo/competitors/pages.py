@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import gzip
 import hashlib
+import json
 import re
 import unicodedata
 from functools import lru_cache
@@ -75,6 +76,15 @@ def clean_page_url(url: str, site_host: str) -> str:
     return normal
 
 
+def _as_dict(value) -> dict:
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return {}
+    return value if isinstance(value, dict) else {}
+
+
 def queue_read(engine: Engine, site_id: int, url: str) -> None:
     queue.enqueue(engine, LANE, JOB_KIND, payload={"site_id": site_id, "url": url}, dedupe_key=f"page:{url_hash(url)[:40]}", max_attempts=2)
 
@@ -83,13 +93,17 @@ def read_page(engine: Engine, url: str, host: str, fetcher) -> str:
     """Goes through the polite fetcher, so robots.txt, spacing and the address guard all apply."""
     domain_id = crawl_store.get_or_create_domain(engine, host)
     with engine.connect() as conn:
-        read_with = conn.execute(text("SELECT read_with FROM pages WHERE url_hash = :h"), {"h": url_hash(url)}).scalar()
+        known = conn.execute(text("SELECT read_with, content_hash, extras FROM pages WHERE url_hash = :h"), {"h": url_hash(url)}).mappings().first()
+    read_with = known["read_with"] if known else None
     if read_with == "firecrawl":
         # Its copy came from Firecrawl because this reader only saw an empty JavaScript shell. Reading it again here would
         # replace the real text with that shell and report a fake edit, so only another Firecrawl read updates it.
         return "firecrawl"
     etag, last_modified = crawl_store.validators(engine, url)
     stay_on = lambda address: on_host(host_and_domain(address)[0], host)  # noqa: E731
+    if known and known["content_hash"] and "image" not in _as_dict(known["extras"]):
+        # Read before the reader kept each page's picture: ask for the whole page once, or "not changed" would never bring it.
+        etag = last_modified = None
     # A redirect to another site isn't followed: what's saved under this address must be this site's own page.
     result, fields = _fetch_and_read(engine, fetcher, url, stay_on, etag, last_modified)
     moved_to = _moved_to(url, result)

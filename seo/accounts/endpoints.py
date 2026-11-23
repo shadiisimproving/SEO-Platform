@@ -337,6 +337,7 @@ ENDPOINTS: dict[str, tuple[str, str, str]] = {
     "pages_api.site_map_page": ("map competitors", "read", ""),
     "pages_api.site_map_reading": ("map competitors", "read", ""),
     "pages_api.site_map_read": ("map competitors", "write", ""),
+    "pages_api.pictures": ("*", "read", "all"),  # titles and pictures of my pages, shown beside them on every screen; own_site_ids only
     "tasks_api.create": ("tasks", "write", ""),
     "tasks_api.update": ("tasks", "write", ""),
     "tasks_api.delete": ("tasks", "write", ""),
