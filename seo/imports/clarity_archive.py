@@ -8,6 +8,12 @@ because `clarity_daily` has no place for them.
 `import_archive` runs in the app when that file is uploaded in Settings. It only ever adds days. A day already there
 stays, because the app's own pull is better than an old copy, so uploading twice changes nothing. It never touches
 `site_sources`: an upload isn't a pull, so Clarity doesn't start to look connected.
+
+The file's days are the visits' own days (UTC), not read days. The old project dated a recordings-export session by its
+start (`started.date()`) and an API pull by the middle of its 24-hour window (`harvest.logical_date`). The app's own pull
+is stored under the day it ran, and covers the day before (SEO review 2026-11-17, W10), so a file day is stored one day
+on, as the read that would have covered it. Every reader of `clarity_daily` then reads both the same way, and a day the
+app's pull already covers is the one that stays.
 """
 from __future__ import annotations
 
@@ -104,6 +110,11 @@ def read_archive(path: str | Path) -> dict:
     return {"format": FORMAT, "version": VERSION, "sites": out}
 
 
+def stored_day(visit_day: date) -> date:
+    """The day a file's visit day is stored under: the day of the app's read that covers it (see the top of this file)."""
+    return visit_day + timedelta(days=1)
+
+
 # ---- loading the file --------------------------------------------------------------------------------
 def _count(value) -> bool:
     return value is None or (isinstance(value, int) and not isinstance(value, bool) and value >= 0)
@@ -170,14 +181,15 @@ def import_archive(engine: Engine, data, preview: bool = False) -> dict:
                 have = {row[0] for row in conn.execute(text("SELECT day FROM clarity_daily WHERE site_id = :s"), {"s": site_id})}
                 added = 0
                 for row in days:
-                    if row["day"] in have:
+                    read_day = stored_day(row["day"])
+                    if read_day in have:
                         continue
-                    have.add(row["day"])
+                    have.add(read_day)
                     conn.execute(
                         text("INSERT INTO clarity_daily (site_id, day, sessions, scroll_depth, rage_clicks, dead_clicks, referrers) VALUES (:s, :d, :n, :c, :r, :x, :f)"),
-                        {"s": site_id, "d": row["day"], "n": row["sessions"], "c": row["scroll_depth"], "r": row["rage_clicks"], "x": row["dead_clicks"], "f": json.dumps(row["referrers"], ensure_ascii=False)},
+                        {"s": site_id, "d": read_day, "n": row["sessions"], "c": row["scroll_depth"], "r": row["rage_clicks"], "x": row["dead_clicks"], "f": json.dumps(row["referrers"], ensure_ascii=False)},
                     )
-                    common.save_coverage(conn, site_id, "clarity", row["day"], 1, status=row["status"], note=row["note"])
+                    common.save_coverage(conn, site_id, "clarity", read_day, 1, status=row["status"], note=row["note"])
                     added += 1
                 listed = sorted(row["day"] for row in days)
                 result["sites"].append(

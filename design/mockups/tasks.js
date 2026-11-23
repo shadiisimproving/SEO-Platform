@@ -633,12 +633,14 @@
     return ` <span class="comp-ic tk-from" role="img" title="${esc(words)}" data-tip="${esc(words)}" aria-label="${esc(words)}">${icon("target")}</span>`;
   }
 
+  /* data-tt-filter-off: one Filter on this screen, the toolbar's, which works the same in all three views (search, status,
+     type, goal, person). table-tools' own Filter would be a second one beside it; sorting and tick boxes stay. */
   function table(list) {
     const rows = sortedRows(list.filter((task) => !T.status || task.status === T.status));
     if (!rows.length) return COMP.empty(t("Nothing matches these filters"), t("Change the filters above."));
     const showSite = !hostHere();
     const view = TP.view(PAGES, rows);
-    return `<div class="tk-list"><div class="table-wrap"><table class="data tk-table" id="tk-table">
+    return `<div class="tk-list"><div class="table-wrap"><table class="data tk-table" id="tk-table" data-tt-filter-off>
       <thead><tr>${sortHead("title", "Title")}<th scope="col">${t("Status")}</th>${sortHead("priority", "Priority")}${showSite ? `<th scope="col">${t("Site")}</th>` : ""}<th scope="col">${t("Assigned to")}</th>${sortHead("due", "Due date")}<th scope="col">${t("Type")}</th></tr></thead>
       <tbody>${view.rows.map((task) => `<tr data-task-row="${task.id}">
         <td class="head-cell"><button type="button" class="kw tk-row-title" data-task-open="${task.id}" dir="auto" style="text-align:start">${esc(task.title)}</button>${sourceBit(task)}${findingTag(task)}${window.TaskAbout.linkLine(task, { inline: true, max: 3 })}</td>

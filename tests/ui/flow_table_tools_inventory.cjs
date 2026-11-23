@@ -18,7 +18,8 @@ const inventory = () => [...document.querySelectorAll("table.data, table.lc-tabl
     name: table.id || labelled.slice(0, 3).map(text).join(" / "), rows,
     ticks: !!head.querySelector("input[type=checkbox]"),
     sortable: sortable.length, columns: labelled.length, unsorted: labelled.filter((c) => !sortable.includes(c)).map(text),
-    filter: !!wrap.previousElementSibling?.querySelector?.("[data-tt-filter]"),
+    // data-tt-filter-off: the screen's own Filter does the job (Tasks, 2026-11-23), so a second one isn't a gap.
+    filter: !!wrap.previousElementSibling?.querySelector?.("[data-tt-filter]") || !!table.closest("[data-tt-filter-off]"),
   };
 });
 

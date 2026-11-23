@@ -730,19 +730,23 @@
   const blocksHtml = (list) => list.map((b) => `<section class="in-pblock">${b.title ? `<h3 class="ov-h3">${t(b.title)}</h3>` : ""}${b.html}</section>`).join("");
 
   // ---- Rank and clicks: rank checks beside Search Console ---------------------------------------------
+  /* Badges and rows, never one packed sentence (owner, 2026-11-12): the totals on one line, then one row per count
+     with a bar against the tracked keywords, so size reads at a glance. */
   function mixIntro(d) {
     const c = d.coverage || {};
     const count = (...kinds) => d.rows.filter((f) => kinds.includes(f.kind)).length;
+    const total = Math.max(1, c.tracked || 0);
+    const row = (label, n, tone) => `<li><span class="ov-ans-name">${esc(label)}</span><span class="ov-ans-bar" aria-hidden="true"><i class="${tone}" style="width:${n ? Math.max(4, Math.round(n / total * 100)) : 0}%"></i></span><b class="${tone}">${num(n)}</b></li>`;
     const drops = count("rank_drop"), rivals = count("rival_passed", "rival_gap");
-    const dropWords = drops === 1 ? "One looks like a fresh drop" : fill("{a} look like fresh drops", { a: num(drops) });
-    const clause = drops && rivals ? ` ${t(dropWords)}${fill(", and rivals lead on {b} that people really search.", { b: num(rivals) })}`
-      : drops ? ` ${t(dropWords)}.` : rivals ? fill(" Rivals lead on {b} that people really search.", { b: num(rivals) }) : "";
-    const oldest = c.oldest_days === null || c.oldest_days === undefined ? "" : ` ${c.oldest_days <= 1 ? t("Oldest: a day or less.") : fill("Oldest {n} days.", { n: num(c.oldest_days) })}`;
+    const rows = [row(fill("Checked in the last {d} days", { d: num(c.fresh_days) }), c.recent || 0, "even"),
+      drops ? row(t("Just dropped"), drops, "down") : "", rivals ? row(t("Rivals ahead"), rivals, "down") : ""].join("");
+    const oldest = c.oldest_days === null || c.oldest_days === undefined ? "" : `${c.oldest_days <= 1 ? t("Oldest check: a day or less") : fill("Oldest check: {n} days", { n: num(c.oldest_days) })} · `;
     const world = d.rows.filter(worldWide).length;
     const worldLine = world ? `<p class="small muted in-world-line">${icon("globe")}<span>${esc(world === 1 ? t("1 uses all-country positions") : fill("{n} use all-country positions", { n: num(world) }))}</span></p>` : "";
     const thin = c.recent * 2 < c.tracked ? `<p class="small ov-hint in-need">${t("Short list: most rank checks are old or missing.")}${UI.tip("It's short because of the data, not because all is well.")}</p>` : "";
-    return `<div class="in-mix-head"><p class="in-mix-answer" dir="auto">${esc(fill("Of {a} tracked keywords, {b} have Search Console data.", { a: num(c.tracked), b: num(c.with_search) }))}${esc(clause)}</p>${worldLine}
-      <p class="small muted">${esc(fill("Rankings checked: {a} of {b} in the last {d} days.", { a: num(c.recent), b: num(c.tracked), d: num(c.fresh_days) }))}${esc(oldest)} <a href="#keywords">${t("Refresh in Keywords")}</a></p></div>${thin}`;
+    return `<div class="in-mix-head"><div class="ov-answer in-mix-answer" dir="auto"><span class="ov-ans-head"><span>${t("Tracked keywords")} <b>${num(c.tracked)}</b></span><span class="in-ans-imp">${t("With Search Console data")} <b>${num(c.with_search)}</b></span></span>
+      <ul class="ov-ans-list in-mix-rows">${rows}</ul></div>${worldLine}
+      <p class="small muted in-mix-oldest">${esc(oldest)}<a href="#keywords">${t("Refresh in Keywords")}</a></p></div>${thin}`;
   }
   const scrapedCell = (e) => {
     if (known(e.scraped)) return posBadge(e.scraped);
@@ -1474,8 +1478,8 @@
     "The AI Overview takes these clicks. Answer plainly on the page so it cites you.": "L'AI Overview prend ces clics. Répondez clairement sur la page pour qu'il vous cite.", "The AI Overview cites you but takes most clicks. Give the title a reason to click.": "L'AI Overview vous cite mais prend la plupart des clics. Donnez dans le titre une raison de cliquer.",
     "No AI Overview, so the title is the likely problem. Rewrite it and the description.": "Pas d'AI Overview : le titre est sans doute le problème. Réécrivez-le, ainsi que la description.", "Cause unknown: this check can't read AI Overviews. Look by hand, or check with SerpApi.": "Cause inconnue : cette vérification ne lit pas les AI Overviews. Regardez à la main, ou vérifiez avec SerpApi.",
     "Check it": "À vérifier", "One rank check only. Check again before acting.": "Une seule vérification. Revérifiez avant d'agir.", "All countries": "Tous pays", "Not found in the results checked": "Absente des résultats vérifiés", "One check only": "Une seule vérification",
-    "One looks like a fresh drop": "Un ressemble à une chute récente", "{a} look like fresh drops": "{a} ressemblent à des chutes récentes", ", and rivals lead on {b} that people really search.": ", et les concurrents dominent sur {b} vraiment recherchés.", " Rivals lead on {b} that people really search.": " Les concurrents dominent sur {b} vraiment recherchés.",
-    "Of {a} tracked keywords, {b} have Search Console data.": "Sur {a} mots-clés suivis, {b} ont des données Search Console.", "Rankings checked: {a} of {b} in the last {d} days.": "Positions vérifiées : {a} sur {b} ces {d} derniers jours.", "Oldest {n} days.": "La plus ancienne : {n} jours.", "Oldest: a day or less.": "La plus ancienne : un jour ou moins.", "Refresh in Keywords": "Actualiser dans Mots-clés", "Open Keywords": "Ouvrir Mots-clés",
+    "Tracked keywords": "Mots-clés suivis", "With Search Console data": "Avec données Search Console", "Checked in the last {d} days": "Vérifiés ces {d} derniers jours",
+    "Oldest check: {n} days": "Plus ancienne vérification : {n} jours", "Oldest check: a day or less": "Plus ancienne vérification : un jour ou moins", "Refresh in Keywords": "Actualiser dans Mots-clés", "Open Keywords": "Ouvrir Mots-clés",
     "Short list: most rank checks are old or missing.": "Liste courte : la plupart des vérifications sont anciennes ou manquantes.", "No tracked keywords yet": "Pas encore de mots-clés suivis", "Add keywords and check them.": "Ajoutez des mots-clés et vérifiez-les.", "No rank checks yet": "Pas encore de vérification de position", "Press Refresh in Keywords.": "Lancez Actualiser dans Mots-clés.",
     "Keyword": "Mot-clé", "Search Console": "Search Console", "Last check": "Dernière vérif.", "Who's above": "Qui est devant", "Before": "Avant", "Pages": "Pages", "Shown": "Montrée", "Clicked": "Cliquée", "Search Console position, same country": "Position Search Console, même pays", "Search Console position, all countries": "Position Search Console, tous pays", "Previous check": "Vérification précédente",
     "Checked {d} with {tool} from {place}, top {n}.": "Vérifié le {d} avec {tool} depuis {place}, top {n}.", "Who ranks for it": "Qui se classe dessus", "You": "Vous", "Followed rival": "Concurrent suivi", "Also": "Aussi",
