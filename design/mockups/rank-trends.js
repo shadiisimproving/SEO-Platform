@@ -4,7 +4,11 @@
    Two rankings behind one switch, never mixed in a list: our own rank checks, and Search Console's average position.
    The same card sits on Today, Keywords and Overview:  RankTrends.card("today" | "keywords" | "overview")  returns its
    HTML at once (grey rows until the answer is in) and fills every copy on screen when GET /api/rank-trends answers.
-   It draws itself: a tab or the switch never asks the screen around it to redraw. */
+   It draws itself: a choice never asks the screen around it to redraw.
+
+   At rest the card is its answer and one control (owner, 2026-11-23: Today had 47 controls against about 33): the list
+   and the ranking are chosen in its View menu, with Show more and the link to every keyword. Up and Down are the one
+   rule of seo/serp/moves.py: 1 place or more, "New" (it entered) an Up, "Lost" (it ranked before, not now) a Down. */
 (() => {
   "use strict";
   const UI = () => window.UI;
@@ -49,6 +53,12 @@
   // ---- a row ------------------------------------------------------------------------------------------
   const pos = (value) => `<span class="rt-pos"><span class="sr-only">${t("Position")} </span>#${esc(place(value))}</span>`;
   function move(row) {
+    // Lost / New: the word says why it counts as Down or Up.
+    if (row.move === "lost" || row.move === "new") {
+      const lost = row.move === "lost";
+      const words = lost ? fill("Lost: was #{was}, not found now", { was: place(row.was) }) : t("New: not found before");
+      return `<span class="rt-move"><span class="chg ${lost ? "crit" : "good"} rt-word" title="${esc(words)}">${icon(lost ? "arrow-down" : "arrow-up")}<span aria-hidden="true">${esc(t(lost ? "Lost|move" : "New|move").split("|")[0])}</span><span class="sr-only">${esc(words)}</span></span></span>`;
+    }
     if (!row.places) return `<span class="rt-move rt-same" title="${esc(t(row.was === null ? "Nothing earlier to compare with" : "Same place as before"))}"><span aria-hidden="true">–</span><span class="sr-only">${t(row.was === null ? "Nothing earlier to compare with" : "Same place as before")}</span></span>`;
     const up = row.places > 0, size = place(Math.abs(row.places));
     const one = Math.abs(row.places) === 1;
@@ -58,11 +68,11 @@
   function similar(row) {
     if (!row.similar.length) return "";
     const rest = row.similar_count - row.similar.length;
-    const names = row.similar.map((s) => `<span class="rt-sim">${window.KeywordLink.html(s.keyword, { id: s.keyword_id, host: row.host })}&nbsp;<span class="rt-sim-pos">#${esc(place(s.now))}</span></span>`).join("");
+    const names = row.similar.map((s) => `<span class="rt-sim">${window.KeywordLink.html(s.keyword, { id: s.keyword_id, host: row.host })}&nbsp;<span class="rt-sim-pos">${s.now === null || s.now === undefined ? esc(t("Lost|move").split("|")[0]) : `#${esc(place(s.now))}`}</span></span>`).join("");
     return `<div class="d rt-similar"><span class="sr-only">${t("Similar keywords")}: </span>${names}${rest > 0 ? `<span class="rt-sim">+${esc(place(rest))}</span>` : ""}</div>`;
   }
   const hostTag = (host) => (host && allSites() ? ` <span class="small muted today-host" dir="auto">${esc(host)}</span>` : "");
-  const rowHtml = (row) => `<li><div class="what"><div class="t">${window.KeywordLink.html(row.keyword, { id: row.keyword_id, host: row.host })}${hostTag(row.host)}</div>${similar(row)}</div>${move(row)}${pos(row.now)}</li>`;
+  const rowHtml = (row) => `<li><div class="what"><div class="t">${window.KeywordLink.html(row.keyword, { id: row.keyword_id, host: row.host })}${hostTag(row.host)}</div>${similar(row)}</div>${move(row)}${row.now === null || row.now === undefined ? `<span class="rt-pos rt-gone" aria-hidden="true">—</span>` : pos(row.now)}</li>`;
 
   // ---- what to say when a list is empty ------------------------------------------------------------------
   function empty(source, found, screen) {
@@ -72,13 +82,13 @@
       if (found.state === "no_keywords") return say("No keywords followed yet", "Add the keywords to follow, and their ranking shows here.", goKeywords);
       if (found.state === "not_checked") return say("No rank check yet", "Refresh in Keywords runs the first one.", goKeywords);
       if (found.state === "not_ranked") return say("Not found in the results checked", "Your site wasn't in the results for any keyword followed.");
-      if (S.tab === "up") return say("No keyword went up", "Since the check before, by the same tool.");
-      if (S.tab === "down") return say("No keyword went down", "Since the check before, by the same tool.");
+      if (S.tab === "up") return say("No keyword went up", "By a place or more, or newly found, since the check before by the same tool.");
+      if (S.tab === "down") return say("No keyword went down", "By a place or more, or lost, since the check before by the same tool.");
     } else {
       if (found.state === "not_connected") return say("Search Console isn't connected", "", UI().canSettings?.() === false ? "" : `<button class="btn" data-go="settings">${t("Open Settings")}</button>`);
       if (found.state === "no_rows") return say("Too few searches in the last 7 days", "A query counts from 10 impressions in the week.");
-      if (S.tab === "up") return say("No query went up", "By a place or more, against the week before.");
-      if (S.tab === "down") return say("No query went down", "By a place or more, against the week before.");
+      if (S.tab === "up") return say("No query went up", "By a place or more, or newly shown: the last 7 days against the first 7 of the last 28.");
+      if (S.tab === "down") return say("No query went down", "By a place or more, or lost: the last 7 days against the first 7 of the last 28.");
     }
     return say("Nothing to show", "");
   }
@@ -86,7 +96,7 @@
   /* Where the numbers come from, said once under the list. */
   function note(source, found) {
     if (found.state !== "ok") return "";
-    if (source === "gsc") return `${t("Search Console average position, all countries")} · ${fill("{a} – {b} against the 7 days before", { a: day(found.from), b: day(found.through) })}`;
+    if (source === "gsc") return `${t("Search Console average position, all countries")} · ${fill("{a} – {b} against {c} – {d}", { a: day(found.from), b: day(found.through), c: day(found.before_from || found.from), d: day(found.before_through || found.through) })}`;
     const bits = [`Google · ${found.tools.map(esc).join(", ")}`];
     if (found.last_check) bits.push(`${t("latest check")} ${day(found.last_check)}`);
     bits.push(t("moves: against the check before, same tool"));
@@ -94,20 +104,43 @@
   }
 
   // ---- the card ---------------------------------------------------------------------------------------
+  /* What the View menu offers besides the choices: Show more, and the way to every keyword. */
+  function links(data, screen) {
+    const source = sourceOf(data), found = data[source], rows = found[S.tab] || [];
+    const all = source === "checks" ? "keywords" : "overview";
+    return {
+      more: rows.length > FIRST ? (S.more ? t("Show fewer") : fill("Show {n} more", { n: place(rows.length - FIRST) })) : "",
+      elsewhere: all === screen || found.state !== "ok" ? null : { go: all, words: t(source === "checks" ? "All keywords" : "All queries") },
+    };
+  }
+
   function body(data, screen) {
     const source = sourceOf(data), found = data[source];
     const rows = found[S.tab] || [], shown = S.more ? rows : rows.slice(0, FIRST);
-    const tabs = `<div class="rt-tabs" role="tablist" aria-label="${t("Which keywords")}">${TABS.map(([id, name]) =>
-      `<button type="button" class="rt-tab" role="tab" data-rt-tab="${id}" aria-selected="${S.tab === id}" tabindex="${S.tab === id ? 0 : -1}">${t(name)}<span class="rt-n">${esc(place(found.counts[id]))}</span></button>`).join("")}</div>`;
     const list = found.state === "ok" && rows.length
-      ? `<ul class="rows rt-rows" role="tabpanel" aria-label="${t(TABS.find(([id]) => id === S.tab)[1])}">${shown.map(rowHtml).join("")}</ul>`
+      ? `<ul class="rows rt-rows" aria-label="${esc(t(TABS.find(([id]) => id === S.tab)[1]))}">${shown.map(rowHtml).join("")}</ul>`
       : empty(source, found, screen);
-    const all = source === "checks" ? "keywords" : "overview";
-    const elsewhere = all === screen || found.state !== "ok" ? "" : `<a class="link-btn rt-all" href="#${all}" data-go="${all}">${t(source === "checks" ? "All keywords" : "All queries")}${icon("chevron-right")}</a>`;
-    const more = rows.length > FIRST ? `<button type="button" class="link-btn" data-rt-more aria-expanded="${S.more}">${S.more ? t("Show fewer") : fill("Show {n} more", { n: place(rows.length - FIRST) })}</button>` : "";
     const said = note(source, found);
-    const foot = said || more || elsewhere ? `<div class="rt-foot"><span class="small muted rt-note" dir="auto">${said}</span><span class="rt-foot-acts">${more}${elsewhere}</span></div>` : "";
-    return `${found.state === "ok" ? tabs : ""}${list}${foot}`;
+    const foot = said ? `<div class="rt-foot"><span class="small muted rt-note" dir="auto">${said}</span></div>` : "";
+    return `${list}${foot}`;
+  }
+
+  /* The answer in the head, as text: how many went up and down, on the ranking chosen. */
+  function counts(found) {
+    if (!found || found.state !== "ok") return "";
+    const c = found.counts;
+    const bit = (cls, mark, n, words) => `<span class="rt-count ${cls}" title="${esc(words)}">${mark}<span aria-hidden="true">${esc(place(n))}</span><span class="sr-only">${esc(words)}</span></span>`;
+    return `<span class="rt-counts">${bit("rt-c-up", icon("arrow-up"), c.up, fill("{n} up", { n: place(c.up) }))}${bit("rt-c-down", icon("arrow-down"), c.down, fill("{n} down", { n: place(c.down) }))}</span>`;
+  }
+
+  function menuHtml(data, screen) {
+    const source = sourceOf(data), found = data[source];
+    const option = (attr, id, name, on, n) => `<button type="button" ${attr}="${id}" aria-pressed="${on}" ${on ? "data-autofocus" : ""}><span>${esc(t(name))}</span>${n === undefined ? "" : `<span class="rt-pop-n">${esc(place(n))}</span>`}<span class="tick" aria-hidden="true">${on ? icon("check") : ""}</span></button>`;
+    const lists = found.state === "ok" ? `<p class="rt-pop-h" aria-hidden="true">${esc(t("Show"))}</p>${TABS.map(([id, name]) => option("data-rt-tab", id, name, S.tab === id, found.counts[id])).join("")}<hr>` : "";
+    const ranking = `<p class="rt-pop-h" aria-hidden="true">${esc(t("Ranking"))}</p>${SOURCES.map(([id, name]) => option("data-rt-source", id, name, source === id)).join("")}`;
+    const { more, elsewhere } = found.state === "ok" ? links(data, screen) : { more: "", elsewhere: null };
+    const extra = more || elsewhere ? `<hr>${more ? `<button type="button" data-rt-more aria-expanded="${S.more}">${esc(more)}</button>` : ""}${elsewhere ? `<button type="button" class="rt-all" data-go="${elsewhere.go}"><span>${esc(elsewhere.words)}</span><span class="tick" aria-hidden="true">${icon("chevron-right")}</span></button>` : ""}` : "";
+    return `${lists}${ranking}${extra}`;
   }
 
   function card(screen) {
@@ -118,47 +151,49 @@
     if (now.error?.status === 403 || now.error?.message === "Not in the sample data.") return ""; // chosen access without Keywords or Overview, or the plain-file sample: no card
     const data = now.data;
     const picked = data ? sourceOf(data) : S.source || "checks";
-    const sw = `<span class="seg rt-seg end" role="group" aria-label="${t("Which ranking")}">${SOURCES.map(([id, name]) => `<button type="button" data-rt-source="${id}" aria-pressed="${picked === id}">${t(name)}</button>`).join("")}</span>`;
+    // One control at rest: View, naming what is shown. Its menu holds the list, the ranking, Show more and All keywords.
+    const face = `${t(TABS.find(([id]) => id === S.tab)[1])} · ${t(SOURCES.find(([id]) => id === picked)[1])}`;
+    const view = `<button type="button" class="btn btn-small rt-view" data-rt-view data-pop-toggle aria-haspopup="true" aria-expanded="false" aria-label="${esc(`${t("View")}: ${face}`)}" ${data ? "" : "disabled"}><span class="rt-view-face">${esc(face)}</span>${icon("chevron-down")}</button>`;
+    const sw = `<span class="rt-head-end">${data ? counts(data[picked]) : ""}${view}</span>`;
     const inside = data ? body(data, screen)
       : now.error ? `<div class="empty rt-empty"><h3>${t("Couldn't load the rankings")}</h3><button class="btn" data-rt-retry>${t("Try again")}</button></div>`
       : `<ul class="rows rt-rows rt-wait" aria-busy="true" aria-label="${t("Loading…")}">${"<li><span></span><span></span></li>".repeat(FIRST)}</ul>`;
-    return `<section class="card rt-card" data-rank-trends="${esc(screen)}"><div class="card-head"><h2>${t("Keywords by ranking")}</h2>${sw}</div>${inside}</section>`;
+    return `<section class="card rt-card" data-rank-trends="${esc(screen)}" data-rt-list="${S.tab}" data-rt-ranking="${picked}"><div class="card-head"><h2>${t("Keywords by ranking")}</h2>${sw}</div>${inside}</section>`;
   }
 
-  /* Every copy on screen is drawn again, and the keyboard stays where it was. */
-  function paint() {
+  /* Every copy on screen is drawn again; after a choice in the menu the keyboard goes back to its View button. */
+  function paint(focusView = null) {
     document.querySelectorAll("[data-rank-trends]").forEach((el) => {
-      const held = el.contains(document.activeElement) ? document.activeElement : null;
-      const again = held ? ["data-rt-tab", "data-rt-source", "data-rt-more"].map((name) => (held.hasAttribute(name) ? `[${name}${held.getAttribute(name) ? `="${held.getAttribute(name)}"` : ""}]` : "")).find(Boolean) : null;
+      const held = focusView === el.dataset.rankTrends || Boolean(el.contains(document.activeElement) && document.activeElement.hasAttribute("data-rt-view"));
       const html = card(el.dataset.rankTrends);
       if (!html) { el.remove(); return; }
       el.insertAdjacentHTML("afterend", html);
       const fresh = el.nextElementSibling;
       el.remove();
-      if (again) (again.startsWith("[data-rt-tab") ? fresh.querySelector('[data-rt-tab][aria-selected="true"]') : fresh.querySelector(again))?.focus();
+      if (held) fresh.querySelector("[data-rt-view]")?.focus();
     });
   }
 
   document.addEventListener("click", (e) => {
-    const el = e.target instanceof Element ? e.target.closest("[data-rt-tab], [data-rt-source], [data-rt-more], [data-rt-retry]") : null;
+    const el = e.target instanceof Element ? e.target.closest("[data-rt-view], [data-rt-tab], [data-rt-source], [data-rt-more], [data-rt-retry]") : null;
     if (!el) return;
+    if (el.hasAttribute("data-rt-view")) {
+      const screen = el.closest("[data-rank-trends]")?.dataset.rankTrends, data = S.cache.get(siteKey())?.data;
+      if (!data) return;
+      if (el.getAttribute("aria-expanded") === "true") { UI().closePopover?.({ focus: true }); return; }
+      const pop = UI().popover?.(el, menuHtml(data, screen), "rt-pop");
+      if (pop) { pop.dataset.rtFor = screen; pop.setAttribute("role", "group"); pop.setAttribute("aria-label", `${t("View")}: ${t("Keywords by ranking")}`); }
+      return;
+    }
+    const screen = el.closest("#popover")?.dataset.rtFor || null;
     if (el.dataset.rtTab) { S.tab = el.dataset.rtTab; S.more = false; }
     else if (el.dataset.rtSource) {
       S.source = el.dataset.rtSource; S.more = false;
       try { localStorage.setItem(KEEP, S.source); } catch { /* kept for this visit only */ }
     } else if (el.hasAttribute("data-rt-more")) S.more = !S.more;
     else { S.cache.delete(siteKey()); }
-    paint();
-  });
-  // Left and right walk the tabs, as a tab list should.
-  document.addEventListener("keydown", (e) => {
-    const tab = e.target instanceof Element ? e.target.closest("[data-rt-tab]") : null;
-    if (!tab || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(e.key)) return;
-    e.preventDefault();
-    const ids = TABS.map(([id]) => id), at = ids.indexOf(tab.dataset.rtTab);
-    S.tab = e.key === "Home" ? ids[0] : e.key === "End" ? ids[ids.length - 1] : ids[(at + (e.key === "ArrowRight" ? 1 : -1) + ids.length) % ids.length];
-    S.more = false;
-    paint();
+    if (screen) UI().closePopover?.();
+    paint(screen);
   });
 
   /* A rank check or a data pull just finished: the next draw asks again. */
@@ -187,6 +222,13 @@
     "{a} – {b} against the 7 days before": "{a} – {b} par rapport aux 7 jours précédents", "latest check": "dernière vérification",
     "moves: against the check before, same tool": "mouvements : par rapport à la vérification précédente, même outil",
     "Couldn't load the rankings": "Impossible de charger les positions", "Try again": "Réessayer",
+    "View": "Affichage", "Show": "Afficher", "Ranking": "Classement", "{n} up": "{n} en hausse", "{n} down": "{n} en baisse",
+    "Lost|move": "Perdu", "New|move": "Nouveau", "Lost: was #{was}, not found now": "Perdu : était #{was}, introuvable maintenant", "New: not found before": "Nouveau : introuvable avant",
+    "By a place or more, or newly found, since the check before by the same tool.": "D'une place ou plus, ou nouvellement trouvé, depuis la vérification précédente par le même outil.",
+    "By a place or more, or lost, since the check before by the same tool.": "D'une place ou plus, ou perdu, depuis la vérification précédente par le même outil.",
+    "By a place or more, or newly shown: the last 7 days against the first 7 of the last 28.": "D'une place ou plus, ou nouvellement affichée : les 7 derniers jours par rapport aux 7 premiers des 28 derniers.",
+    "By a place or more, or lost: the last 7 days against the first 7 of the last 28.": "D'une place ou plus, ou perdue : les 7 derniers jours par rapport aux 7 premiers des 28 derniers.",
+    "{a} – {b} against {c} – {d}": "{a} – {b} par rapport au {c} – {d}",
   };
   Object.keys(fr).forEach((word) => { if (window.FR && window.FR[word] === undefined) window.FR[word] = fr[word]; });
 })();

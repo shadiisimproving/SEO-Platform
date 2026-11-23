@@ -9,17 +9,23 @@ require("fs").mkdirSync(out, { recursive: true });
 const fails = [];
 const check = (ok, what) => { console.log(ok ? "ok  " : "FAIL", what); if (!ok) fails.push(what); };
 const CARD = "[data-rank-trends]";
-const ready = (page) => page.waitForSelector(`${CARD} .rt-tabs`, { timeout: 15000 });
+// Since 2026-11-23 the list (Top / Trending up / Trending down) and the ranking are chosen in the card's View menu.
+const ready = (page) => page.waitForSelector(`${CARD} .rt-view:not([disabled])`, { timeout: 15000 });
+// A scroll of the screen closes any menu (mockup.js), so the card is brought into view before View is pressed.
+const openView = async (page) => { await page.locator(`${CARD} .rt-view`).scrollIntoViewIfNeeded(); await page.waitForTimeout(250); await page.click(`${CARD} .rt-view`); await page.waitForSelector("#popover.rt-pop"); };
+const choose = async (page, attr, id) => { await openView(page); await page.click(`#popover [${attr}="${id}"]`); await page.waitForTimeout(300); };
 const facts = (page) => page.evaluate((sel) => {
   const card = document.querySelector(sel);
   return {
     copies: document.querySelectorAll(sel).length,
-    tab: card.querySelector('.rt-tab[aria-selected="true"]')?.dataset.rtTab,
-    source: card.querySelector('[data-rt-source][aria-pressed="true"]')?.dataset.rtSource,
-    counts: Object.fromEntries([...card.querySelectorAll(".rt-tab")].map((b) => [b.dataset.rtTab, Number(b.querySelector(".rt-n").textContent)])),
+    tab: card.dataset.rtList,
+    source: card.dataset.rtRanking,
+    face: card.querySelector(".rt-view")?.textContent.trim(),
+    counts: { up: Number(card.querySelector(".rt-c-up > span[aria-hidden]")?.textContent), down: Number(card.querySelector(".rt-c-down > span[aria-hidden]")?.textContent) },
+    atRest: [...card.querySelectorAll("button, a[href]")].filter((el) => !el.closest(".rt-rows")).length,
     rows: [...card.querySelectorAll(".rt-rows > li")].map((li) => ({ name: li.querySelector(".t a, .t span")?.textContent.trim(), up: !!li.querySelector(".chg.good"), down: !!li.querySelector(".chg.crit"), pos: li.querySelector(".rt-pos")?.textContent.replace(/\D*#/, "#") })),
     note: card.querySelector(".rt-note")?.textContent || "",
-    all: card.querySelector(".rt-all")?.getAttribute("href") || null,
+    all: null, // the way to every keyword is in the View menu: menuFacts
     words: card.innerText,
     wide: document.documentElement.scrollWidth > innerWidth + 1,
     keywordInMoves: [...document.querySelectorAll(".today-moves .rows li")].some((li) => li.querySelector("[data-today-keyword]")),
@@ -38,24 +44,35 @@ const facts = (page) => page.evaluate((sel) => {
   check(f.rows.length > 0 && f.rows.length <= 5, `Today: at most 5 rows first (${f.rows.length})`);
   const places = f.rows.map((r) => Number(r.pos.slice(1)));
   check(places.every((p, i) => !i || p >= places[i - 1]), `Today: Top is best placed first (${places.join(", ")})`);
-  check(f.note.includes("Google") && f.all === "#keywords", "Today: the foot says where the numbers come from, and links to all keywords");
+  check(f.note.includes("Google"), "Today: the foot says where the numbers come from");
+  check(f.atRest === 1 && /Top · Our checks/.test(f.face), `Today: one control at rest besides the keywords, View, naming what is shown (${f.atRest}, ${f.face})`);
+  await openView(page);
+  const menuWords = await page.locator("#popover").innerText();
+  check(/Trending up/.test(menuWords) && /Search Console/.test(menuWords) && /All keywords/.test(menuWords) && await page.evaluate(() => document.activeElement?.dataset.rtTab === "top"), `View opens the menu on the chosen list (${menuWords.replace(/\s+/g, " ")})`);
+  await page.locator("#popover").screenshot({ path: `${out}/today-menu.png` });
+  await page.keyboard.press("Escape"); await page.waitForTimeout(200);
+  check(!(await page.$("#popover")) && await page.evaluate(() => document.activeElement?.hasAttribute("data-rt-view")), "Escape closes it, back on View");
   check(!f.keywordInMoves, "Today: Going down and Going up keep the pages only");
   await page.locator(CARD).screenshot({ path: `${out}/today-top.png` });
 
-  await page.click(`${CARD} [data-rt-tab="up"]`);
+  await choose(page, "data-rt-tab", "up");
   f = await facts(page);
   check(f.tab === "up" && f.rows.length > 0 && f.rows.every((r) => r.up), `Trending up: every row went up (${f.rows.length} rows)`);
-  check(f.rows.length <= f.counts.up, `Trending up: the tab counts keywords (${f.counts.up}), similar ones share a row`);
-  await page.keyboard.press("ArrowRight");
+  check(f.rows.length <= f.counts.up, `Trending up: the head counts keywords (${f.counts.up}), similar ones share a row`);
+  check(await page.evaluate(() => document.activeElement?.hasAttribute("data-rt-view")), "after a choice the keyboard is back on View");
+  await page.keyboard.press("Enter"); await page.waitForSelector("#popover.rt-pop");
+  await page.click('#popover [data-rt-tab="down"]'); await page.waitForTimeout(300);
   f = await facts(page);
-  check(f.tab === "down" && f.rows.every((r) => r.down), "Right arrow moves to Trending down, and every row went down");
-  check(await page.evaluate(() => document.activeElement?.dataset.rtTab === "down"), "the keyboard stays on the tab it moved to");
+  check(f.tab === "down" && f.rows.every((r) => r.down), "Trending down from the keyboard-opened menu, and every row went down");
   await page.locator(CARD).screenshot({ path: `${out}/today-down.png` });
 
   // ---- the switch -------------------------------------------------------------------------------------
-  await page.click(`${CARD} [data-rt-source="gsc"]`);
+  await choose(page, "data-rt-source", "gsc");
   f = await facts(page);
-  check(f.source === "gsc" && f.note.includes("Search Console") && f.all === "#overview", "Search Console: its own note, and the link goes to Overview");
+  await openView(page);
+  const allGo = await page.getAttribute("#popover .rt-all", "data-go").catch(() => null);
+  await page.keyboard.press("Escape");
+  check(f.source === "gsc" && f.note.includes("Search Console") && allGo === "overview", `Search Console: its own note, and All queries goes to Overview (${allGo})`);
   await page.locator(CARD).screenshot({ path: `${out}/today-search-console.png` });
 
   // ---- Keywords: the choice is remembered, and the card doesn't link to the screen it is on --------------------
@@ -63,19 +80,25 @@ const facts = (page) => page.evaluate((sel) => {
   await ready(page);
   f = await facts(page);
   check(f.copies === 1 && f.source === "gsc", "Keywords: the card is there, still on Search Console");
-  await page.click(`${CARD} [data-rt-source="checks"]`);
+  await choose(page, "data-rt-source", "checks");
   f = await facts(page);
-  check(f.source === "checks" && f.all === null, "Keywords: on our checks there is no link to Keywords itself");
+  await openView(page);
+  const selfLink = await page.$("#popover .rt-all");
+  await page.keyboard.press("Escape");
+  check(f.source === "checks" && !selfLink, "Keywords: on our checks there is no link to Keywords itself");
   await page.screenshot({ path: `${out}/keywords.png` });
 
   // ---- Overview, then French, then a phone ---------------------------------------------------------------
   await page.goto(`${BASE}#overview`);
   await ready(page);
   f = await facts(page);
-  check(f.copies === 1 && f.all === "#keywords", "Overview: the card is there, and our checks link to Keywords");
+  await openView(page);
+  const toKeywords = await page.getAttribute("#popover .rt-all", "data-go").catch(() => null);
+  await page.keyboard.press("Escape");
+  check(f.copies === 1 && toKeywords === "keywords", "Overview: the card is there, and our checks link to Keywords");
   await menu(page, "lang"); await page.waitForTimeout(700);
   f = await facts(page);
-  check(f.words.includes("Mots-clés par position") && f.words.includes("En hausse") && f.words.includes("Nos vérifications"), "French: the card's words are in French");
+  check(f.words.includes("Mots-clés par position") && f.words.includes("en hausse") && f.words.includes("Nos vérifications"), `French: the card's words are in French (${f.face})`);
   await page.locator(CARD).screenshot({ path: `${out}/overview-french.png` });
   await menu(page, "lang"); await page.waitForTimeout(500);
   await page.setViewportSize({ width: 390, height: 844 });

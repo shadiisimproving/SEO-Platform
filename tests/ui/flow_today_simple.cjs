@@ -31,8 +31,9 @@ const controls = (page) => page.evaluate(() => {
       if (s.display === "none" || s.visibility === "hidden") return false; o *= Number(s.opacity); } return o > 0.05; };
   // A row's tick box stays faintly visible since 2026-11-12 (UI critique: hidden ones weren't discovered); it isn't counted here.
   const rowTick = (el) => el.matches('tbody :is(.tt-pick, .tt-own-pick) input[type="checkbox"]');
-  // The Keywords by ranking card (rank-trends, merged 23 Nov) brings its own ~13 controls; it is counted apart (owner to judge).
-  return [...document.querySelector("#main").querySelectorAll("button,select,input,textarea,a[href],summary,[role=button],[role=tab]")].filter((el) => !rowTick(el) && !el.closest(".rt-card")).filter(shown).length;
+  // The Keywords by ranking card counts too since 2026-11-23: its tabs and switch moved into one View menu, so at rest it
+  // brings its View button and the keyword links of its answer (every keyword is a link: keyword-links.js).
+  return [...document.querySelector("#main").querySelectorAll("button,select,input,textarea,a[href],summary,[role=button],[role=tab]")].filter((el) => !rowTick(el)).filter(shown).length;
 });
 const visible = (page, sel) => page.$eval(sel, (el) => { let o = 1; for (let n = el; n && n !== document.body; n = n.parentElement) o *= Number(getComputedStyle(n).opacity); return o > 0.5; });
 
@@ -102,7 +103,10 @@ const visible = (page, sel) => page.$eval(sel, (el) => { let o = 1; for (let n =
   check(await visible(page, "[data-row] .row-act"), "and shows on the row's hover");
   await page.mouse.move(5, 5); await settle(page, 300);
   const n = await controls(page);
-  check(n <= 37, `controls at rest: ${n} (every serious row now shows; 47 before with the switch on, 44 with it off; target 33 on two moving rows)`);
+  const inCard = await page.evaluate(() => [...document.querySelectorAll(".rt-card button, .rt-card a[href]")].filter((el) => el.getBoundingClientRect().width > 1).length);
+  // 47 with the Keywords by ranking card's five tabs and switches, its Show more and its link (2026-11-23); 41 with them in
+  // its View menu: 35 elsewhere + View + its five keyword links. Target about 33.
+  check(n <= 41 && inCard <= 6, `controls at rest: ${n}, ${inCard} of them in the Keywords by ranking card (47 before its View menu)`);
   const f = await facts(page);
   check(count(f.second) === f.badge, `the headline count ${count(f.second)} matches the menu badge ${f.badge}`);
   const drop = await page.$("[data-lv-drop]");

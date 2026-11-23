@@ -86,7 +86,10 @@
   function keywords() {
     const U = ui(), engine = U.state.engine === "all" ? "google" : U.state.engine;
     const ids = window.KW_REAL?.seen?.();
-    return { view: "keywords", params: { site_id: site(), engine }, seen: ids ? { keywords: ids } : {}, words: [...chipWords("[data-filter]", "filter"), ...sortWords()] };
+    // Which ranking the Up / Down chips counted with: Search Console unless "Our checks" was picked (Google only).
+    let source = "checks";
+    try { source = engine === "google" && localStorage.getItem("seocc2-kwb-source") !== "checks" ? "gsc" : "checks"; } catch { /* no storage: our checks */ }
+    return { view: "keywords", params: { site_id: site(), engine, source }, seen: ids ? { keywords: ids } : {}, words: [...chipWords("[data-filter]", "filter"), ...sortWords()] };
   }
   function backlinks() {
     const U = ui(), s = U.state.blSection, raw = U.exportSeen?.() || {};

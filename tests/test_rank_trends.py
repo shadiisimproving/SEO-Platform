@@ -13,9 +13,9 @@ HOME = "https://shop-one.test/"
 
 
 def week(engine, site_id, words, now=None, before=None, shown=20):
-    """One search over the last 7 final days (position `now`) and the 7 before (position `before`)."""
+    """One search over the last 7 final days (position `now`) and the first 7 of the 28-day trend line (position `before`)."""
     with engine.begin() as conn:
-        for back in range(14):
+        for back in [*range(7), *range(21, 28)]:
             position = now if back < 7 else before
             if position is None:
                 continue
@@ -81,21 +81,49 @@ def test_states_before_any_result(engine, site):
     assert rank_trends.rank_trends(engine, site)["gsc"]["state"] == "not_connected"
 
 
-def test_search_console_week_against_the_week_before(engine, site):
+def test_search_console_last_7_days_against_the_first_7_of_the_trend_line(engine, site):
     week(engine, site, "lost passport", now=3.0, before=7.5)
     week(engine, site, "always improving", now=9.0, before=4.0)
     week(engine, site, "golden visa", now=5.0, before=5.4)  # under one place: not a move
-    week(engine, site, "new this week", now=2.0)  # nothing to compare with
+    week(engine, site, "new this week", now=2.0)  # not shown before: it entered, an Up
+    week(engine, site, "gone quiet", before=6.0)  # shown before, not at all now: lost, a Down
     week(engine, site, "rare search", now=1.0, before=1.0, shown=1)  # 7 impressions a week: left out
     tracked = keyword(engine, site, "Lost Passport")
 
     found = rank_trends.rank_trends(engine, site)["gsc"]
     assert found["state"] == "ok" and found["through"] == str(END) and found["from"] == str(END - timedelta(days=6))
+    assert found["before_from"] == str(END - timedelta(days=27)) and found["before_through"] == str(END - timedelta(days=21))
     assert names(found["top"]) == ["new this week", "lost passport", "golden visa", "always improving"]
-    assert [(r["keyword"], r["was"], r["now"], r["places"]) for r in found["up"]] == [("lost passport", 7.5, 3.0, 4.5)]
-    assert [(r["keyword"], r["was"], r["now"], r["places"]) for r in found["down"]] == [("always improving", 4.0, 9.0, -5.0)]
-    assert found["up"][0]["keyword_id"] == tracked and found["down"][0]["keyword_id"] is None
+    assert [(r["keyword"], r["move"], r["was"], r["now"], r["places"]) for r in found["up"]] == [("new this week", "new", None, 2.0, 0), ("lost passport", "up", 7.5, 3.0, 4.5)]
+    assert [(r["keyword"], r["move"], r["was"], r["now"], r["places"]) for r in found["down"]] == [("gone quiet", "lost", 6.0, None, 0), ("always improving", "down", 4.0, 9.0, -5.0)]
+    assert found["counts"] == {"top": 4, "up": 2, "down": 2}
+    assert found["up"][1]["keyword_id"] == tracked and found["down"][1]["keyword_id"] is None
     assert found["top"][0]["was"] is None and found["top"][0]["places"] == 0
+
+
+def test_search_console_too_new_to_say_new(engine, site):
+    """Search Console connected last week: nothing reaches the first window, so nothing is "new"."""
+    with engine.begin() as conn:
+        for back in range(7):
+            conn.execute(
+                text("INSERT INTO gsc_query (site_id, day, query_hash, query, clicks, impressions, position) VALUES (:s, :d, :h, :q, 0, 20, 3)"),
+                {"s": site, "d": END - timedelta(days=back), "h": digest("fresh site"), "q": "fresh site"},
+            )
+    found = rank_trends.rank_trends(engine, site)["gsc"]
+    assert names(found["top"]) == ["fresh site"] and found["counts"]["up"] == 0 and found["top"][0]["move"] is None
+
+
+def test_our_checks_count_lost_as_down_and_new_as_up(engine, site):
+    lost = keyword(engine, site, "lost passport")
+    new = keyword(engine, site, "golden visa")
+    check(engine, lost, [(4, HOME)], ago=3)
+    check(engine, lost, [(4, "https://rival.test/")], ago=1)  # not in the top 10 now
+    check(engine, new, [(3, "https://rival.test/")], ago=3)
+    check(engine, new, [(6, HOME)], ago=1)
+    found = rank_trends.rank_trends(engine, site)["checks"]
+    assert found["counts"] == {"top": 1, "up": 1, "down": 1}
+    assert [(r["keyword"], r["move"], r["was"], r["now"]) for r in found["down"]] == [("lost passport", "lost", 4, None)]
+    assert [(r["keyword"], r["move"], r["was"], r["now"]) for r in found["up"]] == [("golden visa", "new", None, 6)]
 
 
 def test_the_route_answers_for_one_site_and_for_all(engine, site):
