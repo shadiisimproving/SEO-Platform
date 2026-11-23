@@ -354,6 +354,56 @@
     if (COMP.currentTab() === tab && COMP.siteId === site) COMP.paint();
   };
 
+  /* ---- a collective tab inside one competitor's profile (2026-11-16, the owner: "collective and also for each competitor alone")
+     Page vs page, Link gaps and AI Overview watch are drawn by their own file, once: comp-profile-tabs.js shows the same tab
+     object's body() inside its panel (#pt-embed) with the competitor fixed. COMP.embed names the tab and the competitor while
+     that panel is open. The tab's file asks COMP.rivalFor(id) for the fixed competitor (null in the collective tab), and draws
+     and loads again through COMP.paintTab / COMP.reloadTab, which go to whichever of the two places shows it. Both read and
+     write the same API, so a change made in one is there in the other: each place loads again when it opens (COMP.loadKey). */
+  COMP.embed = null; // { id, competitorId } while a profile shows a collective tab
+  COMP.embedded = (id) => {
+    const e = COMP.embed;
+    if (!e || (id && e.id !== id) || UI?.state.route !== "competitors" || !COMP.profileOpen() || COMP.siteId === ALL) return null;
+    return COMP.tabs.find((x) => x.id === "list")?.competitorId === e.competitorId ? e : null;
+  };
+  COMP.rivalFor = (id) => COMP.embedded(id)?.competitorId ?? null;
+  /* What a tab's data was loaded for: the site, or the site and the one competitor. */
+  COMP.loadKey = (tab) => { const e = COMP.embedded(tab.id); return e ? `${COMP.siteId}|${e.competitorId}` : COMP.siteId; };
+  /* The tab is on screen, on its own or inside a profile. */
+  COMP.onTab = (id) => UI?.state.route === "competitors" && (Boolean(COMP.embedded(id)) || COMP.currentTab()?.id === id);
+  COMP.paintTab = (tab) => {
+    if (COMP.embedded(tab.id)) {
+      const box = UI.$("#pt-embed");
+      if (!box) return;
+      UI.setHTML(box, tab.loadedFor === COMP.loadKey(tab) ? tab.body() : COMP.loading());
+      tab.after?.();
+      if (COMP.refocus && (!document.activeElement || document.activeElement === document.body)) UI.$(COMP.refocus)?.focus({ preventScroll: true });
+      COMP.refocus = null;
+      return;
+    }
+    if (COMP.currentTab() === tab) COMP.paint();
+  };
+  COMP.reloadTab = async (tab, { quiet = false } = {}) => {
+    if (!COMP.embedded(tab.id)) {
+      if (COMP.currentTab() === tab) return COMP.reload({ quiet });
+      tab.loadedFor = undefined;
+      return undefined;
+    }
+    const key = COMP.loadKey(tab);
+    tab.loadedFor = key;
+    const box = () => UI.$("#pt-embed");
+    if (!quiet && box()) UI.setHTML(box(), COMP.loading());
+    try {
+      await tab.load?.();
+    } catch (err) {
+      tab.loadedFor = undefined; // Try again, or the next visit, asks again
+      if (COMP.loadKey(tab) === key && box()) UI.setHTML(box(), COMP.failed(err));
+      return undefined;
+    }
+    if (COMP.loadKey(tab) === key) COMP.paintTab(tab);
+    return undefined;
+  };
+
   /* Go to a tab. `props` lands on the tab's object, for example { competitorId: 4 } on the list tab. */
   COMP.open = (id, props = {}, siteId) => {
     const tab = COMP.tabs.find((x) => x.id === id);
@@ -533,6 +583,9 @@
       });
       document.addEventListener("click", (e) => {
         if (e.target.closest?.("[data-comp-retry]")) {
+          // Inside a profile's Page vs page, Link gaps or AI Overview: only that part asks again.
+          const inside = e.target.closest("#pt-embed") && COMP.embedded();
+          if (inside) { COMP.reloadTab(COMP.tabs.find((x) => x.id === inside.id)); return; }
           if (!COMP.ready) { COMP.loadError = null; UI.render(); } else COMP.reload();
           return;
         }

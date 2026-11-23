@@ -5,7 +5,7 @@
   let UI = null;
   const TYPE_OWN = "__own__"; // the "Type another address" choice in a page picker
   const WATCH_EVERY = 2000, WATCH_FOR = 60000;
-  const S = { site: null, view: "list", filter: "", verdict: null, showSame: false, pairs: [], competitors: [], detail: null, dirty: false, listScroll: 0, rereading: null, readWaiting: false, section: "keywords", sort: null };
+  const S = { site: null, view: "list", filter: "", verdict: null, showSame: false, pairs: [], competitors: [], detail: null, dirty: false, listScroll: 0, rereading: null, readWaiting: false, section: "keywords", sort: null, rival: null, server: false };
   const PAGES = "cp-pairs", KW_PAGES = "cp-kw"; // the pairs and a pair's keywords have pages and a search (table-pages.js), like every long table
   const FIND_FROM = 11; // more than 10 rows, as on every table: a search box shows from this many rows, or while a search is on
   const W = { key: null, started: 0, expired: false, timer: null };
@@ -18,7 +18,10 @@
   const isRead = (side) => side?.state === "read";
   const isWaiting = (state) => state === "not_read" || state === "not_modified";
   const site = () => COMP.site();
-  const onScreen = () => UI.state.route === "competitors" && COMP.tab === "pairs";
+  const onScreen = () => COMP.onTab("pairs"); // here, or inside a competitor's profile (competitors.js COMP.embed)
+  /* Inside a profile the competitor is fixed: no Against list, and the server sends only its pairs. */
+  const fixed = () => S.rival !== null && S.rival !== undefined;
+  const pairsPath = (siteId) => `page-pairs?site_id=${siteId}${fixed() && S.server ? `&competitor_id=${S.rival}` : ""}`;
   // An empty state with the short line on screen and the reason behind an (i) right after it.
   const emptyTip = (title, text, tip, action = "") => COMP.empty(title, text, action).replace("</p>", () => `${UI.tip(tip)}</p>`);
   const PAIRS_WHY = "Pairs appear once a competitor ranks for the same keywords as you.";
@@ -209,10 +212,10 @@
     const chip = (id, word, n) => `<button class="chip" data-cp-verdict="${id}" aria-pressed="${S.verdict === id}">${t(word)}<b>${UI.num(n)}</b></button>`;
     const tools = `<div class="cp-tools">
       ${S.pairs.length >= FIND_FROM || TP.state(PAGES).q ? TP.search(PAGES, t("Search pages and keywords")) : ""}
-      <label class="field"><span>${t("Against")}</span><select class="select" id="cp-filter">
+      ${fixed() ? "" : `<label class="field"><span>${t("Against")}</span><select class="select" id="cp-filter">
         <option value="">${t("All competitors")} (${UI.num(searchedPairs().length)})</option>
         ${S.competitors.map((c) => { const n = searchedPairs().filter((p) => p.competitor_id === c.id).length; return `<option value="${c.id}" ${String(c.id) === S.filter ? "selected" : ""}>${esc(c.display || c.host)} (${UI.num(n)})</option>`; }).join("")}
-      </select></label>
+      </select></label>`}
       <div class="chips cp-chips" role="group" aria-label="${t("Who's ahead")}">
         ${chip("all", "All", base.length)}${chip("behind", "They're ahead", counts.behind)}${chip("ahead", "You're ahead", counts.ahead)}${counts.level ? chip("level", "Even", counts.level) : ""}
       </div>
@@ -593,7 +596,7 @@
       return false;
     }
     const id = active?.id;
-    COMP.paint();
+    COMP.paintTab(tab);
     if (id) document.getElementById(id)?.focus({ preventScroll: true });
     return true;
   }
@@ -615,7 +618,7 @@
           UI.toast(t("Both pages reread."));
         }
       } else {
-        const next = (await COMP.api("GET", `page-pairs?site_id=${S.site}`)).pairs;
+        const next = (await COMP.api("GET", pairsPath(S.site))).pairs;
         if (W.key !== key || S.view !== "list") return;
         changed = JSON.stringify(next) !== JSON.stringify(S.pairs);
         S.pairs = next;
@@ -736,7 +739,7 @@
       UI.closePanel();
       if (!id || S.view === "detail") { S.detail = answer; S.view = "detail"; S.rereading = null; S.readWaiting = false; }
       UI.toast(t(id ? "Saved. Rankings won't replace it." : "Pair added. Rankings won't replace it."));
-      await COMP.reload({ quiet: true });
+      await COMP.reloadTab(tab, { quiet: true });
       if (S.view === "detail") { if (!id) UI.$("#main").scrollTop = 0; UI.$("#cp-change")?.focus({ preventScroll: true }); } else UI.$(`#cp-open-${id}`)?.focus({ preventScroll: true });
     } catch (err) {
       button.disabled = false;
@@ -788,7 +791,7 @@
   }
 
   async function refreshTab() {
-    if (onScreen()) await COMP.reload({ quiet: true });
+    if (onScreen()) await COMP.reloadTab(tab, { quiet: true });
     else tab.loadedFor = undefined;
   }
 
@@ -802,7 +805,7 @@
     if (S.detail?.id !== detail.id) { TP.state(KW_PAGES).q = ""; TP.reset(KW_PAGES); } // another pair starts on its first keywords
     S.detail = detail; S.view = "detail"; S.rereading = null; S.readWaiting = false; S.section = "keywords";
     resetWatch();
-    COMP.paint();
+    COMP.paintTab(tab);
     UI.syncUrl();
     UI.$("#main").scrollTop = 0;
     UI.$("#cp-back")?.focus({ preventScroll: true });
@@ -810,6 +813,8 @@
 
   // For the address bar: which pair is open, and opening or closing one from an address.
   COMP.pairShown = () => (COMP.tab !== "pairs" ? null : tab.openPairId ?? S.loadingPair ?? (S.view === "detail" ? S.detail?.id : null));
+  /* The pair open inside a profile's Page vs page, for its address (comp-profile-tabs.js), and opening one there. */
+  COMP.embedPairShown = () => (COMP.embedded("pairs") ? tab.openPairId ?? S.loadingPair ?? (S.view === "detail" ? S.detail?.id : null) : null);
   COMP.showPair = (id) => {
     if (id) tab.openPairId = id;
     else if (S.view === "detail") { S.view = "list"; S.detail = null; }
@@ -820,7 +825,7 @@
     const id = S.detail?.id;
     S.view = "list"; S.detail = null; S.rereading = null; S.readWaiting = false;
     resetWatch();
-    if (S.dirty) await COMP.reload({ quiet: true }); else COMP.paint();
+    if (S.dirty) await COMP.reloadTab(tab, { quiet: true }); else COMP.paintTab(tab);
     UI.$("#main").scrollTop = S.listScroll;
     UI.$(`#cp-open-${id}`)?.focus({ preventScroll: true });
   }
@@ -849,10 +854,10 @@
       if ((el = hit("[data-cp-sort]"))) {
         const key = el.dataset.cpSort, first = "asc"; // names A to Z, positions the best (smallest) first
         S.sort = S.sort?.key !== key ? { key, dir: first } : S.sort.dir === first ? { key, dir: "desc" } : null; // a third press goes back to the usual order
-        TP.reset(PAGES); COMP.paint(); UI.$(`[data-cp-sort="${key}"]`)?.focus();
+        TP.reset(PAGES); COMP.paintTab(tab); UI.$(`[data-cp-sort="${key}"]`)?.focus();
         return;
       }
-      if ((el = hit("[data-cp-verdict]"))) { S.verdict = el.dataset.cpVerdict; TP.reset(PAGES); COMP.paint(); UI.$(`[data-cp-verdict="${S.verdict}"]`)?.focus(); return; }
+      if ((el = hit("[data-cp-verdict]"))) { S.verdict = el.dataset.cpVerdict; TP.reset(PAGES); COMP.paintTab(tab); UI.$(`[data-cp-verdict="${S.verdict}"]`)?.focus(); return; }
       if (hit("[data-cp-same]")) { S.showSame = !S.showSame; repaint(); UI.$("#cp-same")?.focus({ preventScroll: true }); return; }
       if ((el = hit("[data-cp-section]"))) { S.section = el.dataset.cpSection; repaint(); UI.$(`#cp-tab-${S.section}`)?.focus({ preventScroll: true }); return; }
       if (hit("#cp-back")) { backToList(); return; }
@@ -872,7 +877,7 @@
       if (id === "cp-filter") {
         S.filter = e.target.value;
         TP.reset(PAGES);
-        COMP.paint();
+        COMP.paintTab(tab);
         UI.$("#cp-filter")?.focus();
         return;
       }
@@ -918,25 +923,27 @@
     id: "pairs", order: 30, label: "Page vs page", icon: "columns-3",
     init(helpers) {
       UI = helpers; bind();
-      TP.on(PAGES, () => COMP.paint()); // another page, another size or a search; the helper keeps the focus
-      TP.on(KW_PAGES, () => COMP.paint());
+      TP.on(PAGES, () => COMP.paintTab(tab)); // another page, another size or a search; the helper keeps the focus
+      TP.on(KW_PAGES, () => COMP.paintTab(tab));
     },
     async load() {
-      const siteId = COMP.siteId;
-      if (S.site !== siteId) {
-        S.site = siteId; S.view = "list"; S.detail = null; S.filter = ""; S.verdict = null; S.rereading = null; S.readWaiting = false; S.sort = null;
+      const siteId = COMP.siteId, rival = COMP.rivalFor("pairs");
+      // Another site, or the collective tab after a profile (or another competitor's profile): a fresh list.
+      if (S.site !== siteId || S.rival !== rival) {
+        S.site = siteId; S.rival = rival; S.view = "list"; S.detail = null; S.filter = rival === null ? "" : String(rival); S.verdict = null; S.rereading = null; S.readWaiting = false; S.sort = null;
         [PAGES, KW_PAGES].forEach((key) => { TP.state(key).q = ""; TP.reset(key); });
       }
+      S.server = await COMP.isServer(); // the plain-file sample has no per-competitor answer: the list is narrowed here instead
       resetWatch();
       const openId = tab.openPairId;
       tab.openPairId = null;
       S.loadingPair = openId ?? null; // the address keeps naming it while it loads
-      const [pairs, competitors] = await Promise.all([COMP.api("GET", `page-pairs?site_id=${siteId}`), COMP.api("GET", `competitors?site_id=${siteId}`)]);
-      if (siteId !== COMP.siteId) return; // another site was picked while this was on its way
+      const [pairs, competitors] = await Promise.all([COMP.api("GET", pairsPath(siteId)), COMP.api("GET", `competitors?site_id=${siteId}`)]);
+      if (siteId !== COMP.siteId || rival !== COMP.rivalFor("pairs")) return; // another site or screen was picked while this was on its way
       S.pairs = pairs.pairs;
       S.competitors = competitors.competitors;
       S.dirty = false;
-      if (S.filter && !S.competitors.some((c) => String(c.id) === S.filter)) S.filter = "";
+      if (S.filter && !fixed() && !S.competitors.some((c) => String(c.id) === S.filter)) S.filter = "";
       const wanted = openId ?? (S.view === "detail" ? S.detail?.id : null);
       if (!wanted) return;
       try {

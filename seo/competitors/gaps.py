@@ -419,10 +419,16 @@ def _link_fields(links: list[dict]) -> dict:
     return {"links": links[:MAX_LINKS_PER_DOMAIN], "link_count": len(links), "best_page_authority": max(scores) if scores else None}
 
 
-def link_gaps(engine: Engine, site_id: int) -> dict:
-    """Spam is flagged, never removed. `gaps` holds the good ones, the only ones that can be added, and `filtered` the flagged ones, each with its reason."""
+def link_gaps(engine: Engine, site_id: int, competitor_id: int | None = None) -> dict:
+    """Spam is flagged, never removed. `gaps` holds the good ones, the only ones that can be added, and `filtered` the flagged ones, each with its reason.
+
+    With `competitor_id` (a competitor's own page, 2026-11-16): only the domains linking to that competitor, before the lists
+    are cut, so a competitor whose domains sit low in the shared order still gets all of its own. The counts are its own too.
+    Each domain still names every competitor it links to. Same queries either way: the filter runs on what was read."""
     report = _all_gaps(engine, site_id)
     everything = report.pop("everything")
+    if competitor_id is not None:
+        everything = [g for g in everything if any(c["id"] == competitor_id for c in g["competitors"])]
     good = [g for g in everything if g["quality"] == GOOD]
     spam = [g for g in everything if g["quality"] == SPAM]
     # The screen leaves old links out until asked (B1), so the cap fills with current ones first: the first MAX_LISTED current
