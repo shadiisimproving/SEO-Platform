@@ -55,7 +55,14 @@ def _from_zip(data: bytes) -> list[tuple[str, str]]:
         wanted.append(info)
     if sum(i.file_size for i in wanted) > MAX_UNPACKED:
         raise Refused("The skill's text is too large once unpacked (over 4 MB).")
-    files = [(i.filename.replace("\\", "/"), _decode(archive.read(i), i.filename)) for i in wanted]
+    try:
+        files = [(i.filename.replace("\\", "/"), _decode(archive.read(i), i.filename)) for i in wanted]
+    except Refused:
+        raise
+    except RuntimeError:  # a password-protected zip
+        raise Refused("That zip is locked with a password. Zip the skill again without one.") from None
+    except Exception:  # noqa: BLE001 - damaged, or packed in a way Python can't unpack
+        raise Refused("That file isn't a zip I can open.") from None
     # A zip of the folder puts everything under "my-skill/": show paths from inside it.
     tops = {p.split("/")[0] for p, _ in files if "/" in p}
     if len(tops) == 1 and all("/" in p for p, _ in files):

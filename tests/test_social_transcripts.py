@@ -285,3 +285,37 @@ def test_the_groq_key_test_lists_models(engine, groq):
 def test_tiktok_blocking_a_missing_video_reads_as_a_wrong_link():
     said = transcripts._plain_error("ERROR: [TikTok] 1: Your IP address is blocked from accessing this post", "tiktok")
     assert said == "This video is private, removed, or the link is wrong."
+
+
+# ---- found in the 2026-11-20 review ----
+
+def test_a_batch_named_in_arabic_still_downloads(client, engine, site):
+    made = client.post("/api/social/transcripts/batches", json={"site_id": site, "name": "فيديوهات نوفمبر", "origin": "paste", "urls": [TT]}).get_json()
+    reply = client.get(f"/api/social/transcripts/batches/{made['id']}/download?format=txt")
+    header = reply.headers["Content-Disposition"]
+    header.encode("latin-1")  # what a real server needs: the old header made it drop the connection
+    assert reply.status_code == 200 and 'filename="transcripts.txt"' in header and "filename*=UTF-8''%D9%81" in header
+
+
+def test_a_locked_or_damaged_office_file_is_refused_plainly():
+    with pytest.raises(Refused):
+        transcripts.links_in_file("links.xlsx", b"PK\x03\x04 not really a zip")
+
+
+def test_a_video_that_breaks_unexpectedly_does_not_stay_working(engine, site, monkeypatch):
+    made = transcripts.create_batch(engine, site, "N", "paste", [TT])
+    video = made["items"][0]["id"]
+
+    def boom(*a, **k):
+        raise KeyError("something nobody foresaw")
+
+    monkeypatch.setattr(transcripts, "_read_video", boom)
+    monkeypatch.setattr(transcripts, "_plain_error", boom)
+    job = type("Job", (), {"payload": {"id": video}, "attempts": 0})()
+    with pytest.raises(KeyError):
+        transcripts.run_job(job, engine)
+    assert transcripts.batch(engine, made["id"])["items"][0]["status"] == "queued"
+    job.attempts = 2
+    transcripts.run_job(job, engine)
+    item = transcripts.batch(engine, made["id"])["items"][0]
+    assert item["status"] == "failed" and "Try it again" in item["error"]

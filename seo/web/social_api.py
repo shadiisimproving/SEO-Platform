@@ -57,6 +57,7 @@ def bot_token():
         return None
     if (request.content_length or 0) > BOT_MAX_BYTES:
         return jsonify(error="Too large."), 413
+    request.max_content_length = BOT_MAX_BYTES  # a body sent in chunks has no length up front: it stops here too
     sent = request.headers.get("Authorization", "")
     site_id = service.site_for_token(_engine(), sent[7:].strip() if sent.lower().startswith("bearer ") else None)
     if site_id is None:
@@ -113,15 +114,24 @@ def add_target():
     return jsonify(service.add_comment_target(_engine(), body.get("site_id"), body.get("url"), body.get("text"), body.get("lang")))
 
 
+def _for_this_person(view: dict) -> dict:
+    """The newsletter mailbox and the token's last characters are Settings-like: admins only, like every other key."""
+    user = g.get("user")
+    if current_app.config.get("AUTH_ON") and (user is None or user["role"] != "admin"):
+        view["mail"] = {"host": None, "user": None, "set": view["mail"]["set"]}
+        view["token"] = {"set": view["token"]["set"], "last4": None}
+    return view
+
+
 @social_api.get("/settings")
 def settings():
-    return jsonify(service.settings(_engine(), _site_arg()))
+    return jsonify(_for_this_person(service.settings(_engine(), _site_arg())))
 
 
 @social_api.put("/guide")
 def save_guide():
     body = _body()
-    return jsonify(service.save_guide(_engine(), body.get("site_id"), body))
+    return jsonify(_for_this_person(service.save_guide(_engine(), body.get("site_id"), body)))
 
 
 @social_api.post("/skill")
@@ -131,31 +141,31 @@ def upload_skill():
     if upload is None:
         raise Refused("Choose the skill file.")
     data = upload.read(skill.MAX_UPLOAD + 1)
-    return jsonify(service.load_skill(_engine(), request.form.get("site_id"), upload.filename or "SKILL.md", data))
+    return jsonify(_for_this_person(service.load_skill(_engine(), request.form.get("site_id"), upload.filename or "SKILL.md", data)))
 
 
 @social_api.post("/rules")
 def add_rule():
     body = _body()
-    return jsonify(service.add_rule(_engine(), body.get("site_id"), body.get("text")))
+    return jsonify(_for_this_person(service.add_rule(_engine(), body.get("site_id"), body.get("text"))))
 
 
 @social_api.post("/rules/remove")
 def remove_rule():
     body = _body()
-    return jsonify(service.remove_rule(_engine(), body.get("site_id"), str(body.get("id") or "")))
+    return jsonify(_for_this_person(service.remove_rule(_engine(), body.get("site_id"), str(body.get("id") or ""))))
 
 
 @social_api.post("/proposals")
 def answer_proposal():
     body = _body()
-    return jsonify(service.answer_proposal(_engine(), body.get("site_id"), str(body.get("id") or ""), body.get("accept") is True))
+    return jsonify(_for_this_person(service.answer_proposal(_engine(), body.get("site_id"), str(body.get("id") or ""), body.get("accept") is True)))
 
 
 @social_api.post("/sources")
 def add_source():
     body = _body()
-    return jsonify(service.add_source(_engine(), body.get("site_id"), body.get("kind"), body.get("address"), body.get("label")))
+    return jsonify(_for_this_person(service.add_source(_engine(), body.get("site_id"), body.get("kind"), body.get("address"), body.get("label"))))
 
 
 @social_api.post("/sources/remove")
@@ -164,7 +174,7 @@ def remove_source():
     source_id = body.get("id")
     if not isinstance(source_id, int):
         raise Refused("Say which source.")
-    return jsonify(service.remove_source(_engine(), body.get("site_id"), source_id))
+    return jsonify(_for_this_person(service.remove_source(_engine(), body.get("site_id"), source_id)))
 
 
 @social_api.put("/mailbox")
@@ -191,4 +201,4 @@ def gather_now():
     body = _body()
     site = service.settings(_engine(), body.get("site_id"))["site_id"]
     today = service.today()
-    return jsonify(rss=service.gather_feeds(_engine(), site, today), mail=service.gather_mail(_engine(), site, today), day=service.day_view(_engine(), site))
+    return jsonify(rss=service.gather_feeds(_engine(), site, today, budget=40, timeout=10), mail=service.gather_mail(_engine(), site, today), day=service.day_view(_engine(), site))

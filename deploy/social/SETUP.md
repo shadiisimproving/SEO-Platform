@@ -23,14 +23,15 @@ No xAI, Anthropic or X API key is used anywhere.
 Over SSH on o2switch:
 
 ```sh
-curl -fsSL https://x.ai/cli/install.sh | bash      # installs ~/.local/bin/grok, no root needed
-~/.local/bin/grok login --device-auth              # shows a code: open the link, sign in with SuperGrok, enter it
-~/.local/bin/grok -p "Say ok."                     # must answer without asking for an API key
+curl -fsSL https://x.ai/cli/install.sh | bash      # installs ~/.grok/bin/grok, no root needed
+~/.grok/bin/grok login --device-auth               # shows a code: open the link, sign in with SuperGrok, enter it
+~/.grok/bin/grok -p "Say ok."                      # must answer without asking for an API key
 ```
 
 Then a real test from the app folder: `.venv/bin/python -m seo.worker social-due`, and look at Social → Today → Grok.
 
-- If the cron's PATH doesn't find `grok`, set `GROK_BIN=/home/<user>/.local/bin/grok` in `.env`.
+- The app looks for `grok` on the PATH, then in `~/.grok/bin` and `~/.local/bin`. If it's somewhere else, set
+  `GROK_BIN=/full/path/to/grok` in `.env`.
 - `GROK_FLAGS` changes the CLI flags. The default is `--no-subagents --max-turns 6 --reasoning-effort low`.
 - If Grok signs out, Today says so with the command to run. The day still goes on with feeds and newsletters.
 

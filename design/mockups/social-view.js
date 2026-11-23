@@ -13,7 +13,10 @@
 (() => {
   "use strict";
   let UI = null;
-  const S = { tab: "today", day: null, data: null, settings: null, loading: false, failed: "", siteId: null, opened: new Set(), skipping: null, angling: null, token: null, saving: new Map() };
+  const S = { tab: "today", day: null, data: null, settings: null, loading: false, failed: "", siteId: null, opened: new Set(), skipping: null, angling: null, token: null, saving: new Map(),
+    // Words typed but not saved yet. Every repaint redraws the boxes, so they are drawn from here first: an edit is never
+    // put back to the saved text because another button was pressed meanwhile.
+    typed: new Map(), guideDraft: null, nicheDraft: null };
   const EXTRA_TABS = [];
   const api = (...args) => window.COMP.api(...args);
   const PLATFORM = { x: { name: "X", logo: "x" }, linkedin: { name: "LinkedIn", logo: "linkedin" } };
@@ -116,7 +119,7 @@
   }
 
   function textBox(item) {
-    const value = item.text || "";
+    const value = S.typed.has(item.id) ? S.typed.get(item.id) : item.text || "";
     const dir = item.lang === "ar" ? "rtl" : "auto";
     const limit = item.platform === "x" ? X_LIMIT : LINKEDIN_LIMIT;
     const length = item.platform === "x" ? xLength(value) : [...value].length;
@@ -260,7 +263,7 @@
     return `
       <section class="card"><div class="card-head"><h2>${esc(t("What you post about"))}</h2></div>
         <label class="sr" for="so-niche">${esc(t("What you post about"))}</label>
-        <textarea class="input" id="so-niche" rows="2" dir="auto" placeholder="${esc(t("For example: company setup in Dubai, visas, tax for entrepreneurs"))}">${esc(s.niche)}</textarea>
+        <textarea class="input" id="so-niche" rows="2" dir="auto" placeholder="${esc(t("For example: company setup in Dubai, visas, tax for entrepreneurs"))}">${esc(S.nicheDraft ?? s.niche)}</textarea>
         <div class="so-row"><button type="button" class="btn" id="so-niche-save">${esc(t("Save"))}</button><span class="small muted">${esc(t("Grok searches X for this each morning."))}</span></div>
       </section>
       <section class="card"><div class="card-head"><h2>${esc(t("Rules"))}</h2><span class="small muted">${esc(t("Followed from the next draft on"))}</span></div>
@@ -271,7 +274,7 @@
       <section class="card"><div class="card-head"><h2>${esc(t("Writing guide"))}</h2><span class="small muted tabular">${esc(fill("Version {n}", { n: s.guide_version }))}</span></div>
         <p class="small muted">${esc(t("Your voice in full: tone, dialect, how posts open, length, emojis and hashtags, with examples you like and don't like. We write the first version together."))}</p>
         <label class="sr" for="so-guide">${esc(t("Writing guide"))}</label>
-        <textarea class="input so-guide" id="so-guide" rows="14" dir="auto">${esc(s.guide)}</textarea>
+        <textarea class="input so-guide" id="so-guide" rows="14" dir="auto">${esc(S.guideDraft ?? s.guide)}</textarea>
         <div class="so-row"><button type="button" class="btn" id="so-guide-save">${esc(t("Save the guide"))}</button>
           <label class="btn" for="so-skill-file">${UI.icon("upload")}${esc(t(fromSkill ? "Upload a new version" : "Upload a skill"))}</label>
           <input class="sr" type="file" id="so-skill-file" accept=".md,.markdown,.txt,.zip,.skill">
@@ -330,7 +333,7 @@
   }
 
   function after() {
-    if (S.siteId !== site()?.id) { S.data = null; S.settings = null; S.day = null; }
+    if (S.siteId !== site()?.id) { S.data = null; S.settings = null; S.day = null; S.typed.clear(); S.guideDraft = null; S.nicheDraft = null; }
     load({ quiet: Boolean(S.data) });
   }
 
@@ -378,10 +381,16 @@
       url = item.kind === "comment" ? item.source_url : "https://www.linkedin.com/feed/?shareActive=true";
     }
     // Opened first, while the click still counts as the person's: a browser blocks a tab opened after waiting.
-    const tab = window.open(url, "_blank", "noopener");
+    // window.open(…, "noopener") always answers null, so a blocked tab couldn't be told from an opened one: the link back
+    // to this page is cut by hand instead.
+    const tab = window.open(url, "_blank");
+    if (tab) { try { tab.opener = null; } catch { /* already cut */ } }
     const copied = await copy(words);
-    if (item.platform === "linkedin" || !tab) UI.toast(t(copied ? "Copied. Paste it in LinkedIn and press Post." : "Couldn't copy: select the text and copy it."), { kind: copied ? "good" : "warn" });
-    await patch(id, { ...(words !== (item.text || "").trim() ? { text: words } : {}), status: "approved" });
+    if (item.platform === "x" && !tab) { UI.toast(t(copied ? "Your browser blocked the new tab. Allow pop-ups for this page and press again. The words are copied." : "Your browser blocked the new tab. Allow pop-ups for this page and press again."), { kind: "warn" }); return; }
+    if (item.platform === "linkedin") UI.toast(t(copied ? "Copied. Paste it in LinkedIn and press Post." : "Couldn't copy: select the text and copy it."), { kind: copied ? "good" : "warn" });
+    clearTimeout(S.saving.get(id)); S.saving.delete(id);
+    const saved = await patch(id, { ...(words !== (item.text || "").trim() ? { text: words } : {}), status: "approved" });
+    if (saved && S.typed.has(id) && S.typed.get(id).trim() === words) { S.typed.delete(id); paint(); }
   }
 
   function onText(box) {
@@ -391,6 +400,7 @@
     const n = item.platform === "x" ? xLength(box.value) : [...box.value].length;
     const count = document.getElementById(`so-count-${id}`);
     if (count) { count.firstElementChild.textContent = fill("{n} of {max}", { n: UI.num(n), max: UI.num(limit) }); count.classList.toggle("so-over", n > limit); count.classList.toggle("muted", n <= limit); }
+    S.typed.set(id, box.value);
     clearTimeout(S.saving.get(id));
     S.saving.set(id, setTimeout(() => saveText(id, box.value), 900));
   }
@@ -398,10 +408,12 @@
   async function saveText(id, value) {
     S.saving.delete(id);
     const item = findItem(id);
-    if (!item || !value.trim() || value.trim() === (item.text || "").trim()) return;
+    const settled = () => { if (S.typed.get(id) === value) S.typed.delete(id); };
+    if (!item || !value.trim() || value.trim() === (item.text || "").trim()) { if (!item || value.trim()) settled(); return; }
     const mark = document.querySelector(`[data-so-saving="${id}"]`);
     if (mark) mark.textContent = ` · ${t("saving…")}`;
     const fresh = await patch(id, { text: value }, { repaint: false });
+    if (fresh) settled();
     const markAfter = document.querySelector(`[data-so-saving="${id}"]`);
     if (markAfter) markAfter.textContent = fresh ? ` · ${t("saved")}` : "";
   }
@@ -424,13 +436,13 @@
     input.value = "";
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) { UI.toast(t("The file is over 2 MB. A writing skill is text: remove images or other large files."), { kind: "warn" }); return; }
-    if ((S.settings.guide || "").trim() && UI.confirmDanger && !(await UI.confirmDanger({ title: t("Replace the guide with this skill?"), body: t("The guide below is replaced. Your rules stay."), yes: t("Replace the guide") }))) return;
+    if ((S.guideDraft ?? S.settings.guide ?? "").trim() && UI.confirmDanger && !(await UI.confirmDanger({ title: t("Replace the guide with this skill?"), body: t("The guide below is replaced. Your rules stay."), yes: t("Replace the guide") }))) return;
     const form = new FormData();
     form.append("file", file, file.name);
     form.append("site_id", S.siteId);
     try {
       const view = await api("POST", "social/skill", null, { form });
-      S.settings = view;
+      S.settings = view; S.guideDraft = null;
       paint();
       UI.toast(fill("Skill “{name}” loaded. The next drafts follow it.", { name: view.skill }), { kind: "good" });
     } catch (err) {
@@ -469,10 +481,12 @@
         if (el.isConnected) el.disabled = false;
         return;
       }
-      if (hit("#so-niche-save")) { settingsCall("PUT", "social/guide", { niche: UI.$("#so-niche").value }, "Saved"); return; }
+      if (hit("#so-niche-save")) { const sent = UI.$("#so-niche").value; if (S.nicheDraft === sent) S.nicheDraft = null; if (!(await settingsCall("PUT", "social/guide", { niche: sent }, "Saved"))) { S.nicheDraft = sent; paint(); } return; }
       if (hit("#so-guide-save")) {
-        const before = S.settings.guide_version;
-        const ok = await settingsCall("PUT", "social/guide", { guide: UI.$("#so-guide").value });
+        const before = S.settings.guide_version, sent = UI.$("#so-guide").value;
+        if (S.guideDraft === sent) S.guideDraft = null;
+        const ok = await settingsCall("PUT", "social/guide", { guide: sent });
+        if (!ok) { S.guideDraft = sent; paint(); }
         if (ok) UI.toast(t(S.settings.guide_version > before ? "Guide saved. The next drafts follow it." : "Nothing changed in the guide."), { kind: S.settings.guide_version > before ? "good" : "info" });
         return;
       }
@@ -493,6 +507,8 @@
     document.addEventListener("input", (e) => {
       if (UI.state.route !== "social") return;
       if (e.target.matches?.("[data-so-text]")) onText(e.target);
+      else if (e.target.id === "so-guide") S.guideDraft = e.target.value;
+      else if (e.target.id === "so-niche") S.nicheDraft = e.target.value;
     });
     document.addEventListener("change", (e) => {
       if (UI.state.route !== "social") return;
@@ -600,6 +616,8 @@
     "Add a website first": "Ajoutez d'abord un site", "Social belongs to one of your websites.": "Les réseaux sociaux appartiennent à l'un de vos sites.", "Try again": "Réessayer",
     "That didn't save.": "Ce n'est pas enregistré.", "Write something first.": "Écrivez d'abord quelque chose.", "It's over X's {n} characters. Shorten it first.": "Ça dépasse les {n} caractères de X. Raccourcissez d'abord.",
     "Copied. Paste it in LinkedIn and press Post.": "Copié. Collez-le dans LinkedIn et cliquez sur Publier.", "Couldn't copy: select the text and copy it.": "Copie impossible : sélectionnez le texte et copiez-le.",
+    "Your browser blocked the new tab. Allow pop-ups for this page and press again. The words are copied.": "Votre navigateur a bloqué le nouvel onglet. Autorisez les pop-ups pour cette page et recommencez. Le texte est copié.",
+    "Your browser blocked the new tab. Allow pop-ups for this page and press again.": "Votre navigateur a bloqué le nouvel onglet. Autorisez les pop-ups pour cette page et recommencez.",
     "saving…": "enregistrement…", "saved": "enregistré", "Marked posted. It now teaches the guide.": "Marqué publié. Il enseigne maintenant le guide.",
     "It will be written again at the next run, with your angle.": "Il sera réécrit au prochain passage, avec votre angle.", "{n} new ideas from your sources": "{n} nouvelles idées de vos sources",
     "Saved": "Enregistré", "Guide saved. The next drafts follow it.": "Guide enregistré. Les prochains brouillons le suivent.", "Nothing changed in the guide.": "Rien n'a changé dans le guide.",
