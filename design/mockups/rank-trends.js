@@ -24,12 +24,18 @@
   const siteKey = () => String(UI().siteIdPicked?.() || "all");
   const allSites = () => UI().state?.site === "all";
 
+  const pathOf = (key) => `rank-trends${key === "all" ? "" : `?site_id=${key}`}`;
+  const shared = () => Boolean(window.SCREEN_DATA?.on?.());
   function load(key) {
     const entry = S.cache.get(key) || {};
     if (entry.loading) return;
+    // The simpler screens: the warm-up may hold this answer already (screen-data.js), so the card draws at once.
+    // Its age isn't known here: the next look, FRESH_MS later, goes through SCREEN_DATA.get, which asks again only if it's old.
+    const held = shared() && !entry.data ? window.SCREEN_DATA.peek(pathOf(key)) : null;
+    if (held) { S.cache.set(key, { data: held, loading: false, at: Date.now() }); return; }
     S.cache.set(key, { ...entry, loading: true });
     const done = (next) => { S.cache.set(key, { ...next, loading: false, at: Date.now() }); paint(); };
-    window.COMP.api("GET", `rank-trends${key === "all" ? "" : `?site_id=${key}`}`)
+    (shared() ? window.SCREEN_DATA.get(pathOf(key)) : window.COMP.api("GET", pathOf(key)))
       .then((data) => done({ data }))
       .catch((error) => done({ data: entry.data, error: entry.data ? null : error })); // an older answer stays on screen
   }
@@ -156,11 +162,13 @@
   });
 
   /* A rank check or a data pull just finished: the next draw asks again. */
-  const stale = () => S.cache.forEach((entry) => { entry.at = 0; });
+  const stale = () => { S.cache.forEach((entry) => { entry.at = 0; }); if (shared()) window.SCREEN_DATA.forget("rank-trends"); };
 
   window.COMP?.isServer?.().then((yes) => { S.server = yes; if (!yes) paint(); });
 
   window.RankTrends = { card, stale };
+  // Its answer joins the first-view lists of the screens it's drawn on, for the warm-up and the menu hover.
+  ["today", "overview", "keywords"].forEach((route) => window.SCREEN_DATA?.also?.(route, () => (UI()?.state ? [pathOf(siteKey())] : [])));
 
   const fr = {
     "Keywords by ranking": "Mots-clés par position", "Top": "Meilleurs", "Trending up": "En hausse", "Trending down": "En baisse",

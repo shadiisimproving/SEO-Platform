@@ -696,7 +696,7 @@
   let lastKey = "";
   const currentKey = () => lastKey;
   const current = () => (SD() ? SD().peek(`metrics/ai?${lastKey}`) : LVx().cache.get(`metrics/ai?${lastKey}`)?.data || null);
-  const askKey = () => { const parts = [UI.range.days()]; const site = UI.siteIdPicked(); if (site) parts.push(`site_id=${site}`); return parts.join("&"); };
+  const askKey = (route) => { const parts = [UI.range.days(route ? { route } : undefined)]; const site = UI.siteIdPicked(); if (site) parts.push(`site_id=${site}`); return parts.join("&"); };
   function refreshSplit(d) {
     const live = stateOf(d, "clarity_live"), readToday = live.sites.length && live.sites.every((s) => s.read_today);
     const liveOff = ["not_connected", "not_used"].includes(live.state);
@@ -841,7 +841,9 @@
     init(helpers) {
       UI = helpers; ({ t, esc, num, icon } = helpers); bind();
       // The simpler screens: the first-view answer, for the warm-up and the menu hover (screen-data.js). One request.
-      window.SCREEN_DATA?.screen?.("ai", () => [`metrics/ai?${askKey()}`]);
+      window.SCREEN_DATA?.screen?.("ai", () => [`metrics/ai?${askKey("ai")}`]);
+      // Google Analytics' last day, as the screen learns it on its visit, so the warm-up asks the dates the visit will.
+      window.SCREEN_DATA?.learn?.("ai", (path, d) => { if (path.startsWith("metrics/ai?") && d?.through) UI.range.end("ai", d.through, "Google Analytics"); });
     },
     page: aiPage,
   };

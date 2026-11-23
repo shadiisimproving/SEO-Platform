@@ -34,11 +34,15 @@
     return site ? { site, path } : null;
   }
 
+  const PATH = "site-pages/pictures";
   function load() {
     if (waiting || (known && Date.now() - asked < AGAIN_AFTER)) return;
     if (!window.BOOT || location.protocol === "file:") { known = known || {}; return; } // a plain file has no server
+    // The simpler screens: the warm-up may hold the answer already (screen-data.js), so the screen draws once, with them.
+    const held = known === null && window.SCREEN_DATA?.on?.() ? window.SCREEN_DATA.peek(PATH) : null;
+    if (held?.sites) { known = held.sites; asked = Date.now(); return; }
     waiting = true; asked = Date.now();
-    fetch("api/site-pages/pictures", { credentials: "same-origin", headers: { Accept: "application/json" } })
+    fetch(`api/${PATH}`, { credentials: "same-origin", headers: { Accept: "application/json" } })
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         const first = known === null;
@@ -96,4 +100,8 @@
   const mine = (url, { host = null } = {}) => Boolean(facts(url, host).mine);
 
   window.PageThumb = { html, title, row, where, mine };
+  // One answer for every screen that lists my pages: it joins their first-view lists (asked once, held for all of them).
+  // Loaded before screen-data.js, so it registers once the page's scripts have all run.
+  document.addEventListener("DOMContentLoaded", () => ["today", "conversions", "content", "overview", "insights", "keywords", "ai"]
+    .forEach((route) => window.SCREEN_DATA?.also?.(route, () => (known === null ? [PATH] : []))));
 })();

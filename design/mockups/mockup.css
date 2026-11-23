@@ -1246,6 +1246,10 @@ html[data-simple="1"] .app.rail .side-search .kbd { display: none; }
    buttons (a card's "Show all" at the foot of the screen). Narrower menus keep it beside the menu. */
 @media (min-width: 1241px) {
   .app:not(.rail) ~ .toasts { left: calc(var(--gap) + 6px); bottom: 72px; width: calc(var(--side) - 12px); }
+  /* A toast that stays until it is answered ("Connection saved. Fetch the first numbers now?") would sit on the menu's last
+     items (Resources, Site health) for as long as it stays, squeezed to the menu's width: it goes beside the menu instead
+     (2026-11-23, found when Site map and Social made the menu longer). */
+  .app:not(.rail) ~ .toasts:has(.toast-stay) { left: calc(var(--side) + var(--gap) * 2 + 8px); bottom: 16px; width: min(340px, calc(100vw - 32px)); }
 }
 
 /* A search box typed in Arabic (2026-11-17): the box keeps its left-to-right layout, so its search icon and its clear

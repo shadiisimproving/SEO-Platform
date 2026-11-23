@@ -767,13 +767,17 @@
      and the card's (i) says so. Loaded on its own, so the chart never waits for it. Today and the bell open it with
      #overview?site=…&update=…, which opens that update's details. With All my sites, one verdict per site. */
   OV.gu = { cache: new Map(), open: null, handled: null };
+  const guKey = (path) => `search/${path}${path.includes("?") ? "&" : "?"}site_id=${UI.siteIdPicked() || ""}`;
   function guLoad(path) {
-    const key = `search/${path}${path.includes("?") ? "&" : "?"}site_id=${UI.siteIdPicked() || ""}`;
+    const key = guKey(path);
     let entry = OV.gu.cache.get(key);
     if (entry) return entry;
+    // The simpler screens: the warm-up may hold the list already (screen-data.js), so the card draws at once.
+    const held = shared() ? window.SCREEN_DATA.peek(key) : null;
+    if (held) { entry = { loading: false, data: held, route: UI.state.route }; OV.gu.cache.set(key, entry); return entry; }
     entry = { loading: true, route: UI.state.route };
     OV.gu.cache.set(key, entry);
-    window.COMP.api("GET", key).then((data) => {
+    (shared() ? window.SCREEN_DATA.get(key) : window.COMP.api("GET", key)).then((data) => {
       entry.data = data;
       // Google's list was just read: the chart came first, so it's asked for again to draw the update bands.
       if (data?.read_now) { OV.cache.clear(); if (shared()) window.SCREEN_DATA.forget("search/overview"); }
@@ -1102,6 +1106,7 @@
       old.init?.(helpers); UI = helpers; ({ t, esc, num, icon } = helpers); bind();
       UI.range.on(() => { OV.page = 0; OV.selected.clear(); });
       // Simpler screens: what Overview shows first, for SCREEN_DATA's warm-up and menu hover (does nothing with the switch off).
+      window.SCREEN_DATA?.also?.("overview", () => [guKey("google-updates")]); // the Google updates card beside the chart
       window.SCREEN_DATA?.screen?.("overview", () => [`search/overview?${query(ovArgs())}`, OV.tab === "opportunities" ? `search/opportunities?${query({ kind: OV.opp })}` : `search/breakdown?${query(breakdownArgs())}`]);
     },
     page: overviewPage,

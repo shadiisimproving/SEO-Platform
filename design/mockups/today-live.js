@@ -50,14 +50,19 @@
   const quick = () => Boolean(window.SCREEN_DATA?.on?.());
   const pathFor = (query = askFor()) => `today${query}${query ? "&" : "?"}include=${UI.setupFacts ? "setup," : ""}backlinks`;
   let held = null, applied = null; // the SCREEN_DATA entry Today last drew from, and the answer last taken in
+  // The period the answer really used: the picker's last day and the head's dates. Also told by the warm-up (SCREEN_DATA.learn),
+  // so a first visit after it draws once instead of drawing again when it learns them.
+  function learnRange(data) {
+    if (data?.results?.window?.to) UI.range?.end?.("today", data.results.window.to, "Search Console");
+    if (data?.results?.window) UI.range?.served?.("today", data.results.window); // the head prints the period really compared
+  }
   function takeIn(data, query) {
     if (applied === data) return;
     applied = data;
     T.key = query; T.data = data; T.summary = data.backlinks || {}; T.error = ""; T.failed = null; T.at = Date.now();
     window.ATTENTION = data.todo.map((a) => ({ id: a.id, sev: a.severity, title: say(a, "title"), detail: a.detail, host: a.host, act: "Open", key: a.kind }));
     if (Array.isArray(data.setup)) UI.setupFacts?.(data.setup);
-    if (data.results?.window?.to) UI.range?.end?.("today", data.results.window.to, "Search Console");
-    if (data.results?.window) UI.range?.served?.("today", data.results.window); // the head prints the period really compared
+    learnRange(data);
     T.badgeLate = true; // taken in while the page draws, after the side menu: after() draws it again with the new count
   }
   // What Today shows now: the held answer for the site and period picked, asked for when there's none (one ask at a time).
@@ -287,6 +292,7 @@
       });
       // Today's first-view answer, for SCREEN_DATA's warm-up and the menu hover (read when they run: the site and period then).
       window.SCREEN_DATA?.screen?.("today", () => (window.SITES.length ? [pathFor()] : []));
+      window.SCREEN_DATA?.learn?.("today", (path, data) => { if (path === pathFor()) learnRange(data); });
       UI.range?.on?.(() => { T.failed = null; });
       // Today loads its own data when it's drawn. Any other screen only needs the side menu's Today badge: one light call.
       setTimeout(() => { if (UI.state.route !== "today" && !T.data && !T.busy) badge(); }, 0);

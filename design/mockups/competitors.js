@@ -453,7 +453,8 @@
   };
 
   async function loadSites() {
-    const answer = await COMP.api("GET", "links/sites");
+    // Through the simpler screens' 5-minute cache when it's on: the warm-up asks it for this screen (see init).
+    const answer = window.SCREEN_DATA?.on?.() ? await window.SCREEN_DATA.get("links/sites") : await COMP.api("GET", "links/sites");
     const server = await isServer();
     COMP.sites = !server && UI.state.firstRun ? [] : answer.sites;
     const stillThere = COMP.siteId === ALL ? COMP.canShowAll() : COMP.sites.some((s) => s.id === COMP.siteId);

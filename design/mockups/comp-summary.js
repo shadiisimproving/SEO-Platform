@@ -780,9 +780,12 @@
   function whatLine(story) {
     const kinds = new Set(story.all.map((e) => e.kind)), bits = [];
     const say = (words, icon, tone) => bits.push(`<span class="cs-what-main${tone ? ` cs-what-${tone}` : ""}">${icon ? UI.icon(icon) : ""}${esc(t(words))}</span>`);
-    if (kinds.has("new_page")) say("New page");
-    else if (kinds.has("page_gone")) say("Page removed");
-    else if (kinds.has("redirect")) say("Moved to another address");
+    // The newest of added, removed and moved says what the address is now: a page first found this week that then moved
+    // to another address reads as moved, with where it went (the events come newest first).
+    const life = story.all.find((e) => e.kind === "new_page" || e.kind === "page_gone" || e.kind === "redirect");
+    if (life?.kind === "redirect") bits.push(`<span class="cs-what-main">${esc(t("Moved to another address"))}${life.after ? ` <span class="cs-what-to" dir="auto">→ ${esc(COMP.changePath(life.after))}</span>` : ""}</span>`);
+    else if (life?.kind === "new_page") say("New page");
+    else if (life?.kind === "page_gone") say("Page removed");
     else if (kinds.has("content")) say(story.all.some((e) => e.kind === "content" && !e.minor) ? "Text rewritten" : "Small text edit");
     else { const k = [...kinds].find((x) => EDIT_WORDS[x]); if (k) bits.push(`<span class="cs-what-main">${esc(fill("New {list}", { list: t(EDIT_WORDS[k]) }))}</span>`); }
     const net = story.ups - story.downs;
