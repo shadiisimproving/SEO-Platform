@@ -223,7 +223,29 @@
     </fieldset>`;
   }
   /* After the panel is drawn, or a draft put back. */
-  function mount() { drawKinds(); drawFields(); }
+  function mount() {
+    // A new task opened with something already picked but no main kind named: the first kind that holds something is the
+    // main one, so the line reads "Main: Keyword" and never "Main: ." (a saved task keeps what it was saved with).
+    if (!UI.$("#task-save")?.dataset.id && !aboutNow().main && hasAny()) write("task-about", { main: KINDS.find((k) => valuesOf(k.id).length).id, items: aboutNow().items });
+    drawKinds(); drawFields();
+  }
+
+  /* A finding that names competitors by host (AI search, Today, They beat you on): pick them under Competitor.
+     Only the ones the task's site follows are picked, so the task always saves. */
+  async function addRivals(hosts) {
+    if (!UI.state.served) return;
+    const sites = sitesNow(), answers = await Promise.all(sites.map(optionsFor));
+    if (!UI.$("#task-about")) return; // the panel closed meanwhile
+    const bare = (host) => plain(host).replace(/^www\./, "");
+    const about = aboutNow(), before = about.items.length;
+    [...new Set((hosts || []).filter(Boolean).map(bare))].slice(0, 5).forEach((host) => {
+      const found = answers.flatMap((data) => data?.competitors || []).find((c) => bare(c.host) === host);
+      if (found && !about.items.some((item) => item.kind === "competitor" && item.ref === String(found.id))) about.items.push({ kind: "competitor", ref: String(found.id), label: found.host });
+    });
+    if (about.items.length === before) return;
+    write("task-about", about);
+    mount();
+  }
 
   function siteChanged() {
     KINDS.forEach((k) => PickList.forget(`ta-pick-${k.id}`));
@@ -298,7 +320,7 @@
   }
 
   window.TaskAbout = {
-    KINDS, html, mount, values, siteChanged, tag, words,
+    KINDS, html, mount, addRivals, values, siteChanged, tag, words,
     init(helpers) {
       UI = helpers; ({ t, esc, icon, num } = helpers);
       bind();

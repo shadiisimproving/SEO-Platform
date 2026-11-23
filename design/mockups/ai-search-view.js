@@ -296,7 +296,7 @@
     const facts = a.kind === "cta" ? [`${num(a.visits)} ${t("AI visits")}`, "Google Analytics"] : a.kind === "faq" ? [`${t("Share of authority")} ${share(a.share)}`, "Clarity"] : a.kind === "compare" ? [a.rivals.join(", "), "AI Overview"] : [`${num(a.citations)} ${t("citations")}`, "Clarity"];
     return {
       title: words.title, host: a.host, description: words.detail,
-      ...(a.path || a.page ? { pages: [a.path || a.page.path] } : {}), ...(a.keyword ? { keywords: [a.keyword] } : {}),
+      ...(a.path || a.page ? { pages: [a.path || a.page.path] } : {}), ...(a.keyword || a.query ? { keywords: [a.keyword || a.query] } : {}), ...(a.rivals?.length ? { rivals: a.rivals } : {}),
       source: { type: "search", label: words.title, host: a.host, facts, link: "#ai", key: a.key },
     };
   }

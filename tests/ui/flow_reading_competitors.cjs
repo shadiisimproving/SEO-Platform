@@ -75,6 +75,15 @@ const read = (page) => page.evaluate(() => {
   await page.waitForTimeout(300);
   const byRow = await page.evaluate(() => ({ open: Boolean(document.querySelector("#cs-moves-list tr.cs-detail-row")), task: Boolean(document.querySelector("#cs-moves-list tr.cs-detail-row .cs-detail-foot button")), link: document.querySelector("#cs-moves-list tr.cs-detail-row .cs-detail-open")?.textContent.trim() }));
   check("pressing anywhere on a line opens it too, with Task and Open their page inside", byRow.open && byRow.task && byRow.link === "Open their page", JSON.stringify(byRow));
+  // A task made from a competitor's change is about that competitor: Competitor is picked, with its name (owner, 2026-11-20).
+  const rivalName = await page.$eval("#cs-moves-list tr.cs-line .cs-line-host", (el) => el.textContent.split("·")[0].trim());
+  await page.click("#cs-moves-list tr.cs-detail-row .cs-detail-foot [data-task-find]");
+  await page.waitForSelector("#task-about-box");
+  await page.waitForTimeout(400);
+  const taskAbout = await page.evaluate(() => ({ about: JSON.parse(document.querySelector("#task-about").value), text: document.querySelector("#task-about-box").innerText }));
+  check("Task opens with Competitor picked and the competitor's name", taskAbout.about.main === "competitor" && taskAbout.about.items.length === 1 && taskAbout.about.items[0].kind === "competitor" && taskAbout.about.items[0].label === rivalName && taskAbout.text.includes(rivalName) && /Main: Competitor/.test(taskAbout.text), JSON.stringify(taskAbout).slice(0, 300) + " / " + rivalName);
+  await page.keyboard.press("Escape");
+  await page.waitForTimeout(300);
   await page.click("#cs-moves-list tr.cs-line .cs-what");
   await page.waitForTimeout(200);
 

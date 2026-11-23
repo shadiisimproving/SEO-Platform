@@ -525,7 +525,7 @@
   function keywordFind(k) {
     const host = k.my_best?.host || k.my_sites[0];
     const who = k.rivals_ahead.map((a) => a.host);
-    return { title: `${t("Competitors ahead on")} ${k.keyword}`, host, keywords: [k.keyword], source: { type: "competitor", label: k.keyword, host, facts: [engineName(k.engine), k.tool, ...who.slice(0, 3)].filter(Boolean), link: "#competitors/summary", key: `summary|keyword|${k.keyword_id}` } };
+    return { title: `${t("Competitors ahead on")} ${k.keyword}`, host, keywords: [k.keyword], rivals: who, source: { type: "competitor", label: k.keyword, host, facts: [engineName(k.engine), k.tool, ...who.slice(0, 3)].filter(Boolean), link: "#competitors/summary", key: `summary|keyword|${k.keyword_id}` } };
   }
 
   /* What changed last, in words. Up and down are status, so they get a colour, an icon and a word. */

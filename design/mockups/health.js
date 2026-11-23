@@ -414,7 +414,7 @@
     const { t } = UI, host = hostShown();
     // By site and check, not by test: next month's test finding the same thing is still the same job.
     // The title is the check alone: the task's site tag and Site column already name the host. Tasks saved before keep "…: host".
-    return { title: t(meaning), host, description: FIX_WORDS[code] ? t(FIX_WORDS[code]) : "", source: { type: "health", label: t(meaning), host, facts: facts.filter(Boolean), link: `#health/test/${code}`, key: `health|${ht.siteId}|${code}` } };
+    return { title: t(meaning), host, description: FIX_WORDS[code] ? t(FIX_WORDS[code]) : "", about: { main: "technical", items: [{ kind: "technical", ref: `health:${code}`, label: t(CHECK_WORDS[code] || meaning) }] }, source: { type: "health", label: t(meaning), host, facts: facts.filter(Boolean), link: `#health/test/${code}`, key: `health|${ht.siteId}|${code}` } };
   }
 
   function checkRow(c, compared) {

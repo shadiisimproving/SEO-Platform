@@ -631,7 +631,7 @@
 
   /* `who` says whose timeline it is when the row isn't on that competitor's profile: { id, rival, own }. */
   /* A task made from a competitor's change is about that competitor: the panel opens with it already picked. */
-  COMP.aboutRival = (id, host) => (id && host ? { main: "competitor", items: [{ kind: "competitor", ref: String(id), label: host }] } : null);
+  COMP.aboutRival = (id, host, main = "competitor") => (id && host ? { main, items: [{ kind: "competitor", ref: String(id), label: host }] } : null);
   function timelineFind(e, word, who = null) {
     const rival = who?.rival ?? view.data?.host ?? "", about = e.keyword || e.url || "", own = who ? who.own : view.data?.site?.host;
     const key = `timeline|${who?.id ?? view.data?.id}|${e.kind}|${about}|${e.at || ""}`;

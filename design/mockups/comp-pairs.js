@@ -158,7 +158,7 @@
     const rival = p.competitor || COMP.shortUrl(p.their_url).split("/")[0], page = pathOf(p.my_url);
     // A task is a job, not a pair of addresses.
     const title = verdict.kind === "behind" ? `${t("Catch up with")} ${rival} ${t("on")} ${page}` : `${t("Compare")} ${page} ${t("with")} ${rival}`;
-    return { title, host, pages: [p.my_url], priority: verdict.kind === "behind" ? "high" : "medium", source: { type: "competitor", label: `${mine} / ${theirs}`, host, facts: [verdict.text].filter(Boolean), link: `#competitors/pairs/${p.id}`, key: `pair|${p.id}` } };
+    return { title, host, pages: [p.my_url], about: COMP.aboutRival(p.competitor_id, p.competitor, ""), priority: verdict.kind === "behind" ? "high" : "medium", source: { type: "competitor", label: `${mine} / ${theirs}`, host, facts: [verdict.text].filter(Boolean), link: `#competitors/pairs/${p.id}`, key: `pair|${p.id}` } };
   };
 
   /* Pages being read are counted once above the table; each row keeps only a small spinner, its words on hover. */
