@@ -167,9 +167,16 @@
   const pageHref = (p) => (p.page && window.PageLink ? window.PageLink.href(p.page.url || p.page.path, p.page.host) : "");
   function head(p) {
     const line = [p.kind ? word(p.kind) : "", ...periodWords(p.period)].filter(Boolean).map(esc).join(`<span class="rp-sep" aria-hidden="true"> · </span>`);
-    const name = p.title ?? p.page?.path ?? p.page?.url ?? "";
+    // A page of my sites: its picture beside the title, its real title, and its address under it (page-thumbs.js).
+    const at = p.page && window.PageThumb ? { url: p.page.url || p.page.path, host: p.page.host } : null;
+    const mine = Boolean(at && window.PageThumb.mine(at.url, { host: at.host }));
+    // A title that is only the page's address (Overview hands one over) gives way to the page's real title.
+    const addressOnly = p.title == null || /^\/\S*$/.test(String(p.title)) || /^https?:\/\/\S+$/i.test(String(p.title));
+    const real = mine && addressOnly ? window.PageThumb.title(at.url, { host: at.host }) : "";
+    const name = real || p.title || p.page?.path || p.page?.url || "";
     const title = pageHref(p) ? window.PageLink.html(p.page.url || p.page.path, { host: p.page.host, text: name, cls: "rp-title-link", title: "" }) : `<span dir="auto">${esc(name)}</span>`;
-    const logo = p.logo ? `<span class="rp-logo">${UI.siteLogo(p.logo, 20)}</span>` : "";
+    const logo = mine ? window.PageThumb.html(at.url, { host: at.host, size: 44 }) : p.logo ? `<span class="rp-logo">${UI.siteLogo(p.logo, 20)}</span>` : "";
+    if (real && !p.sub) p = { ...p, sub: p.page.path || window.PageThumb.where(at.url, at.host)?.path || p.page.url };
     return `<div class="panel-head rp-head"><div class="rp-titles">
         ${line ? `<div class="rp-kind">${line}</div>` : ""}
         <h2 id="panel-title" dir="auto">${logo}${title}</h2>

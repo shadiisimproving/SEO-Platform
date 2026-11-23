@@ -211,7 +211,8 @@
         <span class="chg ${up ? "good" : "crit"}">${icon(up ? "arrow-up" : "arrow-down")}#${num(move.was)} → #${num(move.now)}</span>${task}</li>`;
     }
     const up = move.change > 0;
-    return `<li><div class="what"><div class="t">${PageLink.html(move.url || move.path, { text: move.path, host: move.host, cls: "today-link mono" })}${hostTag(move.host)}</div><div class="d">${UI().logoOnly("Google", t("Google clicks"))} ${num(move.was)} → ${num(move.clicks)} ${t("clicks")}</div></div>
+    const pageLine = `${PageLink.html(move.url || move.path, { text: move.path, host: move.host, cls: "today-link mono" })}${hostTag(move.host)}`;
+    return `<li><div class="what"><div class="t">${window.PageThumb ? window.PageThumb.row(move.url || move.path, { host: move.host, inner: pageLine, size: 36 }) : pageLine}</div><div class="d">${UI().logoOnly("Google", t("Google clicks"))} ${num(move.was)} → ${num(move.clicks)} ${t("clicks")}</div></div>
       <span class="chg ${up ? "good" : "crit"}">${icon(up ? "arrow-up" : "arrow-down")}${up ? "+" : "−"}${num(Math.abs(move.change))}%</span>${task}</li>`;
   }
   // With the switch on, "7 days" sits in each card head instead of the "Week on week" line above the pair (plan, change 4).

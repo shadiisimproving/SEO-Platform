@@ -67,3 +67,44 @@ def test_profile_gathers_the_page(client, site):
 def test_profile_refuses_other_sites_and_empty(client, site):
     assert client.get(f"/api/site-pages/profile?site_id={site}&url=https://elsewhere.example/visa/").status_code == 400
     assert client.get(f"/api/site-pages/profile?site_id={site}&url=").status_code == 400
+
+
+def test_list_gives_each_read_page_its_title_and_picture(client, site, engine):
+    with engine.begin() as conn:
+        domain = conn.execute(text("INSERT INTO domains (host) VALUES ('shop.example')")).lastrowid
+        conn.execute(text("INSERT INTO pages (domain_id, url, url_hash, title, content_hash, extras) VALUES (:d, 'https://shop.example/visa/', 'v', 'Visa guide', 'h', :e)"),
+                     {"d": domain, "e": '{"image": "https://shop.example/img/visa.jpg"}'})
+        conn.execute(text("INSERT INTO pages (domain_id, url, url_hash, title, content_hash, extras) VALUES (:d, 'https://shop.example/tax', 't', 'Tax', 'h', :e)"),
+                     {"d": domain, "e": '{"image": "javascript:alert(1)"}'})
+    rows = {row["path"]: row for row in client.get(f"/api/site-pages?{period(site)}").json["pages"]}
+    assert (rows["/visa/"]["title"], rows["/visa/"]["image"]) == ("Visa guide", "https://shop.example/img/visa.jpg")
+    assert (rows["/tax/"]["title"], rows["/tax/"]["image"]) == ("Tax", "")
+
+
+def test_a_page_read_before_pictures_were_kept_is_asked_for_whole_once(engine):
+    from seo.competitors import pages as page_reader
+    from seo.crawl.fetch import FetchResult
+
+    html = b'<html><head><title>Visa</title><meta property="og:image" content="/img/visa.jpg"></head><body><main><p>Visa guide text</p></main></body></html>'
+
+    class Fetcher:
+        requests = 0
+        asked: list = []
+
+        def get(self, url, etag=None, last_modified=None, **_options):
+            self.requests += 1
+            self.asked.append(etag)
+            if etag:
+                return FetchResult(url=url, status="not_modified", http_status=304)
+            return FetchResult(url=url, status="ok", http_status=200, body=html, etag='"v1"', final_url=url)
+
+    url, fetcher = "https://shop.example/visa/", Fetcher()
+    page_reader.read_page(engine, url, "shop.example", fetcher)
+    with engine.begin() as conn:  # as stored by the reader before it kept pictures
+        conn.execute(text("UPDATE pages SET extras = '{\"images\": 0}' WHERE url = :u"), {"u": url})
+    page_reader.read_page(engine, url, "shop.example", fetcher)
+    page_reader.read_page(engine, url, "shop.example", fetcher)
+    assert fetcher.asked == [None, None, '"v1"']  # whole page once more, then back to "only if changed"
+    with engine.connect() as conn:
+        assert page_reader._as_dict(conn.execute(text("SELECT extras FROM pages WHERE url = :u"), {"u": url}).scalar())["image"] == "https://shop.example/img/visa.jpg"
+        assert conn.execute(text("SELECT COUNT(*) FROM change_events")).scalar() == 0  # no fake edit from it

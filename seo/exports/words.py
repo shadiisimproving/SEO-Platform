@@ -79,7 +79,7 @@ FR: dict[str, str] = {
     "Site health": "Santé du site", "Health score": "Score de santé", "Last time": "La fois d'avant", "Checks with problems": "Contrôles en défaut", "/100": "/100", "Score": "Score",
     "Checks": "Contrôles", "Check": "Contrôle", "Severity": "Gravité", "Critical": "Critique", "Warning": "Avertissement", "Info": "Info", "Tested on": "Testé le",
     "Pages to fix": "Pages à corriger", "Problem": "Problème", "No pages to fix.": "Aucune page à corriger.", "No problems found.": "Aucun problème trouvé.", "This site hasn't been tested yet.": "Ce site n'a pas encore été testé.",
-    "No title": "Pas de titre", "Error pages": "Pages en erreur", "Broken links": "Liens cassés",
+    "No title": "Pas de titre", "Error pages": "Pages en erreur", "Broken links": "Liens cassés", "Link that redirects": "Lien qui redirige",
     "Hidden from search engines": "Cachées aux moteurs de recherche", "No main heading (H1)": "Pas de titre principal (H1)", "No meta description": "Pas de méta-description",
     "Images missing alt text": "Images sans texte alternatif", "More than 2 redirects": "Plus de 2 redirections",
     "Server errors": "Erreurs serveur",

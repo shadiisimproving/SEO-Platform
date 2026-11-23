@@ -27,3 +27,8 @@ def profile():
     if not raw.isdigit():
         raise Refused("site_id must be a number.")
     return jsonify(service.profile(_engine(), int(raw), request.args.get("url", "")))
+
+
+@pages_api.get("/site-pages/pictures")
+def pictures():
+    return jsonify(service.pictures(_engine()))

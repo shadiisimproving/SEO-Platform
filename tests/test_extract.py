@@ -175,3 +175,16 @@ def test_a_deeply_nested_json_ld_script_is_skipped():
     deep = b'<html><body><script type="application/ld+json">' + b"[" * 50_000 + b"]" * 50_000 + b"</script><p>hello there</p></body></html>"
     page = extract(deep, "https://shop-one.test/")
     assert page.schema_types == [] and page.word_count == 2
+
+
+def test_keeps_the_picture_the_page_shares_as_a_full_address():
+    head = '<meta name="twitter:image" content="https://cdn.example.com/t.jpg"><meta property="og:image" content="/img/visa.jpg">'
+    assert fields(f"<html><head>{head}</head><body><p>Hi</p></body></html>").extras["image"] == "https://www.example.com/img/visa.jpg"
+    only_twitter = '<meta name="twitter:image" content="//cdn.example.com/t.jpg">'
+    assert fields(f"<html><head>{only_twitter}</head><body><p>Hi</p></body></html>").extras["image"] == "https://cdn.example.com/t.jpg"
+
+
+def test_no_picture_is_an_empty_one_and_odd_addresses_are_left_out():
+    assert fields().extras["image"] == ""
+    for bad in ("javascript:alert(1)", "data:image/png;base64,AAAA", "https://cdn.example.com/a b.jpg"):
+        assert fields(f'<html><head><meta property="og:image" content="{bad}"></head><body><p>Hi</p></body></html>').extras["image"] == ""

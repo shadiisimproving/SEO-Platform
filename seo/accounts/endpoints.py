@@ -299,6 +299,7 @@ ENDPOINTS: dict[str, tuple[str, str, str]] = {
     # Its Search and Visits tabs read metrics_api.page_detail, which lists "pages" among its sections.
     "pages_api.listing": ("pages", "read", "all"),
     "pages_api.profile": ("pages", "read", ""),
+    "pages_api.pictures": ("*", "read", "all"),  # titles and pictures of my pages, shown beside them on every screen; own_site_ids only
     "tasks_api.create": ("tasks", "write", ""),
     "tasks_api.update": ("tasks", "write", ""),
     "tasks_api.delete": ("tasks", "write", ""),

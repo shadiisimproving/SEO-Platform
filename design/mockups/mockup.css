@@ -872,6 +872,10 @@ a.lc-url:hover { color: var(--accent-text); }
   .data td::before { content: attr(data-label); color: var(--muted); font-size: 12px; text-align: left; flex: none; }
   .data td.head-cell { display: block; text-align: left; padding-right: 26px; font-size: 14px; }
   .data td.head-cell::before { content: none; }
+  /* A page shown with its picture and title (page-thumbs.js) heads its card, as a head cell does. */
+  .data td:has(> .pthumb-row) { display: block; text-align: left; padding-right: 26px; }
+  .data td:has(> .pthumb-row)::before { content: none; }
+  .data td:has(> .pthumb-row) .pthumb-row { align-items: flex-start; }
   .data td.chk-cell { position: absolute; top: 11px; right: 11px; width: auto; padding: 0; }
   .data td.chk-cell::before { content: none; }
   .second { white-space: normal; }
@@ -1243,3 +1247,29 @@ html[data-simple="1"] .app.rail .side-search .kbd { display: none; }
 @media (min-width: 1241px) {
   .app:not(.rail) ~ .toasts { left: calc(var(--gap) + 6px); bottom: 72px; width: calc(var(--side) - 12px); }
 }
+
+/* A title that is also the link to its page (UI.topbar's link): looks like the title, underlines on hover. */
+.head-link { color: inherit; text-decoration: none; border-radius: 4px; }
+.head-link:hover span { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
+.head-link:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.head-link-i { width: .7em; height: .7em; margin-left: .3em; vertical-align: .05em; color: var(--muted); opacity: .7; }
+.head-link:hover .head-link-i { opacity: 1; color: var(--accent-text, inherit); }
+/* A long page title stays on two lines at most, so the head keeps its height; the whole title is in the hover tip. */
+.head-link span { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.head-link { display: inline-flex; align-items: flex-start; max-width: 100%; }
+.head-link-i { flex: none; margin-top: .3em; }
+html[data-simple="1"] .topbar.head .head-title:has(.head-link) { flex-basis: 380px; min-width: 300px; }
+html[data-simple="1"] .topbar.head h1:has(.head-link) { font-size: 18px; line-height: 24px; }
+
+/* A page of my sites as its picture and title, address under them (page-thumbs.js), on every list of my pages. */
+.pthumb-row { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.pthumb-text { min-width: 0; flex: 1; }
+.pthumb-title { font-weight: 550; color: var(--text); line-height: 1.35; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
+.pthumb-title + * { margin-top: 1px; }
+.pthumb { flex: none; display: inline-grid; place-items: center; border-radius: 9px; background: var(--hover); overflow: hidden; }
+.pthumb-img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.pthumb-none .site-logo { opacity: .85; }
+/* The page's picture beside a title that links to the page (the Pages screen's head). */
+h1:has(> .pthumb) { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.panel-head > .pthumb { margin-right: 4px; }
+.rp-head h2:has(> .pthumb) { gap: 12px; }

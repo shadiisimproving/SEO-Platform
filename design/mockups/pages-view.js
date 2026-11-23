@@ -85,8 +85,8 @@
     const table = rows.length ? `<div class="table-wrap"><table class="data pg-table" id="pg-table" data-tt-own-count>
       <thead><tr><th scope="col">${t("Page")}</th><th scope="col" class="num">${t("Google clicks")}</th><th scope="col" class="num">${t("Position")}</th><th scope="col">${t("Linked")}</th></tr></thead>
       <tbody>${view.rows.map((r) => `<tr data-pg-open="${esc(r.url)}" tabindex="0">
-        <td class="head-cell pg-page"><button type="button" class="kw pg-title" data-pg-open-btn="${esc(r.url)}" dir="auto">${esc(r.title || r.path)}</button>
-          <span class="second mono" dir="auto">${many ? `${esc(r.host)}` : ""}${esc(r.path)}</span>${r.indexed === false ? ` ${UI.status ? UI.status("warn", t("Not indexed")) : ""}` : ""}</td>
+        <td class="head-cell pg-page"><div class="pthumb-row">${window.PageThumb.html(r.url, { image: r.image || null, size: 48 })}<div class="pthumb-text"><button type="button" class="kw pg-title" data-pg-open-btn="${esc(r.url)}" dir="auto">${esc(r.title || r.path)}</button>
+          <span class="second mono" dir="auto">${many ? `${esc(r.host)}` : ""}${esc(r.path)}</span>${r.indexed === false ? ` ${UI.status ? UI.status("warn", t("Not indexed")) : ""}` : ""}</div></div></td>
         <td class="num" data-label="${t("Google clicks")}">${r.clicks === null ? `<span class="muted">—</span>` : numCell(num(r.clicks), compare ? cellChange(r.clicks, r.clicks_before ?? 0) : null)}</td>
         <td class="num" data-label="${t("Position")}">${posBadge(r.position)}</td>
         <td data-label="${t("Linked")}"><span class="pg-bits">${linkedBits(r)}</span></td>
@@ -128,14 +128,19 @@
     const n = id === "rankings" ? p.rankings.length : id === "backlinks" ? p.backlinks.length : id === "technical" ? techIssues(p) : null;
     return n ? ` <span class="pg-tab-n tabular">${num(n)}</span>` : "";
   }
-  const techIssues = (p) => p.technical.health.length + p.technical.links.length + (p.technical.inspection && p.technical.inspection.verdict !== "PASS" ? 1 : 0);
+  // The links check sorts what it finds into broken, unverified (sites like Facebook or WhatsApp refuse automated checks),
+  // redirect chains and slow. Only broken ones are broken; the others are said apart, never as broken.
+  const linksOf = (p, kind) => p.technical.links.filter((l) => l.category === kind);
+  const techIssues = (p) => p.technical.health.length + linksOf(p, "broken").length + (p.technical.inspection && p.technical.inspection.verdict !== "PASS" ? 1 : 0);
 
   function pageView() {
     const o = P.open;
     const p = P.profile;
     const title = p?.title || pathOf(o.url);
-    const head = UI.topbar(title, `${PageLink.html(o.url, { text: `${o.host}${pathOf(o.url)} ↗`, cls: "pg-url" })}`,
-      `<button class="btn" id="pg-note">${icon("sticky-note")}${t("Add a note")}</button><button class="btn btn-main" id="pg-task">${icon("plus")}${t("New task about this page")}</button>`, true);
+    // The title opens the page; its address shows on hover, not as a long line under the title.
+    const head = UI.topbar(title, "",
+      `<button class="btn" id="pg-note">${icon("sticky-note")}${t("Add a note")}</button><button class="btn btn-main" id="pg-task">${icon("plus")}${t("New task about this page")}</button>`, true,
+      { href: o.url, tip: p?.title ? `${p.title}\n${o.host}${pathOf(o.url)}` : `${o.host}${pathOf(o.url)}`, before: window.PageThumb ? window.PageThumb.html(o.url, { size: 44 }) : "" });
     const back = `<button type="button" class="link-btn pg-back" id="pg-back">${icon("chevron-left")}${t("All pages")}</button>`;
     if (P.failedPage) return `${head}<div class="content page-enter">${back}${UI.failCard ? UI.failCard(P.failedPage, { retry: 'id="pg-retry-page"' }) : esc(P.failedPage)}</div>`;
     const tabs = `<div class="tabs pg-tabs" role="tablist" aria-label="${t("About this page")}">${TABS.map(([id, word, ic]) => `<button class="tab" role="tab" id="pg-tab-${id}" data-pg-tab="${id}" aria-selected="${P.tab === id}" aria-controls="pg-panel" tabindex="${P.tab === id ? 0 : -1}">${icon(ic)}${t(word)}${tabCount(id)}</button>`).join("")}</div>`;
@@ -202,14 +207,20 @@
       const ins = x.inspection;
       const speedLine = (s) => (s ? `<b class="tabular">${num(s.score)}</b>/100${s.lcp_ms ? ` · LCP ${UI.dec ? UI.dec(Math.round(s.lcp_ms / 100) / 10) : s.lcp_ms / 1000} s` : ""}` : `<span class="muted">${t("Not measured")}</span>`);
       const health = x.health.length ? `<ul class="pg-list">${x.health.map((code) => `<li>${icon("triangle-alert", "warn")}<span>${esc(t(window.HealthTest?.checkWord?.(code) || code))}</span></li>`).join("")}</ul>` : `<span class="muted">${x.health_at ? t("Nothing found") : t("No health test yet")}</span>`;
-      const links = x.links.length ? `<ul class="pg-list">${x.links.map((l) => `<li>${icon("link-2-off", "warn")}<span class="mono small" dir="auto">${PageLink.html(l.target)}</span><span class="end small sec">${l.status ? esc(String(l.status)) : esc(t(l.category))}</span></li>`).join("")}</ul>` : `<span class="muted">${x.links_at ? t("No broken links") : t("No links check yet")}</span>`;
+      const broken = linksOf(p, "broken"), unsure = linksOf(p, "unverified"), redirects = linksOf(p, "redirect");
+      const linkRow = (l, ic) => `<li>${icon(ic, "warn")}<span class="small pg-link-t" dir="auto">${PageLink.html(l.target)}</span><span class="end small sec">${l.status ? esc(String(l.status)) : l.reason ? esc(l.reason) : ""}</span></li>`;
+      const links = broken.length ? `<ul class="pg-list">${broken.map((l) => linkRow(l, "link-2-off")).join("")}</ul>` : `<span class="${x.links_at ? "pg-good" : "muted"}">${x.links_at ? t("No broken links") : t("No links check yet")}</span>`;
+      const unsureLine = unsure.length ? `<details class="pg-unsure"><summary class="small sec">${num(unsure.length)} ${t(unsure.length === 1 ? "link couldn't be checked" : "links couldn't be checked")}: ${t("sites like Facebook, Instagram, LinkedIn or WhatsApp refuse automated checks. This doesn't mean they're broken.")}</summary>
+        <ul class="pg-list">${unsure.map((l) => `<li><span class="small pg-link-t" dir="auto">${PageLink.html(l.target)}</span></li>`).join("")}</ul></details>` : "";
+      const redirectRow = redirects.length ? row("Links that redirect", `<ul class="pg-list">${redirects.map((l) => linkRow(l, "arrow-right")).join("")}</ul>`) : "";
       return `<dl class="pg-facts">
         ${row("Indexed", !ins ? `<span class="muted">${t("Not checked")}</span>` : `${ins.verdict === "PASS" ? `<span class="pg-good">${t("Yes")}</span>` : `<span class="pg-bad">${t("No")}</span>`}${ins.coverage ? ` · ${esc(ins.coverage)}` : ""}${ins.last_crawl ? ` · ${t("crawled")} ${esc(when(ins.last_crawl))}` : ""}`)}
         ${ins?.google_canonical && ins.google_canonical !== P.open.url ? row("Google's chosen address", PageLink.html(ins.google_canonical)) : ""}
         ${row("Speed on phone", speedLine(x.speed.mobile))}
         ${row("Speed on computer", speedLine(x.speed.desktop))}
         ${row("Health test", `${health}${x.health_at ? `<span class="small muted">${t("Test of")} ${esc(when(x.health_at))}</span>` : ""}`)}
-        ${row("Broken links on it", `${links}${x.links_at ? `<span class="small muted">${t("Check of")} ${esc(when(x.links_at))}</span>` : ""}`)}
+        ${row("Broken links on it", `${links}${unsureLine}${x.links_at ? `<span class="small muted">${t("Check of")} ${esc(when(x.links_at))}</span>` : ""}`)}
+        ${redirectRow}
       </dl>`;
     }
     // Content: what the page reader saw.
@@ -352,7 +363,9 @@
     "The page reader hasn't read this page yet. Your site's pages are read every day.": "Le lecteur de pages n'a pas encore lu cette page. Les pages de votre site sont lues chaque jour.",
     "Changes seen": "Changements vus", "words": "mots", "Title": "Titre", "characters": "caractères", "Description": "Description", "None": "Aucune", "Words": "Mots", "Links": "Liens",
     "inside the site": "internes", "to other sites": "vers d'autres sites", "Structured data": "Données structurées", "Robots": "Robots", "Read on": "Lue le", "Outline": "Plan",
-    "No headings on this page.": "Aucun titre sur cette page.", "That page's site isn't one of yours.": "Le site de cette page n'est pas un des vôtres.", "Show": "Afficher",
+    "No headings on this page.": "Aucun titre sur cette page.", "link couldn't be checked": "lien n'a pas pu être vérifié", "links couldn't be checked": "liens n'ont pas pu être vérifiés",
+    "sites like Facebook, Instagram, LinkedIn or WhatsApp refuse automated checks. This doesn't mean they're broken.": "des sites comme Facebook, Instagram, LinkedIn ou WhatsApp refusent les vérifications automatiques. Ils ne sont pas cassés pour autant.",
+    "Links that redirect": "Liens qui redirigent", "That page's site isn't one of yours.": "Le site de cette page n'est pas un des vôtres.", "Show": "Afficher",
   };
   Object.keys(fr).forEach((word) => { if (window.FR && window.FR[word] === undefined) window.FR[word] = fr[word]; });
 })();

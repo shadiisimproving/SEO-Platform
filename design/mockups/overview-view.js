@@ -343,7 +343,7 @@
 
   // ---- the tabbed card ----------------------------------------------------------------------------
   const nameCell = (dim, r) => {
-    if (dim === "page") return PageLink.html(r.name, { text: pathOf(r.name), cls: "ov-name" });
+    if (dim === "page") { const link = PageLink.html(r.name, { text: pathOf(r.name), cls: "ov-name" }); return window.PageThumb ? window.PageThumb.row(r.name, { inner: `<div class="mono small">${link}</div>`, size: 36 }) : link; }
     if (dim === "country") return `<span class="ov-name">${esc(r.code ? UI.countryName(r.code) : t("Unknown"))}</span>`;
     if (dim === "device") return `<span class="ov-name">${esc(t({ MOBILE: "Mobile", DESKTOP: "Computer", TABLET: "Tablet" }[r.name] || r.name))}</span>`;
     return `<span class="ov-name">${KeywordLink.html(r.name, { host: hostPicked() })}</span>${r.tracked ? ` <span class="ov-tracked" title="${t("Tracked in Keywords")}">${icon("check")}${t("Tracked")}</span>` : ""}`;
@@ -580,7 +580,10 @@
   async function openDetail(dim, value, opener) {
     if (dim !== "query" && dim !== "page") return;
     if (simple() && UI.rowPanel) { rowPanel(dim, value, opener); return; }
-    const head = UI.panelHead(dim === "query" ? value : pathOf(value), dim === "query" ? t("Query") : `${t("Page")} · ${PageLink.html(value, { text: t("Open page"), title: value, cls: "page-open" })}`);
+    const mine = dim === "page" && window.PageThumb?.mine(value);
+    const name = dim === "query" ? value : (mine && window.PageThumb.title(value)) || pathOf(value);
+    const head = UI.panelHead(name, dim === "query" ? t("Query") : `${mine && name !== pathOf(value) ? `<span class="mono">${esc(pathOf(value))}</span> · ` : `${t("Page")} · `}${PageLink.html(value, { text: t("Open page"), title: value, cls: "page-open" })}`,
+      mine ? window.PageThumb.html(value, { size: 44 }) : "");
     UI.openPanel(`${head}<div class="panel-body">${UI.skeleton("panel")}</div>`, opener);
     let data;
     try { data = await window.COMP.api("GET", `search/detail?${query({ [dim]: value })}`); }
