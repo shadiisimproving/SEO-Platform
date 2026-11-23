@@ -236,6 +236,29 @@ def create_pair(engine: Engine, site_id: int, competitor_id: int, my_url: str, t
     return pair_detail(engine, pair_id)
 
 
+def pick_my_page(engine: Engine, site_id: int, competitor_id: int, their_url: str, my_url: str) -> dict:
+    """The owner's choice of which page of theirs is compared with this page of theirs (Competitors → Questions, "Change").
+
+    Any other visible pair on the same page of theirs is hidden first, so the row shows the chosen page and nothing else.
+    One page of mine has one pair per competitor (the table's key): choosing a page already paired elsewhere moves that pair here."""
+    with engine.connect() as conn:
+        site = require_own(conn, site_id)
+        competitor = _competitor(conn, site_id, competitor_id)
+        mine = pages.clean_page_url(my_url, site["host"])
+        key = page_key(pages.clean_page_url(their_url, competitor["host"]))
+        others = [
+            row["id"] for row in conn.execute(
+                text("SELECT id, my_url, their_url FROM page_pairs WHERE site_id = :s AND competitor_id = :c AND hidden = 0"), {"s": site_id, "c": competitor_id}
+            ).mappings()
+            if page_key(row["their_url"]) == key and pages.url_hash(row["my_url"]) != pages.url_hash(mine)
+        ]
+    if others:
+        with engine.begin() as conn:
+            for pair_id in others:
+                conn.execute(text("UPDATE page_pairs SET hidden = 1, updated_at = UTC_TIMESTAMP(3) WHERE id = :i"), {"i": pair_id})
+    return create_pair(engine, site_id, competitor_id, my_url, their_url)
+
+
 def update_pair(engine: Engine, pair_id: int, my_url=None, their_url=None, hidden=None) -> dict:
     """Any change makes the pair mine: later rankings won't replace it."""
     if my_url is None and their_url is None and hidden is None:

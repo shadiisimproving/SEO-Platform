@@ -276,7 +276,7 @@
         <div class="pt-qpage-head"><input type="checkbox" class="chk" data-pt-qpick="${esc(g.url)}" aria-label="${esc(fill("Select {page}", { page: name }))}" ${picked ? "checked" : ""}><span class="cl-cell"><span class="nb-inline"><span class="t" dir="auto">${esc(name)}</span>${COMP.notes?.badge ? COMP.notes.badge(noteWhere(p, g), COMP.shortUrl(g.url)) : ""}</span><span class="second">${COMP.link(g.url)}</span></span><span class="pt-act">${task}</span></div>
         <div class="pt-qcompare">
           <div class="pt-qside"><p class="pt-qside-lab">${COMP.who("them", p.host, t("Their questions"))}</p><ul class="pt-qlist">${list.map((q) => `<li dir="auto">${esc(q)}</li>`).join("")}</ul></div>
-          <div class="pt-qside">${mySide(g.mine, myList, showMine)}</div>
+          <div class="pt-qside">${mySide(g.mine, myList, showMine, g)}</div>
         </div>
         ${hidden > 0 ? `<button class="link-btn small" data-pt-qpage="${esc(g.url)}">${esc(fill("+{n} more", { n: num(hidden) }))}</button>` : open && folds ? `<button class="link-btn small" data-pt-qpage="${esc(g.url)}">${t("Show fewer")}</button>` : ""}
       </li>`;
@@ -299,12 +299,14 @@
 
   /* The right half of a row: my page it's compared with, how it was matched, and the questions it asks. */
   const MATCH = { paired: ["Paired", "You paired these two in Page vs page."], keyword: ["Same keyword", "Both pages rank for the same keyword."], topic: ["Closest topic", "Best guess: main headings share the most words."] };
-  function mySide(m, list, showMine) {
+  function mySide(m, list, showMine, g) {
     const yours = COMP.who("you", COMP.site?.()?.host || S.p?.site?.host, t("Your page"));
-    if (!m) return `<p class="pt-qside-lab">${yours}</p><p class="small sec">${t(showMine ? "None yet." : "Not read yet")}</p>`;
+    // Change: the owner picks the page of theirs to compare with, saved as a pair that rankings won't replace (2026-11-13).
+    const change = `<button type="button" class="link-btn small pt-mine-pick" data-pt-mine-pick="${esc(g.url)}" aria-label="${esc(fill(m ? "Change your page compared with {page}" : "Pick your page compared with {page}", { page: g.title || COMP.shortUrl(g.url) }))}">${t(m ? "Change page" : "Pick a page")}</button>`;
+    if (!m) return `<p class="pt-qside-lab">${yours} ${change}</p><p class="small sec">${t(showMine ? "None yet." : "Not read yet")}</p>`;
     const [word, tip] = MATCH[m.how] || MATCH.topic;
     const asks = !m.read ? t("Not read yet") : list.length ? "" : t("No questions.");
-    return `<p class="pt-qside-lab">${yours} <span class="tag pt-mark" data-tip="${esc(t(tip))}">${t(word)}</span></p>
+    return `<p class="pt-qside-lab">${yours} <span class="tag pt-mark" data-tip="${esc(t(tip))}">${t(word)}</span> ${change}</p>
       <span class="cl-cell"><span class="t" dir="auto">${esc(m.title || COMP.shortUrl(m.url))}</span><span class="second">${COMP.link(m.url)}</span></span>
       ${asks ? `<p class="small sec">${asks}</p>` : `<ul class="pt-qlist pt-qlist-mine">${list.map((q) => `<li dir="auto">${esc(q)}</li>`).join("")}</ul>`}`;
   }
@@ -601,6 +603,47 @@
       button.disabled = false;
     }
   }
+  /* Questions -> Change: which page of mine sits beside this page of theirs. A box that searches my pages by title or
+     address (or takes any address of my site), saved as a pair through page-pairs/pick (2026-11-13). */
+  const siteIdHere = () => (typeof COMP.siteId === "number" ? COMP.siteId : S.p?.site?.id ?? null);
+  async function openMinePick(opener) {
+    const g = (S.ins?.questions?.groups || []).find((x) => x.url === opener.dataset.ptMinePick);
+    if (!g || !S.p) return;
+    let mine = [];
+    try { mine = (await COMP.api("GET", `sites/${siteIdHere()}/pages`)).pages || []; } catch { /* typing an address still works */ }
+    const host = COMP.site?.()?.host || S.p?.site?.host || "";
+    UI().openPanel(`${UI().panelHead(t("Your page to compare"), `<span dir="auto">${esc(g.title || COMP.shortUrl(g.url))}</span>`)}
+      <form class="panel-body" id="pt-mp-form" data-their="${esc(g.url)}" novalidate>
+        <label class="field"><span>${COMP.who("you", host, t("Your page"))}</span>
+          <input class="input" id="pt-mp-url" type="text" list="pt-mp-pages" dir="auto" autocomplete="off" spellcheck="false" value="${esc(g.mine?.url || "")}" placeholder="${esc(fill("Search your pages, or type an address on {host}", { host }))}"></label>
+        <datalist id="pt-mp-pages">${mine.map((x) => `<option value="${esc(x.url)}" label="${esc(x.title || "")}"></option>`).join("")}</datalist>
+        <p class="note">${icon("info")}<span>${t("Saved as a pair: rankings won't replace it.")}</span></p>
+        <div id="pt-mp-error"></div>
+      </form>
+      <div class="panel-foot"><button class="btn btn-main" data-pt-mp-save>${t("Save")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button></div>`, opener, { key: `pt-mine|${S.p.id}|${g.url}` });
+    const box = UI().$("#pt-mp-url");
+    box?.focus({ preventScroll: true });
+    box?.select();
+  }
+  async function saveMinePick(button) {
+    const form = UI().$("#pt-mp-form"), url = UI().$("#pt-mp-url")?.value.trim() || "";
+    if (!form || !S.p) return;
+    const their = form.dataset.their;
+    const say = (words) => UI().setHTML(UI().$("#pt-mp-error"), `<div class="error" role="alert">${icon("octagon-alert")}<span dir="auto">${esc(words)}</span></div>`);
+    if (!url) { say(t("Pick one of your pages, or type its address.")); UI().$("#pt-mp-url")?.focus(); return; }
+    button.disabled = true;
+    try {
+      await COMP.api("POST", "page-pairs/pick", { site_id: siteIdHere(), competitor_id: S.p.id, my_url: url, their_url: their });
+      UI().forgetPanelForm?.();
+      UI().closePanel({ keep: false });
+      UI().toast?.(t("Saved. Rankings won't replace it."));
+      await reloadInsights();
+      UI().$$("[data-pt-mine-pick]").find((b) => b.dataset.ptMinePick === their)?.focus({ preventScroll: true });
+    } catch (err) {
+      say(t(err.message));
+      button.disabled = false;
+    }
+  }
   async function reloadInsights() {
     if (!S.p) return;
     const fresh = await load(S.p, COMP.siteId);
@@ -696,6 +739,8 @@
   function bind() {
     if (bound) return;
     bound = true;
+    // Enter in the page box saves, and never reloads the page.
+    document.addEventListener("submit", (e) => { if (e.target.id === "pt-mp-form") { e.preventDefault(); const b = UI().$("[data-pt-mp-save]"); if (b && !b.disabled) saveMinePick(b); } });
     document.addEventListener("click", (e) => {
       const hit = (sel) => e.target.closest?.(sel);
       let el;
@@ -717,6 +762,8 @@
       }
       if ((el = hit("[data-pt-qpage]"))) { const url = el.dataset.ptQpage; S.qOpen ||= new Set(); S.qOpen.has(url) ? S.qOpen.delete(url) : S.qOpen.add(url); repaint(() => UI().$(`[data-pt-qpage="${CSS.escape(url)}"]`)?.focus({ preventScroll: true })); return; }
       if ((el = hit("[data-pt-q-note]"))) { openQuestionNote(el); return; }
+      if ((el = hit("[data-pt-mine-pick]"))) { openMinePick(el); return; }
+      if ((el = hit("[data-pt-mp-save]"))) { saveMinePick(el); return; }
       if ((el = hit("[data-pt-qn-save]"))) { saveQuestionNote(el); return; }
       if (hit("[data-pt-q-clear]")) { S.qPicked?.clear(); repaint(); return; }
       if (hit("[data-pt-q-others]")) { S.qOthers = !S.qOthers; repaint(() => UI().$("[data-pt-q-others]")?.focus({ preventScroll: true })); return; }
@@ -821,6 +868,7 @@
 
   // Ticking question rows, my page beside theirs, and the age card (11 Nov).
   Object.assign(window.FR, {
+    "Change page": "Changer de page", "Pick a page": "Choisir une page", "Change your page compared with {page}": "Changer votre page comparée à {page}", "Pick your page compared with {page}": "Choisir votre page comparée à {page}", "Your page to compare": "Votre page à comparer", "Search your pages, or type an address on {host}": "Cherchez parmi vos pages, ou saisissez une adresse sur {host}", "Saved as a pair: rankings won't replace it.": "Enregistrée comme paire : les positions ne la remplaceront pas.", "Pick one of your pages, or type its address.": "Choisissez une de vos pages, ou saisissez son adresse.", "Saved. Rankings won't replace it.": "Enregistré. Les positions ne le remplaceront pas.",
     "Their questions": "Leurs questions", "Your page": "Votre page", "Paired": "Associée", "Same keyword": "Même mot-clé", "Closest topic": "Sujet le plus proche",
     "You paired these two in Page vs page.": "Vous avez associé ces deux pages dans Page contre page.", "Both pages rank for the same keyword.": "Les deux pages se positionnent sur le même mot-clé.", "Best guess: main headings share the most words.": "Estimation : leurs titres principaux ont le plus de mots en commun.",
     "None yet.": "Aucune pour l'instant.", "Not read yet": "Pas encore lue", "No questions.": "Aucune question.",
