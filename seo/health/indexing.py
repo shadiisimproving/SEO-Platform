@@ -4,7 +4,8 @@ backlink points to (those stay with seo/backlinks/indexed.py, unchanged).
 Google allows 2,000 inspections a day and 600 a minute per property. The backlinks check keeps its own 200 a day; this one
 asks at most PER_DAY more, and paces itself well under the minute limit, so a big site is covered over a few days. The
 most important pages go first (most Search Console clicks, then impressions), then the newest, then the rest; an answer
-is asked again after 30 days for an indexed page and 7 days for one that isn't, as for backlinks.
+is asked again after 30 days for an indexed page and 7 days for one that isn't, as for backlinks, and after 7 days for an
+indexed page with Search Console clicks. When Google drops a page it had indexed, the bell says so (indexed._save).
 
 Results show on the Health screen: how many pages are on Google, and the ones that aren't with the reason Google gives.
 It needs the site's Search Console connection, like the backlinks check. Nothing is asked without one.
@@ -27,6 +28,7 @@ from seo.worker.runner import Retry, RunAgain, handler
 
 JOB_KIND = "health.indexing"
 LANE = indexed.LANE  # Google's API, as the other Search Console calls
+CLICKS_EVERY_DAYS = 7  # an indexed page with Search Console clicks is asked again weekly, so a drop is known within a week
 PER_DAY = 1200  # of Google's 2,000 a day per property. With the backlinks check's 200, 1,400 at most.
 PER_MINUTE = 300  # Google allows 600
 CHUNK_SECONDS = 40.0
@@ -82,21 +84,24 @@ def due_pages(engine: Engine, site_id: int) -> list[str]:
         pages = site_pages(conn, site_id)
         targets = set(indexed._pages(conn, site_id, start_url or ""))
         known = {r["url_hash"]: r for r in conn.execute(text(
-            "SELECT url_hash, inspected_at, inspected_at > UTC_TIMESTAMP(3) - INTERVAL CASE WHEN verdict = 'PASS' THEN :ok ELSE :not_ok END DAY AS fresh "
+            "SELECT url_hash, inspected_at, inspected_at > UTC_TIMESTAMP(3) - INTERVAL CASE WHEN verdict = 'PASS' THEN :ok ELSE :not_ok END DAY AS fresh, "
+            "verdict = 'PASS' AND inspected_at <= UTC_TIMESTAMP(3) - INTERVAL :week DAY AS week_old "
             "FROM gsc_inspections WHERE site_id = :s"
-        ), {"s": site_id, "ok": indexed.INDEXED_EVERY_DAYS, "not_ok": indexed.NOT_INDEXED_EVERY_DAYS}).mappings()}
+        ), {"s": site_id, "ok": indexed.INDEXED_EVERY_DAYS, "not_ok": indexed.NOT_INDEXED_EVERY_DAYS, "week": CLICKS_EVERY_DAYS}).mappings()}
     weight = importance(engine, site_id) if pages else {}
     never, old = [], []
     for page in pages:
         url = page["url"]
-        if url in targets:
-            continue
         seen = known.get(indexed.url_hash(url))
+        # A page that earns clicks is asked again weekly, a backlink's target too (its own check waits a month).
+        weekly = bool(seen and seen["week_old"] and weight.get(path_of(url), (0, 0))[0] > 0)
+        if url in targets and not weekly:
+            continue
         if seen is None:
             clicks, shown = weight.get(path_of(url), (0, 0))
             newest = page["sitemap_lastmod"] or (page["first_seen_at"].date() if page["first_seen_at"] else None)
             never.append((-clicks, -shown, -(newest.toordinal() if newest else 0), url))
-        elif not seen["fresh"]:
+        elif not seen["fresh"] or weekly:
             old.append((seen["inspected_at"] or datetime.min, url))
     never.sort()
     old.sort()

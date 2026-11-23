@@ -547,7 +547,9 @@
     st.paged = !!paged;
     const rows = rowsOf(table, count);
     const wide = cells.some((c) => c.colSpan > 1);
-    const canArrange = !wide && (paged ? !!st.draw : table.tBodies.length === 1);
+    // data-tt-arrange-off: the screen sorts and filters this table with its own, plainer controls (Competitors → Changes,
+    // whose rows sit in named groups a column sort would break up). Tick boxes and Add a note stay.
+    const canArrange = !wide && !table.hasAttribute("data-tt-arrange-off") && (paged ? !!st.draw : table.tBodies.length === 1);
     const ownTicks = !!head.querySelector("input[type=checkbox]:not([data-tt-all])");
 
     if (ownTicks) syncOwn(table, key, rows);

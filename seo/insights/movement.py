@@ -62,6 +62,11 @@ def breakdown(ctx: Ctx) -> Result:
     # The cause named first: the biggest part pulling the same way as the change.
     # "hidden" is only what's left after the named searches, so it can't be acted on and is never the cause named.
     main = max((n for n in parts if n != "hidden" and parts[n] * direction > 0), key=lambda n: abs(parts[n]), default=None)
+    # When the searches Google doesn't list carry more than half of the change, no listed part is "the cause": naming
+    # "lower click rate (−24)" for a −90 fall that is −80 hidden misleads (expert review 2026-11-17, 3.6). The screen
+    # then lists hidden first, and the pages that moved say where it happened.
+    if change and abs(parts["hidden"]) > abs(change) / 2:
+        main = None
     pages, explains = _page_moves(ctx, change)
     out.findings.append(Finding(
         "change", "changed", "site", at_stake=-change * rules.MONTH, severity="info" if steady else "big" if big else "normal",
@@ -69,7 +74,10 @@ def breakdown(ctx: Ctx) -> Result:
             "now": now, "before": before, "change": change, "percent": percent, "steady": steady, "main": main,
             "parts": {name: round(value) for name, value in parts.items()}, "movers": top, "pages": pages, "explains": explains,
             "from": ctx.start.isoformat(), "to": ctx.end.isoformat(), "before_from": ctx.before_start.isoformat(), "before_to": ctx.before_end.isoformat(),
-            "days": ctx.days_in(ctx.start, ctx.end), "curve": "own" if ctx.curve.own else "generic",
+            # Totals count every day (as Today and Overview); a day Google's row limit cut short is only left out of the
+            # per-search split, with its twin, and what that leaves lands in "hidden".
+            "days": (ctx.end - ctx.start).days + 1, "split_left_out": [d.isoformat() for d in ctx.skip if ctx.before_start <= d <= ctx.end],
+            "curve": "own" if ctx.curve.own else "generic",
         },
     ).settle())
     return out
@@ -245,8 +253,17 @@ def dropped_out(ctx: Ctx) -> Result:
     return out
 
 
+# URL Inspection says the page isn't on Google. "Excluded" (NEUTRAL) counts: crawled or discovered but not indexed, a
+# noindex, a 404. Two exclusions are on purpose and no problem: an alternate page with its canonical, and a redirect.
+NOT_ON_GOOGLE = (
+    "verdict IS NOT NULL AND verdict NOT IN ('PASS', 'PARTIAL') AND error IS NULL "
+    "AND COALESCE(coverage, '') NOT LIKE 'Alternate page with proper canonical%' AND COALESCE(coverage, '') NOT LIKE 'Page with redirect%'"
+)
+
+
 def _known_problems(ctx: Ctx) -> dict[str, list]:
-    """What the last health test and Links Checker said about each page, by path: noindex, an error, a redirect."""
+    """What the last health test, Links Checker and URL Inspection said about each page, by path: noindex, an error, a
+    redirect, not on Google."""
     found: dict[str, list] = {}
 
     def add(url, code):
@@ -269,6 +286,9 @@ def _known_problems(ctx: Ctx) -> dict[str, list]:
         "WHERE i.category IN ('broken', 'redirect')"
     ):
         add(row["target_url"], f"link_{row['category']}")
+    # URL Inspection: Google says the page isn't indexed (expert review 2026-11-17: a dropped page raised nothing here).
+    for row in ctx.fetch(f"SELECT url FROM gsc_inspections WHERE site_id = :s AND {NOT_ON_GOOGLE}"):
+        add(row["url"], "not_indexed")
     return found
 
 
@@ -332,8 +352,14 @@ def segments(ctx: Ctx) -> Result:
     if not ctx.has_before:
         out.needs["segment"] = "history"
         return out
-    out.ran.add("segment")
+    out.ran.add("segment")  # it ran, so a finding made before a table reached back goes away
     for dim, (table, column) in SEGMENTS.items():
+        # One "is there earlier data?" check per table: countries and devices can start long after pages and searches
+        # (their tables came on 2026-11-09). Before then, every country would be "+85 (0 before)".
+        starts = ctx.rows_from.get(dim)
+        if not starts or date.fromisoformat(starts) > ctx.before_start:
+            out.needs[f"segment_{dim}"] = starts or "history"
+            continue
         rows = ctx.fetch(
             f"SELECT {column} k, SUM(IF(day BETWEEN :a AND :b, clicks, 0)) c, SUM(IF(day BETWEEN :ca AND :cb, clicks, 0)) pc, "
             f"SUM(IF(day BETWEEN :a AND :b, impressions, 0)) i, SUM(IF(day BETWEEN :ca AND :cb, impressions, 0)) pi "

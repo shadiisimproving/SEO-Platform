@@ -68,22 +68,20 @@ def _gsc_answer(request):
     return httpx.Response(200, json={"rows": [{"keys": ["créer société", "https://mine.example/a/"], "clicks": 4, "impressions": 40, "position": 3.2}]})
 
 
-def _ga4_answer(request, thresholded=False):
-    import json
-    body = json.loads(request.content)
-    names = [d["name"] for d in body["dimensions"]]
-    rows = {
-        "sessionDefaultChannelGroup": [["Organic Search", "google", "organic", "50", "40", "2", "31"], ["Referral", "blog.example", "referral", "7", "6", "1", "5"]],
-        "landingPage": [["/a/", "30", "25", "2"]],
-        "sessionManualSource": [["blog", "backlink", "bl-1", "/a/", "3", "1"], ["(not set)", "(not set)", "(not set)", "/a/", "99", "9"]],
-        "sessionGoogleAdsCampaignName": [["Brand", "12", "34.5", "12", "1"]],
-    }
-    if names[0] == "sessionSource":
-        table = [["blog.example", "referral", "/a/", "(not set)", "4", "1"], ["blog.example", "referral", "/a/", "bl-1", "3", "1"], ["google", "organic", "/a/", "(not set)", "9", "0"]]
-    else:
-        table = rows[names[0]]
-    cut = len(names)
-    return httpx.Response(200, json={"rows": [{"dimensionValues": [{"value": v} for v in r[:cut]], "metricValues": [{"value": v} for v in r[cut:]]} for r in table], "rowCount": len(table), "metadata": {"currencyCode": "EUR", "subjectToThresholding": thresholded}})
+# One day of a GA4 property, as visit groups (tests/ga4_fake.py). Group 5 is another website the property also records.
+GA4_GROUPS = [
+    {"channel": "Organic Search", "source": "google", "medium": "organic", "manual_source": "google", "manual_medium": "organic", "campaign": "(organic)", "page": "/a/", "host": "mine.example", "sessions": 9, "users": 8, "engaged": 6, "events": {}},
+    {"channel": "Organic Search", "source": "google", "medium": "organic", "manual_source": "google", "manual_medium": "organic", "campaign": "(organic)", "page": "/b/", "host": "www.mine.example", "sessions": 41, "users": 32, "engaged": 25, "events": {"generate_lead": (2, 2)}},
+    # A plain referral: GA4 writes "(referral)" as its campaign (expert review 2026-11-17, W3).
+    {"channel": "Referral", "source": "blog.example", "medium": "referral", "manual_source": "blog.example", "manual_medium": "referral", "campaign": "(referral)", "page": "/a/", "host": "mine.example", "sessions": 4, "users": 4, "engaged": 3, "events": {"generate_lead": (1, 1)}},
+    {"channel": "Referral", "source": "blog.example", "medium": "referral", "manual_source": "blog", "manual_medium": "backlink", "campaign": "bl-1", "page": "/a/", "host": "mine.example", "sessions": 3, "users": 2, "engaged": 2, "events": {"page_view_booking": (5, 3)}},
+    {"channel": "Direct", "source": "(direct)", "medium": "(none)", "manual_source": "(direct)", "manual_medium": "(none)", "campaign": "(direct)", "page": "/other/", "host": "other-site.example", "sessions": 20, "users": 20, "engaged": 10, "events": {"generate_lead": (4, 4)}},
+]
+
+
+def _ga4_answer(request, thresholded=False, groups=None):
+    from tests import ga4_fake
+    return ga4_fake.answer(request, GA4_GROUPS if groups is None else groups, ads=[["Brand", "12", "34.5", "12", "1"]], thresholded=thresholded)
 
 
 def test_a_key_is_checked_whole_before_it_is_saved(world):
@@ -209,7 +207,7 @@ def test_ga4_never_counts_a_utm_session_by_domain_too(world):
     ga4._one_day(world.engine, world.site, "t", src["property"], day)
     with world.engine.connect() as conn:
         assert conn.execute(text("SELECT domain, path, sessions FROM ga4_referral_daily")).all() == [("blog.example", "/a/", 4)]
-        assert conn.execute(text("SELECT source, medium, campaign, sessions FROM ga4_campaign_daily")).all() == [("blog", "backlink", "bl-1", 3)]
+        assert conn.execute(text("SELECT source, medium, campaign, sessions FROM ga4_campaign_daily WHERE campaign = 'bl-1'")).all() == [("blog", "backlink", "bl-1", 3)]
         assert conn.execute(text("SELECT SUM(sessions) FROM ga4_source_daily")).scalar() == 57
         assert conn.execute(text("SELECT campaign, clicks, cost, currency FROM ga4_ads_daily")).one()[:2] == ("Brand", 12)
         assert conn.execute(text("SELECT currency FROM ga4_ads_daily")).scalar() == "EUR"
@@ -242,21 +240,17 @@ def test_ga4_keeps_engaged_sessions_per_source(world):
         assert conn.execute(text("SELECT source, engaged_sessions FROM ga4_source_daily ORDER BY source")).all() == [("blog.example", 5), ("google", 31)]
 
 
-def test_days_read_before_engaged_sessions_are_read_again_with_one_report_each(world):
+def test_days_read_before_engaged_sessions_get_them_when_read_again(world):
+    # Every day the old layout read is read again in the hosts layout (ga4.collect's backlog); that read fills them in.
     _google(world)
     world.answers["runReport"] = _ga4_answer
     old = common.today(world.engine) - timedelta(days=30)
     with world.engine.begin() as conn:  # a day read before the column existed: its engaged sessions are NULL
         conn.execute(text("INSERT INTO ga4_source_daily (site_id, day, row_hash, channel, source, medium, sessions, users, key_events) VALUES (:s, :d, 'h', 'Referral', 'blog.example', 'referral', 7, 6, 1)"), {"s": world.site, "d": old})
-        conn.execute(text("INSERT INTO ga4_page_daily (site_id, day, page_hash, path, sessions, users, key_events) VALUES (:s, :d, 'p', '/kept/', 3, 3, 0)"), {"s": world.site, "d": old})
-    assert ga4._engaged_missing(world.engine, world.site, old) == [old]
-    before = len(world.calls)
-    ga4._engaged_day(world.engine, world.site, "t", "123456", old)
-    assert len(world.calls) - before == 1  # the sources report only
+    ga4._one_day(world.engine, world.site, "t", "123456", old)
     with world.engine.connect() as conn:
         assert conn.execute(text("SELECT SUM(engaged_sessions) FROM ga4_source_daily WHERE day = :d"), {"d": old}).scalar() == 36
-        assert conn.execute(text("SELECT path FROM ga4_page_daily WHERE day = :d"), {"d": old}).scalar() == "/kept/"  # the other tables stay
-    assert ga4._engaged_missing(world.engine, world.site, old) == []
+        assert conn.execute(text("SELECT COUNT(*) FROM ga4_source_daily WHERE day = :d AND engaged_sessions IS NULL"), {"d": old}).scalar() == 0
 
 
 def test_a_property_with_no_ads_link_still_saves_its_day(world):
@@ -424,15 +418,11 @@ def test_real_token_exchange_success_gives_a_token_and_caches_it(world, monkeypa
 
 
 def test_ga4_keeps_utm_rows_that_have_no_campaign(world):
-    import json
-
-    def answer(request):
-        if json.loads(request.content)["dimensions"][0]["name"] != "sessionManualSource":
-            return _ga4_answer(request)
-        table = [["blog-expat", "backlink", "(not set)", "/a/", "12", "1"], ["(not set)", "(not set)", "(not set)", "/a/", "99", "9"]]
-        return httpx.Response(200, json={"rows": [{"dimensionValues": [{"value": v} for v in r[:4]], "metricValues": [{"value": v} for v in r[4:]]} for r in table], "rowCount": 2, "metadata": {}})
-
-    world.answers["runReport"] = answer
+    groups = [
+        {"channel": "Referral", "source": "blog-expat", "medium": "backlink", "manual_source": "blog-expat", "manual_medium": "backlink", "campaign": "(not set)", "page": "/a/", "host": "mine.example", "sessions": 12, "events": {"lead": (1, 1)}},
+        {"channel": "Direct", "source": "(direct)", "medium": "(none)", "manual_source": "(not set)", "manual_medium": "(not set)", "campaign": "(not set)", "page": "/a/", "host": "mine.example", "sessions": 99, "events": {}},
+    ]
+    world.answers["runReport"] = lambda request: _ga4_answer(request, groups=groups)
     ga4._one_day(world.engine, world.site, "t", "123456", common.today(world.engine) - timedelta(days=1))
     with world.engine.connect() as conn:
         assert conn.execute(text("SELECT source, medium, campaign, sessions FROM ga4_campaign_daily")).all() == [("blog-expat", "backlink", "(not set)", 12)]
@@ -592,3 +582,30 @@ def test_search_console_is_due_every_hourly_run(world):
     with world.engine.begin() as conn:
         conn.execute(text("UPDATE site_sources SET last_attempt_at = UTC_TIMESTAMP(3) - INTERVAL 55 MINUTE WHERE source = 'gsc'"))
     assert (world.site, "gsc") in jobs.enqueue_due(world.engine)
+
+
+def test_pagespeed_keeps_whole_site_data_apart_from_the_pages_own(world):
+    """When Google has too few visitors on the page, PageSpeed answers with the whole site's (origin_fallback). That is kept
+    as whole-site data, never passed off as the page's own. With no real-visitor data, the timings are the lab test's."""
+    with world.engine.begin() as conn:
+        conn.execute(text("INSERT INTO site_sources (site_id, source) VALUES (:s, 'pagespeed')"), {"s": world.site})
+    origin = {"LARGEST_CONTENTFUL_PAINT_MS": {"percentile": 2600}, "INTERACTION_TO_NEXT_PAINT": {"percentile": 150}, "CUMULATIVE_LAYOUT_SHIFT_SCORE": {"percentile": 5}}
+    answers = iter([
+        {"lighthouseResult": {"categories": {"performance": {"score": 0.82}}}, "loadingExperience": {"metrics": origin, "origin_fallback": True}, "originLoadingExperience": {"metrics": origin}},
+        {"lighthouseResult": {"categories": {"performance": {"score": 0.97}}, "audits": {"largest-contentful-paint": {"numericValue": 1234.4}, "cumulative-layout-shift": {"numericValue": 0.01}}}, "loadingExperience": {}},
+    ])
+    world.answers["pagespeedonline"] = lambda request: httpx.Response(200, json=next(answers))
+    others.collect_pagespeed(world.engine, world.site)
+    with world.engine.connect() as conn:
+        rows = conn.execute(text("SELECT strategy, performance, lcp_ms, inp_ms, cls, field_data, field_origin FROM cwv_runs ORDER BY strategy")).all()
+    assert rows[1] == ("mobile", 82, 2600, 150, 0.05, 1, 1)  # real visitors, but the whole site's
+    assert rows[0] == ("desktop", 97, 1234, None, 0.01, 0, 0)  # lab test only
+
+
+def test_core_web_vitals_verdict_reads_real_visitors_only():
+    from seo.metrics.service import cwv_verdict
+    assert cwv_verdict(2500, 200, 0.1, True) is True  # every limit is "good" up to and including it
+    assert cwv_verdict(2501, 120, 0.02, True) is False
+    assert cwv_verdict(1800, None, 0.02, True) is True  # INP missing: judged on what Google has
+    assert cwv_verdict(1800, 120, 0.02, False) is None  # a lab test never passes or fails Core Web Vitals
+    assert cwv_verdict(None, None, None, True) is None

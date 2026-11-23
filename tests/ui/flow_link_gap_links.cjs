@@ -87,16 +87,24 @@ fs.writeFileSync(FILE, "﻿" + [
   await row("local-news.example").locator("[data-cg-links]").click(); await page.waitForTimeout(300);
   check("the button folds it back", (await page.locator(".cg-links-row").count()) === 0);
 
-  // Sorting by Strength: by authority, biggest first, then smallest first.
+  // Sorting by Strength: one tool's scores against each other (SEO review 2026-11-17, #7). The leading tool's scores come
+  // first, biggest first, then smallest first; another tool's always come after, on their own scale.
   const order = async () => (await page.locator("#cg-table > tbody > tr").evaluateAll((rows) => rows.map((r) => r.dataset.cgRow)));
-  const auths = async () => (await page.locator("#cg-table > tbody > tr[data-cg-row] .cg-auth .tabular").allTextContents()).map((x) => parseInt(x.replace(/\D/g, ""), 10));
+  const auths = async () => page.locator("#cg-table > tbody > tr[data-cg-row] .cg-auth").evaluateAll((cells) => cells.map((c) => ({
+    n: parseInt(c.querySelector(".tabular").textContent.replace(/\D/g, ""), 10), tool: (c.querySelector("img")?.alt || c.querySelector(".tag")?.textContent || "").replace(/^.*\(([^)]+)\).*$/, "$1").toLowerCase(),
+  })));
+  const ordered = (list, dir) => {
+    const tools = list.map((x) => x.tool).filter((tool, i, all) => all.indexOf(tool) === i);
+    const grouped = tools.every((tool) => { const at = list.map((x, i) => (x.tool === tool ? i : -1)).filter((i) => i >= 0); return at[at.length - 1] - at[0] === at.length - 1; });
+    return grouped && tools.every((tool) => { const n = list.filter((x) => x.tool === tool).map((x) => x.n); return n.every((v, i) => !i || (dir === "down" ? v <= n[i - 1] : v >= n[i - 1])); });
+  };
   await page.click('[data-cg-sort="authority"]'); await page.waitForTimeout(400);
   const down = await auths();
-  check("sorting by Strength puts the highest authority first", down.length > 2 && down.every((n, i) => !i || n <= down[i - 1]), down.join());
+  check("sorting by Strength puts each tool's highest first, one tool after the other", down.length > 2 && ordered(down, "down"), JSON.stringify(down));
   check("the heading says it's sorted", (await page.locator('th:has([data-cg-sort="authority"])').getAttribute("aria-sort")) === "descending");
   await page.click('[data-cg-sort="authority"]'); await page.waitForTimeout(400);
   const up = await auths();
-  check("a second click sorts smallest first", up.every((n, i) => !i || n >= up[i - 1]), up.join());
+  check("a second click sorts smallest first, the leading tool still first", ordered(up, "up") && up[0].tool === down[0].tool, JSON.stringify(up));
   await page.click('[data-cg-sort="authority"]'); await page.waitForTimeout(300);
 
   // Filtering by Page Authority.

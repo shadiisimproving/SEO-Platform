@@ -11,16 +11,18 @@ from sqlalchemy import Engine, text
 
 from seo.core import budget
 from seo.core.errors import Refused
-from seo.crawl import store as crawl_store
+from seo.crawl import noise, store as crawl_store
 from seo.crawl.extract import extract
 from seo.crawl.fetch import FetchResult
 from seo.links import service as links_service
+from seo.links.urls import page_key
 from seo.serp.store import canonical_url, host_and_domain, on_host
 from seo.worker import queue
 from seo.worker.runner import handler
 
 LANE = "crawl"
 JOB_KIND = "pages.read"
+UNCONFIRMED = "unconfirmed"  # an edit was seen, but the second read failed: nothing saved, the next read looks again
 UNREADABLE = "parse_error"  # the page answered, but its text couldn't be read: tried again later, never ahead of the others
 # Letters and digits, plus the vowel signs of the Indian scripts, which regular expressions don't count as letters.
 _WORD = re.compile("(?:[^\\W_]|[\u0900-\u0963\u0966-\u0dff])+", re.UNICODE)
@@ -87,9 +89,27 @@ def read_page(engine: Engine, url: str, host: str, fetcher) -> str:
         # replace the real text with that shell and report a fake edit, so only another Firecrawl read updates it.
         return "firecrawl"
     etag, last_modified = crawl_store.validators(engine, url)
-    before = fetcher.requests
+    stay_on = lambda address: on_host(host_and_domain(address)[0], host)  # noqa: E731
     # A redirect to another site isn't followed: what's saved under this address must be this site's own page.
-    result = fetcher.get(url, etag=etag, last_modified=last_modified, stay_on=lambda address: on_host(host_and_domain(address)[0], host))
+    result, fields = _fetch_and_read(engine, fetcher, url, stay_on, etag, last_modified)
+    moved_to = _moved_to(url, result)
+    if moved_to:
+        return crawl_store.save_moved(engine, domain_id, url, moved_to, result)
+    if fields is None or not crawl_store.would_record(engine, domain_id, url, fields):
+        return crawl_store.save_fetch(engine, domain_id, url, result, fields)
+    # An edit is only believed when a second read a few seconds later agrees (SEO review 2026-11-17, W1): blocks that
+    # differ between the two are the site's per-request noise, learned so they're left out from now on.
+    second, again = _fetch_and_read(engine, fetcher, url, stay_on, None, None)
+    if again is None or _moved_to(url, second):
+        return crawl_store.save_fetch(engine, domain_id, url, FetchResult(url=url, status=UNCONFIRMED, http_status=result.http_status), None)
+    with engine.begin() as conn:
+        learned = noise.learn_unstable(conn, domain_id, fields.text, again.text)
+    return crawl_store.save_fetch(engine, domain_id, url, second, again, earlier=fields, unsettled=learned > 0)
+
+
+def _fetch_and_read(engine: Engine, fetcher, url: str, stay_on, etag, last_modified) -> tuple[FetchResult, object]:
+    before = fetcher.requests
+    result = fetcher.get(url, etag=etag, last_modified=last_modified, stay_on=stay_on)
     budget.charge(engine, fetcher.requests - before)
     fields = None
     if result.status == "ok" and result.body is not None:
@@ -97,7 +117,15 @@ def read_page(engine: Engine, url: str, host: str, fetcher) -> str:
             fields = extract(result.body, result.final_url or url, charset=result.charset)
         except Exception as exc:  # noqa: BLE001 - one page the reader chokes on is saved as unreadable, and the next page carries on (F97)
             result = FetchResult(url=url, status=UNREADABLE, http_status=result.http_status, error=f"{type(exc).__name__}: {exc}"[:300])
-    return crawl_store.save_fetch(engine, domain_id, url, result, fields)
+    return result, fields
+
+
+def _moved_to(url: str, result: FetchResult) -> str | None:
+    """Where the address redirected, when that's another page (not just https, www or a trailing slash)."""
+    if result.status != "ok" or not result.hops or not result.final_url:
+        return None
+    final = canonical_url(result.final_url) or result.final_url
+    return final if page_key(final) != page_key(url) else None
 
 
 @handler(JOB_KIND)

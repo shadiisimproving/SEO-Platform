@@ -11,23 +11,42 @@
   const nextSort = (sort, id, first) => (sort?.id !== id ? { id, dir: first } : sort.dir === first ? { id, dir: first === "asc" ? "desc" : "asc" } : null);
   function sortRows(list, sort, getters) {
     if (!sort || !getters[sort.id]) return list;
-    const get = getters[sort.id], dir = sort.dir === "asc" ? 1 : -1;
+    // A getter with prepare() first looks at the whole list (the authority sort learns which tool leads).
+    const get = getters[sort.id].prepare ? getters[sort.id].prepare(list) : getters[sort.id], dir = sort.dir === "asc" ? 1 : -1;
     return [...list].sort((a, b) => {
       const x = get(a), y = get(b);
       if (x === null || x === undefined) return 1; // unknown goes last either way
       if (y === null || y === undefined) return -1;
+      const scored = window.BacklinkCleaner.compareScored(x, y, dir);
+      if (scored !== null) return scored;
       return (typeof x === "number" ? x - y : String(x).localeCompare(String(y))) * dir;
     });
   }
+  /* Authority sorts one tool's scores against each other (SEO review 2026-11-17, #7): the tool most links are scored with
+     first, then each other tool's on its own scale, then Open PageRank (0–10), never an OPR 8 beside a DA 8. */
+  const OPR_GROUP = 1000;
+  const scaleKey = (label) => window.BacklinkCleaner.scaleOf(label || "DA");
+  function authoritySort(scoreOf) {
+    const get = (ranks) => (row) => { const v = scoreOf(row); return !v ? null : v.opr ? [OPR_GROUP, v.value] : [ranks.get(scaleKey(v.label)) ?? OPR_GROUP - 1, v.value]; };
+    const sorter = get(new Map());
+    sorter.prepare = (list) => get(window.BacklinkCleaner.scaleRanks(list.map(scoreOf).filter((v) => v && !v.opr).map((v) => v.label || "DA")));
+    return sorter;
+  }
+  /* A link's score and whose scale it's on: its file's DA with the tool, else Open PageRank. */
+  const linkScore = (b) => (b.auth ? { value: b.auth, label: b.authLabel } : b.opr !== null && b.opr !== undefined ? { value: b.opr, opr: true } : null);
+  const authorityOf = authoritySort(linkScore);
   function sortHead(attr, sort, id, label, cls = "", tip = "") {
     const on = sort?.id === id;
     return `<th scope="col" class="${cls}" aria-sort="${on ? (sort.dir === "asc" ? "ascending" : "descending") : "none"}" ${tip ? `data-tip="${esc(tip)}"` : ""}><button type="button" class="th-btn" ${attr}="${id}">${t(label)}${on ? UI.icon(sort.dir === "asc" ? "arrow-up" : "arrow-down") : ""}</button></th>`;
   }
-  const MANY_OUTBOUND = 100, SPAM_SCORE = 30, CURRENCIES = ["USD", "EUR", "AED", "GBP"];
+  const MANY_OUTBOUND = 100, CURRENCIES = ["USD", "EUR", "AED", "GBP"];
 
   /* The verdict in plain words (2026-11-12 critique: "Counts" and "Weak" read as jargon). The same three words name the Useful and
      Not useful filters, so a badge and the filter that finds it agree. */
   const VERDICT = { counts: ["vd-counts", "Useful"], weak: ["vd-weak", "Barely useful"], none: ["vd-none", "Not useful"] };
+  const APP_CHECK = "The app's own check of the linking page: is the link followed, and can the page be indexed? Not data from Google.";
+  const MOVED_WHY = "The last check found this link pointing at another page of your site, not the target page you logged.";
+  const COUNTS_WHY = "The app's check: the link is followed, on a page that can be indexed.";
   const REASONS = {
     noindex: "Page set to noindex.",
     robots_blocked: "Blocked by robots.txt.",
@@ -57,6 +76,8 @@
   const day = (v) => (/^\d{4}-\d{2}-\d{2}/.test(v || "") && UI.fmtDateOnly ? UI.fmtDateOnly(String(v).slice(0, 10)) : v);
   const ANCHORS = {
     brand: ["Brand", "Your brand or domain. The safest anchor."],
+    /* An exact-match domain (creer-societe-dubai.fr): its name is a tracked keyword, so the anchor is a money anchor too (links F8). */
+    brand_kw: ["Brand + keyword", "Your domain name holds a tracked keyword, so this anchor is also an exact-match keyword. Count it with Exact keyword."],
     url: ["Bare URL", "The address, like www.example.com. Safe and natural."],
     exact: ["Exact keyword", "Exactly one tracked keyword. Helps most; too many look bought."],
     partial: ["Partial keyword", "A tracked keyword among other words."],
@@ -78,9 +99,10 @@
     const c = b.check;
     if (c?.verdict && b.status === "live") {
       const [cls, word] = VERDICT[c.verdict];
-      const tip = c.verdict === "counts" ? t("Google sees the page; the link passes value.") : reasonsText(c.reasons);
+      const tip = c.verdict === "counts" ? t(COUNTS_WHY) : reasonsText(c.reasons);
       parts.push(`<span class="tag vd-tag ${cls}" data-tip="${esc(tip)}" tabindex="0">${t(word)}</span>`);
     }
+    if (movedTarget(b)) parts.push(`<span class="tag vd-tag vd-weak" data-tip="${esc(t(MOVED_WHY))}" tabindex="0">${t("Points elsewhere")}</span>`);
     if (b.status === "live" && b.sourceIndex?.state === "not_indexed") parts.push(`<span class="tag vd-tag vd-none" data-tip="${esc(t(REASON_TIPS.source_not_indexed))}" tabindex="0">${t("Linking page not indexed")}</span>`);
     const ix = b.status === "live" ? b.targetIndex : null;
     if (ix && (ix.state === "not_indexed" || ix.state === "unknown")) parts.push(`<span class="tag vd-tag vd-weak" data-tip="${esc(ix.state === "unknown" ? `${t(UNKNOWN_WHY)} ${indexWhy(ix)}` : indexWhy(ix))}" tabindex="0">${t("Your page isn't indexed")}</span>`);
@@ -99,17 +121,20 @@
     const read = links.filter((b) => b.status === "live" && b.check?.verdict);
     if (!read.length) return "";
     const counts = read.filter((b) => b.check.verdict === "counts").length;
-    return `<span class="ab" data-tip="${esc(t("Last check: followed, on a page Google can index."))}">${UI.num(counts)} ${t("useful")}</span>`;
+    return `<span class="ab" data-tip="${esc(t(COUNTS_WHY))}">${UI.num(counts)} ${t("useful")}</span>`;
   }
 
-  /* Authority: the file's DA, or else Open PageRank with its name, because two tools' scores don't compare. */
-  function authorityCell(b) {
-    if (b.auth) return UI.dec(b.auth);
-    if (b.opr !== null && b.opr !== undefined) return `<span data-tip="${esc(t("Open PageRank, 0–10, not the DA scale."))}" tabindex="0">${UI.dec(b.opr)} <span class="tag">OPR</span></span>`;
-    return "—";
+  /* Authority: the file's DA with its tool's name, or else Open PageRank with its name, because two tools' scores don't compare. */
+  function scoreCell(v) {
+    if (!v) return "—";
+    if (v.opr) return `<span data-tip="${esc(t("Open PageRank, 0–10, not the DA scale."))}" tabindex="0">${UI.dec(v.value)} <span class="tag">OPR</span></span>`;
+    const label = v.label || "", tool = label.match(/\(([^)]+)\)/)?.[1] || label || "DA";
+    const mark = window.BRANDS?.FILES?.[tool] && UI.logoOnly ? UI.logoOnly(tool, label) : `<span class="tag" data-tip="${esc(label || t("Domain authority from your file"))}" tabindex="0">${esc(tool)}</span>`;
+    return `<span class="nowrap">${UI.dec(v.value)} ${mark}</span>`;
   }
+  const authorityCell = (b) => scoreCell(linkScore(b));
 
-  const looksSpammy = (b) => (b.check?.outbound_links || 0) > MANY_OUTBOUND || (b.spam !== null && b.spam !== undefined && b.spam >= SPAM_SCORE);
+  const looksSpammy = (b) => (b.check?.outbound_links || 0) > MANY_OUTBOUND || window.BacklinkCleaner.isSpamScore(b.spam);
 
   // ---- on a link's panel -----------------------------------------------------------------------------
   /* The panel reads in seconds: one verdict on top, then one short question per row with its answer on the right.
@@ -126,11 +151,13 @@
     if (b.status === "lost") return ["bad", t("Link lost"), t(c.outcome === "page_gone" ? "Page gone." : "Link gone from the page.")];
     if (c.target_http === 404 || c.target_http === 410) return ["bad", t("Your page is gone"), t("Answers {n}: redirect it to a live page.").replace("{n}", c.target_http), UI.tip("Your target page answers {n}, so this link is wasted until the page redirects to a live one.", { n: c.target_http })];
     if (c.misses > 0) return ["warn", t("Missing on last check"), t("Rechecked tomorrow before it counts as lost.")];
-    if (c.verdict === "none") return ["bad", t("Google doesn't count it"), firstReason, firstTip];
+    if (movedTarget(b)) return ["warn", t("Points elsewhere"), t(MOVED_WHY)];
+    // The badge's own words, so one verdict has one name (SEO review 2026-11-17, #12). It's the app's check, never Google's word.
+    if (c.verdict === "none") return ["bad", t(VERDICT.none[1]), firstReason, firstTip];
     if (b.sourceIndex?.state === "not_indexed") return ["bad", t("Linking page not indexed"), t("Ask the site to get it indexed."), UI.tip("Ask the website to get it indexed, or the link passes nothing.")];
     if (indexBad(b.targetIndex)) return ["warn", t("Your page isn't indexed"), ""]; // its row opens below with the why and a task
-    if (c.verdict === "weak") return ["warn", t("Weak link"), firstReason, firstTip];
-    if (c.verdict === "counts") return ["good", t("Working"), t("Live, and Google counts it.")];
+    if (c.verdict === "weak") return ["warn", t(VERDICT.weak[1]), firstReason, firstTip];
+    if (c.verdict === "counts") return ["good", t(VERDICT.counts[1]), t("Live, and it passes value."), UI.tip(APP_CHECK)];
     if (c.outcome === "unknown" && c.reason === "home_page") return ["warn", t("Article address needed"), t("Only the website's address is saved. Paste the article's address.")];
     if (c.outcome === "unknown") return ["idle", t("Couldn't check it"), t("An unreadable page never counts as a lost link.")];
     return ["idle", t("Not checked"), ""];
@@ -158,7 +185,8 @@
     const id = b.serverId, google = googleBody(b, server), index = indexBody(b, server), spammy = looksSpammy(b) || b.disavow, spam = spamBody(b, server);
     let html = `<div id="vd-answer" data-id="${id ?? ""}">${answerInner(b)}</div>`;
     html += qRow("link", t("Link on the page?"), linkStatus(b.status), check, b.status === "live" && !b.check?.checked_at);
-    if (google) html += qRow("google", t("Counted by Google?"), googleValue(b), google);
+    // The app's own reading of the page, so no Google logo and no Google name on it (#12). URL Inspection below is Google's.
+    if (google) html += qRow("google", `${t("Does it pass value?")}${UI.tip(APP_CHECK)}`, googleValue(b), google);
     if (index) html += qRow("index", t("Your page in Google?"), indexValue(b), index, indexBad(b.targetIndex));
     if (server && id) {
       html += `<div id="vd-effect" data-id="${id}">${effectInner(id)}</div>`;
@@ -191,7 +219,7 @@
     let html = "";
     if (c.verdict) {
       const reasons = (c.reasons || []).map((r) => `<li>${esc(t(REASONS[r] || r))}${reasonTip(r)}</li>`).join("");
-      html += c.verdict === "counts" ? `<p class="lk-result">${t("Google sees the page; the link passes value.")}</p>` : reasons ? `<ul class="vd-reasons">${reasons}</ul>` : "";
+      html += c.verdict === "counts" ? `<p class="lk-result">${t(COUNTS_WHY)}</p>` : reasons ? `<ul class="vd-reasons">${reasons}</ul>` : "";
       const lang = (v) => (v || "").slice(0, 2);
       if (lang(c.page_lang) && lang(c.target_lang) && lang(c.page_lang) !== lang(c.target_lang)) {
         html += `<p class="note">${UI.icon("info")}<span>${t("Linking page in {a}, yours in {b}.").replace("{a}", esc(lang(c.page_lang).toUpperCase())).replace("{b}", esc(lang(c.target_lang).toUpperCase()))}${UI.tip("Links from pages in the same language and on the same topic usually help more.")}</span></p>`;
@@ -229,7 +257,9 @@
   const isUseless = (b) => b.status === "live" && (b.check?.verdict === "weak" || b.check?.verdict === "none");
   const notIndexed = (b) => b.status === "live" && ["not_indexed", "not_indexable"].includes(b.sourceIndex?.state);
   const sendsVisits = (b) => (b.visits || 0) > 0;
-  const FILTERS = { useful: isUseful, visits: sendsVisits, noindex: notIndexed, useless: isUseless, lost: (b) => b.status === "lost" };
+  /* A link the last check found pointing at another page of my site than the one logged (links F3): agencies move paid links. */
+  const movedTarget = (b) => b.status === "live" && b.check?.to_target === false && Boolean(b.target);
+  const FILTERS = { useful: isUseful, visits: sendsVisits, noindex: notIndexed, useless: isUseless, lost: (b) => b.status === "lost", moved: movedTarget };
 
   function filterRows(list, filter) {
     const mine = S.domain ? list.filter((b) => domainOf(b) === S.domain) : list;
@@ -245,7 +275,7 @@
       return n || picked === key ? `<button class="chip vd-chip" data-bl-filter="${key}" aria-pressed="${picked === key}" data-tip="${esc(t(tip))}">${t(word)}<b>${UI.num(n)}</b></button>` : "";
     };
     const site = S.domain ? `<button class="chip" data-vd-domain="" aria-pressed="true">${t("Site")}: <span class="mono" dir="auto">${esc(S.domain)}</span> ${UI.icon("x")}</button>` : "";
-    return site + chip("lost", "Lost", "Gone from the page, or the page is gone") + chip("useful", "Useful", "Live, followed, on a page Google can index") + chip("visits", "Sends visits", "At least one visit")
+    return site + chip("lost", "Lost", "Gone from the page, or the page is gone") + chip("moved", "Points elsewhere", MOVED_WHY) + chip("useful", "Useful", COUNTS_WHY) + chip("visits", "Sends visits", "At least one visit")
       + chip("noindex", "Linking page not indexed", "Linking page not in Google, or not indexable") + chip("useless", "Not useful", "Barely or not useful: nofollow, sponsored, or on a page that passes nothing");
   }
 
@@ -260,14 +290,17 @@
   const trafficValue = (v) => (v === null || v === undefined ? '<span class="muted">—</span>' : UI.num(v));
   const trafficCell = (b) => (ahrefsOn() ? `<td class="r tabular" data-label="${t("Site traffic")}">${trafficValue(b.siteTraffic)}</td>` : "");
 
-  /* A type set by hand says so in its tip. One worked out from the anchor text doesn't. */
+  /* A type set by hand says so in its tip. One worked out from the anchor read on the page names those words, and a
+     hand-set type it replaced (SEO review 2026-11-17, B3). */
+  const onPage = (b) => (b.anchorRead ? ` ${t("On the page:")} “${b.anchorRead}”.` : "");
   function anchorTag(b) {
     const a = ANCHORS[b.anchorType];
     if (!a) return "";
-    const tip = b.anchorKind ? `${t(a[1])} ${t("Set by hand.")}` : t(a[1]);
+    const replaced = b.anchorKind && !b.anchorByHand && b.anchorKind !== b.anchorType && ANCHORS[b.anchorKind] ? ` ${t("Your type ({type}) is used only when the page can't be read.").replace("{type}", t(ANCHORS[b.anchorKind][0]))}` : "";
+    const tip = b.anchorByHand ? `${t(a[1])} ${t("Set by hand.")}` : `${t(a[1])}${onPage(b)}${replaced}`;
     return `<span class="tag vd-anchor" data-tip="${esc(tip)}" tabindex="0">${t(a[0])}</span>`;
   }
-  const anchorWord = (b) => (ANCHORS[b.anchorType] ? `${t(ANCHORS[b.anchorType][0])}${b.anchorKind ? ` · ${t("set by hand")}` : ""}` : "");
+  const anchorWord = (b) => (ANCHORS[b.anchorType] ? `${t(ANCHORS[b.anchorType][0])}${b.anchorByHand ? ` · ${t("set by hand")}` : b.anchorRead ? ` · ${t("from the page")}` : ""}` : "");
   /* The form's choices. Automatic means the app works it out from the anchor text and your keywords. */
   const anchorOptions = (picked) => [["", "Automatic"], ...Object.entries(ANCHORS).map(([key, [word]]) => [key, word])]
     .map(([key, word]) => `<option value="${key}" ${(picked || "") === key ? "selected" : ""}>${esc(t(word))}</option>`).join("");
@@ -294,25 +327,29 @@
   function websiteTable(rows) {
     const groups = new Map();
     rows.forEach((b) => { const d = domainOf(b); if (!groups.has(d)) groups.set(d, []); groups.get(d).push(b); });
+    const ranks = window.BacklinkCleaner.scaleRanks(rows.map(linkScore).filter((v) => v && !v.opr).map((v) => v.label || "DA"));
+    const groupOfScore = (v) => (v.opr ? OPR_GROUP : ranks.get(scaleKey(v.label)) ?? OPR_GROUP - 1);
+    const compareScore = (x, y) => groupOfScore(x) - groupOfScore(y) || y.value - x.value;
     const rank = { counts: 3, weak: 2, none: 1 };
     const list = [...groups].map(([domain, links]) => {
       const best = links.filter((b) => b.status === "live" && b.check?.verdict).sort((x, y) => rank[y.check.verdict] - rank[x.check.verdict])[0];
-      const auth = Math.max(...links.map((b) => b.auth || 0)), opr = Math.max(...links.map((b) => b.opr ?? -1));
+      // The site's best score on the leading tool's scale, never the biggest number of any tool (#7).
+      const score = links.map(linkScore).filter(Boolean).sort((x, y) => compareScore(x, y))[0] || null;
       const sum = trafficTotals(links), visits = sum.known ? sum.visits : null;
-      return { domain, links, best, auth, opr, visits, traffic: links.find((b) => b.siteTraffic !== null && b.siteTraffic !== undefined)?.siteTraffic ?? null, live: links.filter((b) => b.status === "live").length };
-    }).sort((x, y) => (y.auth - x.auth) || (y.opr - x.opr) || (y.links.length - x.links.length) || x.domain.localeCompare(y.domain));
+      return { domain, links, best, score, visits, traffic: links.find((b) => b.siteTraffic !== null && b.siteTraffic !== undefined)?.siteTraffic ?? null, live: links.filter((b) => b.status === "live").length };
+    }).sort((x, y) => (x.score && y.score ? compareScore(x.score, y.score) : (y.score ? 1 : 0) - (x.score ? 1 : 0)) || (y.links.length - x.links.length) || x.domain.localeCompare(y.domain));
     // Each empty state says what to do, with one button that does it (critique 2026-11-12).
     const clearSearch = (key) => `<button type="button" class="btn btn-small" data-tp-key="${esc(key)}" data-tp-clear>${UI.icon("x")}${t("Clear search")}</button>`;
     if (!list.length) return COMP.empty(t("No links match"), t("Pick another filter."), `<button type="button" class="btn btn-small" data-bl-filter="all">${t("Show all links")}</button>`);
     const found = list.filter((g) => TP.matches(PAGES.sites, g.domain));
     if (!found.length) return COMP.empty(t("No site matches"), t("Change the search."), clearSearch(PAGES.sites));
-    const shown = sortRows(found, S.siteSort, { domain: (g) => g.domain, links: (g) => g.links.length, authority: (g) => g.auth || (g.opr >= 0 ? g.opr : null), traffic: (g) => g.traffic, visits: (g) => g.visits });
+    const shown = sortRows(found, S.siteSort, { domain: (g) => g.domain, links: (g) => g.links.length, authority: authoritySort((g) => g.score), traffic: (g) => g.traffic, visits: (g) => g.visits });
     const page = TP.view(PAGES.sites, shown);
     const head = (id, label, cls, tip) => sortHead("data-bls-sort", S.siteSort, id, label, cls, tip);
     return `<div class="bl-list"><div class="table-wrap"><table class="data" id="bl-sites"><thead><tr>${head("domain", "Site")}${head("links", "Links", "r")}<th scope="col" data-tip="${esc(t("Its best link, per the last check"))}">${t("Best link")}</th>${head("authority", "Authority", "r")}${ahrefsOn() ? head("traffic", "Site traffic", "r", t("Ahrefs estimate: the linking site's monthly Google visits")) : ""}${head("visits", "Visits", "r")}</tr></thead><tbody>
       ${page.rows.map((g) => {
         const tag = g.best ? `<span class="tag vd-tag ${VERDICT[g.best.check.verdict][0]}">${t(VERDICT[g.best.check.verdict][1])}</span>` : '<span class="muted">—</span>';
-        const authority = g.auth ? UI.dec(g.auth) : g.opr >= 0 ? `${UI.dec(g.opr)} <span class="tag">OPR</span>` : '<span class="muted">—</span>';
+        const authority = g.score ? scoreCell(g.score) : '<span class="muted">—</span>';
         return `<tr><td class="head-cell"><span class="with-logo">${UI.siteLogo ? UI.siteLogo(g.domain) : ""}<span class="logo-text"><button class="kw mono small" data-vd-domain="${esc(g.domain)}" style="text-align:start" data-tip="${esc(t("Show its links"))}"><span dir="auto">${esc(g.domain)}</span></button><span class="second">${g.live} ${t("live")}</span></span></span></td>
           <td class="r tabular" data-label="${t("Links")}">${UI.num(g.links.length)}</td><td data-label="${t("Best link")}">${tag}</td><td class="r" data-label="${t("Authority")}">${authority}</td>
           ${ahrefsOn() ? `<td class="r tabular" data-label="${t("Site traffic")}">${trafficValue(g.traffic)}</td>` : ""}<td class="r tabular" data-label="${t("Visits")}">${g.visits === null ? '<span class="muted">—</span>' : UI.num(g.visits)}</td></tr>`;
@@ -359,7 +396,7 @@
   /* Below the link check: the one thing a person decides about a bad link. */
   function spamBody(b, server) {
     if (!server || !b.serverId) return "";
-    return `<p class="small sec vd-spam">${looksSpammy(b) ? `${t("Many outbound links or a high spam score.")} ` : ""}${t("It goes in the disavow file.")}${UI.tip("Mark a link you can't get removed and that could look paid or spammy.")}</p>
+    return `<p class="small sec vd-spam">${looksSpammy(b) ? `${t("Many outbound links or a spam score above 30.")} ` : ""}${t("It goes in the disavow file.")}${UI.tip("Mark a link you can't get removed and that could look paid or spammy.")}</p>
       <button class="btn btn-small" data-vd-disavow="${b.serverId}" data-on="${b.disavow ? "1" : ""}">${UI.icon(b.disavow ? "check" : "ban")}${t(b.disavow ? "Not spam" : "Mark as spam")}</button>`;
   }
 
@@ -881,7 +918,7 @@
     init(ui, helpers) { UI = ui; H = helpers; bind(); sample(); watchPage(); TP.on(PAGES.sites, () => UI.render()); TP.on(PAGES.reclaim, () => UI.render()); },
     noteSite: (host, facts) => { if (host && facts) S.sites.set(host, facts); },
     filterRows, filterChips, viewSwitch, trafficTotals, byWebsite, websiteTable, searchBox, resetPages, sortRows, sortHead, nextSort, PAGES, trafficHead, trafficCell, anchorTag, anchorWord, anchorOptions,
-    badge, liveNote, authorityCell, panelBlocks, repaint, foundTools, foundButton, foundSeen, reclaimBody, reclaimCount, budgetBar, duplicateNote,
+    badge, liveNote, authorityCell, authorityOf, authoritySort, scoreCell, panelBlocks, repaint, foundTools, foundButton, foundSeen, reclaimBody, reclaimCount, budgetBar, duplicateNote,
     forget: () => { S.reclaim.clear(); S.budgets.clear(); S.effects.clear(); },
   };
 
@@ -918,7 +955,7 @@
     "Linking page in {a}, yours in {b}.": "Page source en {a}, la vôtre en {b}.",
     "Answers {n}: redirect it to a live page.": "Répond {n} : redirigez-la vers une page en ligne.",
     "Not in your last Search Console upload.": "Absent de votre dernier import Search Console.",
-    "Many outbound links or a high spam score.": "Beaucoup de liens sortants ou un score de spam élevé.",
+    "Many outbound links or a spam score above 30.": "Beaucoup de liens sortants ou un score de spam supérieur à 30.",
     "It goes in the disavow file.": "Il ira dans le fichier de désaveu.",
     "Mark as spam": "Marquer comme spam", "Not spam": "Pas du spam", "Marked as spam": "Marqué comme spam", "Spam mark removed": "Marquage spam retiré",
     "Waiting for Search Console data.": "En attente des données Search Console.", "Ready on": "Prêt le",
@@ -968,8 +1005,16 @@
     "Linking page not in Google, or not indexable": "Page source absente de Google ou non indexable", "Barely or not useful: nofollow, sponsored, or on a page that passes nothing": "Peu ou pas utile : nofollow, sponsored, ou sur une page qui ne transmet rien",
     "Site traffic": "Trafic du site", "Ahrefs estimate: the linking site's monthly Google visits": "Estimation Ahrefs : visites Google mensuelles du site source",
     "Brand": "Marque", "Bare URL": "URL nue", "Exact keyword": "Mot-clé exact", "Partial keyword": "Mot-clé partiel", "Generic": "Générique",
-    "Automatic": "Automatique", "Set by hand.": "Choisi à la main.", "set by hand": "choisi à la main", "None of the above.": "Aucun des types précédents.",
+    "Automatic": "Automatique", "Set by hand.": "Choisi à la main.", "set by hand": "choisi à la main", "On the page:": "Sur la page :", "from the page": "lu sur la page",
+    "Your type ({type}) is used only when the page can't be read.": "Votre type ({type}) ne sert que si la page ne peut pas être lue.", "None of the above.": "Aucun des types précédents.",
     "Your brand or domain. The safest anchor.": "Votre marque ou domaine. L'ancre la plus sûre.",
+    "Brand + keyword": "Marque + mot-clé",
+    "Points elsewhere": "Pointe ailleurs", "The last check found this link pointing at another page of your site, not the target page you logged.": "Le dernier contrôle a trouvé ce lien vers une autre page de votre site, pas la page cible enregistrée.",
+    "The app's own check of the linking page: is the link followed, and can the page be indexed? Not data from Google.": "Le contrôle de l'app sur la page source : le lien est-il suivi, et la page peut-elle être indexée ? Ce ne sont pas des données de Google.",
+    "The app's check: the link is followed, on a page that can be indexed.": "Contrôle de l'app : le lien est suivi, sur une page indexable.",
+    "Does it pass value?": "Transmet-il de la valeur ?", "Live, and it passes value.": "En ligne, et il transmet de la valeur.",
+    "Domain authority from your file": "Autorité de domaine d'après votre fichier",
+    "Your domain name holds a tracked keyword, so this anchor is also an exact-match keyword. Count it with Exact keyword.": "Votre nom de domaine contient un mot-clé suivi : cette ancre est donc aussi un mot-clé exact. Comptez-la avec Mot-clé exact.",
     "The address, like www.example.com. Safe and natural.": "L'adresse, comme www.example.com. Sûr et naturel.",
     "Exactly one tracked keyword. Helps most; too many look bought.": "Exactement un mot-clé suivi. Aide le plus ; trop nombreux, cela paraît acheté.",
     "A tracked keyword among other words.": "Un mot-clé suivi parmi d'autres mots.",

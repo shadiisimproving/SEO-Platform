@@ -66,8 +66,12 @@ class Tile:
     label: str
     value: Any
     kind: str = "int"
-    change: float | None = None  # signed percentage against the comparison
+    change: float | None = None  # against the comparison, in change_kind's unit
     lower_is_better: bool = False
+    # The unit of `change`, carried with it so a file never prints a count as a percentage:
+    # "change" a signed percentage, "delta" a signed count (+2 leads), "points" percentage points (a click rate),
+    # "places" places in the results (a position: lower is better).
+    change_kind: str = "change"
     hint: str | None = None
 
 

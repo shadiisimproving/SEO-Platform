@@ -69,6 +69,7 @@
 .cs-head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px 14px; flex-wrap: wrap; }
 .cs-head-row .cs-head { flex: 1 1 280px; min-width: 0; }
 .cs-head-row > .btn { flex: none; }
+.cs-head-row > .cs-head-acts { display: flex; flex: none; flex-wrap: wrap; gap: 8px; align-self: flex-start; }
 
 /* The competitor's name opens its profile: it looks like the name, and says it's a link on hover. */
 .cs-rival-open { display: inline-flex; align-items: center; gap: 8px; color: var(--text); text-align: start; border-radius: var(--r-s); }
@@ -365,9 +366,317 @@ html[data-simple="1"] #cs-moves .cs-bench-table :is(th, td):last-child { padding
   html[data-simple="1"] #cs-moves .cs-bench-table td:last-child { grid-area: 1 / 3; }
   .cs-bench-table .cl-tl-owner { white-space: nowrap; }
 }
-/* A 1280–1440 window with the sidebar open (owner's check, 2026-11-16): the table must fit without sideways scroll. */
-@media (max-width: 1440px) {
+/* A 1280–1440 window with the sidebar open (owner's check, 2026-11-16): the table must fit without sideways scroll.
+   Only above 900 px: below it the cards stack over the changes (the rule above). Without the floor this rule, coming later and
+   more specific, kept two columns on a phone and gave Changes about 60 px (SEO review 2026-11-17, competitors 3). */
+@media (min-width: 901px) and (max-width: 1440px) {
   html[data-simple="1"] .cs-bench { grid-template-columns: minmax(250px, 290px) minmax(0, 1fr); gap: 16px; }
   html[data-simple="1"] .cs-bench-table .cl-tl-what { min-width: 140px; }
   html[data-simple="1"] .cs-bench-table .cl-tl-owner { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+}
+
+/* Changes, one row per competitor page (2026-11-20): what they did is a short stack of lines, the heaviest first. */
+.cs-bench-table .cl-tl-what .cl-tl-short { display: block; }
+.cs-bench-table .cl-tl-what .cl-tl-short + .cl-tl-short { margin-top: 2px; }
+.cs-story-more { color: var(--muted); font-size: 12px; }
+.cl-tl-part + .cl-tl-part { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.cl-tl-part-date { margin-inline-start: 8px; font-weight: 400; font-size: 12px; color: var(--muted); }
+.cs-story-kw { font-weight: 500; }
+.cs-mine { min-width: 150px; max-width: 220px; font-size: 13px; }
+.cs-mine .rd-page { display: block; max-width: 100%; font-weight: 500; }
+.cs-mine-clicks { display: flex; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.cs-bench-table td.cs-mine { width: 150px; }
+/* Details open under both "Your page" and "What changed": before and after need the room, and nothing else is below "Your page". */
+@media (min-width: 641px) { .cs-bench-table .cl-tl-more[open] > .cl-tl-detail { margin-inline-start: -174px; } }
+.cs-mine-who { display: none; }
+@media (max-width: 640px) {
+  html[data-simple="1"] #cs-moves .cs-bench-table tr.rd-group, html[data-simple="1"] #cs-moves .cs-bench-table tr.rd-group > th { display: block; width: 100%; padding-inline: 4px; }
+  .cs-bench-table td.cs-mine { width: auto; max-width: none; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+  .cs-mine-who { display: inline-flex; }
+  .cs-mine .rd-page { display: inline; }
+  .cs-mine-clicks { margin-top: 0; }
+}
+/* Real sites have long titles and addresses: fixed columns, their page takes what is left and cuts with …. */
+@media (min-width: 641px) {
+  .cs-bench-table { table-layout: fixed; width: 100%; }
+  .cs-bench-table th.tt-pick { width: 40px; }
+  .cs-bench-table th.cs-th-seen { width: 66px; }
+  .cs-bench-table th.cs-th-kind { width: 124px; }
+  .cs-bench-table th.cs-th-mine { width: 150px; }
+  .cs-bench-table th.cs-th-what { width: 25%; }
+  .cs-bench-table th.cs-th-act { width: 60px; }
+  .cs-bench-table td.cl-tl-where .cl-tl-title { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; white-space: normal; }
+  .cs-bench-table td.cl-tl-what { width: auto; min-width: 0; overflow-wrap: anywhere; }
+  .cs-bench-table td.cs-mine { width: auto; max-width: none; }
+}
+/* What changed on a page with ranking moves: two marks, then one line per keyword (keyword cut to fit | move). */
+.cs-story-tally { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.cs-tally { display: inline-flex; align-items: center; gap: 3px; padding: 1px 8px 1px 6px; border-radius: 999px; font-size: 12px; font-weight: 600; line-height: 18px; font-variant-numeric: tabular-nums; }
+.cs-tally svg { width: 12px; height: 12px; }
+.cs-tally-up { color: var(--good-t); background: color-mix(in srgb, var(--good-t) 11%, transparent); }
+.cs-tally-down { color: var(--crit-t); background: color-mix(in srgb, var(--crit-t) 10%, transparent); }
+.cs-story-lines { display: grid; gap: 4px; }
+.cs-story-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 10px; font-size: 13px; line-height: 18px; }
+.cs-story-line .cs-story-kw { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 400; color: var(--text); }
+.cs-net-move { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; font-size: 12px; }
+.cs-net-move svg { width: 11px; height: 11px; opacity: .7; }
+.cs-net-move b { font-weight: 700; }
+.cs-net-from { opacity: .75; }
+.cs-net-same { color: var(--muted); }
+.cs-story-more { display: block; margin-top: 6px; }
+.cs-bench-table .cl-tl-what .cl-tl-more { margin-top: 6px; }
+/* Details: every keyword of the page on one line each. */
+.cs-net { width: 100%; border-collapse: collapse; font-size: 13px; }
+.cs-net th { padding: 4px 8px 6px 0; text-align: start; font-size: 11px; font-weight: 600; color: var(--muted); border-bottom: 1px solid var(--line); white-space: nowrap; }
+.cs-net td { padding: 6px 8px 6px 0; border-bottom: 1px solid var(--line); vertical-align: baseline; }
+.cs-net tr:last-child td { border-bottom: 0; }
+.cs-net-kw { width: 100%; overflow-wrap: anywhere; }
+.cs-net-quiet td, .cs-net-quiet a { color: var(--muted); }
+.cs-net-mine { white-space: nowrap; font-size: 12px; }
+.cs-net-side { font-size: 12px; font-weight: 600; white-space: nowrap; }
+.cs-net-you { color: var(--c-blue); }
+.cs-net-them { color: var(--c-purple); }
+.cs-net-note { margin: 8px 0 0; font-size: 12px; color: var(--muted); }
+.cs-bench-table .cl-tl-more[open] > .cl-tl-detail:has(.cs-net) { padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--glass, #fff); margin-top: 8px; }
+.cs-mine-sides { display: flex; flex-wrap: wrap; gap: 2px 10px; margin-top: 3px; font-size: 12px; font-weight: 600; }
+.cs-you-at { margin-inline-start: 6px; padding: 0 5px; border-radius: 4px; font-size: 12px; color: var(--c-blue); background: var(--c-blue-pale); white-space: nowrap; }
+.cs-net th, .cs-net td:not(.cs-net-kw) { overflow-wrap: normal; white-space: nowrap; width: 1%; }
+.cs-net-kw { width: auto; }
+.cs-bench-table .cs-net :is(td, th) { box-shadow: none !important; border-inline-start: 0 !important; background: none !important; }
+.cs-net :is(td, th):last-child { padding-inline-end: 0; }
+.cs-net th:first-child { width: auto; }
+.cs-net :is(td, th):not(:first-child) { padding-inline-start: 10px; }
+
+/* Changes read by my pages (2026-11-20): "You vs them" is a narrow column, and Details opens as its own row, full width. */
+@media (min-width: 641px) {
+  .cs-bench-table th.cs-th-mine { width: 112px; }
+  .cs-bench-table th.cs-th-what { width: 31%; }
+}
+.cs-bench-table td.cs-mine .cs-mine-sides { margin-top: 0; flex-direction: column; gap: 2px; }
+.cs-open-btn { display: inline-flex; align-items: center; gap: 4px; margin-top: 8px; font-size: 13px; }
+.cs-open-btn svg { width: 14px; height: 14px; }
+.cs-bench-table tr.cs-detail-row > td { padding: 0 16px 16px; border-top: 0; }
+.cs-bench-table tr.open > td { border-bottom-color: transparent; }
+.cs-detail-box { margin-inline-start: 24px; padding: 14px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--glass, #fff); max-width: 760px; }
+.cs-detail-box .cs-net th:first-child, .cs-detail-box .cs-net-kw { width: auto; }
+.cs-detail-box .cl-dl { margin-top: 10px; }
+.cs-net-won { color: var(--good-t); font-weight: 600; }
+@media (max-width: 640px) {
+  html[data-simple="1"] #cs-moves .cs-bench-table tr.cs-detail-row, html[data-simple="1"] #cs-moves .cs-bench-table tr.cs-detail-row > td { display: block; width: 100%; }
+  .cs-detail-box { margin-inline-start: 0; padding: 12px; }
+  .rd-group-line { flex-wrap: wrap; gap: 2px 12px; }
+  .rd-group-extra { margin-inline-start: 34px; padding-bottom: 6px; }
+}
+@media (min-width: 641px) { .cs-bench-table th.cs-th-mine { width: 128px; } }
+.cs-detail-box { max-width: 660px; }
+/* On a phone the big table's rows become cards; the small keyword table inside Details stays a table. */
+@media (max-width: 640px) {
+  html[data-simple="1"] #cs-moves .cs-bench-table .cs-net { display: table !important; width: 100%; }
+  html[data-simple="1"] #cs-moves .cs-bench-table .cs-net thead { display: table-header-group !important; position: static; }
+  html[data-simple="1"] #cs-moves .cs-bench-table .cs-net tbody { display: table-row-group !important; }
+  html[data-simple="1"] #cs-moves .cs-bench-table .cs-net tr { display: table-row !important; padding: 0; margin: 0; border: 0; }
+  html[data-simple="1"] #cs-moves .cs-bench-table .cs-net :is(td, th) { display: table-cell !important; position: static; padding: 6px 8px 6px 0; grid-area: auto; width: auto; }
+  html[data-simple="1"] #cs-moves .cs-bench-table .cs-net :is(td, th)::before { content: none !important; }
+  html[data-simple="1"] #cs-moves .cs-bench-table .cs-net :is(td, th):not(:first-child) { width: 1%; padding-inline-start: 8px; }
+}
+
+/* The cards side folded to a rail of logos (2026-11-20): the changes take the width. Above 900 px only; below it the
+   cards already sit in one row over the changes. */
+.cs-side-top { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.cs-side-top .cs-find { flex: 1; min-width: 0; margin-bottom: 0; }
+.cs-slim-toggle { flex: none; margin-inline-start: auto; }
+@media (max-width: 900px) { .cs-slim-toggle { display: none; } .cs-side-top:not(:has(.cs-find)) { display: none; } }
+@media (min-width: 901px) {
+  html[data-simple="1"] .cs-bench.cs-bench-slim { grid-template-columns: 56px minmax(0, 1fr); gap: 16px; }
+  .cs-bench-slim .cs-side-top { justify-content: center; }
+  .cs-bench-slim .cs-find { display: none; }
+  .cs-bench-slim .cs-slim-toggle { margin-inline: auto; }
+  .cs-bench-slim .cs-cards { gap: 8px; justify-items: center; }
+  .cs-bench-slim .cs-card { width: 48px; height: 48px; padding: 0; align-items: center; justify-content: center; border-radius: 12px; }
+  .cs-bench-slim .cs-card > :not(.cs-card-pick):not(.cs-card-top) { display: none; }
+  .cs-bench-slim .cs-card-top { display: flex; }
+  .cs-bench-slim .cs-card-top > :not(.cs-card-logo) { display: none; }
+  .cs-bench-slim .cs-card-you { box-shadow: inset 0 0 0 2px var(--c-blue-pale), var(--shadow); }
+}
+
+/* Changes: one Sort list and one switch over the table instead of column arrows and a Filter box (2026-11-20). */
+.cs-mv-end { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; }
+.cs-mv-sort { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+.cs-mv-sort .select { min-height: 30px; padding-block: 2px; font-size: 12.5px; }
+html #cs-lower .cs-mv-behind { min-height: 28px; padding: 4px 11px; border-radius: 999px; font-size: 12.5px; font-weight: 500; }
+html #cs-lower .cs-mv-behind[aria-pressed="true"] { background: var(--c-blue-pale); color: var(--accent-text); font-weight: 600; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-text) 35%, transparent); }
+/* Headings sit over their columns: wide enough for their words, the (i) on the same line. */
+@media (min-width: 641px) {
+  .cs-bench-table th.cs-th-seen { width: 78px; }
+  .cs-bench-table th.cs-th-kind { width: 122px; }
+  .cs-bench-table th.cs-th-mine { width: 136px; white-space: nowrap; }
+  .cs-bench-table th.cs-th-mine > * { display: inline-flex; vertical-align: middle; }
+  .cs-bench-table thead th { text-align: start; vertical-align: middle; }
+}
+/* A group's line: where I stand on that page, what it brings, and the way in, each in its own fixed place so the
+   lines read as columns down the folded list. */
+.cs-group-stand { display: inline-flex; gap: 10px; min-width: 190px; justify-content: flex-end; font-weight: 600; }
+.cs-group-worth { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; min-width: 172px; }
+.cs-group-worth .rd-delta { min-width: 30px; text-align: end; }
+.rd-group-extra { gap: 14px; }
+.rd-group-line .rd-fold .rd-group-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rd-group-line .rd-fold { overflow: hidden; }
+@media (max-width: 640px) { .cs-group-stand, .cs-group-worth { min-width: 0; } .rd-group-extra { flex-wrap: wrap; gap: 4px 12px; white-space: normal; } }
+.cs-mv-bar:has(.cs-mv-sort) { display: flex; }
+
+/* ---- Changes as a list of lines (2026-11-20 rebuild): one calm line per competitor page, details under it on a press ---- */
+.cs-lines { table-layout: fixed; width: 100%; }
+.cs-lines thead th { padding-block: 9px; font-size: 12px; font-weight: 600; color: var(--muted); text-align: start; white-space: nowrap; vertical-align: middle; }
+.cs-lines th.tt-pick { width: 40px; }
+.cs-lines th.cs-lh-what { width: 30%; }
+.cs-lines th.cs-lh-vs { width: 168px; }
+.cs-lines th.cs-lh-vs > * { display: inline-flex; vertical-align: middle; }
+.cs-lines th.cs-lh-seen { width: 64px; }
+.cs-lines th.cs-lh-go { width: 48px; }
+html[data-simple="1"] #cs-moves .cs-lines :is(th, td):first-child { padding-inline-start: 16px; }
+html[data-simple="1"] #cs-moves .cs-lines :is(th, td):last-child { padding-inline-end: 12px; }
+.cs-lines tr.cs-line > td { padding-block: 10px; vertical-align: middle; }
+.cs-lines tr.cs-line { cursor: pointer; }
+.cs-lines tr.cs-line:hover > td { background: var(--hover); }
+.cs-lines tr.cs-line.open > td { background: var(--selected); border-bottom-color: transparent; }
+/* Their page: the logo, then its title on one line and the site and address under it, both cut with … */
+.cs-line-page { display: flex; align-items: center; gap: 10px; min-width: 0; }
+td.cs-line-page { display: table-cell; }
+td.cs-line-page > :is(img, svg, .site-logo) { float: inline-start; margin: 8px 10px 0 0; }
+.cs-line-id { display: block; min-width: 0; overflow: hidden; }
+.cs-line-title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; font-weight: 600; line-height: 20px; color: var(--text); text-decoration: none; }
+a.cs-line-title:hover { color: var(--accent-text); text-decoration: underline; text-underline-offset: 3px; }
+.cs-line-host { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 18px; color: var(--muted); }
+/* What happened: plain words on one line; only the up and down counts carry colour. */
+.cs-what { display: flex; align-items: baseline; flex-wrap: wrap; gap: 2px 6px; font-size: 13px; line-height: 20px; }
+.cs-what-main { font-weight: 500; color: var(--text); }
+.cs-what-sub { color: var(--muted); font-size: 12.5px; }
+.cs-what-sep { width: 3px; height: 3px; border-radius: 50%; background: var(--line-2); align-self: center; margin-inline: 2px; }
+.cs-what-moves { display: inline-flex; gap: 8px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.cs-what-moves > span { display: inline-flex; align-items: center; gap: 1px; }
+.cs-what-moves svg { width: 13px; height: 13px; }
+/* You vs them: a thin two-part bar over its two counts. */
+.cs-vs { display: grid; gap: 4px; max-width: 150px; }
+.cs-vs-bar { display: flex; height: 4px; border-radius: 2px; overflow: hidden; background: var(--track); gap: 1px; }
+.cs-vs-b { background: var(--crit-t); }
+.cs-vs-a { background: var(--good-t); }
+.cs-vs-n { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cs-vs-zero { color: var(--muted); font-weight: 400; }
+.cs-line-seen { font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cs-line-chev { width: 28px; height: 28px; color: var(--muted); }
+.cs-lines tr.cs-line:hover .cs-line-chev, .cs-lines tr.cs-line.open .cs-line-chev { color: var(--text); }
+/* Under an open line. */
+.cs-lines tr.cs-detail-row > td { padding: 0 16px 16px; background: var(--selected); }
+.cs-lines .cs-detail-box { margin-inline-start: 30px; max-width: 700px; display: grid; gap: 12px; padding: 14px 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--panel-solid, #fff); }
+.cs-detail-ai { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.cs-detail-foot { display: flex; align-items: center; gap: 14px; padding-top: 10px; border-top: 1px solid var(--line); }
+.cs-detail-open { font-size: 13px; }
+.cs-detail-facts > summary { font-size: 13px; }
+/* A group's line: quieter. Name and count on the left; where I stand and what my page brings on the right. */
+.cs-lines tr.rd-group > th { background: transparent; border-top: 1px solid var(--line); border-bottom: 0; padding-top: 6px !important; }
+.cs-lines tr.rd-group:first-child > th { border-top: 0; }
+.cs-lines .rd-fold { font-size: 12.5px; letter-spacing: 0; color: var(--text-2); padding-inline-start: 12px; }
+.cs-lines .rd-group-extra { font-size: 12px; }
+.cs-lines .cs-group-stand { min-width: 0; font-weight: 500; }
+.cs-lines .cs-group-worth { min-width: 150px; }
+.cs-group-open { width: 26px; height: 26px; color: var(--muted); }
+.cs-group-open svg { width: 14px; height: 14px; }
+/* One toolbar line: search, kinds, then the switch and the Sort list at the end. */
+.cs-mv-bar > .tp-search { flex: 0 1 260px; min-width: 180px; }
+.cs-mv-head .cs-moves-note { margin: 0; }
+@media (max-width: 640px) {
+  .cs-lines, .cs-lines tbody { display: block; }
+  .cs-lines thead { display: none; }
+  .cs-lines tr.cs-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; padding: 12px; border-bottom: 1px solid var(--line); }
+  .cs-lines tr.cs-line > td { display: block; padding: 0 !important; border: 0; background: none !important; }
+  .cs-lines tr.cs-line > td::before { content: none !important; }
+  .cs-lines tr.cs-line > td.tt-pick { display: none; }
+  .cs-lines td.cs-line-page { grid-column: 1; }
+  .cs-lines td.cs-line-go { grid-column: 2; grid-row: 1; }
+  .cs-lines td.cs-line-what, .cs-lines td.cs-line-vs { grid-column: 1 / -1; }
+  .cs-lines td.cs-line-seen { display: none; }
+  .cs-lines tr.rd-group, .cs-lines tr.rd-group > th, .cs-lines tr.cs-detail-row, .cs-lines tr.cs-detail-row > td { display: block; width: 100%; }
+  .cs-lines .cs-detail-box { margin-inline-start: 0; padding: 12px; }
+  .cs-vs { max-width: 220px; }
+}
+.cs-lines tr.cs-line > td.tt-pick, .cs-lines thead th { vertical-align: middle; }
+@media (max-width: 640px) {
+  html[data-simple="1"] #cs-moves .cs-lines tr.rd-group > th { padding: 4px 8px !important; }
+  .cs-lines .rd-group-line { flex-wrap: nowrap; gap: 8px; }
+  .cs-lines .rd-group-extra { margin-inline-start: auto; padding: 0; flex-wrap: nowrap; }
+  .cs-lines .rd-group-extra .rd-bar, .cs-lines .cs-group-stand { display: none; }
+  .cs-lines .cs-group-worth { min-width: 0; }
+}
+
+/* Changes, numbers in columns (2026-11-20): each count has its own right-aligned column with a small bar, so a column
+   reads down. A heading is its sort. A fine rule sets "their keywords" apart from "you beside them". */
+.cs-lines th.cs-lh-what { width: 25%; }
+.cs-lines th.cs-lh-num { width: 78px; text-align: end; }
+.cs-lines th.cs-lh-seen { width: 70px; text-align: end; }
+.cs-lines th.cs-lh-split, .cs-lines td.cs-num-behind { border-inline-start: 1px solid var(--line); }
+.cs-sort { display: inline-flex; align-items: center; gap: 3px; padding: 4px 2px; border: 0; background: none; font: inherit; font-size: 12px; font-weight: 600; color: var(--muted); cursor: pointer; border-radius: 4px; }
+.cs-sort svg { width: 12px; height: 12px; opacity: .45; }
+.cs-sort:hover { color: var(--text); }
+.cs-sort:hover svg { opacity: .9; }
+.cs-sort.on { color: var(--accent-text); }
+.cs-sort.on svg { opacity: 1; }
+.cs-sort:focus-visible { outline: 2px solid var(--c-blue); outline-offset: 1px; }
+.cs-lines td.cs-num { text-align: end; padding-inline: 8px 12px; }
+.cs-num-n { display: block; font-size: 15px; font-weight: 650; line-height: 20px; font-variant-numeric: tabular-nums; color: var(--text); }
+.cs-num .rd-bar { display: block; width: 100%; height: 3px; margin-top: 3px; background: transparent; direction: rtl; }
+.cs-num .rd-bar i { margin-inline-start: auto; opacity: .55; }
+.cs-num .rd-quiet { font-size: 14px; }
+.cs-lines td.cs-line-seen { text-align: end; }
+.cs-what { flex-wrap: nowrap; min-width: 0; }
+.cs-what-kw { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
+.cs-what .cs-net-move { flex: none; font-size: 12.5px; }
+.cs-what-main, .cs-what-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 1500px) { .cs-lines th.cs-lh-num { width: 66px; } .cs-lines th.cs-lh-what { width: 22%; } }
+@media (max-width: 640px) {
+  .cs-lines tr.cs-line { grid-template-columns: repeat(5, minmax(0, 1fr)) auto; }
+  .cs-lines td.cs-line-page { grid-column: 1 / 6; }
+  .cs-lines td.cs-line-go { grid-column: 6; grid-row: 1; }
+  .cs-lines td.cs-line-what { grid-column: 1 / -1; }
+  .cs-lines tr.cs-line > td.cs-num { grid-column: auto; text-align: start; border: 0; }
+  .cs-lines tr.cs-line > td.cs-num::before { content: attr(data-label) !important; display: block; font-size: 10.5px; color: var(--muted); font-weight: 500; }
+  .cs-num .rd-bar { display: none; }
+}
+/* Headings sit right over their numbers: the arrow of the sorted column goes before its word, and idle columns show none. */
+.cs-lines th.cs-lh-num, .cs-lines th.cs-lh-seen { padding-inline: 4px 12px; }
+.cs-lines th.cs-lh-num { width: 72px; }
+.cs-lines th.cs-lh-num:first-of-type { width: 84px; }
+.cs-sort { padding: 4px 0; }
+.cs-sort:hover span { text-decoration: underline; text-underline-offset: 3px; }
+.cs-num .rd-bar { display: flex; justify-content: flex-end; direction: ltr; }
+.cs-num .rd-bar i { margin: 0; flex: none; }
+@media (max-width: 1500px) { .cs-lines th.cs-lh-num { width: 68px; } .cs-lines th.cs-lh-num:first-of-type { width: 84px; } }
+.cs-lines th.cs-lh-num:has([data-cs-mv-sort="keywords"]) { width: 92px; }
+.cs-sort .tt-idle { display: none; }
+
+/* Changes, plain (2026-11-20, "too much data for a human"): three things a row — their page, what happened in a word,
+   and on how many keywords it is ahead of me. Counts, moves and dates are under the row. */
+.cs-lines-plain th.cs-lh-what { width: 230px; }
+.cs-lines-plain th.cs-lh-vs { width: 190px; white-space: nowrap; }
+.cs-lines-plain tr.cs-line > td { padding-block: 12px; }
+.cs-lines-plain .cs-what { gap: 4px 8px; font-size: 13.5px; }
+.cs-lines-plain .cs-what-main { display: inline-flex; align-items: center; gap: 5px; font-weight: 500; color: var(--text); }
+.cs-lines-plain .cs-what-main svg { width: 15px; height: 15px; color: var(--muted); }
+.cs-lines-plain .cs-what-quiet { color: var(--muted); font-weight: 400; }
+.cs-lines-plain .cs-vs { display: grid; grid-template-columns: 62px minmax(0, 1fr); align-items: center; gap: 10px; max-width: 170px; }
+.cs-lines-plain .cs-vs-n { display: block; font-size: 13px; font-weight: 400; color: var(--muted); white-space: nowrap; }
+.cs-lines-plain .cs-vs-n b { font-size: 15px; font-weight: 650; color: var(--crit-t); }
+.cs-lines-plain .cs-vs-bar { display: block; height: 5px; border-radius: 3px; background: var(--track); overflow: hidden; }
+.cs-lines-plain .cs-vs-bar i { display: block; height: 100%; border-radius: 3px; background: var(--crit-t); opacity: .75; }
+.cs-vs-none { font-size: 13px; color: var(--muted); }
+.cs-detail-sum { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 14px; margin: 0; font-size: 13px; font-weight: 600; }
+.cs-detail-sum > span:not([class]) { color: var(--muted); font-weight: 400; }
+.cs-detail-when { margin-inline-start: auto; font-weight: 400; color: var(--muted); font-size: 12px; }
+@media (max-width: 640px) {
+  .cs-lines-plain tr.cs-line { grid-template-columns: minmax(0, 1fr) auto; }
+  .cs-lines-plain td.cs-line-page { grid-column: 1; }
+  .cs-lines-plain td.cs-line-go { grid-column: 2; grid-row: 1 / 3; align-self: center; }
+  .cs-lines-plain td.cs-line-what { grid-column: 1; }
+  .cs-lines-plain td.cs-line-vs { grid-column: 1; }
+  .cs-lines-plain td.cs-line-vs::before { content: attr(data-label) " " !important; display: inline !important; font-size: 12px; color: var(--muted); margin-inline-end: 6px; }
+  .cs-lines-plain .cs-vs { display: inline-grid; vertical-align: middle; }
 }

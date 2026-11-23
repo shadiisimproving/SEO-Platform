@@ -171,6 +171,24 @@
 
   // ---- line chart: one axis, gaps stay gaps, hover and keyboard read-out, and a table view --------
   LV.lineChart = lineChart;
+  /* Which points get a date under them: evenly spaced, counted back from the last point so it always has its date, at most
+     `most` of them. Each date then sits under its own point (axisHtml), never spread evenly whatever the gaps. */
+  LV.axisTicks = (count, most = 6) => {
+    if (count <= 0) return [];
+    if (count === 1) return [0];
+    const step = Math.max(1, Math.ceil((count - 1) / (most - 1)));
+    const out = [];
+    for (let i = count - 1; i >= 0; i -= step) out.unshift(i);
+    return out;
+  };
+  /* ticks: [[index, words]]. Placed at index / (count − 1) of the width, as the line's own points are; the first and last
+     are held inside the chart. */
+  LV.axisHtml = (ticks, count) => `<div class="lv-axis lv-axis-placed" aria-hidden="true">${ticks.map(([i, words]) => {
+    const at = count <= 1 ? 0.5 : i / (count - 1);
+    const edge = at <= 0.04 ? " first" : at >= 0.96 ? " last" : "";
+    const safe = String(words ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+    return `<span class="lv-tick${edge}" style="left:${(at * 100).toFixed(2)}%">${safe}</span>`;
+  }).join("")}</div>`;
   /* marks: { day: count } draws a dot on the first line for those days, such as a lead in that week; markName names it in the
      read-out. dayLabel: how a day reads in the read-out and the table, such as "Week to 9 Nov". */
   function lineChart(id, days, series, { invert = false, unit = "", legend = true, marks = null, markName = "Leads", dayLabel = null } = {}) {
@@ -199,9 +217,7 @@
     const dots = marks ? days.map((day, i) => (marks[day] && series[0]?.values[day] !== null && series[0]?.values[day] !== undefined ? `<span class="lv-mark" aria-hidden="true" style="left:calc(18px + ${(x(i) / W).toFixed(4)} * (100% - 36px));top:calc(14px + ${(y(series[0].values[day]) / H).toFixed(4)} * var(--lv-h, 220px))"></span>` : "")).join("") : "";
     const label = (v) => `${num(top >= 20 ? Math.round(v) : Math.round(v * 10) / 10)}${unit}`;
     const labels = invert ? [[0, low], [100, top]] : [[0, top], [50, top / 2], [100, 0]];
-    const every = Math.max(1, Math.floor(days.length / 5));
-    const picked = days.filter((_, i) => i === 0 || i === days.length - 1 || (i % every === 0 && i < days.length - every / 2));
-    const ticks = picked.length > 6 ? [...picked.slice(0, 5), days[days.length - 1]] : picked; // the last day always has its date
+    const ticks = LV.axisTicks(days.length); // indexes: each date under its own point (2 and 9 Nov used to vanish)
     LV.chartData.set(id, { days, series, W, unit, marks, markName, dayLabel });
     const dayName = (day) => (dayLabel ? dayLabel(day) : shortDay(day));
     const open = LV.tables.get(id);
@@ -213,7 +229,7 @@
         <svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">${grid}${paths}<line class="lv-cross" x1="0" x2="0" y1="0" y2="${H}" hidden/></svg>${dots}
         ${labels.map(([pos, v]) => `<span class="lv-ylab" style="top:calc(14px + ${pos / 100} * var(--lv-h, 220px))">${label(v)}</span>`).join("")}
         <div class="lv-tip" hidden></div>
-        <div class="lv-axis" aria-hidden="true">${ticks.map((d) => `<span>${esc(shortDay(d))}</span>`).join("")}</div>
+        ${LV.axisHtml(ticks.map((i) => [i, shortDay(days[i])]), days.length)}
       </div>
       ${series.length > 1 && legend ? `<div class="lv-legend">${series.map((s) => `<span><i class="lv-key" style="background:${s.color}"></i>${esc(t(s.name))}</span>`).join("")}</div>` : ""}
       <div class="lv-foot"><button class="link-btn" data-lv-table="${id}" aria-expanded="${open ? "true" : "false"}">${t(open ? "Hide table" : "Show table")}</button></div>
@@ -362,6 +378,23 @@
       ${speedCard()}${ideasCard()}`);
   }
 
+  /* PageSpeed columns, the same on every screen (expert review 2026-11-17): the score is always Google's lab test, so it says
+     so; the timings are real visitors' when Google has them, and the last column says whose (this page or the whole site)
+     with Google's own verdict, Passed or Failed. A run with no real visitors says "Lab test only". */
+  const speedVerdict = (r) => {
+    if (!r.field) return `<span class="muted">${t("Lab test only")}</span>`;
+    const whose = t(r.field === "site" ? "whole site" : "this page");
+    const verdict = r.passed === true ? `<span class="good">${t("Passed")}</span>` : r.passed === false ? `<span class="crit">${t("Failed")}</span>` : "—";
+    return `${verdict} <span class="small muted">${esc(whose)}</span>`;
+  };
+  const speedColumns = (ms) => [
+    { key: "performance", label: "Lab score", num: true },
+    { key: "lcp_ms", label: "Largest content (s)", num: true, get: (r) => ms(r.lcp_ms), html: (r) => (r.lcp_ms === null ? `<span class="muted">—</span>` : decimal(ms(r.lcp_ms))) },
+    { key: "inp_ms", label: "Response (ms)", num: true },
+    { key: "cls", label: "Layout shift", num: true, html: (r) => (r.cls === null ? `<span class="muted">—</span>` : decimal(Math.round(r.cls * 100) / 100)) },
+    { key: "field", label: "Real visitors", get: (r) => (r.field ? `${r.passed === true ? t("Passed") : r.passed === false ? t("Failed") : ""} ${t(r.field === "site" ? "whole site" : "this page")}` : t("Lab test only")), html: speedVerdict },
+  ];
+
   function speedCard() {
     const entry = load("metrics/speed");
     if (entry.loading || entry.error || !entry.data.runs.length) return "";
@@ -369,11 +402,7 @@
     return `<section class="card" style="margin-top:14px"><div class="card-head"><h2>${t("Page speed")}</h2><span class="end small muted">${t("Home page")}</span></div>${dataTable("speed", [
       { key: "host", label: "Site", html: (r) => `<span class="mono" dir="auto">${esc(r.host)}</span>` },
       { key: "strategy", label: "Device", get: (r) => t(r.strategy === "mobile" ? "Phone" : "Computer") },
-      { key: "performance", label: "Score", num: true },
-      { key: "lcp_ms", label: "Largest content (s)", num: true, get: (r) => ms(r.lcp_ms), html: (r) => (r.lcp_ms === null ? `<span class="muted">—</span>` : decimal(ms(r.lcp_ms))) },
-      { key: "inp_ms", label: "Response (ms)", num: true },
-      { key: "cls", label: "Layout shift", num: true, html: (r) => (r.cls === null ? `<span class="muted">—</span>` : decimal(Math.round(r.cls * 100) / 100)) },
-      { key: "field_data", label: "Measured on", get: (r) => t(r.field_data ? "Real visitors" : "Test run") },
+      ...speedColumns(ms),
     ], entry.data.runs, { csv: false })}</section>`;
   }
 
@@ -418,6 +447,10 @@
       <form class="lv-rule-form" data-lv-rule-form="${kind}"><input class="input mono" spellcheck="false" autocapitalize="off" name="f_pattern" placeholder="${esc(patternHint)}" aria-label="${t("Matches")}" autocomplete="off">${valueHint ? `<input class="input" name="f_value" placeholder="${esc(t(valueHint))}" aria-label="${t(valueHint)}" autocomplete="off">` : ""}<button class="btn btn-small" type="submit">${t("Add rule")}</button><span class="error" data-lv-rule-error hidden></span></form></section>`;
   }
 
+  /* AI visits are their own channel, counted by AI search's rules (seo/metrics/service.py AI_CHANNEL): its row links there. */
+  const AI_CHANNEL = "AI assistants";
+  const aiLink = (name) => (name === AI_CHANNEL ? ` <a class="small lv-ai-link" href="#ai">${t("AI search")} →</a>` : "");
+
   function channelsPage() {
     if (simple()) return channelsSimple();
     const entry = load("metrics/channels");
@@ -428,16 +461,16 @@
     if (!d.channels.length) return page(head, emptyCard(t("No data in this period."), `${t("Google Analytics has data through")} ${esc(d.through ? shortDay(d.through) : "—")}.`));
     const days = d.series.map((r) => r.day);
     const series = d.series_names.map((name) => ({ name, color: colourOf(name), values: Object.fromEntries(d.series.map((r) => [r.day, r.values[name] ?? 0])) }));
-    const swatch = (name) => `<i class="lv-key" style="background:${colourOf(name)}"></i>${esc(t(name))}`;
+    const swatch = (name) => `<i class="lv-key" style="background:${colourOf(name)}"></i>${esc(t(name))}${aiLink(name)}`;
     // The server starts fetching these sites' icons when this data is asked for, so look for them once per list.
     const referrerList = d.referrers.map((r) => r.domain).join(",");
     if (referrerList !== LV.referrersWatched) { LV.referrersWatched = referrerList; window.COMP?.refreshLogos?.({ watch: true }); }
     return page(head, `
       <p class="small muted" style="margin:0 0 12px">${throughNote(d.through, "", d)}</p>${hiddenNote(d.hid_rows)}
       <section class="tiles">
-        ${UI.tile(t("Visits"), UI.cnt(d.total.sessions), change(d.total.sessions, d.before?.sessions), { ic: "activity" })}
-        ${UI.tile(t("Leads"), num(d.total.leads), change(d.total.leads, d.before?.leads), { ic: "filter" })}
-        ${UI.tile(t("Lead rate"), pct(d.total.sessions ? d.total.leads / d.total.sessions : null), "", { ic: "percent" })}
+        ${UI.tile(t("Visits"), UI.cnt(d.total.sessions), change((d.compared || d.total).sessions, d.before?.sessions), { ic: "activity" })}
+        ${UI.tile(t(W("Leads", d)), num(d.total.leads), change((d.compared || d.total).leads, d.before?.leads), { ic: "filter" })}
+        ${UI.tile(t(W("Lead rate", d)), pct(ratePct(d.total) === null ? null : ratePct(d.total) / 100), "", { ic: "percent" })}
         ${UI.tile(t("Channels"), UI.cnt(d.channels.length), "", { ic: "layers" })}
       </section>
       <section class="card"><div class="card-head"><h2>${t("Visits by channel")}</h2></div>${lineChart("channels", days, series)}</section>
@@ -445,14 +478,14 @@
         { key: "channel", label: "Channel", html: (r) => swatch(r.channel) },
         { key: "sessions", label: "Visits", num: true },
         { key: "share", label: "Share", num: true, get: (r) => r.share, html: (r) => pct(r.share) },
-        { key: "leads", label: "Leads", num: true },
-        { key: "rate", label: "Lead rate", num: true, get: (r) => r.rate, html: rateCell },
+        { key: "leads", label: W("Leads", d), num: true },
+        { key: "rate", label: W("Lead rate", d), num: true, get: (r) => r.rate, html: rateCell },
         { key: "change", label: "Change", num: true, html: (r) => (r.change === null ? `<span class="muted">—</span>` : `<span class="${r.change >= 0 ? "good" : "crit"} d-pill">${r.change >= 0 ? "+" : "−"}${num(Math.abs(r.change))}%</span>`) },
       ], d.channels)}</section>
       <section class="card" style="margin-top:14px"><div class="card-head"><h2>${t("Referring sites")}</h2></div>${dataTable("referrers", [
         { key: "domain", label: "Site", html: (r) => `<span class="with-logo">${UI.siteLogo(r.domain, 16)}<span class="logo-text mono" dir="auto">${esc(r.domain)}</span></span>` },
         { key: "sessions", label: "Visits", num: true },
-        { key: "leads", label: "Leads", num: true },
+        { key: "leads", label: W("Leads", d), num: true },
       ], d.referrers, { empty: "No referring sites in this period.", search: "Search sites" })}</section>
       ${rulesCard("channel", "Channel rules", "Rename channels by source/medium (* = anything). Past days change too.", "chatgpt.com/*", "Channel name", d.rules)}`);
   }
@@ -479,19 +512,19 @@
       <p class="small muted" style="margin:0 0 12px">${throughNote(d.through, "", d)}</p>${hiddenNote(d.hid_rows)}${setUp}
       <section class="tiles">
         ${UI.tile(t("Visits"), UI.cnt(d.sessions), "", { ic: "activity" })}
-        ${UI.tile(t("Leads"), d.key_events_set_up ? num(d.leads) : "—", d.key_events_set_up ? "" : `<span class="ab">${t("Not set up")}</span>`, { ic: "filter" })}
-        ${UI.tile(t("Lead rate"), d.key_events_set_up ? pct(d.rate) : "—", "", { ic: "percent" })}
+        ${UI.tile(t(W("Leads", d)), d.key_events_set_up ? num(d.leads) : "—", d.key_events_set_up ? "" : `<span class="ab">${t("Not set up")}</span>`, { ic: "filter" })}
+        ${UI.tile(t(W("Lead rate", d)), d.key_events_set_up ? pct(d.rate) : "—", "", { ic: "percent" })}
       </section>
       <section class="card"><div class="card-head"><h2>${t("From visit to lead, by channel")}</h2>${funnelKey}</div><div class="lv-funnel">${funnel}</div></section>
       <div class="lv-two" style="margin-top:14px">
         <section class="card"><div class="card-head"><h2>${t("Page types")}</h2></div>${dataTable("types", [
           { key: "type", label: "Type", get: (r) => t(r.type), html: (r) => `<span dir="auto">${esc(t(r.type))}</span>` },
-          { key: "pages", label: "Pages", num: true }, { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true },
-          { key: "rate", label: "Lead rate", num: true, html: rateCell },
+          { key: "pages", label: "Pages", num: true }, { key: "sessions", label: "Visits", num: true }, { key: "leads", label: W("Leads", d), num: true },
+          { key: "rate", label: W("Lead rate", d), num: true, html: rateCell },
         ], d.page_types, { csv: false })}</section>
         <section class="card"><div class="card-head"><h2>${t("Pages that bring leads")}</h2></div>${dataTable("converting", [
           { key: "path", label: "Page", get: pageName, html: (r) => (r.unknown ? unknownPage(r) : `${PageLink.html(r.path, { host: r.host, cls: "mono lv-url" })}${siteOfPage(r)}`) },
-          { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }, { key: "rate", label: "Lead rate", num: true, html: rateCell },
+          { key: "sessions", label: "Visits", num: true }, { key: "leads", label: W("Leads", d), num: true }, { key: "rate", label: W("Lead rate", d), num: true, html: rateCell },
         ], d.pages, { csv: false, empty: "No page brought a lead in this period.", search: "Search pages" })}</section>
       </div>`);
   }
@@ -521,8 +554,8 @@
     return page(head, `
       ${missing ? `<p class="note lv-note">${icon("info")}<span>${t(missing)}</span></p>` : ""}${hiddenNote(d.hid_rows)}${clarityReportCard("dashboard")}${clarityCard}
       <section class="card"><div class="card-head"><h2>${t("All pages")}</h2><span class="end small muted">${num(d.total_pages)} ${t(d.total_pages === 1 ? "page" : "pages")} · ${sourceAndDays("Google Analytics and Search Console")}</span></div>${dataTable("content", [
-        { key: "path", label: "Page", get: pageName, html: (r) => (r.unknown ? unknownPage(r) : `<div class="mono lv-url">${PageLink.html(r.path, { host: r.host })}</div>${siteOfPage(r)}<div class="lv-cat" dir="auto">${esc(t(r.category))}</div>${UI.relatedTag?.({ host: r.host || UI.siteHostPicked() || "", page: r.path }) || ""}`) },
-        { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }, { key: "clicks", label: "Google clicks", num: true },
+        { key: "path", label: "Page", get: pageName, html: (r) => (r.unknown ? unknownPage(r) : `<div class="mono lv-url">${PageLink.html(r.path, { host: r.host })}</div>${siteOfPage(r)}${jumpLine(r)}<div class="lv-cat" dir="auto">${esc(t(r.category))}</div>${UI.relatedTag?.({ host: r.host || UI.siteHostPicked() || "", page: r.path }) || ""}`) },
+        { key: "sessions", label: "Visits", num: true }, { key: "leads", label: W("Leads", d), num: true }, { key: "clicks", label: "Google clicks", num: true },
         { key: "position", label: "Position", num: true, html: (r) => decimal(r.position) }, { key: "ai", label: "AI visits", num: true },
       ], d.pages, { search: "Search pages", rowAttrs: (r) => (r.unknown || !window.SCREENS?.pages ? 'style="cursor:default"' : `data-pg-goto="${esc(`https://${r.host || UI.siteHostPicked() || ""}${r.path}`)}" tabindex="0" title="${esc(t("All about this page"))}"`) })}</section>
       <section class="card" style="margin-top:14px"><div class="card-head"><h2>${t("Social networks")}</h2><span class="end small muted">${sourceAndDays("Google Analytics")}</span></div>${d.social.length ? socialBars(d.social) : `<div class="empty"><p>${t("No visits from social networks in this period.")}</p></div>`}</section>
@@ -633,12 +666,28 @@
   const pickTab = (group, tabs) => { if (!tabs.some(([id]) => id === TABS[group])) TABS[group] = tabs[0]?.[0] || ""; };
   // The days both periods reported, for a card's graph: this period solid, the period before dashed (UI.card).
   const daySpark = (d, pick) => (d?.days?.length > 1 ? { days: d.days.map((r) => r.day), now: d.days.map(pick), before: (d.days_before || []).map(pick) } : null);
-  const ratePct = (r) => (r && r.sessions ? (r.leads / r.sessions) * 100 : null);
+  // Visits that became a lead (or had a key event) out of all visits, never over 100% (W8). A blank count stays blank.
+  // Out of the visits of the sites that record leads or key events ("rated"), when the server says it (W2b).
+  const ratePct = (r) => {
+    const top = r ? (r.converted !== undefined ? r.converted : r.leads) : null;
+    const base = r ? (r.rated !== undefined && r.rated !== null ? r.rated : r.sessions) : null;
+    return r && base && top !== null && top !== undefined ? Math.min(top, base) / base * 100 : null;
+  };
+  /* A card's change. When only some sites had a fair period before, the server sends their totals now ("compared"):
+     the change sets them against the period before, so like is compared with like (final review N1). */
+  const versus = (d, pick) => (d.compared ? pick(d.compared) : null);
+  /* While key events are counted, a rate counts each key event as a visit with one, up to the visits: an upper bound of
+     Google Analytics' own rate, which counts visits with at least one key event (final review N4). */
+  const rateInfo = (d) => (window.GA4W.keyEvents(d) || window.GA4W.mixed(d) ? ["Key event rate, at most: each key event counts as one visit, never more than the visits. Google Analytics' own rate counts visits with at least one key event, so it can be lower."] : "");
+  const W = (english, d) => window.GA4W.word(english, d);
   const known = (v) => v !== null && v !== undefined;
   // Rows that open their side panel (row-panel.js): a click, or Enter on the focused row.
   const opensPanel = (kind, key, host = "") => `data-rp-open="${kind}" data-rp-key="${esc(key)}"${host ? ` data-rp-host="${esc(host)}"` : ""} tabindex="0"`;
   const pageRow = (r) => (r.unknown ? 'style="cursor:default"' : opensPanel("page", r.path, r.host || UI.siteHostPicked() || ""));
-  const pageCell = (r) => (r.unknown ? unknownPage(r) : `<div class="mono lv-url">${PageLink.html(r.path, { host: r.host })}</div>${siteOfPage(r)}`);
+  /* Google's #section jump links for the page, said apart: the page's clicks, click rate and position are its own address's
+     (expert review 2026-11-17, 3.3). */
+  const jumpLine = (r) => (r.jump_impressions ? `<div class="lv-cat lv-jump">${esc(t("Jump links: {n} impressions").replace("{n}", num(r.jump_impressions)))}</div>` : "");
+  const pageCell = (r) => (r.unknown ? unknownPage(r) : `<div class="mono lv-url">${PageLink.html(r.path, { host: r.host })}</div>${siteOfPage(r)}${jumpLine(r)}`);
 
   // ---- Channels: cards, every channel (rules in a panel), then the chart beside the referring sites
   function channelsSimple() {
@@ -658,12 +707,12 @@
     }
     const before = d.before, top = d.channels[0];
     const cards = `<section class="tiles lv-cards">
-        ${UI.card({ id: "visits", label: "Visits", value: d.total.sessions, change: { now: d.total.sessions, before: before?.sessions }, spark: daySpark(d, (r) => r.sessions) })}
-        ${UI.card({ id: "leads", label: "Leads", value: d.total.leads, change: { now: d.total.leads, before: before?.leads }, spark: daySpark(d, (r) => r.leads) })}
-        ${UI.card({ id: "rate", label: "Lead rate", value: ratePct(d.total), format: "pct", change: { now: ratePct(d.total), before: ratePct(before), unit: "pts" }, spark: daySpark(d, ratePct) })}
+        ${UI.card({ id: "visits", label: "Visits", value: d.total.sessions, change: { now: versus(d, (c) => c.sessions) ?? d.total.sessions, before: before?.sessions }, spark: daySpark(d, (r) => r.sessions) })}
+        ${UI.card({ id: "leads", label: W("Leads", d), value: d.total.leads, change: { now: versus(d, (c) => c.leads) ?? d.total.leads, before: before?.leads }, spark: daySpark(d, (r) => r.leads) })}
+        ${UI.card({ id: "rate", label: W("Lead rate", d), value: ratePct(d.total), format: "pct", change: { now: versus(d, ratePct) ?? ratePct(d.total), before: ratePct(before), unit: "pts" }, spark: daySpark(d, ratePct), info: rateInfo(d) })}
         ${UI.card({ id: "channels", label: "Channels", value: d.channels.length, sub: top ? esc(fillIn(t("Most visits: {name}"), { name: t(top.channel) })) : "" })}
-      </section>`;
-    const swatch = (name) => `<i class="lv-key" style="background:${colourOf(name)}"></i>${esc(t(name))}`;
+      </section>${window.GA4W.notes(d)}`;
+    const swatch = (name) => `<i class="lv-key" style="background:${colourOf(name)}"></i>${esc(t(name))}${aiLink(name)}`;
     const days = d.series.map((r) => r.day);
     const series = d.series_names.map((name) => ({ name, color: colourOf(name), values: Object.fromEntries(d.series.map((r) => [r.day, r.values[name] ?? 0])) }));
     return page(head, `${cards}
@@ -671,16 +720,16 @@
         { key: "channel", label: "Channel", html: (r) => swatch(r.channel) },
         { key: "sessions", label: "Visits", num: true },
         { key: "share", label: "Share", num: true, get: (r) => r.share, html: (r) => pct(r.share) },
-        { key: "leads", label: "Leads", num: true },
-        { key: "rate", label: "Lead rate", num: true, get: (r) => r.rate, html: rateCell },
+        { key: "leads", label: W("Leads", d), num: true },
+        { key: "rate", label: W("Lead rate", d), num: true, get: (r) => r.rate, html: rateCell },
         { key: "change", label: "Change", num: true, html: (r) => (r.change === null ? `<span class="muted">—</span>` : `<span class="${r.change >= 0 ? "good" : "crit"} d-pill">${icon(r.change >= 0 ? "arrow-up" : "arrow-down")}${r.change >= 0 ? "+" : "−"}${num(Math.abs(r.change))}%</span>`) },
       ], d.channels, { rowAttrs: (r) => opensPanel("channel", r.channel) })}</section>
       <div class="lv-two lv-pair">
-        <section class="card"><div class="card-head"><h2>${t("Visits by channel")}</h2></div><div class="lv-chart-sm">${lineChart("channels", days, series)}</div></section>
+        <section class="card"><div class="card-head"><h2>${t("Visits by channel")}</h2></div><div class="lv-chart-sm">${lineChart("channels", days, series, d.unusual?.days && Object.keys(d.unusual.days).length ? { marks: Object.fromEntries(Object.keys(d.unusual.days).map((k) => [k, 1])), markName: "Unusual day" } : {})}</div></section>
         <section class="card"><div class="card-head"><h2>${t("Referring sites")}</h2></div>${dataTable("referrers", [
           { key: "domain", label: "Site", html: (r) => `<span class="with-logo">${UI.siteLogo(r.domain, 16)}<span class="logo-text mono" dir="auto">${esc(r.domain)}</span></span>` },
           { key: "sessions", label: "Visits", num: true },
-          { key: "leads", label: "Leads", num: true },
+          { key: "leads", label: W("Leads", d), num: true },
         ], d.referrers, { empty: "No referring sites in this period.", search: "Search sites", rowAttrs: (r) => opensPanel("referrer", r.domain) })}</section>
       </div>`);
   }
@@ -718,29 +767,29 @@
     if (!d.sessions) return page(head, emptyCard(t("No data in this period."), `${t("Google Analytics has data through")} ${esc(d.through ? shortDay(d.through) : "—")}.`));
     const set = d.key_events_set_up, was = d.before;
     // A line that carries an action stays on screen: without key events there are no leads to count.
-    const setUp = set ? "" : `<p class="note warn lv-note">${icon("triangle-alert")}<span>${t("No key events. Mark your forms as key events in GA4.")}</span></p>`;
+    const setUp = set || d.lead_kind === "leads" ? "" : `<p class="note warn lv-note">${icon("triangle-alert")}<span>${t("No key events. Mark your forms as key events in GA4.")}</span></p>`;
     const cards = `<section class="tiles lv-cards">
-        ${UI.card({ id: "visits", label: "Visits", value: d.sessions, change: { now: d.sessions, before: was?.sessions }, spark: daySpark(d, (r) => r.sessions) })}
-        ${UI.card({ id: "leads", label: "Leads", value: set ? d.leads : null, sub: set ? null : esc(t("Not set up")), change: set ? { now: d.leads, before: was?.leads } : null, spark: set ? daySpark(d, (r) => r.leads) : null })}
-        ${UI.card({ id: "rate", label: "Lead rate", value: set && known(d.rate) ? d.rate * 100 : null, format: "pct", sub: set ? null : esc(t("Not set up")), change: set && known(d.rate) ? { now: d.rate * 100, before: known(was?.rate) ? was.rate * 100 : null, unit: "pts" } : null, spark: set ? daySpark(d, ratePct) : null })}
-      </section>`;
+        ${UI.card({ id: "visits", label: "Visits", value: d.sessions, change: { now: versus(d, (c) => c.sessions) ?? d.sessions, before: was?.sessions }, spark: daySpark(d, (r) => r.sessions) })}
+        ${UI.card({ id: "leads", label: W("Leads", d), value: set ? d.leads : null, sub: set ? null : esc(t("Not set up")), change: set ? { now: versus(d, (c) => c.leads) ?? d.leads, before: was?.leads } : null, spark: set ? daySpark(d, (r) => r.leads) : null })}
+        ${UI.card({ id: "rate", label: W("Lead rate", d), value: set && known(d.rate) ? d.rate * 100 : null, format: "pct", sub: set ? null : esc(t("Not set up")), change: set && known(d.rate) ? { now: (versus(d, (c) => c.rate) ?? d.rate) * 100, before: known(was?.rate) ? was.rate * 100 : null, unit: "pts" } : null, spark: set ? daySpark(d, ratePct) : null, info: rateInfo(d) })}
+      </section>${set ? window.GA4W.notes(d) : ""}`;
     const max = Math.max(...d.funnel.map((x) => x.sessions), 1);
     // One line per channel; the visits that didn't become a lead are the bar's tip.
-    const funnel = d.funnel.map((r) => `<div class="lv-bar lv-fline"><span class="lab" dir="auto">${esc(t(r.channel))}</span><span class="track" data-tip="${esc(fillIn(t("{n} visits didn't become a lead"), { n: num(r.lost) }))}"><i style="width:${Math.max(r.sessions ? 2 : 0, (r.sessions / max) * 100)}%"></i></span><span class="val">${num(r.sessions)} ${t("visits")} → ${num(r.leads)} ${t("leads")} · ${pct(r.rate)}<span class="sr"> · ${num(r.lost)} ${t("without a lead")}</span></span></div>`).join("");
-    const tabs = [["pages", t("Pages that bring leads"), d.pages.length], ["types", t("Page types"), d.page_types.length]];
+    const funnel = d.funnel.map((r) => `<div class="lv-bar lv-fline"><span class="lab" dir="auto">${esc(t(r.channel))}</span><span class="track" data-tip="${esc(fillIn(t(W("{n} visits didn't become a lead", d)), { n: num(r.lost) }))}"><i style="width:${Math.max(r.sessions ? 2 : 0, (r.sessions / max) * 100)}%"></i></span><span class="val">${num(r.sessions)} ${t("visits")} → ${num(r.leads)} ${t(W("leads", d))} · ${pct(r.rate)}<span class="sr"> · ${num(r.lost)} ${t(W("without a lead", d))}</span></span></div>`).join("");
+    const tabs = [["pages", t(W("Pages that bring leads", d)), d.pages.length], ["types", t("Page types"), d.page_types.length]];
     pickTab("conversions", tabs);
     const table = TABS.conversions === "types"
       ? dataTable("types", [
         { key: "type", label: "Type", get: (r) => t(r.type), html: (r) => `<span dir="auto">${esc(t(r.type))}</span>` },
-        { key: "pages", label: "Pages", num: true }, { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true },
-        { key: "rate", label: "Lead rate", num: true, html: rateCell },
+        { key: "pages", label: "Pages", num: true }, { key: "sessions", label: "Visits", num: true }, { key: "leads", label: W("Leads", d), num: true },
+        { key: "rate", label: W("Lead rate", d), num: true, html: rateCell },
       ], d.page_types, { wrapAttrs: "data-tt-own-count" })
       : dataTable("converting", [
         { key: "path", label: "Page", get: pageName, html: (r) => (r.unknown ? unknownPage(r) : `${PageLink.html(r.path, { host: r.host, cls: "mono lv-url" })}${siteOfPage(r)}`) },
-        { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }, { key: "rate", label: "Lead rate", num: true, html: rateCell },
-      ], d.pages, { empty: "No page brought a lead in this period.", search: "Search pages", rowAttrs: pageRow, wrapAttrs: "data-tt-own-count" });
+        { key: "sessions", label: "Visits", num: true }, { key: "leads", label: W("Leads", d), num: true }, { key: "rate", label: W("Lead rate", d), num: true, html: rateCell },
+      ], d.pages, { empty: W("No page brought a lead in this period.", d), search: "Search pages", rowAttrs: pageRow, wrapAttrs: "data-tt-own-count" });
     return page(head, `${setUp}${cards}
-      <section class="card"><div class="card-head"><h2>${t("From visit to lead, by channel")}</h2></div><div class="lv-bars lv-funnel-lines">${funnel}</div></section>
+      <section class="card"><div class="card-head"><h2>${t(W("From visit to lead, by channel", d))}</h2></div><div class="lv-bars lv-funnel-lines">${funnel}</div></section>
       <section class="card lv-tab-card"><div class="lv-tabbar">${pageTabs("conversions", tabs, "Pages", true)}<span class="lv-tab-tools" data-tt-slot></span></div>${table}</section>`);
   }
 
@@ -751,7 +800,9 @@
     const ok = (s) => s?.state === "ok";
     const sources = d ? [ok(d.ga4) && { name: "Google Analytics", through: d.ga4.through }, ok(d.gsc) && { name: "Search Console", through: d.gsc.through }].filter(Boolean) : null;
     const status = d ? sourceStatus(d.ga4?.state, "Google Analytics") || sourceStatus(d.gsc?.state, "Search Console") : null;
-    const head = simpleHead("Content", entry, { source: sources?.length ? sources : null, status, info: ["Every page and its results", d?.hid_rows && HID_TIP] });
+    // Google clicks follow the app's one period rule (they end on Search Console's last final day); visits run to GA4's last day.
+    const gw = d?.gsc_window, clicksDays = gw?.from && gw?.to && gw.to !== UI.range.get().to ? fillIn(t("Google clicks: {a} – {b}."), { a: shortDay(gw.from), b: shortDay(gw.to) }) : "";
+    const head = simpleHead("Content", entry, { source: sources?.length ? sources : null, status, info: ["Every page and its results", d?.hid_rows && HID_TIP, clicksDays] });
     if (entry.loading || entry.error || entry.noServer) return page(head, stateCard(entry, "ga4"));
     const heat = d.clarity, reports = d.clarity_reports, runs = d.speed?.runs || [];
     const downloads = (reports?.sites || []).filter((s) => s.dashboard);
@@ -775,7 +826,7 @@
     } else {
       body = `<section class="card"><div class="card-head"><h2>${t("All pages")}</h2><span class="end small muted">${sourceAndDays("Google Analytics and Search Console")}</span></div>${dataTable("content", [
         { key: "path", label: "Page", get: pageName, html: (r) => `${pageCell(r)}${r.unknown ? "" : `<div class="lv-cat" dir="auto">${esc(t(r.category))}</div>${UI.relatedTag?.({ host: r.host || UI.siteHostPicked() || "", page: r.path }) || ""}`}` },
-        { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true }, { key: "clicks", label: "Google clicks", num: true },
+        { key: "sessions", label: "Visits", num: true }, { key: "leads", label: W("Leads", d), num: true }, { key: "clicks", label: "Google clicks", num: true },
         { key: "position", label: "Position", num: true, html: (r) => decimal(r.position) }, { key: "ai", label: "AI visits", num: true },
       ], d.pages, { search: "Search pages", rowAttrs: pageRow })}</section>`;
     }
@@ -787,11 +838,7 @@
     const tests = runs.length ? dataTable("speed", [
       { key: "host", label: "Site", html: (r) => `<span class="mono" dir="auto">${esc(r.host)}</span>` },
       { key: "strategy", label: "Device", get: (r) => t(r.strategy === "mobile" ? "Phone" : "Computer") },
-      { key: "performance", label: "Score", num: true },
-      { key: "lcp_ms", label: "Largest content (s)", num: true, get: (r) => ms(r.lcp_ms), html: (r) => (r.lcp_ms === null ? `<span class="muted">—</span>` : decimal(ms(r.lcp_ms))) },
-      { key: "inp_ms", label: "Response (ms)", num: true },
-      { key: "cls", label: "Layout shift", num: true, html: (r) => (r.cls === null ? `<span class="muted">—</span>` : decimal(Math.round(r.cls * 100) / 100)) },
-      { key: "field_data", label: "Measured on", get: (r) => t(r.field_data ? "Real visitors" : "Test run") },
+      ...speedColumns(ms),
     ], runs) : `<div class="empty"><p>${t("No speed test yet. Refresh data runs one.")}</p></div>`;
     const one = downloads.length === 1 && UI.siteIdPicked() ? downloads[0].dashboard : null, perf = one?.performance || null;
     const real = perf && Object.values(perf).some(known) ? `<section class="card"><div class="card-head"><h2>${t("Page speed, real visitors")}</h2><span class="end small muted">${esc(t("Clarity download"))} · ${spanOf(one)}</span></div>
@@ -881,13 +928,13 @@
       <section class="tiles">
         ${d.costs.length ? d.costs.map((c) => UI.tile(`${t("Cost")}${d.costs.length > 1 ? ` · ${esc(c.currency || "")}` : ""}`, esc(money(c.cost, c.currency)), d.costs.length > 1 ? `<span class="ab">${t("Currencies aren't added together")}</span>` : "", { ic: "megaphone" })).join("") : UI.tile(t("Cost"), "—", "", { ic: "megaphone" })}
         ${UI.tile(t("Clicks"), UI.cnt(d.clicks), "", { ic: "mouse-pointer-click" })}
-        ${UI.tile(t("Leads"), num(d.leads), "", { ic: "filter" })}
+        ${UI.tile(t(W("Leads", d)), num(d.leads), "", { ic: "filter" })}
       </section>
       <section class="card"><div class="card-head"><h2>${t("Clicks")}</h2></div>${lineChart("ads", d.series.map((r) => r.day), [{ name: "Clicks", color: "var(--ch-1)", values: Object.fromEntries(d.series.map((r) => [r.day, r.clicks])) }])}</section>
       <section class="card" style="margin-top:14px"><div class="card-head"><h2>${t("Campaigns")}</h2></div>${dataTable("campaigns", [
         { key: "campaign", label: "Campaign", html: (r) => `<span dir="auto">${esc(r.campaign)}</span>` },
         { key: "cost", label: "Cost", num: true, html: (r) => esc(money(r.cost, r.currency)) },
-        { key: "clicks", label: "Clicks", num: true }, { key: "sessions", label: "Visits", num: true }, { key: "leads", label: "Leads", num: true },
+        { key: "clicks", label: "Clicks", num: true }, { key: "sessions", label: "Visits", num: true }, { key: "leads", label: W("Leads", d), num: true },
       ], d.campaigns, { empty: "No campaigns in this period.", search: "Search campaigns" })}</section>
       <p class="note lv-note" style="margin-top:14px">${icon("info")}<span>${t("Exact Google Ads API data needs an approved developer token: not built.")}</span></p>`);
   }
@@ -1149,6 +1196,7 @@
     "Last 12 months": "12 derniers mois", "Query": "Requête", "Change": "Évolution", "Queries gaining clicks": "Requêtes qui gagnent des clics", "Queries losing clicks": "Requêtes qui perdent des clics",
     "Pick a comparison above.": "Choisissez une comparaison en haut.", "No query gained clicks.": "Aucune requête n'a gagné de clics.", "No query lost clicks.": "Aucune requête n'a perdu de clics.", "Queries by position": "Requêtes par position",
     "Lags 2–3 days": "2 à 3 jours de retard",
+    "Key event rate, at most: each key event counts as one visit, never more than the visits. Google Analytics' own rate counts visits with at least one key event, so it can be lower.": "Taux d'événements clés, au plus : chaque événement clé compte pour une visite, jamais plus que les visites. Le taux de Google Analytics compte les visites avec au moins un événement clé : il peut être plus bas.",
     "Visit and lead sources, from Google Analytics": "Sources des visites et des leads, d'après Google Analytics", "Visits": "Visites", "Leads": "Leads", "Lead rate": "Taux de lead", "Channels": "Canaux",
     "Visits by channel": "Visites par canal", "Every channel": "Tous les canaux", "Channel": "Canal", "Share": "Part", "Referring sites": "Sites référents", "Site": "Site", "No referring sites in this period.": "Aucun site référent sur cette période.",
     "Channel rules": "Règles de canaux", "Rename channels by source/medium (* = anything). Past days change too.": "Renommez les canaux par source/support (* = n'importe quoi). Les jours passés changent aussi.",
@@ -1177,6 +1225,8 @@
     "Tags are a list of words.": "Les étiquettes sont une liste de mots.", "A tag is 40 characters at most.": "Une étiquette fait 40 caractères au plus.", "A resource takes 20 tags at most.": "Une ressource prend 20 étiquettes au plus.", "Resource saved": "Ressource enregistrée", "Resource deleted": "Ressource supprimée",
     "A resource needs a title.": "Une ressource a besoin d'un titre.", "A link starts with https://.": "Un lien commence par https://.",
     "Page speed": "Vitesse des pages", "Device": "Appareil", "Phone": "Téléphone", "Computer": "Ordinateur", "Score": "Score", "Largest content (s)": "Plus grand contenu (s)", "Response (ms)": "Réactivité (ms)", "Layout shift": "Décalage visuel", "Measured on": "Mesuré sur", "Real visitors": "Vrais visiteurs", "Test run": "Test",
+    "AI assistants": "Assistants IA", "AI search": "Recherche IA", "Open AI search": "Ouvrir Recherche IA",
+    "Lab score": "Score labo", "Lab test only": "Test labo seulement", "Passed": "Réussi", "Failed": "Échoué", "whole site": "site entier", "this page": "cette page",
     "Keyword ideas": "Idées de mots-clés", "From Google's suggestions": "D'après les suggestions de Google", "A word or two": "Un ou deux mots", "Find ideas": "Trouver des idées", "Any language": "Toutes les langues", "Already tracked": "Déjà suivi", "Add": "Ajouter", "Add all": "Tout ajouter", "ideas": "idées", "Add to my keywords": "Ajouter à mes mots-clés",
     "Country and language start on the ones this site's keywords use most.": "Pays et langue partent de ceux que les mots-clés du site utilisent le plus.", "The country and language of these ideas.": "Le pays et la langue de ces idées.","No suggestions.": "Aucune suggestion.", "Type a word or two first.": "Saisissez d'abord un ou deux mots.",
     "Your SERP API's name, such as serp_api1.": "Le nom de votre SERP API, par exemple serp_api1.", "My zones": "Mes zones",
@@ -1211,9 +1261,9 @@
     "Up to date.": "À jour.", "Updated: {names}.": "Mis à jour : {names}.",
   });
   Object.assign(fr, { // Content's fixes and the simpler Channels, Conversions and Content (2026-11-12)
-    "Unknown page (not set)": "Page inconnue (not set)",
+    "Unknown page (not set)": "Page inconnue (not set)", "Jump links: {n} impressions": "Liens vers une section : {n} impressions",
     "Google Analytics couldn't tell which page these visits landed on, often visits that left before the page loaded.": "Google Analytics n'a pas pu dire sur quelle page ces visites sont arrivées, souvent des visites parties avant le chargement de la page.",
-    "Google Analytics and Search Console": "Google Analytics et Search Console", "Most visits: {name}": "Le plus de visites : {name}", "No rules yet.": "Pas encore de règle.",
+    "Google Analytics and Search Console": "Google Analytics et Search Console", "Most visits: {name}": "Le plus de visites : {name}", "Google clicks: {a} – {b}.": "Clics Google : {a} – {b}.", "No rules yet.": "Pas encore de règle.",
     "From visit to lead, by channel and by page.": "De la visite au lead, par canal et par page.",
     "Counts only: no personal data comes into this app.": "Des chiffres seulement : aucune donnée personnelle n'entre dans cette application.",
     "Google Analytics hid some rows with few visits, so small numbers may be missing. A longer period may show them.": "Google Analytics a masqué des lignes à faibles visites : de petits nombres peuvent manquer. Une période plus longue peut les montrer.",

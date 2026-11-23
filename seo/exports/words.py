@@ -4,6 +4,8 @@ English is the key, as on the screens. A word with no entry here stays in Englis
 when a view uses a label that has none.
 """
 FR: dict[str, str] = {
+    # One period rule, units carried with each change (2026-11-17)
+    "Pages and searches going up": "Pages et recherches en hausse", "Pages and searches going down": "Pages et recherches en baisse", "Same place": "Même place",
     # Pages screen (2026-11-12)
     "Get clicks": "Reçoivent des clics", "Indexed": "Indexée", "Not indexed": "Non indexées", "Open tasks": "Tâches ouvertes", "Rankings": "Positions",
     "Anchor": "Ancre", "Counts?": "Compte ?", "Website": "Site", "Nothing found.": "Rien trouvé.",
@@ -26,7 +28,7 @@ FR: dict[str, str] = {
         "Les clics après chaque mise à jour, comparés aux mêmes jours de la semaine avant, hors recherches de marque quand des mots de marque sont définis. Une coïncidence dans le temps, pas une preuve.",
     "Search overview": "Vue d'ensemble de la recherche", "Clicks": "Clics", "Impressions": "Impressions", "Click rate": "Taux de clic", "Average position": "Position moyenne",
     "Queries": "Requêtes", "Pages": "Pages", "Countries": "Pays", "Devices": "Appareils", "Query": "Requête", "Country": "Pays", "Device": "Appareil",
-    "Clicks before": "Clics avant", "Position": "Position", "Position before": "Position avant", "Brand": "Marque", "Brand only": "Marque seulement", "Without brand": "Hors marque",
+    "Clicks before": "Clics avant", "Google numbers": "Chiffres Google", "Jump-link impressions": "Impressions des liens vers une section", "Position": "Position", "Position before": "Position avant", "Brand": "Marque", "Brand only": "Marque seulement", "Without brand": "Hors marque",
     "Gaining": "En hausse", "Losing": "En baisse", "New": "Nouveau", "Lost": "Perdu", "Top 3": "Top 3", "Positions 4–10": "Positions 4–10", "Positions 11–20": "Positions 11–20",
     "Positions 21+": "Positions 21+", "Min clicks": "Clics minimum", "Min impressions": "Impressions minimum", "Position from": "Position à partir de", "Position to": "Position jusqu'à",
     "Opportunities": "Opportunités", "Almost on page 1": "Presque en page 1", "Low click rate": "Taux de clic faible", "Two pages compete": "Deux pages en concurrence", "Lost queries": "Requêtes perdues",
@@ -39,7 +41,11 @@ FR: dict[str, str] = {
     "Losing clicks": "Clics en baisse", "Gaining clicks": "Clics en hausse", "Dropped out of Google": "Sortie de Google", "Odd day": "Jour inhabituel", "Slowly losing clicks": "Perd lentement des clics", "Close to the top 3": "Proche du top 3", "Seen, never clicked": "Vue, jamais cliquée", "Query losing places": "Requête qui perd des places", "One device or country": "Un appareil ou un pays", "Unstable ranking": "Classement instable", "Brand hides a loss": "La marque cache une perte", "Slowly losing places": "Perd lentement des places", "Near page 1 on many searches": "Proche de la page 1 sur beaucoup de recherches", "No page of its own": "Pas de page à elle", "Question searches": "Recherches en questions", "Topic without a strong page": "Sujet sans page forte", "Worth tracking": "À suivre", "Just dropped": "Vient de chuter", "Just climbed": "Vient de monter", "Rival passed you": "Dépassé par un concurrent", "Rivals lead, people search it": "Concurrents devant, recherche réelle", "Almost there, both agree": "Presque là, les deux sources d'accord", "Ranked, not clicked": "Classé, pas cliqué", "Another page shown": "Une autre page montrée", "Tracked, no searches": "Suivi, aucune recherche", "Rank and clicks": "Positions et clics", "Page that brings leads": "Page qui apporte des prospects", "Clicks but no leads": "Des clics mais pas de prospects", "One page, several addresses": "Une page, plusieurs adresses", "Shown but broken": "Affichée mais cassée", "Data gaps": "Trous dans les données", "Task result": "Résultat d'une tâche", "Note result": "Résultat d'une note", "Subheadings changed": "Sous-titres modifiés", "Search title changed": "Titre dans les résultats modifié", "Indexing changed": "Indexation modifiée", "Content changed": "Contenu modifié", "New page": "Nouvelle page", "Started ranking for": "A commencé à se classer sur", "Stopped ranking for": "Ne se classe plus sur", "Moved up on": "A gagné des places sur", "Moved down on": "A perdu des places sur", "Cited in AI Overview for": "Cité dans l'AI Overview sur", "Dropped from AI Overview for": "Retiré de l'AI Overview sur",
     # Keywords
     "Keywords": "Mots-clés", "Keyword": "Mot-clé", "Search engine": "Moteur de recherche", "Keywords followed": "Mots-clés suivis", "In the top 10": "Dans le top 10", "Moved up": "En hausse", "Moved down": "En baisse",
-    "Own tool average": "Moyenne de l'outil du moteur", "Searches a month": "Recherches par mois", "Volume source": "Source du volume", "Checked with": "Vérifié avec", "Checked": "Vérifié", "Keywords checked": "Mots-clés vérifiés",
+    "Own tool average": "Moyenne de l'outil du moteur", "Google impressions, 28 days": "Impressions Google, 28 jours", "Impressions, 28 days": "Impressions, 28 jours", "Clicks, 28 days": "Clics, 28 jours",
+    "Ranking page": "Page classée", "Most shown in Search Console": "La plus affichée dans Search Console", "Check status": "État du contrôle", "Also seen": "Vu aussi",
+    "Suspect": "Suspect", "Tools disagree": "Les outils ne sont pas d'accord", "Link text typed in": "Texte du lien saisi", "Anchor type": "Type d'ancre",
+    "Brand + keyword": "Marque + mot-clé", "Bare URL": "URL nue", "Exact keyword": "Mot-clé exact", "Partial keyword": "Mot-clé partiel", "Generic": "Générique", "Checked with": "Vérifié avec", "Checked": "Vérifié", "Keywords checked": "Mots-clés vérifiés",
+    "Searches a month": "Recherches par mois", "Volume source": "Source du volume",
     "No keywords followed yet.": "Aucun mot-clé suivi pour l'instant.", "Empty position: not found in the results read.": "Position vide : absent des résultats lus.",
     "Empty position on a suspect check: it couldn't read every result.": "Position vide sur un contrôle suspect : il n'a pas pu lire tous les résultats.",
     "Empty position: not found in the results read, except on suspect checks, which couldn't read every result.": "Position vide : absent des résultats lus, sauf sur les contrôles suspects, qui n'ont pas pu lire tous les résultats.",
@@ -57,12 +63,21 @@ FR: dict[str, str] = {
     # Today
     "Today": "Aujourd'hui", "To do": "À faire", "What": "Quoi", "Detail": "Détail", "Nothing to do today.": "Rien à faire aujourd'hui.", "Sites": "Sites", "Visits change": "Évolution des visites",
     "Last two AI Overview checks": "Deux derniers relevés de l'AI Overview",  # an AI Overview row's detail (seo/metrics/today.py)
+    "Key events": "Événements clés", "Key event rate": "Taux d'événements clés", "Key events by channel": "Événements clés par canal", "Key events change": "Évolution des événements clés",
+    "Leads and key events": "Demandes et événements clés",
+    "Leads and key events: sites without lead events picked count every key event. Pick them in Settings → Sites.": "Demandes et événements clés : les sites sans demandes choisies comptent tous leurs événements clés. Choisissez-les dans Réglages → Sites.",
+    "Key events: every Google Analytics key event. Pick which ones are leads in Settings → Sites.": "Événements clés : tous les événements clés de Google Analytics. Choisissez ceux qui sont des demandes dans Réglages → Sites.",
+    "Key event rate, at most": "Taux d'événements clés, au plus", "Lead rate, at most": "Taux de lead, au plus",
+    "Key event rate, at most: each key event counts as one visit, never more than the visits. Google Analytics' own rate counts visits with at least one key event, so it can be lower.": "Taux d'événements clés, au plus : chaque événement clé compte pour une visite, jamais plus que les visites. Le taux de Google Analytics compte les visites avec au moins un événement clé : il peut être plus bas.",
+    "Google numbers before": "Chiffres Google, période précédente",
+    "No comparison: Google keeps 16 months of data.": "Sans comparaison : Google garde 16 mois de données.", "No earlier period stored": "Aucune période précédente enregistrée",
+    "Too little Google Analytics data in the period before to compare visits.": "Trop peu de données Google Analytics sur la période précédente pour comparer les visites.",
     "Leads change": "Évolution des demandes", "Alerts": "Alertes", "Pages going up": "Pages en hausse", "Pages going down": "Pages en baisse", "Page or keyword": "Page ou mot-clé",
     "Measured in": "Mesuré en", "Now": "Maintenant", "Places gained": "Places gagnées", "No page is clearly going up.": "Aucune page n'est nettement en hausse.",
     "No page is clearly going down.": "Aucune page n'est nettement en baisse.", "Competitor changes": "Changements chez les concurrents", "Competitor": "Concurrent", "Their page": "Leur page",
     "When": "Quand", "No competitor changed a watched page.": "Aucun concurrent n'a modifié une page suivie.",
     "Meta": "Méta", "Title": "Titre", "New page": "Nouvelle page", "Page gone": "Page disparue", "AI cited": "Cité par l'IA", "Rank down": "Recul au classement", "Rank up": "Progrès au classement",
-    "Page removed": "Page retirée", "Title changed": "Titre modifié", "Meta description changed": "Meta description modifiée", "Main heading changed": "Titre principal modifié", "Headings changed": "Titres modifiés",
+    "Page removed": "Page retirée", "Moved to another address": "Déplacée vers une autre adresse", "Title changed": "Titre modifié", "Meta description changed": "Meta description modifiée", "Main heading changed": "Titre principal modifié", "Headings changed": "Titres modifiés",
     "Content changed": "Contenu modifié", "Canonical changed": "Canonique modifiée", "Structured data changed": "Données structurées modifiées", "Links changed": "Liens modifiés", "Redirect changed": "Redirection modifiée",
     "Status changed": "Statut modifié", "Indexing changed": "Indexation modifiée",
     # Backlinks
@@ -113,6 +128,7 @@ FR: dict[str, str] = {
     "Linking to competitors, not me": "Pointent vers les concurrents, pas vers moi", "Name": "Nom", "Competitors it links to": "Concurrents visés", "Which ones": "Lesquels",
     "A page with a link": "Une page avec un lien", "Why filtered out": "Pourquoi retiré", "No link gaps found yet.": "Aucun lien manquant trouvé pour l'instant.", "Nothing was filtered out.": "Rien n'a été retiré.",
     "File spam score above 30": "Score de spam du fichier supérieur à 30", "Flagged by": "Signalé par",
+    "The app saw": "L'appli a vu", "Leads to": "Mène à", "Old link, last seen": "Ancien lien, vu le", "App flagged": "Signalés par l'appli", "Old links": "Anciens liens", "Old links, left out": "Anciens liens, écartés",
     "Uploaded file": "Fichier importé", "System": "Système", "You": "Vous", "No home page": "Pas de page d'accueil", "Home page mostly outside links": "Page d'accueil surtout faite de liens sortants",
     "Link farm: links to thousands of sites": "Ferme de liens : pointe vers des milliers de sites", "Parked or for sale": "Parqué ou à vendre", "Spam words in name": "Mots de spam dans le nom",
     "Spam words on home page": "Mots de spam sur la page d'accueil", "Link farm: thousands of subdomains": "Ferme de liens : des milliers de sous-domaines",

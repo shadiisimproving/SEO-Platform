@@ -35,6 +35,11 @@ def other(engine, site):
         return conn.execute(text("INSERT INTO sites (host, start_url, kind) VALUES ('other.example', 'https://other.example/', 'own')")).lastrowid
 
 
+def _dsl(days):
+    """Day, visits and leads of each day row: what these tests pin. converted and rated (the rate's parts, W2b) are pinned in test_final_ga."""
+    return [{k: d[k] for k in ("day", "sessions", "leads")} for d in days]
+
+
 def _ga4(engine, site_id, day, channel, source, medium, sessions, leads=0):
     with engine.begin() as conn:
         conn.execute(
@@ -97,8 +102,8 @@ def test_a_channel_panel_adds_up_to_its_row(engine, site):
     assert panel["before"] == {"sessions": 40, "leads": 1.0, "rate": 0.025}
     assert [(s["source"], s["sessions"], s["before"], s["change"]) for s in panel["sources"]] == [("google", 60, 40, 50.0), ("bing", 20, None, None)]
     assert [(m["medium"], m["sessions"]) for m in panel["mediums"]] == [("organic", 80)] and panel["sources_total"] == 2
-    assert panel["days"] == [{"day": "2026-10-01", "sessions": 60, "leads": 3.0}, {"day": "2026-10-02", "sessions": 20, "leads": 1.0}]
-    assert panel["days_before"] == [{"day": "2026-09-29", "sessions": 40, "leads": 1.0}]
+    assert _dsl(panel["days"]) == [{"day": "2026-10-01", "sessions": 60, "leads": 3.0}, {"day": "2026-10-02", "sessions": 20, "leads": 1.0}]
+    assert _dsl(panel["days_before"]) == [{"day": "2026-09-29", "sessions": 40, "leads": 1.0}]
     assert panel["period"] == service.channels(_scope(engine))["period"]
 
 
@@ -106,7 +111,7 @@ def test_a_day_ga4_reported_counts_at_zero_and_a_day_it_did_not_is_a_gap(engine,
     _ga4(engine, site, D1, "Direct", "(direct)", "(none)", 5)
     _ga4(engine, site, D3, "Referral", "blog.example", "referral", 7)  # nothing at all on D2
     days = service.channel_detail(_scope(engine, end=D3, before=None), "Referral")["days"]
-    assert days == [{"day": "2026-10-01", "sessions": 0, "leads": 0.0}, {"day": "2026-10-03", "sessions": 7, "leads": 0.0}]
+    assert _dsl(days) == [{"day": "2026-10-01", "sessions": 0, "leads": 0.0}, {"day": "2026-10-03", "sessions": 7, "leads": 0.0}]
 
 
 def test_a_channel_rule_decides_which_panel_a_visit_is_in(engine, site):
@@ -195,6 +200,7 @@ def test_a_page_panel_lists_the_searches_that_bring_it(engine, site):
     _search(engine, site, D2, "spain visa", "https://mine.example/visa/", 2, 40, 8)
     _search(engine, site, D1, "contact us", "https://mine.example/contact/", 9, 90, 1)  # another page
     _search(engine, site, B1, "visa seville", "https://mine.example/visa/", 4, 40, 4)  # the period before
+    _shown(engine, site, B1, "https://mine.example/visa/", 4, 40, 4)  # the page table reaches back to it too
     queries = service.page_detail(_scope(engine), "https://mine.example/visa/")["queries"]
     assert [(q["query"], q["clicks"], q["impressions"]) for q in queries] == [("visa seville", 6, 60), ("spain visa", 2, 40)]
     assert queries[0]["position"] == 4.0 and queries[0]["clicks_before"] == 4 and queries[0]["change"] == 2
@@ -282,8 +288,8 @@ def test_conversions_compares_with_the_period_before(engine, site):
     assert answer["sessions"] == 100 and answer["leads"] == 5 and answer["rate"] == 0.05  # as before
     assert answer["before"] == {"sessions": 50, "leads": 2.0, "rate": 0.04}
     assert answer["changes"] == {"sessions": 100.0, "leads": 150.0, "rate_points": 1.0}
-    assert answer["days"] == [{"day": "2026-10-01", "sessions": 80, "leads": 4.0}, {"day": "2026-10-02", "sessions": 20, "leads": 1.0}]
-    assert answer["days_before"] == [{"day": "2026-09-29", "sessions": 50, "leads": 2.0}]
+    assert _dsl(answer["days"]) == [{"day": "2026-10-01", "sessions": 80, "leads": 4.0}, {"day": "2026-10-02", "sessions": 20, "leads": 1.0}]
+    assert _dsl(answer["days_before"]) == [{"day": "2026-09-29", "sessions": 50, "leads": 2.0}]
     assert answer["period"]["from"] == "2026-10-01" and answer["period"]["compare_from"] == "2026-09-29"
 
 
@@ -302,7 +308,7 @@ def test_channels_days_add_up_to_the_totals(engine, site):
     answer = service.channels(_scope(engine))
     assert sum(d["sessions"] for d in answer["days"]) == answer["total"]["sessions"] == 100
     assert sum(d["leads"] for d in answer["days"]) == answer["total"]["leads"] == 5
-    assert answer["days_before"] == [{"day": "2026-09-30", "sessions": 9, "leads": 0.0}]
+    assert _dsl(answer["days_before"]) == [{"day": "2026-09-30", "sessions": 9, "leads": 0.0}]
     assert service.channels(_scope(engine, before=None))["days_before"] is None
 
 
@@ -350,7 +356,7 @@ def test_today_folds_the_setup_facts_and_the_backlinks_numbers(engine, site, oth
 
 def test_content_folds_clarity_speed_and_the_clarity_downloads_as_their_own_routes_answer(engine, site):
     with engine.begin() as conn:
-        conn.execute(text("INSERT INTO clarity_daily (site_id, day, sessions, scroll_depth, rage_clicks, dead_clicks) VALUES (:s, :d, 40, 55.5, 2, 3)"), {"s": site, "d": D1})
+        conn.execute(text("INSERT INTO clarity_daily (site_id, day, sessions, scroll_depth, rage_clicks, dead_clicks) VALUES (:s, :d, 40, 55.5, 2, 3)"), {"s": site, "d": D2})  # read on D2: covers D1
         conn.execute(text("INSERT INTO cwv_runs (site_id, url, strategy, performance, lcp_ms, inp_ms, cls) VALUES (:s, 'https://mine.example/', 'mobile', 91, 1800, 120, 0.02)"), {"s": site})
     client, query = _client(engine), f"from={D1}&to={D2}&site_id={site}"
     folded = client.get(f"/api/metrics/content?{query}&include=clarity,speed,clarity_reports").get_json()
@@ -393,3 +399,13 @@ def test_the_panel_routes_answer_and_refuse_what_they_cannot(engine, site):
     for address in ("channel?x=1", "referrer?x=1", "page?host=mine.example", "assistant?x=1", "page?path=/visa/&host=nobody.example", f"channel?name={'x' * 191}"):
         assert client.get(f"/api/metrics/{address}&{query}").status_code == 400, address
     assert client.get("/api/metrics/channel?name=Direct&from=nope&to=2026-10-01").status_code == 400
+
+
+def test_page_speed_says_whose_real_visitor_data_it_is(engine, site):
+    with engine.begin() as conn:
+        conn.execute(text("INSERT INTO cwv_runs (site_id, url, strategy, performance, lcp_ms, inp_ms, cls, field_data, field_origin) VALUES (:s, 'https://mine.example/', 'mobile', 82, 2600, 150, 0.05, 1, 1)"), {"s": site})
+        conn.execute(text("INSERT INTO cwv_runs (site_id, url, strategy, performance, lcp_ms, inp_ms, cls, field_data, field_origin) VALUES (:s, 'https://mine.example/', 'desktop', 97, 1234, NULL, 0.01, 0, 0)"), {"s": site})
+    client, query = _client(engine), f"from={D1}&to={D2}&site_id={site}"
+    runs = {r["strategy"]: r for r in client.get(f"/api/metrics/speed?{query}").get_json()["runs"]}
+    assert (runs["mobile"]["performance"], runs["mobile"]["field"], runs["mobile"]["passed"]) == (82, "site", False)  # LCP 2.6 s is over 2.5 s
+    assert (runs["desktop"]["field"], runs["desktop"]["passed"]) == (None, None)

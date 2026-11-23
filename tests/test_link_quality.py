@@ -173,7 +173,9 @@ def test_spam_goes_first_and_only_the_good_ones_can_be_added(world):
         "parked.example": "parked", "gamble.example": "spam_words", "online-casino.example": "name_words", "empty.example": "almost_empty", "hidden.example": "noindex",
         "farm.example": "many_outside_links", "missing.example": "no_home_page", "moved.example": "leads_elsewhere", "toxic.example": "spam_score",
     }
-    assert after["funnel"] == {"found": 12, "filtered": 9, "checking": 0, "good": 3}
+    assert after["funnel"] == {"found": 12, "filtered": 9, "checking": 0, "good": 3, "not_followed": 0, "follow_unknown": 3, "app_flagged": 0, "app_flagged_weak": 0, "old": 0, "current": 3, "app_flagged_current": 0}
+    with world.engine.connect() as conn:  # where the home page led is kept, so a row can name the site (links A1)
+        assert conn.execute(text("SELECT redirect_to FROM link_domains WHERE domain = 'moved.example'")).scalar() == "elsewhere.example"
     assert next(g for g in after["gaps"] if g["domain"] == "shy.example")["page_note"] == "unread"
     assert all(g["reason_words"] for g in after["filtered"])
 
@@ -405,15 +407,17 @@ def test_a_site_that_is_down_isnt_tried_again_straight_away(world):
 
 # ---- the file's spam score decides --------------------------------------------------------------------
 
-def test_the_files_spam_score_decides_over_the_apps_own_checks(world):
+def test_the_files_spam_score_decides_over_the_apps_own_checks_but_not_over_hard_facts(world):
     # betmatecasino.com had a score of 3 in an Ubersuggest file and was flagged by its name (2026-11-10).
     scores = {"bet-casino.example": 3, "parked.example": 3, "toxic.example": 52}
     report = gaps.import_referrers(world.engine, world.own, world.rival, csv_of(["bet-casino.example", "parked.example", "toxic.example", "gamble-casino.example"], scores), "links.csv")
     assert report["flagged"] == 2  # the file's 52, and a spam name the file has no score for
     world.check()
     answer = world.gaps()
-    assert sorted(good(world)) == ["bet-casino.example", "parked.example"]  # a low score wins over a spam name and a parked page
+    # A low score wins over a spam name, but not over a parked page: a hard fact the app saw itself (owner, 2026-11-18).
+    assert good(world) == ["bet-casino.example"]
     flagged = {g["domain"]: g for g in answer["filtered"]}
+    assert (flagged["parked.example"]["reason"], flagged["parked.example"]["flagged_by"], flagged["parked.example"]["app_flag"]["over_file"]) == ("parked", "system", 3)
     assert (flagged["toxic.example"]["reason"], flagged["toxic.example"]["flagged_by"]) == ("spam_score", "file")
     assert flagged["toxic.example"]["reason_words"] == "File spam score above 30"
     assert (flagged["gamble-casino.example"]["reason"], flagged["gamble-casino.example"]["flagged_by"]) == ("name_words", "system")

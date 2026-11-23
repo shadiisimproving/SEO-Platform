@@ -103,3 +103,41 @@ def test_findings_with_links_in_survive_a_save_between_chunks():
     for key in ("links_in", "link_names", "linked_from"):
         old.pop(key)
     assert audit.Findings.from_json(old).links_in == {}  # a test saved before the report still carries on
+
+
+def test_a_page_with_clicks_is_asked_again_every_week_and_a_quiet_one_every_month(world, google, monkeypatch):
+    """Expert review 2026-11-17: a money page that fell out of Google surfaced 30 days late. Indexed pages with Search
+    Console clicks are now asked again after 7 days; pages without clicks keep 30."""
+    world.connect()
+    own_pages(world, "/money", "/quiet")
+    monkeypatch.setattr(indexing, "importance", lambda engine, site_id: {"/money": (40, 900), "/quiet": (0, 0)})
+    indexing.enqueue(world.engine, world.own)
+    world.collect()
+    with world.engine.begin() as conn:
+        conn.execute(text("UPDATE gsc_inspections SET inspected_at = UTC_TIMESTAMP(3) - INTERVAL 8 DAY"))
+    assert indexing.due_pages(world.engine, world.own) == ["https://shop-one.test/money"]
+    with world.engine.begin() as conn:
+        conn.execute(text("UPDATE gsc_inspections SET inspected_at = UTC_TIMESTAMP(3) - INTERVAL 31 DAY"))
+    assert sorted(indexing.due_pages(world.engine, world.own)) == ["https://shop-one.test/money", "https://shop-one.test/quiet"]
+
+
+def test_google_dropping_an_indexed_page_rings_the_bell_once(world, google):
+    world.connect()
+    own_pages(world, "/abonnement", "/contact")
+    indexing.enqueue(world.engine, world.own)
+    world.collect()
+    with world.engine.begin() as conn:
+        conn.execute(text("UPDATE gsc_inspections SET inspected_at = UTC_TIMESTAMP(3) - INTERVAL 31 DAY"))
+    world.index["/abonnement"] = {"verdict": "NEUTRAL", "coverageState": "Crawled - currently not indexed"}
+    indexing.enqueue(world.engine, world.own)
+    world.collect()
+    bell = world.client.get("/api/notifications").get_json()
+    dropped = [n for n in bell["items"] if n["kind"] == "page_dropped"]
+    assert len(dropped) == 1 and bell["unread"] == 1
+    assert dropped[0]["detail"]["url"] == "https://shop-one.test/abonnement" and dropped[0]["detail"]["coverage"] == "Crawled - currently not indexed"
+    # Asked again and still out: no second ring. A page never indexed (first answer NEUTRAL) never rings.
+    with world.engine.begin() as conn:
+        conn.execute(text("UPDATE gsc_inspections SET inspected_at = UTC_TIMESTAMP(3) - INTERVAL 31 DAY"))
+    indexing.enqueue(world.engine, world.own)
+    world.collect()
+    assert len([n for n in world.client.get("/api/notifications").get_json()["items"] if n["kind"] == "page_dropped"]) == 1

@@ -1,6 +1,7 @@
 """The competitors backend, on the real test database and worker. A fake search tool and websites held in memory."""
 import io
 import re
+from datetime import datetime, timezone
 from types import SimpleNamespace
 
 import httpx
@@ -1239,7 +1240,8 @@ def test_after_the_first_pass_new_removed_and_edited_pages_are_events(world):
     world.pages["rival.example/new"] = page_html("Brand new")
     world.pages["rival.example/b"] = 404
     del world.pages["rival.example/c"]  # gone, and no longer listed either
-    world.pages["rival.example/sitemap.xml"] = sitemap_xml(("/a", "/b", "/new"))
+    # Dated today: a page found later counts as new only when its own date is after watching began (W2, 2026-11-17).
+    world.pages["rival.example/sitemap.xml"] = sitemap_xml(("/a", "/b", "/new"), date=datetime.now(timezone.utc).date().isoformat())
     age_pages(world)
     suggest.queue_crawl(world.engine, rival)
     world.drain("crawl")
@@ -2434,11 +2436,14 @@ def test_competitor_cards_get_their_home_page_words_and_added_edited_counts(worl
     add_page_change(world, "rival.example", kind="h1")
     with world.engine.begin() as conn:
         conn.execute(text("UPDATE change_events e JOIN domains d ON d.id = e.domain_id SET e.detected_at = UTC_TIMESTAMP(3) - INTERVAL 40 DAY WHERE d.host = 'rival.example' AND e.kind = 'h1'"))
+        # "Added" is a read page whose own date, else the day it was reported new, is in the 30 days (N1, 2026-11-18).
+        conn.execute(text("UPDATE pages SET content_hash = 'h' WHERE url = 'https://rival.example/page'"))
         domain_id = conn.execute(text("SELECT id FROM domains WHERE host = 'rival.example'")).scalar_one()
         for url, title, meta in (("https://rival.example/fr/about", "About us", "Long"), ("https://rival.example/", "Rival - Coffee club", "Beans by post.")):
             conn.execute(text("INSERT INTO pages (domain_id, url, url_hash, title, meta_description) VALUES (:d, :u, SHA2(:u, 256), :t, :m)"), {"d": domain_id, "u": url, "t": title, "m": meta})
     row = rival_row(collective.rivals(world.engine))
-    assert (row["added_30d"], row["edited_30d"], row["removed_30d"]) == (1, 2, 1)
+    # Pages, not change rows (SEO review 2026-11-17, #11): the title and meta edits are on one page, so 1 page edited.
+    assert (row["added_30d"], row["edited_30d"], row["removed_30d"]) == (1, 1, 1)
     assert row["about"] == {"url": "https://rival.example/", "title": "Rival - Coffee club", "description": "Beans by post."}  # the shortest address is the home page
     mine = collective.rivals(world.engine)["mine"][0]
     assert mine["about"] is None and mine["added_30d"] == 0  # no page read: nothing is made up

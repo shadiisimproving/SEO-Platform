@@ -49,7 +49,7 @@
 .lv-line.ov-fresh { stroke-dasharray: 2 4; opacity: .75; }
 .ov-flag line { stroke: var(--c-indigo, var(--muted)); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; opacity: .8; }
 .ov-flag.task line { stroke: var(--good-t); }
-.ov-ylab { position: absolute; top: 10px; font-size: var(--fs-min); font-variant-numeric: tabular-nums; background: var(--glass); padding: 0 3px; border-radius: 3px; pointer-events: none; color: var(--text-2); display: inline-flex; align-items: center; gap: 4px; }
+.ov-ylab { position: absolute; top: 10px; font-size: var(--fs-min); font-variant-numeric: tabular-nums; background: var(--glass); padding: 0 3px; border-radius: 3px; pointer-events: none; color: var(--text-2); display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; }
 .ov-ylab-key { width: 8px; height: 8px; border-radius: 2px; flex: none; }
 .ov-ylab.left { left: 18px; } .ov-ylab.right { right: 18px; }
 .ov-ylab.bottom { top: auto; bottom: 34px; }
@@ -284,3 +284,6 @@ html[data-simple="1"] #topbar .head-line .ov-trust .brand-mention { display: inl
 .gu-site-host { font-size: 13px; }
 .gu-more.small { white-space: normal; text-align: right; }
 @media (max-width: 720px) { .gu-more.small { text-align: left; } }
+/* Today's See page: the numbers and chart are for one page, said above them with the way back (2026-11-17). */
+.note.ov-only-page { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin: 0 0 12px; }
+.note.ov-only-page .btn { margin-left: auto; }

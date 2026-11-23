@@ -154,7 +154,7 @@
     return out;
   }
   state.rng = cleanRange((() => { try { return JSON.parse(store.get("range") || "{}"); } catch { return {}; } })());
-  const rangeEnds = {}, rangeSources = {}, rangeListeners = new Set();
+  const rangeEnds = {}, rangeSources = {}, rangeServed = {}, rangeListeners = new Set();
   /* The same "28 days" ends on different days: Search Console runs 2 to 3 days behind, Google Analytics 1. Each period control
      shows its real dates, and this sentence says why when this screen's data ends before yesterday. */
   function rangeBehind(route = state.route) {
@@ -192,14 +192,28 @@
       case "custom": from = r.from; to = r.to; break;
       default: from = addDays(last, -27);
     }
-    const days = dayCount(from, to);
+    let days = dayCount(from, to);
     let compareFrom = null, compareTo = null;
     if (r.compare === "prev") { compareTo = addDays(from, -1); compareFrom = addDays(compareTo, -(days - 1)); }
     if (r.compare === "yoy") { compareFrom = addDays(from, -364); compareTo = addDays(to, -364); }
+    /* The server's own period (seo/metrics/period.py), once a screen has it for this choice: the head prints the days really
+       counted and compared, never its own sum, and no "vs …" when nothing was compared. */
+    const served = rangeServed[state.route];
+    let unavailable = null, historyFrom = null, savedDays = null;
+    if (served && served.site === state.site && served.preset === r.preset && served.compare === r.compare && !validDay(end) && (r.preset !== "custom" || (served.asked === `${r.from}|${r.to}`))) {
+      if (validDay(served.from) && validDay(served.to)) { from = served.from; to = served.to; }
+      compareFrom = validDay(served.compare_from) ? served.compare_from : null;
+      compareTo = validDay(served.compare_to) ? served.compare_to : null;
+      unavailable = served.compare_unavailable || null;
+      historyFrom = served.history_from || null;
+      savedDays = served.saved_days || null; // 24 hours asked, Google not reachable: the server showed its last saved days
+    }
     const name = RANGE_PRESETS.find(([id]) => id === r.preset)?.[1];
-    const label = r.preset === "custom" ? fmtRange(from, to) : r.preset === "24h" && !hours ? fmtDay(to) : t(name);
-    const compareLabel = r.compare === "none" ? t("No comparison") : `${t("vs")} ${fmtRange(compareFrom, compareTo)}`;
-    return { preset: r.preset, from, to, compare: r.compare, compareFrom, compareTo, days, label, compareLabel, hours: r.preset === "24h" && hours };
+    if (savedDays) hours = false; // never "Last 24 hours" over whole saved days (expert review 2026-11-17, 3.9)
+    const label = r.preset === "custom" ? fmtRange(from, to) : savedDays ? t("Last {n} saved days").replace("{n}", savedDays.days) : r.preset === "24h" && !hours ? fmtDay(to) : t(name);
+    days = dayCount(from, to);
+    const compareLabel = r.compare === "none" || !compareFrom ? t("No comparison") : `${t("vs")} ${fmtRange(compareFrom, compareTo)}`;
+    return { preset: r.preset, from, to, compare: r.compare, compareFrom, compareTo, days, label, compareLabel, hours: r.preset === "24h" && hours, unavailable, historyFrom };
   }
   function rangeSet(partial = {}) {
     const next = cleanRange({ ...state.rng, ...partial, ...(partial.from || partial.to ? { preset: "custom" } : {}) });
@@ -218,13 +232,33 @@
     end(route, day, source = "") {
       if (source) rangeSources[route] = source;
       if (!validDay(day) || rangeEnds[route] === day) return;
+      const asked = rangeGet().from;
       rangeEnds[route] = day;
       setTimeout(() => {
         if (state.route !== route || $("#popover")) return;
+        // The dates moved (GA4 ends a day earlier than the picker guessed): the screen asks again for the dates now shown,
+        // or its head would say 20 Oct – 16 Nov over the numbers of 21 Oct – 16 Nov (final review 2026-11-18). Drawn
+        // again, it calls this with the same day, which stops here.
+        if (rangeGet().from !== asked) { render(); return; }
         if (state.simple) { redrawHeadRange(); return; } // the simpler head: only its dates and comparison phrase
         const picks = $(".range-picks");
         if (picks) picks.replaceWith(fragment(datePicks()));
       }, 0);
+    },
+    /* A screen hands over the period its server answer used (from, to, compare_from, compare_to, compare_unavailable,
+       history_from): the head then prints exactly that. */
+    served(route, w) {
+      if (!w || !validDay(w.from) || !validDay(w.to)) return;
+      const r = state.rng, next = { site: state.site, preset: r.preset, compare: r.compare, asked: `${r.from}|${r.to}`, from: w.from, to: w.to, compare_from: w.compare_from || null, compare_to: w.compare_to || null, compare_unavailable: w.compare_unavailable || null, history_from: w.history_from || null, saved_days: w.saved_days || null };
+      if (JSON.stringify(rangeServed[route]) === JSON.stringify(next)) return;
+      rangeServed[route] = next;
+      setTimeout(() => { if (state.route === route && !$("#popover")) { if (state.simple) redrawHeadRange(); else { const picks = $(".range-picks"); if (picks) picks.replaceWith(fragment(datePicks())); } } }, 0);
+    },
+    /* Why there is no comparison, in words, or "" when there is one. */
+    noCompareWhy(w = rangeGet()) {
+      if (w.unavailable === "google") return t("Google keeps 16 months");
+      if (w.unavailable === "history" || w.unavailable === "rows_history") return w.historyFrom ? headWords("data from {day}", { day: fmtShort(w.historyFrom) }) : t("not stored that far back yet");
+      return "";
     },
     search() {
       const r = state.rng, parts = [`range=${r.preset}`, `compare=${r.compare}`];
@@ -232,8 +266,12 @@
       return parts.join("&");
     },
     days(opts = {}) {
-      const g = rangeGet({ end: opts.end || DATA_END, hours: false }), parts = [`from=${g.from}`, `to=${g.to}`];
+      // The screen's own last day once its answer said it (UI.range.end): GA4 ends a day or two before yesterday, and a
+      // period asked through yesterday came back one day short under a head that said the whole 28 (final review N1).
+      const g = rangeGet({ end: opts.end || rangeEnds[state.route] || DATA_END, hours: false }), parts = [`from=${g.from}`, `to=${g.to}`];
       if (g.compareFrom) parts.push(`compare_from=${g.compareFrom}`, `compare_to=${g.compareTo}`);
+      // The shared range too, so the Search Console side of the answer ends on Google's last final day (seo/metrics/period.py).
+      parts.push(`range=${state.rng.preset === "24h" ? "7d" : state.rng.preset}`, `compare=${state.rng.compare}`);
       return parts.join("&");
     },
     behind: rangeBehind,
@@ -360,7 +398,8 @@
   const HEAD_PRESETS = [["7d", "7 days"], ["28d", "28 days"], ["3m", "3 months"], ["12m", "12 months"]];
   const HEAD_SEP = '<span class="head-sep"> · </span>';
   [["7 days", "7 jours"], ["28 days", "28 jours"], ["3 months", "3 mois"], ["12 months", "12 mois"], ["More", "Plus"], ["More periods", "Autres périodes"],
-    ["vs {range}", "par rapport au {range}"], ["no comparison", "sans comparaison"], ["vs the 24 hours before", "par rapport aux 24 heures d'avant"],
+    ["vs {range}", "par rapport au {range}"], ["no comparison", "sans comparaison"], ["no comparison: {why}", "sans comparaison : {why}"],
+    ["Google keeps 16 months", "Google garde 16 mois"], ["data from {day}", "données depuis le {day}"], ["not stored that far back yet", "pas encore enregistré si loin"], ["vs the 24 hours before", "par rapport aux 24 heures d'avant"],
     ["vs same days last year", "vs mêmes jours l'an dernier"], ["through {day}", "jusqu'au {day}"], ["{a} and {b}", "{a} et {b}"],
     ["Open the checklist", "Ouvrir la liste"], ["Set up {host}: {done} of {all} done", "Configurer {host} : {done} sur {all} faits"]]
     .forEach(([en, fr]) => { if (window.FR[en] === undefined) window.FR[en] = fr; });
@@ -395,7 +434,8 @@
   // The dates and the comparison phrase: the part UI.range.end draws again once a screen knows its last day.
   function headRange() {
     const g = rangeGet(), none = g.compare === "none" || !g.compareFrom;
-    const phrase = none ? t("no comparison") : g.hours && g.compare === "prev" ? t("vs the 24 hours before") : headWords("vs {range}", { range: compareDates(g) });
+    const why = none && g.compare !== "none" ? UIRange.noCompareWhy(g) : ""; // said in words, not hidden in a tooltip
+    const phrase = none ? (why ? headWords("no comparison: {why}", { why }) : t("no comparison")) : g.hours && g.compare === "prev" ? t("vs the 24 hours before") : headWords("vs {range}", { range: compareDates(g) });
     const cmpName = t(g.compare === "yoy" ? "vs same days last year" : RANGE_COMPARES.find(([id]) => id === g.compare)[1]);
     return `<span class="head-range"><span class="head-dates">${esc(g.hours ? t("Last 24 hours") : fmtRange(g.from, g.to))}</span>${behindMark()}${HEAD_SEP}<button type="button" class="head-cmp ${none ? "none" : ""}" id="compare" aria-haspopup="menu" aria-expanded="false" data-tip="${esc(`${t("Compare with")}: ${cmpName}`)}">${esc(phrase)}</button></span>`;
   }
@@ -895,12 +935,14 @@
     opr: row.opr ?? null, foundBy: row.found_by || null, gsc: row.gsc || null, disavow: Boolean(row.disavow), targetIndex: row.target_index || null,
     sourceIndex: row.source_index || null, anchorType: row.anchor_type || row.anchor_kind || null, siteTraffic: row.site_traffic ?? null,
     keyword: row.keyword || null, anchorKind: row.anchor_kind || null, anchorAuto: row.anchor_auto || null,
+    // The anchor the link checker read on the page decides the type; one set by hand only counts when nothing was read (B3).
+    anchorRead: row.anchor_read || null, anchorByHand: row.anchor_by_hand ?? Boolean(row.anchor_kind && !row.anchor_read),
   });
   const localLink = (id, x, site, status) => ({
     id, src: x.src, domain: window.BacklinkCleaner.rootDomain(x.src), site, target: x.target || null, anchor: x.anchor || null, status, auth: null, visits: 0, leads: 0, label: "none",
     cost: window.BulkLinks.parsePrice(x.cost) ?? 0, priceText: x.cost || null, billed: window.BulkLinks.parsePrice(x.billed) ?? null, billedText: x.billed || null, mediator: x.mediator || null, owner: x.owner || null, placed: x.placed || null, utm: utmOf(x.utm_source, x.utm_medium, x.utm_campaign), before: null, after: null,
     linkType: x.link_type || null, due: x.due || null, renewal: x.renewal || null, contact: x.contact || null, platform: x.platform || null, notes: x.notes || null, createdAt: new Date().toISOString(),
-    keyword: x.keyword || null, anchorKind: x.anchor_kind || null, anchorType: x.anchor_kind || null,
+    keyword: x.keyword || null, anchorKind: x.anchor_kind || null, anchorType: x.anchor_kind || null, anchorByHand: Boolean(x.anchor_kind), anchorRead: null,
   });
   const serverRow = (x, site, status) => ({
     site_id: bl.sites.find((s) => s.host === site)?.id, source_url: x.src, status, target_url: x.target || null, anchor: x.anchor || null, link_type: x.link_type || null, placed: x.placed || null, due: x.due || null, renewal: x.renewal || null,
@@ -1085,7 +1127,7 @@
       return `<tr id="prospect-${p.id}" style="cursor:default">
         <td class="pr-tick" data-label=""><input type="checkbox" class="chk" style="margin:0" data-prospect-pick="${p.id}" aria-label="${t("Select")}: ${esc(p.domain)}" ${prPicked.has(p.id) ? "checked" : ""}></td>
         <td class="head-cell url-cell"><span class="with-logo">${siteLogo(p.domain)}<span class="logo-text"><span class="nb-inline"><a class="kw mono small" href="${esc(p.url)}" target="_blank" rel="noopener noreferrer nofollow" data-tip="${esc(p.url)}">${esc(p.url.replace(/^https?:\/\//, ""))}</a>${window.COMP?.notes?.badge ? window.COMP.notes.badge({ scope: "domain", domain: p.domain, siteId: window.UI.siteIdPicked?.() ?? null }, p.domain) : ""}</span>${notes}</span></span></td>
-        <td class="r" data-label="${t("Authority")}" ${p.authorityLabel ? `data-tip="${esc(p.authorityLabel)}"` : ""}>${numberOrDash(p.authority)}</td>
+        <td class="r" data-label="${t("Authority")}">${p.authority === null || p.authority === undefined ? numberOrDash(p.authority) : window.BacklinkSeo.scoreCell({ value: p.authority, label: p.authorityLabel })}</td>
         <td class="r" data-label="${t("Page authority")}">${numberOrDash(p.pageAuthority)}</td>
         <td class="r" data-label="${t("Spam score")}">${spamText(p.spam)}</td>
         <td data-label="${t("Rating")}"><select class="select pr-rating" data-prospect-rating="${p.id}" aria-label="${t("Rating")}: ${esc(p.domain)}">${ratingOptions(p.rating, "—")}</select></td>
@@ -1165,11 +1207,11 @@
   const BL_PAGES = "bl-links", FOUND_PAGES = "bl-found", PR_PAGES = "bl-prospects";
   let blSort = null, foundSort = null, prSort = null, blPagedFor;
   const bareUrl = (url) => String(url || "").replace(/^https?:\/\/(www\.)?/, "");
-  const BL_SORTS = { src: (b) => bareUrl(b.src), authority: (b) => b.auth || b.opr, visits: (b) => b.visits, leads: (b) => b.leads };
+  const BL_SORTS = { src: (b) => bareUrl(b.src), authority: window.BacklinkSeo.authorityOf, visits: (b) => b.visits, leads: (b) => b.leads };
   const blSearched = (list) => list.filter((b) => window.TP.matches(BL_PAGES, b.src, b.anchor, b.check?.anchor, b.target, b.keyword, b.mediator, b.site));
   const foundSearched = (list) => list.filter(([f]) => window.TP.matches(FOUND_PAGES, f.src, f.target, f.site));
   const prSearched = (list) => list.filter((p) => window.TP.matches(PR_PAGES, p.url, p.domain, p.file, p.owner));
-  const PR_SORTS = { domain: (p) => bareUrl(p.url), da: (p) => p.authority, pa: (p) => p.pageAuthority, spam: (p) => p.spam };
+  const PR_SORTS = { domain: (p) => bareUrl(p.url), da: window.BacklinkSeo.authoritySort((p) => (p.authority === null || p.authority === undefined ? null : { value: p.authority, label: p.authorityLabel })), pa: (p) => p.pageAuthority, spam: (p) => p.spam };
   /* In consideration as filtered, searched and sorted: what the table pages through, and what Export takes. */
   const prospectList = () => window.BacklinkSeo.sortRows(prSearched(prospectsForSite().filter(prospectMatches)), prSort, PR_SORTS);
   /* Another site picked in the side menu starts every Backlinks table again at page 1, unsorted, with no search. */
@@ -1178,7 +1220,7 @@
     blSort = null; foundSort = null; prSort = null;
     window.BacklinkSeo.resetPages();
   }
-  [["Search websites", "Rechercher un site"], ["No link matches", "Aucun lien ne correspond"], ["Change the search.", "Modifiez la recherche."],
+  [["Find prospects", "Trouver des prospects"], ["Link gaps: find link prospects", "Liens manquants : trouver des prospects"], ["Sites linking to your competitors, not to you", "Sites qui font un lien vers vos concurrents, pas vers vous"], ["Search websites", "Rechercher un site"], ["No link matches", "Aucun lien ne correspond"], ["Change the search.", "Modifiez la recherche."],
     ["Search links", "Rechercher un lien"], ["link checks", "contrôles de liens"], ["No link matches.", "Aucun lien ne correspond."]]
     .forEach(([en, fr]) => { if (window.FR[en] === undefined) window.FR[en] = fr; });
   window.TP.on(BL_PAGES, () => render());
@@ -1188,7 +1230,9 @@
   function backlinksPage() {
     const section = state.blSection;
     if (blPagedFor !== state.site) { if (blPagedFor !== undefined) resetBacklinkPages(); blPagedFor = state.site; }
-    const main = section === "done" ? `<button class="btn btn-main" id="add-backlink">${icon("plus")}${t("Add backlink")}</button>` : "";
+    // Find prospects: Link gaps, the sites that link to competitors and not to me (COMPARISON 2026-11-17, place 3).
+    const findProspects = !window.ACCESS || ACCESS.can("competitors") ? `<a class="btn" id="bl-find-prospects" href="#competitors/gaps" style="text-decoration:none" data-tip="${esc(t("Sites linking to your competitors, not to you"))}">${icon("link-2-off")}${t("Find prospects")}</a>` : "";
+    const main = findProspects + (section === "done" ? `<button class="btn btn-main" id="add-backlink">${icon("plus")}${t("Add backlink")}</button>` : "");
     const title = t("Backlinks"), sub = t("Links built and what they brought");
     if (!bl.ready) return topbar(title, sub) + `<div class="content page-enter">${window.UI.skeleton("page", { tiles: 6, chart: false })}</div>`;
     if (bl.error) return topbar(title, sub) + `<div class="content page-enter">${window.UI.failCard(bl.error, { onRetry: () => { bl.error = ""; bl.ready = false; bl.asked = false; render(); } })}</div>`;
@@ -2465,7 +2509,7 @@
     return `${t("Missing columns")} : ${words}. ${t("Headers found")} : ${err.headers.join(", ")}.`;
   }
 
-  const isFlaggedRow = (row) => row.spam_score !== null && row.spam_score !== undefined && row.spam_score > 30;
+  const isFlaggedRow = (row) => window.BacklinkCleaner.isSpamScore(row.spam_score);
   function runCleaner(bytes, name, urlColumn = null) {
     try {
       // A file with no spam score is fine: every score is unknown. Spam is flagged and kept, never removed.
@@ -2805,10 +2849,13 @@
         if (bl.server) {
           const answer = await COMP.api("PUT", `backlinks/${editing.serverId}`, serverRow(record, site, status));
           // A saved row doesn't carry the worked-out anchor type. It still holds while the anchor text is the same.
-          const auto = (editing.anchor || "") === (record.anchor || "") ? editing.anchorAuto : null;
+          const auto = (editing.anchor || "") === (record.anchor || "") || editing.anchorRead ? editing.anchorAuto : null;
+          const read = editing.src === record.src ? editing.anchorRead : null; // a new address clears what was read on the old one
           Object.assign(editing, toBacklink(answer.saved, site));
           editing.anchorAuto = auto;
-          editing.anchorType = editing.anchorKind || auto;
+          editing.anchorRead = read;
+          editing.anchorByHand = Boolean(editing.anchorKind) && !read;
+          editing.anchorType = editing.anchorByHand ? editing.anchorKind : auto || editing.anchorKind;
           takeProspects(answer.prospects_removed);
         } else {
           const key = window.BulkLinks.sourceKey(record.src);
@@ -3097,6 +3144,8 @@
     if (!may("backlinks", true)) actions.splice(0, 1);
     if (!may("keywords", true)) actions.splice(actions.findIndex((a) => a.icon === "refresh-cw"), 1);
     const sites = window.SITES.map((s) => ({ label: s.host, kind: t("Site"), icon: "globe", run: () => { state.site = s.id; render(); } }));
+    // Link gaps under the words people search with (COMPARISON 2026-11-17, place 3): link gaps, link prospects, backlink gap.
+    if (may("competitors")) pages.push({ label: t("Link gaps: find link prospects"), words: "link gaps link prospects backlink gap find prospects liens manquants prospects", kind: t("Go to"), icon: "link-2-off", run: () => { location.hash = "#competitors/gaps"; } });
     if (!may("keywords")) return [...pages, ...actions, ...sites, ...(may("competitors") ? cmdRivals.list.map((c) => ({ label: c.display || c.host, kind: `${t("Competitor")} · ${c.site}`, icon: "crosshair", run: () => { location.hash = `#competitors/list/${c.id}?site=${encodeURIComponent(c.site)}`; } })) : [])];
     const kws = window.KEYWORDS.map((k) => ({ label: k.k, kind: t("Keyword"), icon: "key-round", run: () => { const open = () => openKeyword(k.k); if (state.route === "keywords") open(); else { go("keywords"); setTimeout(open, 200); } } }));
     const rivals = !may("competitors") ? [] : cmdRivals.list.map((c) => ({ label: c.display || c.host, kind: `${t("Competitor")} · ${c.site}`, icon: "crosshair", run: () => { location.hash = `#competitors/list/${c.id}?site=${encodeURIComponent(c.site)}`; } }));
@@ -3119,7 +3168,7 @@
   let cmdList = [], cmdIndex = 0;
   function renderCmdList(query = "") {
     const q = query.trim().toLowerCase();
-    cmdList = commands().filter((c) => !q || c.label.toLowerCase().includes(q)).slice(0, 9);
+    cmdList = commands().filter((c) => !q || `${c.label} ${c.words || ""}`.toLowerCase().includes(q)).slice(0, 9);
     cmdIndex = Math.min(cmdIndex, Math.max(0, cmdList.length - 1));
     setHTML($("#cmd-list"), cmdList.length
       ? cmdList.map((c, i) => `<li><button data-cmd="${i}" class="${i === cmdIndex ? "on" : ""}" dir="auto">${icon(c.icon, "muted")}<span>${esc(c.label)}</span><span class="kind">${esc(c.kind)}</span></button></li>`).join("")
@@ -3393,6 +3442,8 @@
     const list = window.CONNECTIONS;
     const on = list.filter((c) => c.status === "ok" || c.status === "nokey").length;
     const failing = list.filter((c) => c.status === "failing").length;
+    // A key saved but a site linked to nothing (settings-live.js, c.unwired) needs a fix too, though nothing is failing.
+    const unlinked = list.filter((c) => c.status !== "failing" && c.unwired?.length).length;
     // Credits from different tools aren't the same thing, so they aren't added up. What matters is which runs out first.
     const lowest = window.TOOLS.filter((x) => x.connected && x.left !== null && x.left !== undefined && x.of).sort((a, b) => a.left / a.of - b.left / b.of)[0];
     const group = (key) => (key === "serp" ? window.TOOLS.map((x) => connFor(x.name)) : list.filter((c) => c.group === key));
@@ -3404,7 +3455,7 @@
         <section class="tiles" id="set-tiles">
           ${tile(t("Connected"), cnt(on), `<span class="ab">${t("of")} ${list.length}</span>`, { ic: "link-2" })}
           ${tile(t("Running out first"), lowest ? cnt(lowest.left) : "—", lowest ? `<span class="ab">${t("of")} ${num(lowest.of)} · ${esc(t(lowest.name))}</span>` : `<span class="ab">${t("No credit tools connected")}</span>`, { ic: "sparkles" })}
-          ${failing ? tile(t("Needs a fix"), `<span class="crit">${cnt(failing)}</span>`, status("crit", t("Failing")), { ic: "triangle-alert", tone: "serious" })
+          ${failing || unlinked ? tile(t("Needs a fix"), `<span class="crit">${cnt(failing + unlinked)}</span>`, failing ? status("crit", t("Failing")) : status("warn", t("Site not linked")), { ic: "triangle-alert", tone: "serious" })
             : tile(t("Needs a fix"), "0", `<span class="ab">${t("Nothing to fix")}</span>`, { ic: "circle-check", tone: "neutral" })}
         </section>
         <div class="tabs" role="tablist" aria-label="${t("Settings")}">${window.LIVE?.tabs?.() || `<button class="tab" role="tab" aria-selected="true">${t("Connections")}</button><span class="tab tab-soon" role="tab" aria-selected="false" aria-disabled="true">${t("Sites")}<span class="soon-tag">${t("Soon")}</span></span><span class="tab tab-soon" role="tab" aria-selected="false" aria-disabled="true">${t("Team")}<span class="soon-tag">${t("Soon")}</span></span>`}</div>

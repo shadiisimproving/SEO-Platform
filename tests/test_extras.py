@@ -175,7 +175,8 @@ def test_clarity_totals_weight_scroll_depth_and_say_when_there_is_nothing(engine
     scope = metrics.Scope(engine, site, "2026-10-01", "2026-10-02")
     assert metrics.clarity(scope) == {"has_data": False}
     with engine.begin() as conn:
-        for day, sessions, scroll in ((date(2026, 10, 1), 100, 50.0), (date(2026, 10, 2), 300, 30.0)):
+        # The reads of 2 and 3 Oct cover 1 and 2 Oct (SEO review 2026-11-17, W10).
+        for day, sessions, scroll in ((date(2026, 10, 2), 100, 50.0), (date(2026, 10, 3), 300, 30.0)):
             conn.execute(text("INSERT INTO clarity_daily (site_id, day, sessions, scroll_depth, rage_clicks, dead_clicks) VALUES (:s, :d, :n, :c, 1, 2)"), {"s": site, "d": day, "n": sessions, "c": scroll})
     answer = metrics.clarity(scope)
     assert answer["sessions"] == 400 and answer["scroll_depth"] == 35.0 and answer["rage_clicks"] == 2

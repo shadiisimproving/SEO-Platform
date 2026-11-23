@@ -6,9 +6,11 @@ location and depth, so a change of tool can't look like a ranking move.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import unicodedata
 from dataclasses import dataclass, field
+from datetime import datetime, timedelta, timezone
 from functools import lru_cache
 from urllib.parse import quote, urlsplit, urlunsplit
 
@@ -31,7 +33,42 @@ def clean_keyword(value: str) -> str:
     return _SPACE.sub(" ", _INVISIBLE.sub("", unicodedata.normalize("NFKC", value or ""))).strip()
 
 
+_LIGATURES = str.maketrans({"œ": "oe", "æ": "ae"})
+
+
+def _latin_bare(ch: str) -> str:
+    """A Latin letter without its accent (é → e). Other scripts keep their marks: in Japanese or Hindi they change the word."""
+    if ch.isascii() or not ("\u00c0" <= ch <= "\u024f" or "\u1e00" <= ch <= "\u1eff"):
+        return ch
+    return "".join(part for part in unicodedata.normalize("NFKD", ch) if not unicodedata.combining(part))
+
+
+def keyword_key(value: str) -> str:
+    """For matching only: cleaned, any case, any Latin accent ("Café en grains" = "cafe en grains" = "CAFÉ EN GRAINS").
+    Never the keyword's identity: Google ranks "créer société dubai" and "creer societe dubai" differently (live checks,
+    2026-11-17), so each spelling the owner tracks stays its own keyword with its own history (keyword_hash)."""
+    folded = unicodedata.normalize("NFC", clean_keyword(value).casefold())
+    return "".join(_latin_bare(ch) for ch in folded).translate(_LIGATURES)
+
+
+def shared_keys(tracked_words) -> frozenset:
+    """The matching keys (keyword_key) that a site tracks under two or more spellings, such as "café" and "cafe"."""
+    spellings: dict[str, set] = {}
+    for words in tracked_words:
+        spellings.setdefault(keyword_key(words), set()).add(clean_keyword(words).casefold())
+    return frozenset(key for key, seen in spellings.items() if len(seen) > 1)
+
+
+def match_key(value: str, shared=frozenset()) -> tuple:
+    """Which tracked keyword a search engine's query counts for. A keyword tracked under one spelling gets every spelling
+    of it (French searchers mostly drop accents), so their numbers add up. When the owner tracks two spellings, each one
+    gets only its own exact query (any case), so nothing is counted twice."""
+    folded = keyword_key(value)
+    return ("exact", clean_keyword(value).casefold()) if folded in shared else ("any", folded)
+
+
 def keyword_hash(value: str) -> str:
+    """A keyword's identity: its exact cleaned text, any case. Accents count (see keyword_key)."""
     return hashlib.sha256(clean_keyword(value).casefold().encode("utf-8")).hexdigest()
 
 
@@ -97,15 +134,34 @@ def target_id(conn, keyword_id: int, engine_name: str, device: str = "desktop") 
     return conn.execute(text("SELECT id FROM serp_targets WHERE keyword_id = :k AND engine = :e AND device = :d"), {"k": keyword_id, "e": engine_name, "d": device}).scalar_one()
 
 
-def save_check(engine: Engine, keyword_id: int, engine_name: str, answer: Answer, trigger: str = "refresh", device: str = "desktop", at: str | None = None, status: str = "ok") -> int:
+def shown_another_query(keyword: str, shown: str) -> bool:
+    """Whether the results page showed a query other than the keyword. Case, spacing and Latin accents don't count: Google
+    writing "créer société dubaï" for "creer societe dubai" is the same search."""
+    return bool(shown) and keyword_key(shown) != keyword_key(keyword)
+
+
+def another_query_reason(tool: str, shown: str) -> str:
+    return f"{tool}'s page showed results for \u201c{shown[:120]}\u201d, not for this keyword."
+
+
+def save_check(engine: Engine, keyword_id: int, engine_name: str, answer: Answer, trigger: str = "refresh", device: str = "desktop", at: str | None = None, status: str = "ok", reason: str | None = None) -> int:
+    """Saves one check. One whose page showed another query is kept as suspect, with why. Then the cross-tool rule
+    (cross_check) looks at this check beside the other tools' checks of the same keyword."""
+    shown = getattr(answer, "query_shown", "") or ""
+    asked = getattr(answer, "asked", None) or None
     with engine.begin() as conn:
         target = target_id(conn, keyword_id, engine_name, device)
+        if status == "ok" and shown:
+            words = conn.execute(text("SELECT keyword FROM keywords WHERE id = :k"), {"k": keyword_id}).scalar() or ""
+            if shown_another_query(words, shown):
+                status, reason = "suspect", another_query_reason(answer.tool, shown)
         check_id = conn.execute(
             text(
-                "INSERT INTO serp_checks (target_id, tool, real_location, depth, status, ai_state, trigger_kind, checked_at) "
-                "VALUES (:t, :tool, :loc, :depth, :status, :ai, :trig, COALESCE(:at, UTC_TIMESTAMP(3)))"
+                "INSERT INTO serp_checks (target_id, tool, real_location, depth, status, ai_state, trigger_kind, error, asked, query_shown, checked_at) "
+                "VALUES (:t, :tool, :loc, :depth, :status, :ai, :trig, :why, :asked, :shown, COALESCE(:at, UTC_TIMESTAMP(3)))"
             ),
-            {"t": target, "tool": answer.tool, "loc": answer.real_location, "depth": answer.depth, "status": status, "ai": answer.ai_state, "trig": trigger, "at": at},
+            {"t": target, "tool": answer.tool, "loc": answer.real_location, "depth": answer.depth, "status": status, "ai": answer.ai_state, "trig": trigger, "at": at,
+             "why": reason[:500] if reason else None, "asked": json.dumps(asked, ensure_ascii=False) if asked else None, "shown": shown[:300] or None},
         ).lastrowid
         for found in answer.results:
             host, domain = site_of(found)  # a hidden result is saved with its site and an empty address
@@ -119,7 +175,176 @@ def save_check(engine: Engine, keyword_id: int, engine_name: str, answer: Answer
             host, domain = host_and_domain(url)
             if host:
                 conn.execute(text("INSERT INTO ai_citations (check_id, url, host, domain) VALUES (:c, :u, :h, :d)"), {"c": check_id, "u": url, "h": host[:190], "d": domain[:190]})
+        if status == "ok":
+            cross_check(conn, target, check_id)
     return check_id
+
+
+# ---- the cross-tool rule ---------------------------------------------------------------------------------------------
+# Two tools searching the same keyword from the same place within two days see mostly the same sites in the top 10. On the
+# live data (2026-11-17) honest pairs shared 4 to 9 of 10; SerpApi's wrong answers shared 0 to 3 (most often the same two
+# sites every Dubai company search shows). Fewer than 2 caught almost none of them, so the line is 4.
+CROSS_HOURS = 48
+AGREE_SITES = 4  # top-10 sites two checks must share to agree
+MIN_SITES = 5  # a check with fewer sites in its top 10 says too little to judge, or to judge by
+
+
+@dataclass
+class _Judged:
+    id: int
+    target: int
+    tool: str
+    location: str
+    at: datetime
+    sites: set
+
+
+def _agree(one: "_Judged", other: "_Judged") -> bool:
+    return len(one.sites & other.sites) >= AGREE_SITES
+
+
+def _apart(one: "_Judged", other: "_Judged") -> float:
+    return abs((one.at - other.at).total_seconds()) / 3600
+
+
+def _near(one: "_Judged", other: "_Judged") -> bool:
+    return one.id != other.id and one.location == other.location and _apart(one, other) <= CROSS_HOURS
+
+
+OWN_BACKING_HOURS = 12  # a tool backs its own answer only from another run: two searches of one batch can share one glitch
+
+
+def odd_one_out(check: "_Judged", pool: list) -> "_Judged | None":
+    """The other tool's check that shows this one is wrong, or None.
+
+    A check is wrong when it agrees with no other tool's check of the keyword (or of the same keyword spelt with other
+    accents) from the same place within CROSS_HOURS, its own tool doesn't back it from another run, and a check it
+    disagrees with is backed by a third one. Two tools that only disagree with each other prove nothing: neither is marked."""
+    if len(check.sites) < MIN_SITES:
+        return None
+    near = [other for other in pool if _near(check, other) and len(other.sites) >= MIN_SITES]
+    others = [other for other in near if other.tool != check.tool]
+    if not others or any(_agree(check, other) for other in others):
+        return None
+    if any(_agree(check, same) for same in near if same.tool == check.tool and _apart(check, same) >= OWN_BACKING_HOURS):
+        return None
+    for other in others:
+        third = [x for x in pool if _near(other, x) and x.id != check.id and x.tool != check.tool and len(x.sites) >= MIN_SITES and _backs(other, x)]
+        if any(_agree(other, x) for x in third):
+            return other
+    return None
+
+
+def _backs(other: "_Judged", x: "_Judged") -> bool:
+    """Whether x can vouch for `other`: another tool, or the same tool from another run (OWN_BACKING_HOURS apart). A
+    search of the same keyword spelt with other accents by the same tool never does, even later: it is the same tool
+    reading the same page twice, and one glitch can be in both (code review 2026-11-18, #10)."""
+    if x.tool != other.tool:
+        return True
+    return x.target == other.target and _apart(other, x) >= OWN_BACKING_HOURS
+
+
+def cross_reason(other_tool: str, other_at) -> str:
+    day = other_at.strftime("%Y-%m-%d") if hasattr(other_at, "strftime") else str(other_at)[:10]
+    return f"Shares fewer than {AGREE_SITES} of its top 10 sites with {other_tool}'s check of {day}, which another check backs."
+
+
+# Marks this rule and save_check write: a check they marked is never a witness for another.
+_NOT_WITNESS = ("Shares fewer than ", "'s page showed results for ")
+
+
+def can_witness(error: str | None) -> bool:
+    """Whether a check can vouch for another: never one this rule or another query marked."""
+    return not any(mark in (error or "") for mark in _NOT_WITNESS)
+
+
+def _twin_targets(conn, target: int) -> list[int]:
+    """This target and those of the same keyword spelt with other accents or case, same engine, device, country, language."""
+    me = conn.execute(text(
+        "SELECT k.keyword, k.country, k.language, t.engine, t.device FROM serp_targets t JOIN keywords k ON k.id = t.keyword_id WHERE t.id = :t"
+    ), {"t": target}).mappings().first()
+    if me is None:
+        return [target]
+    rows = conn.execute(text(
+        "SELECT t.id, k.keyword FROM serp_targets t JOIN keywords k ON k.id = t.keyword_id "
+        "WHERE k.keyword = :w AND k.country = :c AND k.language = :l AND t.engine = :e AND t.device = :d"  # the collation folds accents
+    ), {"w": me["keyword"], "c": me["country"], "l": me["language"], "e": me["engine"], "d": me["device"]}).all()
+    key = keyword_key(me["keyword"])
+    return sorted({target, *(row[0] for row in rows if keyword_key(row[1]) == key)})
+
+
+def _pool(conn, targets: list[int], start=None, end=None) -> list:
+    """The witnesses: checks that read a page, whatever else made some of them suspect (Google hiding addresses still shows
+    the sites), but never one this rule or another query marked. Google's own redirects aren't a site."""
+    where = "AND c.checked_at BETWEEN :a AND :b" if start is not None else ""
+    marks = ",".join(str(int(t)) for t in targets)
+    checks = [
+        row for row in conn.execute(text(
+            f"SELECT id, target_id, tool, real_location, checked_at, error FROM serp_checks c WHERE target_id IN ({marks}) AND status IN ('ok', 'suspect') {where} ORDER BY id"
+        ), {"a": start, "b": end}).all()
+        if not any(mark in (row[5] or "") for mark in _NOT_WITNESS)
+    ]
+    if not checks:
+        return []
+    ids = ",".join(str(int(row[0])) for row in checks)
+    sites: dict[int, set] = {row[0]: set() for row in checks}
+    for check_id, domain in conn.execute(text(f"SELECT check_id, domain FROM serp_results WHERE check_id IN ({ids}) AND position <= 10")).all():
+        if domain and not domain.startswith("google."):
+            sites[check_id].add(domain)
+    return [_Judged(row[0], row[1], row[2], row[3] or "", row[4], sites[row[0]]) for row in checks]
+
+
+_CROSS_WHY = re.compile(r"^Shares fewer than (?P<n>\d+) of its top 10 sites with (?P<tool>.+?)'s check of (?P<day>\d{4}-\d{2}-\d{2}), which another check backs\.$")
+_QUERY_WHY = re.compile(r"^(?P<tool>.+?)'s page showed results for \u201c(?P<query>.*)\u201d, not for this keyword\.$", re.DOTALL)
+
+
+def suspect_why(error: str | None) -> dict | None:
+    """Why a check is suspect, for the screen to say in the reader's language: the cross-tool rule or another query.
+    Other reasons (older marks) give None: the screen then says "Suspect result" alone."""
+    hit = _CROSS_WHY.match(error or "")
+    if hit:
+        return {"kind": "cross", "tool": hit["tool"], "day": hit["day"], "sites": int(hit["n"])}
+    hit = _QUERY_WHY.match(error or "")
+    if hit:
+        return {"kind": "query", "tool": hit["tool"], "query": hit["query"]}
+    return None
+
+
+def judge_target(conn, target: int, around_id: int | None = None, apply: bool = True, marked_before: set | None = None) -> list[tuple[int, str]]:
+    """Marks the "ok" checks of one target (and its accent twins) the cross-tool rule finds wrong: suspect, with why (shown greyed on the panel).
+    With around_id, only the checks a new check can change: those within CROSS_HOURS of it. Never un-marks. Returns (id, why).
+    marked_before: ids a dry run already found, so they count as marked without being written."""
+    twins = _twin_targets(conn, target)
+    marks = ",".join(str(int(t)) for t in twins)
+    oks = {row[0] for row in conn.execute(text(f"SELECT id FROM serp_checks WHERE target_id IN ({marks}) AND status = 'ok'")).all()}
+    if around_id is not None:
+        at = conn.execute(text("SELECT checked_at FROM serp_checks WHERE id = :i"), {"i": around_id}).scalar()
+        if at is None:
+            return []
+        span = timedelta(hours=3 * CROSS_HOURS)
+        pool = _pool(conn, twins, at - span, at + span)
+        judged = [c for c in pool if c.id in oks and abs((c.at - at).total_seconds()) <= CROSS_HOURS * 3600]
+    else:
+        pool = _pool(conn, twins)
+        judged = [c for c in pool if c.id in oks]
+    if marked_before:
+        pool = [c for c in pool if c.id not in marked_before]
+        judged = [c for c in judged if c.id not in marked_before]
+    marked = []
+    for check in judged:
+        other = odd_one_out(check, pool)
+        if other is None:
+            continue
+        why = cross_reason(other.tool, other.at)
+        marked.append((check.id, why))
+        pool = [c for c in pool if c.id != check.id]  # a check marked wrong backs nothing
+        if apply:
+            conn.execute(text("UPDATE serp_checks SET status = 'suspect', error = :w WHERE id = :i AND status = 'ok'"), {"w": why, "i": check.id})
+    return marked
+
+
+def cross_check(conn, target: int, check_id: int) -> list[tuple[int, str]]:
+    return judge_target(conn, target, around_id=check_id)
 
 
 def save_failed_check(engine: Engine, keyword_id: int, engine_name: str, tool: str, error: str, trigger: str = "refresh", device: str = "desktop") -> None:
@@ -193,20 +418,195 @@ def _attach(conn, checks: list[Check]) -> list[Check]:
     return checks
 
 
-def _by_main_tool(engine: Engine, checks: list[Check]) -> list[Check]:
-    """One check per target from each tool's newest. With a main tool: the first tool in the engine's order that has one (the
-    main tool first), so every screen shows the same tool's ranking as Keywords, not whichever tool checked last."""
-    from seo.serp.connections import main_tool, order_for
+MAIN_MAX_AGE_DAYS = 14  # like MIX_FRESH_DAYS: past this, the main tool's result gives way to a newer one from another tool
 
-    chosen = bool(main_tool(engine))  # no main tool: the newest check, whatever its tool, as before
-    orders: dict[str, dict[str, int]] = {}
+
+def pick_main(candidates: list, main: str, now, *, tool, ident, at):
+    """Which tool's newest result speaks for a keyword: (chosen, passed_over). The one rule for Keywords and every other
+    screen (Competitors, pairs, AI Overviews read store.latest_checks, which calls this too).
+
+    `candidates` holds one usable result per tool: never a suspect one, never one from another place.
+    - A main tool set (owner's rule, 2026-11-13): its result, unless it is older than MAIN_MAX_AGE_DAYS and another tool has a
+      newer one (2026-11-17): then the newest of those, and passed_over is the main tool's old result, so the screen can say
+      "Bright Data's check is 120 days old".
+    - No main tool, or none from it: the newest result, whatever its tool. A tool's place in the order says which tool a
+      Refresh tries first, not whose answer is right (2026-11-18: SerpApi won by its place over newer, agreeing checks).
+    """
+    if not candidates:
+        return None, None
+    newest = max(candidates, key=lambda c: (at(c), ident(c)))
+    first = next((c for c in candidates if main and tool(c) == main), None)
+    if first is None:
+        return newest, None
+    if now is None or (now - at(first)).total_seconds() <= MAIN_MAX_AGE_DAYS * 86400:
+        return first, None
+    newer = [c for c in candidates if c is not first and at(c) > at(first)]
+    if not newer:
+        return first, None
+    return max(newer, key=lambda c: (at(c), ident(c))), first
+
+
+# ---- when two tools disagree on where I stand ------------------------------------------------------------------------
+# The newest check alone must not settle a dispute (final re-check 2026-11-18, 3.1-3.3): two tools a day apart, one saying
+# #4 and the other #37, or one finding me at #2 and the other not in its top 20. A third tool's check of the same days that
+# sides with one of them settles it; with no such check, the row shows both answers and "Tools disagree".
+
+
+@dataclass
+class Read:
+    """What one check says about one site: its position, or None when it read `depth` results without finding it.
+    can_miss is False for a check that may have missed it without saying so (Google hid some addresses): its "found" counts,
+    its "not found" says nothing."""
+    id: int
+    tool: str
+    depth: int
+    at: datetime
+    p: int | None
+    can_miss: bool = True
+
+
+def clash(one: Read, other: Read, gap: int) -> int | None:
+    """How far apart two checks put the site when they really disagree (within CROSS_HOURS), else None.
+    Both found it: more than `gap` places apart. One found it and the other read that far without finding it: a disagreement
+    when the first had it in its top 10, or further than `gap` from where the second stopped. The size is then depth + 1 - p."""
+    if abs((one.at - other.at).total_seconds()) / 3600 > CROSS_HOURS:
+        return None
+    if one.p is not None and other.p is not None:
+        apart = abs(one.p - other.p)
+        return apart if apart > gap else None
+    found, missed = (one, other) if one.p is not None else (other, one)
+    if found.p is None or not missed.can_miss or found.p > missed.depth:
+        return None
+    apart = missed.depth + 1 - found.p
+    return apart if found.p <= 10 or apart > gap else None
+
+
+def _sides_with(witness: Read, one: Read, other: Read, gap: int) -> bool:
+    """A third tool's check that agrees with `one` and not with `other`."""
+    if witness.id in (one.id, other.id) or witness.tool in (one.tool, other.tool):
+        return False
+    if witness.p is None and not witness.can_miss:
+        return False  # it may have missed the site: it says nothing about where it is
+    if abs((witness.at - one.at).total_seconds()) / 3600 > CROSS_HOURS:
+        return False
+    return clash(witness, one, gap) is None and clash(witness, other, gap) is not None
+
+
+def settle(shown: Read, candidates: list[Read], witnesses: list[Read], gap: int, locked: bool = False) -> tuple[Read, dict | None]:
+    """(the check to show, the dispute or None). `candidates`: each tool's newest usable check; `witnesses`: every check of the
+    keyword that can vouch (never one the cross-tool rule or another query marked). `locked`: the owner's main tool chose
+    `shown`, and stays (the owner's rule); the row then shows both answers.
+
+    The dispute says which tools ("tools"), how far apart ("diff"), which third tools sided with the one shown ("backed_by"),
+    and, when nothing settled it, the other answer ("also") so the cell can show both."""
+    worst = None
+    for i, one in enumerate(candidates):
+        for other in candidates[i + 1:]:
+            apart = clash(one, other, gap) if one.tool != other.tool else None
+            if apart and (worst is None or apart > worst[0]):
+                worst = (apart, one, other)
+    rivals = [(clash(shown, c, gap), c) for c in candidates if c.tool != shown.tool]
+    rivals = [(apart, c) for apart, c in rivals if apart]
+    if not rivals:
+        return shown, ({"tools": [worst[1].tool, worst[2].tool], "diff": worst[0]} if worst else None)
+
+    def backers(one: Read, other: Read) -> list[str]:
+        return sorted({w.tool for w in witnesses if _sides_with(w, one, other, gap)})
+
+    if not locked:
+        beaten = [(len(backers(c, shown)) - len(backers(shown, c)), c.at, c.id, apart, c) for apart, c in rivals]
+        beaten = [row for row in beaten if row[0] > 0]
+        if beaten:
+            _, _, _, apart, winner = max(beaten, key=lambda row: row[:3])
+            return winner, {"tools": [winner.tool, shown.tool], "diff": apart, "backed_by": backers(winner, shown)}
+    apart, rival = max(rivals, key=lambda row: (row[0], row[1].at))
+    mine, theirs = backers(shown, rival), backers(rival, shown)
+    dispute = {"tools": [shown.tool, rival.tool], "diff": apart}
+    if len(mine) > len(theirs):
+        dispute["backed_by"] = mine
+    else:
+        dispute["also"] = {"check_id": rival.id, "tool": rival.tool, "p": rival.p, "depth": rival.depth}
+    return shown, dispute
+
+
+def _by_main_tool(engine: Engine, checks: list[Check], hosts: dict[int, str] | None = None) -> list[Check]:
+    """One check per target, by pick_main, from each tool's newest check that can fill the keyword's row (the keyword's own
+    country), then settle() when tools disagree on where the site stands: exactly what Keywords shows. `hosts`: the site
+    whose place decides, per keyword (without it, pick_main alone).
+
+    Reads its settings and checks on connections of its own: call it with no other connection open."""
+    from seo.serp.connections import get_setting, main_tool
+    from seo.serp.tools import counts_for_keyword
+
+    main = main_tool(engine)
+    by_target: dict[int, dict[str, Check]] = {}
+    for check in sorted(checks, key=lambda c: c.id):
+        if counts_for_keyword(check.engine, check.country, check.real_location, check.language):
+            by_target.setdefault(check.target_id, {})[check.tool] = check  # the newest per tool wins
+    now = datetime.now(timezone.utc).replace(tzinfo=None)  # every session is UTC, and checked_at is stored in UTC
     best: dict[int, Check] = {}
-    for check in checks:
-        place = orders.setdefault(check.engine, {name: at for at, name in enumerate(order_for(engine, check.engine))} if chosen else {})
-        rank = lambda c: (place.get(c.tool, len(place)), -c.id)  # noqa: E731
-        if check.target_id not in best or rank(check) < rank(best[check.target_id]):
-            best[check.target_id] = check
+    locked: set[int] = set()  # the owner's main tool chose these, and stays
+    for target_id, per_tool in by_target.items():
+        best[target_id], passed = pick_main(list(per_tool.values()), main, now, tool=lambda c: c.tool, ident=lambda c: c.id, at=lambda c: c.checked_at)
+        if passed is None and main and best[target_id].tool == main:
+            locked.add(target_id)
+    if hosts:
+        _settle_disputes(engine, by_target, best, hosts, int(get_setting(engine, "disagree_gap")), locked)
     return [check for check in checks if best.get(check.target_id) is check]
+
+
+def _own_places(conn, check_ids: list[int], hosts_of: dict[int, str]) -> dict[int, int]:
+    """Each check's best position for its site (hosts_of: check id → site host)."""
+    places: dict[int, int] = {}
+    for start in range(0, len(check_ids), 500):
+        marks = ",".join(str(int(i)) for i in check_ids[start:start + 500])
+        for check_id, position, host in conn.execute(text(f"SELECT check_id, position, host FROM serp_results WHERE check_id IN ({marks}) ORDER BY check_id, position")).all():
+            if check_id not in places and on_host(host, hosts_of[check_id]):
+                places[check_id] = position
+    return places
+
+
+def _settle_disputes(engine: Engine, by_target: dict[int, dict[str, Check]], best: dict[int, Check], hosts: dict[int, str], gap: int, locked: set[int]) -> None:
+    from seo.serp.tools import counts_for_keyword
+
+    many = {target: per_tool for target, per_tool in by_target.items() if len(per_tool) > 1 and hosts.get(best[target].keyword_id)}
+    if not many:
+        return
+    with engine.connect() as conn:
+        candidates = [check for per_tool in many.values() for check in per_tool.values()]
+        places = _own_places(conn, [c.id for c in candidates], {c.id: hosts[c.keyword_id] for c in candidates})
+
+        def read(check: Check) -> Read:
+            return Read(check.id, check.tool, check.depth, check.checked_at, places.get(check.id))
+
+        disputed = []
+        for target, per_tool in many.items():
+            shown = best[target]
+            if any(clash(read(shown), read(c), gap) for c in per_tool.values() if c.tool != shown.tool):
+                disputed.append(target)
+        if not disputed:
+            return
+        marks = ",".join(str(int(t)) for t in disputed)
+        rows = conn.execute(text(
+            f"SELECT c.id, c.target_id, c.tool, c.real_location, c.depth, c.status, c.error, c.checked_at, t.engine, k.country, k.language, k.id AS keyword_id "
+            f"FROM serp_checks c JOIN serp_targets t ON t.id = c.target_id JOIN keywords k ON k.id = t.keyword_id "
+            f"WHERE c.target_id IN ({marks}) AND c.status IN ('ok', 'suspect')"
+        )).mappings().all()
+        rows = [r for r in rows if can_witness(r["error"]) and counts_for_keyword(r["engine"], r["country"], r["real_location"], r["language"])]
+        places.update(_own_places(conn, [r["id"] for r in rows], {r["id"]: hosts[r["keyword_id"]] for r in rows}))
+    witnesses: dict[int, list[Read]] = {}
+    for r in rows:
+        witnesses.setdefault(r["target_id"], []).append(Read(r["id"], r["tool"], r["depth"], r["checked_at"], places.get(r["id"]), can_miss=r["status"] == "ok"))
+    for target in disputed:
+        per_tool, shown = many[target], best[target]
+        chosen, _ = settle(read(shown), [read(c) for c in per_tool.values()], witnesses.get(target, []), gap, target in locked)
+        best[target] = next(c for c in per_tool.values() if c.id == chosen.id)
+
+
+# The newest usable check of each tool and place (so a check from another country never hides the one that counts).
+_NEWEST_PER_TOOL = (
+    "c.id = (SELECT MAX(c2.id) FROM serp_checks c2 WHERE c2.target_id = t.id AND c2.tool = c.tool AND c2.real_location = c.real_location AND c2.status = 'ok')"
+)
 
 
 def latest_checks(engine: Engine, site_id: int, engine_name: str | None = None) -> list[Check]:
@@ -217,12 +617,39 @@ def latest_checks(engine: Engine, site_id: int, engine_name: str | None = None) 
             text(
                 f"SELECT {_CHECK_COLUMNS} FROM site_keywords sk JOIN keywords k ON k.id = sk.keyword_id "
                 f"JOIN serp_targets t ON t.keyword_id = k.id {clause} "
-                "JOIN serp_checks c ON c.target_id = t.id AND c.status = 'ok' AND c.id = (SELECT MAX(c2.id) FROM serp_checks c2 WHERE c2.target_id = t.id AND c2.tool = c.tool AND c2.status = 'ok') "
+                "JOIN serp_checks c ON c.target_id = t.id AND c.status = 'ok' AND " + _NEWEST_PER_TOOL + " "
                 "WHERE sk.site_id = :s ORDER BY k.keyword"
             ),
             {"s": site_id, "e": engine_name},
         ).mappings().all()
-        return _attach(conn, _by_main_tool(engine, [Check(**_check_args(r)) for r in rows]))
+        host = conn.execute(text("SELECT host FROM sites WHERE id = :s"), {"s": site_id}).scalar()
+    chosen = _by_main_tool(engine, [Check(**_check_args(r)) for r in rows], {r["keyword_id"]: host for r in rows} if host else None)
+    with engine.connect() as conn:
+        return _attach(conn, chosen)
+
+
+def latest_ai_checks(engine: Engine, site_id: int) -> list[Check]:
+    """Per keyword, the newest usable Google check that really looked for an AI Overview (ai_state present or absent), from
+    the keyword's own country. Tools that can't see AI Overviews (Searlo, HasData, Bright Data) never answer here, so a newer
+    check from one of them can't turn a seen overview into "not captured" (analytics review W4)."""
+    from seo.serp.tools import counts_for_keyword
+
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                f"SELECT {_CHECK_COLUMNS} FROM site_keywords sk JOIN keywords k ON k.id = sk.keyword_id "
+                "JOIN serp_targets t ON t.keyword_id = k.id AND t.engine = 'google' AND t.device = 'desktop' "
+                "JOIN serp_checks c ON c.target_id = t.id AND c.status = 'ok' AND c.ai_state <> 'not_captured' "
+                "WHERE sk.site_id = :s ORDER BY c.id"
+            ),
+            {"s": site_id},
+        ).mappings().all()
+        newest: dict[int, Check] = {}
+        for row in rows:
+            check = Check(**_check_args(row))
+            if counts_for_keyword(check.engine, check.country, check.real_location, check.language):
+                newest[check.keyword_id] = check
+        return _attach(conn, list(newest.values()))
 
 
 def history(engine: Engine, site_id: int, engine_name: str | None = None, limit: int = 3000) -> list[Check]:
@@ -254,11 +681,17 @@ def latest_checks_many(engine: Engine, site_ids: list[int]) -> list[Check]:
         rows = conn.execute(
             text(
                 f"SELECT {_CHECK_COLUMNS} FROM keywords k JOIN serp_targets t ON t.keyword_id = k.id "
-                "JOIN serp_checks c ON c.target_id = t.id AND c.status = 'ok' AND c.id = (SELECT MAX(c2.id) FROM serp_checks c2 WHERE c2.target_id = t.id AND c2.tool = c.tool AND c2.status = 'ok') "
+                "JOIN serp_checks c ON c.target_id = t.id AND c.status = 'ok' AND " + _NEWEST_PER_TOOL + " "
                 f"WHERE {_keywords_of(site_ids)} ORDER BY k.keyword"
             )
         ).mappings().all()
-        return _attach(conn, _by_main_tool(engine, [Check(**_check_args(r)) for r in rows]))
+        marks = ",".join(str(int(i)) for i in site_ids)
+        hosts: dict[int, str] = {}
+        for keyword_id, host in conn.execute(text(f"SELECT sk.keyword_id, s.host FROM site_keywords sk JOIN sites s ON s.id = sk.site_id WHERE sk.site_id IN ({marks}) ORDER BY s.id DESC")).all():
+            hosts[keyword_id] = host  # a keyword two sites share: the first site's place decides
+    chosen = _by_main_tool(engine, [Check(**_check_args(r)) for r in rows], hosts)
+    with engine.connect() as conn:
+        return _attach(conn, chosen)
 
 
 def history_many(engine: Engine, site_ids: list[int], limit_per_site: int = 3000) -> list[Check]:

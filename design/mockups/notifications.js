@@ -34,6 +34,9 @@
     "Open in Overview → Queries": "Ouvrir dans Vue d'ensemble → Requêtes",
     "Show all {n}": "Les afficher toutes ({n})", "Up to {d}": "Jusqu'au {d}",
     "{n}+ impressions since first shown": "{n}+ impressions depuis la première apparition",
+    "First-time Google searches for your sites, and pages Google drops from its index, appear here.": "Les recherches Google où vos sites apparaissent pour la première fois, et les pages que Google retire de son index, s'affichent ici.",
+    "Google dropped this page from its index": "Google a retiré cette page de son index", "Google dropped a page": "Google a retiré une page",
+    "Google dropped {n} pages": "Google a retiré {n} pages", "Open the page": "Ouvrir la page",
   };
   Object.keys(WORDS).forEach((w) => { if (window.FR && window.FR[w] === undefined) window.FR[w] = WORDS[w]; });
 
@@ -84,9 +87,10 @@
       B.loaded = true;
       B.failed = false;
       if (!B.firstLoad && fresh.length && window.UI) {
-        const searches = fresh.filter((i) => i.kind !== "google_update");
+        const searches = fresh.filter((i) => i.kind !== DROPPED && i.kind !== "google_update"), dropped = fresh.filter((i) => i.kind === DROPPED).length;
         const count = searches.reduce((n, i) => n + (i.kind === "new_query_more" || i.kind === "new_queries" ? i.detail?.count || 0 : 1), 0);
         if (count) UI.toast(plural(count, "1 new Google search", "{n} new Google searches"), { kind: "info" });
+        if (dropped) UI.toast(plural(dropped, "Google dropped a page", "Google dropped {n} pages"), { kind: "warn" });
         const update = fresh.find((i) => i.kind === "google_update");
         if (update) UI.toast(t(update.detail?.state === "ended" ? "A Google update has finished: see what it did" : "Google started an update"), { kind: "info" });
       }
@@ -159,6 +163,21 @@
     </li>`;
   }
 
+  /* Google had this page indexed and now doesn't (seo/backlinks/indexed.py), with Google's reason. Opens the page in Pages. */
+  const DROPPED = "page_dropped";
+  function droppedHtml(item, readBtn, logo) {
+    const d = item.detail || {};
+    return `<li class="bell-row bell-row-go ${item.read ? "" : "unread"}" data-bell-row="${item.id}">
+      <span class="bell-dot" aria-hidden="true"></span>
+      <div class="bell-body">
+        <p class="bell-title"><button type="button" class="bell-go" data-bell-page="${item.id}" title="${esc(t("Open the page"))}"><span class="bell-kind" role="img" aria-label="${esc(t("Google dropped this page from its index"))}">${UI.icon("triangle-alert")}</span> <b dir="auto">${esc(t("Google dropped this page from its index"))}</b></button></p>
+        <p class="bell-meta">${logo}<span>${esc(item.host)}</span><span>·</span>${PageLink.html(d.url || "", { text: d.path || pathOf(d.url || ""), host: item.host, cls: "bell-path" })}<span>·</span><span>${esc(dayLabel(d.day))}</span></p>
+        ${d.coverage ? `<p class="bell-meta"><span dir="auto">${esc(d.coverage)}</span></p>` : ""}
+      </div>
+      <div class="bell-acts">${readBtn}</div>
+    </li>`;
+  }
+
   function rowHtml(item) {
     const d = item.detail || {}, logo = UI.siteLogo ? UI.siteLogo(item.host, 14) : "";
     const readBtn = `<button type="button" class="icon-btn bell-mark" data-bell-read="${item.id}" data-read="${!item.read}" aria-label="${esc(t(item.read ? "Mark as unread" : "Mark as read"))}" title="${esc(t(item.read ? "Mark as unread" : "Mark as read"))}">${UI.icon(item.read ? "circle" : "check")}</button>`;
@@ -174,6 +193,7 @@
         <div class="bell-acts">${readBtn}</div>
       </li>`;
     }
+    if (item.kind === DROPPED) return droppedHtml(item, readBtn, logo);
     if (item.kind === "new_query_more") {
       const open = B.opened === item.id;
       const list = open ? `<ul class="bell-more">${(d.queries || []).map((q, i) => `<li><button type="button" class="bell-go" data-bell-go="${item.id}" data-q="${i}" title="${esc(goTip(q.query, item.host))}"><span dir="auto">${esc(q.query)}</span></button><span class="bell-num">${esc(place(q.position))}</span></li>`).join("")}</ul>` : "";
@@ -207,7 +227,7 @@
     const sampleTag = window.BOOT ? "" : ` <span class="tag">${esc(t("Sample"))}</span>`;
     const head = `<div class="bell-head"><h2 id="bell-title">${esc(t("Notifications"))}${sampleTag}</h2>${B.unread ? `<button type="button" class="link-btn" id="bell-read-all">${esc(t("Mark all read"))}</button>` : ""}</div>`;
     if (B.failed && !B.loaded) return `${head}<p class="bell-empty">${esc(t("Notifications didn't load. Trying again in a few minutes."))}</p>`;
-    if (!B.items.length) return `${head}<div class="bell-empty"><p><b>${esc(t("No notifications yet"))}</b></p><p>${esc(t("First-time Google searches for your sites appear here."))}</p></div>`;
+    if (!B.items.length) return `${head}<div class="bell-empty"><p><b>${esc(t("No notifications yet"))}</b></p><p>${esc(t("First-time Google searches for your sites, and pages Google drops from its index, appear here."))}</p></div>`;
     const floors = [...new Set(B.items.filter((i) => i.kind === "new_queries").map(floorOf))];
     floorOnRows = floors.length > 1;
     return `${head}<ul class="bell-list">${B.items.map(rowHtml).join("")}</ul>${floors.length === 1 ? floorHtml(floors[0], "bell-foot") : ""}`;
@@ -320,6 +340,16 @@
       return;
     }
     // The search itself, or anywhere on its row but a button or link, opens it: its keyword when tracked, else Overview → Queries.
+    const pageGo = hit("[data-bell-page]") || (!hit("button, a, input") && hit(".bell-row-go") && B.items.find((i) => i.id === Number(hit(".bell-row-go").dataset.bellRow))?.kind === DROPPED && hit(".bell-row-go"));
+    if (pageGo) {
+      const item = B.items.find((i) => i.id === Number(pageGo.dataset.bellPage || pageGo.dataset.bellRow));
+      if (!item) return;
+      setRead(item.id, true);
+      closePanel();
+      if (window.SCREENS?.pages?.open && item.detail?.url) window.SCREENS.pages.open(item.detail.url);
+      else UI.go("pages");
+      return;
+    }
     const go = hit("[data-bell-go]") || (!hit("button, a, input") && hit(".bell-row-go"));
     if (go) {
       const item = B.items.find((i) => i.id === Number(go.dataset.bellGo || go.dataset.bellRow));

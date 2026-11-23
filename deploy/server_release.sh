@@ -4,7 +4,7 @@
 # The order is what makes a failure safe: until the last step the live folder hasn't changed, so a failed install,
 # import check, backup or migration leaves the old version running. Migrations run while the old code still serves,
 # so they must only add things. Settings (.env) and everything in var/ (note files, backups, locks, logs) are never touched.
-# ROLLBACK=1 (deploy.sh --rollback) puts older code back without running migrations.
+# ROLLBACK=1 (deploy.sh --rollback) puts older code back without running migrations or the data steps.
 set -euo pipefail
 
 : "${APP_DIR:?APP_DIR is not set}"
@@ -37,6 +37,16 @@ if [[ "${ROLLBACK:-}" == "1" ]]; then
   "$VENV_BIN/python" -m seo.core.schema || die "Not switched: this older version can't run on the database as it is. Upload a fixed version instead, or restore the database copy from before the bad release (deploy/DEPLOY.md)."
 else
   "$VENV_BIN/alembic" upgrade head
+  # Stored data the new rules must look at again, after every migration, on every release: each one only changes what is
+  # still to change, so a second run does nothing (their tests: test_competitor_noise, test_serp_accuracy). Counts go to
+  # the screen and to var/logs/release-data-steps.log. A failure stops here, with the old code still live; what a step
+  # already kept is safe, and the next release runs it again.
+  DATA_LOG="$APP_DIR/var/logs/release-data-steps.log"
+  echo "---- $(date -u '+%Y-%m-%d %H:%M:%S') UTC, release $(cat "$STAGING_DIR/REVISION" 2>/dev/null || echo unknown)" >> "$DATA_LOG"
+  echo "Hiding stored competitor events nobody made (scripts/reclassify_competitor_events.py --apply)"
+  "$VENV_BIN/python" -m scripts.reclassify_competitor_events --apply 2>&1 | tee -a "$DATA_LOG" || die "Not switched: hiding old competitor events failed (see $DATA_LOG). The old version is still live."
+  echo "Marking rank checks every other tool contradicts (scripts/mark_contradicted_checks.py --apply)"
+  "$VENV_BIN/python" scripts/mark_contradicted_checks.py --apply 2>&1 | tee -a "$DATA_LOG" || die "Not switched: marking contradicted rank checks failed (see $DATA_LOG). The old version is still live."
 fi
 
 rsync -a --delete --exclude /.env --exclude /var --exclude /tmp --exclude /.htaccess "$STAGING_DIR/" "$APP_DIR/"

@@ -61,6 +61,11 @@
   const TONE = { ok: "ok", old: "warn", failing: "crit", retrying: "busy", reading: "busy", waiting: "busy", not_connected: "off", not_set_up: "off", not_used: "off", no_sites: "off" };
   const ICON = { ok: "", warn: "triangle-alert", crit: "octagon-alert", busy: "refresh-cw", off: "" };
   const stateOf = (d, id) => d.source_states.find((s) => s.id === id) || { id, state: "no_sites", sites: [] };
+  /* Connected, but nothing read yet: its zeros aren't real zeros and it isn't "up to date" (ai-reports-workflow, 2026-11-17).
+     Reading or retrying counts as not ready only while no site has any data. */
+  const notReady = (src) => src.state === "waiting" || (["reading", "retrying"].includes(src.state) && !(src.sites || []).some((x) => x.through || x.last_ok_at));
+  const waitWords = () => `${t("Connected. Waiting for data")}. ${t("Arrives after the next run. Refresh data starts one now.")}`;
+  const waitCard = (button = true) => `<div class="empty"><p>${esc(waitWords())}</p>${button && LVx()?.refreshBtn ? `<div style="margin-top:10px">${LVx().refreshBtn(true)}</div>` : ""}</div>`;
   /* The site a chip speaks for: the worst one, so All sites never hides a failing site behind a good one. */
   const worstSite = (src) => src.sites.find((s) => s.state === src.state) || src.sites[0] || {};
   const nameOf = (src) => (src.id === "serp" ? src.name : t(SRC[src.id]));
@@ -91,8 +96,10 @@
   }
   /* One line under the answer instead of a big error card: what needs you, then "Sources ›". */
   function sourcesLine(d) {
-    const all = d.source_states, bad = all.filter((s) => ["failing", "old"].includes(s.state));
-    const wide = bad.length ? bad.map((s) => chip(s)).join("") : `<span class="ai-chip ok">${icon("circle-check")}<span>${(() => { const n = all.filter((s) => !["not_connected", "not_set_up", "not_used"].includes(s.state)).length; return n === 1 ? t("Source up to date") : tf("All {n} sources up to date", { n: num(n) }); })()}</span></span>`;
+    const all = d.source_states, bad = all.filter((s) => ["failing", "old"].includes(s.state)), waiting = all.filter(notReady);
+    // Only sources that were read count as up to date; one still waiting for its first read gets its own chip.
+    const fine = () => { const n = all.filter((s) => s.state === "ok").length; return n === 1 ? t("Source up to date") : tf("All {n} sources up to date", { n: num(n) }); };
+    const wide = bad.length || waiting.length ? [...bad, ...waiting].map((s) => chip(s)).join("") : `<span class="ai-chip ok">${icon("circle-check")}<span>${fine()}</span></span>`;
     const narrow = `<button class="ai-chip ${bad.length ? "warn" : "ok"} ai-only-narrow" data-ai-sources>${tf(bad.length ? "{n} sources · {m} need you ›" : "{n} sources ›", { n: num(all.length), m: num(bad.length) })}</button>`;
     return `<div class="ai-sources-line"><span class="ai-only-wide">${wide}</span>${narrow}<button class="link-btn ai-only-wide" data-ai-sources>${t("Sources")} ›</button></div>`;
   }
@@ -105,7 +112,8 @@
      the Sources panel (data-ai-sources, handled below). */
   function headSources(d) {
     const all = d.source_states, bad = all.filter((s) => ["failing", "old"].includes(s.state));
-    const used = all.filter((s) => !["not_connected", "not_set_up", "not_used"].includes(s.state)).length;
+    const used = all.filter((s) => s.state === "ok").length, waiting = all.filter(notReady);
+    if (!bad.length && waiting.length) return { word: waiting.length === 1 ? chipWords(waiting[0], true) : tf("{n} sources waiting for data", { n: num(waiting.length) }), open: "data-ai-sources" };
     if (!bad.length) return { word: used === 1 ? t("Source up to date") : tf("{n} sources up to date", { n: num(used) }), open: "data-ai-sources" };
     const one = bad.length === 1 ? bad[0] : null;
     const word = !one ? tf("{n} sources need you", { n: num(bad.length) }) : one.state === "failing" ? `${nameOf(one)} ${t("stopped working")}` : chipWords(one, true);
@@ -117,11 +125,12 @@
   function answer(d) {
     const ga4 = stateOf(d, "ga4"), lines = [];
     if (["not_connected", "not_used", "no_sites"].includes(ga4.state)) lines.push(esc(t("Connect Google Analytics to see AI visits and leads.")));
+    else if (notReady(ga4)) lines.push(`${esc(t("Connected. Waiting for data"))}.`); // the chart card under it says the rest, with Refresh data
     else if (!d.sessions) lines.push(esc(t("No AI visits in this period.")));
     else {
       const top = d.sources[0]?.source;
       const change = d.change === null || d.change === undefined ? "" : ` (${d.change > 0 ? "+" : d.change < 0 ? "−" : "±"}${UI.dec(Math.abs(Math.round(d.change)))}${unit()})`;
-      const said = d.key_events_set_up ? tf("AI assistants sent {v} and {l}{c}, most from", { v: plural(d.sessions, "{n} visit", "{n} visits"), l: plural(d.leads, "{n} lead", "{n} leads"), c: change }) : tf("AI assistants sent {v}{c}, most from", { v: plural(d.sessions, "{n} visit", "{n} visits"), c: change });
+      const said = d.key_events_set_up ? tf("AI assistants sent {v} and {l}{c}, most from", { v: plural(d.sessions, "{n} visit", "{n} visits"), l: window.GA4W?.keyEvents(d) ? plural(d.leads, "{n} key event", "{n} key events") : plural(d.leads, "{n} lead", "{n} leads"), c: change }) : tf("AI assistants sent {v}{c}, most from", { v: plural(d.sessions, "{n} visit", "{n} visits"), c: change });
       lines.push(`${esc(said)} ${top ? mark(top) : ""}.`);
     }
     const c = d.copilot;
@@ -130,7 +139,7 @@
         ? tf(c.share < 50 ? "Copilot cited you {n}, but others win most of its answers ({s} share)." : "Copilot cited you {n}, with a {s} share of its answers.", { n: plural(c.citations, "{n} time", "{n} times"), s: share(c.share) })
         : tf("Copilot cited your sites {n}.", { n: plural(c.citations, "{n} time", "{n} times") })));
     } else if (d.ai_overviews.with_overview) {
-      lines.push(esc(tf("AI Overviews on {o} of {c} keywords checked; you're cited in {m}.", { o: num(d.ai_overviews.with_overview), c: num(d.ai_overviews.captured), m: num(d.ai_overviews.cited_me) })));
+      lines.push(esc(aioSaid(d.ai_overviews)));
     }
     const jump = `<button class="link-btn ai-brand-jump" data-ai-jump="brand">${icon("sparkles")}<span>${t("What AI says about you")} ›</span></button>`;
     return `<div class="ai-answer"><p class="today-lead">${lines[0]}</p>${lines[1] ? `<p class="today-second">${lines[1]}</p>` : ""}${simple() ? `${narrowSources(d)}<div class="ai-jump-line">${jump}</div>` : sourcesLine(d).replace(/<\/div>$/, `${jump}</div>`)}</div>`;
@@ -139,30 +148,38 @@
   // ---- four numbers ------------------------------------------------------------------------------
   /* The simpler screens' four cards (UI.card): each says one fact under its figure, and AI visits carries its weekly graph. */
   function cards(d) {
-    const ga4 = stateOf(d, "ga4"), off = ["not_connected", "not_used", "no_sites"].includes(ga4.state);
+    const ga4 = stateOf(d, "ga4"), wait = notReady(ga4), off = ["not_connected", "not_used", "no_sites"].includes(ga4.state) || wait;
     const has = (v) => v !== null && v !== undefined;
     const weeks = d.weekly.map((w) => w.sessions).filter((v) => v !== null);
     const visits = UI.card({ id: "ai-visits", label: "AI visits", value: off ? null : d.sessions, change: off ? null : { now: d.sessions, before: d.before },
-      sub: off ? esc(t("Google Analytics not connected")) : null, spark: !off && weeks.length > 1 ? weeks : null, cls: "tile" });
-    const leads = UI.card({ id: "ai-leads", label: "Leads", value: off ? null : d.key_events_set_up ? d.leads : `<span class="today-fig-word">${esc(t("Not set up"))}</span>`,
+      sub: wait ? esc(t("Waiting for data")) : off ? esc(t("Google Analytics not connected")) : null, spark: !off && weeks.length > 1 ? weeks : null, cls: "tile" });
+    const leads = UI.card({ id: "ai-leads", label: window.GA4W.word("Leads", d), value: off ? null : d.key_events_set_up ? d.leads : `<span class="today-fig-word">${esc(t("Not set up"))}</span>`,
       change: !off && d.key_events_set_up && has(d.before_leads) ? { now: d.leads, before: d.before_leads, unit: "" } : null,
-      sub: off ? "" : !d.key_events_set_up ? esc(t("Mark forms as GA4 key events")) : null, cls: "tile" });
+      sub: off ? "" : !d.key_events_set_up ? esc(t("Mark forms as GA4 key events")) : !d.leads && !d.before_leads ? esc(t(window.GA4W.word("No leads in this period", d))) : null, cls: "tile" });
     const r = d.rate, o = d.organic, rateOff = off || !d.key_events_set_up;
-    const rate = UI.card({ id: "ai-rate", label: "Lead rate", def: "AI lead rate", value: rateOff || r.value === null ? null : pct(r.value),
+    const rate = UI.card({ id: "ai-rate", label: window.GA4W.word("Lead rate", d), def: "AI lead rate", value: rateOff || r.value === null ? null : pct(r.value),
       sub: rateOff ? "" : r.value === null ? esc(tf("needs {need} AI visits, {n} so far", { need: num(r.needs), n: num(r.visits) })) : o.value === null ? "" : `<span class="nowrap">${esc(t("organic search"))} ${pct(o.value)}</span>`, cls: "tile" });
     const c = d.copilot, one = c.sites.length === 1 ? c.sites[0] : null, cited = has(c.citations);
     const cite = UI.card({ id: "ai-citations", label: "Copilot citations", value: cited ? c.citations : null,
       change: cited && one?.before && has(one.before.citations) ? { now: c.citations, before: one.before.citations, unit: "" } : null,
-      sub: !cited ? `<button class="link-btn" data-lv-connect="clarity">${t("Upload a Clarity AI download")}</button>` : has(c.share) ? `<span class="nowrap">${esc(t("share"))} ${share(c.share)}</span>` : null, cls: "tile" });
+      sub: !cited ? `<button class="link-btn" data-lv-connect="clarity">${t("Upload a Clarity AI download")}</button>` : [has(c.share) ? `<span class="nowrap">${esc(t("share"))} ${share(c.share)}</span>` : "", copilotSpan(one)].filter(Boolean).join("<br>") || null, cls: "tile" });
     return `<section class="tiles ai-tiles">${visits}${leads}${rate}${cite}</section>`;
+  }
+  /* Copilot counts cover a download's own days, not the screen's period: the card says which days, and when there is no
+     earlier file of the same length that doesn't overlap, that it wasn't compared, and why (expert review 2026-11-17, #21). */
+  const NO_BEFORE = { overlap: "The earlier download overlaps this one, so the counts can't be compared.", length: "The earlier download covers a different number of days, so the counts can't be compared." };
+  function copilotSpan(one) {
+    if (!one) return "";
+    const days = `<span class="small muted nowrap">${esc(UI.fmtRange ? UI.fmtRange(one.period_start, one.period_end) : `${one.period_start} – ${one.period_end}`)}</span>`;
+    return one.no_before && NO_BEFORE[one.no_before] ? `${days}<br><span class="small muted">${t("Not compared")}${UI.tip(NO_BEFORE[one.no_before])}</span>` : days;
   }
   function tiles(d) {
     if (simple() && UI.card) return cards(d);
-    const ga4 = stateOf(d, "ga4"), off = ["not_connected", "not_used", "no_sites"].includes(ga4.state);
+    const ga4 = stateOf(d, "ga4"), wait = notReady(ga4), off = ["not_connected", "not_used", "no_sites"].includes(ga4.state) || wait;
     const weeks = d.weekly.map((w) => w.sessions).filter((v) => v !== null);
-    const visits = UI.tile(t("AI visits"), off ? "—" : UI.cnt(d.sessions), off ? `<span class="ab">${t("Google Analytics not connected")}</span>` : LVx().change(d.sessions, d.before), { ic: "sparkles", line: !off && weeks.length > 1 ? weeks : null });
+    const visits = UI.tile(t("AI visits"), off ? "—" : UI.cnt(d.sessions), off ? `<span class="ab">${t(wait ? "Waiting for data" : "Google Analytics not connected")}</span>` : LVx().change(d.sessions, d.before), { ic: "sparkles", line: !off && weeks.length > 1 ? weeks : null });
     const leadsFig = off ? "—" : d.key_events_set_up ? num(d.leads) : `<span class="today-fig-word">${t("Not set up")}</span>`;
-    const leadsNote = off ? "" : !d.key_events_set_up ? `<span class="ab">${t("Mark forms as GA4 key events")}</span>` : d.before_leads !== null && d.before_leads !== undefined ? `<span class="ab">${num(d.before_leads)} → ${num(d.leads)}</span>` : "";
+    const leadsNote = off ? "" : !d.key_events_set_up ? `<span class="ab">${t("Mark forms as GA4 key events")}</span>` : !d.leads && !d.before_leads ? `<span class="ab">${esc(t(window.GA4W.word("No leads in this period", d)))}</span>` : d.before_leads !== null && d.before_leads !== undefined ? `<span class="ab">${num(d.before_leads)} → ${num(d.leads)}</span>` : "";
     const leads = UI.tile(t("Leads"), leadsFig, leadsNote, { ic: "filter" });
     const r = d.rate, o = d.organic;
     const rateFig = off || !d.key_events_set_up ? "—" : r.value === null ? "—" : pct(r.value);
@@ -179,6 +196,7 @@
         const diff = c.citations - one.before.citations;
         bits.push(`<span class="${diff > 0 ? "good" : diff < 0 ? "crit" : "sec"} d-pill">${diff > 0 ? "+" : diff < 0 ? "−" : "±"}${num(Math.abs(diff))}</span> ${t("since the last upload")}`);
       }
+      if (one) bits.push(copilotSpan(one));
       if (c.share !== null && c.share !== undefined) {
         const was = one?.before?.share, pts = was === null || was === undefined ? null : Math.round((c.share - was) * 10) / 10;
         bits.push(`<span class="nowrap">${t("share")} ${share(c.share)}${pts === null ? "" : ` (${pts > 0 ? "+" : pts < 0 ? "−" : "±"}${UI.dec(Math.abs(pts))} ${t("pts")})`}</span>`);
@@ -203,6 +221,7 @@
     const weekOf = Object.fromEntries(weeks.map((w) => [w.end, w]));
     const off = NOT_ON.includes(ga4.state), any = weeks.some((w) => w.sessions);
     const body = off ? `<div class="empty"><p>${t("Connect Google Analytics to see AI visits.")}</p><div style="margin-top:10px"><button class="btn btn-main" data-lv-connect="google">${t("Connect")}</button></div></div>`
+      : notReady(ga4) ? waitCard()
       : !any ? `<div class="empty"><p>${t("No AI visits in these weeks.")}</p></div>`
       : LVx().lineChart("ai-weeks", days, [{ name: "AI visits", color: "var(--ch-1)", values }], { marks, markName: "Leads", dayLabel: (end) => weekWords(weekOf[end]) });
     const legend = !off && any && marks && Object.keys(marks).length ? `<div class="ai-half-foot"><span class="ai-legend"><i class="ai-dot"></i>${t("a week with a lead")}</span></div>` : "";
@@ -228,6 +247,11 @@
     const note = read && !NOT_ON.includes(live.state) ? `<div class="ai-half-foot"><p class="small muted ai-second"><span>${esc(tf("Weeks count only the days read: {n} so far.", { n: num(read) }))}${UI.tip("Clarity only gives its last 3 days.")}</span></p></div>` : "";
     return half("clarity", t("Clarity live"), live, body, note);
   }
+  /* One sentence for the AI Overview watch, naming the tool that looked: only a tool that sees AI Overviews counts (SerpApi). */
+  const aioSaid = (o) => (o.tools && o.tools.length
+    ? tf("AI Overviews on {o} of {c} keywords checked with {tool}; you're cited in {m}.", { o: num(o.with_overview), c: num(o.captured), m: num(o.cited_me), tool: o.tools.join(", ") })
+    : tf("AI Overviews on {o} of {c} keywords checked; you're cited in {m}.", { o: num(o.with_overview), c: num(o.captured), m: num(o.cited_me) }));
+
   /* The simpler screens: Clarity live beside Google Analytics once it's connected, one line with Connect until then. The
      second opinion is the card head's (i). */
   function chartCardSimple(d) {
@@ -396,6 +420,7 @@
   function assistantsTab(d) {
     const ga4 = stateOf(d, "ga4");
     if (["not_connected", "not_used", "no_sites"].includes(ga4.state)) return notSet(t("Connect Google Analytics to see which assistants send visits."), `<button class="btn btn-main" data-lv-connect="google">${t("Connect")}</button>`);
+    if (notReady(ga4)) return waitCard(false);
     if (!d.sources.length) return notSet(`${t("No AI visits in this period: a real zero.")}${UI.tip("Google Analytics has data, and none of it came from the assistants on the AI list.")}`);
     const rateCell = (r) => (r.rate !== null ? pct(r.rate) : `<span class="muted" data-tip="${esc(tf("needs {need} AI visits, {n} so far", { need: num(d.limits.lead_rate_min_visits), n: num(r.sessions) }))}">—</span>`);
     const keep = (html) => `<span class="ai-num">${html}</span>`; // the figure and its change stay together on a phone's card rows
@@ -407,7 +432,7 @@
       { key: "source", label: "Assistant", html: (r) => `${rowMark("assistant", r.source)}${mark(r.source)}` },
       { key: "sessions", label: "Visits", num: true, html: visitsCell },
       { key: "engaged", label: "Engaged", num: true, html: engagedCell },
-      ...(d.key_events_set_up ? [{ key: "leads", label: "Leads", num: true }, { key: "rate", label: "Lead rate", num: true, html: rateCell }] : []),
+      ...(d.key_events_set_up ? [{ key: "leads", label: window.GA4W.word("Leads", d), num: true }, { key: "rate", label: window.GA4W.word("Lead rate", d), num: true, html: rateCell }] : []),
     ];
     const small = d.sources.filter((r) => r.rate === null).length;
     const notes = [
@@ -417,7 +442,9 @@
     const said = simple() ? (notes.forEach((n) => lead(n)), "") : lead(notes.join(" "));
     const table = rowsOpen(LVx().dataTable("ai-assistants", columns, d.sources, { pageSize: 10 }));
     const ring = donut(d);
-    return `${said}${ring ? `<div class="ai-asst-box"><div class="ai-asst"><div class="ai-asst-chart">${ring}</div><div class="ai-asst-table">${table}</div></div></div>` : table}`;
+    // The same visits are the "AI assistants" row on Channels (expert review 2026-11-17, #22): the way there.
+    const channels = `<p class="small muted ai-on-channels"><a href="#channels">${t("Compare with your other channels")} →</a></p>`;
+    return `${said}${ring ? `<div class="ai-asst-box"><div class="ai-asst"><div class="ai-asst-chart">${ring}</div><div class="ai-asst-table">${table}</div></div></div>` : table}${channels}`;
   }
   /* Which assistants sent a row's visits: each one's logo, name and count, three at most, then "+N". */
   const byCell = (r) => {
@@ -435,7 +462,7 @@
       { key: "type", label: "Page type", get: (r) => typeName(r.type), html: (r) => `<button class="link-btn ai-type-btn" data-ai-type="${esc(r.type)}" dir="auto">${esc(typeName(r.type))}</button><div class="lv-cat">${esc(plural(r.pages, "{n} page", "{n} pages"))}</div>` },
       { key: "sessions", label: "AI visits", num: true },
       { key: "share", label: "Share", num: true, html: (r) => sharePct(r.share || 0) },
-      ...(d.key_events_set_up ? [{ key: "leads", label: "Leads", num: true }, { key: "rate", label: "Lead rate", num: true, html: rateCell }] : []),
+      ...(d.key_events_set_up ? [{ key: "leads", label: window.GA4W.word("Leads", d), num: true }, { key: "rate", label: window.GA4W.word("Lead rate", d), num: true, html: rateCell }] : []),
       { key: "by", label: "Assistants", get: (r) => (r.by || []).map((b) => b.source).join(" "), html: byCell },
     ];
     const said = lead(`${esc(t("Page types as on Conversions: your rules in Settings, else each page's first folder."))}`);
@@ -445,6 +472,7 @@
   function pagesTab(d) {
     const ga4 = stateOf(d, "ga4");
     if (["not_connected", "not_used", "no_sites"].includes(ga4.state)) return notSet(t("Connect Google Analytics to see AI landing pages."), `<button class="btn btn-main" data-lv-connect="google">${t("Connect")}</button>`);
+    if (notReady(ga4)) return waitCard(false);
     const min = d.limits.cta_min_visits;
     if (A.type && !(d.page_types || []).some((x) => x.type === A.type)) A.type = null; // another site or period
     const all = d.pages, list = A.type ? all.filter((p) => p.type === A.type) : all;
@@ -456,7 +484,7 @@
       { key: "path", label: "Page", get: LVx().pageName, html: (r) => `${pageCell(r)}${A.type || !r.type ? "" : `<div class="lv-cat" dir="auto">${esc(typeName(r.type))}</div>`}` },
       { key: "sessions", label: "AI visits", num: true },
       { key: "google", label: "Google clicks", num: true, html: googleCell },
-      ...(d.key_events_set_up ? [{ key: "leads", label: "Leads", num: true }, { key: "action", label: "Action", get: () => null, html: action }] : []),
+      ...(d.key_events_set_up ? [{ key: "leads", label: window.GA4W.word("Leads", d), num: true }, { key: "action", label: "Action", get: () => null, html: action }] : []),
     ];
     const google = d.google_clicks_known ? lead(esc(t("Google clicks: Search Console, same days, for the same page."))) : lead(`${esc(t("Connect Search Console to see each page's Google clicks beside its AI visits."))} <button class="link-btn" data-lv-connect="google">${t("Connect")}</button>`, { keep: true });
     const said = !all.length ? "" : d.key_events_set_up ? lead(esc(tf("{n} of {m} pages: AI visits, no lead. Task button from {min} visits.", { n: num(none), m: num(all.length), min: num(min) }))) : lead(esc(t("Leads aren't tracked: mark your forms as key events in GA4.")), { keep: true });
@@ -469,18 +497,20 @@
     if (!c.sites.length) return notSet(t("See which pages Copilot cites: in Clarity, AI visibility → Export, then upload it."), uploadAi());
     const rows = c.sites.flatMap((s) => s.pages.map((p) => ({ ...p, host: s.host })));
     const min = d.limits.click_min_citations;
-    const noVisit = (r) => r.visits === 0 && r.citations >= min;
+    const noVisit = (r) => r.visits === 0 && !r.bing_visits && r.citations >= min;
     const flag = `<span class="ai-cnv" role="img" title="${esc(t("Cited, no visit"))}" aria-label="${esc(t("Cited, no visit"))}">${icon("triangle-alert", "warn")}</span>`;
     const columns = [
       { key: "path", label: "Page", get: LVx().pageName, html: pageCell },
       { key: "citations", label: "Citations", num: true },
-      { key: "visits", label: "Copilot and Bing visits", num: true, html: (r) => (r.visits === null ? `<span class="muted" data-tip="${esc(t("Google Analytics has none of the download's days."))}">—</span>` : `${num(r.visits)}${noVisit(r) ? ` ${flag}` : ""}`) },
+      // Copilot and Bing search apart (SEO review 2026-11-17, W5): GA4 writes Bing "bing", and most of it is plain search.
+      { key: "visits", label: "Copilot visits", num: true, html: (r) => (r.visits === null ? `<span class="muted" data-tip="${esc(t("Google Analytics has none of the download's days."))}">—</span>` : `${num(r.visits)}${noVisit(r) ? ` ${flag}` : ""}`) },
+      { key: "bing_visits", label: "Bing search visits", num: true, html: (r) => (r.bing_visits === null || r.bing_visits === undefined ? `<span class="muted">—</span>` : num(r.bing_visits)) },
     ];
     const flagged = rows.filter(noVisit).length;
     const flagLine = flagged ? `<p class="ai-tab-lead ai-cnv-line">${icon("triangle-alert", "warn")}<span>${esc(flagged === 1 ? t("1 page cited, no visit") : tf("{n} pages cited, no visit", { n: num(flagged) }))}</span></p>` : "";
     const one = c.sites.length === 1 ? c.sites[0] : null;
     const allOnes = foldRows(rows, (r) => r.citations === 1).all && !A.fold.has("ai-cited"); // then the table is one sentence, with nothing to explain
-    const said = one && !allOnes ? lead(esc(tf("Visits: Google Analytics, from Copilot and Bing, {a} – {b}.", { a: day(one.period_start), b: day(one.period_end) }))) : "";
+    const said = one && !allOnes ? lead(esc(tf("Visits: Google Analytics, from Copilot, and from Bing search apart, {a} – {b}.", { a: day(one.period_start), b: day(one.period_end) }))) : "";
     return said + flagLine + folded("ai-cited", columns, rows, { test: (r) => r.citations === 1, word: "{n} pages cited once each", allWord: "Copilot cited {n} pages once each; none stands out yet.", empty: "No cited pages in this download." });
   }
   function questionsTab(d) {
@@ -510,7 +540,7 @@
     tabInfo = [];
     const body = A.tab === "report" ? window.GoogleAIReport.tab() : { assistants: assistantsTab, types: typesTab, pages: pagesTab, cited: citedTab, questions: questionsTab, brand: brandTab }[A.tab](d);
     // Each tab's count is its badge (the table then needs no "1–5 of 5" under it: data-tt-own-count).
-    const ga4On = !NOT_ON.includes(stateOf(d, "ga4").state), c = d.copilot;
+    const ga4On = !NOT_ON.includes(stateOf(d, "ga4").state) && !notReady(stateOf(d, "ga4")), c = d.copilot;
     const counts = { brand: window.AIBrand?.count?.() ?? null, assistants: ga4On ? d.sources.length : null, types: ga4On ? (d.page_types || []).length : null, pages: ga4On ? d.pages.length : null, cited: c.sites.length ? c.sites.reduce((n, x) => n + x.pages.length, 0) : null, questions: c.sites.some((x) => x.queries) ? c.sites.reduce((n, x) => n + (x.queries?.length || 0), 0) : null };
     const badge = (id) => (counts[id] ? ` <span class="n-badge">${num(counts[id])}</span>` : "");
     const info = A.tab === "report" ? tabInfo : A.tab === "brand" ? window.AIBrand?.info?.() || [] : ["Some AI visits show as Direct or Organic Search.", "AI apps often send no referrer, so their visits show as Direct. Clicks from Google's AI Overviews count as Organic Search.", ...tabInfo];
@@ -551,7 +581,7 @@
     const o = d.ai_overviews;
     const said = !o.tracked ? t("No keywords tracked, so no AI Overview checks yet.")
       : !o.captured ? t("No AI Overview checks yet.")
-      : tf("AI Overviews on {o} of {c} keywords checked; you're cited in {m}.", { o: num(o.with_overview), c: num(o.captured), m: num(o.cited_me) });
+      : aioSaid(o);
     const p = A.aio.preview, tool = p?.tools?.find((x) => x.credits) || p?.tools?.[0];
     const check = A.aio.run || (A.aio.asked && o.keyword_ids.length) ? aioCheckButton(o) : !o.keyword_ids.length ? `<button class="btn btn-small" data-go="keywords">${t("Add keywords")}</button>` : "";
     const confirm = A.aio.confirm && p?.checks ? `<div class="ai-confirm" role="group" aria-label="${t("Check now")}"><span>${esc(tf("This checks {k} on Google with {tool} and uses {c}.", { k: plural(p.checks, "{n} keyword", "{n} keywords"), tool: tool?.name || "", c: plural(p.credits, "{n} credit", "{n} credits") }))}</span><button class="btn btn-small btn-main" data-ai-aio-go>${t("Check now")}</button><button class="btn btn-small btn-ghost" data-ai-aio-cancel>${t("Cancel")}</button></div>` : "";
@@ -564,7 +594,7 @@
     aioPreview(d);
     const said = !o.tracked ? t("No keywords tracked, so no AI Overview checks yet.")
       : !o.captured ? t("No AI Overview checks yet.")
-      : tf("AI Overviews on {o} of {c} keywords checked; you're cited in {m}.", { o: num(o.with_overview), c: num(o.captured), m: num(o.cited_me) });
+      : aioSaid(o);
     const p = A.aio.preview, tool = p?.tools?.find((x) => x.credits) || p?.tools?.[0];
     const confirm = A.aio.confirm && p?.checks ? `<div class="ai-confirm" role="group" aria-label="${t("Check now")}"><span>${esc(tf("This checks {k} on Google with {tool} and uses {c}.", { k: plural(p.checks, "{n} keyword", "{n} keywords"), tool: tool?.name || "", c: plural(p.credits, "{n} credit", "{n} credits") }))}</span><button class="btn btn-small btn-main" data-ai-aio-go>${t("Check now")}</button><button class="btn btn-small btn-ghost" data-ai-aio-cancel>${t("Cancel")}</button></div>` : "";
     return `<section class="card ai-aio"><div class="ai-aio-row"><p class="ai-aio-said">${icon("sparkles", "sec")}<span>${esc(said)}</span></p><span class="ai-aio-chip">${chip(serp, { fix: false })}</span>
@@ -814,20 +844,28 @@
   };
 
   const fr = {
+    "Compare with your other channels": "Comparer avec vos autres canaux",
+    "Not compared": "Pas comparé",
+    "The earlier download overlaps this one, so the counts can't be compared.": "Le téléchargement précédent chevauche celui-ci : les nombres ne se comparent pas.",
+    "The earlier download covers a different number of days, so the counts can't be compared.": "Le téléchargement précédent couvre un autre nombre de jours : les nombres ne se comparent pas.",
     "Google Analytics": "Google Analytics", "Clarity live": "Clarity en direct", "Clarity download": "Export Clarity", "{n} of {m} sites": "{n} sites sur {m}",
     "not connected": "non connecté", "not used": "non utilisé", "no keywords checked": "aucun mot-clé relevé", "nothing uploaded": "rien d'importé",
-    "waiting for data": "en attente de données", "retrying": "nouvel essai", "reading…": "lecture…", "queued": "en file", "stopped working": "ne fonctionne plus",
+    "waiting for data": "en attente de données", "Waiting for data": "En attente de données", "{n} sources waiting for data": "{n} sources en attente de données",
+    "Connected. Waiting for data": "Connecté. En attente de données", "Arrives after the next run. Refresh data starts one now.": "Arrive après le prochain passage. Actualiser les données en lance un tout de suite.", "retrying": "nouvel essai", "reading…": "lecture…", "queued": "en file", "stopped working": "ne fonctionne plus",
     "last good": "dernière réussite", "not updating": "ne se met plus à jour", "tried": "essai", "{n} days behind": "{n} jours de retard", "through": "jusqu'au", "read": "lu", "data lost in {n} h": "données perdues dans {n} h",
     "uploaded": "importé", "checked": "relevé", "old": "ancien", "Fix": "Corriger", "Upload": "Importer",
     "All {n} sources up to date": "Les {n} sources sont à jour", "Source up to date": "Source à jour", "{n} sources · {m} need you ›": "{n} sources · {m} à traiter ›", "{n} sources ›": "{n} sources ›", "Sources": "Sources",
+    "Copilot visits": "Visites Copilot", "Bing search visits": "Visites recherche Bing",
+    "Visits: Google Analytics, from Copilot, and from Bing search apart, {a} – {b}.": "Visites : Google Analytics, depuis Copilot, et à part depuis la recherche Bing, {a} – {b}.",
     "Connect Google Analytics to see AI visits and leads.": "Connectez Google Analytics pour voir les visites et leads IA.",
     "No AI visits in this period.": "Aucune visite IA sur cette période.",
     "AI assistants sent {v} and {l}{c}, most from": "Les assistants IA ont envoyé {v} et {l}{c}, surtout depuis",
     "AI assistants sent {v}{c}, most from": "Les assistants IA ont envoyé {v}{c}, surtout depuis",
-    "{n} visit": "{n} visite", "{n} visits": "{n} visites", "{n} lead": "{n} lead", "{n} leads": "{n} leads", "{n} time": "{n} fois", "{n} times": "{n} fois",
+    "{n} visit": "{n} visite", "{n} visits": "{n} visites", "{n} lead": "{n} lead", "{n} leads": "{n} leads", "{n} key event": "{n} événement clé", "{n} key events": "{n} événements clés", "{n} time": "{n} fois", "{n} times": "{n} fois",
     "Copilot cited you {n}, but others win most of its answers ({s} share).": "Copilot vous a cité {n}, mais d'autres remportent la plupart de ses réponses ({s} de part).",
     "Copilot cited you {n}, with a {s} share of its answers.": "Copilot vous a cité {n}, avec {s} de ses réponses.", "Copilot cited your sites {n}.": "Copilot a cité vos sites {n}.",
     "AI Overviews on {o} of {c} keywords checked; you're cited in {m}.": "AI Overviews sur {o} des {c} mots-clés relevés ; vous êtes cité dans {m}.",
+    "AI Overviews on {o} of {c} keywords checked with {tool}; you're cited in {m}.": "AI Overviews sur {o} des {c} mots-clés relevés avec {tool} ; vous êtes cité dans {m}.",
     "AI visits": "Visites IA", "Google Analytics not connected": "Google Analytics non connecté", "Leads": "Leads", "Not set up": "Non configuré", "Mark forms as GA4 key events": "Marquez vos formulaires comme événements clés GA4",
     "needs {need} AI visits, {n} so far": "il faut {need} visites IA, {n} pour l'instant", "organic search": "recherche organique", "{l} of {v}": "{l} sur {v}", "Lead rate": "Taux de lead",
     "Upload a Clarity AI download": "Importer un export IA de Clarity", "since the last upload": "depuis l'import précédent", "share": "part", "pts": "pts", "Copilot citations": "Citations Copilot",

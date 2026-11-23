@@ -382,17 +382,18 @@
   const changeCell = (r) => (!isNum(r.change) ? `<span class="muted">—</span>` : r.change === 0 ? `<span class="sec">0%</span>`
     : `<span class="${r.change > 0 ? "good" : "crit"} d-pill">${icon(r.change > 0 ? "arrow-up" : "arrow-down")}${r.change > 0 ? "+" : "−"}${num(Math.abs(r.change))}%</span>`);
   const learn = (d) => { (d.logos || []).forEach((n) => window.LOGOS_KNOWN?.add?.(n)); return d; };
+  const LW = (english, d) => (window.GA4W ? window.GA4W.word(english, d) : english); // "Key events" until lead events are picked
   const visitsAndLeads = [{ label: "Visits", key: "sessions", num: true }, { label: "Leads", key: "leads", num: true }];
   const facts = (d) => [d.totals && isNum(d.totals.sessions) ? `${t("Visits")}: ${num(d.totals.sessions)}` : "", d.period ? periodWords(d.period).join(" ") : ""].filter(Boolean);
   const where = (scope, extra) => ({ scope, siteId: UI.siteIdPicked(), ...extra });
   const trafficNumbers = (d, first = "Visits") => [
     { id: "visits", label: first, value: d.totals?.sessions ?? null, before: d.before?.sessions },
-    { id: "leads", label: "Leads", value: d.totals?.leads ?? null, before: d.before?.leads },
-    { id: "rate", label: "Lead rate", fmt: "pct", value: d.totals?.rate ?? null, before: d.before?.rate },
+    { id: "leads", label: LW("Leads", d), value: d.totals?.leads ?? null, before: d.before?.leads },
+    { id: "rate", label: LW("Lead rate", d), fmt: "pct", value: d.totals?.rate ?? null, before: d.before?.rate },
   ];
   const trafficCharts = (d, first = "Visits") => [
     rowPanel.chart(d.days, "sessions", d.days_before, { label: first, period: d.period }),
-    rowPanel.chart(d.days, "leads", d.days_before, { label: "Leads", period: d.period }),
+    rowPanel.chart(d.days, "leads", d.days_before, { label: LW("Leads", d), period: d.period }),
   ];
   const KINDS = {
     channel: {
@@ -406,6 +407,8 @@
           { title: "Sources", rows: d.sources, total: d.sources_total, columns: [{ label: "Source", key: "source", html: (r) => withLogo(r.source) }, ...visitsAndLeads, { label: "Change", key: "change", num: true, html: changeCell }] },
           { title: "Mediums", rows: d.mediums, total: d.mediums_total, columns: [{ label: "Medium", key: "medium", html: (r) => `<span dir="auto">${esc(r.medium)}</span>` }, ...visitsAndLeads, { label: "Change", key: "change", num: true, html: changeCell }] },
         ],
+        // AI assistants is AI search's own count, by its rules: the way there (expert review 2026-11-17, #22).
+        actions: key === "AI assistants" ? [{ label: "Open AI search", icon: "sparkles", attrs: { "data-rp-ai": "1" }, onClick: (e, panel) => { panel.close(); UI.go("ai"); } }] : [],
         task: { title: `${t("Look into a channel")}: ${t(key)}`, host: UI.siteHostPicked(), priority: "medium", source: { type: "other", label: t(key), host: UI.siteHostPicked() || undefined, facts: facts(d), link: "#channels", key: `channel|${UI.siteHostPicked() || ""}|${key}` } },
         note: true,
       }),
@@ -428,11 +431,12 @@
       url: (key, o) => `metrics/page?path=${enc(key)}${o.host ? `&host=${enc(o.host)}` : ""}&${asked()}`,
       spec: (d) => ({
         period: d.period, page: { path: d.path, host: d.host },
-        sub: [t(d.category), UI.siteHostPicked() ? "" : d.host].filter(Boolean).join(" · "),
+        // Google's #section jump links are said apart: the page's clicks and position are its own address's (review 3.3).
+        sub: [t(d.category), UI.siteHostPicked() ? "" : d.host, d.jump?.impressions ? t("Jump links: {n} impressions").replace("{n}", num(d.jump.impressions)) : ""].filter(Boolean).join(" · "),
         numbers: [
           { id: "visits", label: "Visits", value: d.totals?.sessions ?? null, before: d.before?.sessions, sub: d.ga4?.state === "not_connected" ? "Google Analytics not connected" : undefined },
-          { id: "leads", label: "Leads", value: d.totals?.leads ?? null, before: d.before?.leads },
-          { id: "rate", label: "Lead rate", fmt: "pct", value: d.totals?.rate ?? null, before: d.before?.rate },
+          { id: "leads", label: LW("Leads", d), value: d.totals?.leads ?? null, before: d.before?.leads },
+          { id: "rate", label: LW("Lead rate", d), fmt: "pct", value: d.totals?.rate ?? null, before: d.before?.rate },
           { id: "clicks", label: "Google clicks", value: d.totals?.clicks ?? null, before: d.before?.clicks, def: "Clicks", sub: d.gsc?.state === "not_connected" ? "Search Console not connected" : undefined },
           { id: "position", label: "Position", fmt: "pos", value: d.totals?.position ?? null, before: d.before?.position },
           { id: "ai", label: "AI visits", value: d.totals?.ai ?? null, before: d.before?.ai },
@@ -471,8 +475,8 @@
           period: d.period,
           numbers: [
             { id: "visits", label: "AI visits", value: d.totals?.sessions ?? null, before: d.before?.sessions },
-            { id: "leads", label: "Leads", value: d.totals?.leads ?? null, before: d.before?.leads },
-            { id: "rate", label: "Lead rate", fmt: "pct", value: d.totals?.rate ?? null, before: d.before?.rate, sub: rateNeeds ? t("Needs {n} visits").replace("{n}", num(d.totals.rate_needs)) : undefined },
+            { id: "leads", label: LW("Leads", d), value: d.totals?.leads ?? null, before: d.before?.leads },
+            { id: "rate", label: LW("Lead rate", d), fmt: "pct", value: d.totals?.rate ?? null, before: d.before?.rate, sub: rateNeeds ? t("Needs {n} visits").replace("{n}", num(d.totals.rate_needs)) : undefined },
             { id: "share", label: "Share of AI visits", fmt: "pct", value: d.totals?.share ?? null },
           ],
           chart: { ...rowPanel.chart(weeks, "sessions", null, { label: "AI visits per week", everyDay: false }), dayLabel: (end) => `${t("Week to")} ${shortDay(end)}` },
@@ -525,7 +529,7 @@
     "Channel": "Canal", "Page": "Page", "Assistant": "Assistant", "Referring site": "Site référent", "Keyword": "Mot-clé",
     "Sources": "Sources", "Source": "Source", "Mediums": "Supports", "Medium": "Support", "Share": "Part", "Share of all visits": "Part des visites",
     "Landing pages": "Pages d'arrivée", "Open site": "Ouvrir le site", "Open page": "Ouvrir la page", "All about this page": "Tout sur cette page", "Add a note": "Ajouter une note", "Task": "Tâche",
-    "Searches that bring it": "Les recherches qui y mènent", "Where AI visits come from": "D'où viennent les visites IA", "Share of AI visits": "Part des visites IA",
+    "Searches that bring it": "Les recherches qui y mènent", "Jump links: {n} impressions": "Liens vers une section : {n} impressions", "Where AI visits come from": "D'où viennent les visites IA", "Share of AI visits": "Part des visites IA",
     "AI visits per week": "Visites IA par semaine", "Week to": "Semaine au", "Needs {n} visits": "Il faut {n} visites",
     "No searches in this period.": "Aucune recherche sur cette période.", "No AI visits in this period.": "Aucune visite IA sur cette période.",
     "No landing pages in this period.": "Aucune page d'arrivée sur cette période.",

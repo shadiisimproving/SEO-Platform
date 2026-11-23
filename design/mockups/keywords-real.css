@@ -235,3 +235,25 @@ html[data-simple="1"] .kw-bar-end .tt-count, .table-tools #kw-aio-all .tt-count 
 .kw-vol-foot { margin-top: 16px; }
 #kw-vol-error:empty { display: none; }
 .kwt-chart .kwt-vlabel { paint-order: stroke; stroke: var(--panel-solid, #fff); stroke-width: 3px; stroke-linejoin: round; }
+/* Change: a keyword that fell out of the depth checked (Dropped out), came into it (New), or stayed out (Still out). */
+.kw-move { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.kw-move svg { width: 13px; height: 13px; flex: none; }
+/* An old check (over 14 days), or a main tool's check passed over for a newer one: amber, with its age. */
+.kw-age { display: inline-flex; align-items: center; gap: 3px; margin-inline-start: 6px; padding: 0 6px; border-radius: 999px; font-size: 11px; font-weight: 600; line-height: 18px; white-space: nowrap; }
+.kw-age svg { width: 11px; height: 11px; flex: none; }
+.kw-age-old { color: var(--warn-t); background: color-mix(in srgb, var(--warn-t) 11%, transparent); }
+/* Page: the URL that ranked, then Search Console's most-shown page when it's another one, said as such. */
+.kw-gsc-page { display: flex; align-items: center; gap: 4px; font-family: var(--font, inherit); }
+.kw-url-changed { margin-inline-start: 6px; font-size: 11px; font-weight: 600; color: var(--warn-t); font-family: var(--font, inherit); white-space: nowrap; }
+/* An engine no tool can search: one card, not a table of "Not checked". */
+.kw-engine-empty { margin-top: 4px; }
+.kw-google-only { font-weight: 400; }
+.kw-spell { margin-inline-start: 2px; font-size: 10px; color: var(--text-2); }
+.kw-twin { color: var(--text-2); margin-inline-end: 6px; }
+
+/* A suspect check (store.suspect_why): kept in the panel, greyed, with its reason under the status. */
+.pos-also { display: inline-flex; align-items: center; gap: 4px; }
+.pos-also .pos-sep { color: var(--muted); margin: 0 1px; }
+.pos.pos-suspect { color: var(--text-2); background: transparent; box-shadow: inset 0 0 0 1px var(--line); font-weight: 500; }
+.kw-row-suspect td { color: var(--text-2); }
+.kw-row-suspect .kw-why { display: block; max-width: 34ch; white-space: normal; font-size: 12px; line-height: 1.35; margin-top: 2px; }

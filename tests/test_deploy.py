@@ -330,6 +330,41 @@ def test_a_normal_release_still_migrates_and_skips_the_going_back_check(release)
     assert "python -m seo.core.schema" not in steps
 
 
+def test_a_release_runs_the_data_steps_after_its_migrations_and_logs_them(release):
+    """The two stored-data steps can't be forgotten: every release runs them after Alembic, before the switch (final review
+    2026-11-18). Both are safe to run again (test_competitor_noise, test_serp_accuracy)."""
+    done = release.run()
+    assert done.returncode == 0, done.stderr
+    steps = [" ".join(step) for step in release.steps()]
+    migrate = next(i for i, step in enumerate(steps) if step.startswith("alembic upgrade"))
+    hide = steps.index("python -m scripts.reclassify_competitor_events")
+    mark = next(i for i, step in enumerate(steps) if "mark_contradicted_checks.py" in step)
+    assert migrate < hide < mark
+    assert "--apply" in release.log.read_text().splitlines()[hide] and "--apply" in release.log.read_text().splitlines()[mark]
+    assert (release.live / "var" / "logs" / "release-data-steps.log").exists()
+
+
+def test_a_failed_data_step_leaves_the_old_code_running(release):
+    _script(release.venv / "python", f'echo "python $*" >> "{release.log}"\nif [ "$2" = "scripts.reclassify_competitor_events" ]; then echo "lock wait timeout" >&2; exit 1; fi\n')
+    done = release.run()
+    assert done.returncode != 0 and "Not switched" in done.stderr
+    assert (release.live / "seo" / "old.py").exists() and not (release.live / "tmp" / "restart.txt").exists()
+
+
+def test_going_back_runs_no_data_step(release):
+    assert release.run(ROLLBACK="1").returncode == 0
+    assert not any("reclassify" in " ".join(step) or "mark_contradicted" in " ".join(step) for step in release.steps())
+
+
+def test_the_upload_reminds_of_the_utf8mb4_step_with_its_exact_commands():
+    script = (ROOT / "deploy" / "deploy.sh").read_text()
+    for command in ("scripts.convert_utf8mb4 --pending", "-m scripts.backup_db", "-m scripts.convert_utf8mb4 --check", "-m scripts.reread_gsc_text --apply"):
+        assert command in script, command
+    guide = (ROOT / "deploy" / "DEPLOY.md").read_text()
+    order = [guide.index(step) for step in ("scripts.backup_db", "scripts.convert_utf8mb4", "scripts.reread_gsc_text")]
+    assert order == sorted(order)
+
+
 @pytest.mark.parametrize("args", [["--rollback"], ["--rollback", "no-such-commit-here"]])
 def test_going_back_needs_a_real_commit_and_stops_before_any_network(tmp_path, args):
     fakes = tmp_path / "bin"

@@ -51,10 +51,18 @@ def overview(engine, args) -> Report:
     report.tiles = [
         Tile("Clicks", totals.get("clicks"), "int", change(totals.get("clicks"), before.get("clicks"))),
         Tile("Impressions", totals.get("impressions"), "int", change(totals.get("impressions"), before.get("impressions"))),
-        Tile("Click rate", totals.get("click_rate"), "pct100", change(totals.get("click_rate"), before.get("click_rate"))),
-        Tile("Average position", totals.get("position"), "position", change(totals.get("position"), before.get("position")), lower_is_better=True),
+        # As on screen: a click rate moves in percentage points, a position in places (lower is better), never in %.
+        Tile("Click rate", totals.get("click_rate"), "pct100", diff(totals.get("click_rate"), before.get("click_rate")), change_kind="points"),
+        Tile("Average position", totals.get("position"), "position", diff(totals.get("position"), before.get("position")), lower_is_better=True, change_kind="places"),
     ]
-    series, compared = data.get("series") or [], data.get("compare_series") or []
+    if data.get("week_left_out"):
+        report.notes.append(f"The first {data['week_left_out']['days']} days are counted in the totals, not drawn: a short week would look like a fall.")
+    # Only the days the totals count: the not-final days drawn after the period on screen are left out of the file, so a
+    # 28-day header never sits over 30 days of chart (competitors-exports W12).
+    every = data.get("series") or []
+    series, compared = [p for p in every if p.get("counted", True) is not False], data.get("compare_series") or []
+    if len(series) < len(every):
+        report.notes.append(f"The last {len(every) - len(series)} days aren't final yet in Google: they are left out of the charts and totals.")
     labels = [_short_day(p.get("day")) for p in series]
     for key, title in (("clicks", "Clicks"), ("impressions", "Impressions")):
         lines = [Series(title, [p.get(key) for p in series])]
@@ -62,6 +70,7 @@ def overview(engine, args) -> Report:
             lines.append(Series("Before", [p.get(key) for p in compared][: len(series)], dashed=True))
         report.charts.append(Chart(title, labels, lines))
 
+    _period_notes(report, window)
     picked = args.get("dim", "query")
     show, brand = args.get("show", "all"), args.get("brand", "all")
     filters = search.filter_from(args)
@@ -69,6 +78,9 @@ def overview(engine, args) -> Report:
         mine = dim == picked
         # The chips and filters on screen belong to the table being looked at; the other tables come whole.
         report.tables.append(_breakdown_table(search, scope, dim, show if mine else "all", brand if mine and dim == "query" else "all", filters if mine else None, compare))
+    for table in report.tables:
+        if table.id in DIM_TITLES:
+            table.note = _rows_note(window, table.id)
     if picked == "opportunities":
         report.tables.insert(0, _opportunities_table(search, scope, args.get("kind", "almost")))
         report.filters.append(("Opportunities", OPP_TITLES.get(args.get("kind", "almost"), "")))
@@ -116,6 +128,30 @@ def _google_updates_table(engine, args) -> Table:
                 C("position_before", "Position before", "position"), C("position_after", "Position after", "position"), C("usual_swing", "Usual swing", "pct100")]
     return Table("google_updates", "Google updates", columns, rows, empty="No Google update since your Search Console data begins.",
                  note="Clicks after each update against the same weekdays before it, without brand searches when brand words are set. A match in time, not proof.")
+
+
+DIM_WORDS = {"query": "Query", "page": "Page", "country": "Country", "device": "Device"}
+
+
+def _period_notes(report: Report, window: dict) -> None:
+    """As the screen's head: no comparison, and why (Google's own 16 months, or the app's stored days starting later)."""
+    if window.get("compare_unavailable") == "google":
+        report.notes.append("No comparison: Google keeps 16 months of data.")
+    elif window.get("compare_unavailable") == "history":
+        report.notes.append(f"No comparison: stored data starts on {window['history_from']}." if window.get("history_from") else "No earlier period stored")
+
+
+def _rows_note(window: dict, dim: str) -> str | None:
+    """The screen's line above a table whose own stored days start later than the period (countries and devices came on
+    9 Nov 2026 and fill in from Google): its rows count only the days after, or can't be compared (final review N2)."""
+    rows_from = (window.get("rows_from") or {}).get(dim)
+    start = window.get("from")
+    data_from = window["history_from"] if window.get("history_from") and window["history_from"] > (start or "") else start
+    if dim in ("country", "device") and rows_from and data_from and not window.get("hourly") and rows_from > data_from:
+        return f"{DIM_WORDS[dim]} data starts on {rows_from}: days before aren't counted."
+    if window.get("compare_from") and (window.get("rows_compare") or {}).get(dim) is False and rows_from:
+        return f"{DIM_WORDS[dim]} data starts on {rows_from}: too soon to compare these rows."
+    return None
 
 
 OPP_TITLES = {"almost": "Almost on page 1", "low_ctr": "Low click rate", "compete": "Two pages compete", "lost": "Lost queries"}
@@ -200,22 +236,47 @@ def keywords(engine, args) -> Report:
         return of(row).get("main") or {}
 
     def position(row):
+        """The position the screen shows: none for a suspect check (greyed on screen, it counts for nothing)."""
         found = main(row)
-        return found.get("p")
+        return None if found.get("status") == "suspect" else found.get("p")
+
+    def status(row):
+        """Why a position needs a second look: a suspect check, or tools that disagree (rankings.engine_view)."""
+        if main(row).get("status") == "suspect":
+            return "Suspect"
+        return "Tools disagree" if of(row).get("disagree") else ""
+
+    def reading(found):
+        if not found or not found.get("tool"):
+            return None
+        place = f"#{found['p']}" if found.get("p") else f">{found.get('depth')}"
+        return f"{found['tool']} {place}"
+
+    def also(row):
+        """The answer the position column doesn't hold: the suspect check's own place, or the other tool's when nothing settled it."""
+        if main(row).get("status") == "suspect" and main(row).get("p"):
+            return reading(main(row))
+        return reading((of(row).get("disagree") or {}).get("also"))
 
     columns = [
         C("keyword", "Keyword", "text", width=4),
         C("site", "Site", "text", width=2.4),
         C("country", "Country", "text", width=1.1),
         C("position", "Position", "int", get=position),
+        C("check_status", "Check status", "text", width=1.6, get=status, translate=True),
+        C("also_seen", "Also seen", "text", width=1.6, get=also),
         C("change", "Change", "delta", get=lambda r: of(r).get("change")),
         C("own", "Own tool average", "position", get=lambda r: of(r).get("own")),
-        C("impressions", "Impressions", "int", get=lambda r: of(r).get("impressions")),
-        C("clicks", "Clicks", "int", get=lambda r: of(r).get("clicks")),
+        C("impressions", "Impressions, 28 days", "int", get=lambda r: of(r).get("impressions")),
+        C("clicks", "Clicks, 28 days", "int", get=lambda r: of(r).get("clicks")),
+        # The row's own Search Console impressions over 28 days (not search volume). On Google that is the column above.
+        *([] if name == "google" else [C("gsc_impressions", "Google impressions, 28 days", "int", get=lambda r: r.get("impressions"))]),
         # Search volume only from a named source (seo/serp/volumes.py), never Search Console's impressions.
-        C("volume", "Searches a month", "int", get=lambda r: (r.get("search_volume") or {}).get("searches")),
+        C("search_volume", "Searches a month", "int", get=lambda r: (r.get("search_volume") or {}).get("searches")),
         C("volume_source", "Volume source", "text", width=1.8, get=lambda r: _volume_source(r.get("search_volume"))),
-        C("page", "Page", "url", width=4.2, get=lambda r: main(r).get("url") or r.get("page")),
+        # The page that ranked, from the check shown; Search Console's most-shown page is another fact, in its own column.
+        C("page", "Ranking page", "url", width=4.2, get=lambda r: main(r).get("url")),
+        C("gsc_page", "Most shown in Search Console", "url", width=4.2),
         C("tool", "Checked with", "text", width=1.6, get=lambda r: main(r).get("tool")),
         C("checked_at", "Checked", "datetime", get=lambda r: main(r).get("checked_at")),
     ]

@@ -10,14 +10,13 @@ from decimal import Decimal, InvalidOperation
 
 from sqlalchemy import Engine, text
 
-from seo.backlinks import live
+from seo.backlinks import cleaner, live
 from seo.backlinks.cleaner import root_domain
 from seo.competitors.keywords import require_own
 from seo.core.errors import NotFound, Refused
 
 CURRENCIES = ("USD", "EUR", "AED", "GBP")
 MAX_BUDGET = Decimal("9999999999.99")
-SPAM_SCORE = 30  # the same line as the CSV filter in cleaner.py
 
 
 def mark_disavow(engine: Engine, backlink_id: int, disavow) -> dict:
@@ -31,8 +30,8 @@ def mark_disavow(engine: Engine, backlink_id: int, disavow) -> dict:
 
 
 def suggested(row) -> bool:
-    """Worth a look as spam: a link-list page, or a spam score from the file at or over the CSV filter's line."""
-    return (row.get("outbound_links") or 0) > live.MANY_OUTBOUND or (row.get("spam_score") is not None and row["spam_score"] >= SPAM_SCORE)
+    """Worth a look as spam: a link-list page, or a spam score from the file above the CSV filter's line (30 is not spam)."""
+    return (row.get("outbound_links") or 0) > live.MANY_OUTBOUND or cleaner.is_spam_score(row.get("spam_score"))
 
 
 def disavow_file(engine: Engine, site_id: int) -> tuple[str, int]:

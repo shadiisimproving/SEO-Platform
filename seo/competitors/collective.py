@@ -13,8 +13,11 @@ from sqlalchemy import Engine, text
 
 from seo.accounts import access
 from seo.competitors import change_facts, gaps, profile, quality
+from seo.competitors import pairs as pairs_mod
+from seo.crawl.store import SMALL_EDIT_WORDS
 from seo.competitors.keywords import _iso, require_own
 from seo.links.service import OWN
+from seo.metrics import weight
 from seo.serp import store
 
 KEYWORD_ROWS = 200
@@ -114,7 +117,7 @@ def _mine(conn, sites: list[dict]) -> list[dict]:
     rows = conn.execute(text(
         "SELECT s.id AS site_id, e.id, e.kind, e.detected_at, e.before_value, e.after_value, e.changed_words, p.url FROM sites s "
         "JOIN domains d ON d.host = s.host JOIN change_events e ON e.domain_id = d.id JOIN pages p ON p.id = e.page_id "
-        f"WHERE s.id IN ({marks}) AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL 30 DAY ORDER BY e.detected_at DESC, e.id DESC"
+        f"WHERE s.id IN ({marks}) AND e.hidden = 0 AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL 30 DAY ORDER BY e.detected_at DESC, e.id DESC"
     )).mappings().all()
     for r in rows:
         held = recent.setdefault(r["site_id"], [])
@@ -132,20 +135,27 @@ def _card_facts(conn, hosts: list[str]) -> dict[str, dict]:
     page (its title and meta description), and its last 30 days split into pages added and pages edited. Two queries for
     any number of sites. A page coming or going isn't an edit (insights.EDIT_SKIP), so removed pages are counted apart."""
     names = {f"h{n}": host.lower() for n, host in enumerate(dict.fromkeys(hosts))}
-    out = {host: {"about": None, "added_30d": 0, "edited_30d": 0, "removed_30d": 0} for host in names.values()}
+    out = {host: {"about": None, "added_30d": 0, "edited_30d": 0, "removed_30d": 0, "moved_30d": 0} for host in names.values()}
     if not names:
         return out
     marks = ",".join(":" + k for k in names)
+    # Pages, not change rows: a rewrite saves a title, a meta and a text change and is still one page edited (SEO review #11).
+    # A move to another address is counted apart, never as an edit (N3). "Added" isn't counted from the events: it's the
+    # profile's rule, by the pages' own dates (insights.added_counts, N1).
+    what = "CASE e.kind WHEN 'new_page' THEN 'new_events' WHEN 'page_gone' THEN 'removed_30d' WHEN 'redirect' THEN 'moved_30d' ELSE 'edited_30d' END"
     rows = conn.execute(text(
-        "SELECT d.host, e.kind, COUNT(*) AS n FROM change_events e JOIN domains d ON d.id = e.domain_id "
-        f"WHERE d.host IN ({marks}) AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL 30 DAY GROUP BY d.host, e.kind"
+        f"SELECT d.host, {what} AS what, COUNT(DISTINCT e.page_id) AS n FROM change_events e JOIN domains d ON d.id = e.domain_id "
+        f"WHERE d.host IN ({marks}) AND e.hidden = 0 AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL 30 DAY GROUP BY d.host, {what}"
     ), names).mappings()
     for r in rows:
         held = out.get(str(r["host"]).lower())
-        if held is None:
+        if held is None or r["what"] == "new_events":
             continue
-        key = "added_30d" if r["kind"] == "new_page" else "removed_30d" if r["kind"] == "page_gone" else "edited_30d"
-        held[key] += int(r["n"])
+        held[r["what"]] += int(r["n"])
+    from seo.competitors import insights  # here: insights imports this module's neighbours
+
+    for host, n in insights.added_counts(conn, list(names.values())).items():
+        out[host]["added_30d"] = n
     # The home page is the shortest address read on that host that has a title: / beats /fr/ beats /fr/about.
     pages = conn.execute(text(
         "SELECT d.host, p.url, p.title, p.meta_description FROM pages p JOIN domains d ON d.id = p.domain_id "
@@ -239,6 +249,36 @@ def keywords(engine: Engine, site_id: int | None = None) -> dict:
     return {"sites": sites, "coverage": _coverage(checks, tracked), "total": len(out), "keywords": out[:KEYWORD_ROWS]}
 
 
+def totals(engine: Engine, site_id: int | None = None) -> dict:
+    """All rivals together, each keyword once (competitors-exports W4): a sum over rivals counted a keyword two rivals share twice.
+
+    shared: I rank and at least one rival ranks. i_ahead: I rank above every rival there. they_ahead: a rival above me, or a
+    rival ranks where I don't, the same rule and the same rows as keywords() below."""
+    with engine.connect() as conn:
+        sites = _sites(conn, site_id)
+        tracked = _tracked_by(conn, sites)
+        found = _rivals(conn, sites)
+    hosts = {s["id"]: s["host"] for s in sites}
+    shared = i_ahead = they_ahead = 0
+    for check in store.one_per_keyword(store.latest_checks_many(engine, list(hosts))):
+        mine_all = tracked.get(check.keyword_id, set())
+        beside = []  # (their row, my best among the sites that rival is linked to)
+        for rival in found:
+            mine_here = mine_all & _site_ids(rival)
+            theirs = check.best_on(rival["host"]) if mine_here else None
+            if theirs is not None:
+                beside.append((theirs, _best_of_mine(check, mine_here, hosts)[0]))
+        if not beside:
+            continue
+        if any(mine is None or theirs.position < mine.position for theirs, mine in beside):
+            they_ahead += 1
+        if any(mine is not None for _, mine in beside):
+            shared += 1
+            if all(mine is not None and mine.position < theirs.position for theirs, mine in beside):
+                i_ahead += 1
+    return {"shared": shared, "i_ahead": i_ahead, "they_ahead": they_ahead}
+
+
 def moves(engine: Engine, site_id: int | None = None, days: int = MOVE_DAYS) -> dict:
     """What rivals did lately, newest first: their pages, then ranking moves, each counted once whichever sites watch them."""
     days = days if days in MOVE_PERIODS else MOVE_DAYS
@@ -256,7 +296,7 @@ def moves(engine: Engine, site_id: int | None = None, days: int = MOVE_DAYS) -> 
             recent = {**names, "days": days}
             where = (
                 "FROM change_events e JOIN pages p ON p.id = e.page_id JOIN domains d ON d.id = e.domain_id "
-                f"WHERE d.host IN ({','.join(':' + k for k in names)}) AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL :days DAY"
+                f"WHERE d.host IN ({','.join(':' + k for k in names)}) AND e.hidden = 0 AND e.detected_at > UTC_TIMESTAMP(3) - INTERVAL :days DAY"
             )
             page_changes = conn.execute(text(f"SELECT COUNT(*) {where}"), recent).scalar_one()
             changes = conn.execute(text(f"SELECT e.id, e.page_id, e.kind, e.before_value, e.after_value, e.changed_words, e.detected_at, e.summaries, p.url, d.host {where} ORDER BY e.detected_at DESC, e.id DESC LIMIT :n"), {**recent, "n": MOVE_ROWS}).mappings().all()
@@ -273,11 +313,67 @@ def moves(engine: Engine, site_id: int | None = None, days: int = MOVE_DAYS) -> 
         ranking_moves += len(recent)
         events += recent
     events.sort(key=lambda e: e["at"], reverse=True)
+    events = events[:MOVE_ROWS]
+    _attach_my_pages(engine, sites, events)
     return {
-        "sites": sites, "days": days, "periods": list(MOVE_PERIODS), "total": page_changes + ranking_moves, "moves": events[:MOVE_ROWS],
+        "sites": sites, "days": days, "periods": list(MOVE_PERIODS), "total": page_changes + ranking_moves, "moves": events,
         "blocked": sorted(r["host"] for r in found if crawls[r["id"]]["status"] == "blocked"),
         "not_started": sorted(r["host"] for r in found if crawls[r["id"]]["status"] != "blocked" and not crawls[r["id"]].get("baseline_done")),
     }
+
+
+MINOR_KINDS = ("meta", "schema")  # the description under the result and structured data: rarely what moves a ranking
+
+
+def is_minor(event: dict) -> bool:
+    """A change a reader can skip at first: a tag few people see, or a text edit of a few words."""
+    if event["kind"] in MINOR_KINDS:
+        return True
+    words = event.get("changed_words")
+    return event["kind"] == "content" and words is not None and words < SMALL_EDIT_WORDS
+
+
+def _attach_my_pages(engine: Engine, sites: list[dict], events: list[dict]) -> None:
+    """Why a change matters to me (2026-11-20, "show the data so I can decide"): each row gets `my_page`, the page of mine it
+    competes with and that page's Google clicks, and `minor`. A page change competes through its Page vs page pair (the pair
+    sharing the most keywords speaks for the page, as on Today); a ranking move through my best page in the same check."""
+    if not events or not sites:
+        return
+    hosts = {s["id"]: s["host"] for s in sites}
+    site_of = {_host_key(host): site for site, host in hosts.items()}
+    marks = ",".join(str(int(i)) for i in hosts)
+    with engine.connect() as conn:
+        pairs = conn.execute(text(
+            f"SELECT id, site_id, my_url, their_url FROM page_pairs WHERE hidden = 0 AND site_id IN ({marks}) ORDER BY shared_keywords DESC, id"
+        )).mappings().all()
+        clicks = weight.page_clicks(conn, list(hosts), _path_key)
+    beside: dict[str, dict] = {}
+    for pair in pairs:
+        beside.setdefault(_path_key(pair["their_url"]), pair)
+
+    def mine(site: int, url: str, pair_id: int | None = None) -> dict:
+        seen = clicks.get(site, {}).get(_path_key(url))
+        return {"url": url, "host": hosts[site], "site_id": site, "pair_id": pair_id, "clicks": seen["clicks"] if seen else None, "clicks_before": seen["before"] if seen else None}
+
+    for event in events:
+        event["minor"] = is_minor(event)
+        if event["kind"].startswith(("rank_", "ai_")):
+            best = event.get("mine") or {}
+            site = site_of.get(_host_key(best.get("host") or ""))
+            event["my_page"] = mine(site, best["url"]) if site and best.get("url") else None
+        else:
+            pair = beside.get(_path_key(event["url"])) if event.get("url") else None
+            event["my_page"] = mine(pair["site_id"], pair["my_url"], pair["id"]) if pair else None
+
+
+def _host_key(host: str) -> str:
+    return host.lower().removeprefix("www.")
+
+
+def _path_key(url: str) -> str:
+    """One page however it's spelled: http or https, www or not, a last slash or not. Search Console's addresses, a pair's
+    and a change's all meet on this."""
+    return pairs_mod._page_id(url).rstrip("/")
 
 
 def links(engine: Engine, site_id: int | None = None) -> dict:
@@ -302,24 +398,33 @@ def links(engine: Engine, site_id: int | None = None) -> dict:
             })
             for competitor in gap["competitors"]:
                 entry["rivals"][competitor["id"]] = {"id": competitor["id"], "host": competitor["host"]}
-            if gap["authority"] is not None and (entry["authority"] is None or gap["authority"] > entry["authority"]):
-                entry["authority"], entry["authority_label"] = gap["authority"], gap["authority_label"]
+            if gap["authority"] is not None:
+                entry.setdefault("scores", []).append((gap["authority"], gap["authority_label"]))
+            entry.setdefault("follows", []).append(gap["followed"])
             entry["sources"].update(gap["sources"])
             entry["is_competitor"] = entry["is_competitor"] or gap["is_competitor"]
             entry["sites"].append({
                 "id": site["id"], "host": site["host"], "quality": gap["quality"], "reason_words": gap["reason_words"], "flagged_by": gap["flagged_by"],
-                "in_consideration": gap["in_consideration"], "lost_link": gap["lost_link"], "kept": gap["kept"],
+                "in_consideration": gap["in_consideration"], "lost_link": gap["lost_link"], "kept": gap["kept"], "old_link": gap["old_link"],
             })
+    gaps.pick_scores(merged.values())  # one tool's score per domain, never the biggest number of any tool (SEO review #7)
+    for entry in merged.values():
+        entry["followed"] = gaps.merge_followed(entry.pop("follows", []))
     everything = [
         {**entry, "rivals": sorted(entry["rivals"].values(), key=lambda r: r["host"]), "rival_count": len(entry["rivals"]), "sources": sorted(entry["sources"])}
         for entry in merged.values()
     ]
-    everything.sort(key=lambda g: (-g["rival_count"], -(g["authority"] if g["authority"] is not None else -1), g["cc_rank"] or 10**12, g["domain"]))
+    scale = gaps.order_by_scale(everything, "rival_count")
     has = lambda gap, state: any(s["quality"] == state for s in gap["sites"])  # noqa: E731
-    good = [g for g in everything if has(g, quality.GOOD)]
+    # A domain good for a site only through links last seen 6+ months before their file (gaps.old_link) is probably gone: it
+    # is counted apart, as on Link gaps, and listed only when asked for (final re-check 2026-11-18, 3.4).
+    current = lambda gap: any(s["quality"] == quality.GOOD and not s["old_link"] for s in gap["sites"])  # noqa: E731
+    good = [g for g in everything if current(g)]
+    old = [g for g in everything if not current(g) and has(g, quality.GOOD)]
     flagged = [g for g in everything if not has(g, quality.GOOD) and has(g, quality.SPAM)]
     return {
-        "sites": sites, "gaps": good[:LINK_ROWS], "flagged": flagged[:LINK_ROWS],
-        "funnel": {"found": len(everything), "good": len(good), "flagged": len(flagged), "checking": len(everything) - len(good) - len(flagged), "shared": sum(1 for g in good if g["rival_count"] >= 2)},
-        "rivals_total": len(rival_ids), "rivals_with_data": len(with_data), "rivals": sorted(every_rival.values(), key=lambda r: r["host"]),
+        "sites": sites, "gaps": good[:LINK_ROWS], "old": old[:LINK_ROWS], "flagged": flagged[:LINK_ROWS],
+        "funnel": {"found": len(everything), "good": len(good), "old": len(old), "flagged": len(flagged), "checking": len(everything) - len(good) - len(old) - len(flagged),
+                   "shared": sum(1 for g in good if g["rival_count"] >= 2)},
+        "score_scale": scale, "rivals_total": len(rival_ids), "rivals_with_data": len(with_data), "rivals": sorted(every_rival.values(), key=lambda r: r["host"]),
     }

@@ -18,6 +18,7 @@ def _engine():
 def listing():
     args = request.args
     scope = metrics.Scope(_engine(), args.get("site_id"), args.get("from"), args.get("to"), args.get("compare_from"), args.get("compare_to"))
+    scope.search_args = metrics.search_args(args)  # Search Console numbers on the shared period (seo/metrics/period.py)
     return jsonify(service.listing(scope))
 
 

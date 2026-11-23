@@ -9,6 +9,8 @@
 
   const UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
   const SPAM_THRESHOLD = 30;
+  /* One spam line everywhere (SEO review 2026-11-17, B5): a score ABOVE 30 is spam, 30 itself is not, as on the server (cleaner.is_spam_score). */
+  const isSpamScore = (score) => score !== null && score !== undefined && score !== "" && Number(score) > SPAM_THRESHOLD;
   const ALLOWED_EXTENSIONS = /\.(csv|tsv|txt)$/i;
 
   const COLUMN_ALIASES = {
@@ -263,7 +265,7 @@
     let removedSpam = 0, removedNoUrl = 0, duplicates = 0, unknownSpam = 0;
     for (const r of dataRows) {
       const spam = parseSpam(cell(r, mapping.spam_score));
-      if (spam !== null && spam > SPAM_THRESHOLD) { removedSpam += 1; if (!keepSpam) continue; }
+      if (isSpamScore(spam)) { removedSpam += 1; if (!keepSpam) continue; }
       const url = cell(r, mapping.backlink_url).trim();
       const domain = rootDomain(url);
       if (!domain) { removedNoUrl += 1; continue; }
@@ -297,5 +299,27 @@
     };
   }
 
-  return { UPLOAD_MAX_BYTES, SPAM_THRESHOLD, MULTI_SUFFIXES, CleanerError, checkUpload, cleanCsv, rootDomain, decodeCsv, parseTable };
+  /* Whose scale a score is on, as one key: "Authority Score (SEMrush)" and a typed "SEMrush" are both "semrush". A plain CSV
+     says nothing about its tool, so its column name is the scale. Copy of cleaner.scale_of. Scores of two scales never sort
+     as one (SEO review 2026-11-17, #7). */
+  function scaleOf(label) {
+    const raw = String(label || "").trim();
+    const m = raw.match(/\(([^)]+)\)/);
+    const tool = m && m[1].trim().toLowerCase() !== "csv" ? m[1].trim() : raw;
+    return tool.toLowerCase().split(/\s+/).filter(Boolean).join(" ");
+  }
+  /* Each scale's place in a sort: the one most rows use first (0), ties A to Z. Copy of cleaner.scale_ranks. */
+  function scaleRanks(labels) {
+    const counts = new Map();
+    labels.forEach((label) => { const key = scaleOf(label); counts.set(key, (counts.get(key) || 0) + 1); });
+    return new Map([...counts.keys()].sort((a, b) => counts.get(b) - counts.get(a) || (a < b ? -1 : a > b ? 1 : 0)).map((key, i) => [key, i]));
+  }
+  /* A sort value that is a [group, value] pair: the group always ascending (the leading tool first, whichever way the column
+     is sorted), the value in the column's direction. Returns null when x and y aren't both pairs. */
+  function compareScored(x, y, dir) {
+    if (!Array.isArray(x) || !Array.isArray(y)) return null;
+    return x[0] !== y[0] ? x[0] - y[0] : (x[1] - y[1]) * dir;
+  }
+
+  return { UPLOAD_MAX_BYTES, SPAM_THRESHOLD, isSpamScore, MULTI_SUFFIXES, CleanerError, checkUpload, cleanCsv, rootDomain, decodeCsv, parseTable, scaleOf, scaleRanks, compareScored };
 });

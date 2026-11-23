@@ -134,3 +134,25 @@ for private in .env passenger_wsgi.py alembic.ini seo/config.py requirements.txt
   fi
 done
 echo "Live: $PUBLIC_URL, commit $(cat "$BUILD/REVISION")"
+
+# ---- the owner's own step: utf8mb4 (deploy/DEPLOY.md, "After an upload") ---------------------------------------------
+# Never run by an upload: it rewrites every table, so it waits for a fresh backup and the owner. Asked, reading only.
+set +e
+$SSH "$TARGET" "cd \$HOME/$APP_NAME && $VENV_BIN/python -B -m scripts.convert_utf8mb4 --pending" > /dev/null 2>&1
+pending=$?
+set -e
+if [[ "$pending" != "0" ]]; then
+  [[ "$pending" == "3" ]] && said="The database still saves Arabic, Russian and emoji as \"?\"." || said="Couldn't ask the server whether the database is in utf8mb4 yet."
+  cat <<REMINDER
+
+==================================================================================================
+ TO DO BY HAND: $said
+ On the server, in this order (deploy/DEPLOY.md, "After an upload"):
+   cd ~/$APP_NAME
+   $VENV_BIN/python -m scripts.backup_db
+   $VENV_BIN/python -m scripts.convert_utf8mb4 --check
+   $VENV_BIN/python -m scripts.convert_utf8mb4
+   until $VENV_BIN/python -m scripts.reread_gsc_text --apply; [ \$? -ne 3 ]; do sleep 60; done
+==================================================================================================
+REMINDER
+fi

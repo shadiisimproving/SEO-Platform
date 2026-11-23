@@ -400,7 +400,7 @@
   }
 
   // ---- The profile ---------------------------------------------------------------------------------
-  const EDIT_KINDS = ["title", "meta", "h1", "headings", "canonical", "robots", "schema", "content", "search_title"];
+  const EDIT_KINDS = ["title", "meta", "h1", "headings", "canonical", "robots", "schema", "content", "search_title", "redirect"];
   const TIMELINE_FILTERS = [
     ["all", "All", null], ["edits", "Page edits", EDIT_KINDS], ["new", "New pages", ["new_page"]], ["gone", "Removed|pages", ["page_gone"]],
     ["rank", "Ranking moves", ["rank_new", "rank_lost", "rank_up", "rank_down"]], ["ai", "AI Overview", ["ai_cited", "ai_dropped"]],
@@ -409,7 +409,7 @@
     title: ["pencil", "Title changed"], meta: ["pencil", "Meta description changed"], h1: ["pencil", "Main heading changed"], headings: ["pencil", "Subheadings changed"],
     canonical: ["pencil", "Canonical changed"], robots: ["pencil", "Indexing changed"], schema: ["pencil", "Structured data changed"], content: ["file-text", "Content changed"],
     search_title: ["search", "Search title changed"], // as Today names it (today-live.js KINDS)
-    new_page: ["plus", "New page"], page_gone: ["minus", "Page removed"],
+    new_page: ["plus", "New page"], page_gone: ["minus", "Page removed"], redirect: ["arrow-right", "Moved to another address"],
     rank_new: ["trending-up", "Started ranking for"], rank_lost: ["arrow-down", "Stopped ranking for"], rank_up: ["arrow-up", "Moved up on"], rank_down: ["arrow-down", "Moved down on"],
     ai_cited: ["sparkles", "Cited in AI Overview for"], ai_dropped: ["sparkles", "Dropped from AI Overview for"],
   };
@@ -438,7 +438,7 @@
       ${compareTile(t("Only one ranks"), figure(c.mine_only), figure(c.theirs_only), { note: t("The other isn't in the results checked.") })}
       ${compareTile(t("Pages known"), figure(c.pages?.mine?.pages), blocked ? dash : figure(c.pages?.theirs?.pages), { note: theirPages })}
       ${compareTile(t("Words per page"), figure(c.pages?.mine?.average_words), blocked ? dash : figure(c.pages?.theirs?.average_words), { note: theirPages })}
-      ${compareTile(t("New pages in 30 days"), figure(c.pages?.mine?.new_pages_30d), blocked ? dash : figure(c.pages?.theirs?.new_pages_30d), { note: theirPages })}
+      ${compareTile(t("Added in 30 days"), figure(c.pages?.mine?.new_pages_30d), blocked ? dash : figure(c.pages?.theirs?.new_pages_30d), { note: theirPages })}
       ${compareTile(t("AI Overview citations"), figure(c.ai_cited_me), figure(c.ai_cited_them), { verdict: c.ai_overviews ? verdict(c.ai_cited_me, c.ai_cited_them) : "", note: c.ai_overviews ? many(c.ai_overviews, "Of {n} AI Overview seen.", "Of {n} AI Overviews seen.") : t("No AI Overview seen yet.") })}
     </section>`;
   }
@@ -577,7 +577,8 @@
       factRow("Sitemap date", plain(aDate(p.sitemap_date))),
       factRow("First archived", plain(aDate(p.first_archived))),
       factRow("First found", plain(aDate(p.first_seen))),
-      factRow("Last changed", plain(aDate(p.last_changed))),
+      // An edit the app saw, never the first reading (SEO review #11): a page never edited says so.
+      factRow("Last edit seen", known(p.last_changed) ? plain(aDate(p.last_changed)) : p.last_read ? esc(t("None since the first read")) : ""),
       factRow("Last read", plain(aDate(p.last_read))),
       factRow("Changes seen", known(p.edits) ? count(p.edits) : ""),
       factRow("Read with", plain(reader)),
@@ -629,10 +630,12 @@
   COMP.TIMELINE_FILTERS = TIMELINE_FILTERS; // Who is moving (comp-summary.js) filters the same way
 
   /* `who` says whose timeline it is when the row isn't on that competitor's profile: { id, rival, own }. */
+  /* A task made from a competitor's change is about that competitor: the panel opens with it already picked. */
+  COMP.aboutRival = (id, host) => (id && host ? { main: "competitor", items: [{ kind: "competitor", ref: String(id), label: host }] } : null);
   function timelineFind(e, word, who = null) {
     const rival = who?.rival ?? view.data?.host ?? "", about = e.keyword || e.url || "", own = who ? who.own : view.data?.site?.host;
     const key = `timeline|${who?.id ?? view.data?.id}|${e.kind}|${about}|${e.at || ""}`;
-    return { title: `${rival}: ${t(word)}${about ? ` · ${e.keyword || COMP.shortUrl(e.url)}` : ""}`, host: own, source: { type: "competitor", label: `${rival}: ${t(word)}`, host: own, facts: [e.keyword, e.url, e.at ? UI.fmtDateOnly(e.at) : ""].filter(Boolean), link: `#competitors/list/${who?.id ?? view.data?.id}`, key } };
+    return { title: `${rival}: ${t(word)}${about ? ` · ${e.keyword || COMP.shortUrl(e.url)}` : ""}`, host: own, about: COMP.aboutRival(who?.id ?? view.data?.id, rival), source: { type: "competitor", label: `${rival}: ${t(word)}`, host: own, facts: [e.keyword, e.url, e.at ? UI.fmtDateOnly(e.at) : ""].filter(Boolean), link: `#competitors/list/${who?.id ?? view.data?.id}`, key } };
   }
 
   function timelineRow(e, focusable, who = null, common = null) {
@@ -657,6 +660,7 @@
      Who is moving (comp-summary.js) keeps COMP.timelineRow: this only changes the profile. */
   const TL_PERIODS = [[7, "7 days"], [30, "30 days"], [0, "All"]];
   const TL_KIND = (kind) => (kind === "new_page" ? ["plus", "Added|change", "up"] : kind === "page_gone" ? ["minus", "Removed|change", "down"]
+    : kind === "redirect" ? ["arrow-right", "Moved|change", "edit"] // the address now sends visitors to another page (SEO review W6)
     : kind.startsWith("rank_") ? [KINDS[kind]?.[0] || "arrow-up", ["rank_new", "rank_up"].includes(kind) ? "Moved up|change" : "Moved down|change", ["rank_new", "rank_up"].includes(kind) ? "up" : "down"]
     : kind.startsWith("ai_") ? ["sparkles", kind === "ai_cited" ? "Cited by AI|change" : "Dropped by AI|change", kind === "ai_cited" ? "up" : "down"]
     : [KINDS[kind]?.[0] || "pencil", "Changed|change", "edit"]);
@@ -679,6 +683,7 @@
     if (e.kind.startsWith("rank_")) return `${e.kind === "rank_new" ? `>${UI.num(e.depth || 10)}` : `#${UI.num(e.from)}`} → ${e.kind === "rank_lost" ? `>${UI.num(e.depth || 10)}` : `#${UI.num(e.to)}`}`;
     if (e.kind.startsWith("ai_")) return t(e.kind === "ai_cited" ? "Now cited in the AI Overview" : "No longer cited in the AI Overview");
     if (e.kind === "new_page" || e.kind === "page_gone") return e.page?.words ? many(e.page.words, "{n} word", "{n} words") : "";
+    if (e.kind === "redirect" && e.after) return `→ ${esc(tlPath(e.after))}`; // the address now sends visitors to this page
     return t(KINDS[e.kind]?.[1] || e.kind); // title, meta, canonical…: the kind says it; before and after are in Details
   }
   const groupKey = (e) => `${e.kind.startsWith("rank_") || e.kind.startsWith("ai_") ? `k:${e.keyword}` : `u:${e.url || ""}`}|${e.kind}`;
@@ -691,9 +696,9 @@
   /* `who` (Who is moving, comp-summary.js, 2026-11-12): the row is in every competitor's list, so a Competitor column
      follows the date and the Task names that competitor. */
   function tlRow(g, common, who = null) {
-    const e = g.e, [ic, word, tone] = TL_KIND(e.kind), [, full] = KINDS[e.kind] || ["", e.kind];
+    const e = g.e, [ic, word, tone] = who?.kind || TL_KIND(e.kind), [, full] = KINDS[e.kind] || ["", e.kind];
     const isMove = e.kind.startsWith("rank_") || e.kind.startsWith("ai_");
-    const title = isMove ? e.keyword : e.page?.title || "";
+    const title = isMove ? e.keyword : COMP.readable(e.page?.title);
     /* who.inline (the Competitors cards screen, 2026-11-16): no Competitor column. The page's title is the link, and the
        line under it says whose page it is, by logo and site, then its path, as in the owner's benchmark screenshot. */
     const inline = Boolean(who?.inline);
@@ -705,21 +710,44 @@
       : isMove
         ? `<span class="kw" dir="auto">${esc(e.keyword || "")}</span>${e.url ? `<span class="second">${COMP.link(e.url, tlPath(e.url))}</span>` : ""}`
         : `${title ? `<span class="cl-tl-title" dir="auto">${esc(title)}</span>` : ""}${e.url ? `<span class="${title ? "second" : ""}">${COMP.link(e.url, tlPath(e.url))}</span>` : ""}`;
-    const times = g.all.length > 1 ? `<span class="tag tabular cl-tl-times" data-tip="${esc(g.all.map((x) => UI.fmtDateOnly(x.at)).join(", "))}" tabindex="0">×${UI.num(g.all.length)}</span>` : "";
-    const detail = isMove ? moveDetail(e, common) : e.kind === "new_page" || e.kind === "page_gone" ? "" : changeDetail(e);
+    const times = g.all.length > 1 && !who?.noTimes ? `<span class="tag tabular cl-tl-times" data-tip="${esc(g.all.map((x) => UI.fmtDateOnly(x.at)).join(", "))}" tabindex="0">×${UI.num(g.all.length)}</span>` : "";
+    const detailOf = (x) => (x.kind.startsWith("rank_") || x.kind.startsWith("ai_") ? (x.kind.startsWith("rank_") ? moveDetail(x, common) : "") : x.kind === "new_page" || x.kind === "page_gone" ? "" : changeDetail(x));
+    const detail = detailOf(e);
     const dates = g.all.length > 1 ? `<div class="cl-dl-row"><dt>${esc(t("Dates"))}</dt><dd>${esc(g.all.map((x) => UI.fmtDateOnly(x.at)).join(" · "))}</dd></div>` : "";
     const facts = isMove ? moveDetails(e) : e.page ? pageDetails(e.page) : "";
-    const more = `<details class="cl-more-facts cl-tl-more"><summary>${icon("chevron-right")}${t("Details")}</summary><div class="cl-tl-detail"><div class="t">${esc(t(full))}</div>${detail}${window.ChangeSummary?.slot(e) || ""}<dl class="cl-dl">${dates}${facts}</dl></div></details>`;
-    return `<tr data-cl-tl-row="${esc(groupKey(e))}">
+    /* who.story (the cards screen's Changes, 2026-11-20): the row is everything one competitor page did in the period, so
+       Details lists each change with its date and its own before and after, then the page's facts once. */
+    const parts = who?.story && g.all.length > 1
+      ? g.all.map((x) => `<div class="cl-tl-part"><div class="t">${esc(t((KINDS[x.kind] || ["", x.kind])[1]))}${x.keyword ? ` <span class="kw" dir="auto">${esc(x.keyword)}</span>` : ""}<span class="cl-tl-part-date">${esc(UI.fmtDateOnly(x.at))}</span></div>${detailOf(x)}${window.ChangeSummary?.slot(x) || ""}</div>`).join("")
+      : `<div class="t">${esc(t(full))}</div>${detail}${window.ChangeSummary?.slot(e) || ""}`;
+    /* who.detail (a page's ranking moves, comp-summary.js): the screen's own Details, a short table instead of one block per move. */
+    /* who.below (the cards screen's Changes): Details opens as a row of its own under this one, across the whole table,
+       so before and after and a page's keywords have room. The screen keeps which rows are open and redraws. */
+    const inner = who?.detail || `${parts}<dl class="cl-dl">${who?.story ? "" : dates}${facts}</dl>`;
+    const below = who?.below ? `<tr class="cs-detail-row"><td colspan="${who.below.cols}"><div class="cs-detail-box">${inner}</div></td></tr>` : "";
+    const more = who?.below !== undefined
+      ? `<button type="button" class="link-btn cs-open-btn" data-cs-detail="${esc(who.openKey)}" aria-expanded="${Boolean(who.below)}">${icon(who.below ? "chevron-down" : "chevron-right")}${esc(who.detailLabel || t("Details"))}</button>`
+      : who?.detail
+      ? `<details class="cl-more-facts cl-tl-more"><summary>${icon("chevron-right")}${esc(who.detailLabel || t("Details"))}</summary><div class="cl-tl-detail">${who.detail}</div></details>`
+      : `<details class="cl-more-facts cl-tl-more"><summary>${icon("chevron-right")}${t("Details")}</summary><div class="cl-tl-detail">${parts}<dl class="cl-dl">${who?.story ? "" : dates}${facts}</dl></div></details>`;
+    return `<tr data-cl-tl-row="${esc(groupKey(e))}"${who?.below ? ' class="open"' : ""}>
       <td class="nowrap cl-tl-date" data-label="${attr("Date")}">${COMP.ageCell(e.at)}</td>
       ${who && !inline ? `<td class="nowrap cl-tl-rival" data-label="${attr("Competitor")}"><span class="with-logo">${UI.siteLogo(who.rival, 16)}<span class="logo-text" dir="auto">${esc(who.display || who.rival)}</span></span></td>` : ""}
       <td class="nowrap cl-tl-kindcell" data-label="${esc(tag("Change|kind"))}"><span class="cl-tl-kind cl-tl-${tone}" data-tip="${esc(t(full))}">${icon(ic)}<span>${esc(tag(word))}</span></span>${times}</td>
-      <td class="cl-tl-where" data-label="${attr(isMove ? "Keyword" : "Page")}">${where}</td>
-      <td class="cl-tl-what" data-label="${attr("What changed")}"><span class="cl-tl-short">${esc(shortChange(e))}</span>${more}</td>
+      <td class="cl-tl-where" data-label="${attr(isMove && !who?.where ? "Keyword" : "Page")}">${who?.where || where}</td>${who?.mineCell || ""}
+      <td class="cl-tl-what" data-label="${attr("What changed")}">${who?.short || `<span class="cl-tl-short">${esc(shortChange(e))}</span>`}${more}</td>
       <td class="r nowrap" data-label=""><span class="row-act">${UI.taskButton(timelineFind(e, full, who), { label: "Task" })}</span></td>
-    </tr>`;
+    </tr>${below}`;
   }
   COMP.timelineTableRow = (e, who, common = null) => tlRow({ e, all: [e] }, common, who);
+  COMP.storyTableRow = (story, who, common = null) => tlRow({ e: story.lead, all: story.all }, common, who); // one competitor page, all it did (comp-summary.js)
+  COMP.changePath = (url) => tlPath(url);
+  COMP.changeTask = (e, who) => UI.taskButton(timelineFind(e, (KINDS[e.kind] || ["", e.kind])[1], who), { label: "Task" });
+  COMP.pageFacts = (page) => (page ? `<dl class="cl-dl">${pageDetails(page)}</dl>` : "");
+  /* A title saved as question marks (Arabic, Russian… written to a database that only keeps Latin letters) says nothing:
+     the row then shows the page's address instead. */
+  COMP.readable = (text) => { const s = String(text || ""); return /\?{2,}/.test(s) && (s.match(/\?/g).length > s.replace(/[\s?]/g, "").length) ? "" : s; };
+  COMP.changePart = (x, common = null) => `<div class="cl-tl-part"><div class="t">${esc(t((KINDS[x.kind] || ["", x.kind])[1]))}<span class="cl-tl-part-date">${esc(UI.fmtDateOnly(x.at))}</span></div>${changeDetail(x)}${window.ChangeSummary?.slot(x) || ""}</div>`; // one page edit, with its before and after
 
   function timelineBody(p) {
     const every = p.timeline || [];
@@ -1998,7 +2026,7 @@
 
   // ---- French ------------------------------------------------------------------------------------------------------
   Object.assign(window.FR, {
-    "Added|change": "Ajoutée", "Removed|change": "Retirée", "Changed|change": "Modifiée", "Moved up|change": "Monte", "Moved down|change": "Descend",
+    "Added|change": "Ajoutée", "Removed|change": "Retirée", "Changed|change": "Modifiée", "Moved|change": "Déplacée", "Moved up|change": "Monte", "Moved down|change": "Descend",
     "Now cited in the AI Overview": "Désormais cité dans l'aperçu IA", "No longer cited in the AI Overview": "Plus cité dans l'aperçu IA",
     "Cited by AI|change": "Citée par l'IA", "Dropped by AI|change": "Plus citée par l'IA", "Change|kind": "Changement", "rows": "lignes",
     "{n} words|delta": "{n} mots", "~{n} changed": "~{n} modifiés", "{n} structured data type": "{n} type de données structurées", "{n} structured data types": "{n} types de données structurées",
@@ -2019,7 +2047,7 @@
     "Internal links": "Liens internes", "External links": "Liens externes", "Structured data": "Données structurées", "Language": "Langue",
     "Languages (hreflang)": "Langues (hreflang)", "Preferred address (canonical)": "Adresse préférée (canonique)", "Instructions to search engines": "Instructions aux moteurs de recherche",
     "Answer code": "Code de réponse", "Published (page says)": "Publiée (selon la page)", "Updated (page says)": "Mise à jour (selon la page)", "Sitemap date": "Date du sitemap",
-    "First archived": "Première archive", "First found": "Première détection", "Last changed": "Dernière modification", "Last read": "Dernière lecture",
+    "First archived": "Première archive", "First found": "Première détection", "Last changed": "Dernière modification", "Last edit seen": "Dernière modification vue", "None since the first read": "Aucune depuis la première lecture", "Last read": "Dernière lecture",
     "Changes seen": "Changements vus", "Read with": "Lue avec",
     "Mobile": "Mobile", "Desktop": "Ordinateur", "top {n} checked": "top {n} vérifié", "Your best position, same check": "Votre meilleure position, même vérification",
     "Keyword": "Mot-clé", "Their page": "Leur page", "Title in results": "Titre dans les résultats", "Was": "Avant", "Now": "Maintenant", "Your position": "Votre position",
@@ -2123,7 +2151,7 @@
     "The other isn't in the results checked.": "L'autre est absent des résultats vérifiés.",
     "Pages known": "Pages connues",
     "Words per page": "Mots par page",
-    "New pages in 30 days": "Nouvelles pages en 30 jours",
+    "New pages in 30 days": "Nouvelles pages en 30 jours", "Added in 30 days": "Ajoutées en 30 j",
     "Their pages can't be read.": "Leurs pages ne peuvent pas être lues.",
     "AI Overview citations": "Citations dans les AI Overviews",
     "Of {n} AI Overview seen.": "Sur {n} AI Overview vu.",
@@ -2147,6 +2175,7 @@
     "Content changed": "Contenu modifié",
     "New page": "Nouvelle page",
     "Page removed": "Page retirée",
+    "Moved to another address": "Déplacée vers une autre adresse",
     "Started ranking for": "A commencé à se classer sur",
     "Stopped ranking for": "Ne se classe plus sur",
     "Moved up on": "A gagné des places sur",

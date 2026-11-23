@@ -153,7 +153,8 @@
       case "shown_broken": return `${fill("Shown {i} times this week", { i: num(e.impressions) })} · ${e.causes.map(cause).join(", ")}`;
       case "data_gaps": return [e.partial?.length ? fill("{n} days partly read", { n: num(e.partial.length) }) : "", e.verify ? fill("{n} days differ from Search Console", { n: num(e.verify.days) }) : ""].filter(Boolean).join(" · ");
       case "rank_drop": case "rank_rise": return fill("Search Console average {a}, last check {b}", { a: dec1(e.position), b: scrapedWord(e) });
-      case "rival_passed": return (e.passed || []).map((r) => fill("{host} is now at position {p}, above you", { host: r.host, p: num(r.position) })).join(" · ");
+      // Only I moved: "You fell below", never "passed you" (SEO review 2026-11-17).
+      case "rival_passed": return (e.passed || []).map((r) => fill(r.you_fell ? "You fell below {host}, still at position {p}" : "{host} is now at position {p}, above you", { host: r.host, p: num(r.position) })).join(" · ");
       case "rival_gap": return fill("{host} at position {p}; you: {me}", { host: e.rivals?.[0]?.host || "", p: num(e.rivals?.[0]?.position ?? 0), me: scrapedWord(e) });
       case "striking": return fill("Search Console average {a}, last check {b}", { a: dec1(e.position), b: scrapedWord(e) });
       case "rank_no_click": return `${fill("{r}% click rate at position {p}; usual {u}%", { r: UI.dec(e.click_rate ?? 0), p: dec1(e.position), u: UI.dec(e.expected_rate ?? 0) })} · ${t(AI_WORDS[e.ai] || AI_WORDS["not-captured"])}`;
@@ -177,7 +178,7 @@
   const COUNTRIES = { fra: "FR", bel: "BE", che: "CH", can: "CA", are: "AE", gbr: "GB", usa: "US", esp: "ES", deu: "DE", ita: "IT", mar: "MA", dza: "DZ", tun: "TN", lux: "LU", nld: "NL", prt: "PT", sau: "SA", ind: "IN", pak: "PK", irl: "IE", aus: "AU", egy: "EG", qat: "QA", kwt: "KW", omn: "OM", bhr: "BH", sen: "SN", civ: "CI", cmr: "CM", rus: "RU", tur: "TR", pol: "PL", swe: "SE", nor: "NO", dnk: "DK", aut: "AT", grc: "GR", rou: "RO", bra: "BR", mex: "MX", chn: "CN", jpn: "JP", kor: "KR", sgp: "SG", phl: "PH", nga: "NG", zaf: "ZA", ken: "KE", lbn: "LB", jor: "JO", isr: "IL" };
   const verdictWord = (v) => t({ better: "Better", worse: "Worse", same: "About the same" }[v] || v);
   const leadsLine = (e) => (e.leads_at_stake >= 0.1 ? fill("≈ {n} leads a month", { n: UI.dec(Math.round(e.leads_at_stake * 10) / 10) }) : "");
-  const cause = (code) => t({ noindex: "set to noindex", broken_pages: "answers with an error", server_errors: "server error", canonical_elsewhere: "points to another page", almost_no_text: "almost no text", link_broken: "broken link to it", link_redirect: "redirects" }[code] || code);
+  const cause = (code) => t({ noindex: "set to noindex", broken_pages: "answers with an error", server_errors: "server error", canonical_elsewhere: "points to another page", almost_no_text: "almost no text", link_broken: "broken link to it", link_redirect: "redirects", not_indexed: "not on Google" }[code] || code);
   const AI_WORDS = { overview: "AI Overview doesn't cite you", cited: "AI Overview cites you", none: "No AI Overview", "not-captured": "AI Overview not read" };
   // Under the "AI Overview" column, which names it once. French here, not in the dictionary: other screens already give these
   // short words a feminine French ("Citée", "Non lue") for other things, and an AI Overview is masculine.
@@ -227,7 +228,8 @@
       default: return reasonOf(f);
     }
   }
-  const kindName = (f) => t(KIND[f.kind]?.name || f.kind);
+  const fellOnly = (f) => f.kind === "rival_passed" && (f.evidence?.passed || []).length > 0 && f.evidence.passed.every((r) => r.you_fell);
+  const kindName = (f) => t(fellOnly(f) ? "You fell below a rival" : KIND[f.kind]?.name || f.kind);
   /* The kind's tag has one colour per family, so kinds read apart at a glance (owner, 2026-11-12; cc36dc2 had made it grey):
      loss red, opportunity blue, gain or result teal, technical amber, plain information grey. insights.css draws them. */
   const FAMILY = {
@@ -246,6 +248,8 @@
   // Kinds about a page: the page is named on top already, so "Page that ranks" would say it twice.
   const PAGE_IS_SUBJECT = ["dropped_out", "page_down", "page_up", "decay", "lead_page", "no_leads", "duplicate", "shown_broken", "questions", "page_near", "task_result"];
 
+  // Hidden searches are more than half of the change: no listed part is named as its cause (findings stored before 18 Nov).
+  const hiddenMost = (e) => Math.abs(e.parts?.hidden || 0) > Math.abs(e.change || 0) / 2;
   /* The sentence on top: why clicks moved, from the change breakdown. */
   function answer(change, many) {
     const e = change.evidence, host = many ? `${change.host}: ` : "";
@@ -257,7 +261,7 @@
     const ex = e.explains || [];
     const named = ex.length === 1 ? fill("Mostly one page: {page}, {n} clicks.", { page: ex[0].path, n: signed(ex[0].change) })
       : ex.length ? fill("Most of it: {list}.", { list: ex.map((p) => `${p.path} ${signed(p.change)}`).join(", ") })
-      : e.main && e.main !== "hidden" ? fill("Mostly: {what} ({n} clicks).", { what: t(PARTS[e.main][up ? 0 : 1]).toLowerCase(), n: signed(e.parts[e.main]) }) : "";
+      : e.main && e.main !== "hidden" && !hiddenMost(e) ? fill("Mostly: {what} ({n} clicks).", { what: t(PARTS[e.main][up ? 0 : 1]).toLowerCase(), n: signed(e.parts[e.main]) }) : "";
     return `${host}${head}${demand}${named ? ` ${named}` : ""}`;
   }
   /* The same answer on screen: badges and one row per page, never one packed sentence (owner, 2026-11-12).
@@ -272,7 +276,7 @@
     const ex = many ? e.explains || [] : [];
     const top = Math.max(1, ...ex.map((p) => Math.abs(p.change)));
     const rows = ex.length ? `<span class="ov-ans-label">${t(up ? "Biggest gains" : "Biggest losses")}</span><ul class="ov-ans-list">${ex.map((p) => `<li><span class="ov-ans-name">${pageLink(p.page, { text: p.path })}</span><span class="ov-ans-bar" aria-hidden="true"><i class="${p.change < 0 ? "down" : "up"}" style="width:${Math.max(4, Math.round(Math.abs(p.change) / top * 100))}%"></i></span><b class="${p.change < 0 ? "down" : "up"}">${signed(p.change)}</b></li>`).join("")}</ul>` : "";
-    const cause = many && !ex.length && e.main && e.main !== "hidden" ? `<span class="in-ans-cause"><span class="ov-ans-label">${t("Main cause")}</span>${esc(t(PARTS[e.main][up ? 0 : 1]))} <b class="${e.parts[e.main] < 0 ? "down" : "up"}">${signed(e.parts[e.main])}</b></span>` : "";
+    const cause = many && !ex.length && e.main && e.main !== "hidden" && !hiddenMost(e) ? `<span class="in-ans-cause"><span class="ov-ans-label">${t("Main cause")}</span>${esc(t(PARTS[e.main][up ? 0 : 1]))} <b class="${e.parts[e.main] < 0 ? "down" : "up"}">${signed(e.parts[e.main])}</b></span>` : "";
     return `<div class="ov-answer" dir="auto">${head}${rows}${cause}</div>`;
   }
   /* Two ranked lists with bars from a centre line: lost to the left, gained to the right, so size reads at a glance. */
@@ -284,7 +288,11 @@
     const e = change.evidence, up = e.change > 0;
     const parts = Object.entries(e.parts).filter(([, v]) => Math.round(v));
     const named = parts.filter(([id]) => id !== "hidden").sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]));
-    const why = [...named, ...parts.filter(([id]) => id === "hidden")].map(([id, v]) => ({ label: `${esc(t(PARTS[id][v > 0 ? 0 : 1]))}${id === "hidden" ? UI.tip(HIDDEN_TIP) : ""}`, tip: id === "hidden" ? "" : t(PARTS[id][v > 0 ? 0 : 1]), value: v, quiet: id === "hidden" }));
+    const hidden = parts.filter(([id]) => id === "hidden");
+    /* Searches Google doesn't list, carrying more than half of the change: they lead, at full strength, since they are
+       most of the answer (expert review 2026-11-17, 3.6). Otherwise they come last, quiet, as a remainder. */
+    const hiddenLeads = hidden.length && Math.abs(hidden[0][1]) > Math.abs(e.change || 0) / 2;
+    const why = (hiddenLeads ? [...hidden, ...named] : [...named, ...hidden]).map(([id, v]) => ({ label: `${esc(t(PARTS[id][v > 0 ? 0 : 1]))}${id === "hidden" ? UI.tip(HIDDEN_TIP) : ""}`, tip: id === "hidden" ? "" : t(PARTS[id][v > 0 ? 0 : 1]), value: v, quiet: id === "hidden" && !hiddenLeads }));
     const pages = (e.pages || []).map((p) => ({ label: pageLink(p.page, { text: p.path, host: change.host }), value: p.change }));
     return `<div class="in-lists">${pages.length ? `<div><h3 class="ov-h3">${t("Which pages moved")}</h3>${barList(pages)}</div>` : ""}
       <div><h3 class="ov-h3">${t("Why")}</h3>${barList(why)}<button class="link-btn in-see" data-in-open="${change.id}">${t(up ? "See what gained" : "See what lost")}</button></div></div>`;
@@ -482,7 +490,19 @@
     const notes = [];
     if (IN.tab === "wins" && needs.low_ctr === "brand_words") notes.push(`${t("Low click rates need your brand words.")}${UI.tip("Brand searches are clicked far more and would make every other query look weak.")} <a href="#overview">${t("Add them on Overview")}</a>`);
     if ((IN.tab === "decline" && needs.decay) || (IN.tab === "changed" && needs.page_down)) notes.push(t("Needs more history: 16 weeks for slow decline, 8 for changes."));
+    // One country or device carrying the change waits for that table's own history (expert review 2026-11-17, 3.1).
+    const segDay = (dim) => (/^\d{4}-\d{2}-\d{2}$/.test(needs[`segment_${dim}`] || "") ? needs[`segment_${dim}`] : null);
+    const cDay = segDay("country"), dDay = segDay("device");
+    if (IN.tab === "changed" && !needs.page_down && (cDay || dDay)) {
+      const words = cDay && dDay && cDay === dDay ? "Country and device data start on {day}: too soon to compare them." : cDay ? "Country data starts on {day}: too soon to compare countries." : "Device data starts on {day}: too soon to compare devices.";
+      notes.push(esc(fill(words, { day: dayLabel(cDay || dDay) })));
+    }
     if (IN.tab === "leads" && needs.lead_page === "key_events") notes.push(t("No GA4 key events yet: mark your form or call event as one."));
+    // Technical lists only pages Google showed this week: what the health test and URL Inspection found on the others is
+    // said here, with the way to it, so the tab never reads as "all clear" beside a 404 (expert review 2026-11-17).
+    const away = d.summary.technical_elsewhere || {};
+    const awayPages = away.pages || 0; // pages not listed here, each counted once (the server takes the union)
+    if (IN.tab === "technical" && awayPages) notes.push(`${esc(fill(awayPages === 1 ? "1 page Google didn't show this week has a problem." : "{n} pages Google didn't show this week have a problem.", { n: num(awayPages) }))} <a href="#health">${t("See Site health")}</a>`);
     if (IN.tab === "changed" && needs.brand_split === "brand_words") notes.push(`${t("Add brand words to see when brand hides a loss.")} <a href="#overview">${t("Add them on Overview")}</a>`);
     const hint = {
       first: "Biggest findings, one row per query or page.", mix: "Rank checks beside Search Console: what neither shows alone.", changed: "Last 28 days vs the 28 before, plus odd days this week.",
@@ -491,21 +511,22 @@
       impact: "Done tasks and dated notes, before vs after.",
     }[IN.tab];
     const HINT_TIPS = { impact: "28 days before against 28 days starting a week after." };
-    // The same ranked list Today shows as "Do these first": said so, with the way there, so it isn't read as a second to-do.
-    const sameList = IN.tab === "first" ? `<p class="small muted ov-hint in-same">${icon("list-ordered")}<span>${t("The same list as Do these first on Today.")} <a href="#today">${t("Open Today")}</a></span></p>` : "";
+    // Not "the same list as Today" (it wasn't: Today also holds site, link, lead and AI Overview rows, daily-monitoring F9).
+    // Said as what it is, with the way to the full list.
+    const sameList = IN.tab === "first" ? `<p class="small muted ov-hint in-same">${icon("list-ordered")}<span>${t("Search findings only. Today's Do these first also lists site, link and lead problems.")} <a href="#today">${t("Open Today")}</a></span></p>` : "";
     if (on) {
       // The tab's hint, and any note with nothing to press, go behind the (i) beside the tabs; a note with a link stays.
       const acts = notes.filter((n) => n.includes("<a ")), quiet = notes.filter((n) => !n.includes("<a "));
       const info = UI.info([t(hint), HINT_TIPS[IN.tab] ? t(HINT_TIPS[IN.tab]) : "", ...quiet].filter(Boolean));
       return `<section class="card ov-tabs-card in-tabs-card" aria-labelledby="in-findings-h"><h2 class="sr" id="in-findings-h">${t("Findings")}</h2><div class="card-head ov-tabs-head in-tabs-head">${tabs}<span class="in-tabs-i">${info}</span></div>${controls}
-        ${sameList}${acts.map((n) => `<p class="small ov-hint in-need">${n}</p>`).join("")}${IN.tab === "mix" ? mixTab(d) : table(d.rows)}</section>`;
+        ${sameList}${acts.map((n) => `<p class="small ov-hint in-need">${n}</p>`).join("")}${IN.tab === "mix" ? mixTab(d) : table(d.rows, awayPages)}</section>`;
     }
     return `<section class="card ov-tabs-card" aria-labelledby="in-findings-h"><h2 class="sr" id="in-findings-h">${t("Findings")}</h2><div class="card-head ov-tabs-head">${tabs}</div>${controls}
-      <p class="small muted ov-hint">${t(hint)}${UI.tip(HINT_TIPS[IN.tab] || "")}</p>${sameList}${notes.map((n) => `<p class="small ov-hint in-need">${n}</p>`).join("")}${IN.tab === "mix" ? mixTab(d) : table(d.rows)}</section>`;
+      <p class="small muted ov-hint">${t(hint)}${UI.tip(HINT_TIPS[IN.tab] || "")}</p>${sameList}${notes.map((n) => `<p class="small ov-hint in-need">${n}</p>`).join("")}${IN.tab === "mix" ? mixTab(d) : table(d.rows, awayPages)}</section>`;
   }
 
-  function table(all) {
-    if (!all.length) return `<div class="empty"><p>${t(IN.status === "open" ? "Nothing here. Good news." : "Nothing here.")}</p></div>`;
+  function table(all, away = 0) {
+    if (!all.length) return `<div class="empty"><p>${t(IN.status !== "open" ? "Nothing here." : IN.tab === "technical" && away ? "No problem on pages Google showed this week." : "Nothing here. Good news.")}</p></div>`;
     const many = !UI.siteIdPicked();
     // The server ranks by clicks a month at stake, biggest first; the heading turns it round.
     const found = all.filter((f) => TP.matches(PAGES, titleOf(f), reasonOf(f), kindName(f), many ? f.host : ""));
@@ -1009,7 +1030,7 @@
     "No country data yet.": "Pas encore de données par pays.", "Save": "Enregistrer", "clicks": "clics", "Saved. Applies from the next Search Console read.": "Enregistré. S'applique dès la prochaine lecture de la Search Console.",
     "Counted at {p}%: an AI Overview shows on this search ({d}) and takes some clicks.": "Compté à {p} % : un AI Overview s'affiche sur cette recherche ({d}) et prend une partie des clics.",
     "Insights": "Analyses", "Worked out daily from your Search Console data": "Calculé chaque jour à partir de vos données Search Console",
-    "Clicks at stake": "Clics en jeu", "Findings": "Constats", "The same list as Do these first on Today.": "La même liste que « À faire d'abord » sur Aujourd'hui.", "Open Today": "Ouvrir Aujourd'hui",
+    "Clicks at stake": "Clics en jeu", "Findings": "Constats", "Search findings only. Today's Do these first also lists site, link and lead problems.": "Constats de recherche seulement. « À faire en premier » sur Aujourd'hui liste aussi les problèmes de site, de liens et de leads.", "Open Today": "Ouvrir Aujourd'hui",
     "To do first": "À faire d'abord", "What changed": "Ce qui a changé", "Slow decline": "Lent déclin", "Quick wins": "Gains rapides",
     "Still open": "En cours", "Went away": "Disparues", "Done": "Fait",
     "Losing clicks": "Clics en baisse", "Gaining clicks": "Clics en hausse", "Dropped out of Google": "Sortie de Google", "Odd day": "Jour inhabituel",
@@ -1037,10 +1058,14 @@
     "They run daily on their own. Run them now to see the first ones.": "Elles tournent seules chaque jour. Lancez-les pour voir les premières.",
     "Clicks a month at stake": "Clics par mois en jeu", "Fixed or gone in 30 days": "Réglés ou disparus en 30 jours", "Worked out": "Calculé", "Final days only, last 28 days vs the 28 before": "Jours définitifs seulement, 28 derniers jours vs les 28 précédents",
     "Low click rates need your brand words.": "Les taux de clic faibles demandent vos mots de marque.",
-    "Add them on Overview": "Ajoutez-les dans Vue d'ensemble", "Needs more history: 16 weeks for slow decline, 8 for changes.": "Il faut plus d'historique : 16 semaines pour le lent déclin, 8 pour les changements.",
+    "Add them on Overview": "Ajoutez-les dans Vue d'ensemble", "Country and device data start on {day}: too soon to compare them.": "Les données par pays et par appareil commencent le {day} : trop tôt pour les comparer.", "Country data starts on {day}: too soon to compare countries.": "Les données par pays commencent le {day} : trop tôt pour comparer les pays.", "Device data starts on {day}: too soon to compare devices.": "Les données par appareil commencent le {day} : trop tôt pour comparer les appareils.", "Needs more history: 16 weeks for slow decline, 8 for changes.": "Il faut plus d'historique : 16 semaines pour le lent déclin, 8 pour les changements.",
     "Biggest findings, one row per query or page.": "Les plus gros constats, une ligne par requête ou page.", "Last 28 days vs the 28 before, plus odd days this week.": "28 derniers jours vs les 28 précédents, plus les jours inhabituels de la semaine.",
     "Pages sliding a little every week for 16 weeks.": "Pages qui reculent un peu chaque semaine depuis 16 semaines.", "Queries a small push would pay for, using this site's own click rates.": "Requêtes pour lesquelles un petit effort paierait, d'après les taux de clic du site.",
     "Nothing here. Good news.": "Rien ici. Bonne nouvelle.", "Nothing here.": "Rien ici.",
+    "No problem on pages Google showed this week.": "Aucun problème sur les pages que Google a montrées cette semaine.",
+    "1 page Google didn't show this week has a problem.": "1 page que Google n'a pas montrée cette semaine a un problème.",
+    "{n} pages Google didn't show this week have a problem.": "{n} pages que Google n'a pas montrées cette semaine ont un problème.", "See Site health": "Voir Santé du site",
+    "not on Google": "absente de Google",
     "What": "Quoi", "Clicks a month": "Clics par mois", "Key number": "Chiffre clé", "Task done": "Tâche faite", "Task open": "Tâche ouverte",
     "Insight": "Analyse", "Queries behind it": "Requêtes derrière", "Usual at position {p}": "Habituel en position {p}", "Best 4 weeks, a week": "4 meilleures semaines, par semaine", "Last 4 weeks, a week": "4 dernières semaines, par semaine",
     "Usual that weekday": "Habituel ce jour de la semaine", "Last seen on Google": "Vue pour la dernière fois sur Google", "The last health test or Links Checker saw": "Le dernier test de santé ou le Links Checker a vu",
@@ -1119,7 +1144,7 @@
     "Addresses, broken pages and missing days, from Search Console.": "Adresses, pages cassées et jours manquants, d'après la Search Console.",
     "Done tasks and dated notes, before vs after.": "Tâches faites et notes datées, avant contre après.",
     "Rank and clicks": "Positions et clics", "Rank checks beside Search Console: what neither shows alone.": "Vos relevés de position à côté de la Search Console : ce qu'aucun ne montre seul.",
-    "Just dropped": "Vient de chuter", "Just climbed": "Vient de monter", "Rival passed you": "Dépassé par un concurrent", "Rivals lead, people search it": "Concurrents devant, recherche réelle", "Almost there, both agree": "Presque là, les deux sources d'accord",
+    "Just dropped": "Vient de chuter", "Just climbed": "Vient de monter", "Rival passed you": "Dépassé par un concurrent", "You fell below a rival": "Passé sous un concurrent", "You fell below {host}, still at position {p}": "Vous êtes passé sous {host}, toujours en position {p}", "Rivals lead, people search it": "Concurrents devant, recherche réelle", "Almost there, both agree": "Presque là, les deux sources d'accord",
     "Another page shown": "Une autre page montrée", "Tracked, no searches": "Suivi, aucune recherche",
     "All": "Tous", "Just moved": "Vient de bouger", "Rivals ahead": "Concurrents devant", "Almost there": "Presque là", "Ranked, not clicked": "Classé, pas cliqué", "Wrong page": "Mauvaise page", "Tracking": "Suivi", "Filter findings": "Filtrer les constats",
     "Hidden searches": "Recherches masquées", "Updated just now": "Mis à jour à l'instant", "Updated {n} min ago": "Mis à jour il y a {n} min", "Updated {n} h ago": "Mis à jour il y a {n} h", "Updated yesterday": "Mis à jour hier", "Updated {n} d ago": "Mis à jour il y a {n} j",

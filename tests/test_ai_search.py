@@ -176,7 +176,7 @@ def test_weekly_chart_has_gaps_for_weeks_with_no_data_and_counts_leads(engine, s
 
 
 def test_copilot_citations_are_set_against_copilot_and_bing_visits_only_on_the_files_days(engine, site):
-    _download(engine, site, date(2026, 9, 1), date(2026, 9, 28), {"citations": 20, "share_of_authority": 18.0}, 30)
+    _download(engine, site, date(2026, 9, 29), date(2026, 9, 30), {"citations": 20, "share_of_authority": 18.0}, 30)  # 2 days, as the newest
     _download(engine, site, D1, D2, {"citations": 26, "share_of_authority": 14.0, "pages": [{"url": "https://mine.example/visa/", "citations": 9}, {"url": "https://mine.example/cost", "citations": 1}]})
     _ga4(engine, site, D1, "Referral", "chatgpt.com", "referral", 40)
     _referral(engine, site, D1, "chatgpt.com", "/visa/", 40)
@@ -186,9 +186,29 @@ def test_copilot_citations_are_set_against_copilot_and_bing_visits_only_on_the_f
     copilot = service.ai_search(_scope(engine))["copilot"]
     s = copilot["sites"][0]
     assert copilot["citations"] == 26 and copilot["share"] == 14.0
-    assert s["before"]["citations"] == 20 and s["before"]["share"] == 18.0
-    assert s["pages"][0] == {"url": "https://mine.example/visa/", "path": "/visa/", "citations": 9, "visits": 3}
+    assert s["before"]["citations"] == 20 and s["before"]["share"] == 18.0 and s["no_before"] is None
+    # Copilot and Bing search apart (SEO review 2026-11-17, W5): 2 from Copilot, 1 from Bing.
+    assert s["pages"][0] == {"url": "https://mine.example/visa/", "path": "/visa/", "citations": 9, "visits": 2, "bing_visits": 1}
     assert s["pages"][1]["visits"] == 0 and s["queries"] is None
+
+
+def test_copilot_before_is_only_an_earlier_file_of_the_same_length(engine, site):
+    """Expert review 2026-11-17, #21: a 45-day file was compared with a 33-day file lying inside it, and the card read
+    "−3 worse". Only an earlier, non-overlapping file of the same number of days is a "before"; otherwise the card says why not."""
+    _download(engine, site, date(2026, 10, 12), date(2026, 11, 13), {"citations": 26, "share_of_authority": 14.1}, 5)  # 33 days
+    _download(engine, site, date(2026, 10, 1), date(2026, 11, 14), {"citations": 23, "share_of_authority": 15.0})  # 45 days, holds the one above
+    s = service.ai_search(_scope(engine))["copilot"]["sites"][0]
+    assert s["citations"] == 23 and s["before"] is None and s["no_before"] == "overlap"
+    _download(engine, site, date(2026, 8, 17), date(2026, 9, 30), {"citations": 10, "share_of_authority": 9.0}, 60)  # 45 days, ends the day before
+    s = service.ai_search(_scope(engine))["copilot"]["sites"][0]
+    assert (s["before"]["citations"], s["before"]["period_start"], s["before"]["period_end"], s["no_before"]) == (10, "2026-08-17", "2026-09-30", None)
+
+
+def test_copilot_files_of_different_lengths_are_not_compared(engine, site):
+    _download(engine, site, date(2026, 9, 9), date(2026, 10, 11), {"citations": 26}, 30)  # 33 days
+    _download(engine, site, date(2026, 10, 12), date(2026, 11, 9), {"citations": 22})  # 29 days
+    s = service.ai_search(_scope(engine))["copilot"]["sites"][0]
+    assert s["before"] is None and s["no_before"] == "length"
 
 
 def test_one_page_written_two_ways_in_the_download_is_one_row(engine, site):

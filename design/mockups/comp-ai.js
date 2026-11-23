@@ -1,5 +1,6 @@
 /* Competitors area: AI Overview watch. For my keywords: does a Google AI Overview appear, am I cited, who else is, and what changed.
-   It only reads what checks found. A tool that can't see AI Overviews gives "Not captured", which is never "No". */
+   It only reads what checks found: each keyword's newest check from a tool that sees AI Overviews (SerpApi), named. A keyword
+   no such tool checked is "Not checked", which is never "No". */
 (() => {
   "use strict";
   let UI = null;
@@ -20,18 +21,26 @@
   function tiles(s) {
     const top = s.rivals[0];
     return `<section class="tiles ca-tiles">
-      ${UI.tile(t("With AI Overview"), UI.cnt(s.with_overview), `<span class="ab">${t("of")} ${UI.num(s.captured)} ${t("captured")}</span>`, { ic: "sparkles" })}
+      ${UI.tile(t("With AI Overview"), UI.cnt(s.with_overview), `<span class="ab">${t("of")} ${UI.num(s.captured)} ${inPlace("checked|aio")}${s.tools && s.tools.length ? ` ${t("with")} ${esc(s.tools.join(", "))}` : ""}</span>`, { ic: "sparkles" })}
       ${UI.tile(t("You're cited"), UI.cnt(s.cited_me), `<span class="ab">${t("of")} ${UI.num(s.with_overview)} ${t(s.with_overview === 1 ? "overview" : "overviews")}</span>`, { ic: "circle-check" })}
-      ${UI.tile(t("Not captured"), UI.cnt(s.not_captured), `<span class="ab">${t("of")} ${UI.num(s.tracked)} ${t(s.tracked === 1 ? "keyword" : "keywords")}</span>`, { ic: "shield-question" })}
+      ${UI.tile(t("Not checked"), UI.cnt(s.not_captured), `<span class="ab">${t("of")} ${UI.num(s.tracked)} ${t(s.tracked === 1 ? "keyword" : "keywords")}</span>`, { ic: "shield-question" })}
       ${UI.tile(t("Competitor cited most"), top ? `<span class="ca-host" dir="auto">${esc(top.host)}</span>` : `<span class="muted">—</span>`, top ? `<span class="ab">${UI.num(top.keywords)} ${t(top.keywords === 1 ? "keyword" : "keywords")}</span>` : `<span class="ab">${t("None cited yet")}</span>`, { ic: "crosshair" })}
     </section>`;
   }
 
-  /* The caveats sit behind an (i) beside the filters. Only the one action stays in view, and only while something isn't captured.
-     The button names SerpApi; hovering it says any tool that sees AI Overviews will do (one (i) on the line is enough). */
+  /* The caveats sit behind an (i) beside the filters. Only the one action stays in view, and only while something isn't checked:
+     with no tool that sees AI Overviews connected, Connect SerpApi; with one connected, how many keywords it hasn't checked yet
+     and Check them, which opens the usual Refresh dialog (its tools, credits and cost) for those keywords with that tool. */
   function plainNote(s) {
-    const words = `${t("Updates with each check; never spends credits itself. Google only.")} ${t("Not captured: the tool can't see AI Overviews. One may still exist.")}`;
-    return `<div class="ca-note-line">${COMP.info(words)}${s.not_captured ? `<button class="btn btn-small" data-ca-connect data-tip="${esc(t("Connect a tool that sees AI Overviews, such as SerpApi."))}">${t("Connect SerpApi")}</button>` : ""}</div>`;
+    const words = `${t("Updates with each check; never spends credits itself. Google only.")} ${t("Not checked: no tool that sees AI Overviews (SerpApi) has checked the keyword yet. One may exist.")}`;
+    const tools = s.ai_tools || [];
+    let act = "";
+    if (s.not_captured && !tools.length) act = `<button class="btn btn-small" data-ca-connect data-tip="${esc(t("Connect a tool that sees AI Overviews, such as SerpApi."))}">${t("Connect SerpApi")}</button>`;
+    else if (s.not_captured) {
+      act = `<span class="small sec ca-unchecked">${esc(fill(t(s.not_captured === 1 ? "Not checked yet: {n} keyword" : "Not checked yet: {n} keywords"), { n: UI.num(s.not_captured) }))}</span>`
+        + `<button class="btn btn-small" data-ca-check data-tip="${esc(fill(t("Checks them with {tool}. Shows the cost first."), { tool: tools.join(", ") }))}">${UI.icon("refresh-cw")}${t("Check them")}</button>`;
+    }
+    return `<div class="ca-note-line">${COMP.info(words)}${act}</div>`;
   }
 
   // ---- the table --------------------------------------------------------------------------------
@@ -40,10 +49,10 @@
     ["overview", "AI Overview", (r) => r.state === "present"],
     ["cited", "You're cited", (r) => r.cited_me === true],
     ["notcited", "You're not cited", (r) => r.state === "present" && r.cited_me === false],
-    ["notcaptured", "Not captured", (r) => r.state === "not_captured"],
+    ["notcaptured", "Not checked", (r) => r.state === "not_captured"],
   ];
   const statusWord = (iconName, word, cls = "sec") => `<span class="status ${cls}">${UI.icon(iconName)}${esc(t(word))}</span>`;
-  const overviewCell = (state) => (state === "present" ? statusWord("sparkles", "Yes") : state === "not_captured" ? statusWord("shield-question", "Not captured", "muted") : statusWord("minus", "No", "muted"));
+  const overviewCell = (state) => (state === "present" ? statusWord("sparkles", "Yes") : state === "not_captured" ? statusWord("shield-question", "Not checked", "muted") : statusWord("minus", "No", "muted"));
 
   function citedCell(row) {
     if (row.state === "not_captured" || row.cited_me === null || row.cited_me === undefined) return `<span class="muted">—</span>`;
@@ -76,9 +85,10 @@
     // On phones each row is a card, so a tool shared by every row is said once, above them.
     const tools = new Set(shown.map((r) => r.tool));
     // Every row checked with the same tool at the same age: said once under the table, and the column goes (as on a competitor's Keywords tab).
-    const once = shown.length > 1 && tools.size === 1 && new Set(shown.map((r) => COMP.ago(r.checked_at))).size === 1;
+    // A keyword no such tool checked has no tool: then there's nothing to say once.
+    const once = shown.length > 1 && tools.size === 1 && shown[0].tool && new Set(shown.map((r) => COMP.ago(r.checked_at))).size === 1;
     const onceLine = once ? `<p class="small sec ca-once">${esc(t("All checked with {tool}, {when}.").replace("{tool}", shown[0].tool).replace("{when}", COMP.ago(shown[0].checked_at)))}</p>` : "";
-    const oneTool = !once && tools.size === 1 ? shown[0].tool : "";
+    const oneTool = !once && tools.size === 1 && shown[0].tool ? shown[0].tool : "";
     return `${chips}${oneTool ? `<p class="help ca-tool-line">${t("Tool")}: ${esc(oneTool)}</p>` : ""}<div class="ca-pages"><div class="table-wrap ${oneTool ? "ca-one-tool" : ""}"><table class="data ca-table" id="ca-table">
       <thead><tr><th scope="col">${t("Keyword")}</th><th scope="col">${t("AI Overview")}</th><th scope="col" class="pt-col-you">${COMP.who("you", null, t("You cited"))}</th><th scope="col" class="pt-col-them">${COMP.who("them", null, t("Competitors cited"))}</th><th scope="col">${t("Other sites cited")}</th>${once ? "" : `<th scope="col">${t("Checked")}</th>`}</tr></thead>
       <tbody>${page.rows.map((r) => `<tr>
@@ -87,7 +97,7 @@
         <td data-label="${t("You cited")}"><div class="cp-val">${citedCell(r)}</div></td>
         <td data-label="${t("Competitors cited")}"><div class="cp-val">${rivalChips(r.competitors_cited)}</div></td>
         <td data-label="${t("Other sites cited")}"><div class="cp-val">${otherSites(r.others_cited)}</div></td>
-        ${once ? "" : `<td data-label="${t("Checked")}"><div class="cp-val"><span class="nowrap"><span class="ca-tool-name">${toolMark(r.tool)}</span>${esc(COMP.ago(r.checked_at))}</span></div></td>`}
+        ${once ? "" : `<td data-label="${t("Checked")}"><div class="cp-val">${r.tool ? `<span class="nowrap"><span class="ca-tool-name">${toolMark(r.tool)}</span>${esc(COMP.ago(r.checked_at))}</span>` : `<span class="muted">—</span>`}</div></td>`}
       </tr>`).join("")}</tbody></table></div>${TP.footer(PAGES, page, { noun: t("keywords") })}</div>${onceLine}`;
   }
 
@@ -222,6 +232,11 @@
         }
         if ((el = hit("[data-ca-rival]"))) { COMP.open("list", { competitorId: Number(el.dataset.caRival) }); return; }
         if (hit("[data-ca-connect]")) { UI.openConnection("serpapi"); return; }
+        if (hit("[data-ca-check]")) {
+          const sum = S.data?.summary;
+          if (sum?.not_checked_ids?.length) window.KW_REAL?.checkWith(sum.not_checked_ids, ["google"], sum.ai_tools || []);
+          return;
+        }
         if (hit("[data-ca-find]")) { COMP.open("find"); return; }
         if (hit("[data-ca-all-changes]")) { S.allChanges = true; COMP.paint(); }
       });
@@ -232,6 +247,8 @@
         COMP.paint();
         UI.$("#ca-rival")?.focus();
       });
+      // A Refresh that ends (here or on Keywords) may have checked these keywords: the watch reads them again.
+      document.addEventListener("seocc:refresh-done", () => { if (S.data && UI.state.route === "competitors" && COMP.currentTab()?.id === "ai") COMP.reload({ quiet: true }); });
       TP.on(PAGES, () => COMP.paint()); // another page, another size or a search; the helper keeps the focus
       window.addEventListener("resize", () => {
         cancelAnimationFrame(resizeFrame);
@@ -257,6 +274,8 @@
     "With AI Overview": "Avec AI Overview",
     "of": "sur",
     "captured": "captés",
+    "checked|aio": "relevés", "with": "avec", "Not checked": "Non relevé",
+    "Not checked: no tool that sees AI Overviews (SerpApi) has checked the keyword yet. One may exist.": "Non relevé : aucun outil qui voit les AI Overviews (SerpApi) n'a encore relevé ce mot-clé. Il peut y en avoir un.",
     
     "overview": "AI Overview",
     "overviews": "AI Overviews",
@@ -267,6 +286,8 @@
     "Updates with each check; never spends credits itself. Google only.": "Se met à jour à chaque relevé ; ne dépense jamais de crédits seul. Google uniquement.",
     "Not captured: the tool can't see AI Overviews. One may still exist.": "Non capté : l'outil ne voit pas les AI Overviews. Il peut y en avoir un.",
     "Connect a tool that can": "Connecter un outil qui les voit", "Connect SerpApi": "Connecter SerpApi",
+    "Not checked yet: {n} keyword": "Pas encore contrôlé : {n} mot-clé", "Not checked yet: {n} keywords": "Pas encore contrôlés : {n} mots-clés",
+    "Check them": "Les contrôler", "Checks them with {tool}. Shows the cost first.": "Les contrôle avec {tool}. Affiche le coût d'abord.",
     "AI Overview": "AI Overview",
     "You're cited": "Vous êtes cité",
     "You're not cited": "Vous n'êtes pas cité",

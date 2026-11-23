@@ -102,11 +102,11 @@ def test_link_gaps_keep_pages_only_and_drop_off(world):
 def test_today_leaves_out_edits_of_a_paused_rival(world):
     rival = add_rival(world)
     add_page_change(world, "rival.example")
-    assert len(today._changes(world.engine, world.own)) == 1 and len(today._changes(world.engine, None)) == 1
+    assert today._changes(world.engine, world.own, set())[1] == 1 and today._changes(world.engine, None, set())[1] == 1
     tracking.set_tracking(world.engine, world.own, rival, "pages")
-    assert len(today._changes(world.engine, world.own)) == 1
+    assert today._changes(world.engine, world.own, set())[1] == 1
     tracking.set_tracking(world.engine, world.own, rival, "off")
-    assert today._changes(world.engine, world.own) == [] and today._changes(world.engine, None) == []
+    assert today._changes(world.engine, world.own, set()) == ([], 0) and today._changes(world.engine, None, set()) == ([], 0)
 
 
 def test_moz_leaves_alone_a_rival_no_site_has_on(world):

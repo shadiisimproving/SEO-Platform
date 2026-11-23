@@ -223,6 +223,8 @@ def preview(engine: Engine, body: dict) -> dict:
             pool(tool)
     planned, unassigned = 0, 0
     for keyword_id, name in parts["todo"]:
+        if not full[name]:  # no tool can search this engine at all: it's skipped (said apart), not a run that runs out
+            continue
         chosen = [pools[tool.name] for tool in lines[name]]
         if ask["mode"] != "pick":
             # In the order: a free tool with room, or an always-paid one allowed now; only then paid credits past a free tool's.
@@ -283,6 +285,9 @@ def start(engine: Engine, body: dict, by: str | None = None) -> dict:
         raise Refused("Set this Mac's country in Settings first.")  # without it, its results couldn't be kept apart honestly
     names = ask["keywords"]
     excluded = [{"keyword": names[k], "engine": name, "by": who} for (k, name), who in parts["running"].items()]
+    # An engine no tool can search is skipped with a plain sentence; the other engines run, and the run can still finish.
+    skipped = [name for name in ask["engines"] if not lines[name]]
+    parts["todo"] = [(k, name) for k, name in parts["todo"] if name not in skipped]
     if not parts["todo"]:
         if excluded:
             raise Conflict("Already refreshing.")
@@ -320,7 +325,10 @@ def start(engine: Engine, body: dict, by: str | None = None) -> dict:
             if not total:
                 conn.rollback()
                 raise Conflict("Already refreshing.")
-            conn.execute(text("UPDATE rank_runs SET total = :t, excluded = :x WHERE id = :i"), {"t": total, "x": json.dumps(excluded) if excluded else None, "i": run_id})
+            conn.execute(
+                text("UPDATE rank_runs SET total = :t, excluded = :x, stop_reason = :why WHERE id = :i"),
+                {"t": total, "x": json.dumps(excluded) if excluded else None, "why": skipped_words(skipped), "i": run_id},
+            )
     except IntegrityError:
         found = _by_token(engine, token) if token else None
         if found:
@@ -328,6 +336,13 @@ def start(engine: Engine, body: dict, by: str | None = None) -> dict:
         raise
     queue.enqueue(engine, LANE, JOB_KIND, payload={"run_id": run_id}, dedupe_key=f"refresh:{run_id}", max_attempts=3)
     return run_dict(engine, run_id)
+
+
+def skipped_words(engines: list[str]) -> str | None:
+    """The run's note for engines it left out because no tool can search them."""
+    if not engines:
+        return None
+    return "No tool can search " + ", ".join(ENGINE_NAMES.get(name, name) for name in engines) + ", so it was skipped. Connect one in Settings."
 
 
 def _by_token(engine: Engine, token: str) -> dict | None:
@@ -632,7 +647,7 @@ def run_refresh(job, engine: Engine) -> None:
                 closer = getattr(tool, "close", None)
                 if closer:
                     closer()
-    reasons = []
+    reasons = [run["stop_reason"]] if run["stop_reason"] else []  # an engine skipped at the start (skipped_words) stays said
     if out_of_tools:
         reasons.append("No free tools left for " + ", ".join(ENGINE_NAMES.get(name, name) for name in sorted(out_of_tools)) + ".")
     reasons += list(dict.fromkeys(picker.dropped.values()))

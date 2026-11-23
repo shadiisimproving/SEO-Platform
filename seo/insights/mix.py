@@ -42,6 +42,7 @@ class Keyword:
     pages: dict = field(default_factory=dict)  # page → clicks, last 28 days
     results: list = field(default_factory=list)  # (position, url, host), best first
     before: list | None = None  # the same, from the previous like-for-like check; None when there isn't one
+    disputed: bool = False  # another tool's check of the same 48 hours puts me far from this one (rankings' "Tools disagree")
 
     @property
     def p(self) -> int | None:
@@ -60,8 +61,9 @@ class Keyword:
         return self.local or self.world
 
 
-def _key(words: str) -> str:
-    return store.clean_keyword(words).casefold()
+def _key(words: str, shared=frozenset()) -> tuple:
+    """The same matching as Keywords (store.match_key): every spelling of a keyword tracked once, its exact query when two are."""
+    return store.match_key(words, shared)
 
 
 def _add(table: dict, key, clicks: int, shown: int, weighted: float | None) -> None:
@@ -76,20 +78,20 @@ def _settle(table: dict) -> dict:
     return {key: {"clicks": s["clicks"], "impressions": s["impressions"], "position": s["weighted"] / s["impressions"] if s["impressions"] else None} for key, s in table.items()}
 
 
-def _search_console(ctx: Ctx) -> tuple[dict, dict, dict]:
+def _search_console(ctx: Ctx, shared=frozenset()) -> tuple[dict, dict, dict]:
     world: dict = {}
     for r in split(ctx, "query", ctx.start, ctx.end):
-        _add(world, _key(r["name"]), r["clicks"], r["impressions"], r["position"] * r["impressions"] if r["position"] is not None else None)
+        _add(world, _key(r["name"], shared), r["clicks"], r["impressions"], r["position"] * r["impressions"] if r["position"] is not None else None)
     local: dict = {}
     for r in ctx.fetch(
         "SELECT country, MAX(query) q, SUM(clicks) c, SUM(impressions) i, SUM(position * impressions) w FROM gsc_query_country "
         "WHERE site_id = :s AND day BETWEEN :a AND :b AND day NOT IN :skip GROUP BY country, query_hash",
         a=ctx.start, b=ctx.end,
     ):
-        _add(local, (r["country"], _key(r["q"])), int(r["c"] or 0), int(r["i"] or 0), float(r["w"]) if r["w"] is not None else None)
+        _add(local, (r["country"], _key(r["q"], shared)), int(r["c"] or 0), int(r["i"] or 0), float(r["w"]) if r["w"] is not None else None)
     pages: dict = {}
     for r in split(ctx, "pair", ctx.start, ctx.end):
-        slot = pages.setdefault(_key(r["query"]), {})
+        slot = pages.setdefault(_key(r["query"], shared), {})
         slot[r["page"]] = slot.get(r["page"], 0) + r["clicks"]
     return _settle(world), _settle(local), pages
 
@@ -133,22 +135,25 @@ def _rivals(ctx: Ctx) -> list[str]:
 def _load(ctx: Ctx) -> list[Keyword]:
     from seo.serp import rankings  # imported here: rankings reads the competitors code, which reads this package's neighbours
 
-    rows = [r for r in rankings.rows_of_site(ctx.engine, ctx.site_id) if (r["engines"]["google"]["main"] or {}).get("status") == "ok"]
+    every = rankings.rows_of_site(ctx.engine, ctx.site_id)
+    shared = store.shared_keys(r["keyword"] for r in every)  # spellings tracked side by side each keep their own numbers
+    rows = [r for r in every if (r["engines"]["google"]["main"] or {}).get("status") == "ok"]
     if not rows:
         return []
-    world, local, pages = _search_console(ctx)
+    world, local, pages = _search_console(ctx, shared)
     main_ids = [r["engines"]["google"]["main"]["check_id"] for r in rows]
     previous = _previous(ctx, main_ids)
     results = _results(ctx, main_ids + list(previous.values()))
     found = []
     for r in rows:
-        main, key = r["engines"]["google"]["main"], _key(r["keyword"])
+        main, key = r["engines"]["google"]["main"], _key(r["keyword"], shared)
         code3 = countries.alpha3(main["location"]) or countries.alpha3(r["country"])
         numbers = local.get((code3, key)) if code3 else None
         before_id = previous.get(main["check_id"])
         found.append(Keyword(
             r["keyword"], r["keyword_id"], main, r["ai"], code3, numbers if numbers and numbers["position"] is not None else None, world.get(key), pages.get(key, {}),
             results.get(main["check_id"], []), results.get(before_id, []) if before_id else None,
+            bool(r["engines"]["google"].get("disagree")),
         ))
     return found
 
@@ -186,12 +191,15 @@ def _finding(ctx: Ctx, k: Keyword, kind: str, rivals: list[str], at_stake: float
 
 
 def _moved(ctx: Ctx, k: Keyword, rivals: list[str]) -> Finding | None:
-    """Today's place against Search Console's average: the average takes weeks to show what a check sees at once."""
+    """Today's place against Search Console's average: the average takes weeks to show what a check sees at once.
+    A drop another tool of the same days doesn't see is no drop: the tools disagree, so nothing is said."""
     if k.local is None or k.age > rules.MIX_FRESH_DAYS or k.local["impressions"] < rules.MIX_MIN_IMPRESSIONS:
         return None
     average, shown = k.local["position"], k.local["impressions"]
     was = _on(k.before, ctx.host) if k.before is not None else None
     if average <= rules.MIX_WORST and ((k.p is not None and k.p - average >= rules.MIX_GAP) or (k.p is None and average <= k.depth - rules.MIX_DEPTH_MARGIN)):
+        if k.disputed:
+            return None
         if k.before is not None and (was is None or (k.p is not None and k.p - was < rules.MIX_CONFIRM_PLACES)):
             return None  # the earlier check saw it just as low: the two sources simply differ here, nothing moved
         confirmed = k.before is not None
@@ -206,22 +214,40 @@ def _moved(ctx: Ctx, k: Keyword, rivals: list[str]) -> Finding | None:
 
 
 def _rival_passed(ctx: Ctx, k: Keyword, rivals: list[str]) -> Finding | None:
+    """A followed rival now above me that was below me on the previous like-for-like check.
+
+    Not a one-place swap (3 and 4 trading places is noise between two checks): the rival climbed or I fell by at least
+    MIX_PASS_PLACES. Not on a search nobody makes (MIX_MIN_IMPRESSIONS). When the rival didn't climb and only I fell, the
+    row says so ("you_fell"), so the screen says "You fell below" rather than "passed you" (SEO review 2026-11-17).
+    """
     if k.before is None or k.age > rules.MIX_FRESH_DAYS:
         return None
     was = _on(k.before, ctx.host)
     if was is None:
         return None
-    passed = [r for r in _rival_rows(k, rivals) if r["before"] is None or r["before"] > was]
+    shown = (k.demand or {}).get("impressions") or 0
+    if shown < rules.MIX_MIN_IMPRESSIONS:
+        return None
+    now_place = k.p if k.p is not None else k.depth + 1
+    fell = now_place - was
+    passed = []
+    for r in _rival_rows(k, rivals):
+        if r["before"] is not None and r["before"] <= was:
+            continue  # it was already above me
+        climbed = (k.depth + 1 if r["before"] is None else r["before"]) - r["position"]
+        if max(climbed, fell) < rules.MIX_PASS_PLACES:
+            continue
+        passed.append({**r, "you_fell": climbed <= 0})
     if not passed:
         return None
-    shown = (k.demand or {}).get("impressions") or 0
-    now_place = k.p if k.p is not None else k.depth + 1
     stake = shown * rules.MONTH * max(0.0, ctx.curve.rate(was) - ctx.curve.rate(now_place))
     return _finding(ctx, k, "rival_passed", rivals, stake, was=was, passed=passed[:3])
 
 
 def _rival_gap(ctx: Ctx, k: Keyword, rivals: list[str]) -> Finding | None:
     numbers = k.demand
+    if k.disputed:  # where I stand isn't settled: two tools of the same days put me far apart
+        return None
     if k.age > rules.MIX_USABLE_DAYS or not numbers or numbers["impressions"] < rules.MIX_MIN_IMPRESSIONS or (k.p is not None and k.p <= rules.MIX_RIVAL_ME_PAST):
         return None
     if not any(r["position"] <= rules.MIX_RIVAL_TOP for r in _rival_rows(k, rivals)):
@@ -257,6 +283,8 @@ def _page_id(url: str) -> str:
 
 
 def _page_switch(ctx: Ctx, k: Keyword, rivals: list[str]) -> Finding | None:
+    if k.disputed:
+        return None
     if not k.main["url"] or k.age > rules.MIX_USABLE_DAYS or not k.pages:
         return None
     total = sum(k.pages.values())
