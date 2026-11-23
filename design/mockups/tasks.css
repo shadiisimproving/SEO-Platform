@@ -187,3 +187,4 @@
   .tk-q span { overflow: hidden; text-overflow: ellipsis; }
 }
 @media (max-width: 420px) { .tk-q { padding: 0 6px; gap: 3px; } }
+.tk-done-more { align-self: center; margin-top: 2px; }

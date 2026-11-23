@@ -49,6 +49,9 @@ const madeUpTasks = () => Array.from({ length: 300 }, (_, i) => ({
   await page.route(/\/api\/tasks(\?.*)?$/, (route) => (route.request().method() === "GET" ? route.fulfill({ json: { tasks } }) : route.continue()));
   await page.goto(BASE + "#tasks"); await settle(2500);
   await page.click('[data-task-view="table"]'); await settle();
+  // The table hides done tasks (2026-11-23): this test pages all 300, so it shows them.
+  check("Tasks: done tasks start hidden", /100 done tasks hidden/.test(await page.locator(".tk-hidden").first().textContent()));
+  await page.click('[data-task-alldone="1"]'); await settle();
   const tkRows = () => page.locator("#tk-table tbody tr").count();
   check("Tasks: one page of 25 rows", (await tkRows()) === 25, await tkRows());
   check("Tasks: the foot says 1–25 of 300 tasks", (await range("tk")) === "1–25 of 300 tasks", await range("tk"));

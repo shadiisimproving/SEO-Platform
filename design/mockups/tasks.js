@@ -16,7 +16,7 @@
 
   const T = {
     ready: false, loading: null, failed: "", tasks: [], sites: [],
-    view: "months", show: "open", query: "", status: "", kind: "", goal: "", owner: "", period: "all", month: "", from: "", to: "",
+    view: "months", show: "open", allDone: false, query: "", status: "", kind: "", goal: "", owner: "", period: "all", month: "", from: "", to: "",
     saving: false, dragId: null, sort: null, // sort: a heading pressed in the table, or null for status then due date
   };
   const PAGES = "tk"; // the table's pages (table-pages.js), like every long table in the app; its search is the Filter box
@@ -85,7 +85,17 @@
   const inPeriod = (task, r = range()) => !r || (task.due && task.due >= r[0] && task.due <= r[1]) || !!carriedFrom(task, r);
   const visible = () => T.tasks.filter((task) => matches(task) && inPeriod(task));
   const shownByMonth = (task) => T.show === "all" || (T.show === "done" ? !isOpen(task) : isOpen(task));
-  const counted = () => visible().filter((task) => (T.view === "months" ? shownByMonth(task) : !(T.view === "table" && T.status) || task.status === T.status)); // the table also filters by status, the month list by To do / Done
+  /* Board and table keep finished work out of the way (2026-11-23): the board's Done column shows the last 7 days,
+     the table hides done tasks, until "See all" / "Show done". Picking Done in the table's status filter shows them too. */
+  const RECENT_DAYS = 7;
+  const recentStart = () => { const d = new Date(); d.setDate(d.getDate() - (RECENT_DAYS - 1)); return dayOf(d); };
+  const doneHidden = (task) => {
+    if (isOpen(task) || T.allDone || T.view === "months") return false;
+    if (T.view === "table") return T.status !== "done";
+    return !(task.completed_on && task.completed_on >= recentStart()); // the board: done in the last 7 days stays
+  };
+  const shown = () => visible().filter((task) => !doneHidden(task));
+  const counted = () => (T.view === "months" ? visible().filter(shownByMonth) : shown().filter((task) => !(T.view === "table" && T.status) || task.status === T.status)); // the table also filters by status, the month list by To do / Done
   /* Goals already used, most used first: a new task picks one, or a new one is typed. */
   const goals = () => {
     const seen = new Map();
@@ -518,8 +528,12 @@
   async function moveTask(id, to, focusAfter = null) {
     const task = T.tasks.find((x) => x.id === id);
     if (!task || task.status === to) return;
+    const was = task.status;
     try {
       keep(await COMP.api("PATCH", `tasks/${id}`, { status: to }));
+      const now = T.tasks.find((x) => x.id === id);
+      // A table hiding done tasks drops the row: say so, with a way back.
+      if (to === "done" && now && doneHidden(now)) { UI.toast(t("Task done"), { undo: () => moveTask(id, was), undoLabel: t("Undo") }); UI.$("#tk-table, [data-task-alldone]")?.focus?.({ preventScroll: true }); return; }
       if (focusAfter) UI.$(focusAfter)?.focus({ preventScroll: true });
     } catch (err) {
       UI.toast(t(err.message), { kind: "crit" });
@@ -590,12 +604,19 @@
     </article>`;
   }
 
+  const byFinished = (a, b) => String(b.completed_on || "").localeCompare(String(a.completed_on || "")) || byDue(a, b); // the newest finished on top
   function board(list) {
     return `<div class="tk-board tk-board-4">${STATUSES.map(([key, word]) => {
-      const here = list.filter((task) => task.status === key).sort(byDue);
+      const here = list.filter((task) => task.status === key && !doneHidden(task)).sort(key === "done" ? byFinished : byDue);
+      const all = key === "done" ? list.filter((task) => task.status === "done").length : here.length;
+      const old = key === "done" ? list.filter((task) => task.status === "done" && !(task.completed_on && task.completed_on >= recentStart())).length : 0;
+      const foot = key !== "done" || !old ? ""
+        : T.allDone ? `<button type="button" class="link-btn tk-done-more small" data-task-alldone="0">${t("Show only the last 7 days")}</button>`
+        : `<button type="button" class="link-btn tk-done-more small" data-task-alldone="1">${t("See all {n} done").replace("{n}", num(all))}</button>`;
+      const none = key === "done" && all ? t("Nothing done in the last 7 days.") : t("No task");
       return `<section class="card tk-col" data-task-col="${key}" aria-label="${columnWord(word)}">
         <div class="tk-col-head"><h2>${columnWord(word)}</h2><span class="lc-count sec tabular">${num(here.length)}</span></div>
-        <div class="tk-col-body">${here.length ? here.map(card).join("") : `<p class="tk-none small muted">${t("No task")}</p>`}</div>
+        <div class="tk-col-body">${here.length ? here.map(card).join("") : `<p class="tk-none small muted">${none}</p>`}${foot}</div>
       </section>`;
     }).join("")}</div>`;
   }
@@ -636,11 +657,15 @@
   /* data-tt-filter-off: one Filter on this screen, the toolbar's, which works the same in all three views (search, status,
      type, goal, person). table-tools' own Filter would be a second one beside it; sorting and tick boxes stay. */
   function table(list) {
-    const rows = sortedRows(list.filter((task) => !T.status || task.status === T.status));
-    if (!rows.length) return COMP.empty(t("Nothing matches these filters"), t("Change the filters above."));
+    const rows = sortedRows(list.filter((task) => (!T.status || task.status === T.status) && !doneHidden(task)));
+    const doneN = T.status ? 0 : list.filter((task) => !isOpen(task)).length;
+    const doneNote = !doneN ? "" : T.allDone
+      ? `<p class="help tk-hidden">${t("Done tasks are shown.")} <button type="button" class="link-btn" data-task-alldone="0">${t("Hide done")}</button></p>`
+      : `<p class="help tk-hidden">${num(doneN)} ${t(doneN === 1 ? "done task hidden." : "done tasks hidden.")} <button type="button" class="link-btn" data-task-alldone="1">${t("Show done")}</button></p>`;
+    if (!rows.length) return doneNote + (doneN && !T.allDone ? COMP.empty(t("Nothing left to do here."), t("Every task in these filters is done.")) : COMP.empty(t("Nothing matches these filters"), t("Change the filters above.")));
     const showSite = !hostHere();
     const view = TP.view(PAGES, rows);
-    return `<div class="tk-list"><div class="table-wrap"><table class="data tk-table" id="tk-table" data-tt-filter-off>
+    return `${doneNote}<div class="tk-list"><div class="table-wrap"><table class="data tk-table" id="tk-table" data-tt-filter-off>
       <thead><tr>${sortHead("title", "Title")}<th scope="col">${t("Status")}</th>${sortHead("priority", "Priority")}${showSite ? `<th scope="col">${t("Site")}</th>` : ""}<th scope="col">${t("Assigned to")}</th>${sortHead("due", "Due date")}<th scope="col">${t("Type")}</th></tr></thead>
       <tbody>${view.rows.map((task) => `<tr data-task-row="${task.id}">
         <td class="head-cell"><button type="button" class="kw tk-row-title" data-task-open="${task.id}" dir="auto" style="text-align:start">${esc(task.title)}</button>${sourceBit(task)}${findingTag(task)}${window.TaskAbout.linkLine(task, { inline: true, max: 3 })}</td>
@@ -888,6 +913,7 @@
         return;
       }
       if ((el = hit("[data-task-set]"))) { const [id, to] = el.dataset.taskSet.split(":"); setStatus(Number(id), to, el); return; }
+      if ((el = hit("[data-task-alldone]"))) { T.allDone = el.dataset.taskAlldone === "1"; TP.reset(PAGES); paint(); UI.$("[data-task-alldone]")?.focus({ preventScroll: true }); return; }
       if ((el = hit("[data-task-show]"))) { T.show = el.dataset.taskShow; paint(); UI.$(`[data-task-show="${T.show}"]`)?.focus({ preventScroll: true }); return; }
       if ((el = hit("#tk-retry"))) { T.ready = false; paint(); load().then(() => UI.render()); return; }
       if ((el = hit("[data-tk-sort]"))) {
@@ -1023,6 +1049,7 @@
       const out = {};
       if (T.view !== "months") out.view = T.view;
       if (T.view === "months" && T.show !== "open") out.show = T.show;
+      if (T.view !== "months" && T.allDone) out.done = "all";
       if (T.query.trim()) out.q = T.query.trim();
       if (T.view === "table" && T.status) out.status = T.status;
       if (T.kind) out.type = T.kind;
@@ -1037,6 +1064,7 @@
       const view = q.get("view");
       if (view === "table" || view === "kanban" || view === "months") T.view = view;
       T.show = SHOWS.some(([k]) => k === q.get("show")) ? q.get("show") : "open";
+      T.allDone = q.get("done") === "all";
       T.goal = (q.get("goal") || "").slice(0, 200);
       T.query = (q.get("q") || "").slice(0, 200);
       T.status = STATUSES.some(([k]) => k === q.get("status")) ? q.get("status") : "";
@@ -1063,7 +1091,7 @@
     "Who does what, where, by when": "Qui fait quoi, où, et pour quand",
     "To start": "À lancer", "Blocked": "Bloqué", "Goal": "Objectif", "All goals": "Tous les objectifs", "e.g. Strengthen site credibility": "ex. Renforcer la crédibilité du site",
     "By month": "Par mois", "All tasks": "Toutes", "This month": "Ce mois-ci", "Add": "Ajouter", "No type": "Sans type", "Goal (optional)": "Objectif (facultatif)",
-    "New task: what needs doing?": "Nouvelle tâche : que faut-il faire ?", "Task added": "Tâche ajoutée", "Task done": "Tâche terminée", "Undo": "Annuler",
+    "New task: what needs doing?": "Nouvelle tâche : que faut-il faire ?", "Task added": "Tâche ajoutée", "Task done": "Tâche terminée", "See all {n} done": "Voir les {n} terminées", "Show only the last 7 days": "N'afficher que les 7 derniers jours", "Nothing done in the last 7 days.": "Rien de terminé ces 7 derniers jours.", "done task hidden.": "tâche terminée masquée.", "done tasks hidden.": "tâches terminées masquées.", "Show done": "Afficher les terminées", "Hide done": "Masquer les terminées", "Done tasks are shown.": "Les tâches terminées sont affichées.", "Undo": "Annuler",
     "Nothing left to do here.": "Plus rien à faire ici.", "Every task in these filters is done.": "Toutes les tâches de ces filtres sont faites.",
     "No task is done yet.": "Aucune tâche n'est encore faite.", "Done tasks show here, under their month.": "Les tâches faites s'affichent ici, sous leur mois.",
     "SEO": "SEO", "Social": "Réseaux sociaux",
