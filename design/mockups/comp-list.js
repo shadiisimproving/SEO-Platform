@@ -200,6 +200,7 @@
   /* Back to the merged Competitors tab (comp-summary.js), where the rows are. */
   function backToList() {
     listTab.competitorId = null;
+    COMP.profileTabs?.leave?.();
     view.data = null;
     COMP.open("summary");
   }
@@ -934,7 +935,8 @@
     const p = view.data;
     const simpleHead = Boolean(UI.simple?.());
     const url = `https://${p.host}/`;
-    return `<section class="card cl-head" aria-labelledby="cl-profile-title">
+    return `<p class="cl-back"><button type="button" class="btn btn-ghost btn-small" data-cl-back>${icon("chevron-left")}${t("Back to competitors")}</button></p>
+      <section class="card cl-head" aria-labelledby="cl-profile-title">
         <div class="cl-head-row">
           <div class="cl-head-main">
             <h2 id="cl-profile-title" tabindex="-1">${UI.siteLogo(p.host, 24)} ${COMP.link(url, p.display || p.host, "cl-head-link")}${icon("external-link", "muted")}${simpleHead ? trackButton(p) : COMP.trackingSwitch?.(p) ?? ""}</h2>
@@ -1575,7 +1577,7 @@
     // Pressing a tab always shows its first screen. Focus stays on the tab, for keyboard use.
     document.addEventListener("click", (e) => {
       const tabButton = e.target.closest?.("[data-comp-tab]");
-      if (tabButton?.dataset.compTab === "list" || tabButton?.dataset.compTab === "summary") listTab.competitorId = null;
+      if (tabButton?.dataset.compTab === "list" || tabButton?.dataset.compTab === "summary") { listTab.competitorId = null; COMP.profileTabs?.leave?.(); }
       sendKeyToServer(e);
     }, true);
 

@@ -10,7 +10,7 @@
   /* Every table, Who is moving too since 2026-11-10, has pages (table-pages.js), as every long table in the app. */
   const FIRST_ROWS = { moves: 5 }, MORE_ROWS = 50;
   const PAGES = { rivals: "cs-rivals", keywords: "cs-keywords", links: "cs-links", flagged: "cs-flagged", moves: "cs-moves" };
-  const S = { site: null, token: 0, data: {}, errors: {}, limit: {}, list: null, order: null, orderSite: null, find: "", sort: null, kwRival: "", kwSort: null, lnSort: null, flaggedOpen: false, linkQ: "", mvKind: "all", mvRival: "", mvDays: 30, low: "moves" };
+  const S = { site: null, token: 0, data: {}, errors: {}, limit: {}, list: null, order: null, orderSite: null, find: "", sort: null, kwRival: "", kwSort: null, lnSort: null, flaggedOpen: false, linkQ: "", mvKind: "all", mvRival: "", mvDays: 30, low: "keywords" };
   /* The simpler screens (UI.simple(), plan section 2): the head says how the positions were checked, four number cards, the
      Competitors table with one ⋯ per row (Tracking and Remove), then one card with three tabs: They beat you on (first),
      Who is moving (all its filters) and Shared links. Each tab keeps its ids (#cs-keywords, #cs-moves, #cs-links), so a card
@@ -18,7 +18,9 @@
   const simple = () => Boolean(UI?.simple?.());
   /* 2026-11-16, the owner's benchmark screenshot: competitors as cards down the left, their changes on the right, so the
      changes come first and a card is the competitor filter. The number cards and the Competitors table went. */
-  const LOW = [["moves", "Changes"], ["keywords", "They beat you on"], ["links", "Shared links"]];
+  /* Changes left this screen on 2026-11-20 (the owner: "too much data, make it inside the competitor page"): it is the
+     first tab of each competitor's own page (comp-profile-tabs.js). */
+  const LOW = [["keywords", "They beat you on"], ["links", "Shared links"]];
   const FIND_FROM = 11; // more than 10 rows, as on every table: a search box shows from this many rows, or while a search is on
 
   const fill = (words, values) => t(words).replace(/\{(\w+)\}/g, (all, name) => (name in values ? values[name] : all));
@@ -418,8 +420,8 @@
 
   // ---- 1b. The cards (simpler screens, 2026-11-16) -------------------------------------------------
   /* One card per competitor, as in the owner's benchmark screenshot: logo, the name its home page gives itself, its address,
-     what it says about itself, then its last 30 days as two counts and its page count. The card is the filter for Changes
-     (and for They beat you on): press it to see only that competitor, press it again for everyone. "Open" opens its profile. */
+     what it says about itself, then its last 30 days as two counts and its page count. Pressing the card anywhere opens
+     the competitor's own page, which starts on its Changes. */
   /* A home page title is often "Brand - what we do": the part before the dash is the name, the rest stays in the description. */
   function cardName(r) {
     const title = String(r.about?.title || "").trim();
@@ -453,13 +455,12 @@
     const all = S.site === COMP.ALL, l = listRow(r.id), paused = l?.tracking === "off";
     const { name, rest } = cardName(r);
     const about = [rest, r.about?.description].filter(Boolean).join(". ");
-    const picked = S.mvRival === String(r.id);
     const site = r.sites[0];
     const edits = r.edited_30d ?? r.edits_30d ?? 0;
     const lead = trackedOn(r) && r.ranks_on !== null && r.ranks_on !== undefined ? cardLead(r) : "";
     const pages = pagesWords(r);
-    return `<li class="cs-card${picked ? " on" : ""}${paused ? " paused" : ""}" data-cs-card="${r.id}">
-      <button type="button" class="cs-card-pick" data-cs-pick="${r.id}" data-cs-pick-host="${esc(r.host)}" aria-pressed="${picked}" aria-label="${attr(fill(picked ? "Showing only {rival}: show all competitors" : "Show only {rival}", { rival: name }))}"></button>
+    return `<li class="cs-card${paused ? " paused" : ""}" data-cs-card="${r.id}">
+      ${site ? `<button type="button" class="cs-card-pick" data-cs-open="${r.id}" data-cs-site="${site.id}" aria-label="${attr(fill("Open {rival}", { rival: name }))}"></button>` : ""}
       <div class="cs-card-top">
         <span class="cs-card-logo">${UI.siteLogo(r.host, 32)}</span>
         <span class="cs-card-id"><span class="cs-card-name" dir="auto">${esc(name)}</span><span class="cs-card-host" dir="auto">${esc(r.display || r.host)}</span></span>
@@ -468,7 +469,7 @@
       ${about ? `<p class="cs-card-about" dir="auto">${esc(about)}</p>` : ""}
       <div class="cs-card-counts">${cardCounts(r, edits, paused)}${pages ? `<span class="cs-card-pages sec">${esc(pages)}</span>` : ""}</div>
       ${all ? `<span class="cs-sites">${r.sites.map((x) => siteChip(r, x)).join("")}</span>` : ""}
-      ${lead || site ? `<div class="cs-card-foot">${lead}${site ? `<button type="button" class="link-btn cs-card-open" data-cs-open="${r.id}" data-cs-site="${site.id}" aria-label="${attr(fill("Open {rival}", { rival: name }))}">${esc(t("Open"))}${UI.icon("arrow-right")}</button>` : ""}</div>` : ""}
+      ${lead || site ? `<div class="cs-card-foot">${lead}${site ? `<button type="button" class="link-btn cs-card-open" data-cs-open="${r.id}" data-cs-site="${site.id}" aria-hidden="true" tabindex="-1">${esc(t("Open"))}${UI.icon("arrow-right")}</button>` : ""}</div>` : ""}
     </li>`;
   }
   /* My own site first, the same counts, so they compare. Its edits open in the side panel (they aren't in Changes). */
@@ -494,19 +495,6 @@
     const mine = S.find ? [] : S.data.rivals?.mine || [];
     return `<ul class="cs-cards" aria-label="${attr("Competitors")}">${mine.map(youCard).join("")}${every.map(rivalCard).join("")}</ul>`;
   }
-  /* A card pressed: Changes and They beat you on show only that competitor. Pressed again, or Show all: everyone. */
-  function pickRival(id, host) {
-    const again = S.mvRival === String(id);
-    S.mvRival = again ? "" : String(id);
-    S.kwRival = again ? "" : host || "";
-    TP.reset(PAGES.moves); TP.reset(PAGES.keywords);
-    paintSection("moves"); paintSection("keywords");
-    const box = UI.$("#cs-rivals-list");
-    if (box) UI.setHTML(box, cardsList());
-    UI.$(`[data-cs-pick="${id}"]`)?.focus({ preventScroll: true });
-    if (window.matchMedia?.("(max-width: 900px)").matches) UI.$("#cs-lower")?.scrollIntoView({ block: "start", behavior: "smooth" });
-  }
-
   // ---- 2. Which keywords do they beat me on? --------------------------------------------------------
   /* Each competitor is compared with the sites it's linked to, which isn't always the site doing best overall. */
   function aheadChip(k, a) {
@@ -643,55 +631,7 @@
      as a competitor's own timeline plus a Competitor column (COMP.timelineTableRow, comp-list.js). table-tools.js gives it
      tick boxes (Add a note), Filter and sorting across every page, since the rows are drawn with page.rows.map. */
   const moveRow = (e, common) => COMP.timelineTableRow(e, { id: e.rival.id, rival: e.rival.host, display: e.rival.display, own: e.rival.sites[0]?.host }, common);
-  /* The cards screen's Changes (2026-11-16): one head line with the count, the kind of change and the period as buttons,
-     as in the owner's screenshot. The competitor is picked on its card, so there's no competitor list here, only a chip
-     that says who is shown and takes it off. Rows say whose page it is under the page, so there's no Competitor column. */
-  const BENCH_KINDS = [["all", "All"], ["new", "Added"], ["edits", "Edited|pages"], ["gone", "Removed|pages"], ["rank", "Rankings"], ["ai", "AI Overview"]];
-  const BENCH_DAYS = [[7, "7 days"], [30, "30 days"], [90, "3 months"], [365, "1 year"]];
-  function benchMovesHtml() {
-    const title = "Changes";
-    if (S.errors.moves) return failedCard("moves", title);
-    const d = S.data.moves;
-    if (!d) return `<div class="cs-mv-head"><h2 tabindex="-1">${esc(t(title))}</h2></div>${COMP.loading()}`;
-    const filters = COMP.TIMELINE_FILTERS || [["all", "All", null]];
-    const kindOf = (id) => filters.find((f) => f[0] === id);
-    const ofKind = (id, list) => { const f = kindOf(id); return f?.[2] ? list.filter((e) => f[2].includes(e.kind)) : list; };
-    const rivals = new Map(d.moves.map((e) => [String(e.rival.id), e.rival]));
-    const pickedRival = S.mvRival ? allRivals().find((r) => String(r.id) === S.mvRival) || rivals.get(S.mvRival) : null;
-    if (S.mvRival && !pickedRival) S.mvRival = "";
-    const forRival = (list) => (S.mvRival ? list.filter((e) => String(e.rival.id) === S.mvRival) : list);
-    const searched = forRival(d.moves.filter((e) => TP.matches(PAGES.moves, moveText(e))));
-    if (S.mvKind !== "all" && !kindOf(S.mvKind)) S.mvKind = "all";
-    const shown = ofKind(S.mvKind, searched);
-    const kinds = BENCH_KINDS.filter(([id]) => kindOf(id) && (id === "all" || id === S.mvKind || ofKind(id, searched).length));
-    const kindSeg = kinds.length < 2 ? "" : `<div class="seg cs-seg cs-kinds" role="group" aria-label="${attr("Filter the changes")}">${kinds.map(([id, label]) => `<button type="button" data-cs-mv-kind="${id}" aria-pressed="${S.mvKind === id}">${esc(t(label).split("|")[0])}<span class="cs-seg-n tabular">${UI.num(ofKind(id, searched).length)}</span></button>`).join("")}</div>`;
-    const days = d.days || S.mvDays;
-    const daySeg = `<div class="seg cs-seg cs-days" role="group" aria-label="${attr("Period")}">${BENCH_DAYS.map(([n, label]) => `<button type="button" data-cs-mv-days-btn="${n}" aria-pressed="${S.mvDays === n}">${esc(t(label))}</button>`).join("")}</div>`;
-    const whoChip = pickedRival ? `<button type="button" class="cs-mv-who" data-cs-pick="${esc(pickedRival.id)}" data-cs-pick-host="${esc(pickedRival.host)}" aria-label="${attr(fill("Showing only {rival}: show all competitors", { rival: pickedRival.display || pickedRival.host }))}">${UI.siteLogo(pickedRival.host, 16)}<span dir="auto">${esc(pickedRival.display || pickedRival.host)}</span>${UI.icon("x")}</button>` : "";
-    const total = S.mvRival || S.mvKind !== "all" || TP.state(PAGES.moves).q ? shown.length : d.total;
-    /* Two lines over the table, and nothing else: the title, who is shown and the period; then the kinds of change with,
-       at their end, the sites not watched and the table's Filter (table-tools.js puts it in the slot named after the table). */
-    const note = S.mvRival ? "" : movesNote(d); // the note names other sites: not while one is picked
-    const head = `<div class="cs-mv-head"><h2 tabindex="-1">${esc(t(title))}${total ? `<span class="n-badge">${UI.num(total)}</span>` : ""}</h2>${whoChip}${daySeg}</div>
-      <div class="cs-mv-bar">${kindSeg}<div class="cs-mv-end">${note}<div class="cs-mv-slot" data-tt-slot="cs-moves-list"></div></div></div>`;
-    const search = d.moves.length >= FIND_FROM || TP.state(PAGES.moves).q ? `<div class="cs-mv-find">${TP.search(PAGES.moves, t("Search pages, keywords, titles"))}</div>` : "";
-    if (!d.moves.length) return `${head}${COMP.empty(t(days === 365 ? "Nothing in the past year" : "Nothing in this period"), t("Changes and moves show here as found."))}`;
-    const page = TP.view(PAGES.moves, shown);
-    const capped = d.total > d.moves.length && !S.mvRival ? fill("{sent} of {total}, newest first", { sent: UI.num(d.moves.length), total: UI.num(d.total) }) : null;
-    const common = COMP.moveCommon?.(page.rows) || null;
-    const none = pickedRival && !searched.length && !TP.state(PAGES.moves).q
-      ? COMP.empty(fill("No change from {rival} in this period", { rival: pickedRival.display || pickedRival.host }), t("Try a longer period, or show all competitors."))
-      : noneFound(t("No change matches these filters."), PAGES.moves);
-    const list = shown.length
-      ? `<div class="table-wrap"><table class="data cl-tl-table cs-moves-table cs-bench-table" id="cs-moves-list">
-          <thead><tr><th scope="col">${t("Seen on")}</th><th scope="col">${esc(t("Change|kind").split("|")[0])}</th><th scope="col">${t("Page")}</th><th scope="col">${t("What changed")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
-          <tbody>${page.rows.map((e) => COMP.timelineTableRow(e, { id: e.rival.id, rival: e.rival.host, display: e.rival.display, own: e.rival.sites[0]?.host, inline: true }, common)).join("")}</tbody>
-        </table></div>${TP.footer(PAGES.moves, page, { noun: t("changes"), capped })}`
-      : none;
-    return `${head}${search}<div class="cs-pages">${list}</div>${shown.length ? COMP.moveCommonLine?.(common) || "" : ""}`; // what every move shares is a footnote, as under They beat you on
-  }
   function movesHtml() {
-    if (simple()) return benchMovesHtml();
     const title = "Who is moving";
     if (S.errors.moves) return failedCard("moves", title);
     const d = S.data.moves;
@@ -873,7 +813,8 @@
         Object.values(PAGES).forEach((key) => TP.reset(key));
       }
       S.errors = {};
-      const asked = SECTIONS.map((part) => fetchSection(part, S.token, S.site));
+      // Simpler screens no longer show Changes here, so its (large) answer isn't asked for.
+      const asked = SECTIONS.map((part) => (part === "moves" && simple() ? null : fetchSection(part, S.token, S.site)));
       const list = fetchList(S.token, S.site);
       return again ? Promise.all([asked[SECTIONS.indexOf("rivals")], list]).then(() => {}) : undefined;
     },
@@ -948,16 +889,6 @@
       if (UI.state.route !== "competitors" || COMP.currentTab() !== tab) return;
       const hit = (selector) => e.target.closest?.(selector);
       let el;
-      if ((el = hit("[data-cs-pick]"))) { pickRival(el.dataset.csPick, el.dataset.csPickHost); return; }
-      if ((el = hit("[data-cs-mv-days-btn]"))) {
-        const n = Number(el.dataset.csMvDaysBtn) || 30;
-        if (n === S.mvDays && S.data.moves) return;
-        S.mvDays = n; TP.reset(PAGES.moves);
-        paintSection("moves"); // the old rows stay, with the new period pressed, until its answer is in: no blank flash
-        UI.$("#cs-moves")?.setAttribute("aria-busy", "true");
-        fetchSection("moves", S.token, S.site).then(() => { UI.$("#cs-moves")?.removeAttribute("aria-busy"); UI.$(`[data-cs-mv-days-btn="${n}"]`)?.focus({ preventScroll: true }); });
-        return;
-      }
       if ((el = hit("[data-cs-mv-kind]"))) {
         S.mvKind = el.dataset.csMvKind; TP.reset(PAGES.moves); paintSection("moves");
         UI.$(`[data-cs-mv-kind="${S.mvKind}"]`)?.focus({ preventScroll: true });

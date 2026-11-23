@@ -2,9 +2,9 @@
 // node tests/ui/flow_competitor_cards.cjs <demo address>
 // Needs the demo world: DB_NAME_TEST=test_x_test .venv/bin/python tests/ui/app_server.py --port 8452
 // Checks: cards down the left (your site first, then each competitor with its home page's name and words, its added and
-// edited counts and its pages), Changes first on the right with no Competitor column, a card as the competitor filter (and
-// its chip to take it off), the kind and period buttons, the card's ⋯ and Open, They beat you on following the card,
-// See your edits, the keyboard, and a phone. Made-up sites only.
+// edited counts and its pages), They beat you on first on the right and no Changes there (it lives in each competitor's
+// page since 2026-11-20: flow_competitor_changes_in_profile.cjs), the card's ⋯, a card opening its competitor by click,
+// keyboard and Open, Back to competitors, See your edits, and a phone. Made-up sites only.
 const { open } = require("./pw.cjs");
 const fs = require("fs");
 const path = require("path");
@@ -21,7 +21,6 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   page.on("request", (r) => { if (r.url().includes("/api/collective/moves")) asked.push(r.url()); });
   await page.goto(`${BASE}?simple=1#competitors/summary?site=site-one.example`);
   await page.waitForSelector(".cs-cards .cs-card[data-cs-card]", { timeout: 20000 });
-  await page.waitForSelector("#cs-moves-list tbody tr", { timeout: 20000 });
   await settle(1200);
   await page.screenshot({ path: OUT + "1-cards.png" });
 
@@ -40,62 +39,22 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   check("a site that blocks bots says so, and shows no 0s", blocked && /Blocked/.test(blocked.counts) && !/0 added/.test(blocked.counts), blocked?.counts);
   check("every card has a logo", cards.every((c) => c.logo), cards.filter((c) => !c.logo).map((c) => c.host).join(", "));
 
-  // ---- Changes first, the table the screenshot's way -----------------------------------------------------------------
+  // ---- the right side: They beat you on first; Changes moved into each competitor's page (2026-11-20) ------------------
   const first = await page.evaluate(() => ({
     tab: document.querySelector("#cs-low-tabs [aria-selected=true]")?.dataset.csLow,
-    heads: [...document.querySelectorAll("#cs-moves-list thead th")].map((th) => th.textContent.trim()).filter(Boolean),
-    ...(() => { const row = document.querySelector("#cs-moves-list .cl-tl-link")?.closest("tr"); return { link: row?.querySelector(".cl-tl-link")?.textContent.trim(), owner: row?.querySelector(".cl-tl-owner")?.textContent.replace(/\s+/g, " ").trim() }; })(),
-    rows: document.querySelectorAll("#cs-moves-list tbody tr").length,
+    tabs: [...document.querySelectorAll("#cs-low-tabs [data-cs-low]")].map((b) => b.dataset.csLow).join(),
+    moves: Boolean(document.querySelector("#cs-moves, #cs-moves-list")),
     tiles: Boolean(document.querySelector("#cs-tiles")), table: Boolean(document.querySelector("#cs-rivals-table")),
   }));
-  check("Changes is the tab open first", first.tab === "moves", first.tab);
-  check("the table has no Competitor column", !first.heads.includes("Competitor") && first.heads.includes("Page"), first.heads.join(" | "));
-  check("a page row shows its title as the link, with the site and path under it", Boolean(first.link) && /\.example/.test(first.owner || "") && /\//.test(first.owner || ""), `${first.link} / ${first.owner}`);
+  check("They beat you on is the tab open first", first.tab === "keywords" && first.tabs === "keywords,links", `${first.tab} / ${first.tabs}`);
+  check("Changes isn't on this screen, and isn't asked for", !first.moves && asked.length === 0, asked.length);
   check("the number cards and the old Competitors table are gone", !first.tiles && !first.table);
-  const headTop = await page.evaluate(() => document.querySelector("#cs-moves .cs-mv-head")?.getBoundingClientRect().top ?? 9999);
-  check("the changes start at the top of the screen, not under other cards", headTop < 300, headTop);
 
-  // ---- a card is the filter ------------------------------------------------------------------------------------------
-  const allRows = first.rows;
-  await page.click(`[data-cs-pick="${one.id}"]`); await settle();
-  const picked = await page.evaluate((id) => ({
-    pressed: document.querySelector(`[data-cs-pick="${id}"]`)?.getAttribute("aria-pressed"), on: document.querySelector(`[data-cs-card="${id}"]`)?.classList.contains("on"),
-    chip: document.querySelector(".cs-mv-who")?.textContent.trim(), owners: [...document.querySelectorAll("#cs-moves-list .cl-tl-owner")].map((o) => o.textContent),
-    rows: document.querySelectorAll("#cs-moves-list tbody tr").length, focus: document.activeElement?.dataset?.csPick,
-  }), one.id);
-  check("pressing a card shows only that competitor's changes", picked.pressed === "true" && picked.on && picked.owners.length > 0 && picked.owners.every((o) => /rival-one/.test(o)), JSON.stringify({ ...picked, owners: picked.owners.length }));
-  check("a chip says who is shown, and the focus stays on the card", /rival-one/.test(picked.chip || "") && picked.focus === String(one.id), `${picked.chip} / ${picked.focus}`);
-  await page.screenshot({ path: OUT + "2-one-competitor.png" });
-  await page.click(".cs-mv-who"); await settle();
-  const back = await page.evaluate(() => ({ rows: document.querySelectorAll("#cs-moves-list tbody tr").length, chip: Boolean(document.querySelector(".cs-mv-who")), on: document.querySelectorAll(".cs-card.on").length }));
-  check("the chip's × shows everyone again", back.rows === allRows && !back.chip && back.on === 0, JSON.stringify(back));
-
-  // ---- kind and period buttons ---------------------------------------------------------------------------------------
-  await page.click('[data-cs-mv-kind="new"]'); await settle();
-  const added = await page.evaluate(() => [...document.querySelectorAll("#cs-moves-list tbody tr .cl-tl-kind")].map((k) => k.textContent.trim()));
-  check("Added shows only added pages", added.length > 0 && added.every((w) => /Added/.test(w)), added.join(", "));
-  await page.click('[data-cs-mv-kind="all"]'); await settle();
-  const before = asked.length;
-  await page.click('[data-cs-mv-days-btn="7"]'); await settle(1500);
-  const week = await page.evaluate(() => ({ pressed: document.querySelector('[data-cs-mv-days-btn="7"]')?.getAttribute("aria-pressed"), busy: document.querySelector("#cs-moves")?.getAttribute("aria-busy") }));
-  check("7 days asks for 7 days and stays pressed", asked.slice(before).some((u) => /days=7/.test(u)) && week.pressed === "true" && !week.busy, JSON.stringify({ ...week, asked: asked.slice(before) }));
-  await page.click('[data-cs-mv-days-btn="30"]'); await settle(1500);
-
-  // ---- ⋯ and Open on a card don't filter ---------------------------------------------------------------------------------
+  // ---- the card's ⋯ doesn't open the competitor ------------------------------------------------------------------------
   await page.click(`[data-cs-card="${one.id}"] [data-cs-menu]`); await settle(500);
-  const menu = await page.evaluate(() => ({ text: (document.querySelector(".cs-menu")?.textContent || "").replace(/\s+/g, " "), on: document.querySelectorAll(".cs-card.on").length }));
-  check("the card's ⋯ opens Tracking and Remove without picking the card", /Remove/.test(menu.text) && menu.on === 0, JSON.stringify(menu));
+  const menu = await page.evaluate(() => ({ text: (document.querySelector(".cs-menu")?.textContent || "").replace(/\s+/g, " "), profile: Boolean(document.querySelector("#cl-profile-title")) }));
+  check("the card's ⋯ opens Tracking and Remove without opening the competitor", /Remove/.test(menu.text) && !menu.profile, JSON.stringify(menu));
   await page.keyboard.press("Escape"); await settle(400);
-
-  // ---- They beat you on follows the card -----------------------------------------------------------------------------
-  await page.click(`[data-cs-pick="${one.id}"]`); await settle();
-  await page.click('[data-cs-low="keywords"]'); await settle();
-  const kw = await page.evaluate(() => ({ shown: !document.querySelector("#cs-keywords")?.hidden, rival: document.querySelector("#cs-kw-rival")?.value }));
-  check("They beat you on shows the picked competitor too", kw.shown && kw.rival === "rival-one.example", JSON.stringify(kw));
-  await page.screenshot({ path: OUT + "3-they-beat-you.png" });
-  await page.click('[data-cs-low="moves"]'); await settle();
-  await page.click(`[data-cs-pick="${one.id}"]`); await settle(); // off again
-
   // ---- See your edits, and Open ---------------------------------------------------------------------------------------
   const see = await page.$(".cs-card-you [data-cs-you-edits]");
   check("your card has See your edits", Boolean(see));
@@ -106,17 +65,16 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
     await page.keyboard.press("Escape"); await settle(400);
   }
 
-  // ---- the keyboard -------------------------------------------------------------------------------------------------
-  await page.focus(`[data-cs-pick="${one.id}"]`);
-  await page.keyboard.press("Enter"); await settle();
-  const keyed = await page.evaluate((id) => document.querySelector(`[data-cs-pick="${id}"]`)?.getAttribute("aria-pressed"), one.id);
-  check("a card is picked from the keyboard", keyed === "true", keyed);
-  await page.keyboard.press("Enter"); await settle();
-  const ring = await page.evaluate((id) => getComputedStyle(document.querySelector(`[data-cs-pick="${id}"]`)).outlineStyle, one.id);
+  // ---- the keyboard, and Open ---------------------------------------------------------------------------------------
+  await page.focus(`[data-cs-card="${one.id}"] .cs-card-pick`);
+  const ring = await page.evaluate((id) => getComputedStyle(document.querySelector(`[data-cs-card="${id}"] .cs-card-pick`)).outlineStyle, one.id);
   check("a focused card shows a focus ring", ring !== "none", ring);
-
-  await page.click(`[data-cs-card="${one.id}"] [data-cs-open]`); await settle(1500);
-  check("Open on a card opens that competitor", /competitors\/list/.test(page.url()) || Boolean(await page.$(".cl-profile, [data-cl-profile], .cp-head")), page.url());
+  await page.keyboard.press("Enter"); await settle(1500);
+  check("a card opens its competitor from the keyboard", Boolean(await page.$("#cl-profile-title")), page.url());
+  await page.click("[data-cl-back]"); await settle(1200);
+  check("Back to competitors returns to the cards", !(await page.$("#cl-profile-title")) && Boolean(await page.$(".cs-cards .cs-card[data-cs-card]")));
+  await page.click(`[data-cs-card="${one.id}"] .cs-card-open`); await settle(1500);
+  check("Open on a card opens that competitor", Boolean(await page.$("#cl-profile-title")), page.url());
 
   // ---- a phone --------------------------------------------------------------------------------------------------------
   await page.setViewportSize({ width: 390, height: 844 });
@@ -124,10 +82,9 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await page.waitForSelector(".cs-cards .cs-card[data-cs-card]", { timeout: 20000 }); await settle(1500);
   const phone = await page.evaluate(() => {
     const strip = document.querySelector(".cs-cards");
-    return { pageWide: document.documentElement.scrollWidth > window.innerWidth + 1, strip: strip.scrollWidth > strip.clientWidth, segsInside: [...document.querySelectorAll(".cs-seg")].every((s) => s.getBoundingClientRect().right <= window.innerWidth + 1) };
+    return { pageWide: document.documentElement.scrollWidth > window.innerWidth + 1, strip: strip.scrollWidth > strip.clientWidth };
   });
   check("on a phone the page doesn't scroll sideways, the cards do", !phone.pageWide && phone.strip, JSON.stringify(phone));
-  check("on a phone the filter buttons fit the screen", phone.segsInside);
   await page.screenshot({ path: OUT + "4-phone.png", fullPage: true });
 
   const real = problems.filter((p) => !/status of 404/.test(p)); // /api/auth/me answers 404 without --login
