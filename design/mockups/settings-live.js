@@ -133,6 +133,13 @@
   // ---- the old Clarity archive ---------------------------------------------------------------------
   const longDay = (day) => new Intl.DateTimeFormat(UI.locale(), { day: "numeric", month: "short", year: "numeric" }).format(new Date(`${day}T00:00:00`));
   const daysWord = (n) => `${num(n)} ${t(n === 1 ? "day" : "days")}`;
+  /* Cloudflare's bucket (">200000") said as the competitor page says it: "Outside the top 200,000" (test walk 2026-11-23). */
+  function popularityWords(v) {
+    const m = String(v).match(/\d[\d,]*/);
+    if (!m) return t(String(v));
+    const n = num(Number(m[0].replace(/,/g, "")));
+    return t(String(v).trim().startsWith(">") ? "Outside the top {n}" : "Top {n}").replace("{n}", n);
+  }
   function archiveRows(answer) {
     const span = (s) => (s.first_day ? ` · ${esc(longDay(s.first_day))} – ${esc(longDay(s.last_day))}` : "");
     const rows = answer.sites.map((s) => `<li><div class="what"><div class="t" dir="ltr">${esc(s.host)}</div><div class="s">${daysWord(s.added)} ${t(answer.preview ? "to add" : "added")}${s.kept ? `, ${daysWord(s.kept)} ${t("already here")}` : ""}${span(s)}</div></div></li>`).join("");
@@ -588,7 +595,7 @@
         <button type="button" class="btn btn-small btn-main" data-lv-moz ${d.moz_connected && waiting && d.rows_left ? "" : "disabled"}>${t("Get Moz data")}${waiting ? ` (${num(waiting)})` : ""}</button>
         <button type="button" class="btn btn-small" data-lv-radar ${d.radar_connected && d.domains.length ? "" : "disabled"}>${t("Get popularity")}</button><span class="error" data-lv-rule-error hidden></span></form>
       ${finder}${found.length ? `<div class="table-wrap" style="box-shadow:none"><table class="data"><thead><tr><th>${t("Domain")}</th><th class="c">${t("Authority")}</th><th class="c">${t("Moz Domain Authority")}</th><th class="c">${t("Linking domains")}</th><th class="c">${t("Links")}</th><th class="c">${t("Popularity")}</th><th></th></tr></thead><tbody>
-        ${view.rows.map((x) => `<tr style="cursor:default"><td data-label="${t("Domain")}" class="mono" dir="auto">${esc(x.domain)}</td><td class="c" data-label="${t("Authority")}">${x.authority === null ? `<span class="muted">—</span>` : esc(String(x.authority))}</td><td class="c" data-label="${t("Moz Domain Authority")}">${blank(x.domain_authority)}</td><td class="c" data-label="${t("Linking domains")}">${blank(x.linking_domains)}</td><td class="c" data-label="${t("Links")}">${blank(x.external_links)}</td><td class="c" data-label="${t("Popularity")}" dir="auto">${x.popularity ? esc(t(x.popularity)) : `<span class="muted">—</span>`}</td><td class="r" data-label=""><button class="btn btn-small btn-ghost" data-lv-domain-off="${esc(x.domain)}" aria-label="${t("Remove")}: ${esc(x.domain)}">${t("Remove")}</button></td></tr>`).join("")}
+        ${view.rows.map((x) => `<tr style="cursor:default"><td data-label="${t("Domain")}" class="mono" dir="auto">${esc(x.domain)}</td><td class="c" data-label="${t("Authority")}">${x.authority === null ? `<span class="muted">—</span>` : esc(String(x.authority))}</td><td class="c" data-label="${t("Moz Domain Authority")}">${blank(x.domain_authority)}</td><td class="c" data-label="${t("Linking domains")}">${blank(x.linking_domains)}</td><td class="c" data-label="${t("Links")}">${blank(x.external_links)}</td><td class="c" data-label="${t("Popularity")}" dir="auto">${x.popularity ? esc(popularityWords(x.popularity)) : `<span class="muted">—</span>`}</td><td class="r" data-label=""><button class="btn btn-small btn-ghost" data-lv-domain-off="${esc(x.domain)}" aria-label="${t("Remove")}: ${esc(x.domain)}">${t("Remove")}</button></td></tr>`).join("")}
       </tbody></table></div>${TP.footer(DOMAIN_PAGES, view, { noun: t("domains") })}` : `<div class="empty" style="padding:28px"><p>${t(d.domains.length ? "No domain matches." : "No domains yet. Add the ones worth a closer look.")}</p></div>`}</section>
       ${indexNowCard()}`;
   }

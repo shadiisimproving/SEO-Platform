@@ -39,7 +39,7 @@ const text = (page, sel) => page.locator(sel).first().innerText().catch(() => ""
   let run = await start({ height: 1700 });
   let { page } = run;
   const lead = await text(page, ".ai-answer .today-lead");
-  check(/AI assistants sent \d+ visits and \d+ leads/.test(lead) && lead.includes("chatgpt.com"), `answer first: ${lead}`);
+  check(/AI assistants sent \d+ visits( \([^)]*\))? and \d+ leads/.test(lead) && lead.includes("chatgpt.com"), `answer first: ${lead}`);
   check((await page.locator(".ai-tiles .tile").count()) === 4, "four numbers");
   check((await text(page, '[data-ai-half="ga4"] h3')).includes("Google Analytics") && (await text(page, '[data-ai-half="clarity"] h3')).includes("Clarity"), "the weekly card has one part per source");
   check(await page.locator('[data-ai-half="ga4"] [data-lv-chart="ai-weeks"]').count() === 1 && await page.locator('[data-ai-half="clarity"] [data-lv-chart="ai-weeks-clarity"]').count() === 1, "each part draws its own chart");

@@ -206,15 +206,19 @@
     return `${head}<div class="content page-enter">${view(T.data, setup)}</div>`; // the setup line sits under the answer, not above it
   }
 
-  /* The side menu's Today badge on another screen: the to-do list only, for every site (the menu filters by the site
-     picked), asked once per page load. Today's own load replaces it with its full list. */
-  const B = { asked: false };
+  /* The side menu's Today badge on another screen: the to-do list only, asked for the site picked (or every site), once per
+     page load and again when another site is picked. The list for every site keeps only the biggest findings of all the
+     sites, so filtering it down to one site counted short (6 on other screens against 9 on Today, test walk 2026-11-23).
+     Today's own load replaces it with its full list. */
+  const B = { asked: false, for: null };
   async function badge() {
-    if (B.asked || !window.SITES.length) return; // once per load, and only when there's a site to ask about
-    B.asked = true;
+    if (!window.SITES.length) return; // only when there's a site to ask about
+    const siteId = UI.siteIdPicked?.() || null, key = String(siteId || "all");
+    if (B.for === key) return;
+    B.asked = true; B.for = key;
     try {
-      const { todo } = await window.COMP.api("GET", "today/attention");
-      if (T.data) return;
+      const { todo } = await window.COMP.api("GET", `today/attention${siteId ? `?site_id=${siteId}` : ""}`);
+      if (UI.state.route === "today" || B.for !== key) return; // Today's own list is fuller; or another site was picked meanwhile
       window.ATTENTION = todo.map((a) => ({ id: a.id, sev: a.severity, title: say(a, "title"), detail: a.detail, host: a.host, act: "Open", key: a.kind }));
       const host = UI.siteHostPicked?.() || null, item = UI.$('.nav-item[data-go="today"]');
       const urgent = window.ATTENTION.filter((a) => !UI.state.seen?.has(a.id) && (a.sev === "crit" || a.sev === "warn") && (!host || !a.host || a.host === host)).length;
@@ -290,7 +294,9 @@
       UI.range?.on?.(() => { T.failed = null; });
       // Today loads its own data when it's drawn. Any other screen only needs the side menu's Today badge: one light call.
       setTimeout(() => { if (UI.state.route !== "today" && !T.data && !T.busy) badge(); }, 0);
-      window.addEventListener("seocc:site-added", () => { if (UI.state.route !== "today" && !T.data && !B.asked) badge(); });
+      window.addEventListener("seocc:site-added", () => { if (UI.state.route !== "today") { B.for = null; badge(); } });
+      // Another site picked on another screen: that site's own count (the side menu calls this on each draw).
+      UI.todayBadge = () => { if (UI.state.route !== "today") badge(); };
     },
     page,
     // The side menu is drawn before the page, so a to-do list taken in during the draw redraws the menu for its badge.

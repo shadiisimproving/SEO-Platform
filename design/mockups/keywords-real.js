@@ -1004,7 +1004,7 @@
       all.forEach((r) => { if (!view(r).move) return; compared += 1; change += top10Step(view(r)); });
       return { change, compared };
     })();
-    const chips = [["all", "All"], ["top3", "Top 3"], ["top10", "Top 10"], ["up", "Up"], ["down", "Down"], ["none", "Not ranked"], ["cited", "Cited by AI"], ["two", "Two pages"], ...(K.runFilter?.size ? [["run", "This Refresh"]] : [])];
+    const chips = [["all", "All"], ["top3", "Top 3"], ["top10", "Top 10"], ["up", "Up"], ["down", "Down"], ["none", "Not ranked"], ...(googleOnly(state.engine) || state.engine === "all" ? [["cited", "Cited by AI"]] : []), ["two", "Two pages"], ...(K.runFilter?.size ? [["run", "This Refresh"]] : [])];
     counts.run = found.filter((r) => K.runFilter?.has(r.id)).length;
     const shown = filtered();
     if (simple()) return simplePage({ title, all, e, good, counts, chips, shown, moved, addButton });
@@ -1033,7 +1033,7 @@
           ${UI.tile(`${t("Top 10")} <span class="muted">· ${t(state.engine === "all" ? "Google only" : "our checks")}</span>`, num(all.filter((r) => good(r) && good(r) <= 10).length), moved.compared ? `${moved.change ? UI.delta(moved.change, { noWord: false }) : ""}<span class="ab">${num(moved.compared)} ${t("compared")}</span>` : "", { ic: "target" })}
           ${googleOnly(state.engine) || state.engine === "all" ? UI.tile(`${t("Cited by AI")}${state.engine === "all" ? ` <span class="muted kw-google-only">· ${t("Google only")}</span>` : ""}`, num(all.filter((r) => r.ai.state === "cited").length), `<span class="ab">${t("of")} ${num(all.length)}</span>`, { ic: "sparkles" }) : ""}
         </section>
-        ${window.RankTrends ? window.RankTrends.card("keywords") : ""}
+        ${window.RankTrends && (googleOnly(state.engine) || state.engine === "all") ? window.RankTrends.card("keywords") : ""}${/* the card ranks Google only: on Bing it listed Google #1s beside "Ranked 0" (test walk 2026-11-23) */ ""}
         <div class="tabs-row">
           <div class="tabs" role="tablist" aria-label="${t("Engines")}">
             ${[...ENGINES, ["all", t("All engines")]].map(([id, label]) => `<button class="tab" role="tab" data-engine="${id}" aria-selected="${state.engine === id}">${id === "all" ? "" : logo(id, 16)}${label}</button>`).join("")}
@@ -1109,7 +1109,7 @@
           ${UI.card({ id: "kw-top10", label: `${t("Top 10")} <span class="muted">· ${t(state.engine === "all" ? "Google only" : "our checks")}</span>`, def: "Top 10", value: top10, change: moved.compared ? { value: moved.change, unit: "" } : null, sub: moved.compared ? `${num(moved.compared)} ${t("compared")}` : "", cls: "tile" })}
           ${googleOnly(state.engine) || state.engine === "all" ? UI.card({ id: "kw-cited", label: `${t("Cited by AI")}${state.engine === "all" ? ` <span class="muted kw-google-only">· ${t("Google only")}</span>` : ""}`, value: cited, sub: `${t("of")} ${num(all.length)}`, cls: "tile" }) : ""}
         </section>`}
-        ${window.RankTrends ? window.RankTrends.card("keywords") : ""}
+        ${window.RankTrends && (googleOnly(state.engine) || state.engine === "all") ? window.RankTrends.card("keywords") : ""}${/* the card ranks Google only: on Bing it listed Google #1s beside "Ranked 0" (test walk 2026-11-23) */ ""}
         ${body}
       </div>`;
   }

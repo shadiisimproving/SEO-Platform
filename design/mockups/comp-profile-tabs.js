@@ -388,9 +388,10 @@
     const showMine = mineRead(ins);
     S.showMine = showMine;
     const months = r?.months || [];
-    // Different pages edited, from the server: a page edited in two months is still one page (SEO review #11).
-    const total = r?.edited_pages?.theirs ?? months.reduce((n, m) => n + (m.theirs || 0), 0);
-    const myTotal = showMine ? r?.edited_pages?.mine ?? months.reduce((n, m) => n + (m.mine || 0), 0) : null;
+    // "Added, 12 months": the new pages the chart below counts, month by month. It showed the pages *edited* (edited_pages,
+    // which belongs to "How often they edit"), so it read 0 beside a chart of dozens of new pages (test walk 2026-11-23).
+    const total = months.reduce((n, m) => n + (m.theirs || 0), 0);
+    const myTotal = showMine ? months.reduce((n, m) => n + (m.mine || 0), 0) : null;
     const myHost = COMP.site?.()?.host || p.site?.host;
     const lead = r && months.length ? sideTable(t("New and removed pages"), [t("Added in 30 days"), t("Removed, 30 days"), t("Added, 12 months"), t("Updated, 12 months")], [
       ...(showMine ? [{ who: "you", host: myHost, cells: [figure(r.my_new_30d), figure(r.my_removed_30d), figure(myTotal), share(r.updated_12m?.mine)] }] : []),

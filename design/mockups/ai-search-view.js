@@ -130,7 +130,7 @@
     else {
       const top = d.sources[0]?.source;
       const change = d.change === null || d.change === undefined ? "" : ` (${d.change > 0 ? "+" : d.change < 0 ? "−" : "±"}${UI.dec(Math.abs(Math.round(d.change)))}${unit()})`;
-      const said = d.key_events_set_up ? tf("AI assistants sent {v} and {l}{c}, most from", { v: plural(d.sessions, "{n} visit", "{n} visits"), l: window.GA4W?.keyEvents(d) ? plural(d.leads, "{n} key event", "{n} key events") : plural(d.leads, "{n} lead", "{n} leads"), c: change }) : tf("AI assistants sent {v}{c}, most from", { v: plural(d.sessions, "{n} visit", "{n} visits"), c: change });
+      const said = d.key_events_set_up ? tf("AI assistants sent {v}{c} and {l}, most from", { v: plural(d.sessions, "{n} visit", "{n} visits"), l: window.GA4W?.keyEvents(d) ? plural(d.leads, "{n} key event", "{n} key events") : plural(d.leads, "{n} lead", "{n} leads"), c: change }) : tf("AI assistants sent {v}{c}, most from", { v: plural(d.sessions, "{n} visit", "{n} visits"), c: change });
       lines.push(`${esc(said)} ${top ? mark(top) : ""}.`);
     }
     const c = d.copilot;
@@ -487,7 +487,9 @@
       { key: "path", label: "Page", get: LVx().pageName, html: (r) => `${pageCell(r)}${A.type || !r.type ? "" : `<div class="lv-cat" dir="auto">${esc(typeName(r.type))}</div>`}` },
       { key: "sessions", label: "AI visits", num: true },
       { key: "google", label: "Google clicks", num: true, html: googleCell },
-      ...(d.key_events_set_up ? [{ key: "leads", label: window.GA4W.word("Leads", d), num: true }, { key: "action", label: "Action", get: () => null, html: action }] : []),
+      ...(d.key_events_set_up ? [{ key: "leads", label: window.GA4W.word("Leads", d), num: true }] : []),
+      // The Action column only when a row has one: an empty column was a puzzle (test walk 2026-11-23).
+      ...(d.key_events_set_up && list.some((r) => !r.leads && r.sessions >= min) ? [{ key: "action", label: "Action", get: () => null, html: action }] : []),
     ];
     const google = d.google_clicks_known ? lead(esc(t("Google clicks: Search Console, same days, for the same page."))) : lead(`${esc(t("Connect Search Console to see each page's Google clicks beside its AI visits."))} <button class="link-btn" data-lv-connect="google">${t("Connect")}</button>`, { keep: true });
     const said = !all.length ? "" : d.key_events_set_up ? lead(esc(tf("{n} of {m} pages: AI visits, no lead. Task button from {min} visits.", { n: num(none), m: num(all.length), min: num(min) }))) : lead(esc(t("Leads aren't tracked: mark your forms as key events in GA4.")), { keep: true });
@@ -529,7 +531,7 @@
       { key: "query", label: "Question", html: (r) => KeywordLink.html(r.query, { host: r.host }) },
       { key: "share", label: "Share", num: true, html: (r) => `<span class="${r.share !== null && r.share < below ? "warn" : ""}">${share(r.share)}</span>` },
       { key: "best", label: "Best page", get: (r) => r.page?.path || null, html: best },
-      { key: "action", label: "Action", get: () => null, html: action },
+      ...(rows.some((r) => r.share !== null && r.share < below) ? [{ key: "action", label: "Action", get: () => null, html: action }] : []), // only when a row has one
     ];
     const low = rows.filter((r) => r.share !== null && r.share < below).length;
     return lead(`${esc(tf("{n} of {m} questions give you under {s} of Copilot's answers.", { n: num(low), m: num(rows.length), s: share(below) }))}${UI.tip("Best page: the page Google already shows for that search.")}`) + LVx().dataTable("ai-questions", columns, rows, { pageSize: 10 });
@@ -862,7 +864,7 @@
     "Visits: Google Analytics, from Copilot, and from Bing search apart, {a} – {b}.": "Visites : Google Analytics, depuis Copilot, et à part depuis la recherche Bing, {a} – {b}.",
     "Connect Google Analytics to see AI visits and leads.": "Connectez Google Analytics pour voir les visites et leads IA.",
     "No AI visits in this period.": "Aucune visite IA sur cette période.",
-    "AI assistants sent {v} and {l}{c}, most from": "Les assistants IA ont envoyé {v} et {l}{c}, surtout depuis",
+    "AI assistants sent {v}{c} and {l}, most from": "Les assistants IA ont envoyé {v}{c} et {l}, surtout depuis",
     "AI assistants sent {v}{c}, most from": "Les assistants IA ont envoyé {v}{c}, surtout depuis",
     "{n} visit": "{n} visite", "{n} visits": "{n} visites", "{n} lead": "{n} lead", "{n} leads": "{n} leads", "{n} key event": "{n} événement clé", "{n} key events": "{n} événements clés", "{n} time": "{n} fois", "{n} times": "{n} fois",
     "Copilot cited you {n}, but others win most of its answers ({s} share).": "Copilot vous a cité {n}, mais d'autres remportent la plupart de ses réponses ({s} de part).",
