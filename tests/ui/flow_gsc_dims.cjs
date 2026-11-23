@@ -1,7 +1,8 @@
 // Countries and devices (expert review 2026-11-17, search-console 3.1): until their own data reaches back, the Overview
 // tables make no comparison and say where they start; once the backfill is done they add up to the site's total.
 //   DB_NAME_TEST=test_fix_ui_dims_test .venv/bin/python tests/ui/app_server.py --port 8298 --empty
-//   (seed a site, then run the backfill: see reports/seo-expert-2026-11-17/fixes/gsc-dims.md)
+//   DB_NAME_TEST=test_fix_ui_dims_test .venv/bin/python tests/ui/seed_gsc_dims.py before   (then STAGE=before below)
+//   DB_NAME_TEST=test_fix_ui_dims_test .venv/bin/python tests/ui/seed_gsc_dims.py after    (then STAGE=after below)
 //   STAGE=before|after OUT=<folder> BASE=http://127.0.0.1:8298 SEOCC_REAL_DEFAULT=1 node tests/ui/flow_gsc_dims.cjs
 const fs = require("fs");
 const { open } = require("./pw.cjs");

@@ -1,6 +1,8 @@
 // Social → Video transcripts, driven by hand: connect Groq, paste links, watch a batch finish, open it, copy, download,
 // upload a file, list a TikTok account, and a phone-width look. Needs a server whose yt-dlp and Groq are faked, so no
-// real video site is reached. Usage: node tests/ui/flow_video_transcripts.cjs http://127.0.0.1:8233/ <shots dir>
+// real video site is reached:
+//   DB_NAME_TEST=test_x_test .venv/bin/python tests/ui/transcripts_server.py --port 8233 --slow 0
+// Usage: node tests/ui/flow_video_transcripts.cjs http://127.0.0.1:8233/ <shots dir>
 const { open } = require("./pw.cjs");
 const fs = require("fs");
 const path = require("path");

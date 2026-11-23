@@ -37,7 +37,8 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: pa
 
   // Only one of the three old sites is in the app so far.
   await page.locator('[data-go="today"]').first().click();
-  await page.getByRole("button", { name: "Add", exact: true }).first().click();
+  // The welcome step's button says "Add" and is named "Add a site" for screen readers (UI critique fixes, 2026-11-12).
+  await page.locator("#main [data-add-site]").first().click();
   await page.locator('input[placeholder="https://"]').first().fill("https://www.shop-one.test/");
   await page.getByRole("button", { name: "Add", exact: true }).last().click();
   await page.waitForTimeout(1500);
@@ -103,7 +104,9 @@ const shot = async (page, name) => { if (SHOTS) await page.screenshot({ path: pa
   await shot(page, "5-content-july");
   check("July shows its sessions with no Google data", screen.includes("Clarity sessions") && screen.includes("Connect"), screen.slice(0, 300));
   check("July's clicks are unknown, not zero", /Rage clicks\s*—/.test(screen) && /Dead clicks\s*—/.test(screen) && /Scroll depth\s*—/.test(screen), screen.slice(0, 400));
-  check("the screen says why they're unknown", screen.includes("31 days have Clarity sessions only"), screen.slice(0, 400));
+  // Clarity's read on day D covers the day before (SEO review 2026-11-17, W10), so 1–31 July reads the rows of 2–31 July
+  // (and 1 August, which the file doesn't have): 30 days.
+  check("the screen says why they're unknown", screen.includes("30 days have Clarity sessions only"), screen.slice(0, 400));
 
   await page.goto("about:blank");
   await page.goto(`${ROOT}#content`);

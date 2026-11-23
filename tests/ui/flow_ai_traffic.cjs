@@ -84,7 +84,8 @@ const tab = async (page, id) => { await page.click(`[data-ai-tab="${id}"]`); awa
   // Page types → Landing pages filtered
   await tab(page, "types");
   const heads = await page.$$eval(".ai-tabs-card th", (els) => els.map((e) => e.innerText.trim()).filter(Boolean));
-  check(["Page type", "AI visits", "Share", "Leads", "Lead rate", "Assistants"].every((h) => heads.includes(h)), `page types columns: ${heads.join(", ")}`);
+  // Until lead events are picked in Settings the columns say "Key events" (Google Analytics review 2026-11-17, W1).
+  check(["Page type", "AI visits", "Share", "Assistants"].every((h) => heads.includes(h)) && (["Leads", "Lead rate"].every((h) => heads.includes(h)) || ["Key events", "Key event rate, at most"].every((h) => heads.includes(h))), `page types columns: ${heads.join(", ")}`);
   const types = await page.$$eval("[data-ai-type]", (els) => els.map((e) => e.dataset.aiType));
   check(types.includes("/blog/") && types.includes("Home page"), `types from the first folder: ${types.join(", ")}`);
   check((await page.locator(".ai-tabs-card .ai-by .site-logo").count()) > 0, "which assistants, with logos");
@@ -100,7 +101,8 @@ const tab = async (page, id) => { await page.click(`[data-ai-tab="${id}"]`); awa
   // Landing pages: Google clicks beside AI visits, and every page a link
   check((await page.locator(".ai-tabs-card th", { hasText: "Google clicks" }).count()) === 1, "a Google clicks column");
   const home = await page.$$eval(".ai-tabs-card tbody tr", (rows) => rows.map((r) => [...r.querySelectorAll("td")].map((td) => td.innerText.trim())));
-  const homeRow = home.find((cells) => cells.some((c) => c.startsWith("/\n") || c === "/"));
+  // Since the pages-image-title work (20 Nov) a page cell is its picture, its title, then its path on a line of its own.
+  const homeRow = home.find((cells) => cells.some((c) => c.split("\n").some((line) => line.trim() === "/")));
   check(homeRow && homeRow.some((c) => /^\d[\d,]+$/.test(c)), `the home page has its Google clicks: ${homeRow && homeRow.join(" | ")}`);
   check((await page.locator(".ai-tabs-card tbody a.lv-url, .ai-tabs-card tbody .lv-url a, .ai-tabs-card tbody a[href]").count()) > 0, "pages are links");
   await shot(page, "traffic-pages.png", ".ai-tabs-card");

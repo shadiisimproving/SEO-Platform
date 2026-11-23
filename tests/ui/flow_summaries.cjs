@@ -2,12 +2,12 @@
 const { open, menu } = require("./pw.cjs");
 const OUT = process.env.OUT, BASE = process.env.BASE;
 let failed = 0;
-// Competitors opens on all sites together. A site chip on a competitor's row opens its profile; since the 2026-11-09 redesign
-// the timeline is on the profile's Activity tab, and a profile always opens on Keywords.
+// Competitors opens on all sites together. A site chip on a competitor's row opens its profile; since 2026-11-20 the
+// timeline is the profile's first tab, Changes (it was on Activity from the 2026-11-09 redesign).
 let opened = null;
 async function activity(page) {
-  await page.waitForSelector('[data-pt-tab="activity"]', { timeout: 8000 });
-  await page.click('[data-pt-tab="activity"]');
+  await page.waitForSelector('[data-pt-tab="changes"]', { timeout: 8000 });
+  await page.click('[data-pt-tab="changes"]');
   await page.waitForSelector("#cl-timeline", { timeout: 8000 }); await page.waitForTimeout(500);
 }
 async function toTimeline(page) {
@@ -44,6 +44,9 @@ const check = (ok, word) => { console.log(`${ok ? "ok  " : "FAIL"} ${word}`); if
   check(true, `Test says: ${(await page.textContent("#conn-test-result")).trim()}`);
   await page.click("#conn-save"); await page.waitForTimeout(900);
   await page.click('button[data-go="competitors"]'); await toTimeline(page);
+  // The button sits in a change's folded Details (since 2026-11-12): open the first Details that holds one.
+  await page.waitForSelector("#cl-timeline [data-change-summary]", { state: "attached", timeout: 8000 }).catch(() => null);
+  await page.locator("#cl-timeline details.cl-tl-more", { has: page.locator("[data-change-summary]") }).first().locator(":scope > summary").click({ timeout: 8000 }).catch(() => null);
   const button = await page.waitForSelector("[data-change-summary]", { timeout: 8000 }).catch(() => null);
   check(Boolean(button), "the button appears without a reload");
   if (button) {

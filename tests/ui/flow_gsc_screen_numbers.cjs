@@ -2,7 +2,8 @@
 // Jump links said apart on Content, Pages, the page view and the page panel; Insights' "Why" leads with hidden searches when
 // they are most of the change; 24 hours without Google says it shows the last saved days.
 //   FAKE_GSC_FAIL_FILE=<file> DB_NAME_TEST=test_fix_ui_gsc2_test .venv/bin/python tests/ui/app_server.py --port 8303
-//   (then add the made-up jump links and Insights change described in reports/seo-expert-2026-11-17/fixes/gsc2.md)
+//   then the made-up jump links and Insights change (reports/seo-expert-2026-11-17/fixes/gsc2.md):
+//   DB_NAME_TEST=test_fix_ui_gsc2_test .venv/bin/python tests/ui/seed_gsc2.py
 //   OUT=<folder> BASE=http://127.0.0.1:8303 FAIL_FILE=<file> SEOCC_REAL_DEFAULT=1 node tests/ui/flow_gsc_screen_numbers.cjs
 const fs = require("fs");
 const { open } = require("./pw.cjs");

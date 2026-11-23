@@ -28,7 +28,8 @@ const wait = (ms) => new Promise((r) => setTimeout(r, ms));
   await step("top of the page", async () => {
     await shot("01-top");
     const sentence = await text(".in-answer");
-    check(/Clicks (fell|rose)/.test(sentence), `a sentence on top (${sentence.slice(0, 120)})`);
+    // Numbers as a badge and a line, never one packed sentence (owner, 2026-11-12): "↑ 69% Clicks 448 → 756".
+    check(/Clicks (fell|rose)|Clicks [\d,]+ → [\d,]+/.test(sentence), `the answer on top (${sentence.slice(0, 120)})`);
     check(!/Mostly: searches google/i.test(sentence) && !/Rare searches/i.test(sentence), "it never blames searches Google doesn't name");
     check((await count(".in-graph .lv-chart")) === 1, "a small graph");
     check((await count(".in-lists .in-bar-row")) >= 3, "bars for pages and reasons");

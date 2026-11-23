@@ -61,7 +61,7 @@ const dayFrom = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 1
   const calls = [];
   page.on("request", (r) => { if (r.url().includes("/api/")) calls.push(r.url()); });
   const lead = await text(page, ".ai-answer .today-lead");
-  check(/AI assistants sent \d+ visits( \([^)]*\))? and \d+ leads/.test(lead) && lead.includes("chatgpt.com"), `answer first: ${lead}`);
+  check(/AI assistants sent \d+ visits( \([^)]*\))? and \d+ (leads|key events)/.test(lead) && lead.includes("chatgpt.com"), `answer first: ${lead}`);
   check(await page.locator("#topbar.head").count() === 1, "the simpler head");
   const chip = await text(page, "#topbar [data-ai-sources]");
   check(chip.includes("4 sources up to date"), `the head's sources chip: ${chip}`);
@@ -98,10 +98,11 @@ const dayFrom = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 1
     const shown = (el) => { const r = el.getBoundingClientRect(); if (r.width <= 1 || r.height <= 1) return false; let o = 1; for (let n = el; n && n !== document.body; n = n.parentElement) { const s = getComputedStyle(n); if (s.display === "none" || s.visibility === "hidden") return false; o *= Number(s.opacity); } return o > 0.05; };
     // A row's tick box stays faintly visible since 2026-11-12 (UI critique: hidden ones weren't discovered); it isn't counted here.
     const rowTick = (el) => el.matches('tbody :is(.tt-pick, .tt-own-pick) input[type="checkbox"]');
-    return [...document.querySelector("#main").querySelectorAll("button,select,input,textarea,a[href],summary,[role=button],[role=tab]")].filter((el) => !rowTick(el)).filter(shown).length;
+    return [...document.querySelector("#main").querySelectorAll("button,select,input,textarea,a[href],summary,[role=button],[role=tab]")].filter((el) => !rowTick(el)).filter(shown).map((el) => `${el.tagName.toLowerCase()} ${(el.innerText || el.getAttribute("aria-label") || "").replace(/\s+/g, " ").trim().slice(0, 30)}`);
   });
   // 29 on 4bab519 already (one over); What AI says adds its tab (2026-11-20); Page types its tab and "What AI says about you ›" its link (track B).
-  check(count <= 32, `about 30 controls at rest: ${count}`);
+  // The Assistants table gained its Engaged column (20–23 Nov), one more sortable heading: 33.
+  check(count.length <= 33, `about 30 controls at rest: ${count.length}${count.length > 33 ? `: ${count.join(" | ")}` : ""}`);
   await shot(page, "simple.png");
 
   for (const tab of ["pages", "cited", "questions"]) {
@@ -124,7 +125,9 @@ const dayFrom = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 1
   check(await page.evaluate(() => document.activeElement?.matches?.('tr[data-rp-open="assistant"]')), "focus goes back to the row");
   await page.click('[data-ai-tab="pages"]'); await settle(page, 500);
   await page.locator('.ai-tabs-card tr[data-rp-open="page"] td:nth-child(3)').first().click(); await settle(page, 2000);
-  check((await text(page, "#panel")).includes("/"), "a landing page's row opens its panel");
+  // Since the pages-image-title work (20 Nov) a page with a title is headed by its title, a link to the page, not its path.
+  const pageKey = await page.locator('.ai-tabs-card tr[data-rp-open="page"]').first().getAttribute("data-rp-key");
+  check((await text(page, "#panel")).includes(pageKey) || (await page.locator(`#panel a[href$="${pageKey}"]`).count()) > 0, `a landing page's row opens its panel: ${pageKey}`);
   await page.keyboard.press("Escape"); await settle(page, 500);
   await page.click('[data-ai-tab="assistants"]'); await settle(page, 400);
 

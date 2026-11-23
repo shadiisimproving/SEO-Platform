@@ -1,6 +1,7 @@
 // Final Google Analytics fixes (final review 2026-11-18): All sites' lead rate leaves out sites with no key events and
 // names them, a change covers only the sites with a fair period before and says so, Today and Channels agree, and a key
-// event rate reads "at most". Run on a copy of real data (it needs sites without key events and a tag that started late):
+// event rate reads "at most". Run on a copy of real data (it needs sites without key events and a tag that started late),
+// upgraded to the code's migrations first (scripts or seo.core.schema.upgrade_to_head on that test database):
 //   DB_NAME_TEST=<copy>_test .venv/bin/python tests/ui/app_server.py --port 8312 --keep
 //   OUT=<folder> BASE=http://127.0.0.1:8312 SEOCC_REAL_DEFAULT=1 node tests/ui/flow_final_ga.cjs
 const fs = require("fs");
@@ -39,17 +40,19 @@ const text = async (page, sel) => (await page.locator(sel).allTextContents()).ma
       await visit(page, "#channels", { preset: "28d", compare: "prev" }, lang);
       const rate = await text(page, "[data-card='rate']");
       const chNotes = await text(page, ".ga4-notes");
-      check(/11[.,]3/.test(rate), `${tag} ${lang}: Channels' All sites rate is 11.3%, not 4.4%`, rate.slice(0, 90));
+      // The figures depend on the copy's days: on the 17 Nov copy the rate was 11.3% (4.4% before the fix) and the visits −19%.
+      // What must hold on any copy: Channels and Conversions give the same rate, and Channels the same visits change as Today.
+      const pct = (s) => (/([−+-]?\d+(?:[.,]\d+)?)\s?%/.exec(s) || [])[1];
       check(rate.includes(fr ? "(max)" : "at most"), `${tag} ${lang}: the key event rate reads "at most"`, rate.slice(0, 60));
       check(chNotes.includes(fr ? "Exclus du taux" : "Left out of the rate") && chNotes.includes("comptabilite-dubai.com"), `${tag} ${lang}: Channels names the sites left out of the rate`, chNotes.slice(0, 220));
       check(chNotes.includes(fr ? "sur 2 des 3 sites" : "on 2 of 3 sites"), `${tag} ${lang}: Channels says its change covers 2 of 3 sites`);
       const vis = await text(page, "[data-card='visits']");
-      check(/19\s?%/.test(vis) && !/0[.,]6\s?%/.test(vis), `${tag} ${lang}: Channels' visits change is about −19%, as Today`, vis.slice(0, 90));
+      check(pct(vis) && pct(vis) === pct(visits.replace(/^[^\d]*[\d,  ]+/, "")), `${tag} ${lang}: Channels' visits change is Today's`, `${vis.slice(0, 60)} vs ${visits.slice(0, 60)}`);
       await shot("channels-28d");
 
       await visit(page, "#conversions", { preset: "28d", compare: "prev" }, lang);
       const cRate = await text(page, "[data-card='rate']");
-      check(/11[.,]3/.test(cRate), `${tag} ${lang}: Conversions' All sites rate is 11.3%`, cRate.slice(0, 90));
+      check(pct(cRate) && pct(cRate) === pct(rate), `${tag} ${lang}: Conversions' All sites rate is Channels'`, `${cRate.slice(0, 50)} vs ${rate.slice(0, 50)}`);
       await shot("conversions-28d");
 
       await visit(page, `#channels?site=${LATE}`, { preset: "3m", compare: "prev" }, lang);

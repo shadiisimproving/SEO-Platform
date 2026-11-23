@@ -54,7 +54,8 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
     await shot("02-claude-picked");
     check((await page.locator("#ai-settings [data-ai-site]").first().inputValue()) === "claude", "Claude is picked for the site");
     check(!(await text("#ai-settings")).includes("Anthropic isn't connected"), "it knows the Anthropic key is there");
-    check(/Claude this month \$[\d.]+ of \$5\.00/.test(await text("#ai-settings .ai-spend")), "the month's Claude spend and its cap show");
+    // The spend is a number card since the simpler screens (12 Nov): "Claude this month US$0.00 of US$5.00".
+    check(/Claude this month\s*(US)?\$[\d.]+\s*of (US)?\$5\.00/.test(await text("#ai-settings .ai-spend")), "the month's Claude spend and its cap show");
   });
 
   await step("explain a finding", async () => {
@@ -124,7 +125,7 @@ const step = async (name, fn) => { try { await fn(); } catch (e) { check(false, 
     await shot("07-spend");
     const spend = await text("#ai-settings .ai-spend");
     const answers = Number((spend.match(/(\d+) answers?/) || [])[1] || 0);
-    check(answers >= 1 && !/\$0\.00 of/.test(spend), `the month's Claude spend shows, with its answers (${spend})`); // kept answers from an earlier run aren't paid twice
+    check(answers >= 1 && !/\$0\.00\s*of/.test(spend), `the month's Claude spend shows, with its answers (${spend})`); // kept answers from an earlier run aren't paid twice
   });
 
   await step("the cap", async () => {

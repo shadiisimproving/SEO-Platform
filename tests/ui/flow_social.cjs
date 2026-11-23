@@ -1,7 +1,8 @@
 // Social, driven by hand like a normal user: today's drafts, editing an Arabic post, Post on X (the prefilled X page),
 // a comment opened then replied to, Skip with a reason, Rewrite with my angle, Mark posted, the Writing guide (teach a
 // rule, a suggestion), 390 px and dark mode. Made-up sites only.
-// Needs: DB_NAME_TEST=test_social_test .venv/bin/python tests/ui/app_server.py --port 8231 --slow 0, then the seed in the PR notes.
+// Needs: DB_NAME_TEST=test_social_test .venv/bin/python tests/ui/app_server.py --port 8231 --slow 0, then
+//        DB_NAME_TEST=test_social_test .venv/bin/python tests/ui/seed_social.py
 // Usage: SCREENS_URL=http://127.0.0.1:8231/ node tests/ui/flow_social.cjs [folder for screenshots]
 const path = require("path");
 const { open, menu } = require("./pw.cjs");
