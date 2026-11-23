@@ -180,13 +180,13 @@
     const visits = UI.tile(t("AI visits"), off ? "—" : UI.cnt(d.sessions), off ? `<span class="ab">${t(wait ? "Waiting for data" : "Google Analytics not connected")}</span>` : LVx().change(d.sessions, d.before), { ic: "sparkles", line: !off && weeks.length > 1 ? weeks : null });
     const leadsFig = off ? "—" : d.key_events_set_up ? num(d.leads) : `<span class="today-fig-word">${t("Not set up")}</span>`;
     const leadsNote = off ? "" : !d.key_events_set_up ? `<span class="ab">${t("Mark forms as GA4 key events")}</span>` : !d.leads && !d.before_leads ? `<span class="ab">${esc(t(window.GA4W.word("No leads in this period", d)))}</span>` : d.before_leads !== null && d.before_leads !== undefined ? `<span class="ab">${num(d.before_leads)} → ${num(d.leads)}</span>` : "";
-    const leads = UI.tile(t("Leads"), leadsFig, leadsNote, { ic: "filter" });
+    const leads = UI.tile(t(window.GA4W.word("Leads", d)), leadsFig, leadsNote, { ic: "filter" });
     const r = d.rate, o = d.organic;
     const rateFig = off || !d.key_events_set_up ? "—" : r.value === null ? "—" : pct(r.value);
     const rateNote = off || !d.key_events_set_up ? "" : r.value === null
       ? `<span class="ab">${tf("needs {need} AI visits, {n} so far", { need: num(r.needs), n: num(r.visits) })}</span>`
-      : `<span class="ab">${o.value === null ? "" : `<span class="nowrap">${t("organic search")} ${pct(o.value)}</span> · `}<span class="nowrap">${esc(tf("{l} of {v}", { l: plural(r.leads, "{n} lead", "{n} leads"), v: plural(r.visits, "{n} visit", "{n} visits") }))}</span></span>`;
-    const rate = UI.tile(t("Lead rate"), rateFig, rateNote, { ic: "percent", def: "AI lead rate" });
+      : `<span class="ab">${o.value === null ? "" : `<span class="nowrap">${t("organic search")} ${pct(o.value)}</span> · `}<span class="nowrap">${esc(tf("{l} of {v}", { l: window.GA4W.keyEvents?.(d) ? plural(r.leads, "{n} key event", "{n} key events") : plural(r.leads, "{n} lead", "{n} leads"), v: plural(r.visits, "{n} visit", "{n} visits") }))}</span></span>`;
+    const rate = UI.tile(t(window.GA4W.word("Lead rate", d)), rateFig, rateNote, { ic: "percent", def: "AI lead rate" });
     const c = d.copilot, one = c.sites.length === 1 ? c.sites[0] : null;
     let citeFig = "—", citeNote = `<button class="link-btn" data-lv-connect="clarity">${t("Upload a Clarity AI download")}</button>`;
     if (c.citations !== null && c.citations !== undefined) {
