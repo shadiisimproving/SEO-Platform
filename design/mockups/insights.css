@@ -58,7 +58,12 @@
   .in-table:has(.ov-dslot) th.ov-n.in-pos { padding-inline-end: calc(14px + var(--ov-dslot) + 6px); }
 }
 .in-mix-head { padding: 6px 18px 2px; }
-.in-mix-answer { margin: 0 0 2px; font-size: 15px; font-weight: 500; color: var(--text); }
+.in-mix-answer { margin: 0 0 4px; font-size: 15px; font-weight: 500; color: var(--text); }
+.in-mix-answer .in-ans-imp b { color: var(--text); }
+.in-mix-rows { margin-top: 10px; }
+.in-mix-rows .ov-ans-bar i.even { background: var(--ch-1); }
+.in-mix-rows b.down { color: var(--crit-t); }
+.in-mix-oldest { margin: 6px 0 0; }
 .in-mix-head a { color: var(--accent-text); text-decoration: underline; }
 .in-mix-chips { padding: 8px 18px 10px; }
 .in-extra { font-size: 13px; min-width: 150px; }

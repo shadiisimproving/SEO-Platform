@@ -142,13 +142,13 @@ def _rows(engine):
 
 def test_days_go_in_with_their_coverage(engine, site, old_db):
     result = archive.import_archive(engine, archive.read_archive(old_db))
-    rows = _rows(engine)
-    assert rows["2026-08-09"]["sessions"] == 513 and rows["2026-08-09"]["rage_clicks"] == 1
-    assert rows["2026-07-02"]["sessions"] == 18 and rows["2026-07-02"]["rage_clicks"] is None and rows["2026-07-02"]["scroll_depth"] is None
-    assert result["sites"][0] == {"host": "mine.example", "added": 3, "kept": 0, "first_day": "2026-07-02", "last_day": "2026-08-09"}
+    rows = _rows(engine)  # under the day of the read that covers each visit day: one day on
+    assert rows["2026-08-10"]["sessions"] == 513 and rows["2026-08-10"]["rage_clicks"] == 1
+    assert rows["2026-07-03"]["sessions"] == 18 and rows["2026-07-03"]["rage_clicks"] is None and rows["2026-07-03"]["scroll_depth"] is None
+    assert result["sites"][0] == {"host": "mine.example", "added": 3, "kept": 0, "first_day": "2026-07-02", "last_day": "2026-08-09"}, "the summary names the visit days"
     with engine.connect() as conn:
         status = dict(conn.execute(text("SELECT day, status FROM coverage WHERE source = 'clarity'")).all())
-    assert status[date(2026, 8, 9)] == "ok" and status[date(2026, 7, 2)] == "partial"
+    assert status[date(2026, 8, 10)] == "ok" and status[date(2026, 7, 3)] == "partial"
 
 
 def test_a_site_not_in_the_app_is_named_and_never_created(engine, site, old_db):
@@ -176,11 +176,11 @@ def test_uploading_twice_changes_nothing(engine, site, old_db):
 
 
 def test_a_day_the_app_collected_itself_is_never_replaced(engine, site, old_db):
-    with engine.begin() as conn:
-        conn.execute(text("INSERT INTO clarity_daily (site_id, day, sessions) VALUES (:s, '2026-08-09', 999)"), {"s": site})
-        conn.execute(text("INSERT INTO coverage (site_id, source, day, status, `rows`) VALUES (:s, 'clarity', '2026-08-09', 'ok', 1)"), {"s": site})
+    with engine.begin() as conn:  # the app's read of 10 Aug covers 9 Aug
+        conn.execute(text("INSERT INTO clarity_daily (site_id, day, sessions) VALUES (:s, '2026-08-10', 999)"), {"s": site})
+        conn.execute(text("INSERT INTO coverage (site_id, source, day, status, `rows`) VALUES (:s, 'clarity', '2026-08-10', 'ok', 1)"), {"s": site})
     result = archive.import_archive(engine, archive.read_archive(old_db))
-    assert _rows(engine)["2026-08-09"]["sessions"] == 999
+    assert _rows(engine)["2026-08-10"]["sessions"] == 999
     assert result["sites"][0]["kept"] == 1 and result["sites"][0]["added"] == 2
 
 
@@ -245,7 +245,7 @@ def _clarity(engine, site, start="2026-07-01", end="2026-08-31"):
 
 def test_unknown_clicks_are_not_shown_as_zero(engine, site):
     with engine.begin() as conn:
-        conn.execute(text("INSERT INTO clarity_daily (site_id, day, sessions) VALUES (:s, '2026-07-02', 18)"), {"s": site})
+        conn.execute(text("INSERT INTO clarity_daily (site_id, day, sessions) VALUES (:s, '2026-07-03', 18)"), {"s": site})
     answer = _clarity(engine, site)
     assert answer["sessions"] == 18
     assert answer["rage_clicks"] is None and answer["dead_clicks"] is None and answer["scroll_depth"] is None
@@ -258,6 +258,50 @@ def test_a_period_with_both_kinds_of_day_counts_only_what_is_known(engine, site,
     assert answer["sessions"] == 534 and answer["rage_clicks"] == 1 and answer["dead_clicks"] == 2
     assert answer["scroll_depth"] == 68.2, "weighted only by days that have a scroll depth"
     assert answer["days"] == 3 and answer["sessions_only_days"] == 2
+
+
+def test_an_old_day_counts_on_its_own_visit_day_not_the_day_before(engine, site, old_db):
+    """The file's days are the visits' days: the old project dated a recordings session by its start and an API pull by
+    the middle of its 24 hours. The app's read on D covers D-1 (W10), so a file day must not be moved back a day."""
+    archive.import_archive(engine, archive.read_archive(old_db))
+    assert _clarity(engine, site, "2026-08-09", "2026-08-09")["sessions"] == 513
+    assert _clarity(engine, site, "2026-08-08", "2026-08-08") == {"has_data": False}
+    july = _clarity(engine, site, "2026-07-02", "2026-07-02")
+    assert july["sessions"] == 18 and july["through"] == "2026-07-02"
+    assert _clarity(engine, site, "2026-07-01", "2026-07-31")["days"] == 1, "1 Aug is August's, not July's"
+
+
+def test_an_old_day_and_the_apps_read_of_the_next_day_are_both_counted(engine, site, old_db):
+    with engine.begin() as conn:  # the app's read of 11 Aug covers 10 Aug: a different visit day from the file's 9 Aug
+        conn.execute(text("INSERT INTO clarity_daily (site_id, day, sessions, rage_clicks, dead_clicks) VALUES (:s, '2026-08-11', 40, 0, 0)"), {"s": site})
+    result = archive.import_archive(engine, archive.read_archive(old_db))
+    assert result["sites"][0]["added"] == 3
+    answer = _clarity(engine, site, "2026-08-09", "2026-08-10")
+    assert answer["sessions"] == 553 and answer["days"] == 2 and answer["through"] == "2026-08-10"
+
+
+def test_old_days_already_uploaded_move_to_their_read_day_and_the_apps_reads_stay(engine, site):
+    """The migration for rows uploaded before the fix: archive rows (no raw) move one day on; the app's reads never move."""
+    import importlib.util
+    from pathlib import Path
+
+    path = next(Path(__file__).resolve().parent.parent.glob("migrations/versions/*_clarity_archive_read_day.py"))
+    spec = importlib.util.spec_from_file_location("clarity_read_day", path)
+    migration = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(migration)
+    with engine.begin() as conn:
+        for day, sessions in (("2026-07-01", 10), ("2026-07-02", 11), ("2026-08-09", 513)):  # uploaded the old way
+            conn.execute(text("INSERT INTO clarity_daily (site_id, day, sessions) VALUES (:s, :d, :n)"), {"s": site, "d": day, "n": sessions})
+            conn.execute(text("INSERT INTO coverage (site_id, source, day, status, `rows`) VALUES (:s, 'clarity', :d, 'partial', 1)"), {"s": site, "d": day})
+        # The app's own read of 10 Aug, which covers 9 Aug: it wins over the old copy, as the importer decides.
+        conn.execute(text("INSERT INTO clarity_daily (site_id, day, sessions, raw) VALUES (:s, '2026-08-10', 999, '[]')"), {"s": site})
+        conn.execute(text("INSERT INTO coverage (site_id, source, day, status, `rows`) VALUES (:s, 'clarity', '2026-08-10', 'ok', 1)"), {"s": site})
+        migration.move(conn, 1)
+    assert {day: row["sessions"] for day, row in _rows(engine).items()} == {"2026-07-02": 10, "2026-07-03": 11, "2026-08-10": 999}
+    with engine.connect() as conn:
+        coverage = {r[0].isoformat(): r[1] for r in conn.execute(text("SELECT day, status FROM coverage WHERE source = 'clarity'"))}
+    assert coverage == {"2026-07-02": "partial", "2026-07-03": "partial", "2026-08-10": "ok"}
+    assert _clarity(engine, site, "2026-07-01", "2026-07-01")["sessions"] == 10, "1 July counts on 1 July"
 
 
 # ---- the upload --------------------------------------------------------------------------------------

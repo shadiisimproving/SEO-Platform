@@ -14,10 +14,11 @@
      or key, data-tt-slot="kw-table". Without either, the row above the table stays.
    - A count badge (.n-badge) follows the title of that head. A footer with nothing to press (one page, 25 rows or fewer)
      then hides; its markup stays. data-tt-own-count: the screen shows the count itself, so no badge, and the footer hides.
-   - data-tt-filter-off on a table or around it: no Filter. Ticks and sorting stay.
+   - data-tt-filter-off on a table or around it: no Filter, the screen has its own. Ticks and sorting stay. This mark works
+     with the switch off too (Tasks sets it on both; 2026-11-23).
    - Row tick boxes, the ones added here and a screen's own, show on hover or focus of their row, and on every row once one
      is ticked (table.tt-some). A screen marks a row's own buttons with .row-act to have them do the same (table-tools.css).
-   With the switch off, none of these marks does anything, so a screen can add them unconditionally. */
+   With the switch off, none of these marks but data-tt-filter-off does anything, so a screen can add them unconditionally. */
 (() => {
   "use strict";
   const TABLES = "table.data, table.lc-table, table.mini";
@@ -563,7 +564,7 @@
     }
     if (!ownTicks) paintTicks(table, key, rows);
     const quiet = simple(), host = quiet ? slotFor(table, key) || cardHeadFor(table) : null;
-    if (canArrange) paintTools(table, key, st, paged ? st.all.length : rows.length, host, quiet && !!table.closest("[data-tt-filter-off]"));
+    if (canArrange) paintTools(table, key, st, paged ? st.all.length : rows.length, host, !!table.closest("[data-tt-filter-off]"));
     if (!quiet) return;
     if (ownTicks) markOwnTicks(head, rows);
     const total = paged ? Number(footOf(table)?.dataset.tpTotal ?? st.count ?? st.all.length) : rows.filter((tr) => !tr.hidden).length;

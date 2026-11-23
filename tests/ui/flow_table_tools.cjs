@@ -56,18 +56,25 @@ const madeUpTasks = () => Array.from({ length: 300 }, (_, i) => ({
   await page.click("[data-tt-clear-picks]"); await settle(300);
   check("clear removes the bar", (await page.locator("#tt-bar").count()) === 0);
 
-  // Filter by ticking a value: the count must be of the whole list.
-  await page.click('[data-tt-filter][data-tt-key="tk"]'); await settle(300);
-  const options = await page.locator("[data-tt-column] option").allTextContents();
-  await page.selectOption("[data-tt-column]", { label: options.find((o) => o.startsWith("Assigned to")) }); await settle(300);
-  await shot("4-filter-window");
-  await page.locator('[data-tt-value="Ben"]').check(); await settle();
+  // One Filter on Tasks (2026-11-23): the toolbar's, which works in all three views. table-tools' own isn't added beside it.
+  check("Tasks has no second Filter from table-tools", (await page.locator('[data-tt-filter][data-tt-key="tk"]').count()) === 0);
+  check("sorting stays on the Tasks table", (await page.locator("#tk-table thead [data-tt-sort]").count()) > 0);
+  // The toolbar's filter counts the whole list, not the page on show.
+  await page.selectOption("#tk-owner", "Ben"); await settle();
+  await shot("4-filtered");
   check("filter counts across every page: 75 of Ben", /of 75/.test(await range()), await range());
-  await page.click("[data-tt-done]"); await settle(300);
-  check("a chip says what is filtered", /Ben/.test(await page.locator(".tt-chip").textContent()));
-  await shot("5-filtered");
-  await page.click(".tt-chip-x"); await settle();
-  check("removing the chip brings all 300 back", /of 300/.test(await range()), await range());
+  check("only Ben's tasks on show", (await column("Assigned to")).every((x) => x.trim() === "Ben"));
+  await page.selectOption("#tk-owner", ""); await settle();
+  check("clearing it brings all 300 back", /of 300/.test(await range()), await range());
+  for (const view of ["kanban", "months"]) {
+    await page.click(`[data-task-view="${view}"]`); await settle();
+    check(`${view}: one Filter`, (await page.locator("[data-tt-filter]").count()) === 0 && (await page.locator("#tk-owner").count()) === 1);
+  }
+  await page.click('[data-task-view="table"]'); await settle();
+  await page.setViewportSize({ width: 390, height: 800 }); await settle(800);
+  check("phone: one Filter button on Tasks", (await page.locator("button:visible", { hasText: /^\s*Filter/ }).count()) === 1, await page.locator("button:visible", { hasText: /^\s*Filter/ }).count());
+  await shot("5-tasks-phone");
+  await page.setViewportSize({ width: 1440, height: 950 }); await settle(500);
 
   // A real note from Backlinks.
   await page.unroute(/\/api\/tasks(\?.*)?$/);
