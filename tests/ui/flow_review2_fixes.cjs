@@ -46,6 +46,9 @@ async function visit(page, hash, lang, range = { preset: "12m", compare: "prev" 
 
       await visit(page, "#competitors/list", lang);
       if (await page.$("#comp-site")) { await page.selectOption("#comp-site", "1"); await page.waitForTimeout(1200); }
+      // Below 1600 px the cards start folded to a rail of logos (2026-11-20), which hides Open: show the cards first.
+      const slim = page.locator('[data-cs-slim][aria-pressed="true"]');
+      if (await slim.count() && await slim.first().isVisible()) { await slim.first().click(); await page.waitForTimeout(600); }
       const opener = page.locator('[data-cs-open="4"]').first();
       if (await opener.count()) {
         await opener.click(); await page.waitForTimeout(2000);

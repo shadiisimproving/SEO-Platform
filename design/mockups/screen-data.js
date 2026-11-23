@@ -84,6 +84,8 @@
   const held = new Map();          // path → entry
   const flying = new Map();        // path → the ask on its way
   const lists = new Map();         // route → () => its first-view paths
+  const extras = new Map();        // route → [() => more first-view paths], from the cards other files draw on it (also())
+  const learners = new Map();      // route → (path, data) => void, told when a quiet ask for that route lands (learn())
   const queue = [];                // quiet work, one at a time: { kind: "hover" | "warm" | "logos", path, route, gen }
   const recent = [];               // the last asks, for flows
   const count = { asked: 0, quiet: 0, served: 0, kept: 0, warmed: 0, rounds: 0, forgets: 0, changes: 0 };
@@ -234,8 +236,24 @@
     lists.set(route, typeof list === "function" ? list : () => list || []);
     if (started) arm();
   }
+  /* A card another file draws on a screen (Keywords by ranking on Today and Overview, Google updates, What AI says, Today's
+     setup steps): its answers join that screen's first-view list, so a visit after the warm-up asks nothing for them either. */
+  function also(route, list) {
+    if (!extras.has(route)) extras.set(route, []);
+    extras.get(route).push(typeof list === "function" ? list : () => list || []);
+    if (started) arm();
+  }
+  /* What a screen learns from its answer and puts in its next address, as GA4's last day (UI.range.end): told after a quiet
+     ask for that route lands, so the warm-up then asks the address the visit will ask. */
+  function learn(route, fn) { learners.set(route, fn); }
+  const routes = () => new Set([...lists.keys(), ...extras.keys()]);
   function paths(route) {
-    try { return (lists.get(route)?.() || []).filter((p) => typeof p === "string" && p); } catch (err) { console.error(err); return []; }
+    const out = [];
+    for (const fn of [lists.get(route), ...(extras.get(route) || [])]) {
+      if (!fn) continue;
+      try { out.push(...(fn() || [])); } catch (err) { console.error(err); }
+    }
+    return [...new Set(out.filter((p) => typeof p === "string" && p))];
   }
 
   // ---- redrawing -----------------------------------------------------------------------------------------
@@ -296,7 +314,7 @@
     const here = UIx()?.state?.route;
     let room = ROUND_MOST;
     const menu = [...document.querySelectorAll("#sidebar [data-go]")].map((b) => b.dataset.go);
-    for (const route of new Set([...menu.filter((r) => lists.has(r)), ...lists.keys()])) {
+    for (const route of new Set([...menu.filter((r) => routes().has(r)), ...routes()])) {
       if (route === here) continue; // the screen on view asks for its own
       for (const path of paths(route)) {
         if (room <= 0) break;
@@ -310,7 +328,7 @@
     pump();
   }
   function prefetch(route) {
-    if (!on() || !lists.has(route) || Date.now() < coolUntil) return 0;
+    if (!on() || !routes().has(route) || Date.now() < coolUntil) return 0;
     look();
     if (route === UIx()?.state?.route) return 0;
     const wanted = paths(route).filter((p) => { const e = held.get(p); return !flying.has(p) && !(e && (e.loading || isFresh(e))); });
@@ -343,7 +361,17 @@
     if (task.gen !== gen || flying.has(task.path)) return false; // another site or period now, or the screen asked it meanwhile
     const e = held.get(task.path);
     if (e && (task.kind === "warm" || e.loading || isFresh(e))) return false;
-    try { await ask(task.path, { quiet: true, why: task.kind }); if (task.kind === "warm") count.warmed += 1; }
+    try {
+      const data = await ask(task.path, { quiet: true, why: task.kind });
+      if (task.kind === "warm") count.warmed += 1;
+      const teach = learners.get(task.route);
+      if (teach && task.gen === gen) {
+        try { teach(task.path, data); } catch (err) { console.error(err); }
+        // What it learnt can change the screen's addresses: the new ones are asked next, before the rest of the round.
+        paths(task.route).filter((p) => !held.has(p) && !flying.has(p) && !queue.some((x) => x.path === p)).reverse()
+          .forEach((path) => queue.unshift({ kind: task.kind, path, route: task.route, gen }));
+      }
+    }
     catch (err) { if (err?.status === 429) stop("429", retryMs(err.retryAfter)); else if (!err?.status) stop("offline"); } // other failures: the screen asks itself
     return true;
   }
@@ -442,8 +470,8 @@
   }
 
   window.SCREEN_DATA = {
-    TTL, on, entry, get, peek, put, forget, screen, prefetch, logos, adoptLV, paths,
-    screens: () => [...lists.keys()],
+    TTL, on, entry, get, peek, put, forget, screen, also, learn, prefetch, logos, adoptLV, paths,
+    screens: () => [...routes()],
     stats: () => ({
       on: on(), ...count, held: held.size, flying: flying.size, queue: queue.length, stopped, context, watching: served && switchWanted,
       waiting: Object.fromEntries(["warm", "hover", "logos"].map((kind) => [kind, queue.filter((x) => x.kind === kind).length])),

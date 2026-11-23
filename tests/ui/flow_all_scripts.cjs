@@ -72,17 +72,23 @@ async function shoot(page, name, label) {
       await page.goto(`${BASE}?simple=1#competitors/summary?site=site-one.example`);
       await page.waitForSelector("#cs-moves-list tbody tr", { timeout: 20000 }).catch(() => {});
       await page.waitForTimeout(1500);
+      // Since 2026-11-20 Changes groups its rows beside my pages; a rival page beside none of mine sits in the folded
+      // "On their other pages" group, so open it as a person would.
+      const fold = await page.$('#cs-moves-list [data-rd-id="other"][aria-expanded="false"]');
+      if (fold) { await fold.click(); await page.waitForTimeout(600); }
       await shoot(page, name("competitors-changes"), `${tag} ${lang} Competitors changes`);
       const moved = await page.evaluate(() => [...document.querySelectorAll("#cs-moves-list tbody tr")].map((r) => r.textContent.replace(/\s+/g, " ")).find((t) => /Moved to another address|Déplacée vers une autre adresse/.test(t)) || "");
       check(`${tag} ${lang}: a redirect reads as moved, in the screen's language`, lang === "fr" ? /Déplacée vers une autre adresse/.test(moved) : /Moved to another address/.test(moved), moved.slice(0, 160));
       check(`${tag} ${lang}: and says where it went`, /gift-subscriptions-2026/.test(moved), moved.slice(0, 160));
 
       // The rival's profile: its changes, with the Arabic title and the redirect.
+      // Below 1600 px the cards start folded to a rail of logos (2026-11-20), which hides Open: show the cards first.
+      const slim = await page.$('[data-cs-slim][aria-pressed="true"]');
+      if (slim && await slim.isVisible()) { await slim.click(); await page.waitForTimeout(600); }
       const card = await page.$('[data-cs-card="4"] [data-cs-open]');
       if (card) { await card.scrollIntoViewIfNeeded(); await card.click(); }
       await page.waitForTimeout(2500);
-      const activity = await page.$('[role="tab"]:has-text("Activity"), [role="tab"]:has-text("Activité"), button:has-text("Activity"), button:has-text("Activité")');
-      if (activity) { await activity.click(); await page.waitForTimeout(2000); }
+      // A competitor's page opens on its Changes tab since 2026-11-20 (the timeline moved there out of Activity): stay on it.
       await page.evaluate(() => [...document.querySelectorAll("tr")].find((r) => r.textContent.includes("/gift-subscriptions-2026/"))?.scrollIntoView({ block: "center" }));
       await shoot(page, name("competitor-profile"), `${tag} ${lang} competitor profile`);
       const profileMoved = await page.evaluate(() => document.body.innerText.includes("/gift-subscriptions-2026/"));

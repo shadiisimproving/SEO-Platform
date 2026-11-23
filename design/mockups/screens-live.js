@@ -21,8 +21,8 @@
   const shift = (day, by) => { const d = new Date(`${day}T00:00:00`); d.setDate(d.getDate() + by); return dayDate(d); };
 
   /* The app's one date range (UI.range), as days. The server trims an end past its last day and answers the dates it used. */
-  function periodQuery() {
-    const parts = [UI.range.days()];
+  function periodQuery(route) {
+    const parts = [UI.range.days(route ? { route } : undefined)];
     const site = UI.siteIdPicked();
     if (site) parts.push(`site_id=${site}`);
     return parts.join("&");
@@ -1169,7 +1169,11 @@
   function registerFirstViews() {
     if (!window.SCREEN_DATA?.screen) return;
     [["channels", "metrics/channels"], ["conversions", "metrics/conversions"], ["content", "metrics/content"]]
-      .forEach(([route, name]) => window.SCREEN_DATA.screen(route, () => [`${name}?${periodQuery()}${INCLUDE[name] || ""}`]));
+      .forEach(([route, name]) => {
+        window.SCREEN_DATA.screen(route, () => [`${name}?${periodQuery(route)}${INCLUDE[name] || ""}`]);
+        // Google Analytics' last day, as the screen learns it on its visit (UI.range.end), so the warm-up asks those dates.
+        window.SCREEN_DATA.learn?.(route, (path, d) => { const through = d?.through || (d?.period?.trimmed ? d.period.to : null); if (through) UI.range.end(route, through); });
+      });
   }
   screen("channels", channelsPage); screen("conversions", conversionsPage); screen("content", contentPage);
   // Google Ads stays out of the menu for now (owner, 2026-11-05): it shows Soon. To bring it back, add screen("ads", adsPage). GA4 still stores its daily numbers, so nothing is lost meanwhile.

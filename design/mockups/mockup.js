@@ -268,7 +268,8 @@
     days(opts = {}) {
       // The screen's own last day once its answer said it (UI.range.end): GA4 ends a day or two before yesterday, and a
       // period asked through yesterday came back one day short under a head that said the whole 28 (final review N1).
-      const g = rangeGet({ end: opts.end || rangeEnds[state.route] || DATA_END, hours: false }), parts = [`from=${g.from}`, `to=${g.to}`];
+      // opts.route: another screen's dates, for the warm-up asking that screen's answer ahead of its visit (screen-data.js).
+      const g = rangeGet({ end: opts.end || rangeEnds[opts.route || state.route] || DATA_END, hours: false }), parts = [`from=${g.from}`, `to=${g.to}`];
       if (g.compareFrom) parts.push(`compare_from=${g.compareFrom}`, `compare_to=${g.compareTo}`);
       // The shared range too, so the Search Console side of the answer ends on Google's last final day (seo/metrics/period.py).
       parts.push(`range=${state.rng.preset === "24h" ? "7d" : state.rng.preset}`, `compare=${state.rng.compare}`);
@@ -2154,7 +2155,7 @@
     [...wrap.children].forEach((old) => { if (old.dataset.words === message) old.remove(); });
     while (wrap.children.length >= 3) wrap.firstElementChild.remove();
     const el = document.createElement("div");
-    el.className = "toast";
+    el.className = stay ? "toast toast-stay" : "toast";
     el.dataset.words = message;
     const ic = kind === "crit" ? icon("octagon-alert", "crit") : kind === "info" ? icon("info", "sec") : icon("circle-check", "good");
     setHTML(el, `${ic}<span>${esc(message)}</span><span class="acts">${undo ? `<button class="link-btn" data-undo>${undoLabel || t("Undo")}</button>` : ""}<button class="icon-btn" style="width:20px;height:20px" aria-label="${t("Close")}" data-dismiss>${icon("x")}</button></span>`);

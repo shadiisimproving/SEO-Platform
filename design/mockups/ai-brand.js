@@ -43,13 +43,19 @@
     if (!window.COMP?.server || !id) return;
     if (!force && B.site === id && (B.data || B.loading || B.error)) return;
     if (B.site !== id) { B.ask = null; B.suggest = null; B.showAll = false; B.pick = ""; B.allPoints = false; B.allRivals = false; }
+    const path = `ai-brand?site_id=${id}`, shared = Boolean(window.SCREEN_DATA?.on?.());
+    // The simpler screens: the warm-up may hold the answer already (screen-data.js), so the tab draws at once.
+    const held = shared && !force ? window.SCREEN_DATA.peek(path) : null;
+    if (held) { B.site = id; B.data = JSON.parse(JSON.stringify(held)); B.error = ""; if (held.running) poll(held.running.id); return Promise.resolve(); }
     B.site = id; B.loading = true; B.error = "";
-    return api("GET", `ai-brand?site_id=${id}`)
+    return (shared ? window.SCREEN_DATA.get(path, { fresh: force }) : api("GET", path))
       .then((d) => { if (B.site === id) { B.data = d; if (d.running) poll(d.running.id); } })
       .catch((err) => { if (B.site === id) { B.error = err.message; B.data = null; } })
       .finally(() => { B.loading = false; redraw(); paintPanel(); });
   }
   B.load = load;
+  // What AI says is AI search's first tab: its answer joins that screen's first-view list (warm-up and menu hover).
+  window.SCREEN_DATA?.also?.("ai", () => (window.UI?.state && site() ? [`ai-brand?site_id=${site()}`] : []));
   B.has = () => Boolean(B.data?.last);
   B.count = () => (B.site === site() && B.data?.last ? B.data.last.engines.length : null);
   function poll(runId) {

@@ -28,7 +28,9 @@ const TITLE = `Fix the coffee pages ${Date.now().toString(36)}`;
   check("About shows every kind, General included", (await page.locator("[data-ta-kind]").count()) === 9);
 
   await page.locator('[data-ta-kind="page"]').click();
-  await settle(900);
+  // The list asks the server once; on a busy machine the first answer can take over a second, so wait for it, not a fixed time.
+  await page.waitForSelector("#ta-pick-page-list .pl-opt", { timeout: 15000 }).catch(() => {});
+  await settle(300);
   const pages = await listed("page");
   check("Page: the site's pages show before typing", pages > 0, `${pages} pages`);
   check("each page shows its clicks", (await page.locator("#ta-pick-page-list .pl-opt .pl-fact").first().innerText()).includes("click"));
