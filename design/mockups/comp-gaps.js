@@ -3,14 +3,19 @@
 (() => {
   "use strict";
   let UI = null;
-  const S = { site: null, data: null, filter: "", hide: false, quality: "all", reason: "", reach: "any", pa: "", sort: null, picked: new Set(), adding: false, openLink: null, linkSort: null };
+  const S = { site: null, rival: null, server: false, data: null, filter: "", hide: false, quality: "all", reason: "", reach: "any", pa: "", sort: null, picked: new Set(), adding: false, openLink: null, linkSort: null };
   const PAGES = "cg"; // the table's pages and search (table-pages.js), like every long table in the app
   const LINK_PAGES = "cg-links"; // the same for the links of the one domain that is open
   let sync = Promise.resolve(); // calls caused by the Backlinks page, kept in the order they happened
 
   const t = (s) => UI.t(s);
   const esc = (v) => UI.esc(v);
-  const onScreen = () => UI.state.route === "competitors" && COMP.tab === "gaps";
+  const onScreen = () => COMP.onTab("gaps"); // here, or inside a competitor's profile (competitors.js COMP.embed)
+  /* Inside a profile the competitor is fixed: no competitor menu, the server sends only the domains linking to it, and
+     "Shared links" (the domains that link to other competitors too) is one chip away. */
+  const fixed = () => S.rival !== null && S.rival !== undefined;
+  const gapsPath = (siteId) => `link-gaps?site_id=${siteId}${fixed() && S.server ? `&competitor_id=${S.rival}` : ""}`;
+  const fixedRival = () => (fixed() ? S.data?.competitors?.find((c) => c.id === S.rival) || null : null);
   // An empty state with the short line on screen and the reason behind an (i) right after it.
   const emptyTip = (title, text, tip, action = "") => COMP.empty(title, text, action).replace("</p>", () => `${UI.tip(tip)}</p>`);
 
@@ -189,7 +194,7 @@
     const capped = f && f.good > goodSent ? `<span class="cg-stat sec">${esc(t("{sent} of {total}, most competitors first").replace("{sent}", UI.num(goodSent)).replace("{total}", UI.num(f.good)))}</span>` : "";
     const checking = f?.checking ? `<span class="cg-stat sec">${UI.icon("refresh-cw", "spin")}<b class="tabular">${UI.num(f.checking)}</b> ${t("Being checked")}</span>` : "";
     // A competitor with nothing yet is named here, with the way to feed it.
-    const empty = d.competitors.some((c) => c.has_data) ? d.competitors.filter((c) => !c.has_data) : [];
+    const empty = !fixed() && d.competitors.some((c) => c.has_data) ? d.competitors.filter((c) => !c.has_data) : [];
     const rest = empty.slice(LOGOS_SHOWN);
     const faces = `<span class="cg-logos">${empty.slice(0, LOGOS_SHOWN).map((c) => logoOnly(c.host, 20)).join("")}${rest.length ? `<span class="cg-logos-more tabular" tabindex="0" data-tip="${esc(rest.map((c) => c.host).join(", "))}">+${UI.num(rest.length)}</span>` : ""}</span>`;
     const missing = empty.length ? `<span class="cg-stat">${t("No links yet for")} ${faces} <button class="link-btn" id="cg-up-missing" data-cg-upload="${empty[0].id}">${t("Add links")}</button></span>` : "";
@@ -200,7 +205,7 @@
   }
 
   /* Files are uploaded per competitor. The window opens on the first one still without links, and lets you pick another. */
-  const uploadTarget = (d) => (d.competitors.find((c) => !c.has_data) || d.competitors[0]).id;
+  const uploadTarget = (d) => (fixed() ? S.rival : (d.competitors.find((c) => !c.has_data) || d.competitors[0]).id);
   const uploadButton = (d, cls = "btn btn-small") => `<button class="${cls}" id="cg-upload" data-cg-upload="${uploadTarget(d)}">${UI.icon("list-plus")}${t("Upload links")}</button>`;
 
   /* The competitor choice. A native list can't show pictures, so it's a button and a menu, each competitor with its logo and its count. */
@@ -388,7 +393,7 @@
     const wasOpen = Boolean(UI.$("#popover.cg-filter-pop"));
     TP.reset(PAGES); trimPicked();
     if (wasOpen) UI.closePopover();
-    COMP.paint();
+    COMP.paintTab(tab);
     if (wasOpen && UI.$("#cg-filters")) UI.popover(UI.$("#cg-filters"), filterPop(), "cg-filter-pop");
     if (focus) UI.$(focus)?.focus();
   }
@@ -401,6 +406,10 @@
     }
     const strip = summaryLine(d);
     const left = d.already_linking ? `<p class="help cg-left">${esc(leftOutWords(d.already_linking))}</p>` : "";
+    const mine = fixedRival();
+    if (fixed() && !mine?.has_data) {
+      return emptyTip(t("No links yet"), t("Upload a CSV of their links, or add a domain."), "Export the CSV from a free SEMrush or Ubersuggest account. Domains that don't link to you appear here, with spam flagged.", `<button class="btn btn-main" id="cg-up-empty" data-cg-upload="${S.rival}">${UI.icon("list-plus")}${t("Upload a CSV")}</button><button class="btn" data-cg-add-domain>${UI.icon("plus")}${t("Add a domain")}</button>`);
+    }
     if (!d.competitors.some((c) => c.has_data)) {
       return `${strip}${emptyTip(t("No links yet"), t("Upload a CSV of a competitor's links, or add a domain."), "Export the CSV from a free SEMrush or Ubersuggest account. Domains that don't link to you appear here, with spam flagged.", `<button class="btn btn-main" id="cg-up-empty" data-cg-upload="${d.competitors[0].id}">${UI.icon("list-plus")}${t("Upload a CSV")}</button><button class="btn" data-cg-add-domain>${UI.icon("plus")}${t("Add a domain")}</button>`)}`;
     }
@@ -426,13 +435,21 @@
       </table></div>
       ${TP.footer(PAGES, page, { noun: t("domains") })}
       </div>` : COMP.empty(t("Nothing matches these filters"), t("Change the filters to see more."));
+    // Inside a profile: All or Shared links (also linking to other competitors) as two chips, in place of the competitor menu.
+    const sharedChips = fixed() ? (() => {
+      const rows = searched().filter((g) => ofRival(g) && strongEnough(g));
+      const chip = (id, word) => `<button type="button" class="chip" data-cg-shared="${id}" aria-pressed="${S.reach === id}">${esc(t(word))}<b>${UI.num(rows.filter((g) => reachOk(g, id)).length)}</b></button>`;
+      return `<div class="chips cp-chips cg-shared" role="group" aria-label="${t("Links to")}">${chip("any", "All")}${chip("2", "Shared links")}${COMP.info("Shared links: domains that link to them and to at least one other competitor, not to you.")}</div>`;
+    })() : "";
+    const embedActs = fixed() ? `<span class="cg-picktools">${uploadButton(d)}<button class="btn btn-small" data-cg-add-domain>${UI.icon("plus")}${t("Add a domain")}</button></span>` : "";
     // Simpler screens: one search, the competitor menu and one Filter button holding the rest. Upload and Add a domain are in the head.
     if (simple()) {
       return `${strip}
       <div class="cp-tools cg-tools cg-tools-simple">
         ${TP.search(PAGES, t("Search domains"))}
-        ${competitorPick(base, rivals, countFor)}
+        ${fixed() ? sharedChips : competitorPick(base, rivals, countFor)}
         ${filterButton()}
+        ${embedActs}
       </div>
       ${reasons}
       ${table}
@@ -442,7 +459,7 @@
     return `${strip}
       <div class="cp-tools cg-tools">
         ${TP.search(PAGES, t("Search domains"))}
-        ${competitorPick(base, rivals, countFor)}
+        ${fixed() ? sharedChips : competitorPick(base, rivals, countFor)}
         ${reachField()}
         ${paField()}
         ${qualityChips()}
@@ -486,7 +503,7 @@
   }
 
   async function reloadHere() {
-    if (onScreen()) await COMP.reload({ quiet: true });
+    if (onScreen()) await COMP.reloadTab(tab, { quiet: true });
     else tab.loadedFor = undefined;
   }
 
@@ -512,7 +529,7 @@
     S.adding = false;
     S.picked.clear();
     COMP.refreshLogos({ watch: true });
-    await COMP.reload({ quiet: true });
+    await COMP.reloadTab(tab, { quiet: true });
     UI.$("#cg-all")?.focus({ preventScroll: true });
     sayAdded(items, skipped, host);
   }
@@ -698,7 +715,7 @@
       updateSelection();
       // Added but not moved: they are in consideration, and the words say so.
       say(ids.length ? `${t("Added to In consideration, not To do")}: ${err.message}` : err.message);
-      await COMP.reload({ quiet: true });
+      await COMP.reloadTab(tab, { quiet: true });
       return;
     }
     S.adding = false;
@@ -708,7 +725,7 @@
     UI.ignoreClicks();
     window.UI.reloadBacklinks?.();
     COMP.refreshLogos({ watch: true });
-    await COMP.reload({ quiet: true });
+    await COMP.reloadTab(tab, { quiet: true });
     UI.$("#cg-all")?.focus({ preventScroll: true });
     const n = made.length;
     // A domain already in Backlinks (a lost link, say) can't be logged twice: it stays in In consideration, and the words say so.
@@ -754,7 +771,7 @@
     } catch (err) { COMP.fail(err); }
     S.adding = false;
     done.forEach((domain) => S.picked.delete(domain));
-    await COMP.reload({ quiet: true });
+    await COMP.reloadTab(tab, { quiet: true });
     if (!done.length) return;
     UI.toast(`${UI.num(done.length)} ${t(done.length === 1 ? "domain marked as spam" : "domains marked as spam")}`, { kind: "info", undo: async () => {
       await Promise.all(done.map((domain) => COMP.api("POST", "link-gaps/decide", { site_id: COMP.siteId, domain, decision: "auto" }).catch(COMP.fail)));
@@ -778,7 +795,7 @@
     const local = window.PROSPECTS.filter((p) => p.domain === domain && p.site === host && (!p.serverId || removed.some((r) => r.id === p.serverId)));
     if (decision === "spam" && local.length) { window.PROSPECTS = window.PROSPECTS.filter((p) => !local.includes(p)); window.UI.reloadBacklinks?.(); }
     const offList = decision === "spam" && (removed.length > 0 || local.length > 0);
-    await COMP.reload({ quiet: true });
+    await COMP.reloadTab(tab, { quiet: true });
     if (decision === "auto") return;
     const words = decision === "keep" ? `${domain}: ${t("not spam: ready to add")}` : offList ? `${domain}: ${t("marked as spam and taken off In consideration")}` : `${domain}: ${t("marked as spam, can't be added")}`;
     UI.toast(words, { kind: "info", undo: async () => {
@@ -804,12 +821,12 @@
     watch.timer = setTimeout(async () => {
       if (!onScreen()) return;
       let answer;
-      try { answer = await COMP.api("GET", `link-gaps?site_id=${COMP.siteId}`); } catch { keepWatching(); return; }
+      try { answer = await COMP.api("GET", gapsPath(COMP.siteId)); } catch { keepWatching(); return; }
       if (JSON.stringify(answer.funnel) !== JSON.stringify(S.data?.funnel)) {
         S.data = answer;
         trimPicked();
         const focused = document.activeElement?.id;
-        COMP.paint();
+        COMP.paintTab(tab);
         if (focused) document.getElementById(focused)?.focus({ preventScroll: true });
       }
       keepWatching();
@@ -868,7 +885,7 @@
     try {
       const answer = await COMP.api("POST", "link-gaps/import", undefined, { form });
       uploadResult(answer, competitorId);
-      await COMP.reload({ quiet: true });
+      await COMP.reloadTab(tab, { quiet: true });
     } catch (err) {
       UI.setHTML(UI.$("#cg-up-error"), errorBox(err.message));
       UI.setHTML(button, `${UI.icon("list-plus")}${t("Upload")}`);
@@ -885,7 +902,7 @@
       let el;
       if (hit("[data-cg-find]")) { COMP.open("find"); return; }
       if ((el = hit("#cg-filter"))) { openCompetitorPick(el); return; }
-      if ((el = hit("[data-cg-choose]"))) { UI.closePopover(); S.filter = el.dataset.cgChoose; TP.reset(PAGES); trimPicked(); COMP.paint(); UI.$("#cg-filter")?.focus(); return; }
+      if ((el = hit("[data-cg-choose]"))) { UI.closePopover(); S.filter = el.dataset.cgChoose; TP.reset(PAGES); trimPicked(); COMP.paintTab(tab); UI.$("#cg-filter")?.focus(); return; }
       if ((el = hit("[data-cg-upload]"))) { openUpload(Number(el.dataset.cgUpload), el); return; }
       if (hit("[data-cg-send]")) { sendUpload(hit("[data-cg-send]")); return; }
       if ((el = hit("[data-cg-another]"))) {
@@ -915,13 +932,14 @@
         if (gap) COMP.editGap(gap, S.data.competitors.map((c) => ({ id: c.id, host: c.host })), el, reloadHere);
         return;
       }
-      if ((el = hit("[data-cg-add-domain]"))) { COMP.editGap(null, S.data.competitors.map((c) => ({ id: c.id, host: c.host })), el, reloadHere); return; }
+      if ((el = hit("[data-cg-add-domain]"))) { COMP.editGap(null, S.data.competitors.filter((c) => !fixed() || c.id === S.rival).map((c) => ({ id: c.id, host: c.host })), el, reloadHere); return; }
+      if ((el = hit("[data-cg-shared]"))) { S.reach = el.dataset.cgShared; refilter(`[data-cg-shared="${S.reach}"]`); return; }
       if (hit("#cg-edit-save")) { saveEdit(hit("#cg-edit-save")); return; }
       if (hit("#cg-edit-reset")) { resetEdit(hit("#cg-edit-reset")); return; }
       if ((el = hit("[data-cg-reason]"))) {
         const key = el.dataset.cgReason;
         S.reason = S.reason === key ? "" : key;
-        TP.reset(PAGES); trimPicked(); COMP.paint();
+        TP.reset(PAGES); trimPicked(); COMP.paintTab(tab);
         [...UI.$$("[data-cg-reason]")].find((b) => b.dataset.cgReason === key)?.focus();
         return;
       }
@@ -931,20 +949,20 @@
       if ((el = hit("[data-cg-sort]"))) {
         const id = el.dataset.cgSort, first = id === "domain" || id === "anchor" ? "asc" : "desc"; // words A to Z, numbers biggest first
         S.sort = S.sort?.id !== id ? { id, dir: first } : S.sort.dir === first ? { id, dir: first === "asc" ? "desc" : "asc" } : null; // a third click goes back to the usual order
-        TP.reset(PAGES); trimPicked(); COMP.paint(); UI.$(`[data-cg-sort="${id}"]`)?.focus();
+        TP.reset(PAGES); trimPicked(); COMP.paintTab(tab); UI.$(`[data-cg-sort="${id}"]`)?.focus();
         return;
       }
       if ((el = hit("[data-cg-links]"))) {
         const domain = el.dataset.cgLinks;
         S.openLink = S.openLink === domain ? null : domain; // one at a time, so the list stays readable
         S.linkSort = null; TP.reset(LINK_PAGES);
-        COMP.paint(); UI.$(`[data-cg-links="${CSS.escape(domain)}"]`)?.focus();
+        COMP.paintTab(tab); UI.$(`[data-cg-links="${CSS.escape(domain)}"]`)?.focus();
         return;
       }
       if ((el = hit("[data-cg-link-sort]"))) {
         const id = el.dataset.cgLinkSort, first = id === "pa" ? "desc" : "asc"; // numbers biggest first, words A to Z
         S.linkSort = S.linkSort?.id !== id ? { id, dir: first } : S.linkSort.dir === first ? { id, dir: first === "asc" ? "desc" : "asc" } : null;
-        TP.reset(LINK_PAGES); COMP.paint(); UI.$(`[data-cg-link-sort="${id}"]`)?.focus();
+        TP.reset(LINK_PAGES); COMP.paintTab(tab); UI.$(`[data-cg-link-sort="${id}"]`)?.focus();
         return;
       }
       if (hit("[data-cg-clear]")) { S.picked.clear(); updateSelection(); UI.$("#cg-all")?.focus({ preventScroll: true }); return; }
@@ -996,21 +1014,22 @@
     init(helpers) {
       UI = helpers;
       bind();
-      TP.on(PAGES, () => { trimPicked(); COMP.paint(); }); // another page, another size, or a search: picks off screen are let go
-      TP.on(LINK_PAGES, () => COMP.paint());
+      TP.on(PAGES, () => { trimPicked(); COMP.paintTab(tab); }); // another page, another size, or a search: picks off screen are let go
+      TP.on(LINK_PAGES, () => COMP.paintTab(tab));
       COMP.isServer().then((server) => { if (server) return loadExistingProspects(); return null; }).catch(() => {});
     },
     async load() {
-      const siteId = COMP.siteId;
-      if (S.site !== siteId) { S.site = siteId; S.filter = ""; S.hide = false; S.quality = "all"; S.reason = ""; S.reach = "any"; S.sort = null; S.openLink = null; S.linkSort = null; TP.state(PAGES).q = ""; TP.reset(PAGES); S.picked.clear(); }
+      const siteId = COMP.siteId, rival = COMP.rivalFor("gaps");
+      if (S.site !== siteId || S.rival !== rival) { S.site = siteId; S.rival = rival; S.filter = rival === null ? "" : String(rival); S.hide = false; S.quality = "all"; S.reason = ""; S.reach = "any"; S.sort = null; S.openLink = null; S.linkSort = null; TP.state(PAGES).q = ""; TP.reset(PAGES); S.picked.clear(); }
+      S.server = await COMP.isServer(); // the plain-file sample has no per-competitor answer: the list is narrowed here instead
       await sync; // anything the Backlinks page just changed is on the server before reading it back
-      const [answer, competitors] = await Promise.all([COMP.api("GET", `link-gaps?site_id=${siteId}`), COMP.api("GET", `competitors?site_id=${siteId}`)]);
-      if (siteId !== COMP.siteId) return; // another site was picked while this was on its way
+      const [answer, competitors] = await Promise.all([COMP.api("GET", gapsPath(siteId)), COMP.api("GET", `competitors?site_id=${siteId}`)]);
+      if (siteId !== COMP.siteId || rival !== COMP.rivalFor("gaps")) return; // another site or screen was picked while this was on its way
       // Opened as a plain file, a competitor added just now isn't in the gap snapshot yet.
       const seen = new Set(answer.competitors.map((c) => c.id));
       competitors.competitors.forEach((c) => { if (!seen.has(c.id)) answer.competitors.push({ id: c.id, host: c.host, has_data: false }); });
       S.data = answer;
-      if (S.filter && !answer.competitors.some((c) => String(c.id) === S.filter && c.has_data)) S.filter = "";
+      if (S.filter && !fixed() && !answer.competitors.some((c) => String(c.id) === S.filter && c.has_data)) S.filter = "";
       trimPicked();
     },
     body,

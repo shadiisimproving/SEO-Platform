@@ -21,7 +21,9 @@ def _cited_domains(check: store.Check) -> list[str]:
     return list(dict.fromkeys(row.domain for row in check.citations))
 
 
-def watch(engine: Engine, site_id: int) -> dict:
+def watch(engine: Engine, site_id: int, competitor_id: int | None = None) -> dict:
+    """With `competitor_id` (a competitor's own page): the changes are only that competitor's, kept before the list is cut.
+    The keyword rows stay whole, so the page can say how many overviews there were; it picks the ones citing them."""
     with engine.connect() as conn:
         site = require_own(conn, site_id)
         competitors = [c for c in tracked_competitors(conn, site_id) if c["tracking"] == "on"]  # AI answers are keyword data
@@ -74,6 +76,8 @@ def watch(engine: Engine, site_id: int) -> dict:
         for host, rival in rival_hosts.items():
             if before.cites(host) != check.cites(host):
                 changes.append({**common, "kind": "rival_cited" if check.cites(host) else "rival_dropped", "competitor": host, "competitor_id": rival["id"]})
+    if competitor_id is not None:
+        changes = [c for c in changes if c.get("competitor_id") == competitor_id]
     changes.sort(key=lambda c: c["at"], reverse=True)
     return {
         "keywords": rows,

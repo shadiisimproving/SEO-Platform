@@ -314,7 +314,7 @@ def site_pages(site_id: int):
 
 @competitors_api.get("/link-gaps")
 def list_gaps():
-    return jsonify(gaps.link_gaps(_engine(), _site_arg()))
+    return jsonify(gaps.link_gaps(_engine(), _site_arg(), _number(request.args.get("competitor_id"))))
 
 
 @competitors_api.post("/link-gaps/import")
@@ -432,7 +432,7 @@ def delete_backlink(backlink_id: int):
 
 @competitors_api.get("/ai-watch")
 def ai_overview_watch():
-    return jsonify(ai_watch.watch(_engine(), _site_arg()))
+    return jsonify(ai_watch.watch(_engine(), _site_arg(), _number(request.args.get("competitor_id"))))
 
 
 # ---- notes ---------------------------------------------------------------------------------------------
