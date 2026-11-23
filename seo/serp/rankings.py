@@ -248,6 +248,17 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
         latest_google = checks.get((track["id"], "google"), [])
         # Two addresses: a result whose address Google hid may be either page, so it isn't a second one.
         scraped_two = latest_google and len({row[1] for row in latest_google[-1].rows if row[1] and store.on_host(row[2], host)}) >= 2
+        # Which pages they are: Search Console's by impressions, then any other address the latest Google check found.
+        competing = [{"url": url, "impressions": shows, "position": None} for url, shows in sorted(pages_seen.items(), key=lambda kv: -kv[1])]
+        if latest_google:
+            for position, url, row_host in latest_google[-1].rows:
+                if not url or not store.on_host(row_host, host):
+                    continue
+                known = next((item for item in competing if item["url"].rstrip("/") == url.rstrip("/")), None)
+                if known:
+                    known["position"] = known["position"] or position
+                else:
+                    competing.append({"url": url, "impressions": None, "position": position})
         main_url = next((view["main"]["url"] for view in engines.values() if view["main"] and view["main"]["url"]), None)
         page = max(pages_seen, key=pages_seen.get) if pages_seen else main_url
         google_own = own["positions"]["google"].get((track["site_id"], key))
@@ -257,6 +268,7 @@ def _rows(engine: Engine, site_id: int | None, keyword_id: int | None = None) ->
             "id": f"{track['site_id']}:{track['id']}", "keyword_id": track["id"], "site_id": track["site_id"], "site": host, "keyword": track["keyword"],
             "country": track["country"], "language": track["language"], "engines": engines, "ai": ai, "page": page,
             "two_pages": len(pages_seen) >= 2 or bool(scraped_two),
+            "pages": competing if len(pages_seen) >= 2 or scraped_two else [],
             # "volume" is kept for older readers: it was never search volume, only our own impressions over 28 days.
             "volume": google_own["impressions"] if google_own else None, "impressions": google_own["impressions"] if google_own else None,
             # Search Console in the keyword's own country, when the site's queries are read for it (None otherwise; the

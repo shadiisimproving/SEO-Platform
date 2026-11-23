@@ -476,6 +476,9 @@ def test_two_pages_on_one_keyword_needs_two_addresses(world):
     _check_with(world, two, [Found(1, f"https://{ME}/a", "A"), Found(4, f"https://{ME}/b", "B")])
     listed = {r["keyword"]: r for r in rankings.listing(world.engine, world.site)["rows"]}
     assert (listed["k1"]["two_pages"], listed["k2"]["two_pages"]) == (False, True)
+    # The screen names both pages, with where each one ranks, not just a warning.
+    assert listed["k1"]["pages"] == []
+    assert [(p["url"], p["position"]) for p in listed["k2"]["pages"]] == [(f"https://{ME}/a", 1), (f"https://{ME}/b", 4)]
 
 
 def test_the_keywords_export_only_says_not_found_where_a_check_could_say_it(world):

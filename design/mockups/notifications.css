@@ -9,48 +9,38 @@
 .bell-pop { padding: 0; display: flex; flex-direction: column; min-width: 0; }
 .bell-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px 10px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--glass-2); z-index: 1; }
 .bell-head h2 { font-size: 14px; font-weight: 600; margin: 0; display: flex; align-items: center; gap: 6px; }
-.bell-list { list-style: none; margin: 0; padding: 4px; }
-.bell-row { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 8px; align-items: start; padding: 10px 10px; border-radius: var(--r-s); cursor: default; }
-.bell-row + .bell-row { border-top: 1px solid var(--line); }
+/* Under the title, once: what the columns are. Then one block per site, a day label per day, one line per search. */
+.bell-cols, .bell-q { display: grid; grid-template-columns: minmax(0, 1fr) 44px 44px 24px; gap: 6px; align-items: center; }
+.bell-cols { padding: 8px 14px 4px 30px; font-size: 11px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.bell-cols span:nth-child(2), .bell-cols span:nth-child(3) { text-align: right; }
+.bell-site { padding: 0 6px 6px; }
+.bell-site + .bell-site { border-top: 1px solid var(--line); padding-top: 4px; }
+.bell-site-head { display: flex; align-items: center; gap: 6px; margin: 4px 8px 2px; font-size: 13px; font-weight: 600; min-width: 0; }
+.bell-site-head img, .bell-site-head svg { flex: none; }
+.bell-host { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bell-site-n { margin-left: auto; font-size: 12px; font-weight: 500; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bell-list { list-style: none; margin: 0; padding: 0; }
+.bell-row { padding: 2px 8px 4px; border-radius: var(--r-s); }
 .bell-row:hover { background: var(--hover); }
-.bell-dot { width: 8px; height: 8px; border-radius: 50%; margin-top: 6px; background: transparent; }
+.bell-day { display: flex; align-items: center; gap: 8px; height: 28px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); }
+.bell-row.unread .bell-day-name { color: var(--text); }
+.bell-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; background: transparent; }
 .bell-row.unread .bell-dot { background: var(--accent-2); }
-.bell-body { min-width: 0; }
-.bell-title { margin: 0 0 3px; font-size: 13px; line-height: 1.4; overflow-wrap: anywhere; }
-.bell-row:not(.unread) .bell-title { color: var(--text-2); }
-.bell-row:not(.unread) .bell-title b { font-weight: 500; }
-.bell-kind { color: var(--muted); display: inline-flex; vertical-align: -2px; }
-.bell-kind svg { width: 14px; height: 14px; }
-.bell-meta { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 12px; color: var(--muted); line-height: 1.5; }
-.bell-meta img, .bell-meta svg { flex: none; }
-.bell-path { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.bell-acts { display: flex; align-items: center; gap: 2px; }
-.bell-track { font-size: 12px; padding: 0 8px; min-height: 28px; gap: 4px; }
-.bell-track svg { width: 14px; height: 14px; }
-.bell-mark { width: 28px; height: 28px; }
-.bell-mark svg { width: 15px; height: 15px; }
-.bell-more { list-style: none; margin: 6px 0 0; padding: 0; font-size: 12px; }
-.bell-more li { display: flex; justify-content: space-between; gap: 10px; padding: 3px 0; border-top: 1px dashed var(--line); }
-.bell-num { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.bell-mark { width: 26px; height: 26px; margin-left: auto; color: var(--muted); }
+.bell-mark svg { width: 14px; height: 14px; }
+.bell-group { list-style: none; margin: 0; padding: 0 0 0 16px; font-size: 13px; }
+.bell-q { min-height: 28px; }
+.bell-q + .bell-q { border-top: 1px solid var(--line); }
+.bell-q .bell-go span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bell-row:not(.unread) .bell-go { color: var(--text-2); }
+.bell-n { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-2); white-space: nowrap; }
+.bell-n.bell-top { color: var(--good-t); font-weight: 600; }
+.bell-track-one { width: 24px; height: 24px; color: var(--muted); }
+.bell-track-one svg { width: 13px; height: 13px; }
+.bell-more-btn { margin: 2px 0 0 16px; font-size: 12px; }
 .bell-empty { padding: 18px 16px 20px; margin: 0; color: var(--text-2); font-size: 13px; }
 .bell-empty p { margin: 0 0 4px; }
-
-@media (max-width: 560px) {
-  .bell-row { grid-template-columns: 10px minmax(0, 1fr); }
-  .bell-acts { grid-column: 2; }
-}
-
-/* The search opens it in Overview → Queries: the whole row is the target, the title is the button for keys. */
-.bell-row-go { cursor: pointer; }
-.bell-go { all: unset; cursor: pointer; border-radius: 3px; overflow-wrap: anywhere; }
-.bell-go:hover b, .bell-go:hover span[dir] { text-decoration: underline; text-underline-offset: 2px; }
+.bell-go { all: unset; cursor: pointer; border-radius: 3px; min-width: 0; }
+.bell-go:hover span { text-decoration: underline; text-underline-offset: 2px; }
 .bell-go:focus-visible { outline: 2px solid var(--c-blue); outline-offset: 2px; }
-
-/* The day's new searches: one row per site, each search opens itself, + tracks it. */
-.bell-group li { align-items: center; }
-.bell-group .bell-go { flex: 1 1 auto; min-width: 0; }
-.bell-track-one { width: 24px; height: 24px; flex: none; }
-.bell-track-one svg { width: 13px; height: 13px; }
-.bell-floor { margin-top: 4px; font-size: 11px; }
-/* Said once for every day's row, under the list. */
-.bell-floor.bell-foot { margin: 0; padding: 8px 14px 12px; border-top: 1px solid var(--line); }
+.bell-floor.bell-foot { margin: 0; padding: 8px 14px 10px; border-top: 1px solid var(--line); font-size: 11px; color: var(--muted); }

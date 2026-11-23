@@ -105,7 +105,7 @@
   }
 
   // ---- the answer --------------------------------------------------------------------------------
-  const mark = (domain) => `<span class="ai-who">${UI.siteLogo(domain, 16)}<span class="mono" dir="ltr">${esc(domain)}</span></span>`;
+  const mark = (domain) => `<span class="ai-who">${UI.siteLogo(domain, 16)}<span dir="ltr">${esc(domain)}</span></span>`;
   function answer(d) {
     const ga4 = stateOf(d, "ga4"), lines = [];
     if (["not_connected", "not_used", "no_sites"].includes(ga4.state)) lines.push(esc(t("Connect Google Analytics to see AI visits and leads.")));

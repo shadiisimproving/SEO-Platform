@@ -46,10 +46,10 @@
     "DuckDuckGo has no tool for site owners, so the app checks its positions by itself every day, oldest first, on free searches only. Refresh and Refresh data check them now.": "DuckDuckGo n'a pas d'outil pour les propriétaires de sites : l'app vérifie ses positions toute seule chaque jour, les plus anciennes d'abord, avec des recherches gratuites uniquement. Actualiser et Actualiser les données les vérifient tout de suite.",
     "Automatic DuckDuckGo check": "Contrôle DuckDuckGo automatique", "automatic check": "contrôle automatique",
     "Clicks": "Clics", "Click rate": "Taux de clic", "selected": "sélectionnés", "Clear selection": "Effacer la sélection", "{n} selected on this page": "{n} sélectionnés sur cette page", "Select all {n} keywords": "Sélectionner les {n} mots-clés", "All {n} keywords selected": "Les {n} mots-clés sont sélectionnés", "Create task": "Créer une tâche", "Export CSV": "Exporter en CSV", "Export ready": "Export prêt",
-    "Up": "En hausse", "Down": "En baisse", "Top 3": "Top 3", "Top 10": "Top 10", "All": "Tous", "Not ranked": "Non classés", "Cited by AI": "Cités par l'IA", "Two pages compete": "Deux pages en concurrence", "Two of your pages rank for it.": "Deux de vos pages se classent dessus.",
+    "Up": "En hausse", "Down": "En baisse", "Top 3": "Top 3", "Top 10": "Top 10", "All": "Tous", "Not ranked": "Non classés", "Cited by AI": "Cités par l'IA", "Two pages compete": "Deux pages en concurrence", "Also ranks": "Classées aussi", "Also": "Aussi", "impr.": "impr.", "Two of your pages rank for it.": "Deux de vos pages se classent dessus.",
     "Tracked": "Suivis", "Ranked": "Classés", "compared": "comparés", "Positions": "Positions", "By bucket": "Par tranche", "Queries": "Requêtes", "All engines": "Tous les moteurs", "Volume": "Volume", "Trend": "Tendance", "AI": "IA", "avg position": "position moy.",
     "No keyword matches": "Aucun mot-clé ne correspond", "Try another filter.": "Essayez un autre filtre.", "Show all": "Tout afficher", "Data through": "Données jusqu'au", "Refreshed": "Actualisé le", "Rankings from engines' own tools and scraped results": "Positions venant de l'outil de chaque moteur et de résultats scrapés",
-    "Order for": "Ordre pour", "This tool doesn't search this engine.": "Cet outil ne couvre pas ce moteur.", "Order saved": "Ordre enregistré",
+    "in its country": "dans son pays", "No Search Console data in the keyword's country.": "Pas de données Search Console dans le pays du mot-clé.", "Search Console's average position in the keyword's own country.": "Position moyenne Search Console dans le pays du mot-clé.", "Search Console's average position across every country.": "Position moyenne Search Console dans tous les pays.", "Order for": "Ordre pour", "This tool doesn't search this engine.": "Cet outil ne couvre pas ce moteur.", "Order saved": "Ordre enregistré",
     "Allow paid use": "Autoriser l'usage payant", "Refresh still uses free credits first; each run asks its own limit.": "Actualiser utilise d'abord les crédits gratuits ; chaque actualisation demande sa limite.",
     "No pay-as-you-go price: paid use unavailable.": "Pas de prix à l'usage : usage payant indisponible.", "Connection saved": "Connexion enregistrée", "Disconnected": "Déconnecté", "Paste the key first.": "Collez d'abord la clé.", "Works.": "Fonctionne.",
     "Save the key first.": "Enregistrez d'abord la clé.", "Not checked, to save a credit. Save it; the first search shows if it works.": "Non vérifiée, pour économiser un crédit. Enregistrez-la : la première recherche montrera si elle fonctionne.",
@@ -124,6 +124,13 @@
     if (minutes < 60) return `${Math.round(minutes)} min`;
     if (days < 1) return `${Math.max(1, Math.round(days * 24))} h`;
     return `${Math.round(days)} ${state.lang === "fr" ? "j" : "d"}`;
+  };
+  // Every page of yours that shows up for the keyword, under the main one: the warning alone doesn't say which.
+  const competingPages = (row) => {
+    const others = (row.pages || []).filter((p) => !row.page || p.url.replace(/\/$/, "") !== row.page.replace(/\/$/, ""));
+    if (!row.two_pages || !others.length) return "";
+    const fact = (p) => [p.position ? `#${p.position}` : "", p.impressions != null ? `${num(p.impressions)} ${t("impr.")}` : ""].filter(Boolean).join(" · ");
+    return `<ul class="kw-also" aria-label="${esc(t("Also ranks"))}">${others.map((p) => `<li data-tip="${esc(p.url)}"><span class="warn small">${t("Also")}</span>${fact(p) ? ` <span class="muted">${esc(fact(p))}</span>` : ""} ${PageLink.html(p.url, { text: shortPath(p.url), title: "" })}</li>`).join("")}</ul>`;
   };
   const shortPath = (url) => { try { const u = new URL(url); return decodeURI(u.pathname + u.search) || "/"; } catch { return url || ""; } };
   const allRows = () => { const host = UI.siteHostPicked(); return (K.data?.rows || []).filter((row) => !host || row.site === host); };
@@ -234,17 +241,18 @@
     none: `<span class="muted small">${t("No overview")}</span>`,
     "not-captured": `<span class="muted small" tabindex="0" data-tip="${t("Not captured")}">${t("Not captured")}</span>`,
   }[row.ai.state]);
-  /* Google: the position in the keyword's own country when Search Console has it, with the all-countries average under it. */
+  /* Google: the position in the keyword's own country when Search Console has it, on one line with the country's flag.
+     The all-countries average has its own column then (K.worldCol, worldCell), so the row stays one line high. */
+  const localOf = (row, e) => { const local = e === "google" ? row?.own_country : null; return local && local.position !== null && local.position !== undefined ? local : null; };
   const ownCell = (view, row = null, e = "") => {
-    const local = e === "google" ? row?.own_country : null;
-    if (local && local.position !== null && local.position !== undefined) {
-      const world = view.own === null || view.own === undefined ? "" : `<span class="second">${t("All countries")} ${dec(Math.round(view.own * 10) / 10)}</span>`;
-      return `<span class="cellval"><span class="tabular">${dec(local.position)}</span><span class="second">${esc(UI.countryName(local.country) || local.country)}</span>${world}</span>`;
-    }
+    const local = localOf(row, e);
+    if (local) return `<span class="nowrap"><span class="tabular">${dec(local.position)}</span> ${UI.flag(local.country)}</span>`;
+    if (K.worldCol) return `<span class="muted dash" tabindex="0" data-tip="${esc(t("No Search Console data in the keyword's country."))}">—</span>`;
     return view.own === null || view.own === undefined
       ? `<span class="muted dash" tabindex="0" data-tip="${esc(t("Not connected for this site, or no data for this keyword."))}">—</span>`
       : `<span class="tabular">${dec(Math.round(view.own * 10) / 10)}</span>`;
   };
+  const worldCell = (view) => (view.own === null || view.own === undefined ? `<span class="muted dash">—</span>` : `<span class="tabular">${dec(Math.round(view.own * 10) / 10)}</span>`);
 
   const impressionsOf = (row) => row.impressions ?? row.volume ?? null;
   function passes(row, e) {
@@ -264,7 +272,8 @@
   const searched = (rows) => rows.filter((row) => TP.matches(KW_PAGES, row.keyword, row.page, state.site === "all" ? row.site : ""));
   function filtered() {
     const e = engineOf();
-    const value = (row) => { const v = row.engines[e]; return { k: row.keyword, own: v.own, pos: v.main?.status === "ok" ? v.main.p : null, chg: v.change, vol: impressionsOf(row) }[state.sort.key]; };
+    K.worldCol = state.engine !== "all" && e === "google" && allRows().some((row) => localOf(row, e)); // read by ownCell, rowHtml and table
+    const value = (row) => { const v = row.engines[e]; return { k: row.keyword, own: K.worldCol ? localOf(row, e)?.position ?? null : v.own, world: v.own, pos: v.main?.status === "ok" ? v.main.p : null, chg: v.change, vol: impressionsOf(row) }[state.sort.key]; };
     const sign = state.sort.dir === "ascending" ? 1 : -1;
     return searched(allRows()).filter((row) => passes(row, e)).sort((a, b) => {
       const x = value(a), y = value(b);
@@ -286,12 +295,13 @@
     const trend = view.trend.length >= 2 ? UI.spark(view.trend.map((x) => x.p), { invert: true }) : `<span class="muted dash" data-tip="${t("Needs 2 checks, same tool")}" tabindex="0">—</span>`;
     const cells = state.engine === "all"
       ? ENGINES.map(([id, label]) => `<td data-label="${label}">${scrapedCell(row, id)}</td>`).join("")
-      : `${OWN_TOOL[e] ? `<td class="c" data-label="${OWN_TOOL[e]} · ${t("avg position")}">${ownCell(view, row, e)}</td>` : ""}
+      : `${OWN_TOOL[e] ? `<td class="c" data-label="${OWN_TOOL[e]} · ${t(K.worldCol ? "in its country" : "avg position")}">${ownCell(view, row, e)}</td>` : ""}
+         ${K.worldCol ? `<td class="c" data-label="${t("All countries")}">${worldCell(view)}</td>` : ""}
          <td data-label="${t("Scraped results")}">${scrapedCell(row, e)}</td>
          <td class="c" data-label="${t("Change")}">${changeCell(view)}</td>
          ${state.cols.vol ? `<td class="c" data-label="${t("Impressions (28 days)")}">${impressionsOf(row) === null ? '<span class="muted dash">—</span>' : num(impressionsOf(row))}</td>` : ""}
          ${state.cols.trend ? `<td data-label="${t("Trend")}">${trend}</td>` : ""}
-         ${state.cols.page ? `<td class="url-cell mono small" data-label="${t("Page")}" ${row.page ? `data-tip="${esc(row.page)}"` : ""}>${row.page ? PageLink.html(row.page, { text: shortPath(row.page), title: "" }) : '<span class="muted dash">—</span>'}${row.two_pages ? `<span class="warn" role="img" tabindex="0" data-tip="${esc(t("Two of your pages rank for it."))}" aria-label="${esc(t("Two pages compete"))}">${icon("triangle-alert")}</span>` : ""}</td>` : ""}
+         ${state.cols.page ? `<td class="url-cell mono small" data-label="${t("Page")}" ${row.page ? `data-tip="${esc(row.page)}"` : ""}>${row.page ? PageLink.html(row.page, { text: shortPath(row.page), title: "" }) : '<span class="muted dash">—</span>'}${row.two_pages ? `<span class="warn" role="img" tabindex="0" data-tip="${esc(t("Two of your pages rank for it."))}" aria-label="${esc(t("Two pages compete"))}">${icon("triangle-alert")}</span>` : ""}${competingPages(row)}</td>` : ""}
          ${state.cols.ai ? `<td data-label="${t("AI")}">${aiCell(row)}</td>` : ""}`;
     // The simpler screens: the keyword is text and the whole row opens the panel (a click, or Enter once the row has focus).
     // data-kwr-open stays on the keyword, holding only its words, so a click on it and the flows that look for it still work.
@@ -317,7 +327,8 @@
     const e = engineOf();
     const head = state.engine === "all"
       ? ENGINES.map(([id, label]) => `<th scope="col"><span class="th-engine">${logo(id, 16)}${label}</span></th>`).join("")
-      : `${OWN_TOOL[e] ? sortHeader("own", OWN_TOOL[e], "c", t("avg position")) : ""}
+      : `${OWN_TOOL[e] ? sortHeader("own", OWN_TOOL[e], "c", t(K.worldCol ? "in its country" : "avg position"), K.worldCol ? t("Search Console's average position in the keyword's own country.") : "") : ""}
+         ${K.worldCol ? sortHeader("world", t("All countries"), "c", t("avg position"), t("Search Console's average position across every country.")) : ""}
          ${sortHeader("pos", t("Scraped results"))}${sortHeader("chg", t("Change"), "c")}
          ${state.cols.vol ? sortHeader("vol", t("Impressions"), "c", t("28 days"), t("Search Console impressions, last 28 days. Exact volume isn't available for free.")) : ""}
          ${state.cols.trend ? `<th scope="col">${t("Trend")}</th>` : ""}${state.cols.page ? `<th scope="col">${t("Page")}</th>` : ""}${state.cols.ai ? `<th scope="col">${t("AI")}</th>` : ""}`;

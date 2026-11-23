@@ -33,10 +33,11 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   check("the list stays open while Overview redraws", Boolean(await page.$("#bell-pop")));
   await page.screenshot({ path: OUT + "1-open.png" });
   check("the day's searches are one unread row with a dot", (await page.locator("#bell-pop .bell-row.unread").count()) === 1);
-  const title = await page.textContent("#bell-pop .bell-row .bell-title");
-  check("it says how many", /2 new Google searches/.test(title), title.trim());
+  const head = await page.textContent("#bell-pop .bell-site-head");
+  check("the site is named once, with how many", /2 new/.test(head), head.replace(/\s+/g, " ").trim());
   const firstSearch = await page.textContent("#bell-pop .bell-group li");
-  check("the most shown search comes first, with its place and impressions", /trade licence.*Position 5\.4.*23 impressions/s.test(firstSearch), firstSearch.replace(/\s+/g, " ").trim());
+  check("the best-placed search comes first, its place and impressions as numbers", /trade licence cost\s*5\.4\s*23/s.test(firstSearch), firstSearch.replace(/\s+/g, " ").trim());
+  check("no sentences in the rows", !/Position|impressions/.test(await page.textContent("#bell-pop .bell-list")));
 
   await page.locator("#bell-pop [data-bell-read]").first().click(); await page.waitForTimeout(300);
   check("✓ marks it read", !(await page.$("#bell-open .bell-count")));
