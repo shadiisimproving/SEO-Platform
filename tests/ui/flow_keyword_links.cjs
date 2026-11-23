@@ -22,10 +22,13 @@ const SCREENS = ["today", "overview", "insights", "content", "ai", "keywords", "
   await wait(page, 2500);
   const go = async (hash) => { await page.evaluate((h) => { location.hash = `#${h}`; }, hash); await wait(page, 2000); };
   const route = () => page.evaluate(() => location.hash);
+  // The simpler screens put "They beat you on" behind its own tab under the cards (2026-11-12): open it as a person would.
+  const beatTab = async () => { const tab = page.locator("#cs-low-keywords"); if (await tab.count() && (await tab.getAttribute("aria-selected")) !== "true") { await tab.click(); await wait(page, 800); } };
 
   // 1. Competitors → Keywords they beat you on: the screenshot the owner sent.
   await go("competitors/summary");
-  await page.waitForSelector("#cs-keywords-table", { timeout: 15000 }).catch(() => null);
+  await page.waitForSelector("#cs-keywords-table", { timeout: 15000, state: "attached" }).catch(() => null);
+  await beatTab();
   const table = await page.$("#cs-keywords-table");
   check(Boolean(table), "Competitors summary shows Keywords they beat you on");
   if (table) {
@@ -62,7 +65,8 @@ const SCREENS = ["today", "overview", "insights", "content", "ai", "keywords", "
 
     // The keyword opens its Keywords panel, and only that.
     await go("competitors/summary");
-    await page.waitForSelector("#cs-keywords-table a.kw-link", { timeout: 15000 });
+    await page.waitForSelector("#cs-keywords-table a.kw-link", { timeout: 15000, state: "attached" });
+    await beatTab();
     const word = await page.locator("#cs-keywords-table a.kw-link").first().textContent();
     await page.locator("#cs-keywords-table a.kw-link").first().click();
     await page.waitForSelector("#panel", { timeout: 15000 }).catch(() => null);

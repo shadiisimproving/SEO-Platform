@@ -2,6 +2,8 @@
 // the tool that looked and says Not checked, Rank and clicks raises no alert from a disputed check. Desktop and phone, EN and FR.
 //   DB_NAME_TEST=<your>_test .venv/bin/python tests/ui/app_server.py --port 8312 --keep   (a copy of real data: keep the shots out of git)
 //   SEOCC_REAL_DEFAULT=1 node tests/ui/flow_serp_accuracy.cjs http://127.0.0.1:8312/ <host> <keyword> <out dir>
+// Or, with made-up data only: the demo world (app_server.py, no --keep) plus tests/ui/seed_serp_accuracy.py, then
+//   SEOCC_REAL_DEFAULT=1 node tests/ui/flow_serp_accuracy.cjs http://127.0.0.1:8312/ site-one.example "moulin à café" <out dir>
 const { open } = require("./pw.cjs");
 const fs = require("fs");
 const [BASE = "http://127.0.0.1:8312/", HOST = "site-one.example", WORD = "", OUT = "var/ui-serp"] = process.argv.slice(2);

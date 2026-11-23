@@ -101,8 +101,10 @@ const many = (page, sel, fn) => page.locator(sel).evaluateAll(fn);
       const ok = json.rows.filter((r) => r.engines.google?.main?.status === "ok");
       const up = ok.find((r) => r.engines.google.main.p > 1), down = ok.find((r) => r !== up && r.engines.google.main.p);
       const out = ok.find((r) => r !== up && r !== down && !r.engines.google.main.p);
-      if (up) up.engines.google.change = 2;
-      if (down) down.engines.google.change = -1;
+      // Since 2026-11-17 the tray reads the like-for-like move (view.move), the same rule as the Change column; "was" stays on
+      // the same side of the top 10, so only the out row counts as new in it.
+      if (up) Object.assign(up.engines.google, { change: 2, move: "up", was: up.engines.google.main.p });
+      if (down) Object.assign(down.engines.google, { change: -1, move: "down", was: down.engines.google.main.p });
       if (out) out.engines.google.main.p = 4; // it was past the top 10 before this Refresh
     }
     await route.fulfill({ response, json });

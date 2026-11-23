@@ -1,5 +1,6 @@
 // A Refresh with Yandex ticked and no tool for it (expert review keywords F12, 2026-11-17): the dialog says Yandex will be
 // skipped, the run finishes, and the tray says what moved and why Yandex was left out. English then French.
+// On the demo world plus tests/ui/seed_keyword_fixes.py (see tests/ui/flow_keyword_fixes.cjs):
 //   node tests/ui/flow_keyword_refresh_skip.cjs <folder for screenshots> http://127.0.0.1:8293/
 const { open } = require("./pw.cjs");
 const out = process.argv[2] || "/tmp";

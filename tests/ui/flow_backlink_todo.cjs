@@ -22,7 +22,8 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   const tilesBefore = await page.locator(".tile, .kpi").first().innerText().catch(() => "");
   const doneBefore = await tabCount("done");
 
-  check("three sections in order", (await page.$$eval("[data-bl-section]", (t) => t.map((x) => x.dataset.blSection).join())) === "consideration,todo,done");
+  // Bought links and Boost URL came after Done on 2026-11-20 (the Mickaz features); the three of the link's way stay first.
+  check("three sections in order", (await page.$$eval("[data-bl-section]", (t) => t.map((x) => x.dataset.blSection).slice(0, 3).join())) === "consideration,todo,done");
   await page.click('[data-bl-section="todo"]'); await settle(200);
   await page.screenshot({ path: OUT + "0-before.png" });
   const plannedAtStart = await tabCount("todo");

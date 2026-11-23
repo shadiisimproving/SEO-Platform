@@ -116,7 +116,7 @@ const day = (n) => new Date(Date.UTC(2026, 10, 10) - n * 864e5).toISOString().re
   check("By page: the Lost chip goes back to page 1 with the lost ones", /^1–25 of 77 links$/.test(await range("bl-links")), await range("bl-links"));
   await page.click('[data-bl-filter="all"]'); await wait(400);
   await page.click('[data-bl-sort="authority"]'); await wait(400);
-  const auths = await page.locator("#bl-table tbody tr td:nth-child(7)").evaluateAll((c) => c.slice(0, 5).map((x) => Number(x.textContent.trim()) || 0));
+  const auths = await page.locator("#bl-table tbody tr td:nth-child(7)").evaluateAll((c) => c.slice(0, 5).map((x) => parseFloat(x.textContent.trim()) || 0)); // "45 DA" since 2026-11-17: the number, then the tool that scored it
   check("By page: Authority sorts biggest first, focus on the heading", auths.every((n, i) => !i || auths[i - 1] >= n) && auths[0] >= 80 && (await page.evaluate(() => document.activeElement?.dataset.blSort)) === "authority", auths.join(","));
   check("By page: the sorted heading says so", (await page.locator('th:has([data-bl-sort="authority"])').getAttribute("aria-sort")) === "descending");
   await page.click('[data-bl-sort="authority"]'); await wait(300);
@@ -195,7 +195,7 @@ const day = (n) => new Date(Date.UTC(2026, 10, 10) - n * 864e5).toISOString().re
   check("In consideration: DA at least 80 goes back to page 1, with the count", (await range("bl-prospects")).startsWith("1–") && (await page.locator("#pr-count").innerText()).startsWith(((await range("bl-prospects")).match(/of (\d+)/) || [])[1] || "x"), `${await range("bl-prospects")} / ${await page.locator("#pr-count").innerText()}`);
   await page.fill('[data-pr-filter="da"]', ""); await wait(500);
   await page.click('[data-pr-sort="da"]'); await wait(400);
-  const da = await page.locator("#pr-table tbody tr td:nth-child(3)").evaluateAll((c) => c.slice(0, 5).map((x) => Number(x.textContent.trim())));
+  const da = await page.locator("#pr-table tbody tr td:nth-child(3)").evaluateAll((c) => c.slice(0, 5).map((x) => parseFloat(x.textContent.trim()))); // "45 DA", as above
   check("In consideration: DA sorts biggest first", da.every((n, i) => !i || da[i - 1] >= n) && da[0] >= 90, da.join(","));
   await page.check("#pr-all"); await wait(300);
   check("In consideration: Select all picks only the 25 on this page", (await page.locator("#pr-pick-count").innerText()).startsWith("25"), await page.locator("#pr-pick-count").innerText());

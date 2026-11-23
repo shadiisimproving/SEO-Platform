@@ -3,6 +3,7 @@
 // Needs the demo world (DB_NAME_TEST=test_x_test .venv/bin/python tests/ui/app_server.py --port 8304) with, made up:
 // local-news.example flagged by the app as redirecting to link-shop.example, coffee-review.example as site down,
 // home-kitchen.example's links last seen in Feb 2025, and backlink 3 set to Brand by hand while the page reads another anchor.
+// Seed them with: DB_NAME_TEST=<same>_test .venv/bin/python tests/ui/seed_link_flags.py links2
 // Checks: the app's flag stays on a good row; the App flagged chip narrows to them; an old link is left out until its chip;
 // "Followed links only" isn't ticked and says the file doesn't tell; the anchor type comes from the page.
 const { open, menu } = require("./pw.cjs");
@@ -27,7 +28,9 @@ async function run(lang, width, height, simple) {
   await settle(1000);
   const rowText = (d) => page.evaluate((d) => document.querySelector(`[data-cg-row="${d}"]`)?.textContent.replace(/\s+/g, " ").trim() || null, d);
   const moved = await rowText("local-news.example");
-  check(`${tag}: a good row keeps the app's flag with the site it leads to`, moved && /link-shop\.example/.test(moved) && (lang === "fr" ? /L'appli a vu/.test(moved) : /The app saw/.test(moved)), moved);
+  // Since 2026-11-18 (owner: a hard fact beats the file's spam score, flow_spam_facts.cjs) a redirect is flagged whatever
+  // the file's score; the row still says where it leads and the score it overruled.
+  check(`${tag}: a redirect is flagged with the site it leads to and the file score it overruled`, moved && /link-shop\.example/.test(moved) && (lang === "fr" ? /Redirige vers/.test(moved) && /écarté/.test(moved) : /Redirects to/.test(moved) && /overruled/.test(moved)), moved);
   const down = await rowText("coffee-review.example");
   check(`${tag}: site down is shown with its day`, down && /11/.test(down) && (lang === "fr" ? /le 11/.test(down) : /on 11|Nov 11/.test(down)), down);
   check(`${tag}: the old link is left out by default`, (await rowText("home-kitchen.example")) === null);
@@ -51,7 +54,7 @@ async function run(lang, width, height, simple) {
     await settle(700);
     if (simple) { await page.keyboard.press("Escape"); await settle(300); }
     const rows = await page.evaluate(() => [...document.querySelectorAll("#cg-table tbody tr[data-cg-row]")].map((r) => r.dataset.cgRow));
-    check(`${tag}: App flagged shows only the rows the app flagged`, rows.length === 2 && rows.includes("local-news.example") && rows.includes("coffee-review.example"), rows.join(","));
+    check(`${tag}: App flagged shows only the rows the app flagged`, rows.length === 1 && rows.includes("coffee-review.example") /* the redirect is under Flagged since 2026-11-18 */, rows.join(","));
   }
   await page.screenshot({ path: `${OUT}${tag}-3-app-flagged.png`, fullPage: width < 800 });
   const scroll = await page.evaluate(() => ({ page: document.documentElement.clientWidth, scroll: document.documentElement.scrollWidth }));

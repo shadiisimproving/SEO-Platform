@@ -3,6 +3,8 @@
 // the ranking URL with Search Console's most-shown page said apart, each engine tab showing only its own numbers, one card
 // for an engine no tool can search, and the panel's All results with each check's URL. English and French, 1440 and 390.
 // Needs the demo world plus the extra checks of the fix (see reports/seo-expert-2026-11-17/fixes/keywords.md):
+//   DB_NAME_TEST=test_x_test .venv/bin/python tests/ui/app_server.py --port 8293 &
+//   DB_NAME_TEST=test_x_test .venv/bin/python tests/ui/seed_keyword_fixes.py
 //   node tests/ui/flow_keyword_fixes.cjs <folder for screenshots> http://127.0.0.1:8293/
 const { open } = require("./pw.cjs");
 const out = process.argv[2] || "/tmp";
@@ -16,6 +18,7 @@ async function run(width, lang) {
   const tag = `${width}-${lang}`;
   const r = await open({ width, height: width < 500 ? 844 : 900 });
   const { page } = r;
+  await r.context.addInitScript(() => { try { localStorage.setItem("seocc2-kwb-source", "checks"); } catch { /* no storage */ } }); // Up / Down from our checks
   await page.goto(`${BASE}?flow=${Date.now()}&simple=1#keywords?site=site-one.example`);
   await page.waitForSelector("#kw-table tbody tr", { timeout: 20000 });
   if (lang === "fr") { await page.evaluate(() => { window.UI.state.lang = "fr"; window.UI.render(); }); await settle(page); }
@@ -30,7 +33,10 @@ async function run(width, lang) {
   check(jp.includes(fr ? "Toujours hors" : "Still out"), `${tag}: out twice says Still out`);
   const best = await rowText(page, "best coffee beans");
   check(best.includes("120"), `${tag}: the passed-over main tool's age shows on the row`);
+  // The simpler screens fold Impressions into Columns since Track C (2026-11-20): tick it, as a person would, to see the mark.
+  await page.evaluate(() => { window.UI.state.cols.vol = true; window.UI.render(); }); await settle(page);
   const grains = await page.locator("#kw-table tbody tr", { hasText: "café en grains" }).first().locator(".kw-spell").count();
+  await page.evaluate(() => { window.UI.state.cols.vol = false; window.UI.render(); }); await settle(page);
   check(grains === 1, `${tag}: café en grains (tracked once) marks its impressions as including other spellings`);
   const tile = await page.locator('[data-card="kw-top10"]').innerText();
   console.log("   top10 tile:", tile.replace(/\s+/g, " "));
@@ -38,7 +44,10 @@ async function run(width, lang) {
   // Down chip counts the drop out
   await page.click("#kw-filter"); await settle(page);
   const down = await page.locator('[data-filter="down"]').innerText();
-  check(/3/.test(down), `${tag}: the Down chip counts 3 (two places lost + one dropped out): ${down.replace(/\s+/g, " ")}`);
+  // Up / Down follow Search Console's 7 days by default since 2026-11-20; with "Our checks" chosen they count our checks,
+  // a drop out of the depth included, the same count as the server's tile.
+  const tileDown = await page.evaluate(async () => (await (await fetch(`api/rankings?site_id=${window.UI.state.site}`)).json()).tiles.google.down);
+  check(tileDown >= 2 && new RegExp(`(^|\\D)${tileDown}(\\D|$)`).test(down.trim()), `${tag}: the Down chip counts the places lost and the drop out (${tileDown}): ${down.replace(/\s+/g, " ")}`);
   await page.click("#kw-filter-close").catch(() => {}); await settle(page);
   // Queries: Track on "abonnement cafe" when "abonnement café" is tracked says so first, then offers this spelling too
   await page.click("#kw-filter"); await page.click('[data-view="queries"]'); await settle(page, 1500);
