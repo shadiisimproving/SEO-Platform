@@ -21,8 +21,14 @@ const scan = (page) => page.evaluate(() => {
     cells += 1;
     // A heading table-tools.js made sortable holds its words, (i) and logo in one button (its arrow sits outside the flow), so
     // the button is the label; a screen's own sort button keeps its words in a span.
+    // A definition mark (i) stays beside table-tools' sort button, never inside it (a control in a control), so the heading's
+    // label is the button and its marks together. Words only for screen readers (.sr) take no room on screen.
     const box = cell.getBoundingClientRect(), label = cell.tagName === "TH" && (cell.querySelector("button.tt-th") || cell.querySelector("button > span"));
-    const inner = label ? label.getBoundingClientRect() : textBox(cell);
+    const union = (els) => els.map((e) => e.getBoundingClientRect()).reduce((a, r) => ({ left: Math.min(a.left, r.left), right: Math.max(a.right, r.right) }));
+    const sr = [...cell.querySelectorAll(".sr")];
+    sr.forEach((e) => { e.style.display = "none"; });
+    const inner = label ? union([label, ...(label.matches(".tt-th") ? cell.querySelectorAll(":scope > .def-i") : [])]) : textBox(cell);
+    sr.forEach((e) => { e.style.display = ""; });
     const gap = Math.abs((box.left + box.right) / 2 - (inner.left + inner.right) / 2);
     if (gap > 2) off.push(`${name}: ${gap.toFixed(1)}px off`);
   }

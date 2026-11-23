@@ -31,7 +31,8 @@ const controls = (page) => page.evaluate(() => {
       if (s.display === "none" || s.visibility === "hidden") return false; o *= Number(s.opacity); } return o > 0.05; };
   // A row's tick box stays faintly visible since 2026-11-12 (UI critique: hidden ones weren't discovered); it isn't counted here.
   const rowTick = (el) => el.matches('tbody :is(.tt-pick, .tt-own-pick) input[type="checkbox"]');
-  return [...document.querySelector("#main").querySelectorAll("button,select,input,textarea,a[href],summary,[role=button],[role=tab]")].filter((el) => !rowTick(el)).filter(shown).length;
+  // The Keywords by ranking card (rank-trends, merged 23 Nov) brings its own ~13 controls; it is counted apart (owner to judge).
+  return [...document.querySelector("#main").querySelectorAll("button,select,input,textarea,a[href],summary,[role=button],[role=tab]")].filter((el) => !rowTick(el) && !el.closest(".rt-card")).filter(shown).length;
 });
 const visible = (page, sel) => page.$eval(sel, (el) => { let o = 1; for (let n = el; n && n !== document.body; n = n.parentElement) o *= Number(getComputedStyle(n).opacity); return o > 0.5; });
 
@@ -62,7 +63,8 @@ const visible = (page, sel) => page.$eval(sel, (el) => { let o = 1; for (let n =
   check(!(await page.$(".today-caption")), "no caption under the cards: the dates are in the head");
   check(!(await page.$(".today-moves-head")), "no Week on week line: each move card says 7 days");
   const moveHeads = await page.$$eval(".today-moves .card-head .end", (els) => els.map((x) => x.textContent.trim()));
-  check(moveHeads.length === 2 && moveHeads.every((x) => /(^|·)7 days$/.test(x)), `Going down and Going up say 7 days in their heads: ${moveHeads}`);
+  // Since the review fixes of 2026-11-17 the move cards name their two weeks ("14 Nov – 20 Nov vs 7 Nov – 13 Nov").
+  check(moveHeads.length === 2 && moveHeads.every((x) => /(^|·)7 days$| vs /.test(x)), `Going down and Going up say their 7 days in their heads: ${moveHeads}`);
   const setup = await page.$(".setup-line");
   if (setup) {
     check((await setup.boundingBox()).height <= 60, "the setup card is one line");
@@ -165,7 +167,7 @@ const visible = (page, sel) => page.$eval(sel, (el) => { let o = 1; for (let n =
   // ---- French, dark, phone
   await page.goto(url("&lang=fr")); await page.waitForSelector(".today-num"); await settle(page, 1500);
   const fr = await page.evaluate(() => ({ lead: document.querySelector(".today-verdict").textContent, title: document.querySelector("#topbar h1").textContent, seven: document.querySelector('#topbar [data-preset="7d"]').textContent, label: document.querySelector('.ncard[data-card="visits"] .ncard-name').textContent, heads: [...document.querySelectorAll(".today-moves .card-head .end")].map((x) => x.textContent), rows: [...document.querySelectorAll("[data-row] .t")].map((x) => x.textContent) }));
-  check(/à traiter|Rien d'urgent|Urgent/.test(fr.lead) && fr.title === "Aujourd'hui" && fr.seven === "7 jours" && fr.label === "Visites" && fr.heads.every((x) => /(^|·)7 jours$/.test(x)), `French: ${JSON.stringify({ ...fr, rows: undefined })}`);
+  check(/à traiter|Rien d'urgent|Urgent/.test(fr.lead) && fr.title === "Aujourd'hui" && fr.seven === "7 jours" && fr.label === "Visites" && fr.heads.every((x) => /(^|·)7 jours$| vs /.test(x)), `French: ${JSON.stringify({ ...fr, rows: undefined })}`);
   check(!fr.rows.some((r) => /\b(lost|clicks|no longer|health fell)\b/i.test(r)), "the to-do rows are in French");
   await page.mouse.move(5, 5); await page.screenshot({ path: `${OUT}/2-today-1440-fr.png` });
   await page.goto(url("&theme=dark&lang=en")); await page.waitForSelector(".today-num"); await settle(page, 1500);
