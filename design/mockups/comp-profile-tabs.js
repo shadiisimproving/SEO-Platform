@@ -94,7 +94,7 @@
     // With no check yet, the banner above the tabs says what to do: no second button here that only switches tabs.
     if (first || second) {
       const site = p.site?.host || "";
-      acts.push(UI().taskButton({ title: `${p.host}: ${[first, second].filter(Boolean).join(" ")}`.slice(0, 180), host: site, source: { type: "competitor", label: p.host, host: site, facts: [first, second].filter(Boolean), link: `#competitors/list/${p.id}`, key: `answer|${p.id}` } }));
+      acts.push(UI().taskButton({ title: `${p.host}: ${[first, second].filter(Boolean).join(" ")}`.slice(0, 180), host: site, about: COMP.aboutRival(p.id, p.host), source: { type: "competitor", label: p.host, host: site, facts: [first, second].filter(Boolean), link: `#competitors/list/${p.id}`, key: `answer|${p.id}` } }));
     }
     // Status colour only for who ranks higher, always with its icon and word (MASTER.md).
     const verdict = !off && c.shared ? (c.i_ahead === c.they_ahead ? UI().status("info", t("Level")) : c.i_ahead > c.they_ahead ? UI().status("good", t("You're ahead")) : UI().status("warn", t("They're ahead"))) : "";
@@ -223,7 +223,7 @@
           <td class="head-cell"><span class="cl-cell"><span class="t" dir="auto">${esc(b.title || COMP.shortUrl(b.url))}</span><span class="second">${COMP.link(b.url)}</span></span></td>
           <td class="c tabular" data-label="${esc(t("Keywords"))}">${num(b.keywords)}</td>
           <td class="c" data-label="${esc(t("Best position"))}">${COMP.pos(b.best_position)}</td>
-          <td data-label="${esc(t("Your page"))}">${b.my_url ? `<span class="cl-cell"><span class="t" dir="auto">${esc(b.my_title || COMP.shortUrl(b.my_url))}</span><span class="second">${b.pair_id ? `<button class="link-btn" data-cl-pair="${b.pair_id}">${t("Compare")}</button>` : COMP.link(b.my_url)}</span></span>` : `<span class="pt-none">${t("No page")}</span> ${UI().taskButton({ title: fill("Write a page against {url}", { url: COMP.shortUrl(b.url) }), host: p.site?.host, source: { type: "competitor", label: p.host, host: p.site?.host, facts: [b.url, many(b.keywords, "{n} keyword", "{n} keywords")], link: `#competitors/list/${p.id}`, key: `best|${p.id}|${b.url}` } }, { label: "Task" })}`}</td>
+          <td data-label="${esc(t("Your page"))}">${b.my_url ? `<span class="cl-cell"><span class="t" dir="auto">${esc(b.my_title || COMP.shortUrl(b.my_url))}</span><span class="second">${b.pair_id ? `<button class="link-btn" data-cl-pair="${b.pair_id}">${t("Compare")}</button>` : COMP.link(b.my_url)}</span></span>` : `<span class="pt-none">${t("No page")}</span> ${UI().taskButton({ title: fill("Write a page against {url}", { url: COMP.shortUrl(b.url) }), host: p.site?.host, about: COMP.aboutRival(p.id, p.host), source: { type: "competitor", label: p.host, host: p.site?.host, facts: [b.url, many(b.keywords, "{n} keyword", "{n} keywords")], link: `#competitors/list/${p.id}`, key: `best|${p.id}|${b.url}` } }, { label: "Task" })}`}</td>
         </tr>`).join("")}</tbody></table></div>${TP().footer(BEST, page, { noun: t("pages") })}`;
   }
 
@@ -270,6 +270,7 @@
       const task = UI().taskButton({
         title: g.questions.length === 1 ? fill("Answer \"{q}\" on your site", { q: g.questions[0] }) : fill("Answer {n} questions from {page} on your site", { n: num(g.questions.length), page: COMP.shortUrl(g.url) }),
         host,
+        about: COMP.aboutRival(p.id, p.host),
         source: { type: "competitor", label: p.host, host, facts: [...g.questions, g.url], link: `#competitors/list/${p.id}`, key: `questions|${p.id}|${g.url}` },
       }, { label: "Task" });
       return `<li class="pt-qpage${picked ? " is-picked" : ""}">

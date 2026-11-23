@@ -138,3 +138,14 @@ def convert(conn: Connection, log=None) -> dict:
         "seconds": round(time.monotonic() - started, 1),
         "per_table": per_table,
     }
+
+
+def lost(value) -> bool:
+    """Whether a stored text is what latin1 left of another script: runs of "?" and more "?" than anything else.
+    "Is it worth it?" and "What?? Really" are not; "??? ?????? | DMCC" is. A list (headings) is lost when most of it is."""
+    if isinstance(value, (list, tuple)):
+        items = [str(v) for v in value if v]
+        return bool(items) and sum(1 for v in items if lost(v)) * 2 > len(items)
+    s = str(value or "")
+    marks = s.count("?")
+    return "??" in s and marks > len(s) - marks - sum(1 for ch in s if ch.isspace())

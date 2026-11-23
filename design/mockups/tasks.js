@@ -351,8 +351,9 @@
   /* Who is signed in: a new task is theirs unless they change it, so it shows in their "My work" on Today. */
   const signedIn = () => window.BOOT?.user?.name?.trim() || myName();
 
-  /* task: an existing one. Otherwise prefill: { title, host, description, source, kind, owner, keywords, pages, about }. */
-  function openTask({ task = null, title = "", host = null, description = "", source = null, priority = "medium", pages = [], keywords = [], about = null, kind = "", owner = null, query = "", opener = null } = {}) {
+  /* task: an existing one. Otherwise prefill: { title, host, description, source, kind, owner, keywords, pages, about, rivals }.
+     rivals: competitors a finding names by host only; the panel picks them under Competitor once it knows the site's list. */
+  function openTask({ task = null, title = "", host = null, description = "", source = null, priority = "medium", pages = [], keywords = [], about = null, rivals = [], kind = "", owner = null, query = "", opener = null } = {}) {
     // The keyword a finding carries, wherever it keeps it.
     if (!task && !keywords.length) { const k = query || source?.query || source?.keyword; if (k) keywords = [k]; }
     T.base = task ? JSON.parse(JSON.stringify(task)) : null;
@@ -391,7 +392,7 @@
       </form>
       ${task ? commentsBlock(task) : ""}${task && window.COMP?.notes ? `<div class="task-notes">${window.COMP.notes.block({ scope: "task", taskId: task.id, task: task.title, siteId: task.site_id ?? null, title: t("Notes on this task") })}</div>` : ""}</div>
       <div class="panel-foot"><button class="btn btn-main" id="task-save" ${task ? `data-id="${task.id}"` : ""}>${t("Save")}</button><button class="btn" data-discard-panel>${t("Cancel")}</button>${task ? `<button class="btn btn-ghost danger" id="task-delete" data-id="${task.id}">${t("Delete")}</button>` : ""}</div>`,
-    opener, { key: draftKey, reopen: () => openTask({ task, title, host, description, source, priority, pages, keywords, about, kind, owner, opener }), after: () => { window.TaskAbout.mount(); window.COMP?.notes?.mount(); } });
+    opener, { key: draftKey, reopen: () => openTask({ task, title, host, description, source, priority, pages, keywords, about, rivals, kind, owner, opener }), after: () => { window.TaskAbout.mount(); window.COMP?.notes?.mount(); if (!task && rivals?.length) window.TaskAbout.addRivals(rivals); } });
     pendingSource = task ? null : source;
   }
   let pendingSource = null; // what the panel on screen would be created from

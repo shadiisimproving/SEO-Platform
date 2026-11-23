@@ -630,10 +630,12 @@
   COMP.TIMELINE_FILTERS = TIMELINE_FILTERS; // Who is moving (comp-summary.js) filters the same way
 
   /* `who` says whose timeline it is when the row isn't on that competitor's profile: { id, rival, own }. */
+  /* A task made from a competitor's change is about that competitor: the panel opens with it already picked. */
+  COMP.aboutRival = (id, host, main = "competitor") => (id && host ? { main, items: [{ kind: "competitor", ref: String(id), label: host }] } : null);
   function timelineFind(e, word, who = null) {
     const rival = who?.rival ?? view.data?.host ?? "", about = e.keyword || e.url || "", own = who ? who.own : view.data?.site?.host;
     const key = `timeline|${who?.id ?? view.data?.id}|${e.kind}|${about}|${e.at || ""}`;
-    return { title: `${rival}: ${t(word)}${about ? ` · ${e.keyword || COMP.shortUrl(e.url)}` : ""}`, host: own, source: { type: "competitor", label: `${rival}: ${t(word)}`, host: own, facts: [e.keyword, e.url, e.at ? UI.fmtDateOnly(e.at) : ""].filter(Boolean), link: `#competitors/list/${who?.id ?? view.data?.id}`, key } };
+    return { title: `${rival}: ${t(word)}${about ? ` · ${e.keyword || COMP.shortUrl(e.url)}` : ""}`, host: own, about: COMP.aboutRival(who?.id ?? view.data?.id, rival), source: { type: "competitor", label: `${rival}: ${t(word)}`, host: own, facts: [e.keyword, e.url, e.at ? UI.fmtDateOnly(e.at) : ""].filter(Boolean), link: `#competitors/list/${who?.id ?? view.data?.id}`, key } };
   }
 
   function timelineRow(e, focusable, who = null, common = null) {
@@ -694,9 +696,9 @@
   /* `who` (Who is moving, comp-summary.js, 2026-11-12): the row is in every competitor's list, so a Competitor column
      follows the date and the Task names that competitor. */
   function tlRow(g, common, who = null) {
-    const e = g.e, [ic, word, tone] = TL_KIND(e.kind), [, full] = KINDS[e.kind] || ["", e.kind];
+    const e = g.e, [ic, word, tone] = who?.kind || TL_KIND(e.kind), [, full] = KINDS[e.kind] || ["", e.kind];
     const isMove = e.kind.startsWith("rank_") || e.kind.startsWith("ai_");
-    const title = isMove ? e.keyword : e.page?.title || "";
+    const title = isMove ? e.keyword : COMP.readable(e.page?.title);
     /* who.inline (the Competitors cards screen, 2026-11-16): no Competitor column. The page's title is the link, and the
        line under it says whose page it is, by logo and site, then its path, as in the owner's benchmark screenshot. */
     const inline = Boolean(who?.inline);
@@ -708,21 +710,44 @@
       : isMove
         ? `<span class="kw" dir="auto">${esc(e.keyword || "")}</span>${e.url ? `<span class="second">${COMP.link(e.url, tlPath(e.url))}</span>` : ""}`
         : `${title ? `<span class="cl-tl-title" dir="auto">${esc(title)}</span>` : ""}${e.url ? `<span class="${title ? "second" : ""}">${COMP.link(e.url, tlPath(e.url))}</span>` : ""}`;
-    const times = g.all.length > 1 ? `<span class="tag tabular cl-tl-times" data-tip="${esc(g.all.map((x) => UI.fmtDateOnly(x.at)).join(", "))}" tabindex="0">×${UI.num(g.all.length)}</span>` : "";
-    const detail = isMove ? moveDetail(e, common) : e.kind === "new_page" || e.kind === "page_gone" ? "" : changeDetail(e);
+    const times = g.all.length > 1 && !who?.noTimes ? `<span class="tag tabular cl-tl-times" data-tip="${esc(g.all.map((x) => UI.fmtDateOnly(x.at)).join(", "))}" tabindex="0">×${UI.num(g.all.length)}</span>` : "";
+    const detailOf = (x) => (x.kind.startsWith("rank_") || x.kind.startsWith("ai_") ? (x.kind.startsWith("rank_") ? moveDetail(x, common) : "") : x.kind === "new_page" || x.kind === "page_gone" ? "" : changeDetail(x));
+    const detail = detailOf(e);
     const dates = g.all.length > 1 ? `<div class="cl-dl-row"><dt>${esc(t("Dates"))}</dt><dd>${esc(g.all.map((x) => UI.fmtDateOnly(x.at)).join(" · "))}</dd></div>` : "";
     const facts = isMove ? moveDetails(e) : e.page ? pageDetails(e.page) : "";
-    const more = `<details class="cl-more-facts cl-tl-more"><summary>${icon("chevron-right")}${t("Details")}</summary><div class="cl-tl-detail"><div class="t">${esc(t(full))}</div>${detail}${window.ChangeSummary?.slot(e) || ""}<dl class="cl-dl">${dates}${facts}</dl></div></details>`;
-    return `<tr data-cl-tl-row="${esc(groupKey(e))}">
+    /* who.story (the cards screen's Changes, 2026-11-20): the row is everything one competitor page did in the period, so
+       Details lists each change with its date and its own before and after, then the page's facts once. */
+    const parts = who?.story && g.all.length > 1
+      ? g.all.map((x) => `<div class="cl-tl-part"><div class="t">${esc(t((KINDS[x.kind] || ["", x.kind])[1]))}${x.keyword ? ` <span class="kw" dir="auto">${esc(x.keyword)}</span>` : ""}<span class="cl-tl-part-date">${esc(UI.fmtDateOnly(x.at))}</span></div>${detailOf(x)}${window.ChangeSummary?.slot(x) || ""}</div>`).join("")
+      : `<div class="t">${esc(t(full))}</div>${detail}${window.ChangeSummary?.slot(e) || ""}`;
+    /* who.detail (a page's ranking moves, comp-summary.js): the screen's own Details, a short table instead of one block per move. */
+    /* who.below (the cards screen's Changes): Details opens as a row of its own under this one, across the whole table,
+       so before and after and a page's keywords have room. The screen keeps which rows are open and redraws. */
+    const inner = who?.detail || `${parts}<dl class="cl-dl">${who?.story ? "" : dates}${facts}</dl>`;
+    const below = who?.below ? `<tr class="cs-detail-row"><td colspan="${who.below.cols}"><div class="cs-detail-box">${inner}</div></td></tr>` : "";
+    const more = who?.below !== undefined
+      ? `<button type="button" class="link-btn cs-open-btn" data-cs-detail="${esc(who.openKey)}" aria-expanded="${Boolean(who.below)}">${icon(who.below ? "chevron-down" : "chevron-right")}${esc(who.detailLabel || t("Details"))}</button>`
+      : who?.detail
+      ? `<details class="cl-more-facts cl-tl-more"><summary>${icon("chevron-right")}${esc(who.detailLabel || t("Details"))}</summary><div class="cl-tl-detail">${who.detail}</div></details>`
+      : `<details class="cl-more-facts cl-tl-more"><summary>${icon("chevron-right")}${t("Details")}</summary><div class="cl-tl-detail">${parts}<dl class="cl-dl">${who?.story ? "" : dates}${facts}</dl></div></details>`;
+    return `<tr data-cl-tl-row="${esc(groupKey(e))}"${who?.below ? ' class="open"' : ""}>
       <td class="nowrap cl-tl-date" data-label="${attr("Date")}">${COMP.ageCell(e.at)}</td>
       ${who && !inline ? `<td class="nowrap cl-tl-rival" data-label="${attr("Competitor")}"><span class="with-logo">${UI.siteLogo(who.rival, 16)}<span class="logo-text" dir="auto">${esc(who.display || who.rival)}</span></span></td>` : ""}
       <td class="nowrap cl-tl-kindcell" data-label="${esc(tag("Change|kind"))}"><span class="cl-tl-kind cl-tl-${tone}" data-tip="${esc(t(full))}">${icon(ic)}<span>${esc(tag(word))}</span></span>${times}</td>
-      <td class="cl-tl-where" data-label="${attr(isMove ? "Keyword" : "Page")}">${where}</td>
-      <td class="cl-tl-what" data-label="${attr("What changed")}"><span class="cl-tl-short">${esc(shortChange(e))}</span>${more}</td>
+      <td class="cl-tl-where" data-label="${attr(isMove && !who?.where ? "Keyword" : "Page")}">${who?.where || where}</td>${who?.mineCell || ""}
+      <td class="cl-tl-what" data-label="${attr("What changed")}">${who?.short || `<span class="cl-tl-short">${esc(shortChange(e))}</span>`}${more}</td>
       <td class="r nowrap" data-label=""><span class="row-act">${UI.taskButton(timelineFind(e, full, who), { label: "Task" })}</span></td>
-    </tr>`;
+    </tr>${below}`;
   }
   COMP.timelineTableRow = (e, who, common = null) => tlRow({ e, all: [e] }, common, who);
+  COMP.storyTableRow = (story, who, common = null) => tlRow({ e: story.lead, all: story.all }, common, who); // one competitor page, all it did (comp-summary.js)
+  COMP.changePath = (url) => tlPath(url);
+  COMP.changeTask = (e, who) => UI.taskButton(timelineFind(e, (KINDS[e.kind] || ["", e.kind])[1], who), { label: "Task" });
+  COMP.pageFacts = (page) => (page ? `<dl class="cl-dl">${pageDetails(page)}</dl>` : "");
+  /* A title saved as question marks (Arabic, Russian… written to a database that only keeps Latin letters) says nothing:
+     the row then shows the page's address instead. */
+  COMP.readable = (text) => { const s = String(text || ""); return /\?{2,}/.test(s) && (s.match(/\?/g).length > s.replace(/[\s?]/g, "").length) ? "" : s; };
+  COMP.changePart = (x, common = null) => `<div class="cl-tl-part"><div class="t">${esc(t((KINDS[x.kind] || ["", x.kind])[1]))}<span class="cl-tl-part-date">${esc(UI.fmtDateOnly(x.at))}</span></div>${changeDetail(x)}${window.ChangeSummary?.slot(x) || ""}</div>`; // one page edit, with its before and after
 
   function timelineBody(p) {
     const every = p.timeline || [];

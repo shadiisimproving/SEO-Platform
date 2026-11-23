@@ -16,6 +16,8 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
 
 (async () => {
   const { browser, page, problems } = await open({ width: 1440, height: 950 });
+  // The cards can fold to a rail of logos (2026-11-20, flow_reading_competitors.cjs); this flow is about the open cards.
+  await page.addInitScript(() => { try { localStorage.setItem("seocc-cs-slim", "0"); } catch { /* a page without storage */ } });
   const settle = (ms = 900) => page.waitForTimeout(ms);
   const asked = [];
   page.on("request", (r) => { if (r.url().includes("/api/collective/moves")) asked.push(r.url()); });
@@ -44,12 +46,12 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   const first = await page.evaluate(() => ({
     tab: document.querySelector("#cs-low-tabs [aria-selected=true]")?.dataset.csLow,
     heads: [...document.querySelectorAll("#cs-moves-list thead th")].map((th) => th.textContent.trim()).filter(Boolean),
-    ...(() => { const row = document.querySelector("#cs-moves-list .cl-tl-link")?.closest("tr"); return { link: row?.querySelector(".cl-tl-link")?.textContent.trim(), owner: row?.querySelector(".cl-tl-owner")?.textContent.replace(/\s+/g, " ").trim() }; })(),
+    ...(() => { const row = document.querySelector("#cs-moves-list a.cs-line-title")?.closest("tr"); return { link: row?.querySelector("a.cs-line-title")?.textContent.trim(), owner: row?.querySelector(".cs-line-host")?.textContent.replace(/\s+/g, " ").trim() }; })(),
     rows: document.querySelectorAll("#cs-moves-list tbody tr").length,
     tiles: Boolean(document.querySelector("#cs-tiles")), table: Boolean(document.querySelector("#cs-rivals-table")),
   }));
   check("Changes is the tab open first", first.tab === "moves", first.tab);
-  check("the table has no Competitor column", !first.heads.includes("Competitor") && first.heads.includes("Page"), first.heads.join(" | "));
+  check("the table has no Competitor column", !first.heads.includes("Competitor") && first.heads.includes("Their page"), first.heads.join(" | "));
   check("a page row shows its title as the link, with the site and path under it", Boolean(first.link) && /\.example/.test(first.owner || "") && /\//.test(first.owner || ""), `${first.link} / ${first.owner}`);
   check("the number cards and the old Competitors table are gone", !first.tiles && !first.table);
   const headTop = await page.evaluate(() => document.querySelector("#cs-moves .cs-mv-head")?.getBoundingClientRect().top ?? 9999);
@@ -60,7 +62,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await page.click(`[data-cs-pick="${one.id}"]`); await settle();
   const picked = await page.evaluate((id) => ({
     pressed: document.querySelector(`[data-cs-pick="${id}"]`)?.getAttribute("aria-pressed"), on: document.querySelector(`[data-cs-card="${id}"]`)?.classList.contains("on"),
-    chip: document.querySelector(".cs-mv-who")?.textContent.trim(), owners: [...document.querySelectorAll("#cs-moves-list .cl-tl-owner")].map((o) => o.textContent),
+    chip: document.querySelector(".cs-mv-who")?.textContent.trim(), owners: [...document.querySelectorAll("#cs-moves-list .cs-line-host")].map((o) => o.textContent),
     rows: document.querySelectorAll("#cs-moves-list tbody tr").length, focus: document.activeElement?.dataset?.csPick,
   }), one.id);
   check("pressing a card shows only that competitor's changes", picked.pressed === "true" && picked.on && picked.owners.length > 0 && picked.owners.every((o) => /rival-one/.test(o)), JSON.stringify({ ...picked, owners: picked.owners.length }));
@@ -72,8 +74,8 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
 
   // ---- kind and period buttons ---------------------------------------------------------------------------------------
   await page.click('[data-cs-mv-kind="new"]'); await settle();
-  const added = await page.evaluate(() => [...document.querySelectorAll("#cs-moves-list tbody tr .cl-tl-kind")].map((k) => k.textContent.trim()));
-  check("Added shows only added pages", added.length > 0 && added.every((w) => /Added/.test(w)), added.join(", "));
+  const added = await page.evaluate(() => [...document.querySelectorAll("#cs-moves-list tbody tr.cs-line .cs-what")].map((k) => k.textContent.trim()));
+  check("Added shows only added pages", added.length > 0 && added.every((w) => /^New page/.test(w)), added.join(", "));
   await page.click('[data-cs-mv-kind="all"]'); await settle();
   const before = asked.length;
   await page.click('[data-cs-mv-days-btn="7"]'); await settle(1500);

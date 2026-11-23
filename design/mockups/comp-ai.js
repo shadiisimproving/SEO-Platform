@@ -113,7 +113,7 @@
   function aiFind(c, words) {
     const host = COMP.site()?.host;
     const text = UI.t(words).replace("{keyword}", c.keyword || "").replace("{competitor}", c.competitor || "");
-    return { title: text, host, keywords: c.keyword ? [c.keyword] : [], source: { type: "competitor", label: text, host, facts: [c.keyword, c.competitor].filter(Boolean), link: "#competitors/ai", key: `ai|${COMP.siteId}|${c.kind}|${c.keyword}|${c.competitor || ""}` } };
+    return { title: text, host, keywords: c.keyword ? [c.keyword] : [], rivals: c.competitor ? [c.competitor] : [], source: { type: "competitor", label: text, host, facts: [c.keyword, c.competitor].filter(Boolean), link: "#competitors/ai", key: `ai|${COMP.siteId}|${c.kind}|${c.keyword}|${c.competitor || ""}` } };
   }
 
   /* Every change found by the same tool: its logo is said once, in the card's title, instead of on each line. */

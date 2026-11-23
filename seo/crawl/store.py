@@ -9,6 +9,7 @@ import re
 
 from sqlalchemy import Engine, func, insert, select, text, update
 
+from seo.core import charset
 from seo.core.models import ChangeEvent, Domain, Page, PageVersion
 from seo.crawl import noise
 from seo.crawl.extract import PageFields
@@ -113,10 +114,21 @@ def get_or_create_domain(engine: Engine, host: str) -> int:
         return conn.execute(select(Domain.id).where(Domain.host == host.lower())).scalar_one()
 
 
+def text_was_lost(page) -> bool:
+    """A page read while the tables were latin1: its Arabic, Russian or other title and headings were saved as "?"
+    (seo.core.charset). Its next read is a new starting point, never an edit: nothing on the page changed, only what the
+    app could keep (2026-11-20, the owner: "we need the system to read it")."""
+    if page is None or not page.content_hash:
+        return False
+    return charset.lost(page.title) or charset.lost(page.meta_description) or charset.lost(_json_list(page.h1)) or charset.lost(_json_list(page.headings))
+
+
 def validators(engine: Engine, url: str) -> tuple[str | None, str | None]:
     with engine.connect() as conn:
-        row = conn.execute(select(Page.etag, Page.last_modified).where(Page.url_hash == _url_hash(url))).first()
-    return (row.etag, row.last_modified) if row else (None, None)
+        row = conn.execute(select(Page.__table__).where(Page.url_hash == _url_hash(url))).first()
+    if row is None or text_was_lost(row):
+        return None, None  # lost text: "not changed since" from the site must not keep the "?" for good, so the page is asked for whole
+    return row.etag, row.last_modified
 
 
 def _page_values(fields: PageFields, result: FetchResult) -> dict:
@@ -257,7 +269,7 @@ def would_record(engine: Engine, domain_id: int, url: str, fields: PageFields) -
     """Whether this read would record a visible edit: then the page is read a second time before anything is saved."""
     with engine.connect() as conn:
         current = conn.execute(select(Page.__table__).where(Page.url_hash == _url_hash(url))).first()
-        if current is None or not current.content_hash or current.last_status == "moved":
+        if current is None or not current.content_hash or current.last_status == "moved" or text_was_lost(current):
             return False
         events, _rebase = _changes(conn, current, _page_values(fields, FetchResult(url=url, status="ok")), fields, url, domain_id)
     return any(not e.get("hidden") for e in events)
@@ -324,6 +336,12 @@ def save_fetch(
         if current.last_status == "moved" and current.content_hash:
             # Its address redirected last time, and now it answers itself: a new starting point, never a rewrite of the
             # page it redirected to (SEO review 2026-11-18, W6).
+            _add_version(conn, current.id, fields)
+            conn.execute(update(Page).where(Page.id == current.id).values(**values))
+            return "unchanged"
+        if text_was_lost(current):
+            # What was saved is "?", so there is nothing to compare with: this read replaces it, with no edit recorded and
+            # the page's "last edit seen" left as it was.
             _add_version(conn, current.id, fields)
             conn.execute(update(Page).where(Page.id == current.id).values(**values))
             return "unchanged"

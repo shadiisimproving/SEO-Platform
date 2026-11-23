@@ -10,7 +10,7 @@
   /* Every table, Who is moving too since 2026-11-10, has pages (table-pages.js), as every long table in the app. */
   const FIRST_ROWS = { moves: 5 }, MORE_ROWS = 50;
   const PAGES = { rivals: "cs-rivals", keywords: "cs-keywords", links: "cs-links", flagged: "cs-flagged", moves: "cs-moves" };
-  const S = { site: null, token: 0, data: {}, errors: {}, limit: {}, list: null, order: null, orderSite: null, find: "", sort: null, kwRival: "", kwSort: null, lnSort: null, lnOld: false, flaggedOpen: false, linkQ: "", mvKind: "all", mvRival: "", mvDays: 30, low: "moves" };
+  const S = { site: null, token: 0, data: {}, errors: {}, limit: {}, list: null, order: null, orderSite: null, find: "", sort: null, kwRival: "", kwSort: null, lnSort: null, lnOld: false, flaggedOpen: false, linkQ: "", mvKind: "all", mvRival: "", mvDays: 30, low: "moves", mvOpen: new Set(), mvSort: "behind", mvDir: 1, mvBehind: false };
   /* The simpler screens (UI.simple(), plan section 2): the head says how the positions were checked, four number cards, the
      Competitors table with one ⋯ per row (Tracking and Remove), then one card with three tabs: They beat you on (first),
      Who is moving (all its filters) and Shared links. Each tab keeps its ids (#cs-keywords, #cs-moves, #cs-links), so a card
@@ -389,7 +389,7 @@
       const finder = allRivals().length >= FIND_FROM || S.find
         ? `<div class="cs-find"><label class="cs-find-box">${UI.icon("search")}<span class="sr">${t("Find a competitor")}</span><input type="search" class="input" id="cs-find" placeholder="${attr("Find a competitor")}" value="${esc(S.find)}" autocomplete="off" spellcheck="false"></label></div>`
         : "";
-      return `<h2 class="sr" tabindex="-1">${t(title)}</h2>${finder}<div id="cs-rivals-list">${cardsList()}</div>`;
+      return `<h2 class="sr" tabindex="-1">${t(title)}</h2><div class="cs-side-top">${finder}${slimToggle()}</div><div id="cs-rivals-list">${cardsList()}</div>`;
     }
     const head = `<div class="cs-head-row">${sectionHead(title, watchingWords(), all ? "Most wins over you first. Each icon is one of your sites: click to open the competitor there." : "Most wins over you first.")}<button class="btn btn-main" id="cl-add-open">${UI.icon("plus")}${t(all ? "Add competitors" : "Add a competitor")}</button></div>`;
     const finder = allRivals().length >= FIND_FROM || S.find
@@ -464,7 +464,7 @@
     const lead = trackedOn(r) && r.ranks_on !== null && r.ranks_on !== undefined ? cardLead(r) : "";
     const pages = pagesWords(r);
     return `<li class="cs-card${picked ? " on" : ""}${paused ? " paused" : ""}" data-cs-card="${r.id}">
-      <button type="button" class="cs-card-pick" data-cs-pick="${r.id}" data-cs-pick-host="${esc(r.host)}" aria-pressed="${picked}" aria-label="${attr(fill(picked ? "Showing only {rival}: show all competitors" : "Show only {rival}", { rival: name }))}"></button>
+      <button type="button" class="cs-card-pick" data-cs-pick="${r.id}" data-cs-pick-host="${esc(r.host)}" aria-pressed="${picked}"${S.slim ? ` data-tip="${esc(name)}"` : ""} aria-label="${attr(fill(picked ? "Showing only {rival}: show all competitors" : "Show only {rival}", { rival: name }))}"></button>
       <div class="cs-card-top">
         <span class="cs-card-logo">${UI.siteLogo(r.host, 32)}</span>
         <span class="cs-card-id"><span class="cs-card-name" dir="auto">${esc(name)}</span><span class="cs-card-host" dir="auto">${esc(r.display || r.host)}</span></span>
@@ -483,7 +483,7 @@
     const edits = m.edited_30d ?? m.edits_30d ?? 0;
     const counts = m.crawl?.status === "blocked" || !m.crawl?.baseline_done ? youEditsWords(m) : cardCounts({ ...m, crawl: m.crawl }, edits, false);
     const pages = pagesWords(m);
-    return `<li class="cs-card cs-card-you" data-cs-you="${esc(m.id)}">
+    return `<li class="cs-card cs-card-you" data-cs-you="${esc(m.id)}"${S.slim ? ` data-tip="${esc(`${t("Your site")}: ${name}`)}" tabindex="0"` : ""}>
       <div class="cs-card-top">
         <span class="cs-card-logo">${UI.siteLogo(m.host, 32)}</span>
         <span class="cs-card-id"><span class="cs-card-name" dir="auto">${esc(name)}</span><span class="cs-card-host">${COMP.who("you", null, t("Your site"))}<span dir="auto">${esc(m.display || m.host)}</span></span></span>
@@ -525,7 +525,7 @@
   function keywordFind(k) {
     const host = k.my_best?.host || k.my_sites[0];
     const who = k.rivals_ahead.map((a) => a.host);
-    return { title: `${t("Competitors ahead on")} ${k.keyword}`, host, keywords: [k.keyword], source: { type: "competitor", label: k.keyword, host, facts: [engineName(k.engine), k.tool, ...who.slice(0, 3)].filter(Boolean), link: "#competitors/summary", key: `summary|keyword|${k.keyword_id}` } };
+    return { title: `${t("Competitors ahead on")} ${k.keyword}`, host, keywords: [k.keyword], rivals: who, source: { type: "competitor", label: k.keyword, host, facts: [engineName(k.engine), k.tool, ...who.slice(0, 3)].filter(Boolean), link: "#competitors/summary", key: `summary|keyword|${k.keyword_id}` } };
   }
 
   /* What changed last, in words. Up and down are status, so they get a colour, an icon and a word. */
@@ -653,6 +653,191 @@
      that says who is shown and takes it off. Rows say whose page it is under the page, so there's no Competitor column. */
   const BENCH_KINDS = [["all", "All"], ["new", "Added"], ["edits", "Edited|pages"], ["gone", "Removed|pages"], ["rank", "Rankings"], ["ai", "AI Overview"]];
   const BENCH_DAYS = [[7, "7 days"], [30, "30 days"], [90, "3 months"], [365, "1 year"]];
+  /* One row per competitor page (2026-11-20, the owner: "too much data is hard", "think as a human"). A page they rewrote,
+     retitled and that then moved up on two keywords is one story, not five rows; a competitor cited by AI on three
+     keywords with the same page is one row. The row leads with the change that weighs most. */
+  const LEAD = ["new_page", "page_gone", "redirect", "content", "title", "h1", "headings", "search_title", "rank_new", "rank_lost", "rank_up", "rank_down", "ai_cited", "ai_dropped", "canonical", "robots", "meta", "schema"];
+  const leadRank = (e) => { const i = LEAD.indexOf(e.kind); return (i < 0 ? LEAD.length : i) + (e.minor ? LEAD.length : 0); };
+  const isMoveKind = (e) => e.kind.startsWith("rank_") || e.kind.startsWith("ai_");
+  const pageKey = (url) => String(url || "").replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/[?#].*$/, "").replace(/\/+$/, "").toLowerCase();
+  /* A page that enters and leaves the top 10 five times in a month has not moved: per keyword, only where it started the
+     period and where it is now counts (2026-11-20, real data: one page, 57 moves, most of them the same keywords flipping).
+     OUT stands for "not in the results checked". */
+  const OUT = 1000;
+  function netMoves(all) {
+    const by = new Map();
+    all.filter((e) => e.kind.startsWith("rank_")).forEach((e) => { const k = `${e.keyword_id ?? e.keyword}|${e.country || ""}|${e.engine || ""}`; if (!by.has(k)) by.set(k, []); by.get(k).push(e); });
+    return [...by.values()].map((list) => {
+      const last = list[0], first = list[list.length - 1]; // the list comes newest first
+      const from = first.kind === "rank_new" ? OUT : first.from, to = last.kind === "rank_lost" ? OUT : last.to;
+      // Me beside them now, from the same check as their latest position: who is higher on this keyword.
+      const mine = last.mine?.position ?? OUT;
+      return { e: last, from, to, mine, side: mine === OUT && to === OUT ? 0 : mine < to ? 1 : -1, dir: from === to ? 0 : to < from ? 1 : -1, size: Math.abs(from - to), flips: list.length };
+    });
+  }
+  function storiesOf(events) {
+    const groups = new Map();
+    events.forEach((e) => {
+      // A move with no page named (an AI Overview citation) joins the competitor's others of that kind: "cited on 3 keywords".
+      const key = `${e.rival.id}|${e.url ? `u:${pageKey(e.url)}` : `k:${e.kind}`}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(e);
+    });
+    return [...groups.entries()].map(([key, all]) => {
+      const lead = all.reduce((best, e) => (leadRank(e) < leadRank(best) ? e : best), all[0]);
+      const mine = (all.find((e) => e.my_page?.pair_id) || [...all].filter((e) => e.my_page).sort((a, b) => (b.my_page.clicks ?? -1) - (a.my_page.clicks ?? -1))[0])?.my_page || null;
+      const pageEdit = all.find((e) => !isMoveKind(e));
+      const nets = netMoves(all), ups = nets.filter((n) => n.dir > 0).length, downs = nets.filter((n) => n.dir < 0).length;
+      return { key, all, lead, rival: lead.rival, at: all[0].at, mine, ups, downs, nets, ahead: nets.filter((n) => n.side > 0).length, behind: nets.filter((n) => n.side < 0).length, minor: all.every((e) => e.minor), words: Math.max(0, ...all.map((e) => (e.kind === "new_page" ? e.page?.words : e.changed_words) || 0)), title: COMP.readable(pageEdit?.page?.title) || COMP.readable(all.find((e) => e.title)?.title) };
+    });
+  }
+  /* What my page brings first; then a page they edited before one that only moved; then the most text changed, the most keywords moved, the newest. */
+  const edited = (s) => (s.all.some((e) => !isMoveKind(e)) ? 1 : 0);
+  const byWeight = (a, b) => (b.mine?.clicks ?? -1) - (a.mine?.clicks ?? -1) || edited(b) - edited(a) || b.words - a.words || b.behind - a.behind || (b.ups + b.downs) - (a.ups + a.downs) || (a.at < b.at ? 1 : -1);
+  /* The reader's own order inside each group, from one plain list over the table (2026-11-20, the owner: sorting and
+     filtering by column arrows and a Filter box was "very hard"). The groups, my pages by their clicks, stay as they are. */
+  const byDate = (a, b) => (a.at < b.at ? 1 : a.at > b.at ? -1 : 0);
+  const MV_KEYS = { keywords: (s) => s.nets.length, up: (s) => s.ups, down: (s) => s.downs, behind: (s) => s.behind, ahead: (s) => s.ahead };
+  /* A heading is the sort (2026-11-20): pressed once, the biggest first; again, the smallest first. "behind" with the
+     biggest first is the opening order, which also puts an edited page before one that only moved. Rows are sorted
+     inside their group, so my pages stay where they are. */
+  function sorterOf(id, dir) {
+    if (id === "seen") return (a, b) => byDate(a, b) * dir;
+    if (id === "behind" && dir === 1) return byWeight;
+    const get = MV_KEYS[id] || MV_KEYS.behind;
+    return (a, b) => (get(b) - get(a)) * dir || byDate(a, b);
+  }
+  const byNews = (a, b) => (leadRank(a.lead) < 2 ? 0 : 1) - (leadRank(b.lead) < 2 ? 0 : 1) || b.words - a.words || (a.at < b.at ? 1 : -1); // new and removed pages, the longest first
+  /* The page reads by my pages (2026-11-20, "think about the full page"): every competitor page beside my home page sits
+     under one line that names my page and says once what it brings, instead of repeating it on each row. My pages come
+     by their clicks; then what competitors did elsewhere, and small edits, both folded. */
+  const myName = (url) => (COMP.changePath(url) === "/" ? t("Home page") : COMP.changePath(url));
+  function storySections(stories, maxClicks) {
+    const mine = new Map();
+    stories.filter((s) => s.mine && !s.minor).forEach((s) => { const k = pageKey(s.mine.url); if (!mine.has(k)) mine.set(k, { page: s.mine, rows: [] }); mine.get(k).rows.push(s); });
+    const pages = [...mine.entries()].sort((a, b) => (b[1].page.clicks ?? -1) - (a[1].page.clicks ?? -1) || b[1].rows.length - a[1].rows.length);
+    const order = sorterOf(S.mvSort, S.mvDir);
+    const small = stories.filter((s) => s.mine && s.minor).sort(order);
+    const other = stories.filter((s) => !s.mine).sort(S.mvSort === "behind" && S.mvDir === 1 ? byNews : order);
+    /* A group's line says where I stand on that page of mine across every row under it, so the folded list of my pages
+       reads as a summary on its own. */
+    const stand = (rows) => { const b = rows.reduce((n, r) => n + r.behind, 0), a = rows.reduce((n, r) => n + r.ahead, 0); return b + a ? `<span class="cs-group-stand">${b ? `<span class="rd-down">${esc(fill("Behind on {n}", { n: UI.num(b) }))}</span>` : ""}${a ? `<span class="rd-up">${esc(fill("Ahead on {n}", { n: UI.num(a) }))}</span>` : ""}</span>` : ""; };
+    const worth = (m) => (m.clicks === null || m.clicks === undefined ? "" : `${RD.bar(m.clicks, maxClicks)}<span><span class="rd-num">${UI.num(m.clicks)}</span> ${esc(t(m.clicks === 1 ? "click" : "clicks"))}</span>${RD.delta(m.clicks, m.clicks_before) || '<span class="rd-delta"></span>'}`);
+    return [
+      ...pages.map(([k, g]) => ({ id: `p:${k}`, label: fill("Beside your {page}", { page: myName(g.page.url) }), rows: g.rows.sort(order), extra: `<span class="cs-group-worth">${worth(g.page)}</span><a class="icon-btn cs-group-open" href="#pages?page=${encodeURIComponent(g.page.url)}" aria-label="${attr("Open your page")}" data-tip="${attr("Open your page")}">${UI.icon("external-link")}</a>` })),
+      { id: "other", label: "On their other pages", rows: other, folded: pages.length > 0 },
+      { id: "small", label: "Small edits", rows: small, folded: true },
+    ];
+  }
+  /* Why the row matters to me, as its own column so it can be read down and sorted: my page beside theirs and the Google
+     clicks it brings, with a bar against the biggest page on show. No page of mine beside theirs: a quiet dash. */
+  function mineCell(story) {
+    const label = attr("You vs them");
+    if (!(story.ahead + story.behind)) return `<td class="cs-mine" data-label="${label}" data-sort="-1">${RD.quiet()}</td>`;
+    const one = story.nets.length === 1;
+    return `<td class="cs-mine" data-label="${label}" data-sort="${story.behind}"><span class="cs-mine-sides">${story.behind ? `<span class="rd-down">${esc(fill(one ? "They're ahead" : "Behind on {n}", { n: UI.num(story.behind) }))}</span>` : ""}${story.ahead ? `<span class="rd-up">${esc(fill(one ? "You're ahead" : "Ahead on {n}", { n: UI.num(story.ahead) }))}</span>` : ""}</span></td>`;
+  }
+  /* What they did, the heaviest first: three lines at most, the rest behind Details. */
+  const placeOf = (n, e) => (n === OUT ? `>${UI.num(e.depth || 10)}` : `#${UI.num(n)}`);
+  /* Their move on one keyword over the period, coloured by its direction; no move is one grey position. */
+  const netMove = (n) => (n.dir
+    ? `<span class="cs-net-move tabular rd-${n.dir > 0 ? "up" : "down"}"><span class="cs-net-from">${esc(placeOf(n.from, n.e))}</span>${UI.icon("arrow-right")}<b>${esc(placeOf(n.to, n.e))}</b></span>`
+    : `<span class="cs-net-move tabular cs-net-same">${esc(placeOf(n.to, n.e))}</span>`);
+  /* Details of a page's ranking moves: one line per keyword, the biggest move first, me beside them. */
+  function netTable(story, common) {
+    const rows = [...story.nets].sort((a, b) => (b.dir ? 1 : 0) - (a.dir ? 1 : 0) || b.size - a.size);
+    const line = (n) => `<tr class="${n.dir ? "" : "cs-net-quiet"}"><td class="cs-net-kw" dir="auto">${window.KeywordLink ? KeywordLink.html(n.e.keyword || "", { id: n.e.keyword_id, host: story.rival.sites[0]?.host }) : esc(n.e.keyword || "")}</td><td>${netMove(n)}</td><td class="tabular cs-net-mine${n.side > 0 ? " cs-net-won" : ""}">${n.e.mine ? esc(placeOf(n.mine, n.e)) : RD.quiet()}</td></tr>`;
+    return `<table class="cs-net" data-tt-off><thead><tr><th scope="col">${esc(t("Keyword"))}</th><th scope="col">${esc(t("Them"))}</th><th scope="col">${esc(t("You"))}</th></tr></thead><tbody>${rows.map(line).join("")}</tbody></table>
+      <p class="cs-net-note">${esc(fill("From the start of the period to now. {n} moves seen in all.", { n: UI.num(story.all.filter((e) => e.kind.startsWith("rank_")).length) }))}</p>`;
+  }
+  const moveSize = (e) => (e.kind === "rank_new" || e.kind === "rank_lost" ? 1000 : Math.abs((e.from || 0) - (e.to || 0)));
+  function storyShort(story) {
+    const order = [...story.all].sort((a, b) => leadRank(a) - leadRank(b) || moveSize(b) - moveSize(a));
+    /* A page with ranking moves: how many keywords ended higher and how many lower as two marks, then its two biggest
+       moves, one line each: the keyword cut to fit on the left, the move on the right. The rest is counted, quietly. */
+    if (story.nets.length > 1) {
+      const edits = order.filter((e) => !isMoveKind(e)).slice(0, 2);
+      const moved = story.nets.filter((n) => n.dir).sort((a, b) => b.size - a.size), same = story.nets.length - moved.length;
+      const tally = moved.length ? `<span class="cs-story-tally">${story.ups ? `<span class="cs-tally cs-tally-up">${UI.icon("arrow-up")}${esc(fill("{n} up", { n: UI.num(story.ups) }))}</span>` : ""}${story.downs ? `<span class="cs-tally cs-tally-down">${UI.icon("arrow-down")}${esc(fill("{n} down", { n: UI.num(story.downs) }))}</span>` : ""}</span>` : "";
+      const kw = (n) => `<span class="cs-story-line"><span class="cs-story-kw" dir="auto" title="${esc(n.e.keyword || "")}">${esc(n.e.keyword || "")}</span>${netMove(n)}</span>`;
+      const rest = moved.length - Math.min(2, moved.length);
+      const quiet = [rest > 0 ? fill("+{n} more", { n: UI.num(rest) }) : "", same ? fill("{n} unchanged", { n: UI.num(same) }) : ""].filter(Boolean).join(" · ");
+      return edits.map((e) => `<span class="cl-tl-short">${esc(COMP.changeShort(e))}</span>`).join("") + tally + `<span class="cs-story-lines">${moved.slice(0, 2).map(kw).join("")}</span>` + (quiet ? `<span class="cs-story-more">${esc(quiet)}</span>` : "");
+    }
+    const sameMove = order.every((e) => e.kind === order[0].kind) && isMoveKind(order[0]); // the Change cell already says it: only the keywords differ
+    const keyword = (e) => `<span class="kw cs-story-kw" dir="auto">${window.KeywordLink ? KeywordLink.html(e.keyword || "", { id: e.keyword_id, host: story.rival.sites[0]?.host }) : esc(e.keyword || "")}</span>`;
+    const line = (e) => `<span class="cl-tl-short">${isMoveKind(e) ? `${keyword(e)}${sameMove && e.kind.startsWith("ai_") ? "" : ` ${esc(COMP.changeShort(e))}`}` : esc(COMP.changeShort(e))}</span>`;
+    const more = order.length > 3 ? `<span class="cl-tl-short cs-story-more">${esc(fill("+{n} more", { n: UI.num(order.length - 3) }))}</span>` : "";
+    return order.slice(0, 3).map(line).join("") + more;
+  }
+  /* One line per competitor page (2026-11-20, the owner on the first build: "this ui ux is like shit"; rows were five
+     lines tall with pills, tallies and links all at once). A row now says four things on one line: whose page, what
+     happened, where I stand beside it, and when. Everything else opens under the row when it is pressed. No kind pill:
+     "Rankings" on every row said nothing; the words in What happened say the kind. */
+  const EDIT_WORDS = { title: "title", h1: "main heading", headings: "subheadings", meta: "description", schema: "structured data", canonical: "canonical", robots: "indexing", search_title: "search title" };
+  /* What happened, in a word or two (2026-11-20, the owner: "too much data for a human to understand easily", after a
+     version with five number columns). A row says the kind of thing that happened; every count is under the row. */
+  function whatLine(story) {
+    const kinds = new Set(story.all.map((e) => e.kind)), bits = [];
+    const say = (words, icon, tone) => bits.push(`<span class="cs-what-main${tone ? ` cs-what-${tone}` : ""}">${icon ? UI.icon(icon) : ""}${esc(t(words))}</span>`);
+    if (kinds.has("new_page")) say("New page");
+    else if (kinds.has("page_gone")) say("Page removed");
+    else if (kinds.has("redirect")) say("Moved to another address");
+    else if (kinds.has("content")) say(story.all.some((e) => e.kind === "content" && !e.minor) ? "Text rewritten" : "Small text edit");
+    else { const k = [...kinds].find((x) => EDIT_WORDS[x]); if (k) bits.push(`<span class="cs-what-main">${esc(fill("New {list}", { list: t(EDIT_WORDS[k]) }))}</span>`); }
+    const net = story.ups - story.downs;
+    if (story.nets.length) say(net > 0 ? "Rising" : net < 0 ? "Falling" : "Steady", net > 0 ? "arrow-up" : net < 0 ? "arrow-down" : "", net === 0 ? "quiet" : "");
+    if (story.all.some((e) => e.kind === "ai_cited")) say("Cited by AI", "sparkles");
+    else if (story.all.some((e) => e.kind === "ai_dropped")) say("Dropped by AI", "sparkles");
+    return bits.slice(0, 2).join('<span class="cs-what-sep" aria-hidden="true"></span>');
+  }
+  /* Me beside them on this row's keywords: a two-part bar (behind, ahead) and the two counts. Nothing to compare: quiet. */
+  function versus(story) {
+    const b = story.behind, all = story.behind + story.ahead;
+    if (!all) return RD.quiet();
+    if (!b) return `<span class="cs-vs-none">${esc(t("None"))}</span>`;
+    return `<span class="cs-vs"><span class="cs-vs-n"><b class="tabular">${UI.num(b)}</b> ${esc(fill("of {n}", { n: UI.num(all) }))}</span><span class="cs-vs-bar" aria-hidden="true"><i style="width:${Math.max(6, Math.round((b / all) * 100))}%"></i></span></span>`;
+  }
+  /* A number in its own column, right-aligned, with a small bar against the biggest value on show: a column can be read
+     down and compared without reading a word. Zero is a quiet dash. */
+  function numCellHtml(cls, label, n, max, tone) {
+    return `<td class="cs-num ${cls}" data-label="${attr(label)}" data-sort="${n}">${n ? `<span class="cs-num-n${tone ? ` rd-${tone}` : ""}">${UI.num(n)}</span>${RD.bar(n, max, { tone: tone || "muted" })}` : RD.quiet()}</td>`;
+  }
+  const MV_COLS = [["keywords", "Keywords", (s) => s.nets.length, ""], ["up", "Up", (s) => s.ups, "up"], ["down", "Down", (s) => s.downs, "down"], ["behind", "Behind", (s) => s.behind, "down"], ["ahead", "Ahead", (s) => s.ahead, "up"]];
+  function storyDetail(story, common) {
+    const who = { id: story.rival.id, rival: story.rival.host, display: story.rival.display, own: story.rival.sites[0]?.host };
+    const edits = story.all.filter((e) => !isMoveKind(e));
+    const ai = story.all.filter((e) => e.kind.startsWith("ai_"));
+    const page = edits.find((e) => e.page)?.page;
+    const url = story.lead.url || story.all.find((e) => e.url)?.url;
+    return `<div class="cs-detail-box">
+      ${edits.map((e) => COMP.changePart(e, common)).join("")}
+      ${story.nets.length ? `<p class="cs-detail-sum">${[story.ups ? `<span class="rd-up">${esc(fill("{n} up", { n: UI.num(story.ups) }))}</span>` : "", story.downs ? `<span class="rd-down">${esc(fill("{n} down", { n: UI.num(story.downs) }))}</span>` : "", story.nets.length - story.ups - story.downs ? `<span>${esc(fill("{n} unchanged", { n: UI.num(story.nets.length - story.ups - story.downs) }))}</span>` : ""].filter(Boolean).join("")}<span class="cs-detail-when">${esc(fill("Last seen {when}", { when: COMP.ago(story.at) }))}</span></p>${netTable(story, common)}` : ""}
+      ${ai.length ? `<ul class="cs-detail-ai">${ai.map((e) => `<li><span class="${e.kind === "ai_cited" ? "rd-up" : "rd-down"}">${esc(t(e.kind === "ai_cited" ? "Cited by AI" : "Dropped by AI"))}</span> <span dir="auto">${window.KeywordLink ? KeywordLink.html(e.keyword || "", { id: e.keyword_id, host: who.own }) : esc(e.keyword || "")}</span> <span class="cs-what-sub">${esc(UI.fmtDateOnly(e.at))}</span></li>`).join("")}</ul>` : ""}
+      ${page ? `<details class="cl-more-facts cs-detail-facts"><summary>${UI.icon("chevron-right")}${esc(t("Everything about their page"))}</summary>${COMP.pageFacts(page)}</details>` : ""}
+      <div class="cs-detail-foot">${COMP.changeTask(story.lead, who)}${url ? COMP.link(url, t("Open their page"), "cs-detail-open") : ""}</div>
+    </div>`;
+  }
+  function storyRow(story, common, maxes) {
+    const open = S.mvOpen.has(story.key), rival = story.rival;
+    const url = story.lead.url || story.all.find((e) => e.url)?.url;
+    const path = url ? COMP.changePath(url) : "";
+    const keywords = new Set(story.all.map((e) => e.keyword).filter(Boolean)).size;
+    const name = url ? COMP.link(url, story.title || path, "cs-line-title") : `<span class="cs-line-title">${esc(fill(keywords === 1 ? "{n} keyword" : "{n} keywords", { n: UI.num(keywords) }))}</span>`;
+    const label = attr("Details");
+    return `<tr class="cs-line${open ? " open" : ""}" data-cs-line="${esc(story.key)}">
+      <td class="cs-line-page" data-label="${attr("Their page")}">${UI.siteLogo(rival.host, 20)}<span class="cs-line-id">${name}<span class="cs-line-host" dir="auto">${esc(rival.display || rival.host)}${story.title && path && path !== "/" ? `<span aria-hidden="true"> · </span>${esc(path)}` : ""}</span></span></td>
+      <td class="cs-line-what" data-label="${attr("What happened")}"><span class="cs-what">${whatLine(story)}</span></td>
+      <td class="cs-line-vs" data-label="${attr("Keywords where they beat you")}" data-sort="${story.behind}">${versus(story)}</td>
+      <td class="cs-line-go"><button type="button" class="icon-btn cs-line-chev" data-cs-detail="${esc(story.key)}" aria-expanded="${open}" aria-label="${label}">${UI.icon(open ? "chevron-up" : "chevron-down")}</button></td>
+    </tr>${open ? `<tr class="cs-detail-row"><td colspan="4">${storyDetail(story, common)}</td></tr>` : ""}`;
+  }
+
+  const MV_TIPS = { keywords: "Keywords of yours this page ranks on that moved in the period.", up: "Keywords where their page ended the period higher than it started.", down: "Keywords where their page ended the period lower than it started.", behind: "Keywords where their page is above yours in the latest check.", ahead: "Keywords where your page is above theirs in the latest check." };
+  function sortHead(id, label, cls) {
+    const on = S.mvSort === id;
+    return `<th scope="col" class="${cls}"${on ? ` aria-sort="${S.mvDir === 1 ? "descending" : "ascending"}"` : ""}><button type="button" class="cs-sort${on ? " on" : ""}" data-cs-mv-sort="${id}"${MV_TIPS[id] ? ` data-tip="${attr(MV_TIPS[id])}"` : ""}>${on ? UI.icon(S.mvDir === 1 ? "arrow-down" : "arrow-up") : ""}<span>${esc(t(label))}</span></button></th>`;
+  }
   function benchMovesHtml() {
     const title = "Changes";
     if (S.errors.moves) return failedCard("moves", title);
@@ -677,21 +862,28 @@
     /* Two lines over the table, and nothing else: the title, who is shown and the period; then the kinds of change with,
        at their end, the sites not watched and the table's Filter (table-tools.js puts it in the slot named after the table). */
     const note = S.mvRival ? "" : movesNote(d); // the note names other sites: not while one is picked
-    const head = `<div class="cs-mv-head"><h2 tabindex="-1">${esc(t(title))}${total ? `<span class="n-badge">${UI.num(total)}</span>` : ""}</h2>${whoChip}${daySeg}</div>
-      <div class="cs-mv-bar">${kindSeg}<div class="cs-mv-end">${note}<div class="cs-mv-slot" data-tt-slot="cs-moves-list"></div></div></div>`;
-    const search = d.moves.length >= FIND_FROM || TP.state(PAGES.moves).q ? `<div class="cs-mv-find">${TP.search(PAGES.moves, t("Search pages, keywords, titles"))}</div>` : "";
+    const finder = d.moves.length >= FIND_FROM || TP.state(PAGES.moves).q ? TP.search(PAGES.moves, t("Search pages, keywords, titles")) : "";
+    const head = `<div class="cs-mv-head"><h2 tabindex="-1">${esc(t(title))}${total ? `<span class="n-badge">${UI.num(total)}</span>` : ""}</h2>${whoChip}${note}${daySeg}</div>
+      <div class="cs-mv-bar">${finder}${kindSeg}<div class="cs-mv-end"></div></div>`;
+    const search = ""; // the search box sits in the one toolbar line, before the kinds
     if (!d.moves.length) return `${head}${COMP.empty(t(days === 365 ? "Nothing in the past year" : "Nothing in this period"), t("Changes and moves show here as found."))}`;
-    const page = TP.view(PAGES.moves, shown);
+    /* Rows are competitor pages, in named groups, the pages beside mine first and by what my page brings (reading.js). */
+    const stories = storiesOf(shown).filter((s) => !S.mvBehind || s.behind > 0);
+    const maxClicks = Math.max(0, ...stories.map((s) => s.mine?.clicks || 0));
+    const sec = RD.sections(PAGES.moves, storySections(stories, maxClicks), 4, () => paintSection("moves"));
+    const page = sec.page;
     const capped = d.total > d.moves.length && !S.mvRival ? fill("{sent} of {total}, newest first", { sent: UI.num(d.moves.length), total: UI.num(d.total) }) : null;
-    const common = COMP.moveCommon?.(page.rows) || null;
+    const common = COMP.moveCommon?.(page.rows.flatMap((s) => s.all)) || null;
+    const maxes = Object.fromEntries(MV_COLS.map(([id, , get]) => [id, Math.max(0, ...stories.map(get))]));
+    const rowsHtml = page.rows.map((story) => storyRow(story, common, maxes));
     const none = pickedRival && !searched.length && !TP.state(PAGES.moves).q
       ? COMP.empty(fill("No change from {rival} in this period", { rival: pickedRival.display || pickedRival.host }), t("Try a longer period, or show all competitors."))
       : noneFound(t("No change matches these filters."), PAGES.moves);
-    const list = shown.length
-      ? `<div class="table-wrap"><table class="data cl-tl-table cs-moves-table cs-bench-table" id="cs-moves-list">
-          <thead><tr><th scope="col">${t("Seen on")}</th><th scope="col">${esc(t("Change|kind").split("|")[0])}</th><th scope="col">${t("Page")}</th><th scope="col">${t("What changed")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead>
-          <tbody>${page.rows.map((e) => COMP.timelineTableRow(e, { id: e.rival.id, rival: e.rival.host, display: e.rival.display, own: e.rival.sites[0]?.host, inline: true }, common)).join("")}</tbody>
-        </table></div>${TP.footer(PAGES.moves, page, { noun: t("changes"), capped })}`
+    const list = shown.length && stories.length
+      ? `<div class="table-wrap"><table class="data cs-lines cs-lines-plain" id="cs-moves-list" data-tt-arrange-off>
+          <thead><tr><th scope="col" class="cs-lh-page">${t("Their page")}</th><th scope="col" class="cs-lh-what">${t("What happened")}</th><th scope="col" class="cs-lh-vs">${t("Keywords where they beat you")}${UI.info([t("On how many of the keywords you both rank for their page is above yours, in the latest check. The list starts with the pages ahead of you on the most.")])}</th><th scope="col" class="cs-lh-go"><span class="sr">${t("Details")}</span></th></tr></thead>
+          <tbody>${rowsHtml.map((html, i) => sec.before(page.rows[i], i) + html).join("")}${sec.after}</tbody>
+        </table></div>${TP.footer(PAGES.moves, page, { noun: t("pages"), capped })}`
       : none;
     return `${head}${search}<div class="cs-pages">${list}</div>${shown.length ? COMP.moveCommonLine?.(common) || "" : ""}`; // what every move shares is a footnote, as under They beat you on
   }
@@ -790,6 +982,14 @@
 
   const SECTION = { rivals: rivalsHtml, keywords: keywordsHtml, moves: movesHtml, links: linksHtml };
   const SORT_DIRS = new Set(["up", "down"]);
+
+  /* The cards side can fold to a rail of logos (2026-11-20, the owner: the cards took a third of the width and the changes
+     were tight). A logo still picks its competitor. The choice is kept in this browser; with none made, a window under
+     1600 px starts folded, because there the table needs the room more than the cards do. */
+  const SLIM_KEY = "seocc-cs-slim";
+  const savedSlim = () => { try { return localStorage.getItem(SLIM_KEY); } catch { return null; } };
+  S.slim = savedSlim() === null ? window.innerWidth < 1600 : savedSlim() === "1";
+  const slimToggle = () => `<button type="button" class="icon-btn cs-slim-toggle" data-cs-slim aria-pressed="${S.slim}" aria-label="${attr(S.slim ? "Show the competitor cards" : "Hide the competitor cards")}" data-tip="${attr(S.slim ? "Show the competitor cards" : "Hide the competitor cards")}">${UI.icon("panel-left")}</button>`;
 
   // ---- the tab ---------------------------------------------------------------------------------------
   /* The lower card's tabs, each with how many rows it holds once known. */
@@ -899,7 +1099,7 @@
         return COMP.empty(t("No competitors yet"), t("Upload keywords in Find competitors to see who ranks against you."), `<div class="cl-empty-acts"><button class="btn btn-main" data-cl-go-find>${UI.icon("target")}${t("Find competitors")}</button><button class="btn" id="cl-add-open">${UI.icon("plus")}${t("Add competitors")}</button></div>`);
       }
       if (simple()) {
-        return `<div class="cs-bench">
+        return `<div class="cs-bench${S.slim ? " cs-bench-slim" : ""}">
           <section class="cs-section cs-rivals-side" id="cs-rivals" aria-label="${attr("Competitors")}">${SECTION.rivals()}</section>
           <section class="cs-lower" id="cs-lower" aria-label="${attr("More about your competitors")}">
             <div class="cs-low-tabs" id="cs-low-tabs" role="tablist" aria-label="${attr("More about your competitors")}">${lowTabsHtml()}</div>
@@ -967,6 +1167,33 @@
         paintSection("moves"); // the old rows stay, with the new period pressed, until its answer is in: no blank flash
         UI.$("#cs-moves")?.setAttribute("aria-busy", "true");
         fetchSection("moves", S.token, S.site).then(() => { UI.$("#cs-moves")?.removeAttribute("aria-busy"); UI.$(`[data-cs-mv-days-btn="${n}"]`)?.focus({ preventScroll: true }); });
+        return;
+      }
+      if ((el = hit("[data-cs-mv-sort]"))) {
+        const id = el.dataset.csMvSort;
+        if (S.mvSort === id) S.mvDir = -S.mvDir; else { S.mvSort = id; S.mvDir = 1; }
+        TP.reset(PAGES.moves); paintSection("moves");
+        UI.$(`[data-cs-mv-sort="${id}"]`)?.focus({ preventScroll: true });
+        return;
+      }
+      if (hit("[data-cs-mv-behind]")) {
+        S.mvBehind = !S.mvBehind; TP.reset(PAGES.moves); paintSection("moves");
+        UI.$("[data-cs-mv-behind]")?.focus({ preventScroll: true });
+        return;
+      }
+      if (hit("[data-cs-slim]")) {
+        S.slim = !S.slim;
+        try { localStorage.setItem(SLIM_KEY, S.slim ? "1" : "0"); } catch { /* private window: the choice lasts this visit */ }
+        UI.$(".cs-bench")?.classList.toggle("cs-bench-slim", S.slim);
+        paintSection("rivals");
+        UI.$("[data-cs-slim]")?.focus({ preventScroll: true });
+        return;
+      }
+      if ((el = hit("[data-cs-detail]")) || ((el = hit("tr[data-cs-line]")) && !hit("a, button, input, label, select, summary"))) {
+        const key = el.dataset.csDetail || el.dataset.csLine;
+        if (S.mvOpen.has(key)) S.mvOpen.delete(key); else S.mvOpen.add(key);
+        paintSection("moves");
+        document.querySelector(`[data-cs-detail="${CSS.escape(key)}"]`)?.focus({ preventScroll: true });
         return;
       }
       if ((el = hit("[data-cs-mv-kind]"))) {
@@ -1072,6 +1299,14 @@
   }
 
   Object.assign(window.FR, {
+    "On pages that compete with yours": "Sur les pages en concurrence avec les vôtres", "On their other pages": "Sur leurs autres pages", "Small edits": "Petites modifications", "Home page": "Page d'accueil", "Keywords where they beat you": "Mots-clés où ils vous devancent", "None": "Aucun", "of {n}": "sur {n}", "Rising": "En hausse", "Falling": "En baisse", "Steady": "Stable", "Text rewritten": "Texte réécrit", "Small text edit": "Petite retouche du texte", "Last seen {when}": "Vu {when}",
+    "On how many of the keywords you both rank for their page is above yours, in the latest check. The list starts with the pages ahead of you on the most.": "Sur combien des mots-clés où vous êtes tous deux classés leur page est au-dessus de la vôtre, au dernier contrôle. La liste commence par les pages devant vous sur le plus de mots-clés.", "Up": "Hausse", "Down": "Baisse", "Behind": "Derrière", "Ahead": "Devant", "Back where they were": "Revenus à leur place",
+    "Keywords of yours this page ranks on that moved in the period.": "Vos mots-clés sur lesquels cette page est classée et qui ont bougé sur la période.", "Keywords where their page ended the period higher than it started.": "Mots-clés où leur page finit la période plus haut qu'au début.", "Keywords where their page ended the period lower than it started.": "Mots-clés où leur page finit la période plus bas qu'au début.", "Keywords where their page is above yours in the latest check.": "Mots-clés où leur page est au-dessus de la vôtre au dernier contrôle.", "Keywords where your page is above theirs in the latest check.": "Mots-clés où votre page est au-dessus de la leur au dernier contrôle.", "What happened": "Ce qui s'est passé", "Seen": "Vu", "Text": "Texte", "New {list}": "Nouveau : {list}", "{list} too": "{list} aussi",
+    "title": "titre", "main heading": "titre principal", "subheadings": "sous-titres", "description": "description", "structured data": "données structurées", "canonical": "canonique", "indexing": "indexation", "search title": "titre dans Google",
+    "of {n} keyword": "sur {n} mot-clé", "of {n} keywords": "sur {n} mots-clés", "on {n} keyword": "sur {n} mot-clé", "on {n} keywords": "sur {n} mots-clés", "{n} keyword, back where it was": "{n} mot-clé, revenu à sa place", "{n} keywords, back where they were": "{n} mots-clés, revenus à leur place",
+    "{n} behind": "{n} derrière", "{n} ahead": "{n} devant", "Everything about their page": "Tout sur leur page", "Open their page": "Ouvrir leur page", "They're ahead": "Ils sont devant", "Sort": "Trier", "Where you're behind": "Là où vous êtes derrière", "Newest first": "Les plus récents", "Most keywords moved": "Le plus de mots-clés déplacés", "Only where they're ahead": "Seulement là où ils sont devant", "Show the competitor cards": "Afficher les fiches des concurrents", "Hide the competitor cards": "Masquer les fiches des concurrents", "Beside your {page}": "Face à votre {page}", "Open your page": "Ouvrir votre page", "You vs them": "Vous et eux",
+    "On how many of this row's keywords their page is above yours, and on how many yours is above theirs, in the latest check.": "Sur combien de mots-clés de cette ligne leur page est au-dessus de la vôtre, et sur combien la vôtre est au-dessus, au dernier contrôle.", "{n} unchanged": "{n} inchangés", "All {n} keywords": "Les {n} mots-clés", "Ahead": "Devant", "From the start of the period to now. {n} moves seen in all.": "Du début de la période à maintenant. {n} mouvements vus au total.", "Behind on {n}": "Derrière sur {n}", "Ahead on {n}": "Devant sur {n}", "{n} up": "{n} en hausse", "{n} down": "{n} en baisse", "{n} keyword back where it was": "{n} mot-clé revenu à sa place", "{n} keywords back where they were": "{n} mots-clés revenus à leur place", "Your page": "Votre page", "click": "clic", "clicks": "clics", "No page of yours beside it": "Aucune de vos pages en face",
+    "The page of yours that ranks beside theirs, on how many of this row's keywords you are behind or ahead of them, and your page's Google clicks in the last 28 days against the 28 before.": "Votre page classée face à la leur, le nombre de mots-clés de cette ligne où vous êtes derrière ou devant eux, et les clics Google de votre page sur les 28 derniers jours par rapport aux 28 précédents.",
     "Changes": "Changements", "Added": "Ajoutées", "Edited": "Modifiées", "Edited|pages": "Modifiées", "Rankings": "Classements",
     "7 days": "7 jours", "30 days": "30 jours", "3 months": "3 mois", "1 year": "1 an", "Seen on": "Repéré le",
     "added in 30 days": "ajoutées en 30 j", "edited in 30 days": "modifiées en 30 j", "{n} page": "{n} page", "{n} pages": "{n} pages",

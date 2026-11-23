@@ -13,8 +13,11 @@ from sqlalchemy import Engine, text
 
 from seo.accounts import access
 from seo.competitors import change_facts, gaps, profile, quality
+from seo.competitors import pairs as pairs_mod
+from seo.crawl.store import SMALL_EDIT_WORDS
 from seo.competitors.keywords import _iso, require_own
 from seo.links.service import OWN
+from seo.metrics import weight
 from seo.serp import store
 
 KEYWORD_ROWS = 200
@@ -310,11 +313,67 @@ def moves(engine: Engine, site_id: int | None = None, days: int = MOVE_DAYS) -> 
         ranking_moves += len(recent)
         events += recent
     events.sort(key=lambda e: e["at"], reverse=True)
+    events = events[:MOVE_ROWS]
+    _attach_my_pages(engine, sites, events)
     return {
-        "sites": sites, "days": days, "periods": list(MOVE_PERIODS), "total": page_changes + ranking_moves, "moves": events[:MOVE_ROWS],
+        "sites": sites, "days": days, "periods": list(MOVE_PERIODS), "total": page_changes + ranking_moves, "moves": events,
         "blocked": sorted(r["host"] for r in found if crawls[r["id"]]["status"] == "blocked"),
         "not_started": sorted(r["host"] for r in found if crawls[r["id"]]["status"] != "blocked" and not crawls[r["id"]].get("baseline_done")),
     }
+
+
+MINOR_KINDS = ("meta", "schema")  # the description under the result and structured data: rarely what moves a ranking
+
+
+def is_minor(event: dict) -> bool:
+    """A change a reader can skip at first: a tag few people see, or a text edit of a few words."""
+    if event["kind"] in MINOR_KINDS:
+        return True
+    words = event.get("changed_words")
+    return event["kind"] == "content" and words is not None and words < SMALL_EDIT_WORDS
+
+
+def _attach_my_pages(engine: Engine, sites: list[dict], events: list[dict]) -> None:
+    """Why a change matters to me (2026-11-20, "show the data so I can decide"): each row gets `my_page`, the page of mine it
+    competes with and that page's Google clicks, and `minor`. A page change competes through its Page vs page pair (the pair
+    sharing the most keywords speaks for the page, as on Today); a ranking move through my best page in the same check."""
+    if not events or not sites:
+        return
+    hosts = {s["id"]: s["host"] for s in sites}
+    site_of = {_host_key(host): site for site, host in hosts.items()}
+    marks = ",".join(str(int(i)) for i in hosts)
+    with engine.connect() as conn:
+        pairs = conn.execute(text(
+            f"SELECT id, site_id, my_url, their_url FROM page_pairs WHERE hidden = 0 AND site_id IN ({marks}) ORDER BY shared_keywords DESC, id"
+        )).mappings().all()
+        clicks = weight.page_clicks(conn, list(hosts), _path_key)
+    beside: dict[str, dict] = {}
+    for pair in pairs:
+        beside.setdefault(_path_key(pair["their_url"]), pair)
+
+    def mine(site: int, url: str, pair_id: int | None = None) -> dict:
+        seen = clicks.get(site, {}).get(_path_key(url))
+        return {"url": url, "host": hosts[site], "site_id": site, "pair_id": pair_id, "clicks": seen["clicks"] if seen else None, "clicks_before": seen["before"] if seen else None}
+
+    for event in events:
+        event["minor"] = is_minor(event)
+        if event["kind"].startswith(("rank_", "ai_")):
+            best = event.get("mine") or {}
+            site = site_of.get(_host_key(best.get("host") or ""))
+            event["my_page"] = mine(site, best["url"]) if site and best.get("url") else None
+        else:
+            pair = beside.get(_path_key(event["url"])) if event.get("url") else None
+            event["my_page"] = mine(pair["site_id"], pair["my_url"], pair["id"]) if pair else None
+
+
+def _host_key(host: str) -> str:
+    return host.lower().removeprefix("www.")
+
+
+def _path_key(url: str) -> str:
+    """One page however it's spelled: http or https, www or not, a last slash or not. Search Console's addresses, a pair's
+    and a change's all meet on this."""
+    return pairs_mod._page_id(url).rstrip("/")
 
 
 def links(engine: Engine, site_id: int | None = None) -> dict:

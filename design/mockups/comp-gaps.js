@@ -799,6 +799,7 @@
     UI.openTask({
       title: `${t("Get a link from")} ${names.slice(0, 3).join(", ")}${names.length > 3 ? ` +${names.length - 3}` : ""}`,
       host, opener,
+      about: { main: "domain", items: names.slice(0, 40).map((name) => ({ kind: "domain", ref: String(name).toLowerCase(), label: name })) }, // Link to get, with the ticked websites
       source: { type: "competitor", label: `${t("Link gaps")}: ${UI.num(names.length)} ${t(names.length === 1 ? "domain" : "domains")}`, facts: names.slice(0, 20), link: "#competitors/gaps" },
     });
   }
