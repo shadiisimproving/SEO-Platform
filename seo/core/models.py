@@ -1818,3 +1818,20 @@ class SocialTranscript(Base):
     error: Mapped[str | None] = mapped_column(String(300), nullable=True)
     created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)
     done_at: Mapped[datetime | None] = mapped_column(Stamp, nullable=True)
+
+
+class PageBoost(Base):
+    """A boost: traffic sent to one page of a site, from a day, to a day if it ended. Only a person can tell the app
+    about one, and the keyword panel's history chart marks it beside the page's edits and backlinks."""
+
+    __tablename__ = "page_boosts"
+    __table_args__ = (Index("ix_page_boosts_site", "site_id", "started_on"),)
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id", ondelete="CASCADE"))
+    page_url: Mapped[str] = mapped_column(Text)
+    started_on: Mapped[date] = mapped_column(Date)
+    ended_on: Mapped[date | None] = mapped_column(Date, nullable=True)
+    note: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    created_by: Mapped[str | None] = mapped_column(String(120), nullable=True)  # the signed-in person's name; empty without login
+    created_at: Mapped[datetime] = mapped_column(Stamp, server_default=NOW3)

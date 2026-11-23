@@ -46,6 +46,7 @@ OWNERS = {
     "page_id": "SELECT site_id FROM gsc_linked_pages WHERE id = :v",
     "competitor_id": "SELECT site_id FROM site_competitors WHERE competitor_id = :v",
     "keyword_id": "SELECT site_id FROM site_keywords WHERE keyword_id = :v",
+    "boost_id": "SELECT site_id FROM page_boosts WHERE id = :v",
 }
 # The same path key means another table on these routes.
 OWNER_OVERRIDES = {
@@ -54,7 +55,7 @@ OWNER_OVERRIDES = {
     "search_api.delete_note": {"note_id": "SELECT site_id FROM search_notes WHERE id = :v"},
     # The site sent with these decides: after "stop following" their own row is gone, so the keyword's other sites would refuse the undo.
     # The route itself only touches that site's row (rankings.forget / follow_again, probe.*), and the guard checks the site.
-    "keywords_api.forget": {"keyword_id": None}, "keywords_api.restore": {"keyword_id": None}, "keywords_api.detail": {"keyword_id": None},
+    "keywords_api.forget": {"keyword_id": None}, "keywords_api.restore": {"keyword_id": None}, "keywords_api.detail": {"keyword_id": None}, "keywords_api.history": {"keyword_id": None},
     "competitors_api.keyword_check_remove": {"keyword_id": None}, "competitors_api.keyword_check_restore": {"keyword_id": None},
     "competitors_api.keyword_check_track": {"keyword_id": None},
     # A Refresh started at All sites has no site of its own: it belongs to the sites whose keywords it checks.
@@ -218,7 +219,11 @@ ENDPOINTS: dict[str, tuple[str, str, str]] = {
     # ---- Keywords and Refresh ----
     "keywords_api.listing": ("keywords competitors tasks ai today", "read", "all"),
     "keywords_api.queries": ("keywords overview", "read", "all"),
+    "keywords_api.rank_trends": ("keywords overview", "read", "all"),  # the Keywords by ranking card (Today shows it to those who have either)
     "keywords_api.detail": ("keywords competitors overview", "read", ""),
+    "keywords_api.history": ("keywords competitors overview", "read", ""),  # the panel's history chart, wherever the panel opens
+    "keywords_api.boost_add": ("keywords", "write", ""),  # its site_id is in the JSON body
+    "keywords_api.boost_delete": ("keywords", "write", ""),
     "keywords_api.forget": ("keywords", "write", ""),
     "keywords_api.restore": ("keywords", "write", ""),  # its keyword_id is checked through site_id (see OWNER_OVERRIDES)
     "keywords_api.preview": ("keywords competitors ai", "read", ""),

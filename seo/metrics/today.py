@@ -630,6 +630,8 @@ def today(engine: Engine, site_id: int | None = None, args: dict | None = None) 
     return {
         "results": results, "google_stopped": any(s["source"] in ("gsc", "ga4") and not s["ok"] and not s["waiting"] for s in sources), "todo": todo,
         "going_down": _mix([m for m in pages if m["change"] < 0], [m for m in keywords if m["places"] < 0]), "going_up": _mix([m for m in pages if m["change"] > 0], [m for m in keywords if m["places"] > 0]),
+        # Pages alone, for the screen: its keywords are in the Keywords by ranking card (seo.metrics.rank_trends).
+        "pages_down": _mix([m for m in pages if m["change"] < 0], []), "pages_up": _mix([m for m in pages if m["change"] > 0], []),
         "rival_changes": rivals, "other_edits": other_edits, "sources": sources, "lanes": _lanes(engine), "sites": strip,
     }
 
@@ -667,6 +669,7 @@ def for_person(answer: dict) -> dict:
     answer["todo"] = _rows_they_may_see(answer.get("todo") or [])
     if not (who.can("overview") or who.can("keywords")):
         answer["going_down"], answer["going_up"] = [], []
+        answer["pages_down"], answer["pages_up"] = [], []
     if not who.can("competitors"):
         answer["rival_changes"], answer["other_edits"] = [], 0
 

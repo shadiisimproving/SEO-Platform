@@ -45,9 +45,40 @@ def queries():
     return jsonify(rankings.queries(_engine(), _site_arg(), request.args.get("engine", "google")))
 
 
+@keywords_api.get("/rank-trends")
+def rank_trends():
+    """The Keywords by ranking card, on Today, Keywords and Overview."""
+    from seo.metrics import rank_trends as trends
+
+    return jsonify(trends.rank_trends(_engine(), _site_arg()))
+
+
 @keywords_api.get("/rankings/<int:keyword_id>")
 def detail(keyword_id: int):
     return jsonify(rankings.detail(_engine(), _site_arg(True), keyword_id, request.args.get("engine", "google")))
+
+
+@keywords_api.get("/rankings/<int:keyword_id>/history")
+def history(keyword_id: int):
+    """The keyword panel's history chart: rivals from the same checks, and the page's edits, backlinks and boosts."""
+    from seo.serp import keyword_history
+
+    return jsonify(keyword_history.history(_engine(), _site_arg(True), keyword_id, request.args.get("engine", "google")))
+
+
+@keywords_api.post("/boosts")
+def boost_add():
+    from seo.serp import keyword_history
+
+    return jsonify(keyword_history.add_boost(_engine(), _body(), _me())), 201
+
+
+@keywords_api.delete("/boosts/<int:boost_id>")
+def boost_delete(boost_id: int):
+    from seo.serp import keyword_history
+
+    keyword_history.delete_boost(_engine(), boost_id)
+    return jsonify(ok=True)
 
 
 @keywords_api.delete("/rankings/<int:keyword_id>")

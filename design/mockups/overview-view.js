@@ -713,6 +713,7 @@
       ${(() => { const said = sentence(d.answer); return said ? `<div class="ov-answer" dir="auto">${said}</div>` : ""; })()}
       ${cards(d)}
       <section class="card ov-chart-card">${chartHead}${chart(d)}</section>
+      ${window.RankTrends ? window.RankTrends.card("overview") : ""}
       ${d.hourly && !simple() ? `<p class="small muted ov-hint">${t("Tables below show the last 2 whole days.")}</p>` : ""}
       ${tabsCard(d)}`);
   }

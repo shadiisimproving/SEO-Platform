@@ -1,0 +1,115 @@
+/* The keyword panel's history chart (keyword-history.js): our line in blue, each rival a purple line with its own dash,
+   and under the chart, on the same time line, the marks for what was done to the page. */
+.kwh { --kwh-edit: var(--text-2); --kwh-backlink: var(--good-t); --kwh-boost: var(--serious-t); --kwh-note: var(--muted); --kwh-them: var(--chart-them); --kwh-them-pale: color-mix(in srgb, var(--chart-them) 55%, var(--muted)); }
+
+/* The lines: You, then a chip per rival. A chip switched off keeps its sample, greyed. */
+.kwh-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 8px; }
+.kwh-you, .kwh-chip { display: inline-flex; align-items: center; gap: 6px; min-height: 28px; max-width: 100%; padding: 2px 10px 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 500; }
+.kwh-you { color: var(--you-text, var(--series-1)); font-weight: 600; padding-inline: 2px 6px; }
+.kwh-chip { border: 0; background: var(--chip); box-shadow: inset 0 0 0 1px var(--line-2); color: var(--text); font-family: inherit; cursor: pointer; transition: background var(--t-fast), box-shadow var(--t-fast), color var(--t-fast); }
+.kwh-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.kwh-chip:hover { box-shadow: inset 0 0 0 1px var(--muted); }
+.kwh-chip:focus-visible, .kwh-mark:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.kwh-chip[aria-pressed="true"] { background: color-mix(in srgb, var(--kwh-them) 9%, var(--panel-solid)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--kwh-them) 45%, var(--panel-solid)); }
+.kwh-chip[aria-pressed="false"] { color: var(--text-2); background: none; box-shadow: inset 0 0 0 1px var(--line); }
+.kwh-chip[aria-pressed="false"] .kwh-swatch, .kwh-chip[aria-pressed="false"] .site-logo { opacity: .4; }
+.kwh-chip .site-logo { flex: none; }
+.kwh-swatch { flex: none; overflow: visible; }
+.kwh-swatch line { stroke-width: 2; stroke-linecap: round; }
+.kwh-swatch.you line { stroke: var(--series-1); stroke-width: 2.5; }
+.kwh-swatch.you .d { fill: var(--series-1); }
+.kwh-swatch.them line { stroke: var(--kwh-them); }
+.kwh-swatch.them .d { fill: var(--kwh-them); }
+.kwh-chip.pale .kwh-swatch line { stroke: var(--kwh-them-pale); }
+.kwh-chip.pale .kwh-swatch .d { fill: var(--kwh-them-pale); }
+
+/* The chart. Rivals sit under our line, thinner. */
+.kwh-plot { position: relative; }
+#panel.wide .kwh-plot { max-width: 520px; } /* the wide panel's chart width (keywords-real.css), so the marks keep the chart's time line */
+.kwh-them path:not(.d) { fill: none; stroke: var(--kwh-them); stroke-width: 1.6; stroke-linejoin: round; stroke-linecap: round; }
+.kwh-them .d { fill: var(--kwh-them); stroke: var(--panel-solid); stroke-width: 1; }
+.kwh-them.pale path:not(.d) { stroke: var(--kwh-them-pale); }
+.kwh-them.pale .d { fill: var(--kwh-them-pale); }
+.kwh-guide { stroke: var(--line-2); stroke-width: 1; stroke-dasharray: 2 3; }
+.kwh-guide.kwh-backlink { stroke: color-mix(in srgb, var(--kwh-backlink) 55%, var(--line-2)); }
+.kwh-guide.kwh-boost { stroke: color-mix(in srgb, var(--kwh-boost) 55%, var(--line-2)); }
+.kwh-band { fill: color-mix(in srgb, var(--kwh-boost) 10%, transparent); }
+
+/* The marks: one row per kind, each mark at its day. The row's icon sits in the chart's left margin. */
+.kwh-lanes { margin-top: 2px; }
+.kwh-lane { position: relative; height: 26px; border-top: 1px solid var(--line); }
+.kwh-lane-key { position: absolute; left: 0; top: 0; width: 5.9%; height: 100%; display: grid; place-items: center start; color: var(--muted); }
+.kwh-lane-key .i, .kwh-keys .i, .kwh-mark .i, .kwh-glyph .i { width: 13px; height: 13px; }
+.kwh-mark { position: absolute; top: 1px; width: 24px; height: 24px; transform: translateX(-50%); display: inline-flex; align-items: center; justify-content: center; gap: 2px; padding: 0; border: 0; border-radius: 999px; background: var(--panel-solid); box-shadow: inset 0 0 0 1.5px currentColor; font: inherit; cursor: pointer; transition: background var(--t-fast), color var(--t-fast); }
+.kwh-mark b { font-size: 10px; font-weight: 700; line-height: 1; font-variant-numeric: tabular-nums; }
+.kwh-mark:has(b) { width: 30px; }
+.kwh-mark:has(b) .i { width: 11px; height: 11px; }
+.kwh-mark.kwh-range { transform: none; min-width: 24px; justify-content: flex-start; padding-inline: 5px; border-radius: 8px; background: color-mix(in srgb, var(--kwh-boost) 12%, var(--panel-solid)); }
+.kwh-edit { color: var(--kwh-edit); }
+.kwh-backlink { color: var(--kwh-backlink); }
+.kwh-boost { color: var(--kwh-boost); }
+.kwh-note { color: var(--kwh-note); }
+.kwh-mark:hover { background: color-mix(in srgb, currentColor 14%, var(--panel-solid)); }
+.kwh-mark[aria-pressed="true"] { background: currentColor; }
+.kwh-mark[aria-pressed="true"] > * { color: var(--panel-solid); }
+
+/* What each mark is, and the one thing to add. */
+.kwh-legend { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin-top: 10px; }
+.kwh-keys { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 0; padding: 0; list-style: none; font-size: 12px; }
+.kwh-keys li { display: inline-flex; align-items: center; gap: 5px; }
+.kwh-keys li span { color: var(--text-2); }
+.kwh-add { margin-inline-start: auto; gap: 4px; }
+.kwh-add .i { width: 13px; height: 13px; }
+.kwh-status { margin: 8px 0 0; }
+
+/* The picked mark, spelled out. The same rows fill the table's lines. */
+.kwh-detail { list-style: none; margin: 10px 0 0; padding: 0; border-radius: var(--r-m); box-shadow: inset 0 0 0 1px var(--line); }
+.kwh-ev { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; color: inherit; }
+.kwh-ev + .kwh-ev { border-top: 1px solid var(--line); }
+.kwh-glyph { flex: none; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; box-shadow: inset 0 0 0 1.5px currentColor; }
+.kwh-ev.kwh-edit .kwh-glyph { color: var(--kwh-edit); }
+.kwh-ev.kwh-backlink .kwh-glyph { color: var(--kwh-backlink); }
+.kwh-ev.kwh-boost .kwh-glyph { color: var(--kwh-boost); }
+.kwh-ev.kwh-note .kwh-glyph { color: var(--kwh-note); }
+.kwh-ev-main { flex: 1; min-width: 0; color: var(--text); }
+.kwh-ev-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font-size: 13px; line-height: 24px; }
+.kwh-ev-head span { color: var(--text-2); font-size: 12px; }
+.kwh-ev-body { color: var(--text-2); overflow-wrap: anywhere; }
+.kwh-ev-body > div + div { margin-top: 3px; }
+.kwh-ev-body s { color: var(--muted); }
+.kwh-k { display: inline-block; min-width: 76px; margin-inline-end: 8px; color: var(--muted); }
+.kwh-from { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.kwh-tag { padding: 0 7px; border-radius: 999px; font-size: 11px; line-height: 18px; color: var(--text-2); box-shadow: inset 0 0 0 1px var(--line-2); }
+.kwh-tag.crit { color: var(--crit-t); box-shadow: inset 0 0 0 1px currentColor; }
+.kwh-del { flex: none; min-width: 28px; min-height: 28px; padding: 0; justify-content: center; color: var(--text-2); }
+.kwh-del:hover { color: var(--crit-t); }
+.kwh-del .i { width: 14px; height: 14px; }
+.kwh-table .kwh-row > td { vertical-align: top; }
+.kwh-table .kwh-row > td:not(:last-child) { line-height: 24px; white-space: nowrap; }
+.kwh-table .kwh-k { min-width: 0; }
+.kwh-table .kwh-detail { margin: 0; box-shadow: none; }
+.kwh-table .kwh-ev { padding: 0; }
+
+/* Add a boost. */
+.kwh-form { margin-top: 10px; padding: 12px; border-radius: var(--r-m); box-shadow: inset 0 0 0 1px var(--line-2); }
+.kwh-form-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; margin: 0 0 10px; font-size: 13px; }
+.kwh-form-page { margin: 0 0 10px; overflow-wrap: anywhere; }
+.kwh-form .field { margin-bottom: 10px; }
+.kwh-error { margin: 0 0 8px; }
+.kwh-error:empty { display: none; }
+.kwh-form-acts { display: flex; gap: 8px; }
+.kwh-form-acts .btn { min-height: 32px; padding-inline: 14px; }
+
+@media (max-width: 480px) {
+  .kwh-form .field-row { grid-template-columns: 1fr; gap: 0; }
+  .kwh-k { min-width: 64px; }
+}
+@media (pointer: coarse) {
+  .kwh-chip, .kwh-you { min-height: 36px; }
+  .kwh-lane { height: 32px; }
+  .kwh-mark { top: 4px; }
+  .kwh-del { min-width: 40px; min-height: 40px; }
+}
+@media (forced-colors: active) {
+  .kwh-mark, .kwh-chip, .kwh-glyph { forced-color-adjust: none; }
+}
