@@ -548,10 +548,12 @@
   function card(task) {
     const carried = carriedFrom(task);
     const ownerBit = task.owner_label ? `<span class="tk-owner small sec"><span class="tk-avatar" aria-hidden="true">${esc([...task.owner_label][0].toUpperCase())}</span><span dir="auto">${esc(task.owner_label)}</span></span>` : "";
+    const linked = window.TaskAbout.linkLine(task, { max: 2 }); // what it's linked to, as pills: "Page /freezones/", then "+N"; a task linked to nothing keeps its General tag
     const countBit = task.comments.length ? `<span class="small muted tk-count">${num(task.comments.length)} ${t(task.comments.length === 1 ? "comment" : "comments")}</span>` : "";
     return `<article class="tk-card" draggable="true" data-task-card="${task.id}">
       <button type="button" class="tk-title" data-task-open="${task.id}" dir="auto">${esc(task.title)}</button>
-      <div class="tk-tags">${task.priority === "high" ? status("serious", t("High")) : ""}${window.TaskAbout.tag(task)}${kindTag(task.kind)}${siteBit(task)}</div>
+      ${linked}
+      <div class="tk-tags">${task.priority === "high" ? status("serious", t("High")) : ""}${linked ? "" : window.TaskAbout.tag(task)}${kindTag(task.kind)}${siteBit(task)}</div>
       <div class="tk-foot"><div class="tk-foot-start">${findingTag(task)}${dueBit(task, carried)}</div><div class="tk-foot-end">${countBit}${ownerBit}</div></div>
       ${moveSelect(task)}
     </article>`;
@@ -608,13 +610,13 @@
     return `<div class="tk-list"><div class="table-wrap"><table class="data tk-table" id="tk-table">
       <thead><tr>${sortHead("title", "Title")}<th scope="col">${t("Status")}</th>${sortHead("priority", "Priority")}${showSite ? `<th scope="col">${t("Site")}</th>` : ""}<th scope="col">${t("Assigned to")}</th>${sortHead("due", "Due date")}<th scope="col">${t("Type")}</th></tr></thead>
       <tbody>${view.rows.map((task) => `<tr data-task-row="${task.id}">
-        <td class="head-cell"><button type="button" class="kw tk-row-title" data-task-open="${task.id}" dir="auto" style="text-align:start">${esc(task.title)}</button>${sourceBit(task)}${findingTag(task)}</td>
+        <td class="head-cell"><button type="button" class="kw tk-row-title" data-task-open="${task.id}" dir="auto" style="text-align:start">${esc(task.title)}</button>${sourceBit(task)}${findingTag(task)}${window.TaskAbout.linkLine(task, { inline: true, max: 3 })}</td>
         <td data-label="${t("Status")}">${moveSelect(task)}</td>
         <td data-label="${t("Priority")}">${task.priority === "high" ? status("serious", t("High")) : `<span class="small sec">${priorityWord(task.priority)}</span>`}</td>
         ${showSite ? `<td class="mono small" data-label="${t("Site")}" dir="auto">${task.site_host ? esc(task.site_host) : `<span class="muted" style="font-family:var(--font)">${t("All sites")}</span>`}</td>` : ""}
         <td data-label="${t("Assigned to")}" dir="auto">${task.owner_label ? esc(task.owner_label) : `<span class="muted">—</span>`}</td>
         <td data-label="${t("Due date")}">${dueBit(task, carriedFrom(task)) || `<span class="muted">—</span>`}</td>
-        <td data-label="${t("Type")}" dir="auto">${task.kind ? esc(t(task.kind)) : `<span class="muted">—</span>`}${window.TaskAbout.tag(task) ? `<div class="tk-about-cell">${window.TaskAbout.tag(task)}</div>` : ""}</td>
+        <td data-label="${t("Type")}" dir="auto">${task.kind ? esc(t(task.kind)) : `<span class="muted">—</span>`}</td>
       </tr>`).join("")}</tbody></table></div>
       ${TP.footer(PAGES, view, { noun: t(view.total === 1 ? "task" : "tasks") })}</div>`;
   }

@@ -47,4 +47,21 @@
 .ta-chip > svg.i { flex: none; width: 13px; height: 13px; color: var(--muted); }
 .ta-tag { display: inline-flex; align-items: center; gap: 4px; }
 .ta-tag svg.i { width: 12px; height: 12px; }
-.tk-about-cell { margin-top: 4px; }
+/* Task cards and table rows: what the task is linked to, as coloured pills with the kind in words ("Page /freezones/").
+   The text is the kind's colour pulled towards the ink, so it passes AA on its pale fill in both themes. */
+.ta-pills { display: flex; flex-wrap: wrap; gap: 6px; min-width: 0; }
+.ta-pills-inline { margin-top: 4px; }
+.ta-pill { display: inline-flex; align-items: baseline; gap: 5px; min-width: 0; max-width: 100%; padding: 0 10px; border-radius: 999px; font-size: 12.5px; line-height: 24px; color: color-mix(in srgb, var(--tone, var(--text-2)) 78%, var(--text)); background: var(--tone-pale, var(--track)); }
+.ta-pill-k { flex: none; }
+.ta-pill .ta-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.ta-pill a.ta-name, .ta-pill a.ta-name:visited, .ta-pill a.ta-name:hover, .ta-pill a.ta-name:focus-visible { color: inherit; }
+/* "+N" stays beside the last pill: the two wrap as one, and the pill gives way (…) before the count does. */
+.ta-pill-end { display: inline-flex; gap: 6px; min-width: 0; max-width: 100%; }
+.ta-pill-more { flex: none; padding: 0 8px; color: var(--text-2); background: transparent; box-shadow: inset 0 0 0 1px var(--line-2); }
+.ta-tone-blue { --tone: var(--c-blue); --tone-pale: var(--c-blue-pale); }
+.ta-tone-teal { --tone: var(--c-teal); --tone-pale: var(--c-teal-pale); }
+.ta-tone-purple { --tone: var(--c-purple); --tone-pale: var(--c-purple-pale); }
+.ta-tone-indigo { --tone: var(--c-indigo); --tone-pale: var(--c-indigo-pale); }
+.ta-tone-grey { --tone: var(--c-grey, var(--text-2)); --tone-pale: var(--c-grey-pale, var(--track)); }
+/* In the table a long name is cut sooner, so three pills take one line, two at the very worst, and never widen the table. */
+.ta-pills-inline .ta-name { max-width: 22ch; }
