@@ -38,6 +38,13 @@
     "Google dropped this page from its index": "Google a retiré cette page de son index", "Google dropped a page": "Google a retiré une page",
     "Google dropped {n} pages": "Google a retiré {n} pages", "Open the page": "Ouvrir la page",
   };
+  Object.assign(WORDS, {
+    "The sitemap can't be read any more": "Le sitemap ne peut plus être lu",
+    "{n} listed pages give an error, up from {b}": "{n} pages listées en erreur, contre {b} avant",
+    "1 listed page gives an error, up from {b}": "1 page listée en erreur, contre {b} avant",
+    "Open Site health": "Ouvrir Santé du site",
+    "First-time Google searches for your sites, pages Google drops from its index, and sitemap problems, appear here.": "Les recherches Google où vos sites apparaissent pour la première fois, les pages que Google retire de son index et les problèmes de sitemap s'affichent ici.",
+  });
   Object.keys(WORDS).forEach((w) => { if (window.FR && window.FR[w] === undefined) window.FR[w] = WORDS[w]; });
 
   const t = (s) => (window.UI ? UI.t(s) : s);
@@ -87,7 +94,7 @@
       B.loaded = true;
       B.failed = false;
       if (!B.firstLoad && fresh.length && window.UI) {
-        const searches = fresh.filter((i) => i.kind !== DROPPED && i.kind !== "google_update"), dropped = fresh.filter((i) => i.kind === DROPPED).length;
+        const searches = fresh.filter((i) => ![DROPPED, SITEMAP, "google_update", "social_ready"].includes(i.kind)), dropped = fresh.filter((i) => i.kind === DROPPED).length;
         const count = searches.reduce((n, i) => n + (i.kind === "new_query_more" || i.kind === "new_queries" ? i.detail?.count || 0 : 1), 0);
         if (count) UI.toast(plural(count, "1 new Google search", "{n} new Google searches"), { kind: "info" });
         if (dropped) UI.toast(plural(dropped, "Google dropped a page", "Google dropped {n} pages"), { kind: "warn" });
@@ -178,6 +185,22 @@
     </li>`;
   }
 
+  /* The health test's sitemap got worse (seo/health/service.py ring_sitemap): it can't be read, or more listed pages give an error. Opens Site health. */
+  const SITEMAP = "sitemap_problem";
+  function sitemapHtml(item, readBtn, logo) {
+    const d = item.detail || {};
+    const title = d.state === "unreachable" ? t("The sitemap can't be read any more")
+      : fill(d.after === 1 ? "1 listed page gives an error, up from {b}" : "{n} listed pages give an error, up from {b}", { n: num(d.after || 0), b: num(d.before || 0) });
+    return `<li class="bell-row bell-row-go ${item.read ? "" : "unread"}" data-bell-row="${item.id}">
+      <span class="bell-dot" aria-hidden="true"></span>
+      <div class="bell-body">
+        <p class="bell-title"><button type="button" class="bell-go" data-bell-health="${item.id}" title="${esc(t("Open Site health"))}"><span class="bell-kind" role="img" aria-label="${esc(t("Sitemap"))}">${UI.icon("triangle-alert")}</span> <b>${esc(title)}</b></button></p>
+        <p class="bell-meta">${logo}<span>${esc(item.host)}</span><span>·</span><span>${esc(t("Sitemap"))}</span><span>·</span><span>${esc(dayLabel(d.day))}</span></p>
+      </div>
+      <div class="bell-acts">${readBtn}</div>
+    </li>`;
+  }
+
   function rowHtml(item) {
     const d = item.detail || {}, logo = UI.siteLogo ? UI.siteLogo(item.host, 14) : "";
     const readBtn = `<button type="button" class="icon-btn bell-mark" data-bell-read="${item.id}" data-read="${!item.read}" aria-label="${esc(t(item.read ? "Mark as unread" : "Mark as read"))}" title="${esc(t(item.read ? "Mark as unread" : "Mark as read"))}">${UI.icon(item.read ? "circle" : "check")}</button>`;
@@ -194,6 +217,7 @@
       </li>`;
     }
     if (item.kind === DROPPED) return droppedHtml(item, readBtn, logo);
+    if (item.kind === SITEMAP) return sitemapHtml(item, readBtn, logo);
     if (item.kind === "new_query_more") {
       const open = B.opened === item.id;
       const list = open ? `<ul class="bell-more">${(d.queries || []).map((q, i) => `<li><button type="button" class="bell-go" data-bell-go="${item.id}" data-q="${i}" title="${esc(goTip(q.query, item.host))}"><span dir="auto">${esc(q.query)}</span></button><span class="bell-num">${esc(place(q.position))}</span></li>`).join("")}</ul>` : "";
@@ -227,7 +251,7 @@
     const sampleTag = window.BOOT ? "" : ` <span class="tag">${esc(t("Sample"))}</span>`;
     const head = `<div class="bell-head"><h2 id="bell-title">${esc(t("Notifications"))}${sampleTag}</h2>${B.unread ? `<button type="button" class="link-btn" id="bell-read-all">${esc(t("Mark all read"))}</button>` : ""}</div>`;
     if (B.failed && !B.loaded) return `${head}<p class="bell-empty">${esc(t("Notifications didn't load. Trying again in a few minutes."))}</p>`;
-    if (!B.items.length) return `${head}<div class="bell-empty"><p><b>${esc(t("No notifications yet"))}</b></p><p>${esc(t("First-time Google searches for your sites, and pages Google drops from its index, appear here."))}</p></div>`;
+    if (!B.items.length) return `${head}<div class="bell-empty"><p><b>${esc(t("No notifications yet"))}</b></p><p>${esc(t("First-time Google searches for your sites, pages Google drops from its index, and sitemap problems, appear here."))}</p></div>`;
     const floors = [...new Set(B.items.filter((i) => i.kind === "new_queries").map(floorOf))];
     floorOnRows = floors.length > 1;
     return `${head}<ul class="bell-list">${B.items.map(rowHtml).join("")}</ul>${floors.length === 1 ? floorHtml(floors[0], "bell-foot") : ""}`;
@@ -337,6 +361,16 @@
       closePanel();
       if (item.host) UI.pickSite(item.host);
       UI.go("social");
+      return;
+    }
+    const healthGo = hit("[data-bell-health]") || (!hit("button, a, input") && hit(".bell-row-go") && B.items.find((i) => i.id === Number(hit(".bell-row-go").dataset.bellRow))?.kind === SITEMAP && hit(".bell-row-go"));
+    if (healthGo) {
+      const item = B.items.find((i) => i.id === Number(healthGo.dataset.bellHealth || healthGo.dataset.bellRow));
+      if (!item) return;
+      setRead(item.id, true);
+      closePanel();
+      if (item.host && UI.pickSite) UI.pickSite(item.host); // Site health follows the site picked in the side menu
+      UI.go("health");
       return;
     }
     // The search itself, or anywhere on its row but a button or link, opens it: its keyword when tracked, else Overview → Queries.

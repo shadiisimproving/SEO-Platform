@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
-from urllib.parse import urljoin
+from urllib.parse import unquote, urljoin, urlsplit
 
 from seo.crawl.extract import PageFields
 from seo.crawl.fetch import FetchResult
@@ -52,6 +52,29 @@ SITE_CHECKS: dict[str, tuple[str, int]] = {
 }
 SSL_WARN_DAYS = 14
 
+# The sitemap checks (seo/health/sitemaps.py): code -> (what it means, cost, severity). A problem with the sitemap file itself
+# costs a fixed amount; one with its listed pages costs like a page check, by the share of listed pages it touches. All of
+# them together never cost more than SITEMAP_MAX_COST, so a bad sitemap can't swamp the score of a site that is fine.
+SITEMAP_FILE_CHECKS: dict[str, tuple[str, int, str]] = {
+    "sitemap_missing": ("No sitemap found", 8, CRIT),
+    "sitemap_unreachable": ("Sitemap can't be reached", 8, CRIT),
+    "sitemap_invalid": ("Sitemap isn't valid XML", 8, CRIT),
+    "sitemap_too_big": ("Sitemap over 50,000 pages or 50 MB", 5, CRIT),
+    "sitemap_not_in_robots": ("Sitemap not named in robots.txt", 0, INFO),
+}
+SITEMAP_PAGE_CHECKS: dict[str, tuple[str, int, str]] = {
+    "listed_broken": ("Listed pages that give an error", 8, CRIT),
+    "listed_redirect": ("Listed pages that redirect", 3, WARN),
+    "listed_noindex": ("Listed pages hidden from search engines", 4, WARN),
+    "listed_blocked": ("Listed pages blocked by robots.txt", 3, WARN),
+    "listed_canonical": ("Listed pages whose canonical points elsewhere", 3, WARN),
+    "sitemap_missing_pages": ("Important pages missing from the sitemap", 4, WARN),
+    "lastmod_future": ("Dates in the future", 0, INFO),
+    "lastmod_same": ("Every page has the same date", 0, INFO),
+}
+SITEMAP_CHECKS = {**SITEMAP_FILE_CHECKS, **SITEMAP_PAGE_CHECKS}
+SITEMAP_MAX_COST = 15
+
 
 @dataclass
 class Findings:
@@ -65,6 +88,9 @@ class Findings:
     links_in: dict[str, int] = field(default_factory=dict)
     link_names: dict[str, str] = field(default_factory=dict)  # page key -> its address, as first seen
     linked_from: set[str] = field(default_factory=set)  # pages whose links are already counted
+    # What each address of my site answered in this test, for the sitemap checks: page key -> [kind, detail]. Kinds: ok
+    # (indexable), noindex, canonical (detail: where to), redirect (detail: where to), broken (detail: the HTTP code), unknown.
+    statuses: dict[str, list] = field(default_factory=dict)  # keyed by address_key
 
     def add(self, code: str, url: str) -> None:
         self.by_code.setdefault(code, []).append(url)
@@ -72,12 +98,13 @@ class Findings:
     def to_json(self) -> dict:
         """Saved with the crawl's own state and at the same moment, so a chunk repeated after a kill can't count a page twice."""
         return {"pages_seen": self.pages_seen, "by_code": self.by_code, "site_codes": self.site_codes, "titles": self.titles, "metas": self.metas, "looked_at": sorted(self.looked_at),
-                "links_in": self.links_in, "link_names": self.link_names, "linked_from": sorted(self.linked_from)}
+                "links_in": self.links_in, "link_names": self.link_names, "linked_from": sorted(self.linked_from), "statuses": self.statuses}
 
     @classmethod
     def from_json(cls, data: dict) -> Findings:
         return cls(data["pages_seen"], data["by_code"], data["site_codes"], data["titles"], data["metas"], set(data["looked_at"]),
-                   dict(data.get("links_in") or {}), dict(data.get("link_names") or {}), set(data.get("linked_from") or []))  # saved before links were counted: none
+                   dict(data.get("links_in") or {}), dict(data.get("link_names") or {}), set(data.get("linked_from") or []),  # saved before links were counted: none
+                   dict(data.get("statuses") or {}))
 
     def first_look(self, url: str) -> bool:
         """Each page counts once, however many links or redirects lead to it."""
@@ -207,6 +234,50 @@ def look_at_page(found: Findings, url: str, result: FetchResult, fields: PageFie
         found.add("almost_no_text", page)
 
 
+def page_state(result: FetchResult, fields: PageFields | None, page: str) -> list:
+    """What one answer says about a page, for the sitemap checks. `page` is where the answer came from (after any redirect)."""
+    status = result.status
+    if status == "gone" or (status == "http_error" and (result.http_status or 0) >= 400 and result.http_status not in (401, 403)):
+        return ["broken", result.http_status or 404]
+    if status == "server_error":
+        return ["broken", result.http_status or 500]
+    if status == "ok" and fields is not None:
+        if "noindex" in robots_words(fields.robots_meta, fields.extras.get("googlebot"), result.x_robots_tag):
+            return ["noindex", None]
+        if fields.canonical and _points_elsewhere(fields.canonical, page):
+            return ["canonical", urljoin(page, fields.canonical)]
+        return ["ok", None]
+    return ["unknown", None]  # blocked, not a web page, too large, could not connect: nothing to say about it
+
+
+def address_key(url: str) -> str:
+    """One address exactly, for the sitemap checks: scheme and www count (http:// moving to https:// is a redirect), and
+    /café and /caf%C3%A9 are the same one. "" if unusable."""
+    normal = normalize_url(url)
+    if not normal:
+        return ""
+    parts = urlsplit(normal)
+    return f"{parts.scheme}://{parts.netloc}{unquote(parts.path)}{'?' + parts.query if parts.query else ''}"
+
+
+def note_status(found: Findings, url: str, result: FetchResult, fields: PageFields | None) -> None:
+    """Keeps what an address answered, so the sitemap checks need not ask again. Kept by the exact address (scheme and www
+    included, unlike page_key), because a sitemap that lists http:// pages which move to https:// lists redirects. A redirect
+    is kept on the address asked for, with where it went; the page it landed on keeps its own answer."""
+    if result.status == "robots":
+        return  # our crawler was told no: that says nothing about what Google sees
+    asked = address_key(url)
+    landed = result.final_url or url
+    if not asked:
+        return
+    if result.status == "left_scope" or (result.hops and address_key(landed) != asked):
+        found.statuses[asked] = ["redirect", landed]
+        if result.status != "left_scope" and address_key(landed):
+            found.statuses.setdefault(address_key(landed), page_state(result, fields, landed))
+        return
+    found.statuses[asked] = page_state(result, fields, landed)
+
+
 def add_link_results(found: Findings, scan: ScanResult, on_site) -> None:
     for issue in scan.issues:
         if not on_site(issue.target_url):  # only my own site is judged here
@@ -233,11 +304,29 @@ def finish(found: Findings) -> dict[str, list[str]]:
     return {code: list(dict.fromkeys(urls)) for code, urls in found.by_code.items()}
 
 
-def score(issues: dict[str, list[str]], site_codes: list[str], pages_seen: int) -> int:
+def sitemap_cost(sitemap: dict | None) -> float:
+    """What the sitemap checks cost: {"counts": {code: n}, "listed": pages listed, "important": important pages looked at}."""
+    if not sitemap:
+        return 0.0
+    counts, cost = sitemap.get("counts") or {}, 0.0
+    for code, n in counts.items():
+        if not n or code not in SITEMAP_CHECKS or not SITEMAP_CHECKS[code][1]:
+            continue
+        if code in SITEMAP_FILE_CHECKS:
+            cost += SITEMAP_FILE_CHECKS[code][1]
+        else:
+            out_of = sitemap.get("important") if code == "sitemap_missing_pages" else sitemap.get("listed")
+            cost += SITEMAP_PAGE_CHECKS[code][1] * math.sqrt(min(1.0, n / max(1, out_of or 0)))
+    return min(float(SITEMAP_MAX_COST), cost)
+
+
+def score(issues: dict[str, list[str]], site_codes: list[str], pages_seen: int, sitemap: dict | None = None) -> int:
     """100 means nothing found. A few bad pages cost more than their share, because they're the ones people notice."""
     total = 100.0
+    cost = sitemap_cost(sitemap)
+    total -= cost
     pages = max(1, pages_seen)
-    found_something = bool(site_codes)
+    found_something = bool(site_codes) or cost > 0
     for code, urls in issues.items():
         if code in CHECKS and CHECKS[code][1] and urls:  # a check that weighs nothing is only listed
             found_something = True

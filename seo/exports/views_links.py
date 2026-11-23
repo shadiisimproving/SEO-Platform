@@ -197,6 +197,13 @@ def health(engine, args) -> Report:
     pages = [{"meaning": c.get("meaning"), "severity": c.get("severity"), "page": page} for c in all_checks for page in (c.get("pages") or [])]
     report.tables.append(Table("pages", "Pages to fix", [C("page", "Page", "url", width=4.4), C("meaning", "Problem", "text", width=4, translate=True),
                                                          C("severity", "Severity", "text", width=1.5, get=lambda r: SEVERITY.get(r.get("severity"), r.get("severity")), translate=True)], pages, empty="No pages to fix."))
+    found_map = data.get("sitemap")
+    if found_map is not None:  # a test from before the sitemap checks has none
+        severity = C("severity", "Severity", "text", width=1.5, get=lambda r: SEVERITY.get(r.get("severity"), r.get("severity")), translate=True)
+        problems = found_map.get("problems") or []
+        report.tables.append(Table("sitemap", "Sitemap", [C("meaning", "Problem", "text", width=4.4, translate=True), severity, C("count", "Pages", "int")], problems, empty="No sitemap problems found."))
+        report.tables.append(Table("sitemap_pages", "Sitemap problems", [C("url", "Address", "url", width=4.4), C("meaning", "Problem", "text", width=4, translate=True), severity],
+                                   [{"url": r.get("url"), "meaning": p["meaning"], "severity": p["severity"]} for p in problems for r in p.get("rows") or []], empty="No sitemap problems found."))
     return report
 
 
