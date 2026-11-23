@@ -37,19 +37,29 @@ const inPage = (page, fn, arg) => page.evaluate(fn, arg);
     }
     route.fulfill({ response: res, json: d });
   });
+  // Since 2026-11-16 the simpler screens show Competitors as cards (flow_competitor_cards.cjs), folded to logos under
+  // 1600 px until opened (2026-11-20). With the switch on, this flow opens the cards and checks the same promises on them.
+  if (MODE === "1") await page.addInitScript(() => { try { localStorage.setItem("seocc-cs-slim", "0"); } catch { /* no storage */ } });
   await page.goto(`${BASE}?simple=${MODE}#competitors/summary?site=site-one.example`);
-  await page.waitForSelector("#cs-rivals-table tbody tr[data-cs-row]", { timeout: 20000 });
+  await page.waitForSelector(MODE === "1" ? ".cs-card[data-cs-card]" : "#cs-rivals-table tbody tr[data-cs-row]", { timeout: 20000 });
   await settle(1500);
+  const trackingOf = (id) => page.evaluate((cid) => fetch("api/links/sites").then((r) => r.json()).then(({ sites }) => fetch(`api/competitors?site_id=${sites.find((x) => x.host === "site-one.example").id}`)).then((r) => r.json()).then((d) => d.competitors.find((c) => String(c.id) === String(cid))?.tracking), id);
 
   // ---- the "You" line --------------------------------------------------------------------------------------------------
-  const you = await inPage(page, () => {
-    const tr = document.querySelector("#cs-rivals-table > tbody > tr:first-child");
-    const cols = document.querySelector("#cs-rivals-table thead tr").cells.length;
-    const cell = tr?.querySelector("td.cs-you-cell");
-    return { isYou: tr?.classList.contains("cs-you-row"), cells: tr?.cells.length, span: Number(cell?.getAttribute("colspan") || 0), cols, text: (cell?.textContent || "").replace(/\s+/g, " ").trim(), mono: !!tr?.querySelector(".mono"), reading: /Reading…/.test(tr?.textContent || "") };
-  });
-  check("the You line is the first row, one wide cell across every column", you.isYou && you.cells === 1 && you.span === you.cols, JSON.stringify(you));
-  check("the You line reads as a sentence: your site, its edits, how it's read", /Your site/.test(you.text) && /edit/.test(you.text) && !you.mono && !you.reading, you.text);
+  if (MODE === "1") {
+    const you = await inPage(page, () => { const c = document.querySelector(".cs-cards .cs-card-you"); return { first: c && c === document.querySelector(".cs-cards > *:first-child, .cs-cards li:first-child"), text: (c?.textContent || "").replace(/\s+/g, " ").trim(), mono: !!c?.querySelector(".mono"), reading: /Reading…/.test(c?.textContent || "") }; });
+    check("your card comes first", Boolean(you.first), JSON.stringify(you));
+    check("your card reads plainly: your site, its edits, no code font", /Your site/.test(you.text) && /edit/.test(you.text) && !you.mono && !you.reading, you.text);
+  } else {
+    const you = await inPage(page, () => {
+      const tr = document.querySelector("#cs-rivals-table > tbody > tr:first-child");
+      const cols = document.querySelector("#cs-rivals-table thead tr").cells.length;
+      const cell = tr?.querySelector("td.cs-you-cell");
+      return { isYou: tr?.classList.contains("cs-you-row"), cells: tr?.cells.length, span: Number(cell?.getAttribute("colspan") || 0), cols, text: (cell?.textContent || "").replace(/\s+/g, " ").trim(), mono: !!tr?.querySelector(".mono"), reading: /Reading…/.test(tr?.textContent || "") };
+    });
+    check("the You line is the first row, one wide cell across every column", you.isYou && you.cells === 1 && you.span === you.cols, JSON.stringify(you));
+    check("the You line reads as a sentence: your site, its edits, how it's read", /Your site/.test(you.text) && /edit/.test(you.text) && !you.mono && !you.reading, you.text);
+  }
   const see = await page.$("[data-cs-you-edits]");
   check("See your edits is there", Boolean(see));
   if (see) {
@@ -61,30 +71,28 @@ const inPage = (page, fn, arg) => page.evaluate(fn, arg);
   }
 
   if (MODE === "1") {
-    // ---- the head, page tabs, the row's ⋯ ---------------------------------------------------------------------------------
+    // ---- the head, page tabs, the card's ⋯ --------------------------------------------------------------------------------
     check("the head has Add a competitor as its one main action", Boolean(await page.$("#topbar #cl-add-open")));
-    // 2026-11-12 (UI critique): seven tabs were too many; the everyday four stay, the rest sit behind More.
-    check("page tabs in the underline look, four of them and More", (await page.locator(".comp-tabs.page-tabs [data-comp-tab]").count()) === 4 && (await page.locator(".comp-tabs.page-tabs #comp-tabs-more").count()) === 1);
-    await page.click("#comp-tabs-more"); await settle(300);
-    check("More holds Find competitors, Keyword check and Notes", (await page.locator("#popover [data-comp-tab]").allTextContents()).map((x) => x.trim()).join() === "Find competitors,Keyword check,Notes");
-    await page.keyboard.press("Escape"); await settle(200);
-    check("no Tracking switch or Remove button sits on the rows", (await page.locator("#cs-rivals-table [data-ct-set], #cs-rivals-table [data-cl-remove]").count()) === 0);
-    await page.hover("#cs-rivals-table tbody tr[data-cs-row]");
-    await page.click("#cs-rivals-table [data-cs-menu] >> nth=0"); await settle(400);
-    check("the row's ⋯ holds Tracking (On / Pages only / Off) and Remove", (await page.locator("#popover [data-ct-set]").count()) === 3 && (await page.locator("#popover [data-cl-remove]").count()) === 1);
+    // 2026-11-16, the owner: "remove the More section, make the tabs normally": every tab in the row, no More.
+    const tabNames = (await page.locator(".comp-tabs.page-tabs [data-comp-tab]").allTextContents()).map((x) => x.trim());
+    check("page tabs in the underline look, every one in the row and no More", ["Competitors", "Find competitors", "Keyword check", "Notes"].every((x) => tabNames.includes(x)) && (await page.locator(".comp-tabs.page-tabs #comp-tabs-more").count()) === 0, tabNames.join());
+    check("no Tracking switch or Remove button sits on the cards", (await page.locator(".cs-card [data-ct-set], .cs-card [data-cl-remove]").count()) === 0);
+    const firstId = await page.evaluate(() => document.querySelector(".cs-cards .cs-card[data-cs-card]").dataset.csCard);
+    await page.click(`.cs-card[data-cs-card="${firstId}"] [data-cs-menu]`); await settle(400);
+    check("the card's ⋯ holds Tracking (On / Pages only / Off) and Remove", (await page.locator("#popover [data-ct-set]").count()) === 3 && (await page.locator("#popover [data-cl-remove]").count()) === 1);
     await page.screenshot({ path: OUT + "2-row-menu.png" });
     await page.click("#popover [data-ct-set=pages]"); await settle(2500);
-    check("a choice closes the menu and the row says Pages only", !(await page.$("#popover")) && (await page.locator("#cs-rivals-table .cs-track-tag").count()) === 1);
-    await page.click("#cs-rivals-table [data-cs-menu] >> nth=0"); await settle(300);
+    check("a choice closes the menu and the competitor is Pages only", !(await page.$("#popover")) && (await trackingOf(firstId)) === "pages");
+    await page.click(`.cs-card[data-cs-card="${firstId}"] [data-cs-menu]`); await settle(300);
     await page.click("#popover [data-ct-set=on]"); await settle(2500);
-    check("and back to On", (await page.locator("#cs-rivals-table .cs-track-tag").count()) === 0);
+    check("and back to On", (await trackingOf(firstId)) === "on");
 
     // ---- the lower card: three tabs ---------------------------------------------------------------------------------------
+    // Changes comes first on the cards screen since read-like-a-person (2026-11-20).
     const tabs = await inPage(page, () => [...document.querySelectorAll("[data-cs-low]")].map((b) => [b.dataset.csLow, b.getAttribute("aria-selected")]));
-    check("one card, three tabs, They beat you on first", JSON.stringify(tabs.map((x) => x[0])) === '["keywords","moves","links"]' && tabs[0][1] === "true", JSON.stringify(tabs));
-    await page.click('[data-cs-jump="moves"]'); await settle(1200);
-    const moves = await inPage(page, () => ({ shown: !document.querySelector("#cs-moves").hidden, rows: document.querySelectorAll("#cs-moves-list > li, #cs-moves-list tbody tr").length, chips: document.querySelectorAll("[data-cs-mv-kind]").length, days: !!document.querySelector("#cs-mv-days") }));
-    check("the Changes card opens Who is moving, with all its filters", moves.shown && moves.rows > 0 && moves.chips > 0 && moves.days, JSON.stringify(moves));
+    check("one card, three tabs, Changes first", JSON.stringify(tabs.map((x) => x[0]).sort()) === '["keywords","links","moves"]' && tabs[0][0] === "moves" && tabs[0][1] === "true", JSON.stringify(tabs));
+    const moves = await inPage(page, () => ({ shown: !document.querySelector("#cs-moves").hidden, rows: document.querySelectorAll("#cs-moves-list > li, #cs-moves-list tbody tr").length, chips: document.querySelectorAll("[data-cs-mv-kind]").length, days: document.querySelectorAll("[data-cs-mv-days-btn]").length }));
+    check("Changes shows its rows, with its kind and period filters", moves.shown && moves.rows > 0 && moves.chips > 0 && moves.days > 0, JSON.stringify(moves));
     await page.click("[data-cs-low=links]"); await settle(500);
     check("Shared links opens on its tab", await inPage(page, () => !document.querySelector("#cs-links").hidden));
     await page.click("[data-cs-low=keywords]"); await settle(500);
@@ -96,7 +104,8 @@ const inPage = (page, fn, arg) => page.evaluate(fn, arg);
   }
 
   // ---- the profile: four cards, Activity, Recheck ------------------------------------------------------------------------
-  await page.click("#cs-rivals-table tbody tr[data-cs-row] td:nth-child(3)");
+  if (MODE === "1") await page.click(".cs-cards .cs-card[data-cs-card] .cs-card-open");
+  else await page.click("#cs-rivals-table tbody tr[data-cs-row] td:nth-child(3)");
   await page.waitForSelector("[data-pt-tab]", { timeout: 15000 }); await settle(1500);
   const cards = await inPage(page, () => [...document.querySelectorAll("[data-pt-card]")].map((c) => c.dataset.ptCard));
   check("four number cards: Shared keywords, Only them, Only you, Pages", ["shared", "theirs_only", "mine_only", "pages"].every((id) => cards.includes(id)), JSON.stringify(cards));
@@ -129,8 +138,8 @@ const inPage = (page, fn, arg) => page.evaluate(fn, arg);
   await page.keyboard.press("Escape"); await settle(400);
   await page.click("[data-cl-kw-clear]"); await settle(300);
 
-  // Activity: compact rows in pages, repeats grouped, kind and period filters.
-  await page.click('[data-pt-tab="activity"]'); await page.waitForSelector("#cl-timeline"); await settle(800);
+  // Changes (Activity until 2026-11-20): compact rows in pages, repeats grouped, kind and period filters.
+  await page.click('[data-pt-tab="changes"]'); await page.waitForSelector("#cl-timeline"); await settle(800); // the timeline moved from Activity to Changes (2026-11-20)
   const tl = await inPage(page, () => ({ rows: document.querySelectorAll("#cl-timeline .cl-tl-table tbody tr").length, pager: !!document.querySelector("#cl-timeline [data-tp-foot]"), more: !!document.querySelector("[data-cl-tl-more]"), grouped: document.querySelectorAll("#cl-timeline .cl-tl-times").length, height: document.querySelector("#cl-timeline").getBoundingClientRect().height }));
   check("the timeline is compact rows, 25 a page at most, with the shared pager and no Show more", tl.rows > 0 && tl.rows <= 25 && tl.pager && !tl.more, JSON.stringify(tl));
   check("repeated changes of one page are one row with a count", tl.grouped > 0, tl.grouped);

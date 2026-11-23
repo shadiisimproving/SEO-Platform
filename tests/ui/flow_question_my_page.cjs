@@ -24,6 +24,8 @@ function reshape(d, host) {
 
 (async () => {
   const { browser, page, problems } = await open({ width: 1440, height: 950 });
+  // Under 1600 px the competitor cards start folded to logos (2026-11-20), which hides Open: this flow opens them.
+  await page.addInitScript(() => { try { localStorage.setItem("seocc-cs-slim", "0"); } catch { /* no storage */ } });
   const settle = (ms = 700) => page.waitForTimeout(ms);
   const call = (p) => page.evaluate((u) => fetch(u).then((r) => r.json()), BASE + "api/" + p);
   await page.goto(BASE + "?simple=1#today"); await settle(1500);

@@ -41,9 +41,11 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   check("1. the pairs table has rows, each with a You and a Them position", rows.length > 1 && rows.every((r) => r.length === 2), `${rows.length} rows`);
   check("2. every position has a tool logo, loaded", flat.length === rows.length * 2 && flat.every((c) => c.logo && c.loaded), flat.filter((c) => !c.logo || !c.loaded).map((c) => c.text).join(", ") || `${flat.length} positions`);
   check("3. the tooltip names the tool and the check date", flat.every((c) => c.tip.includes(`measured by ${c.tool}`) && /checked \d{1,2} \w{3} \d{4}/.test(c.tip)), flat[0]?.tip);
-  const same = rows.filter((_, i) => i !== 1).flat();
+  // The changed pair is found by its Bright Data side, not by its place: the simpler screen orders rows its own way.
+  const apartAt = Math.max(0, rows.findIndex((r) => r.some((c) => c.tool === "Bright Data")));
+  const same = rows.filter((_, i) => i !== apartAt).flat();
   check("4. sides from one check say so", same.every((c) => /You and Them come from this same check\./.test(c.tip) && !c.apart), same[0]?.tip);
-  const apart = rows[1] || [];
+  const apart = rows[apartAt] || [];
   check("5. sides from different tools say so, on both, and are marked", apart.length === 2 && apart[0].tool === "SerpApi" && apart[1].tool === "Bright Data"
     && /Them came from Bright Data, 8 Nov 2026: a different check/.test(apart[0].tip) && /You came from SerpApi, 10 Nov 2026: a different check/.test(apart[1].tip) && apart.every((c) => c.apart), apart.map((c) => c.tip).join(" | "));
 

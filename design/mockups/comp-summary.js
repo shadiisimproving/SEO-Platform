@@ -837,7 +837,7 @@
   }
 
   const MV_TIPS = { keywords: "Keywords of yours this page ranks on that moved in the period.", up: "Keywords where their page ended the period higher than it started.", down: "Keywords where their page ended the period lower than it started.", behind: "Keywords where their page is above yours in the latest check.", ahead: "Keywords where your page is above theirs in the latest check." };
-  function sortHead(id, label, cls) {
+  function mvSortHead(id, label, cls) {
     const on = S.mvSort === id;
     return `<th scope="col" class="${cls}"${on ? ` aria-sort="${S.mvDir === 1 ? "descending" : "ascending"}"` : ""}><button type="button" class="cs-sort${on ? " on" : ""}" data-cs-mv-sort="${id}"${MV_TIPS[id] ? ` data-tip="${attr(MV_TIPS[id])}"` : ""}>${on ? UI.icon(S.mvDir === 1 ? "arrow-down" : "arrow-up") : ""}<span>${esc(t(label))}</span></button></th>`;
   }

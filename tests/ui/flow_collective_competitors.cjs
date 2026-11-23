@@ -243,7 +243,7 @@ const sitesCount = (page) => page.$eval("#cs-rivals-table", (t) => [...t.querySe
       const fit = await page.evaluate(() => {
         const main = document.querySelector("#main") || document.documentElement;
         const cut = [...document.querySelectorAll("#comp-body td, #comp-body td *, #comp-body .tile")].filter((c) => {
-          if (!c.getClientRects().length || c.getBoundingClientRect().right <= innerWidth + 1) return false;
+          if (!c.getClientRects().length || !c.checkVisibility() || c.getBoundingClientRect().right <= innerWidth + 1) return false; // a closed <details> keeps its boxes but shows nothing
           // Tablet widths may scroll inside the table's own box, with the app's edge cue. Nowhere else.
           const wrap = c.closest(".table-wrap");
           return !(innerWidth <= 860 && innerWidth > 640 && wrap && getComputedStyle(wrap).overflowX === "auto" && wrap.classList.contains("more-right"));

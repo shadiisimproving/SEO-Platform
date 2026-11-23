@@ -45,9 +45,11 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await page.waitForSelector("#cl-profile-title", { timeout: 15000 }); await settle();
   const answer = (await page.locator(".pt-answer").textContent().catch(() => "")).replace(/\s+/g, " ").trim();
   check("no packed sentence over the cards", !/beat you on|of \d+ shared keywords|published/i.test(answer), answer);
-  await page.click('[data-pt-tab="activity"]'); await settle();
+  // 2026-11-20: what changed left Activity for the profile's first tab, Changes, which is the one open.
+  await page.click('[data-pt-tab="changes"]'); await settle();
   const firstCard = (await page.locator(".pt-panel section.card h2").first().textContent()).trim();
-  check("Activity starts with what changed", firstCard === "What changed", firstCard);
+  check("the Changes tab starts with what changed", firstCard === "What changed", firstCard);
+  await page.click('[data-pt-tab="activity"]'); await settle();
   const sentence = await page.evaluate(() => [...document.querySelectorAll(".pt-panel .pt-lead")].map((p) => p.textContent).join(" "));
   check("Activity has no sentence of numbers", !/They added|Last 30 days|they made/i.test(sentence), sentence);
   check("Activity shows a You/Them table", (await page.locator(".pt-side-table tr.pt-row-them").count()) >= 1);
@@ -121,19 +123,23 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await page.keyboard.press("Escape"); await settle(200);
   const sfit = await page.evaluate(() => { const w = document.querySelector("#cg-table").closest(".table-wrap"); return w.scrollWidth - w.clientWidth; });
   check("simple 1440 px: the table fits", sfit <= 1, sfit);
-  check("simple: four tabs and More", (await page.locator(".comp-tabs [data-comp-tab]").count()) === 4 && (await page.locator("#comp-tabs-more").count()) === 1);
+  // 2026-11-16, the owner: "remove the More section, make the tabs normally": every tab sits in the row, no More.
+  check("simple: every tab in the row, no More", (await page.locator(".comp-tabs [data-comp-tab]").count()) >= 4 && (await page.locator("#comp-tabs-more").count()) === 0);
   await page.screenshot({ path: OUT + "9-simple-gaps.png" });
   await page.setViewportSize({ width: 390, height: 844 }); await settle(600);
   check("simple 390 px: no sideways scroll", (await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)) <= 1);
   await page.screenshot({ path: OUT + "10-simple-gaps-phone.png" });
   await page.setViewportSize({ width: 1440, height: 900 });
   await menu(page, "theme"); await settle(500);
-  await page.goto(BASE + "?simple=1#competitors/summary"); await page.waitForSelector("#cs-rivals-table tbody tr .cs-rival-open", { timeout: 20000 }); await settle();
-  await page.locator("#cs-rivals-table tbody tr .cs-rival-open").first().click(); await page.waitForSelector("#cl-profile-title", { timeout: 15000 }); await settle();
+  // Since 2026-11-16 the simpler Competitors screen is cards (one per competitor), folded to logos under 1600 px until
+  // opened: the flow opens them, and a card's Open opens the profile.
+  await page.goto(BASE + "?simple=1#competitors/summary"); await page.waitForSelector(".cs-card[data-cs-card]", { timeout: 20000 }); await settle();
+  if (await page.$(".cs-bench-slim")) { await page.click("[data-cs-slim]"); await settle(); }
+  await page.locator(".cs-card[data-cs-card] .cs-card-open").first().click(); await page.waitForSelector("#cl-profile-title", { timeout: 15000 }); await settle();
   check("simple: the profile keeps All sites too", (await appSite()) === "all" && /^For /.test((await page.locator("#comp-scope").textContent().catch(() => "")).trim()));
   await page.screenshot({ path: OUT + "11-simple-profile-dark.png" });
   await page.click('[data-comp-tab="summary"]'); await settle(1500);
-  check("the Competitors tab goes back to the list, still on All sites", (await page.locator("#cs-rivals-table").count()) === 1 && (await appSite()) === "all" && (await page.evaluate(() => COMP.siteId)) === "all");
+  check("the Competitors tab goes back to the cards, still on All sites", (await page.locator(".cs-card[data-cs-card]").count()) > 0 && (await appSite()) === "all" && (await page.evaluate(() => COMP.siteId)) === "all");
   await menu(page, "theme"); await settle(300);
 
   const real = problems.filter((p) => !/Failed to load resource|status of 404/.test(p));

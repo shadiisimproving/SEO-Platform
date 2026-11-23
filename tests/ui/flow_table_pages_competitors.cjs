@@ -293,6 +293,9 @@ async function longer(page, pattern, change) {
       d.keywords = [...d.keywords, ...many(d.keywords, 150, (k, i) => ({ ...k, keyword: `made-up profile keyword ${i}`, status: ["shared", "theirs_only", "mine_only"][i % 3], my_position: i % 3 === 1 ? null : 1 + (i % 10), their_position: i % 3 === 2 ? null : 1 + ((i * 7) % 10) }))];
     });
     await openTab("list", { competitorId: rival.id });
+    // The profile opens on its Changes tab since 2026-11-20: the keywords are one tab along.
+    await page.waitForSelector('[data-pt-tab="keywords"]', { timeout: 15000 }).catch(() => {});
+    await page.click('[data-pt-tab="keywords"]').catch(() => {});
     await page.waitForSelector("#cl-keywords", { timeout: 15000 }).catch(() => {});
     await page.evaluate(() => document.querySelector("#cl-keywords")?.scrollIntoView());
     const shared = await range("cl-kw");

@@ -222,7 +222,7 @@ const fakeQuestions = (host, about) => { const groups = Array.from({ length: 25 
       const kids = card ? [...card.parentElement.children] : [];
       const row = document.querySelector("#pt-panel table tbody tr");
       return {
-        back: [...document.querySelectorAll("#main [data-cl-back]"), ...[...document.querySelectorAll("#main a, #main button")].filter((el) => /^\s*(←\s*)?(Back|Retour)\b/i.test(el.textContent) || /^(Back|Retour)\b/i.test(el.getAttribute("aria-label") || ""))].map((el) => el.outerHTML.slice(0, 120)),
+        back: [...new Set([...document.querySelectorAll("#main [data-cl-back]"), ...[...document.querySelectorAll("#main a, #main button")].filter((el) => /^\s*(←\s*)?(Back|Retour)\b/i.test(el.textContent) || /^(Back|Retour)\b/i.test(el.getAttribute("aria-label") || ""))])].map((el) => el.outerHTML.slice(0, 120)),
         cards: head.length,
         inCard: card ? ["#cl-profile-title", ".ct-switch", "[data-cl-read]", "[data-cl-remove]", ".cl-head-meta", ".pt-answer", ".pt-strip"].filter((s) => !card.querySelector(s)) : ["no card"],
         next: kids[kids.indexOf(card) + 1]?.className || "",
@@ -233,12 +233,17 @@ const fakeQuestions = (host, about) => { const groups = Array.from({ length: 25 
         rowTop: row ? Math.round(row.getBoundingClientRect().top) : null,
       };
     });
-    check("7. no Back link on the profile", p.back.length === 0, p.back);
+    // 2026-11-20, the owner: "if I open the competitor page I cannot go back": one Back to competitors button, no other.
+    check("7. one Back to competitors on the profile", p.back.length === 1 && /data-cl-back/.test(p.back[0]), p.back);
     check("7. one card holds the name, tracking, actions, the answer and the figures, with the tabs right under it", p.cards === 1 && p.inCard.length === 0 && /pt-tabs/.test(p.next) && p.tiles === 0, { cards: p.cards, missing: p.inCard, next: p.next, tiles: p.tiles });
     const four = p.figures.slice(0, 4).join() === "Shared keywords,Only them,Only you,Pages";
     check("7. the figure strip has 4 figures (a fifth only for Authority, when a score is known)", four && (p.figures.length === 4 || (p.figures.length === 5 && p.figures[4] === "Authority")), p.figures.join(" · "));
-    check("7. the profile opens on Keywords", p.tab === "keywords", p.tab);
-    check("7. the first keyword row starts above y=650 at 1440×900 (the Filter row sits above it)", p.rowTop !== null && p.scroll === 0 && p.rowTop < 650, `y=${p.rowTop}`);
+    // 2026-11-20: the profile opens on Changes (its first tab); Keywords is one press away.
+    check("7. the profile opens on Changes", p.tab === "changes", p.tab);
+    await page.click('[data-pt-tab="keywords"]'); await page.waitForTimeout(800);
+    const kw = await page.evaluate(() => { const row = document.querySelector("#pt-panel table tbody tr"); return { scroll: document.querySelector("#main")?.scrollTop || 0, rowTop: row ? Math.round(row.getBoundingClientRect().top) : null }; });
+    // The Back to competitors line (2026-11-20) sits above the card, so the row starts a little lower than the old 650.
+    check("7. on Keywords the first keyword row starts above y=700 at 1440×900 (the Filter row sits above it)", kw.rowTop !== null && kw.scroll === 0 && kw.rowTop < 700, `y=${kw.rowTop}`);
   });
 
   // ---- 10. page paths are links (the profile, on the real answer) -------------------------------

@@ -17,6 +17,9 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
 (async () => {
   const { browser, page, problems } = await open({ width: 1440, height: 950 });
   const settle = (ms = 900) => page.waitForTimeout(ms);
+  // Under 1600 px the cards start folded to a rail of logos (2026-11-20, flow_reading_competitors.cjs), which hides Open:
+  // this flow is about the open cards.
+  await page.addInitScript(() => { try { localStorage.setItem("seocc-cs-slim", "0"); } catch { /* a page without storage */ } });
   const asked = [];
   page.on("request", (r) => { if (r.url().includes("/api/collective/moves")) asked.push(r.url()); });
   const missing = []; // the demo harness has no sign-in, so /api/auth/me answers 404 on every screen: not counted
@@ -71,7 +74,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
 
   // The browser's own Back button.
   await settle();
-  await page.click(`.cs-card[data-cs-card="${first}"] .cs-card-pick`, { position: { x: 30, y: 60 } });
+  await page.click(`.cs-card[data-cs-card="${first}"] .cs-card-open`); // the card's press filters the cards screen's Changes
   await page.waitForSelector("#cl-profile-title", { timeout: 20000 });
   await settle();
   await page.goBack();
