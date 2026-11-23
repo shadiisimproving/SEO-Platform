@@ -71,7 +71,7 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   // A small text edit says so on the timeline.
   if (rivalOne) {
     await openProfile(rivalOne.id);
-    await page.click('[data-pt-tab="activity"]');
+    await page.click('[data-pt-tab="changes"]'); // the timeline moved from Activity to the Changes tab (2026-11-20)
     await page.waitForSelector("#cl-timeline", { timeout: 8000 }); await settle();
     const timeline = (await page.textContent("#cl-timeline")) || "";
     check("a small edit says how many words changed", /small edit, 2 words/.test(timeline));

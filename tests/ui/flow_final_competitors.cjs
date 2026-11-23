@@ -14,6 +14,8 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   for (const lang of ["en", "fr"]) {
     for (const width of [1440, 390]) {
       const { browser, page, problems } = await open({ width, height: width > 500 ? 950 : 844 });
+      // Under 1600 px the competitor cards start folded to logos (2026-11-20), which hides Open: this flow opens them.
+      await page.addInitScript(() => { try { localStorage.setItem("seocc-cs-slim", "0"); } catch { /* no storage */ } });
       const settle = (ms = 1200) => page.waitForTimeout(ms);
       await page.goto(`${BASE}?simple=1#today`); await settle(1500);
       await page.evaluate((l) => localStorage.setItem("seocc2-lang", l), lang);

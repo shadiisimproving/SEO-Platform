@@ -319,6 +319,10 @@ def _run_map(engine: Engine, competitor: dict, key: str) -> str:
     with engine.begin() as conn:
         for url in dict.fromkeys(found):
             added += conn.execute(text("INSERT IGNORE INTO pages (domain_id, url, url_hash) VALUES (:d, :u, :h)"), {"d": domain_id, "u": url, "h": pages.url_hash(url)}).rowcount
+        # The box says how many pages the daily read now watches as soon as the list run ends. The read that follows sets
+        # the exact count; until then it would still say the few pages linked from the home page (flow_competitor_reading).
+        if added:
+            conn.execute(text("UPDATE competitor_crawls SET pages_known = COALESCE(pages_known, 0) + :n WHERE competitor_id = :c"), {"n": added, "c": competitor["id"]})
     if added:
         from seo.competitors import suggest  # here, not at the top: suggest imports a lot, and nothing of it is needed otherwise
 

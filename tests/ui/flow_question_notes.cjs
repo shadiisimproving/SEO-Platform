@@ -72,7 +72,8 @@ function reshape(d, host) {
   await page.screenshot({ path: OUT + "3-panel.png" });
   await page.fill("#pt-qn-text", "Answer these on my page");
   await page.keyboard.press("Escape"); await settle(400);
-  check("Esc keeps the selection", /2 selected/.test(await page.locator("#pt-q-selbar").innerText()));
+  // textContent, not innerText: the bar is hidden while the note panel is beside it, and the panel takes a moment to close.
+  check("Esc keeps the selection", /2 selected/.test(await page.locator("#pt-q-selbar").textContent()));
   await page.click("[data-pt-q-note]"); await settle(400);
   check("the words come back", (await page.inputValue("#pt-qn-text")) === "Answer these on my page");
 

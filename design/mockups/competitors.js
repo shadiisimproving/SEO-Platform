@@ -419,7 +419,9 @@
       COMP.localSite = true;
     }
     // Every tab but Summary works on one site, so it can't open at All my sites.
-    else if (siteId !== undefined && siteId !== COMP.siteId) COMP.useSite(siteId);
+    // A profile's own-site scope left over (localSite) would send this tab back to All my sites on the next draw, so a
+    // tab asked for on a site takes that site even when it's the scope's own one.
+    else if (siteId !== undefined && (siteId !== COMP.siteId || COMP.localSite)) COMP.useSite(siteId);
     else if (COMP.siteId === ALL && id !== "summary") COMP.useSite(UI.preferredSite(COMP.sites)?.id ?? null);
     if (UI.state.route !== "competitors") UI.go("competitors");
     else UI.render();

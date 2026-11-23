@@ -82,8 +82,9 @@ const one = (page, sel, fn) => page.$eval(sel, fn);
   check(/past year/i.test(await page.textContent("#cs-moves .cs-head")), "a year can be asked for");
   check((await one(page, "#cs-mv-days", (s) => s.value)) === "365", "the period stays picked");
   await one(page, "#cs-rivals", (el) => el.scrollIntoView());
-  await page.click("[data-cs-open]"); await page.waitForSelector('[data-pt-tab="activity"]', { timeout: 8000 });
-  await page.click('[data-pt-tab="activity"]'); await page.waitForSelector("#cl-timeline", { timeout: 8000 }); await page.waitForTimeout(500);
+  // The timeline moved from Activity to the profile's first tab, Changes (2026-11-20).
+  await page.click("[data-cs-open]"); await page.waitForSelector('[data-pt-tab="changes"]', { timeout: 8000 });
+  await page.click('[data-pt-tab="changes"]'); await page.waitForSelector("#cl-timeline", { timeout: 8000 }); await page.waitForTimeout(500);
   const own = await all(page, "#cl-timeline .cl-more-facts", (e) => e.length);
   check(own > 0, `a competitor's own timeline has All the details too (${own})`);
   await one(page, "#cl-timeline", (el) => el.scrollIntoView());

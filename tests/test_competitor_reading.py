@@ -257,9 +257,12 @@ def test_a_map_adds_pages_the_daily_reader_then_reads(world, fc):
     world.drain("crawl")
     assert firecrawl.offer(world.engine, rival)["map"] == {"credits": 1}
     fc.mapped = ["https://rival.example/one", "https://rival.example/deep/page", "https://elsewhere.example/x"]
+    known = state(world, rival)["pages_known"]
     firecrawl.start(world.engine, rival, "map")
     world.drain("collectors")
     assert "1 the app didn't know" in state(world, rival)["firecrawl"]["message"]
+    # The count the box shows grows as soon as the list run ends, not only after the next read.
+    assert state(world, rival)["pages_known"] == known + 1
     with world.engine.begin() as conn:
         conn.execute(text("UPDATE competitor_crawls SET finished_at = NULL"))
     world.drain("crawl")
