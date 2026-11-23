@@ -30,6 +30,14 @@ def _site(site_id) -> int | None:
     return wanted
 
 
+def _kinds() -> list[str]:
+    """The kinds this person's sections cover: the morning's drafts belong to Social, new searches to Overview and Keywords."""
+    who = access.current()
+    if who.full:
+        return list(SHOWN_KINDS)
+    return [k for k in SHOWN_KINDS if (who.can("social") if k == "social_ready" else who.can("overview") or who.can("keywords"))]
+
+
 def _read_sql(user_id: int | None) -> str:
     """Whether a notification is read: by this person when someone is signed in, by the team without sign-in."""
     if user_id is None:
@@ -39,7 +47,7 @@ def _read_sql(user_id: int | None) -> str:
 
 def listing(engine: Engine, site_id=None, user_id: int | None = None) -> dict:
     site = _site(site_id)
-    values = {"s": site, "kinds": list(SHOWN_KINDS), "u": user_id}
+    values = {"s": site, "kinds": _kinds(), "u": user_id}
     clause = "AND n.site_id = :s" if site is not None else access.site_clause("n.site_id", values).lstrip()  # "all sites" is all of *their* sites
     read = _read_sql(user_id)
     with engine.connect() as conn:
@@ -76,7 +84,7 @@ def mark(engine: Engine, notification_id: int, read: bool = True, user_id: int |
 def mark_all(engine: Engine, site_id=None, user_id: int | None = None) -> int:
     """Only for the person who pressed it: the others still see theirs as unread."""
     site = _site(site_id)
-    values = {"s": site, "kinds": list(SHOWN_KINDS), "u": user_id}
+    values = {"s": site, "kinds": _kinds(), "u": user_id}
     clause = "AND n.site_id = :s" if site is not None else access.site_clause("n.site_id", values).lstrip()  # "all sites" is all of *their* sites
     with engine.begin() as conn:
         if user_id is None:

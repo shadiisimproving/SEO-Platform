@@ -423,3 +423,188 @@ def test_uploading_a_skill_replaces_the_guide_and_keeps_the_rules(client, engine
     assert view["guide"].startswith("# Skill: warm-writer") and view["guide_version"] == before + 1
     assert [r["text"] for r in view["rules"]] == ["Say we, not I"]
     assert client.post("/api/social/skill", data={"site_id": str(site)}, content_type="multipart/form-data").status_code == 400
+
+
+# ---- found in the 2026-11-20 review ----------------------------------------------------------------------------------
+
+def test_every_issue_of_a_newsletter_is_kept_even_when_they_share_their_first_link(engine, site):
+    """A newsletter's first link is often its logo or home page, the same in every issue."""
+    service.add_source(engine, site, "mail", "letters@news.test")
+    service.save_mailbox(engine, site, {"host": "imap.mail.test", "user": "box@mail.test", "password": "secret"})
+    monday = mail("News <letters@news.test>", "Monday letter", '<a href="https://news.test/">News</a><p>Tax change</p>')
+    tuesday = mail("News <letters@news.test>", "Tuesday letter", '<a href="https://news.test/">News</a><p>Visa change</p>')
+    assert service.gather_mail(engine, site, service.today(), read=lambda *a: [monday])["added"] == 1
+    assert service.gather_mail(engine, site, service.today(), read=lambda *a: [tuesday, monday])["added"] == 1  # Monday's is read again, kept once
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT title FROM social_topics ORDER BY id")).scalars().all() == ["Monday letter", "Tuesday letter"]
+
+
+def test_a_rewrite_tells_the_helper_what_it_is_and_is_not_dropped_for_being_old(client, engine, site):
+    token = service.new_token(engine, site)["token"]
+    topic_id = topic(engine, site)
+    client.post("/api/social/bot/inbox", headers=bearer(token), json={"posts": [{"platform": "x", "topic_id": topic_id, "text": "draft"}]})
+    item_id = service.day_view(engine, site)["posts"][0]["id"]
+    service.update_item(engine, item_id, {"angle": "Talk about the cost", "status": "rewrite"})
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE social_items SET run_date = run_date - INTERVAL 5 DAY WHERE id = :i"), {"i": item_id})
+    [wanted] = service.brief(engine, site)["rewrites_wanted"]
+    assert (wanted["kind"], wanted["platform"], wanted["topic_title"], wanted["source_url"]) == ("post", "x", "New visa rules", "https://news.test/visa")
+    service.add_targets(engine, site, [{"url": "https://x.com/someone/status/999999", "text": "Question?"}])
+    assert "topic_title" not in service.brief(engine, site)["comments_wanted"][0]
+
+
+def test_a_linkedin_address_with_x_com_in_it_stays_linkedin(engine, site):
+    assert service.add_targets(engine, site, [{"url": "https://www.linkedin.com/posts/moving-to-x.com/why-123"}]) == 1
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT platform, link_checked FROM social_items")).one() == ("linkedin", None)
+
+
+def test_words_the_owner_wrote_on_an_empty_comment_are_not_replaced(client, engine, site):
+    token = service.new_token(engine, site)["token"]
+    service.add_targets(engine, site, [{"url": "https://x.com/someone/status/999999"}])
+    item_id = service.brief(engine, site)["comments_wanted"][0]["id"]
+    service.update_item(engine, item_id, {"text": "my own words"})
+    assert service.brief(engine, site)["comments_wanted"] == []
+    done = client.post("/api/social/bot/inbox", headers=bearer(token), json={"comments": [{"item_id": item_id, "text": "the helper's"}]}).get_json()
+    assert done["comments"] == 0
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT draft, final FROM social_items WHERE id = :i"), {"i": item_id}).one() == (None, "my own words")
+
+
+def test_odd_suggestions_are_skipped_not_a_crash(client, engine, site):
+    token = service.new_token(engine, site)["token"]
+    reply = client.post("/api/social/bot/inbox", headers=bearer(token), json={"proposals": [["a list"], 7, {"text": "Shorter openings", "why": 3}, "Fewer emojis"]})
+    assert reply.status_code in (200, 400)
+    reply = client.post("/api/social/bot/inbox", headers=bearer(token), json={"proposals": [["a list"], 7, "Fewer emojis"]})
+    assert reply.status_code == 200 and reply.get_json()["proposals"] == 1
+
+
+def test_a_feed_with_a_blank_line_first_is_read_and_entities_far_down_are_still_refused():
+    assert gather.parse_feed(b"\n\n " + rss([("Title", "https://news.test/a", "words", rfc(NOW))]))[0]["title"] == "Title"
+    late = b'<?xml version="1.0"?>' + b"<!-- pad -->" * 600 + b'<!DOCTYPE r [<!ENTITY a "aaaa">]><rss><channel><item><title>&a;</title></item></channel></rss>'
+    with pytest.raises(ValueError):
+        gather.parse_feed(late)
+
+
+def test_read_my_sources_now_stops_when_its_time_is_up(engine, site, web):
+    service.add_source(engine, site, "rss", "https://news.test/feed")
+    web["https://news.test/feed"] = (200, rss([("Title", "https://news.test/a", "words", rfc(NOW))]), {})
+    done = service.gather_feeds(engine, site, service.today(), budget=-1)
+    assert done["added"] == 0 and "morning" in done["errors"][0]
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT last_error FROM social_sources")).scalar() is None  # not the feed's fault
+    assert service.gather_feeds(engine, site, service.today(), budget=40, timeout=10)["added"] == 1
+
+
+def test_a_damaged_or_locked_skill_zip_says_so():
+    data = bytearray(zipped({"SKILL.md": "hello " * 200}))
+    data[40:50] = b"\x00" * 10
+    with pytest.raises(Exception) as caught:
+        skill.read("voice.zip", bytes(data))
+    assert type(caught.value).__name__ == "Refused"
+
+
+def test_the_token_opens_nothing_but_the_helpers_own_routes(engine, site):
+    app = create_app(engine=engine, auth=True, secret_key="test").test_client()
+    token = service.new_token(engine, site)["token"]
+    for path in ("/api/social/bot/", "/api/social/bot/nothing", "/api/social/bot/../day", "/api/social/bot/brief/../../settings"):
+        reply = app.get(path, headers=bearer(token))
+        assert reply.status_code == 401 and reply.get_json()["signed_out"] is True, path
+    assert app.get("/api/social/settings?site_id=%d" % site, headers=bearer(token)).status_code == 401
+    assert app.patch("/api/social/items/1", headers=bearer(token), json={"status": "posted"}).status_code == 401
+
+
+def _login(engine, email, role="member", access=None):
+    from seo.accounts import service as accounts
+
+    accounts.create_user(engine, email, "Someone", role, password="correct horse battery", must_change=False, access=access)
+    app = create_app(engine=engine, secret_key="test-secret-key").test_client()
+    reply = app.post("/api/auth/login", json={"email": email, "password": "correct horse battery"})
+    return app, {"X-CSRF-Token": reply.get_json()["csrf"]}
+
+
+def test_someone_with_one_site_cannot_reach_another_sites_social(client, engine, site, other_site):
+    token = service.new_token(engine, other_site)["token"]
+    client.post("/api/social/bot/inbox", headers=bearer(token), json={"posts": [{"platform": "x", "text": "theirs"}]})
+    theirs = service.day_view(engine, other_site)["posts"][0]["id"]
+    app, csrf = _login(engine, "helper@example.com", access={"sites": [site], "sections": {"social": "edit"}, "spend": False})
+    assert app.get(f"/api/social/day?site_id={site}").status_code == 200
+    for reply in (
+        app.get(f"/api/social/day?site_id={other_site}"), app.get(f"/api/social/settings?site_id={other_site}"), app.get("/api/social/day"),
+        app.patch(f"/api/social/items/{theirs}", json={"text": "mine now"}, headers=csrf),
+        app.put("/api/social/guide", json={"site_id": other_site, "guide": "x"}, headers=csrf),
+        app.post("/api/social/skill", data={"site_id": str(other_site), "file": (io.BytesIO(b"# v"), "SKILL.md")}, content_type="multipart/form-data", headers=csrf),
+        app.post("/api/social/gather", json={"site_id": other_site}, headers=csrf),
+        app.post("/api/social/token", json={"site_id": site}, headers=csrf),  # admins only, even on their own site
+        app.put("/api/social/mailbox", json={"site_id": site, "host": "h", "user": "u"}, headers=csrf),
+    ):
+        assert reply.status_code == 403, reply.get_json()
+    assert service.day_view(engine, other_site)["posts"][0]["text"] == "theirs"
+    viewer, csrf = _login(engine, "viewer@example.com", access={"sites": [site], "sections": {"social": "view"}, "spend": False})
+    assert viewer.post("/api/social/rules", json={"site_id": site, "text": "x"}, headers=csrf).status_code == 403
+
+
+def test_the_mailbox_and_the_tokens_ending_are_shown_to_admins_only(engine, site):
+    service.save_mailbox(engine, site, {"host": "imap.mail.test", "user": "box@mail.test", "password": "secret"})
+    service.new_token(engine, site)
+    member, csrf = _login(engine, "member@example.com")
+    seen = member.get(f"/api/social/settings?site_id={site}").get_json()
+    assert seen["mail"] == {"host": None, "user": None, "set": True} and seen["token"] == {"set": True, "last4": None}
+    assert member.post("/api/social/rules", json={"site_id": site, "text": "Short"}, headers=csrf).get_json()["mail"]["host"] is None
+    admin, _ = _login(engine, "boss@example.com", role="admin")
+    seen = admin.get(f"/api/social/settings?site_id={site}").get_json()
+    assert seen["mail"]["host"] == "imap.mail.test" and len(seen["token"]["last4"]) == 4
+
+
+def test_the_bell_shows_drafts_only_to_people_with_social(client, engine, site):
+    token = service.new_token(engine, site)["token"]
+    client.post("/api/social/bot/inbox", headers=bearer(token), json={"posts": [{"platform": "x", "text": "منشور"}]})
+    social, _ = _login(engine, "social@example.com", access={"sites": [site], "sections": {"social": "view"}, "spend": False})
+    assert [n["kind"] for n in social.get("/api/notifications").get_json()["items"]] == ["social_ready"]
+    other, _ = _login(engine, "seo@example.com", access={"sites": [site], "sections": {"overview": "view"}, "spend": False})
+    assert other.get("/api/notifications").get_json() == {"items": [], "unread": 0}
+
+
+def test_sending_the_same_drafts_twice_keeps_the_days_count_and_does_not_ring_again(client, engine, site):
+    token = service.new_token(engine, site)["token"]
+    body = {"posts": [{"platform": "x", "slot": 0, "text": "منشور"}, {"platform": "linkedin", "slot": 0, "text": "منشور أطول"}]}
+    client.post("/api/social/bot/inbox", headers=bearer(token), json=body)
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE notifications SET read_at = UTC_TIMESTAMP(3) WHERE kind = 'social_ready'"))
+    assert client.post("/api/social/bot/inbox", headers=bearer(token), json=body).get_json()["posts"] == 0
+    assert service.day_view(engine, site)["stages"]["writing"]["count"] == 2
+    with engine.connect() as conn:
+        assert conn.execute(text("SELECT read_at IS NOT NULL FROM notifications WHERE kind = 'social_ready'")).scalar() == 1
+
+
+def test_the_x_link_check_asks_x_where_it_lives_now_and_follows_a_move(monkeypatch):
+    """publish.twitter.com answers 301 to publish.x.com: read as "the post doesn't exist", every post Grok found was dropped."""
+    asked = []
+
+    def answer(request):
+        asked.append(request.url.host)
+        if request.url.host == "publish.x.com":
+            return httpx.Response(301, headers={"location": str(request.url).replace("publish.x.com", "publish.moved.test")})
+        return httpx.Response(200 if request.url.params["url"].endswith("/status/20") else 404, json={})
+
+    monkeypatch.setattr(grok, "transport", httpx.MockTransport(answer))
+    assert grok.x_link_lives("https://x.com/jack/status/20") is True
+    assert grok.x_link_lives("https://x.com/jack/status/999999") is False
+    assert asked[:2] == ["publish.x.com", "publish.moved.test"]
+
+
+def test_grok_is_found_where_its_installer_puts_it_under_crons_bare_path(monkeypatch, tmp_path):
+    (tmp_path / ".grok" / "bin").mkdir(parents=True)
+    (tmp_path / ".grok" / "bin" / "grok").write_text("#!/bin/sh\n")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    monkeypatch.delenv("GROK_BIN", raising=False)
+    seen = {}
+
+    def fake(cmd, **kw):
+        seen.update(cmd=cmd, path=kw["env"]["PATH"])
+        return type("Done", (), {"returncode": 0, "stdout": "{}", "stderr": ""})()
+
+    monkeypatch.setattr(grok.subprocess, "run", fake)
+    grok.ask("hi")
+    assert seen["cmd"][0] == str(tmp_path / ".grok" / "bin" / "grok") and seen["path"].startswith(str(tmp_path / ".grok" / "bin") + ":")

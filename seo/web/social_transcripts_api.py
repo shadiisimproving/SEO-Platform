@@ -1,6 +1,9 @@
 """Social → Video transcripts: Instagram and TikTok videos turned into text, in named batches. See seo/social/transcripts.py."""
 from __future__ import annotations
 
+import re
+from urllib.parse import quote
+
 from flask import Blueprint, Response, current_app, g, jsonify, request
 
 from seo.core.errors import Refused
@@ -93,4 +96,7 @@ def retry_one(transcript_id: int):
 @social_transcripts_api.get("/batches/<int:transcript_batch_id>/download")
 def download(transcript_batch_id: int):
     data, name, kind = transcripts.download(_engine(), transcript_batch_id, request.args.get("format", "txt"))
-    return Response(data, mimetype=kind, headers={"Content-Disposition": f'attachment; filename="{name}"', "Cache-Control": "no-store"})
+    # A header can only hold Latin letters: a batch named in Arabic goes in filename*, with a plain name for old browsers.
+    ending = name.rsplit(".", 1)[-1]
+    plain = re.sub(r"[^A-Za-z0-9_-]+", "", name.rsplit(".", 1)[0]).strip("-_") or "transcripts"
+    return Response(data, mimetype=kind, headers={"Content-Disposition": f"attachment; filename=\"{plain}.{ending}\"; filename*=UTF-8''{quote(name)}", "Cache-Control": "no-store"})

@@ -126,7 +126,9 @@ def links_in_file(name: str, data: bytes) -> dict:
                 if sum(box.getinfo(n).file_size for n in parts) > 50 * 1024 * 1024:
                     raise Refused("That file is too big inside to read.")
                 words = "\n".join(box.read(n).decode("utf-8", "replace") for n in parts)
-        except zipfile.BadZipFile:
+        except Refused:
+            raise
+        except Exception:  # noqa: BLE001 - not a zip, damaged, or locked with a password
             raise Refused("That file can't be opened. Save it as .xlsx, .csv or .txt and try again.") from None
         # Hyperlinks live in .rels files as Target="..."; cell text in sharedStrings. Tags end a link, so drop them.
         targets = re.findall(r'Target="([^"]+)"', words)
@@ -521,8 +523,18 @@ def transcribe(engine: Engine, transcript_id: int, last_try: bool = False) -> No
 @handler(JOB_KIND)
 def run_job(job, engine: Engine) -> None:
     transcript_id = (job.payload or {}).get("id")
-    if isinstance(transcript_id, int):
-        transcribe(engine, transcript_id, last_try=job.attempts >= 2)
+    if not isinstance(transcript_id, int):
+        return
+    last_try = job.attempts >= 2
+    try:
+        transcribe(engine, transcript_id, last_try=last_try)
+    except Retry:
+        raise
+    except Exception:  # noqa: BLE001 - anything unforeseen: the video must not stay "working" on screen for ever
+        if last_try:
+            return _fail(engine, transcript_id, "Something went wrong writing this video out. Try it again.")
+        _save(engine, transcript_id, status="queued")
+        raise
 
 
 # ---- downloads ---------------------------------------------------------------------------------------------------

@@ -41,6 +41,12 @@ async function start(width = 1440, height = 1000) {
   // Edit the X post and send it: the X page opens with the words, and it waits as "opened".
   const xPost = page.locator(".so-item", { has: page.locator(".so-platform", { hasText: /^X$/ }) }).filter({ has: page.locator('[data-so-send]', { hasText: "Post on X" }) }).first();
   const box = xPost.locator("textarea");
+  // Another button pressed before an edit has saved redraws the list: the typed words must still be in the box.
+  await box.fill("كلمات لم تحفظ بعد");
+  await page.locator("[data-so-skip]").last().click();
+  check((await xPost.locator("textarea").inputValue()) === "كلمات لم تحفظ بعد", "typing is kept when another button redraws the list");
+  await page.locator("[data-so-skip]").last().click();
+  await settle(page, 1300);
   await box.fill("منشور قصير معدل عن الإعفاء الضريبي");
   await settle(page, 1300);
   check((await xPost.textContent()).includes("saved"), "an edit saves by itself");
@@ -49,6 +55,7 @@ async function start(width = 1440, height = 1000) {
   const opened = await page.evaluate(() => window.__opened.slice());
   check(opened[0]?.startsWith("https://x.com/intent/post?text=") && decodeURIComponent(opened[0]).includes("منشور قصير معدل"), "Post on X opens X with the edited words");
   check((await page.locator(".so-item .status.warn").count()) >= 1, "it now waits as opened, not posted");
+  check(!/LinkedIn/.test(await page.textContent("#toasts")), "Post on X doesn't say to paste it in LinkedIn");
   await page.locator('[data-so-status][data-to="posted"]').first().click();
   await settle(page);
   check((await page.locator(".so-item .status.good").count()) === 1, "Mark posted marks it posted");
@@ -84,10 +91,12 @@ async function start(width = 1440, height = 1000) {
   // Writing guide.
   await page.click('[data-so-tab="guide"]');
   await settle(page);
+  await page.locator("#so-guide").pressSequentially(" Unsaved line.");
   await page.fill("#so-rule", "Say نحن, not أنا");
   await page.click('#so-teach button[type="submit"]');
   await settle(page);
   check((await page.locator(".so-rules li", { hasText: "Say نحن" }).count()) === 1, "a taught rule joins the guide");
+  check((await page.inputValue("#so-guide")).includes("Unsaved line."), "guide text typed but not saved is kept when a rule is added");
   await page.locator('[data-so-proposal][data-accept="1"]').click();
   await settle(page);
   check((await page.locator(".so-rules li", { hasText: "900 characters" }).count()) === 1, "an accepted suggestion becomes a rule");

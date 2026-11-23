@@ -20,7 +20,7 @@ from seo.social import gather
 
 TIMEOUT = 900
 transport: httpx.BaseTransport | None = None  # tests replace this
-OEMBED = "https://publish.twitter.com/oembed"
+OEMBED = "https://publish.x.com/oembed"  # publish.twitter.com answers 301 to here since X moved (seen 2026-11-20)
 X_HOSTS = {"x.com", "www.x.com", "twitter.com", "www.twitter.com", "mobile.twitter.com"}
 LINKEDIN_HOSTS = {"linkedin.com", "www.linkedin.com"}
 MAX_TARGETS = 5
@@ -54,15 +54,20 @@ class GrokFailed(Exception):
 def command() -> list[str]:
     """The Grok CLI and its flags. GROK_BIN and GROK_FLAGS let the server's install differ without a code change.
     The default flags are the ones reported to make X search work reliably in headless runs."""
-    binary = os.environ.get("GROK_BIN") or shutil.which("grok") or os.path.expanduser("~/.local/bin/grok")
+    # x.ai's installer puts it in ~/.grok/bin (read 2026-11-20), which cron's bare PATH doesn't hold.
+    homes = [os.path.expanduser(p) for p in ("~/.grok/bin/grok", "~/.local/bin/grok")]
+    binary = os.environ.get("GROK_BIN") or shutil.which("grok") or next((p for p in homes if os.path.exists(p)), homes[0])
     flags = os.environ.get("GROK_FLAGS", "--no-subagents --max-turns 6 --reasoning-effort low").split()
     return [binary, *flags, "-p"]
 
 
 def ask(prompt: str) -> str:
     env = {k: v for k, v in os.environ.items() if not k.endswith("XAI_API_KEY")}  # never let a stray key bill the API
+    run = command()
+    # Cron's PATH is bare: the CLI's own folder goes first, so whatever it starts beside itself is found.
+    env["PATH"] = os.pathsep.join(p for p in (os.path.dirname(run[0]), env.get("PATH", "/usr/local/bin:/usr/bin:/bin")) if p)
     try:
-        done = subprocess.run([*command(), prompt], capture_output=True, text=True, timeout=TIMEOUT, env=env, cwd=os.path.expanduser("~"))
+        done = subprocess.run([*run, prompt], capture_output=True, text=True, timeout=TIMEOUT, env=env, cwd=os.path.expanduser("~"))
     except FileNotFoundError as error:
         raise GrokFailed("The Grok CLI isn't installed on the server.") from error
     except subprocess.TimeoutExpired as error:
@@ -113,7 +118,7 @@ def linkedin_post(url: str) -> str | None:
 def x_link_lives(url: str) -> bool:
     """X's free oEmbed answers 200 for a public post that exists, 404 for one that doesn't."""
     try:
-        with httpx.Client(transport=transport, timeout=15) as client:
+        with httpx.Client(transport=transport, timeout=15, follow_redirects=True) as client:  # X has moved this address before
             reply = client.get(OEMBED, params={"url": url, "omit_script": "1"})
         return reply.status_code == 200
     except httpx.HTTPError:

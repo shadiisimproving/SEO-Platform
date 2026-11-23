@@ -118,7 +118,8 @@ def _child_text(node, *names) -> str | None:
 
 def parse_feed(body: bytes) -> list[dict]:
     """The entries of an RSS 2.0, RSS 1.0 or Atom feed, newest first as the feed gives them."""
-    if b"<!ENTITY" in body[:5000].upper():  # entity tricks have no place in a feed
+    body = body.lstrip()  # a blank line before <?xml is common, and the parser refuses it
+    if b"<!ENTITY" in body.upper():  # entity tricks have no place in a feed, however far down they are declared
         raise ValueError("The feed declares its own entities, so it wasn't read.")
     root = ET.fromstring(body)
     entries = []
@@ -142,11 +143,11 @@ def parse_feed(body: bytes) -> list[dict]:
     return entries
 
 
-def read_feed(url: str) -> list[dict]:
+def read_feed(url: str, timeout: float = 30) -> list[dict]:
     if not safe_link(url) or not url_allowed(url):
         raise ValueError("That feed address isn't a public web address.")
     chunks: list[bytes] = []
-    with httpx.Client(transport=transport, timeout=30, headers={"User-Agent": USER_AGENT}, follow_redirects=False) as client:
+    with httpx.Client(transport=transport, timeout=timeout, headers={"User-Agent": USER_AGENT}, follow_redirects=False) as client:
         for _hop in range(4):  # redirects followed by hand, so each new address is checked as public too
             with client.stream("GET", url) as reply:
                 if reply.is_redirect and reply.headers.get("location"):
@@ -237,7 +238,7 @@ def is_confirmation(subject: str, text: str) -> bool:
 
 def read_mailbox(host: str, user: str, password: str, since: datetime, limit: int = PER_MAILBOX) -> list[dict]:
     """Newsletters received since `since`, newest first. Read only: nothing is deleted or marked in the mailbox."""
-    box = imaplib.IMAP4_SSL(host, 993, timeout=40)
+    box = imaplib.IMAP4_SSL(host, 993, timeout=20)
     try:
         box.login(user, password)
         box.select("INBOX", readonly=True)
