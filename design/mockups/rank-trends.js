@@ -21,9 +21,26 @@
 
   const TABS = [["top", "Top"], ["up", "Trending up"], ["down", "Trending down"]];
   const SOURCES = [["checks", "Our checks"], ["gsc", "Search Console"]];
-  const FIRST = 5, FRESH_MS = 20000, KEEP = "seo-cc-rank-trends-source";
-  const S = { tab: "top", source: null, more: false, cache: new Map() };
-  try { const kept = localStorage.getItem(KEEP); if (kept === "checks" || kept === "gsc") S.source = kept; } catch { /* private window: the choice lasts for this visit */ }
+  const FIRST = 5, FRESH_MS = 20000;
+  const S = { tab: "top", more: false, cache: new Map() };
+
+  /* ONE choice of ranking for the whole app (owner, 2026-11-23): Search Console or Our checks, shared by this card on
+     Today, Overview and Keywords and by the Keywords table (its chips, trend, Up / Down, By bucket and the keyword panel's
+     chart), so the card and the chips always count the same data. Search Console by default. Kept in this browser under
+     the Keywords table's old key; a private window keeps it for the visit. A change says so with "rank-source:changed". */
+  const KEEP = "seocc2-kwb-source";
+  let memo = null;
+  const RankSource = {
+    get() { try { const kept = localStorage.getItem(KEEP); if (kept === "checks" || kept === "gsc") return kept; } catch { /* no storage */ } return memo || "gsc"; },
+    set(to, from = "") {
+      if (to !== "checks" && to !== "gsc") return;
+      const was = RankSource.get();
+      memo = to;
+      try { localStorage.setItem(KEEP, to); } catch { /* kept for this visit only */ }
+      if (was !== to) document.dispatchEvent(new CustomEvent("rank-source:changed", { detail: { to, from } }));
+    },
+  };
+  window.RankSource = RankSource;
 
   const siteKey = () => String(UI().siteIdPicked?.() || "all");
   const allSites = () => UI().state?.site === "all";
@@ -44,11 +61,8 @@
       .catch((error) => done({ data: entry.data, error: entry.data ? null : error })); // an older answer stays on screen
   }
 
-  /* The ranking shown: the one picked, or the first that has something to say. */
-  function sourceOf(data) {
-    if (S.source) return S.source;
-    return data.checks.state !== "ok" && data.gsc.state === "ok" ? "gsc" : "checks";
-  }
+  /* The ranking shown: the app's one choice (RankSource). */
+  const sourceOf = () => RankSource.get();
 
   // ---- a row ------------------------------------------------------------------------------------------
   const pos = (value) => `<span class="rt-pos"><span class="sr-only">${t("Position")} </span>#${esc(place(value))}</span>`;
@@ -150,7 +164,7 @@
     const now = S.cache.get(key) || {};
     if (now.error?.status === 403 || now.error?.message === "Not in the sample data.") return ""; // chosen access without Keywords or Overview, or the plain-file sample: no card
     const data = now.data;
-    const picked = data ? sourceOf(data) : S.source || "checks";
+    const picked = sourceOf();
     // One control at rest: View, naming what is shown. Its menu holds the list, the ranking, Show more and All keywords.
     const face = `${t(TABS.find(([id]) => id === S.tab)[1])} · ${t(SOURCES.find(([id]) => id === picked)[1])}`;
     const view = `<button type="button" class="btn btn-small rt-view" data-rt-view data-pop-toggle aria-haspopup="true" aria-expanded="false" aria-label="${esc(`${t("View")}: ${face}`)}" ${data ? "" : "disabled"}><span class="rt-view-face">${esc(face)}</span>${icon("chevron-down")}</button>`;
@@ -188,13 +202,16 @@
     const screen = el.closest("#popover")?.dataset.rtFor || null;
     if (el.dataset.rtTab) { S.tab = el.dataset.rtTab; S.more = false; }
     else if (el.dataset.rtSource) {
-      S.source = el.dataset.rtSource; S.more = false;
-      try { localStorage.setItem(KEEP, S.source); } catch { /* kept for this visit only */ }
+      S.more = false;
+      RankSource.set(el.dataset.rtSource, "card");
     } else if (el.hasAttribute("data-rt-more")) S.more = !S.more;
     else { S.cache.delete(siteKey()); }
     if (screen) UI().closePopover?.();
     paint(screen);
   });
+
+  // The choice changed somewhere else (the Keywords table's By bucket or the keyword panel): every copy follows.
+  document.addEventListener("rank-source:changed", (e) => { if (e.detail?.from !== "card") paint(); });
 
   /* A rank check or a data pull just finished: the next draw asks again. */
   const stale = () => { S.cache.forEach((entry) => { entry.at = 0; }); if (shared()) window.SCREEN_DATA.forget("rank-trends"); };

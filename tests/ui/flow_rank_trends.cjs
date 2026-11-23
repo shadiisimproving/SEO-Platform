@@ -34,13 +34,18 @@ const facts = (page) => page.evaluate((sel) => {
 
 (async () => {
   const { browser, page, problems } = await open({ url: `${BASE}#today` });
-  await page.evaluate(() => { try { localStorage.removeItem("seo-cc-rank-trends-source"); } catch { /* none kept */ } });
+  // One choice of ranking for the whole app since 2026-11-23 (rank-trends.js RankSource), Search Console by default.
+  await page.evaluate(() => { try { localStorage.removeItem("seocc2-kwb-source"); } catch { /* none kept */ } });
   await page.reload();
 
   // ---- Today ----------------------------------------------------------------------------------------
   await ready(page);
   let f = await facts(page);
-  check(f.copies === 1 && f.tab === "top" && f.source === "checks", `Today: one card, on Top, on our checks (${f.copies}, ${f.tab}, ${f.source})`);
+  check(f.copies === 1 && f.tab === "top" && f.source === "gsc" && /Top · Search Console/.test(f.face), `Today: one card, on Top, on Search Console by default (${f.copies}, ${f.tab}, ${f.source})`);
+  check(f.note.includes("Search Console"), "Today: on Search Console the foot says so");
+  await choose(page, "data-rt-source", "checks");
+  f = await facts(page);
+  check(f.source === "checks", "Our checks from the View menu");
   check(f.rows.length > 0 && f.rows.length <= 5, `Today: at most 5 rows first (${f.rows.length})`);
   const places = f.rows.map((r) => Number(r.pos.slice(1)));
   check(places.every((p, i) => !i || p >= places[i - 1]), `Today: Top is best placed first (${places.join(", ")})`);
@@ -75,17 +80,29 @@ const facts = (page) => page.evaluate((sel) => {
   check(f.source === "gsc" && f.note.includes("Search Console") && allGo === "overview", `Search Console: its own note, and All queries goes to Overview (${allGo})`);
   await page.locator(CARD).screenshot({ path: `${out}/today-search-console.png` });
 
-  // ---- Keywords: the choice is remembered, and the card doesn't link to the screen it is on --------------------
+  // ---- Keywords: the one choice is remembered, the table follows it, and the card doesn't link to the screen it is on -----
+  const chipTip = () => page.getAttribute('.kw-chips [data-filter="up"], #kw-tiles [data-filter="up"], [data-filter="up"]', "data-tip").catch(() => "");
   await page.goto(`${BASE}#keywords`);
   await ready(page);
   f = await facts(page);
   check(f.copies === 1 && f.source === "gsc", "Keywords: the card is there, still on Search Console");
+  check(/^Search Console/.test(await chipTip() || ""), `Keywords: the table's Up chip counts on Search Console too (${await chipTip()})`);
   await choose(page, "data-rt-source", "checks");
   f = await facts(page);
+  check(/^Our checks/.test(await chipTip() || ""), `the card's View menu switched the table's chips to our checks as well (${await chipTip()})`);
+  check(await page.evaluate(() => document.activeElement?.hasAttribute("data-rt-view")), "and the keyboard is back on View after the screen redrew");
   await openView(page);
   const selfLink = await page.$("#popover .rt-all");
   await page.keyboard.press("Escape");
   check(f.source === "checks" && !selfLink, "Keywords: on our checks there is no link to Keywords itself");
+  // The other way: By bucket's own switch moves the card too, then back to our checks for what follows.
+  await page.click('[data-view="bucket"]'); await page.waitForSelector("[data-kwb-src]");
+  await page.click('[data-kwb-src="gsc"]'); await page.waitForTimeout(600);
+  f = await facts(page);
+  check(f.source === "gsc", `By bucket's Search Console switch moved the card as well (${f.source})`);
+  await page.click('[data-kwb-src="checks"]'); await page.waitForTimeout(600);
+  await page.click('[data-view="positions"]'); await page.waitForTimeout(600);
+  f = await facts(page);
   await page.screenshot({ path: `${out}/keywords.png` });
 
   // ---- Overview, then French, then a phone ---------------------------------------------------------------

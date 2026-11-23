@@ -88,7 +88,7 @@
     const ids = window.KW_REAL?.seen?.();
     // Which ranking the Up / Down chips counted with: Search Console unless "Our checks" was picked (Google only).
     let source = "checks";
-    try { source = engine === "google" && localStorage.getItem("seocc2-kwb-source") !== "checks" ? "gsc" : "checks"; } catch { /* no storage: our checks */ }
+    source = engine === "google" && (window.RankSource?.get() || "gsc") === "gsc" ? "gsc" : "checks"; // the app's one choice of ranking
     return { view: "keywords", params: { site_id: site(), engine, source }, seen: ids ? { keywords: ids } : {}, words: [...chipWords("[data-filter]", "filter"), ...sortWords()] };
   }
   function backlinks() {

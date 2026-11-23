@@ -793,7 +793,8 @@
      started on 11 Nov 2026 and a period needs a "before"; or our checks. Never one for "before" and the other for "now".
      Search Console's are 7-day impression-weighted averages, the keyword's own country when that reaches back far enough
      (rankings.py gsc_positions). Remembered in this browser only. */
-  const kwbSource = () => { try { return localStorage.getItem("seocc2-kwb-source") === "checks" ? "checks" : "gsc"; } catch { return "gsc"; } };
+  // The app's one choice of ranking (rank-trends.js RankSource, 2026-11-23): the same one the Keywords by ranking card uses.
+  const kwbSource = () => window.RankSource?.get() || "gsc";
   function gscReadings(g) {
     const then = g.compare === "none" ? g.to : g.compareTo;
     const siteId = UI.siteIdPicked?.() || null, key = `${siteId || "all"}|${then}|${g.to}`;
@@ -2199,7 +2200,7 @@
       if (hit("#kwr-retry")) { K.stale = true; K.error = ""; load(); UI.render(); return; }
       // The simpler screens: the whole row opens its panel (not its tick box, page link or a button in it); ⋯ pins its tools.
       if (simple() && (el = hit("#kw-table tbody tr[data-kwr-row]")) && !hit("a, button, input, select, textarea, label, [data-kwr-open], .chk-cell")) { openKeyword(el.dataset.kwrRow, el); return; }
-      if ((el = hit("[data-kwt-src]"))) { try { localStorage.setItem("seocc2-kwb-source", el.dataset.kwtSrc); } catch { /* this visit only */ } K.bm = null; if (K.panel) paintPanel(K.panel); $(`[data-kwt-src="${el.dataset.kwtSrc}"]`)?.focus({ preventScroll: true }); return; }
+      if ((el = hit("[data-kwt-src]"))) { const to = el.dataset.kwtSrc; window.RankSource?.set(to, "panel"); K.bm = null; if (K.panel) paintPanel(K.panel); $(`[data-kwt-src="${to}"]`)?.focus({ preventScroll: true }); return; }
       if ((el = hit("[data-kwt-span]"))) { K.tlSpan = Number(el.dataset.kwtSpan); if (K.panel) paintPanel(K.panel); $(`[data-kwt-span="${K.tlSpan}"]`)?.focus({ preventScroll: true }); return; }
       if ((el = hit("[data-kwt-kind]"))) { const k = el.dataset.kwtKind; K.tlHidden ||= new Set(); K.tlHidden.has(k) ? K.tlHidden.delete(k) : K.tlHidden.add(k); if (K.panel) paintPanel(K.panel); $(`[data-kwt-kind="${k}"]`)?.focus({ preventScroll: true }); return; }
       if (hit("#kw-aio-all")) { openAioCheck(); return; }
@@ -2247,7 +2248,7 @@
         addPanel(el, el.dataset.kwrFollow, el.dataset.siteHost);
         return;
       }
-      if ((el = hit("[data-kwb-src]"))) { const to = el.dataset.kwbSrc; try { localStorage.setItem("seocc2-kwb-source", to); } catch { /* storage off: this visit only */ } if (to === "gsc" && K.gsc) Object.keys(K.gsc).forEach((k) => { if (K.gsc[k]?.error) delete K.gsc[k]; }); K.bm = null; UI.render({ keepScroll: true }); $(`[data-kwb-src="${to}"]`)?.focus({ preventScroll: true }); return; }
+      if ((el = hit("[data-kwb-src]"))) { const to = el.dataset.kwbSrc; window.RankSource?.set(to, "board"); if (to === "gsc" && K.gsc) Object.keys(K.gsc).forEach((k) => { if (K.gsc[k]?.error) delete K.gsc[k]; }); K.bm = null; UI.render({ keepScroll: true }); $(`[data-kwb-src="${to}"]`)?.focus({ preventScroll: true }); return; }
       if ((el = hit("[data-kwb-more]"))) { const id = el.dataset.kwbMore; if (!K.bucketAll) K.bucketAll = new Set(); if (K.bucketAll.has(id)) K.bucketAll.delete(id); else K.bucketAll.add(id); UI.render({ keepScroll: true }); $(`[data-kwb-more="${id}"]`)?.focus({ preventScroll: true }); return; }
       if ((el = hit("[data-kwr-open]"))) { openKeyword(el.dataset.kwrOpen, el); return; }
       if ((el = hit("[data-kwr-deeper]"))) { checkDeeper(rowById(el.dataset.kwrDeeper), el.dataset.engineId); return; }
@@ -2400,6 +2401,15 @@
   }
   window.addEventListener("seocc:site-added", () => { K.stale = true; });
   // Keywords added elsewhere (Competitors → Keyword check → Add to my keywords) show here without a reload.
+  // The one choice of ranking changed (the card's View menu, or the keyword panel's chart): the chips, trend and board follow.
+  // From the card, the keyboard goes back to its View button; from the panel, it stays in the panel.
+  document.addEventListener("rank-source:changed", (e) => {
+    if (state.route !== "keywords" || e.detail?.from === "board") return;
+    K.bm = null;
+    if (e.detail?.from === "panel" && K.panel) { const held = document.activeElement; UI.render({ keepScroll: true }); if (held?.isConnected) held.focus({ preventScroll: true }); return; }
+    UI.render({ keepScroll: true });
+    if (e.detail?.from === "card") $("[data-rank-trends] [data-rt-view]")?.focus({ preventScroll: true });
+  });
   document.addEventListener("keywords:changed", () => { K.stale = true; K.queries = {}; window.RankTrends?.stale(); if (state.route === "keywords" && !K.loading) load(); });
   /* Other screens track a query through the same panel, so there's one way to add a keyword. queries: one or many. */
   /* window.KW, for other screens:

@@ -1,7 +1,8 @@
 // Search → Overview the way a person uses it, with screenshots to look at (redesign of 2026-11-09).
-// Needs the real app on the fake internet, with Search Console connected for site-one.example:
+// Needs the real app on the fake internet, with Search Console connected for site-one.example and read in full
+// (seed_overview.py does that; without it the demo world has two weeks of three tracked queries and 5 checks fail):
 //   DB_NAME_TEST=test_overview_ui_test .venv/bin/python tests/ui/app_server.py --port 8231
-//   then connect it once (Settings, or the two INSERTs in the plan's notes) and press Refresh data.
+//   DB_NAME_TEST=test_overview_ui_test .venv/bin/python tests/ui/seed_overview.py
 // Run: node tests/ui/flow_overview.cjs reports/overview-2026-11-09 http://127.0.0.1:8231/
 const fs = require("fs");
 const { open, menu } = require("./pw.cjs");

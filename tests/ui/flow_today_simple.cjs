@@ -105,7 +105,8 @@ const visible = (page, sel) => page.$eval(sel, (el) => { let o = 1; for (let n =
   const n = await controls(page);
   const inCard = await page.evaluate(() => [...document.querySelectorAll(".rt-card button, .rt-card a[href]")].filter((el) => el.getBoundingClientRect().width > 1).length);
   // 47 with the Keywords by ranking card's five tabs and switches, its Show more and its link (2026-11-23); 41 with them in
-  // its View menu: 35 elsewhere + View + its five keyword links. Target about 33.
+  // its View menu: 35 elsewhere + View + up to five keyword links (39 on the demo world with Search Console, the default
+  // ranking since 2026-11-23, which lists three). Target about 33.
   check(n <= 41 && inCard <= 6, `controls at rest: ${n}, ${inCard} of them in the Keywords by ranking card (47 before its View menu)`);
   const f = await facts(page);
   check(count(f.second) === f.badge, `the headline count ${count(f.second)} matches the menu badge ${f.badge}`);
