@@ -23,8 +23,15 @@ def schema():
 
 @pytest.fixture
 def engine(schema):
+    # A connection an earlier test left unreferenced still holds its open transaction (and a metadata lock) until Python's
+    # garbage collector closes it; under a long run that came too late and TRUNCATE below waited for ever (2026-11-23,
+    # test_competitor_final after test_collectors). Collecting first closes such connections, and the lock wait is capped
+    # so a leak fails loudly instead of hanging the suite.
+    import gc
+    gc.collect()
     engine = make_engine(test=True)
     with engine.begin() as conn:
+        conn.execute(text("SET SESSION lock_wait_timeout = 60"))
         conn.execute(text("SET FOREIGN_KEY_CHECKS=0"))
         for (table,) in conn.execute(text("SHOW TABLES")).all():
             if table != "alembic_version":
