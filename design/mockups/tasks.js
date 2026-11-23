@@ -192,6 +192,7 @@
       T.sampleFirstRun = UI.state.firstRun;
       T.failed = "";
       T.ready = true;
+      T.loadedAt = Date.now();
     })().catch((err) => {
       if (!T.tasks.length) T.failed = err.message; // with tasks on screen, the next look catches up: a laptop waking before its Wi-Fi mustn't blank the board
       T.ready = true;
@@ -362,6 +363,23 @@
   /* Who is signed in: a new task is theirs unless they change it, so it shows in their "My work" on Today. */
   const signedIn = () => window.BOOT?.user?.name?.trim() || myName();
 
+  /* Anyone with an account; a name from before accounts stays listed so it isn't lost on save. */
+  const teamPeople = (current) => [...new Set([...(window.TEAM_NAMES || (UI.state.served ? [] : window.TEAM || [])), current].filter(Boolean))];
+  /* Assigned to only offers people who will see the task: BOOT.assignees says who can see tasks on each of this person's
+     sites ("all": a task for every site). Someone who can't is listed greyed with why; the server refuses them anyway. */
+  function ownerOptions(people, siteId, chosen) {
+    const map = window.BOOT?.assignees;
+    const here = map && Object.keys(map).length ? map[siteId === "" || siteId === null ? "all" : String(siteId)] || {} : null;
+    const option = (name) => {
+      const level = here ? here[name] : "edit";
+      const why = !level ? ` — ${t(siteId === "" || siteId === null ? "doesn't have every site" : "can't see this site")}` : level === "view" ? ` (${t("view only")})` : "";
+      return `<option value="${esc(name)}"${name === chosen ? " selected" : ""}${level ? "" : " disabled"}>${esc(name)}${esc(why)}</option>`;
+    };
+    const can = (name) => !here || Boolean(here[name]);
+    const sorted = [...people.filter(can), ...people.filter((name) => !can(name))];
+    return `<option value="">${t("Nobody")}</option>${sorted.map(option).join("")}`;
+  }
+
   /* task: an existing one. Otherwise prefill: { title, host, description, source, kind, goal, owner, keywords, pages, about, rivals }.
      rivals: competitors a finding names by host only; the panel picks them under Competitor once it knows the site's list. */
   function openTask({ task = null, title = "", host = null, description = "", source = null, priority = "medium", pages = [], keywords = [], about = null, rivals = [], kind = "", goal = "", owner = null, query = "", opener = null } = {}) {
@@ -376,7 +394,7 @@
     const removedSite = task && !task.site_id && task.site_host ? `<p class="help" style="margin-top:-6px">${t("Site removed:")} <span class="mono" dir="auto">${esc(task.site_host)}</span></p>` : "";
     const select = (id, options, chosen) => `<select class="select" id="${id}" style="width:100%">${options.map(([value, word]) => `<option value="${value}" ${value === chosen ? "selected" : ""}>${columnWord(word)}</option>`).join("")}</select>`;
     // Anyone with an account; a name from before accounts stays listed so it isn't lost on save.
-    const people = [...new Set([...(window.TEAM_NAMES || (UI.state.served ? [] : window.TEAM || [])), given.owner_label].filter(Boolean))];
+    const people = teamPeople(given.owner_label);
     const made = task?.created_at ? `${t("Created")} ${esc(whenWord(task.created_at))}${task.created_by ? ` ${t("by")} <span dir="auto">${esc(task.created_by)}</span>` : ""}` : "";
     const theSource = task ? task.source : source;
     const draftKey = `task|${task ? task.id : theSource?.key || "new"}`;
@@ -387,7 +405,7 @@
         <div id="task-error"></div>
         <div class="field-row">
           <label class="field"><span>${t("Site")}</span><select class="select" id="task-site" style="width:100%">${siteOptions}</select></label>
-          <label class="field"><span>${t("Assigned to")}</span><select class="select" id="task-owner" style="width:100%"><option value="">${t("Nobody")}</option>${people.map((name) => `<option value="${esc(name)}"${name === given.owner_label ? " selected" : ""}>${esc(name)}</option>`).join("")}</select></label>
+          <label class="field"><span>${t("Assigned to")}</span><select class="select" id="task-owner" style="width:100%">${ownerOptions(people, siteId ?? "", given.owner_label)}</select></label>
         </div>
         <div class="field-row">
           <label class="field"><span>${t("Due date")}</span><input class="input" type="date" id="task-due" value="${esc(given.due || "")}"></label>
@@ -664,6 +682,13 @@
       ${quickStatus(task)}
     </li>`;
   }
+  /* At "All sites", someone without every site can't make a task for all of them: they pick one of theirs here. */
+  const needsSitePick = () => !T.sites.some((x) => x.host === hostHere()) && window.ACCESS?.limited && !window.ACCESS.everySite();
+  function quickSite() {
+    if (!needsSitePick()) return "";
+    const chosen = String(T.addSite || T.sites[0]?.id || "");
+    return `<label class="field"><span class="sr-only">${t("Site")}</span><select class="select" id="tk-add-site">${T.sites.map((x) => `<option value="${esc(String(x.id))}"${String(x.id) === chosen ? " selected" : ""}>${esc(x.host)}</option>`).join("")}</select></label>`;
+  }
   function quickAdd() {
     if (!canEdit()) return "";
     const kinds = KINDS.map((k) => `<option value="${esc(k)}"${T.addKind === k ? " selected" : ""}>${esc(t(k))}</option>`).join("");
@@ -671,6 +696,7 @@
       <label class="field tk-add-title"><span class="sr-only">${t("New task")}</span><input class="input" id="tk-add-title" maxlength="300" autocomplete="off" dir="auto" placeholder="${esc(t("New task: what needs doing?"))}"></label>
       <label class="field tk-add-goal"><span class="sr-only">${t("Goal")}</span><input class="input" id="tk-add-goal" maxlength="200" list="tk-add-goals" autocomplete="off" dir="auto" value="${esc(T.addGoal || "")}" placeholder="${esc(t("Goal (optional)"))}"><datalist id="tk-add-goals">${goals().map((g) => `<option value="${esc(g)}"></option>`).join("")}</datalist></label>
       <label class="field"><span class="sr-only">${t("Type")}</span><select class="select" id="tk-add-kind"><option value="">${t("No type")}</option>${kinds}</select></label>
+      ${quickSite()}
       <label class="field"><span class="sr-only">${t("Month")}</span><input class="input" type="month" id="tk-add-month" value="${esc(T.addMonth || monthOf(new Date()))}"></label>
       <button class="btn btn-main" type="submit" id="tk-add-go">${icon("plus")}${t("Add")}</button>
       <div class="tk-add-error" id="tk-add-error" role="alert"></div>
@@ -720,7 +746,9 @@
     if (!title.value.trim()) { title.classList.add("invalid"); title.focus(); UI.setHTML(box, `<span class="error">${icon("octagon-alert")}<span>${t("A task needs a title.")}</span></span>`); return; }
     const month = UI.$("#tk-add-month").value || monthOf(new Date());
     T.addGoal = UI.$("#tk-add-goal").value; T.addKind = UI.$("#tk-add-kind").value; T.addMonth = month;
-    const siteId = T.sites.find((x) => x.host === hostHere())?.id ?? null;
+    const picked = UI.$("#tk-add-site")?.value;
+    if (picked) T.addSite = picked;
+    const siteId = picked ? T.sites.find((x) => String(x.id) === picked)?.id ?? null : T.sites.find((x) => x.host === hostHere())?.id ?? null;
     const body = { title: title.value, goal: sameGoal(T.addGoal), kind: T.addKind ? sameKind(T.addKind) : "", due: monthRange(month)[1], owner_label: signedIn() || "", site_id: siteId };
     T.saving = true;
     const go = UI.$("#tk-add-go");
@@ -894,7 +922,18 @@
     });
     document.addEventListener("change", (e) => {
       const id = e.target.id;
-      if (id === "task-site") { window.TaskAbout.siteChanged(); return; } // the links point at the site picked
+      if (id === "task-site") {
+        window.TaskAbout.siteChanged(); // the links point at the site picked
+        const owner = UI.$("#task-owner");
+        if (owner) {
+          const was = owner.value;
+          UI.setHTML(owner, ownerOptions(teamPeople(was), e.target.value, was));
+          // The person picked can't see the new site: say so now rather than on Save.
+          if (was && owner.selectedOptions[0]?.disabled) UI.setHTML(UI.$("#task-error"), `<div class="error" role="alert">${icon("octagon-alert")}<span>${esc(`${was}: ${t(e.target.value ? "can't see this site" : "doesn't have every site")}. ${t("Pick someone else.")}`)}</span></div>`);
+          else UI.setHTML(UI.$("#task-error"), "");
+        }
+        return;
+      }
       if (e.target.matches?.("[data-task-move]")) { moveTask(Number(e.target.dataset.taskMove), e.target.value, `#${id}`); return; }
       if (id === "tk-status") { T.status = e.target.value; TP.reset(PAGES); paint(); return; }
       if (id === "tk-kind") { T.kind = e.target.value; TP.reset(PAGES); paint(); return; }
@@ -937,7 +976,7 @@
     TP.on(PAGES, paint); // another page, another size: only the list is drawn again, so the Filter box keeps its focus
     // A board left open catches up when someone comes back to it. An open panel keeps what's being typed.
     const catchUp = async () => {
-      if (document.visibilityState !== "visible" || !T.ready || T.dragId !== null || UI.state.route !== "tasks") return;
+      if (document.visibilityState !== "visible" || !T.ready || T.dragId !== null || !["tasks", "today"].includes(UI.state.route)) return;
       const before = JSON.stringify(T.tasks);
       await load();
       // Only a real change redraws, and never under someone in the middle of choosing from a card's list.
@@ -948,6 +987,10 @@
       if (again) UI.$(again)?.focus({ preventScroll: true });
     };
     window.addEventListener("focus", catchUp);
+    // Opening Tasks or Today from the menu shows what the team added since: the list was otherwise only read at start.
+    const entered = () => setTimeout(() => { if (Date.now() - (T.loadedAt || 0) > 2000) catchUp(); }, 0);
+    window.addEventListener("hashchange", entered); // a link, Back or Forward
+    window.addEventListener("seocc:entered", entered); // the side menu
     document.addEventListener("visibilitychange", catchUp);
     setInterval(catchUp, 30000); // a board left open shows what the team has done
   }
@@ -1013,6 +1056,7 @@
   const fr = {
     "Related tasks": "Tâches liées", "Pages": "Pages", "Keywords": "Mots-clés", "Add a page": "Ajouter une page", "Add a keyword": "Ajouter un mot-clé",
     "Search tasks": "Chercher une tâche", "Comment as": "Commenter en tant que",
+    "doesn't have every site": "n'a pas tous les sites", "can't see this site": "ne voit pas ce site", "view only": "lecture seule", "Pick someone else.": "Choisissez quelqu'un d'autre.",
     "A task can list 50 pages at most.": "Une tâche peut lister 50 pages au maximum.", "A task can list 50 keywords at most.": "Une tâche peut lister 50 mots-clés au maximum.",
     "Who does what, where, by when": "Qui fait quoi, où, et pour quand",
     "To start": "À lancer", "Blocked": "Bloqué", "Goal": "Objectif", "All goals": "Tous les objectifs", "e.g. Strengthen site credibility": "ex. Renforcer la crédibilité du site",

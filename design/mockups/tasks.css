@@ -135,6 +135,8 @@
 .tk-add .field { margin: 0; min-width: 0; }
 .tk-add .input, .tk-add .select { width: 100%; }
 .tk-add .btn { min-height: 36px; }
+/* With a site choice (someone without every site, at All sites), one more column. */
+@media (min-width: 761px) { .tk-add:has(#tk-add-site) { grid-template-columns: minmax(0, 2.2fr) minmax(0, 1.4fr) minmax(0, .9fr) minmax(0, 1.1fr) minmax(0, 1fr) auto; } }
 .tk-add-error { grid-column: 1 / -1; }
 .tk-add-error:empty { display: none; }
 .tk-mhead { display: flex; align-items: center; gap: 8px; padding: 9px 18px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--track); }

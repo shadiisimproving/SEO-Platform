@@ -331,6 +331,8 @@ def test_a_comment_carries_the_signed_in_account_name_whatever_was_sent(engine):
     from seo.accounts import service as accounts
 
     accounts.create_user(engine, "sara@example.com", "Sara Account", "admin", password="a-long-password-1", must_change=False)
+    for email, name in (("ben@example.com", "Ben"), ("nour@example.com", "Nour")):  # tasks go to team members
+        accounts.create_user(engine, email, name, "member", password="a-long-password-1", must_change=False)
     client = create_app(engine=engine, auth=True, secret_key="test").test_client()
     token = client.post("/api/auth/login", json={"email": "sara@example.com", "password": "a-long-password-1"}).json["csrf"]
     headers = {"X-CSRF-Token": token}
@@ -343,6 +345,8 @@ def test_created_by_is_the_signed_in_account_and_never_changes(engine):
     from seo.accounts import service as accounts
 
     accounts.create_user(engine, "sara@example.com", "Sara Account", "admin", password="a-long-password-1", must_change=False)
+    for email, name in (("ben@example.com", "Ben"), ("nour@example.com", "Nour")):  # tasks go to team members
+        accounts.create_user(engine, email, name, "member", password="a-long-password-1", must_change=False)
     client = create_app(engine=engine, auth=True, secret_key="test").test_client()
     token = client.post("/api/auth/login", json={"email": "sara@example.com", "password": "a-long-password-1"}).json["csrf"]
     headers = {"X-CSRF-Token": token}

@@ -87,6 +87,7 @@ def create_user(engine: Engine, email, name, role="member", password: str | None
         chosen = None if role == "admin" else access_rules.clean(access, conn)
         if conn.execute(text("SELECT 1 FROM users WHERE email = :e"), {"e": email}).first():
             raise Refused("There is already an account with that username or email.")
+        _name_free(conn, name)
         result = conn.execute(
             text("INSERT INTO users (email, name, password_hash, role, access, must_change_password) VALUES (:e, :n, :p, :r, :a, :m)"),
             {"e": email, "n": name, "p": generate_password_hash(plain), "r": role, "a": json.dumps(chosen) if chosen else None, "m": must_change},
@@ -110,6 +111,38 @@ def list_users(engine: Engine) -> list[dict]:
 def team_names(engine: Engine) -> list[str]:
     with engine.connect() as conn:
         return [row[0] for row in conn.execute(text("SELECT name FROM users WHERE disabled = 0 ORDER BY name")).all()]
+
+
+def admin_names(engine: Engine) -> list[str]:
+    """Who to ask for more access: the working admins."""
+    with engine.connect() as conn:
+        return [row[0] for row in conn.execute(text("SELECT name FROM users WHERE disabled = 0 AND role = 'admin' ORDER BY id")).all()]
+
+
+def task_assignees(conn, site_ids, every_site: bool) -> dict:
+    """For each of the asker's own sites, and "all" when they have every site: who can be given a task there, with
+    "edit" or "view". Only the asker's own sites are answered, so nobody learns about a site they don't have."""
+    own = [row[0] for row in conn.execute(text("SELECT id FROM sites WHERE kind = 'own'"))]
+    people = conn.execute(text("SELECT name, role, access FROM users WHERE disabled = 0 ORDER BY name")).mappings().all()
+    keys = [*site_ids, *([None] if every_site else [])]
+    answer = {}
+    for site_id in keys:
+        here = {}
+        for person in people:
+            level = access_rules.task_level(person["role"], person["access"], site_id, own)
+            if level:
+                here[person["name"]] = level
+        answer["all" if site_id is None else str(site_id)] = here
+    return answer
+
+
+def _name_free(conn, name: str, user_id: int | None = None) -> None:
+    """Tasks are assigned by name, so two people can't share one."""
+    taken = conn.execute(
+        text("SELECT 1 FROM users WHERE LOWER(name) = LOWER(:n) AND (:i IS NULL OR id <> :i)"), {"n": name, "i": user_id}
+    ).first()
+    if taken:
+        raise Refused("Someone in the team already has that name. Add a surname or an initial.")
 
 
 def login(engine: Engine, email, password, source: str = "") -> tuple[dict, int] | None:
@@ -233,9 +266,13 @@ def update_user(engine: Engine, user_id: int, patch: dict) -> dict:
     if not sets and "access" not in patch:
         raise Refused("Nothing to change.")
     with engine.begin() as conn:
-        row = conn.execute(text("SELECT role, disabled, access FROM users WHERE id = :i FOR UPDATE"), {"i": user_id}).mappings().first()
+        row = conn.execute(text("SELECT name, role, disabled, access FROM users WHERE id = :i FOR UPDATE"), {"i": user_id}).mappings().first()
         if row is None:
             raise NotFound("That account doesn't exist.")
+        if "n" in values and values["n"] != row["name"]:
+            _name_free(conn, values["n"], user_id)
+            # Tasks are assigned by name: they follow the person to the new one.
+            conn.execute(text("UPDATE tasks SET owner_label = :new WHERE owner_label = :old"), {"new": values["n"], "old": row["name"]})
         role_after = values.get("r", row["role"])
         if role_after == "admin":
             if row["access"] is not None:

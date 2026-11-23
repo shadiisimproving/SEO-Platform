@@ -422,3 +422,15 @@ def test_overview_asks_google_for_both_periods_at_the_same_time(engine, site, go
     found = search.overview(*_scope(engine, site, "7d", "prev"))
     assert found["origin"] == "live" and found["totals"]["clicks"] == 5 and found["before"]["clicks"] == 5
     assert most[0] == 2 and clock.monotonic() - began < 0.75  # both periods waited on together, not 0.8 s in a row
+
+
+def test_the_check_says_so_in_words_when_the_google_key_no_longer_opens(engine, site, google, monkeypatch):
+    """A key saved with another server key (or broken) used to end the check with a server error."""
+    from seo.sources import credentials
+
+    def broken(*_args, **_kwargs):
+        raise credentials.CredentialsFailed("This value was encrypted with a different key. Re-paste the API key.")
+
+    monkeypatch.setattr(credentials, "access_token", broken)
+    with pytest.raises(Refused, match="Google refused the saved connection.*Settings → Connections"):
+        search.verify(engine, site)
