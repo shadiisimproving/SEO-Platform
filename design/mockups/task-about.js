@@ -272,6 +272,43 @@
     const tip = n > 1 ? `${t("About")}: ${t(k.label)} ${t("and")} ${num(n - 1)} ${t("more")}` : `${t("About")}: ${t(k.label)}`;
     return `<span class="tag ta-tag" title="${esc(tip)}">${icon(k.icon)}${esc(t(k.label))}${n > 1 ? ` <span class="muted">+${num(n - 1)}</span>` : ""}</span>`;
   }
+  /* What the task is linked to, for cards and table rows: one coloured pill per link with its kind in words inside
+     ("Page /freezones/"), the main kind first, up to `max`, then "+N". Pages and keywords stay links.
+     One colour per kind, from the Clear look: your pages blue, search words teal, competitors purple (the colour for
+     "them" everywhere), links slate, notes and technical issues grey. The word says the kind, so colour only helps.
+     `inline` is the table's layout: one line under the title. */
+  const PILL_TONES = { page: "blue", keyword: "teal", ranking: "teal", competitor: "purple", backlink: "indigo", domain: "indigo", note: "grey", technical: "grey" };
+  function linkLine(task, { max = 3, inline = false } = {}) {
+    const main = task.about?.main;
+    const host = task.site_host || null;
+    const all = [
+      ...(task.pages || []).map((ref) => ({ kind: "page", ref })),
+      ...(task.keywords || []).map((ref) => ({ kind: "keyword", ref })),
+      ...(task.about?.items || []).filter((item) => kindOf(item.kind)),
+    ];
+    if (!all.length) return "";
+    const flat = KINDS.map((k) => all.filter((item) => item.kind === k.id))
+      .sort((x, y) => (x[0]?.kind === main ? 0 : 1) - (y[0]?.kind === main ? 0 : 1)).flat();
+    const nameOf = (item) => (item.kind === "page" ? pagePath(item.ref) : item.label || item.ref);
+    const shown = flat.slice(0, max), others = flat.slice(max);
+    const pill = (item) => {
+      const k = kindOf(item.kind);
+      const name = item.kind === "page" ? window.PageLink.html(item.ref, { host, text: pagePath(item.ref), cls: "ta-name" })
+        : item.kind === "keyword" ? window.KeywordLink.html(item.ref, { host, cls: "ta-name" })
+        : `<span class="ta-name" dir="auto">${esc(nameOf(item))}</span>`;
+      return `<span class="ta-pill ta-tone-${PILL_TONES[item.kind] || "grey"}" data-ta-linked="${k.id}" title="${esc(`${t(k.label)}: ${nameOf(item)}`)}"><span class="ta-pill-k">${esc(t(k.label))}</span>${name}</span>`;
+    };
+    const pills = shown.map(pill);
+    // "+N" travels with the last pill, so it never sits alone on a line of its own.
+    if (others.length) pills.push(`<span class="ta-pill-end">${pills.pop()}<span class="ta-pill ta-pill-more tabular" title="${esc(others.map((item) => `${t(kindOf(item.kind).label)}: ${nameOf(item)}`).join("\n"))}">+${num(others.length)}</span></span>`);
+    return `<div class="ta-pills${inline ? " ta-pills-inline" : ""}">${pills.join("")}</div>`;
+  }
+  /* A page as its path, so a card reads /freezones/ rather than the whole address. */
+  const pagePath = (ref) => {
+    const text = String(ref || "").replace(/^[a-z][a-z0-9+.-]*:\/\//i, "").replace(/^www\./, "");
+    const slash = text.indexOf("/");
+    return text.includes(".") && slash > 0 ? text.slice(slash) || "/" : text.includes(".") && slash < 0 ? "/" : text;
+  };
   /* Words a task can be searched by. */
   const words = (task) => (task.about?.items || []).map((item) => item.label).join(" ");
 
@@ -320,7 +357,7 @@
   }
 
   window.TaskAbout = {
-    KINDS, html, mount, addRivals, values, siteChanged, tag, words,
+    KINDS, html, mount, addRivals, values, siteChanged, tag, linkLine, words,
     init(helpers) {
       UI = helpers; ({ t, esc, icon, num } = helpers);
       bind();

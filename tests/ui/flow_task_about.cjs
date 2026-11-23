@@ -60,7 +60,7 @@ const TITLE = `Fix the coffee pages ${Date.now().toString(36)}`;
   await page.locator("#task-save").click();
   await settle(1000);
   const card = page.locator("[data-task-card]").filter({ hasText: TITLE });
-  check("the card shows the main kind", (await card.locator(".ta-tag").innerText()).includes("Page"));
+  check("the card names what it's linked to, main kind first", /^Pages?$/.test((await card.locator(".ta-pill-k").first().innerText()).trim()) && (await card.locator(".ta-pill").count()) >= 1);
   await card.locator(".tk-title").click();
   await settle(700);
   const back = { page: await chips("page"), keyword: await chips("keyword"), ranking: await chips("ranking"), backlink: await chips("backlink"), technical: await chips("technical"), competitor: await chips("competitor"), domain: await chips("domain"), note: await chips("note") };
