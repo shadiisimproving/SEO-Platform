@@ -25,10 +25,8 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   await page.goto(BASE + "#keywords"); await settle();
   const before = await ddgPositions();
   check("no DuckDuckGo positions before", before.length === 0, before.length);
-  await page.click('[data-engine="duckduckgo"]'); await settle();
-  const note = await textOf(".content .note"), noteTip = await tipOf(".content .note");
-  check("the DuckDuckGo note says it's checked every day, on free searches only", /Checked daily by itself, on free searches/.test(note) && /checks its positions by itself every day, oldest first, on free searches only/.test(noteTip), `${note.trim()} | tip: ${noteTip}`);
-  await page.screenshot({ path: OUT + "1-keywords-duckduckgo-note.png" });
+  // Nothing checked on DuckDuckGo yet: it has no tab and isn't named on Keywords (owner, 2026-11-24). The tab comes with the first check.
+  check("no DuckDuckGo tab before its first check", (await page.locator('[data-engine="duckduckgo"]').count()) === 0);
 
   // Refresh data starts the free DuckDuckGo check, and says so. The first screen of the demo that shows the button.
   let button = null, where = "";
@@ -66,7 +64,11 @@ const check = (name, ok, extra = "") => { if (!ok) bad += 1; console.log(`${ok ?
   check("a second Refresh data right after starts no new DuckDuckGo check", again.rankings === false, JSON.stringify(again.rankings));
 
   await page.goto("about:blank"); await page.goto(BASE + "#keywords"); await settle();
+  check("the DuckDuckGo tab is there once it has positions", (await page.locator('[data-engine="duckduckgo"]').count()) === 1);
   await page.click('[data-engine="duckduckgo"]'); await settle();
+  const note = await textOf(".content .note"), noteTip = await tipOf(".content .note");
+  check("the DuckDuckGo note says it's checked every day, on free searches only", /Checked daily by itself, on free searches/.test(note) && /checks its positions by itself every day, oldest first, on free searches only/.test(noteTip), `${note.trim()} | tip: ${noteTip}`);
+  await page.screenshot({ path: OUT + "1-keywords-duckduckgo-note.png" });
   await page.screenshot({ path: OUT + "4-keywords-duckduckgo-filled.png" });
 
   // French.

@@ -62,25 +62,32 @@ async function run(width, lang) {
   }
   await page.evaluate(() => { window.UI.state.view = "positions"; window.UI.render(); }); await settle(page, 900);
   if (await page.locator("#kw-filter-close").count()) { await page.click("#kw-filter-close"); await settle(page); }
-  // Bing tab: no Google impressions or AI column
-  await page.click('[data-engine="bing"]'); await settle(page, 900);
-  const bingHead = await page.locator("#kw-table thead").innerText().catch(() => "");
-  check(!/\bAI\b|\bIA\b/.test(bingHead), `${tag}: Bing has no AI column`);
-  check(!(await page.locator('[data-card="kw-cited"]').count()), `${tag}: Bing has no Cited by AI card`);
-  const line = await page.locator(".head-src").allInnerTexts();
-  check(!line.join(" ").includes("Search Console"), `${tag}: Bing's head doesn't name Search Console`);
-  await page.screenshot({ path: `${out}/${tag}-bing.png`, fullPage: true });
-  await page.click('[data-engine="yandex"]').catch(async () => { await page.locator('[data-engine="yandex"]').scrollIntoViewIfNeeded(); await page.click('[data-engine="yandex"]'); });
-  await settle(page, 900);
-  const empty = await page.locator(".kw-engine-empty").innerText().catch(() => "");
-  check(empty.length > 0, `${tag}: Yandex with no tool is one card: ${empty.split("\n")[0]}`);
-  await page.screenshot({ path: `${out}/${tag}-yandex.png`, fullPage: true });
-  await page.click('[data-engine="all"]').catch(() => {}); await settle(page, 900);
-  const cited = await page.locator('[data-card="kw-cited"]').innerText().catch(() => "");
-  check(cited.includes(fr ? "Google uniquement" : "Google only"), `${tag}: All engines' AI card says Google only`);
-  await page.screenshot({ path: `${out}/${tag}-all.png`, fullPage: true });
+  // An engine other than Google shows only its own numbers: no Google impressions, AI column or Search Console in the head.
+  // Bing, which a tool could search but nothing was checked on, has no tab (owner, 2026-11-24).
+  const tabs = await page.$$eval("[data-engine]", (els) => els.map((el) => el.dataset.engine));
+  check(!tabs.includes("bing"), `${tag}: Bing, never checked, has no tab (tabs: ${tabs.join(",") || "none"})`);
+  const other = tabs.find((id) => id !== "google" && id !== "all");
+  if (other) {
+    await page.click(`[data-engine="${other}"]`); await settle(page, 900);
+    const otherHead = await page.locator("#kw-table thead").innerText().catch(() => "");
+    check(!/\bAI\b|\bIA\b/.test(otherHead), `${tag}: ${other} has no AI column`);
+    check(!(await page.locator('[data-card="kw-cited"]').count()), `${tag}: ${other} has no Cited by AI card`);
+    const line = await page.locator(".head-src").allInnerTexts();
+    check(!line.join(" ").includes("Search Console"), `${tag}: ${other}'s head doesn't name Search Console`);
+    await page.screenshot({ path: `${out}/${tag}-${other}.png`, fullPage: true });
+  }
+  // Yandex: no tool can search it and nothing was checked on it, so it has no tab and isn't named (owner, 2026-11-24).
+  check(!(await page.locator('[data-engine="yandex"]').count()), `${tag}: Yandex, never checked, has no tab`);
+  check(!/Yandex/.test(await page.locator("#page").innerText()), `${tag}: and isn't named on the screen`);
+  if (tabs.includes("all")) {
+    await page.click('[data-engine="all"]'); await settle(page, 900);
+    const cited = await page.locator('[data-card="kw-cited"]').innerText().catch(() => "");
+    check(cited.includes(fr ? "Google uniquement" : "Google only"), `${tag}: All engines' AI card says Google only`);
+    check(!/Bing|Yandex/.test(await page.locator("#kw-table thead").innerText().catch(() => "")), `${tag}: All engines has no Bing or Yandex column`);
+    await page.screenshot({ path: `${out}/${tag}-all.png`, fullPage: true });
+  }
   // Panel of "how to brew coffee": ranking now vs most shown in Search Console, URL per check
-  await page.click('[data-engine="google"]'); await settle(page, 900);
+  if (tabs.includes("google")) { await page.click('[data-engine="google"]'); await settle(page, 900); }
   await page.locator("#kw-table tbody tr", { hasText: "how to brew coffee" }).first().click(); await settle(page, 1500);
   const panel = await page.locator("#panel").innerText();
   check(panel.includes(fr ? "Classée maintenant" : "Ranking now") && panel.includes("/guide/brew"), `${tag}: panel names the page that ranked`);
