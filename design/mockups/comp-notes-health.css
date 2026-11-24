@@ -109,6 +109,9 @@ body:has(#nb-fab) .tray { bottom: 64px; }
 .ht-top { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.25fr); gap: var(--gap); margin-bottom: 14px; }
 .ht-top .card { margin-bottom: 0; }
 .ht-score { padding: 14px 18px; }
+.ht-score-index { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 6px; color: var(--warn-t); }
+.ht-score-index:empty { display: none; }
+.ht-score-index svg { width: 14px; height: 14px; flex: none; }
 .ht-score-head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
 .ht-fig { display: flex; align-items: baseline; gap: 8px; margin-top: 2px; }
 .ht-num { font-size: 52px; font-weight: 600; letter-spacing: -.035em; line-height: 60px; }

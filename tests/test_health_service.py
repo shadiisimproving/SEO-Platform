@@ -869,7 +869,8 @@ def test_the_site_list_shows_the_last_finished_test(world):
 # ---- next_test_at ------------------------------------------------------------------------------------
 
 def next_month(world) -> str:
-    return world.value("SELECT DATE_FORMAT(LAST_DAY(UTC_DATE()) + INTERVAL 1 DAY, '%Y-%m-%dT00:00:00Z')")
+    """Seven days after today's test: the test is weekly since 2026-11-24 (the name is from the monthly rule)."""
+    return world.value("SELECT DATE_FORMAT(UTC_DATE() + INTERVAL 7 DAY, '%Y-%m-%dT00:00:00Z')")
 
 
 def today(world) -> str:
@@ -970,16 +971,17 @@ def test_a_test_that_read_no_page_does_not_use_up_the_month(world):
     assert health.enqueue_due(world.engine) == [world.own]
 
 
-def test_a_complete_test_last_month_does_not_use_up_this_one(world):
+def test_a_complete_test_over_a_week_old_does_not_use_up_this_week(world):
     world.run_test()
-    world.sql("UPDATE health_audits SET created_at = LAST_DAY(UTC_DATE() - INTERVAL 1 MONTH) + INTERVAL 1 DAY - INTERVAL 1 SECOND")  # the last second of last month
+    world.sql("UPDATE health_audits SET created_at = UTC_TIMESTAMP(3) - INTERVAL 7 DAY - INTERVAL 1 MINUTE")
     assert health.enqueue_due(world.engine) == [world.own]
 
 
-def test_the_first_moment_of_this_month_counts_as_this_month(world):
+def test_a_complete_test_six_days_old_still_counts(world):
     world.run_test()
-    world.sql("UPDATE health_audits SET created_at = LAST_DAY(UTC_DATE() - INTERVAL 1 MONTH) + INTERVAL 1 DAY")
+    world.sql("UPDATE health_audits SET created_at = UTC_TIMESTAMP(3) - INTERVAL 6 DAY")
     assert health.enqueue_due(world.engine) == []
+    assert world.site_row()["next_test_at"] == world.value("SELECT DATE_FORMAT(UTC_DATE() + INTERVAL 1 DAY, '%Y-%m-%dT00:00:00Z')")
 
 
 def test_the_same_month_of_another_year_does_not_count(world):

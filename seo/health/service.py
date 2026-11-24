@@ -1,4 +1,5 @@
-"""The monthly health test of my own websites, and the alert when a site gets worse.
+"""The weekly health test of my own websites (monthly until 2026-11-24: the owner found a 17-day-old test stale; the
+column, the API field and the stored trigger keep the name "monthly"), and the alert when a site gets worse.
 
 Runs by itself once per calendar month through enqueue_due(), which cron starts on hosting, and from a
 button. Alerts stay in the app until someone marks them as seen. Only a site whose kind is `own` is tested.
@@ -40,7 +41,8 @@ SIMILAR_SIZE = 0.5  # a test that read far fewer or more pages isn't comparable
 LOOK_BACK = 24  # finished tests searched for one of a similar size
 STOP_POLL_SECONDS = 1.0
 CERTIFICATE_HAS_EXPIRED = 10  # OpenSSL's code for it
-_THIS_MONTH = "DATE_FORMAT(a.created_at, '%Y-%m') = DATE_FORMAT(UTC_DATE(), '%Y-%m')"
+EVERY_DAYS = 7  # a complete test is good for a week
+_THIS_MONTH = f"a.created_at > UTC_TIMESTAMP(3) - INTERVAL {EVERY_DAYS} DAY"  # the name is older than the rule: the last 7 days
 
 
 def _iso(value) -> str | None:
@@ -97,9 +99,9 @@ def _site_dict(conn, row) -> dict:
         text("SELECT id, score, created_at, finished_at FROM health_audits WHERE site_id = :s AND status = 'complete' ORDER BY id DESC LIMIT 1"), {"s": row["id"]}
     ).mappings().first()
     next_at = None
-    if row["health_monthly"]:  # a finished test uses up its calendar month. Until then the site is due at the next daily health-due
+    if row["health_monthly"]:  # a finished test is good for 7 days. After that the site is due at the next daily health-due
         next_at = conn.execute(
-            text(f"SELECT IF(EXISTS (SELECT 1 FROM health_audits a WHERE a.site_id = :s AND a.status = 'complete' AND {_THIS_MONTH}), LAST_DAY(UTC_DATE()) + INTERVAL 1 DAY, UTC_DATE())"),
+            text(f"SELECT IFNULL((SELECT DATE(MAX(a.created_at)) + INTERVAL {EVERY_DAYS} DAY FROM health_audits a WHERE a.site_id = :s AND a.status = 'complete' AND {_THIS_MONTH}), UTC_DATE())"),
             {"s": row["id"]},
         ).scalar()
     open_alerts = conn.execute(text("SELECT COUNT(*) FROM alerts WHERE site_id = :s AND acknowledged_at IS NULL"), {"s": row["id"]}).scalar()
@@ -147,9 +149,9 @@ def start(engine: Engine, site_id: int, trigger: str = "button") -> int:
 
 
 def enqueue_due(engine: Engine) -> list[int]:
-    """Queue a test for each of my sites with none this calendar month. Safe to call as often as cron likes.
+    """Queue a test for each of my sites with none in the last 7 days. Safe to call as often as cron likes.
 
-    Only a complete test that read a page uses up the month. One that failed, was stopped, or read nothing (the start page
+    Only a complete test that read a page uses up the week. One that failed, was stopped, or read nothing (the start page
     was down) is tried again, but not within the same day, so it doesn't restart every hour (F67, as F106 for links).
     """
     _close_abandoned(engine)

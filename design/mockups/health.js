@@ -228,6 +228,8 @@
     } catch { ht.indexing = { failed: true }; }
     const box = UI?.$("#ht-indexing");
     if (box) UI.setHTML(box, indexingInner());
+    const line = UI?.$("#ht-score-index");
+    if (line) UI.setHTML(line, scoreIndexLine());
   }
 
   /* Follows the running test with the shared poll (F187): it backs off, pauses while the tab is hidden, and gives up after a
@@ -283,6 +285,13 @@
     return { kind: "change", change: a.score - d.previous_score, prev: d.previous_audit };
   }
 
+  /* The score only counts the checks of the pages read. A site can score 91 with 30 pages Google hasn't taken (live,
+     2026-11-24), so that number sits right under the score, with a way down to the list. */
+  function scoreIndexLine() {
+    const { t, num, icon } = UI, ix = ht.indexing, n = ix && !ix.failed ? ix.not_indexed_count || 0 : 0;
+    if (!n) return "";
+    return `${icon("triangle-alert")}<b class="tabular">${num(n)}</b> ${t(n === 1 ? "page isn't on Google" : "pages aren't on Google")} · <button type="button" class="link-btn" id="ht-score-index-go">${t("See them")}</button>`;
+  }
   function scoreCard() {
     const { t, num, esc, status } = UI;
     const d = ht.open, a = d?.audit;
@@ -305,7 +314,8 @@
     return `<section class="card ht-score" aria-label="${t("Health score")}">
       <div class="ht-score-head"><h2 class="ht-sub">${t("Health score")}</h2><span class="small muted">${esc(UI.fmtDateOnly(a.finished_at || a.created_at))}</span></div>
       <div class="ht-fig"><span class="ht-num tabular" id="ht-score">${num(a.score)}</span><span class="sec">${t("/100")}</span></div>
-      <p class="small muted">${t("Better is higher.")}</p>
+      <p class="small muted">${t("Better is higher.")} ${t("Technical checks of the pages read.")}</p>
+      <p class="small ht-score-index" id="ht-score-index">${scoreIndexLine()}</p>
       <div class="ht-change">${change}</div>
       ${trend}
     </section>`;
@@ -315,11 +325,11 @@
     const { t, esc, icon } = UI;
     const busy = Boolean(ht.activeId);
     const last = s.last_tested_at ? `${t("Last test")} ${esc(COMP.ago(s.last_tested_at))}.` : t("No test yet.");
-    const next = !s.monthly ? "" : s.next_test_at ? `${t("Next test")} ${esc(fmtDayMonth(s.next_test_at))}.` : t("First test: next monthly run.");
+    const next = !s.monthly ? "" : s.next_test_at ? `${t("Next test")} ${esc(fmtDayMonth(s.next_test_at))}.` : t("First test: next weekly run.");
     return `<section class="card ht-plan">
-      <p id="ht-line">${t(s.monthly ? "Runs every month." : "Runs only by hand.")} ${last} ${next}</p>
-      <p class="note ht-mac">${icon("info")}<span>${t("On this Mac, press Refresh.")}${UI.tip("The monthly test only runs on the hosted version.")}</span></p>
-      <label class="opt ht-monthly"><input type="checkbox" class="chk" style="margin:0" id="ht-monthly" ${s.monthly ? "checked" : ""}>${t("Test monthly")}</label>
+      <p id="ht-line">${t(s.monthly ? "Runs every week." : "Runs only by hand.")} ${last} ${next}</p>
+      ${/^(localhost|127\.0\.0\.1)$/.test(location.hostname) || location.protocol === "file:" ? `<p class="note ht-mac">${icon("info")}<span>${t("On this Mac, press Refresh.")}${UI.tip("The weekly test only runs on the hosted version.")}</span></p>` : ""}
+      <label class="opt ht-monthly"><input type="checkbox" class="chk" style="margin:0" id="ht-monthly" ${s.monthly ? "checked" : ""}>${t("Test weekly")}</label>
       <div class="lc-form ht-run-row">
         <button class="btn btn-main" id="ht-run" ${busy ? "disabled" : ""}>${icon("refresh-cw")}${t("Refresh")}</button>
       </div>
@@ -649,7 +659,7 @@
       ${ht.audits.length ? `<table class="data lc-table" id="ht-history"><thead><tr><th scope="col">${t("Date")}</th><th scope="col">${t("How")}</th><th scope="col" class="r">${t("Score")}</th><th scope="col" class="r">${t("Pages")}</th><th scope="col">${t("Result")}</th><th scope="col"><span class="sr">${t("Action")}</span></th></tr></thead><tbody>
         ${page.rows.map((a) => `<tr ${isActive(a) ? 'style="cursor:default"' : `data-ht-row="${a.id}"`} class="${ht.open?.audit.id === a.id ? "open" : ""}">
           <td class="head-cell" data-label="${t("Date")}">${esc(UI.fmtStamp(a.created_at))}</td>
-          <td data-label="${t("How")}">${t(a.trigger === "monthly" ? "Monthly" : "By hand")}</td>
+          <td data-label="${t("How")}">${t(a.trigger === "monthly" ? "Automatic" : "By hand")}</td>
           <td class="r" data-label="${t("Score")}">${a.score === null || a.score === undefined ? '<span class="muted">—</span>' : `${num(a.score)}${isPartial(a) ? ` <span class="tag">${t("partial")}</span>` : ""}`}</td>
           <td class="r" data-label="${t("Pages")}" ${isActive(a) ? "data-ht-live-pages" : ""}>${num(a.pages_read)}</td>
           <td data-label="${t("Result")}"><span class="small sec" ${isActive(a) ? "data-ht-live-word" : ""}>${esc(resultWord(a))}</span></td>
@@ -769,6 +779,7 @@
       if (target.closest?.("[data-ht-sm-files]")) { ht.smFiles = !ht.smFiles; paint(); UI.$("[data-ht-sm-files]")?.focus(); return; }
       if (target.closest?.("[data-ht-links-all]")) { ht.linksAll = !ht.linksAll; paint(); UI.$("[data-ht-links-all]")?.focus(); return; }
       if (target.closest?.("#ht-run")) { runTest(); return; }
+      if (target.closest?.("#ht-score-index-go")) { const card = UI.$(".ht-indexing"); if (card) { card.scrollIntoView({ behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" }); card.setAttribute("tabindex", "-1"); card.focus({ preventScroll: true }); } return; }
       if ((el = target.closest?.("#ht-stop"))) { stopTest(el); return; }
       if ((el = target.closest?.("[data-ht-open]"))) { openTest(Number(el.dataset.htOpen)); return; }
       // The whole row opens it, like the other tables. A control inside the row keeps its own job.
@@ -791,7 +802,7 @@
           Object.assign(s, answer);
           paint();
           UI.$("#ht-monthly")?.focus();
-          UI.toast(UI.t(answer.monthly ? "Monthly test on" : "Monthly test off"), { kind: "info" });
+          UI.toast(UI.t(answer.monthly ? "Weekly test on" : "Weekly test off"), { kind: "info" });
         }).catch((err) => { el.checked = !el.checked; COMP.fail(err); });
       }
     });
@@ -872,7 +883,7 @@
     const sites = () => get()["health/sites"].sites;
     const find = (id) => { const s = sites().find((x) => sameId(x.id, id)); if (!s) throw refusal("That website doesn't exist.", 404); return s; };
     const list = (id) => { const key = `health/sites/${id}/audits`; if (!get()[key]) get()[key] = { audits: [] }; return get()[key].audits; };
-    const nextMonth = () => { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 1)).toISOString().replace(/\.\d+Z$/, "Z"); };
+    const nextMonth = () => { const d = new Date(); return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 7)).toISOString().replace(/\.\d+Z$/, "Z"); }; // weekly since 2026-11-24
     // The alerts the sample starts with, seen or not. The answer for GET alerts only holds the open ones.
     let allAlerts = null;
     const alerts = () => { if (!allAlerts) allAlerts = get().alerts.alerts.slice(); return allAlerts; };
@@ -1009,14 +1020,14 @@
     "First test running.": "Premier test en cours.",
     "No score: this test failed.": "Pas de score : ce test a échoué.",
     "No score yet. Press Refresh.": "Pas encore de score. Appuyez sur Actualiser.",
-    "Runs every month.": "Se lance chaque mois.",
+    "Runs every week.": "Se lance chaque semaine.",
     "Runs only by hand.": "Se lance seulement à la main.",
     "Last test": "Dernier test",
     "No test yet.": "Pas encore de test.",
     "Next test": "Prochain test le",
-    "First test: next monthly run.": "Premier test : prochain passage mensuel.",
+    "First test: next weekly run.": "Premier test : prochain passage hebdomadaire.",
     "On this Mac, press Refresh.": "Sur ce Mac, appuyez sur Actualiser.",
-    "Test monthly": "Tester chaque mois",
+    "Test weekly": "Tester chaque semaine",
     "Keeps going if you leave.": "Continue même si vous quittez la page.",
     "This test failed.": "Ce test a échoué.",
     "Test incomplete.": "Test incomplet.",
@@ -1048,8 +1059,9 @@
     "Add your own site first.": "Ajoutez d'abord votre propre site.",
     "Viewing an older test.": "Vous consultez un test plus ancien.",
     "Latest test": "Dernier test",
-    "Monthly test on": "Test mensuel activé",
-    "Monthly test off": "Test mensuel désactivé",
+    "Weekly test on": "Test hebdomadaire activé",
+    "Weekly test off": "Test hebdomadaire désactivé", "Automatic": "Automatique", "The weekly test only runs on the hosted version.": "Le test hebdomadaire ne tourne que sur la version hébergée.",
+    "Technical checks of the pages read.": "Contrôles techniques des pages lues.", "page isn't on Google": "page n'est pas sur Google", "pages aren't on Google": "pages ne sont pas sur Google", "See them": "Les voir",
     "Health test finished": "Test de santé terminé",
     "Health test stopped": "Test de santé arrêté",
     "Health test failed": "Test de santé échoué",
