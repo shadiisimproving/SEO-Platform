@@ -290,6 +290,15 @@
   const otherPages = (row) => (row.pages || []).filter((p) => !/\?/.test(p.url) && (!row.page || p.url.replace(/\/$/, "") !== row.page.replace(/\/$/, "")));
   const shortPath = (url) => { try { const u = new URL(url); return decodeURI(u.pathname + u.search) || "/"; } catch { return url || ""; } };
   const allRows = () => { const host = UI.siteHostPicked(); return (K.data?.rows || []).filter((row) => !host || row.site === host); };
+  /* An engine nothing is known about is never named on the screen (owner, 2026-11-24: Bing and Yandex were two tabs of
+     "Not checked" rows). Google always shows; another engine shows once one of these keywords has a check on it or a number
+     from its webmaster tool. The Refresh dialog still offers an engine a connected tool can search: that is how it starts. */
+  const engineKnown = (e) => allRows().some((row) => { const v = row.engines?.[e]; return Boolean(v && (v.main || v.away?.length || (v.own !== null && v.own !== undefined))); });
+  const shownEngines = () => ENGINES.filter(([e]) => e === "google" || engineKnown(e));
+  const offeredEngines = () => ENGINES.filter(([e]) => e === "google" || engineKnown(e) || (K.tools || []).some((tool) => tool.connected && (tool.engines || []).includes(e)));
+  const engineTabs = () => { const shown = shownEngines(); return shown.length > 1 ? [...shown, ["all", t("All engines")]] : []; };
+  // A tab that is no longer there (a saved link to ?engine=yandex, or the last site had Bing and this one hasn't): Google.
+  const keepEngineShown = () => { if (!engineTabs().some(([id]) => id === state.engine)) state.engine = "google"; };
   /* What the Keyword ideas card needs from here: the words already tracked, and the country and language used most. */
   const mostUsed = () => {
     const counts = new Map();
@@ -606,7 +615,7 @@
     const e = engineOf(), view = row.engines[e];
     const trend = trendCell(row, view, e);
     const cells = state.engine === "all"
-      ? ENGINES.map(([id, label]) => `<td data-label="${label}">${scrapedCell(row, id)}</td>`).join("")
+      ? shownEngines().map(([id, label]) => `<td data-label="${label}">${scrapedCell(row, id)}</td>`).join("")
       : `${OWN_TOOL[e] ? `<td class="c" data-label="${OWN_TOOL[e]} · ${t(K.worldCol ? "in its country" : "avg position")}">${ownCell(view, row, e)}</td>` : ""}
          ${K.showWorld ? `<td class="c" data-label="${t("All countries")}">${worldCell(view)}</td>` : ""}
          <td data-label="${t("Our check")}">${scrapedCell(row, e)}</td>
@@ -639,7 +648,7 @@
     if (!K.selected.size) K.allPages = false;
     const e = engineOf();
     const head = state.engine === "all"
-      ? ENGINES.map(([id, label]) => `<th scope="col"><span class="th-engine">${logo(id, 16)}${label}</span></th>`).join("")
+      ? shownEngines().map(([id, label]) => `<th scope="col"><span class="th-engine">${logo(id, 16)}${label}</span></th>`).join("")
       : `${OWN_TOOL[e] ? sortHeader("own", OWN_TOOL[e], "c", t(K.worldCol ? "in its country" : "avg position"), K.worldCol ? t("Search Console's average position in the keyword's own country.") : "", true) : ""}
          ${K.showWorld ? sortHeader("world", t("All countries"), "c", t("avg position"), t("Search Console's average position across every country.")) : ""}
          ${sortHeader("pos", t("Our check"), "", "", UI.def?.(UI.defKey?.("Scraped results")) || "")}${sortHeader("chg", t("Change"), "c", t("vs last check"))}
@@ -1002,7 +1011,7 @@
   /* The newest check on screen, whether a Refresh made it or the first check after adding: the header and the rows agree. */
   function lastCheckWords(rows) {
     let newest = null;
-    const only = state.engine === "all" ? ENGINES : ENGINES.filter(([e]) => e === state.engine); // this tab's engine only
+    const only = state.engine === "all" ? shownEngines() : ENGINES.filter(([e]) => e === state.engine); // this tab's engine only
     rows.forEach((row) => only.forEach(([e]) => { const a = row.engines[e]?.main?.age_days; if (a !== null && a !== undefined && (newest === null || a < newest)) newest = a; }));
     const refreshAge = K.data.last_refresh ? (Date.now() - new Date(K.data.last_refresh).getTime()) / 864e5 : null;
     if (refreshAge !== null && (newest === null || refreshAge <= newest + 1 / 1440)) return `${t("Refreshed")} ${esc(UI.fmtStamp(K.data.last_refresh))}`;
@@ -1022,6 +1031,7 @@
       return UI.topbar(title, lead, "", false) + `<div class="content page-enter"><div class="table-wrap"><div class="empty"><h3>${t("Add a site first")}</h3><p>${t("Keywords belong to a site.")}</p><button class="btn btn-main" data-go="settings">${t("Open Settings")}</button></div></div></div>`;
     }
     const all = allRows();
+    keepEngineShown();
     if (!all.length) {
       return UI.topbar(title, lead, "", false) + `<div class="content page-enter"><div class="table-wrap"><div class="empty"><h3>${t("No keywords yet")}</h3><p>${t("Add the keywords to follow.")}</p><button class="btn btn-main" id="kwr-add">${t("Add keywords")}</button></div></div>${ideasCard()}</div>`;
     }
@@ -1066,7 +1076,7 @@
         ${window.RankTrends && (googleOnly(state.engine) || state.engine === "all") ? window.RankTrends.card("keywords") : ""}${/* the card ranks Google only: on Bing it listed Google #1s beside "Ranked 0" (test walk 2026-11-23) */ ""}
         <div class="tabs-row">
           <div class="tabs" role="tablist" aria-label="${t("Engines")}">
-            ${[...ENGINES, ["all", t("All engines")]].map(([id, label]) => `<button class="tab" role="tab" data-engine="${id}" aria-selected="${state.engine === id}">${id === "all" ? "" : logo(id, 16)}${label}</button>`).join("")}
+            ${engineTabs().map(([id, label]) => `<button class="tab" role="tab" data-engine="${id}" aria-selected="${state.engine === id}">${id === "all" ? "" : logo(id, 16)}${label}</button>`).join("")}
           </div>
           <span class="seg" role="group" aria-label="${t("Positions")}">${[["positions", "Positions"], ["bucket", "By bucket"], ["queries", "Queries"]].map(([id, label]) => `<button data-view="${id}" aria-pressed="${state.view === id}">${t(label)}</button>`).join("")}</span>
         </div>
@@ -1083,7 +1093,7 @@
   // The tool of the newest check on screen, for the head's "Last check 29 min with SerpApi".
   function newestTool(rows) {
     let best = null;
-    const only = state.engine === "all" ? ENGINES : ENGINES.filter(([e]) => e === state.engine); // this tab's engine only
+    const only = state.engine === "all" ? shownEngines() : ENGINES.filter(([e]) => e === state.engine); // this tab's engine only
     rows.forEach((row) => only.forEach(([e]) => { const m = row.engines[e]?.main; if (m && m.age_days !== null && m.age_days !== undefined && (!best || m.age_days < best.age_days)) best = m; }));
     return best?.tool || "";
   }
@@ -1129,7 +1139,7 @@
         ${phoneActions()}
         <div class="kw-tabs-row">
           <div class="page-tabs kw-engines" role="tablist" aria-label="${t("Engines")}">
-            ${[...ENGINES, ["all", t("All engines")]].map(([id, label]) => `<button class="page-tab" role="tab" data-engine="${id}" aria-selected="${state.engine === id}">${id === "all" ? "" : logo(id, 16)}${label}</button>`).join("")}
+            ${engineTabs().map(([id, label]) => `<button class="page-tab" role="tab" data-engine="${id}" aria-selected="${state.engine === id}">${id === "all" ? "" : logo(id, 16)}${label}</button>`).join("")}
           </div>
           ${state.engine === "duckduckgo" ? UI.info(DDG_HOW) : ""}
         </div>
@@ -1284,7 +1294,7 @@
         ${deep ? `<p class="kwr-deeper-kw" style="margin-bottom:12px;display:flex;align-items:center;gap:8px" dir="auto">${logoMark(engine, name(engine))}<b>${esc(deep.keyword)}</b></p>`
           : `<p style="margin-bottom:12px"><b>${num(r.ids.length)}</b> ${t(r.ids.length === 1 ? "keyword" : "keywords")}</p>
         <fieldset style="border:0;padding:0;margin:0 0 8px"><legend class="small sec" style="padding:0;margin-bottom:6px;font-weight:500">${t("Engines")}</legend>
-          ${ENGINES.map(([id, label]) => `<label class="opt engine-opt"><input type="checkbox" class="chk" style="margin:0" data-kwr-engine="${id}" ${r.engines.has(id) ? "checked" : ""}>${logo(id, 16)}${label}</label>`).join("")}
+          ${offeredEngines().map(([id, label]) => `<label class="opt engine-opt"><input type="checkbox" class="chk" style="margin:0" data-kwr-engine="${id}" ${r.engines.has(id) ? "checked" : ""}>${logo(id, 16)}${label}</label>`).join("")}
         </fieldset>`}
         <label class="field" style="margin-bottom:6px"><span>${t("Depth")}</span><select class="select" id="kwr-depth">${[10, 20, 30, 50].map((d) => `<option value="${d}" ${r.depth === d ? "selected" : ""}>${t("Top")} ${d}</option>`).join("")}</select></label>
         ${deep ? `<div class="ref-tools-head"><span>${t(only ? "Tools that missed it" : "Tools")}</span>${only ? `<button type="button" class="link-btn" id="kwr-deeper-all">${t("All tools")}</button>` : ""}</div>`

@@ -24,7 +24,14 @@ const settle = (page, ms = 500) => page.waitForTimeout(ms);
   check(await page.$("#period") === null, "no period picker that wouldn't do anything");
 
   // Each engine tab, and the views
-  for (const id of ["duckduckgo", "bing", "yandex", "all", "google"]) { await page.click(`[data-engine="${id}"]`); await settle(page, 200); if (id === "all" || id === "duckduckgo") await shot(page, `02-engine-${id}`); }
+  // An engine nothing was checked on has no tab and no name on the screen (owner, 2026-11-24); with Google alone, no tabs at all.
+  const tabsNow = await page.$$eval("[data-engine]", (els) => els.map((el) => el.dataset.engine));
+  note("   engine tabs:", tabsNow.join(",") || "none");
+  check(!tabsNow.includes("bing") && !tabsNow.includes("yandex"), "Bing and Yandex, never checked here, have no tab");
+  check(!/\bBing\b|\bYandex\b/.test(await page.locator("#page").innerText()), "and aren't named anywhere on the screen");
+  check(tabsNow.length === 0 || tabsNow.includes("all"), "All engines only shows with a second engine");
+  for (const id of tabsNow) { await page.click(`[data-engine="${id}"]`); await settle(page, 200); if (id === "all" || id === "duckduckgo") await shot(page, `02-engine-${id}`); }
+  if (tabsNow.includes("google")) { await page.click('[data-engine="google"]'); await settle(page, 200); }
   await page.click('[data-view="bucket"]'); await settle(page, 200); await shot(page, "03-bucket");
   await page.click('[data-view="queries"]'); await settle(page, 300); await shot(page, "04-queries");
   { const stored = await page.evaluate(async () => (await (await fetch("api/rankings/queries?engine=google")).json()).rows || []);
