@@ -3,13 +3,16 @@
 
    The home page sits in the middle and its branches go left and right. A switch picks how pages are grouped:
      By folders   the folders of the address, then the pages inside. Ready for any site the page reader has read.
+     By category  each page under the category it says it belongs to (breadcrumb, then category links), so flat
+                  WordPress addresses (/post-name/) still land under their category. Marks articles their category
+                  page doesn't link to.
      By links     the pages the home page links to, then the pages those link to. Needs each page's links, which the
                   reader saves as it passes: until then the map says how many pages are still to read.
    A click on a box opens the side panel: what the reader saw, the pages it links to and from, and its comments, which
    are the app's own notes (a page note, or a group note for a folder), so they show in Pages and Notes too.
    The round button at a box's edge opens and closes its branch. Drag to move, pinch or Ctrl + wheel to zoom.
 
-   Server: GET /api/site-map?site_id= | competitor_id= &view=folders|links, GET /api/site-map/page (seo/pages/sitemap_tree.py).
+   Server: GET /api/site-map?site_id= | competitor_id= &view=folders|category|links|inlinks, GET /api/site-map/page (seo/pages/sitemap_tree.py).
    Anything put on the page with [data-sm-root] is drawn by itself (an observer below), so a screen only returns
    SiteMap.block({ siteId | competitorId, host }). The read-only map: nothing here changes the website's data. */
 (() => {
@@ -32,7 +35,14 @@
   const ROW = 40, BOX_H = 30, GAP_X = 58, PAD = 48, MAX_W = 230, FIRST = 12, STEP = 24;
   const ZOOM_MIN = 0.3, ZOOM_MAX = 1.6;
   const HUES = 8; // branch colours in site-map.css (.sm-b0 … .sm-b7)
-  const VIEWS = [["folders", "By folders"], ["links", "By links"], ["inlinks", "Internal links"]];
+  const VIEWS = [["folders", "By folders"], ["category", "By category"], ["links", "By links"], ["inlinks", "Internal links"]];
+  // One line each, on hover: what the grouping answers (owner, 2026-11-24: "I don't understand the view with links").
+  const VIEW_TIPS = {
+    folders: "Grouped by the folders in each page's address",
+    category: "Each page under the category it says it belongs to",
+    links: "How many clicks each page is from the home page",
+    inlinks: "How many of your pages link to each page",
+  };
   const pendingView = new Map(); // key -> the view an address asked for (#map?view=links), for a map not drawn yet
   const maps = new Map(); // key ("site:3", "competitor:7") -> its state, kept while the app is open so a redraw changes nothing
 
@@ -41,7 +51,7 @@
     const id = Number(root.dataset.smCompetitor || root.dataset.smSite);
     const key = `${who}:${id}`;
     if (!maps.has(key)) {
-      maps.set(key, { key, who, id, host: root.dataset.smHost || "", view: "folders", data: {}, failed: {}, loading: {}, trees: {}, open: { folders: null, links: null, inlinks: null }, more: new Map(), z: 1, tx: 0, ty: 0, placed: false, q: "", hit: 0, cur: 0, spots: new Map() });
+      maps.set(key, { key, who, id, host: root.dataset.smHost || "", view: "folders", data: {}, failed: {}, loading: {}, trees: {}, open: { folders: null, category: null, links: null, inlinks: null }, more: new Map(), z: 1, tx: 0, ty: 0, placed: false, q: "", hit: 0, cur: 0, spots: new Map() });
     }
     const S = maps.get(key);
     if (pendingView.has(key)) { S.view = pendingView.get(key); pendingView.delete(key); }
@@ -76,13 +86,25 @@
     const paint = (n, hue) => { n.hue = hue; n.kids.forEach((kid) => paint(kid, hue)); };
     // A group of loose pages is grey itself (HUES is the grey one), but each page in it takes the next colour in turn
     // (owner, 2026-11-20: "if it doesn't have a folder … keep colours"), carrying on from the branches' colours.
+    // A branch that holds most of the site (a language folder like /ar/, or one /blog/) would paint nearly everything
+    // one colour (owner, 2026-11-24: "the colors are like each other"). Such a branch stays grey and its own branches
+    // take the colours instead, going down while one branch still holds most of the pages.
+    const MOST = 0.6;
+    const size = (n) => (n.pages || 0) + (n.kind === "page" ? 1 : 0);
     let turn = 0;
-    root?.kids.forEach((kid) => {
-      if (kid.kind === "group" && kid.open) { paint(kid, kid.hue); return; } // Internal links: the server says each group's colour
-      if (kid.kind !== "group") { paint(kid, turn++ % HUES); return; }
-      kid.hue = HUES;
-      kid.kids.forEach((page) => paint(page, turn++ % HUES));
-    });
+    const head = (n, hue) => { paint(n, hue); n.hub = true; };
+    const share = (parent) => {
+      const total = parent.kids.reduce((sum, kid) => sum + size(kid), 0);
+      parent.kids.forEach((kid) => {
+        if (kid.kind === "group" && kid.open) { head(kid, kid.hue); return; } // Internal links: the server says each group's colour
+        if (kid.kind === "group") { kid.hue = HUES; kid.kids.forEach((page) => paint(page, turn++ % HUES)); return; }
+        const big = parent.kids.length > 0 && kid.kids.length >= 2 && total >= 10 && size(kid) >= MOST * total;
+        if (big) { kid.hue = HUES; share(kid); return; }
+        if (parent !== root && !kid.kids.length) { paint(kid, turn++ % HUES); return; } // a loose page inside a big branch: pale, like the grey group's
+        head(kid, turn++ % HUES);
+      });
+    };
+    if (root) share(root);
     // Pages side by side whose titles start the same ("Help to set up a company in …") would all be cut to the same
     // words. Those show what differs instead: "… Dubai Marina". The whole title stays in the panel and the search.
     nodes.forEach((n) => {
@@ -132,7 +154,7 @@
   function boxWidth(n) {
     if (n.kind === "more") return Math.ceil(textWidth(n.label, false)) + 26;
     const lead = n.kind === "page" ? 0 : 20; // an icon before a home page, a folder and a group
-    const notes = (n.notes ? 24 + (n.notes > 1 ? Math.ceil(textWidth(num(n.notes), true)) + 2 : 0) : 0) + (n.inlinks == null ? 0 : Math.ceil(textWidth(num(n.inlinks), true)) + 22);
+    const notes = (n.notes ? 24 + (n.notes > 1 ? Math.ceil(textWidth(num(n.notes), true)) + 2 : 0) : 0) + (n.inlinks == null ? 0 : Math.ceil(textWidth(num(n.inlinks), true)) + 22) + (n.unlisted ? 22 : 0);
     const label = n.kind === "group" ? t(n.label) : n.show || n.label;
     const bold = n.kind === "home" || n.kind === "group";
     return Math.min(n.kind === "group" ? 420 : MAX_W + (n.kind === "home" ? 40 : 0), Math.max(54, Math.ceil(textWidth(label, bold)) + 27 + (n.kind === "home" ? 4 : 0) + lead + notes));
@@ -236,9 +258,13 @@
     const lead = KIND_ICON[n.kind] ? icon(KIND_ICON[n.kind]) : "";
     const notes = n.notes ? `<span class="sm-notes" aria-hidden="true">${icon("sticky-note")}${n.notes > 1 ? `<b class="tabular">${num(n.notes)}</b>` : ""}</span>` : "";
     const inl = n.inlinks == null ? "" : `<span class="sm-in tabular" aria-hidden="true">${num(n.inlinks)}</span>`;
-    const said = [label, n.inlinks == null ? "" : fill(n.inlinks === 1 ? "{n} page links to it" : "{n} pages link to it", { n: num(n.inlinks) }), n.kind === "folder" ? t("folder") : "", hasKids(n) ? pagesWord(n.pages) : "", n.notes ? fill(n.notes === 1 ? "{n} comment" : "{n} comments", { n: num(n.notes) }) : ""].filter(Boolean).join(", ");
+    // By category: an article its category page doesn't link to (weak internal linking), and other categories it is in.
+    const unl = n.unlisted ? `<span class="sm-unlisted" aria-hidden="true">${icon("link-2-off")}</span>` : "";
+    const also = n.also_in?.length ? fill("Also in: {names}", { names: n.also_in.join(", ") }) : "";
+    const unlSaid = n.unlisted ? t("Its category page doesn't link to it") : "";
+    const said = [label, n.inlinks == null ? "" : fill(n.inlinks === 1 ? "{n} page links to it" : "{n} pages link to it", { n: num(n.inlinks) }), n.kind === "folder" ? t("folder") : "", hasKids(n) ? pagesWord(n.pages) : "", n.notes ? fill(n.notes === 1 ? "{n} comment" : "{n} comments", { n: num(n.notes) }) : "", unlSaid, also].filter(Boolean).join(", ");
     const hit = S.q.trim() ? (n.fold.includes(S.q.trim().toLowerCase()) && n.kind !== "group" ? " is-hit" : " is-dim") : "";
-    const box = `<button type="button" class="sm-node sm-l${levelOf(n)}${n.hue === undefined ? "" : ` sm-b${n.hue}`} sm-${n.kind}${hit}${n.read === false && n.kind === "page" ? " is-unread" : ""}" data-sm-id="${n.id}" ${at} role="treeitem" aria-level="${n.depth + 1}" ${hasKids(n) ? `aria-expanded="${open}"` : ""} aria-label="${esc(said)}" tabindex="${S.cur === n.id ? 0 : -1}" data-tip="${esc(n.path && n.kind !== "folder" ? n.path : said)}">${lead}<span class="sm-label" dir="auto">${esc(label)}</span>${inl}${notes}</button>`;
+    const box = `<button type="button" class="sm-node sm-l${levelOf(n)}${n.hub ? " sm-hub" : ""}${n.hue === undefined ? "" : ` sm-b${n.hue}`} sm-${n.kind}${hit}${n.read === false && n.kind === "page" ? " is-unread" : ""}" data-sm-id="${n.id}" ${at} role="treeitem" aria-level="${n.depth + 1}" ${hasKids(n) ? `aria-expanded="${open}"` : ""} aria-label="${esc(said)}" tabindex="${S.cur === n.id ? 0 : -1}" data-tip="${esc(n.path && n.kind !== "folder" ? [n.path, unlSaid, also].filter(Boolean).join(" · ") : said)}">${lead}<span class="sm-label" dir="auto">${esc(label)}</span>${inl}${unl}${notes}</button>`;
     if (!hasKids(n) || !it.tog) return box;
     const tx = it.side > 0 ? it.x + it.w : it.x - it.tog;
     const words = fill(open ? "Close {name}" : "Open {name}: {pages}", { name: label, pages: pagesWord(n.pages) });
@@ -249,7 +275,7 @@
   function toolbar(S) {
     const d = S.data[S.view];
     const found = S.q.trim() ? hits(S).length : null;
-    const seg = `<div class="seg sm-seg" role="group" aria-label="${esc(t("Group pages"))}">${VIEWS.map(([id, word]) => `<button type="button" data-sm-view="${id}" aria-pressed="${S.view === id}">${t(word)}</button>`).join("")}</div>`;
+    const seg = `<div class="seg sm-seg" role="group" aria-label="${esc(t("Group pages"))}">${VIEWS.map(([id, word]) => `<button type="button" data-sm-view="${id}" aria-pressed="${S.view === id}" data-tip="${esc(t(VIEW_TIPS[id]))}">${t(word)}</button>`).join("")}</div>`;
     // In a competitor's profile the same frame also shows my own site: one click, to compare how each is built.
     const pair = S.root?.dataset.smPairMine ? S.root.dataset : null;
     const side = pair ? `<div class="seg sm-seg sm-side" role="group" aria-label="${esc(t("Whose site"))}">${[["them", pair.smPairThemHost], ["you", pair.smPairMineHost]].map(([who, host]) => `<button type="button" data-sm-side="${who}" aria-pressed="${(S.who === "site") === (who === "you")}" data-tip="${esc(host)}">${window.COMP?.who ? window.COMP.who(who, host) : esc(t(who === "you" ? "You" : "Them"))}</button>`).join("")}</div>` : "";
@@ -268,7 +294,11 @@
     if (!d.boxes.length) {
       return `<div class="empty sm-empty"><h3>${t("No pages read yet")}</h3><p>${t(d.site.kind === "own" ? "The page reader reads your site every day, and with Refresh data. The map draws itself from what it finds." : "The map draws itself once the page reader has read this competitor's pages.")}</p></div>`;
     }
-    if (view !== "folders" && !d.links.read) {
+    if (view === "category" && !d.places?.read && !d.links.read) {
+      return `<div class="empty sm-empty"><h3>${t("Categories not read yet")}</h3><p>${t("The page reader saves where each page says it belongs (its breadcrumb and category) the next time it reads the site. This view fills in by itself.")}</p>
+        <p><button type="button" class="btn" data-sm-view="folders">${t("See it by folders")}</button></p></div>`;
+    }
+    if (view !== "folders" && view !== "category" && !d.links.read) {
       return `<div class="empty sm-empty"><h3>${t("Links not read yet")}</h3><p>${t("The page reader saves each page's links the next time it reads the site. This view fills in by itself.")}</p>
         <p><button type="button" class="btn" data-sm-view="folders">${t("See it by folders")}</button></p></div>`;
     }
@@ -276,7 +306,11 @@
   }
   function progress(S) {
     const d = S.data[S.view];
-    if (S.view === "folders" || !d || !d.links.read || d.links.read >= d.links.of) return "";
+    if (S.view === "category" && d && d.places && d.places.read < d.places.of) {
+      const part = Math.round((d.places.read / Math.max(1, d.places.of)) * 100);
+      return `<div class="sm-progress" role="status"><span>${esc(fill("Categories read on {a} of {b} pages. The rest fill in as the reader passes.", { a: num(d.places.read), b: num(d.places.of) }))}</span><span class="sm-bar" aria-hidden="true"><i data-w="${part}"></i></span></div>`;
+    }
+    if (S.view === "folders" || S.view === "category" || !d || !d.links.read || d.links.read >= d.links.of) return "";
     const share = Math.round((d.links.read / d.links.of) * 100);
     return `<div class="sm-progress" role="status"><span>${esc(fill("Links read on {a} of {b} pages. The rest fill in as the reader passes.", { a: num(d.links.read), b: num(d.links.of) }))}</span><span class="sm-bar" aria-hidden="true"><i data-w="${share}"></i></span></div>`;
   }
@@ -310,7 +344,7 @@
       S.reading = now;
       if (now.busy) { paintRead(S); watchReading(S); return; }
       if (ended) {
-        S.data = {}; S.trees = {}; S.failed = {}; S.open = { folders: null, links: null, inlinks: null }; S.more = new Map(); S.placed = false; S.spots = new Map(); S.counted = false;
+        S.data = {}; S.trees = {}; S.failed = {}; S.open = { folders: null, category: null, links: null, inlinks: null }; S.more = new Map(); S.placed = false; S.spots = new Map(); S.counted = false;
         UI().toast?.(now.status === "ok" || now.status === "done" ? t("Read again: the map is up to date.") : now.message || t("The reading stopped."));
         draw(S);
       } else paintRead(S);
@@ -847,7 +881,13 @@
     "No pages read yet": "Aucune page lue pour l'instant", "The page reader reads your site every day, and with Refresh data. The map draws itself from what it finds.": "Le lecteur de pages lit votre site chaque jour, et avec Actualiser les données. La carte se dessine à partir de ce qu'il trouve.",
     "The map draws itself once the page reader has read this competitor's pages.": "La carte se dessine dès que le lecteur de pages a lu les pages de ce concurrent.",
     "Links not read yet": "Liens pas encore lus", "The page reader saves each page's links the next time it reads the site. This view fills in by itself.": "Le lecteur de pages enregistre les liens de chaque page à sa prochaine lecture du site. Cette vue se remplit toute seule.",
-    "See it by folders": "Voir par dossiers", "Links read on {a} of {b} pages. The rest fill in as the reader passes.": "Liens lus sur {a} pages sur {b}. Le reste se remplit au passage du lecteur.",
+    "See it by folders": "Voir par dossiers", "Grouped by the folders in each page's address": "Groupées par les dossiers de l'adresse de chaque page",
+    "Each page under the category it says it belongs to": "Chaque page sous la catégorie à laquelle elle dit appartenir",
+    "How many clicks each page is from the home page": "À combien de clics de l'accueil est chaque page", "How many of your pages link to each page": "Combien de vos pages renvoient vers chaque page", "By category": "Par catégorie", "Also in: {names}": "Aussi dans : {names}",
+    "Its category page doesn't link to it": "Sa page catégorie ne renvoie pas vers elle", "Categories not read yet": "Catégories pas encore lues",
+    "The page reader saves where each page says it belongs (its breadcrumb and category) the next time it reads the site. This view fills in by itself.": "Le lecteur de pages enregistre où chaque page dit appartenir (fil d'Ariane, catégorie) à sa prochaine lecture du site. Cette vue se remplit toute seule.",
+    "Categories read on {a} of {b} pages. The rest fill in as the reader passes.": "Catégories lues sur {a} pages sur {b}. Le reste se remplit au passage du lecteur.",
+    "Pages with no category": "Pages sans catégorie", "Articles with no category": "Articles sans catégorie", "Links read on {a} of {b} pages. The rest fill in as the reader passes.": "Liens lus sur {a} pages sur {b}. Le reste se remplit au passage du lecteur.",
     "Big site: only the first levels were opened. Open a branch to go deeper.": "Grand site : seuls les premiers niveaux sont ouverts. Ouvrez une branche pour aller plus loin.",
     "That page isn't on this map.": "Cette page n'est pas sur cette carte.", "Not reached from the home page": "Pas atteintes depuis l'accueil", "Pages with no folder": "Pages sans dossier", "Linked from the home page, leading to no other page": "Liées depuis l'accueil, sans mener à une autre page",
     "{pages} reached through it on this map.": "{pages} atteintes par elle sur cette carte.", "{pages} under it.": "{pages} en dessous.",

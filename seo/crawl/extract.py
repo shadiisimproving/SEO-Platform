@@ -187,6 +187,101 @@ def _page_links(root, url: str) -> list[str]:
     return list(found)
 
 
+_CATEGORY_CLASS = re.compile(r"(?:^|\s)category-([\w%-]+)", re.UNICODE)
+_MOST_CRUMBS = 8
+
+
+def _own_key(url: str, value) -> str:
+    """A page_key for an address on this site, or "" for anything else."""
+    if not isinstance(value, str) or not value.strip() or value.strip().startswith(("#", "mailto:", "tel:", "javascript:")):
+        return ""
+    try:
+        target = urljoin(url, value.strip())
+        if _host(urlsplit(target).hostname) != _host(urlsplit(url).hostname):
+            return ""
+    except ValueError:
+        return ""
+    return page_key(target) or ""
+
+
+def _crumbs_ld(root, url: str) -> list[list[str]]:
+    """A BreadcrumbList in JSON-LD (Yoast, Rank Math and most themes put one in their @graph)."""
+    lists: list = []
+
+    def take(node) -> None:
+        if isinstance(node, list):
+            for item in node:
+                take(item)
+        elif isinstance(node, dict):
+            kind = node.get("@type")
+            if kind == "BreadcrumbList" or (isinstance(kind, list) and "BreadcrumbList" in kind):
+                lists.append(node)
+            take(node.get("@graph"))
+
+    for script in root.iterfind(".//script[@type='application/ld+json']"):
+        try:
+            take(json.loads(script.text or ""))
+        except (ValueError, RecursionError):
+            continue
+    for found in lists:
+        items = found.get("itemListElement")
+        if not isinstance(items, list):
+            continue
+        ordered = sorted((i for i in items if isinstance(i, dict)), key=lambda i: i.get("position") if isinstance(i.get("position"), (int, float)) else 0)
+        crumbs = []
+        for item in ordered:
+            target, name = item.get("item"), item.get("name")
+            if isinstance(target, dict):
+                name = name or target.get("name")
+                target = target.get("@id") or target.get("url")
+            crumbs.append([_clean(name if isinstance(name, str) else "")[:200], _own_key(url, target)])
+        if crumbs:
+            return crumbs[:_MOST_CRUMBS]
+    return []
+
+
+def _crumbs_html(root, url: str) -> list[list[str]]:
+    """A breadcrumb drawn in the page: schema.org microdata, then a nav or block named breadcrumb."""
+    blocks = root.xpath(
+        ".//*[contains(@itemtype, 'BreadcrumbList')]"
+        " | .//nav[contains(translate(@aria-label, 'BREADCRUMB', 'breadcrumb'), 'breadcrumb')]"
+        " | .//*[contains(translate(@class, 'BREADCRUMB', 'breadcrumb'), 'breadcrumb')]"
+        " | .//*[@id='breadcrumbs' or @id='breadcrumb']"
+    )
+    for block in blocks:
+        crumbs = [[_clean(a.text_content())[:200], _own_key(url, a.get("href"))] for a in block.iterfind(".//a[@href]")]
+        crumbs = [c for c in crumbs if c[0] or c[1]]
+        if crumbs:
+            return crumbs[:_MOST_CRUMBS]
+    return []
+
+
+def _place(root, url: str) -> dict:
+    """Where a page says it belongs, for the site map's "By category" view (seo/pages/sitemap_tree.py):
+    - crumbs: its breadcrumb, [name, page_key] from the home page down ("" for a crumb with no link of this site);
+    - cats: the category pages its own post links to as rel="category tag" (WordPress themes print these);
+    - slugs: the category-xxx classes WordPress puts on the post itself.
+    Read before the menus are dropped, since a breadcrumb often sits in the header."""
+    crumbs = _crumbs_ld(root, url) or _crumbs_html(root, url)
+    cats: dict[str, None] = {}
+    slugs: dict[str, None] = {}
+    # A listing (a category page, the blog page) carries every listed post's category: only a single post's own count.
+    body = root.find(".//body")
+    body_class = (body.get("class") or "").split() if body is not None else []
+    single = "single" in body_class or "single-post" in body_class or (not ({"archive", "blog", "home", "category", "search"} & set(body_class)) and len(root.xpath(".//article")) == 1)
+    if not single:
+        return {"crumbs": crumbs, "cats": [], "slugs": []}
+    for anchor in root.iterfind(".//a[@rel]"):
+        if "category" in (anchor.get("rel") or "").lower().split():
+            key = _own_key(url, anchor.get("href"))
+            if key:
+                cats.setdefault(key)
+    for element in root.xpath(".//article[contains(@class, 'category-')] | .//*[contains(@class, 'type-post')][contains(@class, 'category-')]")[:3]:
+        for slug in _CATEGORY_CLASS.findall(element.get("class") or ""):
+            slugs.setdefault(slug.lower()[:120])
+    return {"crumbs": crumbs, "cats": list(cats)[:10], "slugs": list(slugs)[:10]}
+
+
 def _schema_dates(root) -> dict:
     """Dates a page states about itself, from structured data first, then meta tags."""
     dates: dict = {}
@@ -316,6 +411,7 @@ def extract(body: bytes, url: str, charset: str | None = None) -> PageFields:
 
     page.schema_types = _schema_types(root)
     page.extras = _extras(root, url)
+    page.extras["place"] = _place(root, url)
     if googlebot:
         page.extras["googlebot"] = googlebot[:255]
     page.internal_links, page.external_links = _count_links(root, url)

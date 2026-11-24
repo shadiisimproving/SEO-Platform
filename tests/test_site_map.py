@@ -216,3 +216,97 @@ def test_read_again_queues_the_page_reader_once_and_says_where_it_is(client, eng
     assert jobs == 1
     assert client.get(f"/api/site-map/reading?site_id={site}").get_json()["busy"] is True
     assert client.post("/api/site-map/read?site_id=999999").status_code == 404
+
+
+def _place(conn, url, crumbs=None, cats=None, slugs=None, published=None):
+    extras = {"place": {"crumbs": crumbs or [], "cats": cats or [], "slugs": slugs or []}}
+    if published:
+        extras["published"] = published
+    conn.execute(text("UPDATE pages SET extras = :e WHERE url = :u"), {"e": json.dumps(extras), "u": url})
+
+
+@pytest.fixture
+def blog(engine) -> int:
+    """A WordPress blog with flat article addresses (/post-name/): only the breadcrumb or the category links say where they belong."""
+    with engine.begin() as conn:
+        own = conn.execute(text("INSERT INTO sites (host, start_url, kind) VALUES ('blog.example', 'https://blog.example/', 'own')")).lastrowid
+        d = conn.execute(text("INSERT INTO domains (host) VALUES ('blog.example')")).lastrowid
+        side = ["blog.example/new-post/"]  # a "latest posts" sidebar on every category page
+        _page(conn, d, "https://blog.example/", "Home | Blog", ["blog.example/category/ac/", "blog.example/category/print/"])
+        _page(conn, d, "https://blog.example/category/ac/", "AC articles | Blog", ["blog.example/clean-filter/", "blog.example/category/ac/page/2/", *side])
+        _page(conn, d, "https://blog.example/category/ac/page/2/", "AC articles page 2 | Blog", ["blog.example/ac-brands/", *side])
+        _page(conn, d, "https://blog.example/category/print/", "Printing articles | Blog", ["blog.example/best-printer/", *side])
+        _page(conn, d, "https://blog.example/category/cams/", "Camera articles | Blog", [*side])
+        _page(conn, d, "https://blog.example/clean-filter/", "Clean the filter | Blog", [])
+        _page(conn, d, "https://blog.example/ac-brands/", "AC brands | Blog", [])
+        _page(conn, d, "https://blog.example/ac-summer/", "AC before summer | Blog", [])
+        _page(conn, d, "https://blog.example/best-printer/", "Best printer | Blog", [])
+        _page(conn, d, "https://blog.example/new-post/", "New post | Blog", [])
+        _page(conn, d, "https://blog.example/lonely/", "Lonely | Blog", [])
+        _page(conn, d, "https://blog.example/contact/", "Contact | Blog", [])
+        home = ["Home", "blog.example/"]
+        for cat in ("ac", "print", "cams"):
+            _place(conn, f"https://blog.example/category/{cat}/", crumbs=[home, [cat, ""]])
+        _place(conn, "https://blog.example/clean-filter/", crumbs=[home, ["AC", "blog.example/category/ac/"], ["Clean", ""]], cats=["blog.example/category/print/", "blog.example/category/ac/"], published="2026-01-01")
+        _place(conn, "https://blog.example/ac-brands/", slugs=["ac"], published="2026-01-01")  # no breadcrumb: its category-ac class
+        _place(conn, "https://blog.example/ac-summer/", cats=["blog.example/category/ac/"], published="2026-01-01")  # not listed by its category
+        _place(conn, "https://blog.example/best-printer/", published="2026-01-01")  # nothing says: the printing page links to it
+        _place(conn, "https://blog.example/new-post/", published="2026-01-01")  # only the sidebar links to it
+        _place(conn, "https://blog.example/lonely/", published="2026-01-01")
+        _place(conn, "https://blog.example/contact/")
+    return own
+
+
+def test_by_category_puts_flat_articles_under_the_category_they_belong_to(client, blog):
+    reply = client.get(f"/api/site-map?site_id={blog}&view=category")
+    assert reply.status_code == 200, reply.json
+    data = reply.json
+    tree = _tree(data)
+    assert tree["/clean-filter/"] == "/category/ac/"  # the breadcrumb wins over its first category link
+    assert tree["/ac-brands/"] == "/category/ac/"  # the category-ac class, matched to the page ending in /ac/
+    assert tree["/ac-summer/"] == "/category/ac/"
+    assert tree["/best-printer/"] == "/category/print/"  # no word from the page: the category page linking to it
+    assert tree["/new-post/"] == "Articles with no category"  # a sidebar link on every category page says nothing
+    assert tree["/lonely/"] == "Articles with no category"
+    assert tree["/category/ac/"] == "/" and tree["/contact/"] == "/"
+    box = {b["path"]: b for b in data["boxes"]}
+    assert box["/clean-filter/"]["placed_by"] == "breadcrumb" and box["/best-printer/"]["placed_by"] == "link"
+    assert box["/clean-filter/"]["also_in"] == ["Printing articles"]
+    assert box["/ac-summer/"].get("unlisted") is True  # neither the AC page nor its page 2 links to it
+    assert not box["/ac-brands/"].get("unlisted")  # listed on page 2
+    assert not box["/clean-filter/"].get("unlisted")
+    assert data["places"] == {"read": 10, "of": 12}  # the home page and page 2 were read before the reader kept places
+
+
+def test_unlisted_is_not_said_while_a_categorys_next_pages_are_unread(client, blog, engine):
+    with engine.begin() as conn:
+        conn.execute(text("DELETE FROM page_links WHERE page_id = (SELECT id FROM pages WHERE url = 'https://blog.example/category/ac/page/2/')"))
+    box = {b["path"]: b for b in client.get(f"/api/site-map?site_id={blog}&view=category").json["boxes"]}
+    assert not box["/ac-summer/"].get("unlisted")
+
+
+def test_the_reader_keeps_where_a_page_says_it_belongs(engine):
+    html = b"""<html><head><script type="application/ld+json">{"@graph":[{"@type":"BreadcrumbList","itemListElement":[
+      {"position":2,"name":"AC","item":{"@id":"https://www.blog.example/category/ac/"}},{"position":1,"name":"Home","item":"https://blog.example/"},{"position":3,"name":"Clean"}]}]}</script></head>
+      <body><header><nav aria-label="Breadcrumb"><a href="/">Ignored, JSON-LD first</a></nav></header>
+      <article class="post type-post category-ac"><a rel="category tag" href="/category/ac/">AC</a><a rel="tag" href="/tag/x/">x</a><p>Words.</p></article></body></html>"""
+    place = extract(html, "https://blog.example/clean/").extras["place"]
+    assert place == {"crumbs": [["Home", "blog.example/"], ["AC", "blog.example/category/ac/"], ["Clean", ""]], "cats": ["blog.example/category/ac/"], "slugs": ["ac"]}
+    drawn = b"""<html><body><nav class="rank-math-breadcrumb"><a href="https://blog.example/">Home</a> / <a href="https://blog.example/category/print/">Print</a> / Best</nav><main>x</main></body></html>"""
+    assert extract(drawn, "https://blog.example/best/").extras["place"]["crumbs"] == [["Home", "blog.example/"], ["Print", "blog.example/category/print/"]]
+    # A page read before places were kept is fetched in full once, so the map fills in without waiting for an edit.
+    domain = store.get_or_create_domain(engine, "blog.example")
+    url = "https://blog.example/best/"
+    fields = extract(drawn, url)
+    ok = FetchResult(url=url, status="ok", http_status=200, etag='"1"')
+    store.save_fetch(engine, domain, url, ok, fields)
+    assert store.validators(engine, url) == ('"1"', None)
+    with engine.begin() as conn:
+        conn.execute(text("UPDATE pages SET extras = JSON_REMOVE(extras, '$.place')"))
+    assert store.validators(engine, url) == (None, None)
+
+
+def test_a_listing_page_does_not_take_its_posts_categories():
+    listing = b"""<html><body class="archive category"><article class="post category-a"><a rel="category tag" href="/category/a/">A</a></article>
+      <article class="post category-b"><a rel="category tag" href="/category/b/">B</a></article></body></html>"""
+    assert extract(listing, "https://blog.example/category/a/").extras["place"] == {"crumbs": [], "cats": [], "slugs": []}

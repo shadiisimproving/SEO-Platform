@@ -153,12 +153,12 @@
 .sm-who-them[aria-pressed="true"] { background: var(--c-purple-pale); box-shadow: inset 0 0 0 1.5px var(--c-purple); }
 @media (max-width: 700px) { .sm-who { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; } .sm-who-chip, .sm-who-lab { flex: none; } .sm-who-chip { height: 36px; } }
 
-/* A main branch's first box is filled with its colour (owner, 2026-11-20: the pale boxes looked alike), white words on it
+/* A coloured branch's first box (.sm-hub: a main branch, or one level down when one branch holds most of the site) is filled with its colour (owner, 2026-11-20: the pale boxes looked alike), white words on it
    (each colour gives white 4.5:1 or more). The pages under it keep a lighter shade of the same colour. Loose pages,
    pages not read and the grey group stay as they were. */
-.sm-node.sm-l1:not(.sm-b8):not(.is-unread):not(.sm-more) { background: var(--solid, var(--c)); color: #fff; box-shadow: none; }
-.sm-node.sm-l1:not(.sm-b8):not(.is-unread):not(.sm-more) svg.i, .sm-node.sm-l1:not(.sm-b8):not(.is-unread):not(.sm-more) .sm-notes { color: #fff; }
-.sm-node.sm-l1:not(.sm-b8):not(.is-unread):not(.sm-more):hover { box-shadow: 0 6px 14px -8px rgba(15, 34, 51, .5); }
+.sm-node.sm-hub:not(.sm-b8):not(.is-unread):not(.sm-more) { background: var(--solid, var(--c)); color: #fff; box-shadow: none; }
+.sm-node.sm-hub:not(.sm-b8):not(.is-unread):not(.sm-more) svg.i, .sm-node.sm-hub:not(.sm-b8):not(.is-unread):not(.sm-more) .sm-notes { color: #fff; }
+.sm-node.sm-hub:not(.sm-b8):not(.is-unread):not(.sm-more):hover { box-shadow: 0 6px 14px -8px rgba(15, 34, 51, .5); }
 .sm-b0 { --solid: #0B7F72; } .sm-b1 { --solid: #B45309; } .sm-b2 { --solid: #BE185D; } .sm-b3 { --solid: #15803D; }
 .sm-b4 { --solid: #0369A1; } .sm-b5 { --solid: #B91C1C; } .sm-b6 { --solid: #A21CAF; } .sm-b7 { --solid: #4D7C0F; }
 .sm-edge { stroke-width: 2; stroke: color-mix(in srgb, var(--c) 75%, transparent); }
@@ -180,3 +180,8 @@
 @keyframes sm-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .sm-read.is-busy svg.i { animation: none; } }
 @media (max-width: 700px) { .sm-who-pick { min-width: 0; flex: 1; } }
+
+/* By category: an article its category page doesn't link to. Amber like other warnings, readable on a filled box too. */
+.sm-unlisted { display: inline-flex; margin-inline-start: 6px; color: var(--c-amber, #B45309); }
+.sm-unlisted svg.i { width: 14px; height: 14px; }
+.sm-node.sm-hub .sm-unlisted { color: #fff; }

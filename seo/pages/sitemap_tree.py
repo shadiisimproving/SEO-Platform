@@ -3,6 +3,10 @@
 Two ways to group the same pages:
 - "folders": the home page, then each folder of the address (/blog/, /services/...), then the pages inside. Built from
   the addresses alone, so it works for any site the page reader has read.
+- "category": each page under the category it says it belongs to: its breadcrumb first, then the category links of the
+  post itself (WordPress rel="category tag", category-xxx classes), then a category page linking to it. Articles whose
+  addresses are flat (/post-name/) land under their category even though their address says nothing (owner,
+  2026-11-24). An article no category page links to is marked: that's weak internal linking.
 - "links": the home page, then the pages it links to, then the pages those link to. Each page shows once, under the
   shortest way from the home page. Pages nothing leads to sit in their own branch. It needs each page's links
   (page_links, saved by the page reader), so the answer says how many pages have had theirs read.
@@ -23,7 +27,7 @@ from seo.competitors import pages as page_store
 from seo.core.errors import NotFound, Refused
 from seo.links.urls import host_key, page_key
 
-VIEWS = ("folders", "links", "inlinks")
+VIEWS = ("folders", "category", "links", "inlinks")
 MAX_PAGES = 5000
 _HIDDEN = ("gone", "left_scope")  # pages that no longer exist, or now live on another website
 _SEPARATORS = re.compile(r"\s+[|\-–—·:]\s+")
@@ -52,7 +56,7 @@ def _pages(conn, host: str) -> tuple[int | None, list[dict]]:
         return None, []
     rows = conn.execute(
         text(
-            "SELECT id, url, url_hash, title, h1, word_count, last_status, content_hash, last_changed_at FROM pages "
+            "SELECT id, url, url_hash, title, h1, word_count, last_status, content_hash, last_changed_at, schema_types, extras FROM pages "
             "WHERE domain_id = :d AND (last_status IS NULL OR last_status NOT IN :hidden) ORDER BY (content_hash IS NULL), id LIMIT :n"
         ).bindparams(hidden=_HIDDEN),
         {"d": domain_id, "n": MAX_PAGES},
@@ -93,15 +97,24 @@ def _namer(pages: list[dict]):
     home_bits = [bit.strip().casefold() for bit in _SEPARATORS.split(home["title"].strip())] if home else []
     brands = {home_bits[0], home_bits[-1]} if len(home_bits) > 1 else set()
 
+    # A second ending repeated on many titles ("Visa | Blog Shop", "Tax | Blog Shop") is the blog's name: it goes too.
+    def inner(title: str) -> list[str]:  # the title's parts once the site name ending is gone
+        bits = _SEPARATORS.split(title)
+        return bits[:-1] if len(bits) > 1 and tail and bits[-1].strip().casefold() == tail else bits
+
+    endings = Counter(bits[-1].strip().casefold() for bits in map(inner, titles) if len(bits) > 1)
+    brands |= {part for part, count in endings.items() if count >= max(4, 0.03 * len(titles))}
+
     def name(page: dict) -> str:
         title = (page["title"] or "").strip()
         if not title:
             first = _load(page["h1"], [])
             title = str(first[0]).strip() if first else ""
         ends = brands if page is not home else set()
-        bits = _SEPARATORS.split(title)
-        if len(bits) > 1 and (bits[-1].strip().casefold() == tail and tail or bits[-1].strip().casefold() in ends):
-            title = title[: title.rfind(bits[-1])].rstrip(" |-–—·:")
+        for _ in range(2):  # "Visa | Blog Shop - Shop": both endings go, one after the other
+            bits = _SEPARATORS.split(title)
+            if len(bits) > 1 and (bits[-1].strip().casefold() == tail and tail or bits[-1].strip().casefold() in ends):
+                title = title[: title.rfind(bits[-1])].rstrip(" |-–—·:")
         bits = _SEPARATORS.split(title)
         if len(bits) > 1 and (bits[0].strip().casefold() == lead and lead or bits[0].strip().casefold() in ends):
             title = title[len(bits[0]):].lstrip(" |-–—·:")
@@ -286,6 +299,145 @@ def _by_links(site: dict, pages: list[dict], links: dict[int, list[str]], boxes:
             boxes.page(group, page)
 
 
+_ARTICLE_TYPES = {"Article", "BlogPosting", "NewsArticle", "TechArticle", "Report"}
+_PAGINATION = re.compile(r"/page/\d+/?$|[?&](?:page|paged|p)=\d+")
+_CATEGORY_FOLDER = re.compile(r"/(?:category|categories|categorie|kategorie|categoria|tag|topics?)/[^/]+/?$", re.I)
+SHARED_LINK = 0.5  # a link on more than half the category pages is a sidebar or menu, not "this category lists it"
+
+
+def _place_of(page: dict) -> dict:
+    extras = _load(page.get("extras"), {})
+    place = extras.get("place") if isinstance(extras, dict) else None
+    return place if isinstance(place, dict) else {}
+
+
+def _is_article(page: dict) -> bool:
+    kinds = _load(page.get("schema_types"), [])
+    extras = _load(page.get("extras"), {})
+    return bool(_ARTICLE_TYPES & set(k for k in kinds if isinstance(k, str))) or bool(isinstance(extras, dict) and extras.get("published"))
+
+
+def _by_category(site: dict, pages: list[dict], links: dict[int, list[str]], boxes: _Boxes) -> None:
+    home = _home(site, pages)
+    if home is None:
+        return
+    by_key = {p["key"]: p for p in pages}
+    by_slug: dict[str, list[str]] = {}
+    for page in pages:
+        last = page["key"].split("?", 1)[0].rstrip("/").rsplit("/", 1)[-1].lower()
+        by_slug.setdefault(unquote(last), []).append(page["key"])
+    parent: dict[str, str] = {}
+    source: dict[str, str] = {}
+    also: dict[str, list[str]] = {}
+    for page in pages:
+        if page is home:
+            continue
+        place, me = _place_of(page), page["key"]
+        # 1. The breadcrumb: the deepest crumb that is another page of this site.
+        chain = [key for _, key in (place.get("crumbs") or []) if key and key != me and key in by_key]
+        if chain:
+            parent[me], source[me] = chain[-1], "breadcrumb"
+        # 2. The post's own category links, then its category-xxx classes matched to a page ending in that slug.
+        cats = [key for key in (place.get("cats") or []) if key != me and key in by_key]
+        for slug in place.get("slugs") or []:
+            found = [key for key in by_slug.get(unquote(slug).lower(), []) if key != me]
+            if len(found) == 1 and found[0] not in cats:
+                cats.append(found[0])
+        if me not in parent and cats:
+            parent[me], source[me] = cats[0], "category"
+        if me in parent:
+            others = [key for key in cats if key != parent[me]]
+            if others:
+                also[me] = others
+    # 3. A category page that links to it. Category pages are the ones that are already somebody's category; a link on
+    #    most of them (a "latest posts" sidebar) says nothing about which one a page belongs to.
+    #    A category page is one some page names as its category (breadcrumb or category link), or one in a category folder.
+    named = {key for p in pages for key in [*(k for _, k in (_place_of(p).get("crumbs") or [])[:-1]), *(_place_of(p).get("cats") or [])] if key in by_key}
+    folder = {p["key"] for p in pages if _CATEGORY_FOLDER.search(p["key"].split("?", 1)[0]) and not _PAGINATION.search(p["key"])}
+    cat_keys = ({*parent.values()} | named | folder) - {home["key"]}
+    seen_on = Counter(key for cat in cat_keys for key in set(links.get(by_key[cat]["id"], [])))
+    shared = {key for key, count in seen_on.items() if len(cat_keys) >= 3 and count > SHARED_LINK * len(cat_keys)}
+    # A real category (in a category folder, or named by a post's own category links) that lists the page beats a
+    # breadcrumb that only says "Blog": many themes print Home › Blog › Post and leave the category out.
+    strong = (folder | {key for p in pages for key in (_place_of(p).get("cats") or []) if key in by_key}) - {home["key"]}
+    for page in pages:
+        me = page["key"]
+        if page is home or me in cat_keys or me in shared:
+            continue
+        if me in parent and (parent[me] in strong or source[me] != "breadcrumb"):
+            continue
+        # Listed by several (a post in Visa and in Dubai): the most specific one, the category listing the fewest pages.
+        listing = [cat for cat in (strong if me in parent else cat_keys) if me in links.get(by_key[cat]["id"], [])]
+        if listing:
+            listing.sort(key=lambda cat: (len(links.get(by_key[cat]["id"], [])), _natural(cat)))
+            parent[me], source[me] = listing[0], "link"
+            if len(listing) > 1:
+                also[me] = listing[1:]
+    # Anything that isn't an article and says nothing (the blog page, contact, a category) hangs off the home page, so
+    # what sits under it still shows.
+    for page in pages:
+        if page is not home and page["key"] not in parent and not _is_article(page):
+            parent[page["key"]] = home["key"]
+
+    # Does the category list it? Its page or one of its numbered pages (/category/x/page/2/) must link to it.
+    # A listing whose next pages weren't read is incomplete, so nothing in it is marked (no false alarms).
+    base_of = lambda key: _PAGINATION.sub("/", key).replace("//", "/") if _PAGINATION.search(key) else key  # noqa: E731
+    listed_by: dict[str, set] = {}
+    incomplete: set[str] = set()
+    for page in pages:
+        if page["id"] in links:
+            listed_by.setdefault(base_of(page["key"]), set()).update(links[page["id"]])
+    for base, seen in listed_by.items():
+        for key in seen:
+            if _PAGINATION.search(key) and base_of(key) == base and (key not in by_key or by_key[key]["id"] not in links):
+                incomplete.add(base)
+    for base in incomplete:
+        listed_by.pop(base, None)
+
+    def unlisted(up: str, key: str) -> bool:
+        return up != home["key"] and up in listed_by and _is_article(by_key[key]) and key not in listed_by[up]
+
+    kids: dict[str, list[str]] = {}
+    for me, up in parent.items():
+        kids.setdefault(up, []).append(me)
+    root = boxes.page(None, home, "home")
+    placed = {home["key"]: root}
+    todo = deque([home["key"]])
+
+    def place_under() -> None:
+        while todo:
+            up = todo.popleft()
+            # Articles their category doesn't link to come first, so the warning is seen before "+N more" hides it.
+            under = sorted(kids.get(up, []), key=lambda key: (not unlisted(up, key), -len(kids.get(key, [])), _natural(by_key[key]["title"] or key)))
+            for key in under:
+                if key in placed:
+                    continue
+                box = boxes.page(placed[up], by_key[key])
+                item = boxes.items[box]
+                item["placed_by"] = source.get(key)
+                if also.get(key):
+                    item["also_in"] = [boxes.name(by_key[k]) or k for k in also[key]][:5]
+                if unlisted(up, key):
+                    item["unlisted"] = True  # its category page doesn't link to it: weak internal linking
+                placed[key] = box
+                todo.append(key)
+    # Pages whose category chain never reaches the home page (a loop, or a category that isn't on the map) hang off it.
+    place_under()
+    left = [p for p in pages if p["key"] not in placed]
+    articles = sorted((p for p in left if _is_article(p) and p["key"] not in parent), key=lambda p: _natural(p["key"]))
+    looped = [p for p in left if p not in articles]  # a category chain that loops: hung off the home page, with what is under it
+    for page in sorted(looped, key=lambda p: _natural(p["key"])):
+        if page["key"] not in placed:
+            placed[page["key"]] = boxes.page(root, page)
+            todo.append(page["key"])
+            place_under()
+    _gather_loose(boxes, root, "Pages with no category")
+    if articles:
+        group = boxes.group(root, "Articles with no category")
+        for page in articles:
+            placed[page["key"]] = boxes.page(group, page)
+
+
 # Internal links: how many of the site's other pages link to a page. Fewest first, because those are the ones to work on.
 # (most, label, colour on the map: red, amber, olive, green, teal)
 INLINK_GROUPS = (
@@ -324,7 +476,7 @@ def _by_inlinks(site: dict, pages: list[dict], links: dict[int, list[str]], boxe
 
 def site_map(engine: Engine, site_id: int, view: str = "folders") -> dict:
     if view not in VIEWS:
-        raise Refused("view must be folders or links.")
+        raise Refused("view must be folders, category, links or inlinks.")
     with engine.connect() as conn:
         site = _site(conn, site_id)
         domain_id, pages = _pages(conn, site["host"])
@@ -334,7 +486,9 @@ def site_map(engine: Engine, site_id: int, view: str = "folders") -> dict:
     readable = [p for p in pages if p["content_hash"]]
     links_read = sum(1 for p in readable if p["id"] in links)
     if pages:
-        if view == "inlinks":
+        if view == "category":
+            _by_category(site, pages, links, boxes)
+        elif view == "inlinks":
             _by_inlinks(site, pages, links, boxes)
         elif view == "links":
             _by_links(site, pages, links, boxes, "Not reached from the home page")
@@ -345,7 +499,8 @@ def site_map(engine: Engine, site_id: int, view: str = "folders") -> dict:
         "view": view,
         "pages": len(pages),
         "capped": len(pages) >= MAX_PAGES,
-        "links": {"read": links_read, "of": len(readable)},  # pages whose links are saved, of those the reader could read
+        "links": {"read": links_read, "of": len(readable)},
+        "places": {"read": sum(1 for p in readable if "place" in (_load(p.get("extras"), {}) or {})), "of": len(readable)},  # pages read since the reader kept their breadcrumb  # pages whose links are saved, of those the reader could read
         "boxes": boxes.counted(),
     }
 

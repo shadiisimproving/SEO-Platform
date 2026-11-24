@@ -130,7 +130,9 @@ def validators(engine: Engine, url: str) -> tuple[str | None, str | None]:
         row = conn.execute(select(Page.__table__).where(Page.url_hash == _url_hash(url))).first()
         # A page read before the site map kept its links has none in page_links: asked for whole once, to fill them in.
         has_links = row is not None and conn.execute(text("SELECT 1 FROM page_links WHERE page_id = :p"), {"p": row.id}).first() is not None
-    if row is None or text_was_lost(row) or not has_links:
+    # Likewise a page read before the site map kept where it says it belongs (extras.place, the "By category" view).
+    extras = _json_dict(row.extras) if row is not None else {}
+    if row is None or text_was_lost(row) or not has_links or "place" not in extras:
         return None, None  # lost text: "not changed since" from the site must not keep the "?" for good, so the page is asked for whole
     return row.etag, row.last_modified
 
@@ -268,6 +270,15 @@ def _duplicate(events: list[dict], duplicate: bool) -> list[dict]:
             if event["kind"] != "canonical" and not event.get("hidden"):
                 event["hidden"], event["hidden_reason"] = True, noise.DUPLICATE
     return events
+
+
+def _json_dict(value) -> dict:
+    if isinstance(value, (str, bytes)):
+        try:
+            value = json.loads(value)
+        except ValueError:
+            return {}
+    return value if isinstance(value, dict) else {}
 
 
 def _json_list(value):
