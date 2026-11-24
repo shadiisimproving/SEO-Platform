@@ -164,6 +164,58 @@ def resolve(scope: Scope, range_key: str | None, compare: str | None, start=None
     }
 
 
+def has_search_days(scope: Scope) -> bool:
+    """Whether Search Console has a stored day for these sites: without one there is no shared period to line up with."""
+    return bool(scope.fetch("SELECT 1 x FROM gsc_daily WHERE site_id IN :sites LIMIT 1"))
+
+
+def shared_end(scope: Scope) -> date | None:
+    """The day every screen's period ends on for these sites: Search Console's last final day. None without Search Console."""
+    return final_day(*newest(scope)) if has_search_days(scope) else None
+
+
+def shared_ends(engine) -> dict[str, str]:
+    """Per own site id, and under "all", the shared last day, for the browser's date picker (window.BOOT.search_through):
+    a screen that asks the server nothing dated (Backlinks) then prints the same dates as the others."""
+    from seo.metrics.service import _copy
+
+    today = common.google_today(engine).isoformat()
+    every = Scope(engine, None, today, today)
+    ends = {}
+    for key, sites in [("all", every.site_ids), *((str(site), [site]) for site in every.site_ids)]:
+        day = shared_end(_copy(every, sites)) if sites else None
+        if day:
+            ends[key] = day.isoformat()
+    return ends
+
+
+def one_period(scope: Scope) -> Scope:
+    """Every screen counts the same days (owner, 2026-11-24). Google Analytics is a day or two ahead of Search Console's
+    last final day, so "Last 28 days" was 25 Oct - 21 Nov on Today, 26 Oct - 22 Nov on Channels and 27 Oct - 23 Nov on
+    Content, and one page had 155 visits on one screen and 163 on another. A preset period that came with dates
+    (UI.range.days) now takes the shared period's own days, and its comparison keeps its kind and length. A custom period
+    is left as picked, and so are sites with no Search Console days: there is nothing to line up with."""
+    args = getattr(scope, "search_args", None) or {}
+    picked = args.get("range")
+    if not picked or picked == "custom" or (picked not in RANGES and picked not in ("tm", "lm")) or not has_search_days(scope):
+        return scope
+    window = resolve(scope, picked, "none")
+    first, last = date.fromisoformat(window["from"]), date.fromisoformat(window["to"])
+    if RANGES.get(picked, ("", 0))[0] == "hours":  # a day-based screen never shows hours: the last final day alone
+        first = last = final_day(*newest(scope))
+    if first == scope.start and last == scope.end:
+        return scope
+    compared = scope.has_compare
+    scope.start, scope.end = first, last
+    if compared:
+        if args.get("compare") == "yoy":
+            scope.compare_start, scope.compare_end = year_before(first), year_before(last)
+        else:
+            scope.compare_end = first - timedelta(days=1)
+            scope.compare_start = scope.compare_end - (last - first)
+    return scope
+
+
 def apply(scope: Scope, window: dict) -> Scope:
     """Puts the resolved period on the scope, with which day-by-day tables may be compared (rows_compared)."""
     scope.start, scope.end = date.fromisoformat(window["from"]), date.fromisoformat(window["to"])

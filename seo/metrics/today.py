@@ -892,8 +892,8 @@ def _ga4_windows(last_day: date, length: int, compare: str) -> tuple[date, date,
 def _site_strip(engine: Engine, site_id: int | None, args: dict, length: int) -> list[dict]:
     """Per site, the period against the one before. Blank means no data, never zero.
 
-    Google clicks use the shared period (search.resolve). Visits and leads use a period of the same length ending on GA4's
-    own last day: GA4 ends a day or two after Search Console, and counting back from today would make every site look like
+    Google clicks use the shared period (search.resolve), and visits and leads count those same days. A site with no Search
+    Console days ends on GA4's own last day: counting back from today would make every site look like
     it fell. A site without a full earlier period has nothing fair to compare with, so it shows no change.
     """
     strip = []
@@ -904,11 +904,15 @@ def _site_strip(engine: Engine, site_id: int | None, args: dict, length: int) ->
         kind = lead_rules.kind(engine, [site["id"]])
         col = lead_rules.count_sql(kind)
         row = {"id": site["id"], "host": site["host"], "visits": None, "visits_was": None, "visits_change": None, "visits_note": None, "unusual": None, "leads": None, "leads_was": None, "leads_change": None, "leads_state": "no_ga4", "lead_kind": kind, "lead_changes": [], "other_hosts": [], "clicks": None, "clicks_was": None, "clicks_change": None, "through": None, "visits_through": None, "trend": [], "_daily": {"visits": {}, "leads": {}}}
+        clicks = _clicks(engine, site["id"], args)
+        # Visits and leads count the same days as Google clicks (owner, 2026-11-24): one period on the whole screen.
+        shared_last = date.fromisoformat(clicks["window"]["to"]) if clicks["value"] is not None else None
         with engine.connect() as conn:
             row["alerts"] = int(conn.execute(text("SELECT COUNT(*) FROM alerts WHERE site_id = :s AND acknowledged_at IS NULL"), {"s": site["id"]}).scalar() or 0)
             ga4 = conn.execute(text(f"SELECT MIN(day) first_day, MAX(day) last_day, SUM({col} > 0) leads_rows FROM ga4_source_daily WHERE site_id = :s"), {"s": site["id"]}).mappings().first()
             if ga4["last_day"]:
-                a, b, ca, cb = _ga4_windows(ga4["last_day"], length, compare)
+                last_day = min(ga4["last_day"], shared_last) if shared_last else ga4["last_day"]
+                a, b, ca, cb = _ga4_windows(last_day, length, compare)
                 values = {"s": site["id"], "a": a, "b": b, "ca": ca or date(1900, 1, 1), "cb": cb or date(1900, 1, 1)}
                 found = conn.execute(
                     text(f"SELECT SUM(IF(day BETWEEN :a AND :b, sessions, 0)) now_v, SUM(IF(day BETWEEN :ca AND :cb, sessions, 0)) was_v, SUM(IF(day BETWEEN :a AND :b, {col}, 0)) now_l, SUM(IF(day BETWEEN :ca AND :cb, {col}, 0)) was_l FROM ga4_source_daily WHERE site_id = :s AND (day BETWEEN :a AND :b OR day BETWEEN :ca AND :cb)"),
@@ -920,7 +924,7 @@ def _site_strip(engine: Engine, site_id: int | None, args: dict, length: int) ->
                 row["lead_changes"] = ga4_checks.crossing(ga4_checks.tracking_changes(engine, site["id"], kind), ca or a, b)
                 row["unusual"] = ga4_checks.unusual_change(engine, [site["id"]], a, b, ca if compared else None, cb if compared else None)
                 row["other_hosts"] = ga4_checks.other_hosts(engine, site["id"])
-                row.update(visits=int(found["now_v"] or 0), visits_through=ga4["last_day"].isoformat(), _ga4={"from": a.isoformat(), "to": b.isoformat(), "compare_from": ca.isoformat() if ca else None, "compare_to": cb.isoformat() if cb else None})
+                row.update(visits=int(found["now_v"] or 0), visits_through=last_day.isoformat(), _ga4={"from": a.isoformat(), "to": b.isoformat(), "compare_from": ca.isoformat() if ca else None, "compare_to": cb.isoformat() if cb else None})
                 for found_day in conn.execute(text(f"SELECT day, SUM(sessions) v, SUM({col}) l FROM ga4_source_daily WHERE site_id = :s AND (day BETWEEN :a AND :b OR day BETWEEN :ca AND :cb) GROUP BY day"), values).mappings().all():
                     day = found_day["day"]
                     slot = ("now", (day - a).days) if a <= day <= b else ("was", (day - ca).days)
@@ -935,7 +939,6 @@ def _site_strip(engine: Engine, site_id: int | None, args: dict, length: int) ->
                     row["leads"] = round(float(found["now_l"] or 0))
                     if compared and not row["lead_changes"]:  # a change across a change in how GA4 counts is left out (W1)
                         row.update(leads_was=round(float(found["was_l"] or 0)), leads_change=row["leads"] - round(float(found["was_l"] or 0)))
-        clicks = _clicks(engine, site["id"], args)
         if clicks["value"] is not None:
             row.update(clicks=clicks["value"], clicks_was=clicks["was"], clicks_change=clicks["change"], through=clicks["through"])
         strip.append(row)

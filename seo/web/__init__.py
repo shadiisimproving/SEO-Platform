@@ -150,7 +150,8 @@ def create_app(engine: Engine | None = None, url_allowed: Callable[[str], bool] 
                 # Who a task can go to on each of their sites, so Assigned to never offers someone who wouldn't see it.
                 assignees = task_assignees(conn, [s["id"] for s in sites], every_site) if auth else {}
             engine = app.config["ENGINE"]
-            data = {"served": True, "today": today, "sites": sites, "team": team_names(engine) if auth else [], "admins": admin_names(engine) if auth else [],
+            from seo.metrics import period
+            data = {"served": True, "today": today, "sites": sites, "search_through": period.shared_ends(engine), "team": team_names(engine) if auth else [], "admins": admin_names(engine) if auth else [],
                     "assignees": assignees, "user": g.get("user"), "every_site": every_site, "summaries_on": bool(conn_has_openrouter)}
             return Response(f"window.BOOT = {json.dumps(data).replace('<', chr(92) + 'u003c')};", mimetype="text/javascript")
 

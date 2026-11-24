@@ -155,6 +155,9 @@
   }
   state.rng = cleanRange((() => { try { return JSON.parse(store.get("range") || "{}"); } catch { return {}; } })());
   const rangeEnds = {}, rangeSources = {}, rangeServed = {}, rangeListeners = new Set();
+  /* One period on every screen (owner, 2026-11-24): until a screen's answer says its own last day, the picker ends on the
+     day the server gave for this site (Search Console's last final day), so Backlinks prints the dates Today does. */
+  const sharedEnd = () => { const ends = window.BOOT?.search_through; if (!ends) return null; const site = state.site === "all" ? null : window.SITES.find((x) => x.id === state.site)?.realId; const day = ends[site ? String(site) : "all"]; return validDay(day) ? day : null; };
   /* The same "28 days" ends on different days: Search Console runs 2 to 3 days behind, Google Analytics 1. Each period control
      shows its real dates, and this sentence says why when this screen's data ends before yesterday. */
   function rangeBehind(route = state.route) {
@@ -177,7 +180,7 @@
   const behindMark = () => { const words = rangeBehind(); return words ? `<span class="def-i range-behind" role="img" tabindex="0" data-tip="${esc(words)}" aria-label="${esc(words)}">${icon("clock")}</span>` : ""; };
   const monthsBack = (day, n) => { const d = parseDay(day); return addDays(iso(new Date(d.getFullYear(), d.getMonth() - n, d.getDate())), 1); };
   function rangeGet({ end = null, hours = HOURLY_SCREENS.has(state.route) } = {}) {
-    const r = state.rng, last = validDay(end) ? end : rangeEnds[state.route] || DATA_END;
+    const r = state.rng, last = validDay(end) ? end : rangeEnds[state.route] || sharedEnd() || DATA_END;
     let from = last, to = last;
     switch (r.preset) {
       case "24h": break; // a day-based screen shows the last day; an hourly one asks the server for the hours
@@ -269,7 +272,7 @@
       // The screen's own last day once its answer said it (UI.range.end): GA4 ends a day or two before yesterday, and a
       // period asked through yesterday came back one day short under a head that said the whole 28 (final review N1).
       // opts.route: another screen's dates, for the warm-up asking that screen's answer ahead of its visit (screen-data.js).
-      const g = rangeGet({ end: opts.end || rangeEnds[opts.route || state.route] || DATA_END, hours: false }), parts = [`from=${g.from}`, `to=${g.to}`];
+      const g = rangeGet({ end: opts.end || rangeEnds[opts.route || state.route] || sharedEnd() || DATA_END, hours: false }), parts = [`from=${g.from}`, `to=${g.to}`];
       if (g.compareFrom) parts.push(`compare_from=${g.compareFrom}`, `compare_to=${g.compareTo}`);
       // The shared range too, so the Search Console side of the answer ends on Google's last final day (seo/metrics/period.py).
       parts.push(`range=${state.rng.preset === "24h" ? "7d" : state.rng.preset}`, `compare=${state.rng.compare}`);

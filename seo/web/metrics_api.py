@@ -8,7 +8,7 @@ from seo.backlinks.cleaner import registrable_domain
 from seo.core.errors import Refused
 from seo.extras import auto as extras_auto, service as extras, summaries  # noqa: F401 - auto registers its job handler here too
 from seo.imports import clarity_reports
-from seo.metrics import backlink_traffic, leads, service, today as today_view
+from seo.metrics import backlink_traffic, leads, period, service, today as today_view
 from seo.resources import service as resources
 
 metrics_api = Blueprint("metrics_api", __name__, url_prefix="/api")
@@ -29,7 +29,7 @@ def _scope() -> service.Scope:
     args = request.args
     scope = service.Scope(_engine(), args.get("site_id"), args.get("from"), args.get("to"), args.get("compare_from"), args.get("compare_to"))
     scope.search_args = service.search_args(args)  # the Search Console side ends on Google's last final day (seo/metrics/period.py)
-    return scope
+    return period.one_period(scope)  # and the Google Analytics side counts those same days
 
 
 def _include(*allowed: str) -> set[str]:

@@ -189,7 +189,11 @@ def _ga4(engine, site, last, days, leads_now, leads_before):
 def test_today_export_uses_the_period_on_screen_and_leads_change_is_a_count(engine, end):
     site = _site(engine, end)
     _days(engine, site, end, 70)
-    _ga4(engine, site, end + timedelta(days=2), 7, 14, 12)
+    _ga4(engine, site, end, 7, 14, 12)
+    with engine.begin() as conn:  # GA4 has two days more than Search Console's last final day: they are not counted
+        for n in (1, 2):
+            conn.execute(text("INSERT INTO ga4_source_daily (site_id, day, row_hash, channel, source, medium, sessions, users, key_events) VALUES (:s, :d, :h, 'Organic Search', 'google', 'organic', 10, 10, 9)"),
+                         {"s": site, "d": end + timedelta(days=n), "h": f"late{n}"})
     report = registry.build(engine, "today", {"site_id": str(site), "range": "7d", "compare": "prev"})
     assert report.period == (end - timedelta(days=6), end)  # 7 days, as asked (it used to export 28)
     assert report.compare == (end - timedelta(days=13), end - timedelta(days=7))
@@ -198,7 +202,7 @@ def test_today_export_uses_the_period_on_screen_and_leads_change_is_a_count(engi
     # No lead event picked: the file says Key events, as the screen does (SEO review 2026-11-17, W1).
     assert tiles["Key events"].change == 2 and tiles["Key events"].change_kind == "delta"
     assert fmt.change_words("en", tiles["Key events"].change, tiles["Key events"].change_kind) == "+2"  # it printed "+2%"
-    assert any("Visits and leads" in note for note in report.notes)  # GA4 ends 2 days later: said, never hidden
+    assert not any("Visits and leads" in note for note in report.notes)  # one period for all three numbers: nothing to explain
     assert [t.title for t in report.tables if t.id == "going_up"] == ["Pages and searches going up"]
 
 
@@ -217,3 +221,43 @@ def test_overview_export_gives_click_rate_in_points_and_position_in_places(engin
     assert fmt.change_words("en", -2, "points") == "−2 pts"
     assert fmt.change_words("en", 1.3, "places") == "1.3 places worse"
     assert fmt.change_words("fr", 1.3, "places") == "recul de 1,3 place"
+
+
+def test_google_analytics_screens_count_the_same_days_as_search_console(engine, end):
+    """Owner, 2026-11-24: "Last 28 days" was three different periods. GA4 here has 2 days more than Search Console's last
+    final day; Channels asked through GA4's last day still counts the shared 28 days: 28 x 10 visits, never 29 or 30."""
+    site = _site(engine, end)
+    _days(engine, site, end, 70)
+    _ga4(engine, site, end + timedelta(days=2), 30, 70, 70)
+    asked_to = end + timedelta(days=2)
+    scope = service.Scope(engine, str(site), (asked_to - timedelta(days=27)).isoformat(), asked_to.isoformat(), (asked_to - timedelta(days=55)).isoformat(), (asked_to - timedelta(days=28)).isoformat())
+    scope.search_args = {"range": "28d", "compare": "prev"}
+    period.one_period(scope)
+    assert (scope.start, scope.end) == (end - timedelta(days=27), end)
+    assert (scope.compare_start, scope.compare_end) == (end - timedelta(days=55), end - timedelta(days=28))
+    answer = service.channels(scope)
+    assert (answer["period"]["from"], answer["period"]["to"]) == ((end - timedelta(days=27)).isoformat(), end.isoformat())
+    assert period.shared_ends(engine) == {"all": end.isoformat(), str(site): end.isoformat()}
+
+
+def test_a_custom_period_and_a_site_without_search_console_keep_their_own_days(engine, end):
+    site = _site(engine, end)
+    _days(engine, site, end, 70)
+    asked_to = end + timedelta(days=2)
+    picked = service.Scope(engine, str(site), (asked_to - timedelta(days=9)).isoformat(), asked_to.isoformat())
+    picked.search_args = {"range": "custom", "from": picked.start.isoformat(), "to": picked.end.isoformat()}
+    assert period.one_period(picked).end == asked_to
+    with engine.begin() as conn:
+        bare = conn.execute(text("INSERT INTO sites (host, start_url, kind) VALUES ('no-console.test', 'https://no-console.test/', 'own')")).lastrowid
+    other = service.Scope(engine, str(bare), (asked_to - timedelta(days=27)).isoformat(), asked_to.isoformat())
+    other.search_args = {"range": "28d", "compare": "prev"}
+    assert period.one_period(other).end == asked_to
+    assert str(bare) not in period.shared_ends(engine)
+
+
+def test_today_counts_visits_on_the_days_of_google_clicks(engine, end):
+    site = _site(engine, end)
+    _days(engine, site, end, 70)
+    _ga4(engine, site, end + timedelta(days=2), 30, 70, 70)
+    row = today_view.today(engine, site, {"range": "28d", "compare": "prev"})["sites"][0]
+    assert row["visits_through"] == end.isoformat() and row["visits"] == 280 and row["visits_was"] == 280
