@@ -804,7 +804,9 @@
     const hidden = undatedHidden();
     const note = hidden ? `<p class="help tk-hidden">${num(hidden)} ${t(hidden === 1 ? "undated task hidden." : "undated tasks hidden.")} <button class="link-btn" data-task-period="all">${t("Show all")}</button></p>` : "";
     const content = T.view === "months" ? months(list) : !list.length ? COMP.empty(t("Nothing matches these filters"), t("Change the filters above.")) : T.view === "table" ? table(list) : board(list);
-    return `${note}${content}`;
+    // The new design (Cobalt, ocean-ai-work.js): four small cards on what's shown first, then the list.
+    const sum = document.documentElement.dataset.brand === "ocean" && window.OceanAIWork?.tasksSummary ? window.OceanAIWork.tasksSummary(list, { today: today(), weekEnd: weekRange()[1], recentStart: recentStart() }) : "";
+    return `${sum}${note}${content}`;
   }
 
   function periodBar() {

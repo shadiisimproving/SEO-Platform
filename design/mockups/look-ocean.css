@@ -1,0 +1,272 @@
+/* The new look, Cobalt (owner, 2026-11-26), from design/redesign-2026-11-24/today-v2.html: a pale grey page, white cards
+   with thin borders, cobalt blue for your numbers, sky blue to point at the one thing to notice, near-black for the page
+   you're on and the main button, soft grey for the period before (no stripes). On top of Clear, light mode only for now:
+   html[data-brand="ocean"] (the name stayed from the first round), set by new-menu.js with the new menu; ?brand=0 = Clear.
+   Rules kept: blue = you, purple = them, green/amber/red only for status, always with an arrow or a word. */
+
+html[data-brand="ocean"][data-look="clear"][data-theme="light"] {
+  --text: #191D1A; --text-2: #4A514B; --muted: #646B65;
+  --sky-base: #F5F6F4; --panel-solid: #fff; --glass: #fff; --glass-2: #fff; --chip: #fff; --track: #EEF0EC; --th-bg: #F8F9F7;
+  --line: #EAECE8; --line-2: #DDE1DB; --hover: rgba(25, 29, 26, .04); --selected: rgba(47, 91, 234, .07);
+  --field: #fff; --field-line: #DDE1DB;
+  --accent-1: #2F5BEA; --accent-2: #191D1A; --on-accent: #fff; --accent-text: #2649C7; --accent-glow: rgba(47, 91, 234, .3); --focus: #2649C7;
+  --series-1: #2F5BEA; --series-2: #7CC4FF; --series-3: #7C4FE0; --ours: #2F5BEA;
+  --chart-you: #2F5BEA; --chart-them: #7C4FE0; --you-text: #2649C7; --them-text: #6A3FD0;
+  --c-blue: #2649C7; --c-blue-pale: #EBF0FE; --c-purple: #6A3FD0; --c-purple-pale: #EFE9FD;
+  --c-teal: #0B6E8F; --c-teal-pale: #E4F3F8; --c-indigo: #4B5568; --c-indigo-pale: #EEF1F5; --c-grey: #4B5568; --c-grey-pale: #EEF1F5;
+  --good-t: #11753F; --warn-t: #A65A08; --crit-t: #C93B3B;
+  --shadow: none; --shadow-hover: 0 4px 14px -8px rgba(25, 29, 26, .16);
+  --cb-blue: #2F5BEA; --cb-deep: #1D3AA6; --cb-soft: #C3D1FB; --cb-sky: #7CC4FF; --cb-ink: #191D1A; --cb-sunk: #F8F9F7;
+  --cb-up: #11753F; --cb-up-pale: #E6F5EC; --cb-down: #C93B3B; --cb-down-pale: #FDEEEE; --cb-warn: #A65A08; --cb-warn-pale: #FDF3E2;
+  --cb-hatch: linear-gradient(#EEF1F5, #EEF1F5); /* was diagonal stripes; the owner found them ugly (2026-11-26): a plain soft track */
+  --cb-1: #1D3AA6; --cb-2: #2F5BEA; --cb-3: #7CC4FF; --cb-4: #93B0F5; --cb-5: #C9D1CA; --cb-6: #E6E9E4;
+}
+
+/* ---- Frame: the side menu and the head bar flush with the window ---- */
+html[data-brand="ocean"] .app { gap: 0; padding: 0; }
+html[data-brand="ocean"] .sidebar { margin: 0; border-radius: 0; box-shadow: inset -1px 0 0 var(--line); animation: none; }
+html[data-brand="ocean"] .main { margin-left: 0; padding: 0; }
+html[data-brand="ocean"] .topbar { border-radius: 0; box-shadow: inset 0 -1px 0 var(--line); padding: 12px 24px; }
+html[data-brand="ocean"][data-theme="light"] .topbar { background: rgba(255, 255, 255, .92); }
+html[data-brand="ocean"] .content { padding: 18px 24px 96px; }
+html[data-brand="ocean"] .area-tabs { padding: 0 24px; margin: 0; background: #fff; box-shadow: inset 0 -1px 0 var(--line); }
+html[data-brand="ocean"] .topbar h1 { font-size: 22px; letter-spacing: -.02em; }
+html[data-brand="ocean"] a.btn, html[data-brand="ocean"] a.btn:hover { text-decoration: none; }
+
+/* Side menu: the page you're on is a near-black row, its count a sky-blue badge. */
+html[data-brand="ocean"] .nav-item { border-radius: 8px; font-weight: 500; }
+html[data-brand="ocean"] .nav-item[aria-current="page"], html[data-brand="ocean"] .nav-item[aria-current="page"]:hover { background: var(--cb-ink); color: #fff; font-weight: 600; }
+html[data-brand="ocean"] .nav-item[aria-current="page"] svg.i { color: var(--cb-sky); }
+html[data-brand="ocean"] .nav-item[aria-current="page"] .count { background: var(--cb-sky); color: #06243F; box-shadow: none; }
+html[data-brand="ocean"] .nav .ink { background: var(--cb-ink); }
+html[data-brand="ocean"] .nav-group { font-size: 11px; letter-spacing: .04em; }
+html[data-brand="ocean"] .brand-mark { background: var(--cb-ink); color: var(--cb-sky); border-radius: 9px; }
+
+/* Cards: flat white, a thin border, 12px corners. */
+html[data-brand="ocean"] :is(.tile, .card, .ncard, .table-wrap, .setup) { border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line); }
+html[data-brand="ocean"] .card h2 { font-size: 13.5px; font-weight: 620; }
+
+/* Controls: the picked choice and the main button are near-black, as in the mockup. */
+html[data-brand="ocean"] .seg { border-radius: 9px; box-shadow: inset 0 0 0 1px var(--line); background: #fff; }
+html[data-brand="ocean"] .seg button[aria-pressed="true"] { background: var(--cb-ink); color: #fff; font-weight: 600; box-shadow: none; }
+html[data-brand="ocean"] :is(.btn-main, .chip[aria-pressed="true"]) { background: var(--cb-ink); color: #fff; }
+html[data-brand="ocean"] .btn-main:hover { background: #2C322D; }
+html[data-brand="ocean"] .chip { border-radius: 999px; }
+html[data-brand="ocean"] .chg { border-radius: 999px; padding: 0 8px 0 6px; font-weight: 650; font-size: 11.5px; }
+html[data-brand="ocean"] .data th { font-size: 11.5px; font-weight: 600; color: var(--muted); }
+html[data-brand="ocean"] .content :is(.mono, code) { font-family: inherit; letter-spacing: 0; }
+
+/* ================= Today (today-ocean.js) ================= */
+.cb-grid { display: grid; gap: 12px; margin-bottom: 12px; }
+.cb-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.cb-kpis:has(> :nth-child(3):last-child) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.cb-row2 { grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr); align-items: stretch; }
+.cb-row3 { grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; }
+.cb-row4 { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); align-items: start; }
+.cb-grid > :only-child { grid-column: 1 / -1; }
+.cb-grid > .card { margin: 0; min-width: 0; }
+
+.cb-ch { display: flex; align-items: center; gap: 8px; padding: 14px 16px 0; min-height: 30px; }
+.cb-ch h2 { font-size: 13.5px; font-weight: 620; margin: 0; color: var(--text); }
+.cb-meta { color: var(--muted); font-size: 12px; }
+.cb-more { margin-left: auto; display: inline-flex; align-items: center; gap: 2px; font-size: 12px; font-weight: 550; color: var(--text-2); text-decoration: none; background: none; border: 0; cursor: pointer; padding: 0; }
+.cb-more:hover { color: var(--text); }
+.cb-more svg.i { width: 12px; height: 12px; }
+.cb-more-under { margin: 10px 0 0; }
+.cb-body { padding: 12px 16px 16px; }
+.cb-s { margin: 0; color: var(--muted); font-size: 12px; }
+.cb-s b { color: var(--text-2); font-weight: 600; }
+.cb-note { margin-top: 10px; }
+
+/* changes */
+.cb-d { display: inline-flex; align-items: center; gap: 2px; height: 20px; padding: 0 7px 0 5px; border-radius: 999px; font-size: 11.5px; font-weight: 650; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cb-d svg.i { width: 11px; height: 11px; stroke-width: 2.4; }
+.cb-up { background: var(--cb-up-pale); color: var(--cb-up); }
+.cb-down { background: var(--cb-down-pale); color: var(--cb-down); }
+.cb-flat { background: var(--track); color: var(--text-2); }
+
+/* number cards */
+.cb-kpi { display: flex; flex-direction: column; padding: 14px 16px; text-decoration: none; color: inherit; transition: box-shadow .15s; }
+.cb-kpi:hover { box-shadow: var(--shadow-hover), inset 0 0 0 1px var(--line-2); }
+.cb-l { color: var(--muted); font-weight: 550; }
+.cb-v { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.cb-v b { font-size: 26px; font-weight: 650; letter-spacing: -.03em; line-height: 1.15; font-variant-numeric: tabular-nums; color: var(--text); }
+.cb-word { font-size: 17px; }
+.cb-kpi .cb-s { margin-top: 2px; }
+.cb-mini { display: flex; align-items: flex-end; gap: 2px; height: 28px; margin-top: auto; padding-top: 10px; box-sizing: content-box; }
+.cb-mini i { flex: 1; border-radius: 2px 2px 0 0; background: #E3E7E2; min-height: 2px; }
+.cb-mini i.hot { background: #7D857E; }
+.cb-share { position: relative; display: block; height: 10px; margin-top: auto; border-radius: 4px; background: var(--cb-hatch), var(--cb-sunk); overflow: hidden; }
+.cb-share i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; }
+.cb-share i.now { background: var(--cb-blue); }
+.cb-share i.was { background: none; box-shadow: inset -2px 0 0 var(--cb-ink); }
+
+/* the chart */
+.cb-hero { display: grid; grid-template-columns: minmax(0, 1fr) 240px; }
+.cb-hero-l { padding: 14px 16px; min-width: 0; }
+.cb-hero-l .cb-ch { padding: 0; flex-wrap: wrap; }
+.cb-seg { margin-left: auto; display: flex; padding: 2px; border-radius: 8px; box-shadow: inset 0 0 0 1px var(--line); }
+.cb-seg button { height: 24px; padding: 0 9px; border-radius: 6px; font-size: 12px; font-weight: 550; color: var(--text-2); background: none; border: 0; cursor: pointer; white-space: nowrap; }
+.cb-seg button[aria-pressed="true"] { background: var(--cb-ink); color: #fff; }
+.cb-big { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+.cb-big b { font-size: 30px; font-weight: 650; letter-spacing: -.035em; color: var(--text); font-variant-numeric: tabular-nums; }
+.cb-big > span:not(.cb-d):not(.cb-legend) { color: var(--muted); }
+.cb-big-sm { margin: 0; }
+.cb-big-sm b { font-size: 24px; }
+.cb-legend { margin-left: auto; display: flex; gap: 12px; font-size: 11.5px; color: var(--text-2); }
+.cb-legend span { display: flex; align-items: center; gap: 5px; }
+.cb-legend i { width: 9px; height: 9px; border-radius: 2px; background: var(--cb-blue); }
+.cb-legend i.was { background: var(--cb-hatch), #fff; box-shadow: inset 0 0 0 1px var(--line-2); }
+.cb-legend-under { margin: 14px 0 0; }
+.cb-plot { position: relative; height: 250px; margin: 14px 0 0 30px; padding-bottom: 22px; }
+.cb-plot svg { position: absolute; left: 0; right: 0; top: 0; width: 100%; height: calc(100% - 22px); overflow: visible; }
+.cb-ticks { position: absolute; left: -30px; top: 0; bottom: 22px; width: 24px; }
+.cb-ticks span, .cb-dates span { position: absolute; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cb-ticks span { right: 0; transform: translateY(-50%); }
+.cb-dates { position: absolute; left: 0; right: 0; bottom: 0; height: 16px; }
+.cb-dates span { transform: translateX(-50%); }
+.cb-dates span:first-child { transform: none; }
+.cb-dates span:last-child { transform: translateX(-100%); }
+.cb-grid line, .cb-plot line { vector-effect: non-scaling-stroke; }
+.cb-plot .cb-grid { stroke: #EEF0EC; stroke-dasharray: 3 3; }
+.cb-plot .cb-base { stroke: var(--line-2); }
+.cb-hit { fill: transparent; }
+.cb-plot g:hover > .cb-hit { fill: rgba(47, 91, 234, .05); }
+.cb-was { fill: #E9ECE7; }
+.cb-now { fill: var(--cb-blue); }
+.cb-best { fill: var(--cb-sky); }
+.cb-callout { position: absolute; transform: translate(-50%, calc(-100% - 6px)); background: var(--cb-ink); color: #fff; border-radius: 6px; padding: 2px 7px; font-size: 11px; font-weight: 600; white-space: nowrap; pointer-events: none; }
+.cb-hero-r { border-left: 1px solid var(--line); padding: 14px 16px; height: 100%; box-sizing: border-box; }
+#cb-hero-r { min-width: 0; }
+.cb-hero-r h3 { font-size: 12.5px; font-weight: 620; margin: 0 0 12px; color: var(--text); }
+.cb-prog { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; margin-bottom: 11px; font-size: 12.5px; }
+.cb-prog span:first-child { color: var(--text-2); }
+.cb-prog b { font-weight: 620; }
+.cb-bar { grid-column: 1 / -1; display: block; height: 8px; border-radius: 3px; background: var(--cb-hatch), var(--cb-sunk); overflow: hidden; }
+.cb-bar i { display: block; height: 100%; border-radius: 3px; background: var(--cb-blue); }
+
+/* Do these first */
+.cb-todo-list { list-style: none; margin: 0; padding: 4px 8px 8px; }
+.cb-todo-list li { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 1px 10px; align-items: center; padding: 10px 8px; border-radius: 9px; }
+.cb-todo-list li + li { border-top: 1px solid var(--line); border-radius: 0; }
+.cb-sq { width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; grid-row: span 2; background: var(--c-blue-pale); color: var(--c-blue); }
+.cb-sq svg.i { width: 15px; height: 15px; }
+.cb-sev-crit .cb-sq { background: var(--cb-down-pale); color: var(--cb-down); }
+.cb-sev-warn .cb-sq { background: var(--cb-warn-pale); color: var(--cb-warn); }
+.cb-t { font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cb-go { grid-row: 1 / 3; grid-column: 3; }
+.cb-w { grid-column: 2; font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.cb-w b { font-weight: 650; }
+.cb-sev-crit .cb-w b { color: var(--cb-down); } .cb-sev-warn .cb-w b { color: var(--cb-warn); }
+.cb-dark, .cb-dark:hover { background: var(--cb-ink) !important; color: #fff !important; border-color: var(--cb-ink) !important; }
+.cb-empty { margin: 0; padding: 16px; color: var(--muted); }
+
+/* visits by channel */
+.cb-stack { display: flex; height: 12px; gap: 2px; border-radius: 6px; overflow: hidden; margin: 10px 0 12px; }
+.cb-stack i { display: block; }
+.cb-rows { list-style: none; margin: 0; padding: 0; }
+.cb-rows li { display: grid; grid-template-columns: 10px minmax(0, 1fr) 44px 38px; gap: 8px; align-items: center; padding: 5px 0; }
+.cb-rows li > i { width: 10px; height: 10px; border-radius: 3px; }
+.cb-rows span { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cb-rows b { text-align: right; font-weight: 620; }
+.cb-rows em { text-align: right; font-style: normal; color: var(--muted); font-size: 12px; }
+
+/* keyword positions */
+.cb-ladder { display: flex; flex-direction: column; gap: 12px; }
+.cb-rung { display: grid; grid-template-columns: 64px minmax(0, 1fr) 58px; gap: 10px; align-items: center; }
+.cb-rung > span:first-child { color: var(--text-2); font-size: 12.5px; }
+.cb-pair { display: flex; flex-direction: column; gap: 3px; }
+.cb-pair i { display: block; height: 9px; border-radius: 3px; min-width: 3px; }
+.cb-pair i.now { background: var(--cb-blue); }
+.cb-pair i.was { background: var(--cb-hatch), var(--cb-sunk); box-shadow: inset 0 0 0 1px var(--line); }
+.cb-rung b { text-align: right; font-weight: 650; font-size: 14px; color: var(--text); }
+.cb-rung b small { display: block; font-size: 11px; font-weight: 500; color: var(--muted); }
+
+/* pages going up */
+.cb-pages { list-style: none; margin: 0; padding: 0; }
+.cb-pages li { display: grid; grid-template-columns: minmax(0, 1fr) auto 64px; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+.cb-pages li:first-child { border-top: 0; padding-top: 2px; }
+.cb-pages li > .cb-d { justify-self: end; }
+.cb-pg { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
+.cb-pp { color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.cb-pp b { color: var(--text); font-weight: 620; }
+.cb-sub { font-size: 12px; font-weight: 620; margin: 12px 0 4px; color: var(--text-2); }
+
+/* competitors moved */
+.cb-feed { list-style: none; margin: 0; padding: 0; }
+.cb-feed li { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+.cb-feed li:first-child { border-top: 0; padding-top: 2px; }
+.cb-x { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-2); }
+.cb-x b { color: var(--text); font-weight: 600; }
+.cb-x em { font-style: normal; color: var(--muted); }
+.cb-row4 > .card:not(.cb-card) .card-head { padding: 14px 16px 0; border: 0; }
+
+@media (max-width: 1280px) {
+  .cb-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .cb-row2, .cb-row4 { grid-template-columns: minmax(0, 1fr); }
+  .cb-row3 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 860px) {
+  html[data-brand="ocean"] .content { padding: 14px 12px 96px; }
+  html[data-brand="ocean"] .topbar { padding: 10px 12px; }
+  .cb-kpis, .cb-row3 { grid-template-columns: minmax(0, 1fr); }
+  .cb-hero { grid-template-columns: minmax(0, 1fr); }
+  .cb-hero-r { border-left: 0; border-top: 1px solid var(--line); }
+  .cb-plot { height: 200px; }
+  .cb-legend { margin-left: 0; }
+}
+
+/* ================= Every screen: the parts Today set the tone for ================= */
+/* The tab you're on: near-black words on a near-black line (blue stays for data). */
+html[data-brand="ocean"][data-look][data-theme] :is(.page-tab, .cp-tab, .tab):is([aria-selected="true"], [aria-current="page"]) { color: var(--cb-ink); border-bottom-color: var(--cb-ink); }
+html[data-brand="ocean"][data-look][data-theme] .tabs .tab[aria-selected="true"] svg.i { color: inherit; }
+html[data-brand="ocean"][data-look][data-theme] :is(.page-tab, .tab)::after { background: var(--cb-ink); }
+/* Tabs drawn as pills (Competitors' Changes / They beat you on / Shared links): a near-black pill. */
+html[data-brand="ocean"][data-simple="1"] #cs-lower .cs-low-tabs .page-tab[aria-selected="true"] { background: var(--cb-ink); color: #fff; }
+/* Counts beside a tab or filter: quiet grey, never blue. */
+html[data-brand="ocean"] :is(.n-badge, .cs-seg-n) { color: var(--muted); }
+/* Small charts on number cards: this period cobalt, the period before a soft dashed grey (lines drawn by LV). */
+html[data-brand="ocean"] :is(.ncard, .tile) .spark-area { fill: color-mix(in srgb, var(--cb-blue) 10%, transparent); }
+html[data-brand="ocean"] :is(.ncard, .tile) { --c: var(--cb-blue); --c-pale: var(--c-blue-pale); }
+/* The account menu's way back to the old design. */
+.acct-menu [data-design] svg.i { color: var(--muted); }
+/* The number card's bars (shared-ui.js cardGraph, .as-bars): the point markers of the line version are hidden. */
+.ncard-graph.as-bars .was-bar { fill: #E9ECE7; }
+.ncard-graph.as-bars .now-bar { fill: color-mix(in srgb, var(--cb-blue) 45%, #fff); }
+.ncard-graph.as-bars .now-bar.hot { fill: var(--cb-blue); }
+.ncard-graph.as-bars :is(.ncard-pt, .ncard-mark) { display: none; }
+
+/* Progress and comparison bars (owner 2026-11-26, "this look bad" on the striped bars): plain soft track, fully rounded
+   ends, and the period before as a slimmer grey bar so the blue one leads. */
+html[data-brand="ocean"] :is(.cb-bar, .cb-share, .cbm-split, .cs-vs-bar) { border-radius: 999px; }
+html[data-brand="ocean"] :is(.cb-bar, .cb-share, .cbm-split) > i, html[data-brand="ocean"] .cb-pair i { border-radius: 999px; }
+html[data-brand="ocean"] .cb-pair { gap: 4px; }
+html[data-brand="ocean"] .cb-pair i.now { height: 8px; }
+html[data-brand="ocean"] .cb-pair i.was { height: 4px; background: #C9CFD8; box-shadow: none; }
+html[data-brand="ocean"] .cb-legend i.was { background: #C9CFD8; box-shadow: none; }
+
+/* ================= Charts: one look everywhere (owner 2026-11-26: "1 · Soft area", cb-chart.js) ================= */
+.cbc .cbc-now { fill: none; stroke: var(--cb-blue); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+.cbc .cbc-was { fill: none; stroke: #AEB6AF; stroke-width: 1.4; stroke-dasharray: 4 4; vector-effect: non-scaling-stroke; }
+.cbc .cbc-grid { stroke: #EEF0EC; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.cbc .cbc-base { stroke: var(--line-2); vector-effect: non-scaling-stroke; }
+.cbc .cbc-hit { fill: transparent; }
+.cbc .cbc-cross { stroke: transparent; vector-effect: non-scaling-stroke; }
+.cbc .cbc-day:hover .cbc-cross { stroke: rgba(25, 29, 26, .25); stroke-dasharray: 2 3; }
+.cbc-dot { position: absolute; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px; border-radius: 50%; background: #fff; box-shadow: inset 0 0 0 2.2px var(--cb-blue); pointer-events: none; }
+.cbc .cb-callout { transform: translate(-50%, calc(-100% - 10px)); }
+.cb-mini-area { display: block; margin-top: auto; padding-top: 10px; }
+.cbc-mini { display: block; width: 100%; height: 36px; overflow: visible; }
+.cbc-mini .cbc-now { fill: none; stroke: var(--cb-blue); stroke-width: 1.8; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.cbc-mini .cbc-was { fill: none; stroke: #B9C0B9; stroke-width: 1.2; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+/* The legend's "before" key is a dashed line, like the chart. */
+html[data-brand="ocean"] .cb-hero-l .cb-legend i, html[data-brand="ocean"] .cbc-legend i { width: 14px; height: 0; border-radius: 0; background: none; border-top: 2.2px solid var(--cb-blue); }
+html[data-brand="ocean"] :is(.cb-hero-l .cb-legend, .cbc-legend) i.was { background: none; box-shadow: none; border-top: 1.6px dashed #AEB6AF; }
+/* On bar cards the keys stay small blocks, matching their bars: blue now, slim grey before. */
+html[data-brand="ocean"] .cb-legend i { border-radius: 3px; }
+/* The shared number card's graph (shared-ui.js) in the same look: cobalt line, soft fade, dashed before. */
+html[data-brand="ocean"] .ncard-spark .now { stroke: var(--cb-blue); stroke-width: 1.8; }
+html[data-brand="ocean"] .ncard-spark .area { fill: rgba(47, 91, 234, .12); }
+html[data-brand="ocean"] .ncard-spark .was { stroke: #B9C0B9; stroke-dasharray: 3 3; }
+/* Every number card's graph in cobalt (Clear's rotation of teal / slate / grey colours per card is off in the new design). */
+html[data-brand="ocean"][data-look="clear"][data-simple="1"] .ncard:nth-child(n of .ncard), html[data-brand="ocean"][data-look="clear"] .tile:nth-child(n) { --c: var(--cb-blue); --c-pale: var(--c-blue-pale); }

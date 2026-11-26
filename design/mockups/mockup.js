@@ -326,6 +326,7 @@
     const who = user ? `<div class="acct-who"><div class="t" dir="auto">${esc(user.name)}</div><div class="s muted" dir="auto">${esc(user.email || "")}</div></div><hr>` : "";
     return `${who}<button data-go="settings">${icon("settings")}${t("Settings")}</button>
       <button data-mock="theme" data-v="${dark ? "light" : "dark"}">${icon(dark ? "sun" : "moon")}${t(dark ? "Light mode" : "Dark mode")}</button>
+      ${window.NEWMENU ? `<button data-design="${window.NEWMENU.designOn() ? "old" : "new"}">${icon("layout-dashboard")}${t(window.NEWMENU.designOn() ? "Use the old design" : "Use the new design")}</button>` : ""}
       <button data-mock="lang" data-v="${fr ? "en" : "fr"}" lang="${fr ? "en" : "fr"}">${icon("languages")}${fr ? "English" : "Français"}</button>
       ${user ? `<hr><button data-lv-signout>${icon("log-out")}${t("Sign out")}</button>` : ""}`;
   };
@@ -341,7 +342,19 @@
       if (!window.ACCESS || ACCESS.can(n.id)) mine.push(n);
     });
     for (let i = mine.length - 1; i >= 0; i -= 1) if (mine[i].group && (!mine[i + 1] || mine[i + 1].group)) mine.splice(i, 1);
-    const items = mine.map((n) => {
+    // The new menu (new-menu.js, ?new=1): nine areas, each opening its first tab. Off, the list above is drawn as before.
+    const newMenu = window.NEWMENU?.on?.();
+    const nowArea = newMenu ? window.NEWMENU.areaOf(state.route)?.id : null;
+    const areaItem = (n) => {
+      const current = nowArea === n.id ? 'aria-current="page"' : "";
+      const healthAlerts = n.id === "pages" ? (window.HealthTest?.openAlerts?.() || 0) : 0;
+      const countN = n.id === "today" && urgent ? urgent : healthAlerts;
+      const countWords = !countN ? "" : t(n.id === "today" ? "{n} to do" : "{n} to fix").replace("{n}", num(countN));
+      const badge = countN ? `<span class="count" aria-hidden="true">${num(countN)}</span>` : "";
+      const tip = state.rail ? `data-tip="${esc(t(n.label))}"` : "";
+      return `<button class="nav-item" data-nm-route="${n.route}" ${n.comp ? `data-nm-comp="${n.comp}"` : ""} data-area="${n.id}" ${current} ${tip} aria-label="${esc(t(n.label))}${countWords ? `, ${esc(countWords)}` : ""}">${icon(n.icon)}<span class="label">${t(n.label)}</span>${badge}</button>`;
+    };
+    const items = newMenu ? window.NEWMENU.sideItems(BUILT).map((n) => (n.group ? `<div class="nav-group">${t(n.group)}</div>` : areaItem(n))).join("") : mine.map((n) => {
       if (n.group) return `<div class="nav-group">${t(n.group)}</div>`;
       const current = state.route === n.id ? 'aria-current="page"' : "";
       const healthAlerts = n.id === "health" ? (window.HealthTest?.openAlerts?.() || 0) : 0;
@@ -1941,6 +1954,7 @@
     // The simpler head is drawn again with the page: a period button or the comparison keeps the keyboard's place.
     const headFocus = state.simple ? headFocusKey() : null;
     setHTML($("#page"), html);
+    if (mayOpen(state.route)) window.NEWMENU?.decorate?.($("#page"), state.route, BUILT); // the area's tabs, with the new menu on
     if (headFocus) $(headFocus)?.focus({ preventScroll: true });
     nameTables($("#page"));
     defineHeaders($("#page"));

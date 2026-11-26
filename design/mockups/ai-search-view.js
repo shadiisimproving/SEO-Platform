@@ -733,6 +733,10 @@
         const want = A.refocus.tab;
         setTimeout(() => { const a = document.activeElement; if (!a || a === document.body) UI.$(`[data-ai-tab="${want}"]`)?.focus({ preventScroll: true }); }, 0);
       }
+      // The new design (Cobalt, ocean-ai-work.js) lays the same parts out its own way: number cards, bars, you vs them.
+      if (document.documentElement.dataset.brand === "ocean" && window.OceanAIWork?.ai) {
+        return wrap(refreshOne(), window.OceanAIWork.ai(d, { answer, actionsCard, tabsCard, aioCard, ga4Half, clarityHalf, chartCard, stateOf, notReady, mark, pct, share, copilotSpan, NOT_ON }), d);
+      }
       return wrap(refreshOne(), `${answer(d)}${tiles(d)}
       <div class="ai-mid">${chartCard(d)}${actionsCard(d)}</div>
       ${tabsCard(d)}${aioCard(d)}`, d);

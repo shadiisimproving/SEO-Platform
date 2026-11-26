@@ -126,7 +126,9 @@
     const order = { down: 0, unknown: 1, up: 2 };
     const sorted = [...shown].sort((a, b) => order[a.state] - order[b.state] || a.host.localeCompare(b.host));
     const banners = sorted.map((s) => window.HealthTest?.bannersFor?.(s.id, ["uptime_down", "ssl_expiry", "domain_expiry"]) || "").join("");
-    return rule + banners + (shown.length ? sorted.map(card).join("") : `<div class="table-wrap"><div class="empty"><h3>${t("Not one of your own sites")}</h3><p>${t("Uptime watches your own sites only.")}</p><button type="button" class="btn btn-small" data-up-all>${t("Show all your sites")}</button></div></div>`);
+    // The new design (Cobalt): the answer as four number cards above the cards (ocean-keywords-pages.js).
+    const top = document.documentElement.dataset.brand === "ocean" && window.OceanKP ? window.OceanKP.uptimeTop(shown) : "";
+    return top + rule + banners + (shown.length ? sorted.map(card).join("") : `<div class="table-wrap"><div class="empty"><h3>${t("Not one of your own sites")}</h3><p>${t("Uptime watches your own sites only.")}</p><button type="button" class="btn btn-small" data-up-all>${t("Show all your sites")}</button></div></div>`);
   }
 
   /* A check finishing or an alert arriving redraws this tab, and that must never wipe a date being typed or lose someone's place. */

@@ -133,6 +133,7 @@
         <p>${esc(t("See where your competitors rank for these. Nothing is searched until you confirm."))}</p>
         <button type="button" class="btn btn-main" data-kc-all ${running ? "disabled" : ""}>${UI.icon("search")}${esc(many(n, "Check {n} keyword", "Check all {n} keywords"))}</button>
       </section>` : ""}
+      ${window.OceanMarket?.on?.() ? window.OceanMarket.probeTop(d) : ""}
       ${confirmBox()}
       ${runLine(d.run, n)}
       ${d.competitors_hidden ? `<p class="small sec kc-hidden">${esc(many(d.competitors_hidden, "{n} competitor hidden: Pages only or Off.", "{n} competitors hidden: Pages only or Off."))}</p>` : ""}

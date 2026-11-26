@@ -230,6 +230,8 @@
     if (box) UI.setHTML(box, indexingInner());
     const line = UI?.$("#ht-score-index");
     if (line) UI.setHTML(line, scoreIndexLine());
+    const top = UI?.$("#okp-ht-kpis"); // the new design's number cards say the same count
+    if (top) top.replaceWith(UI.fragment(oceanTop().kpis));
   }
 
   /* Follows the running test with the shared poll (F187): it backs off, pauses while the tab is hidden, and gives up after a
@@ -319,6 +321,26 @@
       <div class="ht-change">${change}</div>
       ${trend}
     </section>`;
+  }
+
+  /* The new design (Cobalt, ocean-keywords-pages.js): the score, pages read, problems and pages not on Google as four number
+     cards, then one bar per problem type beside the plan. The cards below (whole site, checks, sitemap…) stay as they are. */
+  const ocean = () => document.documentElement.dataset.brand === "ocean" && window.OceanKP;
+  function oceanTop() {
+    const { t, esc } = UI;
+    const d = ht.open, a = d?.audit;
+    const graded = ht.audits.filter((x) => x.status === "complete" && x.score !== null).map((x) => x.score).reverse();
+    let change = null, sub = "";
+    if (a && a.score !== null && a.score !== undefined) {
+      const cmp = comparison(d);
+      if (cmp.kind === "change") { change = cmp.change; sub = `${t("since last test")}${cmp.prev ? `, ${esc(UI.fmtDateOnly(cmp.prev.created_at))}` : ""}`; }
+      else if (cmp.kind === "first") sub = t("First test: nothing to compare yet.");
+      else if (cmp.kind === "different") sub = t(cmp.why);
+      else sub = t("Partial test");
+    } else sub = t(ht.activeId && !a ? "First test running." : a?.status === "failed" ? "No score: this test failed." : "No score yet. Press Refresh.");
+    const ix = ht.indexing;
+    const top = window.OceanKP.healthTop({ audit: a, score: a?.score ?? null, change, sub, graded, checks: d?.checks || [], siteProblems: (d?.site_problems || []).length, notOnGoogle: ix && !ix.failed ? ix.not_indexed_count || 0 : null });
+    return { kpis: top.kpis.replace('class="cb-grid cb-kpis okp-kpis"', 'class="cb-grid cb-kpis okp-kpis" id="okp-ht-kpis"'), problems: top.problems };
   }
 
   function planCard(s) {
@@ -686,7 +708,7 @@
     return `<div class="comp-bar ht-bar"><label class="field comp-site"><span>${t("Site")}</span><select class="select" id="ht-site">${ht.sites.map((x) => `<option value="${esc(x.id)}" ${sameId(x.id, ht.siteId) ? "selected" : ""}>${esc(x.host)}</option>`).join("")}</select></label>${UI.showingNote(hostShown())}</div>
       ${alerts.map(bannerHtml).join("")}
       ${past ? `<p class="note ht-past">${icon("info")}<span>${t("Viewing an older test.")} <button class="link-btn" data-ht-latest>${t("Latest test")}</button></span></p>` : ""}
-      <div class="ht-top">${scoreCard()}${planCard(s)}</div>
+      ${ocean() ? `${oceanTop().kpis}<div class="cb-grid okp-ht-row">${oceanTop().problems}${planCard(s)}</div>` : `<div class="ht-top">${scoreCard()}${planCard(s)}</div>`}
       ${progressHtml()}
       ${a ? notices(a).map(noticeHtml).join("") : ""}
       ${ht.open ? wholeSiteCard(ht.open) : ""}

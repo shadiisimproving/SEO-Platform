@@ -1,0 +1,132 @@
+/* The new design (Cobalt, html[data-brand="ocean"]) for the traffic-search screens: Channels, Leads, Overview, Insights
+   (ocean-traffic-search.js lays them out). Every rule starts with html[data-brand="ocean"] so the old design is untouched.
+   Tokens and the shared cb-* parts (cards, bar chart, split bar, progress rows): look-ocean.css. */
+
+/* ---- one rhythm: 12px between cards, as on Today ---- */
+html[data-brand="ocean"] .cbx > :is(.card, .cb-grid, .tiles, .note, .ga4w-notes) { margin: 0 0 12px; }
+html[data-brand="ocean"] .cbx > .tiles { gap: 12px; }
+html[data-brand="ocean"] .cbx .cb-grid > .card { margin: 0; }
+
+/* ---- the chart card: bars on the left, the breakdown on the right ---- */
+html[data-brand="ocean"] .cbx-hero { grid-template-columns: minmax(0, 1fr) 340px; }
+html[data-brand="ocean"] .cbx-hero .cb-ch { gap: 10px; }
+html[data-brand="ocean"] .cbx-hero .cb-ch .cb-meta { margin-right: auto; }
+
+html[data-brand="ocean"] .cbx-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 10px; }
+html[data-brand="ocean"] .cbx-foot .cb-legend { margin-left: 0; }
+html[data-brand="ocean"] .cbx-foot .link-btn { font-size: 12px; }
+html[data-brand="ocean"] .cbx-table { margin-top: 10px; max-height: 320px; overflow: auto; box-shadow: inset 0 0 0 1px var(--line); }
+html[data-brand="ocean"] .cbx-table[hidden] { display: none; }
+
+/* Channels: the split bar and one row per channel, each opens its side panel. */
+html[data-brand="ocean"] .cbx-rows li { grid-template-columns: 10px minmax(0, 1fr) 44px 36px 64px; border-radius: 6px; padding: 5px 4px; margin: 0 -4px; }
+html[data-brand="ocean"] .cbx-rows li[data-rp-open] { cursor: pointer; }
+html[data-brand="ocean"] .cbx-rows li[data-rp-open]:hover, html[data-brand="ocean"] .cbx-rows li[data-rp-open]:focus-visible { background: var(--hover); }
+html[data-brand="ocean"] .cbx-mini-d { justify-self: end; }
+html[data-brand="ocean"] .cbx-rows em { font-size: 11.5px; }
+
+/* Channel colours in Cobalt shades (no purple: purple means a competitor), here only. */
+html[data-brand="ocean"] .cbx-channels { --ch-1: #1D3AA6; --ch-2: #4F7BF0; --ch-3: #0E8C9E; --ch-4: #6FB8F5; --ch-5: #7D857E; --ch-other: #C9D1CA; }
+
+/* Leads: visits as a pale cobalt bar, the leads in full cobalt on top of it. */
+html[data-brand="ocean"] .cbx-funnel .cb-bar { position: relative; background: var(--cb-sunk); }
+html[data-brand="ocean"] .cbx-funnel .cb-bar i { position: absolute; left: 0; top: 0; bottom: 0; height: auto; background: var(--cb-soft); }
+html[data-brand="ocean"] .cbx-funnel .cb-bar i.cbx-lead { background: var(--cb-blue); }
+html[data-brand="ocean"] .cbx-funnel .cb-prog { margin-bottom: 11px; }
+html[data-brand="ocean"] .cbx-funnel .cb-prog b small { font-size: 11px; font-weight: 500; color: var(--muted); }
+html[data-brand="ocean"] .cbx-more summary { cursor: pointer; font-size: 12px; font-weight: 550; color: var(--text-2); margin: 0 0 10px; }
+html[data-brand="ocean"] .cbx-sub { grid-column: 1 / -1; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+html[data-brand="ocean"] .cbx-legend-under { margin: 4px 0 0; }
+html[data-brand="ocean"] .cbx-legend-under i { background: var(--cb-soft); }
+html[data-brand="ocean"] .cbx-legend-under i.cbx-lead-key { background: var(--cb-blue); }
+
+/* The cards below the chart: the multi-line chart beside the referring sites. */
+html[data-brand="ocean"] .cbx-pair { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+
+/* Every card head on these screens: the Today head (no rule under it, 13.5px title). */
+html[data-brand="ocean"] .cbx .card > .card-head { border-bottom: 0; padding-top: 14px; padding-bottom: 6px; }
+html[data-brand="ocean"] .cbx .card > .card-head h2 { font-size: 13.5px; font-weight: 620; }
+
+/* ---- Overview ---- */
+html[data-brand="ocean"] .cbx-ov-hero.cbx-has-side { display: grid; grid-template-columns: minmax(0, 1fr) 320px; }
+html[data-brand="ocean"] .cbx-ov-main { min-width: 0; }
+html[data-brand="ocean"] .cbx-side { border-left: 1px solid var(--line); padding: 14px 16px; min-width: 0; }
+html[data-brand="ocean"] .cbx-side h3 { font-size: 12.5px; font-weight: 620; margin: 0 0 10px; color: var(--text); }
+html[data-brand="ocean"] .cbx-side .ov-answer { margin: 0; padding: 0; background: none; border: 0; box-shadow: none; }
+html[data-brand="ocean"] .cbx-side .ov-ans-list { display: flex; flex-direction: column; gap: 10px; }
+html[data-brand="ocean"] .cbx-side .ov-ans-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 8px; align-items: center; }
+html[data-brand="ocean"] .cbx-side .ov-ans-list li .ov-ans-bar { grid-column: 1 / -1; grid-row: 2; display: block; width: auto; height: 8px; border-radius: 3px; background: var(--cb-hatch), var(--cb-sunk); }
+html[data-brand="ocean"] .cbx-side .ov-ans-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html[data-brand="ocean"] .cbx-side .ov-ans-label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+html[data-brand="ocean"] .cbx-side .ov-ans-tops li { grid-template-columns: minmax(0, 1fr); }
+html[data-brand="ocean"] .cbx-overview .ov-chart svg { overflow: visible; }
+html[data-brand="ocean"] .cbx-ov-pair { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); align-items: start; }
+html[data-brand="ocean"] .cbx-ov-pair > * { margin: 0 !important; min-width: 0; }
+
+/* ---- Insights ---- */
+html[data-brand="ocean"] .cbx-in-hero { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); margin-bottom: 12px; }
+html[data-brand="ocean"] .cbx-in-hero.cbx-solo { grid-template-columns: minmax(0, 1fr); }
+html[data-brand="ocean"] .cbx-in-lists { padding: 14px 16px; }
+html[data-brand="ocean"] .cbx-in-lists .in-lists { margin: 0; padding: 0; border: 0; gap: 20px; }
+html[data-brand="ocean"] .cbx-in-lists .ov-h3 { font-size: 12.5px; font-weight: 620; margin: 0 0 10px; color: var(--text); }
+html[data-brand="ocean"] .cbx-also { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12.5px; }
+html[data-brand="ocean"] .cbx-in-hero .in-weekly, html[data-brand="ocean"] .cbx-in-hero .in-weekly-btn { margin-top: 12px; }
+html[data-brand="ocean"] .in .in-cards { gap: 12px; margin-bottom: 12px; }
+
+@media (max-width: 1280px) {
+  html[data-brand="ocean"] :is(.cbx-hero, .cbx-in-hero, .cbx-ov-hero.cbx-has-side, .cbx-pair, .cbx-ov-pair) { grid-template-columns: minmax(0, 1fr); }
+  html[data-brand="ocean"] :is(.cbx-hero, .cbx-in-hero) .cb-hero-r { border-left: 0; border-top: 1px solid var(--line); height: auto; }
+  html[data-brand="ocean"] .cbx-side { border-left: 0; border-top: 1px solid var(--line); }
+}
+@media (max-width: 860px) {
+  html[data-brand="ocean"] .cbx-hero .cb-plot { height: 190px !important; }
+  html[data-brand="ocean"] .cbx-hero .cb-ch { flex-wrap: wrap; }
+  html[data-brand="ocean"] .cbx-hero .cb-seg { margin-left: 0; }
+  html[data-brand="ocean"] .cbx-in-lists .in-lists { grid-template-columns: minmax(0, 1fr); }
+}
+/* Insights: the three numbers first, as on Today, then the chart; the two lists one under the other beside it. */
+html[data-brand="ocean"] .content.in:has(> .cbx-in-hero) { display: flex; flex-direction: column; }
+html[data-brand="ocean"] .content.in:has(> .cbx-in-hero) > .in-cards { order: -1; }
+html[data-brand="ocean"] .cbx-in-hero { grid-template-columns: minmax(0, 1fr) 400px; }
+html[data-brand="ocean"] .cbx-in-lists .in-lists { grid-template-columns: minmax(0, 1fr); display: grid; }
+@media (max-width: 1280px) { html[data-brand="ocean"] .cbx-in-hero { grid-template-columns: minmax(0, 1fr); } }
+/* Insights on All sites: one row per site. */
+html[data-brand="ocean"] .cbx-in-sites { display: block; }
+html[data-brand="ocean"] .cbx-in-sites .cb-ch .cb-legend { margin-left: auto; }
+html[data-brand="ocean"] .cbx-sites { list-style: none; margin: 0; padding: 0; }
+html[data-brand="ocean"] .cbx-site { display: grid; grid-template-columns: minmax(180px, 1.2fr) minmax(120px, 2fr) 110px minmax(150px, auto); gap: 6px 16px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
+html[data-brand="ocean"] .cbx-site:first-child { border-top: 0; padding-top: 2px; }
+html[data-brand="ocean"] .cbx-host { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+html[data-brand="ocean"] .cbx-host b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html[data-brand="ocean"] .cbx-nums { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+html[data-brand="ocean"] .cbx-nums b { font-size: 15px; font-weight: 650; }
+html[data-brand="ocean"] .cbx-nums small { font-size: 11.5px; color: var(--muted); }
+html[data-brand="ocean"] .cbx-pills { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+html[data-brand="ocean"] .cbx-moved { grid-column: 1 / -1; list-style: none; margin: 0; padding: 0 0 0 24px; display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 12px; }
+html[data-brand="ocean"] .cbx-moved li { display: inline-flex; gap: 6px; align-items: baseline; min-width: 0; max-width: 100%; }
+html[data-brand="ocean"] .cbx-pg { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; color: var(--text-2); }
+html[data-brand="ocean"] .cbx-neg { color: var(--cb-down); font-weight: 650; }
+html[data-brand="ocean"] .cbx-pos { color: var(--cb-up); font-weight: 650; }
+@media (max-width: 860px) {
+  html[data-brand="ocean"] .cbx-site { grid-template-columns: minmax(0, 1fr) auto; }
+  html[data-brand="ocean"] .cbx-site .cb-pair { grid-column: 1 / -1; grid-row: 2; }
+  html[data-brand="ocean"] .cbx-pills { grid-column: 1 / -1; }
+  html[data-brand="ocean"] .cbx-moved { padding-left: 0; }
+  html[data-brand="ocean"] .cbx-in-sites .cb-ch { flex-wrap: wrap; }
+}
+
+/* Overview's chart strips in the soft-area look: a cobalt line with a soft fill, the period before thin, dashed, grey. */
+html[data-brand="ocean"] .cbx-overview .ov-strip .cbx-area { fill: rgba(47, 91, 234, .12); stroke: none; }
+html[data-brand="ocean"] .cbx-overview .ov-strip :is(.cbx-now, .cbx-was) { fill: none; vector-effect: non-scaling-stroke; stroke-linecap: round; stroke-linejoin: round; }
+html[data-brand="ocean"] .cbx-overview .ov-strip .cbx-now { stroke: var(--cb-blue); stroke-width: 2.2; }
+html[data-brand="ocean"] .cbx-overview .ov-strip .cbx-now.cbx-fresh { stroke-dasharray: 2 4; }
+html[data-brand="ocean"] .cbx-overview .ov-strip .cbx-was { stroke: #B9C0B9; stroke-width: 1.4; stroke-dasharray: 4 4; }
+/* Average position keeps the app's own line: cobalt, its period before dashed grey. */
+html[data-brand="ocean"] .cbx-overview .ov-strip path.lv-line { stroke: var(--cb-blue); }
+html[data-brand="ocean"] .cbx-overview .ov-strip path.lv-line.ov-was { stroke: #B9C0B9; }
+html[data-brand="ocean"] .cbx-overview .ov-key-dash { border-top-color: #AEB6AF; }
+/* Legends of bars (the funnel, the sites' two bars): small blocks, not the chart's line keys. */
+html[data-brand="ocean"] :is(.cbx-legend-under, .cbx-in-sites .cb-ch .cb-legend) i { width: 9px; height: 9px; border: 0; border-radius: 2px; background: var(--cb-soft); }
+html[data-brand="ocean"] .cbx-legend-under i.cbx-lead-key, html[data-brand="ocean"] .cbx-in-sites .cb-ch .cb-legend i:not(.was) { background: var(--cb-blue); }
+html[data-brand="ocean"] .cbx-in-sites .cb-ch .cb-legend i.was { background: #EEF1F5; box-shadow: inset 0 0 0 1px var(--line-2); }
+html[data-brand="ocean"] .cbx-overview .ov-strip .ov-ylab-key { background: var(--cb-blue) !important; }

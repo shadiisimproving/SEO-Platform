@@ -1,0 +1,82 @@
+/* Four looks to compare, taken from major brands' published colours (research 2026-11-24, see
+   design/redesign-2026-11-24/brand-colours-research.md). On top of the Clear look: only tokens change, plus a dark side menu.
+   Picked with ?brand=navy|midnight|graphite|ink (localStorage seocc-brand), ?brand=0 for Clear as before. new-menu.js sets
+   html[data-brand]. The rules stay: blue = you, purple = them, green/amber/red for status only. */
+
+/* ---------- Navy & Cloud, from Stripe ---------- */
+html[data-brand="navy"][data-look="clear"] {
+  --text: #0A2540; --text-2: #33475B; --muted: #4F6275;
+  --sky-base: #F6F9FC; --panel-solid: #fff; --glass: #fff; --glass-2: #fff; --chip: #fff; --track: #EDF2F7; --th-bg: #F6F9FC;
+  --line: #E3E8EE; --line-2: #CBD5E1; --hover: rgba(10, 37, 64, .045); --selected: rgba(31, 111, 235, .09);
+  --field-line: #D2DBE5;
+  --accent-1: #1F6FEB; --accent-2: #1F6FEB; --accent-text: #175CD3; --accent-glow: rgba(31, 111, 235, .3); --focus: #175CD3;
+  --series-1: #1F6FEB; --series-2: #0E8FA8; --series-3: #7A3FF2; --ours: #1F6FEB;
+  --chart-you: #1F6FEB; --chart-them: #7A3FF2; --you-text: #175CD3; --them-text: #6A34D9;
+  --c-blue: #175CD3; --c-blue-pale: #E8F0FE; --c-purple: #6A34D9; --c-purple-pale: #F1EAFE; --c-teal: #0B7A8F; --c-teal-pale: #E3F4F7;
+  --good-t: #13804A; --warn-t: #8F5508; --crit-t: #C11F33; --badge-bg: #D1293D;
+  --shadow: 0 1px 2px rgba(10, 37, 64, .06), 0 10px 28px -16px rgba(10, 37, 64, .18);
+  --side-bg: #0A2540; --side-text: #FFFFFF; --side-text-2: #C9D5E1; --side-muted: #9DB0C3; --side-hover: rgba(255, 255, 255, .07); --side-on: #1F6FEB; --side-on-text: #fff; --side-line: rgba(255, 255, 255, .1);
+}
+/* ---------- Midnight, from Linear and Vercel (always dark) ---------- */
+html[data-brand="midnight"][data-look="clear"] {
+  --text: #EDEDED; --text-2: #C9CACE; --muted: #9C9DA1;
+  --sky-base: #08090A; --panel-solid: #141518; --glass: #141518; --glass-2: #18191C; --chip: #1B1C20; --track: #0E0F11; --th-bg: #18191C;
+  --line: #2A2B30; --line-2: #3A3B42; --hover: rgba(255, 255, 255, .05); --selected: rgba(255, 255, 255, .09);
+  --field: #1B1C20; --field-line: #3A3B42; --ink-bg: #2A2B30;
+  --accent-1: #2F6FEB; --accent-2: #2F6FEB; --on-accent: #fff; --accent-text: #4C9DFF; --accent-glow: rgba(76, 157, 255, .35); --focus: #4C9DFF;
+  --series-1: #4C9DFF; --series-2: #2FC6DE; --series-3: #B08CFF; --ours: #4C9DFF;
+  --chart-you: #4C9DFF; --chart-them: #B08CFF; --you-text: #4C9DFF; --them-text: #B08CFF;
+  --c-blue: #4C9DFF; --c-blue-pale: rgba(76, 157, 255, .15); --c-purple: #B08CFF; --c-purple-pale: rgba(176, 140, 255, .16);
+  --c-teal: #2FC6DE; --c-teal-pale: rgba(47, 198, 222, .14); --c-indigo: #A3A8B3; --c-indigo-pale: rgba(163, 168, 179, .14); --c-grey: #A3A8B3; --c-grey-pale: rgba(163, 168, 179, .14);
+  --good-t: #3FBF6F; --warn-t: #F0A830; --serious-t: #F59E57; --crit-t: #F2555A; --badge-bg: #F2555A; --badge-fg: #1A0607;
+  --danger-bg: #F2555A; --danger-fg: #1A0607; --scrim: rgba(0, 0, 0, .6);
+  --shadow: 0 1px 0 rgba(255, 255, 255, .03) inset, 0 14px 32px -18px rgba(0, 0, 0, .7);
+  --side-bg: #0E0F11; --side-text: #EDEDED; --side-text-2: #A1A3A8; --side-muted: #7C7E84; --side-hover: rgba(255, 255, 255, .05); --side-on: #F2F2F3; --side-on-text: #0E0F11; --side-line: #2A2B30;
+  color-scheme: dark;
+}
+/* ---------- Graphite, from Shopify Polaris ---------- */
+html[data-brand="graphite"][data-look="clear"] {
+  --text: #303030; --text-2: #444; --muted: #616161;
+  --sky-base: #F1F1F1; --panel-solid: #fff; --glass: #fff; --glass-2: #fff; --chip: #fff; --track: #EBEBEB; --th-bg: #F7F7F7;
+  --line: #E3E3E3; --line-2: #CCCCCC; --hover: rgba(0, 0, 0, .04); --selected: rgba(0, 0, 0, .07); --field-line: #D4D4D4;
+  --accent-1: #303030; --accent-2: #303030; --accent-text: #2A4FCB; --accent-glow: rgba(48, 94, 232, .25); --focus: #2A4FCB;
+  --series-1: #305EE8; --series-2: #138E96; --series-3: #9B3CDD; --ours: #305EE8;
+  --chart-you: #305EE8; --chart-them: #9B3CDD; --you-text: #2A4FCB; --them-text: #8A2FC9;
+  --c-blue: #2A4FCB; --c-blue-pale: #EAF0FE; --c-purple: #8A2FC9; --c-purple-pale: #F3E8FB; --c-teal: #0F7B82; --c-teal-pale: #E3F4F5;
+  --good-t: #067A44; --warn-t: #8F5500; --crit-t: #C4280C; --badge-bg: #D72C0D;
+  --shadow: 0 1px 0 rgba(0, 0, 0, .05), 0 1px 3px rgba(0, 0, 0, .08);
+  --side-bg: #1A1A1A; --side-text: #FFFFFF; --side-text-2: #D0D0D0; --side-muted: #9A9A9A; --side-hover: rgba(255, 255, 255, .07); --side-on: #FFFFFF; --side-on-text: #1A1A1A; --side-line: rgba(255, 255, 255, .1);
+}
+/* ---------- Ink, from Semrush Intergalactic ---------- */
+html[data-brand="ink"][data-look="clear"] {
+  --text: #191B23; --text-2: #3A3C46; --muted: #5F6170;
+  --sky-base: #F4F5F9; --panel-solid: #fff; --glass: #fff; --glass-2: #fff; --chip: #fff; --track: #ECEDF2; --th-bg: #F4F5F9;
+  --line: #E0E1E9; --line-2: #C4C7CF; --hover: rgba(25, 27, 35, .045); --selected: rgba(0, 109, 202, .09); --field-line: #C4C7CF;
+  --accent-1: #006DCA; --accent-2: #006DCA; --accent-text: #0062B8; --accent-glow: rgba(0, 143, 248, .3); --focus: #0062B8;
+  --series-1: #008FF8; --series-2: #0E8FA8; --series-3: #8649E1; --ours: #008FF8;
+  --chart-you: #008FF8; --chart-them: #8649E1; --you-text: #0062B8; --them-text: #7440CC;
+  --c-blue: #0062B8; --c-blue-pale: #E5F2FD; --c-purple: #7440CC; --c-purple-pale: #F1EAFC; --c-teal: #0B7A8F; --c-teal-pale: #E3F4F7;
+  --good-t: #1E8540; --warn-t: #8A5300; --crit-t: #C2002B; --badge-bg: #D1002F;
+  --shadow: 0 1px 2px rgba(25, 27, 35, .06), 0 8px 22px -14px rgba(25, 27, 35, .16);
+  --side-bg: #191B23; --side-text: #FFFFFF; --side-text-2: #D2D4DB; --side-muted: #9EA1AE; --side-hover: rgba(255, 255, 255, .07); --side-on: #006DCA; --side-on-text: #fff; --side-line: rgba(255, 255, 255, .1);
+}
+
+/* ---------- the dark side menu, all four ---------- */
+html[data-brand]:not([data-brand="ocean"]) .sidebar {
+  background: var(--side-bg); box-shadow: none;
+  --text: var(--side-text); --text-2: var(--side-text-2); --muted: var(--side-muted); --hover: var(--side-hover); --line: var(--side-line); --line-2: var(--side-line);
+  --field: rgba(255, 255, 255, .06); --field-line: var(--side-line); --chip: rgba(255, 255, 255, .06); --glass: var(--side-bg); --glass-2: var(--side-bg);
+}
+html[data-brand]:not([data-brand="ocean"]) .sidebar .nav-item { color: var(--side-text-2); }
+html[data-brand]:not([data-brand="ocean"]) .sidebar .nav-item:hover { background: var(--side-hover); color: var(--side-text); }
+html[data-brand]:not([data-brand="ocean"]) .sidebar .nav-item[aria-current="page"], html[data-brand]:not([data-brand="ocean"]) .sidebar .nav-item[aria-current="page"]:hover { background: var(--side-on); color: var(--side-on-text); font-weight: 650; }
+html[data-brand]:not([data-brand="ocean"]) .sidebar .nav-item[aria-current="page"] svg.i { color: var(--side-on-text); }
+html[data-brand]:not([data-brand="ocean"]) .sidebar .nav-group { color: var(--side-muted); }
+html[data-brand]:not([data-brand="ocean"]) .sidebar :is(.switcher, .side-search, .side-search input) { background: rgba(255, 255, 255, .06); color: var(--side-text); border-color: var(--side-line); box-shadow: none; }
+html[data-brand]:not([data-brand="ocean"]) .sidebar .brand-mark { background: #fff; color: var(--side-bg); }
+html[data-brand="midnight"] .sidebar .brand-mark { background: #2F6FEB; color: #fff; }
+html[data-brand]:not([data-brand="ocean"]) .sidebar .count { box-shadow: none; }
+html[data-brand]:not([data-brand="ocean"]) :is(.btn-main, .chip[aria-pressed="true"]) { background: var(--accent-2); color: var(--on-accent, #fff); }
+html[data-brand]:not([data-brand="ocean"]) .sidebar .brand-name { color: var(--side-text); }
+/* Midnight: the head bar is a solid dark panel (Clear's frosted white bar would hide the white title). */
+html[data-brand="midnight"] :is(.topbar, .topbar.head) { background: var(--panel-solid); box-shadow: inset 0 0 0 1px var(--line); }

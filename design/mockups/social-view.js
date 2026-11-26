@@ -222,7 +222,10 @@
       [d.set_up.sources > 0, "Add websites and newsletters", "Their new articles become post ideas each morning."],
       [d.set_up.token, "Connect the writing helper", "Claude writes in Anthropic's cloud on your Claude Pro plan and sends the drafts here."],
     ];
-    return `<section class="card so-setup"><h2>${esc(t("Set up Social"))}</h2><ol class="so-steps">
+    // The new design (Cobalt): how many steps are done, as a word and a bar.
+    const doneN = steps.filter(([done]) => done).length;
+    const progress = document.documentElement.dataset.brand === "ocean" ? `<span class="so-setup-prog"><span class="cb-s">${esc(fill("{n} of {m} done", { n: UI.num(doneN), m: UI.num(steps.length) }))}</span><span class="cb-bar" aria-hidden="true"><i style="width:${Math.round((doneN / steps.length) * 100)}%"></i></span></span>` : "";
+    return `<section class="card so-setup"><h2>${esc(t("Set up Social"))}${progress}</h2><ol class="so-steps">
       ${steps.map(([done, title, why]) => `<li class="${done ? "done" : ""}"><span class="so-step-mark">${UI.icon(done ? "circle-check" : "circle")}</span><div><p><b>${esc(t(title))}</b></p><p class="small muted">${esc(t(why))}</p></div></li>`).join("")}
     </ol><button type="button" class="btn btn-main" data-so-tab="guide">${esc(t("Open the Writing guide"))}</button></section>`;
   }

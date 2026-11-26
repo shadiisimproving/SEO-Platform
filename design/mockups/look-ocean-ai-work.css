@@ -1,0 +1,231 @@
+/* The new design (Cobalt, html[data-brand="ocean"]) for the ai-work screens: AI search, Tasks, Notes, Resources, Social,
+   Settings. Every rule starts with html[data-brand="ocean"] so the old design is untouched. Tokens and the shared cb-* parts
+   (number cards, bars, legends) come from look-ocean.css; the layouts from ocean-ai-work.js. */
+
+/* ================= Shared on these screens ================= */
+html[data-brand="ocean"] .ow-kpi { min-width: 0; }
+html[data-brand="ocean"] .ow-kpi .cb-l { display: flex; align-items: center; gap: 4px; }
+html[data-brand="ocean"] .ow-kpi .cb-s { overflow-wrap: anywhere; }
+html[data-brand="ocean"] .ow-kpi .cb-share, html[data-brand="ocean"] .ow-kpi .ow-pair { margin-top: auto; }
+html[data-brand="ocean"] .ow-kpi .cb-s + :is(.cb-share, .ow-pair, .cb-mini) { margin-top: 10px; }
+html[data-brand="ocean"] .ow-next-wrap { margin-top: 12px; display: flex; justify-content: center; }
+/* Calm empty states: a soft line, a short sentence, one next step. */
+html[data-brand="ocean"] #page[data-ow] .content .empty h3 { font-size: 14px; font-weight: 620; }
+html[data-brand="ocean"] #page[data-ow] .content .empty p { color: var(--muted); }
+/* Status pills: a dot-free word with its icon, green/amber/red only for state. */
+html[data-brand="ocean"] .ow-pill { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 9px 0 7px; border-radius: 999px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+html[data-brand="ocean"] .ow-pill svg.i { width: 13px; height: 13px; }
+html[data-brand="ocean"] .ow-ok { background: var(--cb-up-pale); color: var(--cb-up); }
+html[data-brand="ocean"] .ow-bad { background: var(--cb-down-pale); color: var(--cb-down); }
+html[data-brand="ocean"] .ow-warn { background: var(--cb-warn-pale); color: var(--cb-warn); }
+html[data-brand="ocean"] .ow-off { background: var(--track); color: var(--text-2); font-weight: 550; }
+
+/* ================= AI search ================= */
+html[data-brand="ocean"] .ow-ai .ai-answer { margin: 0 0 14px; }
+html[data-brand="ocean"] .ow-ai .ai-answer .today-lead { font-size: 18px; font-weight: 620; letter-spacing: -.015em; }
+html[data-brand="ocean"] .ow-ai .ai-answer .today-second { color: var(--text-2); }
+html[data-brand="ocean"] .ow-ai .ai-brand-jump { text-decoration: none; font-weight: 550; color: var(--text-2); }
+html[data-brand="ocean"] .ow-ai .ai-brand-jump:hover { color: var(--text); }
+html[data-brand="ocean"] .ow-row2 { grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr); }
+html[data-brand="ocean"] .ow-ai-hero { grid-template-columns: minmax(0, 1fr) 220px; }
+html[data-brand="ocean"] .ow-ai-hero .cb-ch .def-i, html[data-brand="ocean"] .ow-ai-hero .cb-ch .info-btn { margin-left: 2px; }
+html[data-brand="ocean"] .ow-ai-hero .cb-plot { height: 230px; }
+html[data-brand="ocean"] .ow-ai-hero .ow-half-state .ai-half-head { display: none; }
+html[data-brand="ocean"] .ow-ai-hero .ow-half-state .empty { padding: 36px 12px; }
+html[data-brand="ocean"] .ow-ai-hero .ai-clarity-line { margin: 12px 0 0; }
+html[data-brand="ocean"] .ow-dot { position: absolute; width: 7px; height: 7px; border-radius: 50%; background: var(--cb-ink); box-shadow: 0 0 0 2px #fff; transform: translate(-50%, -50%); }
+html[data-brand="ocean"] .cb-legend i.ow-dot-key { border: 0; border-radius: 50%; width: 7px; height: 7px; background: var(--cb-ink); }
+html[data-brand="ocean"] .ow-who { display: inline-flex; min-width: 0; }
+html[data-brand="ocean"] .ow-who .ai-who { display: inline-flex; align-items: center; gap: 6px; min-width: 0; overflow: hidden; }
+html[data-brand="ocean"] .ow-who .ai-who > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html[data-brand="ocean"] .ow-pair { display: grid; gap: 2px; }
+html[data-brand="ocean"] .ow-pair .cb-prog { margin: 0; font-size: 12px; }
+html[data-brand="ocean"] .ow-pair .cb-bar { height: 6px; }
+html[data-brand="ocean"] .ow-grey .cb-bar { height: 4px; }
+html[data-brand="ocean"] .ow-grey .cb-bar i { background: #C9CFD8; }
+html[data-brand="ocean"] .ow-side { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+html[data-brand="ocean"] .ow-side > .card { margin: 0; }
+/* Next actions as Today's "Do these first": compact rows, a square mark, the action on the right. */
+html[data-brand="ocean"] .ow-ai .ai-actions .card-head { padding: 14px 16px 4px; border: 0; }
+html[data-brand="ocean"] .ow-ai .ai-actions .card-head h2 { font-size: 13.5px; font-weight: 620; }
+html[data-brand="ocean"] .ow-ai .ai-actions .rows { padding: 0 8px 6px; }
+html[data-brand="ocean"] .ow-ai .ai-actions .rows > li { padding: 10px 8px; min-height: 0; border-bottom: 0; border-radius: 0; gap: 10px; }
+html[data-brand="ocean"] .ow-ai .ai-actions .rows > li + li { border-top: 1px solid var(--line); }
+html[data-brand="ocean"] .ow-ai .ai-actions .rows > li > span:first-child { flex: none; width: 28px; height: 28px; border-radius: 7px; display: grid; place-items: center; background: var(--c-blue-pale); color: var(--c-blue); }
+html[data-brand="ocean"] .ow-ai .ai-actions .rows > li > span:first-child svg.i { width: 15px; height: 15px; color: inherit; }
+html[data-brand="ocean"] .ow-ai .ai-actions .what .t { font-size: 13px; line-height: 18px; }
+/* You vs them: blue you, purple them. */
+html[data-brand="ocean"] .ow-vs-body { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 28px; }
+html[data-brand="ocean"] .ow-row2 > .ai-actions { margin: 0; }
+html[data-brand="ocean"] .ow-ai-hero .cb-hero-l { display: flex; flex-direction: column; }
+html[data-brand="ocean"] .ow-ai-hero .cb-hero-l .cb-plot { flex: 1 1 auto; }
+html[data-brand="ocean"] .ow-vs-part h3 { margin: 0; font-size: 12.5px; font-weight: 620; color: var(--text); }
+html[data-brand="ocean"] .ow-vs-part .cb-s { margin: 2px 0 8px; }
+html[data-brand="ocean"] .ow-vs-part + .ow-vs-part { padding-left: 28px; border-left: 1px solid var(--line); }
+html[data-brand="ocean"] .ow-split { display: flex; gap: 3px; height: 10px; }
+html[data-brand="ocean"] .ow-split i { display: block; min-width: 6px; border-radius: 999px; }
+html[data-brand="ocean"] .ow-split i.you, html[data-brand="ocean"] .ow-keys i.you { background: var(--chart-you); }
+html[data-brand="ocean"] .ow-split i.them, html[data-brand="ocean"] .ow-keys i.them { background: var(--chart-them); }
+html[data-brand="ocean"] .ow-keys { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 4px; }
+html[data-brand="ocean"] .ow-keys li { display: grid; grid-template-columns: 10px minmax(0, 1fr) auto; gap: 8px; align-items: center; font-size: 12.5px; }
+html[data-brand="ocean"] .ow-keys li > i { width: 10px; height: 10px; border-radius: 3px; }
+html[data-brand="ocean"] .ow-keys li span { color: var(--text-2); }
+html[data-brand="ocean"] .ow-keys li:first-child b { color: var(--you-text); }
+html[data-brand="ocean"] .ow-keys li:last-child b { color: var(--them-text); }
+/* The tabs card and the AI Overviews line under it. */
+html[data-brand="ocean"] .ow-ai .ai-tabs-card { margin: 0 0 12px; }
+html[data-brand="ocean"] .ow-ai .ai-aio-line { margin: 0; }
+html[data-brand="ocean"] .ow-ai .ai-aio-line .link-btn { text-decoration: none; font-weight: 550; }
+html[data-brand="ocean"] .ow-ai .ai-tiles { margin-bottom: 12px; }
+
+/* ================= Tasks ================= */
+html[data-brand="ocean"] .ow-tk-sum { margin-bottom: 12px; }
+html[data-brand="ocean"] .ow-tk-sum .cb-kpi { padding: 12px 14px; }
+html[data-brand="ocean"] .ow-tk-sum .cb-v b { font-size: 22px; }
+/* One tidy bar: period, filters, view, on a white strip. */
+html[data-brand="ocean"] .tk-bar { padding: 8px; gap: 8px; border-radius: 12px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); align-items: center; }
+html[data-brand="ocean"] .tk-bar .seg { box-shadow: none; background: var(--cb-sunk); }
+html[data-brand="ocean"] .tk-bar .tk-filters .input, html[data-brand="ocean"] .tk-bar .tk-filters .select { min-height: 32px; height: 32px; font-size: 13px; }
+html[data-brand="ocean"] .tk-filters { flex: 1 1 420px; }
+html[data-brand="ocean"] .tk-filters .field { flex: 1 1 110px; max-width: 150px; }
+html[data-brand="ocean"] .tk-filters .tk-search { flex: 1.4 1 150px !important; max-width: 240px; }
+@media (min-width: 1281px) { html[data-brand="ocean"] .tk-filters { flex-wrap: nowrap; } }
+/* Board: white lanes with a thin border, a count chip, compact cards. */
+html[data-brand="ocean"] .tk-board { gap: 12px; }
+html[data-brand="ocean"] .tk-board .tk-col.card { background: var(--cb-sunk); box-shadow: inset 0 0 0 1px var(--line); border-radius: 12px; padding: 8px; }
+html[data-brand="ocean"] .tk-col-head { padding: 4px 6px 8px; }
+html[data-brand="ocean"] .tk-col-head h2 { font-size: 12.5px; font-weight: 620; display: inline-flex; align-items: center; gap: 7px; }
+html[data-brand="ocean"][data-look] .tk-col-head h2::before { content: ""; width: 8px; height: 8px; margin: 0; border-radius: 50%; background: #9AA19B; }
+html[data-brand="ocean"][data-look] .tk-col[data-task-col="doing"] .tk-col-head h2::before { background: var(--cb-blue); }
+html[data-brand="ocean"][data-look] .tk-col[data-task-col="blocked"] .tk-col-head h2::before { background: var(--cb-warn); }
+html[data-brand="ocean"][data-look] .tk-col[data-task-col="done"] .tk-col-head h2::before { background: var(--cb-up); }
+html[data-brand="ocean"] .tk-col-head .lc-count { background: #fff; color: var(--text-2); font-weight: 650; font-size: 11.5px; line-height: 20px; }
+html[data-brand="ocean"] .tk-col-body { gap: 6px; }
+html[data-brand="ocean"] .tk-card { padding: 10px 12px; gap: 6px; border-radius: 9px; box-shadow: inset 0 0 0 1px var(--line); }
+html[data-brand="ocean"] .tk-card:hover { box-shadow: var(--shadow-hover), inset 0 0 0 1px var(--line-2); }
+html[data-brand="ocean"] .tk-card .tk-title { font-size: 13.5px; font-weight: 600; }
+html[data-brand="ocean"] .tk-card:hover:not(:has(.tk-move:hover)) .tk-title { color: var(--text); text-decoration: none; }
+html[data-brand="ocean"] .tk-card .tk-tags .tag { font-size: 11.5px; line-height: 20px; border-radius: 999px; }
+html[data-brand="ocean"] .tk-card .tk-foot { min-height: 22px; }
+html[data-brand="ocean"] .tk-card .tk-avatar { width: 20px; height: 20px; font-size: 11px; background: var(--cb-ink); color: #fff; }
+html[data-brand="ocean"] .tk-card .tk-move { min-height: 26px; font-size: 12px; border-radius: 7px; }
+html[data-brand="ocean"] .tk-none { box-shadow: none; border: 1px dashed var(--line-2); border-radius: 9px; padding: 16px 4px; background: transparent; }
+/* By month and Table: compact one-line rows. */
+html[data-brand="ocean"] .tk-table td { padding-top: 8px; padding-bottom: 8px; }
+
+/* ================= Notes ================= */
+html[data-brand="ocean"] .nv-card .card-head { padding: 12px 16px; }
+html[data-brand="ocean"] .nv-card .card-head h2 { font-size: 13.5px; font-weight: 620; }
+html[data-brand="ocean"] .nv-card .nb-ways { padding: 10px 16px; }
+html[data-brand="ocean"] .nv-card .nb-way b { font-weight: 650; margin-left: 4px; }
+/* Each note: where it's about on top, the words under it, its time and tools on the right of the same row. */
+html[data-brand="ocean"] .nv-card .nb-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; align-items: center; padding: 10px 16px; }
+html[data-brand="ocean"] .nv-card .nb-row > .nb-where { grid-column: 1; }
+html[data-brand="ocean"] .nv-card .nb-row > .nb-text { grid-column: 1; min-height: 30px; }
+html[data-brand="ocean"] .nv-card .nb-row > .nb-files { grid-column: 1 / -1; }
+html[data-brand="ocean"] .nv-card .nb-row > .nb-foot { grid-column: 2; grid-row: 1 / span 2; align-self: center; gap: 4px; }
+html[data-brand="ocean"] .nv-card .nb-row > :not(.nb-where, .nb-text, .nb-files, .nb-foot) { grid-column: 1 / -1; }
+html[data-brand="ocean"] .nv-card .nb-row .nb-status { flex: none; color: var(--muted); white-space: nowrap; }
+html[data-brand="ocean"] .nv-card .nb-row .nb-where { color: var(--muted); }
+@media (hover: hover) {
+  html[data-brand="ocean"] .nv-card .nb-row .nb-foot :is(.nb-attach, .nb-delete) { opacity: .0; transition: opacity .15s; }
+  html[data-brand="ocean"] .nv-card .nb-row:is(:hover, :focus-within) .nb-foot :is(.nb-attach, .nb-delete) { opacity: 1; }
+}
+html[data-brand="ocean"] #nv-empty .empty { padding: 36px 16px; }
+
+/* ================= Resources ================= */
+
+/* ================= Social ================= */
+html[data-brand="ocean"] .so-page { max-width: none; }
+html[data-brand="ocean"] .so-head-card { padding: 14px 16px; }
+html[data-brand="ocean"] .so-verdict { font-size: 18px; font-weight: 620; }
+/* The morning's four steps: numbered boxes in a row, done in green with a check, failed in red with a word. */
+html[data-brand="ocean"] .so-stages { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; counter-reset: so-stage; }
+html[data-brand="ocean"] .so-stage { counter-increment: so-stage; display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto; gap: 2px 8px; align-items: center; padding: 10px 12px; border-radius: 10px; background: var(--cb-sunk); box-shadow: inset 0 0 0 1px var(--line); }
+html[data-brand="ocean"] .so-stage .so-stage-mark { grid-row: 1 / span 2; }
+html[data-brand="ocean"] .so-stage .so-stage-name::before { content: counter(so-stage) " · "; color: var(--muted); font-weight: 600; }
+html[data-brand="ocean"] .so-stage > :last-child { grid-column: 2; }
+html[data-brand="ocean"] .so-stage.so-stage-bad { flex-basis: auto; order: 0; background: var(--cb-down-pale); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cb-down) 25%, transparent); }
+html[data-brand="ocean"] .so-stage.so-stage-bad > :last-child { padding-inline-start: 0; }
+html[data-brand="ocean"] .so-stage-mark.good { color: var(--cb-up); }
+/* Set up: numbered steps, how many are done as a bar. */
+html[data-brand="ocean"] .so-setup { padding: 14px 16px; }
+html[data-brand="ocean"] .so-setup h2 { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13.5px; font-weight: 620; }
+html[data-brand="ocean"] .so-setup-prog { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; font-weight: 500; }
+html[data-brand="ocean"] .so-setup-prog .cb-bar { width: 120px; }
+html[data-brand="ocean"] .so-steps { counter-reset: so-step; gap: 0; }
+html[data-brand="ocean"] .so-steps li { counter-increment: so-step; grid-template-columns: 28px 1fr; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); align-items: center; }
+html[data-brand="ocean"] .so-steps li:first-child { border-top: 0; }
+html[data-brand="ocean"] .so-steps .so-step-mark { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; background: var(--cb-sunk); box-shadow: inset 0 0 0 1px var(--line-2); font-weight: 650; font-size: 12.5px; color: var(--text-2); }
+html[data-brand="ocean"] .so-steps li:not(.done) .so-step-mark svg.i { display: none; }
+html[data-brand="ocean"] .so-steps li:not(.done) .so-step-mark::before { content: counter(so-step); }
+html[data-brand="ocean"] .so-steps li.done .so-step-mark { background: var(--cb-up-pale); box-shadow: none; color: var(--cb-up); }
+html[data-brand="ocean"] .so-steps li.done b { color: var(--text-2); }
+html[data-brand="ocean"] .so-list-card .card-head { padding: 12px 16px; }
+html[data-brand="ocean"] .so-list-card .card-head h2 { font-size: 13.5px; font-weight: 620; }
+html[data-brand="ocean"] .so-list-card .empty { padding: 28px 16px; }
+html[data-brand="ocean"] .so-item { padding: 14px 16px; }
+/* The Writing guide: its cards as numbered steps. */
+html[data-brand="ocean"] #so-body:has(#so-niche) { counter-reset: so-card; }
+html[data-brand="ocean"] #so-body:has(#so-niche) > .card > .card-head h2 { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 620; }
+html[data-brand="ocean"] #so-body:has(#so-niche) > .card { counter-increment: so-card; }
+html[data-brand="ocean"] #so-body:has(#so-niche) > .card > .card-head h2::before { content: counter(so-card); display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--cb-ink); color: #fff; font-size: 11.5px; font-weight: 650; }
+
+/* ================= Settings ================= */
+html[data-brand="ocean"] #set-tiles { gap: 12px; }
+html[data-brand="ocean"] #page[data-ow="settings"] .content > .tabs { background: #fff; box-shadow: inset 0 0 0 1px var(--line); border-radius: 10px; }
+html[data-brand="ocean"] #page[data-ow="settings"] .content > .tabs .ink { background: var(--cb-ink); }
+html[data-brand="ocean"] #page[data-ow="settings"] .content > .tabs .tab[aria-selected="true"] { color: #fff; }
+/* Connections: one clean line each: logo, name, price, sites, a status pill, one action. */
+html[data-brand="ocean"] .rows > .conn-row { padding: 10px 16px; min-height: 0; gap: 6px 14px; }
+html[data-brand="ocean"] .conn-row .conn-logo { width: 28px; height: 28px; border-radius: 7px; }
+html[data-brand="ocean"] .conn-row .what .t { font-weight: 600; font-size: 13.5px; }
+html[data-brand="ocean"] .conn-row .what .d { color: var(--muted); font-size: 12px; }
+html[data-brand="ocean"] .conn-row .conn-limit { color: var(--text-2); font-size: 12px; }
+html[data-brand="ocean"] .conn-row .conn-limit .tag { border-radius: 999px; box-shadow: none; background: var(--track); font-weight: 600; font-size: 11.5px; }
+html[data-brand="ocean"] .conn-row .conn-status { display: flex; justify-content: flex-start; }
+html[data-brand="ocean"] .conn-row .conn-status .status:not(:empty) { border-radius: 999px; }
+html[data-brand="ocean"] .conn-row .acts .btn { border-radius: 8px; }
+html[data-brand="ocean"] #page[data-ow="settings"] .content > .card > .card-head { padding: 14px 16px 10px; }
+html[data-brand="ocean"] #page[data-ow="settings"] .content > .card > .card-head h2 { font-size: 13.5px; font-weight: 620; }
+
+@media (max-width: 1280px) {
+  html[data-brand="ocean"] .ow-row2 { grid-template-columns: minmax(0, 1fr); }
+  html[data-brand="ocean"] .so-stages { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 860px) {
+  html[data-brand="ocean"] .ow-ai-hero { grid-template-columns: minmax(0, 1fr); }
+  html[data-brand="ocean"] .ow-vs-body { grid-template-columns: minmax(0, 1fr); }
+  html[data-brand="ocean"] .ow-vs-part + .ow-vs-part { padding: 14px 0 0; border-left: 0; border-top: 1px solid var(--line); }
+  html[data-brand="ocean"] .ow-tk-sum { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  html[data-brand="ocean"] .nv-card .nb-row { grid-template-columns: minmax(0, 1fr); }
+  html[data-brand="ocean"] .nv-card .nb-row > .nb-foot { grid-column: 1; grid-row: auto; }
+  html[data-brand="ocean"] .so-setup-prog { margin-left: 0; }
+}
+html[data-brand="ocean"] .ow-late { display: inline-flex; align-items: center; gap: 4px; color: var(--cb-warn); font-weight: 550; }
+html[data-brand="ocean"] .ow-late svg.i { width: 13px; height: 13px; }
+html[data-brand="ocean"] #set-tiles .ow-set-share { margin-top: 10px; }
+/* Resources: the tag chips and Filter on one line, then compact rows with the link's logo. */
+html[data-brand="ocean"] #page[data-ow="resources"] .content > section.card:has(.table-wrap) { display: flex; flex-wrap: wrap; align-items: center; gap: 0 8px; }
+html[data-brand="ocean"] #page[data-ow="resources"] .content > section.card > .chips { flex: 1 1 auto; margin: 0; padding: 12px 16px; display: flex; flex-wrap: wrap; gap: 6px; }
+html[data-brand="ocean"] #page[data-ow="resources"] .content > section.card > .tt-tools { flex: 0 0 auto; margin: 0 0 0 auto; padding: 10px 16px; }
+html[data-brand="ocean"] #page[data-ow="resources"] .content > section.card > :is(.table-wrap, .tp-foot) { flex: 1 1 100%; }
+html[data-brand="ocean"] #page[data-ow="resources"] .content > section.card .chip b { font-weight: 650; margin-left: 4px; }
+html[data-brand="ocean"] #page[data-ow="resources"] .data td { padding-top: 8px; padding-bottom: 8px; }
+html[data-brand="ocean"] #page[data-ow="resources"] [data-lv-resource].link-btn { color: var(--text); font-weight: 600; text-decoration: none; }
+html[data-brand="ocean"] #page[data-ow="resources"] [data-lv-resource].link-btn:hover { text-decoration: underline; }
+html[data-brand="ocean"] #page[data-ow="resources"] td .mono { color: var(--muted); }
+html[data-brand="ocean"] #page[data-ow="resources"] .rs-tags .tag { border-radius: 999px; box-shadow: none; background: var(--c-blue-pale); color: var(--c-blue); font-weight: 600; font-size: 11.5px; }
+html[data-brand="ocean"] .ow-res-logo { display: inline-flex; vertical-align: -3px; margin-right: 8px; }
+html[data-brand="ocean"] .tk-table td { vertical-align: middle; }
+/* Video transcripts: Connect, then Add videos, as numbered steps; plain type in the paste box. */
+html[data-brand="ocean"] #so-body:has(.vt-add) { counter-reset: vt-step; }
+html[data-brand="ocean"] #so-body :is(.vt-groq, .vt-add) { counter-increment: vt-step; }
+html[data-brand="ocean"] #so-body :is(.vt-groq, .vt-add) > .card-head h2 { display: inline-flex; align-items: center; gap: 8px; font-size: 13.5px; font-weight: 620; }
+html[data-brand="ocean"] #so-body :is(.vt-groq, .vt-add) > .card-head h2::before { content: counter(vt-step); display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--cb-ink); color: #fff; font-size: 11.5px; font-weight: 650; }
+html[data-brand="ocean"] .vt-paste { font-family: inherit; }
+html[data-brand="ocean"] #page[data-ow="settings"] .data td { vertical-align: middle; }
+html[data-brand="ocean"] .ow-table { margin-top: 10px; }
+html[data-brand="ocean"] .ow-table > summary { cursor: pointer; font-size: 12px; font-weight: 550; color: var(--text-2); width: max-content; }
+html[data-brand="ocean"] .ow-table > summary:hover { color: var(--text); }
+html[data-brand="ocean"] .ow-table .table-wrap { margin-top: 8px; box-shadow: inset 0 0 0 1px var(--line); max-height: 260px; overflow: auto; }

@@ -328,6 +328,11 @@
     const verdict = before ? UI().status(before.sev, t(before.badge)) : crit ? UI().status("crit", `${t("Urgent")}: ${num(crit)}`) : urgent ? UI().status("warn", t("To do")) : UI().status("good", t("All clear"));
     const second = before ? (urgent ? needsYou(urgent) : t(before.line)) : `${needsYou(urgent)}${stopped}`;
     const state = hasData || before ? "" : `<p class="today-state" dir="auto">${esc(answer(r, vm.range))}</p>`;
+    const movesHtml = anyMove || hasData ? `${UI().simple?.() ? "" : `<div class="today-moves-head"><span class="small muted">${t("Week on week")}${vm.movesWindow ? ` · ${esc(weeksWords(vm.movesWindow))}` : ""}</span></div>`}<div class="today-moves">${moveCard("Going down", goingDown, true, vm.movesWindow, vm.todoDrops)}${moveCard("Going up", goingUp, false, vm.movesWindow, 0)}</div>` : "";
+    // The Ocean look (today-ocean.js) draws its own top half, then the same cards as below.
+    if (window.TodayOcean?.on()) {
+      return window.TodayOcean.page(vm, { firstAct: `${state}${before?.act ? `<p class="today-first-act">${before.act}</p>` : ""}`, notes: ga4Notes(r), goingUp, goingDown, ranks, workHtml: workCard(vm), sitesHtml: allSites() && vm.sites.length > 1 ? sitesCard(vm.sites) : "" });
+    }
     return `<div class="today-answer"><p class="today-verdict">${verdict} <span class="today-second" dir="auto">${esc(second)}</span></p>${state}${before?.act ? `<p class="today-first-act">${before.act}</p>` : ""}</div>
       ${vm.setupHtml || ""}
       ${numbers(r, vm.range)}

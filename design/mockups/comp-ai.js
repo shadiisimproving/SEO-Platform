@@ -64,7 +64,13 @@
   }
   // Each competitor cited is its logo alone, a button to its profile: the host shows on hover and for screen readers.
   const rivalChips = (list) => (list.length ? `<span class="ca-chips">${list.map((c) => `<button class="chip ca-logo-chip" data-ca-rival="${c.id}" data-tip="${esc(c.host)}" aria-label="${esc(t("Open competitor"))}: ${esc(c.host)}">${window.UI.siteLogo(c.host, 16)}</button>`).join("")}</span>` : `<span class="muted">—</span>`);
-  const otherSites = (list) => (list.length ? `<span class="ca-others">${list.map((d) => `<span class="mono small" dir="auto">${esc(d)}</span>`).join("")}</span>` : `<span class="muted">—</span>`);
+  const otherSites = (list) => {
+    if (!list.length) return `<span class="muted">—</span>`;
+    const site = (d) => `<span class="mono small" dir="auto">${esc(d)}</span>`;
+    // The new design keeps a row to two sites; the rest open under "+N", all still there.
+    if (window.OceanMarket?.on?.() && list.length > 3) return `<span class="ca-others">${list.slice(0, 2).map(site).join("")}<details class="cbm-more-sites"><summary>+${UI.num(list.length - 2)}</summary>${list.slice(2).map(site).join("")}</details></span>`;
+    return `<span class="ca-others">${list.map(site).join("")}</span>`;
+  };
 
   function keywordTable(all) {
     const [, , test] = FILTERS.find(([id]) => id === S.filter) || FILTERS[0];
@@ -155,7 +161,10 @@
     const first = dayTime(points[0].day), last = dayTime(points[points.length - 1].day), span = last - first || 1;
     const x = (p) => left + ((dayTime(p.day) - first) / span) * (width - left - right);
     const y = (value) => top + (1 - value) * (h - top - bottom);
-    const line = (key) => points.map((p, i) => `${i ? "L" : "M"}${x(p).toFixed(1)},${y(share(p[key], p.checked)).toFixed(1)}`).join("");
+    // The new design (html[data-brand="ocean"]): the same lines drawn smooth, with a soft fade under the first (cb-chart.js).
+    const smooth = window.OceanMarket?.on?.() && window.CBChart?.path;
+    const line = (key) => (smooth ? window.CBChart.path(points.map((p) => share(p[key], p.checked)), (i) => x(points[i]), y) : points.map((p, i) => `${i ? "L" : "M"}${x(p).toFixed(1)},${y(share(p[key], p.checked)).toFixed(1)}`).join(""));
+    const fade = smooth ? `<defs><linearGradient id="cbm-ca-fade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2F5BEA" stop-opacity=".18"/><stop offset="1" stop-color="#2F5BEA" stop-opacity="0"/></linearGradient></defs><path class="cbm-ca-area" fill="url(#cbm-ca-fade)" d="${line("overviews")}L${x(points[points.length - 1]).toFixed(1)},${y(0).toFixed(1)}L${x(points[0]).toFixed(1)},${y(0).toFixed(1)}Z"/>` : "";
     const ticks = [0, 0.5, 1].map((v) => `<line class="ca-grid" x1="${left}" x2="${width - right}" y1="${y(v).toFixed(1)}" y2="${y(v).toFixed(1)}"/><text x="${left - 6}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end">${Math.round(v * 100)}%</text>`).join("");
     // Dates that fit: always the last, then going back, each far enough from the one after it.
     const labels = [];
@@ -175,7 +184,7 @@
     const endLabels = `<text class="ca-end" x="${(x(end) + 8).toFixed(1)}" y="${(endOver + 4).toFixed(1)}">${percent(end.overviews, end.checked)}</text>${Math.abs(endOver - endMine) >= 14 ? `<text class="ca-end" x="${(x(end) + 8).toFixed(1)}" y="${(endMine + 4).toFixed(1)}">${percent(end.cited_me, end.checked)}</text>` : ""}`;
     const summary = `${t("Share of keywords checked each day.")} ${points.map(chartWords).join(" ")}`;
     return `<svg class="chart ca-svg" viewBox="0 0 ${width} ${h}" width="${width}" height="${h}" role="img" aria-label="${esc(summary)}">
-      ${ticks}${dates}
+      ${ticks}${dates}${fade}
       <path class="ca-line ca-one" d="${line("overviews")}"/><path class="ca-line ca-two" d="${line("cited_me")}"/>
       ${dots("overviews", "ca-one")}${dots("cited_me", "ca-two")}${endLabels}${bands}
     </svg>`;
@@ -211,7 +220,8 @@
     }
     // The shared tool's logo goes in the title, before the words, so it never sits beside the (i).
     const oneTool = sharedTool(d.changes);
-    return `${tiles(d.summary)}
+    const top = window.OceanMarket?.on?.() ? window.OceanMarket.aiTop(d.summary, d.keywords, COMP.site()?.host) : tiles(d.summary); // the new design: cards and a you-vs-them chart
+    return `${top}
       ${plainNote(d.summary)}
       ${keywordTable(d.keywords)}
       <div class="ca-lower">

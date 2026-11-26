@@ -838,6 +838,7 @@
     }
     content.querySelectorAll(":scope > .tabs[role=tablist]:not(.sections)").forEach((el) => el.remove()); // one tab tier
     splitAdd();
+    if (window.OceanMarket?.on?.()) window.OceanMarket.backlinks?.(content, all); // the new design: a split bar of the link pipeline
     if (UI.state.blSection === "done") toolbar(content, all);
     applyColumns();
     if (SIMPLE.refocus) { const el = UI.$(SIMPLE.refocus); SIMPLE.refocus = ""; el?.focus({ preventScroll: true }); el?.scrollIntoView?.({ block: "nearest" }); }

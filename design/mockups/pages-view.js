@@ -105,7 +105,9 @@
         <td data-label="${t("Linked")}"><span class="pg-bits">${linkedBits(r)}</span></td>
       </tr>`).join("")}</tbody></table></div>
       ${window.TP.footer(PAGES, view, { noun: t(view.total === 1 ? "page" : "pages") })}` : `<p class="muted pg-none">${t("No page matches.")}</p>`;
-    return `${chips}<section class="card pg-card"><div class="card-head"><h2>${t(FILTERS.find(([id]) => id === P.filter)[1])}</h2><span class="n-badge tabular">${num(rows.length)}</span>
+    // The new design (Cobalt): number cards and the pages moving most, above the same chips and table (ocean-keywords-pages.js).
+    const top = document.documentElement.dataset.brand === "ocean" && window.OceanKP ? window.OceanKP.pages(d, counts, P.filter) : "";
+    return `${top}${chips}<section class="card pg-card"><div class="card-head"><h2>${t(FILTERS.find(([id]) => id === P.filter)[1])}</h2><span class="n-badge tabular">${num(rows.length)}</span>
       <span class="end">${window.TP.search(PAGES, t("Search pages"))}</span></div>${table}</section>`;
   }
 

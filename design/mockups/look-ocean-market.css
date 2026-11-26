@@ -1,0 +1,249 @@
+/* The new design (Cobalt, html[data-brand="ocean"]) for the market screens. Every rule starts with html[data-brand="ocean"] so the old design is untouched. Tokens: look-ocean.css. */
+
+/* ================= shared parts (ocean-market.js) ================= */
+html[data-brand="ocean"] .cbm-kpi { font: inherit; text-align: left; border: 0; background: var(--panel-solid, #fff); cursor: pointer; min-height: 112px; }
+html[data-brand="ocean"] .cbm-kpi:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+html[data-brand="ocean"] .cbm-kpi .cb-l { font-size: 12.5px; }
+html[data-brand="ocean"] .cbm-kpi .cb-s { font-size: 12px; }
+html[data-brand="ocean"] .cbm-kpi > .cb-share, html[data-brand="ocean"] .cbm-kpi > .cbm-split-sm, html[data-brand="ocean"] .cbm-kpi > .cb-mini-area { margin-top: auto; }
+html[data-brand="ocean"] .cbm-kpi > .cb-share { margin-top: auto; }
+html[data-brand="ocean"] .cbm-kpi .cb-s + .cb-share, html[data-brand="ocean"] .cbm-kpi .cb-s + .cbm-split-sm { margin-top: 12px; }
+html[data-brand="ocean"] .cbm-them-t { color: var(--them-text) !important; }
+html[data-brand="ocean"] .cbm-you-t { color: var(--you-text) !important; }
+html[data-brand="ocean"] .cbm-share-them i.now { background: var(--chart-them); }
+html[data-brand="ocean"] .cbm-split-sm { display: block; margin-top: 12px; }
+
+html[data-brand="ocean"] .cbm-split { display: flex; gap: 2px; height: 10px; border-radius: 999px; overflow: hidden; background: #EEF1F5; width: 100%; }
+html[data-brand="ocean"] .cbm-split i { display: block; min-width: 3px; border-radius: 999px; }
+html[data-brand="ocean"] :is(.cbm-split, .cbm-legend) .you { background: var(--chart-you); }
+html[data-brand="ocean"] :is(.cbm-split, .cbm-legend) .them { background: var(--chart-them); }
+html[data-brand="ocean"] :is(.cbm-split, .cbm-legend) .good { background: var(--cb-blue); }
+html[data-brand="ocean"] :is(.cbm-split, .cbm-legend) .spam { background: #C9D1CA; }
+html[data-brand="ocean"] :is(.cbm-split, .cbm-legend) .old { background: #DCE1E8; }
+html[data-brand="ocean"] :is(.cbm-split, .cbm-legend) .sky { background: var(--cb-sky); }
+html[data-brand="ocean"] :is(.cbm-split, .cbm-legend) .ink { background: var(--cb-ink); }
+html[data-brand="ocean"] :is(.cbm-split, .cbm-legend) .live { background: var(--cb-blue); }
+html[data-brand="ocean"] :is(.cbm-split, .cbm-legend) .todo { background: var(--cb-sky); }
+html[data-brand="ocean"] :is(.cbm-split, .cbm-legend) .cons { background: #93B0F5; }
+html[data-brand="ocean"] :is(.cbm-split, .cbm-legend) .lost { background: var(--cb-down); }
+html[data-brand="ocean"] .cbm-legend { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 11.5px; color: var(--text-2); margin: 8px 0 4px; }
+html[data-brand="ocean"] .cbm-legend span { display: inline-flex; align-items: center; gap: 5px; }
+html[data-brand="ocean"] .cbm-legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+html[data-brand="ocean"] .cbm-legend b { font-weight: 650; color: var(--text); }
+
+html[data-brand="ocean"] .cbm-row2 { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); align-items: stretch; }
+html[data-brand="ocean"] .cbm-card { margin: 0; min-width: 0; }
+html[data-brand="ocean"] .cbm-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+html[data-brand="ocean"] .cbm-chip { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--track); color: var(--text-2); font-size: 11.5px; font-weight: 550; }
+html[data-brand="ocean"] .cbm-chip svg.i { width: 11px; height: 11px; }
+html[data-brand="ocean"] .cbm-chip b { font-weight: 700; color: inherit; }
+html[data-brand="ocean"] .cbm-top .cb-feed li { grid-template-columns: 16px minmax(0, 1fr) auto; }
+html[data-brand="ocean"] .cbm-top .cb-feed .cb-x a { color: var(--text-2); }
+html[data-brand="ocean"] .cbm-top { margin-bottom: 4px; }
+
+/* You vs them: one row per competitor, a bar split blue (you ahead) / purple (they're ahead). */
+html[data-brand="ocean"] .cbm-vs-total { margin: 0 0 4px; gap: 6px 8px; }
+html[data-brand="ocean"] .cbm-vs-total span { margin-right: 8px; font-size: 12.5px; }
+html[data-brand="ocean"] .cbm-vs { list-style: none; margin: 8px 0 0; padding: 0; }
+html[data-brand="ocean"] .cbm-vs li { display: grid; grid-template-columns: minmax(120px, 190px) minmax(0, 1fr) 72px; gap: 12px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
+html[data-brand="ocean"] .cbm-vs li:first-child { border-top: 0; }
+html[data-brand="ocean"] .cbm-who { display: inline-flex; align-items: center; gap: 8px; min-width: 0; background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--text); cursor: pointer; text-align: left; }
+html[data-brand="ocean"] .cbm-who span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html[data-brand="ocean"] .cbm-who:hover span { text-decoration: underline; }
+html[data-brand="ocean"] .cbm-vs-bar { display: block; width: var(--w, 100%); min-width: 24px; }
+html[data-brand="ocean"] .cbm-vs-n { display: flex; justify-content: flex-end; gap: 5px; font-variant-numeric: tabular-nums; font-size: 12.5px; color: var(--muted); }
+html[data-brand="ocean"] .cbm-vs-n b { font-weight: 650; }
+html[data-brand="ocean"] b.you { color: var(--you-text); }
+html[data-brand="ocean"] b.them { color: var(--them-text); }
+
+@media (max-width: 1280px) {
+  html[data-brand="ocean"] .cbm-row2 { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 860px) {
+  html[data-brand="ocean"] .cbm-vs li { grid-template-columns: minmax(0, 1fr) 72px; }
+  html[data-brand="ocean"] .cbm-vs-bar { grid-column: 1 / -1; grid-row: 2; }
+}
+html[data-brand="ocean"] .cbm-logos { display: flex; align-items: center; gap: 4px; margin-top: auto; padding-top: 10px; }
+html[data-brand="ocean"] .cbm-logos em { font-style: normal; font-size: 11.5px; color: var(--muted); margin-left: 2px; }
+
+/* ================= Competitors: the bench under the cards (comp-summary.js) ================= */
+/* Compact one-line rows: smaller padding, the title 13.5px, the logo in line. */
+html[data-brand="ocean"] .cs-lines tr.cs-line > td { padding-block: 7px; }
+html[data-brand="ocean"] .cs-line-title { font-size: 13.5px; line-height: 19px; }
+html[data-brand="ocean"] .cs-line-host { font-size: 12px; }
+html[data-brand="ocean"] td.cs-line-page > :is(img, svg, .site-logo) { margin-top: 6px; }
+/* Keywords where they beat you: theirs, so purple, the bar pale behind. */
+html[data-brand="ocean"] .cs-lines-plain .cs-vs-n b { color: var(--them-text); font-size: 14px; }
+html[data-brand="ocean"] .cs-lines-plain .cs-vs-bar { height: 6px; border-radius: 999px; background: #EEF1F5; }
+html[data-brand="ocean"] .cs-lines-plain .cs-vs-bar i { background: var(--chart-them); opacity: 1; }
+html[data-brand="ocean"] .cs-vs-b { background: var(--chart-them); }
+html[data-brand="ocean"] .cs-vs-a { background: var(--chart-you); }
+/* Group lines: grey, quiet, a hair of space. */
+html[data-brand="ocean"] .cs-lines tr.rd-group > th { background: var(--cb-sunk); }
+html[data-brand="ocean"] .cs-lines tr.cs-line.open > td, html[data-brand="ocean"] .cs-lines tr.cs-detail-row > td { background: #F3F6FE; }
+/* The panels and the pill row of the lower card. */
+html[data-brand="ocean"] .cs-low-panel { border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line); }
+html[data-brand="ocean"] #cs-lower .cs-low-tabs { background: #fff; box-shadow: inset 0 0 0 1px var(--line); border-radius: 999px; padding: 3px; }
+html[data-brand="ocean"] #cs-lower .cs-low-tabs .page-tab { border-radius: 999px; height: 30px; font-size: 13px; }
+html[data-brand="ocean"] #cs-lower .cs-low-tabs .page-tab[aria-selected="true"] .n-badge { background: rgba(255, 255, 255, .16); color: #fff; }
+/* The site rail: white squares, a thin border, a cobalt ring on the one picked. */
+html[data-brand="ocean"] .cs-bench-slim .cs-card { width: 44px; height: 44px; border-radius: 10px; box-shadow: inset 0 0 0 1px var(--line); }
+html[data-brand="ocean"] .cs-bench-slim .cs-card-you { background: var(--c-blue-pale); box-shadow: inset 0 0 0 1px var(--cb-soft); }
+html[data-brand="ocean"] .cs-card.on, html[data-brand="ocean"] .cs-card.on:hover { box-shadow: inset 0 0 0 2px var(--cb-blue), var(--shadow-hover); }
+html[data-brand="ocean"] .cs-card { border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line); padding: 12px 14px 8px; gap: 8px; }
+html[data-brand="ocean"] .cs-card-logo { width: 30px; height: 30px; border-radius: 8px; }
+html[data-brand="ocean"] .cs-card-name { font-size: 14px; }
+html[data-brand="ocean"] .cs-card-about { font-size: 12.5px; -webkit-line-clamp: 1; }
+html[data-brand="ocean"] .cs-card:not(.cs-card-you) :is(.cs-card-edit, .cs-card-new):not(.zero) { color: var(--them-text); background: var(--c-purple-pale); }
+html[data-brand="ocean"] .cs-card-you :is(.cs-card-edit, .cs-card-new):not(.zero) { color: var(--you-text); background: #fff; }
+
+/* ================= The competitor page (comp-profile-tabs.js, comp-list.js) ================= */
+html[data-brand="ocean"] .cbm-pvs { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 4px 10px; align-items: center; max-width: 560px; margin: 4px 0 8px; font-size: 15px; font-variant-numeric: tabular-nums; }
+html[data-brand="ocean"] .cbm-pvs .cbm-split { height: 12px; }
+html[data-brand="ocean"] .cbm-pvs .cbm-legend { grid-column: 1 / -1; margin: 0; }
+html[data-brand="ocean"] .pt-answer-verdict .status { border-radius: 999px; }
+html[data-brand="ocean"] .pt-cards .pt-card { border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line); background: #fff; }
+html[data-brand="ocean"] .cp-tabs { gap: 2px; }
+html[data-brand="ocean"] .cp-tab { font-size: 13px; }
+
+/* ================= Backlinks (backlinks-seo.js, mockup.js) ================= */
+/* Numbers first across the width, then what needs you beside where the links stand. */
+html[data-brand="ocean"] .cbm-bl-top { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; margin-bottom: 14px; }
+html[data-brand="ocean"] .cbm-bl-top > #bl-tiles { grid-column: 1 / -1; order: -1; gap: 12px; }
+html[data-brand="ocean"] .cbm-bl-top > .bl-answer, html[data-brand="ocean"] .cbm-bl-top > .cbm-pipe-card { margin: 0; }
+html[data-brand="ocean"] .bl-simple .bl-answer .vd-answer { background: none; border-bottom: 1px solid var(--line); padding: 14px 16px 10px; }
+html[data-brand="ocean"] .bl-simple .bl-answer .vd-answer strong { font-size: 13.5px; font-weight: 620; }
+html[data-brand="ocean"] .bl-simple .bl-answer .vd-answer p { font-size: 12px; color: var(--muted); }
+html[data-brand="ocean"] #bl-tiles .tile { padding: 14px 16px; }
+html[data-brand="ocean"] .cbm-pipe { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin-top: 12px; }
+html[data-brand="ocean"] .cbm-pipe-b { display: grid; grid-template-columns: 10px minmax(0, 1fr); gap: 2px 6px; align-items: center; text-align: left; padding: 8px 10px; border: 0; border-radius: 9px; background: var(--cb-sunk); box-shadow: inset 0 0 0 1px var(--line); font: inherit; cursor: pointer; color: var(--text-2); }
+html[data-brand="ocean"] .cbm-pipe-b:hover { box-shadow: inset 0 0 0 1px var(--line-2), var(--shadow-hover); background: #fff; }
+html[data-brand="ocean"] .cbm-pipe-b > i { width: 10px; height: 10px; border-radius: 3px; }
+html[data-brand="ocean"] .cbm-pipe-b > i.cons { background: #93B0F5; } html[data-brand="ocean"] .cbm-pipe-b > i.todo { background: var(--cb-sky); }
+html[data-brand="ocean"] .cbm-pipe-b > i.live { background: var(--cb-blue); } html[data-brand="ocean"] .cbm-pipe-b > i.lost { background: var(--cb-down); }
+html[data-brand="ocean"] .cbm-pipe-b span { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+html[data-brand="ocean"] .cbm-pipe-b b { grid-column: 2; font-size: 20px; font-weight: 650; color: var(--text); letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+html[data-brand="ocean"] .cbm-pipe-b .cbm-st-down { grid-column: 2; display: inline-flex; align-items: center; gap: 2px; color: var(--cb-down); font-weight: 600; font-size: 11.5px; }
+html[data-brand="ocean"] .cbm-pipe-b .cbm-st-down svg.i { width: 11px; height: 11px; }
+html[data-brand="ocean"] .cbm-pipe-card .cbm-split { height: 12px; }
+/* The section tabs: a pill row, near-black for the one you're on. */
+html[data-brand="ocean"] .tabs.sections:has(> [data-bl-section]) { border: 0; box-shadow: none; gap: 4px; background: #fff; border-radius: 999px; padding: 3px; box-shadow: inset 0 0 0 1px var(--line); width: fit-content; max-width: 100%; }
+html[data-brand="ocean"] .tabs.sections > [data-bl-section] { border-radius: 999px; height: 32px; padding: 0 12px; border: 0; font-size: 13px; }
+html[data-brand="ocean"] .tabs.sections > [data-bl-section][aria-selected="true"] { background: var(--cb-ink); color: #fff; }
+html[data-brand="ocean"] .tabs.sections > [data-bl-section][aria-selected="true"] :is(.muted, svg.i) { color: var(--cb-sky); }
+html[data-brand="ocean"] .tabs.sections:has(> [data-bl-section]) .ink, html[data-brand="ocean"] .tabs.sections > [data-bl-section]::after { display: none; }
+/* Compact link rows. */
+html[data-brand="ocean"] :is(#bl-table, #bl-sites, #found-table, #md-table, #rc-table, #td-table, #pr-table, #bought-table) td { padding-top: 7px; padding-bottom: 7px; }
+html[data-brand="ocean"] :is(#bl-table, #found-table, #pr-table) .second { font-size: 12px; }
+@media (max-width: 860px) {
+  html[data-brand="ocean"] .cbm-bl-top { grid-template-columns: minmax(0, 1fr); }
+  html[data-brand="ocean"] .cbm-pipe { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  html[data-brand="ocean"] .tabs.sections:has(> [data-bl-section]) { border-radius: 14px; }
+}
+@media (min-width: 861px) { html[data-brand="ocean"] .cbm-bl-top:not(:has(.bl-needs)) { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); } }
+html[data-brand="ocean"] .cbm-bl-top:not(:has(.bl-needs)) > .bl-answer { display: grid; align-content: center; }
+html[data-brand="ocean"] .cbm-bl-top:not(:has(.bl-needs)) > .bl-answer .vd-answer { border-bottom: 0; }
+
+/* ================= Link gaps (comp-gaps.js) ================= */
+html[data-brand="ocean"] .cbm-gap-top { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); }
+html[data-brand="ocean"] .cbm-gap-top.cbm-one { grid-template-columns: minmax(0, 1fr); }
+html[data-brand="ocean"] .cbm-gap-top .cb-big { margin: 0 0 10px; gap: 6px 8px; }
+html[data-brand="ocean"] .cbm-gap-top .cb-big span { margin-right: 10px; font-size: 12.5px; }
+html[data-brand="ocean"] .cbm-gap-top .cbm-split { height: 12px; }
+html[data-brand="ocean"] .cbm-leg-btns { gap: 4px; margin-top: 10px; }
+html[data-brand="ocean"] .cbm-leg-b { display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 9px; border-radius: 999px; border: 0; background: var(--cb-sunk); box-shadow: inset 0 0 0 1px var(--line); font: inherit; font-size: 12px; color: var(--text-2); }
+html[data-brand="ocean"] button.cbm-leg-b { cursor: pointer; }
+html[data-brand="ocean"] button.cbm-leg-b:hover { background: #fff; box-shadow: inset 0 0 0 1px var(--line-2); }
+html[data-brand="ocean"] .cbm-leg-b i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+html[data-brand="ocean"] .cbm-leg-b i.good { background: var(--cb-blue); } html[data-brand="ocean"] .cbm-leg-b i.spam { background: #C9D1CA; } html[data-brand="ocean"] .cbm-leg-b i.old { background: #DCE1E8; }
+html[data-brand="ocean"] .cbm-leg-b b { color: var(--text); font-weight: 650; }
+html[data-brand="ocean"] .cbm-st-warn { display: inline-flex; color: var(--cb-warn); } html[data-brand="ocean"] .cbm-st-warn svg.i { width: 12px; height: 12px; }
+html[data-brand="ocean"] .cbm-bars { list-style: none; margin: 0; padding: 0; }
+html[data-brand="ocean"] .cbm-bars li { display: grid; grid-template-columns: minmax(110px, 180px) minmax(0, 1fr) 44px; gap: 10px; align-items: center; padding: 5px 0; }
+html[data-brand="ocean"] .cbm-bars li > b { text-align: right; font-weight: 650; font-variant-numeric: tabular-nums; }
+html[data-brand="ocean"] .cbm-bar-them { display: block; height: 8px; border-radius: 3px; background: var(--cb-sunk); overflow: hidden; }
+html[data-brand="ocean"] .cbm-bar-them i { display: block; height: 100%; border-radius: 3px; background: var(--chart-them); }
+html[data-brand="ocean"] .cbm-gap-extra { margin: 0 0 12px; }
+html[data-brand="ocean"] .cbm-gap-extra:empty { display: none; }
+@media (max-width: 1100px) { html[data-brand="ocean"] .cbm-gap-top { grid-template-columns: minmax(0, 1fr); } }
+/* Domain rows: the home page title on one line, so a row is one glance. */
+html[data-brand="ocean"] #comp-body .cg-title, html[data-brand="ocean"] #comp-body td .cg-about { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+html[data-brand="ocean"] #comp-body .data td { padding-top: 7px; padding-bottom: 7px; }
+
+/* ================= AI Overview watch (comp-ai.js) ================= */
+html[data-brand="ocean"] .cbm-one-row { grid-template-columns: minmax(0, 1fr); }
+html[data-brand="ocean"] .cbm-ai-who .cbm-bars { columns: 2; column-gap: 40px; }
+html[data-brand="ocean"] .cbm-ai-who .cbm-bars li { break-inside: avoid; }
+html[data-brand="ocean"] .cbm-bar-you i { background: var(--chart-you); }
+html[data-brand="ocean"] .cbm-v-host { min-width: 0; }
+html[data-brand="ocean"] .cbm-v-host b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+html[data-brand="ocean"] .cbm-more-sites { display: inline; }
+html[data-brand="ocean"] .cbm-more-sites > summary { display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 999px; background: var(--track); color: var(--text-2); font-size: 11.5px; font-weight: 600; cursor: pointer; list-style: none; width: fit-content; }
+html[data-brand="ocean"] .cbm-more-sites > summary::-webkit-details-marker { display: none; }
+html[data-brand="ocean"] .cbm-more-sites[open] > summary { margin-bottom: 2px; }
+html[data-brand="ocean"] .ca-others { display: flex; flex-direction: column; gap: 1px; }
+html[data-brand="ocean"] .cbm-more-sites[open] { display: flex; flex-direction: column; gap: 1px; }
+@media (max-width: 860px) { html[data-brand="ocean"] .cbm-ai-who .cbm-bars { columns: 1; } }
+html[data-brand="ocean"] .cbm-v-host b.cb-word { font-size: 18px; letter-spacing: -.01em; }
+
+/* ================= Check any keyword (comp-probe.js) ================= */
+html[data-brand="ocean"] .cbm-steps { list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 0 0 12px; padding: 0; }
+html[data-brand="ocean"] .cbm-steps li { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-radius: 12px; background: #fff; box-shadow: inset 0 0 0 1px var(--line); font-size: 13px; color: var(--text-2); }
+html[data-brand="ocean"] .cbm-step-n { flex: none; display: grid; place-items: center; width: 24px; height: 24px; border-radius: 7px; background: var(--c-blue-pale); color: var(--c-blue); font-weight: 700; font-size: 12px; }
+html[data-brand="ocean"] .kc-add { border-radius: 12px; box-shadow: inset 0 0 0 1px var(--line); }
+html[data-brand="ocean"] .kc-ranks { display: flex; flex-wrap: wrap; gap: 4px; }
+html[data-brand="ocean"] .kc-rival { border-radius: 999px; background: var(--c-purple-pale); }
+html[data-brand="ocean"] .kc-rival .kc-pos { color: var(--them-text); font-weight: 650; }
+html[data-brand="ocean"] .kc-table td:nth-child(2) .kc-pos { color: var(--you-text); font-weight: 650; }
+html[data-brand="ocean"] .cbm-kpi .cb-s .cbm-split { margin-top: 10px; }
+@media (max-width: 860px) { html[data-brand="ocean"] .cbm-steps { grid-template-columns: minmax(0, 1fr); } }
+
+/* ================= Page vs page (comp-pairs.js) ================= */
+html[data-brand="ocean"] .cbm-pairs-top { margin-bottom: 12px; }
+html[data-brand="ocean"] .cbm-pairs-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; font-size: 20px; font-variant-numeric: tabular-nums; }
+html[data-brand="ocean"] .cbm-pairs-row .cbm-split { height: 14px; }
+html[data-brand="ocean"] .cbm-leg-b[aria-pressed="true"] { background: var(--cb-ink); color: #fff; box-shadow: none; }
+html[data-brand="ocean"] .cbm-leg-b[aria-pressed="true"] b { color: #fff; }
+html[data-brand="ocean"] .cbm-leg-b i.you { background: var(--chart-you); } html[data-brand="ocean"] .cbm-leg-b i.them { background: var(--chart-them); }
+/* Rows: the page title on one line, the verdict on one line. */
+html[data-brand="ocean"] #comp-body .cp-page-title { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+html[data-brand="ocean"] #comp-body .cp-verdict { font-size: 12.5px; }
+
+/* ================= Find competitors (comp-list.js) ================= */
+@media (min-width: 861px) {
+  html[data-brand="ocean"] .cl-sug .what { display: grid; grid-template-columns: minmax(180px, 1.1fr) minmax(200px, 1fr) minmax(0, 1.6fr); gap: 4px 18px; align-items: center; }
+  html[data-brand="ocean"] .cl-sug .what > * { margin: 0; }
+}
+html[data-brand="ocean"] .cl-sug { padding-top: 10px; padding-bottom: 10px; }
+html[data-brand="ocean"] .cl-meter > i { background: var(--chart-them); }
+html[data-brand="ocean"] .cl-meter { background: var(--cb-sunk); height: 6px; border-radius: 3px; }
+html[data-brand="ocean"] .cbm-pipe-b[aria-current="true"] { background: #fff; box-shadow: inset 0 0 0 2px var(--cb-ink); }
+
+/* ================= Phones ================= */
+@media (max-width: 860px) {
+  html[data-brand="ocean"] .cb-kpis.cbm-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  html[data-brand="ocean"] .cbm-kpi { min-height: 0; padding: 12px; }
+  html[data-brand="ocean"] .cbm-kpi .cb-v b { font-size: 22px; }
+  html[data-brand="ocean"] .cbm-kpi .cbc-mini { height: 26px; }
+  html[data-brand="ocean"] .cbm-logos .site-logo:nth-child(n+5), html[data-brand="ocean"] .cbm-logos > :nth-child(n+5):not(em) { display: none; }
+  html[data-brand="ocean"] .cbm-card .cb-ch { flex-wrap: wrap; }
+  html[data-brand="ocean"] .cbm-card .cb-ch .cb-meta { display: none; }
+  html[data-brand="ocean"] .cbm-vs-total span { margin-right: 4px; }
+  html[data-brand="ocean"] .cbm-bars li { grid-template-columns: minmax(0, 1fr) 70px 36px; }
+}
+@media (max-width: 860px) { html[data-brand="ocean"] .cbm-kpi .cbm-v-host b.cb-word { font-size: 15px; } }
+
+/* ================= No stripes, round ends (owner 2026-11-26) ================= */
+html[data-brand="ocean"] .cs-lines-plain .cs-vs-bar i, html[data-brand="ocean"] :is(.cbm-bar-them, .cl-meter, .cbm-bar-them > i, .cl-meter > i) { border-radius: 999px; }
+html[data-brand="ocean"] .cbm-bar-them, html[data-brand="ocean"] .cl-meter { background: #EEF1F5; }
+html[data-brand="ocean"] .cbm-pipe-b > i { border-radius: 999px; }
+html[data-brand="ocean"] .cbm-legend i, html[data-brand="ocean"] .cbm-leg-b i { border-radius: 999px; }
+/* AI Overview watch, Over time (comp-ai.js): the soft area look, the cited line in sky blue, small dots. */
+html[data-brand="ocean"] .ca-svg .cbm-ca-area { stroke: none; }
+html[data-brand="ocean"] .ca-svg .ca-line.ca-one { stroke: var(--cb-blue); stroke-width: 2.2; }
+html[data-brand="ocean"] .ca-svg .ca-line.ca-two { stroke: var(--cb-sky); stroke-width: 2; stroke-dasharray: none; }
+html[data-brand="ocean"] .ca-svg .ca-dot { r: 3; fill: #fff; stroke-width: 2; }
+html[data-brand="ocean"] .ca-svg .ca-dot.ca-one { stroke: var(--cb-blue); }
+html[data-brand="ocean"] .ca-svg .ca-dot.ca-two { stroke: var(--cb-sky); }
+html[data-brand="ocean"] .ca-chart-wrap .legend i { border-top: 2.2px solid var(--cb-blue) !important; }
+html[data-brand="ocean"] .ca-chart-wrap .legend i.dash { border-top: 2.2px solid var(--cb-sky) !important; }

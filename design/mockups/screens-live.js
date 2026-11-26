@@ -718,22 +718,27 @@
     const swatch = (name) => `<i class="lv-key" style="background:${colourOf(name)}"></i>${esc(t(name))}${aiLink(name)}`;
     const days = d.series.map((r) => r.day);
     const series = d.series_names.map((name) => ({ name, color: colourOf(name), values: Object.fromEntries(d.series.map((r) => [r.day, r.values[name] ?? 0])) }));
-    return page(head, `${cards}
-      <section class="card"><div class="card-head"><h2>${t("Every channel")}</h2><button type="button" class="btn btn-small end" data-lv-rules aria-haspopup="dialog">${icon("pencil")}${t("Channel rules")}</button></div>${dataTable("channels", [
+    const tableCard = `<section class="card"><div class="card-head"><h2>${t("Every channel")}</h2><button type="button" class="btn btn-small end" data-lv-rules aria-haspopup="dialog">${icon("pencil")}${t("Channel rules")}</button></div>${dataTable("channels", [
         { key: "channel", label: "Channel", html: (r) => swatch(r.channel) },
         { key: "sessions", label: "Visits", num: true },
         { key: "share", label: "Share", num: true, get: (r) => r.share, html: (r) => pct(r.share) },
         { key: "leads", label: W("Leads", d), num: true },
         { key: "rate", label: W("Lead rate", d), num: true, get: (r) => r.rate, html: rateCell },
         { key: "change", label: "Change", num: true, html: (r) => (r.change === null ? `<span class="muted">—</span>` : `<span class="${r.change >= 0 ? "good" : "crit"} d-pill">${icon(r.change >= 0 ? "arrow-up" : "arrow-down")}${r.change >= 0 ? "+" : "−"}${num(Math.abs(r.change))}%</span>`) },
-      ], d.channels, { rowAttrs: (r) => opensPanel("channel", r.channel) })}</section>
-      <div class="lv-two lv-pair">
-        <section class="card"><div class="card-head"><h2>${t("Visits by channel")}</h2></div><div class="lv-chart-sm">${lineChart("channels", days, series, d.unusual?.days && Object.keys(d.unusual.days).length ? { marks: Object.fromEntries(Object.keys(d.unusual.days).map((k) => [k, 1])), markName: "Unusual day" } : {})}</div></section>
-        <section class="card"><div class="card-head"><h2>${t("Referring sites")}</h2></div>${dataTable("referrers", [
+      ], d.channels, { rowAttrs: (r) => opensPanel("channel", r.channel) })}</section>`;
+    const chartCard = `<section class="card"><div class="card-head"><h2>${t("Visits by channel")}</h2></div><div class="lv-chart-sm">${lineChart("channels", days, series, d.unusual?.days && Object.keys(d.unusual.days).length ? { marks: Object.fromEntries(Object.keys(d.unusual.days).map((k) => [k, 1])), markName: "Unusual day" } : {})}</div></section>`;
+    const refCard = `<section class="card"><div class="card-head"><h2>${t("Referring sites")}</h2></div>${dataTable("referrers", [
           { key: "domain", label: "Site", html: (r) => `<span class="with-logo">${UI.siteLogo(r.domain, 16)}<span class="logo-text mono" dir="auto">${esc(r.domain)}</span></span>` },
           { key: "sessions", label: "Visits", num: true },
           { key: "leads", label: W("Leads", d), num: true },
-        ], d.referrers, { empty: "No referring sites in this period.", search: "Search sites", rowAttrs: (r) => opensPanel("referrer", r.domain) })}</section>
+        ], d.referrers, { empty: "No referring sites in this period.", search: "Search sites", rowAttrs: (r) => opensPanel("referrer", r.domain) })}</section>`;
+    // The new design (Cobalt): the same parts, laid out like the new Today (ocean-traffic-search.js).
+    if (window.OceanTS?.on()) return page(head, window.OceanTS.channels({ d, cards, tableCard, chartCard, refCard, leadWord: W("Leads", d), leadsOk: d.days?.some((r) => r.leads !== null && r.leads !== undefined) }));
+    return page(head, `${cards}
+      ${tableCard}
+      <div class="lv-two lv-pair">
+        ${chartCard}
+        ${refCard}
       </div>`);
   }
   // Channel rules, one click from the channel table's head: the hint, the rules and the form, in a side panel.
@@ -791,9 +796,12 @@
         { key: "path", label: "Page", get: pageName, html: (r) => (r.unknown ? unknownPage(r) : `${PageLink.html(r.path, { host: r.host, cls: "mono lv-url" })}${siteOfPage(r)}`) },
         { key: "sessions", label: "Visits", num: true }, { key: "leads", label: W("Leads", d), num: true }, { key: "rate", label: W("Lead rate", d), num: true, html: rateCell },
       ], d.pages, { empty: W("No page brought a lead in this period.", d), search: "Search pages", rowAttrs: pageRow, wrapAttrs: "data-tt-own-count" });
+    const tabsCard = `<section class="card lv-tab-card"><div class="lv-tabbar">${pageTabs("conversions", tabs, "Pages", true)}<span class="lv-tab-tools" data-tt-slot></span></div>${table}</section>`;
+    // The new design (Cobalt): the funnel beside a bar chart of leads each day, then the same tabs (ocean-traffic-search.js).
+    if (window.OceanTS?.on()) return page(head, window.OceanTS.conversions({ d, setUp, cards, tabsCard, leadWord: W("Leads", d), leadsWord: W("leads", d), leadsOk: Boolean(set), funnelTitle: W("From visit to lead, by channel", d), lostWord: (r) => fillIn(t(W("{n} visits didn't become a lead", d)), { n: num(r.lost) }) }));
     return page(head, `${setUp}${cards}
       <section class="card"><div class="card-head"><h2>${t(W("From visit to lead, by channel", d))}</h2></div><div class="lv-bars lv-funnel-lines">${funnel}</div></section>
-      <section class="card lv-tab-card"><div class="lv-tabbar">${pageTabs("conversions", tabs, "Pages", true)}<span class="lv-tab-tools" data-tt-slot></span></div>${table}</section>`);
+      ${tabsCard}`);
   }
 
   // ---- Content: page tabs; All pages first, then social networks, page speed, and Clarity once it has something

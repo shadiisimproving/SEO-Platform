@@ -480,7 +480,9 @@
       main = tab?.headMain?.() || "";
       if (tab?.headInfo) info.push(...[].concat(tab.headInfo()).filter(Boolean));
     }
-    return UI.head({ title: t("Competitors"), period: false, line, info, main });
+    // With the new menu, a tab that moved to Keywords or Links carries that area's name.
+    const area = nm() ? window.NEWMENU.areaOf("competitors") : null;
+    return UI.head({ title: t(area && area.id !== "competitors" ? area.label : "Competitors"), period: false, line, info, main });
   }
   COMP.simple = () => Boolean(UI?.simple?.());
 
@@ -489,9 +491,14 @@
   /* 2026-11-16, the owner: "remove the More section, make the tabs normally". Every tab sits in the row again; the menu
      code stays for a tab that is ever put back behind it. */
   const SIMPLE_MORE = new Set();
+  /* The new menu (new-menu.js): Keyword check, AI Overview watch and Link gaps are tabs of Keywords and Links, so this row
+     leaves them out, and on one of them the row isn't drawn at all: the area's own tabs sit above. */
+  const nm = () => Boolean(window.NEWMENU?.on?.());
+  const rowTabs = (tab) => (nm() && window.NEWMENU.isMoved(tab?.id) ? [] : COMP.tabs.filter((x) => !x.hidden && !(nm() && window.NEWMENU.isMoved(x.id))));
   function simpleTabs(tab) {
     const { t, esc, icon } = UI;
-    const shown = COMP.tabs.filter((x) => !x.hidden);
+    const shown = rowTabs(tab);
+    if (!shown.length) return "";
     const more = shown.filter((x) => SIMPLE_MORE.has(x.id) && !COMP.tabLit(x, tab));
     const row = shown.filter((x) => !more.includes(x));
     const button = (x) => `<button type="button" class="page-tab" role="tab" data-comp-tab="${x.id}" aria-selected="${COMP.tabLit(x, tab)}" tabindex="${COMP.tabLit(x, tab) ? 0 : -1}">${esc(t(x.label))}${x.badge?.() ? `<span class="n-badge">${x.badge()}</span>` : ""}</button>`;
@@ -547,7 +554,7 @@
     }
     return `${head}<div class="content page-enter">
       <div class="comp-bar">${COMP.localSite ? COMP.scopeChip() : `<label class="field comp-site"><span>${t("Competitors of")}</span><select class="select" id="comp-site">${allOption}${COMP.sites.map((s) => `<option value="${s.id}" ${s.id === COMP.siteId ? "selected" : ""}>${esc(s.host)}</option>`).join("")}</select></label>${UI.showingNote(COMP.site()?.host)}`}</div>
-      ${all ? "" : `<div class="tabs comp-tabs" role="tablist" aria-label="${t("Competitors")}">${COMP.tabs.filter((x) => !x.hidden).map((x) => `<button class="tab" role="tab" data-comp-tab="${x.id}" aria-selected="${COMP.tabLit(x, tab)}">${x.icon ? icon(x.icon) : ""}${esc(t(x.label))}${x.badge?.() ? `<span class="count">${x.badge()}</span>` : ""}</button>`).join("")}</div>`}
+      ${all || !rowTabs(tab).length ? "" : `<div class="tabs comp-tabs" role="tablist" aria-label="${t("Competitors")}">${rowTabs(tab).map((x) => `<button class="tab" role="tab" data-comp-tab="${x.id}" aria-selected="${COMP.tabLit(x, tab)}">${x.icon ? icon(x.icon) : ""}${esc(t(x.label))}${x.badge?.() ? `<span class="count">${x.badge()}</span>` : ""}</button>`).join("")}</div>`}
       <div id="comp-setup">${COMP.setup?.html?.() ?? ""}</div>
       <div id="comp-body">${tab.loadedFor === COMP.siteId ? tab.body() : COMP.loading()}</div>
     </div>`;

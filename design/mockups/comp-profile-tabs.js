@@ -106,6 +106,7 @@
     // The buttons go on the figures' row (tiles).
     return { acts, html: `<section class="pt-answer" aria-label="${esc(t("Who leads"))}">
       ${verdict ? `<p class="pt-answer-text pt-answer-verdict"><span class="pt-verdict-lab">${esc(t("On shared keywords"))}</span>${verdict}</p>` : ""}
+      ${verdict && window.OceanMarket?.on?.() ? window.OceanMarket.vsBar(c.i_ahead || 0, c.they_ahead || 0, p.display || p.host) : ""}
       ${off ? COMP.trackingNote?.(p, { short: true }) ?? "" : ""}
       ${missing.length ? `<p class="pt-answer-missing small sec">${icon("info")}<span>${esc(missing.join(" "))}</span></p>` : ""}
     </section>` };

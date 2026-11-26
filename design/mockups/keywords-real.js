@@ -252,6 +252,8 @@
      - the rows and tools load through SCREEN_DATA (screen-data.js), so the warm-up can fetch them before Keywords opens.
      With the switch off, every line below draws what it drew before. */
   const simple = () => Boolean(UI?.simple?.());
+  // The new design (Cobalt, ocean-keywords-pages.js) draws the top of the screen: its number cards, the ladder, the biggest moves.
+  const ocean = () => (document.documentElement.dataset.brand === "ocean" && window.OceanKP) || null;
   /* Both tables page and search the way every long table does (table-pages.js): TP keeps the search, the page and the size. */
   const KW_PAGES = "kw", Q_PAGES = "kwq";
   const kwPages = () => TP.state(KW_PAGES);
@@ -1067,12 +1069,12 @@
     return UI.topbar(title, sub, main, false) + `
       <div class="content page-enter">
         ${phone}
-        <section class="tiles" id="kw-tiles">
+        ${ocean() ? ocean().keywords({ all, e, engine: state.engine, good, moved, gsc: e === "google" && state.engine !== "all" && kwbSource() === "gsc", through: K.data.data_through, engineName: name(e), brand: brandLabel }) : `<section class="tiles" id="kw-tiles">
           ${UI.tile(t("Tracked"), num(all.length), "", { ic: "key-round" })}
           ${UI.tile(t("Ranked"), num(all.filter((r) => good(r)).length), `<span class="ab">${t("of")} ${num(all.length)} · ${brandLabel(name(e))}</span>`, { ic: "list-ordered" })}
           ${UI.tile(`${t("Top 10")} <span class="muted">· ${t(state.engine === "all" ? "Google only" : "our checks")}</span>`, num(all.filter((r) => good(r) && good(r) <= 10).length), moved.compared ? `${moved.change ? UI.delta(moved.change, { noWord: false }) : ""}<span class="ab">${num(moved.compared)} ${t("compared")}</span>` : "", { ic: "target" })}
           ${googleOnly(state.engine) || state.engine === "all" ? UI.tile(`${t("Cited by AI")}${state.engine === "all" ? ` <span class="muted kw-google-only">· ${t("Google only")}</span>` : ""}`, num(all.filter((r) => r.ai.state === "cited").length), `<span class="ab">${t("of")} ${num(all.length)}</span>`, { ic: "sparkles" }) : ""}
-        </section>
+        </section>`}
         ${window.RankTrends && (googleOnly(state.engine) || state.engine === "all") ? window.RankTrends.card("keywords") : ""}${/* the card ranks Google only: on Bing it listed Google #1s beside "Ranked 0" (test walk 2026-11-23) */ ""}
         <div class="tabs-row">
           <div class="tabs" role="tablist" aria-label="${t("Engines")}">
@@ -1143,7 +1145,7 @@
           </div>
           ${state.engine === "duckduckgo" ? UI.info(DDG_HOW) : ""}
         </div>
-        ${state.view === "bucket" ? bucketTiles(all) : `<section class="tiles" id="kw-tiles">
+        ${state.view !== "bucket" && ocean() ? ocean().keywords({ all, e, engine: state.engine, good, moved, gsc: e === "google" && state.engine !== "all" && kwbSource() === "gsc", through: K.data.data_through, engineName: name(e), brand: brandLabel }) : state.view === "bucket" ? bucketTiles(all) : `<section class="tiles" id="kw-tiles">
           ${UI.card({ id: "kw-tracked", label: t("Tracked"), value: all.length, cls: "tile" })}
           ${UI.card({ id: "kw-ranked", label: t("Ranked"), value: ranked, sub: `${t("of")} ${num(all.length)} · ${brandLabel(name(e))}`, cls: "tile" })}
           ${UI.card({ id: "kw-top10", label: `${t("Top 10")} <span class="muted">· ${t(state.engine === "all" ? "Google only" : "our checks")}</span>`, def: "Top 10", value: top10, change: moved.compared ? { value: moved.change, unit: "" } : null, sub: moved.compared ? `${num(moved.compared)} ${t("compared")}` : "", cls: "tile" })}

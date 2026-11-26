@@ -314,8 +314,11 @@
   function topBlock(s) {
     const changes = s.changes || [];
     if (!changes.length) return "";
+    if (changes.length > 1 && window.OceanTS?.on()) return window.OceanTS.insightsSites(changes.slice(0, 3)); // the new design (Cobalt): one row per site
     if (changes.length > 1) return `<div class="in-answer">${changes.slice(0, 3).map((c) => answerHtml(c, true)).join("")}</div>`;
     const c = changes[0], steady = c.evidence.steady;
+    // The new design (Cobalt): the big number and a bar chart of the 28 days over the 28 before, the moves beside it (ocean-traffic-search.js).
+    if (window.OceanTS?.on()) return window.OceanTS.insightsTop({ days: s.days, change: c, weekly: weeklyBlock(c), lists: steady ? "" : moveLists(c) });
     return `<section class="card in-top${steady ? " steady" : ""}"><div class="in-top-lead"><div class="in-answer">${answerHtml(c, false)}${weeklyBlock(c)}</div>${graph(s.days, c)}</div>${steady ? "" : moveLists(c)}</section>`;
   }
 

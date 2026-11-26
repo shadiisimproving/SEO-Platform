@@ -856,7 +856,9 @@
     const d = pickedState()?.data.folders, shown = rival ? rival.host : host;
     const head = UI().topbar(t("Site map"), d ? `${esc(shown)} · ${pagesWord(d.pages)}` : esc(shown), "", false);
     askRivals(id);
-    return `${head}<div class="content page-enter sm-screen">${whoRow(id, host)}${rival ? block({ competitorId: rival.id, host: rival.host }) : block({ siteId: id, host })}</div>`;
+    // The new design (Cobalt): the map's numbers and where the pages sit, above the map (ocean-keywords-pages.js).
+    const top = document.documentElement.dataset.brand === "ocean" && window.OceanKP ? window.OceanKP.siteMap(d) : "";
+    return `${head}<div class="content page-enter sm-screen">${whoRow(id, host)}${top}${rival ? block({ competitorId: rival.id, host: rival.host }) : block({ siteId: id, host })}</div>`;
   }
   window.SiteMap = { block, mount: mountAll };
   window.SCREENS = window.SCREENS || {};

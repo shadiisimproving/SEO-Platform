@@ -227,6 +227,12 @@
     const open = allRows().filter((g) => canPick(g) && !oldHidden(g)).length;
     const addAll = open ? `<button class="btn btn-main btn-small cg-add-all" id="cg-add-all" data-cg-add-all>${UI.icon("plus")}${t("Add all good ones")} (${UI.num(open)})</button>` : "";
     if (!stats && !checking && !missing && !addAll) return "";
+    // The new design: the same numbers as a split bar and a bar per competitor, the same buttons beside them (ocean-market.js).
+    if (stats && window.OceanMarket?.on?.()) {
+      const good = allRows().filter((g) => !isFlagged(g) && !oldHidden(g));
+      const per = d.competitors.map((c) => ({ id: c.id, host: c.host, n: good.filter((g) => (g.competitors || g.rivals || []).some((r) => r.id === c.id)).length })).filter((c) => c.n).sort((a, b) => b.n - a.n);
+      return window.OceanMarket.gapsTop({ found: f.found, spam: f.filtered, good: f.good - oldOut, old: f.old || 0, oldIncluded: S.old, appFlagged, per, extra: `${capped}${checking}${missing}${addAll}` });
+    }
     return `<div class="cg-summary" aria-label="${t("Spam filter")}" role="group">${stats}${capped}${checking}${missing}${addAll}</div>`;
   }
 

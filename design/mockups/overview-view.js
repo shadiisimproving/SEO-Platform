@@ -295,7 +295,8 @@
         return s;
       };
       const solidEnd = freshAt > 0 ? freshAt - 1 : freshAt === 0 ? -1 : values.length - 1;
-      const lines = `${was.length ? `<path class="lv-line ov-was" d="${path(was)}" stroke="${m.color}"/>` : ""}
+      // The new design (Cobalt): a smooth line with a soft area under it, the period before dashed (ocean-traffic-search.js).
+      const lines = window.OceanTS?.on() && !m.invert ? window.OceanTS.stripArea({ values, was, x, y, base: y(lo), freshAt, solidEnd }) : `${was.length ? `<path class="lv-line ov-was" d="${path(was)}" stroke="${m.color}"/>` : ""}
         ${solidEnd >= 0 ? `<path class="lv-line" d="${path(values, 0, solidEnd)}" stroke="${m.color}"/>` : ""}
         ${freshAt >= 0 ? `<path class="lv-line ov-fresh" d="${path(values, Math.max(0, freshAt - 1))}" stroke="${m.color}"/>` : ""}
         ${pts.length === 1 && values[0] !== null ? `<circle cx="${x(0)}" cy="${y(values[0])}" r="4" fill="${m.color}"/>` : ""}`;
@@ -751,6 +752,11 @@
     if (!d.totals) return wrap(`${trust(d)}<section class="card"><div class="empty"><h3>${t("No data in this period.")}</h3><p>${t("Pick a longer or earlier period.")}</p>${UI.longerPeriodButton ? `<div style="margin-top:12px">${UI.longerPeriodButton()}</div>` : ""}</div></section>`);
     const chartHead = `<div class="card-head"><h2>${t({ hour: "Hour by hour", week: "Week by week", day: "Day by day" }[d.granularity])}</h2>
       <span class="end ov-chart-tools">${d.single_site ? `<button class="link-btn" data-ov-note-add>${icon("plus")}${t("Add a note")}</button>` : ""}<button class="link-btn" data-ov-table aria-expanded="${OV.table}">${t(OV.table ? "Hide table" : "Show table")}</button></span></div>`;
+    // The new design (Cobalt): cards first, the chart with what moved beside it, then the same cards and tabs (ocean-traffic-search.js).
+    if (window.OceanTS?.on()) {
+      const said = sentence(d.answer);
+      return wrap(window.OceanTS.overview({ notes: `${trust(d)}${savedDaysNote(d)}${onlyPageNote(d)}`, answer: said ? `<div class="ov-answer" dir="auto">${said}</div>` : "", cards: cards(d), chartHead, chart: chart(d), updates: updatesCard(), ranks: window.RankTrends ? window.RankTrends.card("overview") : "", hint: d.hourly && !simple() ? `<p class="small muted ov-hint">${t("Tables below show the last 2 whole days.")}</p>` : "", tabs: tabsCard(d) }));
+    }
     return wrap(`${trust(d)}${savedDaysNote(d)}${onlyPageNote(d)}
       ${(() => { const said = sentence(d.answer); return said ? `<div class="ov-answer" dir="auto">${said}</div>` : ""; })()}
       ${cards(d)}

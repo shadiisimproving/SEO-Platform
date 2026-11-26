@@ -137,6 +137,8 @@
     if (box) UI.setHTML(box, SECTION[part]());
     if (finding) { const input = UI.$("#cs-find"); input?.focus({ preventScroll: true }); try { input?.setSelectionRange(...finding); } catch { /* not a text box */ } }
     const tiles = UI.$("#cs-tiles"), basisLine = UI.$("#cs-basis");
+    const oceanTop = UI.$("#cbm-top"); // the new design's number cards and charts (ocean-market.js)
+    if (oceanTop && window.OceanMarket?.on?.()) UI.setHTML(oceanTop, window.OceanMarket.summaryTop());
     if (tiles) UI.setHTML(tiles, tilesHtml());
     if (basisLine) UI.setHTML(basisLine, basisHtml());
     if (simple()) COMP.paintHead?.();
@@ -1110,7 +1112,9 @@
         return COMP.empty(t("No competitors yet"), t("Upload keywords in Find competitors to see who ranks against you."), `<div class="cl-empty-acts"><button class="btn btn-main" data-cl-go-find>${UI.icon("target")}${t("Find competitors")}</button><button class="btn" id="cl-add-open">${UI.icon("plus")}${t("Add competitors")}</button></div>`);
       }
       if (simple()) {
-        return `<div class="cs-bench${S.slim ? " cs-bench-slim" : ""}">
+        // The new design (html[data-brand="ocean"]) adds number cards and charts above the same bench; nothing else changes.
+        const oceanTop = window.OceanMarket?.on?.() ? `<div id="cbm-top" class="cbm-top">${window.OceanMarket.summaryTop()}</div>` : "";
+        return `${oceanTop}<div class="cs-bench${S.slim ? " cs-bench-slim" : ""}">
           <section class="cs-section cs-rivals-side" id="cs-rivals" aria-label="${attr("Competitors")}">${SECTION.rivals()}</section>
           <section class="cs-lower" id="cs-lower" aria-label="${attr("More about your competitors")}">
             <div class="cs-low-tabs" id="cs-low-tabs" role="tablist" aria-label="${attr("More about your competitors")}">${lowTabsHtml()}</div>
@@ -1124,6 +1128,8 @@
     },
   };
   COMP.addTab(tab);
+  /* What the new design's summary cards read (ocean-market.js): the same answers, never asked again. */
+  COMP.summaryState = () => ({ data: S.data, rivals: S.data.rivals ? allRivals() : null, site: S.site, low: S.low, moveDays: S.data.moves?.days || S.mvDays, line: movesLine(S.data.moves), noneOn: S.data.keywords ? noneOn() : false });
 
   function bindEvents() {
     document.addEventListener("input", (e) => {

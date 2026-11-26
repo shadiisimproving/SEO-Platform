@@ -210,7 +210,8 @@
     // The losses are what this screen is for, so it opens on them.
     if (S.verdict === null) S.verdict = counts.behind ? "behind" : "all";
     const chip = (id, word, n) => `<button class="chip" data-cp-verdict="${id}" aria-pressed="${S.verdict === id}">${t(word)}<b>${UI.num(n)}</b></button>`;
-    const tools = `<div class="cp-tools">
+    const oceanTop = window.OceanMarket?.on?.() && !fixed() ? window.OceanMarket.pairsTop(counts, base.length, S.verdict) : ""; // the new design: who's ahead as a split bar
+    const tools = `${oceanTop}<div class="cp-tools">
       ${S.pairs.length >= FIND_FROM || TP.state(PAGES).q ? TP.search(PAGES, t("Search pages and keywords")) : ""}
       ${fixed() ? "" : `<label class="field"><span>${t("Against")}</span><select class="select" id="cp-filter">
         <option value="">${t("All competitors")} (${UI.num(searchedPairs().length)})</option>

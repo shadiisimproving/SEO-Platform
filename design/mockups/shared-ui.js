@@ -404,8 +404,20 @@
       const dots = (flags, list, cls) => (Array.isArray(flags) ? flags : []).map((on, i) => (on && list[i] !== null && list[i] !== undefined ? `<i class="ncard-mark ${cls}" style="left:${x(i).toFixed(2)}%;top:${((y(list[i]) / H) * 100).toFixed(1)}%"></i>` : "")).join("");
       const marked = dots(s.marks, now, "now") + (hasWas ? dots(s.marksBefore, was, "was") : "");
       const ends = tall && days.length ? `<span class="ncard-days" aria-hidden="true"><span>${esc(dayWords(days[0]))}</span><span>${esc(dayWords(days[Math.min(n, days.length) - 1]))}</span></span>` : "";
-      return `<span class="ncard-graph" ${focus} data-read="${esc(JSON.stringify(read))}" data-ny="${esc(JSON.stringify(heights(now)))}"${hasWas ? ` data-wy="${esc(JSON.stringify(heights(was)))}"` : ""}>`
-        + `<span class="ncard-plot"><svg class="ncard-spark" viewBox="0 0 100 ${H}" preserveAspectRatio="none" aria-hidden="true">${area ? `<path class="area" d="${area}"/>` : ""}${hasWas ? `<path class="was" d="${lines(was)}"/>` : ""}<path class="now" d="${lines(now)}"/></svg>`
+      // Bars were tried for the new design and dropped (owner, 2026-11-26: soft area instead): the line and its fade below,
+      // styled in look-ocean.css, are the new design's look too.
+      const asBars = false;
+      const bars = () => {
+        const top = Math.max(...all) || 1, slot = 100 / n, by = (v) => H - (v / top) * (H - PAD);
+        return Array.from({ length: n }, (_, i) => {
+          const w = hasWas && was[i] !== null && was[i] !== undefined ? `<rect class="was-bar" x="${(i * slot + slot * 0.12).toFixed(2)}" y="${by(was[i]).toFixed(1)}" width="${(slot * 0.76).toFixed(2)}" height="${(H - by(was[i])).toFixed(1)}"/>` : "";
+          const v = now[i];
+          const b = v === null || v === undefined || v <= 0 ? "" : `<rect class="now-bar${i >= n - 7 ? " hot" : ""}" x="${(i * slot + slot * 0.24).toFixed(2)}" y="${by(v).toFixed(1)}" width="${(slot * 0.52).toFixed(2)}" height="${(H - by(v)).toFixed(1)}"/>`;
+          return w + b;
+        }).join("");
+      };
+      return `<span class="ncard-graph${asBars ? " as-bars" : ""}" ${focus} data-read="${esc(JSON.stringify(read))}" data-ny="${esc(JSON.stringify(heights(now)))}"${hasWas ? ` data-wy="${esc(JSON.stringify(heights(was)))}"` : ""}>`
+        + `<span class="ncard-plot"><svg class="ncard-spark" viewBox="0 0 100 ${H}" preserveAspectRatio="none" aria-hidden="true">${asBars ? bars() : `${area ? `<path class="area" d="${area}"/>` : ""}${hasWas ? `<path class="was" d="${lines(was)}"/>` : ""}<path class="now" d="${lines(now)}"/>`}</svg>`
         + `${marked}<i class="ncard-cursor"></i><i class="ncard-pt was" hidden></i><i class="ncard-pt now" hidden></i></span>${ends}</span>`;
     }
 
