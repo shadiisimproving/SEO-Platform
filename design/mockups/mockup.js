@@ -141,14 +141,16 @@
          With `source` ("Search Console"), a screen whose data ends before yesterday says why its dates differ from the others.
        UI.range.behind() → the sentence saying how far behind this screen's data runs, or "" */
   const RANGE_PRESETS = [["24h", "Last 24 hours"], ["7d", "Last 7 days"], ["28d", "Last 28 days"], ["3m", "Last 3 months"], ["6m", "Last 6 months"], ["12m", "Last 12 months"], ["16m", "Last 16 months"], ["tm", "This month"], ["lm", "Last month"]];
-  const RANGE_COMPARES = [["prev", "vs previous period"], ["yoy", "vs last year"], ["none", "No comparison"]];
-  const RANGE_DEFAULT = { preset: "28d", from: null, to: null, compare: "prev" };
+  // "custom": the person picks the day the comparison starts (cfrom); it runs as many days as the period (seo/metrics/period.py).
+  const RANGE_COMPARES = [["prev", "vs previous period"], ["yoy", "vs last year"], ["custom", "Custom dates…"], ["none", "No comparison"]];
+  const RANGE_DEFAULT = { preset: "28d", from: null, to: null, compare: "prev", cfrom: null };
   const HOURLY_SCREENS = new Set(["overview"]); // only these can show the last 24 hours hour by hour
   const DATED_SCREENS = new Set(["today", "overview", "insights", "channels", "conversions", "content", "ai", "backlinks"]);
   const validDay = (v) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && iso(parseDay(v)) === v;
   function cleanRange(r = {}) {
     const out = { ...RANGE_DEFAULT };
     if (RANGE_COMPARES.some(([id]) => id === r.compare)) out.compare = r.compare;
+    if (out.compare === "custom") { if (validDay(r.cfrom)) out.cfrom = r.cfrom; else out.compare = "prev"; }
     if (r.preset === "custom") { if (validDay(r.from) && validDay(r.to) && r.from <= r.to) Object.assign(out, { preset: "custom", from: r.from, to: r.to }); }
     else if (RANGE_PRESETS.some(([id]) => id === r.preset)) out.preset = r.preset;
     return out;
@@ -199,11 +201,12 @@
     let compareFrom = null, compareTo = null;
     if (r.compare === "prev") { compareTo = addDays(from, -1); compareFrom = addDays(compareTo, -(days - 1)); }
     if (r.compare === "yoy") { compareFrom = addDays(from, -364); compareTo = addDays(to, -364); }
+    if (r.compare === "custom") { compareFrom = r.cfrom; compareTo = addDays(r.cfrom, days - 1); }
     /* The server's own period (seo/metrics/period.py), once a screen has it for this choice: the head prints the days really
        counted and compared, never its own sum, and no "vs …" when nothing was compared. */
     const served = rangeServed[state.route];
     let unavailable = null, historyFrom = null, savedDays = null;
-    if (served && served.site === state.site && served.preset === r.preset && served.compare === r.compare && !validDay(end) && (r.preset !== "custom" || (served.asked === `${r.from}|${r.to}`))) {
+    if (served && served.site === state.site && served.preset === r.preset && served.compare === r.compare && served.cfrom === (r.cfrom || null) && !validDay(end) && (r.preset !== "custom" || (served.asked === `${r.from}|${r.to}`))) {
       if (validDay(served.from) && validDay(served.to)) { from = served.from; to = served.to; }
       compareFrom = validDay(served.compare_from) ? served.compare_from : null;
       compareTo = validDay(served.compare_to) ? served.compare_to : null;
@@ -252,7 +255,7 @@
        history_from): the head then prints exactly that. */
     served(route, w) {
       if (!w || !validDay(w.from) || !validDay(w.to)) return;
-      const r = state.rng, next = { site: state.site, preset: r.preset, compare: r.compare, asked: `${r.from}|${r.to}`, from: w.from, to: w.to, compare_from: w.compare_from || null, compare_to: w.compare_to || null, compare_unavailable: w.compare_unavailable || null, history_from: w.history_from || null, saved_days: w.saved_days || null };
+      const r = state.rng, next = { site: state.site, preset: r.preset, compare: r.compare, cfrom: r.cfrom || null, asked: `${r.from}|${r.to}`, from: w.from, to: w.to, compare_from: w.compare_from || null, compare_to: w.compare_to || null, compare_unavailable: w.compare_unavailable || null, history_from: w.history_from || null, saved_days: w.saved_days || null };
       if (JSON.stringify(rangeServed[route]) === JSON.stringify(next)) return;
       rangeServed[route] = next;
       setTimeout(() => { if (state.route === route && !$("#popover")) { if (state.simple) redrawHeadRange(); else { const picks = $(".range-picks"); if (picks) picks.replaceWith(fragment(datePicks())); } } }, 0);
@@ -266,6 +269,7 @@
     search() {
       const r = state.rng, parts = [`range=${r.preset}`, `compare=${r.compare}`];
       if (r.preset === "custom") parts.push(`from=${r.from}`, `to=${r.to}`);
+      if (r.compare === "custom") parts.push(`cfrom=${r.cfrom}`);
       return parts.join("&");
     },
     days(opts = {}) {
@@ -276,6 +280,7 @@
       if (g.compareFrom) parts.push(`compare_from=${g.compareFrom}`, `compare_to=${g.compareTo}`);
       // The shared range too, so the Search Console side of the answer ends on Google's last final day (seo/metrics/period.py).
       parts.push(`range=${state.rng.preset === "24h" ? "7d" : state.rng.preset}`, `compare=${state.rng.compare}`);
+      if (state.rng.compare === "custom") parts.push(`cfrom=${state.rng.cfrom}`);
       return parts.join("&");
     },
     behind: rangeBehind,
@@ -460,7 +465,7 @@
     const why = none && g.compare !== "none" ? UIRange.noCompareWhy(g) : ""; // said in words, not hidden in a tooltip
     const phrase = none ? (why ? headWords("no comparison: {why}", { why }) : t("no comparison")) : g.hours && g.compare === "prev" ? t("vs the 24 hours before") : headWords("vs {range}", { range: compareDates(g) });
     const cmpName = t(g.compare === "yoy" ? "vs same days last year" : RANGE_COMPARES.find(([id]) => id === g.compare)[1]);
-    return `<span class="head-range"><span class="head-dates">${esc(g.hours ? t("Last 24 hours") : fmtRange(g.from, g.to))}</span>${behindMark()}${HEAD_SEP}<button type="button" class="head-cmp ${none ? "none" : ""}" id="compare" aria-haspopup="menu" aria-expanded="false" data-tip="${esc(`${t("Compare with")}: ${cmpName}`)}">${esc(phrase)}</button></span>`;
+    return `<span class="head-range"><span class="head-dates">${esc(g.hours ? t("Last 24 hours") : fmtRange(g.from, g.to))}</span>${behindMark()}${HEAD_SEP}<button type="button" class="head-cmp ${none ? "none" : ""}" id="compare" aria-haspopup="menu" aria-expanded="false" data-tip="${esc(`${t("Compare with")}: ${cmpName}`)}"><span class="head-cmp-t">${esc(phrase)}</span>${icon("chevron-down", "chev")}</button></span>`;
   }
   function headPeriod() {
     const g = rangeGet(), shown = HEAD_PRESETS.some(([id]) => id === g.preset);
@@ -2044,6 +2049,7 @@
       const r = state.rng;
       if (r.preset === "custom") { q.set("from", r.from); q.set("to", r.to); } else q.set("range", r.preset);
       if (r.compare !== "prev") q.set("cmp", r.compare);
+      if (r.compare === "custom" && r.cfrom) q.set("cfrom", r.cfrom);
     }
     Object.entries(screenAddress()).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "" && v !== false) q.set(k, String(v)); });
     const qs = q.toString().replace(/%2F/g, "/").replace(/%3A/g, ":");
@@ -2118,7 +2124,7 @@
     // Dates named in the address win over the ones kept in this browser, and are kept from now on.
     if (q.get("from") || q.get("range") || q.get("cmp")) {
       const named = q.get("from") && q.get("to") ? { preset: "custom", from: q.get("from"), to: q.get("to") } : { preset: q.get("range") || state.rng.preset, from: state.rng.from, to: state.rng.to };
-      state.rng = cleanRange({ ...named, compare: q.get("cmp") || "prev" });
+      state.rng = cleanRange({ ...named, compare: q.get("cmp") || "prev", cfrom: q.get("cfrom") });
       store.set("range", JSON.stringify(state.rng));
     }
     applyScreenAddress(route, q);
@@ -3344,6 +3350,27 @@
     placePopover(el, anchor);
   }
 
+  /* Compare with dates the person picks: the first day only, since the comparison runs as many days as the period, so
+     every change and chart line still sets like against like. The line under it shows the whole span as it is typed. */
+  function compareDatesSum() {
+    const g = rangeGet(), v = $("#cmp-from")?.value, last = addDays(g.from, -g.days), out = $("#cmp-sum");
+    if (!out) return;
+    if (!validDay(v)) { setHTML(out, esc(t("Pick the first day."))); return; }
+    if (v > last) { setHTML(out, `<span class="dp-warn">${esc(t("It has to end before {day}.").replace("{day}", fmtDay(g.from)))}</span>`); return; }
+    setHTML(out, `<b>${esc(fmtRange(v, addDays(v, g.days - 1)))}</b> · ${g.days} ${t(g.days === 1 ? "day" : "days")}`);
+  }
+  function openCompareDates(anchor) {
+    const g = rangeGet(), last = addDays(g.from, -g.days);
+    const start = state.rng.compare === "custom" && validDay(state.rng.cfrom) ? state.rng.cfrom : g.compareFrom && g.compareFrom <= last ? g.compareFrom : last;
+    popover(anchor, `<div class="cmp-dates" role="dialog" aria-label="${t("Compare with")}">
+        <div class="dp-title">${t("Compare with")}</div>
+        <label class="field">${t("First day")}<input class="input" type="date" id="cmp-from" min="${FIRST_DAY}" max="${last}" value="${start}" data-autofocus></label>
+        <p class="small muted">${esc(t("Same length as your period: {n} days.").replace("{n}", g.days))}</p>
+        <div class="dp-foot"><div class="dp-sum" id="cmp-sum" aria-live="polite"></div><button type="button" class="btn btn-small" data-cmp-cancel>${t("Cancel")}</button><button type="button" class="btn btn-main btn-small" id="cmp-apply">${t("Apply")}</button></div>
+      </div>`, "cmp-pop");
+    compareDatesSum();
+  }
+
   function applyPeriod(focusId = "period") {
     closePopover();
     render({ enter: true });
@@ -3719,12 +3746,25 @@
     if ((el = hit("[data-head-open]"))) { const fn = headOpeners.get(el.dataset.headOpen); if (fn) { try { fn(el); } catch (err) { console.error(err); } } return; }
     // Dates
     if ((el = hit("#period"))) { if (popAnchor === el) closePopover({ focus: true }); else openDatePicker(el); return; }
+    // A screen's "Choose a period to compare" opens the head's comparison menu.
+    if (hit("[data-open-compare]")) { const c = $("#compare"); if (c) { c.scrollIntoView({ block: "nearest" }); c.click(); } return; }
     if ((el = hit("#compare"))) {
       if (popAnchor === el) { closePopover({ focus: true }); return; }
-      popover(el, RANGE_COMPARES.map(([id, name]) => { const on = state.rng.compare === id; return `<button type="button" data-compare="${esc(id)}" aria-pressed="${on}" ${on ? "data-autofocus" : ""}>${t(state.simple && id === "yoy" ? "vs same days last year" : name)}${on ? `<span class="tick">${icon("check")}</span>` : ""}</button>`; }).join(""));
+      // Each choice shows the days it compares with, so the person picks by dates, not by name (owner, 2026-11-26).
+      const g = rangeGet(), span = (a, b) => (a && b ? `<span class="cmp-when">${esc(compareDates({ ...g, compareFrom: a, compareTo: b }))}</span>` : "");
+      const when = { prev: g.hours ? "" : span(addDays(g.from, -g.days), addDays(g.from, -1)), yoy: g.hours ? "" : span(addDays(g.from, -364), addDays(g.to, -364)), custom: state.rng.compare === "custom" && validDay(state.rng.cfrom) ? span(state.rng.cfrom, addDays(state.rng.cfrom, g.days - 1)) : `<span class="cmp-when">${esc(t("Pick any dates"))}</span>`, none: "" };
+      popover(el, `<div class="cmp-menu-title">${t("Compare with")}</div>${RANGE_COMPARES.map(([id, name]) => { const on = state.rng.compare === id; return `<button type="button" class="cmp-opt" data-compare="${esc(id)}" aria-pressed="${on}" ${on ? "data-autofocus" : ""}><span class="cmp-name">${t(id === "yoy" ? "vs same days last year" : name)}${when[id] || ""}</span>${on ? `<span class="tick">${icon("check")}</span>` : ""}</button>`; }).join("")}`);
       return;
     }
     // The simpler head: a choice made in More's picker goes back to More, and a period button keeps the focus it had.
+    if ((el = hit("[data-compare=\"custom\"]"))) { openCompareDates(el.closest(".dp") ? $("#period") : $("#compare")); return; }
+    if (hit("#cmp-apply")) {
+      const v = $("#cmp-from")?.value, g = rangeGet(), last = addDays(g.from, -g.days);
+      if (!validDay(v) || v > last || v < FIRST_DAY) { $("#cmp-from")?.focus(); return; }
+      const back = popAnchor?.id === "period" ? "#period" : "#compare";
+      closePopover(); rangeSet({ compare: "custom", cfrom: v }); $(back)?.focus(); return;
+    }
+    if (hit("[data-cmp-cancel]")) { closePopover({ focus: true }); return; }
     if ((el = hit("[data-compare]"))) { const fromMore = state.simple && el.closest(".dp"); closePopover(); rangeSet({ compare: el.dataset.compare }); $(fromMore ? "#period" : "#compare")?.focus(); return; }
     if ((el = hit("[data-preset]"))) { const inHead = state.simple && el.closest(".head-period"); closePopover(); rangeSet({ preset: el.dataset.preset }); $(inHead ? `.head-period [data-preset="${CSS.escape(el.dataset.preset)}"]` : "#period")?.focus(); return; }
     if ((el = hit("[data-dp-move]"))) {
@@ -4172,6 +4212,7 @@
       }).catch((err) => { el.checked = !el.checked; toast(t(err.message), { kind: "crit" }); });
       return;
     }
+    if (el.id === "cmp-from") { compareDatesSum(); return; }
     if ((el.id === "dp-from" || el.id === "dp-to") && dp) {
       const v = el.value;
       if (!v || v < FIRST_DAY || v > TODAY) { updateDpSum(); return; }

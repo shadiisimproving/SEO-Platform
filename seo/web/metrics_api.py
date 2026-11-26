@@ -136,7 +136,7 @@ def today():
         site_id = int(site) if site not in (None, "", "all") else None
     except ValueError as exc:
         raise Refused("That site isn't one of yours.") from exc
-    period = {key: request.args.get(key) for key in ("range", "compare", "from", "to") if request.args.get(key)}
+    period = {key: request.args.get(key) for key in ("range", "compare", "from", "to", "cfrom") if request.args.get(key)}
     answer = today_view.today(_engine(), site_id, period)
     # The setup line's facts and the backlinks numbers, which Today asked for in four more calls (plan change 7).
     if "setup" in wanted:

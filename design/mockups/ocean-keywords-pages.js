@@ -168,6 +168,11 @@
   /* ================= Pages ================= */
   const thumb = (url, image) => (window.PageThumb ? window.PageThumb.html(url, { image: image || null, size: 32 }) : "");
   const pageLine = (r) => `<span class="cb-pg okp-pg">${thumb(r.url, r.image)}<span class="okp-pg-t">${window.PageLink ? window.PageLink.html(r.url, { text: r.title || r.path, cls: "okp-pg-link" }) : esc(r.title || r.path)}<span class="okp-path" dir="auto">${esc(UI().siteIdPicked?.() ? r.path : `${r.host}${r.path}`)}</span></span></span>`;
+  /* No comparison: say why, and open the comparison picker from here (owner, 2026-11-26). */
+  const noCompare = () => {
+    const off = UI().range?.get?.().compare === "none";
+    return `<div class="okp-nocmp"><p class="cb-s">${t(off ? "No comparison chosen." : "No page data stored for the period before.")}</p><button type="button" class="btn btn-small" data-open-compare>${icon("calendar-days")}${t("Choose a period to compare")}</button></div>`;
+  };
   /* d = the /api/site-pages answer, counts = the filters' counts, filter = the one on. */
   function pages(d, counts, filter) {
     if (!on() || !d?.pages?.length) return "";
@@ -188,8 +193,8 @@
     const row = (r) => `<li>${pageLine(r)}<span class="cb-pp">${num(r.clicks_before)} → <b>${num(r.clicks || 0)}</b></span>${pill(r.change)}</li>`;
     const ups = moving.filter((r) => r.change > 0).sort((a, b) => b.change - a.change).slice(0, 5);
     const downs = moving.filter((r) => r.change < 0).sort((a, b) => a.change - b.change).slice(0, 5);
-    const upCard = card("", t("Gaining clicks"), ups.length ? `<ul class="cb-pages">${ups.map(row).join("")}</ul>` : `<p class="cb-s">${t(compare ? "No page gained clicks." : "No comparison period")}</p>`);
-    const downCard = card("", t("Losing clicks"), downs.length ? `<ul class="cb-pages">${downs.map(row).join("")}</ul>` : `<p class="cb-s">${t(compare ? "No page lost clicks." : "No comparison period")}</p>`, compare && counts.losing > 5 ? `<button type="button" class="cb-more" data-pg-filter="losing">${t("All")} ${num(counts.losing)}${icon("chevron-right")}</button>` : "");
+    const upCard = card("", t("Gaining clicks"), ups.length ? `<ul class="cb-pages">${ups.map(row).join("")}</ul>` : (compare ? `<p class="cb-s">${t("No page gained clicks.")}</p>` : noCompare()));
+    const downCard = card("", t("Losing clicks"), downs.length ? `<ul class="cb-pages">${downs.map(row).join("")}</ul>` : (compare ? `<p class="cb-s">${t("No page lost clicks.")}</p>` : noCompare()), compare && counts.losing > 5 ? `<button type="button" class="cb-more" data-pg-filter="losing">${t("All")} ${num(counts.losing)}${icon("chevron-right")}</button>` : "");
     return `${kpis}<div class="cb-grid cb-row3 okp-row3">${topCard}${upCard}${downCard}</div>`;
   }
 
@@ -363,7 +368,7 @@
     "keywords on": "mots-clés sur", "sites": "sites", "All sites": "Tous les sites", "Up": "Hausse", "Down": "Baisse",
     "get clicks": "reçoivent des clics", "with clicks": "avec des clics", "with backlinks": "avec backlinks", "No earlier period": "Pas de période précédente",
     "Where the clicks go": "Où vont les clics", "This period": "Cette période", "Period before": "Période précédente", "No clicks in this period.": "Aucun clic sur cette période.",
-    "Gaining clicks": "Gagnent des clics", "No page gained clicks.": "Aucune page n'a gagné de clics.", "No page lost clicks.": "Aucune page n'a perdu de clics.", "All": "Tout",
+    "Gaining clicks": "Gagnent des clics", "No comparison chosen.": "Aucune comparaison choisie.", "No page data stored for the period before.": "Pas de données de pages pour la période d'avant.", "Choose a period to compare": "Choisir la période à comparer", "No page gained clicks.": "Aucune page n'a gagné de clics.", "No page lost clicks.": "Aucune page n'a perdu de clics.", "All": "Tout",
     "with visits": "avec des visites", "of visits": "des visites", "Visits by page type": "Visites par type de page", "visits": "visites", "No visits in this period.": "Aucune visite sur cette période.",
     "Most visited pages": "Pages les plus visitées", "Pages that bring {leads}": "Pages qui apportent des {leads}", "None in this period.": "Aucun sur cette période.", "Other": "Autre",
     "folders": "dossiers", "Links read": "Liens lus", "Every page read": "Toutes les pages lues", "The rest fill in as the reader passes": "Le reste se remplit au passage du lecteur",

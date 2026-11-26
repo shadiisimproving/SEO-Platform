@@ -111,6 +111,22 @@ def test_last_year_is_52_weeks_back_so_weekdays_line_up(engine, end):
     assert date.fromisoformat(window["compare_to"]).weekday() == end.weekday()
 
 
+def test_custom_comparison_starts_on_the_picked_day_and_runs_as_long_as_the_period(engine, end):
+    site = _site(engine, end)
+    _days(engine, site, end, 200)
+    start = end - timedelta(days=150)
+    scope, window = period.scope_for(engine, {"site_id": str(site), "range": "28d", "compare": "custom", "cfrom": start.isoformat()})
+    assert window["compare_from"] == start.isoformat() and window["compare_to"] == (start + timedelta(days=27)).isoformat()
+    assert scope.compare_start == start and window["cfrom"] == start.isoformat()
+    clicks = today_view._clicks(engine, site, {"range": "28d", "compare": "custom", "cfrom": start.isoformat()})
+    assert clicks["value"] == 280 and clicks["was"] == 280
+    with pytest.raises(Exception):  # overlapping the period itself is refused
+        period.scope_for(engine, {"site_id": str(site), "range": "28d", "compare": "custom", "cfrom": (end - timedelta(days=30)).isoformat()})
+    with pytest.raises(Exception):  # no day picked
+        period.scope_for(engine, {"site_id": str(site), "range": "28d", "compare": "custom"})
+    assert today_view._ga4_windows(end, 28, "custom", 150)[2] == end - timedelta(days=27 + 150)
+
+
 def test_a_comparison_never_made_is_never_printed_and_says_why(engine, end):
     site = _site(engine, end)
     _days(engine, site, end, 40)  # totals start 39 days before the end: the 28 before the last 28 aren't all stored

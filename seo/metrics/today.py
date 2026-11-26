@@ -854,7 +854,7 @@ def _percent(now, was) -> int | None:
 def _search_args(args: dict | None) -> dict:
     """The period as the shared date range sends it (range, compare, from, to). Today has no hours: 24 hours is 7 days here."""
     args = dict(args or {})
-    picked = {"range": args.get("range") or search.DEFAULT_RANGE, "compare": args.get("compare") or "prev", "from": args.get("from"), "to": args.get("to")}
+    picked = {"range": args.get("range") or search.DEFAULT_RANGE, "compare": args.get("compare") or "prev", "from": args.get("from"), "to": args.get("to"), "cfrom": args.get("cfrom")}
     if picked["range"] == "24h":
         picked["range"] = "7d"
     return picked
@@ -880,16 +880,20 @@ def _clicks(engine: Engine, site, args: dict) -> dict:
             "through": max(found).isoformat() if found else None}
 
 
-def _ga4_windows(last_day: date, length: int, compare: str) -> tuple[date, date, date | None, date | None]:
+def _ga4_windows(last_day: date, length: int, compare: str, gap: int | None = None) -> tuple[date, date, date | None, date | None]:
+    """gap: for a picked comparison ("custom"), how many days its start lies before the Search Console period's start, so
+    GA4's own period is compared with the same days earlier."""
     first = last_day - timedelta(days=length - 1)
-    if compare == "none":
+    if compare == "none" or (compare == "custom" and not gap):
         return first, last_day, None, None
+    if compare == "custom":
+        return first, last_day, first - timedelta(days=gap), last_day - timedelta(days=gap)
     if compare == "yoy":
         return first, last_day, search._year_before(first), search._year_before(last_day)
     return first, last_day, first - timedelta(days=length), first - timedelta(days=1)
 
 
-def _site_strip(engine: Engine, site_id: int | None, args: dict, length: int) -> list[dict]:
+def _site_strip(engine: Engine, site_id: int | None, args: dict, length: int, gap: int | None = None) -> list[dict]:
     """Per site, the period against the one before. Blank means no data, never zero.
 
     Google clicks use the shared period (search.resolve), and visits and leads count those same days. A site with no Search
@@ -912,7 +916,7 @@ def _site_strip(engine: Engine, site_id: int | None, args: dict, length: int) ->
             ga4 = conn.execute(text(f"SELECT MIN(day) first_day, MAX(day) last_day, SUM({col} > 0) leads_rows FROM ga4_source_daily WHERE site_id = :s"), {"s": site["id"]}).mappings().first()
             if ga4["last_day"]:
                 last_day = min(ga4["last_day"], shared_last) if shared_last else ga4["last_day"]
-                a, b, ca, cb = _ga4_windows(last_day, length, compare)
+                a, b, ca, cb = _ga4_windows(last_day, length, compare, gap)
                 values = {"s": site["id"], "a": a, "b": b, "ca": ca or date(1900, 1, 1), "cb": cb or date(1900, 1, 1)}
                 found = conn.execute(
                     text(f"SELECT SUM(IF(day BETWEEN :a AND :b, sessions, 0)) now_v, SUM(IF(day BETWEEN :ca AND :cb, sessions, 0)) was_v, SUM(IF(day BETWEEN :a AND :b, {col}, 0)) now_l, SUM(IF(day BETWEEN :ca AND :cb, {col}, 0)) was_l FROM ga4_source_daily WHERE site_id = :s AND (day BETWEEN :a AND :b OR day BETWEEN :ca AND :cb)"),
@@ -1040,7 +1044,8 @@ def today(engine: Engine, site_id: int | None = None, args: dict | None = None) 
     """args: the shared date range (range, compare, from, to), as the screens send it. None: the last 28 days, as before."""
     picked = _search_args(args)
     clicks = _clicks(engine, site_id or "all", picked)
-    sources, strip = _source_health(engine, site_id), _site_strip(engine, site_id, picked, clicks["length"])
+    gap = (date.fromisoformat(clicks["window"]["from"]) - date.fromisoformat(clicks["window"]["cfrom"])).days if clicks["window"].get("cfrom") else None
+    sources, strip = _source_health(engine, site_id), _site_strip(engine, site_id, picked, clicks["length"], gap)
     windows: list[dict] = []
     pages, keywords = _page_moves(engine, site_id, windows), _keyword_moves(engine, site_id)
     todo, named = _todo(engine, site_id, pages)

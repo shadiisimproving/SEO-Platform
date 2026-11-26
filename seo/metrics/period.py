@@ -3,7 +3,8 @@
 - A preset ends on the last FINAL day Google has (fresh days are drawn after it, never counted). A custom period that runs
   into fresh days is cut back to the last final day.
 - "vs period before" is the same number of days just before. "vs last year" is the same days 364 days earlier (52 weeks),
-  so a Monday is compared with a Monday, in the browser and on the server alike.
+  so a Monday is compared with a Monday, in the browser and on the server alike. "Custom" starts on a day the person picks
+  ("cfrom") and runs as many days as the period, so every number and chart line still compares like with like.
 - A comparison is only made when its earlier period is stored in full. That is checked per table: the daily totals come
   in one call for 16 months, while the page and search tables are read a day at a time, newest first, so for hours after
   a new connection they start later. A table with no earlier data gives no gains, no "New", no "Why", never made-up ones.
@@ -22,7 +23,7 @@ from seo.metrics.service import Scope, parse_day
 
 RANGES = {"24h": ("hours", 24), "7d": ("days", 7), "28d": ("days", 28), "3m": ("months", 3), "6m": ("months", 6), "12m": ("months", 12), "16m": ("months", 16)}
 DEFAULT_RANGE = "28d"
-COMPARES = ("prev", "yoy", "none")
+COMPARES = ("prev", "yoy", "custom", "none")
 YOY_DAYS = 364  # 52 weeks: the same weekdays a year earlier (design/mockups/mockup.js rangeGet uses the same)
 WEEKLY_AFTER_DAYS = 92
 ROW_TABLES = {"query": "gsc_query", "page": "gsc_page", "country": "gsc_country", "device": "gsc_device"}
@@ -97,7 +98,7 @@ def _iso(day: date | None) -> str | None:
     return day.isoformat() if day else None
 
 
-def resolve(scope: Scope, range_key: str | None, compare: str | None, start=None, end=None) -> dict:
+def resolve(scope: Scope, range_key: str | None, compare: str | None, start=None, end=None, compare_start=None) -> dict:
     """The period and what it is compared with, for every Search Console number in the app.
 
     "compare_unavailable" says why there is no comparison: "history" (the app's stored totals start after the earlier
@@ -108,6 +109,7 @@ def resolve(scope: Scope, range_key: str | None, compare: str | None, start=None
     compare = compare or "prev"
     if compare not in COMPARES:
         raise Refused("That comparison isn't one Search Console offers.")
+    picked_start = parse_day(compare_start, "comparison start date") if compare == "custom" else None
     last_known, fresh_from = newest(scope)
     final = final_day(last_known, fresh_from)
     hourly = False
@@ -141,6 +143,10 @@ def resolve(scope: Scope, range_key: str | None, compare: str | None, start=None
         compare_from = compare_to - timedelta(days=length - 1)
     elif compare == "yoy":
         compare_from, compare_to = year_before(first), year_before(last)
+    elif compare == "custom":
+        compare_from, compare_to = picked_start, picked_start + timedelta(days=length - 1)
+        if compare_to >= first:
+            raise Refused("The comparison has to end before the period starts.")
     else:
         compare_from = compare_to = None
     stored = history(scope)
@@ -155,7 +161,7 @@ def resolve(scope: Scope, range_key: str | None, compare: str | None, start=None
             compare_from = compare_to = None
     rows_compare = {dim: bool(compare_from) and (hourly or (stored[dim] is not None and stored[dim] <= compare_from)) for dim in ROW_TABLES}
     return {
-        "range": range_key, "compare": compare, "from": first.isoformat(), "to": last.isoformat(), "hourly": hourly, "days": length,
+        "range": range_key, "compare": compare, "cfrom": picked_start.isoformat() if picked_start else None, "from": first.isoformat(), "to": last.isoformat(), "hourly": hourly, "days": length,
         "compare_from": compare_from.isoformat() if compare_from else None, "compare_to": compare_to.isoformat() if compare_to else None,
         "compare_unavailable": unavailable, "history_from": _iso(stored["daily"]),
         "rows_from": {dim: _iso(stored[dim]) for dim in ROW_TABLES}, "rows_compare": rows_compare,
@@ -236,7 +242,7 @@ def scope_for(engine, args) -> tuple[Scope, dict]:
     """The sites asked about and the resolved range, as both the scope and what the screen is told."""
     today = common.google_today(engine).isoformat()
     scope = Scope(engine, args.get("site_id"), today, today)
-    window = resolve(scope, args.get("range"), args.get("compare"), args.get("from"), args.get("to"))
+    window = resolve(scope, args.get("range"), args.get("compare"), args.get("from"), args.get("to"), args.get("cfrom"))
     return apply(scope, window), window
 
 
@@ -263,7 +269,7 @@ def search_scope(scope: Scope) -> tuple[Scope, dict]:
     args = getattr(scope, "search_args", None) or {}
     picked = args.get("range")
     if picked:
-        window = resolve(other, picked, args.get("compare"), args.get("from"), args.get("to"))
+        window = resolve(other, picked, args.get("compare"), args.get("from"), args.get("to"), args.get("cfrom"))
         return apply(other, window), window
     last_known, fresh_from = newest(other)
     final = final_day(last_known, fresh_from)

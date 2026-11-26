@@ -1002,7 +1002,7 @@ def _gsc_window(scope: Scope) -> dict:
 
 def search_args(args) -> dict:
     """The shared range a screen sent beside its dates (UI.range.days adds it), for the Search Console side of the answer."""
-    return {key: args.get(key) for key in ("range", "compare", "from", "to") if args.get(key)} if args and args.get("range") else {}
+    return {key: args.get(key) for key in ("range", "compare", "from", "to", "cfrom") if args.get(key)} if args and args.get("range") else {}
 
 
 def _window_words(window: dict) -> dict:

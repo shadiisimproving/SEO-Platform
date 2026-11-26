@@ -183,3 +183,7 @@ html[data-brand="ocean"] .up-fact .v { font-weight: 650; letter-spacing: -.02em;
   html[data-brand="ocean"] #okp-ladder .cb-rung { grid-template-columns: 96px minmax(0, 1fr) 56px; }
   html[data-brand="ocean"] .okp-kpi .cb-v b { font-size: 22px; }
 }
+
+/* Gaining / Losing clicks with no comparison: short cards, the reason and one button (not two tall empty boxes). */
+html[data-brand="ocean"] .okp-row3 { align-items: start; }
+html[data-brand="ocean"] .okp-nocmp { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; }

@@ -408,6 +408,11 @@ button.stat-row:hover { background: var(--hover); }
 .dp-foot { display: flex; gap: 8px; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); flex-wrap: wrap; }
 .dp-sum { flex: 1 1 200px; font-size: 12px; color: var(--text-2); min-width: 0; }
 .dp-sum b { color: var(--text); font-weight: 600; }
+.cmp-pop { padding: 12px; width: 300px; max-width: calc(100vw - 16px); }
+.cmp-dates .field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--text-2); }
+.cmp-dates .small { margin: 8px 0 0; }
+.cmp-dates .dp-sum { flex-basis: 100%; }
+.cmp-dates .dp-foot [data-cmp-cancel] { margin-left: auto; }
 .dp-warn { display: block; color: var(--warn-t); margin-top: 2px; }
 
 /* ---- Tables ---- */
@@ -1285,3 +1290,12 @@ html[data-simple="1"] .topbar.head h1:has(.head-link) { font-size: 18px; line-he
 h1:has(> .pthumb) { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .panel-head > .pthumb { margin-right: 4px; }
 .rp-head h2:has(> .pthumb) { gap: 12px; }
+
+/* The comparison is a real control, not dotted text (owner, 2026-11-26: "i need to be able to choose the period to compare easily"). */
+html[data-simple="1"] .head-cmp { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px 2px 10px; border: 1px solid var(--line-2); border-radius: 999px; background: var(--surface, #fff); text-decoration: none; color: var(--text); cursor: pointer; }
+html[data-simple="1"] .head-cmp .chev { width: 14px; height: 14px; color: var(--text-2); }
+html[data-simple="1"] .head-cmp:hover, html[data-simple="1"] .head-cmp[aria-expanded="true"] { border-color: var(--accent-text); text-decoration: none; }
+html[data-simple="1"] .head-cmp.none { color: var(--text-2); border-style: dashed; }
+.cmp-menu-title { padding: 6px 10px 4px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+.cmp-opt .cmp-name { display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; }
+.cmp-opt .cmp-when { font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }

@@ -154,7 +154,7 @@
   function numbers(r, range) {
     if (UI().simple?.()) return simpleNumbers(r);
     const w = r.window, period = w?.from && w?.to ? `${day(w.from)} – ${day(w.to)}` : "";
-    const against = !w ? "" : w.compare_unavailable === "google" ? t("No comparison: Google keeps 16 months of data.") : w.compare_unavailable ? (w.history_from ? t("No comparison: stored data starts on {day}.").replace("{day}", day(w.history_from)) : t("No earlier period stored")) : w.compare === "none" ? t("No comparison") : w.compare === "yoy" ? t("vs last year") : t("vs period before");
+    const against = !w ? "" : w.compare_unavailable === "google" ? t("No comparison: Google keeps 16 months of data.") : w.compare_unavailable ? (w.history_from ? t("No comparison: stored data starts on {day}.").replace("{day}", day(w.history_from)) : t("No earlier period stored")) : w.compare === "none" ? t("No comparison") : w.compare === "yoy" ? t("vs last year") : w.compare === "custom" && w.compare_from ? `${t("vs")} ${day(w.compare_from)} – ${day(w.compare_to)}` : t("vs period before");
     const caption = w ? `${esc(range?.label || "")}${range?.label ? " · " : ""}${esc(period)} · ${esc(against)}` : `${t("Last 28 days vs the 28 before")}${r.through ? ` · ${t("Data through")} ${esc(day(r.through))}` : ""}`;
     const drawn = [r.leads, r.visits, r.clicks].some((x) => x.points?.some((p) => p.now !== null));
     const key = drawn ? `<span class="today-legend"><span><i class="today-key"></i>${t("This period")}</span><span><i class="today-key was"></i>${t("Period before")}</span></span>` : "";

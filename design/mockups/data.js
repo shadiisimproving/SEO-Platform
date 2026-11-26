@@ -10,6 +10,7 @@ window.FR = Object.assign(window.FR || {}, {
   "All sites": "Tous les sites", "Add a site": "Ajouter un site", "Collapse menu": "Réduire le menu", "Expand menu": "Agrandir le menu", "Open menu": "Ouvrir le menu",
   "Search or jump to…": "Chercher ou aller à…", "Last 7 days": "7 derniers jours", "Last 30 days": "30 derniers jours", "Last 3 months": "3 derniers mois", "Last 6 months": "6 derniers mois", "Last year": "Dernière année",
   "vs previous period": "vs période précédente", "vs last year": "vs l'an dernier", "Period": "Période", "Compare with": "Comparer avec",
+  "Custom dates…": "Dates personnalisées…", "Pick any dates": "Choisir des dates", "First day": "Premier jour", "Pick the first day.": "Choisissez le premier jour.", "It has to end before {day}.": "Elle doit finir avant le {day}.", "Same length as your period: {n} days.": "Même durée que votre période : {n} jours.",
   "Data through": "Données jusqu'au", "Refresh": "Actualiser", "Refreshed": "Actualisé le", "ago": "", "Sample data": "Données d'exemple",
   "Needs attention": "À traiter", "critical": "critique", "warnings": "alertes", "warning": "alerte", "info": "infos", "Show all": "Tout afficher", "Show less": "Réduire",
   "What changed today": "Ce qui a changé aujourd'hui", "My work": "Mon travail", "Tasks due this week": "Tâches de la semaine", "Backlinks to follow up": "Backlinks à suivre", "Renewals in 30 days": "Renouvellements sous 30 jours",
